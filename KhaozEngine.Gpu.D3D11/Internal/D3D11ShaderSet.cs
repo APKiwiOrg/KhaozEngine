@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu.Internal;
 using Vortice.Direct3D11;
@@ -25,42 +26,53 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     [SupportedOSPlatform("windows")]
     internal sealed class D3D11ShaderSet : ID3D11ShaderSet
     {
-        readonly DeviceLiveness _liveness;
+        readonly D3D11ShaderResource<D3D11CompiledPair, Native> _resource;
 
-        internal D3D11ShaderSet(DeviceLiveness liveness, ID3D11VertexShader vertexShader,
-            ID3D11PixelShader pixelShader, byte[] vertexShaderBytecode)
+        internal D3D11ShaderSet(ID3D11Device device, DeviceLiveness liveness, D3D11CreationGate creation,
+            D3D11ShaderCompilation<D3D11CompiledPair> compilation)
         {
-            ArgumentNullException.ThrowIfNull(liveness);
-            ArgumentNullException.ThrowIfNull(vertexShader);
-            ArgumentNullException.ThrowIfNull(pixelShader);
-            ArgumentNullException.ThrowIfNull(vertexShaderBytecode);
-
-            _liveness = liveness;
-            VertexShader = vertexShader;
-            PixelShader = pixelShader;
-            VertexShaderBytecode = vertexShaderBytecode;
+            _resource = new(liveness, compilation, compiled => CreateWindows(device, liveness, creation, compiled));
         }
 
         /// <inheritdoc/>
-        public ID3D11VertexShader VertexShader { get; }
+        public ID3D11VertexShader VertexShader => _resource.Value.Vertex;
 
         /// <inheritdoc/>
-        public ID3D11PixelShader PixelShader { get; }
+        public ID3D11PixelShader PixelShader => _resource.Value.Pixel;
 
         /// <inheritdoc/>
-        public ReadOnlyMemory<byte> VertexShaderBytecode { get; }
+        public ReadOnlyMemory<byte> VertexShaderBytecode => _resource.Compiled.VertexDxbc;
 
         /// <summary>True once disposed, whether or not anything native was released.</summary>
-        internal bool IsDisposed { get; private set; }
+        internal bool IsDisposed => _resource.IsDisposed;
 
-        public void Dispose()
+        internal void EnsureReady() => _ = _resource.Value;
+
+        public void Dispose() => _resource.Dispose();
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static Native CreateWindows(ID3D11Device device, DeviceLiveness liveness, D3D11CreationGate creation,
+            in D3D11CompiledPair compiled)
         {
-            if (IsDisposed) return;
-            IsDisposed = true;
-            if (_liveness.IsDead) return;   // the device already freed every child object
+            using var scope = creation.Enter();
+            var vertex = device.CreateVertexShader(compiled.VertexDxbc);
+            try { return new Native(vertex, device.CreatePixelShader(compiled.FragmentDxbc)); }
+            catch
+            {
+                if (liveness.IsAlive) vertex.Dispose();
+                throw;
+            }
+        }
 
-            VertexShader.Dispose();
-            PixelShader.Dispose();
+        sealed class Native(ID3D11VertexShader vertex, ID3D11PixelShader pixel) : IDisposable
+        {
+            internal ID3D11VertexShader Vertex { get; } = vertex;
+            internal ID3D11PixelShader Pixel { get; } = pixel;
+            public void Dispose()
+            {
+                Vertex.Dispose();
+                Pixel.Dispose();
+            }
         }
     }
 }

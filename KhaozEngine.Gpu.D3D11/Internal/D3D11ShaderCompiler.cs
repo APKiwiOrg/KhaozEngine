@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Gpu.Internal;
@@ -29,26 +28,29 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly DeviceLiveness _liveness;
         readonly D3D11DxbcCache? _cache;
         readonly uint _flags;
+        readonly D3D11CreationGate _creation;
 
         /// <summary>Builds the compiler for a device, reading the compile flags and the cache location off the
         /// live environment and reporting what it found.</summary>
-        internal D3D11ShaderCompiler(ID3D11Device device, DeviceLiveness liveness)
-            : this(device, liveness, D3D11DxbcCache.FromEnvironment(), ResolveFlags())
+        internal D3D11ShaderCompiler(ID3D11Device device, DeviceLiveness liveness, D3D11CreationGate creation)
+            : this(device, liveness, D3D11DxbcCache.FromEnvironment(), ResolveFlags(), creation)
         {
         }
 
         /// <summary>The explicit form, for a test that wants a known cache and known flags rather than whatever
         /// the machine's environment says.</summary>
         internal D3D11ShaderCompiler(ID3D11Device device, DeviceLiveness liveness, D3D11DxbcCache? cache,
-            uint flags)
+            uint flags, D3D11CreationGate creation)
         {
             ArgumentNullException.ThrowIfNull(device);
             ArgumentNullException.ThrowIfNull(liveness);
+            ArgumentNullException.ThrowIfNull(creation);
 
             _device = device;
             _liveness = liveness;
             _cache = cache;
             _flags = flags;
+            _creation = creation;
         }
 
         /// <summary>The FXC flags every shader this compiler builds is compiled with.</summary>
@@ -58,44 +60,37 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </summary>
         internal D3D11DxbcCache? Cache => _cache;
 
-        /// <summary>Compile a GLSL 450 vertex and fragment pair into a bound shader set.</summary>
+        /// <summary>Queue a GLSL pair. Its first bytecode or native consumer joins the compile.</summary>
         /// <exception cref="ShaderValidationException">A source failed to compile, FXC rejected the emitted HLSL,
         /// or the vertex input signature is holed (decision S5).</exception>
         internal ID3D11ShaderSet CreateShaderSet(string vertexGlsl, string fragmentGlsl)
         {
-            D3D11CompiledPair compiled = D3D11ShaderBuild.Pair(vertexGlsl, fragmentGlsl, _flags, _cache);
-            return CreateShaderSetWindows(_device, _liveness, compiled);
+            ArgumentNullException.ThrowIfNull(vertexGlsl);
+            ArgumentNullException.ThrowIfNull(fragmentGlsl);
+            uint flags = _flags;
+            var cache = _cache;
+            string? key = cache is null ? null : cache.Directory + "\0"
+                + D3D11ShaderKey.For(D3D11ShaderStage.Vertex, flags, vertexGlsl, fragmentGlsl);
+            // Copy only CPU inputs into the worker closure. It must not retain or touch the native device.
+            var compiled = D3D11ShaderCompilation<D3D11CompiledPair>.Start(
+                () => D3D11ShaderBuild.Pair(vertexGlsl, fragmentGlsl, flags, cache), key);
+            return new D3D11ShaderSet(_device, _liveness, _creation, compiled);
         }
 
-        /// <summary>Compile a GLSL 450 compute source into a bound compute module.</summary>
+        /// <summary>Queue a compute source. Reading its workgroup size or creating a pipeline joins it.</summary>
         /// <exception cref="ShaderValidationException">The source failed to compile, declares no resolvable
         /// workgroup size, or FXC rejected the emitted HLSL.</exception>
         internal IGpuComputeShader CreateComputeShader(string computeGlsl)
         {
-            D3D11CompiledCompute compiled = D3D11ShaderBuild.Compute(computeGlsl, _flags, _cache);
-            return CreateComputeShaderWindows(_device, _liveness, compiled);
+            ArgumentNullException.ThrowIfNull(computeGlsl);
+            uint flags = _flags;
+            var cache = _cache;
+            string? key = cache is null ? null : cache.Directory + "\0"
+                + D3D11ShaderKey.For(D3D11ShaderStage.Compute, flags, computeGlsl);
+            var compiled = D3D11ShaderCompilation<D3D11CompiledCompute>.Start(
+                () => D3D11ShaderBuild.Compute(computeGlsl, flags, cache), key);
+            return new D3D11ComputeShader(_device, _liveness, _creation, compiled);
         }
-
-        // The two Vortice-touching bodies, behind the package's usual boundary: NoInlining with no interop type
-        // in the signature, so nothing resolves the assembly until one actually runs, which is inside a compiler
-        // that already holds a live device.
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static ID3D11ShaderSet CreateShaderSetWindows(ID3D11Device device, DeviceLiveness liveness,
-            in D3D11CompiledPair compiled)
-            => new D3D11ShaderSet(
-                liveness,
-                device.CreateVertexShader(compiled.VertexDxbc),
-                device.CreatePixelShader(compiled.FragmentDxbc),
-                compiled.VertexDxbc);
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static IGpuComputeShader CreateComputeShaderWindows(ID3D11Device device, DeviceLiveness liveness,
-            in D3D11CompiledCompute compiled)
-            => new D3D11ComputeShader(
-                liveness,
-                device.CreateComputeShader(compiled.Dxbc),
-                compiled.Dxbc,
-                compiled.ThreadGroupSizeX, compiled.ThreadGroupSizeY, compiled.ThreadGroupSizeZ);
 
         static uint ResolveFlags()
         {

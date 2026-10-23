@@ -492,6 +492,8 @@ For Tasks 1 to 14, the shared focused command is `build-slot --label renderer-pe
 
 ### Task 15: Integration verification, then separately authorized pilots and baseline
 
+Remaining cold compiler/publication preparation follows the [canonical amendment and four-task plan](2026-10-24-renderer-cold-publication.md), with the original workload, schedule, budgets and run-approval gates preserved.
+
 **Files:** Future verification record `docs/verification/2026-10-21-renderer-performance-baseline.md` and compact immutable baseline summary under `docs/performance/renderer/`. Executable authorization manifests only after their individual owner approvals.
 **Interfaces:** Consumes all prior artifacts and accepted dependency SHA, produces a reviewed baseline series or a specific refusal with preserved evidence.
 

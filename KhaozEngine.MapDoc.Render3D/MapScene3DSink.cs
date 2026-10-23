@@ -8,7 +8,7 @@ using KhaozEngine.Render3D;
 namespace KhaozEngine.MapDoc.Render3D;
 
 /// <summary>Publishes admitted prepared products. Frame writes only resolve handles and submit values.</summary>
-public sealed class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMapRenderUploadDependencies
+public sealed partial class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMapRenderUploadDependencies
 {
     readonly Scene3D _scene;
     readonly SceneResourceAccess _access;

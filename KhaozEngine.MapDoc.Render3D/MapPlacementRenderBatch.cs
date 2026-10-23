@@ -15,7 +15,7 @@ namespace KhaozEngine.MapDoc.Render3D;
 internal sealed record MapPlacementPart(MapRenderKey Key, MeshHandle Handle, MapSubmissionAnchor Anchor, MapBox3 Bounds, MapRigidResource Payload, string Digest);
 
 /// <summary>Frozen placement inventory and CPU resources. Accepted HLOD handles are borrowed from publication.</summary>
-public sealed class MapPlacementRenderBatch : IDisposable
+public sealed partial class MapPlacementRenderBatch : IDisposable
 {
     readonly PropLayer[] _ordinary, _roofs;
     readonly Dictionary<(string Owner, int Index, int Generation), int> _partIndices;
@@ -94,20 +94,23 @@ public sealed class MapPlacementRenderBatch : IDisposable
     {
         var request = Clusters[index].Request;
         var anchor = new MapSubmissionAnchor(request.Anchor.X, request.Anchor.Y, request.Anchor.Z);
-        var focus = MapRenderTransform.FocusLocal(emission.Frame.Focus, anchor);
-        var state = _clusters.TryGetNativeEmission(request.Key, focus, out var accepted, out var mergedDraw) ? accepted
-            : PropClusterRenderer.NativeDrawState(request, false, focus);
-        bool shadowOnly = false;
-        if (_roofCohorts[index] is { } cohort)
-        {
-            var decision = PropClusterVisibilityDecision.Resolve(request.Key, state, cohort);
-            state = decision.State; shadowOnly = decision.MergedShadowOnly;
-        }
+        var decision = ResolveCluster(index, emission.Frame, out var mergedDraw);
+        var state = decision.State;
+        bool shadowOnly = decision.MergedShadowOnly;
         if (state.DrawsIndividuals) Emit(request.BorrowLayer, emission, state.IndividualDissolveFloor);
         int part = _clusterParts[index];
         if (state.DrawsMerged && part >= 0 && (!shadowOnly || mergedDraw.CastsShadows))
             Write(_registered![part].Reference, anchor, mergedDraw,
                 shadowOnly ? MapDrawChannels.Shadow | MapDrawChannels.Sky | MapDrawChannels.Physical : Channels(mergedDraw.CastsShadows), emission.Frame, emission.Sink);
+    }
+    PropClusterVisibilityDecision ResolveCluster(int index, MapFrameState frame, out RigidInstanceDraw mergedDraw)
+    {
+        var request = Clusters[index].Request;
+        var focus = MapRenderTransform.FocusLocal(frame.Focus, new(request.Anchor.X, request.Anchor.Y, request.Anchor.Z));
+        var state = _clusters.TryGetNativeEmission(request.Key, focus, out var accepted, out mergedDraw) ? accepted
+            : PropClusterRenderer.NativeDrawState(request, false, focus);
+        return _roofCohorts[index] is { } cohort ? PropClusterVisibilityDecision.Resolve(request.Key, state, cohort)
+            : new(state, false, 0, false);
     }
     internal void RecordRoofs(MapFrameState frame, MapRoofEvaluationBuffer roofs, IReadOnlyDictionary<string, int> indices, IMapDrawSink sink)
     {

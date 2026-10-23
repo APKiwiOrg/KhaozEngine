@@ -63,13 +63,18 @@ public sealed partial class Scene3D
         float dissolve, bool dissolveComplement, bool cutInsideInteriors)
         => AddMeshOutlinePart(group, mesh, world, dissolve, dissolveComplement, cutInsideInteriors);
 
+    /// <summary>Adds a rigid outline with the same precise anchor and coverage as anchored colour submission.</summary>
+    public void DrawMeshOutlineAnchored(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 local, RenderAnchor anchor,
+        float dissolve = 0, bool dissolveComplement = false) =>
+        AddMeshOutlinePart(group, mesh, local, dissolve, dissolveComplement, false, anchor);
+
     void AddMeshOutlinePart(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world,
-        float dissolve, bool dissolveComplement, bool cutInsideInteriors)
+        float dissolve, bool dissolveComplement, bool cutInsideInteriors, RenderAnchor? anchor = null)
     {
         MeshOutlineDrawGroup drawGroup = RequireMeshOutlineGroup(group);
         drawGroup.Parts.Add(MeshOutlinePart.Rigid(mesh, world,
             Math.Clamp(dissolve, 0f, 1f), dissolveComplement, cutInsideInteriors) with
-        { CutInsideInteriors = cutInsideInteriors && RelevantInteriorCut(mesh, world) });
+        { CutInsideInteriors = cutInsideInteriors && RelevantInteriorCut(mesh, world), Anchor = anchor });
         _meshOutlinePartCount++;
     }
 
@@ -141,6 +146,7 @@ public sealed partial class Scene3D
         int BoneCount)
     {
         public bool InteriorCutRequested { get; init; }
+        public RenderAnchor? Anchor { get; init; }
 
         public static MeshOutlinePart Rigid(
             MeshHandle mesh, Matrix4x4 world, float dissolve, bool complement, bool cutInsideInteriors) =>
@@ -175,7 +181,8 @@ public sealed partial class Scene3D
                     if (!_slots.IsValid(part.Mesh.Index, part.Mesh.Generation)) continue;
                     if (_meshes[part.Mesh.Index] is not { } mesh) continue;
                     _targetOutlines.EnqueueRigid(mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
-                        mesh.OutlineMaterialSet, drawIndex++, ToRender(part.World), mesh.AlphaCutoff,
+                        mesh.OutlineMaterialSet, drawIndex++, part.Anchor is { } anchor
+                            ? new AnchoredRigidTransform(part.World, anchor).RelativeTo(_frameOrigin) : ToRender(part.World), mesh.AlphaCutoff,
                         part.Dissolve, part.DissolveComplement, _frameOrigin, part.CutInsideInteriors);
                     groupDraws++;
                     continue;

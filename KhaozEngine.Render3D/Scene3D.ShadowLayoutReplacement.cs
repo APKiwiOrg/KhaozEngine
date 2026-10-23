@@ -59,6 +59,9 @@ public sealed partial class Scene3D
 
     void CommitMaterialSets(Func<IGpuResourceSet, IGpuResourceSet> replacementFor)
     {
+        // Published entries borrow their sets. Transfer their upload's disposal ownership before the old
+        // bindings are destroyed by the renderer's shared replacement transaction.
+        foreach (var resource in _sceneResources.Values) resource.RebindMaterialSets(replacementFor);
         for (int i = 0; i < _meshes.Count; i++)
         {
             if (_meshes[i] is not { MaterialSet: { } oldSet } mesh) continue;

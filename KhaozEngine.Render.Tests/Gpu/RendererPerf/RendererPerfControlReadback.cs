@@ -86,7 +86,17 @@ internal static class RendererPerfControlReadback
                     : format is GpuPixelFormat.R16G16B16A16Float or GpuPixelFormat.R16G16Float
                         ? (float)BitConverter.UInt16BitsToHalf(BinaryPrimitives.ReadUInt16LittleEndian(bytes[(pixel + channel * 2)..]))
                         : BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(bytes[pixel..]));
-                if (!float.IsFinite(value) || MathF.Abs(value - expected[channel]) > .003f)
+                float tolerance = .003f;
+                if (format is GpuPixelFormat.R16G16B16A16Float or GpuPixelFormat.R16G16Float)
+                {
+                    // Allow an adjacent storage value for repeated blend rounding. Keep the original
+                    // tighter cap for large values, including the preserved motion sentinel.
+                    Half stored = (Half)expected[channel];
+                    tolerance = MathF.Min(tolerance, MathF.Max(
+                        MathF.Abs((float)Half.BitIncrement(stored) - expected[channel]),
+                        MathF.Abs((float)Half.BitDecrement(stored) - expected[channel])));
+                }
+                if (!float.IsFinite(value) || MathF.Abs(value - expected[channel]) > tolerance)
                     throw new InvalidOperationException($"The retained {format} output differs at {pixel}/{channel}.");
             }
     }

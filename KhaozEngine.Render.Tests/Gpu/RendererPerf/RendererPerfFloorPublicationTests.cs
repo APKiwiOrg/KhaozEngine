@@ -57,7 +57,7 @@ public sealed class RendererPerfFloorPublicationTests
     [Fact]
     public void Serial_dependencies_name_actual_registry_keys()
     {
-        var model = Assert.Single(RendererPerfWorkModels.ForRegistry([new("ocean.column", 0, -1, 1, 2)], "synthetic recipe"));
-        Assert.Equal(new[] { "ocean.next-row" }, model.SerialDependencies);
+        var model = Assert.Single(RendererPerfWorkModels.ForRegistry([new("ocean.mip-copy", 0, -1, 1, 2)], "synthetic recipe"));
+        Assert.Equal(new[] { "ocean.column" }, model.SerialDependencies);
     }
 }

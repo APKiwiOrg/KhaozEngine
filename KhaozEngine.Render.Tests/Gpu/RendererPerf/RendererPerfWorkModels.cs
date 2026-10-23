@@ -32,6 +32,9 @@ internal static class RendererPerfWorkModels
 
     internal static ImmutableArray<RendererPassWorkModel> ForFrame(RendererPerfFrameSample frame, string recipe)
     {
+        var inactive = frame.Passes.GroupBy(pass => pass.Id, StringComparer.Ordinal)
+            .Where(group => group.All(pass => pass.Duration.Status == RendererPerfMetricStatus.NotExecuted))
+            .Select(group => group.Key).ToHashSet(StringComparer.Ordinal);
         var models = ImmutableArray.CreateBuilder<RendererPassWorkModel>(frame.Passes.Length);
         foreach (var pass in frame.Passes)
         {
@@ -84,7 +87,12 @@ internal static class RendererPerfWorkModels
             }
             AddRecordingFacts(frame, frame.Passes.IndexOf(pass) + 1, components);
             // Copy-only minima cannot fill unknown shader/alpha/cache traffic in a mixed owner.
-            models.Add(model with { Components = components.ToImmutable(), MissingEvidence = missing.Distinct().ToImmutableArray() });
+            models.Add(model with
+            {
+                Components = components.ToImmutable(),
+                SerialDependencies = [.. model.SerialDependencies.Where(dependency => !inactive.Contains(dependency))],
+                MissingEvidence = missing.Distinct().ToImmutableArray()
+            });
         }
         return models.MoveToImmutable();
     }
@@ -135,7 +143,8 @@ internal static class RendererPerfWorkModels
     }
     static ImmutableArray<string> Dependencies(string id) => id switch
     {
-        "ocean.column" => ["ocean.next-row"],
+        // The current column reads the prior frame's row set. This frame's next-row writes the other set.
+        // Cross-frame dependencies cannot be expressed by these same-frame pass IDs.
         "ocean.mip-copy" => ["ocean.column"],
         "ocean.mips" => ["ocean.mip-copy"],
         "water.surface" => ["ocean.column", "ocean.mips"],

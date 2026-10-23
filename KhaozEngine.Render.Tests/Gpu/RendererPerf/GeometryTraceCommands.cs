@@ -24,6 +24,12 @@ internal sealed class GeometryTraceCommands(IGpuCommandList inner) : IGpuCommand
         if (!_ids.TryGetValue(value, out int id)) { id = _ids.Count + 1; _ids.Add(value, id); }
         return id;
     }
+    internal object Resource(int id)
+    {
+        foreach (var pair in _ids)
+            if (pair.Value == id) return pair.Key;
+        throw new InvalidOperationException("The trace resource ID is not in this recording.");
+    }
     void Note(string op, object? a = null, object? b = null, ulong x = 0, ulong y = 0, ulong z = 0, ulong w = 0, ulong data = 0)
     {
         if (Failure is { } failure && op.StartsWith("draw", StringComparison.Ordinal)

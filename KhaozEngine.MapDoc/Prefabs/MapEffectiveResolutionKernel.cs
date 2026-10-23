@@ -368,6 +368,7 @@ internal sealed class MapEffectiveResolutionProduct
         PlacementSupports = Array.AsReadOnly(supports.ToArray());
         _water = water?.Clone();
         _intent = intent.Clone();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(128L * _intent.RoofLinks.Count + 16L * (_intent.RoofGroups.Count + _intent.Roofs.Count)));
         _intent = new(_intent.PayloadVersion, _intent.RoofLinks.OrderBy(r => r.Id, StringComparer.Ordinal).Select(link =>
             link with { AboveY = context.Transform(MapPrefabChildKind.RoofLink, link.Id)?.Height(MapExactValue.FromSingle(link.AboveY)).ToSingle() ?? link.AboveY }).ToArray(),
             _intent.RoofGroups.OrderBy(g => g.Id, StringComparer.Ordinal).ToArray(), _intent.Lights, _intent.Markers)

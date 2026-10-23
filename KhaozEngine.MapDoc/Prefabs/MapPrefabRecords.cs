@@ -87,7 +87,7 @@ public sealed class MapBuildingIntent(int PayloadVersion, IReadOnlyList<MapRoofL
     public IReadOnlyList<MapLocalMarkerDoc> Markers { get; init; } = Markers;
     public IReadOnlyList<MapPrefabReference> Roofs { get; init; } = Array.Empty<MapPrefabReference>();
     public IReadOnlyList<MapStoreyDoc> Storeys { get; init; } = Array.Empty<MapStoreyDoc>();
-    public MapBuildingIntent Clone() => MapPrefabJson.Copy(this);
+    public MapBuildingIntent Clone() => MapBuildingIntentPreparation.Clone(this);
     public string Digest() => MapPrefabJson.Digest("kemap/building-intent/1", this);
 }
 

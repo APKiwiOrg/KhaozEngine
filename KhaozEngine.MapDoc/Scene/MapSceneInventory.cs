@@ -38,7 +38,8 @@ internal sealed class MapSceneInventory
     internal long Product(MapEffectiveResolutionProduct product)
     {
         if (!_seen.Add(product)) return 0;
-        return checked(Context(product.CapturedContext) + Water(product.CapturedWater) + 256L +
+        return checked(Context(product.CapturedContext) + Water(product.CapturedWater) +
+            MapBuildingIntentPreparation.Bytes(product.CapturedBuildingIntent) + 256L +
             128L * product.Placements.Count + 96L * product.PlacementSupports.Count +
             product.PaintRegions.Values.Sum(p => 128L + p.Regions.Sum(r => 128L + 48L * r.Polygon.Count)) +
             128L * (product.EffectiveLights.Count + product.EffectiveMarkers.Count + product.MarkerSupports.Count));

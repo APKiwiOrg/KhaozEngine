@@ -385,7 +385,7 @@ public static class MapNavTiling
             return PartitionDescriptors(world.Bounds, world.Statics, Array.Empty<MapLegacySculptTile>(), world.Water, true, "",
                 grids, options, minX, maxX, minZ, maxZ, count);
         }
-        catch (MapSceneCapacityException) { throw new MapDocumentException("navigation capacity: scene preparation allowance exceeded"); }
+        catch (MapSceneCapacityException error) { throw new MapDocumentException("navigation capacity: " + error.Message, error); }
     }
 
     /// <summary>Seam descriptors use the same geometry identity kernel as complete worlds.</summary>
@@ -399,7 +399,7 @@ public static class MapNavTiling
             using var admitted = world.Admission.Enter();
             return SeamDescriptors(tiles, world.Bounds, options);
         }
-        catch (MapSceneCapacityException) { throw new MapDocumentException("navigation capacity: scene preparation allowance exceeded"); }
+        catch (MapSceneCapacityException error) { throw new MapDocumentException("navigation capacity: " + error.Message, error); }
     }
 
     /// <summary>Cross-tile topology from the retained scoped surface and record witness.</summary>
@@ -413,7 +413,7 @@ public static class MapNavTiling
             using var admitted = world.Admission.Enter();
             return LinkDescriptors(world.Surfaces, grids);
         }
-        catch (MapSceneCapacityException) { throw new MapDocumentException("navigation capacity: scene preparation allowance exceeded"); }
+        catch (MapSceneCapacityException error) { throw new MapDocumentException("navigation capacity: " + error.Message, error); }
     }
 
     static void ValidateOptions(MapNavTileOptions options)

@@ -13,7 +13,11 @@ using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc.Physics;
 
-public sealed record MapScopedWorldResult(MapSceneStatus Status, MapScopedWorld? World, MapSceneWitness Witness);
+public sealed record MapScopedWorldResult(MapSceneStatus Status, MapScopedWorld? World, MapSceneWitness Witness)
+{
+    public MapSceneCapacity? Capacity { get; init; }
+    public IReadOnlyList<string> Findings { get; init; } = Array.Empty<string>();
+}
 
 /// <summary>Physical descriptors complete only for their witnessed domain. This is never a complete built world.</summary>
 public sealed class MapScopedWorld
@@ -95,7 +99,7 @@ public static class MapScopedWorldBuilder
                 var dependency = MapSceneAcquisition.Run(scene.Source, dependencyScope, admission);
                 witness = MapRequiredDomainCoverage.Extend(witness, dependency.Witness);
                 if (dependency.Scene is null)
-                    return new(dependency.Status, null, witness with { CompleteForScope = false });
+                    return new(dependency.Status, null, witness with { CompleteForScope = false }) { Capacity = dependency.Capacity, Findings = dependency.Findings };
                 scene = dependency.Scene;
             }
             // Account descriptor containers before preparation. Canonical compilation charges its own face demand.
@@ -115,7 +119,7 @@ public static class MapScopedWorldBuilder
                 var dependency = WaterDependencies(scene, admission);
                 witness = MapRequiredDomainCoverage.Extend(witness, dependency.Witness);
                 if (dependency.Scene is null)
-                    return new(dependency.Status, null, witness with { CompleteForScope = false });
+                    return new(dependency.Status, null, witness with { CompleteForScope = false }) { Capacity = dependency.Capacity, Findings = dependency.Findings };
                 // The released compiler requires an unfiltered, fully held footprint window for each body.
                 water = MapWaterCompiler.Compile(dependency.Scene.SurfaceView, definition);
             }
@@ -143,7 +147,8 @@ public static class MapScopedWorldBuilder
         catch (Exception error) when (MapSceneSource.Classify(error) is not null)
         {
             return new(Enum.Parse<MapSceneStatus>(MapSceneSource.Classify(error)!.Value.ToString()), null,
-                witness with { CompleteForScope = false, WholeWorldComplete = false });
+                witness with { CompleteForScope = false, WholeWorldComplete = false })
+            { Capacity = MapSceneCapacity.From(error), Findings = [error.Message] };
         }
     }
 

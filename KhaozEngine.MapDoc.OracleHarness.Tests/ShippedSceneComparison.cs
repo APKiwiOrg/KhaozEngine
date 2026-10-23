@@ -50,22 +50,24 @@ internal static partial class ShippedSceneComparison
             {
                 var document = inputs.Reload(tiled); var closure = inputs.Assets(document);
                 using var documentSource = MapDocumentSource.FromDocument(document);
-                var capture = MapSceneSource.Capture(documentSource, closure);
-                Require(capture.Source is not null, "scene source capture refused");
+                var capture = CaptureSource(documentSource, closure, manifest);
+                Require(capture.Source is not null, "scene source capture refused " + string.Join("\n", capture.Findings));
                 var proof = MapRenderExtentValidator.Validate(closure, capture.Source!.RequiredAssetIds, new(new()));
                 Require(proof.Proofs is not null, "scene extent proof refused");
-                var source = capture.Source.WithRenderExtents(proof.Proofs!).Source!;
+                var bound = capture.Source.WithRenderExtents(proof.Proofs!);
+                Require(bound.Source is not null, "scene extent binding refused " + string.Join("\n", bound.Findings));
+                var source = bound.Source!;
                 var policy = inputs.NativePolicy.Native(closure, manifest);
                 var windows = manifest.Windows.ToDictionary(w => w.Id, ShippedSceneInputs.Scope, StringComparer.Ordinal);
                 var completeWindows = new Dictionary<string, IReadOnlyDictionary<MapRenderKey, string>>(StringComparer.Ordinal);
                 foreach (var window in manifest.Windows)
                 {
                     var acquired = source.Acquire(windows[window.Id]);
-                    Check(report, "scene-completeness", acquired.Scene is not null && acquired.Witness.CompleteForScope && acquired.Witness.Unavailable.Count == 0, new { window.Id, acquired.Status });
+                    Check(report, "scene-completeness", acquired.Scene is not null && acquired.Witness.CompleteForScope && acquired.Witness.Unavailable.Count == 0, new { window.Id, acquired.Status, acquired.Capacity, acquired.Findings });
                     CheckCoverage(acquired.Witness, report);
                     if (acquired.Scene is not { } scene) continue;
                     var scheduler = new SceneOracleScheduler(); var device = new SceneOracleDevice();
-                    using var residency = new MapRenderResidency(new(source, closure, proof.Proofs!, policy, [windows[window.Id]]), device, new(MaxPlanBytes: 67108864), scheduler);
+                    using var residency = new MapRenderResidency(new(source, closure, proof.Proofs!, policy, [windows[window.Id]]), device, manifest.Limits?.Residency ?? new(MaxPlanBytes: 67108864), scheduler);
                     Complete(residency, scheduler);
                     var plan = residency.AcceptedPlans.Single();
                     var inventory = new MapDrawRecorder(); plan.Register(inventory);
@@ -297,7 +299,7 @@ internal static partial class ShippedSceneComparison
     {
         var scheduler = new SceneOracleScheduler(); var device = new SceneOracleDevice();
         var active = new Dictionary<string, MapSceneScope>(StringComparer.Ordinal);
-        using var residency = new MapRenderResidency(new(source, closure, proof, policy, []), device, new(MaxActiveWindows: 256, MaxPlanBytes: 67108864), scheduler);
+        using var residency = new MapRenderResidency(new(source, closure, proof, policy, []), device, inputs.Manifest.Limits?.Residency ?? new(MaxActiveWindows: 256, MaxPlanBytes: 67108864), scheduler);
         Complete(residency, scheduler);
         foreach (var step in inputs.Manifest.Sequence)
         {
@@ -333,4 +335,7 @@ internal static partial class ShippedSceneComparison
         }
         throw new InvalidOperationException("scene replacement did not settle");
     }
+
+    internal static MapSceneSourceResult CaptureSource(MapDocumentSource document, MapAssetClosure closure, ShippedSceneManifest manifest)
+        => MapSceneSource.Capture(document, closure, manifest.Limits?.Scene);
 }

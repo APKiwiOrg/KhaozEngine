@@ -95,7 +95,7 @@ public static class MapWaterScopedCompiler
                     witnesses.Add(acquired.Witness);
                     if (!acquired.Witness.CompleteForScope || acquired.Scene is null)
                         return Refuse(acquired.Status is MapSceneStatus.Missing ? MapSceneStatus.Incomplete : acquired.Status,
-                            string.Join("\n", acquired.Findings));
+                            string.Join("\n", acquired.Findings), acquired.Capacity);
                     var compiled = MapWaterCompiler.CompileCell(acquired.Scene.SurfaceView, water!, body, effective with { Domain = domain }, limits);
                     if (compiled.Status != MapWaterCompileStatus.Complete)
                         return Refuse(compiled.Status switch
@@ -133,12 +133,12 @@ public static class MapWaterScopedCompiler
             return Result(MapSceneStatus.CompleteForScope, output);
         }
         catch (Exception error) when (error is MapSceneCapacityException or MapWaterCapacityException)
-        { return Refuse(MapSceneStatus.CapacityExceeded, error.Message); }
+        { return Refuse(MapSceneStatus.CapacityExceeded, error.Message, MapSceneCapacity.From(error)); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         { return Refuse(MapSceneStatus.NotRepresentable, "Water cell coordinates are not representable."); }
         catch (MapDocumentException error) { return Refuse(MapSceneStatus.Invalid, error.Message); }
 
-        MapScopedWaterResult Refuse(MapSceneStatus status, string detail) => Result(status, []) with { Findings = Array.AsReadOnly(new[] { detail }) };
+        MapScopedWaterResult Refuse(MapSceneStatus status, string detail, MapSceneCapacity? capacity = null) => Result(status, []) with { Capacity = capacity, Findings = Array.AsReadOnly(new[] { detail }) };
         MapScopedWaterResult Result(MapSceneStatus status, IReadOnlyList<MapWaterResourceCell> cells)
         {
             bool complete = status == MapSceneStatus.CompleteForScope;

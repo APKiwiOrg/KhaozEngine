@@ -17,4 +17,3 @@ public sealed record MapSceneLimits(int MaxTiles = 65536, int MaxMetadataRows = 
 /// <summary>Logical acquisitions include cache hits. Index visits include every tested rejected sibling node.</summary>
 public sealed record MapSceneWork(long TileReads, long MetadataRows, long Memberships, long ScannedBytes,
     long RetainedBytes, long PreparedFaces, long PayloadReads, long IndexNodesVisited);
-

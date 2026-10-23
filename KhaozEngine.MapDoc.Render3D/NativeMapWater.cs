@@ -34,6 +34,7 @@ public static class NativeMapWater
     public static MapWaterRenderBatch Prepare(MapScopedWaterResult water, WaterLook look, WaterSettings settings)
     {
         ArgumentNullException.ThrowIfNull(water); ArgumentNullException.ThrowIfNull(look); ArgumentNullException.ThrowIfNull(settings);
+        if (water.Capacity is { } capacity) throw new MapSceneCapacityException(capacity.LimitName, capacity.Requested, capacity.Allowance);
         if (water.Status is not (MapSceneStatus.CompleteForScope or MapSceneStatus.WholeWorldComplete) ||
             !water.RequestedWitness.CompleteForScope || !water.AcquiredCellWitness.CompleteForScope)
             throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Water requires complete requested and canonical-cell coverage.");

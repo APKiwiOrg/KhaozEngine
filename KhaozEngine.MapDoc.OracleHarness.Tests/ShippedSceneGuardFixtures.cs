@@ -41,7 +41,7 @@ internal sealed class ShippedSceneGuardFixture(string root, Dictionary<string, s
 internal static partial class ShippedSceneGuardFixtures
 {
     internal const string Sentinel = "PUBLIC-INVENTED-SCENE-SECRET";
-    internal static ShippedSceneGuardFixture Create(string variant)
+    internal static ShippedSceneGuardFixture Create(string variant, Action<JsonObject>? configure = null)
     {
         string root = Path.Combine(Path.GetTempPath(), "ke-scene-guard-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root, PrivateOracleFixtures.SecureDirectoryMode);
@@ -65,6 +65,7 @@ internal static partial class ShippedSceneGuardFixtures
                 var typed = provenance.Deserialize<ShippedSourceProvenance>(ShippedSourceProvenance.JsonOptions)!;
                 provenance["aggregateSha256"] = typed.ComputeAggregate();
             }
+            configure?.Invoke(comparison);
             string text = provenance.ToJsonString(ShippedScenePolicy.Json);
             if (variant == "duplicate-field") text = text.Replace("\"schemaVersion\":1", "\"schemaVersion\":1,\"schemaVersion\":1", StringComparison.Ordinal);
             File.WriteAllText(provenancePath, text);

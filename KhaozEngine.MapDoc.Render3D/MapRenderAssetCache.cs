@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.MapDoc.Render3D;
@@ -45,8 +46,9 @@ public sealed class MapRenderAssetCache : IDisposable
             });
             if (_inputs.TryGetValue(key, out var cached)) return new(MapRenderAssetStatus.Complete, cached.Retain(), null);
             // The full remaining decoder peak is admitted before any strict decode, including cached-set misses.
-            var cpu = _admission?.TryReserveCpu(budget.RemainingBytes);
-            if (_admission is not null && cpu is null) return new(MapRenderAssetStatus.CapacityExceeded, null, "Decoder peak exceeds aggregate CPU allowance.");
+            MapSceneCapacity? capacity = null;
+            var cpu = _admission?.TryReserveCpu(budget.RemainingBytes, out capacity);
+            if (capacity is not null) return new(MapRenderAssetStatus.CapacityExceeded, null, capacity.Message) { Capacity = capacity };
             var added = new List<string>();
             try
             {

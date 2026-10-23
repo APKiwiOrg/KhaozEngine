@@ -17,6 +17,7 @@ public static class MapCapturePreparation
         var acquired = new List<MapSceneScope>(); var witnesses = new List<MapSceneWitness>();
         var source = MapCaptureFocusSource.Unresolved; var echo = request;
         bool capped = false;
+        MapSceneCapacity? capacity = dependencies.Capacity;
         MapSnapshotResult Result(MapSceneStatus status, params string[] findings)
         {
             var scene = empty with
@@ -28,7 +29,8 @@ public static class MapCapturePreparation
                 CompleteForScope = status == MapSceneStatus.CompleteForScope && !capped
             };
             return new(status, null, null, new(request.Scope, dependencies.RequiredScopes, acquired.AsReadOnly(), scene, capped, dependencies.LightingDigest),
-                readiness, echo, source, findings);
+                readiness, echo, source, findings.Concat(capacity is null ? [] : new[] { capacity.Message }).ToArray())
+            { Capacity = capacity };
         }
         try
         {
@@ -48,7 +50,7 @@ public static class MapCapturePreparation
             {
                 var b = request.Scope.DrawBounds; double x = b.MinX / 2 + b.MaxX / 2, z = b.MinZ / 2 + b.MaxZ / 2;
                 var support = request.Source.Acquire(MapCaptureDependencies.Scope(request.Scope, new(x - .001, b.MinY, z - .001, x + .001, b.MaxY, z + .001)));
-                if (support.Scene is null) return Result(support.Status, "FocusUnavailable");
+                if (support.Scene is null) { capacity = support.Capacity; return Result(support.Status, "FocusUnavailable"); }
                 echo = request with { Focus = MapCaptureFocus.Resolve(request, support.Scene) }; source = MapCaptureFocusSource.TopDownSupport;
             }
             int limit = request.Requirement == MapCaptureRequirement.Preview ? request.PreviewWindowLimit : 256;
@@ -60,6 +62,7 @@ public static class MapCapturePreparation
                 var read = MapSceneAcquisition.Run(request.Source, scope, admission); witnesses.Add(read.Witness);
                 if (read.Scene is null)
                 {
+                    capacity = read.Capacity;
                     if (request.Requirement == MapCaptureRequirement.CompleteScope) return Result(read.Status, "closure.unavailable");
                     capped = true; break;
                 }
@@ -71,6 +74,6 @@ public static class MapCapturePreparation
         }
         catch (ArgumentException error) { return Result(MapSceneStatus.Invalid, error.Message == "FocusUnavailable" ? "FocusUnavailable" : "capture.invalid"); }
         catch (MapDocumentException) { return Result(MapSceneStatus.Missing, "closure.unavailable"); }
-        catch (MapSceneCapacityException) { capped = request.Requirement == MapCaptureRequirement.Preview; return Result(capped ? MapSceneStatus.Incomplete : MapSceneStatus.CapacityExceeded, capped ? "scope.capped" : "closure.capacity"); }
+        catch (MapSceneCapacityException error) { capacity = error.Capacity; capped = request.Requirement == MapCaptureRequirement.Preview; return Result(capped ? MapSceneStatus.Incomplete : MapSceneStatus.CapacityExceeded, capped ? "scope.capped" : "closure.capacity"); }
     }
 }

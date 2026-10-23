@@ -12,7 +12,8 @@ namespace KhaozEngine.MapDoc.Foliage;
 /// <summary>A window capture publishes one complete context or no context.</summary>
 public sealed record MapWindowFoliageContextResult(MapFoliageStatus Status, MapWindowFoliageContext? Context, MapFoliageContextWork Work)
 {
-    internal IReadOnlyList<string> Findings { get; init; } = Array.Empty<string>();
+    public MapSceneCapacity? Capacity { get; init; }
+    public IReadOnlyList<string> Findings { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>Immutable foliage inputs for generation chunks whose model reach intersects the captured draw window. Dependencies

@@ -1427,7 +1427,8 @@ not the whole world. Scope defaults admit 4096 selected resources, 256 patch sco
 faces and 67,108,864 prepared bytes before work. Point-query limits remain 256 patches, 4096 faces,
 64 intersections, 32 page reads, 64 record reads and depth 8. `IndexNodesVisited` counts rejected siblings.
 Capacity refusals retain a typed `MapSceneCapacity` in the source or scoped result, with `LimitName`,
-`Requested` and `Allowance`. The same values appear in `Findings`. A bounded scan reports the first
+`Requested` and `Allowance`. Requested demand uses decimal to retain byte sums beyond int64.
+The same values appear in `Findings`. `MapSceneCapacityException` exposes the same typed values. A bounded scan reports the first
 excess demand rather than continuing work to count the rest.
 
 `MapWindowFoliageContext` uses the shared derived read reach and immutable dependencies. Complete

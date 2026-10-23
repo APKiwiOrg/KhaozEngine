@@ -55,9 +55,16 @@ public sealed record MapSnapshotRequest(MapAssetClosure Closure, MapSceneSource 
     public int PreviewWindowLimit { get; init; } = 256;
 }
 public sealed record MapCaptureDependencyResult(MapSceneStatus Status, MapSceneScope RequestedScope,
-    IReadOnlyList<MapSceneScope> RequiredScopes, string LightingDigest);
+    IReadOnlyList<MapSceneScope> RequiredScopes, string LightingDigest)
+{
+    public MapSceneCapacity? Capacity { get; init; }
+    public IReadOnlyList<string> Findings { get; init; } = Array.Empty<string>();
+}
 public sealed record MapCaptureWitness(MapSceneScope RequestedScope, IReadOnlyList<MapSceneScope> RequiredScopes,
     IReadOnlyList<MapSceneScope> AcquiredScopes, MapSceneWitness Scene, bool Capped, string LightingDigest);
 public sealed record MapSnapshotResult(MapSceneStatus Status, Render3DCapture? Image, string? Backend,
     MapCaptureWitness Witness, MapRenderReadiness Readiness, MapSnapshotRequest Echo,
-    MapCaptureFocusSource FocusSource, IReadOnlyList<string> Findings);
+    MapCaptureFocusSource FocusSource, IReadOnlyList<string> Findings)
+{
+    public MapSceneCapacity? Capacity { get; init; }
+}

@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.MapDoc.Render3D;
@@ -15,7 +16,8 @@ public sealed class MapRenderAdmission
     public MapRenderAdmission(MapRenderBudgets budgets) : this(budgets, new()) { }
     internal MapRenderAdmission(MapRenderBudgets budgets, MapRenderLifetime lifetime)
     { ArgumentNullException.ThrowIfNull(budgets); budgets.Validate(); _budgets = budgets; Lifetime = lifetime; }
-    public MapUploadReservation? TryReserve(SceneUploadDemand demand)
+    public MapUploadReservation? TryReserve(SceneUploadDemand demand) => TryReserve(demand, out _);
+    public MapUploadReservation? TryReserve(SceneUploadDemand demand, out MapSceneCapacity? capacity)
     {
         ArgumentNullException.ThrowIfNull(demand);
         if (string.IsNullOrEmpty(demand.InputDigest) || demand.OwnedGpuBytes < 0 || demand.PeakStagingGpuBytes < 0 ||
@@ -23,22 +25,34 @@ public sealed class MapRenderAdmission
             throw new ArgumentException("Invalid renderer upload demand.", nameof(demand));
         lock (_gate)
         {
+            capacity = null;
             long available = _budgets.MaxResidentGpuBytes - GpuBytes;
-            if (demand.OwnedGpuBytes > available || demand.PeakStagingGpuBytes > available - demand.OwnedGpuBytes ||
-                demand.PeakCpuBytes > _budgets.MaxResidentCpuBytes - CpuBytes) return null;
+            if (demand.OwnedGpuBytes > available || demand.PeakStagingGpuBytes > available - demand.OwnedGpuBytes)
+                capacity = new(nameof(MapRenderBudgets.MaxResidentGpuBytes), (decimal)GpuBytes + demand.OwnedGpuBytes + demand.PeakStagingGpuBytes, _budgets.MaxResidentGpuBytes);
+            else if (demand.PeakCpuBytes > _budgets.MaxResidentCpuBytes - CpuBytes)
+                capacity = new(nameof(MapRenderBudgets.MaxResidentCpuBytes), (decimal)CpuBytes + demand.PeakCpuBytes, _budgets.MaxResidentCpuBytes);
+            if (capacity is not null) return null;
             long gpu = demand.OwnedGpuBytes + demand.PeakStagingGpuBytes;
             Lifetime.Gpu(gpu); Lifetime.Cpu(demand.PeakCpuBytes);
             return new(this, demand, gpu);
         }
     }
-    internal CpuLease? TryReserveCpu(long bytes)
+    internal CpuLease? TryReserveCpu(long bytes) => TryReserveCpu(bytes, out _);
+    internal CpuLease? TryReserveCpu(long bytes, out MapSceneCapacity? capacity)
     {
         lock (_gate)
         {
             if (bytes < 0) throw new ArgumentOutOfRangeException(nameof(bytes));
-            if (bytes > _budgets.MaxResidentCpuBytes - CpuBytes) return null;
+            capacity = null;
+            if (bytes > _budgets.MaxResidentCpuBytes - CpuBytes)
+            { capacity = new(nameof(MapRenderBudgets.MaxResidentCpuBytes), (decimal)CpuBytes + bytes, _budgets.MaxResidentCpuBytes); return null; }
             Lifetime.Cpu(bytes); return new(this, bytes);
         }
+    }
+    internal CpuLease ReserveCpu(long bytes)
+    {
+        var lease = TryReserveCpu(bytes, out var capacity);
+        return lease ?? throw new MapSceneCapacityException(capacity!.LimitName, capacity.Requested, capacity.Allowance);
     }
     internal void ReleaseUpload(long cpu, long gpu, bool claimed)
     {

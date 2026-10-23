@@ -60,7 +60,7 @@ public static class NativeMapFoliage
             {
                 // Known off-raster owners have no geometry and must not populate the generation cache.
                 if (MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, key))) continue;
-                if (samples.Count >= ceilings.MaxSelectedResources) throw Capacity();
+                if (samples.Count >= ceilings.MaxSelectedResources) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)samples.Count + 1, ceilings.MaxSelectedResources);
                 long available = admission.RemainingPreparedBytes;
                 // Bound retention and support scratch by the active composite and current window, not source defaults.
                 var limits = new MapFoliageLimits(MaxPrepareScopes: admission.RemainingPatchScopes,
@@ -69,7 +69,7 @@ public static class NativeMapFoliage
                 { ChargePreparation = bytes => MapFoliageGenerationAdmission.Charge(admission, bytes) };
                 var batch = cache.Get(layer.Id, key, limits, admission, retainSamples);
                 count += batch.Samples.Count;
-                if (count > 262_144) throw Capacity();
+                if (count > 262_144) throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQuerySamples), count, 262_144);
                 samples.Add(batch);
             }
         }
@@ -215,5 +215,4 @@ public static class NativeMapFoliage
     }
     static bool Contains(MapLocalBounds outer, MapLocalBounds inner) => outer.Min.X <= inner.Min.X && outer.Min.Y <= inner.Min.Y && outer.Min.Z <= inner.Min.Z &&
         outer.Max.X >= inner.Max.X && outer.Max.Y >= inner.Max.Y && outer.Max.Z >= inner.Max.Z;
-    static MapRenderAssetRefusal Capacity() => new(MapRenderAssetStatus.CapacityExceeded, "Native foliage exceeds its aggregate scene preparation allowance.");
 }

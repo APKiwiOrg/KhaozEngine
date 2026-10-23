@@ -295,12 +295,12 @@ internal sealed class MapSceneScan(MapSceneLimits limits)
     internal long TileReads, MetadataRows, Memberships, ScannedBytes, RetainedBytes;
     internal void Scan(long bytes)
     {
-        if (bytes < 0 || bytes > limits.MaxScannedBytes - ScannedBytes) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxScannedBytes), checked(ScannedBytes + bytes), limits.MaxScannedBytes);
+        if (bytes < 0 || bytes > limits.MaxScannedBytes - ScannedBytes) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxScannedBytes), (decimal)ScannedBytes + bytes, limits.MaxScannedBytes);
         ScannedBytes = checked(ScannedBytes + bytes);
     }
     internal void Scratch(long bytes)
     {
-        if (bytes < 0 || bytes > limits.MaxMetadataBytes - RetainedBytes) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), checked(RetainedBytes + bytes), limits.MaxMetadataBytes);
+        if (bytes < 0 || bytes > limits.MaxMetadataBytes - RetainedBytes) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), (decimal)RetainedBytes + bytes, limits.MaxMetadataBytes);
     }
     internal void RetainBytes(long bytes)
     {

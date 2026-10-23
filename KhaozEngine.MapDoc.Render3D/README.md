@@ -195,6 +195,8 @@ Register the plan before recording frames, and dispose it when its CPU inventory
 
 `MapRenderTransition.Findings` preserves refusal details. Its optional `Capacity` carries the limit name,
 requested amount and allowance from scene acquisition and residency admission.
+`MapRenderAdmission.TryReserve(demand, out capacity)` also reports CPU or GPU admission pressure.
+A waiting upload retains `Incomplete` status and exposes the limiting demand in its transition.
 
 `MapRenderResidency` prepares replacement generations on a bounded worker queue. `RequestReplacement`,
 `Invalidate` and `SetWindows` share one epoch and cancellation owner. Validation and preparation refusals retain

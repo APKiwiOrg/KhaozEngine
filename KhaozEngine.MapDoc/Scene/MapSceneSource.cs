@@ -292,8 +292,10 @@ public sealed class MapSceneSource
         }
         if (proofs.MetadataBytes > _data.Limits.MaxMetadataBytes - _data.CaptureWork.RetainedBytes)
             return new(MapSceneSourceStatus.CapacityExceeded, null, _data.CaptureWork with { RetainedBytes = 0 })
-            { Capacity = new(nameof(MapSceneLimits.MaxMetadataBytes), checked(_data.CaptureWork.RetainedBytes + proofs.MetadataBytes), _data.Limits.MaxMetadataBytes),
-                Findings = [new MapSceneCapacity(nameof(MapSceneLimits.MaxMetadataBytes), checked(_data.CaptureWork.RetainedBytes + proofs.MetadataBytes), _data.Limits.MaxMetadataBytes).Message] };
+            {
+                Capacity = new(nameof(MapSceneLimits.MaxMetadataBytes), (decimal)_data.CaptureWork.RetainedBytes + proofs.MetadataBytes, _data.Limits.MaxMetadataBytes),
+                Findings = [new MapSceneCapacity(nameof(MapSceneLimits.MaxMetadataBytes), (decimal)_data.CaptureWork.RetainedBytes + proofs.MetadataBytes, _data.Limits.MaxMetadataBytes).Message]
+            };
         return new(MapSceneSourceStatus.Ready, new(_data, proofs), _data.CaptureWork with { RetainedBytes = checked(_data.CaptureWork.RetainedBytes + proofs.MetadataBytes) });
     }
     static bool Contains(MapLocalBounds declared, MapLocalBounds actual) => actual.Min.X >= declared.Min.X && actual.Min.Y >= declared.Min.Y &&

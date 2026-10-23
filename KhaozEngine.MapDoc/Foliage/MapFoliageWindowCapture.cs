@@ -41,7 +41,7 @@ internal static class MapFoliageWindowCapture
                 foreach (var key in MapFoliageWindowChunks.Discover(layer, source.Data.Assets, b))
                 {
                     work = work with { ChunkDescriptors = checked(work.ChunkDescriptors + 1) };
-                    if (work.ChunkDescriptors > limits.MaxChunkDescriptors) return new(MapFoliageStatus.CapacityExceeded, null, work);
+                    if (work.ChunkDescriptors > limits.MaxChunkDescriptors) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxChunkDescriptors), work.ChunkDescriptors, limits.MaxChunkDescriptors);
                     chunks.Add((layer, key));
                     if (MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, key))) continue;
                     var read = MapFoliageSupport.Scope(layer, key, metadata.FloorsFor(layer, key), metadata.Transforms).WorldRectangle();
@@ -79,7 +79,7 @@ internal static class MapFoliageWindowCapture
                 SurfacePatches = admission.FoliagePatches,
                 PaintTargets = admission.FoliagePaintTargets
             };
-            if (acquired.Scene is not { } scene) return new(Status(acquired.Status), null, Observed()) { Findings = acquired.Findings };
+            if (acquired.Scene is not { } scene) return new(Status(acquired.Status), null, Observed()) { Capacity = acquired.Capacity, Findings = acquired.Findings };
             // The admitted effective context owns every acquired patch. Retained reads never return to the live producer.
             var kernel = new MapFoliageInputKernel(scene.CapturedFoliage, source.Data.Assets, scene.Product, scene.Product.SurfaceSource, metadata, scope.Surfaces.Limits);
             work = Observed();
@@ -89,7 +89,10 @@ internal static class MapFoliageWindowCapture
         }
         catch (MapFoliageRefusal refusal) { return new(refusal.Status, null, Observed()); }
         catch (Exception error) when (MapSceneSource.Classify(error) is not null)
-        { return new(Status(Enum.Parse<MapSceneStatus>(MapSceneSource.Classify(error)!.Value.ToString())), null, Observed()); }
+        {
+            return new(Status(Enum.Parse<MapSceneStatus>(MapSceneSource.Classify(error)!.Value.ToString())), null, Observed())
+            { Capacity = MapSceneCapacity.From(error), Findings = [error.Message] };
+        }
         MapFoliageContextWork Observed() => work with
         {
             Expansions = MapPrefabResolver.ThreadExpansions - expansions,

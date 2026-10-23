@@ -89,8 +89,9 @@ public sealed class MapRenderPlan : IDisposable
     internal static MapWindowFoliageContext CaptureFoliage(MapSceneSource source, MapSceneScope scope)
     {
         var result = MapFoliageGenerationContext.CaptureWindow(source, scope);
+        if (result.Capacity is { } capacity) throw new MapSceneCapacityException(capacity.LimitName, capacity.Requested, capacity.Allowance);
         return result.Context ?? throw new MapRenderAssetRefusal(result.Status == MapFoliageStatus.CapacityExceeded
-            ? MapRenderAssetStatus.CapacityExceeded : MapRenderAssetStatus.Invalid, "Window foliage dependencies refused preparation.");
+            ? MapRenderAssetStatus.CapacityExceeded : MapRenderAssetStatus.Invalid, "Window foliage dependencies refused preparation. " + string.Join("\n", result.Findings));
     }
     internal static string[] SelectedAssets(MapScopedScene scene, MapWindowFoliageContext context, MapPlacementCellInventory? cells = null) => scene.Placements.Select(p => p.AssetId)
         .Concat(cells?.Cells.SelectMany(c => c.Members.Select(p => p.AssetId)) ?? [])

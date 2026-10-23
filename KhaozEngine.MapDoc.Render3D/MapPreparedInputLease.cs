@@ -3,11 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.MapDoc.Render3D;
 
-public sealed record MapPreparedInputResult(MapRenderAssetStatus Status, MapPreparedInputLease? Input, string? Detail);
+public sealed record MapPreparedInputResult(MapRenderAssetStatus Status, MapPreparedInputLease? Input, string? Detail)
+{
+    public MapSceneCapacity? Capacity { get; init; }
+}
 
 /// <summary>A retained selected mesh/material input. Only the final lease releases its decoded charge.</summary>
 public sealed class MapPreparedInputLease : IDisposable

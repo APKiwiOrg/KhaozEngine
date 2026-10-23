@@ -144,13 +144,15 @@ public sealed partial class MapRenderResidency : IDisposable
     }
     void SchedulePending(Pending pending)
     {
-        long bytes = Math.Min(_budgets.MaxQueuedBytes, Math.Min(pending.State.Source.Data.Limits.MaxPreparedBytes,
-            checked(_budgets.MaxPlanBytes * pending.State.Windows.Count)));
+        long bytes = Math.Min(_budgets.MaxQueuedBytes, pending.State.Source.Data.Limits.MaxPreparedBytes);
+        int windows = pending.State.Windows.Count;
+        if (windows == 0) bytes = 0;
+        else if (_budgets.MaxPlanBytes <= bytes / windows) bytes = _budgets.MaxPlanBytes * windows;
         if (!_queue.CanEnqueue(1, bytes)) return;
         var source = pending.State.Source;
         var sourceCharge = RetainSource(pending.State);
-        var charge = _admission.TryReserveCpu(bytes);
-        if (charge is null) { sourceCharge.Dispose(); throw new MapSceneCapacityException(nameof(MapRenderBudgets.MaxResidentCpuBytes), checked(_admission.CpuBytes + bytes), _budgets.MaxResidentCpuBytes); }
+        MapRenderAdmission.CpuLease charge;
+        try { charge = _admission.ReserveCpu(bytes); } catch { sourceCharge.Dispose(); throw; }
         pending.SourceCharge = sourceCharge;
         pending.Job = _queue.Enqueue(1, bytes, token => Build(pending, bytes, charge, token), charge);
     }
@@ -159,7 +161,8 @@ public sealed partial class MapRenderResidency : IDisposable
         var plans = new List<MapRenderPlan>();
         long transferred = 0;
         var source = pending.State.Source;
-        var admission = new MapSceneAdmission(source.Data.Limits with { MaxPreparedBytes = Math.Min(bytes, source.Data.Limits.MaxPreparedBytes) });
+        var admission = new MapSceneAdmission(source.Data.Limits with { MaxPreparedBytes = Math.Min(bytes, source.Data.Limits.MaxPreparedBytes) },
+            preparationLimitName: bytes < source.Data.Limits.MaxPreparedBytes && bytes == _budgets.MaxQueuedBytes ? nameof(MapRenderBudgets.MaxQueuedBytes) : nameof(MapSceneLimits.MaxPreparedBytes));
         using var activation = admission.Enter();
         try
         {
@@ -177,7 +180,7 @@ public sealed partial class MapRenderResidency : IDisposable
                 long beforeScope = admission.RetainedBytes;
                 try
                 {
-                    using var window = admission.LimitPreparation(_budgets.MaxPlanBytes - reused);
+                    using var window = admission.LimitPreparation(_budgets.MaxPlanBytes - reused, nameof(MapRenderBudgets.MaxPlanBytes), reused);
                     var result = MapSceneAcquisition.Run(source, scope, admission);
                     if (result.Scene is not { } scene) throw new MapSceneSourceException(result.Status, string.Join("\n", result.Findings), result.Capacity);
                     if (contextOwner is null)
@@ -198,6 +201,7 @@ public sealed partial class MapRenderResidency : IDisposable
                     long remaining = Math.Min(admission.RemainingPreparedBytes, _admission.AvailableCpuBytes);
                     var decode = new GltfDecodeBudget(new(MaxPeakBytes: remaining));
                     var loaded = AssetCache.Acquire(pending.State.Closure, selected, materials, pending.State.Extents, decode, token, pending.SourceCharge!.Encoded);
+                    if (loaded.Capacity is { } capacity) throw new MapSceneCapacityException(capacity.LimitName, capacity.Requested, capacity.Allowance);
                     if (loaded.Input is not { } input) throw new MapRenderAssetRefusal(loaded.Status, loaded.Detail ?? "Selected input refused.");
                     try
                     {
@@ -233,8 +237,8 @@ public sealed partial class MapRenderResidency : IDisposable
             Fence(pending);
             if (Device is IMapRenderUploadDependencies dependencies && !dependencies.CanBeginUpload(resource)) continue;
             var demand = Device.MeasureUpload(resource);
-            using var reservation = _admission.TryReserve(demand);
-            if (reservation is null) break;
+            using var reservation = _admission.TryReserve(demand, out var capacity);
+            if (reservation is null) { PendingCapacity(capacity!); break; }
             // The upload may retain CPU inputs after cancellation until its renderer destruction callback.
             var borrow = pending.Batch!.Plans.First(p => p.Resources.Any(r => r.Reference == resource.Reference)).Input.Retain();
             reservation.OnRelease(borrow.Dispose);
@@ -284,8 +288,7 @@ public sealed partial class MapRenderResidency : IDisposable
     {
         if (references <= _recordingCapacity) return;
         // The old maps coexist with their replacements during growth. Reserve before allocating any buckets.
-        using var charge = _admission.TryReserveCpu(checked(512L + references * 512L))
-            ?? throw new MapSceneCapacityException(nameof(MapRenderBudgets.MaxResidentCpuBytes), checked(_admission.CpuBytes + 512L + references * 512L), _budgets.MaxResidentCpuBytes);
+        using var charge = _admission.ReserveCpu(checked(512L + references * 512L));
         _recording.Prepare(references);
         _recordingCharge?.Dispose(); _recordingCharge = charge.Retain(); _recordingCapacity = references;
     }
@@ -336,9 +339,16 @@ public sealed partial class MapRenderResidency : IDisposable
     }
     void DrainRetirement()
     { for (int i = 0; i < _budgets.MaxDisposalsPerUpdate && _retired.TryDequeue(out var owner); i++) Device.Release(owner.Handle); }
+    void PendingCapacity(MapSceneCapacity capacity)
+    {
+        if (_transition.Capacity != capacity)
+            _transition = _transition with { Capacity = capacity, Findings = [capacity.Message] };
+    }
     void Refuse(MapSceneStatus status, long epoch, Exception error)
-    { if (_acceptedState is not null) DesiredState = _acceptedState; _transition = new(epoch, status, _transition.AcceptedWitness, null)
-        { Capacity = MapSceneCapacity.From(error), Findings = Array.AsReadOnly(new[] { error.Message }) }; }
+    {
+        if (_acceptedState is not null) DesiredState = _acceptedState; _transition = new(epoch, status, _transition.AcceptedWitness, null)
+        { Capacity = MapSceneCapacity.From(error), Findings = Array.AsReadOnly(new[] { error.Message }) };
+    }
     static MapSceneStatus? Refusal(Exception error) => error switch
     {
         MapRenderAssetRefusal { Status: MapRenderAssetStatus.CapacityExceeded } or MapSceneCapacityException or OverflowException => MapSceneStatus.CapacityExceeded,
@@ -405,7 +415,7 @@ public sealed partial class MapRenderResidency : IDisposable
         {
             if (!entries.TryGetValue(key, out var lease))
             {
-                lease = _admission.TryReserveCpu(bytes) ?? throw new MapSceneCapacityException(nameof(MapRenderBudgets.MaxResidentCpuBytes), checked(_admission.CpuBytes + bytes), _budgets.MaxResidentCpuBytes);
+                lease = _admission.ReserveCpu(bytes);
                 entries.Add(key, lease);
             }
             return lease.Retain();

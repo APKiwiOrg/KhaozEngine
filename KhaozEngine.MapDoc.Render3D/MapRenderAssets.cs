@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 
@@ -12,9 +13,12 @@ namespace KhaozEngine.MapDoc.Render3D;
 public enum MapRenderAssetStatus { Complete, Missing, Stale, Unsupported, Invalid, CapacityExceeded, NotRepresentable }
 public sealed record MapRenderAssetLimits(long MaxDecodedBytes = 268435456, int MaxParts = 4096, int MaxLods = 16);
 public sealed record MapRenderAssetResult(MapRenderAssetStatus Status, MapRenderAssets? Assets, string? Detail);
-public sealed class MapRenderAssetRefusal(MapRenderAssetStatus status, string detail, Exception? innerException = null) : Exception(detail, innerException)
+public sealed class MapRenderAssetRefusal : Exception
 {
-    public MapRenderAssetStatus Status { get; } = status;
+    public MapRenderAssetStatus Status { get; }
+    public MapSceneCapacity? Capacity => InnerException is { } error ? MapSceneCapacity.From(error) : null;
+    public MapRenderAssetRefusal(MapRenderAssetStatus status, string detail) : base(detail) => Status = status;
+    public MapRenderAssetRefusal(MapRenderAssetStatus status, string detail, Exception innerException) : base(detail, innerException) => Status = status;
 }
 
 public sealed class MapRenderLod

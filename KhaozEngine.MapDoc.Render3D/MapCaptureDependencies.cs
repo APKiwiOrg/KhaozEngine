@@ -68,7 +68,7 @@ public static class MapCaptureDependencies
                     if (lightCandidates.Count > 256) throw new MapSceneCapacityException("MaxCaptureLights", lightCandidates.Count, 256);
                     var bounds = request.Source.Data.MetadataByKey[key].Bounds;
                     var found = MapSceneAcquisition.Run(request.Source, Scope(request.Scope, bounds), admission);
-                    if (found.Scene is null) return new(found.Status, request.Scope, scopes.AsReadOnly(), digest);
+                    if (found.Scene is null) return new(found.Status, request.Scope, scopes.AsReadOnly(), digest) { Capacity = found.Capacity, Findings = found.Findings };
                     foreach (var light in MapEffectiveAnnotations.Lights(found.Scene))
                         if (Meets(light, r)) lights.TryAdd(light.Id, light);
                 }
@@ -101,7 +101,7 @@ public static class MapCaptureDependencies
             return new(MapSceneStatus.CompleteForScope, request.Scope, scopes.AsReadOnly(), digest);
         }
         catch (Exception error) when (error is MapSceneCapacityException or OverflowException)
-        { return new(MapSceneStatus.CapacityExceeded, request.Scope, scopes.AsReadOnly(), digest); }
+        { return new(MapSceneStatus.CapacityExceeded, request.Scope, scopes.AsReadOnly(), digest) { Capacity = MapSceneCapacity.From(error), Findings = [error.Message] }; }
         catch (ArgumentException) { return new(MapSceneStatus.Invalid, request.Scope, scopes.AsReadOnly(), digest); }
     }
     static bool Meets(MapEffectiveLight l, MapBox3 b)

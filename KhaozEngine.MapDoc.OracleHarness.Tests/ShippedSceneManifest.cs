@@ -34,12 +34,17 @@ internal sealed record ShippedSceneManifest(SceneGenerator Generator, string? Na
     IReadOnlyList<SceneRoof> Roofs, IReadOnlyList<SceneWater> Water, IReadOnlyList<SceneFoliage> Foliage,
     IReadOnlyList<SceneWindow> Windows, IReadOnlyList<SceneStep> Sequence, ScenePolicyPaths Policy, SceneExpectations Expectations)
 {
+    internal SceneLimitsProfile? Limits { get; init; }
     internal static ShippedSceneManifest Read(JsonElement json)
     {
         UniqueMembers(json);
-        Shape(json, "schemaVersion", "generator", "nativeDocumentPath", "nativeTiledManifestPath", "buildingManifestPath",
+        Require(json.ValueKind == JsonValueKind.Object, "invalid scene manifest");
+        string[] fields = ["schemaVersion", "generator", "nativeDocumentPath", "nativeTiledManifestPath", "buildingManifestPath",
             "markerManifestPath", "foliageManifestPath", "assetSelections", "materials", "placements", "lights", "roofs", "water", "foliage",
-            "windows", "sequence", "policy", "expectations");
+            "windows", "sequence", "policy", "expectations"];
+        bool hasLimits = json.TryGetProperty("limits", out var limits);
+        Shape(json, hasLimits ? fields.Concat(["limits"]).ToArray() : fields);
+        var profile = hasLimits ? SceneLimitsProfile.Read(limits) : null;
         Require(json.GetProperty("schemaVersion").TryGetInt32(out int schema) && schema == 1, "unsupported scene schema");
         var generator = json.GetProperty("generator"); Shape(generator, "path", "helpers");
         string generatorPath = Path(generator, "path");
@@ -109,7 +114,7 @@ internal sealed record ShippedSceneManifest(SceneGenerator Generator, string? Na
         return new(new(generatorPath, helpers), NullablePath(json, "nativeDocumentPath"), Path(json, "nativeTiledManifestPath"),
             NullablePath(json, "buildingManifestPath"), NullablePath(json, "markerManifestPath"), NullablePath(json, "foliageManifestPath"),
             assetSelections, materials, placements, lights, roofs, water, foliage, windows, sequence, new(Path(policy, "sourcePolicyPath"), Path(policy, "nativePolicyPath"), probes),
-            new(Count("terrainFaces"), Count("placements"), Count("parts"), Count("lods"), Count("lights"), Count("roofs"), Count("waterRegions"), Count("foliageSamples"), Count("windows"), Count("sequenceSteps")));
+            new(Count("terrainFaces"), Count("placements"), Count("parts"), Count("lods"), Count("lights"), Count("roofs"), Count("waterRegions"), Count("foliageSamples"), Count("windows"), Count("sequenceSteps"))) { Limits = profile };
     }
 
     static SceneWindow Window(JsonElement r)

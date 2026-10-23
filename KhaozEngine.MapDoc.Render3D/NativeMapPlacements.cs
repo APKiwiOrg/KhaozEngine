@@ -116,6 +116,7 @@ public static class NativeMapPlacements
                     .OrderBy(c => c.Key.X).ThenBy(c => c.Key.Z))
                 {
                     var members = cell.OrderBy(i => i.Id, StringComparer.Ordinal).ToArray();
+                    using var cellPreparation = admission.BeginPreparation();
                     var domain = MapPlacementCells.Domain(cell.Key, scene.Source.Data.TileSize, members.Min(i => i.Anchor.Y));
                     var sources = new Dictionary<string, GltfMesh>(StringComparer.Ordinal);
                     foreach (string id in members.Select(i => i.AssetId).Distinct(StringComparer.Ordinal))
@@ -132,7 +133,9 @@ public static class NativeMapPlacements
                     clusters.Add(build);
                     var anchor = new MapSubmissionAnchor(domain.Anchor.X, domain.Anchor.Y, domain.Anchor.Z);
                     var mesh = build.BorrowMesh;
-                    if (mesh.TriangleCount == 0) continue;
+                    var inventoryMeasure = new MapNativeInventory();
+                    long clusterBytes = checked(MapNativeInventory.Mesh(mesh) + inventoryMeasure.Layer(build.Request.BorrowLayer) + 16L * build.Request.Instances.Count);
+                    if (mesh.TriangleCount == 0) { cellPreparation.Complete(clusterBytes); continue; }
                     var bounds = members.Select(i => boundsById[i.Id]).Aggregate(Union);
                     var key = new MapRenderKey(MapRenderKind.Placement, MapPlacementCells.Owner(cell.Key), "hlod", 0);
                     string inventory = ClusterInventoryDigest(members, assets.Closure.Hash, layer.HlodWeldCell);
@@ -142,6 +145,7 @@ public static class NativeMapPlacements
                             w.WriteStartArray(); w.WriteStringValue(routing.PolicyDigest);
                             w.WriteStringValue(inventory); w.WriteEndArray();
                         })));
+                    cellPreparation.Complete(checked(clusterBytes + MapNativeInventory.Mesh(mesh) + 256L));
                 }
             }
             var defaults = instances.Where(i => policy.For(i.AssetId) is null).ToArray();

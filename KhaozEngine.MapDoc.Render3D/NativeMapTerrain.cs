@@ -17,6 +17,9 @@ namespace KhaozEngine.MapDoc.Render3D;
 /// come exclusively from the selected input lease, and no preparation path creates a device or uploads a resource.</summary>
 public static class NativeMapTerrain
 {
+    internal static long CanonicalRowBytes => System.Runtime.CompilerServices.Unsafe.SizeOf<MapCompiledFace>() +
+        System.Runtime.CompilerServices.Unsafe.SizeOf<MapExactTriangle>() + System.Runtime.CompilerServices.Unsafe.SizeOf<MapPaintCoverage>() +
+        System.Runtime.CompilerServices.Unsafe.SizeOf<MapSubmissionAnchor>() + IntPtr.Size;
     public static MapTerrainRenderBatch Prepare(MapScopedScene scene, MapPreparedInputLease input,
         IReadOnlyDictionary<ushort, string> materialIds) => Prepare(scene, input, materialIds, TileGroundMaterialConfig.MaxMaterials);
 
@@ -58,6 +61,8 @@ public static class NativeMapTerrain
             foreach (var group in partitions.Where(p => palettes.ByFace.ContainsKey(p.Face)).GroupBy(p =>
                 (p.Face.OwnerId, p.Face.Patch, byKey[p.Face].Anchor, Palette: palettes.ByFace[p.Face])))
             {
+                using var groupPreparation = admission.BeginPreparation();
+                admission.ReserveBytes(MapTerrainMesh.WorkspaceBytes(group, byKey));
                 var material = materials[group.Key.Palette];
                 var mesh = MapTerrainMesh.Build(group, byKey, group.Key.Anchor, material, boundaries);
                 if (mesh.Mesh.TriangleCount == 0) continue;
@@ -67,6 +72,8 @@ public static class NativeMapTerrain
                 var key = new MapRenderKey(MapRenderKind.Terrain, group.Key.OwnerId, partId, 0);
                 parts.Add(new(key, group.Key.Anchor, Bounds(mesh.Mesh, group.Key.Anchor), mesh,
                     Digest(mesh, input.ClosureHash, group.Key.Anchor)));
+                groupPreparation.Complete(checked(512L + ModelVertex.SizeInBytes * (long)mesh.BorrowMesh.Vertices.Length +
+                    4L * mesh.BorrowMesh.Indices32.Length + 80L * mesh.FaceKeys.Count));
             }
             admission.ReserveBytes(checked(8L * (canonical.Count + partitions.Length + parts.Count + findings.Count)));
             var result = new MapTerrainRenderBatch(input, canonical, partitions, parts, findings, 0);
@@ -90,18 +97,21 @@ public static class NativeMapTerrain
                 view.EffectiveContext?.IsPartialPaint(s) != true).OrderBy(s => s.PaintPriority).ThenByDescending(s => s.Id, StringComparer.Ordinal).ToArray();
             foreach (var patch in surfaces.Patches.Values.Where(p => p.Key.SurfaceId == surface.Id))
             {
+                using var patchPreparation = admission.BeginPreparation();
+                int start = result.Count;
                 var compiled = MapSurfaceCompiler.Compile(surface, patch);
                 foreach (var source in paint)
                     foreach (var key in view.Witness.Present.Select(p => p.Key).Where(k => k.SurfaceId == source.Id).Order())
                         if (view.TryAcquiredPatch(key, out var overridePatch, out _) && overridePatch is not null)
-                            compiled = MapSurfaceCompiler.ApplyPaintOverride(compiled, source, overridePatch);
-                compiled = MapEffectiveGeometry.TransformPatch(view, compiled);
+                            compiled = Replace(compiled, MapSurfaceCompiler.ApplyPaintOverride(compiled, source, overridePatch));
+                compiled = Replace(compiled, MapEffectiveGeometry.TransformPatch(view, compiled));
                 for (int i = 0; i < compiled.Faces.Count; i++)
                 {
-                    admission.ReserveBytes(256);
+                    admission.ReserveBytes(CanonicalRowBytes);
                     var face = compiled.Faces[i];
                     result.Add(new(face, compiled.ExactTriangle(face), compiled.Paint[i], compiled.Anchor));
                 }
+                patchPreparation.Complete(checked(CanonicalRowBytes * (result.Count - start)));
             }
         }
         foreach (var strip in surfaces.AllRecords().OfType<MapWallStrip>().OrderBy(s => s.Id, StringComparer.Ordinal))
@@ -109,16 +119,22 @@ public static class NativeMapTerrain
             if (!surfaces.TryGetRecord(strip.LowerChain, out var lower) || lower is not MapBoundaryChain low ||
                 !surfaces.TryGetRecord(strip.UpperChain, out var upper) || upper is not MapBoundaryChain high)
                 throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Terrain wall requires both acquired boundary chains.");
+            using var stripPreparation = admission.BeginPreparation();
+            int start = result.Count;
             var compiled = MapWallStripCompiler.Compile(strip, MapBoundaryGeometry.ResolveChain(low, view), MapBoundaryGeometry.ResolveChain(high, view));
             foreach (var face in compiled.Faces)
             {
-                admission.ReserveBytes(256);
+                admission.ReserveBytes(CanonicalRowBytes);
                 result.Add(new(face, new(compiled.ExactVertices[face.A], compiled.ExactVertices[face.B], compiled.ExactVertices[face.C]),
                     new(face.Key, strip.MaterialId, 0, false, false), compiled.Anchor));
             }
+            stripPreparation.Complete(checked(CanonicalRowBytes * (result.Count - start)));
         }
         return result.OrderBy(f => f.Face.Key).ToList();
     }
+
+    static MapCompiledPatch Replace(MapCompiledPatch previous, MapCompiledPatch next)
+    { if (!ReferenceEquals(previous, next)) previous.PreparationOwnership?.Dispose(); return next; }
 
     internal static ushort[] LayerIds(MapPaintCoverage paint) => paint.OverlayCovers && paint.Overlay != 0
         ? paint.Feather && paint.Underlay != 0 && paint.Underlay != paint.Overlay

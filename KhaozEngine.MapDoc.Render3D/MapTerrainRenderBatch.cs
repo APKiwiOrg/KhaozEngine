@@ -52,7 +52,7 @@ public sealed class MapTerrainRenderBatch : IDisposable
         _input = input.Retain(); _parts = Array.AsReadOnly(parts.ToArray());
         CanonicalFaces = Array.AsReadOnly(canonical.ToArray()); Partitions = Array.AsReadOnly(partitions.ToArray());
         Findings = Array.AsReadOnly(findings.ToArray()); PreparationChargeBytes = charge;
-        RetainedBytes = checked(512L + canonical.Count * 1280L + partitions.Sum(p => 128L + 48L * p.Polygon.Count) +
+        RetainedBytes = checked(512L + canonical.Count * NativeMapTerrain.CanonicalRowBytes + partitions.Sum(p => 128L + 48L * p.Polygon.Count) +
             parts.Sum(p => 512L + ModelVertex.SizeInBytes * (long)p.Payload.BorrowMesh.Vertices.Length +
                 4L * p.Payload.BorrowMesh.Indices32.Length + 80L * p.Payload.FaceKeys.Count) + 128L * findings.Count +
             parts.Select(p => p.Payload.Materials).Distinct().Sum(m => 128L + 64L * m.Layers.Count));

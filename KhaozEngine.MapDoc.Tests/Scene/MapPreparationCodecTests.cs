@@ -7,6 +7,18 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 
 public sealed class MapPreparationCodecTests
 {
+    [Fact]
+    public void SurfaceMetadataHash_ReservesAndReleasesItsJsonWriterCapacity()
+    {
+        var surface = KhaozEngine.Tests.MapDoc.Prefabs.PrefabFixtures.Surface("invented", MapSurfaceRole.SupportFloor);
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 8192));
+        using var active = admission.Enter();
+        Assert.Equal(64, MapSurfaceSemantics.SurfaceDigest(surface, []).Length);
+        Assert.Equal(8192, admission.PeakBytes);
+        Assert.Equal(0, admission.WorkspaceBytes);
+        Assert.Equal(0, admission.RetainedBytes);
+    }
+
     static MapSurfacePatch Patch() => new()
     {
         Key = new("invented", 0, 0), Width = 1, Depth = 1,

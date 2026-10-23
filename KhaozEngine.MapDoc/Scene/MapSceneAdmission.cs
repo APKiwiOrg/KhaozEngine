@@ -168,11 +168,11 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         ReserveCompilation(faces);
     }
 
-    internal void ReserveCompilation(long faces)
+    internal void ReserveCompilation(long faces, MapPreparationReservation? workspace = null)
     {
         if (faces < 0 || faces > limits.MaxPreparedFaces - PreparedFaces) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPreparedFaces), (decimal)PreparedFaces + faces, limits.MaxPreparedFaces);
         long bytes = checked(faces * 1280);
-        ReserveBytes(bytes);
+        if (workspace is null) ReserveBytes(bytes); else workspace.Reserve(bytes);
         PreparedFaces = checked(PreparedFaces + faces);
         entering?.Invoke("compile");
     }

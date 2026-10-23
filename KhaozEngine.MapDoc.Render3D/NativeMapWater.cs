@@ -63,6 +63,7 @@ public static class NativeMapWater
                     continue;
                 }
                 admission.ReserveBytes(256); seen.Add(cell.Key, cell.PayloadDigest);
+                using var cellPreparation = admission.BeginPreparation();
                 canonical.Add(cell);
                 long triangleCount = cell.Regions.Where(r => r.Kind == MapWaterRegionKind.FreeSurface).Sum(r => (long)r.Triangles.Count);
                 if (3L * triangleCount > MapWaterScopedCompiler.MaxEmittedVertices - emitted) throw new MapSceneCapacityException(nameof(MapWaterScopedCompiler.MaxEmittedVertices), checked(emitted + 3L * triangleCount), MapWaterScopedCompiler.MaxEmittedVertices);
@@ -101,6 +102,8 @@ public static class NativeMapWater
                 var bounds = new MapBox3(points.Min(p => p.X.ToDouble()) - halo, cell.SurfaceY - vertical, points.Min(p => p.Z.ToDouble()) - halo,
                     points.Max(p => p.X.ToDouble()) + halo, cell.SurfaceY + vertical, points.Max(p => p.Z.ToDouble()) + halo);
                 parts.Add(new(key, anchor, bounds, payload, clip.Digest));
+                cellPreparation.Complete(checked(512L + ModelVertex.SizeInBytes * (long)payload.BorrowMesh.Vertices.Length +
+                    4L * payload.BorrowMesh.Indices32.Length + payload.BorrowClipData.Length));
             }
             admission.ReserveBytes(checked(8L * (parts.Count + water.Cells.Count)));
             var result = new MapWaterRenderBatch(canonical, parts, MapFrozenWaterLook.Capture(look), 0);

@@ -391,6 +391,7 @@ public static class MapPrefabValidation
         if (!float.IsFinite(l.Intensity) || l.Intensity < 0 || !float.IsFinite(l.Radius) || l.Radius <= 0) Fail("Invalid local light intensity/radius.");
         if (l.Colour.X < 0 || l.Colour.Y < 0 || l.Colour.Z < 0) Fail("Light colour must be nonnegative.");
         if (l.Owner is { } owner) { Reference(owner); if (owner.Kind != MapPrefabChildKind.Placement) Fail("Light owner requires a Placement reference."); }
+        l.ShadowExclusion?.Validate(l.Owner is not null);
     }
     static void Marker(MapLocalMarkerDoc m) => MapMarkerValidation.Require(m);
     static void Roof(MapRoofLinkDoc roof)

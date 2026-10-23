@@ -53,13 +53,7 @@ internal static class ShippedSceneExpectedFrames
             var position = Vector3.Transform(light.Offset, owner.World); var anchor = Anchor(position);
             var local = position - new Vector3((float)anchor.X, (float)anchor.Y, (float)anchor.Z);
             long staticKey = BinaryPrimitives.ReadInt64LittleEndian(SHA256.HashData(Encoding.UTF8.GetBytes(mapping.NativeLightId)));
-            var shadow = light.CastShadows ? LightShadow.Static(staticKey) : LightShadow.None;
-            if (light.CastShadows)
-            {
-                var matrix = owner.World; matrix.Translation -= new Vector3((float)anchor.X, (float)anchor.Y, (float)anchor.Z);
-                var points = owner.Tiers.SelectMany(t => t).SelectMany(p => p.Mesh.Vertices).Select(v => Vector3.Transform(v.Position, matrix)).ToArray();
-                shadow = shadow.WithExclusionBox(points.Aggregate(Vector3.Min), points.Aggregate(Vector3.Max));
-            }
+            var shadow = ShippedSceneLightShadows.Resolve(light, owner, anchor, staticKey);
             var descriptor = new MapLightFrame(new(light.Colour.X, light.Colour.Y, light.Colour.Z), light.Radius, light.Intensity,
                 shadow, inputs.Manifest.Placements.Single(p => p.SourceObjectId == light.SourceObjectId).NativePlacementId);
             result.Add(new(Record(new(MapRenderKind.Light, mapping.NativeLightId, "light", 0),

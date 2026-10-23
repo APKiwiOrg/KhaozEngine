@@ -58,12 +58,30 @@ internal static partial class ShippedSceneGuardFixtures
         new MapFoliageModelExtent(native ? "native-column" : "column", new(Vector3.Zero, Vector3.One), 1, 0),
         new MapFoliageModelExtent(native ? "native-reed" : "reed", new(Vector3.Zero, Vector3.One), 1, 0)
     }, ShippedScenePolicy.Json)!;
-    static void AddLightAsset(string root, JsonNode asset, JsonArray resources)
+    static string? LightExclusion(string variant) => variant switch
+    {
+        "light-none" => """{"kind":"None"}""",
+        "light-sphere" => """{"kind":"NearSphere","radius":0.625}""",
+        "light-box" => """{"kind":"FixtureBox","min":{"x":-0.25,"y":-0.5,"z":-0.75},"max":{"x":0.5,"y":0.75,"z":1},"margin":0.125}""",
+        _ => null
+    };
+    static JsonNode SourceLights(string variant)
+    {
+        var rows = JsonSerializer.SerializeToNode(new[] { new SceneSourceLight(1, "bulb", new(.25f, .5f, 0), new(1, .5f, .25f), 2, 3, true) }, ShippedScenePolicy.Json)!;
+        if (LightExclusion(variant) is { } declaration) rows[0]!["shadowExclusion"] = JsonNode.Parse(declaration);
+        return rows;
+    }
+    static void AddLightAsset(string root, JsonNode asset, JsonArray resources, string? exclusion)
     {
         byte[] bytes = Encoding.UTF8.GetBytes("""
             {"resourceSchema":"kemap/light-resource","payloadVersion":1,"id":"bulb","owner":{"scope":"Local","kind":"Placement","id":"$owner"},
              "position":{"x":0.25,"y":0.5,"z":0},"colour":{"x":1,"y":0.5,"z":0.25},"intensity":2,"radius":3,"castShadows":true}
             """);
+        if (exclusion is not null)
+        {
+            var json = JsonNode.Parse(bytes)!; json["shadowExclusion"] = JsonNode.Parse(exclusion);
+            bytes = Encoding.UTF8.GetBytes(json.ToJsonString());
+        }
         File.WriteAllBytes(Path.Combine(root, "assets/bulb.json"), bytes);
         resources.Add(NativeAssetFixtures.Resource(new MapAssetRef("bulb", "assets/bulb.json", Hash(bytes), 1), "Light"));
         asset["lightResourceIds"] = new JsonArray("bulb");

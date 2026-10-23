@@ -30,6 +30,9 @@ public sealed partial class ShippedSceneInputGuardTests
     [InlineData("foliage-valid")]
     [InlineData("water-valid")]
     [InlineData("light-valid")]
+    [InlineData("light-none")]
+    [InlineData("light-sphere")]
+    [InlineData("light-box")]
     public void SceneInputs_NonemptyCategoriesUseActualPublishedRecording(string variant)
     {
         using var fixture = ShippedSceneGuardFixtures.Create(variant);

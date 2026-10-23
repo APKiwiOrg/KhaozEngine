@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Foliage;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
@@ -16,7 +17,11 @@ using static KhaozEngine.Tests.MapDocOracle.ShippedFoliageManifest;
 namespace KhaozEngine.Tests.MapDocOracle;
 
 internal sealed record SceneSourceLight(long SourceObjectId, string SourceProfileId, Vector3 Offset, Vector3 Colour,
-    float Intensity, float Radius, bool CastShadows);
+    float Intensity, float Radius, bool CastShadows)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MapLightShadowExclusion? ShadowExclusion { get; init; }
+}
 
 /// <summary>Actual caller options, independently instantiated for the legacy and native heads.</summary>
 internal sealed record ShippedScenePolicy(MapPlacementPolicy Placements, IReadOnlySet<string> AnimatedAssets,
@@ -50,13 +55,16 @@ internal sealed record ShippedScenePolicy(MapPlacementPolicy Placements, IReadOn
         var water = Closed<WaterLook>(root.GetProperty("water"));
         var lights = root.GetProperty("lights").EnumerateArray().Select(row =>
         {
-            Shape(row, "sourceObjectId", "sourceProfileId", "offset", "colour", "intensity", "radius", "castShadows");
+            string[] fields = ["sourceObjectId", "sourceProfileId", "offset", "colour", "intensity", "radius", "castShadows"];
+            if (row.TryGetProperty("shadowExclusion", out _)) fields = [.. fields, "shadowExclusion"];
+            Shape(row, fields);
             Require(row.GetProperty("sourceObjectId").TryGetInt64(out long id) && id > 0, "invalid scene source light");
             Vector3 Vector(string name)
             { var v = row.GetProperty(name); Shape(v, "x", "y", "z"); return new((float)ShippedSceneManifest.Number(v, "x"), (float)ShippedSceneManifest.Number(v, "y"), (float)ShippedSceneManifest.Number(v, "z")); }
             float intensity = row.GetProperty("intensity").GetSingle(), radius = row.GetProperty("radius").GetSingle();
             Require(float.IsFinite(intensity) && intensity >= 0 && float.IsFinite(radius) && radius > 0, "invalid scene source light");
-            return new SceneSourceLight(id, Text(row, "sourceProfileId"), Vector("offset"), Vector("colour"), intensity, radius, row.GetProperty("castShadows").GetBoolean());
+            return new SceneSourceLight(id, Text(row, "sourceProfileId"), Vector("offset"), Vector("colour"), intensity, radius, row.GetProperty("castShadows").GetBoolean())
+            { ShadowExclusion = ShippedSceneLightShadows.Read(row) };
         }).ToArray();
         Require(lights.Select(l => (l.SourceObjectId, l.SourceProfileId)).Distinct().Count() == lights.Length, "duplicate scene source light");
         var extents = root.GetProperty("modelExtents").EnumerateArray().Select(row =>

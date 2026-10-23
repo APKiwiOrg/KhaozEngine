@@ -146,7 +146,8 @@ internal static partial class ShippedSceneComparison
             Check(report, "scene-light", !required || native is not null, new { mapping.NativeLightId });
             if (native is null) continue;
             Check(report, "scene-light", Near(position.X, native.Position.X.ToDouble()) && Near(position.Y, native.Position.Y.ToDouble()) && Near(position.Z, native.Position.Z.ToDouble()) &&
-                Bits(light.Colour, native.Colour) && Bits(light.Intensity, native.Intensity) && Bits(light.Radius, native.Radius) && light.CastShadows == native.CastShadows && native.OwnerPlacementId == inputs.Manifest.Placements.Single(p => p.SourceObjectId == light.SourceObjectId).NativePlacementId, new { mapping.NativeLightId });
+                Bits(light.Colour, native.Colour) && Bits(light.Intensity, native.Intensity) && Bits(light.Radius, native.Radius) && light.CastShadows == native.CastShadows &&
+                Bits(light.ShadowExclusion, native.ShadowExclusion) && native.OwnerPlacementId == inputs.Manifest.Placements.Single(p => p.SourceObjectId == light.SourceObjectId).NativePlacementId, new { mapping.NativeLightId });
         }
     }
     internal static void CompareDrawSets(MapDrawSet expected, MapDrawSet actual, PrivateOracleReport report)

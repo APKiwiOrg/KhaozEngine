@@ -32,7 +32,7 @@ internal static partial class NativeRenderAssetFixtures
         return Pack(root, bin);
     }
 
-    internal static MapAssetClosure Placements(bool sharedRoofAsset = false, bool originVertex = false)
+    internal static MapAssetClosure Placements(bool sharedRoofAsset = false, bool originVertex = false, string? shadowExclusionJson = null, bool leafLightResource = false)
     {
         var source = new Source();
         var resources = new JsonArray();
@@ -49,6 +49,14 @@ internal static partial class NativeRenderAssetFixtures
         Resource("mesh", "Mesh", Glb());
         Resource("lod-1", "Lod", PlacementLod(1));
         Resource("lod-2", "Lod", PlacementLod(2, originVertex));
+        if (leafLightResource)
+        {
+            var light = JsonNode.Parse(MapLightFile.Write(new(1, "fixture-light",
+                new(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, "$owner"),
+                new(0, .5f, 0), new(1, 1, 1), 2, 3, true)))!;
+            if (shadowExclusionJson is not null) light["shadowExclusion"] = JsonNode.Parse(shadowExclusionJson);
+            Resource("fixture-light", "Light", Encoding.UTF8.GetBytes(light.ToJsonString()));
+        }
         var children = new List<MapPrefabChild>();
         foreach (var (id, asset, x, y) in new[] { ("leaf-a", "prop-a", .125f, .25f), ("leaf-b", "prop-a", 2f, 0f),
             ("leaf-c", "prop-b", 4f, 0f), ("roof-a", sharedRoofAsset ? "prop-a" : "cap-a", 0f, 3f),
@@ -76,9 +84,18 @@ internal static partial class NativeRenderAssetFixtures
             Roofs = new[] { new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, "roof-a"),
                 new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, "roof-b") }
         };
-        Resource("assembly", "Prefab", MapPrefabFile.Write(prefab), "mesh", "lod-1", "lod-2");
+        byte[] prefabBytes = MapPrefabFile.Write(prefab);
+        if (shadowExclusionJson is not null && !leafLightResource)
+        {
+            var json = JsonNode.Parse(prefabBytes)!;
+            foreach (var child in json["children"]!.AsArray().Where(c => c!["type"]!.GetValue<string>() == "Light"))
+                child!["value"]!["shadowExclusion"] = JsonNode.Parse(shadowExclusionJson);
+            prefabBytes = Encoding.UTF8.GetBytes(json.ToJsonString());
+        }
+        Resource("assembly", "Prefab", prefabBytes, "mesh", "lod-1", "lod-2");
         var assets = new JsonArray();
-        foreach (string id in new[] { "prop-a", "prop-b", "cap-a" })
+        string[] assetIds = leafLightResource ? ["prop-a", "prop-b", "cap-a", "lamp"] : ["prop-a", "prop-b", "cap-a"];
+        foreach (string id in assetIds)
             assets.Add(new JsonObject
             {
                 ["id"] = id,
@@ -86,7 +103,7 @@ internal static partial class NativeRenderAssetFixtures
                 ["supportResourceIds"] = new JsonArray(),
                 ["materialResourceIds"] = new JsonArray(),
                 ["lodResourceIds"] = new JsonArray("lod-1", "lod-2"),
-                ["lightResourceIds"] = new JsonArray(),
+                ["lightResourceIds"] = id == "lamp" ? new JsonArray("fixture-light") : new JsonArray(),
                 ["sourceUnitsToMetres"] = .01f,
                 ["renderBounds"] = Bounds(10),
                 ["lodBounds"] = Bounds(20),

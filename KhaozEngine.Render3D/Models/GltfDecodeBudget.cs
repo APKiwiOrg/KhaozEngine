@@ -8,28 +8,36 @@ public sealed record GltfDecodeLimits(long MaxPeakBytes = 33554432, int MaxVerti
 /// <summary>A shared remaining allowance across retained payloads and concurrent decode scratch.</summary>
 public sealed class GltfDecodeBudget
 {
-    readonly object _gate = new();
-    long _owned, _temporary, _peak;
+    sealed class Shared
+    {
+        internal readonly object Gate = new();
+        internal long Owned, Temporary, Peak;
+    }
+    readonly Shared _shared;
     IGltfDecodeReservationObserver? _observer;
     internal bool Observe(IGltfDecodeReservationObserver observer)
     {
-        lock (_gate)
+        lock (_shared.Gate)
         {
             if (_observer is not null) return false;
-            observer.Reserve(checked(_owned + _temporary));
             _observer = observer;
             return true;
         }
     }
     internal void StopObserving(IGltfDecodeReservationObserver observer)
-    { lock (_gate) { if (ReferenceEquals(_observer, observer)) _observer = null; } }
+    { lock (_shared.Gate) { if (ReferenceEquals(_observer, observer)) _observer = null; } }
     public GltfDecodeLimits Limits { get; }
-    public long RemainingBytes { get { lock (_gate) return Limits.MaxPeakBytes - _owned - _temporary; } }
-    public long PeakBytes { get { lock (_gate) return _peak; } }
-    public long OwnedBytes { get { lock (_gate) return _owned; } }
+    public long RemainingBytes { get { lock (_shared.Gate) return Limits.MaxPeakBytes - _shared.Owned - _shared.Temporary; } }
+    public long PeakBytes { get { lock (_shared.Gate) return _shared.Peak; } }
+    public long OwnedBytes { get { lock (_shared.Gate) return _shared.Owned; } }
 
+    // A reservation view shares the caller's ceiling, but observes only allocations made through that view.
+    // Payload disposal retains its originating view, so releasing an older payload cannot refund a newer decode.
+    internal GltfDecodeBudget ReservationView() => new(Limits, _shared);
+    GltfDecodeBudget(GltfDecodeLimits limits, Shared shared) { Limits = limits; _shared = shared; }
     public GltfDecodeBudget(GltfDecodeLimits limits)
     {
+        _shared = new();
         ArgumentNullException.ThrowIfNull(limits);
         if (limits.MaxPeakBytes < 0 || limits.MaxVertices < 0 || limits.MaxIndices < 0 ||
             limits.MaxImagePixels < 0 || limits.MaxImages < 0) throw new ArgumentOutOfRangeException(nameof(limits));
@@ -40,40 +48,40 @@ public sealed class GltfDecodeBudget
     public bool TryReserve(long ownedBytes, long temporaryBytes, out GltfDecodeCapacity? capacity)
     {
         if (ownedBytes < 0 || temporaryBytes < 0) throw new ArgumentOutOfRangeException(nameof(ownedBytes));
-        lock (_gate)
+        lock (_shared.Gate)
         {
             capacity = null;
-            long remaining = Limits.MaxPeakBytes - _owned - _temporary;
+            long remaining = Limits.MaxPeakBytes - _shared.Owned - _shared.Temporary;
             if (ownedBytes > remaining || temporaryBytes > remaining - ownedBytes)
             { capacity = PeakCapacity((decimal)ownedBytes + temporaryBytes); return false; }
             _observer?.Reserve(checked(ownedBytes + temporaryBytes));
-            _owned += ownedBytes;
-            _temporary += temporaryBytes;
-            _peak = Math.Max(_peak, _owned + _temporary);
+            _shared.Owned += ownedBytes;
+            _shared.Temporary += temporaryBytes;
+            _shared.Peak = Math.Max(_shared.Peak, _shared.Owned + _shared.Temporary);
             return true;
         }
     }
 
     internal GltfDecodeCapacity PeakCapacity(decimal additional)
-    { lock (_gate) return new(nameof(GltfDecodeLimits.MaxPeakBytes), (decimal)_owned + _temporary + additional, Limits.MaxPeakBytes); }
+    { lock (_shared.Gate) return new(nameof(GltfDecodeLimits.MaxPeakBytes), (decimal)_shared.Owned + _shared.Temporary + additional, Limits.MaxPeakBytes); }
 
     public void ReleaseTemporary(long bytes)
     {
-        lock (_gate)
+        lock (_shared.Gate)
         {
-            if (bytes < 0 || bytes > _temporary) throw new ArgumentOutOfRangeException(nameof(bytes));
+            if (bytes < 0 || bytes > _shared.Temporary) throw new ArgumentOutOfRangeException(nameof(bytes));
             _observer?.Release(bytes);
-            _temporary -= bytes;
+            _shared.Temporary -= bytes;
         }
     }
 
     public void ReleaseOwned(long bytes)
     {
-        lock (_gate)
+        lock (_shared.Gate)
         {
-            if (bytes < 0 || bytes > _owned) throw new ArgumentOutOfRangeException(nameof(bytes));
+            if (bytes < 0 || bytes > _shared.Owned) throw new ArgumentOutOfRangeException(nameof(bytes));
             _observer?.Release(bytes);
-            _owned -= bytes;
+            _shared.Owned -= bytes;
         }
     }
 }

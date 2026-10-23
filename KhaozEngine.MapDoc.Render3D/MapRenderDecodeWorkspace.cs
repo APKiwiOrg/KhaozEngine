@@ -12,11 +12,12 @@ internal sealed class MapRenderDecodeWorkspace : IGltfDecodeReservationObserver,
     readonly bool _observing;
     bool _disposed;
     internal MapPreparationReservation? Workspace => _workspace;
+    internal GltfDecodeBudget Budget => _budget;
     internal MapRenderDecodeWorkspace(GltfDecodeBudget budget)
     {
-        _budget = budget;
+        _budget = budget.ReservationView();
         _workspace = MapSceneAdmission.Current?.Workspace();
-        try { _observing = _workspace is not null && budget.Observe(this); }
+        try { _observing = _workspace is not null && _budget.Observe(this); }
         catch { _workspace?.Dispose(); throw; }
     }
     public void Reserve(long bytes) => _workspace?.Reserve(bytes);

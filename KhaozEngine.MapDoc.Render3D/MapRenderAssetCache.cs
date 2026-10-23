@@ -63,6 +63,7 @@ public sealed class MapRenderAssetCache : IDisposable
                 using var borrowed = MapPreparedInputBudget.Acquire(assetKeys.Values.Concat(materialKeys.Values)
                     .Where(_pieces.ContainsKey).Select(k => _pieces[k]));
                 using var decoderWorkspace = new MapRenderDecodeWorkspace(budget);
+                budget = decoderWorkspace.Budget;
                 var pieces = new List<MapPreparedInputLease>();
                 foreach (string id in selected)
                 {

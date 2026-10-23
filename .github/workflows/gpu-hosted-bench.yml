@@ -84,12 +84,21 @@ jobs:
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
     steps:
+      - name: Checkout trusted renderer admission implementation
+        if: inputs.renderer-perf-unit != '' || inputs.renderer-perf-manifest-sha256 != '' || inputs.renderer-perf-workload-sha != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: renderer-perf-trusted
+          persist-credentials: false
       - name: Checkout renderer authorization for hosted CPU admission
         if: inputs.renderer-perf-unit != '' || inputs.renderer-perf-manifest-sha256 != '' || inputs.renderer-perf-workload-sha != ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
           fetch-depth: 2
+          path: renderer-perf-requested
+          persist-credentials: false
       - id: pick
         shell: bash
         env:
@@ -107,8 +116,10 @@ jobs:
           LC_ALL: C
         run: |
           if [ -n "$RENDERER_PERF_UNIT$RENDERER_PERF_MANIFEST_SHA256$RENDERER_PERF_WORKLOAD_SHA" ]; then
-            pwsh -NoProfile -File scripts/renderer-perf-workflow.ps1 -Mode Authorize
-            pwsh -NoProfile -File scripts/renderer-perf-workflow.ps1 -Mode Select >> "$GITHUB_OUTPUT"
+            cd "$GITHUB_WORKSPACE/renderer-perf-requested"
+            admission="$GITHUB_WORKSPACE/renderer-perf-trusted/scripts/renderer-perf-workflow.ps1"
+            pwsh -NoProfile -File "$admission" -Mode Authorize
+            pwsh -NoProfile -File "$admission" -Mode Select >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [ -n "$COVERAGE_PERF_UNIT" ]; then
@@ -138,7 +149,7 @@ jobs:
   bench:
     needs: legs
     # Re-running only failed jobs reuses the legs result, so a measurement re-run is refused here, before a runner.
-    if: inputs.renderer-perf-unit == '' && (inputs.coverage-perf-unit == '' || github.run_attempt == 1)
+    if: inputs.renderer-perf-unit == '' && inputs.renderer-perf-manifest-sha256 == '' && inputs.renderer-perf-workload-sha == '' && (inputs.coverage-perf-unit == '' || github.run_attempt == 1)
     name: ${{ matrix.leg }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ inputs.coverage-perf-unit != '' && 30 || 60 }}
@@ -429,6 +440,12 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           fetch-depth: 2
+      - name: Checkout trusted renderer admission implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: renderer-perf-trusted
+          persist-credentials: false
       - name: Install PowerShell for renderer measurement (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -476,7 +493,7 @@ jobs:
         run: |
           if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted') { throw 'KhaozEngine is public, hosted runners are required' }
           "KE_RENDERER_PERF_REPORTS=$env:KE_RENDERER_PERF_REPORTS" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          & ./scripts/renderer-perf-workflow.ps1 -Mode Authorize
+          & (Join-Path $env:GITHUB_WORKSPACE 'renderer-perf-trusted/scripts/renderer-perf-workflow.ps1') -Mode Authorize
           if ($LASTEXITCODE -ne 0) { throw 'Renderer authorization failed' }
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -551,7 +568,7 @@ jobs:
           $fixedFilter = 'FullyQualifiedName=Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit&Category=RendererPerformance'
           & dotnet test tools/Renderer.Perf.Tests/Renderer.Perf.Tests.csproj -c Release --no-build --filter $fixedFilter --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=measurement.trx' --results-directory $env:KE_RENDERER_PERF_REPORTS 2>&1 | Tee-Object -FilePath (Join-Path $env:KE_RENDERER_PERF_REPORTS 'measurement.log')
           if ($LASTEXITCODE -ne 0) { throw 'Renderer measurement failed, retain partial evidence and request fresh approval' }
-          & ./scripts/renderer-perf-workflow.ps1 -Mode Verify
+          & (Join-Path $env:GITHUB_WORKSPACE 'renderer-perf-trusted/scripts/renderer-perf-workflow.ps1') -Mode Verify
           if ($LASTEXITCODE -ne 0) { throw 'Renderer final evidence was refused' }
 
       - name: Upload renderer evidence including partial failures

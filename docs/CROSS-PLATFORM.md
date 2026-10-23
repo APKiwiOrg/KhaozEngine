@@ -268,8 +268,12 @@ refs and attempts after one. This public repository uses hosted runners exclusiv
 An owner-approved manifest uses `khaozengine.renderer-perf-unit/1`. Authorization commit B has
 exactly one parent, measured workload A, and adds only
 `tools/Renderer.Perf.Tests/authorized/<unit>.json`. Pass B's full immutable SHA as `ref` and hash
-the exact UTF-8 manifest bytes. Hosted CPU admission verifies the diff, hash, leg and preset before
-allocating a GPU runner. The renderer job repeats authorization checks, enforces a 12-minute pilot
+the exact UTF-8 manifest bytes. Hosted CPU admission runs from a separate checkout of the workflow's
+own SHA, treating the requested checkout only as manifest and git data. Its trusted fixed hosted
+runner allowlist selects one job with the validated preset cap before allocating a GPU runner.
+Partial renderer inputs also refuse ordinary and coverage allocation. Those modes otherwise retain
+their existing selection and execution. The renderer job uses the same trusted revision for repeated
+authorization and final evidence checks, enforces a 12-minute pilot
 or 35-minute full cap and retains the existing pinned PowerShell bootstrap, GRID setup, NVIDIA
 adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
 

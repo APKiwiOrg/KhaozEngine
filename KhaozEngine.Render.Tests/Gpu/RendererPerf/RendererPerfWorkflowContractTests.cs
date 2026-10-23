@@ -86,7 +86,7 @@ public sealed class RendererPerfWorkflowContractTests
 
     internal sealed class WorkflowFixture : IDisposable
     {
-        internal readonly string Directory = Path.Combine(Path.GetTempPath(), "khaozengine-renderer-perf-task-13", Guid.NewGuid().ToString("N"));
+        internal readonly string Directory;
         internal string Reports => Path.Combine(Directory, "reports");
         internal string ManifestPath => Path.Combine(Directory, "tools/Renderer.Perf.Tests/authorized/pilot-linux.json");
         internal JsonObject Manifest = RendererPerfProtocolTests.ManifestJson();
@@ -94,8 +94,9 @@ public sealed class RendererPerfWorkflowContractTests
         internal readonly Dictionary<string, string> Environment = new(StringComparer.Ordinal);
         internal readonly string Workload;
 
-        internal WorkflowFixture()
+        internal WorkflowFixture(string? directory = null, bool hostileAdmission = false)
         {
+            Directory = directory ?? Path.Combine(Path.GetTempPath(), "khaozengine-renderer-perf-task-13", Guid.NewGuid().ToString("N"));
             System.IO.Directory.CreateDirectory(Path.GetDirectoryName(ManifestPath)!);
             System.IO.Directory.CreateDirectory(Reports);
             Git("init", "--quiet");
@@ -104,8 +105,22 @@ public sealed class RendererPerfWorkflowContractTests
             Git("config", "commit.gpgsign", "false");
             Git("config", "core.hooksPath", Path.Combine(Directory, "no-hooks"));
             File.WriteAllText(Path.Combine(Directory, "workload.txt"), "synthetic workload, never executed");
+            if (hostileAdmission)
+            {
+                System.IO.Directory.CreateDirectory(Path.Combine(Directory, "scripts"));
+                System.IO.Directory.CreateDirectory(Path.Combine(Directory, ".github/workflows"));
+                File.WriteAllText(Path.Combine(Directory, "scripts/renderer-perf-workflow.ps1"), """
+                    param([string]$Mode)
+                    if ($Mode -eq 'Select') {
+                        'matrix={"include":[{"leg":"linux-vulkan","runner":"self-hosted","backend":"vulkan-native","jobMinutes":999},{"leg":"linux-vulkan","runner":"self-hosted","backend":"vulkan-native","jobMinutes":999}]}'
+                    }
+                    exit 0
+                    """);
+                File.WriteAllText(Path.Combine(Directory, ".github/workflows/gpu-hosted-bench.yml"), "attacker-controlled selector");
+                Git("add", "--", "scripts/renderer-perf-workflow.ps1", ".github/workflows/gpu-hosted-bench.yml");
+            }
             Git("add", "--", "workload.txt");
-            Git("commit", "--quiet", "-m", "test(renderer-perf): synthetic workload", "--", "workload.txt");
+            Git("commit", "--quiet", "-m", "test(renderer-perf): synthetic workload");
             Workload = Git("rev-parse", "HEAD").Trim();
             Manifest["workloadSha"] = Workload;
             Environment["RENDERER_PERF_UNIT"] = "pilot-linux";
@@ -182,7 +197,7 @@ public sealed class RendererPerfWorkflowContractTests
             Assert.True(result.Code == 0, result.Output);
             return result.Output;
         }
-        (int Code, string Output) Execute(string executable, string[] args)
+        internal (int Code, string Output) Execute(string executable, string[] args)
         {
             var start = new ProcessStartInfo(executable) { WorkingDirectory = Directory, RedirectStandardOutput = true, RedirectStandardError = true };
             foreach (string arg in args) start.ArgumentList.Add(arg);

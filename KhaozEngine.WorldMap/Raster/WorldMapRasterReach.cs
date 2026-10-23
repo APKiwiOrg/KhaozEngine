@@ -13,12 +13,13 @@ internal static class WorldMapRasterReach
         style.BuildingShadowOffsetMetres.Length() + style.WallWidthMetres / 2f + 1f / style.LevelPixelsPerMetre(level) +
         WorldMapSymbolSizing.MaximumRadius(style);
 
-    /// <summary>Covers surface interpolation, relief sampling and shoreline neighbours.</summary>
+    /// <summary>Covers surface interpolation, relief, shoreline and optional contour samples.</summary>
     internal static float SurfaceMetres(WorldMapStyle style, float cellSize) => SurfaceMetres(style, cellSize, 0);
 
-    /// <summary>Covers the returned sampling cells and shoreline neighbours at the selected raster level.</summary>
+    /// <summary>Covers interpolation, relief, shoreline and optional contour samples at the raster level.</summary>
     internal static float SurfaceMetres(WorldMapStyle style, float cellSize, int level) =>
-        2f * cellSize + style.Water.ShorelinePixels / style.LevelPixelsPerMetre(level);
+        2f * cellSize + MathF.Max(style.Water.ShorelinePixels,
+            style.Contours is { } contours ? ContourPainter.ReachPixels(contours) : 0f) / style.LevelPixelsPerMetre(level);
 
     /// <summary>Resolves the source contract's coarsest native multiple within a resolution hint.</summary>
     internal static float SampleCellSize(float nativeCellSize, float maxCellSize) =>

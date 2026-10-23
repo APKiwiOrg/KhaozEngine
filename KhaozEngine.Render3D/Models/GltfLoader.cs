@@ -285,8 +285,8 @@ namespace KhaozEngine.Render3D
                 int ai = MeshIndexValidation.Source(a, pos.Count, assetIdentity);
                 int bi = MeshIndexValidation.Source(b, pos.Count, assetIdentity);
                 int ci = MeshIndexValidation.Source(c, pos.Count, assetIdentity);
-                // hasVertexColor is set ONLY when this primitive actually carried a COLOR_0 accessor, which is
-                // what keeps an authored colour seam out of the weld without touching any other asset's weld.
+                // The source flag distinguishes quantized COLOR_0 paint from exact flat material colors.
+                // Both kinds preserve their colour seams in the flattened weld.
                 corners.Add(new MeshCorner(Pos(ai), Norm(ai), Color(ai), Uv(ai), Tan(ai), perVertexColor));
                 corners.Add(new MeshCorner(Pos(bi), Norm(bi), Color(bi), Uv(bi), Tan(bi), perVertexColor));
                 corners.Add(new MeshCorner(Pos(ci), Norm(ci), Color(ci), Uv(ci), Tan(ci), perVertexColor));

@@ -112,6 +112,7 @@ public sealed partial class MapEditSession
             _dirty = false;
             _field = null;
             _window = window;
+            NewSnapshotLocked();
             return new OpenResult(_path, doc.Id, doc.DisplayName, BuildSummaryLocked(resolved));
         }
     }
@@ -172,6 +173,7 @@ public sealed partial class MapEditSession
             _dirty = false;
             _field = null;
             _window = null;
+            NewSnapshotLocked();
             return new OpenResult(path, doc.Id, doc.DisplayName, BuildSummaryLocked(null));
         }
     }
@@ -194,6 +196,7 @@ public sealed partial class MapEditSession
                 MapResolvedDocument resolved = NativeDocumentService.Verify(_doc!, _storagePath!, _storageForm, _path!);
                 NativeDocumentService.Save(_doc!, _storagePath!, _storageForm, _registry);
                 _nativeAssets = resolved.AssetClosure;
+                NewSnapshotLocked();
                 _nativeHistory.RebindNativeAssets(_nativeAssets, NativePlacementBoundsProvider.Instance);
                 _nativeHistory.SealGesture();
             }
@@ -242,6 +245,7 @@ public sealed partial class MapEditSession
             _storagePath = storage;
             _storageForm = MapDocumentForm.Tiled;
             _window = rect;
+            NewSnapshotLocked();
             ResetNativeHistory();
             _dirty = false;
             _field = null;
@@ -307,6 +311,7 @@ public sealed partial class MapEditSession
             _dirty = false;
             _field = null;
             _window = null;   // SaveTiled just refreshed doc.Tiles as a whole (unwindowed) index.
+            NewSnapshotLocked();
             return new ConvertResult(directory, nameof(MapDocumentForm.Tiled), _doc!.TileSize,
                 MapDocumentHash.OfWorld(_doc, _registry));
         }
@@ -345,6 +350,7 @@ public sealed partial class MapEditSession
             _dirty = false;
             _field = null;
             _window = null;
+            NewSnapshotLocked();
             return new ConvertResult(path, nameof(MapDocumentForm.Monolithic), _doc.TileSize,
                 MapDocumentHash.OfWorld(_doc, _registry));
         }
@@ -401,6 +407,7 @@ public sealed partial class MapEditSession
             _dirty = false;
             _field = null;
             _window = null;
+            NewSnapshotLocked();
             string newHash = MapDocumentHash.OfWorld(_doc, _registry);
             string warning = string.Equals(oldHash, newHash, StringComparison.Ordinal)
                 ? "tileSize is unchanged, so the world hash is unchanged."

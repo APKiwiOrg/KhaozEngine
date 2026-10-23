@@ -31,6 +31,7 @@ public sealed class ShippedMarkerInputGuardTests
     [InlineData("support-only")]
     [InlineData("space-binding")]
     [InlineData("building-manifest")]
+    [InlineData("format-eight-native")]
     public void InventedExtraction_ComparesEveryMarkerOnIndependentStorageHeads(string variant)
     {
         using var fixture = ShippedMarkerGuardFixtures.Create(variant);

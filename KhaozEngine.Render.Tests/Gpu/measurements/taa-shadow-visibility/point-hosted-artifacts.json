@@ -1,0 +1,91 @@
+{
+  "runId": 39178288549,
+  "source": "1251895abf40aaea66156e3bc941ae258d4cb757",
+  "url": "https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39178288549",
+  "conclusion": "success",
+  "renderTestFilter": "TemporalMovingShadeRim|TemporalMovingShadeLag",
+  "nativeTrx": false,
+  "receipts": [
+    {
+      "backend": "metal-native",
+      "deviceClass": "hardware",
+      "job": "macos-26 / metal-native",
+      "jobId": 117825454944,
+      "conclusion": "success",
+      "artifact": "filtered-render-measurements-metal-native",
+      "file": "suite-output.log",
+      "sha256": "c6c26620b088d12e868b9f6b0846aa2ba8ccd6200ba92dcda87c0f9758015217",
+      "results": {
+        "Passed": 3,
+        "Failed": 0,
+        "Skipped": 0,
+        "Total": 3
+      },
+      "selectedControlFacts": 3,
+      "selectedControlSkips": 0,
+      "nativeTrx": false,
+      "measurementRows": 56,
+      "extract": "point-metal-hosted.txt",
+      "summaryLines": [
+        "Test Run Successful.",
+        "Total tests: 3",
+        "     Passed: 3",
+        " Total time: 1.1540 Minutes"
+      ]
+    },
+    {
+      "backend": "direct3d11-native",
+      "deviceClass": "WARP",
+      "job": "windows-latest / direct3d11-native",
+      "jobId": 117825454966,
+      "conclusion": "success",
+      "artifact": "filtered-render-measurements-direct3d11-native",
+      "file": "suite-output.log",
+      "sha256": "60dec51912e143fd7e0677045806e2f50692f6d8fe477af9cac0e132c83dabf3",
+      "results": {
+        "Passed": 3,
+        "Failed": 0,
+        "Skipped": 0,
+        "Total": 3
+      },
+      "selectedControlFacts": 3,
+      "selectedControlSkips": 0,
+      "nativeTrx": false,
+      "measurementRows": 56,
+      "extract": "point-d3d11.txt",
+      "summaryLines": [
+        "Test Run Successful.",
+        "Total tests: 3",
+        "     Passed: 3",
+        " Total time: 2.0834 Minutes"
+      ]
+    },
+    {
+      "backend": "vulkan-native",
+      "deviceClass": "lavapipe",
+      "job": "ubuntu-latest / vulkan-native",
+      "jobId": 117825454964,
+      "conclusion": "success",
+      "artifact": "filtered-render-measurements-vulkan-native",
+      "file": "suite-output.log",
+      "sha256": "de1b99238058c8ed15ca5a45f4246219c25d379806dfee43073b063970799d9c",
+      "results": {
+        "Passed": 3,
+        "Failed": 0,
+        "Skipped": 0,
+        "Total": 3
+      },
+      "selectedControlFacts": 3,
+      "selectedControlSkips": 0,
+      "nativeTrx": false,
+      "measurementRows": 56,
+      "extract": "point-vulkan.txt",
+      "summaryLines": [
+        "Test Run Successful.",
+        "Total tests: 3",
+        "     Passed: 3",
+        " Total time: 4.2905 Minutes"
+      ]
+    }
+  ]
+}

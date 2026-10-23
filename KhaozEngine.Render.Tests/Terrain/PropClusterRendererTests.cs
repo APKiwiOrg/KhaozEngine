@@ -321,13 +321,13 @@ namespace KhaozEngine.Tests.Terrain
             rig.Renderer.Draw(Focus(460f));
             Assert.Equal(1, rig.MergedDrawCount);
             Assert.Equal(0f, rig.LastMergedDissolve);
-            Assert.False(rig.LastMergedInvertShadow);
+            Assert.False(rig.LastMergedComplement);
 
             rig.ResetDraws();
             rig.Renderer.Draw(Focus(480f));
             Assert.Equal(1, rig.MergedDrawCount);
             Assert.Equal(0.5f, rig.LastMergedDissolve, 5);
-            Assert.False(rig.LastMergedInvertShadow);
+            Assert.False(rig.LastMergedComplement);
 
             rig.ResetDraws();
             rig.Renderer.Draw(Focus(500f));
@@ -335,7 +335,7 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
-        public void Merged_hlod_entrance_keeps_its_inverted_shadow_dissolve()
+        public void Merged_hlod_entrance_uses_complementary_coverage()
         {
             using var rig = new PropClusterRig();
             PropClusterKey key = new("trees", 0, 0, 0);
@@ -348,7 +348,7 @@ namespace KhaozEngine.Tests.Terrain
 
             Assert.Equal(1, rig.MergedDrawCount);
             Assert.Equal(0.5f, rig.LastMergedDissolve, 5);
-            Assert.True(rig.LastMergedInvertShadow);
+            Assert.True(rig.LastMergedComplement);
         }
 
         [Fact]
@@ -365,7 +365,7 @@ namespace KhaozEngine.Tests.Terrain
 
             Assert.Equal(1, rig.MergedDrawCount);
             Assert.Equal(0.5f, rig.LastMergedDissolve, 5);
-            Assert.False(rig.LastMergedInvertShadow);
+            Assert.False(rig.LastMergedComplement);
         }
 
         static Vector3 Focus(float clusterDistance) => new(32f + clusterDistance, 0f, 32f);
@@ -402,7 +402,7 @@ namespace KhaozEngine.Tests.Terrain
             public int DrawCount => _backend.DrawCount;
             public int MergedDrawCount => _backend.MergedDrawCount;
             public float LastMergedDissolve => _backend.LastMergedDissolve;
-            public bool LastMergedInvertShadow => _backend.LastMergedInvertShadow;
+            public bool LastMergedComplement => _backend.LastMergedComplement;
 
             public static PropLayer ExitLayer(float drawRadius, float fadeWidth,
                                               float hlodDistance, float hlodWidth) =>
@@ -469,7 +469,7 @@ namespace KhaozEngine.Tests.Terrain
             public int DrawCount;
             public int MergedDrawCount;
             public float LastMergedDissolve;
-            public bool LastMergedInvertShadow;
+            public bool LastMergedComplement;
 
             public MeshHandle LoadMesh(GltfMesh mesh)
             {
@@ -485,7 +485,7 @@ namespace KhaozEngine.Tests.Terrain
                 UnloadCount++;
             }
 
-            public void DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
+            public int DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
                                   float dissolveFloor)
             {
                 if (placements.Count > 0)
@@ -493,14 +493,15 @@ namespace KhaozEngine.Tests.Terrain
                     LastDrawX = placements[0].X;
                     DrawCount++;
                 }
+                return placements.Count;
             }
 
-            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve)
+            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement)
             {
                 DrawCount++;
                 MergedDrawCount++;
                 LastMergedDissolve = dissolve;
-                LastMergedInvertShadow = invertShadowDissolve;
+                LastMergedComplement = complement;
             }
 
             public void ResetDraws()
@@ -508,7 +509,7 @@ namespace KhaozEngine.Tests.Terrain
                 DrawCount = 0;
                 MergedDrawCount = 0;
                 LastMergedDissolve = 0f;
-                LastMergedInvertShadow = false;
+                LastMergedComplement = false;
             }
         }
 

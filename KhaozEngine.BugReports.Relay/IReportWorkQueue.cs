@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -11,6 +12,9 @@ public enum ReportWorkKind
 
     /// <summary>Add a late server snapshot to the report's issue.</summary>
     AppendServerSnapshot,
+
+    /// <summary>Delete a revoked report's files and private record after active work has settled.</summary>
+    PurgeRevoked,
 }
 
 /// <summary>One unit of relay work, delivered at least once by the host's queue.</summary>
@@ -24,4 +28,11 @@ public interface IReportWorkQueue
 {
     /// <summary>Adds <paramref name="item"/> to the queue.</summary>
     Task EnqueueAsync(ReportWorkItem item, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Adds <paramref name="item"/> to the queue, hidden for <paramref name="visibleAfter"/>.
+    /// The delay must be between zero and seven days, inclusive. Zero makes the item visible immediately.
+    /// </summary>
+    Task EnqueueAsync(ReportWorkItem item, TimeSpan visibleAfter, CancellationToken cancellationToken)
+        => throw new NotSupportedException("IReportWorkQueue.EnqueueAsync with a visibility delay is not implemented by this queue.");
 }

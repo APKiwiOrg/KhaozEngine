@@ -43,5 +43,7 @@ namespace KhaozEngine.Render3D
         /// the MRT attachment on the single-sample path for the reason above.
         /// </summary>
         internal IGpuTexture ResolvedNormalTarget => _res.NormalTex!;
+
+        internal IGpuTexture? ResolvedVisibilityTarget => _res.LitVisibilityTex;
     }
 }

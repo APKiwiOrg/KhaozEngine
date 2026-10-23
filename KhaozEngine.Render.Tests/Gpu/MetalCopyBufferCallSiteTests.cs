@@ -74,8 +74,8 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE RULE. Every seam call site passes a source and a destination offset that
-        /// <see cref="MetalCopyAlignment.IsAligned"/> accepts, proved from a literal or from the default of the
-        /// parameter it forwards.
+        /// <see cref="MetalCopyAlignment.IsAligned"/> accepts, proved from a literal, a centralized alignment
+        /// proof, or the default and callers of a forwarded parameter.
         /// </summary>
         [Fact]
         public void EveryCopyBufferCallSite_PassesOffsetsTheAlignmentRuleAccepts()
@@ -285,9 +285,9 @@ namespace KhaozEngine.Tests.Gpu
                 forwardedCallers, violations);
         }
 
-        // BOTH OFFSETS OF ONE SEAM CALL SITE. A literal settles it outright, a bare identifier is a forwarded
-        // parameter and is settled one level up, and anything else is an expression the sweep cannot evaluate,
-        // which is exactly the case section 9.3's follow-up exists for.
+        // BOTH OFFSETS OF ONE SEAM CALL SITE. Literals and centralized alignment proofs settle an offset here.
+        // A remaining bare identifier is a forwarded parameter, settled one level up. Every unproven expression
+        // is refused, which is the case section 9.3's follow-up exists for.
         static void CheckSite(Site site, string text, int index, string relative, string root,
             IReadOnlyList<(string Path, string Text)> all, List<string> violations, ref int forwardedOffsets,
             ref int forwardedCallers)
@@ -306,7 +306,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 string argument = site.Arguments[position];
 
-                if (IsAlignedLiteral(argument)) continue;
+                if (IsAlignedLiteral(argument) || CopyBufferAlignmentProof.Accepts(argument, text, index)) continue;
 
                 if (!Regex.IsMatch(argument, @"^[A-Za-z_]\w*$"))
                 {

@@ -168,7 +168,8 @@ public sealed class InteriorCutCounterTests(ITestOutputHelper output)
                 Matrix4x4 world = Matrix4x4.CreateScale(tree.Scale) * Matrix4x4.CreateRotationY(tree.Yaw)
                     * Matrix4x4.CreateTranslation(tree.X, tree.Y, tree.Z);
                 Scene.Draw(new RigidInstanceDraw(_box, Matrix4x4.CreateScale(.8f, 12, .8f)
-                    * Matrix4x4.CreateTranslation(0, 6, 0) * world) { CutInsideInteriors = _inputs.CutsFor(_mode) });
+                    * Matrix4x4.CreateTranslation(0, 6, 0) * world)
+                { CutInsideInteriors = _inputs.CutsFor(_mode) });
                 for (int side = 0; side < 2; side++)
                     Scene.Draw(new RigidInstanceDraw(_card, Matrix4x4.CreateRotationX(MathF.PI / 2)
                         * Matrix4x4.CreateRotationY(side * MathF.PI / 2) * Matrix4x4.CreateTranslation(0, 11, 0) * world)

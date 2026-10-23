@@ -52,6 +52,8 @@ public static class MapDocumentSchema
         properties.Remove("playerSpawns");
         properties.Remove("terrainOverrides");
         properties.Remove("surfacePatches");
+        AddStoredFoliage(root);
+        properties["foliage"] = Ref("foliageStored");
         properties["surfaceStorage"] = new JsonObject { ["type"] = "array", ["items"] = Ref("surfaceDirectoryRef") };
 
         properties["schemeVersion"] = new JsonObject { ["type"] = "integer", ["minimum"] = 0 };
@@ -121,7 +123,27 @@ public static class MapDocumentSchema
         File.WriteAllText(Path.Combine(directory, TileFileName), GetTileJson());
     }
 
-    static readonly System.Text.Json.JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
+    static void AddStoredFoliage(JsonObject root)
+    {
+        JsonObject defs = Member(root, "$defs");
+        JsonObject layer = defs["foliageLayer"]!.DeepClone().AsObject();
+        layer["properties"]!["chunks"]!["items"] = Ref("foliageChunkRef");
+        defs["foliageStoredLayer"] = layer;
+        defs["foliageStored"] = new JsonObject
+        {
+            ["type"] = "object",
+            ["required"] = new JsonArray("payloadVersion", "layers", "packs"),
+            ["additionalProperties"] = false,
+            ["properties"] = new JsonObject
+            {
+                ["payloadVersion"] = new JsonObject { ["type"] = "integer", ["const"] = 1 },
+                ["layers"] = new JsonObject { ["type"] = "array", ["maxItems"] = 256, ["items"] = Ref("foliageStoredLayer") },
+                ["packs"] = new JsonObject { ["type"] = "array", ["maxItems"] = 65536, ["items"] = Ref("foliagePackRef") },
+            },
+        };
+    }
+
+    static readonly System.Text.Json.JsonSerializerOptions WriteOptions = MapJsonTextOptions.CreateSerializer();
 
     static JsonObject Root() =>
         JsonNode.Parse(GetJson()) as JsonObject

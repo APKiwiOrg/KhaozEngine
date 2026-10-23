@@ -1,6 +1,7 @@
 using System;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Editing;
 
 namespace KhaozEngine.MapEditor;
 
@@ -61,7 +62,11 @@ public sealed partial class EditorHistory
     {
         _nativeAssets = staged.Assets;
         LastNativeEffects = staged.Effects;
+        LastNativeStamp = staged.Stamp;
     }
+
+    /// <summary>The finalization of the last accepted native edit, undo or redo, null without foliage.</summary>
+    internal MapDocumentFinalizationStamp? LastNativeStamp { get; private set; }
     static NativeStagedPublication WithAcceptance(NativeStagedPublication staged, Action accept)
     {
         bool accepted = false;

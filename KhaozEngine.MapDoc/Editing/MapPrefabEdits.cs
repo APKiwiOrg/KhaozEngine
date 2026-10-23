@@ -24,14 +24,32 @@ public sealed record MapRemovePrefab(string InstanceId) : MapPrefabEdit("Remove 
 public sealed record MapUnpackPrefab(string InstanceId) : MapPrefabEdit("Unpack prefab");
 public sealed record MapUpdatePrefabAsset(string ResourceId, string OldSha256, string NewResourceId,
     string NewSha256) : MapPrefabEdit("Update prefab asset");
-public sealed record MapPrefabEditResult(MapDocument After, MapNativeWriteSet WriteSet, MapNativeEditEffects Effects);
+public sealed record MapPrefabEditResult(MapDocument After, MapNativeWriteSet WriteSet, MapNativeEditEffects Effects)
+{
+    /// <summary>The finalization this result carries, null before finalization or for documents without foliage. Never
+    /// serialized.</summary>
+    internal MapDocumentFinalizationStamp? Stamp { get; init; }
 
-/// <summary>Detached document preparation. Accepting the candidate and publishing its reservations belongs to the caller.</summary>
+    /// <summary>Expansions the preparer already built for its before and after documents. Never serialized.</summary>
+    internal MapEditExpansions? Expansions { get; init; }
+}
+
+/// <summary>Detached document preparation. Accepting the candidate and publishing its reservations belongs to the caller.
+/// Every result is finalized by <see cref="MapDocumentEditFinalizer"/>, so it carries its dependent foliage rows.</summary>
 public static class MapPrefabEdits
 {
-    public static MapPrefabEditResult Prepare(MapDocument document, MapAssetClosure assets, MapPrefabEdit edit)
+    public static MapPrefabEditResult Prepare(MapDocument document, MapAssetClosure assets, MapPrefabEdit edit) =>
+        MapDocumentEditFinalizer.Complete(document, PrepareRaw(document, assets, edit), assets, assets);
+
+    /// <summary>The validated candidate before finalization, for callers that compose it with more changes and
+    /// finalize the whole candidate once.</summary>
+    internal static MapPrefabEditResult PrepareRaw(MapDocument document, MapAssetClosure assets, MapPrefabEdit edit,
+        Action<MapDocument>? admitProposal = null)
     {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(edit);
+        MapDocumentEditFinalizer.Preflight(document, assets);
         var before = MapPrefabEditPreparation.Begin(document, assets);
         var after = MapPrefabEditPreparation.Copy(document);
         var set = after.Prefabs ?? new(1, 1, [], []);
@@ -96,6 +114,7 @@ public static class MapPrefabEdits
         }
         var bindings = oldBindings.Concat(after.Prefabs!.Instances.Single(i => i.Id == id).Bindings.Entries)
             .Concat(after.Prefabs.Transfers.Where(t => t.InstanceId == id).Select(t => t.Binding)).ToArray();
+        admitProposal?.Invoke(after);
         return MapPrefabEditPreparation.Finish(after, assets, before, new[] { id }, bindings,
             unpack: edit is MapUnpackPrefab);
     }
@@ -104,8 +123,11 @@ public static class MapPrefabEdits
     public static MapPrefabEditResult PrepareAssetUpdate(MapDocument document, MapAssetClosure beforeAssets,
         MapAssetClosure afterAssets, MapUpdatePrefabAsset edit)
     {
-        ArgumentNullException.ThrowIfNull(edit);
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(beforeAssets);
         ArgumentNullException.ThrowIfNull(afterAssets);
+        ArgumentNullException.ThrowIfNull(edit);
+        MapDocumentEditFinalizer.Preflight(document, beforeAssets);
         var before = MapPrefabEditPreparation.Begin(document, beforeAssets);
         var oldResource = beforeAssets.GetResource(edit.ResourceId);
         var nextResource = afterAssets.GetResource(edit.NewResourceId);
@@ -128,8 +150,8 @@ public static class MapPrefabEdits
             Plan(after, afterAssets, updated, before);
             bindings.AddRange(after.Prefabs!.Instances.Single(i => i.Id == updated.Id).Bindings.Entries);
         }
-        return MapPrefabEditPreparation.Finish(after, afterAssets, before, instances.Select(i => i.Id).ToArray(), bindings,
-            nativeAssets: true);
+        return MapDocumentEditFinalizer.Complete(document, MapPrefabEditPreparation.Finish(after, afterAssets, before,
+            instances.Select(i => i.Id).ToArray(), bindings, nativeAssets: true), beforeAssets, afterAssets);
     }
 
     // Duplicate keys refuse before any binding or numeric ID is allocated. The closed override codec detaches the request.

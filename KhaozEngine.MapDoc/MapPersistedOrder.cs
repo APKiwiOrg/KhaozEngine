@@ -34,6 +34,7 @@ internal static class MapDocumentOrder
     internal const int NativeAssets = 25;
     internal const int NumericIdHighWaterMark = 26;
     internal const int ResolverIdentity = 27;
+    internal const int Foliage = 28;
 }
 
 /// <summary>The serialized member order of <see cref="MapPlacement"/>, which is declared across several partial

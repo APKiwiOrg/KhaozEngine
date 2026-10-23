@@ -164,12 +164,13 @@ public sealed class PropVisibilityFilterTests
 
         public MeshHandle LoadMesh(GltfMesh mesh) => new(99);
         public void UnloadMesh(MeshHandle handle) { }
-        public void DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
+        public int DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
             float dissolveFloor)
         {
             DrawCalls++;
             VisibleIndividuals += placements.Count;
             LastCastsShadows = layer.CastsShadows;
+            return placements.Count;
         }
         public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve) =>
             MergedDraws++;

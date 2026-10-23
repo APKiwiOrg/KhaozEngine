@@ -949,7 +949,7 @@ and both identities unchanged. `SetPlacementLabelCommand` names that behavior ex
 placement references, including unpacked binding inventories, transfers, precise owner frames and light
 owners. Tags and asset/resource IDs are never rewritten.
 
-Format-8 native commands use the effective resource policy `kemap/effective-resources/1` and query policy 2.
+Format-9 native commands use the effective resource policy `kemap/effective-resources/1` and query policy 2.
 Their complete bound validation includes support, paint, room coverage and water before publication. Native
 GUI closure/bounds binding, prefab mode and pointer/key acceptance remain R9 and #1349 work.
 
@@ -1049,6 +1049,37 @@ with tight reports and conservative spatial bounds. Changed support or prism geo
 Nav and Residency independently of the owner's shape. Changed lights or markers invalidate Residency.
 Unknown resource bounds carry the matching spatial reset. Mesh-only owners without changed spatial
 resources remain placement-only. Unknown geometry reports `Unbounded` and does not prevent repair or deletion. MapEditor still has no physics package reference.
+
+## Native foliage commands and acceptance
+
+`FoliageEditCommand(MapFoliageEdit)` runs pure layer, density, brush and removal proposals through one accepted native
+history step. It shares public `MapDocumentEditFinalizer` with pure consumers and late callbacks. Standalone remap,
+publication, undo and redo preserve the foliage root and conditional write flag. Captured contexts and command stamps
+survive preparation and acceptance, with stale sides rebuilt before publication. `MapNativeEditEffects.FoliageChunks`
+and `FoliageLayers` are separate cosmetic effects. Layer entry presence invalidates every batch even with equal stored
+digests. `MapFoliageEffects.Describe` returns `MapFoliageEffectSet(Chunks, Layers)`.
+
+Policy definition changes need `PreviewPolicyChange` and publish alone, since the token binds the exact candidate.
+A tool dry run for a new layer refuses. All refusals leave document, history, dirty state and identity unchanged.
+`foliage_get` previews one accepted complete snapshot through a cached context, invalidated by native publication or
+snapshot/closure replacement. Returned metadata, bytes and nested pose/material values are detached or immutable.
+
+| Evidence | Accepted headless seam |
+| --- | --- |
+| `FoliageAcceptanceWorkflowTests.StackedDomains_WireEditsInvalidateOnlyTheirOwnLayer` | OA9 stacked domains through shared history and real MCP |
+| `FoliageDependentWireTests.DocumentFinalizer_PureEditorWireEffectsAgree` | Pure, editor and wire effects agree |
+| `NativeFoliagePublicationTests.LateCallbackFoliage_PublishesOneSnapshotEffectsAndRedo` | Late callback atomic completion and replay |
+| `FoliageToolTests.FiveFoliageVerbs_MakeExactInventory101` | Five verbs in the exact 101-tool inventory |
+| `FoliageWireTests.FoliageWire_ContainsEveryByteQuaternionAndMatrixComponent` | Actual generated CPU pose survives the wire |
+
+The [MapDoc contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) consolidates payload/storage limits,
+compatibility, full-request support, refusal, effects, immutable padded R8 handoff and platform evidence.
+[ke-mapedit](../KhaozEngine.MapEdit.Tool/README.md#foliage) owns exact parameter/result shapes. Neither proof certifies
+pixels or windowed input. R8 owns the windowed context, immutable closure/completeness, residency/upload, drawing,
+interior-cut adapter [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) and R8/G3 appearance. R9 owns interactive
+painting and the space-footprint authoring decision after presence removes floor cells
+([#1516](https://github.com/APKiwiOrg/KhaozEngine/issues/1516)). R10 owns full verb parity and the native placement ID
+rename wire verb. R11/G2 owns actual import/source acceptance.
 
 ## Rebuild semantics
 

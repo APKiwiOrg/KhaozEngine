@@ -39,6 +39,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
+        readonly ModelVisibilityShaders _visibilityShaders = new();
         IGpuShaderSet? _motionShaders;   // OverlayUnlitMotionFrag, built only for a temporal model target
         readonly IGpuResourceLayout _layout;
         IGpuPipeline _pipeline;   // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
@@ -127,9 +128,11 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = MotionMath.IsTemporal(modelOutputs)
-                    ? _motionShaders ??= f.CreateShadersFromSpirv(ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitMotionFrag)
-                    : _shaders,
+                ShaderSet = _visibilityShaders.TrySelect(f, modelOutputs, ShaderSources.OverlayUnlitVert,
+                    MotionMath.IsTemporal(modelOutputs) ? ShaderSources.OverlayUnlitMotionFrag : ShaderSources.OverlayUnlitFrag, preserve: true, out IGpuShaderSet visibilityShaders)
+                    ? visibilityShaders : MotionMath.IsTemporal(modelOutputs)
+                        ? _motionShaders ??= f.CreateShadersFromSpirv(ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitMotionFrag)
+                        : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = modelOutputs,
             });
@@ -217,7 +220,7 @@ namespace KhaozEngine.Render3D.Rendering
             _set?.Dispose();
             _pipeline.Dispose();
             _layout.Dispose();
-            _shaders.Dispose();
+            _shaders.Dispose(); _visibilityShaders.Dispose();
             _motionShaders?.Dispose();
             _ubo?.Dispose();
         }

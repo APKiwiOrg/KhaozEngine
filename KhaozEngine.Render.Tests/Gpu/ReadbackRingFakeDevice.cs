@@ -44,6 +44,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every fence handed to a fenced submit, in submit order.</summary>
         internal List<IGpuFence> SubmittedFences { get; } = new();
+        internal int SubmitCalls { get; private set; }
 
         /// <summary>Whole-texture copies recorded on every list this factory handed out.</summary>
         internal int CopyTextureCalls
@@ -92,8 +93,14 @@ namespace KhaozEngine.Tests.Gpu
         public IGpuSampler LinearSampler => _inner.LinearSampler;
         public bool SyncToVerticalBlank { get; set; }
 
-        public void Submit(IGpuCommandList cl) { }
-        public void Submit(IGpuCommandList cl, IGpuFence fence) => SubmittedFences.Add(fence);
+        public void Submit(IGpuCommandList cl) => SubmitCalls++;
+        public void Submit(IGpuCommandList cl, IGpuFence fence) { SubmitCalls++; SubmittedFences.Add(fence); }
+        public void Submit(IGpuCommandList cl, ReadOnlySpan<IGpuFence> completions)
+        {
+            GpuCompletionFences.Validate(completions);
+            Submit(cl);
+            foreach (var completion in completions) SubmittedFences.Add(completion);
+        }
         public void WaitForIdle() => WaitForIdleCalls++;
 
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged { }

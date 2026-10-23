@@ -58,6 +58,7 @@ namespace KhaozEngine.Render3D.Rendering
             };
             _frameImageDirty = true;
             WriteFrameUniformsTo(cl, _ubo);
+            UploadedKeyShadowFullyLit = _shadow.Params.Y <= 0f;
         }
 
         // Cached this-frame uniforms (set in SetFrameUniforms), packed into _frameImage and uploaded by

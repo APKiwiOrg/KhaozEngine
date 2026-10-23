@@ -39,6 +39,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceSet _set;
         readonly IGpuResourceSet _additiveSet;
         readonly IGpuShaderSet _shaders;
+        readonly ModelVisibilityShaders _visibilityShaders = new();
         IGpuShaderSet? _motionShaders;   // TrailMotionFrag, built only for a temporal model target
         IGpuPipeline _additive;                // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
         IGpuPipeline _alpha;
@@ -107,9 +108,11 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = MotionMath.IsTemporal(modelOutputs)
-                    ? _motionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.TrailVert, ShaderSources.TrailMotionFrag)
-                    : _shaders,
+                ShaderSet = _visibilityShaders.TrySelect(factory, modelOutputs, ShaderSources.TrailVert,
+                    MotionMath.IsTemporal(modelOutputs) ? ShaderSources.TrailMotionFrag : ShaderSources.TrailFrag, preserve: true, out IGpuShaderSet visibilityShaders)
+                    ? visibilityShaders : MotionMath.IsTemporal(modelOutputs)
+                        ? _motionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.TrailVert, ShaderSources.TrailMotionFrag)
+                        : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = modelOutputs,
             });
@@ -156,7 +159,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _additive.Dispose();
             _alpha.Dispose();
-            _shaders.Dispose();
+            _shaders.Dispose(); _visibilityShaders.Dispose();
             _motionShaders?.Dispose();
             _set.Dispose();
             _additiveSet.Dispose();

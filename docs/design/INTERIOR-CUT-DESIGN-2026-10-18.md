@@ -9,6 +9,8 @@ Consumer captures remain the IC6 adoption gate.
 
 The rulings and API sketch below preserve the approved design history. The shipped contracts differ here:
 
+- Captures configure `InteriorMeshes` and `RoofMode` through `TileWorldViewOptions`. Offline settling
+  completes and publishes the requested interior field before the first frame and after camera re-centring.
 - H1 sizes a 512 m window with `InteriorWindow.CellsFor(512f, cellSize)`, capped at 4096. The view reports
   `interior.window` once when the cap reduces coverage. H2 puts source-wide `InteriorEncoding` in
   `InteriorSourceResult.Encoding`. `Build(volumes, window, encoding)` takes it explicitly, and the adapter

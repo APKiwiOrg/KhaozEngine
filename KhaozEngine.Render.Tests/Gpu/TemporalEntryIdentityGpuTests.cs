@@ -23,21 +23,22 @@ namespace KhaozEngine.Tests.Gpu
     /// and the locks with them, so both entries round in integer steps (<c>temporalHalf</c>). This fact is what shows
     /// they agree on a given backend: bit for bit on Metal, on a Tesla T4 on Direct3D 11 and Vulkan, and on WARP
     /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). On a software Vulkan device (Mesa llvmpipe) the colour
-    /// differs, since its compiler orders the two programs' arithmetic differently, while the confidence, the lock
-    /// and the mark stay identical. There the fact holds those three exact and the colour within
-    /// <see cref="SoftwareColourBound"/> and <see cref="SoftwareColourShare"/>.
+    /// differs, since its compiler orders the two programs' arithmetic differently, while the confidence, the lock,
+    /// the mark, R8 and depth stay identical. There the fact holds those exact and the colour within
+    /// <see cref="TemporalSoftwareCompileDivergenceRule.AbsoluteBound"/> and
+    /// <see cref="TemporalSoftwareCompileDivergenceRule.DifferingShareBound"/> of the values compared. Everywhere else
+    /// stored colour, confidence, locks, R8 and depth are exact. Hardware NVIDIA Direct3D 11 additionally prints each
+    /// production entry and D's paired entries against D. Against D only the non-finite classes of colour and
+    /// confidence are asserted. The large-frame case (<c>TemporalEntryIdentityGpuTests.LargeFrames.cs</c>) holds both
+    /// entries, and D prime's two, byte-identical across columns 512 and 1024 and row 512 under positive jitter,
+    /// under the same software Vulkan colour rule.
     /// </summary>
-    public sealed class TemporalEntryIdentityGpuTests(ITestOutputHelper output)
+    public sealed partial class TemporalEntryIdentityGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
     {
         const int W = 320, H = 180, StopFrames = 8, MoverSweep = 12;
         const float Speed = 2f, BladeTexels = 0.375f, MoverTexels = 1f, MoverStep = 3f, MoverHeight = 3f,
             MoverNearer = 4f;
         const ulong MoverKey = 71;
-
-        // The colour on a software Vulkan device: llvmpipe (LLVM 20.1.2) measured its largest difference 0.0049 at
-        // Native, 0.0154 at Quality and 0.0439 at Performance, over 0.010, 0.052 and 0.118 percent of the values
-        // compared. The bounds keep about 1.4 and 2 times that.
-        const float SoftwareColourBound = 0.0625f, SoftwareColourShare = 0.0025f;
 
         [GpuTheory]
         [InlineData(TemporalUpscale.Native)]
@@ -81,8 +82,20 @@ namespace KhaozEngine.Tests.Gpu
             split.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Split;
             output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, {W}x{H} {preset}"
                 + (outline ? ", the edge outline on" : ""));
-            bool softwareVulkan = fused.Device.Backend == GpuBackendKind.VulkanNative
-                && fused.Device.Diagnostics.SoftwareAdapter == true;
+            bool softwareVulkan = TemporalDeviceClass.IsLavapipe(fused.Device);
+            bool nvidia = TemporalDeviceClass.IsHardwareNvidiaD3D11(fused.Device);
+            var oracle = nvidia ? new TemporalNvidiaHistoryOracle(output) : null;
+            var dFusedWalk = new PerspectiveFollowLines(W, H, Speed, preset, BladeTexels);
+            var dSplitWalk = new PerspectiveFollowLines(W, H, Speed, preset, BladeTexels);
+            using var dFused = nvidia ? new TemporalFixture(W, H, s => Setup(s, dFusedWalk, preset, outline)) : null;
+            using var dSplit = nvidia ? new TemporalFixture(W, H, s => Setup(s, dSplitWalk, preset, outline)) : null;
+            if (dFused is not null && dSplit is not null)
+            {
+                TemporalTestResolve.Install(dFused, TemporalVisibilityFrozenD.ToD);
+                TemporalTestResolve.Install(dSplit, TemporalVisibilityFrozenD.ToD);
+                dFused.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Fused;
+                dSplit.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Split;
+            }
             long colourCompared = 0;
 
             int frames = TemporalFollowLinesRuns.Last + 1 + StopFrames, compared = 0, band = 0, followed = 0,
@@ -91,19 +104,36 @@ namespace KhaozEngine.Tests.Gpu
             var confidence = new EntryDifference("confidence");
             var locks = new EntryDifference("lock");
             var marks = new EntryDifference("mark", false);
+            Vector2 previousJitter = default;
             for (int n = 0; n < frames; n++)
             {
                 fused.Frame(Draw(fusedWalk));
                 split.Frame(Draw(splitWalk));
+                dFused?.Frames(1, Draw(dFusedWalk));
+                dSplit?.Frames(1, Draw(dSplitWalk));
                 if (!fused.Scene.ResolvedLastRenderForTests) continue;
                 Assert.True(split.Scene.ResolvedLastRenderForTests, $"frame {n}: only the fused scene resolved");
                 Assert.Equal(TemporalResolveEntry.Fused, fused.Scene.TemporalResolveRendererForTests?.LastEntry);
                 Assert.Equal(TemporalResolveEntry.Split, split.Scene.TemporalResolveRendererForTests?.LastEntry);
                 // At Native the split records its second pass compiled without the display-sized reconstruction,
                 // and the fused resolve keeps it, so this walk also holds that program to the rule's own output.
-                Assert.Equal(ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(split.Device),
-                        upscales: preset != TemporalUpscale.Native),
-                    split.Scene.TemporalResolveRendererForTests!.LastEntryFragmentsForTests()[1]);
+                string splitProgram = ShaderSources.TemporalAccumulateFragment(
+                    TemporalResolvePrecisionPolicy.For(split.Device), upscales: preset != TemporalUpscale.Native);
+                if (split.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped)
+                    splitProgram = TemporalVisibilityPrograms.WithoutDecision(splitProgram);
+                Assert.Equal(TemporalVisibilityGatherPolicy.ForBackend(splitProgram, split.Device.Backend),
+                    split.Scene.TemporalResolveRendererForTests.LastEntryFragmentsForTests()[1]);
+                var fusedRenderer = fused.Scene.TemporalResolveRendererForTests!;
+                var splitRenderer = split.Scene.TemporalResolveRendererForTests!;
+                Assert.Equal(fusedRenderer.LastVisibilityUniforms.PreviousJitter,
+                    splitRenderer.LastVisibilityUniforms.PreviousJitter);
+                Assert.Equal(new Vector4(previousJitter, n > 0 ? 1f : 0f, 0f),
+                    fusedRenderer.LastVisibilityUniforms.PreviousJitter);
+                Assert.Equal(TemporalVisibilityHistoryGpuTests.Read(fused.Device,
+                        fusedRenderer.VisibilityHistory.Texture(fused.Scene.TemporalHistory.WriteIndex)),
+                    TemporalVisibilityHistoryGpuTests.Read(split.Device,
+                        splitRenderer.VisibilityHistory.Texture(split.Scene.TemporalHistory.WriteIndex)));
+                previousJitter = new Vector2(fusedRenderer.LastUniforms.Jitter.X, fusedRenderer.LastUniforms.Jitter.Y);
                 float[] a = Read(fused, static h => h.Color(h.WriteIndex));
                 float[] b = Read(split, static h => h.Color(h.WriteIndex));
                 for (int i = 0; i < a.Length; i++) colour.Add(n, a[i], b[i]);
@@ -112,6 +142,19 @@ namespace KhaozEngine.Tests.Gpu
                 for (int i = 0; i < a.Length; i += 4) if (IsOutline(a, i)) outlinePixels++;
                 float[] state = Read(fused, static h => h.Confidence(h.WriteIndex));
                 float[] other = Read(split, static h => h.Confidence(h.WriteIndex));
+                TemporalHistorySample.Exact(n, "production entries depth",
+                    Read(fused, static h => h.PreviousDepth(h.WriteIndex)),
+                    Read(split, static h => h.PreviousDepth(h.WriteIndex)));
+                if (dFused is not null && dSplit is not null)
+                {
+                    TemporalHistorySample df = TemporalHistorySample.Read(dFused), ds = TemporalHistorySample.Read(dSplit);
+                    oracle!.ObserveD(n, df, ds);
+                    TemporalHistorySample pf = TemporalHistorySample.Read(fused), ps = TemporalHistorySample.Read(split);
+                    oracle.Report(n, "production fused vs D fused", pf, df);
+                    oracle.Report(n, "production split vs D split", ps, ds);
+                }
+                if (!softwareVulkan) TemporalHistorySample.Exact(n, "production entries colour", a, b);
+                TemporalHistorySample.Exact(n, "production entries state", state, other);
                 for (int i = 0; i < state.Length; i += 2)
                 {
                     confidence.Add(n, state[i], other[i]);
@@ -137,11 +180,13 @@ namespace KhaozEngine.Tests.Gpu
                 $"the entry points stored different state:\n{differences}");
             if (softwareVulkan)
             {
-                double share = (double)colour.Values / colourCompared;
-                output.WriteLine($"  software Vulkan: colour within {SoftwareColourBound} on {share:P3} of values");
-                Assert.True(colour.Worst <= SoftwareColourBound && share <= SoftwareColourShare,
-                    $"the colour on a software Vulkan device left its bound ({SoftwareColourBound}, "
-                    + $"{SoftwareColourShare:P2} of values):\n{differences}");
+                double share = TemporalSoftwareCompileDivergenceRule.ShareOf(colour.Values, colourCompared);
+                output.WriteLine($"  software Vulkan: colour within {TemporalSoftwareCompileDivergenceRule.AbsoluteBound} "
+                    + $"on {share:P3} of values");
+                Assert.True(TemporalSoftwareCompileDivergenceRule.Allows(colour.Worst, colour.Values, colourCompared),
+                    $"the colour on a software Vulkan device left its bound "
+                    + $"({TemporalSoftwareCompileDivergenceRule.AbsoluteBound}, "
+                    + $"{TemporalSoftwareCompileDivergenceRule.DifferingShareBound:P2} of values):\n{differences}");
             }
             else Assert.True(colour.Values == 0, $"the entry points wrote different histories:\n{differences}");
             // The band reaches two internal texels beside the followed box, which this walk stores only while
@@ -151,11 +196,138 @@ namespace KhaozEngine.Tests.Gpu
             return outlinePixels;
         }
 
+        // Uploaded shadow edges isolate the visibility response from shadow-map rasterization. The outlined row
+        // runs the production edge pass on both scene inputs before the same release and retained-history assertions.
+        [GpuTheory]
+        [InlineData(TemporalUpscale.Native, 8, false)]
+        [InlineData(TemporalUpscale.Quality, 12, false)]
+        [InlineData(TemporalUpscale.Performance, 16, false)]
+        [InlineData(TemporalUpscale.Quality, 12, true)]
+        public void MovingShadowEntriesKeepVisibilityDecisionsAndHistoryExact(TemporalUpscale preset, int display,
+            bool outline)
+        {
+            var settings = new PixelPostProcessSettings();
+            SetupOutline(settings, outline);
+            using var fused = new TemporalResolveRig(N, N, display, display, SceneNdc, outline ? settings : null);
+            using var split = new TemporalResolveRig(N, N, display, display, SceneNdc, outline ? settings : null);
+            using var unlocked = new TemporalResolveRig(N, N, display, display, SceneNdc, outline ? settings : null);
+            bool nvidia = TemporalDeviceClass.IsHardwareNvidiaD3D11(fused.Device);
+            var oracle = nvidia ? new TemporalNvidiaHistoryOracle(output) : null;
+            using var dFused = nvidia ? new TemporalResolveRig(N, N, display, display, SceneNdc,
+                outline ? settings : null, TemporalVisibilityFrozenD.ToD) : null;
+            using var dSplit = nvidia ? new TemporalResolveRig(N, N, display, display, SceneNdc,
+                outline ? settings : null, TemporalVisibilityFrozenD.ToD) : null;
+            using GpuRetireQueue retired = GpuRetireQueue.Create(split.Device);
+            split.Renderer.SelectEntry(TemporalResolveEntry.Split, retired);
+            using GpuRetireQueue? dRetired = dSplit is null ? null : GpuRetireQueue.Create(dSplit.Device);
+            dSplit?.Renderer.SelectEntry(TemporalResolveEntry.Split, dRetired!);
+            using IGpuTexture a = VisibilitySignal(fused.Device);
+            using IGpuTexture b = VisibilitySignal(split.Device);
+            using IGpuTexture? da = dFused is null ? null : VisibilitySignal(dFused.Device);
+            using IGpuTexture? db = dSplit is null ? null : VisibilitySignal(dSplit.Device);
+            (TemporalResolveRig Rig, IGpuTexture Signal)[] entries = dFused is null || dSplit is null
+                ? [(fused, a), (split, b)] : [(fused, a), (split, b), (dFused, da!), (dSplit, db!)];
+            output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, moving shadow {preset}, "
+                + $"outline {outline}");
+            int[] edges = [8, 8, 2, 8, 0, 8];
+            byte[] previous = [];
+            Vector2 previousJitter = default;
+            int rises = 0, falls = 0;
+            int pixel = (display / 2 * display + display / 4) * 2;
+            for (int frame = 0; frame < edges.Length; frame++)
+            {
+                byte[] bytes = Enumerable.Range(0, N * N).Select(i => i % N >= edges[frame] ? (byte)255 : (byte)0).ToArray();
+                Vector2 jitter = new(frame % 2 == 0 ? 0.125f : -0.25f, 0.0625f);
+                var uniforms = TemporalResolveMath.BuildUniforms(Still, Still, jitter, N, N, display, display, frame > 0);
+                foreach ((TemporalResolveRig rig, IGpuTexture signal) in entries)
+                {
+                    rig.Device.UpdateTexture(signal, bytes, 0, 0, N, N);
+                    float[] current = Grey((x, _) => x == 1 ? 0.7f : 0.2f);
+                    rig.Fill(current, current, Motion((_, _) => Vector2.Zero));
+                    rig.BeginFrame();
+                    if (frame > 0)
+                        rig.FillHistory(Grey(display, display, (_, _) => 0.4f),
+                            Pairs(display, display, (_, _) => Vector2.One), SceneLinear);
+                    rig.Resolve(uniforms, signal);
+                    Assert.Equal(outline, rig.OutlineBuilt);
+                    if (outline)
+                    {
+                        float[] outlined = rig.ReadColor();
+                        int outlinePixels = Enumerable.Range(0, display * display).Count(i => IsOutline(outlined, i * 4));
+                        Assert.True(outlinePixels > 0, $"frame {frame}: the outline contributed no history pixels");
+                        output.WriteLine($"  {rig.Renderer.LastEntry} frame {frame}: {outlinePixels} outline history pixels");
+                    }
+                    Assert.Equal(bytes, TemporalVisibilityHistoryGpuTests.Read(rig.Device,
+                        rig.Renderer.VisibilityHistory.Texture(rig.History.WriteIndex)));
+                    Assert.Equal(new Vector4(previousJitter, frame > 0 ? 1f : 0f, 0f),
+                        rig.Renderer.LastVisibilityUniforms.PreviousJitter);
+                    if (frame > 0)
+                        Assert.Equal(previous, TemporalVisibilityHistoryGpuTests.Read(rig.Device,
+                            rig.Renderer.VisibilityHistory.Texture(rig.History.ReadIndex)));
+                    rig.History.MarkValidAfterFrame();
+                }
+                // A matched-jitter control has full history with no lock or visibility signal. It isolates
+                // retained weight and display reconstruction from the clipping change caused by lock release.
+                float[] controlCurrent = Grey((x, _) => x == 1 ? 0.7f : 0.2f);
+                unlocked.Fill(controlCurrent, controlCurrent, Motion((_, _) => Vector2.Zero));
+                unlocked.BeginFrame();
+                if (frame > 0)
+                    unlocked.FillHistory(Grey(display, display, (_, _) => 0.4f),
+                        Pairs(display, display, (_, _) => new Vector2(1, 0)), SceneLinear);
+                unlocked.Resolve(uniforms);
+                unlocked.History.MarkValidAfterFrame();
+                TemporalHistorySample pf = TemporalHistorySample.Read(fused), ps = TemporalHistorySample.Read(split);
+                if (dFused is not null && dSplit is not null)
+                {
+                    TemporalHistorySample df = TemporalHistorySample.Read(dFused), ds = TemporalHistorySample.Read(dSplit);
+                    oracle!.ObserveD(frame, df, ds);
+                    oracle.Report(frame, "production fused vs D fused", pf, df);
+                    oracle.Report(frame, "production split vs D split", ps, ds);
+                }
+                TemporalHistorySample.Exact(frame, "production entries", pf, ps);
+                if (frame == 0)
+                {
+                    Assert.InRange(fused.ReadState()[pixel], 0.01f, 0.15f);
+                }
+                if (frame == 1)
+                {
+                    Assert.Equal(1, fused.ReadState()[pixel]);
+                    Assert.Equal(0.875f, fused.ReadState()[pixel + 1]);
+                }
+                if (frame >= 2)
+                {
+                    float[] state = fused.ReadState();
+                    Assert.Equal(0, state[pixel + 1]);
+                    Assert.Equal(1, state[pixel]);
+                    Assert.Equal(1, unlocked.ReadState()[pixel]);
+                    float[] colour = fused.ReadColor(), retained = unlocked.ReadColor();
+                    for (int c = 0; c < 4; c++) Assert.Equal(retained[pixel * 2 + c], colour[pixel * 2 + c]);
+                    if (edges[frame] == 8) falls++;
+                    else rises++;
+                    output.WriteLine($"  frame {frame}: confidence {state[pixel]:R}, lock {state[pixel + 1]:R}");
+                }
+                previous = bytes;
+                previousJitter = jitter;
+            }
+            Assert.Equal(2, rises);
+            Assert.Equal(2, falls);
+            output.WriteLine($"  {edges.Length} frames exact in colour and confidence, "
+                + "exact locks, marks, R8 bytes, depth and previous jitter");
+        }
+
+        static IGpuTexture VisibilitySignal(IGpuDevice device) => device.Factory.CreateTexture(
+            GpuTextureDescription.Texture2D(N, N, GpuPixelFormat.R8UNorm, GpuTextureUsage.Sampled));
+
         static void Setup(Scene3D s, PerspectiveFollowLines walk, TemporalUpscale preset, bool outline)
         {
             walk.Setup(s, preset);
-            s.Post.Outline = outline;
-            s.Post.OutlineColor = OutlineColour;
+            SetupOutline(s.Post, outline);
+        }
+
+        static void SetupOutline(PixelPostProcessSettings settings, bool outline)
+        {
+            settings.Outline = outline;
+            settings.OutlineColor = OutlineColour;
         }
 
         // The walk's last frame is its last step, so the frames after it hold the box and the camera still. The pole

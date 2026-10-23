@@ -1,0 +1,7 @@
+# SHA-256 of filter and fixture sources at 02f0bd1fc
+# Measurement source identities, before the Task 3 baseline-only edits.
+cc6cedad99fe3ffb1dc077bf103e5b4c476099944c9bdc6e366f56981293e252  KhaozEngine.Render3D/Internal/ShaderSources.ShadowVisibility.cs
+6bcb99075a0024c5d66aefddaeed415ac840183bc50434c4ce4d6086926d0318  KhaozEngine.Render.Tests/Gpu/TemporalMovingShadeRimGpuTests.cs
+d1a67cb79565927bda82abb49ce1f58d7183349f3191cfc0769044ee86c43d1b  KhaozEngine.Render.Tests/Gpu/TemporalMovingShadeLagGpuTests.cs
+a1d75c9e67306da2e7cb174247cb7f0af3c1648fff45c52ef2bbe27e76583309  KhaozEngine.Render.Tests/Gpu/TemporalFixture.cs
+7660ea8b7e0bb5e96d8c136aff996461de41fcf573ea986dd2d775ae3c322b44  KhaozEngine.Render.Tests/Gpu/TemporalAcceptanceFlicker.cs

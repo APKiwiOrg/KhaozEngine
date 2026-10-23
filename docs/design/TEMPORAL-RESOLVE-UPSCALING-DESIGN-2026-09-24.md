@@ -1,7 +1,7 @@
 # Temporal resolve and upscaling
 
-Status: implemented for staged 20.16.0, with the temporal foundations. Grimhollow's adoption, specified at the end of
-this document, follows that release.
+Status: implemented with the temporal foundations in 20.16.0. Amendment 35 stages the key-shadow visibility
+contract in 21.11.0. Release and consumer adoption remain separate gates.
 Date: 2026-09-24.
 Issue: [#1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149).
 Builds on: [`TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md`](TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md), the shared
@@ -31,10 +31,11 @@ line, not an aspiration.
 ## 1. Where the resolve sits in the frame
 
 ```
-opaque passes (jittered, internal res)  -> colour, depth, motion (foundations)
+opaque passes (jittered, internal res)  -> colour, depth, motion, R8 key-shadow visibility
   copy colour                           -> opaque-only colour, for the reactive estimate
 transparents, decals, water, particles  -> colour (internal res)
 temporal resolve (internal -> display)  -> display-res HDR colour, new history
+  copy key-shadow visibility           -> internal-res R8 history write texture
 distortion, bloom, tonemap              -> display res
 sharpen                                 -> display res
 target outlines, overlays, final blit   -> display res, 1:1
@@ -67,11 +68,13 @@ frame so it can be added later.
 
 ## 3. The resolve
 
-One fullscreen fragment pass at display resolution. Fragment rather than compute keeps to the engine's proven path,
-since the GPU seam has no compute barrier and compute to graphics handoff has to stay inside one command list.
+The fused entry records a display-resolution resolve and an internal-resolution depth store. The split entry
+records internal accumulation and display reconstruction. Each records two fragment draws. Both finish with the
+same visibility copy, which adds no fullscreen draw (amendment 35).
 
 Inputs: the internal colour after transparents, the opaque-only colour copy, depth, motion vectors, the previous
-frame's depth and the history. Outputs: the display-resolution colour and the new history.
+frame's depth and the history, plus current and previous R8 key-shadow visibility and previous internal-pixel
+jitter. Outputs: the display-resolution colour and the new history. Missing visibility uses a fully lit fallback.
 
 1. **Motion with dilation.** For each display pixel, find the internal pixel under it and take the motion vector of
    the closest depth in its 3x3 neighbourhood. Edges of moving objects then carry the object's motion rather than the
@@ -111,7 +114,9 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
    shading changed, still or moving, with its history luma past the box, no missed feature to explain it, and its
    reconstruction or its history's neighbourhood showing the change, both where the frame upscales, releases its hold
    and its accumulated weight for the frame at Native and Quality (amendment 33). A carried lock and a moving pixel
-   release only where the neighbourhood shows it (amendment 34).
+   release only where the neighbourhood shows it (amendment 34). Independently, a depth-qualified change in stored
+   key-shadow visibility strictly above 0.1 clears the stored lock and clip hold at any speed and preset. This
+   signal retains accumulation and display share (amendment 35).
 7. **Reactive estimate.** The luma difference between the opaque-only copy and the final colour marks pixels that
    transparent content changed: particles, billboards, beams, trails, decals and water. Those pixels take a lower
    history weight, so a smoke puff or a splash does not leave a trail. An explicit reactive input can override the
@@ -120,12 +125,15 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
    by one plus luma before and restoring after, so a bright firefly cannot ghost. The current weight follows the
    accumulated sample count stored as history confidence, from one on a reset down to a floor of about one in
    sixteen, raised by the reconstruction weight of step 4, the reactive estimate and disocclusion, and reset where
-   the shading changed under a pixel (amendments 33 and 34).
+   the independent colour-based shading rule detects a change (amendments 33 and 34). Key-shadow visibility release
+   alone does not reset that weight or the display reconstruction share (amendment 35).
 
 History is a display-resolution colour target and a confidence and stability target, double-buffered in the
 foundations' `TemporalHistory`. Colour uses R11G11B10 float where all three backends can render and sample it, and
 RGBA16F otherwise. Amendment 2 records which. The previous frame's depth is an internal-resolution R32F copy kept by
-the same owner.
+the same owner. Two internal-resolution R8 visibility histories follow that owner's read/write indices and
+target generation. A separate 16-byte buffer carries previous jitter and readiness without changing the 256-byte
+resolve uniform contract. Amendment 35 specifies the copy, invalidation and retirement rules.
 
 ## 4. Sharpening
 
@@ -204,7 +212,9 @@ here so the foundations and the resolve serve it.
 1. **Thin feature retention is the hardest part to tune.** Too strong and moving grass smears, too weak and it
    shimmers. The stability test and the ghosting test pin both sides, and the owner's playtest is the last word.
 2. **History memory at high display resolution.** A 3456x2234 display holds two history colour targets and two
-   confidence targets. R11G11B10 keeps that near 80 MB.
+   confidence targets, plus internal-resolution previous depths, motion, opaque colour and visibility. The
+   visibility attachment and history pair add three bytes per internal texel, excluding alignment and retirement
+   overlap. See amendment 35 and the current consumer memory accounting in `docs/USING-KHAOZENGINE.md`.
 3. **Moving distortion after the resolve** changes the look of heat haze slightly. The distortion goldens are rebaked
    with that cause named.
 4. **Every material sampling site takes the mip bias.** A missed site shows as one blurrier material under upscaling.
@@ -690,7 +700,8 @@ and changed these details. Its contract amendment blocks carry the evidence.
     Cg and its reactive difference to half float (`temporalPrepared`, `temporalHalf`), in the fused pass too, and the
     split stores every value exactly: those four in one half-float target, the expected depth and step 6's edge
     motion in single-float targets, the motion in a half-float target, the motion target's own format, beside the
-    surface's eight flags as a whole number below 256, and alpha is read back from the scene colour. Moving the rules
+    surface's eight flags as a whole number below 256 and, in the fourth channel, the visibility decision's current
+    mask as a whole number below 1024, and alpha is read back from the scene colour. Moving the rules
     into functions changed no output: a hash of both history outputs after every resolved frame of every temporal fact
     on Metal, 2928 test fixtures and 63108 frames, matched the single-pass resolve they replaced, with each entry point
     forced in turn. It took the emitted resolve from 43661 to 42862 bytes of HLSL.
@@ -988,7 +999,10 @@ and changed these details. Its contract amendment blocks carry the evidence.
     steps of rounding summed there against one, and the ridged keyed box crossing the textured wall (#1187) allows 9
     trail pixels there against 7, having measured 8 at Quality against Metal's 4. Its excess pixels lie in the same
     columns as on Metal, five of them within 0.005 of the 0.05 tolerance. Every hardware bound is unchanged.
-33. Steps 6 and 8 release a still pixel whose shading changed (#1427). A sun shadow sliding over a still surface
+33. Steps 6 and 8 release a still pixel whose shading changed (#1427). Amendment 35 supersedes colour-only
+    evidence as the complete solution for key-shadow changes. Its independent visibility decision clears stored
+    locks and retains weight/display share. This colour-based shading rule and its historical measurements remain.
+    A sun shadow sliding over a still surface
     under a still camera left a grainy band lagging behind its edge, wider the further the edge travelled a frame, so
     it showed at low frame rates such as the 15 Hz an unfocused window throttles to. On a textured receiver a ridge
     refreshed the lock every frame, the whole hold kept the history luma out of the clip, and the pixel converged only
@@ -1061,7 +1075,10 @@ and changed these details. Its contract amendment blocks carry the evidence.
     eight cases on Direct3D 11, Windows Vulkan and Linux Vulkan, a mean of about 1.5 percent and within the run to run
     spread of the paired rounds, since several cases measured faster after. At Quality 2560x1440 it is -0.02 to +0.08
     ms.
-34. Steps 6 and 8 release a pixel whose shading changed at every speed, and a carried lock (#1448). Amendment 33's
+34. Steps 6 and 8 release a pixel whose shading changed at every speed, and a carried lock (#1448). Amendment 35
+    adds a key-shadow visibility decision independent of these ridge/ring eligibility and preset gates, clearing
+    stored locks without a weight response. The gates below still govern the independent colour-based rule.
+    Amendment 33's
     release left three lags, which `TemporalMovingShadeLagGpuTests` measures on the shadow edge stage against a
     supersampled reference: S, the edge travelling 1 to 8 display pixels a frame under a still camera, C, a camera
     panning 1 to 8 across a still shadow, the control, M, keyed strips moving 0.5 to 8 into a still shadow, and MS,
@@ -1168,3 +1185,155 @@ and changed these details. Its contract amendment blocks carry the evidence.
     Vulkan, a mean of about zero. The largest rise is the moving field on Direct3D 11, +0.15 ms at 1440p Native and
     +0.27 ms at 3456x2234 Quality, where the ring now runs on moving pixels. Both Vulkan legs measure the same case
     flat or lower.
+
+35. Key-shadow visibility releases held shadow-edge locks (21.11.0, [#1501](https://github.com/APKiwiOrg/KhaozEngine/issues/1501),
+    [Grimhollow #558](https://github.com/APKiwiOrg/Grimhollow/issues/558)). Amendments 33 and 34 remain the independent
+    colour-based shading rule. Their colour-only evidence is no longer the complete key-shadow policy. For the new
+    key-shadow decision only, stored-lock preservation, ridge/ring eligibility, the Quality preset ceiling and a
+    coupled accumulation/display reset are superseded by the visibility contract below. The old measurements and
+    non-shadow decisions remain historical evidence and active regression guards respectively.
+
+    **Filter and lit signal.** The key shadow uses nine bilinear comparison taps in the existing 3x3 PCF footprint.
+    Compare four point depths before interpolating each tap, never interpolate depths before comparing. The shared
+    4x4 footprint uses 16 explicit point comparisons per cascade, with separable weights `[1-f, 1, 1, f]` and division
+    by nine. Cascade-local clamping, bias, normal displacement, strength, coverage and handoff remain. A handoff
+    can use two footprints. This ships the explicit-fetch path, without a gather optimization or point-light change.
+
+    Lit rigid, GPU-skinned, CPU-skinned, foliage, splat and tile-ground variants export the already evaluated final
+    `keyShadow` to `R8UNorm`, including motion, cutout and applicable dissolve/complement variants. There is no
+    repeated shadow lookup. Clear to 1, and write 1 for disabled or uncovered shadows. Discard writes nothing.
+    Transparent models, billboards, beams, trails, overlays and silhouettes preserve the opaque signal through
+    `PreserveDestination` at its actual slot. Colour-only passes bind colour-only framebuffers. Visibility occupies
+    slot 3 without motion and slot 4 with motion. Layout detection distinguishes R8 from motion's `R16G16Float`.
+    Matched-sample MSAA visibility-only layouts explicitly resolve R8 before sampling. Ordinary TAA remains
+    single-sample. Non-temporal frames allocate no visibility target unless a test explicitly requests that layout.
+
+    **Depth-qualified means.** Let `c` be the current internal centre, `a = clamp(c+o, 0, S-1)` for each
+    `o` in `{-1,0,1}²`, `S` the internal size, `J` current jitter and `Jp` previous resolved jitter in internal
+    pixels, `u` display UV and `up` the existing reprojected UV. Each history position is
+    `h(o) = up + (a + 0.5 - J) / S - u + Jp / S`. Use the resolve's existing expected previous surface depth.
+    Both current-centre and expected-history reference depths must be finite or there is no visibility decision.
+    A current depth contributes only when finite and within `0.02 * max(currentCentreDepth, 1e-5)` of its reference.
+    For each such offset, expand history bilinear sampling into four corners. Each corner contributes only when
+    its stored depth is finite and within `0.02 * max(expectedDepth, 1e-5)` of the expected depth. Reject before
+    interpolation. Integer exponent tests enforce finiteness even under optimized FXC.
+
+    Sum current visibility and its accepted count separately from previous visibility times accepted bilinear
+    weights and their total weight. Divide each sum by its own denominator. Preserve clamped duplicate offsets
+    and bilinear multiplicity. Do not average separately normalized history offsets or use a maximum of nine
+    differences. Empty current count, zero history weight, invalid/unseeded history, offscreen reprojection and
+    background make no visibility decision.
+
+    **Owner choice D, 2026-10-19.** Set `d = meanCurrent - meanPrevious`. Strict `abs(d) > 0.1` clears the stored
+    lock before hold is computed and makes clip hold zero, for either sign at any ridge status, speed or preset.
+    The threshold applies to means of stored R8 values, not the unquantized lighting variable. R8 steps by `1/255`,
+    with round-to-nearest conversion error at most `1/510`. Under round-to-nearest UNORM conversion, an exact
+    input 0.1 stores as `26/255`, so its comparison against stored zero exceeds 0.1 and releases. A driver that
+    truncates stores `25/255` instead. Release compares stored values, so that exact boundary case differs.
+    An exact difference of 0.1 in the comparison domain does not release.
+    R8/R32 evidence preserves that format distinction rather than promising decision equality at quantization
+    boundaries. There is no new public tuning API.
+
+    Visibility release does not change accumulated weight or display reconstruction share, even for large changes.
+    The independent colour-based shading release can still reset them under its existing rule. The owner chose D
+    after real-scene clips because the response-enabled candidates added ground shimmer without removing more held
+    white dots. In the four-candidate round, Native/Quality ground change fell from A's `0.006519368 / 0.007835931`
+    to D's `0.003688205 / 0.003739381`, while back dots stayed `364 / 759` versus A's `364 / 760`.
+    No rising-only reset, multiplier, experimental branch or tuning switch ships.
+
+    **History and lifetime.** `TemporalResolveInputs.KeyShadowVisibility` participates in `SameInputs` and both
+    entry binding caches. `TemporalVisibilityHistory` owns two internal-resolution R8 textures following the colour
+    owner's `ReadIndex`, `WriteIndex`, device, identity and target generation. A shared finish path uses
+    `CopyTexture` once per resolving frame to store current visibility into the write index. The read texture
+    remains unchanged for debug/count re-evaluation. Both entries use the same helper, inputs and reduction order.
+    Stored visibility bytes, jitter and state decisions are exact across entries. Hardware and WARP colour remain
+    exact. Only the pre-existing software-Vulkan colour exception remains. The shared carried-lock precision
+    boundary repairs #1501 without changing half-rounding or adding an entry-specific rule.
+
+    Save jitter only after the copy is recorded. The 16-byte visibility buffer leaves the 256-byte resolve buffer
+    unchanged. A repeated render does not copy, advance jitter or change the history indices. First use, resets,
+    camera cuts, owner/device changes, target recreation/resize, AA and preset changes invalidate with colour.
+    A newly created or unseeded visibility generation is invalid independently of colour readiness. Standalone
+    resolves without a lit signal bind an owned fully lit R8 fallback and copy it through the same path. Release
+    binding sets before their textures and retire through `GpuRetireQueue`. TAA off and scene disposal retire the
+    histories. Steady frames create no resources and allocate zero managed bytes.
+
+    **Certified fully lit frames, Task 7h K.** The actual shared receiver upload certifies the scene's R8 only
+    when its key-shadow strength is nonpositive. StoreVisibility publishes that certificate with the copied write
+    index. When the current and ready read-index certificates both hold, a separately compiled accumulation sets
+    visibility release to false, removing both decision helpers and footprint loads. Colour release, carried-lock
+    classification and barrier-ordered lock release are unchanged. Fused, split, Native, precision and debug/count
+    paths cache matching programs and binding sets. R8 storage and copies remain. Both transitions and every
+    uncertified frame retain the ordinary check. Synthetic R8 stays unknown and the owned all-white fallback can
+    certify. This is no timing claim for shadowed frames. The [implementation record](../superpowers/specs/2026-10-19-taa-shadow-visibility-design.md#task-7h-k)
+    links the exactness and lifecycle evidence.
+
+    **Capability policy.** Motion plus visibility requires five colour attachments. A device below five keeps the
+    four-attachment lit layout and the existing supported fused resolve without visibility evidence. Bilinear PCF
+    still applies and the existing capability log reports the missing visibility path once. There is no unsupported
+    framebuffer or silent device-floor increase. Metal and Direct3D 11 allow eight, as do the tested desktop Vulkan
+    devices including lavapipe. A companion geometry pass and packing into occupied colour/depth/normal/motion
+    channels were rejected. The four-attachment readback matches the filter-only resolve.
+
+    **Memory.** Logical non-MSAA payloads at a 2560x1440 display are below, excluding alignment, retirement overlap,
+    the optional fully lit fallback and the 16-byte previous-jitter buffer. MSAA test layouts also hold a matched
+    multisampled R8 attachment. Existing two-draw resolve counts do not change.
+
+    | R8 resource | Native MiB (2560x1440) | Quality MiB (1707x960) |
+    | --- | ---: | ---: |
+    | Lit signal | 3.515625 | 1.562805 |
+    | One history | 3.515625 | 1.562805 |
+    | Both histories | 7.031250 | 3.125610 |
+    | Signal plus history pair | 10.546875 | 4.688416 |
+
+    **Baseline and accepted costs.** The signal is judged against bilinear PCF with the frozen 21.4.0 resolve,
+    not against the changed point-PCF input or its own output. Re-captured spatial references and per-driver rim
+    controls preserve `(baseline + 0.0000005) * 1.1`, reference tolerance `0.000001`, masks and case inventory.
+    The [rim GPU test](../../KhaozEngine.Render.Tests/Gpu/TemporalMovingShadeRimGpuTests.cs#L37) applies that
+    reference tolerance through [TemporalReviewBaseline.Check](../../KhaozEngine.Render.Tests/Gpu/TemporalReviewBaseline.cs#L283)
+    as `2 * Rounding`, with `Rounding = 0.0000005`.
+    Historical point-PCF measurements remain history. The owner accepted these measured costs after D's clips.
+    WARP and lavapipe each received a separate acceptance after hosted run 39215298727 because they showed the
+    same lock-release costs. Each driver's own measurement sets its bound, never another driver's result.
+
+    The previous enforced tail bounds already include the paired control plus `0.0000005`, as applied by
+    the [absolute-tail check](../../KhaozEngine.Render.Tests/Gpu/TemporalMovingShadeLagGpuTests.cs#L415).
+    The [recorded paired controls](../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/owner-release-only.md#L14)
+    are `0.007138470657410495` for hardware and
+    [`0.007152403227222303 / 0.00716773283842791`](../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/owner-release-only.md#L35)
+    for WARP/lavapipe. Previous rim bounds also include their unchanged allowance and tolerance through
+    `(baseline + 0.0000005) * 1.1`.
+
+    | Driver and accepted cost | Measured D | Previous enforced bound | Accepted bound |
+    | --- | ---: | ---: | ---: |
+    | Hardware Native 8 px retreating textured tail | 0.007221076276167364 | 0.007138970657410495 | 0.007221576276167364 |
+    | WARP Native 8 px retreating textured tail | 0.007222797931709032 | 0.007152903227222303 | 0.007223297931709032 |
+    | lavapipe Native 8 px retreating textured tail | 0.007245504857927269 | 0.00716823283842791 | 0.007246004857927269 |
+    | Hardware Quality textured grain | 0.008031049526854536 | 0.008 | 0.008032 |
+    | WARP Quality textured grain | 0.008013324991270224 | 0.008 | 0.008014 |
+    | lavapipe Quality textured grain | 0.008039903208144449 | 0.008 | 0.008040 |
+    | Hardware Quality M 1.0 leading textured rim error | 0.0030106876217401947 | 0.00271205 | 0.00331265 |
+    | Hardware same rim temporal error | 0.004819472651560228 | 0.00432135 | 0.00530145 |
+    | WARP Quality M 1.0 leading textured rim error | 0.003134108234483462 | 0.00278355 | 0.00344795 |
+    | WARP same rim temporal error | 0.004831370554127536 | 0.00428835 | 0.00531465 |
+    | lavapipe Quality M 1.0 leading textured rim error | 0.0030749369871157866 | 0.00286275 | 0.00338305 |
+    | lavapipe same rim temporal error | 0.0047599525602309255 | 0.00438845 | 0.00523655 |
+
+    The written reason is the owner's 2026-10-19 choice: visibility lock release removes held shadow sparkle,
+    and these synthetic values are its measured cost. No large-change response ships. Only the Native 8 px
+    retreating textured tail per driver takes measured D plus the unchanged `0.0000005` allowance. Quality grain
+    rounds each driver's exact value upward to six decimals. Native grain stays `0.0113` and Balanced remains
+    report-only. Only error and temporal error in the single Quality M 1.0 leading textured rim row change,
+    using six-decimal baselines and the existing formula. Rim change/reference fields and all other bounds stay.
+
+    **Measured proof.** [Filter baseline](../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/filter-baseline.md)
+    pins the unchanged resolve and driver-specific controls. [Reset tuning](../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/reset-tuning.md)
+    preserves the rejected eight-arm history. [Owner release-only costs](../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/owner-release-only.md)
+    records D, its full-precision rows and per-driver acceptance. [Real-scene acceptance](../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/real-scene.md)
+    records the owner clips and shipping-source confirmation: back15 character grain/dots improve from bilinear-only
+    `0.008027197 / 851` to `0.005474607 / 364` at Native and from `0.011052578 / 1166` to `0.008704202 / 759` at Quality.
+    [Entry identity](../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/entry-identity.md) preserves
+    the precision repair. [Non-finite depths](../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/non-finite-depths.md)
+    records optimized FXC behavior and explicit finite qualification. Earlier red results remain in those records
+    with their original scope. Vulkan zero-message counts without a debug messenger do not prove validation coverage.
+    This batch's GPU timing and bandwidth cost remain unmeasured and need the separate owner-approved benchmark.

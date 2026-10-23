@@ -264,7 +264,20 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   generation, a cluster area and its `PropLayer`. It performs the pure `PropHlod` merge on a worker with no GPU
   access. `Apply(key, build)`, `Draw(focus)`, `Draw(focus, filter)`, `Invalidate(key)` and `Unload(key)` belong on
   the scene thread. Apply
-  discards stale generations and results completed after unload. An initial HLOD failure retries three times,
+  discards stale generations and results completed after unload. Across the HLOD band, individuals and the merged
+  handle share one threshold with opposite keep sets in colour and shadow through `DissolveComplement`.
+  Selected outlines use the same threshold and phase. With one active handoff, coincident surfaces have no gaps
+  or doubled coverage. Overlapping individual LOD and HLOD bands retain the existing three-way gap composition.
+  Different silhouettes still sample different world positions (#1296). The draw-radius exit remains an ordinary fade.
+  `DrawWithVisibility(focus, IPropClusterVisibility)` routes hidden placements into shadow-only submission with
+  the same transforms, LOD and fades. The visibility source retains metadata for both generations reported by
+  `PropClusterDrawState`. A partly hidden merged cluster falls back to resident individuals without its HLOD fade
+  floor, or merged shadow-only when individuals are unavailable. All-hidden merged geometry keeps its shadow,
+  subject to `CastsShadows`. `PropClusterDrawState.HasIndividualGeometry` reports resident fallback availability.
+  `PropClusterVisibilityDecision.Resolve` shares the effective representations, source generations, fade floor
+  and per-placement colour eligibility between the draw and selected outlines, including failed rebuilds.
+  The returned `PropClusterDrawCounts` counts represented placements, with each
+  complementary individual and merged pair counted once. An initial HLOD failure retries three times,
   logs once for that key and generation, and retains individual props. A rebuild failure keeps the last accepted
   merged handle while adopting the failed request's current individual placements and layer. A successful
   replacement uploads first and retires the old handle after the new generation is accepted. `MergeStats` reports

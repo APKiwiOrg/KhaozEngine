@@ -60,8 +60,11 @@ namespace KhaozEngine.Terrain
         {
             s.Scene.Draw(new RigidInstanceDraw(handle, world)
             {
-                Tint = s.Tint, Dissolve = dissolve, DissolveComplement = complement,
-                CastsShadows = s.CastsShadows, CutInsideInteriors = s.CutInsideInteriors,
+                Tint = s.Tint,
+                Dissolve = dissolve,
+                DissolveComplement = complement,
+                CastsShadows = s.CastsShadows,
+                CutInsideInteriors = s.CutInsideInteriors,
             });
         };
 

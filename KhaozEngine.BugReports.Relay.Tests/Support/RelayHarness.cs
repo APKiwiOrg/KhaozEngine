@@ -14,7 +14,7 @@ internal sealed class RelayHarness
     public const string Reference = "R-YMWQV0";
     public ManualClock Clock { get; } = new(new DateTimeOffset(2026, 10, 17, 1, 2, 3, TimeSpan.Zero));
     public InMemoryReportMediaStore Media { get; } = new();
-    public InMemoryReportWorkQueue Work { get; } = new();
+    public InMemoryReportWorkQueue Work { get; }
     public InMemoryReportQuotaStore Quotas { get; } = new();
     public FakeAuthenticator Authenticator { get; } = new();
     public RecordingGitHubIssueClient GitHub { get; } = new();
@@ -38,6 +38,7 @@ internal sealed class RelayHarness
         Func<InMemoryReportMediaStore, IReportMediaStore>? wrapMedia = null,
         Func<InMemoryReportWorkQueue, IReportWorkQueue>? wrapWork = null)
     {
+        Work = new InMemoryReportWorkQueue(Clock);
         Options = (configure?.Invoke(DefaultOptions()) ?? DefaultOptions()) with { Logger = Logger };
         Relay = new BugReportRelay(Options, Authenticator, wrapMedia?.Invoke(Media) ?? Media,
             wrapWork?.Invoke(Work) ?? Work, Quotas, GitHub, Clock);

@@ -179,7 +179,7 @@ string anonymous = reporter.Redact(line);
   `password=`, `"apiKey": "..."` or `AccountKey=` (the key and separator are kept).
 - `WithReporterIdentityTerms(source)` calls the game source once now and returns an independent snapshot. It masks
   complete escaped literal terms, including occurrences inside longer text, after secrets and before home. Matching
-  is invariant case-insensitive, longest first, with the non-backtracking engine and the same timeout. Null, blank
+  is invariant case-insensitive, longest first, with the non-backtracking engine and no wall-clock deadline. Null, blank
   and terms shorter than three characters are ignored. A source or enumeration that throws, a null result, an
   unsupported pattern, or a combined escaped pattern above 4096 characters fails closed by masking every string.
   The source must finish promptly. `BugReportServiceOptions.ReporterIdentityTerms` takes this snapshot at each
@@ -187,17 +187,21 @@ string anonymous = reporter.Redact(line);
 - The home directory becomes `~`, matched case-insensitively with either separator and only where the path ends,
   so `/Users/anna` survives a home of `/Users/ann`. Trailing separators on the home are ignored, and a home
   shorter than three characters turns the rule off.
-- Every secret rule runs on the non-backtracking engine, so it is linear in the input by construction. A JWT
+- Every rule runs on the non-backtracking engine, so it is linear in the input by construction. A JWT
   may start only at the start of the text or after a character that cannot be in a token, and that character is
-  kept. The home rule stays on the backtracking engine for its look-ahead, and its body is an escaped literal
-  path.
+  kept. The home rule matches an escaped literal path and its following boundary, preserving that boundary for
+  adjacent paths. An unsupported home pattern or one above 4096 escaped characters masks every string.
+- Secret key/value pairs match the key, quotes and separator with a non-backtracking prefix pattern, then scan
+  the value up to the original whitespace, quote, comma, semicolon or ampersand boundary. This avoids growing a
+  combined key/value automaton across reports while retaining the same masked values.
 - The linear guarantee has a one-time cost. The engine turns each pattern into an automaton, so building the
-  shared default rules allocates about 11.8 MB once per process, when the first redactor is constructed.
+  shared default rules allocates once per process, when the first redactor is constructed.
   `BugReportService` builds its redactor at construction, so that lands at game startup. The automaton grows
-  lazily as it meets new input, so the first report pays about 70 ms of matcher setup. Redaction runs over
+  lazily as it meets new input, so the first report also pays matcher setup. Redaction runs over
   log text a player can influence, and linear time keeps that bounded whatever the text holds.
-- Every pattern also has a 250 ms match timeout as a backstop. A timeout fails closed: the whole string comes
-  back as `[redacted]`.
+- Matchers explicitly disable wall-clock timeouts, so machine load cannot erase ordinary report text. Input and
+  intermediate strings above 4,194,304 UTF-16 code units fail closed as `[redacted]`. This bounds matching work
+  without depending on elapsed time. Replacement growth is checked before the next pass and before returning.
 - Thread-safe. Clean text is returned as the same instance without allocating.
 - `SelectEnvironment` keeps only `KE_` variables, chosen and sorted exactly as
   `TelemetrySessionHeader.SelectEngineVariables` does. A name containing `TOKEN`, `SECRET`, `PASSWORD`,
@@ -237,7 +241,7 @@ Headless, renderer-free building blocks for an in-game diagnostics/telemetry HUD
 [`KhaozEngine.Gui`](../KhaozEngine.Gui) `DiagnosticsOverlay` renders them; the recorder writes them to disk.
 
 - `FrameStats` - per-frame meter. `Sample(dt)` once per frame, then read `Fps`, `FrameMsAvg`/`FrameMsMin`/`FrameMsMax` over a rolling window (default ~1s; `new FrameStats(windowSeconds)`) and `ManagedBytes` (`GC.GetTotalMemory(false)`). Non-positive / NaN / infinite `dt` are ignored. Unit-testable from a synthetic dt stream.
-- `PassTimings` - the same shape as `FrameStats` but keyed by pass name: `Sample(pass, ms)` once per pass per frame, then read `AvgMs(pass)`/`MinMs(pass)`/`MaxMs(pass)` over a rolling window (default ~1s) and `PassNames` (first-sampled order). `Reset()` forgets every pass. The window is REAL time, not summed pass time: each sample is timestamped off an `IClock` and trimmed by wall clock, since a pass costs a fraction of a frame and summing its milliseconds would stretch the window to tens of seconds, by a different factor per pass. `new PassTimings(windowSeconds, clock)` takes a fake clock so a test drives the window without sleeping. Feed it from a renderer's own per-pass CPU-encode readout (e.g. `KhaozEngine.Render3D.Scene3D.PassTimingsMs`, once `Scene3D.EnableTiming` is set) - this package stays GPU-free, so it does not own the pass boundaries itself. Measures CPU encode time, not true GPU execution time. See the `KhaozEngine.Render3D` README and `docs/USING-KHAOZENGINE.md` for what that distinction means and why (the `KhaozEngine.Gpu` seam exposes no timestamp-query API).
+- `PassTimings` - the same shape as `FrameStats` but keyed by pass name: `Sample(pass, ms)` once per pass per frame, then read `AvgMs(pass)`/`MinMs(pass)`/`MaxMs(pass)` over a rolling window (default ~1s) and `PassNames` (first-sampled order). `Reset()` forgets every pass. The window is REAL time, not summed pass time: each sample is timestamped off an `IClock` and trimmed by wall clock, since a pass costs a fraction of a frame and summing its milliseconds would stretch the window to tens of seconds, by a different factor per pass. `new PassTimings(windowSeconds, clock)` takes a fake clock so a test drives the window without sleeping. Feed it from a renderer's own per-pass CPU-encode readout (e.g. `KhaozEngine.Render3D.Scene3D.PassTimingsMs`, once `Scene3D.EnableTiming` is set) - this package stays GPU-free, so it does not own the pass boundaries itself. Measures CPU encode time, not true GPU execution time. See the `KhaozEngine.Render3D` README and `docs/USING-KHAOZENGINE.md` for that distinction. The optional `KhaozEngine.Gpu` timestamp-pool seam separately measures GPU execution on supported devices.
 - `TelemetryRecorder` + `TelemetryChannel(string Name, double Value)` - streams a session to a JSON Lines file, one object per `Sample(elapsedSeconds, channels)` (`{"t":12.34,"fps":59.7,...}`), flushed per line so a crash leaves a valid partial file. `Start(path)` / `Start(path, TelemetrySessionInfo)` / `Stop()` / `IsRecording` / `CurrentPath`, plus `IDisposable`. Records raw numbers, and non-finite values serialize as JSON `null`.
   - **The sample row is the session's channel for a number that MOVES**, and the header is the channel for what was already fixed at start. Since 17.32.0 the GPU stack projects its own soak counters into these rows through `KhaozEngine.Gpu`'s `GpuTelemetryChannels.AppendTo(row, window.Counters)` (`gpuDrainMs`, `gpuBackpressureStalls`, and the rest). That mapping lives there and not here for the same reason `GpuTelemetry` does: that package references this one, not the reverse.
 - `TelemetrySessionHeader` + `TelemetrySessionInfo` + `TelemetryHeaderValue(string Key, string Value)` (since 17.25.0) - the self-identifying FIRST line of every recording, so a capture says what produced it. A `session` envelope with a `v` schema integer (`SchemaVersion`) and deliberately NO `t` field, so one key tells it apart from a sample row in either direction.

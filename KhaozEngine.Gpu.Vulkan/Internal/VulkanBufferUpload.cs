@@ -32,13 +32,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// parameter would allocate a 32-byte box per staged upload. <c>VulkanStagingAllocationTests</c> pins that the
     /// generic form allocates nothing.</para>
     ///
-    /// <para><b>BOTH BARRIERS ARE OVER THE WRITTEN RANGE.</b> The incumbent emitted a GLOBAL
-    /// <c>VkMemoryBarrier</c> instead, one of them, which makes every access of its class wait rather than the one
-    /// buffer that was written, and names <c>VertexAttributeRead</c> at <c>VertexInput</c> whatever the destination
-    /// is. See <see cref="VulkanUploadBarrier"/> for what that gets wrong in both directions at once.</para>
+    /// <para><b>DESTINATION DEPENDENCIES COVER THE WRITTEN RANGE.</b> They retain the buffer's usage-specific
+    /// masks. Pooled aliases are released at the shared command-buffer seal through
+    /// <see cref="VulkanMemoryRelease"/>, before completion permits reuse.</para>
     ///
     /// <para><b>NO BATCHING, AND THAT IS A CHOICE THIS ROW MAKES CHEAPLY REVERSIBLE.</b> Two uploads in a row
-    /// produce two copies and four barriers. Coalescing them into one <c>vkCmdPipelineBarrier2</c> carrying N
+    /// produce two copies and four barrier calls. Coalescing them into one <c>vkCmdPipelineBarrier2</c> carrying N
     /// buffer barriers is strictly better and needs a pending-upload list on the recorder, which is the recorder's
     /// shape rather than this function's, so it belongs with the row that builds one. The barrier count is visible
     /// through the counting sink either way, so a load that turns out to emit thousands is measurable rather than

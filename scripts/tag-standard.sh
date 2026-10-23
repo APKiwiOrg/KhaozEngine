@@ -92,15 +92,47 @@ tag_release_window() {
   printf past-tag
 }
 
-# tag_nonpackable_test <commit> <path> -> 0 for a path owned by a non-packable test project.
-# Read the project at the pushed commit, never from the worktree. A test-looking name alone is not
-# enough. Strip XML comments and require one literal false in a direct unconditional PropertyGroup.
-# Unsupported MSBuild containers and conflicting declarations stay version-bearing.
-tag_nonpackable_test() {
-  _nt_dir=${2%%/*}
-  case "$_nt_dir" in KhaozEngine.*Tests) ;; *) return 1 ;; esac
-  _nt_project=$_nt_dir/$_nt_dir.csproj
-  git show "$1:$_nt_project" 2>/dev/null | awk '
+# Parse the small XML subset that proves a test project non-packable. Project mode emits only
+# literal imports resolved within test-shared/. Shared mode forbids further imports and admits only
+# false IsPackable properties, Compile items and AssemblyAttribute items with their safe metadata.
+# Unknown properties, items or attributes cannot acquire an exclusion by hiding in shared props.
+tag_nonpackable_test_xml() {
+  awk -v shared="$1" -v project_dir="${2:-}" '
+    function import_path(path, count, pieces, parts, n, i, result) {
+      if (path !~ /^[A-Za-z0-9_.\/-]+[.]props$/ || substr(path, 1, 1) == "/") return ""
+      n = split(project_dir "/" path, pieces, "/")
+      for (i = 1; i <= n; i++) {
+        if (pieces[i] == "" || pieces[i] == ".") continue
+        if (pieces[i] == "..") { if (!count) return ""; count-- }
+        else parts[++count] = pieces[i]
+      }
+      if (count < 2 || parts[1] != "test-shared") return ""
+      result = parts[1]
+      for (i = 2; i <= count; i++) result = result "/" parts[i]
+      return result
+    }
+    function safe_attributes(tag, allowed, rest, entry, key, value, seen, quote, pattern) {
+      for (key in attributes) delete attributes[key]
+      rest = tag
+      sub(/^<[A-Za-z_][A-Za-z0-9_.-]*/, "", rest)
+      sub(/\/?>$/, "", rest)
+      quote = sprintf("%c", 39)
+      pattern = "^[[:space:]]+[A-Za-z_][A-Za-z0-9_.-]*[[:space:]]*=[[:space:]]*(\"[^\"]*\"|" quote "[^" quote "]*" quote ")"
+      while (rest !~ /^[[:space:]]*$/) {
+        if (!match(rest, pattern)) return 0
+        entry = substr(rest, RSTART, RLENGTH)
+        rest = substr(rest, RSTART + RLENGTH)
+        key = entry
+        sub(/^[[:space:]]*/, "", key)
+        sub(/[[:space:]=].*$/, "", key)
+        if (!index("|" allowed "|", "|" key "|") || index(seen, "|" key "|")) return 0
+        seen = seen "|" key "|"
+        value = entry
+        sub(/^[^=]+=[[:space:]]*/, "", value)
+        attributes[key] = substr(value, 2, length(value) - 2)
+      }
+      return 1
+    }
     { xml = xml "\n" $0 }
     END {
       while ((start = index(xml, "<!--")) > 0) {
@@ -110,10 +142,14 @@ tag_nonpackable_test() {
         xml = substr(xml, 1, start - 1) substr(tail, finish + 3)
       }
       if (xml ~ /<!\[CDATA\[/) exit 1
-      if (xml ~ /<(Choose|When|Otherwise|Target|Import|ImportGroup|UsingTask|Sdk)[[:space:]\/>]/) exit 1
+      if (xml ~ /<(Choose|When|Otherwise|Target|ImportGroup|UsingTask|Sdk)[[:space:]\/>]/) exit 1
+      if (shared && xml ~ /<Import[[:space:]\/>]/) exit 1
       if (xml ~ /<(Project|PropertyGroup)[^>]*Condition[[:space:]]*=/) exit 1
       tree = xml
       while (match(tree, /<[^>]+>/)) {
+        content = substr(tree, 1, RSTART - 1)
+        if (shared && content !~ /^[[:space:]]*$/ && tolower(parents[depth]) != "ispackable" &&
+            parents[depth] !~ /^(Link|_Parameter[1-9][0-9]*)$/) exit 1
         tag = substr(tree, RSTART, RLENGTH)
         tree = substr(tree, RSTART + RLENGTH)
         if (tag ~ /^<\?xml[[:space:]]/) continue
@@ -122,22 +158,63 @@ tag_nonpackable_test() {
         sub(/[[:space:]\/>].*$/, "", name)
         if (name !~ /^[A-Za-z_][A-Za-z0-9_.-]*$/) exit 1
         if (tag ~ /^<\//) {
+          if (shared && tag !~ /^<\/[A-Za-z_][A-Za-z0-9_.-]*[[:space:]]*>$/) exit 1
           if (depth < 1 || parents[depth] != name) exit 1
           depth--
         } else {
           if (!depth && (name != "Project" || ++roots != 1)) exit 1
-          if (depth == 1 && name != "PropertyGroup" && name != "ItemGroup") exit 1
+          if (depth == 1 && name != "PropertyGroup" && name != "ItemGroup" && name != "Import") exit 1
+          if (name == "Import") {
+            if (shared || depth != 1 || tag !~ /\/>$/ || !safe_attributes(tag, "Project")) exit 1
+            path = import_path(attributes["Project"])
+            if (!path) exit 1
+            imports[++import_count] = path
+          }
           if (tolower(name) == "ispackable" && (depth != 2 || parents[1] != "Project" || parents[2] != "PropertyGroup")) exit 1
+          if (shared) {
+            allowed = ""
+            if (depth == 2) {
+              if (parents[2] == "PropertyGroup") {
+                if (tolower(name) != "ispackable") exit 1
+              } else if (name == "Compile") allowed = "Include|Link"
+              else if (name == "AssemblyAttribute") allowed = "Include"
+              else exit 1
+            } else if (depth == 3) {
+              if (parents[3] == "Compile") { if (name != "Link") exit 1 }
+              else if (parents[3] != "AssemblyAttribute" || name !~ /^_Parameter[1-9][0-9]*$/) exit 1
+            } else if (depth > 3) exit 1
+            if (!safe_attributes(tag, allowed)) exit 1
+          }
           if (tag !~ /\/>$/) parents[++depth] = name
         }
       }
-      if (depth || roots != 1) exit 1
+      if (depth || roots != 1 || (shared && tree !~ /^[[:space:]]*$/)) exit 1
       properties = tolower(xml)
-      if (!sub(/<ispackable>[[:space:]]*false[[:space:]]*<\/ispackable>/, "", properties)) exit 1
+      if (shared) {
+        while (sub(/<ispackable>[[:space:]]*false[[:space:]]*<\/ispackable>/, "", properties)) {}
+      } else if (!sub(/<ispackable>[[:space:]]*false[[:space:]]*<\/ispackable>/, "", properties)) exit 1
       if (properties ~ /<ispackable[[:space:]\/>]/) exit 1
+      for (i = 1; i <= import_count; i++) print imports[i]
       exit 0
     }'
 }
+
+# tag_nonpackable_test <commit> <path> -> 0 for a path owned by a non-packable test project.
+# Read the project AND imports at the pushed commit, never from the worktree. Require one literal
+# false in a direct unconditional PropertyGroup. Imports must be regular tracked props files inside
+# test-shared/, proved separately by the same parser. Unsupported XML stays version-bearing.
+tag_nonpackable_test() (
+  _nt_commit=$1
+  _nt_dir=${2%%/*}
+  case "$_nt_dir" in KhaozEngine.*Tests) ;; *) exit 1 ;; esac
+  _nt_project=$_nt_dir/$_nt_dir.csproj
+  _nt_imports=$(git show "$_nt_commit:$_nt_project" 2>/dev/null | tag_nonpackable_test_xml 0 "$_nt_dir") || exit 1
+  printf '%s\n' "$_nt_imports" | while IFS= read -r _nt_import; do
+    [ -n "$_nt_import" ] || continue
+    git ls-tree "$_nt_commit" -- "$_nt_import" | grep -Eq "^100(644|755) blob " || exit 1
+    git show "$_nt_commit:$_nt_import" 2>/dev/null | tag_nonpackable_test_xml 1 > /dev/null || exit 1
+  done
+)
 
 # tag_version_bearing <from> <to> -> 0 when the range changes something that ships inside a package,
 # 1 when every change is tests, documentation, tooling or repository governance.

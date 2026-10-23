@@ -17,17 +17,28 @@ internal static class MapPrefabEditPreparation
 {
     internal static readonly MapEffectiveTransform Identity = new(0, 0, 0, 0, 1);
     internal static readonly MapTransform AuthoredIdentity = new(Vector3.Zero, 0, 1);
-    internal static MapDocument Copy(MapDocument document) => MapDocumentFile.LoadText(MapDocumentFile.SaveText(document));
+    [ThreadStatic] static long t_copies;
+
+    /// <summary>The whole-document candidate copies this thread made, counted at entry.</summary>
+    internal static long ThreadCopies => t_copies;
+
+    // A detached candidate that shares the immutable foliage set instead of encoding its density.
+    internal static MapDocument Copy(MapDocument document)
+    {
+        t_copies++;
+        return MapDocumentFile.CopyWithSharedFoliage(document);
+    }
     internal static MapEffectiveResources Begin(MapDocument document, MapAssetClosure assets)
     {
         MapBoundDocumentValidation.Validate(document, assets);
-        return MapPrefabResolver.Expand(document, assets);
+        return MapDocumentEditFinalizer.Expand(document, assets);
     }
 
     internal static MapPrefabEditResult Finish(MapDocument after, MapAssetClosure assets, MapEffectiveResources before,
         IReadOnlyList<string> instances, IEnumerable<MapPrefabBinding> bindings, bool unpack = false, bool nativeAssets = false,
         bool interiors = false)
     {
+        MapDocumentEditFinalizer.Preflight(after, assets);
         _ = MapPrefabPreflight.Count(after, assets, new());
         for (int i = 0; i < after.Surfaces.Refs.Count; i++)
         {
@@ -41,7 +52,7 @@ internal static class MapPrefabEditPreparation
         MapPrefabAttachmentDescriptors.Refresh(after);
         after = Copy(after);
         MapBoundDocumentValidation.Validate(after, assets);
-        var resources = MapPrefabResolver.Expand(after, assets);
+        var resources = MapDocumentEditFinalizer.Expand(after, assets);
         var errors = MapPrismCoverage.Validate(resources.CompleteView(), new());
         if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
         MapBoundDocumentValidation.ValidateEffectiveWater(resources, assets);
@@ -75,7 +86,7 @@ internal static class MapPrefabEditPreparation
             NativeAssets = nativeAssets,
             Water = unpack && resources.Water is not null,
         };
-        return new(after, writes, effects);
+        return new(after, writes, effects) { Expansions = new(before, resources) };
     }
 
     internal static string[] Ids(IEnumerable<string> values) => values.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();

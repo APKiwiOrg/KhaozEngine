@@ -273,7 +273,8 @@ namespace KhaozEngine.Tests.Windowing
 
             // Each press holds 12 frames of 1/32 s: pending through frame 7, crossing on frame 8, dragging after.
             int crossings = 0;
-            AllocAssert.NoPerCallAllocation("PointerGesture.Advance over held tolerance presses", () =>
+
+            void Presses()
             {
                 for (int press = 0; press < 4; press++)
                 {
@@ -286,7 +287,13 @@ namespace KhaozEngine.Tests.Windowing
 
                     gesture.Advance(released, false, 1f / 32f);
                 }
-            });
+            }
+
+            // Warm the same path first so one-time JIT, tiering and static initialisation stay outside the measured window. AllocationMeasurement leaves warm-up to the caller.
+            Presses();
+            crossings = 0;
+
+            AllocAssert.NoPerCallAllocation("PointerGesture.Advance over held tolerance presses", Presses);
 
             Assert.True(crossings >= 4, $"expected a crossing per press, got {crossings}");
         }

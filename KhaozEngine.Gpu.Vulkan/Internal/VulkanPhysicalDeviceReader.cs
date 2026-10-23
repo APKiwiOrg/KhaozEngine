@@ -40,6 +40,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="MaxColorAttachments">The smaller of <c>VkPhysicalDeviceLimits.maxColorAttachments</c> and
     /// <c>maxFragmentOutputAttachments</c> (<see cref="VulkanCapabilityRead.ColorAttachmentLimit"/>), each at least 4
     /// by the specification, which <see cref="GpuCapabilities.MaxColorAttachments"/> carries.</param>
+    /// <param name="TimestampValidBits">The selected graphics queue family's counter width.</param>
+    /// <param name="TimestampPeriodNanoseconds">The physical device's limits.timestampPeriod.</param>
     internal readonly record struct VulkanPhysicalDeviceRead(
         VulkanDeviceFacts Facts,
         VulkanFeatureSupport Features,
@@ -51,7 +53,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         VulkanMemoryFacts Memory,
         VulkanPipelineCacheIdentity PipelineCacheIdentity,
         string ReportedDeviceName,
-        uint MaxColorAttachments);
+        uint MaxColorAttachments,
+        int TimestampValidBits = 0,
+        double TimestampPeriodNanoseconds = 0d);
 
     /// <summary>
     /// The one place a <c>VkPhysicalDevice</c> is turned into plain data, shared by the support probe and by
@@ -95,7 +99,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // message nobody could act on.
             string reportedName = ReadReportedDeviceName(&properties);
             string name = ReadDeviceName(&properties);
-            uint graphicsFamily = FirstGraphicsQueueFamily(vk, device);
+            uint graphicsFamily = FirstGraphicsQueueFamily(vk, device, out int timestampValidBits);
             VulkanMemoryFacts memory = ReadMemory(vk, device, &properties);
 
             var facts = new VulkanDeviceFacts(
@@ -126,7 +130,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 ReadPipelineCacheIdentity(&properties),
                 reportedName,
                 VulkanCapabilityRead.ColorAttachmentLimit(properties.Limits.MaxColorAttachments,
-                    properties.Limits.MaxFragmentOutputAttachments));
+                    properties.Limits.MaxFragmentOutputAttachments),
+                timestampValidBits, properties.Limits.TimestampPeriod);
         }
 
         /// <summary>
@@ -264,8 +269,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // V-N5's read, the half that needs no surface: the FIRST family with VK_QUEUE_GRAPHICS_BIT. Whether it can
         // also present is the windowed clause, decided where a surface exists.
-        static uint FirstGraphicsQueueFamily(Vk vk, PhysicalDevice device)
+        static uint FirstGraphicsQueueFamily(Vk vk, PhysicalDevice device, out int timestampValidBits)
         {
+            timestampValidBits = 0;
             uint familyCount = 0;
             vk.GetPhysicalDeviceQueueFamilyProperties(device, &familyCount, null);
             if (familyCount == 0) return NoQueueFamily;
@@ -276,9 +282,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 vk.GetPhysicalDeviceQueueFamilyProperties(device, &familyCount, handles);
             }
 
-            for (uint i = 0; i < familyCount; i++)
+            return FirstGraphicsQueueFamily(families.AsSpan(0, (int)familyCount), out timestampValidBits);
+        }
+
+        internal static uint FirstGraphicsQueueFamily(ReadOnlySpan<QueueFamilyProperties> families,
+            out int timestampValidBits)
+        {
+            timestampValidBits = 0;
+            for (int i = 0; i < families.Length; i++)
             {
-                if ((families[i].QueueFlags & QueueFlags.GraphicsBit) != 0) return i;
+                if ((families[i].QueueFlags & QueueFlags.GraphicsBit) == 0) continue;
+                timestampValidBits = (int)families[i].TimestampValidBits;
+                return (uint)i;
             }
             return NoQueueFamily;
         }

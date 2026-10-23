@@ -36,12 +36,7 @@ public sealed partial class TileWorldView
     public bool IsRoofHidden(TileRect footprint, int plane)
     {
         EnsureInterior();
-        return RoofMode switch
-        {
-            RoofVisibility.AlwaysVisible => false,
-            RoofVisibility.AlwaysHidden => true,
-            _ => ObserverIndoors && plane > _observer.Plane && _interior.Intersects(footprint),
-        };
+        return RoofRule.IsHidden(footprint, plane);
     }
 
     // Queues one region-plane's roofs: the visible ones through the ordinary prop path, the hidden ones as
@@ -66,7 +61,7 @@ public sealed partial class TileWorldView
     (IReadOnlyList<PropPlacement> Visible, IReadOnlyList<PropPlacement> Hidden) SplitRoofs(
         TileRegionProps props, int plane)
     {
-        if (!AnyRoofHiddenOn(plane)) return (props.Roofs, Array.Empty<PropPlacement>());
+        if (!RoofRule.AnyHiddenOn(plane)) return (props.Roofs, Array.Empty<PropPlacement>());
         if (RoofMode != RoofVisibility.Interior) return (Array.Empty<PropPlacement>(), props.Roofs);
 
         _visibleRoofs.Clear();
@@ -77,18 +72,11 @@ public sealed partial class TileWorldView
             // A roof the footprint list does not reach is one nothing placed, so it is not part of any interior
             // and stays visible. TileObjectProps.Build always fills the list, so this is the hand-built case.
             TileRect footprint = i < footprints.Count ? footprints[i] : default;
-            if (_interior.Intersects(footprint)) _hiddenRoofs.Add(props.Roofs[i]);
+            if (RoofRule.IsHidden(footprint, plane)) _hiddenRoofs.Add(props.Roofs[i]);
             else _visibleRoofs.Add(props.Roofs[i]);
         }
         return (_visibleRoofs, _hiddenRoofs);
     }
 
-    // Whether the mode and the observer can hide ANY roof on this plane, which is the per-region-plane gate that
-    // keeps the per-roof test off the outdoor path entirely.
-    bool AnyRoofHiddenOn(int plane) => RoofMode switch
-    {
-        RoofVisibility.AlwaysVisible => false,
-        RoofVisibility.AlwaysHidden => true,
-        _ => ObserverIndoors && plane > _observer.Plane && _interior.Count > 0,
-    };
+    TileRoofVisibilityRule RoofRule => new(RoofMode, ObserverIndoors, _observer.Plane, _interior);
 }

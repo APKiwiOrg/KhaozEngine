@@ -592,23 +592,14 @@ window.Run(
 Name the arguments. Both are `Action<Frame>`, so swapping them compiles and silently moves every draw outside
 the frame's command list.
 
-**Why it exists.** Some per-frame GPU work cannot be recorded into the frame's list at all: a compute dispatch
-whose output another dispatch reads in the same frame has no dispatch-to-dispatch barrier at the GPU seam, so its
-only ordering is a submit plus a device wait, which means a command list of its own. Opening one while the
-frame's list is recording is the nested recording the seam refuses by name, on every backend, so that work has
-nowhere to go inside the record phase. The headless hosts (`Render3DSnapshot.Capture`,
-`Render3DPreview.Capture`) open the frame's list themselves and could already honour that ordering. The windowed
-loop opened it before calling back, so no host running on a window could (issue #429). This phase is the fix.
+**Why it exists.** Existing producers can submit work through their own command lists. The FFT ocean retains
+that schedule. Opening a producer list while the host list is recording is the nested recording the seam
+refuses on every backend. Prepare before the host opens its list. Dependent storage-buffer dispatches can now
+share one list without a drain, but that guarantee does not change existing producer submission patterns.
 
-**It was built for a backend that no longer exists, and it is KEPT anyway (18.0.0, issue #690).** The urgency
-came from the vendored Veldrid Direct3D11 leg, where a command list WAS the device's immediate context and a
-second `Begin` called `ClearState` on it, so the nesting was a silent one-frame corruption rather than a refusal
-(issue #423). That leg was deleted in 18.0.0, and the plan of record had been to retire this phase with it. It
-was not, because neither reason it rests on was that leg's: the seam still offers no dispatch-to-dispatch
-barrier, so a dependent compute chain still pays `End` + `Submit` + a device wait and still needs a list of its
-own, and the one-open-recording rule is still enforced for every recording the engine opens, on every backend.
-Nothing about `AppWindow.Run(onFrame, onPrepare)`, `GameApp.OnPrepareWorld` or `Scene3D.PrepareFrame` changed in
-18.0.0, and no game needs to do anything.
+Headless preview and snapshot hosts prepare before opening their lists. A window host uses `onPrepare` to queue
+and prepare, then records in `onFrame`. The phase also keeps resource creation and retirement outside the host
+recording. An already prepared scene can repeat its preparation call without running the producers twice.
 
 **What belongs where.** `onPrepare` is for update-side work and for filling the frame's queues, which is what
 puts a producer's own command list before the frame's. Do **not** record into `Frame.Commands` there: the list is
@@ -2056,6 +2047,8 @@ The world map packages are opt-in and outside every umbrella. A TileWorld client
 `KhaozEngine.TileWorld.WorldMap` and `KhaozEngine.WorldMap.Gui` explicitly, which bring
 `KhaozEngine.WorldMap` transitively. Headless tools can reference the core alone and call
 `WorldMapRasterizer.Rasterize(source, style, chunk)` for a `WorldMapChunkImage` without a GPU.
+Cache-built images carry a one-pixel `Border` of neighbouring map pixels. Read their pixels through
+`ByteOffset(column, row)` and treat `TextureSize`, not `Size`, as the stored edge length.
 
 Map positions are metres with x east and y north. `MapRect` has a south-west origin and half-open bounds.
 Use the source's `ToMap` and `ToMapHeading` for live world poses. Headings are radians clockwise from north,
@@ -2068,10 +2061,45 @@ Null keeps the authored dimensions and existing raster bytes. Raster queries and
 the largest visible drawn half diagonal at every chunk level. Coarse filtering still uses the authored
 footprint to preserve source-side materialization limits. Icon anchors and hover bounds are unchanged.
 
+Set `WorldMapSymbol.Geometry` to replace its default rectangle or ellipse with a normalized polygon
+and independent detail segments:
+
+```csharp
+var geometry = new WorldMapSymbolGeometry(
+    new Vector2[] { new(-1f, -1f), new(1f, -1f), new(0.5f, 1f), new(-0.5f, 1f) },
+    new WorldMapSymbolStroke[] { new(new(-0.5f, 0f), new(0.5f, 0f)) });
+var customSymbol = new WorldMapSymbol(WorldMapSymbolKind.Obstacle, Color.White, Color.Black)
+{
+    Geometry = geometry,
+    SizeMetres = new Vector2(4f, 2f)
+};
+```
+
+`WorldMapSymbolGeometry(IEnumerable<Vector2> outline, IEnumerable<WorldMapSymbolStroke>? strokes = null)`
+snapshots inputs and exposes read-only `Outline` and `Strokes`. Coordinates must be finite in `[-1, 1]`
+on each local axis. Supply at least three vertices enclosing a nonzero area, with no repeated closing
+endpoint, self-crossing, touching or overlapping edges. Concavity and either winding are supported.
+Construction rejects invalid geometry with `ArgumentException`. Existing footprint dimensions,
+optional `SizeMetres`, rotation, wall sizing, collection and invalidation rules still apply.
+`Fill` paints the silhouette. `OutlinePixels` controls its inset `Outline` boundary and centred
+round-capped detail segments in raster pixels, independent of non-square scaling or pyramid level.
+Details blend over polygon fill. Overlapping boundary and detail ink contributes once.
+Detail segments may extend outside a concave fill,
+are clipped to the footprint box and are excluded from building shadows. Transparent fills leave
+terrain visible. Null geometry preserves existing bytes, feature anchors and hover targets.
+
 Keep the `TileWorldDocument` and `TileWorldCatalogs` unchanged while a `TileWorldMapSource` is in use. Its
 `Revision` stays zero and it never raises `Changed`. After edits or loaded-region changes, stop and dispose
 the old map pipeline and create a new source, cache, worker and view. `surfacePlane` selects terrain, objects
 and markers, while roofs on all planes are included.
+
+The optional `groundPalette` constructor argument maps material ids to map-only `Color` values.
+The adapter snapshots it at construction, applies it after underlay and overlay selection, and falls
+back to catalog colours for missing entries. It leaves terrain heights, water roles and catalogs intact.
+`WorldMapStyle.Contours` enables dry-ground lines at multiples of `IntervalMetres` in actual height
+metres. `WidthPixels` stays fixed in raster pixels across pyramid levels, and colour alpha blends over
+relief before footprint symbols. Water, void and flat interval plateaus are excluded. The sampling and
+cache invalidation margins include the bounded contour neighbourhood. Null options preserve existing bytes.
 
 This example borrows the game's loaded document, catalogs, `Render2DSurface`, icon textures and `SpriteFont`.
 `resolveLocalizedMarkerName` is a game-supplied `Func<string, string?>` that maps an authored marker name to
@@ -2080,6 +2108,7 @@ localized text and returns null for an unknown name. Tags and icon keys are game
 game's UI pass, and call `CloseMap` when closing the map.
 
 ```csharp
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -2088,9 +2117,11 @@ using KhaozEngine.Windowing;
 using KhaozEngine.WorldMap;
 using KhaozEngine.WorldMap.Gui;
 
-var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0);
+var mapPalette = new Dictionary<ushort, Color> { [1] = Color.FromHex("#b8b8b8") };
+var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0, groundPalette: mapPalette);
 var style = new WorldMapStyle
 {
+    Contours = new WorldMapContours(5f, Color.Black, WidthPixels: 0.75f),
     SymbolRules = new[]
     {
         new WorldMapSymbolRule(
@@ -2157,17 +2188,27 @@ thread. `CurrentLevel` reports the level chosen by the last usable update. It is
 `WorldMapChunking.MaxLevel` with `EffectivePixelsPerMetre / 2^level >= PixelsPerMetre`, or zero at native
 raster zoom and above. Only visible chunks of that level are requested, prioritized by distance to the view
 centre. Their uploads take the budget first. Ready coarser ancestors can use the remaining budget without
-additional requests. Missing chunks sample the matching UV sub-rectangle of the nearest uploaded coarser
-ancestor, or use `PlaceholderColor` if none exists. Stale textures remain visible until their replacements
+additional requests. Missing chunks sample the matching interior sub-rectangle of the nearest uploaded
+coarser ancestor, or use `PlaceholderColor` if none exists. Every draw samples only a texture's interior, so
+linear filtering at chunk edges reads the gutter's neighbouring map pixels. Stale textures remain visible until their replacements
 upload. Overlay anchors come only from visible built chunks of `CurrentLevel`. `Update` blocks the viewport
 through `Pointer.BlockRegion`.
 
 `MaxTextures` defaults to 192 and values below one throw `ArgumentOutOfRangeException`. After uploads and
 draw-list construction, `Update` disposes the least recently drawn textures that are absent from this
 frame's draws until the cap is met. Fallback textures count as drawn. Active draws stay protected and can
-temporarily exceed a smaller cap. The default retained chunk payload is 48 MiB per view for 192 textures
-of 256 by 256 RGBA pixels, excluding GPU overhead and temporary active-draw excess. Changing the cap takes
-effect on the next usable `Update`, with all texture disposal on the frame thread.
+temporarily exceed a smaller cap. The default retained chunk payload is about 49 MiB per view for 192
+textures of 258 by 258 RGBA pixels, gutters included, excluding GPU overhead and temporary active-draw excess. Changing the cap takes
+effect on the next usable `Update`, with all surface-owned texture disposal on the frame thread.
+
+For standard offscreen capture, construct `WorldMapView(cache, context)` inside
+`Render2DSnapshot.Capture` or `CaptureToPng`, where `context` is the supplied `Render2DContext`.
+It uses the same update and draw path. The capture owns uploaded textures and the white pixel until
+submission has finished, so eviction and view disposal only release the view's references in this mode.
+`MaxTextures` still bounds the retained view entries, but the context keeps every texture created during
+that capture until teardown. Keep capture work bounded and prepare the required cache chunks before the
+draw. Do not dispose context-created fonts or icon textures inside the callback. The package README has
+the complete offscreen example.
 
 `Viewport`, the pointer and the open batch must use the same coordinates. The example uses UI pixels. A
 design-space host instead opens its own batch with `Begin(IDesignViewport)` and passes a pointer and bounds
@@ -2182,7 +2223,7 @@ screen size, merge by key and radius, and declutter by priority. Labels require 
 maximum. `Hovered` returns the accepted icon or label for a game-resolved tooltip. Live markers draw last,
 skip decluttering and hover, and can be removed with `RemoveMarker(id)`.
 
-Create, update, draw and dispose views on the surface's frame thread. A cache and worker may serve several
+Create, update, draw and dispose surface views on the surface's frame thread. A cache and worker may serve several
 views, each with its own uploaded textures. Dispose all views first, then stop the worker, then dispose the
 cache before releasing its source data. Icon and marker textures, the label font and the surface remain
 caller-owned. A custom `IWorldMapSource` must allow concurrent reads, increment `Revision` and raise `Changed`
@@ -3458,14 +3499,30 @@ suppress duplicate messages.
 
 To revoke a report:
 
-1. Call `BugReportRelay.RevokeAsync(reportId, cancellationToken)`.
-2. Delete its public capability folder.
-3. Delete it again after the 10-minute claim lease. A holder that passed its check before the call can
-   still finish a write inside its lease. Holders running beyond that lease are outside the guarantee.
+1. Call `BugReportRelay.RevokeReportAsync(idOrReference, cancellationToken)`, or forward an authorized
+   operator request to `RevokeRequestAsync(request, cancellationToken)`. Use the intake request adapter,
+   an Admin-level HTTP trigger and a body of `{"report":"<code or id>"}` capped at 1024 bytes.
+2. Delete the returned issue with an identity that may delete issues, following a moved issue's new URL.
+   The relay redacts and closes it, but only deletion removes its original title and body history.
 
-Retain the private `revoked/` tombstone and idempotency state for at least the report retention and the
-client queue's 7-day maximum age. A missing public manifest is also treated as revoked. Late snapshots
-and full-bundle resends return 202 without enqueueing revoked work.
+Nothing else is manual. The relay deletes public media immediately and schedules `PurgeRevoked` twelve
+minutes later. The purge repeats public cleanup and issue redaction, then removes private state and
+claim files. The non-personal tombstone and `references/<lowercase code>/<reportId>.json` index remain
+until lifecycle expiry. Keep both for the report retention, 180 days for the first consumer.
+Reference-code lookup covers reports accepted on 21.8.0 or later. Lookup by report id always works.
+When an issue number is known, the result carries its page URL even for `Failed` or `Gone` redaction.
+`IGitHubIssueClient.IssuePageUrl` supplies that URL when the update returned none, and defaults to null
+for clients that cannot construct it. An HTTP timeout with an uncancelled caller token is reported as
+`Failed` and the purge is still scheduled. A redaction failure during purge propagates for redelivery.
+
+`RevokeRequestAsync` maps `Revoked` and `AlreadyRevoked` to 200, `NotFound` to 404, `Ambiguous` to 409,
+and `Invalid` or malformed JSON to 400. Oversized bodies return 413. Forward its JSON and headers.
+The host authenticates the operator. The engine request method does not do so.
+A holder that passed its check can still write inside the ten-minute lease. The purge removes those
+writes, but holders running beyond their lease remain outside the guarantee. A late issue discovered
+by the purge is redacted and logged for operator deletion. A transferred late issue logs a warning with
+its report id, issue number and destination URL before the purge completes. A missing public manifest is also treated
+as revoked. Late snapshots and full-bundle resends return 202 without enqueueing revoked work.
 
 The [relay README](../KhaozEngine.BugReports.Relay/README.md) has the isolated-worker host sketch and status
 codes. Read its [Host duties](../KhaozEngine.BugReports.Relay/README.md#host-duties) for the 5-dequeue poison
@@ -3948,10 +4005,8 @@ cl.Begin();
 // ... record the scene, submit cl
 ```
 
-  Some per-frame GPU work cannot be recorded into the frame's list at all. The FFT ocean's priming pass is a
-  compute dispatch whose output another dispatch reads in the same frame, and the GPU seam has no
-  dispatch-to-dispatch barrier, so the only ordering available is a submit plus a device wait - which means a
-  command list of its own. Opening one while the frame's list is recording is not harmless: with Direct3D11 in
+  Some existing producers use a command list of their own. The FFT ocean's priming pass retains that
+  schedule, even though dependent buffer dispatches can now share one list without a drain. Opening one while the frame's list is recording is not harmless: with Direct3D11 in
   immediate-context mode a command list IS the device's immediate context, so opening one resets the state the
   frame's list believes is still bound and the device faults a few draws later (issue #423). A frame that queues no
   water does nothing here, and a host that skips the call gets an exception from the water pass rather than a
@@ -4469,6 +4524,21 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   coming and going keeps history. `Post.Pixelated` forces anti-aliasing off, so toggling it counts as an
   anti-aliasing change while a mode is selected. The frame after a reset renders exactly like a fresh scene's first
   frame.
+- **Key-shadow stability.** Bilinear 3x3 comparison PCF filters the key shadow in every AA mode. Under TAA,
+  lit rigid/skinned models, foliage, splat terrain and tile ground also export final key-shadow visibility to R8.
+  Transparent writers preserve the opaque signal, and cutout/dissolve discards reveal the surface below.
+  Depth-qualified current and reprojected previous means use relative tolerance 0.02. Both reference depths must
+  be finite, and non-finite samples contribute nothing. A stored-value difference strictly above 0.1 clears the
+  thin-feature lock and clip hold for either sign at every preset. It retains accumulated weight and display
+  reconstruction share. The independent colour-based shading release still has its existing reset behavior.
+  The threshold uses stored R8 values. Under round-to-nearest UNORM conversion, an exact input 0.1 stores as
+  26/255. A driver that truncates stores 25/255 instead, so the exact boundary case differs because release
+  compares stored values. There is no public tuning knob.
+  A fully lit receiver frame can bypass the visibility check once the read-index R8 history is certified fully lit
+  too. This uses a separate compiled program and retains R8 storage and copies. Shadowed and uncertified frames
+  keep the ordinary check.
+  Motion plus visibility needs five colour attachments. Below five, the engine logs the capability once and keeps
+  the supported four-attachment layout with bilinear filtering and no visibility release.
 - **Transparent content.** Particles, billboards, beams, trails, decals and water draw no motion. The resolve lowers
   the history weight wherever they changed the opaque image, so a smoke puff or a splash leaves no trail.
 - **Background.** The sky reprojects by the camera's rotation, so its sun stays put in the world while the camera
@@ -4508,10 +4578,17 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   than five colour attachments. Both paths write the same history: bit for bit on Apple, NVIDIA under Direct3D 11
   and Vulkan, and WARP, and on a software Vulkan device (llvmpipe) with the same confidence, thin-feature lock and
   motion marks and the colour within 0.0625 on at most 0.25 percent of the values (`TemporalEntryIdentityGpuTests`).
+  Visibility bytes, previous jitter and release decisions are exact on both paths, including software Vulkan.
+  Both use the same R8 history pair and copy current visibility to the write index once after a resolving render.
+  Repeated renders and debug/count evaluation retain the original read history and jitter. Visibility follows
+  colour resets, owner/device changes and target generations, with an additional unseeded-generation guard.
+  Binding sets retire before textures through the existing GPU retire queue. Missing standalone lit input uses
+  an owned fully lit R8 fallback. Turning TAA off or disposing the scene retires the histories.
   `KE_TEMPORAL_RESOLVE=fused` or `KE_TEMPORAL_RESOLVE=split` forces one path for every scene the process creates,
   still subject to the attachment limit, to tell a fault in one path from the other on a player's machine. It is a
   diagnostic, read once, and not a setting a game ships with.
-- **Cost.** Against anti-aliasing off at the same internal size, the resolve and the sharpen together measured at most
+- **Cost.** The following timings predate the visibility resources and comparison. Their incremental GPU cost has
+  not been measured. Against anti-aliasing off at the same internal size, the resolve and the sharpen together measured at most
   about 1.8 to 2.2 ms at `Quality` and 1.9 to 2.5 ms at `Native` at a 2560x1440 display on an Apple M2 Max, and about
   1.8 to 2.4 ms at `Quality` and 2.1 to 3.1 ms at `Native` on an NVIDIA Tesla T4 under Direct3D 11 and Vulkan. At a
   3456x2234 display the M2 Max measured about 3.5 to 4.3 ms at `Quality` and 4.0 to 5.0 ms at `Native`. The low end is
@@ -4527,7 +4604,11 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   212.7 MB of history (two display-size RGBA16F colours and two RG16F confidence targets, and two internal-size
   R32F previous depths), 82.3 MB of the resolve's internal-size working targets (24 bytes a texel), 154.4 MB of
   display-size post targets (a ping pair and, with bloom on, a half-size bloom pair), a 27.4 MB internal-size copy
-  of the opaque image and a 13.7 MB internal-size motion target, about 491 MB in all (10^6 bytes a MB). The edge
+  of the opaque image and a 13.7 MB internal-size motion target. The R8 lit visibility and two R8 histories add
+  10.3 MB there, plus a 16-byte previous-jitter buffer, about 501 MB in all (10^6 bytes a MB), excluding alignment,
+  retirement overlap and an optional fully lit fallback. Visibility costs three bytes per internal texel and
+  allocates only while needed. A visibility-only MSAA layout also owns a matched multisampled R8 attachment
+  and explicitly resolves it before sampling. The edge
   outline adds two internal-size colour targets, 54.9 MB there, only while it is on under temporal anti-aliasing.
   With HDR off the post targets, the opaque copy and the outline's pair are 8-bit and take half as much. Apart from
   that pair, the internal targets carry no bloom or ping pair under the resolve, since the display chain has its
@@ -4670,7 +4751,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     still lands in a near cascade, and the fit no longer depends on where the camera looks, so there is no
     gaze-ground-ray jump on a pan), texel-snapped per cascade to kill shimmer under camera pan. The slices run from
     the tight near cascade (`ShadowNearDistance`) out to `ShadowMaxDistance`. The model AND terrain fragments pick
-    the TIGHTEST cascade containing each fragment and sample it with 3x3 PCF + slope-scaled bias to shadow the KEY
+    the TIGHTEST cascade containing each fragment and sample it with bilinear 3x3 comparison PCF plus slope-scaled bias to shadow the KEY
     light's diffuse+spec only (fill + ambient untouched, so a shadow reads as shade, not blackness), cross-fading
     toward the next cascade inside a `ShadowCascadeBlend` UV border band so a cascade hand-off is invisible instead
     of a visible square seam, and fading the shadow to fully lit toward the outermost cascade's border so the
@@ -8556,7 +8637,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.7.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.12.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8981,7 +9062,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.7.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.12.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9780,7 +9861,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.7.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.12.1" />
 ```
 
 ```csharp
@@ -10599,12 +10680,18 @@ that was already removed. Zero keeps the old hard swap.
 
 Beyond `hlodDistance` (chunk-centre to focus, in metres) the cluster draws its merged mesh instead of the props.
 Across `crossfadeWidth` the two crossfade - the props dissolve out and the merged mesh dissolves in, both through
-the 14.5.0 rigid-dissolve primitive, deterministic by distance with no per-frame randomness (a `crossfadeWidth` of
-0 is a hard swap). `weldCell` is the vertex-cluster weld size (metres): bigger cells decimate harder (trunks go
+the rigid-dissolve primitive. Both halves use the same threshold `t`: individuals keep `mask >= t`, and the merged
+half sets `DissolveComplement = 1` to keep `mask < t` in colour and shadow. Selected outlines use the same split.
+With one active representation handoff, coincident surfaces cover each noise value exactly once.
+Overlapping individual LOD and HLOD bands retain their existing three-way gap composition.
+Different silhouettes can still expose holes because
+they sample different world positions (#1296). The transition remains deterministic by distance with no
+per-frame randomness (a `crossfadeWidth` of 0 is a hard swap). `weldCell` is the vertex-cluster weld size (metres): bigger cells decimate harder (trunks go
 blobby, canopy shape and colour hold), 0 keeps the full-detail merge. Decor-ring chunks show the merged mesh too,
 so the far field is visible forest rather than bare terrain, while staying render-only for physics (no scatter, no
 prop colliders). The bake is a **runtime** merge+weld at chunk load (`PropHlod.BuildMergedMesh`, pure and
 deterministic), built through `PropClusterRenderer.BuildCpu` without GPU access and applied on the scene thread.
+Flattening preserves coincident corners with distinct flat material colours. Equal flat colours still weld.
 There is no offline artifact to generate and no manifest field to stamp. Everything defaults off, so a layer
 without `WithHlod` draws its props at every distance exactly as before. `PropHlod.Merge` / `Weld` /
 `CrossfadeAt` are public if you want the pieces directly (a bake tool, a custom sink).
@@ -10617,9 +10704,12 @@ the failed request's current individual placements and layer for near drawing. U
 invalidation, draw and unload stay on the scene thread. `Unload` is idempotent. `Dispose` releases
 every retained handle exactly once.
 
-Under `ShadowMode.ShadowMap`, both halves of the crossfade now cast in proportion to their dissolve (issue #287):
-the props' shadow thins out as the merged mesh's thins in, instead of both casting at full strength across the whole
-band. `castsShadows: false` on the layer covers both too - the merged mesh follows the layer's policy, so casting
+Under `ShadowMode.ShadowMap`, both halves use the same complementary coverage as colour, preserving the full
+caster at coincident surfaces (#391). The HLOD handoff does not use the independent shadow-only inversion flag.
+At `DrawRadius`, the merged exit fade is an ordinary dissolve with no complementary partner.
+The `Scene3D.Draw` overload ending in `castsShadows, invertShadowDissolve` remains available for independent
+shadow-only inversion, along with `RigidInstanceDraw.InvertShadowDissolve`.
+`castsShadows: false` on the layer covers both too, so casting
 does not switch back on at the HLOD swap.
 
 **Teardown / rebuild.** Both `Scene3DChunkSink` and `TerrainStreamer` are `IDisposable`. Steady-state
@@ -11073,7 +11163,8 @@ version or the load fails. The engine's own steps are pre-registered: v1 to v2 d
 `LegacyXzCallbackV1` support recipe. The v5 to v6 step (`MapWaterMigration.Upgrade`) adds no member.
 The v6 to v7 step (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`.
 The v7 to v8 step (`MapMarkerMigration.Upgrade`) clones input and changes only `formatVersion`.
-`MapDocumentFile.CurrentFormatVersion` is 8, and saving always writes it. Version and layout are independent
+The v8 to v9 step (`MapFoliageMigration.Upgrade`) clones input and changes only `formatVersion`.
+`MapDocumentFile.CurrentFormatVersion` is 9, and saving always writes it. Version and layout are independent
 axes, so a monolithic file at the current version is legal. Format 5 and the v4 to v5 step arrived in
 20.30.0. Format 6 adds optional bounded water in 20.32.0, format 7 adds rigid prefabs and building intent
 in 20.40.0, and format 8 adds general markers in 21.5.0. Releases up to 20.29.1 write format 4.
@@ -11085,13 +11176,49 @@ or tile, including open feature payloads, where the last value previously won.
 
 Format 7 moves every native root digest and resolver-2 authored identity once, including documents without
 prefabs. Format 8 is another pure version-only migration and moves every native identity once again. Rebuild
-identity-keyed caches and navigation captures after either migration.
+identity-keyed caches and navigation captures after either migration. Format 9 moves those identities once again,
+including documents without foliage. Absent foliage stays absent.
 
 From 20.30.0, a format-4 document migrates on load with no action from the game. Its authored
 identity token changes exactly once at that format advance, with no continuity to the old token, so
 recompute any stored token after the first load. That token change arrives with 20.30.0 too. Resolver-v1
 options, including the caller's `OptionsHash`, and resolver-v1 execution are unchanged. The authored-surface
 resolver version 2 is new in 20.30.0 and is opt-in through a document's resolver identity.
+
+### Native foliage and the R8 handoff
+
+Format 9 carries optional `MapFoliageSet` payload 1 independently of scatter, companions and explicit placements.
+Capture a complete immutable context once and reuse it across chunk calls. Partial terrain/content/foliage returns
+`PartialResidency`. R8 must add a windowed constructor and closure/completeness contract before streamed generation.
+
+```csharp
+using KhaozEngine.MapDoc.Foliage;
+
+var captured = MapFoliageGenerationContext.Capture(document, closure);
+if (captured.Status == MapFoliageStatus.Complete)
+{
+    var batch = MapFoliageDistribution.Generate(captured.Context!, "cover-a", new(0, 0));
+    var extents = batch.Samples.Select(s => s.AssetId).Distinct().Select(id =>
+    {
+        var asset = closure.GetAsset(id);
+        return new MapFoliageModelExtent(id, asset.RenderBounds, asset.SourceUnitsToMetres, 0.35f);
+    }).ToArray();
+    var handoff = MapFoliageRenderHandoff.Create(batch, extents);
+    // Only Complete is usable. Empty complete batches have null Bounds.
+}
+```
+
+Motion padding is explicit caller policy in metres. Transform all eight source-unit-adjusted mesh corners by each
+sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/shrub profiles and shadow flags. Use the
+render dependency digest plus generation to reject stale work. Keep one owned batch across every intersected residency
+membership and release after the last leaves. The R8 handoff does not upload, stream, draw or certify appearance.
+
+The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) is the living reference
+for payload/storage ceilings, compatibility owner fallback, paint tie-break, typed refusals, aggregate budgets,
+`MapFoliageEffectSet(Chunks, Layers)`, whole-layer stale entries and public acceptance evidence. Bounds and density are
+cosmetic and never join statics, navigation captures or world bounds. Interactive painting stays R9, complete verb
+parity stays R10, actual import/source acceptance stays R11/G2 and appearance stays R8/G3. The
+[private harness](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md) owns its test-only dependency boundary.
 
 ### Free buildings and effective resources
 
@@ -11460,7 +11587,7 @@ patch keys and semantic digests, the effective resource policy and query policy 
 the builder ID and version, the options hash and the resolver version. The content digest
 (`kemap/native-content/1`) covers placements, including explicit `Y`
 and `SupportBinding`, spawns, player spawns and sculpt tiles, normalized as scheme 1 normalizes them with
-placement display names stripped. `MapSurfaceSemantics.RootDigest` covers native globals, including format-8
+placement display names stripped. `MapSurfaceSemantics.RootDigest` covers native globals, including format-9
 prefab and building intent,
 and surface metadata, never tile content. Scoped identity covers its acquired effective facts and policies.
 Repacking, embedding and incident bookkeeping do not change the token.
@@ -11783,16 +11910,29 @@ foreach (TileWaterBody body in TileWaterBodies.Collect(doc, catalogs, region, pl
 ```
 
 **Static interior cuts for prop layers.** Opt a tree layer into render-time cutting inside buildings by
-setting `TilePropLayerDefinition.CutInsideInteriors = true`. Give `view.InteriorMeshes` a dedicated
+setting `TilePropLayerDefinition.CutInsideInteriors = true`. Give `TileWorldViewOptions.InteriorMeshes` a dedicated
 `ITileMeshGeometry` reader, such as a separate `GltfTileMeshGeometry`, used only by this serialized driver.
-That reader is single-threaded, so never share it with capture, another job or view-thread geometry reads.
+That reader is single-threaded, so never share it with another view, capture, job or view-thread geometry read.
 For an existing definition, its required identity, archetypes and LOD distances stay in the definition:
 
 ```csharp
 TilePropLayerDefinition cutTrees = treeLayer with { CutInsideInteriors = true };
-// Supply cutTrees in TileWorldViewOptions.PropLayers when constructing the view.
-view.InteriorMeshes = dedicatedInteriorMeshes;
+var options = new TileWorldViewOptions
+{
+    PropLayers = [cutTrees],
+    InteriorMeshes = dedicatedInteriorMeshes,
+    RoofMode = RoofVisibility.AlwaysHidden,
+};
+// Pass options to the view constructor or a TileWorldSnapshot capture.
 ```
+
+The constructor seeds `InteriorMeshes` and `RoofMode` from options. Runtime changes still use the view's
+setters. The default reader is null and the default roof mode is `RoofVisibility.Interior`.
+`CaptureTopDown`, `CapturePerspective` and `CapturePerspectiveSequence` finish and publish configured
+interior builds before drawing. The first sequence frame is already cut, and moving the camera settles a
+re-centre even within the same region ring. This offline settle completes the requested work without
+frame-count waits or sleeps. With no reader or no opted-in layer there is no field. Unset options preserve
+existing capture output. Use `AlwaysVisible` and `AlwaysHidden` roof modes for before and after captures.
 
 `TileWorldInteriors` derives simple polygons from indoor tiles, safe wall boundaries and roof meshes.
 A column keeps its lowest contiguous run of retained indoor planes, so no cut crosses an excluded storey or
@@ -12104,8 +12244,10 @@ roofs the rule takes off are queued through `ITileWorldScene.DrawShadowOnlyProps
 record depth for the key light and draw no colour, and the room under them stays shaded. Before this they never
 reached the scene at all and the sun landed on the interior floor of the building the player was standing in.
 `LastShadowOnlyProps` counts them, apart from `LastDrawnProps`, which stays the VISIBLE total. The same focus
-and `PropDrawRadius` cull both passes, so a roof too far away to draw is too far away to cast either, and
-silhouettes and target outlines are unchanged: a hidden roof still draws no hull.
+and `PropDrawRadius` cull both ordinary passes. Roof layers use their own `DrawRadius` for colour and shadows,
+with the layer policy described below. A roof outside its applicable radius casts nothing. Layered target
+outlines share the colour draw's effective representation, generation and fade floor, including individual
+fallbacks after failed HLOD rebuilds. A hidden roof draws no outline or silhouette hull.
 
 The fill is bounded at `TileWorldView.MaxInteriorTiles` (4096). A world that flags a whole region indoors by
 mistake would otherwise walk tens of thousands of tiles on the frame the observer steps into it, so the walk
@@ -12194,13 +12336,34 @@ var regions = new TileRegionResidency(
 ```
 
 Each definition owns a disjoint, non-empty archetype set. The view validates finite distances, unique layer IDs,
-known non-roof archetypes, and that LOD and HLOD do not exceed the draw radius. Roof archetypes are rejected so
-they stay on the ordinary path governed by `RoofVisibility`. When HLOD is enabled, its positive distance must
+known archetypes, and that LOD and HLOD do not exceed the draw radius. Each layer selects either only catalog
+roofs or no roofs. A mixed layer fails before upload and names both kinds. Roof layers cannot enable
+`CutInsideInteriors`. When HLOD is enabled, its positive distance must
 also exceed `LodDistance`. A selected object is removed from ordinary prop submission and
 appears in exactly one `TilePropLayerSnapshot`, so it cannot double-draw. `TileRegionProps` is an immutable,
 generation-tagged region-plane snapshot. It carries object IDs and detached placements in stable order. Worker
 builds read that snapshot and resolved CPU mesh data only. They never read the live document, overrides, resolver
 caches or scene.
+
+A roof layer preserves `RoofVisibility` through the same observer, plane and footprint predicate as ordinary
+roofs. Its snapshots retain authored object IDs, planes and roof footprints for each presentation generation.
+Visible individuals use the normal layer fades and LODs. Hidden individuals submit shadow-only with the same
+transforms and fades when `CastsShadows` is true. All-visible merged clusters draw normally. All-hidden clusters
+submit merged shadow-only. A partly hidden cluster never submits merged colour. It falls back to resident
+individuals without the HLOD fade floor, or to merged shadow-only if individuals are unavailable. Roof layers
+retain their merged clusters in Decor, and queue neither colour nor shadows beyond `DrawRadius`.
+Selected outlines use `PropClusterVisibilityDecision.Resolve` to follow the colour draw's effective source
+generation and fade floor, including resident individual fallbacks after failed rebuilds. Shadow-only
+representations receive no outline. Non-roof snapshots carry no roof footprints. Warmed layer visibility checks allocate
+no managed memory per frame.
+
+For long-distance buildings, select walls and roofs into separate layers, each with `DrawRadius = 576`,
+`LodDistance = 0`, `HlodDistance = 192`, `HlodCrossfadeWidth = 32`, `HlodWeldCell = 0`, `CastsShadows = true`
+and `CutInsideInteriors = false`. Zero weld cell merges geometry without decimating the straight edges.
+`LastDrawnProps` includes visible layer placements, while `LastShadowOnlyProps` includes hidden roof-layer
+placements. A merged handle counts its represented placements once, including during a complementary crossfade.
+Indoor detection, roof links and interior-cut source geometry still read the authored document independently
+of the drawing path. With no roof layer, ordinary roofs retain `PropDrawRadius` and the editor profile is unchanged.
 
 | Stage | Range | Representation |
 |---|---:|---|
@@ -13374,7 +13537,7 @@ the MCP boundary as raw JSON strings parsed with the open document's own seriali
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (96 tools).**
+**Verb surface (101 tools).**
 
 | Group | Verbs |
 |---|---|
@@ -13392,6 +13555,16 @@ typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -1
 | Prefabs | `prefab_open`, `prefab_edit`, `prefab_save`, `prefab_extract`, `prefab_place`, `prefab_list`, `prefab_override`, `prefab_unpack`, `prefab_undo`, `prefab_redo` |
 | Interiors | `interior_volume_add`, `interior_volume_set`, `interior_volume_remove`, `roof_link_set` |
 | Markers | `marker_set`, `marker_remove`, `marker_list`, `spawns_adopt` |
+| Foliage | `foliage_layer_set`, `foliage_get`, `foliage_density_set`, `foliage_paint`, `foliage_remove` |
+
+The five native foliage verbs use the shared command history and finalized effects. `foliage_layer_set` takes
+`layerJson`, optional `expectedDifferentialDigest` and `dryRun`. A policy change needs the exact proposal's preview
+token and publishes alone. A new-layer dry run refuses because no differential is needed. `foliage_density_set` takes
+`layerId`, `x`, `z`, `width`, `depth`, `density`. `foliage_paint` takes `layerId`, `worldX`, `worldZ`, `radiusMetres`,
+`target`, `hardness`. `foliage_remove` takes `layerId`. `foliage_get` takes optional `layerId`, the complete optional
+sample rectangle and `previewChunkJson`. Omitted layer lists detached metadata in authored order. A named layer returns
+copied bytes and optional CPU preview, including every matrix/quaternion component. See the
+[wire contract](../KhaozEngine.MapEdit.Tool/README.md#foliage) for results and refusal semantics.
 
 `sculpt_apply(brush, x, z, radius, strength, dt, targetHeight?)` applies one terrain-sculpt brush dab
 (`raise`/`lower`/`smooth`/`flatten`/`set_height`) at a world point as a single `TerrainSculptStrokeCommand`
@@ -17105,8 +17278,8 @@ The fullscreen post-process blits are **not** itemized in the draw-call count - 
 the Pass-timings **post** row instead.
 
 **The pass-timing caveat (read it).** The per-pass numbers are **CPU encode time** (wall-clock spent recording a
-pass's commands), **not** true GPU execution time, and the `KhaozEngine.Gpu` seam exposes no timestamp-query
-API to measure the latter. The full explanation, and why a whole-frame GPU-time number was rejected, is in *Per-pass frame
+pass's commands), **not** true GPU execution time. The optional `IGpuTimestampPool` seam described under
+"GPU timestamps without waiting" is separate and is not connected to this HUD. The full explanation, and why a whole-frame GPU-time number was rejected, is in *Per-pass frame
 timing* below. The turn-key HUD is the zero-config path. The two sections that follow are the manual building
 blocks (custom rows, a recorder, a bespoke overlay) for a game that wants more than the default panel.
 
@@ -17323,10 +17496,11 @@ golden stays byte-stable.
 CPU wall-clock spent *recording* (encoding) that pass's graphics-API calls into the command list - it is NOT
 true GPU execution time. The GPU pipeline runs asynchronously behind the command list the backend records into, so
 a cheap-to-encode pass can still be GPU-expensive (or vice versa) and this meter cannot see that. The
-`KhaozEngine.Gpu` seam **exposes no timestamp-query API at all** (no query pool, no per-command-list timestamp
-write/resolve), so true per-pass GPU timestamps are out of scope until the seam gains one. A whole-frame GPU-time number (Tier 2) was considered and
-rejected: the only device-level synchronization the seam exposes is `IGpuDevice.WaitForIdle()` (a full CPU/GPU
-stall) and a non-blocking fence poll - inserting a
+`KhaozEngine.Gpu` seam now defines optional timestamp pools, encoded with `BeginTimestamps`, `WriteTimestamp`
+and `EndTimestamps` and collected through non-blocking `IGpuTimestampPool.TryResolve`. Gate their use on
+`GpuCapabilities.SupportsTimestamps`, which defaults to false and reports the native backend's counter
+support. These CPU brackets do not use that separate API.
+A whole-frame GPU-time number (Tier 2) based on synchronization was considered and rejected: inserting a
 `WaitForIdle()` every frame to time it would destroy the CPU/GPU pipelining that gives good frame pacing (a
 "Heisenberg timer" that changes the very thing it measures), and the fence-poll alternative only yields a noisy
 lower bound, not an honest whole-frame GPU duration, so it was not shipped either. Present/blit (swapping the
@@ -17722,7 +17896,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.7.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.12.1" />
 ```
 
 ```csharp
@@ -17758,7 +17932,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.7.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.12.1" />
 ```
 
 ```csharp
@@ -17796,10 +17970,10 @@ index binds, both `Draw` overloads, `DrawIndexed`, `Dispatch`, both texture copi
 `GpuCapabilities.MaxMsaaSampleCount` is a real reading rather than a conservative 1. Two behaviours are worth
 knowing before you record against it. **Compute rule 1 is satisfied by a real image barrier at the sampled
 bind**, so a storage texture a dispatch wrote and a later draw samples needs no help from you beyond what the
-rule already says (both in one list, the texture created `Storage | Sampled`). **Compute rule 2 is unchanged and
-you must still honour it**: this backend additionally orders a dependent-dispatch chain inside one list, which is
-a backend property and not a contract change, and code that drops the `End` plus `Submit` plus `WaitForIdle`
-because it works here breaks on Metal. **Since 17.40.0 the Linux default IS `GpuBackendKind.VulkanNative`**, and since 18.0.0 it is the only Vulkan
+rule already says (both in one list, the texture created `Storage | Sampled`). **Compute rule 2 is satisfied by
+one global memory barrier**, emitted before the first dispatch or draw that binds a storage buffer an earlier
+dispatch in the same recording wrote, with an open rendering scope ended first when that command is a draw. A
+read-only binding of a buffer no dispatch wrote costs nothing. **Since 17.40.0 the Linux default IS `GpuBackendKind.VulkanNative`**, and since 18.0.0 it is the only Vulkan
 implementation the engine has. The umbrellas carry the package and `AppWindow` registers it, so a Linux head
 boots on it with no call of its own. `KE_GRAPHICS_BACKEND=vulkan` names the retired incumbent and resolves here
 with a WARN.
@@ -18002,7 +18176,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.7.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.12.1" />
 ```
 
 ```csharp
@@ -22373,7 +22547,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.7.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.12.1" />
 </ItemGroup>
 ```
 
@@ -22785,12 +22959,239 @@ byte[] bad = GpuReadback.ToRgba(gd, swapchainBgra, w, h);       // throws: B8G8R
 byte[] mip = GpuReadback.ToRgbaMip(gd, mipped, 2, 0, w / 4, h / 4);   // one level of a mip chain
 ```
 
+### Reading a completed staging copy without waiting
+
+`IGpuDevice.TryReadBuffer(staging, completion, offsetBytes, destination)` copies bytes that a recorded
+`IGpuCommandList.CopyBuffer` wrote into a `GpuBufferUsage.Staging` buffer, once the submission that carried the copy
+has completed. It is a separate path from `GpuReadback` and the synchronous `Map`. A read `Map` drains the device
+on Metal and Vulkan and waits on the resource on Direct3D 11, so every `GpuReadback` call stalls. `TryReadBuffer`
+never drains, flushes, submits or blocks on a lock, on any of the three native backends. Use it when a small GPU
+result can arrive a few frames late.
+
+- It answers `false`, with `destination` untouched, while the fence is unsignalled or the backend's native access
+  is busy. A fence that was never submitted is unsignalled, so a read before `Submit` answers `false` too. Poll
+  again on a later frame.
+- It answers `true` once the bytes are copied, and any native mapping is closed before it returns.
+- The fence comes from `IGpuResourceFactory.CreateFence` on the same device (so `SupportsCompletionFences` must be
+  true) and is handed to `IGpuDevice.Submit(cl, fence)` with the list that recorded the copy.
+- Keep the copy's source, the staging buffer and the fence alive until the read succeeds. Do not `Reset` or
+  resubmit the fence before then. A reset or reused fence is a caller error, not a new completion.
+- It refuses, before any poll or native access, a disposed or lost device, a fence or buffer from another device or
+  backend, a disposed fence or buffer, a buffer without `GpuBufferUsage.Staging`, an `offsetBytes` that is not a
+  multiple of four, and a `destination` that runs past the end of the buffer.
+- Do not hold a synchronous `Map` of the same staging buffer while polling. Direct3D 11 refuses the read with the
+  double-map `InvalidOperationException`, and Metal and Vulkan do not detect it.
+- On Direct3D 11 a `Submit` does not flush the immediate context. The next `Present` or drain hands the work to the
+  driver, which in a presenting frame loop is the frame boundary. A headless loop that neither presents nor drains
+  can read `false` indefinitely.
+- A device outside the three native backends takes the default implementation, which throws
+  `NotSupportedException` rather than hide a wait.
+
+```csharp
+cl.Begin();
+cl.SetComputePipeline(pipeline);
+cl.SetComputeResourceSet(0, set);
+cl.Dispatch(1, 1, 1);
+cl.CopyBuffer(results, 4, staging, 4, 12);     // the slice to collect, same offset on both sides here
+cl.End();
+gd.Submit(cl, fence);
+
+// On each later frame until it answers true:
+if (gd.TryReadBuffer(staging, fence, 4, bytes))
+    fence.Reset();                              // only now may the fence be reused
+```
+
+#### Fixed staging slots with retained frame identity
+
+`GpuBufferReadbackRing` owns a fixed set of staging buffers, allocated once in its constructor. Use it from one
+thread, with a device that supports completion fences and `TryReadBuffer`. `Capacity` never grows, and
+`PendingCount` includes copies recorded in lists that have not yet been submitted. Its warmed `TryRecord` and
+`TryRead` paths allocate nothing. It never waits, flushes, submits, synchronously maps or takes a blocking lock.
+
+```csharp
+// Create once, before opening a frame list. Reuse a caller-owned destination as well.
+using var outcomes = new GpuBufferReadbackRing(gd, slotCount: 3, slotSizeInBytes: resultCapacityBytes);
+byte[] outcomeBytes = new byte[resultCapacityBytes];
+
+// After dispatching in the caller's open frame list:
+bool recorded = outcomes.TryRecord(cl, resultBuffer, 0, resultBytes, frameId, frameFence);
+cl.End();
+gd.Submit(cl, frameFence);                       // the caller submits the frame once
+
+// On a later frame, try the oldest entry once. No entry is consumed while pending or busy.
+if (outcomes.TryRead(outcomeBytes, out ulong completedFrameId, out uint sizeInBytes))
+{
+    // Consume outcomeBytes[0..sizeInBytes] using completedFrameId, not the current frame ID.
+}
+```
+
+Several diagnostic consumers can share the same stable frame fence. The caller submits once with that fence and cannot reset, resubmit or dispose it until
+every associated ring has consumed its entries, or discarded them if the list was never submitted. If the
+ring is full, skip diagnostics for that frame, keep rendering and leave gameplay and drawing decisions unchanged. On Direct3D
+11, a `TryReadBuffer` or timestamp `TryResolve` poll completes only after a `Present` or drain, because
+`Submit` does not flush. Both polls remain non-flushing. A headless correctness test drains once. The ring
+does not introduce a flush policy for headless consumers.
+
+`TryRecord(commands, source, sourceOffsetBytes, sizeInBytes, tag, completion)` copies into offset zero of the next
+free staging slot in the caller's open list. Validate the request before asking for space: the source offset
+must be a multiple of four, and the nonzero copy must fit both the source and a slot. A copy cannot exceed
+`int.MaxValue` bytes, since the complete entry must fit in one destination span. Null arguments are refused.
+Full returns `false` before recording anything. The source and caller-owned completion fence must stay alive
+until the entry is consumed. The ring never resets or disposes a fence.
+
+`TryRead(destination, out tag, out sizeInBytes)` attempts only the oldest pending entry through `TryReadBuffer`.
+It preserves FIFO order even when a later fence completes first. Empty, pending and busy reads return `false`,
+set both outputs to zero and leave the destination untouched. A successful read copies only the recorded byte
+count, preserves any destination tail and releases that slot. A too-small destination throws `ArgumentException`
+without consuming or polling the entry. Nonpositive `slotCount`, zero `slotSizeInBytes`, and an invalid copy
+offset or size throw `ArgumentOutOfRangeException` before a slot is reserved.
+
+Call `DiscardUnsubmitted(completion)` only when abandoning a list that was never submitted. It stably removes
+all entries retaining that exact fence and leaves every other entry in FIFO order. Using it with a submitted
+fence is a caller error, even if that fence has not signalled yet. Abandon the list before reusing the freed
+slots. The ring implements `IGpuFrameCompletionConsumer`. `HasPending(completion)` checks retained ownership.
+Teardown-only `ReleaseCompleted(completion)` consumes submitted entries after the caller proves GPU completion
+with a signal or a successful host drain. `Dispose` releases signaled entries and throws `InvalidOperationException`
+while unsignaled entries remain. It disposes only owned staging buffers after every entry is released.
+
+### Shared frame submission
+
+`GpuFrameSubmission(device, retainedFrames: 3, consumerCapacity: 8)` precreates its fixed fence and registration
+storage. Call `Begin` before recording and register completion consumers with `TryRetain`. Successful retention
+returns one shared fence for the frame, with a nullable-flow guarantee that a true result has a non-null
+completion. A full retention window skips diagnostics without blocking rendering.
+Register `IGpuFrameSubmissionParticipant` independently with `TryRegister`, even when diagnostics have no slot.
+If participant registration fails, explicitly abandon that participant's pending logical state.
+
+Record GPU work and every retained copy into the same command list, then call `Submit(commands)` once. It submits
+with the shared fence when retained and calls `Submitted` on every participant. `Abandon` calls `Abandoned` and
+uses `DiscardUnsubmitted` only for a recording never handed to the device. Use it on recording exceptions before
+the next frame. A backend submit exception abandons participant state while quarantining potentially submitted
+copies. A callback exception still delivers the correct decision to every remaining participant. Consumer cleanup
+or query failures retain the ambiguous slot before callbacks can escape, while cleanup continues for the other
+consumers. A later submission cannot reuse that fence to complete an abandoned copy.
+
+`Begin` resets a submitted fence only after GPU completion and release by every retained consumer. `Dispose`
+abandons any unsubmitted recording, performs one host teardown drain, invokes `ReleaseCompleted`, confirms release
+and disposes owned fences. Once teardown starts, the owner refuses new recordings and accepts disposal retries.
+Dispose the owner before its command list and device. Consumer-first disposal must keep
+unsignaled staging alive until a completion poll or owner teardown releases it. There is no ordinary-frame wait,
+flush or extra frame submission. `GpuRetireQueue` retains its separate existing retirement fence.
+
+The window exposes its owner as `Frame.Submission`. The loop calls `Begin` before `onPrepare`, records the
+initial clear, `onFrame` and capture taps in one list, then submits once. Participants receive `Submitted`
+before capture `AfterSubmit` and `Present`. A suppressed frame or failure before submission calls `Abandon`.
+A failure after successful submission does not turn the decision into `Abandoned`.
+
+Use `Submit(commands, ReadOnlySpan<IGpuFence> completions)` when caller-owned capture fences must share
+that submission. The owner combines those fences with its retained frame fence, and all native backends
+signal them at the same completion point. Null or duplicate fences are refused. Keep each caller fence
+alive and unreset until its own consumers release it. Older device implementations inherit a default span
+overload that forwards zero or one fence and throws `NotSupportedException` for several fences.
+
+### GPU timestamps without waiting
+
+Gate timestamp collection on `GpuCapabilities.SupportsTimestamps`. It defaults to false. Native Vulkan
+reports the selected graphics queue's counter support. Direct3D 11 probes both native query kinds on
+the actual device without timing a workload. Metal probes the timestamp counter set, supported sampling
+boundaries and sample-buffer creation. An unsupported
+`IGpuResourceFactory.CreateTimestampPool(capacity)` throws `NotSupportedException`. The optional timestamp
+command defaults also throw, so existing factories and command lists stay source compatible.
+
+Allocate a fixed caller-owned ring once, with one `IGpuTimestampPool` per retained frame and preallocated
+tick arrays and frame IDs. Each pool's `Capacity` is fixed. Poll retained pools once on later frames. Reuse a
+pool only after its `TryResolve` returns `Ready` or `Invalid`. When every pool is pending, record no
+timestamps that frame and keep rendering. Do not grow the ring, wait for a pool or estimate a missing time.
+
+In the caller's open command list, `BeginTimestamps(pool, count)` starts a batch of 1 through `Capacity`
+queries. `WriteTimestamp(pool, index)` records each index exactly once, in order from 0 to `count - 1`.
+Place writes at pass boundaries, including between a compute dispatch and a draw. `EndTimestamps(pool)`
+requires every index to have been written. These three calls only encode work. They never submit it. A pool
+retains one unresolved batch, and a new begin clears the previous batch only after its result was consumed.
+Invalid count or index bounds throw `ArgumentOutOfRangeException`. Missing, duplicate or out-of-order writes
+and invalid lifecycle operations throw `InvalidOperationException`.
+
+For completed-frame GPU timing, also require `commandList is IGpuCommandListTimestampEnd`. Vulkan, Direct3D 11
+and Metal implement this optional interface. A list without it cannot prove completed-frame time, because End can
+emit later clears or barriers. Begin the batch and write every index before the last, then call
+`FinishTimestampsOnEnd(pool, count - 1)` while the list is still recording. Arming validates the current
+list and recording, the same-device pool, the last batch index and every earlier write before storing
+anything. Only one tail can be armed. Manual `WriteTimestamp` or `EndTimestamps` for its pool is refused.
+The ordinary End writes the last marker and ends that same batch after all GPU finalization and before
+the native seal, with no extra submission, flush, wait or per-frame allocation. Unarmed End is unchanged.
+Failure or abandonment clears only the list's tail. The caller quarantines the Recording or Pending pool
+through teardown, rather than resetting or reusing it. There is no cancellation API. Device loss follows
+the backend's sealing policy and cannot produce valid completed-frame evidence.
+
+Submit the list containing `EndTimestamps` once with a same-device completion fence, then call
+`pool.TryResolve(completion, ticks, out double tickPeriodNanoseconds)` on later frames. Keep the pool and
+fence alive, and never reset, resubmit or dispose that fence until resolution completes and every associated
+readback ring has consumed its entries. A fence from another submission is a caller error. A never-submitted
+fence stays pending. On Direct3D 11, presenting or a caller drain hands submitted work to the driver. This
+API introduces no flush policy for a headless loop that never presents.
+
+`Pending` leaves caller ticks unchanged and sets the period to zero. `Invalid` does the same but consumes
+the batch, for example when counters are disjoint, calibration is unusable or elapsed ticks overflow.
+`Ready` writes exactly `count` elapsed ticks relative to index 0, with `ticks[0] == 0`, preserving any output
+tail. Its period is finite and positive. Multiply a difference of elapsed ticks by the period to obtain
+nanoseconds. Repeated resolution returns the same terminal status, ticks and period until the next begin.
+No positive minimum duration is promised, and equal adjacent ticks are valid.
+
+Backends fill private preallocated scratch, validate the full result and only then publish caller ticks.
+Adjacent differences use the device's valid counter bits, including wrap, with checked cumulative addition.
+Every adjacent interval must be shorter than one full counter wrap. Multiple wraps in one interval cannot
+be detected or reconstructed. No resolve drains, flushes, submits, synchronously maps or takes a blocking
+lock. A too-small output throws `ArgumentException` before polling. Null, foreign and disposed fences and
+disposed or lost devices follow the completion validation contract of `IGpuDevice.TryReadBuffer`.
+
+Native Direct3D 11 creates fixed timestamp queries and one disjoint query per pool.
+Timestamp and timestamp-disjoint queries are guaranteed from feature level 10_0. Begin records
+`Begin(disjoint)`, each write records `End(timestamp[index])`, and End records `End(disjoint)` through
+both recording drivers, including deferred stream replay. Use one disjoint batch per frame or less and
+one outstanding batch per pool. Resolve uses `Monitor.TryEnter` on the immediate-context lock, polls the
+completion fence and makes one `GetData` per required query with `D3D11_ASYNC_GETDATA_DONOTFLUSH` (1).
+Contention or unavailable data returns Pending. Disjoint data or zero frequency returns Invalid.
+A valid batch's period is exactly `1_000_000_000d / frequency`. Invalid samples never enter a GPU gate.
+Keep queries alive through completion as with other submitted resources. Disposal follows the backend's
+COM resource release path and adds no drain. Device faults retain the existing removal handling.
+
+Native Vulkan allocates one fixed `VK_QUERY_TYPE_TIMESTAMP` query pool per wrapper, with private
+preallocated value, availability and interleaved native scratch. Support requires the selected graphics
+queue family's `timestampValidBits` to be nonzero and `limits.timestampPeriod` to be finite and positive.
+`BeginTimestamps` records `vkCmdResetQueryPool` for the requested range before any writes.
+`WriteTimestamp` records `vkCmdWriteTimestamp2` at `ALL_COMMANDS`. Both end active rendering through the
+existing command-list schedule. End only closes the batch. Resolve first polls the completion fence,
+then makes one `vkGetQueryPoolResults` call with exactly `64_BIT | WITH_AVAILABILITY` (flags 5), stride
+16 bytes, with no `WAIT` or `PARTIAL`. Every availability word must be nonzero before normalization.
+Destruction uses the resource owner's timeline retirement. Adjacent intervals must each be shorter than
+`2^timestampValidBits * timestampPeriod` nanoseconds. Multiple wraps cannot be detected or reconstructed.
+
+Native Metal prefers stage-boundary sampling when available. Each write closes the current encoder,
+then records a dedicated nonempty blit pass with an end-of-encoder counter attachment and a fixed
+four-byte marker copy. On command-boundary-only devices it records the copy followed by
+`sampleCountersInBuffer:atSampleIndex:withBarrier:YES`. A pool-private shared event signals and waits
+around each marker, ordering even work with no resource in common. These are GPU dependencies and
+never CPU waits. The device completion timeline is unchanged. Pending clears remain deferred and
+encoder epochs force graphics and compute bindings to be re-emitted.
+
+End records `resolveCounters:inRange:destinationBuffer:destinationOffset:` into a preallocated shared
+buffer. Descriptors, sample and result buffers, marker buffers and the private event are fixed per
+pool and reused only after resolution. There is no allocating CPU counter resolve. Begin samples the
+correlated CPU nanoseconds and GPU ticks. The first completed resolve samples them once more and
+caches the result. The period is the CPU nanoseconds delta divided by the GPU ticks delta, with no
+fixed period or CPU duration fallback. Equal or reversed clock spans, counters outside the calibration
+interval, reversed counters, zero samples and `MTLCounterErrorValue` make the batch Invalid.
+
+Marker cost counts as part of instrumented GPU time and is never subtracted. Hosted Apple Paravirtual
+may report unsupported. Its negative branch must execute and that GPU gate is unmeasurable there.
+Native correctness is required on supported Apple hardware. Budget timing remains a separate,
+owner-approved measurement on a chosen device.
+
 ### Ordering: two rules, because there is no barrier call
 
-There is no barrier method on this seam, because the backend layer has none. What ordering exists comes from
-each backend's implicit handling, and Metal, Vulkan and Direct3D11 do not agree, so the seam guarantees exactly
-two patterns. Both are proved by `[GpuFact]` tests on all three backends
-(`KhaozEngine.Render.Tests/Gpu/Compute*GpuTests.cs`).
+There is no barrier method on this seam. Inside one command list each backend orders what the bound sets name, by
+its own mechanism, and the seam guarantees exactly two patterns. Both are proved by `[GpuFact]` tests on all three
+backends (`KhaozEngine.Render.Tests/Gpu/Compute*GpuTests.cs`).
 
 **1. Compute writes a storage texture, then a graphics pass samples it: same command list, `Storage | Sampled`.**
 
@@ -22811,35 +23212,59 @@ cl.End();
 gd.Submit(cl);
 ```
 
-Vulkan queues a layout restore when the dispatch binds the texture and drains it before the next draw, but that
-queue is per-command-list state and is armed only by the `Sampled` usage flag, so a `Storage`-only texture or a
-split across two command lists silently skips the barrier. Metal ends the compute encoder as the render encoder
-begins. Direct3D11 unbinds the UAV as the SRV is bound. You do not need to unbind the compute set or switch
-pipeline first; all three cope.
+The native Vulkan backend tracks layouts per command list. A dispatch leaves the storage image in `GENERAL`,
+and the draw transitions each bound sampled image to `SHADER_READ_ONLY_OPTIMAL` before rendering begins.
+An open rendering scope ends before that transition. The walk covers every set the current pipeline declares,
+including sets bound before the dispatch. Create the texture with `Storage | Sampled` and keep both commands
+in the same list. Metal ends the compute encoder as the render encoder begins. Direct3D11 unbinds the UAV as
+the SRV is bound. You do not need to unbind the compute set or switch pipeline first.
 
-**2. A dispatch that reads what an earlier dispatch wrote: `End` + `Submit` + `WaitForIdle` between them.**
+**2. A dispatch or a draw that reads a storage buffer an earlier dispatch wrote: same command list, nothing
+between them.**
 
 ```csharp
-foreach (var stage in stages)      // e.g. the log2(N) stages of an FFT
+cl.Begin();
+cl.SetComputePipeline(pipeline);
+foreach (var stage in stages)      // e.g. the log2(N) stages of an FFT, each reading the previous one's output
 {
-    using IGpuCommandList cl = f.CreateCommandList();
-    cl.Begin();
-    cl.SetComputePipeline(pipeline);
     cl.SetComputeResourceSet(0, stage.Set);
     cl.Dispatch(groups, 1, 1);
-    cl.End();
-    gd.Submit(cl);
-    gd.WaitForIdle();              // the only cross-dispatch ordering the seam guarantees
 }
+
+cl.SetFramebuffer(fb);             // a draw that reads the last stage's output, still the same list
+cl.SetPipeline(graphicsPipeline);
+cl.SetGraphicsResourceSet(0, drawSet);   // binds the result as StructuredBufferReadOnly
+cl.Draw(3);
+cl.End();
+gd.Submit(cl);
 ```
 
-Chaining dependent dispatches inside one command list is NOT safe. On Vulkan no memory barrier is emitted
-between them at all (storage buffers are not hazard-tracked, and a storage image stays in the same layout so the
-transition is a no-op), and dispatches inside a command buffer may overlap. Independent dispatches that do not
-read each other's output can share one command list freely; it is only the read-after-write chain that needs the
-boundary. This costs a GPU stall per dependent stage, which is real, and it is the current ceiling on a
-multi-pass compute chain. Rationale and the per-backend evidence:
-`docs/design/GPU-COMPUTE-DESIGN-2026-07-26.md`.
+The reader may be any stage. A later dispatch, a vertex shader and a fragment shader all see what an earlier
+dispatch in the same list wrote. Declare each binding's direction honestly: `StructuredBufferReadWrite` where a
+dispatch writes the buffer and `StructuredBufferReadOnly` where a command only reads it. The kind is what lets a
+backend skip a barrier between two commands that only read, and a read-only binding of a buffer no dispatch wrote
+costs nothing. The native Vulkan backend emits one global memory barrier before the first command that binds what
+an earlier dispatch wrote. Direct3D11 unbinds the UAV as the SRV is bound. Metal dispatches on a serial compute
+encoder and its buffers are hazard-tracked.
+
+**Ordering between command lists stays explicit.** A second list that reads what the first wrote needs `End` +
+`Submit` on the first and a wait before the second is submitted: `WaitForIdle`, or a completion fence when the
+device supports one. Nothing a backend does inside a list carries across that boundary.
+
+**Vertex pulling.** A draw can fetch its own vertices from a read-only storage buffer by `gl_VertexIndex`, with no
+vertex layout and no vertex buffer bound:
+
+```glsl
+layout(set = 0, binding = 0) uniform Params { uvec4 Base; };
+layout(std430, set = 0, binding = 1) readonly buffer EntryBuf { Entry E[]; };
+void main() { Entry e = E[Base.x + uint(gl_VertexIndex)]; /* ... */ }
+```
+
+Issue a pulled draw with first vertex 0, and a pulled `DrawIndexed` with base vertex 0 as well, and pass any
+storage base as an explicit per-draw uniform the shader adds to the index. The vertex index does not carry the
+draw's bases portably: Vulkan's `gl_VertexIndex` includes them and Direct3D11's `SV_VertexID` leaves them out,
+which is the same gap `SV_InstanceID` has for the first instance. `ComputeVertexPullingGpuTests` pins both draws
+reading from a uniform base of 3, before and after a dispatch in the same list rewrites the entries.
 
 Validate compute sources device-free in your fast test lane, the same way as a graphics pair:
 

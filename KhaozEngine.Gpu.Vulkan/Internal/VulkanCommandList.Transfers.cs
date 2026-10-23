@@ -218,6 +218,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // already emits (VulkanTransferBarrier.ToTransfer) is that dependency: its first scope is every earlier
         // write on the queue, one in an earlier submission included. One per copy call, not per region, and only
         // where a side is staging, so the image-to-image path is unchanged.
+        // AFTER THE LAST REGION, a copy INTO staging takes the buffer copy's second barrier too, through
+        // FinishTransfer. Its second scope names the HOST, and a fence signal covers device access only, so without
+        // it a CPU read of the staging memory after the fence has no dependency on the copy's write.
         ulong PrepareTransfer(VulkanTexture source, VulkanTexture destination, in VulkanTrackedImage sourceRange,
             in VulkanTrackedImage destinationRange, string what)
         {

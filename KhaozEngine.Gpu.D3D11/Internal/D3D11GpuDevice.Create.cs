@@ -245,13 +245,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 // 7a. CAPABILITIES, read off the live device and the adapter it runs on, and the single source both
                 // GpuDeviceContext.Capabilities and IGpuDevice.Capabilities take on this backend. It is here rather
                 // than after the factory because the factory validates a requested sample count against it.
+                var timestamps = new D3D11TimestampApi(new D3D11TimestampQueries(device, context), _liveness, _loss);
                 Capabilities = D3D11DxgiQueries.ReadCapabilitiesWindows(device, adapter,
-                    _fences.SupportsCompletionFences);
+                    _fences.SupportsCompletionFences, timestamps);
 
                 // 5. THE FACTORY, with the creation gate the threading probe earned: a driver reporting
                 // DriverConcurrentCreates gets no lock at all, and no answer takes the serialized arm.
                 _factory = new D3D11ResourceFactory(device, context, _liveness, _rings, CreateCommandList,
-                    Capabilities, D3D11CreationGate.For(threadingCaps), _fences.CreateFence, _loss);
+                    Capabilities, D3D11CreationGate.For(threadingCaps), _fences.CreateFence, _loss, timestamps, _fences, _submitLock);
                 log.Info(_factory.SerializesCreation
                     ? "D3D11 resource creation: SERIALIZED behind one lock, because this driver does not report "
                         + "DriverConcurrentCreates (or the threading probe had no answer)."
@@ -273,6 +274,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 // The staging map path, with decision G3's second check site wired: the latch arrives here so a
                 // failed map asks it BEFORE it builds an exception message.
                 _staging = new D3D11StagingAccess(new D3D11ContextStagingMemory(context), _submitLock, _loss);
+                _completedReads = new D3D11CompletedReads(_staging, _fences, _submitLock, _liveness);
 
                 // 6. THE SWAPCHAIN, on the windowed path only. The engine half owns the present boundary and the
                 // queued resize, and the native half is the four calls it makes.
@@ -323,7 +325,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // travels BY VALUE, one copy per list, which is safe precisely because it is a readonly struct over the
         // device's one state and one context: every copy addresses the same caches. The deferred driver ignores
         // it entirely and meets an emitter only at submit.
-        IGpuCommandList CreateCommandList() => D3D11CommandDrivers.Create(_recordMode, _emitter);
+        IGpuCommandList CreateCommandList() => D3D11CommandDrivers.Create(_recordMode, _emitter, _fences);
 
         // The two environment levers that reach D3D11CreateDevice, OR'd exactly as decision G4 states, each
         // warning about its own unrecognized value. GpuD3D11DeviceFlags is the engine-wide lever and is logged

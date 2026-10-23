@@ -66,8 +66,8 @@ public readonly struct RigidInstanceDraw
     /// draw is never seen, so its <see cref="Motion"/> is ignored.</summary>
     public bool ShadowOnly { get; init; }
 
-    /// <summary>Invert the SHADOW dither of a dissolving instance, for the merged half of an HLOD crossfade (issue
-    /// #391). The colour pass is unchanged.</summary>
+    /// <summary>Invert only the shadow dither of a dissolving instance at its mirrored threshold (#391).
+    /// The colour pass is unchanged. LOD and HLOD handoffs use <see cref="DissolveComplement"/> instead.</summary>
     public bool InvertShadowDissolve { get; init; }
 
     /// <summary>Complementary dissolve phase for a LOD handoff. 0 keeps the ordinary noise ownership, 1 keeps its

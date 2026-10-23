@@ -328,6 +328,24 @@ namespace KhaozEngine.Tests.Render3D
             history.ReleaseTargets();
         }
 
+        [Fact]
+        public void VisibilityComparisonReadinessFollowsTheResolveHistoryInDebugAndCountFrames()
+        {
+            using var rig = new HeadlessSceneRig();
+            rig.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+            rig.Scene.DebugView = SceneDebugView.History;
+            rig.Frame(96, 64);
+            Assert.Equal(0f, rig.Scene.TemporalResolveRendererForTests!.LastVisibilityUniforms.PreviousJitter.Z);
+            rig.Frame(96, 64);
+            Assert.Equal(1f, rig.Scene.TemporalResolveRendererForTests.LastVisibilityUniforms.PreviousJitter.Z);
+            rig.Scene.CameraCut();
+            rig.Frame(96, 64);
+            Assert.Equal(0f, rig.Scene.TemporalResolveRendererForTests.LastVisibilityUniforms.PreviousJitter.Z);
+            rig.Scene.RequestTemporalCounts();
+            rig.Frame(96, 64);
+            Assert.Equal(1f, rig.Scene.TemporalResolveRendererForTests.LastVisibilityUniforms.PreviousJitter.Z);
+        }
+
         /// <summary>New inputs rebuild the resolve's sets, and the sets they replace go to the retire queue rather than
         /// being freed in place, since a submitted frame may still bind them.</summary>
         [Fact]
@@ -347,7 +365,7 @@ namespace KhaozEngine.Tests.Render3D
             int before = factory.ResourceSets.Count;
             renderer.BindInputs(new TemporalResolveInputs(Texture(), opaque, depth, motion), history, retired);
             FakeResourceSet[] first = factory.ResourceSets.GetRange(before, factory.ResourceSets.Count - before).ToArray();
-            Assert.Equal(3, first.Length);   // the resolve set for each read index and the depth store set
+            Assert.Equal(5, first.Length);   // checked and fully lit sets for each read index, plus depth store
             renderer.BindInputs(new TemporalResolveInputs(Texture(), opaque, depth, motion), history, retired);
             Assert.True(factory.ResourceSets.Count > before + first.Length, "new inputs did not rebuild the sets");
             Assert.All(first, set => Assert.False(set.Disposed,

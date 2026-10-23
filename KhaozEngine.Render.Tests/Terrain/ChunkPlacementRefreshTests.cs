@@ -320,10 +320,11 @@ namespace KhaozEngine.Tests.Terrain
             public MeshHandle LoadMesh(GltfMesh mesh) => new(++_next);
             public void UnloadMesh(MeshHandle handle) => Unloaded.Add(handle.Index);
 
-            public void DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
+            public int DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
                 float dissolveFloor)
             {
                 foreach (PropPlacement p in placements) _drawn.Add((p.X, p.Z));
+                return placements.Count;
             }
 
             public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve) { }

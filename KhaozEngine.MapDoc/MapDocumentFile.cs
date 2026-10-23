@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
@@ -42,6 +43,7 @@ public sealed class MapDocumentLoadOptions
         RegisterMigration(5, MapWaterMigration.Upgrade);
         RegisterMigration(6, MapPrefabMigration.Upgrade);
         RegisterMigration(7, MapMarkerMigration.Upgrade);
+        RegisterMigration(8, MapFoliageMigration.Upgrade);
     }
 
     /// <summary>Registers the transform from <paramref name="fromVersion"/> to fromVersion + 1. The step does
@@ -92,8 +94,8 @@ public static class MapDocumentFile
     /// monolithic and a tiled copy of the same world would hash differently. Version and layout are
     /// independent axes. v4 adds native metadata and separate playable bounds. v5 adds the support recipe
     /// and authored surface metadata. v6 adds bounded water. v7 adds rigid prefabs and standalone building intent. v8
-    /// adds marker payload 2 with its height mode, support binding and archetype.</summary>
-    public const int CurrentFormatVersion = 8;
+    /// adds marker payload 2 with its height mode, support binding and archetype. v9 adds root foliage payload 1.</summary>
+    public const int CurrentFormatVersion = 9;
 
     /// <summary>The document tile edge, in world meters, a document gets when it does not declare one (and
     /// what the v2 to v3 migration stamps). At a heavily authored density a fully authored 512 m tile is
@@ -232,7 +234,7 @@ public static class MapDocumentFile
 
     static void WriteWhole(MapDocument writable, Stream stream, MapDocRegistry registry)
     {
-        using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
+        using var writer = new Utf8JsonWriter(stream, MapJsonTextOptions.IndentedWriter);
         JsonSerializer.Serialize(writer, writable, CreateOptions(registry, write: true));
     }
 
@@ -246,6 +248,20 @@ public static class MapDocumentFile
         registry ??= MapDocRegistry.CreateDefault();
         MapDocument writable = PrepareWholeWrite(doc, registry);
         return JsonSerializer.Serialize(writable, CreateOptions(registry, write: true));
+    }
+
+    /// <summary>A detached whole-document copy through the canonical text form that never encodes or decodes foliage.
+    /// The source is validated whole, foliage included, exactly as <see cref="SaveText"/> validates it, and is never
+    /// edited. The copy holds the source's immutable foliage set by reference, so callers that copy a document to expand
+    /// or edit other members pay nothing for its density.</summary>
+    internal static MapDocument CopyWithSharedFoliage(MapDocument doc)
+    {
+        ArgumentNullException.ThrowIfNull(doc);
+        MapDocRegistry registry = MapDocRegistry.CreateDefault();
+        MapDocument writable = PrepareWholeWrite(doc, registry, foliage: false);
+        MapDocument copy = LoadText(JsonSerializer.Serialize(writable, CreateOptions(registry, write: true)));
+        copy.Foliage = doc.Foliage;
+        return copy;
     }
 
     /// <summary>Writes the tiled form: a directory holding <c>map.json</c> plus content-addressed tile files.
@@ -306,7 +322,7 @@ public static class MapDocumentFile
     /// the tiled form byte-stable, since the tiled reader always rebuilds a block header. An empty block at a
     /// NON-default cell size is kept, because that cell size is authored information a save must not
     /// silently drop.</para></summary>
-    static MapDocument PrepareWholeWrite(MapDocument doc, MapDocRegistry registry)
+    static MapDocument PrepareWholeWrite(MapDocument doc, MapDocRegistry registry, bool foliage = true)
     {
         if (doc.Tiles is { IsPartial: true })
             throw new MapDocumentException(
@@ -325,6 +341,7 @@ public static class MapDocumentFile
         copy.PlayerSpawns = doc.PlayerSpawns;
         copy.TerrainOverrides = doc.TerrainOverrides is { IsEmpty: true, CellSize: MapTerrainOverrides.DefaultCellSize } ? null : doc.TerrainOverrides;
         copy.Surfaces = doc.Surfaces.Clone();
+        copy.Foliage = foliage ? doc.Foliage?.Clone() : null;
         for (int i = 0; i < copy.Surfaces.Refs.Count; i++)
         {
             MapSurfaceRef surface = copy.Surfaces.Refs[i];
@@ -349,18 +366,15 @@ public static class MapDocumentFile
 
     static JsonSerializerOptions BuildOptions(MapDocRegistry registry, bool indented)
     {
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            ReadCommentHandling = JsonCommentHandling.Skip,
-            AllowTrailingCommas = true,
-            AllowOutOfOrderMetadataProperties = true,
-            WriteIndented = indented,
-            // Omit nulls on write: absent means "default" (ground-snap Y, all-layers filter, no $schema),
-            // and the JSON schema types $schema as string, so an emitted null would fail validation.
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        };
+        JsonSerializerOptions options = MapJsonTextOptions.CreateSerializer(indented);
+        options.PropertyNameCaseInsensitive = true;
+        options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.ReadCommentHandling = JsonCommentHandling.Skip;
+        options.AllowTrailingCommas = true;
+        options.AllowOutOfOrderMetadataProperties = true;
+        // Omit nulls on write: absent means "default" (ground-snap Y, all-layers filter, no $schema),
+        // and the JSON schema types $schema as string, so an emitted null would fail validation.
+        options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
         MapNativeJson.Configure(options);
         options.Converters.Add(new MapRationalJsonConverter());
         options.Converters.Add(new MapPatchKeyJsonConverter());

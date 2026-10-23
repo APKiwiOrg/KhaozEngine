@@ -77,17 +77,51 @@ public sealed class TileWorldTargetOutlineLodTests
 
         scene.OutlineGroups.Clear();
         Vector3 regionCenter = new(32f, 0f, -32f);
-        view.Draw(regionCenter + new Vector3(192f, 0f, 0f));
+        view.Draw(regionCenter + new Vector3(184f, 0f, 0f));
 
         RecordedOutlineGroup hlod = Assert.Single(scene.OutlineGroups);
         Assert.Equal(MeshOutlineOcclusion.None, hlod.Occlusion);
-        Assert.Contains(hlod.Parts, part => part.Complement);
-        Assert.Contains(hlod.Parts, part => !part.Complement);
+        Assert.Contains(hlod.Parts, part => part.Complement && MathF.Abs(part.Dissolve - .25f) < .001f);
+        Assert.Contains(hlod.Parts, part => !part.Complement && MathF.Abs(part.Dissolve - .25f) < .001f);
         Assert.True(scene.MeshLoads.Count > 0, "selected HLOD mask mesh was not uploaded");
 
         int unloads = scene.MeshUnloads.Count;
         view.ClearOutlinedObject();
         Assert.Equal(unloads + 1, scene.MeshUnloads.Count);
+    }
+
+    [Theory]
+    [InlineData(.02f, 1)]
+    [InlineData(.029f, 1)]
+    [InlineData(.031f, 2)]
+    [InlineData(.969f, 2)]
+    [InlineData(.971f, 1)]
+    public void Hlod_outline_covers_each_noise_value_around_both_skip_gates(float transition, int expectedParts)
+    {
+        TileWorldDocument document = TileRenderTestData.HouseWorld();
+        TileObject tree = document.AddObject("tree", 25, 25, 0, 0);
+        var scene = new RecordingTileWorldScene();
+        using var view = new TileWorldView(scene, document, TileRenderTestData.Catalogs, new LodResolver(),
+            new TileWorldViewOptions { PropLayers = new[] { TreeLayer() } },
+            new TileWorldBuildQueueOptions { MaxHlodAppliesPerPump = 4 }, new ImmediateDispatcher());
+        view.LoadRegion(TileRenderTestData.Region);
+        view.SetOutlinedObject(tree.Id, KhaozEngine.Primitives.Color.White);
+
+        view.Draw(new Vector3(32f + 176f + transition * 32f, 0f, -32f));
+
+        RecordedOutlineGroup group = Assert.Single(scene.OutlineGroups);
+        Assert.Equal(expectedParts, group.Parts.Count);
+        if (expectedParts == 1)
+        {
+            Assert.Equal(0f, group.Parts[0].Dissolve);
+            Assert.False(group.Parts[0].Complement);
+        }
+        for (int sample = 0; sample < 1024; sample++)
+        {
+            float noise = sample / 1024f;
+            int owners = group.Parts.Count(part => part.Complement ? noise < part.Dissolve : noise >= part.Dissolve);
+            Assert.True(owners == 1, $"transition={transition}, noise={noise}, outline owners={owners}");
+        }
     }
 
     [Fact]

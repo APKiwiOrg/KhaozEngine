@@ -26,6 +26,7 @@ public static class MapMarkerEdits
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(edit);
+        MapDocumentEditFinalizer.Preflight(document, assets);
         RequireResolver(document);
         string id = edit switch
         {
@@ -77,7 +78,7 @@ public static class MapMarkerEdits
         { Roofs = intent.Roofs, Storeys = intent.Storeys };
         // IDs, names, payloads and bindings are validated, and every support-bound height resolves, before the result exists.
         MapBoundDocumentValidation.Validate(after, assets);
-        var resources = MapPrefabResolver.Expand(after, assets);
+        var resources = MapDocumentEditFinalizer.Expand(after, assets);
         var effects = MapMarkerEffects.Describe(MapEffectiveAnnotations.Markers(before), MapEffectiveAnnotations.Markers(resources));
         var writes = new MapNativeWriteSet([], [], [], [], [], [], false)
         {
@@ -85,7 +86,7 @@ public static class MapMarkerEdits
             NativeResourceTransforms = transforms,
             Prefabs = transfers,
         };
-        return new(after, writes, effects);
+        return MapDocumentEditFinalizer.Complete(document, new(after, writes, effects) { Expansions = new(before, resources) }, assets, assets);
     }
 
     /// <summary>Resolver (1, 1) documents carry the legacy analytic support contract. Marker heights need authored

@@ -105,10 +105,10 @@ this doc cannot silently drift apart.
 | Server heartbeat (liveness) | `KhaozEngine.ServerStatus` (`IServerHeartbeatSink`, `ServerHeartbeat`, `Null`/`InMemory` reference sinks, `ServerHeartbeatService`) | **game-side** (the one-table upsert against the status DB), no engine backend package | Microsoft.Data.SqlClient / any - in the game, never the engine |
 | Bug report delivery | `KhaozEngine.BugReports` (`IBugReportSink`: one `SubmitAsync` returning a `BugReportSubmitResult` of Sent, Queued or Rejected for every delivery outcome, with only the caller's own cancellation thrown. `BugReportSubmitter` treats a sink that throws or returns nothing as a failed send and keeps its bundle in `BugReportOfflineQueue`) | (in-package) `HttpRelaySink` (the relay intake over the engine's `HttpRetry`) and `LocalFolderSink` (a folder plus the rendered viewer page, for development), a fake sink in tests | none. System.Net.Http (BCL `HttpClient`, supplied by the caller and contained in `HttpRelaySink`) |
 | Bug report authentication | `KhaozEngine.BugReports.Relay.IReporterAuthenticator` resolves a bearer token to `ReporterIdentity` or null | The game's token verifier, supplied by the host | none in the relay |
-| Bug report media | `KhaozEngine.BugReports.Relay.IReportMediaStore` provides bounded reads, existence checks and create-only or overwrite writes in Public and Pending, enforcing `ReportPaths.IsValid` | `InMemoryReportMediaStore` and opt-in `Relay.Azure.BlobReportMediaStore` over caller-built containers | Azure.Storage.Blobs only in Relay.Azure |
-| Bug report work | `KhaozEngine.BugReports.Relay.IReportWorkQueue` enqueues `ReportWorkItem` for durable host delivery | `InMemoryReportWorkQueue` and opt-in `Relay.Azure.StorageQueueReportWorkQueue` over a caller-built queue | Azure.Storage.Queues only in Relay.Azure |
+| Bug report media | `KhaozEngine.BugReports.Relay.IReportMediaStore` provides bounded reads, existence checks, create-only or overwrite writes, recursive `ListAsync` and idempotent `DeleteAsync` in Public and Pending, enforcing `ReportPaths.IsValid`. The new list and delete members default to a named `NotSupportedException` | `InMemoryReportMediaStore` and opt-in `Relay.Azure.BlobReportMediaStore` over caller-built containers | Azure.Storage.Blobs only in Relay.Azure |
+| Bug report work | `KhaozEngine.BugReports.Relay.IReportWorkQueue` enqueues `ReportWorkItem` for durable host delivery, including `PurgeRevoked`. Delayed `EnqueueAsync` accepts zero to seven days and defaults to a named `NotSupportedException` | `InMemoryReportWorkQueue` and opt-in `Relay.Azure.StorageQueueReportWorkQueue` over a caller-built queue. Delayed Azure sends use a time to live of the delay plus seven days | Azure.Storage.Queues only in Relay.Azure |
 | Bug report quotas | `KhaozEngine.BugReports.Relay.IReportQuotaStore` reads `QuotaCounter` and conditionally writes a count with an opaque version | `InMemoryReportQuotaStore` and opt-in `Relay.Azure.TableReportQuotaStore` over a caller-built table | Azure.Data.Tables only in Relay.Azure |
-| Bug report issues | `KhaozEngine.BugReports.Relay.IGitHubIssueClient` creates an issue or adds a comment, throwing `GitHubApiException` on failure | In-package `GitHubAppIssueClient`, with a host-owned `HttpClient` and GitHub App credentials | none. BCL HTTP and cryptography, with `KhaozEngine.Http` for token exchange retry only |
+| Bug report issues | `KhaozEngine.BugReports.Relay.IGitHubIssueClient` creates an issue, adds a comment or redacts and closes an issue through `UpdateIssueAsync`, preserving labels and returning Updated, Gone or Moved. The update member defaults to a named `NotSupportedException`. `IssuePageUrl` constructs the operator's deletion URL, defaulting to null when unavailable. API failures throw `GitHubApiException` | In-package `GitHubAppIssueClient`, with a host-owned `HttpClient` and GitHub App credentials | none. BCL HTTP and cryptography, with `KhaozEngine.Http` for token exchange retry only |
 | Social / presence | `KhaozEngine.Social` (`ISocialProvider`, whose `TryInitialize` must be re-attemptable on the same instance and whose `IsConnected` is the RECOVERABLE way to report a dropped connection where a throw is the terminal one, value types, `NullSocialProvider` no-op, `SocialPresenceController` + `SocialPresenceState`/`SocialPresenceOptions`) | `KhaozEngine.Social.Discord` (`DiscordSocialProvider`) | none - hand-rolled Discord IPC over `System.IO.Pipes` / `System.Net.Sockets` (no third-party lib) |
 | Player identity | `KhaozEngine.Identity` (`IIdentityProvider`, `IIdentityValidator` + `IdentityValidation` - the three-outcome result of `ValidateDetailedAsync`, so a backend can report a provider outage instead of flattening it onto a refused credential, `ITokenCache` + `FileTokenCache`, `IBrowserLauncher`, `ILoopbackListener`, shared `Interactive.SystemBrowserLauncher` and `Interactive.HttpLoopbackListener` adapters, `IdentitySession` orchestrator, `SessionToken` HMAC, `SignInException` - the shared base a backend's own sign-in failure derives from, so a consumer catches one type across every provider, and the `/auth/exchange` wire DTOs `AuthExchangeRequest`, `AuthExchangeResponse` and `AuthExchangeStatuses` a client and an auth service share) | `KhaozEngine.Identity.Oidc` (`OidcClientProvider`, `OidcTokenValidator`, legacy adapter wrappers), `KhaozEngine.Identity.Discord` (`DiscordClientProvider`, `DiscordTokenValidator`) | Microsoft.IdentityModel.Protocols.OpenIdConnect + Microsoft.IdentityModel.JsonWebTokens (Oidc only). Discord backend has no third-party lib (plain HTTP token-introspection call) |
 | Sign-in exchange | `KhaozEngine.Identity.Exchange` (`AuthExchange`, the pure decision behind `/auth/exchange`: any `IIdentityValidator` keyed by provider id, any `IAccountStore`, a signing key of at least `SigningSecret.MinimumBytes`, and the fixed shape, provider deadline, find-or-create, admissible-subject, ban-then-whitelist and mint sequence. `AuthExchangeResult` with `AuthExchangeOutcome` and the log-only `AuthExchangeCause`, `AuthExchangeOptions`, `AuthAdmission.Decide`, and `IAuthExchangePolicy` + `SessionClaims`, the game's display name and token claims hooks, which cannot reorder the gate) | the game's own `IAuthExchangePolicy` (the reference consumer's character shell and v3 persistence key), or the defaults (Grimhollow's provider-subject name fallback and v2). The HTTP handler is `KhaozEngine.Identity.Exchange.AspNetCore`, a separate package over the core (`MapAuthExchange`, `AddAuthExchangeHosting`, `TrustedProxyNetworks`, `AuthExchangeClientKey`), so the core stays testable with no web server | (no extra dep in the core. Engine edges to `Identity`, `Accounts` and `Netcode` only, and no HTTP type. The handler takes the `Microsoft.AspNetCore.App` shared framework through a `FrameworkReference` and no package) |
@@ -878,6 +878,10 @@ instance queue throws. The skinned default keeps the tint as well, drops the key
 and `CastsShadows`, and still throws `NotSupportedException` where the older skinned draws do.
 `CreatePropClusterOwner()` returns the view-owned `ITileWorldPropClusterOwner` used for detached CPU builds,
 scene-thread apply and draw, invalidation, unload and disposal. Its default also throws `NotSupportedException`.
+The owner's `DrawWithVisibility` accepts generation-aware `IPropClusterVisibility` and returns visible and
+shadow-only placement counts. Its default retains `Draw` for uncontrolled layers and returns no counts, keeping
+older non-roof adapters working. When `RequiresVisibility` is true it throws, so a roof layer cannot silently
+expose hidden geometry. The shipped adapter implements the full colour and shadow-only paths.
 An older custom scene can still host the default empty `TileWorldViewOptions.PropLayers`, while an opted-in
 large-world view reports the missing capability at construction instead of drawing a partial horizon. Defaults
 rather than abstract
@@ -964,6 +968,10 @@ Its only edge is the foundation leaf, so a headless tool can produce imagery wit
 The TileWorld adapter adds document reads without pulling in rendering. The Gui arm adds `WorldMapView`
 over the existing UI stack, with frame-thread texture uploads and game-supplied icons, text and fonts.
 
+`KhaozEngine.WorldMap.Gui.Tests` references only `KhaozEngine.WorldMap.Gui` and
+`KhaozEngine.Gpu.TestKit`. The test kit gates opt-in native offscreen capture tests. This test-only
+edge leaves the production package graph above unchanged, and the test project remains non-packable.
+
 All three are opt-in and outside every umbrella. The core is optional for consumers without maps, the
 adapter is optional for worlds using another format, and the view is optional for headless consumers or
 games with another presentation. No third-party package is added. `ArchitectureTests.WorldMap.cs` pins the
@@ -1004,7 +1012,7 @@ inherit it. The effective resource policy `kemap/effective-resources/1` and quer
 captured GPU-free resource view. The Light/Support `resourceSchema` discriminant does not move decoding into
 a renderer or physics backend, and unmarked bytes retain the released opaque path.
 
-Rigid prefab payloads, persisted bindings, format-8 identity, strict immutable resource closure,
+Rigid prefab payloads, persisted bindings, format-9 identity, strict immutable resource closure,
 local support ownership, partial paint, room parenting, AuthoredOpen portals, bounded effective
 witnesses, roof flags and versioned marker/light values stay in `MapDoc`. `MapDoc.Physics` consumes
 that same effective village for statics, water inputs, membership and annotation intent. Neither
@@ -1036,6 +1044,25 @@ caller.
 reloads, independent client and server heads, marker-only residency without physics or navigation change, and the
 shared commands with real MCP verbs. The [marker handoff](../KhaozEngine.MapDoc/README.md#public-marker-village-acceptance)
 names what R7 to R11, #1370 and #438 consume.
+
+### Native foliage runtime and private comparison boundary
+
+R7 adds no production package or umbrella edge. Payload 1, sparse storage, immutable full-snapshot context, prepared
+support/clearance, distribution/differential, pure edits, public finalization and `MapFoliageRenderHandoff` live in
+MapDoc over its existing Terrain edge. The handoff contains CPU records, `MapLocalBounds`, `MapBox3` and Numerics values.
+It introduces no renderer/GPU type, TileWorld, physics, editor or consumer dependency. MapEditor still has no
+MapDoc.Physics edge. MapDoc.Physics never consumes generated foliage for statics, world bounds or navigation.
+
+`GroundCoverCandidateEvaluator` and the lazy-channel trace remain Terrain CPU APIs. The frozen released legacy sampler
+is unchanged. The [private oracle harness README](../KhaozEngine.MapDoc.OracleHarness.Tests/README.md) is authoritative
+for its seven test-only references and comparison protocol. It is nonpackable, unreferenced, outside the solution and
+public CI. Do not copy that dependency into runtime code. Earlier private marker/building scaffolds keep their own
+format policies, they do not become format-9-only requirements.
+
+The [MapDoc foliage handoff](../KhaozEngine.MapDoc/README.md#public-foliage-acceptance-and-deferred-ownership) consolidates
+OA9, both-head/storage proofs, real wire acceptance and hosted foliage-conformance. R8 must add its windowed immutable
+context/completeness contract before streamed native generation. Actual rendering/residency and appearance, R9 input,
+R10 complete verbs and R11 actual import remain separate gates.
 
 ## Content catalog package edges
 
@@ -1582,16 +1609,14 @@ they meant. **And the seam's compute rule 1 and rule 2 comment named a mechanism
 is the failure mode a second implementation of one API creates: rule 1 is satisfied here by a real image barrier
 at the sampled bind rather than by the queued layout restore that comment described, and a dependent-dispatch
 chain inside one list IS ordered here. Both sentences were true of Veldrid's Vulkan backend and false of this
-one. The comment now names the implementation each mechanism belongs to, and says outright that the mechanism is
-the part that differs between two implementations of one API, while rule 2's portable requirement is unchanged
-and a consumer that drops the drain is writing to one backend rather than to the seam
-([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)). The native Metal backend later joined the
-permissive side by a third mechanism, its compute encoder's serial dispatch type, which is what makes three of
-three engine-owned backends honour rule 2 natively
-([#585](https://github.com/APKiwiOrg/KhaozEngine/issues/585)). Since 18.0.0 those three are the only backends
-there are, so nothing the engine ships needs the drain for rule 2 at all. That is the quorum
-[#461](https://github.com/APKiwiOrg/KhaozEngine/issues/461) has been waiting for, and it is evidence rather than
-a contract change: the drain stays in the seam contract because a FOURTH backend may need it. It registers under `GpuBackendKind.VulkanNative`, which landed in
+one. The comment names each mechanism separately from the portable rule
+([#529](https://github.com/APKiwiOrg/KhaozEngine/issues/529)). Rule 2 now guarantees in-list storage-buffer
+visibility on every backend. A dispatch or draw reading an earlier dispatch's writes needs no intermediate
+submit or drain. Vulkan emits a global dependency barrier, Direct3D 11 uses SRV/UAV conflict tracking and runtime
+ordering, and Metal uses a serial compute encoder and hazard-tracked buffers
+([#585](https://github.com/APKiwiOrg/KhaozEngine/issues/585)). Ordering between command lists still requires a
+submit boundary and a wait. The ordering contract adds no explicit barrier member or capability flag.
+It registers under `GpuBackendKind.VulkanNative`, which landed in
 `17.32.0`, so the backend is selectable by name (`KE_GRAPHICS_BACKEND=vulkan-native`) and a machine that cannot
 run it arrives through the reported fallback. **Since 17.40.0 the OS probe selects it on Linux**, and since
 18.0.0 there is nothing behind it: a process that has not referenced the package has no provider to select and
@@ -1930,11 +1955,11 @@ than any backend's, and the distinction is the whole point of writing a seam con
   three that tolerate concurrent recording natively, and it went on refusing after the only backend that
   punished a nested `Begin` was deleted. A rule that binds only where a backend punishes you is a backend
   property with a rule's name on it.
-- **The pre-record phase is where the refused work legally goes.** The seam has no dispatch-to-dispatch barrier
-  call (see the compute ordering contract on `IGpuCommandList`), so a dependent dispatch chain is ordered only
-  by `End` + `Submit` + a device wait, which means a command list of its own. Inside the frame's recording there
-  is nowhere to open one. Deleting the phase would leave the engine's own FFT ocean with no legal place to run
-  on a windowed frame, on all three native backends.
+- **The pre-record phase is where work needing its own list legally goes.** The shipped FFT ocean retains its
+  separate submissions and explicit waits, so it must prepare before the frame's recording begins. The seam now
+  orders dependent storage-buffer dispatches inside one list without a barrier call or intermediate wait.
+  That contract does not make nested recording legal or change the ocean's submission pattern. Deleting the
+  pre-record phase would still leave that consumer with no legal place to open its lists on a windowed frame.
 - **The residual is a refusal and nothing else.** A host driving a `Render3DSurface` off a raw
   `AppWindow.Run(onFrame)` without passing `onPrepare` still nests, and gets `GpuNestedRecordingException`
   naming the fix. Under the fork that same case had a second, backend-specific exception under it. Nothing

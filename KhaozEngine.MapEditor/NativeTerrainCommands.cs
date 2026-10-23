@@ -41,29 +41,22 @@ public sealed class TerrainEditCommand : EditorCommand, INativeDocumentCommand
                 NewSpatialBounds = accepted.OldSpatialBounds,
                 DigestChanges = Array.AsReadOnly(accepted.DigestChanges.Select(c => new MapDigestChange(c.Key, c.After, c.Before)).ToArray()),
             } : accepted;
-            return new(undo ? _undoWriteSet! : writes, MapWaterEdits.NameAffectedBodies(candidate.Water, effects, candidate.Surfaces), () => { });
+            return new(undo ? _undoWriteSet! : writes, MapDocumentTerrainEdits.Name(candidate, effects), () => { });
         }
         if (undo) throw new InvalidOperationException("Revert called before Apply.");
         var before = NativeDocumentSnapshot.Clone(candidate, registry);
-        MapTerrainEditResult prepared = MapTerrainEdits.Prepare(candidate.Surfaces, _edit);
-        candidate.Surfaces = prepared.Candidate;
-        MapPrefabAttachmentDescriptors.Refresh(candidate);
-        var reseat = assets is null ? NativeCompleteSnapshotCommand.EmptyWrites : NativePlacementResourceState.Reseat(candidate, assets);
-        var writeset = NativePlacementResourceState.Union(prepared.WriteSet, reseat) with
-        {
-            Prefabs = reseat.Prefabs || before.Prefabs?.Digest() != candidate.Prefabs?.Digest(),
-            NativeResourceTransforms = reseat.NativeResourceTransforms || !(before.NativeResourceTransforms ?? []).SequenceEqual(candidate.NativeResourceTransforms ?? []),
-        };
+        // The document-aware terrain transaction is the one home of this edit. The local-only path passes no closure.
+        var (writeset, surfaceEffects, prepared) = MapDocumentTerrainEdits.Apply(candidate, assets, _edit);
         var after = NativeDocumentSnapshot.Clone(candidate, registry);
         var undoWrites = writeset with
         {
             OwnerChanges = prepared.WriteSet.OwnerChanges.Select(c => Invert(c, before.Surfaces, after.Surfaces)).ToArray(),
         };
-        var named = MapWaterEdits.NameAffectedBodies(candidate.Water, prepared.Effects, candidate.Surfaces);
+        var named = MapDocumentTerrainEdits.Name(candidate, surfaceEffects);
         return new(writeset, named, () =>
         {
             _before = before; _after = after; _writeSet = writeset;
-            _undoWriteSet = undoWrites; _effects = prepared.Effects;
+            _undoWriteSet = undoWrites; _effects = surfaceEffects;
         });
     }
 

@@ -6,10 +6,10 @@ namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
     /// Owns the low-res GPU targets for one resolution: a 3-attachment MRT (lit color, encoded normal,
-    /// linear depth), or a 4-attachment one with the RG16F motion target while temporal rendering asks for it
+    /// linear depth), extended independently by RG16F motion and R8 key-shadow visibility when requested
     /// (<see cref="MotionAllocated"/>), plus a depth-stencil for the model pass, and two single-target ping-pong
     /// buffers for the post chain while the scene runs the chain over these targets (<see cref="PingsAllocated"/>).
-    /// Recreated on resolution / mip-mode / MSAA-sample-count / bloom-enabled / HDR-format / motion change.
+    /// Recreated on resolution / mip-mode / MSAA-sample-count / bloom-enabled / HDR-format / motion / visibility change.
     /// Also owns an optional half-resolution ping-pong pair (<see cref="BloomA"/>/<see cref="BloomB"/>) for the
     /// bloom bright-pass + separable blur, allocated only while bloom is enabled (see <see cref="BloomAllocated"/>).
     /// The colour-carrying targets (lit colour + both ping-pong pairs) render at <c>R16G16B16A16Float</c> when
@@ -24,7 +24,7 @@ namespace KhaozEngine.Render3D.Internal
     /// samples. Single-sample (the default) leaves <c>Ms*</c> null and <see cref="ColorTex"/> etc. ARE the MRT
     /// attachments - byte-identical to the pre-MSAA path.
     /// </remarks>
-    internal sealed class RenderResources : IDisposable, IPostChainTargets
+    internal sealed partial class RenderResources : IDisposable, IPostChainTargets
     {
         readonly IGpuDevice _gd;
 
@@ -129,10 +129,10 @@ namespace KhaozEngine.Render3D.Internal
         // The divisor (2 = Full, 4 = Reduced) the current DistortTex was built for, so a quality change reallocates.
         int _distortDivisor;
 
-        public RenderResources(IGpuDevice gd, int w, int h, bool hdrColor)
+        public RenderResources(IGpuDevice gd, int w, int h, bool hdrColor, bool visibility = false)
         {
             _gd = gd;
-            Create(w, h, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: hdrColor, motion: false, pings: true);
+            Create(w, h, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: hdrColor, motion: false, pings: true, visibility: ShadowVisibilityTargets.Requested(visibility, gd));
         }
 
         /// <summary>Recreate the targets when any argument other than <paramref name="pings"/> changed.
@@ -140,20 +140,21 @@ namespace KhaozEngine.Render3D.Internal
         /// refuses before anything is released. A change of <paramref name="pings"/> alone adds or drops the ping pair
         /// and keeps every other target (<see cref="EnsurePings"/>).</summary>
         public void Resize(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor, bool motion = false,
-            bool pings = true)
+            bool pings = true, bool visibility = false)
         {
+            visibility = ShadowVisibilityTargets.Requested(visibility, _gd);
             if (motion && sampleCount > 1)
                 throw new ArgumentException(
                     "Temporal rendering is single-sample, so the motion target cannot join a multisampled model target.",
                     nameof(motion));
             if (w == Width && h == Height && mipped == Mipped && sampleCount == SampleCount
-                && bloomEnabled == BloomAllocated && hdrColor == HdrColor && motion == MotionAllocated)
+                && bloomEnabled == BloomAllocated && hdrColor == HdrColor && motion == MotionAllocated && visibility == VisibilityAllocated)
             {
                 EnsurePings(pings);
                 return;
             }
             DisposeTargets();
-            Create(w, h, mipped, sampleCount, bloomEnabled, hdrColor, motion, pings);
+            Create(w, h, mipped, sampleCount, bloomEnabled, hdrColor, motion, pings, visibility);
         }
 
         /// <summary>Add or drop the ping pair alone, at the current size, mip mode and colour format, keeping every other
@@ -191,7 +192,7 @@ namespace KhaozEngine.Render3D.Internal
         IGpuTexture Tex(uint w, uint h, GpuPixelFormat fmt, GpuTextureUsage usage, uint mipLevels = 1, uint samples = 1) =>
             _gd.Factory.CreateTexture(new GpuTextureDescription(w, h, fmt, usage, mipLevels, 1, samples));
 
-        void Create(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor, bool motion, bool pings)
+        void Create(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor, bool motion, bool pings, bool visibility = false)
         {
             Generation++;
             Width = w; Height = h; Mipped = mipped; SampleCount = sampleCount < 1 ? 1 : sampleCount;
@@ -215,6 +216,7 @@ namespace KhaozEngine.Render3D.Internal
             ColorTex = Tex(uw, uh, colorFmt, blitRt, blitMips);
             NormalTex = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, rt);
             DepthColorTex = Tex(uw, uh, GpuPixelFormat.R32Float, rt);
+            CreateVisibility(uw, uh, s, visibility);
 
             if (Msaa)
             {
@@ -225,7 +227,7 @@ namespace KhaozEngine.Render3D.Internal
                 MsNormal = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, rtOnly, 1, s);
                 MsDepthColor = Tex(uw, uh, GpuPixelFormat.R32Float, rtOnly, 1, s);
                 DepthStencil = Tex(uw, uh, GpuPixelFormat.D32FloatS8UInt, GpuTextureUsage.DepthStencil, 1, s);
-                ModelFB = _gd.Factory.CreateFramebuffer(DepthStencil, MsColor, MsNormal, MsDepthColor);
+                ModelFB = CreateModelFramebuffer(MsColor, MsNormal, MsDepthColor);
                 ColorDepthFB = _gd.Factory.CreateFramebuffer(DepthStencil, MsColor);
             }
             else
@@ -234,9 +236,7 @@ namespace KhaozEngine.Render3D.Internal
                 // While temporal rendering is active every opaque path writes motion in the same pass as colour,
                 // normal and depth, so the target rides as a fourth attachment (MotionMath).
                 MotionTex = motion ? Tex(uw, uh, MotionMath.Format, rt) : null;
-                ModelFB = MotionTex is null
-                    ? _gd.Factory.CreateFramebuffer(DepthStencil, ColorTex, NormalTex, DepthColorTex)
-                    : _gd.Factory.CreateFramebuffer(DepthStencil, ColorTex, NormalTex, DepthColorTex, MotionTex);
+                ModelFB = CreateModelFramebuffer(ColorTex, NormalTex, DepthColorTex);
                 // Lit color attachment + the scene depth-stencil, so the ground-decal pass can blend into ColorTex AND
                 // use a read-only hardware depth test to reject no-geometry background pixels (cleared to the far
                 // plane), while sampling the separate linear-depth texture (DepthColorTex) for world reconstruction.
@@ -340,6 +340,7 @@ namespace KhaozEngine.Render3D.Internal
         public void ResolveColor(IGpuCommandList cl)
         {
             if (Msaa) cl.ResolveTexture(MsColor!, ColorTex);
+            if (MsLitVisibilityTex is not null) cl.ResolveTexture(MsLitVisibilityTex, LitVisibilityTex!);
         }
 
         /// <summary>Lazily (re)allocate or free the distortion offset target (<c>R16G16Float</c>) to match
@@ -396,6 +397,7 @@ namespace KhaozEngine.Render3D.Internal
             MsColor = MsNormal = MsDepthColor = null;
             MotionTex?.Dispose();
             MotionTex = null;
+            DisposeVisibility();
             DisposePings();
             DisposeBloom();
         }

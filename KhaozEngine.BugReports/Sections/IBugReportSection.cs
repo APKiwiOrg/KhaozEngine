@@ -18,8 +18,8 @@ public interface IBugReportSection
     /// <summary>
     /// Writes exactly one JSON object. Runs on the thread that captures the report, so keep it cheap. Write many
     /// short strings and keep any single string far below 4 MiB: <see cref="Utf8JsonWriter"/> can allocate escape
-    /// scratch for a huge string before the capture cap applies, and the redactor masks whole any string it cannot
-    /// finish within its match timeout.
+    /// scratch for a huge string before the capture cap applies. The redactor masks whole any input or intermediate
+    /// string above 4,194,304 UTF-16 code units, with no wall-clock matching deadline.
     /// </summary>
     void Write(Utf8JsonWriter writer, BugReportContext context);
 }

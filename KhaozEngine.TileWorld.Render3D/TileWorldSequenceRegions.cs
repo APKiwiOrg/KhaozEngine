@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace KhaozEngine.TileWorld;
 
@@ -9,9 +10,13 @@ internal sealed class TileWorldSequenceRegions(TileWorldView view, TileWorldDocu
     readonly List<RegionCoord> _loaded = new();
     RegionCoord? _centre;
 
-    internal void Update(RegionCoord centre)
+    internal void Update(RegionCoord centre, Vector3 focus)
     {
-        if (_centre == centre) return;
+        if (_centre == centre)
+        {
+            view.SettleInteriorCutForCapture(focus);
+            return;
+        }
         _centre = centre;
         _desired.Clear();
         int radius = TileWorldSnapshot.PerspectiveRegionRadius;
@@ -27,6 +32,6 @@ internal sealed class TileWorldSequenceRegions(TileWorldView view, TileWorldDocu
             if (!_desired.Contains(region)) view.UnloadRegion(region);
         foreach (RegionCoord region in _desired) view.LoadRegion(region, TileRegionResidencyState.Gameplay);
         // A sequence must not capture a frame before a newly visible region's rebuild has settled.
-        view.SettleForCapture(centre);
+        view.SettleForCapture(centre, focus);
     }
 }

@@ -184,8 +184,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         /// <param name="deviceName">The device's own <c>-name</c>, verbatim.</param>
         /// <param name="maxMsaaSampleCount"><see cref="HighestSupportedSampleCount"/> over a real device, which is
-        /// the only member here a device is asked about beyond its name.</param>
-        internal static GpuCapabilities Assemble(string? deviceName, int maxMsaaSampleCount)
+        /// the selected device's texture sample-count answers.</param>
+        /// <param name="supportsTimestamps">The selected device's counter-set, boundary and creation probe.</param>
+        internal static GpuCapabilities Assemble(string? deviceName, int maxMsaaSampleCount, bool supportsTimestamps = false)
             => new(
                 clipSpaceYInverted: ClipSpaceYInverted,
                 depthRangeZeroToOne: DepthRangeZeroToOne,
@@ -196,6 +197,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 supportsShadowMaps: SupportsShadowMaps,
                 supportsCompute: SupportsCompute,
                 supportsCompletionFences: SupportsCompletionFences)
-            { MaxColorAttachments = ColorRenderTargets };
+            {
+                MaxColorAttachments = ColorRenderTargets,
+                SupportsTimestamps = supportsTimestamps,
+            };
     }
 }

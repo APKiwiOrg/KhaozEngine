@@ -1,9 +1,10 @@
 using System;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
     /// <summary>
-    /// THE FOUR NATIVE CALLS A STAGING MAP IS MADE OF, behind an interface for the same reason
+    /// THE FIVE NATIVE CALLS A STAGING MAP IS MADE OF, behind an interface for the same reason
     /// <see cref="ID3D11RingMemory"/> and <see cref="ID3D11FenceTimeline"/> are: everything that can be WRONG
     /// about a staging map (which subresource it names, whether the pair is balanced, what the row pitch means,
     /// what a failed HRESULT does, and WHEN THE SUBMIT LOCK IS HELD) is engine logic, and it is tested by a plain
@@ -55,6 +56,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         void UnmapBuffer(object buffer);
 
         /// <summary>
+        /// Map a staging BUFFER's whole range for reading with <c>D3D11_MAP_FLAG_DO_NOT_WAIT</c>, answering the
+        /// <c>HRESULT</c> and the pointer. A resource the runtime still considers in use answers
+        /// <c>DXGI_ERROR_WAS_STILL_DRAWING</c> (<see cref="D3D11StagingAccess.WasStillDrawing"/>) at once instead of
+        /// blocking, which is the whole difference from <see cref="MapBuffer"/>: this is the map a non-blocking
+        /// read takes, and the blocking one is never its fallback.
+        /// </summary>
+        /// <param name="buffer">The native buffer, as <see cref="ID3D11BindableViews"/> hands one over.</param>
+        /// <param name="data">The mapped pointer, or <see cref="IntPtr.Zero"/> when the map did not succeed.</param>
+        int TryMapBufferRead(object buffer, out IntPtr data);
+
+        /// <summary>
         /// Map a staging TEXTURE at subresource 0, answering the <c>HRESULT</c>, the pointer, and the row pitch
         /// the runtime CHOSE. The pitch is commonly larger than the packed row width, which is the whole reason
         /// <see cref="MappedData.RowPitch"/> is on the seam, so it is reported rather than derived.
@@ -81,7 +93,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// A cast straight to <see cref="D3D11Buffer"/> is a cast to a Windows-only type, so a device-free test could
     /// never reach past it, and the "was this created staging?" check would have to travel with it. Asking the
     /// resource instead means a foreign backend's buffer is refused by name here, on every platform, and the
-    /// Windows residue stays the four native calls and nothing else.
+    /// Windows residue stays the five native calls and nothing else.
     /// </para>
     /// </summary>
     internal interface ID3D11MappableResource
@@ -96,5 +108,25 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// than as a failure.
         /// </summary>
         bool IsMappable { get; }
+    }
+
+    /// <summary>
+    /// WHAT A NON-BLOCKING STAGING READ NEEDS FROM THE BUFFER BEYOND A MAP TARGET: whether it was created as a
+    /// staging buffer, which device made it, and whether it is still alive. Device-free for the same reason as
+    /// <see cref="ID3D11MappableResource"/>, so <see cref="D3D11CompletedReads"/> refuses a foreign, disposed or
+    /// non-staging buffer by name on every platform before it polls a fence or names a native handle.
+    /// </summary>
+    internal interface ID3D11ReadableStaging : ID3D11MappableResource
+    {
+        /// <summary>Whether the description asked for <see cref="GpuBufferUsage.Staging"/>, which is the one usage
+        /// this backend creates with CPU READ access. A dynamic buffer is mappable but write-only.</summary>
+        bool IsStagingUsage { get; }
+
+        /// <summary>The creating device's liveness token, compared by reference identity: it is the device's
+        /// identity on this backend as it is on Metal.</summary>
+        IDeviceLiveness Owner { get; }
+
+        /// <summary>Whether the buffer has been disposed.</summary>
+        bool IsDisposed { get; }
     }
 }

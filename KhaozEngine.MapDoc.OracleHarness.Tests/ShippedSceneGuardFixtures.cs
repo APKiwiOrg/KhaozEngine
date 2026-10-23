@@ -93,6 +93,7 @@ internal static partial class ShippedSceneGuardFixtures
     {
         bool roofHlod = variant.StartsWith("roof-hlod", StringComparison.Ordinal);
         bool roofShadows = variant != "roof-hlod-no-shadows";
+        bool exitOverlap = variant == "roof-hlod-exit-overlap";
         if (roofHlod) variant = "roof-valid";
         foreach (string directory in new[] { "world", "assets", "native-assets", "generator" }) Directory.CreateDirectory(Path.Combine(root, directory));
         var world = new TileWorldDocument { Id = "invented-scene-world", PlaneCount = 1 };
@@ -328,7 +329,7 @@ internal static partial class ShippedSceneGuardFixtures
             comparison["expectations"]!["roofs"] = 1;
             foreach (var probe in comparison["policy"]!["probes"]!.AsArray()) probe!["roofMode"] = "AlwaysHidden";
         }
-        if (roofHlod) AddRoofHlod(root, world, native, comparison, roofShadows);
+        if (roofHlod) AddRoofHlod(root, world, native, comparison, roofShadows, exitOverlap);
         return WithStorageAndSelections(root, native, comparison, variant);
     }
     internal static byte[] TriangleGlb()

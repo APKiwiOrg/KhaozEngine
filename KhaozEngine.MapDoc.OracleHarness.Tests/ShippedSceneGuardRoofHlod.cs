@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.MapDocOracle;
 
 internal static partial class ShippedSceneGuardFixtures
 {
-    static void AddRoofHlod(string root, TileWorldDocument world, MapDocument native, JsonObject comparison, bool shadows)
+    static void AddRoofHlod(string root, TileWorldDocument world, MapDocument native, JsonObject comparison, bool shadows, bool exitOverlap = false)
     {
         world.AddObject("column", 10, 2, 0, 0); TileWorldFile.Save(world, Path.Combine(root, "world"));
         native.TileSize = 1; native.TerrainOverrides = new(.03125f); native.NumericIdHighWaterMark = 2;
@@ -41,7 +41,7 @@ internal static partial class ShippedSceneGuardFixtures
         {
             string path = Path.Combine(root, policyName); var policy = JsonNode.Parse(File.ReadAllText(path))!;
             string id = policyName == "source-policy.json" ? "column" : "native-column";
-            policy["placements"] = JsonSerializer.SerializeToNode(new MapPlacementPolicy([new("caps", new HashSet<string> { id }, [10], 4, 100, 30, 10, 0, shadows)], 100), ShippedScenePolicy.Json);
+            policy["placements"] = JsonSerializer.SerializeToNode(new MapPlacementPolicy([new("caps", new HashSet<string> { id }, [10], 4, 100, exitOverlap ? 95 : 30, 10, 0, shadows)], 100), ShippedScenePolicy.Json);
             File.WriteAllText(path, policy.ToJsonString(ShippedScenePolicy.Json));
         }
         var windows = comparison["windows"]!.AsArray();

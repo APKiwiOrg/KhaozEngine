@@ -20,12 +20,13 @@ public readonly partial struct PropLayer
     /// placement, scatter and companion layers only.</summary>
     public static PropLayer PlacementLayer(IReadOnlyList<NativePropInstance> instances,
         IReadOnlyDictionary<string, IReadOnlyList<NativePropLod>> lods, float drawRadius,
-        IReadOnlyList<float> lodDistances, float lodCrossfadeWidth = 0, bool castsShadows = true)
+        IReadOnlyList<float> lodDistances, float lodCrossfadeWidth = 0, bool castsShadows = true, float fadeBandWidth = 0)
     {
-        if (!float.IsFinite(drawRadius) || drawRadius <= 0 || !float.IsFinite(lodCrossfadeWidth) || lodCrossfadeWidth < 0)
+        if (!float.IsFinite(drawRadius) || drawRadius <= 0 || !float.IsFinite(lodCrossfadeWidth) || lodCrossfadeWidth < 0 ||
+            !float.IsFinite(fadeBandWidth) || fadeBandWidth < 0)
             throw new ArgumentException("Native radii and crossfade widths must be finite with a positive draw radius.");
         var native = new NativeInventory(instances, lods, lodDistances);
-        return new(null, null, -1, EmptyMeshes, null, drawRadius, 0, null, null, 0,
+        return new(null, null, -1, EmptyMeshes, null, drawRadius, fadeBandWidth, null, null, 0,
             registerColliders: false, castsShadows: castsShadows, lodCrossfadeWidth: lodCrossfadeWidth,
             native: native);
     }

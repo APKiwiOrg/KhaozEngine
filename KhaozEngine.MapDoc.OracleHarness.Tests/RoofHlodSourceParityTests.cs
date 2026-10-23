@@ -45,6 +45,9 @@ public sealed class RoofHlodSourceParityTests
                         ["focusY"] = 2,
                         ["focusZ"] = -32
                     });
+            probes.Add(new JsonObject { ["id"] = "placement-exit", ["windowId"] = "A", ["observerX"] = 10.5, ["observerY"] = 1,
+                ["observerZ"] = -2.5, ["roofMode"] = "Auto", ["timeSeconds"] = 1, ["windSeed"] = 17,
+                ["focusX"] = 97.5, ["focusY"] = 2, ["focusZ"] = -2.5 });
             comparison["policy"]!["probes"] = probes;
         });
         var inputs = ShippedSceneInputs.Read(PrivateOracleInputs.Require(fixture.Environment));
@@ -99,6 +102,9 @@ public sealed class RoofHlodSourceParityTests
         using var residency = new MapRenderResidency(state, device, null, scheduler);
         ShippedSceneComparison.Complete(residency, scheduler);
         var expected = LegacySceneRecorder.Record(world, inputs.Catalogs, inputs);
+        var exit = Assert.Single(expected.Frames, f => f.ProbeId == "placement-exit");
+        Assert.All(exit.Draws.Where(d => d.Key!.Value.OwnerId == "native-placement"), d => Assert.Equal(.5f, d.Dissolve, 5));
+        Assert.Contains(exit.Draws, d => d.Key!.Value.OwnerId == "native-placement");
         try
         {
             PrivateOracleEntry.Run(fixture.Environment, (_, report) =>

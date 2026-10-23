@@ -173,7 +173,7 @@ public static class NativeMapPlacements
                 var tiers = rows.Select(i => i.AssetId).Distinct(StringComparer.Ordinal).ToDictionary(id => id, id => handles[id], StringComparer.Ordinal);
                 admission.ReserveBytes(checked(256L + 128L * rows.Count + tiers.Values.Sum(t => 64L + 32L * t.Count + 4L * t.Sum(l => l.Parts.Count))));
                 var shared = PropLayer.PlacementLayer(rows, tiers, layer?.DrawRadius ?? policy.DefaultDrawRadius,
-                    layer?.LodDistances ?? Array.Empty<float>(), layer?.LodCrossfadeWidth ?? 0, layer?.CastsShadows ?? true);
+                    layer?.LodDistances ?? Array.Empty<float>(), layer?.LodCrossfadeWidth ?? 0, layer?.CastsShadows ?? true, layer?.HlodCrossfadeWidth ?? 0);
                 return layer is null ? shared : shared.WithIdentity(layer.Id);
             }
         }

@@ -131,7 +131,7 @@ internal static class LegacySceneRecorder
                 {
                     var selected = (roofLayer ? roofProps.Select(r => r.Prop) : groundProps).Where(p => policy.AssetIds.Contains(p.Id) && !inputs.SourcePolicy.AnimatedAssets.Contains(p.Id)).ToArray();
                     if (selected.Length == 0) continue;
-                    var layer = PropLayer.PlacementLayer(selected, full, policy.DrawRadius, lodPartMeshes: far,
+                    var layer = PropLayer.PlacementLayer(selected, full, policy.DrawRadius, fadeBandWidth: policy.HlodCrossfadeWidth, lodPartMeshes: far,
                         lodDistance: policy.LodDistances.FirstOrDefault(), castsShadows: policy.CastsShadows).WithLodCrossfade(policy.LodCrossfadeWidth);
                     if (policy.HlodDistance <= 0)
                     {
@@ -235,14 +235,14 @@ internal sealed class LegacyRecordingScene : ITileWorldScene, IPropClusterRender
     public int DrawGroundCover(IReadOnlyList<GroundCoverInstance> cover, IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts, Vector3 focus, GroundCoverRenderOptions options) => cover.Count;
     public void DrawWater(in WaterPlane plane) { }
     int Emit(IReadOnlyList<PropPlacement> placements, IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
-        IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? far, float distance, float width, Vector3 focus, float radius, bool shadowOnly, bool shadows, float floor)
+        IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? far, float distance, float width, Vector3 focus, float radius, bool shadowOnly, bool shadows, float floor, float fadeBand = 0)
     {
         int count = 0;
         foreach (var prop in placements)
         {
             var world = Transform(prop);
             var owner = _owners[(prop.Id, world)].Dequeue();
-            count += PropRenderer.EmitParts([prop], parts, far, distance, focus, radius, 0, floor, this,
+            count += PropRenderer.EmitParts([prop], parts, far, distance, focus, radius, fadeBand, floor, this,
                 (target, handle, matrix, dissolve, complement) =>
                 {
                     var part = target._parts[handle];
@@ -255,7 +255,7 @@ internal sealed class LegacyRecordingScene : ITileWorldScene, IPropClusterRender
     }
     internal static Matrix4x4 Transform(PropPlacement prop) => Matrix4x4.CreateScale(prop.Scale) * Matrix4x4.CreateRotationY(prop.Yaw) * Matrix4x4.CreateTranslation(prop.X, prop.Y, prop.Z);
     internal int DrawLayer(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float floor, bool hidden = false) =>
-        hidden && !layer.CastsShadows ? 0 : Emit(placements, layer.PartMeshes!, layer.LodPartMeshes, layer.LodDistance, layer.LodCrossfadeWidth, focus, layer.DrawRadius, hidden, layer.CastsShadows, floor);
+        hidden && !layer.CastsShadows ? 0 : Emit(placements, layer.PartMeshes!, layer.LodPartMeshes, layer.LodDistance, layer.LodCrossfadeWidth, focus, layer.DrawRadius, hidden, layer.CastsShadows, floor, layer.FadeBandWidth);
     int IPropClusterRenderBackend.DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor) => DrawLayer(placements, layer, focus, dissolveFloor);
     int IPropClusterRenderBackend.DrawShadowOnlyProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor) => DrawLayer(placements, layer, focus, dissolveFloor, true);
     public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement) => Merged(handle, layer, dissolve, complement, false);

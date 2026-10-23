@@ -30,7 +30,7 @@ public static partial class PropRenderer
     {
         var instances = layer.NativePlacements ?? throw new ArgumentException("A native placement layer is required.", nameof(layer));
         return EmitNative(instances, layer.NativeLods!, focus, layer.DrawRadius, layer.LodDistances,
-            layer.LodCrossfadeWidth, state, emit, dissolveFloor, layer.CastsShadows, localFocus, resolveFocus);
+            layer.LodCrossfadeWidth, state, emit, dissolveFloor, layer.CastsShadows, localFocus, resolveFocus, layer.FadeBandWidth);
     }
 
     /// <summary>The shared device and typed-recorder emission path. Focus is absolute binary32, instances retain
@@ -38,9 +38,10 @@ public static partial class PropRenderer
     internal static int EmitNative<T>(IReadOnlyList<NativePropInstance> instances,
         IReadOnlyDictionary<string, IReadOnlyList<NativePropLod>> lods, Vector3 focus, float drawRadius,
         IReadOnlyList<float> lodDistances, float crossfadeWidth, T state, Action<T, NativePropInstance, RigidInstanceDraw> emit,
-        float dissolveFloor = 0, bool castsShadows = true, Func<RenderAnchor, Vector3>? localFocus = null, Func<T, RenderAnchor, Vector3>? resolveFocus = null)
+        float dissolveFloor = 0, bool castsShadows = true, Func<RenderAnchor, Vector3>? localFocus = null, Func<T, RenderAnchor, Vector3>? resolveFocus = null, float fadeBandWidth = 0)
     {
         ArgumentNullException.ThrowIfNull(instances); ArgumentNullException.ThrowIfNull(lods); ArgumentNullException.ThrowIfNull(lodDistances);
+        float fadeInner = MathF.Max(0, drawRadius - fadeBandWidth), fadeBand = drawRadius - fadeInner;
         int count = 0;
         for (int row = 0; row < instances.Count; row++)
         {
@@ -50,9 +51,10 @@ public static partial class PropRenderer
                 (float)((double)focus.Y - instance.Anchor.Y), (float)((double)focus.Z - instance.Anchor.Z));
             float d2 = HorizontalDistanceSquared(instance.LocalTransform.M41, instance.LocalTransform.M43, relative);
             if (d2 > drawRadius * drawRadius) continue;
+            float dissolve = MathF.Max(DissolveAt(d2, fadeInner, fadeBand), dissolveFloor);
             var selection = SelectLods(d2, tiers.Count, lodDistances, crossfadeWidth);
-            Submit(selection.Near, selection.Far >= 0 ? ComposeLodDissolve(selection.Transition, dissolveFloor).Near : dissolveFloor, 0);
-            if (selection.Far >= 0) Submit(selection.Far, ComposeLodDissolve(selection.Transition, dissolveFloor).Far, 1);
+            Submit(selection.Near, selection.Far >= 0 ? ComposeLodDissolve(selection.Transition, dissolve).Near : dissolve, 0);
+            if (selection.Far >= 0) Submit(selection.Far, ComposeLodDissolve(selection.Transition, dissolve).Far, 1);
             count++;
             void Submit(int tier, float dissolve, float complement)
             {

@@ -13,10 +13,10 @@ internal static class MapPlacementCells
     internal const int RegionSizeInTiles = 64;
     const double MaxCellEdge = 1024;
 
-    internal static PropClusterKey Key(string layerId, MapEffectiveTransform pose, float tileSize)
+    internal static PropClusterKey Key(string layerId, MapEffectiveTransform pose, float tileSize, bool roof = false)
     {
         var grid = Grid(tileSize);
-        try { return new(layerId, Axis(pose.X), Axis(pose.Z), 0); }
+        try { return new(layerId, Axis(pose.X), Axis(pose.Z), 0) { Cohort = roof ? 1 : 0 }; }
         catch (OverflowException) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.NotRepresentable, "Native placement cell is not representable."); }
 
         int Axis(double position)
@@ -31,7 +31,7 @@ internal static class MapPlacementCells
 
     internal static (RenderAnchor Anchor, RectArea Area) Domain(PropClusterKey key, float tileSize, long anchorY)
     {
-        if (key.Plane != 0) throw new MapDocumentException("Invalid native placement cell.");
+        if (key.Plane != 0 || key.Cohort is not (0 or 1)) throw new MapDocumentException("Invalid native placement cell.");
         var grid = Grid(tileSize);
         double x = grid.Boundary(key.X), z = grid.Boundary(key.Z);
         try

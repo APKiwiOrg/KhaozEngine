@@ -11,7 +11,7 @@ public sealed partial class PropClusterRenderer
     readonly Dictionary<PropClusterKey, (NativePropClusterCpuBuild Build, MeshHandle Handle)> _native = new();
 
     /// <summary>Precondition: the upper scene/routing adapter validated every requested instance and effective
-    /// roof exclusion, frozen native inventory, bounded region cell and binary64 vertex precision before entry.
+    /// roof role, frozen native inventory, bounded region cell and binary64 vertex precision before entry.
     /// This internal builder receives no building intent and makes no roof promise.</summary>
     internal static NativePropClusterCpuBuild BuildNativeCpu(NativePropClusterRequest request)
     {

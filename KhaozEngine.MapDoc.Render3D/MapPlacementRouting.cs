@@ -75,7 +75,7 @@ public sealed class MapPlacementPolicy
 public enum MapPlacementRoute { Ordinary, Cluster, Animated }
 public sealed record MapPlacementRoutingResult(MapSceneStatus Status, MapPlacementRouting? Routing);
 
-/// <summary>The caller-derived immutable partition shared by rigid and animated preparation. Roofs remain ordinary.</summary>
+/// <summary>The caller-derived immutable partition shared by rigid and animated preparation. Animated roofs are refused.</summary>
 public sealed class MapPlacementRouting
 {
     readonly MapScopedScene _scene;
@@ -118,7 +118,7 @@ public sealed class MapPlacementRouting
         {
             string asset = placement.AssetId;
             var route = clustered.Contains(asset) ? MapPlacementRoute.Cluster : animated.Contains(asset) ? MapPlacementRoute.Animated : MapPlacementRoute.Ordinary;
-            if (roofs.Contains(placement.PlacementId) && route != MapPlacementRoute.Ordinary) return new(MapSceneStatus.Invalid, null);
+            if (roofs.Contains(placement.PlacementId) && route == MapPlacementRoute.Animated) return new(MapSceneStatus.Invalid, null);
             entries.Add(placement.PlacementId, route);
         }
         return new(MapSceneStatus.CompleteForScope, new(scene, policy, animated, entries));

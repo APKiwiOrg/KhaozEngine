@@ -120,12 +120,37 @@ public sealed class NativeMapPlacementTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void RoofClusterPolicy_RefusesBeforeAnyRoutePrepares(bool sharedArchetype)
+    public void RoofClusterPolicy_PartitionsCanonicalRoles(bool sharedArchetype)
     {
         var closure = NativeRenderAssetFixtures.Placements(sharedArchetype); var scene = Scene(closure);
         var policy = sharedArchetype ? Policy(true) : new MapPlacementPolicy(new[]
         { new MapPlacementLayer("roof", new HashSet<string> { "cap-a" }, new float[] { 10, 20 }, 4, 100, 30, 10, 0, true) }, 100);
         var result = MapPlacementRouting.Create(scene, policy, new HashSet<string>());
+        Assert.Equal(MapSceneStatus.CompleteForScope, result.Status);
+        Assert.Equal(MapPlacementRoute.Cluster, result.Routing!.Entries["roof-a"]);
+        using var assets = Assets(closure);
+        using var batch = NativeMapPlacements.Prepare(scene, assets, policy, result.Routing);
+        var recorder = new MapDrawRecorder(); batch.Register(Stamp, recorder);
+        var resources = recorder.Snapshot().Resources;
+        var roofBuild = Assert.Single(batch.Clusters, c => c.RepresentedIds.Contains("roof-a"));
+        var roof = Assert.Single(resources, r => r.Reference.Key.Kind == MapRenderKind.Roof && r.Reference.Key.PartId == "hlod" &&
+            r.Reference.Key.OwnerId == MapPlacementCells.Owner(roofBuild.Request.Key));
+        Assert.Equal(new[] { "roof-a" }, roofBuild.RepresentedIds);
+        Assert.All(resources.Where(r => r.Reference.Key.OwnerId == "roof-a"), r => Assert.Equal(MapRenderKind.Roof, r.Reference.Key.Kind));
+        if (sharedArchetype)
+        {
+            var plain = Assert.Single(batch.Clusters, c => c.Request.Key.X == roofBuild.Request.Key.X &&
+                c.Request.Key.Z == roofBuild.Request.Key.Z && !c.RepresentedIds.Contains("roof-a"));
+            Assert.NotEqual(plain.Request.Key, roofBuild.Request.Key);
+            Assert.Contains(resources, r => r.Reference.Key.Kind == MapRenderKind.Placement && r.Reference.Key.OwnerId == roof.Reference.Key.OwnerId);
+        }
+    }
+
+    [Fact]
+    public void AnimatedRoof_StillRefusesRouting()
+    {
+        var scene = Scene(NativeRenderAssetFixtures.Placements());
+        var result = MapPlacementRouting.Create(scene, new([], 100), new HashSet<string> { "cap-a" });
         Assert.Equal(MapSceneStatus.Invalid, result.Status); Assert.Null(result.Routing);
     }
 

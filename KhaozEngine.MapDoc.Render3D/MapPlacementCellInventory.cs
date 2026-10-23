@@ -10,7 +10,7 @@ namespace KhaozEngine.MapDoc.Render3D;
 internal sealed class MapPlacementCellInventory
 {
     internal sealed record Cell(PropClusterKey Key, MapScopedScene Scene, MapPlacementRouting Routing,
-        IReadOnlyList<MapResolvedPlacement> Members);
+        IReadOnlyList<MapResolvedPlacement> Members, IReadOnlySet<string> RoofIds);
 
     readonly Dictionary<PropClusterKey, Cell> _cells;
     MapPlacementCellInventory(Dictionary<PropClusterKey, Cell> cells) => _cells = cells;
@@ -26,9 +26,10 @@ internal sealed class MapPlacementCellInventory
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var activation = admission.Enter();
         admission.ReserveBytes(checked(128L + 64L * selectedCount));
+        var roofs = scene.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var keys = layers.SelectMany(layer => scene.Placements
                 .Where(p => layer.AssetIds.Contains(p.AssetId) && routing.Entries[p.PlacementId] == MapPlacementRoute.Cluster)
-                .Select(p => MapPlacementCells.Key(layer.Id, NativeMapPlacements.Pose(scene, p), scene.Source.Data.TileSize)))
+                .Select(p => MapPlacementCells.Key(layer.Id, NativeMapPlacements.Pose(scene, p), scene.Source.Data.TileSize, roofs.Contains(p.PlacementId))))
             .Distinct().OrderBy(k => k.LayerId, StringComparer.Ordinal).ThenBy(k => k.X).ThenBy(k => k.Z).ToArray();
         var cells = new Dictionary<PropClusterKey, Cell>();
         foreach (var key in keys) cells.Add(key, Acquire(scene, routing, key));
@@ -50,14 +51,15 @@ internal sealed class MapPlacementCellInventory
         var complete = result.Scene ?? throw new MapSceneSourceException(result.Status, "Native cluster cell discovery refused. " + string.Join("\n", result.Findings), result.Capacity);
         admission.ReserveBytes(checked(128L + 64L * complete.Placements.Count));
         var cellRouting = routing.ForScene(complete);
+        var roofIds = complete.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var members = complete.Placements.Where(p => layer.AssetIds.Contains(p.AssetId) &&
                 cellRouting.Entries[p.PlacementId] == MapPlacementRoute.Cluster &&
-                MapPlacementCells.Key(layer.Id, NativeMapPlacements.Pose(complete, p), scene.Source.Data.TileSize) == key)
+                MapPlacementCells.Key(layer.Id, NativeMapPlacements.Pose(complete, p), scene.Source.Data.TileSize, roofIds.Contains(p.PlacementId)) == key)
             .OrderBy(p => p.PlacementId, StringComparer.Ordinal).ToArray();
         if (members.Length == 0)
             throw new MapSceneSourceException(MapSceneStatus.Invalid, "Native cluster cell discovery omitted its selected members.");
         admission.ReserveBytes(checked(32L * members.Length));
-        return new(key, complete, cellRouting, Array.AsReadOnly(members));
+        return new(key, complete, cellRouting, Array.AsReadOnly(members), roofIds);
     }
 
     internal static void RequireMembers(Cell cell, NativePropClusterRequest request)

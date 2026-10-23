@@ -47,7 +47,8 @@ public sealed class MapPlacementRenderBatch : IDisposable
             string owner = MapPlacementCells.Owner(Clusters[i].Request.Key);
             _clusterParts[i] = -1;
             for (int p = 0; p < _parts.Count; p++)
-                if (_parts[p].Key.OwnerId == owner && _parts[p].Key.PartId == "hlod") { _clusterParts[i] = p; break; }
+                if (_parts[p].Key.OwnerId == owner && _parts[p].Key.PartId == "hlod" &&
+                    _parts[p].Key.Kind == (Clusters[i].Request.Key.Cohort == 1 ? MapRenderKind.Roof : MapRenderKind.Placement)) { _clusterParts[i] = p; break; }
         }
     }
     public void Register(MapResourceStamp stamp, IMapDrawSink sink)
@@ -69,7 +70,8 @@ public sealed class MapPlacementRenderBatch : IDisposable
     {
         foreach (var build in Clusters)
         {
-            var part = _parts.SingleOrDefault(p => p.Key.OwnerId == MapPlacementCells.Owner(build.Request.Key) && p.Key.PartId == "hlod");
+            var part = _parts.SingleOrDefault(p => p.Key.OwnerId == MapPlacementCells.Owner(build.Request.Key) && p.Key.PartId == "hlod" &&
+                p.Key.Kind == (build.Request.Key.Cohort == 1 ? MapRenderKind.Roof : MapRenderKind.Placement));
             if (part is not null) AcceptCluster(build.Request.Key, build, part.Handle);
         }
     }

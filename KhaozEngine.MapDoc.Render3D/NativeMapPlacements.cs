@@ -67,6 +67,7 @@ public static class NativeMapPlacements
                 handles.Add(asset.AssetId, Array.AsReadOnly(tiers.ToArray()));
             }
             var roofs = scene.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+            roofs.UnionWith(cells.Cells.SelectMany(c => c.RoofIds));
             var selectedPlacements = scene.Placements.Where(p => routing.Entries[p.PlacementId] == MapPlacementRoute.Ordinary)
                 .Select(p => (Scene: scene, Placement: p))
                 .Concat(cells.Cells.SelectMany(cell => cell.Members.Select(p => (Scene: cell.Scene, Placement: p))));
@@ -111,7 +112,7 @@ public static class NativeMapPlacements
                     if (caps.Length > 0) roofLayers.Add(Shared(caps, layer));
                     continue;
                 }
-                foreach (var cell in selected.GroupBy(i => MapPlacementCells.Key(layer.Id, posesById[i.Id], scene.Source.Data.TileSize))
+                foreach (var cell in selected.GroupBy(i => MapPlacementCells.Key(layer.Id, posesById[i.Id], scene.Source.Data.TileSize, roofs.Contains(i.Id)))
                     .OrderBy(c => c.Key.X).ThenBy(c => c.Key.Z))
                 {
                     var members = cell.OrderBy(i => i.Id, StringComparer.Ordinal).ToArray();
@@ -133,7 +134,7 @@ public static class NativeMapPlacements
                     var mesh = build.BorrowMesh;
                     if (mesh.TriangleCount == 0) continue;
                     var bounds = members.Select(i => boundsById[i.Id]).Aggregate(Union);
-                    var key = new MapRenderKey(MapRenderKind.Placement, MapPlacementCells.Owner(cell.Key), "hlod", 0);
+                    var key = new MapRenderKey(cell.Key.Cohort == 1 ? MapRenderKind.Roof : MapRenderKind.Placement, MapPlacementCells.Owner(cell.Key), "hlod", 0);
                     string inventory = ClusterInventoryDigest(members, assets.Closure.Hash, layer.HlodWeldCell);
                     parts.Add(new(key, new(nextHandle++), anchor, bounds, new MapRigidResource(mesh, default),
                         MapPlacementDigest.Hash(w =>
@@ -167,7 +168,7 @@ public static class NativeMapPlacements
     }
 
     /// <summary>The sole upper entry to native cluster merging. Validate the entire request before the lower
-    /// builder enters. Effective roofs must remain independently addressable for every presentation channel.</summary>
+    /// builder enters. Roof and ordinary cohorts retain distinct resource and visibility identities.</summary>
     public static NativePropClusterCpuBuild PrepareCluster(MapScopedScene scene, MapPlacementRouting routing, NativePropClusterRequest request) =>
         PrepareCluster(scene, routing, request, PropClusterRenderer.BuildNativeCpu);
 
@@ -194,10 +195,10 @@ public static class NativeMapPlacements
         if (request.Instances.Count == 0) throw new MapDocumentException("Native cluster requires its effective members.");
         foreach (var instance in request.Instances)
         {
-            if (roofs.Contains(instance.Id) || !routing.Entries.TryGetValue(instance.Id, out var route) || route != MapPlacementRoute.Cluster ||
+            if (roofs.Contains(instance.Id) != (request.Key.Cohort == 1) || !routing.Entries.TryGetValue(instance.Id, out var route) || route != MapPlacementRoute.Cluster ||
                 !placements.TryGetValue(instance.Id, out var placement) || instance.AssetId != placement.AssetId || instance.NumericId != placement.NumericId ||
                 instance.LocalTransform != MapRenderTransform.ToLocal(Pose(scene, placement), new(instance.Anchor.X, instance.Anchor.Y, instance.Anchor.Z)) ||
-                MapPlacementCells.Key(request.Key.LayerId, Pose(scene, placement), scene.Source.Data.TileSize) != request.Key)
+                MapPlacementCells.Key(request.Key.LayerId, Pose(scene, placement), scene.Source.Data.TileSize, roofs.Contains(instance.Id)) != request.Key)
                 throw new MapDocumentException("Native cluster request disagrees with the effective scene routing.");
             var anchor = Anchor(Pose(scene, placement));
             if (instance.Anchor != new RenderAnchor(anchor.X, anchor.Y, anchor.Z))

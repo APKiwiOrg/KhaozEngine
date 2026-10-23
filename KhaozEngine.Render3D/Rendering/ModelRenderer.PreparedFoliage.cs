@@ -29,8 +29,9 @@ internal sealed partial class ModelRenderer
         cl.SetVertexBuffer(0, vb); cl.SetVertexBuffer(1, instances); cl.SetIndexBuffer(ib, format);
         cl.DrawIndexed((uint)indexCount, count, 0, 0, start);
     }
-    void EnsurePreparedFoliagePipeline()
+    internal void EnsurePreparedFoliagePipeline()
     {
+        EnsureFoliagePipeline();
         if (_preparedFoliagePipeline is not null && _preparedFoliageOutputs.Depth == _foliageOutputs.Depth &&
             _preparedFoliageOutputs.SampleCount == _foliageOutputs.SampleCount &&
             _preparedFoliageOutputs.Colour.AsSpan().SequenceEqual(_foliageOutputs.Colour)) return;

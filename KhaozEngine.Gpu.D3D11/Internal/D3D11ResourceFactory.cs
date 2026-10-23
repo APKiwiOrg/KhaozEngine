@@ -10,10 +10,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// created, and therefore the one place decision X1's eager views and decision X3's liveness token are handed
     /// out.
     /// <para>
-    /// EVERY CREATION IS EAGER AND COMPLETE. A buffer arrives with its views made, a texture with all of its, a
-    /// pipeline with its four state objects and its input layout, and a resource set with every buffer window
-    /// already resolved. Nothing here defers work to the draw path, which is what makes the emitter seam's absence
-    /// of a <c>Create*</c> member enforceable rather than aspirational.
+    /// Buffers and textures arrive with their views made, and resource sets with every buffer window resolved.
+    /// Shader programs queue CPU compilation. Pipeline creation stores managed plans so an entire renderer batch
+    /// can start compiling before first bind joins and realizes native shaders, state and input layouts.
+    /// Realization belongs to the resource wrapper, through the existing creation gate.
     /// </para>
     /// <para>
     /// EVERY MEMBER IS LIVE ON A DEVICE. <see cref="CreateFence"/> is the one that comes from somewhere else: the
@@ -22,24 +22,25 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// refuses by name rather than returning something that would fail later somewhere less informative.
     /// </para>
     /// <para>
-    /// SHADER COMPILATION IS EAGER TOO, and eager here means more than it does elsewhere: a shader set arrives
-    /// cross-compiled, FXC-compiled, checked for the holed-signature hazard of decision S5 and bound to the
-    /// device, with its vertex bytecode kept so a pipeline can validate an input layout against it later.
+    /// SHADER COMPILATION STARTS ON BOUNDED WORKERS. A bytecode, metadata or pipeline consumer joins it. The
+    /// joining caller creates native shaders through the creation gate, after compilation and the S5 signature
+    /// check. Pending compiles own no native objects and can safely outlive shader or device disposal.
     /// </para>
     /// <para>
     /// CREATION IS FREE-THREADED, BEHIND <see cref="D3D11CreationGate"/> WHEN THE DRIVER IS NOT (decision W4).
     /// Every member below that makes a native creation call takes the gate for the duration of that call and
     /// nothing longer, which is a no-op on a driver reporting <c>DriverConcurrentCreates</c> and one uncontended
-    /// monitor otherwise. FIVE MEMBERS ARE UNGATED, IN TWO GROUPS. Four are live and create NO native object:
+    /// monitor otherwise. Members that create no native object are ungated:
     /// <see cref="CreateFramebuffer"/> aggregates views that already exist,
     /// <see cref="CreateResourceLayout"/> and <see cref="CreateResourceSet"/> are pure engine data, and
     /// <see cref="CreateCommandList"/> hands back a recorder that touches no device state at all (which is the
     /// same clause of W4 the recording model rests on). Gating those would serialize engine work behind a driver
-    /// limitation that has nothing to do with it. The fifth, <see cref="CreateFence"/>, creates no native object
+    /// limitation that has nothing to do with it. The two shader members only queue CPU compilation, with native
+    /// creation gated at first use. <see cref="CreateFence"/> creates no native object
     /// either: the device's ONE timeline object was created with the device, and a fence on this backend is an
     /// engine-side target against it, so there is nothing for a creation gate to serialize.
-    /// <see cref="CreateComputePipeline"/> creates no native object either and IS gated anyway, for the reason
-    /// stated on it.
+    /// Both pipeline members return managed plans. Their first native consumer joins outside the creation gate
+    /// and takes it only to realize native objects.
     /// </para>
     /// <para>
     /// THE GATE NEVER TAKES THE SUBMIT LOCK, and no creation path here reaches it either: the ring is only asked
@@ -128,7 +129,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // Built here rather than passed in, because a shader compiler is a pure function of the device plus
             // two environment levers it reads ONCE (the FXC flags and the disk cache location, decisions S1 and
             // S4). Threading it through every construction path would put a session-level setting in a signature.
-            _shaders = new D3D11ShaderCompiler(device, liveness);
+            _shaders = new D3D11ShaderCompiler(device, liveness, _creation);
         }
 
         /// <summary>Whether creation is serialized on this driver, for the session log. See
@@ -205,39 +206,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <inheritdoc/>
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
-        {
-            using (_creation.Enter()) return new D3D11GraphicsPipeline(_device, _liveness, d);
-        }
+            => new D3D11GraphicsPipeline(_device, _liveness, _creation, d);
 
         /// <inheritdoc/>
         public IGpuCommandList CreateCommandList() => _createCommandList();
 
         /// <inheritdoc/>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
-        {
-            using (_creation.Enter()) return _shaders.CreateShaderSet(vertGlsl, fragGlsl);
-        }
+            => _shaders.CreateShaderSet(vertGlsl, fragGlsl);
 
         /// <inheritdoc/>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
-        {
-            using (_creation.Enter()) return _shaders.CreateComputeShader(computeGlsl);
-        }
+            => _shaders.CreateComputeShader(computeGlsl);
 
         /// <inheritdoc/>
-        /// <remarks>
-        /// GATED LIKE ITS GRAPHICS SIBLING even though it creates no native object, and that is a deliberate
-        /// exception to the ungated-when-nothing-native rule above rather than an oversight. The two pipeline
-        /// members are the pair a reader compares, the gate is a no-op on a driver that reports
-        /// <c>DriverConcurrentCreates</c> and one uncontended monitor otherwise, and a compute pipeline is the
-        /// member most likely to grow a native call later (a reflected signature check of the kind decision S5
-        /// puts on the graphics side). Paying an uncontended monitor at load time to keep the pair symmetric is
-        /// the cheaper mistake to make.
-        /// </remarks>
         public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
-        {
-            using (_creation.Enter()) return new D3D11ComputePipeline(d);
-        }
+            => new D3D11ComputePipeline(_liveness, d);
 
         /// <summary>
         /// A fresh, unarmed completion fence, from the DEVICE's one timeline. There is no capability gate in

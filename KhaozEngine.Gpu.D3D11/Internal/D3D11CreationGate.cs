@@ -8,9 +8,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// lock when the driver reports <c>DriverConcurrentCreates</c> false. This is that lock, and the decision of
     /// whether there is one at all.
     /// <para>
-    /// THE SECOND LOCK IN THE BACKEND, AND THE ONLY ONE BESIDES THE SUBMIT LOCK. Everything else in the package
-    /// runs on the device's single <c>_submitLock</c>, so the ordering rule below is short enough to hold in
-    /// one's head, which is the point of there being exactly two.
+    /// THE SECOND NATIVE-DEVICE LOCK, BESIDE THE SUBMIT LOCK. Shader compilation and first-use realization
+    /// have separate managed synchronization. They join before entering this gate, so CPU compiles never wait
+    /// for it and pipeline creation never waits for a compiler while holding it.
     /// </para>
     /// <para>
     /// THE ORDERING RULE. The submit lock is the OUTER lock and this gate is the INNER one, and the gate is a

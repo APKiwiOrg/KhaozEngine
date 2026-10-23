@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu.Internal;
 using Vortice.Direct3D11;
@@ -29,48 +30,43 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     [SupportedOSPlatform("windows")]
     internal sealed class D3D11ComputeShader : IGpuComputeShader
     {
-        readonly DeviceLiveness _liveness;
+        readonly D3D11DeferredResource<D3D11CompiledCompute, ID3D11ComputeShader> _resource;
 
-        internal D3D11ComputeShader(DeviceLiveness liveness, ID3D11ComputeShader shader, byte[] bytecode,
-            uint threadGroupSizeX, uint threadGroupSizeY, uint threadGroupSizeZ)
+        internal D3D11ComputeShader(ID3D11Device device, DeviceLiveness liveness, D3D11CreationGate creation,
+            D3D11ShaderCompilation<D3D11CompiledCompute> compilation)
         {
-            ArgumentNullException.ThrowIfNull(liveness);
-            ArgumentNullException.ThrowIfNull(shader);
-            ArgumentNullException.ThrowIfNull(bytecode);
-
-            _liveness = liveness;
-            Shader = shader;
-            Bytecode = bytecode;
-            ThreadGroupSizeX = threadGroupSizeX;
-            ThreadGroupSizeY = threadGroupSizeY;
-            ThreadGroupSizeZ = threadGroupSizeZ;
+            _resource = new(liveness, compilation.Join, compiled => CreateWindows(device, liveness, creation, compiled));
         }
 
         /// <summary>The compiled compute module, which a compute pipeline binds.</summary>
-        internal ID3D11ComputeShader Shader { get; }
+        internal ID3D11ComputeShader Shader => _resource.Value;
 
         /// <summary>The module's DXBC bytes.</summary>
-        internal ReadOnlyMemory<byte> Bytecode { get; }
+        internal ReadOnlyMemory<byte> Bytecode => _resource.Prepared.Dxbc;
 
         /// <inheritdoc/>
-        public uint ThreadGroupSizeX { get; }
+        public uint ThreadGroupSizeX => _resource.Prepared.ThreadGroupSizeX;
 
         /// <inheritdoc/>
-        public uint ThreadGroupSizeY { get; }
+        public uint ThreadGroupSizeY => _resource.Prepared.ThreadGroupSizeY;
 
         /// <inheritdoc/>
-        public uint ThreadGroupSizeZ { get; }
+        public uint ThreadGroupSizeZ => _resource.Prepared.ThreadGroupSizeZ;
 
         /// <summary>True once disposed, whether or not anything native was released.</summary>
-        internal bool IsDisposed { get; private set; }
+        internal bool IsDisposed => _resource.IsDisposed;
 
-        public void Dispose()
+        internal void EnsureReady() => _ = _resource.Value;
+
+        public void Dispose() => _resource.Dispose();
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static ID3D11ComputeShader CreateWindows(ID3D11Device device, DeviceLiveness liveness, D3D11CreationGate creation,
+            in D3D11CompiledCompute compiled)
         {
-            if (IsDisposed) return;
-            IsDisposed = true;
-            if (_liveness.IsDead) return;   // the device already freed every child object
-
-            Shader.Dispose();
+            using var scope = creation.Enter();
+            ObjectDisposedException.ThrowIf(liveness.IsDead, device);
+            return device.CreateComputeShader(compiled.Dxbc);
         }
     }
 }

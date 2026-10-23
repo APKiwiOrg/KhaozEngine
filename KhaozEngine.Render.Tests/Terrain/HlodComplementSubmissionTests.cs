@@ -27,25 +27,32 @@ public sealed class HlodComplementSubmissionTests
         using var harness = new MotionTestScene();
         Scene3D scene = harness.Scene;
         using var renderer = Create(scene, parts);
-        foreach (float distance in new[] { 90f, 100f, 110f })
+        foreach (float distance in new[] { 80.8f, 81.16f, 81.24f, 90f, 100f, 110f, 118.76f, 118.84f })
         {
             scene.Begin();
             if (hidden < 0) renderer.Draw(new Vector3(distance, 0f, 0f));
             else renderer.DrawWithVisibility(new Vector3(distance, 0f, 0f), new Visibility(hidden));
             SceneInstances.Instance[] draws = scene.QueuedInstancesForTests.ToArray();
-            Assert.Equal(3, draws.Length);
             float threshold = (distance - 80f) / 40f;
+            bool paired = threshold > .03f && threshold < .97f;
+            Assert.Equal(paired ? 3 : threshold <= .03f ? 2 : 1, draws.Length);
+            float expectedDissolve = paired ? threshold : 0f;
             Assert.All(draws, draw =>
             {
-                Assert.Equal(threshold, draw.DissolveThreshold);
+                Assert.Equal(expectedDissolve, draw.DissolveThreshold);
                 Assert.False(draw.InvertShadowDissolve);
                 Assert.True(draw.CastsShadows);
                 Assert.Equal(hidden == 2, draw.ShadowOnly);
-                Assert.Equal(ShadowCastKind.Dissolving, Scene3D.ClassifyCaster(draw));
+                Assert.Equal(paired ? ShadowCastKind.Dissolving : ShadowCastKind.Opaque,
+                    Scene3D.ClassifyCaster(draw));
             });
-            Assert.Equal(0f, draws[0].DissolveComplement);
-            Assert.Equal(0f, draws[1].DissolveComplement);
-            Assert.Equal(1f, draws[2].DissolveComplement);
+            if (paired)
+            {
+                Assert.Equal(0f, draws[0].DissolveComplement);
+                Assert.Equal(0f, draws[1].DissolveComplement);
+                Assert.Equal(1f, draws[2].DissolveComplement);
+            }
+            else Assert.All(draws, draw => Assert.Equal(0f, draw.DissolveComplement));
         }
     }
 
@@ -71,26 +78,42 @@ public sealed class HlodComplementSubmissionTests
         });
     }
 
-    [Fact]
-    public void Hlod_encoded_keep_sets_cover_each_noise_value_exactly_once()
+    [Theory]
+    [InlineData(80f)]
+    [InlineData(80.8f)] // t = 0.02, merged half is skipped.
+    [InlineData(81.16f)] // t = 0.029, just below the merged gate.
+    [InlineData(81.24f)] // t = 0.031, just above the merged gate.
+    [InlineData(84f)]
+    [InlineData(90f)]
+    [InlineData(100f)]
+    [InlineData(110f)]
+    [InlineData(116f)]
+    [InlineData(118.76f)] // t = 0.969, just below the individual gate.
+    [InlineData(118.84f)] // t = 0.971, just above the individual gate.
+    [InlineData(120f)]
+    public void Hlod_encoded_keep_sets_cover_each_noise_value_exactly_once(float distance)
     {
         using var harness = new MotionTestScene();
         using var renderer = Create(harness.Scene, false);
-        foreach (float distance in new[] { 80f, 84f, 90f, 100f, 110f, 116f, 120f })
+        harness.Scene.Begin();
+        renderer.Draw(new Vector3(distance, 0f, 0f));
+        var draws = harness.Scene.QueuedInstancesForTests;
+        Assert.All(draws, draw => Assert.False(draw.InvertShadowDissolve));
+        // Each individual has its own footprint. Compare one placement against its merged representation.
+        SceneInstances.Instance first = draws[0];
+        SceneInstances.Instance? merged = draws.Count == 3 ? draws[2] : null;
+        for (int sample = 0; sample < 1024; sample++)
         {
-            harness.Scene.Begin();
-            renderer.Draw(new Vector3(distance, 0f, 0f));
-            var draws = harness.Scene.QueuedInstancesForTests;
-            // Each individual has its own footprint. Compare one placement against its merged representation.
-            SceneInstances.Instance first = draws[0];
-            SceneInstances.Instance? merged = draws.Count == 3 ? draws[2] : null;
-            for (int sample = 0; sample < 1024; sample++)
+            float noise = sample / 1024f;
+            int colourOwners = Keeps(first, noise) && !first.ShadowOnly ? 1 : 0;
+            int shadowOwners = Keeps(first, noise) && first.CastsShadows ? 1 : 0;
+            if (merged is { } other && Keeps(other, noise))
             {
-                float noise = sample / 1024f;
-                int owners = Keeps(first, noise) ? 1 : 0;
-                if (merged is { } other && Keeps(other, noise)) owners++;
-                Assert.True(owners == 1, $"distance={distance}, noise={noise}, owners={owners}");
+                if (!other.ShadowOnly) colourOwners++;
+                if (other.CastsShadows) shadowOwners++;
             }
+            Assert.True(colourOwners == 1, $"distance={distance}, noise={noise}, colour owners={colourOwners}");
+            Assert.True(shadowOwners == 1, $"distance={distance}, noise={noise}, shadow owners={shadowOwners}");
         }
     }
 

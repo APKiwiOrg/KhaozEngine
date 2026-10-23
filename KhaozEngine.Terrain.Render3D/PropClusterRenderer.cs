@@ -322,9 +322,10 @@ namespace KhaozEngine.Terrain
                     cluster.PresentationGeneration, cluster.Generation);
             }
             bool merged = PropHlod.DrawsHlodMerged(t);
-            // A completed handoff stays on the solid fast path instead of sampling a full-coverage mask.
+            // Only dissolve while both halves are submitted. A lone representation stays solid.
             bool complement = individuals && merged;
-            return new PropClusterDrawState(individuals, t, merged, complement ? t : 0f, complement,
+            float handoffDissolve = complement ? t : 0f;
+            return new PropClusterDrawState(individuals, handoffDissolve, merged, handoffDissolve, complement,
                 cluster.PresentationGeneration, cluster.Generation);
         }
 

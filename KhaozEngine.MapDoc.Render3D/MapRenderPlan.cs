@@ -54,7 +54,7 @@ public sealed class MapRenderPlan : IDisposable
             input.ProofDigest != source.RenderExtentsDigest || scene.Witness.RenderExtentsDigest != input.ProofDigest)
             throw new MapRenderAssetRefusal(MapRenderAssetStatus.Stale, "Render plan requires its exact proof-bound source, scene and input.");
         using var preparation = admission.BeginPreparation();
-        MapTerrainRenderBatch? terrain = null; MapPlacementRenderBatch? placements = null; MapNativeFoliageBatch? foliage = null;
+        MapTerrainRenderBatch? terrain = null; MapPlacementRenderBatch? placements = null; MapNativeFoliageBatch? foliage = null; MapWaterRenderBatch? water = null;
         using var activation = admission.Enter();
         try
         {
@@ -65,7 +65,8 @@ public sealed class MapRenderPlan : IDisposable
             var context = captured ?? CaptureFoliage(source, scene.Scope);
             terrain = NativeMapTerrain.Prepare(scene, input, policy.TerrainMaterials);
             placements = NativeMapPlacements.Prepare(scene, input, policy.Placements, routing, cells);
-            var water = NativeMapWater.Prepare(MapWaterScopedCompiler.Compile(scene, limits: source.Data.Limits.Preparation?.Water), policy.Water.ToWaterLook(), new WaterSettings());
+            using (var compiledWater = MapWaterScopedCompiler.Compile(scene, limits: source.Data.Limits.Preparation?.Water))
+                water = NativeMapWater.Prepare(compiledWater, policy.Water.ToWaterLook(), new WaterSettings());
             foliage = NativeMapFoliage.Prepare(scene, context, input, policy.Foliage, routing, retainSamples);
             var geometry = MapPresentationGeometry.Prepare(scene, input.Assets.Closure, terrain.CanonicalFaces);
             var roofResult = MapRoofEvaluationBuffer.Prepare(scene, admission);
@@ -93,11 +94,11 @@ public sealed class MapRenderPlan : IDisposable
             long retained = checked(1024L + terrain.RetainedBytes + placements.RetainedBytes + water.RetainedBytes + foliage.RetainedBytes +
                 geometry.RetainedBytes + roofs.RetainedBytes + 128L * roofIndices.Count + 128L * resources.Length + MapRecordingAdmission.DrawBytes * result._lights.Length +
                 (captured is null ? context.InventoryBytes : 0));
-            result.PreparationOwnership = preparation.Complete(retained); result.PreparationBytes = retained;
+            result.PreparationOwnership = preparation.Complete(retained - water.CanonicalPreparationBytes); result.PreparationBytes = retained;
             return result;
         }
         catch
-        { foliage?.Dispose(); placements?.Dispose(); terrain?.Dispose(); throw; }
+        { foliage?.Dispose(); placements?.Dispose(); terrain?.Dispose(); water?.Dispose(); throw; }
     }
     internal static MapWindowFoliageContext CaptureFoliage(MapSceneSource source, MapSceneScope scope)
     {

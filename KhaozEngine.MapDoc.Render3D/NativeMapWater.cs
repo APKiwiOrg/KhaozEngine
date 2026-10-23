@@ -41,8 +41,12 @@ public static class NativeMapWater
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(water.Limits);
         using var admitted = admission.Enter();
         using var preparation = admission.BeginPreparation();
+        MapPreparationInventory? canonicalOwnership = null;
         try
         {
+            using var canonicalWork = MapPreparationInventory.Acquire(admission,
+                water.AcquiredCells.Concat(water.Cells).Distinct<MapWaterResourceCell>(System.Collections.Generic.ReferenceEqualityComparer.Instance)
+                    .Select(c => ((object)c, MapScopedWaterResult.CellInventoryBytes(c))));
             // Admit the scratch settings, explicit effective look and frozen frame copy before allocation.
             admission.ReserveBytes(2048);
             look = ResolveLook(look, settings);
@@ -107,7 +111,10 @@ public static class NativeMapWater
             }
             admission.ReserveBytes(checked(8L * (parts.Count + water.Cells.Count)));
             var result = new MapWaterRenderBatch(canonical, parts, MapFrozenWaterLook.Capture(look), 0);
-            result.Own(preparation.Complete(result.RetainedBytes));
+            canonicalOwnership = MapPreparationInventory.Acquire(admission,
+                canonical.Select(c => ((object)c, MapScopedWaterResult.CellInventoryBytes(c))));
+            result.Own(preparation.Complete(result.OwnRetainedBytes));
+            result.OwnCanonical(canonicalOwnership); canonicalOwnership = null;
             return result;
         }
         catch (Exception error) when (error is MapSceneCapacityException or MapWaterCapacityException)
@@ -115,6 +122,7 @@ public static class NativeMapWater
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Water geometry is not representable."); }
         catch (ArgumentException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, error.Message); }
+        finally { canonicalOwnership?.Dispose(); }
     }
 
     static WaterLook ResolveLook(WaterLook look, WaterSettings settings)

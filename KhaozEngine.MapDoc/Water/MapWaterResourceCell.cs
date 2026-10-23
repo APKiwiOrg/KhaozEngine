@@ -20,9 +20,12 @@ public sealed record MapWaterResourceCell(MapWaterCellKey Key, float SurfaceY, M
 }
 
 public sealed record MapScopedWaterResult(MapSceneStatus Status, IReadOnlyList<MapWaterResourceCell> Cells,
-    MapSceneWitness RequestedWitness, MapSceneWitness AcquiredCellWitness)
+    MapSceneWitness RequestedWitness, MapSceneWitness AcquiredCellWitness) : IDisposable
 {
-    internal MapPreparationReservation? PreparationOwnership { get; init; }
+    internal MapPreparationInventory? PreparationOwnership { get; init; }
+    internal static long CellInventoryBytes(MapWaterResourceCell cell) =>
+        checked(256L + cell.Regions.Sum(r => 128L + 144L * r.Triangles.Count));
+    public void Dispose() => PreparationOwnership?.Dispose();
     public MapSceneCapacity? Capacity { get; init; }
     internal IReadOnlyList<MapWaterResourceCell> AcquiredCells { get; init; } = Array.Empty<MapWaterResourceCell>();
     internal double MotionPaddingMetres { get; init; }

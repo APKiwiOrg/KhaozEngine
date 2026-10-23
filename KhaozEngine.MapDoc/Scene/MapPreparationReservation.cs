@@ -33,6 +33,14 @@ internal sealed class MapPreparationReservation : IDisposable
         _ledger.Transfer(bytes); Bytes -= bytes;
         return owner;
     }
+    internal MapPreparationReservation SplitRetained(long bytes)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_retained || bytes < 0 || bytes > Bytes) throw new ArgumentOutOfRangeException(nameof(bytes));
+        var owner = new MapPreparationReservation(_ledger, _window, true) { Bytes = bytes };
+        Bytes -= bytes;
+        return owner;
+    }
     internal void Absorb(MapPreparationReservation product)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

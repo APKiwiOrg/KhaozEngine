@@ -21,8 +21,12 @@ public sealed class MapWaterRenderBatch : IDisposable
     readonly MapFrozenWaterLook _look;
     MapPreparedResource[]? _registered;
     MapResourceStamp? _stamp;
+    MapPreparationInventory? _canonicalOwnership;
     public IReadOnlyList<MapWaterResourceCell> Cells { get; }
     public long RetainedBytes { get; }
+    internal long CanonicalPreparationBytes { get; }
+    internal long OwnRetainedBytes => RetainedBytes - CanonicalPreparationBytes;
+    internal void OwnCanonical(MapPreparationInventory ownership) => _canonicalOwnership = ownership;
     internal MapPreparationReservation? PreparationOwnership { get; private set; }
     internal void Own(MapPreparationReservation ownership)
     { PreparationOwnership = ownership; PreparationChargeBytes = ownership.Bytes; }
@@ -32,7 +36,8 @@ public sealed class MapWaterRenderBatch : IDisposable
     {
         Cells = Array.AsReadOnly(cells.ToArray()); _parts = Array.AsReadOnly(parts.ToArray()); _look = look;
         PreparationChargeBytes = charge;
-        RetainedBytes = checked(512L + cells.Sum(c => 256L + c.Regions.Sum(r => 128L + r.Triangles.Count * 144L)) +
+        CanonicalPreparationBytes = cells.Sum(MapScopedWaterResult.CellInventoryBytes);
+        RetainedBytes = checked(512L + 8L * cells.Count + CanonicalPreparationBytes +
             parts.Sum(p => 512L + ModelVertex.SizeInBytes * (long)p.Payload.BorrowMesh.Vertices.Length +
                 4L * p.Payload.BorrowMesh.Indices32.Length + p.Payload.BorrowClipData.Length));
     }
@@ -52,6 +57,6 @@ public sealed class MapWaterRenderBatch : IDisposable
             sink.Write(new(_registered[i].Reference, MapDrawChannels.Colour, _parts[i].Anchor, Matrix4x4.Identity,
                 MapRenderTransform.FocusLocal(frame.Focus, _parts[i].Anchor), null, null, new MapWaterFrame(_look), null));
     }
-    public void Dispose() => PreparationOwnership?.Dispose();
+    public void Dispose() { PreparationOwnership?.Dispose(); _canonicalOwnership?.Dispose(); }
 
 }

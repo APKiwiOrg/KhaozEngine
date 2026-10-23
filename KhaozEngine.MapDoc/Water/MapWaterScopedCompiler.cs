@@ -181,7 +181,12 @@ public static class MapWaterScopedCompiler
             };
             long retained = complete ? checked(512L + 64L * (required.Length + present.Length) +
                 allCells.Sum(c => 256L + c.Regions.Sum(r => 128L + 144L * r.Triangles.Count))) : 0;
-            var ownership = complete ? preparation.Complete(retained) : null;
+            using var owned = complete ? preparation.Complete(retained, publishToParent: false) : null;
+            var ownership = complete ? MapPreparationInventory.Acquire(admission,
+                allCells.Select(c => ((object)c, MapScopedWaterResult.CellInventoryBytes(c)))
+                    .Append((new object(), checked(retained - allCells.Sum(MapScopedWaterResult.CellInventoryBytes)))),
+                ownership: owned) : null;
+            if (ownership is not null) preparation.TrackParentCleanup(ownership);
             return new(status, Array.AsReadOnly(cells.ToArray()), requested, acquired)
             {
                 Limits = scene.Source.Data.Limits,

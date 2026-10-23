@@ -154,7 +154,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 
     internal void BeforeClone(MapSurfacePatch patch)
     {
-        ReserveBytes(PatchBytes(patch));
+        ReserveBytes(PatchBytes(patch, forClone: true));
         entering?.Invoke("clone");
     }
 
@@ -183,12 +183,13 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         entering?.Invoke("compile");
     }
 
-    /// <summary>Copied payload values, excluding shared immutable strings and CLR object headers.</summary>
-    internal static long PatchBytes(MapSurfacePatch patch)
+    /// <summary>Owned payload and collection backing storage, excluding shared immutable strings and CLR object headers.</summary>
+    internal static long PatchBytes(MapSurfacePatch patch, bool forClone = false)
     {
         long bytes = checked(4L * patch.Heights.Length + 8L * patch.Cells.Length + 8L * patch.Presence.Length +
-            (long)Unsafe.SizeOf<MapCornerDependency>() * patch.CornerDependencies.Count +
-            (long)Unsafe.SizeOf<MapEdgeSubdivision>() * patch.EdgeSubdivisions.Count + IntPtr.Size * (long)patch.Records.Count);
+            (long)Unsafe.SizeOf<MapCornerDependency>() * (forClone ? CloneCapacity(patch.CornerDependencies.Count, false) : patch.CornerDependencies.Capacity) +
+            (long)Unsafe.SizeOf<MapEdgeSubdivision>() * (forClone ? CloneCapacity(patch.EdgeSubdivisions.Count, false) : patch.EdgeSubdivisions.Capacity) +
+            IntPtr.Size * (forClone ? CloneCapacity(patch.Records.Count, true) : patch.Records.Capacity));
         foreach (var record in patch.Records)
             bytes = checked(bytes + (record switch
             {
@@ -204,6 +205,15 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
                 _ => 0,
             }));
         return bytes;
+    }
+
+    static long CloneCapacity(int count, bool incremental)
+    {
+        if (count == 0) return 0;
+        if (!incremental) return Math.Max(4L, count);
+        long capacity = 4;
+        while (capacity < count) capacity *= 2;
+        return capacity;
     }
 
     static long RingBytes(MapWaterDomainDoc domain)

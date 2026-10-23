@@ -8,6 +8,22 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 public sealed class MapPreparationCodecTests
 {
     [Fact]
+    public void PatchClone_AdmitsAndRetainsMetadataBackingCapacity()
+    {
+        var patch = Patch();
+        patch.CornerDependencies.Add(new(0, 0, new(patch.Key, MapLatticeAddress.Corner(0, 0))));
+        patch.CornerDependencies.Capacity = 1;
+        long bytes = 32L + 4L * System.Runtime.CompilerServices.Unsafe.SizeOf<MapCornerDependency>();
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: bytes));
+        using var active = admission.Enter();
+        var copy = patch.Clone();
+        Assert.Equal(4, copy.CornerDependencies.Capacity);
+        Assert.Equal(bytes, admission.RetainedBytes);
+        copy.PreparationOwnership!.Dispose();
+        Assert.Equal(0, admission.RetainedBytes);
+    }
+
+    [Fact]
     public void SurfaceMetadataHash_ReservesAndReleasesItsJsonWriterCapacity()
     {
         var surface = KhaozEngine.Tests.MapDoc.Prefabs.PrefabFixtures.Surface("invented", MapSurfaceRole.SupportFloor);

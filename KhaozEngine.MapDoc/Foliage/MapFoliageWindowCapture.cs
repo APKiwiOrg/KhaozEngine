@@ -38,28 +38,21 @@ internal static class MapFoliageWindowCapture
             var b = scope.DiscoveryBounds;
             foreach (var layer in source.Data.Foliage?.Layers ?? [])
             {
-                if (b.MinX >= b.MaxX || b.MinZ >= b.MaxZ) continue;
-                int x0 = MapFoliageRasterReads.Owner(layer, MapFoliageSupport.Outward(b.MinX, true), true);
-                int z0 = MapFoliageRasterReads.Owner(layer, MapFoliageSupport.Outward(b.MinZ, true), false);
-                int x1 = MapFoliageRasterReads.Owner(layer, MathF.BitDecrement(MapFoliageSupport.Outward(b.MaxX, false)), true);
-                int z1 = MapFoliageRasterReads.Owner(layer, MathF.BitDecrement(MapFoliageSupport.Outward(b.MaxZ, false)), false);
-                foreach (int z in MapFoliageRasterReads.Chunks(layer, z0, z1, false))
-                    foreach (int x in MapFoliageRasterReads.Chunks(layer, x0, x1, true))
+                foreach (var key in MapFoliageWindowChunks.Discover(layer, source.Data.Assets, b))
+                {
+                    work = work with { ChunkDescriptors = checked(work.ChunkDescriptors + 1) };
+                    if (work.ChunkDescriptors > limits.MaxChunkDescriptors) return new(MapFoliageStatus.CapacityExceeded, null, work);
+                    chunks.Add((layer, key));
+                    if (MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, key))) continue;
+                    var read = MapFoliageSupport.Scope(layer, key, metadata.FloorsFor(layer, key), metadata.Transforms).WorldRectangle();
+                    bounds = Bounds.Union(bounds, Bounds.Of(read));
+                    foreach (var owner in metadata.OwnersFor(layer, read))
                     {
-                        work = work with { ChunkDescriptors = checked(work.ChunkDescriptors + 1) };
-                        if (work.ChunkDescriptors > limits.MaxChunkDescriptors) return new(MapFoliageStatus.CapacityExceeded, null, work);
-                        var key = new MapFoliageChunkKey(x, z);
-                        chunks.Add((layer, key));
-                        if (MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, key))) continue;
-                        var read = MapFoliageSupport.Scope(layer, key, metadata.FloorsFor(layer, key), metadata.Transforms).WorldRectangle();
-                        bounds = Bounds.Union(bounds, Bounds.Of(read));
-                        foreach (var owner in metadata.OwnersFor(layer, read))
-                        {
-                            owners.Add(owner);
-                            if (metadata.SeatFor(layer, owner) is { } seat) seats.TryAdd(owner, seat);
-                        }
-                        Binding(layer.Support);
+                        owners.Add(owner);
+                        if (metadata.SeatFor(layer, owner) is { } seat) seats.TryAdd(owner, seat);
                     }
+                    Binding(layer.Support);
+                }
                 void Binding(MapSupportBinding binding)
                 {
                     if (binding.SurfaceId is { } id) owners.Add(new("Surface", id));

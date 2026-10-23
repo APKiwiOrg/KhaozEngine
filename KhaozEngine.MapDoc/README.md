@@ -174,7 +174,8 @@ Placements, exact transforms, paint regions, water, building intent and foliage 
 `MapEffectiveAnnotations.Lights(scene)` and `Markers(scene)` read the captured annotations.
 The complete prefab, world and foliage builders still require complete documents.
 
-Discovery includes descriptor render bounds, every LOD, light reach and explicit finite nonnegative motion padding.
+Discovery includes descriptor render bounds, every LOD, light reach, KECL collider and selection reach, and explicit
+finite nonnegative motion padding. Shape discovery streams conservative local bounds without decoding physics objects.
 Generated foliage bounds cover source-unit model bounds, maximum scale, root offset and support-aligned orientations.
 Y is unbounded during discovery until support seating. Padding participates in scope identity.
 `RequiredAssetIds` names every placement and foliage model in the source, including off-window owners.
@@ -878,7 +879,8 @@ Complete capture requires all terrain, content and foliage resident. Partial sna
 `MapFoliageGenerationContext.CaptureWindow(sceneSource, sceneScope, limits?)` instead publishes a distinct
 `MapWindowFoliageContext` with immutable `SnapshotId`, `ClosureHash` and a complete dependency `Witness`. Its
 `MapFoliageDistribution.Generate` and `Query` overloads share the released input and evaluation kernels. Generation
-chunks intersect the half-open draw bounds, including motion padding. Requests for other chunks refuse `Unavailable`.
+chunks include adjacent owners whose conservative model reach enters the draw bounds, including motion padding.
+Native foliage preparation consumes that same admitted chunk set. Requests for other chunks refuse `Unavailable`.
 Support scopes use the same derived read reach as complete generation. Actual rounded bilinear density reads include
 advertised absent zero chunks, while unavailable or stale inputs refuse atomically. Off-raster chunks bind raster
 facts alone. Context ceilings apply to selected input bytes and descriptors beside unchanged scene and point-query

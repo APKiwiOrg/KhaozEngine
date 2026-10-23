@@ -61,6 +61,36 @@ internal static class ShippedSceneGuardObservations
                 value = value with { Identities = value.Identities.Where((_, i) => i != removed).ToArray() };
             }
         }
+        else if (variant == "roof-proxy-omission") draws.RemoveAll(d => d.Resource.Key.Kind == MapRenderKind.Roof && d.Resource.Key.PartId == "hlod");
+        else if (variant is "roof-hidden-colour" or "roof-missing-shadow" or "roof-complement" or "roof-wrong-kind")
+        {
+            for (int i = 0; i < draws.Count; i++)
+            {
+                var draw = draws[i]; if (draw.Resource.Key.Kind != MapRenderKind.Roof) continue;
+                draws[i] = variant switch
+                {
+                    "roof-hidden-colour" when !draw.Channels.HasFlag(MapDrawChannels.Colour) => draw with { Channels = draw.Channels | MapDrawChannels.Colour },
+                    "roof-missing-shadow" => draw with { Channels = draw.Channels & ~MapDrawChannels.Shadow },
+                    "roof-complement" when draw.Resource.Key.PartId == "hlod" => draw with { Rigid = draw.Rigid!.Value with { DissolveComplement = 1 - draw.Rigid.Value.DissolveComplement } },
+                    "roof-wrong-kind" => draw with { Resource = draw.Resource with { Key = draw.Resource.Key with { Kind = MapRenderKind.Placement } } },
+                    _ => draw
+                };
+            }
+            if (variant == "roof-wrong-kind")
+                for (int i = 0; i < resources.Count; i++)
+                    if (resources[i].Reference.Key.Kind == MapRenderKind.Roof)
+                        resources[i] = resources[i] with { Reference = resources[i].Reference with { Key = resources[i].Reference.Key with { Kind = MapRenderKind.Placement } } };
+        }
+        else if (variant == "roof-incomplete-cell")
+        {
+            for (int i = 0; i < resources.Count; i++)
+                if (resources[i].Reference.Key.Kind == MapRenderKind.Roof && resources[i].Reference.Key.PartId == "hlod")
+                {
+                    var mesh = ((MapRigidResource)resources[i].Payload).Mesh;
+                    resources[i] = resources[i] with { Payload = new MapRigidResource(new(mesh.Vertices.Take(mesh.Vertices.Length / 2).ToArray(),
+                        mesh.Indices32.Take(mesh.Indices32.Length / 2).ToArray()), default) };
+                }
+        }
         else if (variant.StartsWith("maps-", StringComparison.Ordinal))
         {
             int at = resources.FindIndex(r => r.Reference.Key.Kind == MapRenderKind.Foliage && r.Payload is MapRigidResource && r.Reference.Key.OwnerId == "native-reed");

@@ -81,13 +81,17 @@ public sealed class RoofHlodSourceParityTests
         source = source.WithRenderExtents(proof).Source!;
         var windows = inputs.Manifest.Windows.Take(2).Select(ShippedSceneInputs.Scope).ToArray();
         var scheduler = new SceneOracleScheduler(); var device = new SceneOracleDevice();
-        using var residency = new MapRenderResidency(new(source, assets, proof, inputs.NativePolicy.Native(assets, inputs.Manifest), windows), device, null, scheduler);
+        var state = new MapRenderSourceState(source, assets, proof, inputs.NativePolicy.Native(assets, inputs.Manifest), windows);
+        using var residency = new MapRenderResidency(state, device, null, scheduler);
         ShippedSceneComparison.Complete(residency, scheduler);
         var expected = LegacySceneRecorder.Record(world, inputs.Catalogs, inputs);
         try
         {
             PrivateOracleEntry.Run(fixture.Environment, (_, report) =>
             {
+                for (int order = 0; order < 2; order++)
+                {
+                if (order == 1) { residency.RequestReplacement(state with { Windows = windows.Reverse().ToArray() }); ShippedSceneComparison.Complete(residency, scheduler); }
                 foreach (var probe in inputs.Manifest.Policy.Probes)
                 {
                     var sourceFrame = expected.Frames.Single(f => f.ProbeId == probe.Id);
@@ -96,6 +100,7 @@ public sealed class RoofHlodSourceParityTests
                     var actual = sink.Snapshot(); actual = new(actual.Resources, actual.Draws.Where(d => d.Resource.Key.Kind == MapRenderKind.Roof).ToArray());
                     var rows = ShippedSceneExpectedFrames.Capture(inputs, expected, sourceFrame, probe, windows[0], [], new Dictionary<MapRenderKey, MapSubmissionAnchor>(), new Dictionary<MapRenderKey, MapSubmissionAnchor>());
                     ShippedSceneComparison.CompareDrawSets(rows, actual, report);
+                }
                 }
             });
         }

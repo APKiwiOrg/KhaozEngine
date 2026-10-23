@@ -2,8 +2,10 @@
 
 Date: 2026-10-24
 
-Status: Draft for owner review. The owner approved engine placement and the per-body depth direction.
-This document does not authorize implementation or a release.
+Status: Approved by the owner on 2026-10-24. Implementation planning is authorized.
+The implementation plan and execution method still require review. Release authorization is separate.
+
+Implementation plan: [per-body water optics](../superpowers/plans/2026-10-24-per-body-water-optics.md).
 
 Related work: [#1300](https://github.com/APKiwiOrg/KhaozEngine/issues/1300), the native world-authoring
 R8b optical extension, and the Grimhollow duck consumer proof.

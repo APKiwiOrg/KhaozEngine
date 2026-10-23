@@ -219,6 +219,8 @@ unsaved edits or an inspector or filter field owns keyboard focus. The editor re
 builds a replacement viewport, then swaps it into the scene. A read, validation or viewport-build failure leaves
 the current document and viewport in place and reports the failure in the status strip. Reload uses the same
 whole-document or bounded-window policy as first open. It does not watch the filesystem or poll for changes.
+Native viewport replacements use the same `MapEditorOptions.NativeRenderHost`, `DocumentPath`, `NativeStyleId`,
+`NativeObserver` and `NativeObserverSpaceId` configuration as the initial viewport.
 Reload status text resolves the `mapeditor.reload.done`, `mapeditor.reload.unsaved`,
 `mapeditor.reload.focused`, `mapeditor.reload.missing` and `mapeditor.reload.failed` keys through the ambient
 catalog, with built-in English fallback text when the host does not provide them.

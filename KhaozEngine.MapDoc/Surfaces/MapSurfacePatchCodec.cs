@@ -145,6 +145,7 @@ public static partial class MapSurfacePatchCodec
             {
                 if (owned > workspace.Bytes) workspace.Reserve(owned - workspace.Bytes);
                 patch.PreparationOwnership = workspace.Transfer(owned);
+                Scene.MapSceneAdmission.Current?.PreparationScope?.Track(patch.PreparationOwnership);
             }
             return patch;
         }

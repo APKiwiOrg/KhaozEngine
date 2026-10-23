@@ -20,6 +20,9 @@ public sealed record MapWindowFoliageContextResult(MapFoliageStatus Status, MapW
 /// outside that window are retained only to answer those chunks. No complete-document Resources property is exposed.</summary>
 public sealed class MapWindowFoliageContext : IMapFoliageInputs
 {
+    internal MapPreparationReservation? PreparationOwnership { get; set; }
+    internal long InventoryBytes => checked(_inputs.InventoryBytes + 256L + 64L * _chunks.Count +
+        64L * (Witness.Required.Count + Witness.Present.Count + Witness.KnownEmpty.Count + Witness.Unavailable.Count));
     readonly MapFoliageInputKernel _inputs;
     readonly HashSet<(string Layer, MapFoliageChunkKey Chunk)> _chunks;
     internal MapWindowFoliageContext(MapFoliageInputKernel inputs, MapSceneSource source, MapSceneScope scope, MapSceneWitness witness,

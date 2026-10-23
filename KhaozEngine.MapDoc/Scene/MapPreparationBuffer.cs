@@ -38,6 +38,7 @@ internal sealed class MapPreparationBuffer(int maximum = int.MaxValue) : IBuffer
         try { result = WrittenSpan.ToArray(); }
         catch { _workspace?.Release(_length); throw; }
         ownership = _workspace?.Transfer(_length);
+        if (ownership is not null) MapSceneAdmission.Current?.PreparationScope?.Track(ownership);
         return result;
     }
     public void Dispose() { _workspace?.Dispose(); _buffer = []; _length = 0; }

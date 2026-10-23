@@ -90,6 +90,7 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
     }
     internal MapPatchRead Payload(MapSurfaceIndexEntry entry)
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         try
         {
             byte[] bytes = MapSurfaceStorageLayout.Read(_directory, 'p', entry.PayloadSha256);
@@ -100,6 +101,7 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
                 !patch.CornerDependencies.Select(d => d.Owner.Patch).Distinct().OrderBy(k => k).SequenceEqual(entry.Dependencies) ||
                 !patch.Records.Select(r => r.Id).OrderBy(s => s, StringComparer.Ordinal).SequenceEqual(entry.RecordIds))
                 throw new MapDocumentException("surface semantic or index digest mismatch");
+            patch.PreparationOwnership = preparation?.Complete(Scene.MapSceneAdmission.PatchBytes(patch));
             return new(entry.Key, MapPatchStatus.Present, patch, entry.SemanticSha256, null, 0);
         }
         catch (Exception ex) when (IsStorageFailure(ex))

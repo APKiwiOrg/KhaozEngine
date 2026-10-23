@@ -310,6 +310,8 @@ internal static class MapEffectiveResolutionKernel
 
 internal sealed class MapEffectiveResolutionProduct
 {
+    internal MapEffectiveContext CapturedContext => _context;
+    internal MapWaterSet? CapturedWater => _water;
     readonly MapEffectiveContext _context;
     readonly MapQueryLimits _queryLimits;
     readonly MapWaterSet? _water;

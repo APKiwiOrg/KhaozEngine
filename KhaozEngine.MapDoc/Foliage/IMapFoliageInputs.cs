@@ -63,6 +63,10 @@ internal sealed class MapFoliageInputKernel : IMapFoliageInputs
         ClearanceOwners = new(foliage, resources, Acquire, retainedSource is not null, metadata is null ? null : metadata.MaskCandidates, queryLimits);
         SnapshotId = Snapshot(foliage, assets, resources, _paintEntries);
     }
+    internal long InventoryBytes => checked(new Scene.MapSceneInventory().Product(Resources) + 512L +
+        256L * _ownerPlacements.Length + 256L * _paintEntries.Length + 192L * _floorEntries.Length +
+        80L * _densityDigests.Values.Sum(d => d.Count) + (Foliage?.Layers.Sum(l =>
+            Scene.MapSceneResourceBounds.FoliageMetadataBytes(l) + l.Chunks.Count * (long)MapFoliageChunk.ByteLength) ?? 0));
     internal MapEffectiveResolutionProduct Resources { get; }
     internal string SnapshotId { get; }
     public MapFoliageSet? Foliage { get; }

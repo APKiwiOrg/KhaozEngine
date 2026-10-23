@@ -281,6 +281,9 @@ The outside-solution `tools/Renderer.Perf.Tests` project exposes one fixed fact,
 `Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit`, category `RendererPerformance`.
 The workflow explicitly passes `KE_RENDERER_PERF_UNIT` and `KE_RENDERER_PERF_REPORTS`. Manifest,
 runtime, recipe, shader source and current control hashes are validated before native creation.
+Shader identity hashes fully composed literal and generated readonly shader strings, including motion,
+temporal and water variants, plus the frozen outdoors recipe's specialized FFT kernels and controls.
+The deterministic name-ordered hashes are retained in `shader-sources.json`.
 Cold inspection checks the selected native vendor `0x10de`, device `0x1eb8`, software-adapter flag,
 driver, recording mode and timestamp capability. D3D11 uses one cold two-query calibration
 submission, with no scene frame and no retry. Vulkan reads the selected device's timestamp limits

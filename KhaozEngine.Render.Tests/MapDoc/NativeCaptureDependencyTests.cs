@@ -6,12 +6,42 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.Render3D;
+using KhaozEngine.Tests.MapDoc.Scene;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
 
 public sealed class NativeCaptureDependencyTests
 {
+    [Fact]
+    public void DependencyDiscovery_UsesTheDeclaredSelectedResourceAllowance()
+    {
+        using var fixture = NativeSceneFixtures.Create("empty");
+        var closure = NativeRenderAssetFixtures.Create("foliage");
+        fixture.Document.NativeAssets = closure.Roots.ToList();
+        for (int i = 1; i <= 2; i++)
+            fixture.Document.Placements.Add(new()
+            {
+                Id = "selected-" + i,
+                Kind = "cosmetic",
+                AssetId = "A",
+                NumericId = i,
+                X = i - 1,
+                Y = 0,
+                Z = 0
+            });
+        fixture.Document.NumericIdHighWaterMark = 2;
+        using var document = MapDocumentSource.FromDocument(fixture.Document);
+        var source = MapSceneSource.Capture(document, closure, new(MaxSelectedResources: 1)).Source!;
+        var proof = MapRenderExtentValidator.Validate(closure, source.RequiredAssetIds, new(new())).Proofs!;
+        source = source.WithRenderExtents(proof).Source!;
+        Assert.DoesNotContain(source.Data.Metadata, m => m.Key.Kind == "Light");
+        var request = CaptureDependencyFixtures.Request() with { Closure = closure, Source = source };
+        var result = MapCaptureDependencies.Compute(request);
+        Assert.Equal(MapSceneStatus.CapacityExceeded, result.Status);
+        Assert.Equal(new MapSceneCapacity("MaxSelectedResources", 2, 1), result.Capacity);
+    }
+
     [Fact]
     public void LiteralClosure_DiscoversBothOffCameraCastersAndExcludesTheFarPlacement()
     {

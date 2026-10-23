@@ -108,28 +108,40 @@ internal static class LegacySceneRecorder
                     for (int i = 0; i < props.Ground.Count; i++)
                     {
                         var owner = byId[props.GroundObjectIds[i]];
-                        if (!ShippedSceneExpectedFrames.InScope(owner, scope)) continue;
                         groundProps.Add(props.Ground[i]); frameOwners.Add(owner);
                     }
                     for (int roof = 0; roof < props.Roofs.Count; roof++)
                     {
                         var owner = byId[props.RoofObjectIds[roof]];
-                        if (!ShippedSceneExpectedFrames.InScope(owner, scope)) continue;
                         roofProps.Add((props.Roofs[roof], props.RoofFootprints[roof], plane)); frameOwners.Add(owner);
                     }
                 }
             scene.BeginFrame(frameOwners, mappings);
-            scene.DrawProps(groundProps.Where(p => !inputs.SourcePolicy.AnimatedAssets.Contains(p.Id) &&
+            var inWindow = frameOwners.Where(p => ShippedSceneExpectedFrames.InScope(p, scope)).Select(p => (p.ArchetypeId, p.World)).ToHashSet();
+            var nativeOrder = frameOwners.GroupBy(p => (p.ArchetypeId, p.World)).ToDictionary(g => g.Key, g => mappings[g.First().Id].NativePlacementId);
+            bool Selected(PropPlacement prop) => inWindow.Contains((prop.Id, LegacyRecordingScene.Transform(prop)));
+            scene.DrawProps(groundProps.Where(p => Selected(p) && !inputs.SourcePolicy.AnimatedAssets.Contains(p.Id) &&
                 !inputs.SourcePolicy.Placements.Layers.Any(l => l.AssetIds.Contains(p.Id))).ToArray(), full, focus, inputs.SourcePolicy.Placements.DefaultDrawRadius);
-            foreach (var roof in roofProps)
+            foreach (var roof in roofProps.Where(r => Selected(r.Prop) && !inputs.SourcePolicy.Placements.Layers.Any(l => l.AssetIds.Contains(r.Prop.Id))))
                 if (roofPolicy.IsRoofHidden(roof.Footprint, roof.Plane)) scene.DrawShadowOnlyProps([roof.Prop], full, focus, inputs.SourcePolicy.Placements.DefaultDrawRadius);
                 else scene.DrawProps([roof.Prop], full, focus, inputs.SourcePolicy.Placements.DefaultDrawRadius);
             foreach (var policy in inputs.SourcePolicy.Placements.Layers)
             {
-                var selected = groundProps.Where(p => policy.AssetIds.Contains(p.Id) && !inputs.SourcePolicy.AnimatedAssets.Contains(p.Id)).ToArray();
+                foreach (bool roofLayer in new[] { false, true })
+                {
+                var selected = (roofLayer ? roofProps.Select(r => r.Prop) : groundProps).Where(p => policy.AssetIds.Contains(p.Id) && !inputs.SourcePolicy.AnimatedAssets.Contains(p.Id)).ToArray();
+                if (selected.Length == 0) continue;
                 var layer = PropLayer.PlacementLayer(selected, full, policy.DrawRadius, lodPartMeshes: far,
                     lodDistance: policy.LodDistances.FirstOrDefault(), castsShadows: policy.CastsShadows).WithLodCrossfade(policy.LodCrossfadeWidth);
-                if (policy.HlodDistance <= 0) { scene.DrawLayer(selected, layer, focus, 0); continue; }
+                if (policy.HlodDistance <= 0)
+                {
+                    foreach (var prop in selected.Where(Selected))
+                    {
+                        bool hidden = roofLayer && roofProps.Any(r => r.Prop.Equals(prop) && roofPolicy.IsRoofHidden(r.Footprint, r.Plane));
+                        scene.DrawLayer([prop], layer, focus, 0, hidden);
+                    }
+                    continue;
+                }
                 var flat = policy.AssetIds.ToDictionary(id => id, id =>
                 {
                     var archetype = catalogs.Archetype(id) ?? throw new System.IO.InvalidDataException("missing declared source archetype");
@@ -139,18 +151,28 @@ internal static class LegacySceneRecorder
                 layer = layer.WithHlod(flat, policy.HlodDistance, policy.HlodWeldCell, policy.HlodCrossfadeWidth);
                 double edge = 64 * inputs.NativeTileSize, divisions = Math.Ceiling(edge / 1024);
                 double cellEdge = edge / divisions;
-                foreach (var cell in selected.GroupBy(p => (X: checked((int)Math.Floor(p.X / cellEdge)), Z: checked((int)Math.Floor(p.Z / cellEdge)))))
+                (int X, int Z) Cell(PropPlacement p) => (checked((int)Math.Floor(p.X / cellEdge)), checked((int)Math.Floor(p.Z / cellEdge)));
+                var requiredCells = selected.Where(Selected).Select(Cell).ToHashSet();
+                foreach (var cell in selected.GroupBy(Cell).Where(c => requiredCells.Contains(c.Key)))
                 {
                     using var cluster = new LegacyClusterOwner(scene);
                     var key = new PropClusterKey(policy.Id, cell.Key.X, cell.Key.Z, 0);
                     var area = new RectArea((float)(edge * cell.Key.X / divisions), (float)(edge * cell.Key.Z / divisions),
                         (float)(edge * ((long)cell.Key.X + 1) / divisions), (float)(edge * ((long)cell.Key.Z + 1) / divisions));
-                    scene.ClusterKey = new(MapRenderKind.Placement, $"cluster/{key.LayerId}/{key.X}/{key.Z}/{key.Plane}", "hlod", 0);
+                    scene.ClusterKey = new(roofLayer ? MapRenderKind.Roof : MapRenderKind.Placement, $"cluster/{key.LayerId}/{key.X}/{key.Z}/{key.Plane}", "hlod", 0);
                     scene.ClusterAnchor = new((long)Math.Floor(area.MinX), (long)Math.Floor(cell.Min(p => p.Y)), (long)Math.Floor(area.MinZ));
-                    var build = cluster.BuildCpu(new(key, 1, area, layer, cell.ToArray()));
-                    cluster.Apply(key, build); cluster.Draw(focus);
+                    var members = cell.OrderBy(p => nativeOrder[(p.Id, LegacyRecordingScene.Transform(p))], StringComparer.Ordinal).ToArray();
+                    var build = cluster.BuildCpu(new(key, 1, area, layer, members));
+                    cluster.Apply(key, build);
+                    if (roofLayer)
+                    {
+                        var hidden = members.Select(p => roofProps.Any(r => r.Prop.Equals(p) && roofPolicy.IsRoofHidden(r.Footprint, r.Plane))).ToArray();
+                        cluster.DrawWithVisibility(focus, new LegacyRoofClusterVisibility(key, 1, hidden));
+                    }
+                    else cluster.Draw(focus);
                 }
             }
+                }
             frames.Add(new(probe.Id, Array.AsReadOnly(scene.Draws.ToArray()), framedFocus));
         }
         return new(Array.AsReadOnly(placements.ToArray()), Array.AsReadOnly(ground.ToArray()), Array.AsReadOnly(water.ToArray()),
@@ -218,7 +240,7 @@ internal sealed class LegacyRecordingScene : ITileWorldScene, IPropClusterRender
         int count = 0;
         foreach (var prop in placements)
         {
-            var world = Matrix4x4.CreateScale(prop.Scale) * Matrix4x4.CreateRotationY(prop.Yaw) * Matrix4x4.CreateTranslation(prop.X, prop.Y, prop.Z);
+            var world = Transform(prop);
             var owner = _owners[(prop.Id, world)].Dequeue();
             count += PropRenderer.EmitParts([prop], parts, far, distance, focus, radius, 0, floor, this,
                 (target, handle, matrix, dissolve, complement) =>
@@ -231,16 +253,20 @@ internal sealed class LegacyRecordingScene : ITileWorldScene, IPropClusterRender
         }
         return count;
     }
-    internal int DrawLayer(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float floor) =>
-        Emit(placements, layer.PartMeshes!, layer.LodPartMeshes, layer.LodDistance, layer.LodCrossfadeWidth, focus, layer.DrawRadius, false, layer.CastsShadows, floor);
+    internal static Matrix4x4 Transform(PropPlacement prop) => Matrix4x4.CreateScale(prop.Scale) * Matrix4x4.CreateRotationY(prop.Yaw) * Matrix4x4.CreateTranslation(prop.X, prop.Y, prop.Z);
+    internal int DrawLayer(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float floor, bool hidden = false) =>
+        hidden && !layer.CastsShadows ? 0 : Emit(placements, layer.PartMeshes!, layer.LodPartMeshes, layer.LodDistance, layer.LodCrossfadeWidth, focus, layer.DrawRadius, hidden, layer.CastsShadows, floor);
     int IPropClusterRenderBackend.DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor) => DrawLayer(placements, layer, focus, dissolveFloor);
-    public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve)
+    int IPropClusterRenderBackend.DrawShadowOnlyProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor) => DrawLayer(placements, layer, focus, dissolveFloor, true);
+    public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement) => Merged(handle, layer, dissolve, complement, false);
+    public void DrawShadowOnlyMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement) => Merged(handle, layer, dissolve, complement, true);
+    void Merged(MeshHandle handle, PropLayer layer, float dissolve, bool complement, bool hidden)
     {
         var mesh = _meshes[handle]; var vertices = mesh.Vertices.ToArray();
         var offset = new Vector3((float)ClusterAnchor.X, (float)ClusterAnchor.Y, (float)ClusterAnchor.Z);
         for (int i = 0; i < vertices.Length; i++) vertices[i].Position -= offset;
-        Draws.Add(new(new(vertices, mesh.Indices32.ToArray()), Matrix4x4.CreateTranslation(offset), false,
-            dissolve, 0, invertShadowDissolve, layer.CastsShadows, ClusterKey));
+        Draws.Add(new(new(vertices, mesh.Indices32.ToArray()), Matrix4x4.CreateTranslation(offset), hidden,
+            dissolve, complement ? 1 : 0, false, layer.CastsShadows, ClusterKey));
     }
 }
 
@@ -253,6 +279,7 @@ internal sealed class LegacyClusterOwner : ITileWorldPropClusterOwner
     public void Invalidate(PropClusterKey key) => _renderer.Invalidate(key);
     public void Unload(PropClusterKey key) => _renderer.Unload(key);
     public void Draw(Vector3 focus) => _renderer.Draw(focus);
+    public PropClusterDrawCounts DrawWithVisibility(Vector3 focus, IPropClusterVisibility visibility) => _renderer.DrawWithVisibility(focus, visibility);
     public bool TryGetDrawState(PropClusterKey key, Vector3 focus, out PropClusterDrawState state) => _renderer.TryGetDrawState(key, focus, out state);
     public void Dispose() => _renderer.Dispose();
 }

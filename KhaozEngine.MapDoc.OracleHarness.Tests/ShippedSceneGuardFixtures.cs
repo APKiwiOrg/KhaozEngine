@@ -91,6 +91,9 @@ internal static partial class ShippedSceneGuardFixtures
     }
     static JsonObject Write(string root, string variant)
     {
+        bool roofHlod = variant.StartsWith("roof-hlod", StringComparison.Ordinal);
+        bool roofShadows = variant != "roof-hlod-no-shadows";
+        if (roofHlod) variant = "roof-valid";
         foreach (string directory in new[] { "world", "assets", "native-assets", "generator" }) Directory.CreateDirectory(Path.Combine(root, directory));
         var world = new TileWorldDocument { Id = "invented-scene-world", PlaneCount = 1 };
         world.CatalogPaths.Add("../catalog.json");
@@ -325,6 +328,7 @@ internal static partial class ShippedSceneGuardFixtures
             comparison["expectations"]!["roofs"] = 1;
             foreach (var probe in comparison["policy"]!["probes"]!.AsArray()) probe!["roofMode"] = "AlwaysHidden";
         }
+        if (roofHlod) AddRoofHlod(root, world, native, comparison, roofShadows);
         return WithStorageAndSelections(root, native, comparison, variant);
     }
     internal static byte[] TriangleGlb()

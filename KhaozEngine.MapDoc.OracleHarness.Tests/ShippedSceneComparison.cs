@@ -114,10 +114,10 @@ internal static partial class ShippedSceneComparison
             var placement = source.Placements.Single(p => p.Id == mapping.SourceObjectId);
             var scope = plan.Scene.Scope; var b = scope.DrawBounds; double pad = scope.MotionPaddingMetres + .0001;
             bool required = placement.Bounds.MaxX >= b.MinX - pad && placement.Bounds.MinX <= b.MaxX + pad && placement.Bounds.MaxZ >= b.MinZ - pad && placement.Bounds.MinZ <= b.MaxZ + pad;
-            bool present = plan.Scene.Placements.Any(p => p.PlacementId == mapping.NativePlacementId);
-            Check(report, "scene-placement-scope", !required || present, new { mapping.SourceObjectId });
+            bool present = plan.Inventory.Placements.Inventory.Any(p => p.PlacementId == mapping.NativePlacementId);
+            Check(report, "scene-placement-scope", !required || plan.Scene.Placements.Any(p => p.PlacementId == mapping.NativePlacementId), new { mapping.SourceObjectId });
             if (!present) continue;
-            if (plan.Routing.Entries[mapping.NativePlacementId] == MapPlacementRoute.Animated)
+            if (plan.Routing.Entries.TryGetValue(mapping.NativePlacementId, out var route) && route == MapPlacementRoute.Animated)
             {
                 ShippedSceneSourceChecks.ExplicitPlant(placement, mapping.NativePlacementId, resources, inputs, report);
                 continue;
@@ -130,7 +130,7 @@ internal static partial class ShippedSceneComparison
                     Check(report, "scene-placement-part", rows.Length == 1 && rows[0].Payload is MapRigidResource rigid &&
                         MeshEqual(placement.Tiers[tier][part].Mesh, rigid.Mesh) && MapsEqual(placement.Tiers[tier][part].Maps, rigid.Maps), new { mapping.SourceObjectId, tier, part });
                 }
-            var actual = plan.Scene.Placements.Single(p => p.PlacementId == mapping.NativePlacementId);
+            var actual = plan.Inventory.Placements.Inventory.Single(p => p.PlacementId == mapping.NativePlacementId);
             Check(report, "scene-placement", actual.NumericId == mapping.SourceObjectId && actual.Kind == placement.ArchetypeId && actual.Tags.SequenceEqual(placement.Tags), new { mapping.SourceObjectId, actual.NumericId });
         }
         var canonical = plan.Inventory.Terrain.CanonicalFaces;

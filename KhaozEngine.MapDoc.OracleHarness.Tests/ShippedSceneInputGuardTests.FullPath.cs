@@ -20,6 +20,11 @@ public sealed partial class ShippedSceneInputGuardTests
     [Fact]
     public void SceneFullPath_StandaloneRoofFixturePasses() => CheckUnchanged("roof-valid");
 
+    [Theory]
+    [InlineData("roof-hlod")]
+    [InlineData("roof-hlod-no-shadows")]
+    public void SceneFullPath_RoofHlodPasses(string variant) => CheckUnchanged(variant);
+
     static void CheckUnchanged(string variant)
     {
         using var fixture = ShippedSceneGuardFixtures.Create(variant);

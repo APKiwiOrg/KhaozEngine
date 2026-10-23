@@ -41,7 +41,7 @@ public sealed class MapPreparedInputLease : IDisposable
     {
         ArgumentNullException.ThrowIfNull(materialIds);
         var loaded = MapRenderAssets.LoadSelected(closure, assetIds, proofs, budget);
-        if (loaded.Assets is not { } assets) return new(loaded.Status, null, loaded.Detail);
+        if (loaded.Assets is not { } assets) return new(loaded.Status, null, loaded.Detail) { Capacity = loaded.Capacity };
         MapRenderMaterials.MaterialSet? materials = null;
         bool success = false;
         try
@@ -53,13 +53,13 @@ public sealed class MapPreparedInputLease : IDisposable
             materials = null;
             return new(MapRenderAssetStatus.Complete, result, null);
         }
-        catch (MapRenderAssetRefusal ex) { return new(ex.Status, null, ex.Message); }
+        catch (MapRenderAssetRefusal ex) { return new(ex.Status, null, ex.Message) { Capacity = ex.Capacity }; }
         finally { if (!success) { materials?.Dispose(); assets.Dispose(); } }
     }
 
     internal static MapPreparedInputLease AssetOnly(MapRenderAssets assets, string proof, GltfDecodeBudget budget)
     {
-        if (!budget.TryReserve(256, 0)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Asset lease metadata exceeds decoder allowance.");
+        MapRenderDecodeCapacity.Reserve(budget, 256, 0);
         return new(new(assets, new(new(StringComparer.Ordinal), budget, 256), proof));
     }
     internal static MapPreparedInputLease MaterialsOnly(MapAssetClosure closure, MapRenderMaterials.MaterialSet materials, string proof) =>
@@ -67,7 +67,7 @@ public sealed class MapPreparedInputLease : IDisposable
     internal static MapPreparedInputLease Compose(MapAssetClosure closure, string proof, IReadOnlyList<MapPreparedInputLease> pieces, GltfDecodeBudget budget)
     {
         long bytes = checked(512L + 64L * pieces.Sum(p => p.Assets.ById.Count + p.Materials.Count));
-        if (!budget.TryReserve(bytes, bytes)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Selected input composition exceeds decoder allowance.");
+        MapRenderDecodeCapacity.Reserve(budget, bytes, bytes);
         var retained = new List<MapPreparedInputLease>();
         try
         {

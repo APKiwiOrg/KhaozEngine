@@ -30,8 +30,11 @@ public sealed class NativeViewportLifecycleTests
             Func<string?> space = () => "invented-room";
             var options = new MapEditorOptions
             {
-                DocumentPath = path, NativeRenderHost = host, NativeStyleId = "windy",
-                NativeObserver = observer, NativeObserverSpaceId = space
+                DocumentPath = path,
+                NativeRenderHost = host,
+                NativeStyleId = "windy",
+                NativeObserver = observer,
+                NativeObserverSpaceId = space
             };
             var scene = new MapEditorScene().Init(device.Scene, null!, null!, options);
             var manager = new SceneManager();
@@ -66,7 +69,8 @@ public sealed class NativeViewportLifecycleTests
         using var device = new NativeUploadTestScene();
         using var world = new ViewportWorld(device.Scene, [])
         {
-            NativeRenderHost = new Host(Context(request)), NativeObserver = () => request.Observer,
+            NativeRenderHost = new Host(Context(request)),
+            NativeObserver = () => request.Observer,
             NativeStyleId = "windy"
         };
         world.Build(CaptureDependencyFixtures.Create().Document, MapDocRegistry.CreateDefault());

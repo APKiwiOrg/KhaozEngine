@@ -23,3 +23,20 @@ Build the renderer in Release through `build-slot`. The comparison uses one stoc
 bounded offscreen capture under a single heavy build-slot admission. Capture output, binary hashes
 and comparison metrics belong under `/tmp/grimhollow-mac-frame-performance`. These measurements
 exclude the live client, NPC simulation, UI and window presentation, so they cannot establish live FPS.
+
+## Observed comparison
+
+One stock/candidate pair completed successfully on the M2 Max at 1668 by 1029 pixels, Native TAA and
+High shadows. Each arm contained 96 warm-up frames, 120 measured intervals and one closing render.
+Only the renderer assembly differed. This experiment did not demonstrate a frame-time benefit.
+
+| Offscreen interval | Stock | Gather candidate |
+| --- | ---: | ---: |
+| Median | 6.675688 ms | 6.753021 ms |
+| p95 | 8.300875 ms | 9.132833 ms |
+
+Both final frames submitted 4,376,575 triangles. Their images differed in 3,958 of 1,716,372 pixels,
+with mean absolute channel difference 0.000666 out of 255 and maximum channel difference 18.
+Background world build timing differed during measurement. This image comparison does not replace
+the integrated temporal correctness gates. The candidate remains unadopted, and this branch remains
+a diagnostic archive.

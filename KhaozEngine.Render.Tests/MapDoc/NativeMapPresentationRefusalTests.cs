@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.MapDoc.Scene;
 using Xunit;
@@ -41,16 +42,41 @@ public sealed class NativeMapPresentationRefusalTests
         { [selection ? "selection" : "explicit.coll"] = box[..length] });
         using var replacement = new ResidencyFixture(fixture.Document, closure);
         replacement.Document.NativeAssets = closure.Roots.ToList();
-        residency.RequestReplacement(replacement.State(ResidencyFixture.Window())); scheduler.RunAll();
+        if (length == 0)
+        {
+            // Opaque bytes reach presentation decoding, which refuses the pending render plan.
+            residency.RequestReplacement(replacement.State(ResidencyFixture.Window()));
+        }
+        else
+        {
+            // Recognized KECL is validated during discovery before a render proposal can exist.
+            using var document = MapDocumentSource.FromDocument(replacement.Document);
+            var captured = MapSceneSource.Capture(document, closure);
+            Assert.Equal(MapSceneSourceStatus.Corrupt, captured.Status);
+            Assert.Null(captured.Source);
+        }
+        scheduler.RunAll();
 
-        Assert.Equal(MapSceneStatus.Invalid, residency.Update().Transition.Status);
+        var status = length == 0 ? MapSceneStatus.Invalid : MapSceneStatus.CompleteForScope;
+        Assert.Equal(status, residency.Update().Transition.Status);
         Assert.Equal(accepted, residency.CurrentTransition.AcceptedWitness);
         Assert.Null(residency.CurrentTransition.PendingWitness);
         Assert.Same(acceptedState, residency.DesiredState);
         Assert.Equal(draws, ResidencyFixture.Draw(residency).Draws);
         Assert.Equal(uploads, device.Begins); Assert.Equal(0, device.Releases);
-        Assert.Equal(MapSceneStatus.Invalid, residency.Update().Transition.Status);
+        var subsequent = residency.Update();
+        Assert.Equal(status, subsequent.Transition.Status);
+        Assert.Equal(0, subsequent.Pending);
         Assert.Equal(0, residency.Lifetime.WorkerCount);
         Assert.Equal(draws, ResidencyFixture.Draw(residency).Draws);
+
+        var recovery = state with { Policy = ResidencyFixture.Policy(200) };
+        residency.RequestReplacement(recovery);
+        ResidencyFixture.Complete(residency, scheduler);
+        Assert.Equal(recovery.Policy.Digest, residency.CurrentTransition.AcceptedWitness!.PolicyDigest);
+        Assert.NotEqual(accepted, residency.CurrentTransition.AcceptedWitness);
+        Assert.Null(residency.CurrentTransition.PendingWitness);
+        Assert.Equal(0, residency.Lifetime.WorkerCount);
+        Assert.Equal(draws.Select(draw => draw.Resource.Key), ResidencyFixture.Draw(residency).Draws.Select(draw => draw.Resource.Key));
     }
 }

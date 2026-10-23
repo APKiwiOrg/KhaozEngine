@@ -150,10 +150,10 @@ public static class NativeMapPlacements
             if (ordinaryDefaults.Length > 0) ordinary.Add(Shared(ordinaryDefaults, null));
             if (roofDefaults.Length > 0) roofLayers.Add(Shared(roofDefaults, null));
             // Frozen bindings, cluster lookup slots and the batch's copied list storage.
-            admission.ReserveBytes(checked(1024L + parts.Count * 192L + clusters.Count * 32L + (ordinary.Count + roofLayers.Count) * 32L));
+            admission.ReserveBytes(checked(1024L + parts.Count * 192L + clusters.Count * 512L + cells.Cells.Sum(c => c.RoofEvaluation?.Roofs.Count ?? 0) * 128L + (ordinary.Count + roofLayers.Count) * 32L));
             var preparedInventory = scene.Placements.Where(p => routing.Entries[p.PlacementId] != MapPlacementRoute.Cluster)
                 .Concat(cells.Cells.SelectMany(cell => cell.Members)).ToArray();
-            return new(preparedInventory, MapEffectiveAnnotations.Markers(scene), ordinary, roofLayers, parts, routing, clusters, admission.RetainedBytes);
+            return new(preparedInventory, MapEffectiveAnnotations.Markers(scene), ordinary, roofLayers, parts, routing, clusters, admission.RetainedBytes, cells);
 
             PropLayer Shared(IReadOnlyList<NativePropInstance> rows, MapPlacementLayer? layer)
             {

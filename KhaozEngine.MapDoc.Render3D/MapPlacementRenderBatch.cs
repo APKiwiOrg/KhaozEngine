@@ -20,6 +20,7 @@ public sealed class MapPlacementRenderBatch : IDisposable
     readonly PropLayer[] _ordinary, _roofs;
     readonly Dictionary<(string Owner, int Index, int Generation), int> _partIndices;
     readonly int[] _clusterParts;
+    readonly MapRoofCohort?[] _roofCohorts;
     readonly IReadOnlyList<MapPlacementPart> _parts;
     MapPreparedInputLease? _input;
     readonly PropClusterRenderer _clusters = PropClusterRenderer.CreateCpuOnly();
@@ -34,7 +35,7 @@ public sealed class MapPlacementRenderBatch : IDisposable
     public long InputRetainedBytes => _input?.RetainedBytes ?? 0;
     internal void AttachInput(MapPreparedInputLease input) => _input = input;
     internal MapPlacementRenderBatch(IReadOnlyList<MapResolvedPlacement> inventory, IReadOnlyList<MapEffectiveMarker> markers, IReadOnlyList<PropLayer> ordinary, IReadOnlyList<PropLayer> roofs,
-        IReadOnlyList<MapPlacementPart> parts, MapPlacementRouting routing, IReadOnlyList<NativePropClusterCpuBuild> clusters, long charge)
+        IReadOnlyList<MapPlacementPart> parts, MapPlacementRouting routing, IReadOnlyList<NativePropClusterCpuBuild> clusters, long charge, MapPlacementCellInventory cells)
     {
         Inventory = Array.AsReadOnly(inventory.ToArray()); Markers = Array.AsReadOnly(markers.ToArray()); _ordinary = ordinary.ToArray(); _roofs = roofs.ToArray();
         _parts = Array.AsReadOnly(parts.ToArray()); Routing = routing;
@@ -42,8 +43,12 @@ public sealed class MapPlacementRenderBatch : IDisposable
         _partIndices = new();
         for (int i = 0; i < _parts.Count; i++) _partIndices.Add((_parts[i].Key.OwnerId, _parts[i].Handle.Index, _parts[i].Handle.Generation), i);
         _clusterParts = new int[Clusters.Count];
+        _roofCohorts = new MapRoofCohort?[Clusters.Count];
         for (int i = 0; i < Clusters.Count; i++)
         {
+            if (Clusters[i].Request.Key.Cohort == 1)
+                _roofCohorts[i] = new(Clusters[i], cells.Get(Clusters[i].Request.Key).RoofEvaluation
+                    ?? throw new MapDocumentException("Roof cohort requires admitted policy metadata."));
             string owner = MapPlacementCells.Owner(Clusters[i].Request.Key);
             _clusterParts[i] = -1;
             for (int p = 0; p < _parts.Count; p++)
@@ -83,22 +88,30 @@ public sealed class MapPlacementRenderBatch : IDisposable
         var emission = new Emission(this, frame, sink, null, null);
         foreach (var layer in _ordinary) Emit(layer, emission, 0);
         for (int i = 0; i < Clusters.Count; i++)
-        {
-            var request = Clusters[i].Request;
-            var anchor = new MapSubmissionAnchor(request.Anchor.X, request.Anchor.Y, request.Anchor.Z);
-            var focus = MapRenderTransform.FocusLocal(frame.Focus, anchor);
-            var state = _clusters.TryGetNativeEmission(request.Key, focus, out var accepted, out var mergedDraw) ? accepted
-                : PropClusterRenderer.NativeDrawState(request, false, focus);
-            if (state.DrawsIndividuals) Emit(request.BorrowLayer, emission, state.IndividualDissolveFloor);
-            int part = _clusterParts[i];
-            if (state.DrawsMerged && part >= 0) Write(_registered![part].Reference, anchor, mergedDraw, Channels(mergedDraw.CastsShadows), frame, sink);
-        }
+            if (_roofCohorts[i] is null) RecordCluster(i, emission);
+    }
+    void RecordCluster(int index, Emission emission)
+    {
+        var request = Clusters[index].Request;
+        var anchor = new MapSubmissionAnchor(request.Anchor.X, request.Anchor.Y, request.Anchor.Z);
+        var focus = MapRenderTransform.FocusLocal(emission.Frame.Focus, anchor);
+        var state = _clusters.TryGetNativeEmission(request.Key, focus, out var accepted, out var mergedDraw) ? accepted
+            : PropClusterRenderer.NativeDrawState(request, false, focus);
+        if (state.DrawsIndividuals) Emit(request.BorrowLayer, emission, state.IndividualDissolveFloor);
+        int part = _clusterParts[index];
+        if (state.DrawsMerged && part >= 0) Write(_registered![part].Reference, anchor, mergedDraw, Channels(mergedDraw.CastsShadows), emission.Frame, emission.Sink);
     }
     internal void RecordRoofs(MapFrameState frame, MapRoofEvaluationBuffer roofs, IReadOnlyDictionary<string, int> indices, IMapDrawSink sink)
     {
         RequireRecord(sink);
         var emission = new Emission(this, frame, sink, roofs, indices);
         foreach (var layer in _roofs) Emit(layer, emission, 0);
+        for (int i = 0; i < Clusters.Count; i++)
+            if (_roofCohorts[i] is { } cohort)
+            {
+                cohort.Evaluation.Evaluate(frame.Observer, frame.RoofMode);
+                RecordCluster(i, new(this, frame, sink, cohort.Evaluation, cohort.Indices));
+            }
     }
     void RequireRecord(IMapDrawSink sink)
     {

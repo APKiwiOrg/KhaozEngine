@@ -159,26 +159,30 @@ public sealed partial class MapRenderResidency : IDisposable
     MapRenderPlan[] Build(Pending pending, long bytes, MapRenderAdmission.CpuLease charge, CancellationToken token)
     {
         var plans = new List<MapRenderPlan>();
+        var seenScopes = new HashSet<string>(StringComparer.Ordinal);
         var source = pending.State.Source;
         var admission = new MapSceneAdmission(source.Data.Limits with { MaxPreparedBytes = Math.Min(bytes, source.Data.Limits.MaxPreparedBytes) },
             preparationLimitName: bytes < source.Data.Limits.MaxPreparedBytes && bytes == _budgets.MaxQueuedBytes ? nameof(MapRenderBudgets.MaxQueuedBytes) : nameof(MapSceneLimits.MaxPreparedBytes));
         using var activation = admission.Enter();
         try
         {
-            foreach (var scope in pending.State.Windows.DistinctBy(s => s.Digest))
+            foreach (var scope in pending.State.Windows)
             {
                 token.ThrowIfCancellationRequested();
+                using var window = admission.LimitPreparation(_budgets.MaxPlanBytes, nameof(MapRenderBudgets.MaxPlanBytes));
+                string scopeDigest = scope.Digest;
+                if (!seenScopes.Add(scopeDigest)) continue;
                 MapRenderContextLease? contextOwner;
                 lock (_gate)
                 {
                     Fence(pending);
                     contextOwner = AcceptedPlans.FirstOrDefault(p => ReferenceEquals(p.Scene.Source, source) && p.Key.SourceGeneration == source.SourceGeneration &&
-                        p.Key.ClosureHash == source.ClosureHash && p.Key.ScopeDigest == scope.Digest && p.Input.ProofDigest == pending.State.Extents.Digest)?.RetainContext();
+                        p.Key.ClosureHash == source.ClosureHash && p.Key.ScopeDigest == scopeDigest && p.Input.ProofDigest == pending.State.Extents.Digest)?.RetainContext();
                 }
                 long reused = contextOwner?.CpuBytes ?? 0;
                 try
                 {
-                    using var window = admission.LimitPreparation(_budgets.MaxPlanBytes - reused, nameof(MapRenderBudgets.MaxPlanBytes), reused);
+                    using var reusedContextView = admission.ReferenceWindow(reused);
                     using var attempt = admission.BeginPreparation();
                     var result = MapSceneAcquisition.Run(source, scope, admission);
                     if (result.Scene is not { } scene) throw new MapSceneSourceException(result.Status, string.Join("\n", result.Findings), result.Capacity);

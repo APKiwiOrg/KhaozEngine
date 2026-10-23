@@ -39,7 +39,8 @@ public sealed class NativeMapRoofTests
         var shared = new MapSceneAdmission(new(MaxPreparedBytes: roofBytes));
         var refused = Assert.Throws<MapSceneSourceException>(() => MapRenderPlan.Prepare(state.Source, scene, input, state.Policy, 1, shared, null));
         Assert.Equal(MapSceneStatus.CapacityExceeded, refused.Status);
-        Assert.InRange(shared.RetainedBytes, 1, roofBytes - 1);
+        Assert.Equal(0, shared.RetainedBytes);
+        Assert.Equal(0, shared.WorkspaceBytes);
         // Refusal leaves the caller's selected input alive.
         Assert.NotEmpty(input.Assets.ById);
     }

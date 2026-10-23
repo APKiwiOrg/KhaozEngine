@@ -88,6 +88,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // buffer can be in (recording, and sealed but not yet submitted) because the ownership question is the
         // same in both: this list released it or it did not.
         IntPtr _commandBuffer;
+        MetalFrameLabelProbe? _frameLabelProbe;
 
         // THE UNIFORM VERSION THIS RECORDING TARGETS (M-M3): the ring segment Begin claimed, captured ONCE and
         // read by every record-time ring write and by the submit that tells the allocator which segment its
@@ -308,6 +309,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // recording's writes and binds all belong to the version claimed here and another list beginning
             // meanwhile moves the allocator's own current segment.
             _segment = _rings.BeginRecording();
+
+            if (_owner is MetalGpuDevice device && OperatingSystem.IsMacOS() && MetalFrameLabelProbe.Enabled)
+            {
+                (_frameLabelProbe ??= new MetalFrameLabelProbe()).BeginRecording(buffer, device);
+            }
 
             // AND THE ARENA ROTATES ONTO THE SAME SLOT, taking the completion value the gate above just read
             // rather than polling the timeline a second time. It gives back the blocks that slot filled last time

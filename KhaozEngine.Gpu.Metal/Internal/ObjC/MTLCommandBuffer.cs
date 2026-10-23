@@ -181,7 +181,11 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal IntPtr RenderCommandEncoder(IntPtr descriptor)
-            => ObjCMsgSend.SendPtr(Handle, Selectors.RenderCommandEncoder, descriptor);
+        {
+            IntPtr encoder = ObjCMsgSend.SendPtr(Handle, Selectors.RenderCommandEncoder, descriptor);
+            MetalFrameLabelProbe.LabelEncoder(Handle, encoder, "render");
+            return encoder;
+        }
 
         /// <summary>
         /// <c>-blitCommandEncoder</c>: a new blit encoder, AUTORELEASED like the buffer that made it.
@@ -202,7 +206,11 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal MTLBlitCommandEncoder BlitCommandEncoder()
-            => new(ObjCMsgSend.Send(Handle, Selectors.BlitCommandEncoder));
+        {
+            IntPtr encoder = ObjCMsgSend.Send(Handle, Selectors.BlitCommandEncoder);
+            MetalFrameLabelProbe.LabelEncoder(Handle, encoder, "blit");
+            return new(encoder);
+        }
 
         /// <summary>
         /// <c>-computeCommandEncoderWithDispatchType:</c> with <see cref="MTLDispatchType.Serial"/> (M-H4).
@@ -217,7 +225,11 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal IntPtr ComputeCommandEncoder(MTLDispatchType dispatchType)
-            => ObjCMsgSend.SendPtrNInt(Handle, Selectors.ComputeCommandEncoder, (nint)dispatchType);
+        {
+            IntPtr encoder = ObjCMsgSend.SendPtrNInt(Handle, Selectors.ComputeCommandEncoder, (nint)dispatchType);
+            MetalFrameLabelProbe.LabelEncoder(Handle, encoder, "compute");
+            return encoder;
+        }
 
         /// <summary>
         /// <c>-presentDrawable:</c>: schedule <paramref name="drawable"/> to be presented when this buffer

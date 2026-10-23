@@ -46,6 +46,10 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal MTLCommandBuffer CommandBuffer()
-            => new(ObjCMsgSend.Send(Handle, ObjCRuntime.Sel("commandBuffer")));
+        {
+            IntPtr buffer = ObjCMsgSend.Send(Handle, ObjCRuntime.Sel("commandBuffer"));
+            MetalFrameLabelProbe.LabelNewCommandBuffer(buffer);
+            return new(buffer);
+        }
     }
 }

@@ -143,6 +143,12 @@ Commit `feat(physics): define continuous short-shell query contracts`.
 
 ### Task 2: Certify continuous feature distance and planar targets (SB-2, SB-5, A/B)
 
+SS-R7 splits the remaining construction into 2a (planar Distance, local feature evidence,
+planar dispatch identity and distance/normal-cone oracles), 2b (Sweep roots) and 2c (Contacts,
+Penetration and bounded GJK/EPA proposals). Each unit receives its own review. Unfinished
+operations return false with default evidence. The original Task 2 obligations below remain
+required across those units.
+
 **Files:**
 - Create: `KhaozEngine.Physics.Bepu/ConvexQueryPolicy.cs`, `KhaozEngine.Physics.Bepu/ConvexQueryScratch.cs`, `KhaozEngine.Physics.Bepu/ConvexQueryOperations.cs`
 - Create: `KhaozEngine.Physics.Bepu/ConvexFeatureKernel.cs`, `KhaozEngine.Physics.Bepu/ConvexFeatureRegimes.cs`, `KhaozEngine.Physics.Bepu/ConvexPlanarFeatures.cs`, `KhaozEngine.Physics.Bepu/ConvexAlgebraicRoots.cs`
@@ -153,7 +159,7 @@ Commit `feat(physics): define continuous short-shell query contracts`.
 - Consumes Task 1's exact shape and result values, including `ConvexSweepResult.Identity` under SS-R5, existing InstalledSweepLeaf and installed represented geometry readers.
 - Produces internal `ConvexQueryOperation` values Sweep, Distance, Contacts, Penetration and `ConvexQueryRequest(ConvexQueryShape Shape, Pose Pose, Vector3 Displacement, ConvexQueryOperation Operation)`.
 - Produces `ConvexQueryWork` with sticky descendant/cell/feature accounts under SB-7 and `ConvexQueryScratch` owning bounded exact arithmetic, interval cells and proposal simplex storage.
-- Produces `ConvexFeatureKernel.TryEvaluate(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence) -> bool`. Evidence owns ordered brackets, attained witnesses, normal-cone certificate and raw leaf identity. False yields default evidence.
+- Produces `ConvexFeatureKernel.TryEvaluate(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence) -> bool`. Evidence owns ordered brackets, attained witnesses, a normal-cone certificate and stable local face/edge/vertex provenance under SS-R6. The exact dispatch owns raw ConvexContactIdentity and attaches it to that dispatch's evidence. InstalledSweepLeaf is unchanged. False yields default evidence.
 - Produces `ConvexQueryOperations.Support(in ConvexQueryShape shape, Vector3 direction) -> Vector3` for operational proposals only. Its arithmetic graph is enclosed by the kernel, not mistaken for exact circle support.
 - Produces `ConvexAlgebraicRoots.TryIsolate(in ConvexFeatureRegime regime, double from, double to, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexRootBracket first) -> bool`. Regime owns exact polynomial coefficients, original radical signs and closed feature-domain inequalities. First owns the enclosing first feasible root or a proved empty interval. No uncertain sign becomes an empty interval.
 - Produces test-only ConvexOracleTarget snapshots read independently from installed Bepu primitives/topology/poses and `ShortBodyShellOracle.Entry(in ConvexQueryShape shape, Pose pose, ConvexOracleTarget target, Vector3 displacement) -> ConvexOracleEvent`, where ConvexOracleEvent holds Status and outward Lower/Upper distances. Also produces `NormalConeContains(in ConvexQueryShape shape, Vector3 queryWitness, Vector3 queryOutwardNormal) -> bool` and `MemberTranslationEnclosedBy(ConvexOracleTarget target, in ConvexPenetrationResult result) -> bool` on ShortBodyShellOracle. Operational contact/recovery normals point away from the target, so pass their negative to the query-normal-cone oracle.

@@ -5,7 +5,7 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Tests.Physics;
 
 // Independent shape definition only. No production support map, feature solver or root isolator.
-internal static class ShortBodyShellOracle
+internal static partial class ShortBodyShellOracle
 {
     internal static (double Lower, double Upper) Clearance(float radius, float lower, float ring,
         float upper, float angle, float margin)

@@ -138,10 +138,11 @@ no configured PublicAPI baseline to update. Full solution verification remains T
 
 ## Task 2 partial infrastructure
 
-Task 2 remains incomplete. This change adds query values, rounded support proposals, sticky
-work accounts, query-private scratch and bounded exact polynomial root infrastructure.
-It does not implement ConvexFeatureKernel, ConvexPlanarFeatures or ConvexLeafEvidence.
-It must not be used as evidence for any cone-cylinder sweep, distance or penetration query.
+At the Task 2 infrastructure checkpoint, the change added query values, rounded support
+proposals, sticky work accounts, query-private scratch and bounded exact polynomial roots.
+That checkpoint did not implement ConvexFeatureKernel, ConvexPlanarFeatures or ConvexLeafEvidence.
+Its root tests alone are not evidence for a cone-cylinder sweep, distance or penetration query.
+The later Task 2a section below records the partial planar distance construction.
 
 The root utility imports exact rational coefficients into a fixed 2048-coefficient scratch
 arena, reduced only in tests. Every integer intermediate is checked against the existing
@@ -159,11 +160,10 @@ adjacent floats. Zero-cell admission, exact overflow, bounded scratch and scratc
 have deterministic controls. No absolute counter depends on SIMD or scheduling.
 
 The off-axis support proposal is compared to Task 1's independent SupportBounds for represented
-duck and cow. This checks proposal encoding only. The installed-target snapshots, Entry,
-NormalConeContains and MemberTranslationEnclosedBy oracle extensions are absent. There is no
-installed-target comparison, attained planar witness, normal-cone certificate or minimum member
-translation proof. SS-R6 is recorded in the owner ledger. Its distinct-coincident-leaf and
-mismatched-publication controls require the missing kernel and dispatch implementation.
+duck and cow. This checks proposal encoding only. At that checkpoint the installed-target
+snapshots and oracle extensions were absent, along with attained planar witnesses, normal-cone
+certificates, minimum member translation and SS-R6 dispatch controls. Task 2a below adds a
+partial distance producer and dispatch controls. Minimum member translation remains Task 2c.
 
 ### Task 2 observed reds
 
@@ -224,3 +224,109 @@ Staged guards all exited 0 after explicit staging and inspection of the complete
 sh scripts/check-dashes.sh staged, sh scripts/check-prose.sh staged,
 sh scripts/check-file-size.sh staged and git diff --cached --check. Only the seven new
 Task 2 source/test files and this verification record are staged. No capsule source changed.
+
+## Task 2a partial planar distance construction
+
+This section records an incomplete 2a implementation. General oblique edge/circle stationary
+quartics and complete degenerate feature coverage remain required before Task 2a acceptance.
+A missing or unproved candidate returns false with default evidence. It never proves Clear.
+Sweep, Contacts and Penetration requests also return false with default evidence until 2b/2c.
+
+The planar kernel reads installed topology and the represented scalar/SIMD coefficient map.
+It uses that common forward affine map exactly, with no normalized quaternion or assumed
+rigid inverse. No GJK proposal, inscribed polygon, sphere cloud or AABB supplies a certificate.
+Exact quadratic-field arithmetic retains A + B sqrt(D), checks the unsquared signs before
+squaring and applies the existing 4096-bit intermediate ceiling. Candidate/certificate work
+shares the sticky primitive feature and cell accounts. The existing capsule files are unchanged.
+
+For an attained query point q and target point t, n = t - q. A candidate is accepted only
+when q lies in the shell and t lies in its finite target feature. The target support proof
+checks n dot (v - t) >= 0 for every installed target vertex v. The query support proof checks
+n dot q >= S ny and, at both k = C and k = T,
+
+```text
+gap = n dot q - k ny
+gap >= 0
+gap^2 >= R^2 (nx^2 + nz^2)
+```
+
+These original-sign inequalities bound the two entire continuous discs. Together with the
+apex they prove support for the complete convex hull, including the sharp apex and shoulder
+normal cones. The common supporting normal proves global distance by convexity. In particular,
+for any x in the query and y in the target, n dot (y - x) >= |n|^2. Cauchy-Schwarz then gives
+|y - x| >= |n|, attained at q,t. No convergence criterion or feature omission enters that proof.
+
+The existing margin is applied as the exact Minkowski sphere. Separated witnesses grow by
+m n / |n| and distance becomes |n| - m. When |n| <= m, t is an attained common point instead.
+Base-solid intersection and containment candidates likewise publish only attained common points.
+The full outward distance bracket and both witness encoding errors share the existing 0.001 m
+budget. Bounds in ConvexLeafEvidence enclose the mathematical attained points. Its Vector3
+representatives do not supply operands to the exact normal-cone predicates.
+
+Local provenance identifies the captured face, edge or vertex. ConvexPlanarDispatch binds the
+exact leaf and raw ConvexContactIdentity before invoking the kernel. Its opaque evidence belongs
+to that dispatch. Another dispatch cannot attach it even for coincident geometry or the same
+geometry with a different identity. InstalledSweepLeaf is unchanged under SS-R6.
+
+The independent oracle snapshots Bepu box dimensions, hull vertices, face loops and composed
+represented poses directly. Its current distance oracle proves Cartesian boxes and box-shaped
+hulls by reducing to the meridian polygon. It refuses other snapshots instead of comparing
+against their AABB. This restriction is an explicit remaining oracle gap.
+
+The initial API red failed with CS0246 for missing ConvexLeafEvidence. A fixture setup error
+then failed before the kernel and is excluded from behavioral-red evidence. After explicitly
+publishing the captured installed fixture pose, seven tests failed against the kernel refusal
+stub. The first implementation run passed five and failed the two overlap/tangency controls.
+That run exposed exact-zero normal encoding through an interval square root. The correction
+uses exact rational endpoint residuals, preserving zero without adding a tolerance.
+
+### Task 2a verified comparisons and regressions
+
+All fourteen planar tests pass. Duck and cow are independently compared with installed boxes
+and box-shaped hulls, including off-axis vertices. The wrapper fixture reads a nonzero native
+hull centroid. The explicit oblique circle-edge case returns default evidence and false.
+The thin blocker lies inside the real circle and beyond a chord whose endpoints are rational
+rotations of the 3:4:5 radius by cos=99/101 and sin=20/101. Thus the test exercises volume that
+an inscribed polygon can omit. Exact dyadic tangency and both adjacent binary32 positions
+retain distinct zero/positive distance evidence. The original margin is tested for separated
+and overlapping Minkowski distance. The normal-cone oracle currently handles the base shape
+only. Margin-normal oracle checks remain unfinished.
+
+| Query regime | Independently compared finite target strata | Observed maximum cells | Observed maximum features |
+| --- | --- | ---: | ---: |
+| Apex | Face, vertex | 29 | 53 |
+| Lower cone | Edge, vertex | 92 | 134 |
+| Shoulder circle | Edge, vertex | 107 | 149 |
+| Cylindrical side | Face, vertex | 12 | 28 |
+| Head disc | Face, vertex | 9 | 25 |
+| Head rim | Edge, vertex | 73 | 101 |
+
+These are fixture observations, never pinned counter expectations. They do not prove every
+cross-product of regimes or generic oblique targets. Those comparisons remain part of the
+uncompleted 2a acceptance work.
+
+```bash
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore -p:BuildProjectReferences=false --filter 'FullyQualifiedName~ConvexPlanarDistanceTests' --logger 'console;verbosity=detailed'
+```
+
+Exit 0. Fourteen passed, zero failed and zero skipped. A preceding oracle-only red failed the
+far-query minimum initializer, with twelve of thirteen passing. Initializing from the first
+actual meridian-segment distance corrected it. The test-only builds reuse the production
+references compiled in the prior successful Release focused run.
+
+```bash
+build-slot --label short-shell-design --heavy -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~ConvexPlanarDistanceTests|FullyQualifiedName~ConvexFeatureKernelTests|FullyQualifiedName~ConvexQueryContractTests|FullyQualifiedName~ShellGeometryTests|FullyQualifiedName~GroundCoreTests|FullyQualifiedName~CapturedStairExplicitSweepTests|FullyQualifiedName~BepuCertifiedCapsuleSweepTests|FullyQualifiedName~CertifiedRotatedBoxSweepTests|FullyQualifiedName~CertifiedHullSweepTests|FullyQualifiedName~CertifiedCurvedSweepTests|FullyQualifiedName~CertifiedCompoundSweepTests|FullyQualifiedName~CertifiedMeshSweepTests|FullyQualifiedName~CapsuleSweepValueTests' --logger 'console;verbosity=detailed'
+```
+
+Exit 0. All 289 passed, zero failed and zero skipped. This includes the fourteen new planar
+controls, twelve root/support controls, seventeen value contracts and 246 unchanged capsule
+controls. The final source cleanup removed two unused imports only.
+
+```bash
+build-slot --label short-shell-design --heavy -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ContactNavigationBaselineTests.SerialBakeMatchesNormalizedFullFileBaseline'
+```
+
+Exit 0. All seven pinned degree-1 normalized file baselines passed with zero failures or skips.
+This run rebuilt the final Bepu source. No existing capsule, installed-geometry, locomotion,
+movement or navigation baseline source changed. No warnings or errors occurred in successful
+Release compilation. No full suite, stress run, timing proof, world bake or live run was used.

@@ -11,6 +11,7 @@ internal static class RendererPerfMarkdown
 {
     internal static string Summary(RendererPerfSummary summary)
     {
+        summary = RendererPerfAnalysis.Analyze(summary.Raw, summary.References);
         var report = summary.Raw;
         var text = new StringBuilder("# Renderer performance summary\n\n");
         text.Append("Unit ").Append(Cell(report.Identity.UnitId)).Append(". Publication ").Append(report.Publication.State)
@@ -49,8 +50,11 @@ internal static class RendererPerfMarkdown
                 .AppendJoin(", ", row.IterationMeans.Select(Metric)).Append("\n\n");
         }
         foreach (var pair in summary.Perturbations.OrderBy(p => p.Key, StringComparer.Ordinal))
-            text.Append("\n").Append(pair.Value.Value is { } value && value != 0 ? "MarkerPerturbationObserved " : "Marker perturbation ")
-                .Append(Cell(pair.Key)).Append(": ").Append(Metric(pair.Value)).Append('\n');
+            text.Append("\n").Append(pair.Value.DifferenceNs.Value is { } value && value != 0 ? "MarkerPerturbationObserved " : "Marker perturbation ")
+                .Append(Cell(pair.Key)).Append(": ").Append(Metric(pair.Value.DifferenceNs))
+                .Append(". Relative difference ").Append(Metric(pair.Value.Percent))
+                .Append(". Threshold ").Append(Metric(pair.Value.ThresholdNs))
+                .Append(". AboveThreshold ").Append(pair.Value.AboveThreshold?.ToString() ?? "unavailable").Append('\n');
         text.Append("\nMemory observations ").Append(report.Memory.Observations.Length).Append(". Last available snapshots are distinct from peaks.\n");
         foreach (var pair in report.Memory.Peaks.OrderBy(p => p.Key, StringComparer.Ordinal))
         {

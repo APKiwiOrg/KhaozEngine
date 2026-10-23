@@ -86,6 +86,64 @@ public sealed class RendererPerfAnalysisTests
     }
 
     [Fact]
+    public void Markdown_recomputes_failed_raw_publication_instead_of_publishing_stale_success()
+    {
+        var baseline = Report();
+        var previouslyValid = RendererPerfAnalysis.Analyze(baseline);
+        Assert.Contains("Promotion eligible True", RendererPerfAnalysis.Markdown(previouslyValid));
+        var changedPublication = previouslyValid with
+        {
+            Raw = Failed(Map(baseline, (_, f) => Duration(f, 110))),
+            Reasons = ["stale cached reason"]
+        };
+        string markdown = RendererPerfAnalysis.Markdown(changedPublication);
+        Assert.Contains("Publication Failed. Promotion eligible False", markdown);
+        Assert.Contains("partial write accounting gap #1547", markdown);
+        Assert.DoesNotContain("Promotion eligible True", markdown);
+        Assert.DoesNotContain("stale cached reason", markdown);
+        Assert.Contains("| 110 ns |", markdown.Split('\n').Single(line => line.Contains("| S3/TotalOnly/0 | gpu.frame |", StringComparison.Ordinal)));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Control_cpu_partition_validity_reaches_promotion_and_comparison(bool overlap)
+    {
+        var baseline = Report();
+        var control = baseline.Controls[0];
+        var candidate = baseline with
+        {
+            Controls = baseline.Controls.SetItem(0, control with
+            {
+                Measured = [.. control.Measured.Select(f => f with
+            { CpuPhases = [new("first", null, 0, 60), new("second", null, overlap ? 50 : 60, 100)] })]
+            })
+        };
+        var summary = RendererPerfAnalysis.Analyze(candidate);
+        var row = summary.Controls[0];
+        Assert.Equal(60000000, row.Metrics["cpu.phase.first"].Mean.Value);
+        Assert.Equal(overlap ? 50000000 : 40000000, row.Metrics["cpu.phase.second"].Mean.Value);
+        Assert.Equal(100, row.Metrics["gpu.frame"].Mean.Value);
+        Assert.Equal(2, summary.Raw.Controls[0].Measured[0].CpuPhases.Length);
+        Assert.Equal(!overlap, summary.PromotionEligible);
+        var comparison = RendererPerfComparison.Compare(baseline, candidate);
+        Assert.Equal(!overlap, comparison.Compatible);
+        if (overlap)
+        {
+            Assert.Equal(RendererPerfMetricStatus.Invalid, row.Metrics["cpu.partitionGap"].Mean.Status);
+            Assert.Contains(summary.Reasons, reason => reason.Contains("Invalid CPU partition", StringComparison.Ordinal)
+                && reason.Contains("control:" + control.Control.Id, StringComparison.Ordinal));
+            Assert.All(comparison.Rows.Concat(comparison.CombinedRows).Concat(comparison.ControlRows), r =>
+                Assert.All(r.Deltas.Values, delta => Assert.Null(delta.Mean.Value)));
+        }
+        else
+        {
+            Assert.Equal(0, row.Metrics["cpu.partitionGap"].Mean.Value);
+            Assert.Equal(0, comparison.ControlRows[0].Deltas["gpu.frame"].Mean.Value);
+        }
+    }
+
+    [Fact]
     public void Gap_values_retain_explicit_reference_inputs_and_invalid_model_status()
     {
         var report = Map(Report(), (b, f) => b.Layout == RendererPerfLayout.TotalOnly ? f : Duration(f, 300) with
@@ -112,10 +170,69 @@ public sealed class RendererPerfAnalysisTests
     {
         var report = Map(Report(), (b, f) => Duration(f, b.Layout == RendererPerfLayout.TotalOnly ? 100 : 130));
         var summary = RendererPerfAnalysis.Analyze(report);
-        Assert.Equal(30, summary.Perturbations["S3/0"].Value);
+        Assert.Equal(30, summary.Perturbations["S3/0"].DifferenceNs.Value);
         Assert.Equal(100, summary.Blocks[0].Metrics["gpu.frame"].Mean.Value);
         Assert.Contains("MarkerPerturbationObserved", RendererPerfAnalysis.Markdown(summary));
         Assert.True(summary.PromotionEligible);
+    }
+
+    [Theory]
+    [InlineData(10000000, 10010000, 10000, "0.1", 500000, false)]
+    [InlineData(10000000, 10500000, 500000, "5", 500000, false)]
+    [InlineData(10000000, 10500001, 500001, "5.00001", 500000, true)]
+    [InlineData(10000000, 12000000, 2000000, "20", 500000, true)]
+    [InlineData(1000000, 1099999, 99999, "9.9999", 100000, false)]
+    [InlineData(1000000, 1100000, 100000, "10", 100000, false)]
+    [InlineData(1000000, 1100001, 100001, "10.0001", 100000, true)]
+    [InlineData(10000000, 9499999, -500001, "-5.00001", 500000, true)]
+    public void Perturbation_retains_relative_difference_and_flags_only_above_original_threshold(
+        int total, int detailed, int difference, string percent, int threshold, bool flagged)
+    {
+        var report = Map(Report(), (b, f) => Duration(f, b.Layout == RendererPerfLayout.TotalOnly ? total : detailed));
+        var summary = RendererPerfAnalysis.Analyze(report);
+        var perturbation = summary.Perturbations["S3/0"];
+        Assert.Equal(difference, perturbation.DifferenceNs.Value);
+        Assert.Equal(double.Parse(percent, System.Globalization.CultureInfo.InvariantCulture), perturbation.Percent.Value!.Value, 10);
+        Assert.Equal(threshold, perturbation.ThresholdNs.Value);
+        Assert.Equal(flagged, perturbation.AboveThreshold);
+        string markdown = RendererPerfAnalysis.Markdown(summary);
+        Assert.Contains("Relative difference ", markdown);
+        Assert.Contains(" percent. Threshold ", markdown);
+        Assert.Contains("Threshold " + threshold + " ns", markdown);
+        Assert.Contains("AboveThreshold " + flagged, markdown);
+        Assert.Contains(difference + " ns", markdown);
+        Assert.Equal(total, summary.Blocks[0].Metrics["gpu.frame"].Mean.Value);
+        Assert.Equal(detailed, summary.Blocks[1].Metrics["gpu.frame"].Mean.Value);
+        Assert.True(summary.PromotionEligible);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Perturbation_zero_or_invalid_baseline_never_invents_relative_success(bool invalid)
+    {
+        var report = Failed(Map(Report(), (b, f) => b.Layout != RendererPerfLayout.TotalOnly ? Duration(f, 120000) : invalid
+            ? f with { GpuFrame = new(null, "ns", "synthetic outer pair", RendererPerfMetricStatus.Invalid, "disjoint baseline"), GpuElapsedTicks = null }
+            : Duration(f, 0)));
+        var summary = RendererPerfAnalysis.Analyze(report);
+        var perturbation = summary.Perturbations["S3/0"];
+        Assert.Null(perturbation.Percent.Value);
+        Assert.Equal(invalid ? RendererPerfMetricStatus.Invalid : RendererPerfMetricStatus.ModelIncomplete, perturbation.Percent.Status);
+        if (invalid)
+        {
+            Assert.Null(perturbation.DifferenceNs.Value);
+            Assert.Null(perturbation.ThresholdNs.Value);
+            Assert.Null(perturbation.AboveThreshold);
+        }
+        else
+        {
+            Assert.Equal(120000, perturbation.DifferenceNs.Value);
+            Assert.Equal(100000, perturbation.ThresholdNs.Value);
+            Assert.True(perturbation.AboveThreshold);
+        }
+        string markdown = RendererPerfAnalysis.Markdown(summary);
+        Assert.Contains(invalid ? "disjoint baseline" : "baseline mean is zero", markdown);
+        Assert.Contains(invalid ? "AboveThreshold unavailable" : "AboveThreshold True", markdown);
     }
 
     [Fact]

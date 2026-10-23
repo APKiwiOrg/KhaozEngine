@@ -37,7 +37,7 @@ internal static class RendererPerfComparison
         }
         var before = Read(baseline, baselineReferences, "baseline");
         var after = Read(candidate, candidateReferences, "candidate");
-        return before is null || after is null ? new(false, [.. failures], Differences(baseline, candidate), [], [], [])
+        return before is null || after is null ? new(false, [.. failures], [], [], [], [])
             : CompareValidated(before, after);
     }
 
@@ -83,6 +83,7 @@ internal static class RendererPerfComparison
                     reasons.Add("Incompatible pass layout, marker or parent ownership.");
             }
             var deltas = ImmutableDictionary.CreateBuilder<string, RendererPerfDelta>(StringComparer.Ordinal);
+            var gapReasons = new List<string>();
             foreach (string name in (a?.Metrics.Keys ?? []).Concat(b?.Metrics.Keys ?? []).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
             {
                 var left = a?.Metrics.GetValueOrDefault(name);
@@ -101,6 +102,11 @@ internal static class RendererPerfComparison
                         if (modelA?.Status == RendererPerfMetricStatus.Invalid || modelB?.Status == RendererPerfMetricStatus.Invalid)
                             refusalState = RendererPerfMetricStatus.Invalid;
                     }
+                    else if (modelA.Source != modelB.Source)
+                    {
+                        refusal = $"Unmatched reference/model provenance for {prefix}. Baseline {modelA.Source}. Candidate {modelB.Source}.";
+                        gapReasons.Add(refusal);
+                    }
                 }
                 RendererPerfMetric Delta(RendererPerfMetric? x, RendererPerfMetric? y)
                     => Difference(x, y, refusal, refusalState);
@@ -111,7 +117,9 @@ internal static class RendererPerfComparison
                         ? RendererPerfMetricStatus.ModelIncomplete : mean.Status);
                 deltas.Add(name, new(mean, Delta(left?.Median, right?.Median), Delta(left?.P95, right?.P95), Delta(left?.P99, right?.P99), percentage));
             }
-            rows.Add(new(key.SceneId, key.Layout, key.Iteration, reasons.Count == 0, [.. reasons], deltas.ToImmutable()));
+            // A gap mismatch does not invalidate independently matched frame or counter evidence.
+            var rowReasons = reasons.Concat(gapReasons).Distinct(StringComparer.Ordinal).ToImmutableArray();
+            rows.Add(new(key.SceneId, key.Layout, key.Iteration, rowReasons.IsEmpty, rowReasons, deltas.ToImmutable()));
         }
         return rows.ToImmutable();
     }

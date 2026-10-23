@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Text.Json;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
@@ -20,7 +21,7 @@ internal sealed record RendererPerfCombinedSummary(string SceneId, RendererPerfL
 internal sealed record RendererPerfSummary(RendererPerfReport Raw, bool PromotionEligible,
     ImmutableArray<string> Reasons, ImmutableArray<RendererPerfBlockSummary> Blocks,
     ImmutableArray<RendererPerfCombinedSummary> Combined, ImmutableArray<RendererPerfBlockSummary> Controls,
-    ImmutableDictionary<string, RendererPerfMetric> Perturbations,
+    ImmutableDictionary<string, RendererPerfPerturbation> Perturbations,
     ImmutableDictionary<string, RendererPerfReferenceRates> References);
 
 // Cold, offline arithmetic only. The strict codec remains the sole raw-data admission path.
@@ -134,7 +135,7 @@ internal static class RendererPerfAnalysis
         {
             var block = new RendererPerfBlock("control:" + control.Control.Id, RendererPerfLayout.TotalOnly, 0,
                 control.Control.WarmupFrames, control.Control.MeasuredFrames);
-            var rows = control.Measured.Select(frame => Basic(frame)).ToImmutableArray();
+            var rows = control.Measured.Select(frame => Basic(frame, block, reasons)).ToImmutableArray();
             var metrics = Series(rows, control.Control.MeasuredFrames).ToBuilder();
             try
             {
@@ -149,14 +150,12 @@ internal static class RendererPerfAnalysis
             }
             return new RendererPerfBlockSummary(block, metrics.ToImmutable(), []);
         }).ToImmutableArray();
-        var perturbations = ImmutableDictionary.CreateBuilder<string, RendererPerfMetric>(StringComparer.Ordinal);
+        var perturbations = ImmutableDictionary.CreateBuilder<string, RendererPerfPerturbation>(StringComparer.Ordinal);
         foreach (var group in blocks.GroupBy(b => (b.Block.SceneId, b.Block.Iteration)))
         {
             var total = group.SingleOrDefault(b => b.Block.Layout == RendererPerfLayout.TotalOnly)?.Metrics["gpu.frame"].Mean;
             var detailed = group.SingleOrDefault(b => b.Block.Layout == RendererPerfLayout.PerPass)?.Metrics["gpu.frame"].Mean;
-            perturbations.Add($"{group.Key.SceneId}/{group.Key.Iteration}", total?.Value is { } t && detailed?.Value is { } d
-                ? Available(d - t, "ns", "per-pass outer mean minus total-only outer mean")
-                : Unavailable("ns", "marker perturbation", "Matching valid total-only and per-pass means are required."));
+            perturbations.Add($"{group.Key.SceneId}/{group.Key.Iteration}", RendererPerfPerturbation.Evaluate(total, detailed));
         }
         var distinct = reasons.Distinct(StringComparer.Ordinal).ToImmutableArray();
         return new(report, report.Assessment.ValidForPromotion && distinct.IsEmpty, distinct, [.. blocks], combined,
@@ -180,7 +179,7 @@ internal static class RendererPerfAnalysis
         return result.ToImmutable();
     }
 
-    static ImmutableDictionary<string, RendererPerfMetric> Basic(RendererPerfFrameSample frame)
+    static ImmutableDictionary<string, RendererPerfMetric> Basic(RendererPerfFrameSample frame, RendererPerfBlock block, List<string> reasons)
     {
         var metrics = frame.Metrics.ToImmutableDictionary(p => "counter." + p.Key, p => p.Value, StringComparer.Ordinal).ToBuilder();
         metrics.Add("gpu.frame", frame.GpuFrame);
@@ -194,6 +193,8 @@ internal static class RendererPerfAnalysis
         metrics.Add("cpu.partitionGap", overlap || gap < 0
             ? Unavailable("ns", "CPU partition", "Invalid CPU partition with overlapping segments or negative gap.", RendererPerfMetricStatus.Invalid)
             : Available(gap, "ns", "CPU wall minus exclusive retained segments"));
+        if (metrics["cpu.partitionGap"].Status == RendererPerfMetricStatus.Invalid)
+            reasons.Add($"Invalid CPU partition in {block.SceneId}/{block.Layout}/{block.Iteration}, frame {frame.FrameId}.");
         return metrics.ToImmutable();
     }
 
@@ -204,9 +205,8 @@ internal static class RendererPerfAnalysis
         RendererPerfFrameSample frame, ImmutableDictionary<string, RendererPerfReferenceRates> references,
         Dictionary<string, List<RendererPerfFloorAssessment>> gaps, List<string> reasons)
     {
-        var metrics = Basic(frame).ToBuilder();
+        var metrics = Basic(frame, block, reasons).ToBuilder();
         string context = $"{block.SceneId}/{block.Layout}/{block.Iteration}";
-        if (metrics["cpu.partitionGap"].Status == RendererPerfMetricStatus.Invalid) reasons.Add("Invalid CPU partition in " + context + ".");
         if (block.Layout == RendererPerfLayout.TotalOnly) return metrics.ToImmutable();
         string? partitionError = PartitionError(frame.Passes);
         var roots = frame.Passes.Where(p => !p.DeviceOnly && p.ParentId is null).ToArray();
@@ -222,6 +222,27 @@ internal static class RendererPerfAnalysis
                 ?? models.Single(m => m.PassId == pass.Id && m.Occurrence == pass.Occurrence);
             var rates = references.GetValueOrDefault($"{block.SceneId}/{pass.Id}/{pass.Occurrence}") ?? NoReference;
             var floor = Assess(model, rates, pass.Duration);
+            // Match evidence identities, not calibration values or modeled work magnitudes.
+            string provenance = JsonSerializer.Serialize(new
+            {
+                rates.Source,
+                rates.InstructionClass,
+                Launch = RendererPerfLaunchRelation.MayOverlap.ToString(),
+                model.PassId,
+                model.Occurrence,
+                Components = model.Components.Where(p => p.Key is "readBytes" or "writeBytes" or "fp32-fma" or "pixels"
+                    || p.Key.StartsWith("operations.", StringComparison.Ordinal)).OrderBy(p => p.Key, StringComparer.Ordinal)
+                    .Select(p => new { p.Key, p.Value.Unit, p.Value.Source, p.Value.Provenance }),
+                model.SerialDependencies
+            });
+            RendererPerfMetric Sourced(RendererPerfMetric metric) => metric with { Source = metric.Source + ", evidence " + provenance };
+            floor = floor with
+            {
+                PeakLowerBoundNs = Sourced(floor.PeakLowerBoundNs),
+                CalibratedReferenceNs = Sourced(floor.CalibratedReferenceNs),
+                AbsoluteExcessNs = Sourced(floor.AbsoluteExcessNs),
+                Ratio = Sourced(floor.Ratio)
+            };
             if (!gaps.TryGetValue(key, out var evidence)) gaps.Add(key, evidence = []);
             evidence.Add(floor);
             metrics.Add("gap." + key + ".peakLowerBound", floor.PeakLowerBoundNs);

@@ -124,10 +124,16 @@ last64, or between corresponding iteration means and the first retained iteratio
 evidence cannot be promoted as a stable baseline. Keep slow and GC frames. Missing clock telemetry
 stays missing and does not certify stable clocks.
 
-`Perturbations[scene/iteration]` is the per-pass outer mean minus the matching total-only outer mean
-in ns. A nonzero value is labeled `MarkerPerturbationObserved`. It describes instrumentation
-sensitivity, including order/clock/work effects. It is not a universal threshold or proof of marker
-causation. Keep both layouts and their raw samples.
+`Perturbations[scene/iteration]` retains the signed per-pass outer mean minus the matching total-only
+outer mean as `DifferenceNs`, and `Percent` is `100 * difference / totalOnlyMean`. `ThresholdNs` is
+the larger of 5 percent of the total-only mean or 100,000 ns (0.10 ms). `AboveThreshold` flags a
+difference magnitude strictly greater than that limit. Equality does not flag. This is the approved
+instrumentation sensitivity policy, not a regression budget or proof of marker causation.
+A nonzero difference also retains the informational `MarkerPerturbationObserved` label.
+For a zero baseline the percentage is unavailable, while the absolute difference and 100,000 ns
+threshold remain defined. An unavailable or invalid baseline or detailed mean keeps its reason and
+remains unavailable or invalid, with no threshold decision. Keep both layouts and their raw samples. No guessed
+marker tax is subtracted from pass durations.
 
 Promotion eligibility requires the original valid assessment, completed returned final publication,
 and no newly detected drift or invalid partition. Optional unsupported counters and incomplete work
@@ -166,10 +172,18 @@ resource and reasons. A duration below a claimed theoretical bound flags an inva
 An incomplete or invalid reference cannot create an available excess, ratio or favorable comparison.
 Partial theoretical or calibrated components remain diagnostic. Their comparison deltas also require
 a complete valid reference model, even when both components carry the same source label.
+Every derived gap metric retains the reference source, instruction class, overlap policy and the
+used work components' units, sources and provenance, plus serial dependency identities. These
+identities must match for dependent gap deltas, including combined rows. Different numerical rates
+or work magnitudes from matched evidence are allowed. Unmatched provenance is explained and refuses
+the gap deltas, while independent frame and counter deltas can remain available.
 
 Control summaries keep outer duration distributions separate from scene frames. Achieved rates use
 the existing `AchievedRates` checks for complete samples, exact work identity and validated output.
 Unsupported or unmatched controls retain a reason rather than supplying a fabricated rate.
+Measured control CPU partitions follow the same validity rule as scene partitions. Overlapping
+segments retain their diagnostic phase values and context, revoke promotion and refuse numerical
+comparison deltas.
 
 ## Comparing evidence
 
@@ -179,6 +193,8 @@ candidate-minus-baseline deltas and refusal reasons. No universal percentage bud
 regression verdict is assigned.
 The summary overload recomputes from its raw report and reference inputs. Cached derived statistics
 or eligibility flags cannot override a changed or failed publication.
+Rejected typed input returns the original protocol refusal with no identity differences or numerical
+rows. It is never serialized again to construct diagnostic differences.
 
 Compare only matching scene/profile/control versions, recipe/settings/geometry/asset and sequence
 identity, dimensions/formats/routes, layout and pass ownership, native backend/adapter/driver,
@@ -198,4 +214,6 @@ control deltas and reference-gap deltas in their respective rows.
 
 Use `RendererPerfAnalysis.Markdown(summary)` and `RendererPerfComparison.Markdown(comparison)` for
 compact invariant-culture output. JSON and the retained inputs remain the reproduction authority.
+Summary Markdown revalidates the retained raw report and references before computing eligibility,
+reasons and distributions. Cached success cannot override failed raw evidence at publication.
 A changed recipe, driver or protocol starts a new baseline series with the prior result retained.

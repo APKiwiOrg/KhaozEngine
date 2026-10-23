@@ -23279,6 +23279,9 @@ flag and error is retained. The reader rejects malformed schemas, indices, value
 and overflowing ticks before semantic validation.
 Memory observations retain startup/batch identity and failure reasons. Process and managed peaks refer
 to their exact observation and original metric source instead of replacing those raw snapshots.
+The [renderer performance reference](RENDERER-PERFORMANCE.md) defines the internal offline summaries
+and comparisons, including exact percentile ranks, separate iteration means, partition gaps, marker
+perturbation and reference provenance. These helpers add no package API or production instrumentation.
 
 Call `BeginFrame(localSampleId, frameId, sequenceIndex, submission)` at the host's outer boundary, before
 native Begin, and `EndFrame` only after the host returns from submission and Present/end-frame work. The

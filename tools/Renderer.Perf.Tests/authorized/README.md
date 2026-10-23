@@ -17,8 +17,9 @@ on that runner. The entrypoint independently validates the strict manifest and r
 native creation. Hosted NVIDIA T4 hardware, usable timestamps and a completed matching report are
 required. Partial artifacts survive failures.
 
-The shader identity hashes an ordered map of exact Render3D and SpriteBatch GLSL source strings
-and control shader sources. Recipe and control definitions, frozen pass layouts and compiler
+The shader identity hashes an ordered map of exact literal and generated readonly Render3D and
+SpriteBatch GLSL source strings, specialized outdoors FFT kernels and control shader sources.
+Recipe and control definitions, frozen pass layouts and compiler
 corpus hashes accompany the report. Native admission records a cold timestamp capability probe,
 with no scene frames. It never contributes a steady-state sample or a throughput reference.
 

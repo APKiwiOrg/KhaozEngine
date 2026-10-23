@@ -423,6 +423,8 @@ What it owns today:
   Disabled tracing returns the native objects unchanged. Enabled forwarding preserves optional capture,
   fenced readback, memory, lifecycle, backend command-list and completed-End interfaces without wrapping
   resource handles or adding a submit or wait. These are test-harness references, not package APIs.
+  Their [offline analysis contract](../docs/RENDERER-PERFORMANCE.md) keeps outer GPU totals, diagnostic
+  pass intervals, logical work and native memory provenance separate. Unsupported values stay unavailable.
 - **`GpuRetireQueue`** (since 17.37.0) - deferred disposal for anything a renderer frees MID-LIFE (a streamed mesh
   unloaded while the scene runs, a sprite atlas whose descriptor set fell out of the working set). `Retire(resource)`
   costs nothing at the call site, `BeginFrame()` seals the frame's retirements into one batch behind a fence and

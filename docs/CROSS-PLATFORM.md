@@ -259,6 +259,9 @@ not held to that value. They compare two code paths that legitimately differ by 
 
 ## Paid hosted renderer performance mode
 
+The [renderer performance reference](RENDERER-PERFORMANCE.md) owns offline decoding, statistics,
+compatibility, reference gaps and compact summaries. Native admission and execution remain here.
+
 `gpu-hosted-bench.yml` has a separate renderer mode. Ordinary filtered benches and the existing
 coverage mode retain their jobs, device checks and artifact layout. Renderer mode accepts only
 `renderer-perf-unit`, `renderer-perf-manifest-sha256` and `renderer-perf-workload-sha`, with one named

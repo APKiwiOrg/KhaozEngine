@@ -62,5 +62,6 @@ resolve payloads supply separate read and write components. Texture formulas inc
 layers, samples and format sizes. The mip reduction helper is explicitly a four-tap logical model,
 not exact off-chip traffic. Geometry and alpha paths retain invocation ranges. Shader, cache, format,
 parent, CPU-only and new unknown owners name the evidence still needed instead of inventing a floor.
-Task 14 owns report analysis. Task 15 owns canonical documentation, native pilot checks and publication
-integration with the existing metric-vectors/2 artifact.
+The [renderer performance reference](../../../../docs/RENDERER-PERFORMANCE.md) owns offline analysis,
+reference matching and comparison policy. Task 15 owns native pilot checks and publication integration
+with the existing metric-vectors/2 artifact.

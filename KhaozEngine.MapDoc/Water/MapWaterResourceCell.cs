@@ -22,6 +22,7 @@ public sealed record MapWaterResourceCell(MapWaterCellKey Key, float SurfaceY, M
 public sealed record MapScopedWaterResult(MapSceneStatus Status, IReadOnlyList<MapWaterResourceCell> Cells,
     MapSceneWitness RequestedWitness, MapSceneWitness AcquiredCellWitness)
 {
+    internal MapPreparationReservation? PreparationOwnership { get; init; }
     public MapSceneCapacity? Capacity { get; init; }
     internal IReadOnlyList<MapWaterResourceCell> AcquiredCells { get; init; } = Array.Empty<MapWaterResourceCell>();
     internal double MotionPaddingMetres { get; init; }
@@ -48,6 +49,7 @@ internal static class MapWaterCellGeometry
         MapWaterWorkBudget pairs, MapSceneAdmission admission, int maxVertices)
     {
         if (triangles.Count == 0) return Array.Empty<MapExactTriangle>();
+        using var preparation = admission.BeginPreparation();
         admission.ReserveBytes(checked(512L + 384L * triangles.Count));
         var polygons = triangles.Select(t => new[] { MapWidePoint.From(t.A).Xz, MapWidePoint.From(t.B).Xz, MapWidePoint.From(t.C).Xz }).ToArray();
         var edges = polygons.SelectMany(p => Enumerable.Range(0, 3).Select(i => new Line(p[i], p[(i + 1) % 3])))
@@ -75,7 +77,8 @@ internal static class MapWaterCellGeometry
             var left = cuts[slab]; var right = cuts[slab + 1];
             var middle = left.Add(right).Divide(MapWideRational.From(2));
             pairs.Charge(polygons.Length);
-            admission.ReserveBytes(checked(polygons.Length * 128L));
+            using var intervalWorkspace = admission.Workspace();
+            intervalWorkspace.Reserve(checked(polygons.Length * 128L));
             var intervals = new List<Interval>();
             foreach (var polygon in polygons)
             {
@@ -120,6 +123,7 @@ internal static class MapWaterCellGeometry
                 if (MapWaterPolygons.Cross(points[0], points[i + 1], points[i]).Sign != 0) result.Add(triangle);
             }
         }
+        preparation.Complete(checked(144L * result.Count));
         return Array.AsReadOnly(result.ToArray());
         MapExactPoint Lift(MapWideXz p)
         {

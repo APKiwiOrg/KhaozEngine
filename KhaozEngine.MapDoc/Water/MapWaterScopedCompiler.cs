@@ -27,6 +27,7 @@ public static class MapWaterScopedCompiler
         limits ??= new(); limits.Validate();
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var admitted = admission.Enter();
+        using var preparation = admission.BeginPreparation();
         var pairs = new MapWaterWorkBudget(limits.MaxPairChecks, compile: true);
         var witnesses = new List<MapSceneWitness>();
         var cellKeys = new List<MapSceneResourceKey>();
@@ -45,6 +46,8 @@ public static class MapWaterScopedCompiler
             var water = scene.Water;
             foreach (var body in (water?.Bodies ?? []).OrderBy(b => b.Id, StringComparer.Ordinal))
             {
+                using var bodyPreparation = admission.BeginPreparation();
+                int bodyStart = allCells.Count;
                 var meter = new MapWaterWorkMeter(limits);
                 meter.ChargeDomain(body.Domain);
                 var effective = MapEffectiveWater.Resolve(scene.SurfaceView, body, pairs);
@@ -75,6 +78,8 @@ public static class MapWaterScopedCompiler
                 }
                 foreach (var cell in cells.OrderBy(c => c.Owner.X).ThenBy(c => c.Owner.Z).ThenBy(c => c.X).ThenBy(c => c.Z))
                 {
+                    using var cellPreparation = admission.BeginPreparation();
+                    int cellStart = allCells.Count;
                     // All pieces of the body participate, including pieces entirely outside the caller window.
                     // Candidate lookup avoids a full body-pieces traversal for every selected lattice cell.
                     var intersecting = index.Overlapping(new(cell.Min, cell.Max), pairs, admission);
@@ -128,7 +133,11 @@ public static class MapWaterScopedCompiler
                         // Membership is evaluated against the already complete canonical payload.
                         if (drawCells.Contains(cell) && Intersects(canonical, drawBounds, pairs, admission)) output.Add(canonical);
                     }
+                    cellPreparation.Complete(allCells.Skip(cellStart)
+                        .Sum(c => 256L + c.Regions.Sum(r => 128L + 144L * r.Triangles.Count)));
                 }
+                bodyPreparation.Complete(allCells.Skip(bodyStart)
+                    .Sum(c => 256L + c.Regions.Sum(r => 128L + 144L * r.Triangles.Count)));
             }
             return Result(MapSceneStatus.CompleteForScope, output);
         }
@@ -168,6 +177,9 @@ public static class MapWaterScopedCompiler
                 KnownEmpty = complete ? scene.Witness.KnownEmpty : [],
                 Unavailable = acquired.Unavailable
             };
+            long retained = complete ? checked(512L + 64L * (required.Length + present.Length) +
+                allCells.Sum(c => 256L + c.Regions.Sum(r => 128L + 144L * r.Triangles.Count))) : 0;
+            var ownership = complete ? preparation.Complete(retained) : null;
             return new(status, Array.AsReadOnly(cells.ToArray()), requested, acquired)
             {
                 Limits = scene.Source.Data.Limits,
@@ -175,7 +187,8 @@ public static class MapWaterScopedCompiler
                 MotionPaddingMetres = scene.Scope.MotionPaddingMetres,
                 CandidateCells = candidates,
                 PairChecks = pairs.Charged,
-                PreparationChargeBytes = admission.RetainedBytes
+                PreparationOwnership = ownership,
+                PreparationChargeBytes = retained
             };
         }
     }

@@ -257,6 +257,55 @@ Rows that compare two grids they rendered themselves in one session, such as `Fa
 not held to that value. They compare two code paths that legitimately differ by edge noise, and use
 `GoldenCompare.InSessionTolerance` (0.06), the value they were calibrated against.
 
+## Paid hosted renderer performance mode
+
+`gpu-hosted-bench.yml` has a separate renderer mode. Ordinary filtered benches and the existing
+coverage mode retain their jobs, device checks and artifact layout. Renderer mode accepts only
+`renderer-perf-unit`, `renderer-perf-manifest-sha256` and `renderer-perf-workload-sha`, with one named
+leg and the default filter. It refuses combined coverage inputs, `all`, free-form filters, mutable
+refs and attempts after one. This public repository uses hosted runners exclusively.
+
+An owner-approved manifest uses `khaozengine.renderer-perf-unit/1`. Authorization commit B has
+exactly one parent, measured workload A, and adds only
+`tools/Renderer.Perf.Tests/authorized/<unit>.json`. Pass B's full immutable SHA as `ref` and hash
+the exact UTF-8 manifest bytes. Hosted CPU admission verifies the diff, hash, leg and preset before
+allocating a GPU runner. The renderer job repeats authorization checks, enforces a 12-minute pilot
+or 35-minute full cap and retains the existing pinned PowerShell bootstrap, GRID setup, NVIDIA
+adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
+
+The outside-solution `tools/Renderer.Perf.Tests` project exposes one fixed fact,
+`Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit`, category `RendererPerformance`.
+The workflow explicitly passes `KE_RENDERER_PERF_UNIT` and `KE_RENDERER_PERF_REPORTS`. Manifest,
+runtime, recipe, shader source and current control hashes are validated before native creation.
+Cold inspection checks the selected native vendor `0x10de`, device `0x1eb8`, software-adapter flag,
+driver, recording mode and timestamp capability. D3D11 uses one cold two-query calibration
+submission, with no scene frame and no retry. Vulkan reads the selected device's timestamp limits
+and pipeline-cache identity. A disabled or unavailable cache identity refuses admission.
+Layouts are frozen on inert headless devices, with no extra native discovery frames.
+
+The existing driver owns every conditioned, warm and measured frame, three-frame completion,
+readback, drift check and publication deadline. Host telemetry uses `nvidia-smi` outside frame
+brackets at a fixed interval of 64 session-info boundaries. Unsupported fields retain their reasons.
+Runtime identity retains the effective `KE_`, `DOTNET_`, `COMPlus_` and `VK_` environment, excluding
+the per-run `KE_RENDERER_PERF_` paths and tokens. These values and the exact .NET runtime version
+must match the approved manifest. No extra profiler or workload variant is admitted.
+
+Success requires exactly one executed, passed test with zero skips in TRX and a nonempty final JSON
+and Markdown pair. The workflow verifies `metric-vectors/2`, completed publication, promotion
+validity, manifest/workload/authorization/workflow hashes, run ID, attempt, backend and native T4
+IDs. The entrypoint re-reads the final stamped JSON with the strict renderer codec. An `always()`
+upload preserves partial reports, exact manifest bytes, admission facts, frozen layouts, shader and
+compiler hashes, control definitions, per-block work models and host telemetry, including failures.
+
+Implementation ships no executable approval manifest and authorizes no dispatch or measurement.
+Task 15 must reconcile and review integration, obtain each precise pilot approval, verify native
+control output and compiler retention including Windows FXC, inspect clocks and marker perturbation,
+confirm complete counts and End-tail ownership, check native artifact sizes under the 256 MiB cap,
+and record actual billed minutes. Its readers must retain `metric-vectors/2`, DeviceOnly rows,
+memory observations/peaks and the two-stage publication stamp. A full unit needs fresh approval
+after pilot review. Failure requires scoped correction and fresh approval. Windows Vulkan,
+profilers, consumer fit, optimization and release remain separate decisions.
+
 ## CI matrix (`.github/workflows/cross-platform-gpu.yml`)
 
 For diagnosis, a dispatch may set `renderTestFilter` to a vstest filter. That targets only

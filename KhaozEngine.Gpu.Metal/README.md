@@ -392,6 +392,10 @@ or managed abandonment, not when the GPU becomes idle. Internal peak counts are 
 shared snapshot has no typed peak-count field. History and scratch roles are not supplied by this
 resource API and remain unsupported.
 
+Staging ownership stores capacity inline by native handle. Once tracking storage is warm at the live-block
+high-water mark, repeated native staging creation and release allocate no managed accounting leases,
+including blocks above the arena's native retention cap. Resource-lifetime buffer and texture leases remain.
+
 Cold `MTLDevice.currentAllocatedSize` snapshots use the existing NSUInteger binding under the device's
 lifecycle lock. They describe device-wide native allocation, including internal/driver resources, and
 are separate from logical payload. `hasUnifiedMemory` supplies true, false or unknown provenance.

@@ -1105,3 +1105,94 @@ for the vertex exit, 88/328 for margin-only overlap and 87/326 for the 100 m rou
 The contained small box used 160/2225 at Margin 0 and 153/2230 at Margin 0.001. Its largest hull
 had 30 vertices and 56 faces, accounting for 370 rational scalar slots. These are observations,
 not CPU/SIMD/scheduling-dependent counter pins. Lowered limits derive from same-run probes.
+
+## Task 2c.2 continuation under SS-R11
+
+This is refusal evidence, not acceptance of Task 2c.2. The attempted pair-agnostic upper
+implementation exhausted the unchanged 256-cell cap on required edge fixtures. No production
+or test changes from this continuation are retained. The previous verified partial at
+00c1bce80 remains the implementation checkpoint. Tasks 2b.2 and 2b.3 remain blocked on 2c.2.
+
+### Attempt and bounded refusal
+
+All face, vertex and EPA directions entered one static plane verifier. It independently
+bounded complete continuous shell support, including both circles and Margin, against every
+exact original target vertex. Both the encoded translation and the rounded operational
+destination earned plane checks. No edge or circular-edge stationary penetration producer
+was added. The original exact inner-CSO inball supplied the global lower bound.
+
+The attempt evaluated accepted static distance at the exact original feet plus the encoded
+translation. It retained the original request, rational fraction, authenticated source and
+primitive account. Initial and translated certificates shared a scratch generation and the
+existing coefficient arena, including a reservation for simultaneous hull scalars. The full
+depth bracket, witnesses, normal encoding and position-addition residual still had to fit
+0.001 m. This is a member proof, never a global-union MTV.
+
+The required Margin 0 oblique-rim fixture used radius 1/4, LowerY 0, RingY 1/2 and UpperY 1.
+Let q=(1/4,1,0), n=(1,1,0), v=(1,-1,1), c=q-n/256, a=(1,0,0) and b=(0,1,0).
+Its original hull vertices were c plus either sign of v/8, plus each of 0, a, b and a+b.
+The last complete lower/upper bracket was [0.0026310112114487235, 0.00708235321136515] m,
+a gap of 0.004451341999916427 m, at 254 cells and 1,134 features. The next expansion or
+verification exhausted 256 cells and 1,181 features. The last recorded hull had 10 vertices
+and 16 faces. This does not close the required budget.
+
+The interior cylinder-edge fixture was an installed box with half extents
+(0.015625,2,0.015625) and centre (0.21875,0.75,0.0625), with the same query shell.
+Its Margin 0 bracket reached [0.04104807388660196, 0.041536501940152085] m,
+a gap of 0.0004884280535501218 m, at 182 cells and 1,094 features. The static-distance
+certificate at exact translation (-0.0404728,0,-0.009339877) then exhausted the remaining
+account, ending at 256 cells and 1,190 features. The bracket alone did not supply a complete
+attained certificate. Its last hull had 12 vertices and 20 faces.
+
+The Margin 0.001 oblique-rim row similarly narrowed its raw bracket to
+[0.006360804313717966, 0.006654392774052639] m at 244 cells and 1,334 features, then
+translated static distance exhausted the cap at 256 cells and 1,360 features. These are
+same-run observations, not CPU, SIMD or schedule-dependent test pins.
+
+SS-R11's stop condition was applied. No producer, ceiling, tolerance, skin or arrival rule
+was changed to turn these refusals into success. Temporary tracing was removed. The complete
+unsuccessful implementation and test diff is preserved in the owning SDD workspace as
+`task-2c.2-r11-attempt.diff`, SHA-256
+`c40f3a13f565c4c5de9fe79511428bd16d10fc8ed27e048d1eab7f191608809a`.
+Its reverse check against the attempt and apply check against the restored base both exited 0.
+The attempt is diagnostic material and must not be integrated as a completed unit.
+
+### Commands and review
+
+All three commands used build-slot, one at a time, in Release with no restore. None used
+--heavy because no Common selection was run.
+
+```bash
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexPlanarPenetrationTests'
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~GenericPlaneExitCertifies' --logger 'console;verbosity=detailed'
+```
+
+The named class ran once red before implementation and once after the upper-path attempt.
+The diagnostic selection ran once with temporary bracket and certificate-stage tracing.
+Logs are under `/tmp/khaozengine-short-shell/`.
+
+| Log | Exit | Result |
+| --- | ---: | --- |
+| task-2c.2-r11-red.log | 1 | 9 passed, 10 failed, 0 skipped |
+| task-2c.2-r11-green-1.log | 1 | 10 passed, 11 failed, 0 skipped |
+| task-2c.2-r11-diagnostic.log | 1 | 0 passed, 8 failed, 0 skipped |
+
+The original nine tests passed in the first red. The attempt also regressed the previously
+accepted vertex-exit fixture to a cap refusal. Its Margin 0.001 cylinder-edge certificate
+used an attained shoulder-boundary pair, so the new test's exclusive Cylinder expectation
+was too strict. That tie does not refute the certificate. A separate control proved the
+attempted upper-plane value still lacked explicit member/pose binding. Exact original
+fraction/source retention and atomic root-loan refusal controls passed. No warning or
+compiler error was reported in these builds.
+
+The three Common regression selections were not run after SS-R11's explicit stop condition.
+The earlier 457 Game, 741 footprint and seven degree-1 navigation passes remain historical
+baseline evidence, not continuation results. No full solution or format claim is made.
+The capsule APIs, InstalledSweepLeaf, four r0/r1 producers, roof and footprint protections,
+raw identity, Movement and all seven navigation baselines remain unchanged from 00c1bce80.
+
+Penetration is requested only at rational fractions under SS-R11. Tasks 2b.2 and 2b.3 must
+choose a dyadic overlapping upper endpoint for overlap events. Root-backed penetration stays
+an atomic refusal. Root-defined touching events use Task 2c.1 touching normals. The attempted
+rational-only guard was reverted with the rest of the incomplete implementation, so the
+rootless irrational-fraction control remains part of the unintegrated continuation work.

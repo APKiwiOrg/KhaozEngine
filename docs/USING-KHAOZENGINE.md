@@ -320,6 +320,7 @@ game.Run();
 ```
 
 `GameAppOptions` (a struct): `Title`, `Width`/`Height`, `DesignWidth`/`DesignHeight`, `ScaleMode`, `ClearColor`,
+`RendererInitializesSwapchain` (explicit opt-in, see the frame initialization policy below),
 `ResumeGapThresholdSeconds` (see the resume hook below), `PresentMode` + `FrameCapHz` + `WindowMode` (see below), and optional
 `WindowFactory` / `ViewportFactory` (e.g. `AppWindow.Scaled` for a display-fitted window, or an `AdaptiveViewport`
 for responsive layout), `AppUserModelId` (Windows taskbar identity), `SuppressParentConsoleAttach` (opt out of
@@ -344,7 +345,8 @@ by default, so a client no longer free-runs a whole core plus the GPU out of the
   simplification. The question the arm asks is whether the backend's present throttles the CPU from vsync alone,
   and the only backend that ever answered no was the Veldrid Metal incumbent, deleted in 18.0.0. `D3D11Native`
   and `VulkanNative` throttle, and (measured 2026-08-11) so does the engine's own **`MetalNative`**, whose
-  present blocks the CPU in the drawable acquire for the whole vertical-blank wait. With `PresentMode.Immediate`
+  frame loop blocks the CPU in the drawable acquire at its first swapchain bind.
+  Preparation runs before that wait. With `PresentMode.Immediate`
   (any backend) it stays uncapped, respecting the lowest-latency intent. A
   consumer-set value always wins: `FrameCap.Uncapped` is an intentional free-run (the pre-10.96 default) and
   `FrameCap.Hz(n)` / a positive `FrameCapHz` is a fixed cap. A positive `GameAppOptions.FrameCapHz` overrides
@@ -397,11 +399,13 @@ app.Display.ApplyDisplay(s);
 framebuffer semantics are unchanged (the backbuffer always tracks the physical drawable). **Mac/Metal caveat,
 now history:** setting vsync engages `CAMetalLayer.displaySyncEnabled`, and the Veldrid Metal present did not
 throttle the CPU from vsync alone. That was measured on `GpuBackendKind.Metal` and applied to it alone. The
-engine's own `MetalNative` was measured on 2026-08-11 and its present DOES throttle: the drawable acquire blocks
+engine's own `MetalNative` was measured on 2026-08-11 with acquisition at present. That acquire blocked
 once per frame for 15.175 ms of a 16.669 ms frame, a display pinned to 120 Hz paces it at 120 fps, and turning
 vsync off mid-session free-runs past 700 fps with visible tearing. The incumbent was deleted in 18.0.0, so vsync
 with no software cap is a healthy configuration on every live backend and `FrameCap.Auto` resolves to uncapped
-everywhere. Nothing branches on `GameApp.Backend` to set a cap. The one-time `Console.Error` warning is GONE at 18.0.0:
+everywhere. Metal now acquires at the first swapchain bind, after preparation, with the same vsync policy.
+The historical timings above are not a measurement of this deferred acquisition. Nothing branches on
+`GameApp.Backend` to set a cap. The one-time `Console.Error` warning is GONE at 18.0.0:
 `AppWindow.WarnIfMetalVsyncUncapped` and its one-shot latch were deleted with the backend that tripped them, so
 nothing on the frame-cap path writes to `Console.Error` any more. The pure predicate
 `DisplaySettings.RequiresFrameCapWarning(backend, presentMode, frameCapHz)` STAYS, now a constant `false`, as
@@ -572,8 +576,18 @@ below), `OnDispose()`. Properties you read: `Window`, `Clock`, `Viewport`, `Poin
 
 The windowed loop runs **two** callbacks per frame. `onPrepare` runs first, after the frame's `Dt` / `Input` /
 size are latched and **before** the frame's command list is opened. `onFrame` runs second, with that list open,
-bound to the swapchain and cleared. `Run(onFrame)` is exactly `Run(onFrame, null)`, so a host that wants one
+bound to the swapchain and cleared by default. `Run(onFrame)` is exactly `Run(onFrame, null)`, so a host that wants one
 callback keeps writing one.
+
+`AppWindow.RendererInitializesSwapchain` and `GameAppOptions.RendererInitializesSwapchain` default to false,
+including `default(GameAppOptions)` and raw struct initializers. Setting the option true skips both the host's
+initial swapchain bind and its `ClearColor` clear. `GameApp` applies it to both default and factory windows.
+The caller must ensure the renderer binds and initializes the entire output inside this frame's recording
+before any 2D draws or capture taps, including empty, loading and menu frames. The normal full-output 3D
+composition still binds, clears and overwrites its final target. `GameApp3D` does not opt in automatically:
+an overridden `OnRenderWorld` can render only part of the output or no world at all. Keep the default for
+those renderers and for 2D callbacks that rely on the host clear. The policy changes no preparation,
+recording, capture, submission, present or suppression ordering.
 
 ```csharp
 window.Run(
@@ -8637,7 +8651,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.12.2" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.12.3" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9062,7 +9076,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.12.2" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.12.3" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9861,7 +9875,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.12.2" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.12.3" />
 ```
 
 ```csharp
@@ -12540,8 +12554,8 @@ up to `TileWorldViewOptions.MaxRebuildsPerFlush` (16), leaving the rest counted 
 `Flush(int.MaxValue)` is the settle-now form for a view without a residency profile. A region kept by a three-state
 profile is never meshed in `Flush`: its marks submit background ground builds, plus cover once per region for a
 gameplay region, while the previous mesh keeps drawing, so `Flush(int.MaxValue)` no longer settles profile ground.
-Only `PrimeAround` and headless capture do. Active same-plane door clearances extend the ground-cover reach beyond
-the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by its border
+Only `PrimeAround` and explicit offline `SettleForCapture` calls do. Active same-plane door clearances extend
+the ground-cover reach beyond the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by its border
 data, solid footprints, upper roofs or tagged doors. A dirty region is never streamed out (unloading unsaved edits
 would throw, so it stays resident and logs once), and a torn region file throws `TileWorldException` straight out of
 `Update` rather than drawing a hole.
@@ -12568,6 +12582,20 @@ focus and default roof observer, keeps the overlapping region ring and settles n
 before rendering. A supplied `observer` stays fixed. Keep the document and catalogs unchanged.
 `frames` includes `warmupFrames`, and `onFrame(frame, capture)` streams the remaining frames with the same
 indices and ownership contract as `Render3DSnapshot.CaptureSequence` below.
+
+For a consumer-owned `TileWorldView` inside `Render3DSnapshot.CaptureSequence`, call
+`view.SettleForCapture(focusRegion, cameraTarget)` on the scene thread before the first written frame and
+after loading or unloading regions or announcing edits. The call blocks until ground (Gameplay and Decor),
+Gameplay ground cover, every selected prop layer and HLOD mesh, and the opted-in interior cut are applied,
+ignoring apply budgets. It keeps your loaded region set, camera field of view and `Observer` unchanged.
+The optional world-space `cameraTarget` places the interior-cut window, defaulting to the centre of
+`focusRegion`. An unchanged call retains the applied meshes and cover.
+
+While only the camera's interior-cut focus moves, call `view.SettleInteriorCutForCapture(cameraTarget)`
+before each offline draw. It synchronously publishes any required recentering without settling unrelated
+ground, cover or prop work, and does nothing when interior cutting is disabled. Both APIs are exclusively
+for offline and headless captures. Never call them from a windowed frame loop. Residency updates and
+primes keep their existing nonblocking cover and prop behavior.
 
 ---
 
@@ -17896,7 +17924,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.12.2" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.12.3" />
 ```
 
 ```csharp
@@ -17932,7 +17960,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.12.2" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.12.3" />
 ```
 
 ```csharp
@@ -18176,7 +18204,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.12.2" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.12.3" />
 ```
 
 ```csharp
@@ -18214,9 +18242,15 @@ discards every draw in that frame. `SyncToVerticalBlank` always applies, where t
 on a machine outside that set. `ResizeSwapchain` and a `SyncToVerticalBlank` write both QUEUE and apply at the
 next `Present` after a drain, so they take no lock, make no native call and are safe from any thread, and a
 burst of thirty size events between two presents costs one apply. And the drawable acquire is counted and timed
-into `AcquireWaitCount` and `AcquireWaitMs`, one entry per boundary, because `-nextDrawable` BLOCKS and Metal
-offers no zero-timeout probe. Expect that pair to be non-zero under vsync: a vsync-paced frame SHOULD wait for a
-drawable.
+into `AcquireWaitCount` and `AcquireWaitMs`, one entry per acquired frame, because `-nextDrawable` BLOCKS and
+Metal offers no zero-timeout probe. Acquisition happens at the first swapchain framebuffer bind, including a
+cached wrapper, after `FramePhases` preparation. The default host initialization binds before `onFrame`.
+With `RendererInitializesSwapchain` enabled, offscreen rendering can precede acquisition at final composition.
+Repeated binds reuse the resolved frame, including nil.
+Construction publishes metadata only, and `Present` leaves the next frame unresolved. A present-only call
+acquires its own current drawable before presenting it. Resize dimensions still publish at the present boundary.
+This timing is an optimization candidate with no proven FPS gain. Expect that pair to be non-zero under vsync:
+a vsync-paced frame SHOULD wait for a drawable.
 
 **A fifth thing changes, and it is the one that touches resolution.** The layer's initial `drawableSize` is the
 content view's frame in POINTS multiplied by the window's backing scale factor, because a drawable size is in
@@ -18481,8 +18515,13 @@ Metal path**, which is the difference between a capture that carries GPU columns
 cumulative since the device was created, so a window is the difference between two sampled rows.
 `BackpressureStallCount` here counts the uniform ring's segment acquire alone, so a non-zero reading is
 unambiguously about `KE_METAL_FRAMES_IN_FLIGHT`, where the same field on `VulkanNative` also folds in a command
-list waiting on its own oldest buffer slot. `FramesBegun` and the acquire pair belong to the present boundary,
-so a headless device reports zero for all three, truthfully rather than as a placeholder.
+list waiting on its own oldest buffer slot. `FramesBegun` counts present boundaries, including skipped
+presents. `AcquireWaitCount` and `AcquireWaitMs` record every current-frame drawable-resolution API attempt
+and its full duration, including nonblocking and nil attempts. Resolution happens at the first swapchain
+framebuffer bind, or on demand for a present-only call. Repeated binds reuse the resolved frame, including nil.
+Construction and `Present` do not pre-acquire the next frame. The recorded duration includes API work and is
+not isolated blocking time. A headless device with no swapchain reports zero for `FramesBegun` and both
+acquire fields.
 `GpuDeviceDiagnostics.SoftwareAdapter` is `false` with confidence rather than null, because Apple ships no
 software Metal rasterizer, where the deleted Veldrid Metal path correctly reported null because it could not
 answer.
@@ -18907,13 +18946,13 @@ the session log naming the site and what the reason means, and the `deviceLossRe
 session header. Nothing you write has to catch anything, and there is no recovery path: a lost device stays lost,
 which is what the liveness token makes safe.
 
-**The device counts what it waited for, and a telemetry recording can carry it.** `AppWindow.Counters` (a
+**The device reports counters that a telemetry recording can carry.** `AppWindow.Counters` (a
 `GpuDeviceCounters`, also on `GpuDeviceContext.Counters` and `IGpuDevice.Counters`) reports, cumulative since the
 device was created: `FramesBegun`, `DrainCount` / `DrainMs` (time spent waiting for the GPU to go idle),
 `BackpressureStallCount` / `BackpressureStallMs` (frame boundaries that blocked on a uniform ring segment the GPU
 was still reading), `OffTimelineDeferred` / `OffTimelineOutstanding`, and `AcquireWaitCount` / `AcquireWaitMs`
-(present boundaries that blocked waiting for the presentation engine to hand back the next swapchain image). Add
-them to a session's sample rows in one line:
+(recorded acquisition entries and their full API-call durations, with backend-specific recording rules below).
+Add them to a session's sample rows in one line:
 
 ```csharp
 var row = new List<TelemetryChannel> { new("fps", _stats.Fps), new("frameMs", _stats.FrameMsAvg) };
@@ -18927,13 +18966,16 @@ The deleted Veldrid paths had neither a fence drain nor a segment ring to count,
 and `AppendTo` wrote no columns for them. That matters because ZERO STALLS IS THE GOOD RESULT: a capture full of
 zeros from a backend that never looked would read exactly like a clean run.
 
-**The acquire pair is what tells the two acquire models apart, and on a machine at a pinned refresh rate it is
-the ONLY thing that does.** `AcquireWaitCount` counts present boundaries that actually BLOCKED waiting for the
-next swapchain image, and it is a reading rather than a count of calls: the native Vulkan backend probes with a
-zero timeout first and records only the blocking call that follows. A backend that acquires with a semaphore and
-lets the GPU do the waiting reports zero here, and one that blocks the CPU reports one per frame, while both
-produce the same mean frame time by construction. Zero is a real reading rather than a gap on a backend with no
-acquire to wait on and on a headless device with no swapchain, which is exactly what `HasValue` is for.
+**The acquire pair has backend-specific recording rules.** `AcquireWaitCount` counts recorded acquisition
+entries, and `AcquireWaitMs` sums their full durations. Metal records every current-frame drawable-resolution
+API attempt, including nonblocking and nil attempts, at the first swapchain framebuffer bind or on demand for
+a present-only call. Repeated binds reuse the resolved frame, including nil. Its `FramesBegun` still counts
+present boundaries. Construction and `Present` do not pre-acquire the next frame. Vulkan's semaphore path
+probes with a zero timeout and records only the subsequent blocking call when the probe reports not ready.
+Its explicit CPU-stall path records each stalling acquire. The recorded durations include API work and are
+not isolated blocking time. Direct3D 11 has no acquire step and reports zero for the pair. A headless device
+with no swapchain also reports zero, which is a reading rather than a gap. `HasValue` distinguishes a device
+that keeps counters from one that reports no counters.
 
 **The numbers are cumulative on purpose, so your sampling cadence stops mattering.** A row carrying "the frame
 that just ended" describes one frame in however many you skipped between rows. Subtract the first row's
@@ -22547,7 +22589,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.12.2" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.12.3" />
 </ItemGroup>
 ```
 
@@ -23079,7 +23121,8 @@ unsignaled staging alive until a completion poll or owner teardown releases it. 
 flush or extra frame submission. `GpuRetireQueue` retains its separate existing retirement fence.
 
 The window exposes its owner as `Frame.Submission`. The loop calls `Begin` before `onPrepare`, records the
-initial clear, `onFrame` and capture taps in one list, then submits once. Participants receive `Submitted`
+host initialization (unless `RendererInitializesSwapchain` is enabled), `onFrame` and capture taps in one list,
+then submits once. Participants receive `Submitted`
 before capture `AfterSubmit` and `Present`. A suppressed frame or failure before submission calls `Abandon`.
 A failure after successful submission does not turn the decision into `Abandoned`.
 

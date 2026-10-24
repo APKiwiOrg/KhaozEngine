@@ -147,6 +147,7 @@ namespace KhaozEngine.Game
                 ?? new AppWindow(options.Title, options.Width, options.Height, options.PresentMode, requestedCap,
                     options.GraphicsBackendPreference, options.FocusOnLaunch ?? true);
             _window.ClearColor = options.ClearColor;
+            _window.RendererInitializesSwapchain = options.RendererInitializesSwapchain;
             // Launch monitor: a post-construction request (AppWindow applies it in Run, after OnLoad), so it works on
             // a custom WindowFactory window too. The default Saved value moves nothing.
             _window.InitialMonitor = options.InitialMonitor;
@@ -338,7 +339,7 @@ namespace KhaozEngine.Game
         /// </summary>
         protected virtual RenderFrameStats CollectFrameStats() => _surface2D.Batch.FrameStats;
 
-        /// <summary>Background colour cleared each frame; forwards to <see cref="AppWindow.ClearColor"/>.</summary>
+        /// <summary>Host clear colour. Forwards to <see cref="AppWindow.ClearColor"/>.</summary>
         public Color ClearColor
         {
             get => _window.ClearColor;

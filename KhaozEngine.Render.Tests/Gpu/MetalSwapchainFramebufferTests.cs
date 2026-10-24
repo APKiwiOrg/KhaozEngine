@@ -135,17 +135,8 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE DISCRIMINATOR ROW 12 ADDED, PINNED FROM BOTH SIDES. <c>IsSwapchain</c> is what tells the swapchain's
-        /// own framebuffer from an aggregate over engine textures.
-        /// <para>
-        /// <b>ROW 15 FOUND IT HAS NO PRODUCTION READER ON THIS BACKEND, and the reason is M-W6.</b> The row 12
-        /// handoff described it as what the present path asks before deciding whether a frame has anything to
-        /// present. The present path does not ask it: <c>-presentDrawable:</c> presents a DRAWABLE rather than a
-        /// framebuffer, and the answer to "is there anything to present" is whether a drawable is held. The Vulkan
-        /// sibling's reader is its semaphore routing (which submit carries the acquire semaphore), and M-W6's
-        /// separate present buffer plus queue-order execution removes that question entirely here. It is kept as
-        /// the discriminator both sources answer, and this is what stops either answer drifting.
-        /// </para>
+        /// The swapchain discriminator marks a command list's recording as eligible for capture copies.
+        /// Ordinary framebuffer sources do not set it.
         /// </summary>
         [Fact]
         public void TheSwapchainFramebufferIsTheOnlySourceThatSaysItIsOne()
@@ -158,7 +149,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE CORRECTION, DRIVEN THROUGH THE REAL SCHEDULE RATHER THAN ASSERTED ABOUT A NUMBER. This is the row
         /// that would have failed on the shape row 12's handoff originally described: bind, draw, publish a new
-        /// texture, bind again, draw again, and read which texture the second pass actually named.
+        /// texture between recordings, bind again, draw again, and read which texture the second pass named.
         /// <para>
         /// WITH A STABLE Id THE SECOND PASS NAMES THE FIRST DRAWABLE. <see cref="MetalRenderPassSchedule.SetFramebuffer"/>
         /// returns on a matching Id before copying the incoming record, so the <c>AsBound</c> read still runs and
@@ -183,13 +174,17 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(new IntPtr(0x10), render.Passes[0].Colour[0].Texture);
 
-            // AN ACQUIRE MOVED THE TEXTURE. The boundary does this on the submit thread with no recording in
-            // flight, and this row does it mid-recording precisely because that is the case the Id has to survive.
+            // End the old pass before publishing. Retain the schedule's previous binding to exercise its Id guard.
+            schedule.EndPass();
+            scope.EnsureNoEncoder();
+            scope.BeginRecording(new IntPtr(0x101));
             fb.Adopt(new MetalAttachment(new IntPtr(0x20), GpuPixelFormat.B8G8R8A8UNorm),
-                new MetalDrawableSize(8u, 8u));
+                new MetalDrawableSize(4u, 6u));
 
             MetalBoundFramebuffer second = source.AsBound;
             schedule.SetFramebuffer(in second);
+            Assert.Equal(4u, schedule.BoundFramebuffer.Width);
+            Assert.Equal(6u, schedule.BoundFramebuffer.Height);
             schedule.PrepareDraw();
 
             Assert.Equal(2, render.Passes.Count);
@@ -199,8 +194,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// AND THE OTHER HALF OF M-A6 STILL HOLDS: a rebind with NO acquire between it and the last one is a
         /// no-op, so the guard is not simply defeated. Two <c>SetFramebuffer</c> calls in one recording always see
-        /// the same number, because an acquire only ever happens at a present boundary and a boundary starts a new
-        /// recording. That is why minting a fresh Id per acquire costs nothing at all: the re-emitted viewport and
+        /// the same number, because the first bind resolves the frame and later binds keep that attachment.
+        /// Minting a fresh Id per acquire costs nothing at all: the re-emitted viewport and
         /// scissor row 12's handoff weighed as its price never arrive.
         /// </summary>
         [Fact]
@@ -229,9 +224,12 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         static MetalSwapchainFramebuffer Make(IntPtr texture, uint width, uint height)
-            => new(GpuPixelFormat.B8G8R8A8UNorm,
-                new MetalAttachment(texture, GpuPixelFormat.B8G8R8A8UNorm),
-                new MetalDrawableSize(width, height));
+        {
+            var size = new MetalDrawableSize(width, height);
+            var fb = new MetalSwapchainFramebuffer(GpuPixelFormat.B8G8R8A8UNorm, size, () => { });
+            fb.Adopt(new MetalAttachment(texture, GpuPixelFormat.B8G8R8A8UNorm), size);
+            return fb;
+        }
 
         static MetalBoundFramebuffer Bound(MetalSwapchainFramebuffer fb)
             => ((IMetalBoundFramebufferSource)fb).AsBound;

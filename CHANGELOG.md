@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.12.3
+
+2026-10-24
+
+- Expose blocking offline `TileWorldView.SettleForCapture` and `SettleInteriorCutForCapture` for
+  consumer-owned headless scenes. Settle ground, cover, selected prop layers and HLOD, and the interior cut
+  before drawing, including Decor ground, without windowed apply budgets (#1375).
+- Defer Metal drawable acquisition until the current frame first binds its swapchain, preserving cached
+  framebuffer and capture behavior.
+- Add the default-off `RendererInitializesSwapchain` host option so a full-output renderer can avoid the
+  redundant initial swapchain bind and clear.
+- Filter exact point-shadow hits before sorting and index submitted foliage point casters once per frame,
+  preserving query order, signatures and draw runs.
+
 ## 21.12.2
 
 2026-10-24

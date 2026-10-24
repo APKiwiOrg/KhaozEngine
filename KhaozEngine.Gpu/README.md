@@ -181,13 +181,16 @@ What it owns today:
   `BackpressureStallCount` / `BackpressureStallMs`, `OffTimelineDeferred` / `OffTimelineOutstanding`, and
   `AcquireWaitCount` / `AcquireWaitMs`. All three native backends fill it, and they are the only backends since
   18.0.0.
-  - **The acquire pair is the one reading that separates the two acquire models.** `AcquireWaitCount` is present
-    boundaries that BLOCKED waiting for the presentation engine to hand back the next swapchain image, and it is
-    a READING rather than a count of calls: the native Vulkan backend probes with a zero timeout first and records
-    only the blocking call that follows. A backend that acquires with a semaphore and lets the GPU do the waiting
-    reports zero, and one that blocks the CPU reports one per frame. Zero is a reading rather than a gap on a
-    backend with no acquire at all and on a headless device with no swapchain, which is why `HasValue` below is
-    what answers "did anybody look".
+  - **The acquire pair has backend-specific recording rules.** `AcquireWaitCount` counts recorded acquisition
+    entries, and `AcquireWaitMs` sums their full durations. Metal records every current-frame drawable-resolution
+    API attempt, including nonblocking and nil attempts, at the first swapchain framebuffer bind or on demand for
+    a present-only call. Repeated binds reuse the resolved frame, including nil. Its `FramesBegun` still counts
+    present boundaries. Construction and `Present` do not pre-acquire the next frame. Vulkan's semaphore path
+    probes with a zero timeout and records only the subsequent blocking call when the probe reports not ready.
+    Its explicit CPU-stall path records each stalling acquire. The recorded durations include API work and are
+    not isolated blocking time. Direct3D 11 has no acquire step and reports zero for the pair. A headless device
+    with no swapchain also reports zero, which is a reading rather than a gap. `HasValue` below answers whether
+    the device keeps counters.
   - **`HasValue` is the whole point, because absent is not zero.** Zero stalls is the PASSING result of a field
     soak, so a backend that keeps no counters must not report the same numbers as one that counted and found
     nothing. The default value answers false, which no live backend gives any more. The

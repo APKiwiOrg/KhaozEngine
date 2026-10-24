@@ -59,19 +59,56 @@ internal sealed class ConvexCircularCertificate
             if (squaredBounds.Lower > marginBounds.Upper) { sign = 1; return true; }
             if (squaredBounds.Upper < marginBounds.Lower) { sign = -1; return true; }
         }
+        return TryCompareSquared(Q.From(margin) * Q.From(margin), ref work, scratch, out sign);
+    }
+
+    internal bool TryCompareSquared(Q squaredValue, ref ConvexQueryWork work, ConvexQueryScratch scratch, out int sign)
+    {
+        sign = 0;
+        if (!Root.IsAlive || !ReferenceEquals(Root.Owner, scratch) || !squaredValue.Rational || squaredValue.Sign < 0 || !work.Feature()) return false;
         int checkpoint = scratch.Polynomials.Used;
         try
         {
             var arena = scratch.Polynomials;
             var arithmetic = new CircularPolynomialArithmetic(arena);
             var r2 = arena.Constant((_radius * _radius).A);
-            var difference = CircularContactEquation.Difference(_rho2, r2, _y.Multiply(_y), arena.Constant((Q.From(margin) * Q.From(margin)).A), arithmetic);
+            var difference = CircularContactEquation.Difference(_rho2, r2, _y.Multiply(_y), arena.Constant(squaredValue.A), arithmetic);
             if (!Root.TrySign(difference, ref work, scratch, out int original)) return false;
             if (original < 0) { sign = -1; return true; }
             var squared = CircularContactEquation.SquaredDifference(difference, r2, _rho2, arithmetic);
             return Root.TrySign(squared, ref work, scratch, out sign);
         }
         catch (ConvexExactRefusalException) { return work.Refuse(); }
+        finally { scratch.Polynomials.Restore(checkpoint); }
+    }
+
+    internal bool TryTemporalSupport(in ConvexQueryRequest request, in ConvexPlanarSource source,
+        double from, double to, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexTemporalVertex target)
+    {
+        target = default;
+        if (!Root.IsAlive || !ReferenceEquals(Root.Owner, scratch) || !work.Cell()) return false;
+        int vertex = 0;
+        for (int i = 1; i < source.VertexCount; i++)
+        {
+            if (!TryNormalDotSign(source.Vertex(i) - source.Vertex(vertex), ref work, scratch, out int sign)) return false;
+            if (sign < 0) vertex = i;
+        }
+        if (!TryNormalDotSign(P.From(request.Displacement), ref work, scratch, out int velocity)) return false;
+        target = ConvexTemporalVertex.Create(request, source, vertex, velocity > 0 ? to : from);
+        return true;
+    }
+
+    bool TryNormalDotSign(P offset, ref ConvexQueryWork work, ConvexQueryScratch scratch, out int sign)
+    {
+        sign = 0;
+        if (!offset.X.Rational || !offset.Y.Rational || !offset.Z.Rational || !work.Feature()) return false;
+        int checkpoint = scratch.Polynomials.Used;
+        try
+        {
+            var horizontal = Add(_x.Scale(offset.X.A), _z.Scale(offset.Z.A));
+            var full = Add(horizontal, _y.Scale(offset.Y.A));
+            return Root.TryRadicalSign(new(horizontal.Scale(-_radius.A), full, _rho2), ref work, scratch, out sign);
+        }
         finally { scratch.Polynomials.Restore(checkpoint); }
     }
 

@@ -11,21 +11,23 @@ internal static class ConvexPlanarPenetration
 {
     internal static bool TryEvaluate(in ConvexQueryRequest request, in InstalledSweepLeaf leaf,
         ConvexCertificateFraction fraction, ref ConvexQueryWork work, ConvexQueryScratch scratch,
-        out ConvexPenetrationCertificate certificate)
+        out ConvexPenetrationCertificate certificate, bool replace = true)
     {
-        return TryEvaluate(request, leaf, fraction, ref work, scratch, out certificate, out _) && certificate.IsAlive;
+        return TryEvaluate(request, leaf, fraction, ref work, scratch, out certificate, out _, replace) && certificate.IsAlive;
     }
 
     internal static bool TryEvaluate(in ConvexQueryRequest request, in InstalledSweepLeaf leaf,
         ConvexCertificateFraction fraction, ref ConvexQueryWork work, ConvexQueryScratch scratch,
-        out ConvexPenetrationCertificate certificate, out ConvexLeafEvidence contact)
+        out ConvexPenetrationCertificate certificate, out ConvexLeafEvidence contact, bool replace = true)
     {
         certificate = default; contact = default;
         if (!fraction.IsValid || fraction.Root is not null || !fraction.Value.Rational ||
             scratch is null || !ConvexQueryPolicy.Contains(request) || work.Exhausted || work.Descendants == 0 ||
             !ConvexPlanarSource.TryCreate(leaf, out var source)) return false;
         bool accepted = false;
-        scratch.BeginCertificates();
+        if (replace) scratch.BeginCertificates();
+        else scratch.Penetration.Reset();
+        int checkpoint = scratch.Polynomials.Used;
         try
         {
             for (int i = 0; i < source.VertexCount; i++)
@@ -64,14 +66,22 @@ internal static class ConvexPlanarPenetration
             if (work.Exhausted || initial.IsAlive) return false;
             // An unproven hull cannot authorize overlap or a miss. The accepted classifier
             // supplies touching/separated evidence, or the requested operation refuses.
-            if (!ConvexPlanarContacts.TryClassify(request, source, fraction, ref work, scratch, out var fallback) ||
+            if (!ConvexPlanarContacts.TryClassify(request, source, fraction, ref work, scratch, out var fallback, replace: replace) ||
                 fallback.State == ConvexInitialState.Overlapping) return false;
             contact = fallback.Contact with { CertifiedErrorMetres = 0.001f };
             accepted = true;
             return true;
         }
         catch (ConvexExactRefusalException) { return work.Refuse(); }
-        finally { if (!accepted) { scratch.Penetration.Reset(); scratch.BeginCertificates(); } }
+        finally
+        {
+            if (!accepted)
+            {
+                scratch.Penetration.Reset();
+                if (replace) scratch.BeginCertificates();
+                else scratch.Polynomials.Restore(checkpoint);
+            }
+        }
     }
 
     static bool TryFaces(in ConvexQueryRequest request, in ConvexPlanarSource source, P feet,

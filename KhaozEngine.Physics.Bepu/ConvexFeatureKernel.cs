@@ -73,7 +73,10 @@ internal static class ConvexFeatureKernel
             for (int i = 0; i < source.VertexCount; i++)
             {
                 if (!work.Feature()) return false;
-                P p = source.Vertex(i);
+                // The scope bound belongs to installed vertices. Temporal proposal points
+                // also contain the translation, which the request and exact policy bound.
+                P p = source.IsOriginal ? source.Vertex(i) :
+                    ConvexPlanarFeatures.Vertex(source.Leaf, source.OriginalVertex(i), Vector3.Zero);
                 foreach (Q c in new[] { p.X, p.Y, p.Z })
                     if ((Q.From(2048) - c).Sign < 0 || (Q.From(2048) + c).Sign < 0) return false;
             }

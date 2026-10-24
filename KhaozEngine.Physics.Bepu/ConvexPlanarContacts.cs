@@ -110,6 +110,18 @@ internal static class ConvexPlanarContacts
         new(direction.X.Divide(length), direction.Y.Divide(length), direction.Z.Divide(length));
     static GeometryVector Add(GeometryVector a, GeometryVector b) => new(a.X.Add(b.X), a.Y.Add(b.Y), a.Z.Add(b.Z));
 
+    internal static bool TryAttainedTouch(in ConvexDistanceCertificate pair, ref ConvexQueryWork work,
+        ConvexQueryScratch scratch, out ConvexInitialEvidence evidence)
+    {
+        evidence = default;
+        if (!pair.IsOwnedBy(scratch) || !pair.Source.IsOriginal ||
+            !pair.TryCompareSquaredMargin(pair.Request.Shape.Margin, ref work, scratch, out int sign) || sign != 0) return false;
+        if (pair.Request.Shape.Margin > 0) return TryRoundedTouch(pair, out evidence);
+        if (pair.IsCircular || pair.Query != pair.Target || !TryNormal(pair, pair.Query, ref work, out var direction) ||
+            !TryLocalFeature(pair.Source, pair.Feet, pair.Target, ref work, out var feature, out int id)) return false;
+        return TryEncodeTouch(pair, pair.Target + pair.Feet, direction, feature, id, out evidence);
+    }
+
     static bool TryRoundedTouch(in ConvexDistanceCertificate pair, out ConvexInitialEvidence evidence)
     {
         evidence = default;
@@ -147,7 +159,7 @@ internal static class ConvexPlanarContacts
             source.Vertex(source.FaceVertex(face, source.InteriorFaceSize(face) - 1)) - a);
     }
 
-    static bool TryLocalFeature(in ConvexPlanarSource source, P feet, P common, ref ConvexQueryWork work,
+    internal static bool TryLocalFeature(in ConvexPlanarSource source, P feet, P common, ref ConvexQueryWork work,
         out ConvexTargetFeature feature, out int id)
     {
         feature = default; id = 0;

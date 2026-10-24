@@ -71,6 +71,48 @@ internal readonly struct ConvexDistanceCertificate
         try { sign = (BaseSquaredDistance - Q.From(margin) * Q.From(margin)).Sign; return true; }
         catch (ConvexExactRefusalException) { return work.Refuse(); }
     }
+
+    internal bool TryCompareDistance(in ConvexDistanceCertificate other, ref ConvexQueryWork work,
+        ConvexQueryScratch scratch, out int sign)
+    {
+        sign = 0;
+        if (!IsOwnedBy(scratch) || !other.IsOwnedBy(scratch) || !work.Feature()) return false;
+        var a = SquaredDistanceBounds; var b = other.SquaredDistanceBounds;
+        if (a.IsResolved && b.IsResolved)
+        {
+            if (a.Upper < b.Lower) { sign = -1; return true; }
+            if (a.Lower > b.Upper) { sign = 1; return true; }
+        }
+        if (!IsCircular && !other.IsCircular) { sign = (BaseSquaredDistance - other.BaseSquaredDistance).Sign; return true; }
+        if (IsCircular && !other.IsCircular && other.BaseSquaredDistance.Rational)
+            return Circular!.TryCompareSquared(other.BaseSquaredDistance, ref work, scratch, out sign);
+        if (!IsCircular && other.IsCircular && BaseSquaredDistance.Rational &&
+            other.Circular!.TryCompareSquared(BaseSquaredDistance, ref work, scratch, out sign))
+        { sign = -sign; return true; }
+        return false;
+    }
+
+    internal bool TryOriginal(in ConvexQueryRequest request, in ConvexPlanarSource source, ConvexCertificateFraction time,
+        ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexDistanceCertificate pair)
+    {
+        pair = default;
+        if (!IsOwnedBy(scratch) || !source.IsOriginal || !source.IsValid || !Request.Equals(request) ||
+            !ReferenceEquals(source.Leaf.Geometry, Source.Leaf.Geometry)) return false;
+        if (Circular is not null) return Circular.TryAtFraction(request, source, time, ref work, scratch, out pair);
+        if (time.Root is not null || !work.Cell() || !work.Feature()) return false;
+        P feet = P.From(request.Pose.Position) + P.From(request.Displacement) * time.Value;
+        if (!ConvexPlanarFeatures.Member(request.Shape, Query)) return false;
+        for (int face = 0; face < source.FaceCount; face++) if (!work.Feature()) return false;
+        if (!ConvexPlanarFeatures.InTarget(source, feet, Target)) return false;
+        if (BaseSquaredDistance.Sign > 0 && (!ConvexPlanarFeatures.NormalCone(request.Shape, Query, TowardTarget) ||
+            !ConvexPlanarFeatures.SupportsTarget(source, feet, Target, TowardTarget, ref work))) return false;
+        if (!ConvexPlanarContacts.TryLocalFeature(source, feet, Target, ref work, out var feature, out int id))
+        { feature = ConvexTargetFeature.Interior; id = source.FaceCount + source.EdgeCount + source.VertexCount; }
+        if (work.Exhausted) return false;
+        var context = new ConvexDistanceContext(request, source, time, scratch, false);
+        pair = new(context, Query, Target, feature, id, BaseOverlap);
+        return true;
+    }
 }
 
 internal readonly record struct ConvexStaticResult(ConvexLeafEvidence Evidence, ConvexDistanceCertificate Certificate);

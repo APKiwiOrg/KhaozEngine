@@ -1579,3 +1579,249 @@ The full report, stage matrix and self-review are in task-2b.2-report.md in that
 No source/test path, cap, ceiling, tolerance, r0/r1 producer, capsule arithmetic, baseline,
 arrival rule, roof/footprint protection or raw identity change is committed. No instrumentation
 remains in production. No push, merge, tag, branch change or integration runs.
+
+## Task 2b.2 accepted continuation under SS-R15
+
+
+Starting BASE 6ee04598b. The exact root, branch, HEAD and clean tracked-tree guard
+passed before task work. The SS-R14 archive applied after git apply --check, both exit 0.
+Read the complete brief and report, SS-R1 through SS-R15, the applicable engine rules,
+the Global Constraints and the design's impact and bounded-work sections. Used execution,
+systematic debugging, test-driven development and verification-before-completion.
+No subagents or reviewers are dispatched. No fetch, branch change, integration, push,
+release, tag, full suite, full solution build, timing, load or consumer launch is authorized.
+
+### Corrected fixture and independent oracle
+
+The displacement is corrected to (8,15,-31)/512, keeping all other fixture values.
+The independent sweep oracle tests an exact rational proposed time using the represented
+snapshot vertices and the closed meridian circle inequality, retaining its unsquared sign.
+At 1024*m/25 the original vertex is at Euclidean distance exactly m from the rim.
+The archived negative displacement remains a control. An independent continuous support
+plane over both endpoint copies proves separation for its whole interval.
+
+First diagnostic command, exit 1, 8 executed, 7 passed, 1 failed.
+
+```bash
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexTemporalSimplexTests' --logger 'console;verbosity=detailed'
+```
+
+Log /tmp/khaozengine-short-shell/task-2b.2-r15-diagnostic.log. The corrected tangent's
+independent attainment check passes. The failure is the old oracle's undecided negative
+control, before the corrected production event runs. Added the independent endpoint
+support-plane check, without changing production. The same command then exits 0,
+8 executed and passed. Log /tmp/khaozengine-short-shell/task-2b.2-r15-corrected.log.
+The negative-time production request returns default event evidence at 32 cells and
+74 features, without exhaustion. It cannot publish Clear. The corrected root event
+returns at 86 cells and 439 features, without exhaustion. These are observations only.
+The deliberately lowered zero-cell control is the only exhausted account in that run.
+
+### Completion of the remaining certificate obligations
+
+Added the missing attained-weight and endpoint-loan tests before their implementation.
+The named focused command, without the detailed logger, exits 1 at the intended missing
+Attainment/Original members and endpoint-loan overload. No tests execute. Log
+/tmp/khaozengine-short-shell/task-2b.2-r15-obligations-red.log.
+
+The attained record now copies its original vertex/time labels and exact weight expressions
+into private arrays exposed only as read-only spans. Circular edge weights are 1-s and s
+at the same retained unsquared stationary root. Other slots carry exact zero. Rational and
+quadratic weights retain the exact affine solution. Root refinement changes enclosures only,
+never labels, coefficients or the affine identity. Fraction/root ownership and replacement
+remain enforced, and inner certificates must use the unshifted original-feet frame.
+
+The impact certificate distinguishes primal attainment from its operational normal. Its Pair
+is explicitly the inner primal certificate. It never publishes that pair's normal or feature
+as an original target result. Touching revalidates both full original cones and uses 2c.1.
+A strict circular margin gap supplies a Lipschitz neighbourhood, from which a dyadic upper
+endpoint is selected. The accepted 2c.2 path independently proves overlap and supplies its
+original-member minimum-translation normal there. Penetration can borrow the existing scratch
+generation, so the root-defined event and its immutable weights remain alive. No second
+certifier, moving equation, additional arithmetic extension or raised limit is introduced.
+
+A coordinator can loan its already attained original endpoint certificate. Geometry, pose,
+request, fraction, scratch and translation are checked before reuse. The existing four-slot
+proposal scratch holds exact temporal labels during refinement. Removed the unused rounded
+proposal/reduction prototype, which was no longer part of the SS-R14 ordering.
+
+The first implementation diagnostic uses the same detailed focused command, exits 1,
+21 executed, 20 passed and 1 failed. Log
+/tmp/khaozengine-short-shell/task-2b.2-r15-obligations.log. The only failure is a test assertion
+on the m=0.001 Apex/Vertex row. The accepted penetration bracket uses a Shoulder support,
+while the primal attained point is Apex. An operational MTV's support feature need not equal
+the primal event's feature. The test now checks the exact primal common point and intended
+stratum, separately requiring the accepted original penetration certificate. The m=0 contact
+feature assertion remains unchanged. This changes no geometry or tolerance.
+
+The next detailed focused command exits 0, all 21 tests pass, including all 36 finite-stratum
+rows. Log /tmp/khaozengine-short-shell/task-2b.2-r15-matrix.log. Only deliberate lowered budgets
+exhaust. The root-defined circular strict overlap returns a live attained record and a live
+2c.2 normal at a rational dyadic endpoint, at 150 cells and 934 features through return.
+The original-normal control supplies a positive inner +Y pair whose normal fails on the full
+member. It succeeds with the accepted original -X penetration normal. Stationary paths,
+arbitrary represented 3D boxes and non-box hulls, endpoint reuse, root lifetime, foreign leaf,
+foreign scratch, another request, independent roots, lowered cells/features/coefficients and
+original radical-sign controls pass. Probe budgets derive from the same run, never fixed pins.
+
+### SS-R15 stage tables
+
+Temporary stage checkpoints in task-2b.2-r15-matrix.log give the following differences.
+Every entry is cells / features, observed in this run only. Static attainment includes the
+accepted circular root machinery. Original validation includes touching encoding or dyadic
+endpoint selection. Penetration is the existing 2c.2 path. Totals exclude post-return test
+comparisons. No interval checks or coordinator work are hidden in this event-only routine.
+
+| Stage | Box m=0 | Box m=0.001 | Rim tie m=0.001 | Circular strict overlap | HeadDisc/Face m=0 | Shoulder/Edge m=0.001 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Original preflight | 0 / 8 | 0 / 8 | 0 / 4 | 0 / 4 | 0 / 8 | 0 / 6 |
+| Original endpoint certificates | 2 / 10 | 2 / 10 | 33 / 54 | 33 / 54 | 7 / 19 | 129 / 237 |
+| Exact affine seed and lifting | 6 / 22 | 6 / 22 | 1 / 4 | 1 / 4 | 6 / 22 | 3 / 12 |
+| Inner static attainment | 6 / 12 | 6 / 12 | 52 / 166 | 54 / 170 | 6 / 12 | 26 / 36 |
+| Margin, weights and time | 1 / 6 | 1 / 6 | 0 / 79 | 0 / 56 | 1 / 6 | 1 / 5 |
+| Original validation and encoding | 10 / 22 | 1 / 13 | 0 / 193 | 0 / 157 | 8 / 34 | 1 / 24 |
+| Existing 2c.2 penetration | 88 / 773 | 86 / 736 | 0 / 0 | 62 / 489 | 0 / 0 | 80 / 685 |
+| Total through return | 113 / 853 | 102 / 807 | 86 / 500 | 150 / 934 | 28 / 101 | 240 / 1005 |
+
+The negative-time control remains 32 / 74. Its stages are preflight 0 / 4, original endpoints
+23 / 42, affine seed 1 / 4, inner static attainment 6 / 14, exact-normal refinement 2 / 7,
+and margin/progress decisions 0 / 3. It never reaches original-event validation and returns
+default evidence without exhaustion.
+
+The complete matrix follows. These counts include post-return validation, so feature totals
+are slightly larger than the through-return totals above. There are no absolute counter pins.
+
+| Query feature | Face m=0 | Edge m=0 | Vertex m=0 | Face m=0.001 | Edge m=0.001 | Vertex m=0.001 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Apex | 47 / 168 | 48 / 142 | 26 / 72 | 129 / 831 | 115 / 600 | 67 / 336 |
+| Lower cone | 47 / 166 | 121 / 229 | 26 / 67 | 129 / 828 | 192 / 832 | 80 / 456 |
+| Shoulder | 47 / 164 | 168 / 354 | 26 / 67 | 133 / 910 | 240 / 1008 | 83 / 543 |
+| Cylinder | 47 / 164 | 121 / 219 | 26 / 67 | 131 / 864 | 189 / 772 | 79 / 451 |
+| Head disc | 28 / 104 | 28 / 78 | 40 / 96 | 100 / 643 | 86 / 476 | 83 / 377 |
+| Rim | 54 / 177 | 146 / 285 | 22 / 65 | 136 / 862 | 217 / 798 | 75 / 421 |
+
+No required row exhausts. All instrumentation is removed before the final focused and Common
+runs. The final focused coverage also includes independent represented-target halfspace and
+meridian checks of each matrix endpoint, exact original margin-tie/upper-witness checks and
+nonzero paths with a stationary contact interval.
+
+### Final focused and Common verification
+
+After removing instrumentation, the exact detailed focused command exits 0, 23 executed
+and passed, zero failures/skips. Log /tmp/khaozengine-short-shell/task-2b.2-r15-green.log.
+The two additional rows are the nonzero stationary contact interval at both margins.
+All independent endpoint membership checks and the exact original margin tie pass.
+
+The first Common command is copied verbatim from the appended brief and executed once,
+synchronously through build-slot --heavy. Exit 0, 495 executed and passed, zero failures/skips.
+Log /tmp/khaozengine-short-shell/task-2b.2-r15-common-game.log. This includes the accepted
+Task 2 classes, capsule families, ShellGeometry, GroundCore, general/hull/rotated box,
+cylinder/curved/compound/mesh sweeps, captured stairs and the SS-R5/SS-R6 identity controls.
+
+The second Common command runs once with --no-build, also synchronously through the heavy
+slot. Exit 0, 741 executed and passed, zero failures/skips. Log
+/tmp/khaozengine-short-shell/task-2b.2-r15-common-footprint.log. All footprint, proof-reuse
+geometry and proof-reuse work controls remain green.
+
+The third Common command runs once, exit 0, seven executed and passed, zero failures/skips.
+Log /tmp/khaozengine-short-shell/task-2b.2-r15-common-navigation.log. The unchanged test calls
+BuildFixture(fixture) with its default null execution argument, hence degree 1, and compares
+each normalized full-file SHA-256 with its unchanged pin. All seven equality checks pass.
+
+| Fixture | Unchanged normalized SHA-256 |
+| --- | --- |
+| low-lip-bank | 494ab0951ab46de04665351bf1e39ad9156f30aefa73cb43b34f4ecaba72e922 |
+| deck-over-ground | 77addcbc9c054f85e1a14f916bd95af75d02f105c54ad8e56a3a25716b0d44cc |
+| wade-only-pool | a735ea5a41a1adb58666219b053197ed457b3c7edd830e18f29c7c5c8a1a1635 |
+| rebased-origin | e5c86385e4141a289d41d8efbb66766e5ac7c942f825521fff91dede8e9b4eee |
+| mixed-legacy-contact | 94fc16f1dee6cfa4c99db7ce490443271a0eb2fe3d9f0906312a836c5cd9a856 |
+| stair-accepted-refused | 62a061314987a1b8243f9eb8da639cd0239ec200f8f62f11e69e62f5db20959a |
+| multi-layer-row-bands | ae89cde4394002043b200b5e25e4eb0ef778ced4438cd7e985bde8dd96de811a |
+
+The exact three Common commands, each exit 0, are
+
+```bash
+build-slot --label short-shell-design --heavy -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexIntervalCertificateTests|FullyQualifiedName~ConvexInitialStateTests|FullyQualifiedName~ConvexPlanarPenetrationTests|FullyQualifiedName~ConvexTemporalSimplexTests|FullyQualifiedName~ConvexBracketSweepTests|FullyQualifiedName~ConvexRoundedVertexSweepTests|FullyQualifiedName~ConvexPlanarSweepTests|FullyQualifiedName~ConvexSweepOracleTests|FullyQualifiedName~ConvexSweepPublicationTests|FullyQualifiedName~ConvexPlanarDistanceTests|FullyQualifiedName~ConvexCircularEdgeTests|FullyQualifiedName~ConvexGeneralPlanarTests|FullyQualifiedName~ConvexMarginOracleTests|FullyQualifiedName~ConvexFeaturePairCoverageTests|FullyQualifiedName~ConvexFeatureKernelTests|FullyQualifiedName~ConvexQueryContractTests|FullyQualifiedName~ShellGeometryTests|FullyQualifiedName~GroundCoreTests|FullyQualifiedName~CapturedStairExplicitSweepTests|FullyQualifiedName~BepuCertifiedCapsuleSweepTests|FullyQualifiedName~CertifiedRotatedBoxSweepTests|FullyQualifiedName~CertifiedHullSweepTests|FullyQualifiedName~CertifiedCurvedSweep|FullyQualifiedName~CertifiedCompoundSweepTests|FullyQualifiedName~CertifiedMeshSweepTests|FullyQualifiedName~CapsuleSweepValueTests|FullyQualifiedName~SupportNeighborhoodCurvedTests|FullyQualifiedName~SupportCurvedWorkTests|FullyQualifiedName~SupportDiscEdgeTests|FullyQualifiedName~ExactCurvedInstallControlTests|FullyQualifiedName~InstalledSupportPoseTests' --logger 'console;verbosity=detailed'
+build-slot --label short-shell-design --heavy -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~SupportFootprintTests|FullyQualifiedName~SupportFootprintProofReuseGeometryTests|FullyQualifiedName~SupportFootprintProofReuseWorkTests'
+build-slot --label short-shell-design --heavy -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ContactNavigationBaselineTests.SerialBakeMatchesNormalizedFullFileBaseline'
+```
+
+### Self-review and finish boundary
+
+Self-review covered the complete task diff, the exact temporal-source affine identity,
+all four ranks, closed source domains, immutable root weights and lifetime, original-member
+normal validation, rational penetration admission, dyadic endpoint selection, exact margin
+and radical signs, all new negative controls and the unchanged protected-source diff.
+The missing-API red, the oracle negative-control correction, the incorrect feature assertion
+and every final green result are recorded above. This is an author self-review, with no
+subagent or reviewer, as requested.
+
+There is one event path through the accepted static certificate. An unsupported mixed field,
+independent circular-root comparison or undecided predicate refuses atomically. The unit does
+not claim universal bounded convergence or publish a Sweep/Clear result. The final bracket
+coordinator and retirement of r0/r1 remain Task 2b.3, as planned. No obligation of 2b.2 is
+deferred. There are no material concerns from this self-review.
+
+The four r0/r1 producers, capsule APIs and arithmetic, InstalledSweepLeaf, all movement and
+navigation baseline sources, raw layer identity, the 1 mm arrival ball, roof and footprint
+protections, version and release files are unchanged. All temporary instrumentation is
+removed. No cap, ceiling, tolerance, dependency, version or exemption is changed. Full solution
+build/test/format remains Task 12. No manual validation is required for this headless unit.
+Integration, pushing and release remain with the orchestrator. No push, merge, tag or branch
+change is performed.
+
+### Self-review correction, installed bound versus temporal coordinates
+
+The final review found one domain check applied to the wrong coordinates. The retained
+static helper checked source.Vertex(i) against the existing 2048 m installed-target bound.
+For an inner temporal source, those coordinates also contain the original displacement.
+A valid installed target near zero, with query feet (4096,0,0), displacement (-4096,0,0)
+and the singleton event interval [1,1], therefore refused before static attainment.
+The original feet at t=1 are exactly zero, so this is an admitted and representable event.
+
+Added both-margin deterministic regressions and an out-of-domain original-vertex control
+before the correction. Exact red command
+
+```bash
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexTemporalSimplexTests.TemporalTranslation' --logger 'console;verbosity=detailed'
+```
+
+Exit 1, three executed, one passed and two failed. Both valid rows refuse at 8 cells and
+39 features, without exhaustion. The installed-bound negative control passes. Log
+/tmp/khaozengine-short-shell/task-2b.2-r15-frame-red.log.
+
+Corrected ConvexFeatureKernel.TryDistanceCertificate to check each inner label's original
+installed vertex through the same represented map. The original 2048 m bound is unchanged,
+and TryImpact still preflights every original target vertex. Request bounds and exact-bit
+limits also remain unchanged. This is a provenance correction in the reused static helper,
+with no new equation, certificate path, limit or tolerance. The singleton interval tests
+also cover exact endpoint contact after a large represented translation.
+
+The detailed full focused command then exits 0, all 26 tests pass, zero failures/skips.
+Log /tmp/khaozengine-short-shell/task-2b.2-r15-frame-green.log. The earlier 23-test and Common
+passes predate this correction and are not reused as final proof. The three unchanged Common
+commands are rerun once each after this source change for fresh final verification.
+
+### Final verification after the self-review correction
+
+All commands run synchronously, one at a time, through build-slot. The unchanged Common
+commands above run once each after the final source correction. Final results are
+
+| Selection | Exit | Passed / executed | Log under /tmp/khaozengine-short-shell/ |
+| --- | ---: | ---: | --- |
+| Focused temporal simplex class | 0 | 26 / 26 | task-2b.2-r15-frame-green.log |
+| Common Game | 0 | 498 / 498 | task-2b.2-r15-final-common-game.log |
+| Common footprint | 0 | 741 / 741 | task-2b.2-r15-final-common-footprint.log |
+| Common serial navigation | 0 | 7 / 7 | task-2b.2-r15-final-common-navigation.log |
+
+There are no failures or skips. All seven unchanged normalized hashes again pass with
+null execution, hence degree 1. Release compilation reports no warnings or errors.
+The frame correction is the only production change after the earlier Common checkpoint,
+and these fresh runs verify it. All source changes are complete before these final runs.
+
+Self-review rechecked the frame correction against the original admitted-input bounds and
+its positive and negative controls. No required row refuses, no production budget exhausts
+and no material concern remains. The final diff adds no moving pair equation or second
+certification path. Instrumentation, version, capsule APIs/arithmetic, r0/r1 producers,
+InstalledSweepLeaf, raw identity, navigation baselines, arrival and roof/footprint protections
+remain as recorded above. Task 2b.2 is complete, with integration and Task 2b.3 left to the
+owning orchestrator. No manual validation is needed.

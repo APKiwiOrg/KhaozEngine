@@ -12,6 +12,7 @@ internal readonly struct ConvexPlanarSource
     readonly SourceData? _data;
     readonly int[]? _vertices;
     readonly int[][]? _faces;
+    readonly P[]? _points;
     internal bool IsOriginal => _data is not null && _vertices is null;
     internal bool IsValid => _data is { Authenticated: true } d && d.Leaf.Geometry.Matches(d.Leaf.Geometry.Owner, d.Leaf.Geometry.Root) &&
         d.Leaf.Geometry.TryPose(d.Leaf.Geometry.ParentPose, out _) && d.Leaf.Geometry.LeafPose.Position == d.Leaf.Pose.Position &&
@@ -25,8 +26,8 @@ internal readonly struct ConvexPlanarSource
 
     sealed class SourceData(InstalledSweepLeaf leaf, bool authenticated)
     { internal readonly InstalledSweepLeaf Leaf = leaf; internal readonly bool Authenticated = authenticated; }
-    ConvexPlanarSource(SourceData data, int[]? vertices = null, int[][]? faces = null)
-    { _data = data; _vertices = vertices; _faces = faces; }
+    ConvexPlanarSource(SourceData data, int[]? vertices = null, int[][]? faces = null, P[]? points = null)
+    { _data = data; _vertices = vertices; _faces = faces; _points = points; }
 
     internal static bool TryCreate(in InstalledSweepLeaf leaf, out ConvexPlanarSource source)
     {
@@ -41,7 +42,7 @@ internal readonly struct ConvexPlanarSource
 
     internal static ConvexPlanarSource FromRepresented(in InstalledSweepLeaf leaf) => new(new SourceData(leaf, false));
     internal int OriginalVertex(int index) => _vertices is null ? index : _vertices[index];
-    internal P Vertex(int index) => ConvexPlanarFeatures.Vertex(Leaf, OriginalVertex(index), Vector3.Zero);
+    internal P Vertex(int index) => _points is null ? ConvexPlanarFeatures.Vertex(Leaf, OriginalVertex(index), Vector3.Zero) : _points[index];
     internal P Vertex(int index, P feet) => Vertex(index) - feet;
     internal int FaceVertex(int face, int index) => _faces is null ? Leaf.Geometry.FaceVertex(face, index) : _faces[face][index];
     internal int InteriorFaceSize(int face) => _faces is null ? Leaf.Geometry.InteriorFaceSize(face) : 3;
@@ -64,13 +65,36 @@ internal readonly struct ConvexPlanarSource
             if (indices[i] < 0 || indices[i] >= VertexCount) return false;
             for (int j = 0; j < i; j++) if (indices[i] == indices[j]) return false;
         }
+        return TryInner(indices, null, out source);
+    }
+
+    internal bool TryTemporal(in ConvexQueryRequest request, ReadOnlySpan<ConvexTemporalVertex> vertices, out ConvexPlanarSource source)
+    {
+        source = default;
+        if (!IsValid || !IsOriginal || vertices.Length is < 1 or > 4) return false;
+        int[] indices = new int[vertices.Length];
+        P[] points = new P[vertices.Length];
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            if (!vertices[i].Matches(request, this)) return false;
+            indices[i] = vertices[i].OriginalVertex;
+            points[i] = vertices[i].Point + P.From(request.Pose.Position);
+        }
+        return TryInner(indices, points, out source);
+    }
+
+    bool TryInner(int[] indices, P[]? points, out ConvexPlanarSource source)
+    {
+        source = default;
+        var original = this;
+        P At(int index) => points is null ? original.Vertex(indices[index]) : points[index];
         try
         {
-            P a = Vertex(indices[0]);
-            if (indices.Length > 1 && P.Dot(Vertex(indices[1]) - a, Vertex(indices[1]) - a).Sign == 0) return false;
-            P n = indices.Length > 2 ? P.Cross(Vertex(indices[1]) - a, Vertex(indices[2]) - a) : default;
+            P a = At(0);
+            if (indices.Length > 1 && P.Dot(At(1) - a, At(1) - a).Sign == 0) return false;
+            P n = indices.Length > 2 ? P.Cross(At(1) - a, At(2) - a) : default;
             if (indices.Length > 2 && P.Dot(n, n).Sign == 0) return false;
-            if (indices.Length > 3 && P.Dot(n, Vertex(indices[3]) - a).Sign == 0) return false;
+            if (indices.Length > 3 && P.Dot(n, At(3) - a).Sign == 0) return false;
             int[][] faces = indices.Length switch
             {
                 3 => [[0, 1, 2], [0, 2, 1]],
@@ -81,11 +105,11 @@ internal readonly struct ConvexPlanarSource
                 for (int i = 0; i < 4; i++)
                 {
                     int[] f = faces[i];
-                    P p = Vertex(indices[f[0]]);
-                    if (P.Dot(P.Cross(Vertex(indices[f[1]]) - p, Vertex(indices[f[2]]) - p), Vertex(indices[i]) - p).Sign > 0)
+                    P p = At(f[0]);
+                    if (P.Dot(P.Cross(At(f[1]) - p, At(f[2]) - p), At(i) - p).Sign > 0)
                         (f[1], f[2]) = (f[2], f[1]);
                 }
-            source = new(_data!, indices, faces);
+            source = new(_data!, indices, faces, points);
             return true;
         }
         catch (ConvexExactRefusalException) { return false; }

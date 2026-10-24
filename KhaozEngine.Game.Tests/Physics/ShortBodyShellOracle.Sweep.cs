@@ -7,6 +7,75 @@ namespace KhaozEngine.Tests.Physics;
 
 internal static partial class ShortBodyShellOracle
 {
+    // A nominated rational time is only a proposal. Exact meridian membership of an original
+    // represented vertex proves attainment independently of temporal simplices and production roots.
+    internal static ConvexOracleEvent AttainedSweepVertex(in ConvexQueryShape shape, Pose pose,
+        ConvexOracleTarget target, Vector3 displacement, int numerator, int denominator, float scale = 1)
+    {
+        R time = new R(numerator, denominator) * R.From(scale);
+        if (time.CompareTo(R.Zero) < 0 || time.CompareTo(R.One) > 0) return default;
+        R[] d = [R.From(displacement.X), R.From(displacement.Y), R.From(displacement.Z)];
+        var translated = At(target, pose, d, time);
+        R radius = R.From(shape.Radius), margin = R.From(shape.Margin);
+        foreach (var vertex in translated.Vertices)
+        {
+            R x = new(vertex.X.Numerator, vertex.X.Denominator), y = new(vertex.Y.Numerator, vertex.Y.Denominator),
+                z = new(vertex.Z.Numerator, vertex.Z.Denominator);
+            R radial2 = x * x + z * z;
+            // The circle is a subset of the closed shell. D <= 0 or D^2 <= 4 R^2 rho^2
+            // is exactly distance(point,circle) <= margin, with its unsquared sign retained.
+            foreach (float height in new[] { shape.RingY, shape.UpperY })
+            {
+                R vertical = y - R.From(height);
+                R difference = radial2 + radius * radius + vertical * vertical - margin * margin;
+                if (difference.N.Sign <= 0 ||
+                    (difference * difference - new R(4, 1) * radius * radius * radial2).N.Sign <= 0)
+                    return SweepBounds(I.Point(time), Root(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]));
+            }
+            if (MeridianDistance(shape, x, y, z).Upper.CompareTo(margin) <= 0)
+                return SweepBounds(I.Point(time), Root(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]));
+        }
+        return default;
+    }
+
+    // A nominated world point must belong to the entire represented target, not an authored
+    // proxy. Closed halfspaces and meridian distance then prove an event at the rational time.
+    internal static ConvexOracleEvent AttainedSweepPoint(in ConvexQueryShape shape, Pose pose,
+        ConvexOracleTarget target, Vector3 displacement, Vector3 point, int numerator, int denominator)
+    {
+        R time = new(numerator, denominator);
+        if (time.CompareTo(R.Zero) < 0 || time.CompareTo(R.One) > 0) return default;
+        R[] p = [R.From(point.X), R.From(point.Y), R.From(point.Z)];
+        R[] center = [R.Zero, R.Zero, R.Zero];
+        foreach (var vertex in target.Vertices)
+        {
+            center[0] += new R(vertex.X.Numerator, vertex.X.Denominator);
+            center[1] += new R(vertex.Y.Numerator, vertex.Y.Denominator);
+            center[2] += new R(vertex.Z.Numerator, vertex.Z.Denominator);
+        }
+        for (int axis = 0; axis < 3; axis++) center[axis] /= new R(target.Vertices.Length, 1);
+        R[] Vertex(int i)
+        {
+            var vertex = target.Vertices[i];
+            return [new(vertex.X.Numerator, vertex.X.Denominator), new(vertex.Y.Numerator, vertex.Y.Denominator),
+                new(vertex.Z.Numerator, vertex.Z.Denominator)];
+        }
+        foreach (var face in target.Faces)
+        {
+            R[] a = Vertex(face[0]), b = Vertex(face[1]), c = Vertex(face[^1]);
+            R[] u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            R[] normal = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+            R Dot(R[] x) => (x[0] - a[0]) * normal[0] + (x[1] - a[1]) * normal[1] + (x[2] - a[2]) * normal[2];
+            int inside = Dot(center).N.Sign;
+            if (inside == 0 || Dot(p).N.Sign * inside < 0) return default;
+        }
+        R[] d = [R.From(displacement.X), R.From(displacement.Y), R.From(displacement.Z)];
+        for (int axis = 0; axis < 3; axis++)
+            p[axis] -= R.From(axis == 0 ? pose.Position.X : axis == 1 ? pose.Position.Y : pose.Position.Z) + d[axis] * time;
+        return MeridianDistance(shape, p[0], p[1], p[2]).Upper.CompareTo(R.From(shape.Margin)) <= 0
+            ? SweepBounds(I.Point(time), Root(d[0] * d[0] + d[1] * d[1] + d[2] * d[2])) : default;
+    }
+
     // Cartesian boxes admit a separate piecewise meridian ray construction. No production
     // feature, normal-cone, polynomial or root function supplies any expected event.
     static ConvexOracleEvent SweepEntry(in ConvexQueryShape shape, Pose pose, ConvexOracleTarget target, Vector3 displacement)
@@ -14,7 +83,21 @@ internal static partial class ShortBodyShellOracle
         if (!float.IsFinite(displacement.X) || !float.IsFinite(displacement.Y) || !float.IsFinite(displacement.Z)) return default;
         R[] d = [R.From(displacement.X), R.From(displacement.Y), R.From(displacement.Z)];
         I length = Root(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-        if (ClassifySweepPoint(shape, At(target, pose, d, R.Zero), d, out _) == 1)
+        // A fixed continuous support plane positive at both translated endpoint copies
+        // separates the whole swept target. This includes zero-speed axial negative controls.
+        var first = At(target, pose, d, R.Zero); var last = At(target, pose, d, R.One);
+        var swept = new R[first.Vertices.Length * 2][];
+        for (int i = 0; i < swept.Length; i++)
+        {
+            var vertex = i < first.Vertices.Length ? first.Vertices[i] : last.Vertices[i - first.Vertices.Length];
+            swept[i] = [new(vertex.X.Numerator, vertex.X.Denominator), new(vertex.Y.Numerator, vertex.Y.Denominator),
+                new(vertex.Z.Numerator, vertex.Z.Denominator)];
+        }
+        foreach (var axis in new R[][] { [R.One, R.Zero, R.Zero], [-R.One, R.Zero, R.Zero],
+            [R.Zero, R.One, R.Zero], [R.Zero, -R.One, R.Zero], [R.Zero, R.Zero, R.One], [R.Zero, R.Zero, -R.One] })
+            if (SeparationLower(shape, swept, axis).N.Sign > 0)
+                return new(true, Down(length.Lower), -Down(-length.Upper), ConvexSweepStatus.Clear);
+        if (ClassifySweepPoint(shape, first, d, out _) == 1)
             return new(true, 0, 0, ConvexSweepStatus.Hit);
         if (shape.Margin == 0 && Cartesian(target, pose, out var low, out var high))
             return CartesianSweep(shape, low, high, d, length);

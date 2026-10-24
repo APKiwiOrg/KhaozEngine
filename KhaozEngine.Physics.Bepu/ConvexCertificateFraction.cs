@@ -27,6 +27,8 @@ internal readonly struct ConvexCertificateFraction
         new(root, ConvexRational.From(offset), ConvexRational.From(scale), null);
     internal static ConvexCertificateFraction FromCircular(ConvexCircularCertificate circular, double offset, double scale) =>
         new(circular.Root, ConvexRational.From(offset), ConvexRational.From(scale), circular);
+    internal static ConvexCertificateFraction FromCircular(ConvexCircularCertificate circular, ConvexRational offset, ConvexRational scale) =>
+        new(circular.Root, offset, scale, circular);
 
     internal bool TryCompare(ConvexCertificateFraction other, ref ConvexQueryWork work, ConvexQueryScratch scratch, out int sign)
     {

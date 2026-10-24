@@ -97,6 +97,9 @@ when the solution or Render.Tests owns the selection, including reduced native G
 Its process tests require that freshly built executable. Ordinary full and selective CI and the native
 GPU matrix use the same setup. A raw solution build alone does not
 produce this test prerequisite. Other selected test assemblies keep their original build and test slice.
+Canonical solution and project selection uses this checkout's actual file identity. Every other
+solution inspects its resolved project roots, including a foreign solution with the canonical basename.
+Unrelated roots never acquire the renderer verifier prerequisite.
 
 Warnings are errors in every configuration. Fix warnings at the source. Do not add a blanket
 suppression or disable `TreatWarningsAsErrors`. The standing XML documentation suppression is the

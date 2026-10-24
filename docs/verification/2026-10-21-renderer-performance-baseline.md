@@ -1,8 +1,8 @@
 # Renderer baseline implementation verification
 
-This record covers current-main reconciliation, headless implementation correctness and the first
-authorized pilot's early failure. It records no valid native baseline, hardware performance, clock
-stability, floor, promotion, release or consumer acceptance. The failed attempt's evidence size and
+This record covers Task15b reconciliation, the subsequent correction batch, headless implementation
+correctness and the first authorized pilot's early failure. It records no valid native baseline,
+hardware performance, clock stability, floor, promotion, release or consumer acceptance. The failed attempt's evidence size and
 observed runner charge are recorded below. The [living evidence contract](../RENDERER-PERFORMANCE.md)
 and [hosted admission contract](../CROSS-PLATFORM.md#paid-hosted-renderer-performance-mode) own those rules.
 
@@ -111,6 +111,9 @@ readback remain later gates.
 
 ## Reproducible local verification
 
+This section retains Task15b's original local result. The later hosted run and correction-batch
+verification are separate evidence below.
+
 Run from the reconciled worktree root. The shared setup builds the outside-solution verifier required
 by ordinary process tests. The measurement project is built separately and its fact is never executed.
 The full ordinary suite removes both opt-in variables and retains per-assembly TRX in scratch.
@@ -217,8 +220,68 @@ local failed run. The Metal push job in [40101482316](https://github.com/APKiwiO
 failed 52 process cases from a missing verifier build prerequisite, tracked by
 [#1565](https://github.com/APKiwiOrg/KhaozEngine/issues/1565), and one managed staging allocation
 case, tracked by [#1566](https://github.com/APKiwiOrg/KhaozEngine/issues/1566). The latter has a
-Metal-specific lease owner absent from Vulkan. Both defects remain open and are separate from this
-pilot's entrypoint failure. No native gate is waived.
+Metal-specific lease owner absent from Vulkan. Both have accepted source corrections in the batch
+below and remain open until integration. They are separate from this pilot's entrypoint failure.
+No native gate is waived.
+
+## Correction batch preparation
+
+The correction candidate retains failed-pilot proof `62cf4b977b5bb72590130438a8bfcc34acf23afb`
+and merges these exact independently accepted tips in order, without conflicts:
+
+| Correction | Accepted tip | Preserved contract |
+| --- | --- | --- |
+| Native CI prerequisite, #1565 | `36103e6165e6c174fcbcb7c49db396cd47eebed6` | Native matrix, sync and reduced shards share Release setup. Canonical selection uses actual file identity, other solutions inspect resolved roots, unrelated shards retain their slice, and Release propagates through shard references |
+| Metal staging accounting, #1566 | `1a7ad6e685cec763f2a09a35b40c3657d326a0cb` | Warmed accounting stores capacity inline by native handle. Resource leases, native retention limits, release order and device-lifetime policy remain unchanged |
+| Entrypoint checkout root, #1567 | `287a26ad86209ef7834beff79961e26ff5646bea` | The explicit absolute checkout owns manifest reads, authorization Git facts and source-file recipes. Runtime equality and every authorization/native gate remain required |
+
+The three ordered merge commits are `e50cb197b7227fb94908f4706664eb6bd60f9c8b`,
+`36b003b257f47d4c029e1e1243ceaea159adfa51` and
+`68b08598bc379c37ca0bcf4b147ef2976598af64`. Accepted code, scripts and workflow files match their tips byte for byte.
+Main and fetched origin/main remain `d092cc35e487ac5d684d09a44920ca3cd2a201f0` at preparation.
+Version 21.14.0 remains staged above latest tag v21.13.0, so the package-bearing Metal fix rides it.
+No version bump, released-history rewrite or active equipment, DQ, filtered or consumer lane is added.
+Authorization commit `a58e0d4153030f02c4af68cbfc9ea7aece5e1939` is not a merge ancestor.
+Its manifest and workload d092 remain untouched. The consumed pilot grants no retry authority.
+
+The single correction-batch ordinary full selection exits 0 across 41 assembly TRX files, with
+39,630 Passed, zero Failed and 1,530 NotExecuted result elements. Render.Tests has 12,220 Passed,
+zero Failed and 1,113 NotExecuted. The run explicitly unsets `KE_GPU_TESTS` and `KE_RENDERER_PERF_UNIT`,
+uses `Category!=LiveSocket` and never includes the outside-solution performance fact. All eight new
+Metal cases and ten new actual-entrypoint cases pass in that full run. The accepted 71-case Metal
+selection and 49 existing related entrypoint cases also pass there without skips. No focused unit
+selection or unchanged full-suite rerun is used to replace the result.
+
+Shared Release setup builds both the solution and outside verifier with zero warnings and errors.
+The isolated measurement project also builds with zero warnings and errors, without executing its
+fact. Per-assembly TRX, every named outcome and skip, the actual full log, original command vectors,
+source and binary identities, compact full-fixture proofs and log hashes are retained under
+`/tmp/khaozengine-renderer-corrections-integration`. Full-fixture raw payloads are removed only after
+their checked counts, sizes and file hashes are retained. Formatting and guard outcomes are recorded
+with the candidate in the Task15g integration report.
+
+Full-solution and both isolated-project format checks exit 0 without changes. Whole-tree dash, prose,
+file-size, contributor-instruction and doc-version guards pass, as do shell syntax, Shellcheck and
+whitespace checks. No baseline growth, exemption or suppression is added.
+
+The setup fixture first exits 1 in this long-lived worktree because the native shard guard finds
+171 existing Debug directories, including paths dated before this task. Their 42 files and directories
+remain untouched. The identical fixture then exits 0 in a fresh bounded source copy, matching the
+wrapper's documented fresh-CI condition. Its script, workflow, solution and project inputs are hashed
+against this candidate. No real build or test is performed by that command-stub fixture. The original
+refusal remains a separate result, not a green worktree-fixture claim.
+
+Raw native-workflow actionlint exits 1 on both current main and this candidate. Both retain the same
+three findings at the same locations, two unknown ubuntu-26.04 labels and existing SC2012. The corrected
+comparison exits 0 without suppressing either raw result. Its first comparison attempt used a greedy
+location parser that consumed SC2012's embedded coordinates and failed. That failed audit and the
+corrected parser are both retained. No workflow run is dispatched.
+
+This is preparation for root's independent evidence audit and fresh integration review. Native
+Windows file identity, native Metal allocation behavior, real runtime admission, compiler retention,
+measurement and paid execution remain unproved here. The earlier local red full suite, later hosted
+39,612-pass suite and failed paid pilot retain their separate results above. No manual validation is
+needed for this preparation. Root owns main integration, push and the post-main pack.
 
 ## Outstanding native and preparation gates
 

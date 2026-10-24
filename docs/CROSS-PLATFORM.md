@@ -415,8 +415,8 @@ coverage guards unchanged. Reduced solutions explicitly preserve Release on thei
 `ShouldUnsetParentConfigurationAndPlatform=false`. Otherwise MSBuild resets unlisted references to their
 default configuration, which is Debug. A build guard rejects any Debug output on the fresh CI checkout.
 Native matrix and sync builds use `scripts/build-release-tests.sh`, including reduced shard solutions.
-When the selected roots include `Render.Tests`, this setup also builds its outside-solution renderer
-verifier before process tests run with `--no-build`. Shards without `Render.Tests` keep their build slice.
+When the selected roots include this checkout's `Render.Tests`, setup also builds its outside-solution
+renderer verifier before process tests run with `--no-build`. Shards without `Render.Tests` keep their build slice.
 The Windows-only NuGet cache still excludes every KhaozEngine extraction. The
 [measurement record](verification/2026-10-18-gpu-shard-build-cost-1472.md) compares scoped builds with per-OS
 output sharing.

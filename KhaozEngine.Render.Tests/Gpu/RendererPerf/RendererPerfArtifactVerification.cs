@@ -87,8 +87,37 @@ internal static class RendererPerfArtifactVerification
     {
         readonly HashSet<string> _paths = new(StringComparer.OrdinalIgnoreCase);
         readonly List<FileStream> _leases = [];
+        readonly List<(FileStream Stream, string Path, long Length, string Sha256)> _contents = [];
         readonly RendererPerfArtifactFileSet _files = new(directory, budget, identity);
-        internal void ValidateAll() => _files.ValidateAll();
+        internal void ValidateAll()
+        {
+            // Identity does not establish content stability. Re-read every retained handle after
+            // decoding, including earlier files, before the final identity/containment checks.
+            // RandomAccess bypasses FileStream's buffered bytes and does not reopen a path.
+            byte[] chunk = new byte[65536];
+            foreach (var file in _contents)
+            {
+                budget?.Check("renderer.verify.content.before");
+                var handle = file.Stream.SafeFileHandle;
+                if (RandomAccess.GetLength(handle) != file.Length) throw Changed(file.Path);
+                using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                long offset = 0;
+                while (offset < file.Length)
+                {
+                    budget?.Check("renderer.verify.content.chunk.before");
+                    int count = RandomAccess.Read(handle, chunk.AsSpan(0, (int)Math.Min(chunk.Length, file.Length - offset)), offset);
+                    if (count == 0) throw Changed(file.Path);
+                    hash.AppendData(chunk.AsSpan(0, count)); offset = checked(offset + count);
+                    budget?.Check("renderer.verify.content.chunk.after");
+                }
+                budget?.Check("renderer.verify.content.end.before");
+                if (RandomAccess.GetLength(handle) != file.Length || RandomAccess.Read(handle, chunk.AsSpan(0, 1), file.Length) != 0
+                    || Convert.ToHexStringLower(hash.GetHashAndReset()) != file.Sha256) throw Changed(file.Path);
+                budget?.Check("renderer.verify.content.end.after");
+            }
+            _files.ValidateAll();
+        }
+        static IOException Changed(string path) => new("Artifact content changed during verification: " + path);
         internal (byte[] Bytes, long Length, string Sha256) Read(string relative, int maximum)
         {
             budget?.Check("renderer.verify.file.before");
@@ -115,7 +144,9 @@ internal static class RendererPerfArtifactVerification
             if (stream.Length != length || stream.ReadByte() != -1)
                 throw new InvalidOperationException("Artifact changed during verification.");
             budget?.Check("renderer.verify.file.end.after");
-            return (result, length, Convert.ToHexStringLower(hash.GetHashAndReset()));
+            string digest = Convert.ToHexStringLower(hash.GetHashAndReset());
+            _contents.Add((stream, relative, length, digest));
+            return (result, length, digest);
         }
         public void Dispose()
         {

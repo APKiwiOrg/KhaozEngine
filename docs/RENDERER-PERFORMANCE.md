@@ -94,9 +94,18 @@ identities, refuses hard-link aliases, and rechecks all retained files and paren
 final certification boundary. macOS arm64/x64 uses fstat/fstatat and no-follow openat. Linux x64
 uses statx and no-follow openat. Windows uses disk-file IDs and reparse-point handles. Unavailable
 identity APIs or unsupported platforms refuse. Advisory sharing locks are not identity evidence.
-These checks describe the directory at verification's final identity checks. They do not freeze it
-against later mutation or provide a filesystem transaction. Offline and workflow verification must
-repeat against received files. Verified summaries retain that association and their reference rates.
+After decoding and reconciliation, the verifier rereads every retained file handle in a final
+content pass, comparing its full SHA-256 and exact length with the bytes originally decoded.
+Offset reads bypass FileStream's read buffer. This catches same-identity in-place changes from
+new or already-open writers before that pass. Every read is bounded to 65,536 bytes with the same
+before/after deadline and cancellation checks. Identity and containment are checked again afterward.
+An unavailable read/length/identity facility refuses verification, with no weaker fallback.
+
+The content claim covers bytes observed during each file's final rehash. Identity and containment
+are checked afterward. A change after that file's rehash, including while another file is being
+checked, is outside that content check. These checks do not exclude writes, freeze later mutation,
+protect every noncooperating Unix writer, or provide an atomic multi-file filesystem transaction.
+Offline and workflow verification must repeat against received files. Verified summaries retain that association and their reference rates.
 `RendererPerfComparison.Compare(verifiedBaseline, verifiedCandidate)` requires it for verdicts.
 
 Ordinary local Release test setup runs `sh scripts/build-release-tests.sh KhaozEngine.slnx`, or passes

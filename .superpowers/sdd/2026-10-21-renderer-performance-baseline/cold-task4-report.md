@@ -379,3 +379,157 @@ payloads, native deadline/cost, billed minutes and original armour/consumer gate
 Root owns actual-evidence audit, fresh scoped review, acceptance/push and later main reconciliation
 with the ordinary full suite. No manual validation is needed. Review objections require correction
 and new affected evidence, not weakening these contracts.
+
+## Fix round2
+
+### R1-1 cause and correction
+
+Started at physical `/Users/antonio/KhaozEngine/.worktrees/perf-baseline`, branch
+`feature/renderer-performance-baseline`, clean tracked tree/index, exact HEAD
+`44866b66e35060afed5e09ec4cfaea9746923594`. Origin remains
+`587eb9ed354fc12860a16f62088d24edd5426be8`. Read the full scoped r1 rereview, prior correction
+contract, current rules and the entire Fix round1 appendix. R0-1, the accepted replacement/alias
+part of R0-2 and R0-3 remain intact.
+
+The preceding 31759 bytes are preserved exactly, SHA256
+`4050028ee7c98d84fc50f36e81d967c048cdbd7a26ff1ea6b589334ac28a21c2`.
+All original and fix-r1 evidence, payloads and verifier backups remain untouched. New evidence lives
+under `/tmp/khaozengine-renderer-cold-publication/task4/fix-r2/`.
+
+R1-1 was real. Native file IDs and regular-file kind survive a same-length in-place write. The reader
+had already hashed and decoded its old bytes, and its final identity-only checks could certify them
+after the directory's bytes changed. Existing sharing flags and plain Unix opens did not exclude a
+compatible writer. Wrapping the native handle in FileStream did not add write exclusion.
+
+The correction adds a final full-content pass to DirectoryReader, after all decode, correspondence
+and account checks and before the existing final identity/containment checks. Each successfully read
+root or registered sidecar retains its actual opened stream, exact original length and original
+SHA256. The verifier reads the entire retained handle again, checks length/EOF and compares the
+new SHA256 with the bytes actually decoded. It never manufactures expectations from enumeration,
+reopens a path for this pass, trusts timestamps, or substitutes a content hash for a real file ID.
+
+The pass uses RandomAccess offset reads through the same SafeFileHandle. This bypasses the original
+FileStream read buffer, including a file smaller than 65536 bytes. One fixed 65536-byte buffer is
+reused. Before/after budget checks bound each chunk and terminal length/EOF/hash checks. Offset and
+length arithmetic remain checked. Read/length/unsupported-facility failures propagate as refusals.
+There is no unchecked acceptance or weaker fallback. Every original acquired handle is still released
+by the existing using/Dispose ownership on success or any refusal.
+
+This choice adds bounded IO to the same coldStart/deadline interval instead of adding platform locking
+interop. Windows share flags, Unix native opens, native identity queries and no-follow containment
+are unchanged. Both new and already-open writers may open, but a completed change before the final
+content pass refuses verification. No lock is claimed to protect arbitrary noncooperating Unix writes.
+The content claim covers the bytes observed during each file's final rehash, with identity checked
+afterward. Changes after that rehash, including during another file's validation, are outside that
+content check. This is not an atomic multi-file snapshot or a perpetual freeze. Offline/workflow verification must still repeat on received files.
+The concrete writer still samples completion only after Verify and retains its post-stamp terminal
+check within the accepted correction/recovery owner. Additional reads are charged to that original
+budget, without a new clock origin, cap, reservation, deadline, workload or cost exemption.
+
+### Authoritative API evidence
+
+The official [RandomAccess.Read contract](https://learn.microsoft.com/en-us/dotnet/api/system.io.randomaccess.read?view=net-10.0)
+specifies handle-based reads at a supplied offset, supports short reads and does not advance the file
+position for seekable files. [RandomAccess.GetLength](https://learn.microsoft.com/en-us/dotnet/api/system.io.randomaccess.getlength?view=net-10.0)
+provides the handle length and refuses unsupported handles. The pinned
+[.NET10 entry owner](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Private.CoreLib/src/System/IO/RandomAccess.cs),
+[Unix implementation](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Private.CoreLib/src/System/IO/RandomAccess.Unix.cs)
+and [Windows implementation](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Private.CoreLib/src/System/IO/RandomAccess.Windows.cs)
+show direct PRead for seekable Unix files and ReadFile with native offsets on Windows. This path does
+not consult FileStream's managed read buffer. api-sources.json records these authoritative URLs.
+No new native flags, ABI declarations, library dependency or package version is introduced.
+
+### Deterministic actual-reader proof
+
+The six behavioral reds on the starting production behavior published valid fixtures, held at
+renderer.verify.complete after decoding, then opened FileMode.Open/FileAccess.Write with compatible
+ReadWrite/Delete sharing. Each overwrote byte zero and flushed to storage without changing length or
+native identity. The targets were root, earlier inventory and registered work-models producer, with
+both an already-open writer and a writer opened after the reader. All six reached the hold, completed
+the write and then falsely certified. Each red failed Assert.NotNull on the missing verification error.
+
+After correction, all six writers still successfully flush on the local Mac, and all six actual
+verifications refuse with the specific content-changed IOException. No blocked-write or skipped case
+is counted as a mutated-file proof. Lengths are root 525017, inventory 60673 and producer 227 bytes.
+The two smaller files exercise the buffered-stream hazard. Native entry IDs before and after remain
+equal. Console process checks on the same changed directories also refuse. TRX stdout and
+content-observations.json preserve the actual boundary/write/refusal observations.
+
+Four additional reds proved the new pass's before/after chunk boundaries did not exist. Their green
+actual PublicationWriter cases cancel or expire the original budget at those boundaries. Each reaches
+the boundary, retains the actual timeout/cancellation and original token/stage, corrects stored final
+JSON to Failed/nonpromotion and retains partial/raw/typed evidence. The 22-case targeted green also
+reruns all five replacement cases, root replacement, hard-link alias, unavailable identity and the
+four accepted post-stamp Unit correction cases, with zero failures/skips. No sleeps, racing loops,
+stress, facade event list or native GPU execution is involved.
+
+
+### Final affected and full-payload proof
+
+After the final behavioral edits and scoped formatting, the supported shared Release setup built the
+solution and verifier, then the affected outside measurement tool. Each build summary reports zero
+warnings/errors. The measurement fact was built only. The final affected selection passed 125,
+failed 0, skipped 0. It covers content/identity, original replacement/alias/link/reparse/escape and
+unavailable cases, actual publication failure/completion, process verification and the existing full
+fixtures. The full payloads were run once in this correction. The unchanged 476-case r1 protocol/
+lifecycle run remains prior evidence and was not repeated as a new r2 result.
+
+The three real PrepareCollection/Collect/reserve/commit/Publish/Verify fixtures retain all 16944 frames,
+raw CPU/command/pass/error fields, two recipes, 129 occurrences and 258 factory events. Complete
+nonempty and genuine Unsupported directories pass the actual managed console with no GPU providers.
+The held Invalid variant retains partial evidence and refuses. Actual measured accounting follows.
+
+| Variant | Base | Inventory | Completion shape | T | R | Commits | Root including padding | Combined |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| complete-small | 199541974 | 282181 | 7093453 | 12462, 12461 | 51830784, 51826688 | 4832, 5263 | 199552584 | 199834765 |
+| complete-unsupported | 199541975 | 282181 | 7093454 | 12462, 12462 | 51830784, 51830784 | 2357, 2776 | 199547624 | 199829805 |
+| held-invalid | 199757075 | 282181 | 7093481 | 12410, 12409 | 51617792, 51613696 | 4832, 2800 | 199765255 | 200047436 |
+
+These are fresh observations, not forced byte expectations. The original 199883475 history,
+23722707 contradiction and 176160768 threshold remain in the exact prefix. Caps, 16 MiB completion
+reserve, graph budgets, profiles, native attempts/counts and 32-byte stamp slots are unchanged.
+The new pass reads existing bytes again and never charges them twice as new serialized payload.
+Its extra IO is inside the original elapsed/deadline interval. Headless numbers do not establish
+unchanged native execution cost or deadline acceptance.
+
+Exact argv, cwd, environment gates, integer exits and log lengths/SHA256 are in fix-r2/commands.jsonl.
+The expanded final filter is retained there. TRX records the actual process argv, refusal output,
+boundary observations and FULL_PROOF rows. New payload backups are under fix-r2/full and compact.
+The independent audit streams their actual file hashes, decodes inventory totals and checks literal
+headroom/request/reservation/commit arithmetic. It also verifies report-prefix preservation, source
+hashes and equality of the built Render.Tests assembly consumed by the verifier and measurement tool.
+Source, patch and commit/parent hashes are captured in source-hashes.json, precommit-proof.json and
+postcommit-proof.json. Prior report sections and all prior scratch/backup files remain untouched.
+
+
+### Finishing checks, responsibilities and proof limits
+
+Whole-solution format verification returned 0, formatted 0 of 9136 files. Outside-verifier format
+returned 0, formatted 0 of 3. Neither final log contains warnings/errors. The scoped apply changed
+one test file's whitespace. Relevant whole-tree dashes, prose, size, instruction and doc-version
+checks plus diff checking retain their exact raw exits in commands.jsonl. The audit requires their
+successful exits before completion. No baseline or version declaration is changed.
+
+Actionlint remains non-green, raw exit 1. The fresh r2 invocation reports exactly the same five
+unknown ubuntu-26.04 runner-label diagnostics as r1, at identical lines/columns/messages. The CI file
+is byte-identical to the accepted r1 head. actionlint-comparison.json preserves that result, without
+suppression, runner/configuration change or calling a nonzero lint result green. Unchanged shared
+build/CI owners retain their accepted bounded orchestration proof and were not reimplemented.
+
+Only the directly affected verifier, new content tests, living renderer guarantee and this report
+change. The audit verifies that native identity/FileSet, Unit, typed publication correction, shared
+build scripts, CI, version/size baselines and canonical approved contracts remain byte-identical to
+44866b66e. The new pass preserves strict schema/count/recipe/stage/correspondence checks and actual
+exception transport. No dependency, native pipeline, compiler identity, measured workload, admission,
+spend/attempt policy, cap or deadline is changed. There is no subagent, push, merge, tag, release,
+settings change, cleanup or stash. Tests remove only their own temporary files. All prior retained
+files and backups remain available.
+
+Local execution is macOS filesystem and headless implementation proof. Windows/Linux API paths were
+read against primary .NET sources but were not executed locally. This change does not prove an atomic
+snapshot, arbitrary later/noncooperating write exclusion, native compiler correspondence, native
+payload admission, deadline/cost, billed minutes or original armour/consumer acceptance. No full
+ordinary suite/determinism workload, native GPU/device/window/timing/stress/paid/workflow or measurement
+fact ran. Those gates remain separate. No manual validation is needed. Root owns actual-evidence
+audit, fresh scoped review, acceptance/push and later main reconciliation. A review failure returns
+for a scoped correction and affected proof, without weakening the guarantee.

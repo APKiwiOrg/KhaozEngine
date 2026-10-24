@@ -124,6 +124,14 @@ Mode 2 uses existing texture/sampler bindings 10/11 and unchanged 1088-byte UBO 
   registers. Require actual pinned SPIR-V/HLSL scalar definitions, uses and loop phis, with no
   16-element interpolation array or dynamic destination store. Require defined uint-zero entry values
   for all sixteen scalar phis and prove every selected arithmetic read follows its producing write.
+  Controller selects sixteen explicit assignments `r[k] = destination == k ? result : r[k]`,
+  written separately for literal k from 0 through 15, instead of the old destination switch.
+  Preserve the uint 23-case operand selector. Trace each actual scalar select's destination equality,
+  common rounded true result, same-slot old false value and matching zero-initialized header phi.
+  Require sixteen unique routes and reject wrong conditions, cross-slot state and wrong results.
+  Remove the destination multi-case switch and 16-by-17 merge matrix. No slot loop, dynamic index,
+  bit mask, helper interpreter, branch hint or other optimization is combined. Stop at emission
+  before hosted expense if the pinned compiler rebuilds a matrix/bank or duplicates arithmetic.
   Preserve sign-bit XOR subtraction, signed zero, the constant/equal-zero early return and unchanged
   arithmetic helpers and CPU reference.
   Verify actual production interpolation bitwise against that CPU reference on nonconstant depths,

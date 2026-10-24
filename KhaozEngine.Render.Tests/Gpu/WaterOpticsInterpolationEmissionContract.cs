@@ -62,11 +62,11 @@ internal static class WaterOpticsInterpolationEmissionContract
         Instruction selector = Assert.Single(switches, i => i.Args.Length == 48); // All 23 original steps.
         Assert.Equal(counter.Args[1], selector.Args[0]);
         Assert.Equal(Enumerable.Range(0, 23).Select(i => (uint)i), selector.Args.Skip(2).Where((_, i) => i % 2 == 0));
-        Instruction destination = Assert.Single(switches, i => i.Args.Length == 34);
-        Assert.Equal(Enumerable.Range(0, 16).Select(i => (uint)i), destination.Args.Skip(2).Where((_, i) => i % 2 == 0));
-        uint[] cases = destination.Args.Skip(3).Where((_, i) => i % 2 == 0).ToArray();
+        Assert.DoesNotContain(switches, i => i.Args.Length > 2 && i != selector);
         var slots = new HashSet<int>();
         var results = new HashSet<uint>();
+        var destinations = new HashSet<uint>();
+        var scalarSlots = new Dictionary<int, uint>();
         int loopStart = hlsl.IndexOf("for (" + header + ")", StringComparison.Ordinal);
         Assert.InRange(loopStart, 0, hlsl.Length - 1);
         string initialState = hlsl[..loopStart] + header[..header.IndexOf(';')] + ";";
@@ -78,22 +78,24 @@ internal static class WaterOpticsInterpolationEmissionContract
             // Defined incoming state avoids copying undef values before a slot's first arithmetic write.
             Assert.Contains(code, i => i.Op == 43 && i.Args[0] == uintType
                 && i.Args[1] == register.Args[2] && i.Args[2] == 0); // OpConstant uint zero, never OpUndef.
-            Instruction next = Assert.Single(code, i => i.Op == 245 && i.Args[1] == register.Args[4]);
+            Instruction next = Assert.Single(code, i => i.Op == 169 && i.Args[1] == register.Args[4]); // OpSelect.
             Assert.Equal(uintType, next.Args[0]);
-            Assert.Equal(36, next.Args.Length); // Sixteen cases plus the unchanged default route.
-            Assert.Equal(next.Label, destination.Args[1]);
-            var incoming = Enumerable.Range(0, 17).ToDictionary(i => next.Args[3 + 2 * i], i => next.Args[2 + 2 * i]);
-            Assert.Equal(cases.Append(destination.Label).Order(), incoming.Keys.Order());
-            Assert.Equal(register.Args[1], incoming[destination.Label]);
-            int slot = Assert.Single(Enumerable.Range(0, 16), i => incoming[cases[i]] != register.Args[1]);
-            Assert.True(slots.Add(slot), "Two destination cases clobber the same scalar register.");
-            results.Add(incoming[cases[slot]]);
-            Assert.All(Enumerable.Range(0, 16).Where(i => i != slot), i =>
-                Assert.Equal(register.Args[1], incoming[cases[i]]));
+            Assert.Equal(5, next.Args.Length);
+            Assert.Equal(register.Args[1], next.Args[4]); // False preserves this slot, never another one.
+            Instruction condition = Assert.Single(code, i => i.Op == 170 && i.Args[1] == next.Args[2]); // OpIEqual.
+            Assert.True(constants.TryGetValue(condition.Args[3], out uint literal));
+            Assert.InRange(literal, 0u, 15u);
+            int slot = checked((int)literal);
+            Assert.True(slots.Add(slot), "Two destination selects clobber the same scalar register.");
+            scalarSlots.Add(slot, register.Args[1]);
+            destinations.Add(condition.Args[2]);
+            results.Add(next.Args[3]);
             // Zero entries may use a separate assignment or share the for initializer's uint declaration.
             Assert.Matches(declarations + "_" + register.Args[1] + @"(?:\s*=\s*\w+)?\s*[,;]", initialState);
             Assert.Matches(@"\b_" + register.Args[1] + @"\s*=\s*0u\s*[,;]", initialState);
             Assert.Matches(declarations + "_" + next.Args[1] + @"(?:\s*=\s*\w+)?\s*[,;]", hlsl);
+            Assert.Matches(@"\b_" + next.Args[1] + @" = \(_" + condition.Args[2] + " == "
+                + slot + @"\) \? _" + next.Args[3] + " : _" + register.Args[1] + ";", body);
             Assert.Contains("_" + register.Args[1] + " = _" + next.Args[1], header, StringComparison.Ordinal);
             Assert.Contains(code.Skip(start).Take(end - start), i => i.Op is 245 or 198
                 && i.Args[1] != register.Args[1] && i.Args[1] != next.Args[1]
@@ -102,11 +104,47 @@ internal static class WaterOpticsInterpolationEmissionContract
         Assert.Equal(Enumerable.Range(0, 16), slots.Order());
         uint result = Assert.Single(results); // Every slot receives the same rounded arithmetic result.
         Assert.Contains(code, i => i.Op == 245 && i.Args[0] == uintType && i.Args[1] == result);
+        uint destination = Assert.Single(destinations);
+        WaterOpticsInterpolationTraceContract.Verify(module, selector.Args, scalarSlots, destination, result);
         Assert.Equal(16, Regex.Matches(header, @"_\d+ = _\d+").Count);
         string index = "_" + counter.Args[1];
         Assert.Matches(@"^uint (?:_\d+ = 0u, )*" + index + @" = 0u(?:, _\d+ = 0u)*; "
             + index + " < 23u; (?:_\\d+ = _\\d+, ){16}"
             + index + @"\+\+$", header);
+    }
+
+    internal static void VerifyRejectsCorruptedRoutes(byte[] module, string hlsl, string body, string header)
+    {
+        uint[] words = MemoryMarshal.Cast<byte, uint>(module).ToArray();
+        var instructions = new List<(int Offset, uint Op, uint[] Args)>();
+        for (int offset = 5; offset < words.Length;)
+        {
+            int count = checked((int)(words[offset] >> 16));
+            instructions.Add((offset, words[offset] & 65535u, words[(offset + 1)..(offset + count)]));
+            offset += count;
+        }
+        uint[] backedges = Regex.Matches(header, @"_\d+ = _(\d+)")
+            .Select(m => uint.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        var selects = instructions.Where(i => i.Op == 169 && backedges.Contains(i.Args[1])).ToArray();
+        Assert.Equal(16, selects.Length);
+        for (int slot = 0; slot < selects.Length; slot++)
+        {
+            var current = selects[slot];
+            var other = selects[(slot + 1) % selects.Length];
+            // All mutations remain well-typed and alter the actual emitted route, never a mock.
+            foreach ((int operand, uint replacement) in new[]
+            {
+                (3, other.Args[2]), // A different slot's destination condition.
+                (4, current.Args[4]), // Old state instead of the rounded result.
+                (5, other.Args[4]) // Another slot's old state on the false edge.
+            })
+            {
+                uint[] corrupted = (uint[])words.Clone();
+                corrupted[current.Offset + operand] = replacement;
+                Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => Verify(
+                    MemoryMarshal.AsBytes(corrupted.AsSpan()).ToArray(), hlsl, body, header));
+            }
+        }
     }
 
     sealed record Instruction(uint Op, uint[] Args, uint Label);

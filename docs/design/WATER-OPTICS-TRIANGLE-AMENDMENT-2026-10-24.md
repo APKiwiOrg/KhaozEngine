@@ -183,11 +183,23 @@ controller. Public domain, admission and error budgets are unchanged.
 
 Interpolation now retains its original 23 ordered software operations in one fixed `dont_unroll`
 loop, selecting scalar operands into one add, multiply or divide body and storing each rounded result
-in sixteen loop-carried scalar registers through literal-slot destination stores. Actual pinned
+in sixteen loop-carried scalar registers through sixteen explicit literal destination selects,
+`r[k] = destination == k ? result : r[k]`, written separately for k from 0 through 15. This
+controller-selected representation replaces the old sixteen-case destination switch and its
+16-by-17 pass-through phi matrix. Keep the uint 23-case operand selector and arithmetic dispatch.
+No slot loop, dynamic destination, bit mask, helper interpreter or branch hint accompanies this change.
+Actual pinned
 SPIR-V/HLSL must contain no 16-element interpolation bank or dynamic destination store.
 All sixteen scalar entry values are explicitly uint zero. Every selected arithmetic read follows
 its producing write, so these initial values only define otherwise unused pass-through state.
-Native FXC acceptance of this initialization remains a separate pending proof.
+Trace each emitted select to its matching destination equality, the one common rounded result on
+the true edge and that same slot's old scalar on the false edge, then its own header backedge.
+Require sixteen unique routes and no destination multi-case switch or case-copy matrix. Reject
+wrong conditions, cross-slot passthrough and wrong results. If the pinned compiler reconstructs
+the matrix or a bank, or duplicates arithmetic, stop before hosted native expense.
+Each slot therefore receives R iff d equals k and otherwise keeps its own old value, including
+out-of-range destinations. Assignments cannot clobber another slot. Defined zero entry and the
+unchanged 23-step operand trace establish bit equivalence by induction.
 Every subtraction retains its sign-bit XOR. Constant/equal-zero
 depths still return before interpolation. This shares compiler input without relying on a function
 boundary surviving inlining. The narrow predicate also shares one unchanged product body through
@@ -215,9 +227,11 @@ The triangle fragment retains its scene-depth fetch with a source-local NaN inva
 finite, so physical depth math is unchanged. Without that read, triangle specialization eliminates
 bindings 4/5 and compacts HLSL registers against the fixed twelve-element resource layout.
 
-Isolation is not compile-cost acceptance. Run 40110871423 produced real pixel DXBC with six successful
-phases and defined scalar interpolation storage, but pixel FXC 8700.9521 ms exceeds 5000 ms. Its total
-9795.3314 ms meets 10000 ms. Task 6B and Task 6C remain unaccepted until every existing gate passes.
+Isolation is not compile-cost acceptance. Run 40114027066 produced real pixel DXBC with six successful
+phases per program. Default pixel FXC 1203.9132 ms and total 2040.2890 ms pass. Triangle pixel FXC
+7015.7335 ms exceeds 5000 ms, while total 7893.1533 ms meets 10000 ms. Its actual destination region
+contains 176 instructions including 140 MOVs. The literal selects are a bounded structural candidate,
+not a latency claim. Task 6B and Task 6C remain unaccepted until every existing gate passes.
 After fresh parent review, run one candidate-only Windows default/triangle program matrix at the same
 candidate SHA and harness, one focused pair per isolated job, each requiring pixel FXC <= 5000 ms and
 six-phase total <= 10000 ms. Preserve explicit program identities and artifact hashes. Only after native

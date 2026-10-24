@@ -16,7 +16,7 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class WaterOpticsRolledEmissionTests
 {
-    const string Evidence = "/tmp/khaozengine-water-triangles/lazy-pipelines/emission/triangle-structure";
+    const string Evidence = "/tmp/khaozengine-water-triangles/destination-selects/emission/triangle-structure";
 
     // Catch loss of sharing or local loop controls in the actual pinned compiler output.
     [Fact]
@@ -125,6 +125,7 @@ public sealed class WaterOpticsRolledEmissionTests
         Assert.True(interpolation.Retained, "Interpolation schedule lost its [loop] control.");
         string body = hlsl[interpolation.Start..interpolation.End];
         WaterOpticsInterpolationEmissionContract.Verify(fragment, hlsl, body, interpolation.Header);
+        WaterOpticsInterpolationEmissionContract.VerifyRejectsCorruptedRoutes(fragment, hlsl, body, interpolation.Header);
         // These distinguish the unchanged add normalization and 24-bit multiply bodies after inlining.
         Assert.Single(Regex.Matches(body, @"& 134217728u"));
         Assert.Single(Regex.Matches(body, @"& 32768u"));

@@ -22,7 +22,9 @@ public sealed partial class RendererPerfCompilerPublicationTests
         string name = f.Report.Manifest.UnitId + ".json";
         string relative = target == "root" ? name : target == "inventory" ? f.Report.Manifest.UnitId + "-compiler-inventory.json" : "work-models.json";
         string path = Path.Combine(f.Directory, relative);
-        bool replaced = false;
+        bool reached = false, replaced = false;
+        Exception? mutationError = null;
+        var originalId = RendererPerfArtifactIdentity.Platform.Entry(null, path);
         int opened = -1;
         string[] paths = new[] { name }.Concat(writer.ExpectedSidecars.Select(e => e.Path)).ToArray();
         File.Copy(path, path + ".held-copy");
@@ -31,21 +33,35 @@ public sealed partial class RendererPerfCompilerPublicationTests
             Boundary = stage =>
         {
             if (stage == "renderer.verify.file.open.after") opened++;
-            if (replaced || !(earlier ? stage == "renderer.verify.complete" : stage == "renderer.verify.file.open.after" && paths[opened] == relative)) return;
+            if (reached || !(earlier ? stage == "renderer.verify.complete" : stage == "renderer.verify.file.open.after" && paths[opened] == relative)) return;
+            reached = true;
             byte[] bytes = File.ReadAllBytes(path + ".held-copy");
             bytes[0] = (byte)'!';
             string replacement = path + ".replacement";
             File.WriteAllBytes(replacement, bytes);
-            File.Move(replacement, path, true);
-            replaced = true;
+            mutationError = Record.Exception(() => File.Move(replacement, path, true));
+            replaced = mutationError is null;
         }
         };
         var error = Record.Exception(() => RendererPerfArtifactVerification.Verify(f.Directory, name, budget));
-        Assert.True(replaced);
-        Assert.NotNull(error);
+        Assert.True(reached);
         Assert.Equal(new FileInfo(path + ".held-copy").Length, new FileInfo(path).Length);
-        Assert.NotEqual(0, RunConsole(f.Directory, name).Exit);
-        _output.WriteLine("identity target={0} earlier={1} heldChecks={2} refusal={3}", target, earlier, opened, error);
+        if (replaced)
+        {
+            Assert.IsType<IOException>(error);
+            Assert.NotEqual(originalId, RendererPerfArtifactIdentity.Platform.Entry(null, path));
+            Assert.NotEqual(0, RunConsole(f.Directory, name).Exit);
+        }
+        else
+        {
+            AssertBlockedReplacement(mutationError);
+            Assert.Null(error);
+            Assert.Equal(originalId, RendererPerfArtifactIdentity.Platform.Entry(null, path));
+            Assert.Equal(File.ReadAllBytes(path + ".held-copy"), File.ReadAllBytes(path));
+            Assert.Equal(0, RunConsole(f.Directory, name).Exit);
+        }
+        using (var released = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) released.Flush(true);
+        _output.WriteLine("identity target={0} earlier={1} reached=true replaced={2} heldChecks={3} mutationError={4} refusal={5} released=true", target, earlier, replaced, opened, mutationError, error);
     }
     [Fact]
     public void Unavailable_platform_identity_refuses_without_fallback()
@@ -60,6 +76,7 @@ public sealed partial class RendererPerfCompilerPublicationTests
     {
         public SafeFileHandle Open(SafeFileHandle? parent, string path, bool directory)
             => RendererPerfArtifactIdentity.Platform.Open(parent, path, directory);
+        public void ExcludeWriters(SafeFileHandle handle) => RendererPerfArtifactIdentity.Platform.ExcludeWriters(handle);
         public RendererPerfFileStatus Handle(SafeFileHandle handle) => throw error;
         public RendererPerfFileStatus Entry(SafeFileHandle? parent, string path) => throw new InvalidOperationException("No fallback after identity refusal.");
     }
@@ -70,24 +87,45 @@ public sealed partial class RendererPerfCompilerPublicationTests
         var writer = RendererPerfPublicationWriter.Files(f.Directory);
         Assert.Empty(f.Publish(writer).Failures);
         string held = f.Directory + ".held-root";
-        bool replaced = false;
+        bool reached = false, replaced = false;
+        Exception? mutationError = null;
+        string rootFile = Path.Combine(f.Directory, f.Report.Manifest.UnitId + ".json");
+        byte[] original = File.ReadAllBytes(rootFile);
+        var originalId = RendererPerfArtifactIdentity.Platform.Entry(null, rootFile);
         try
         {
             var budget = f.Budget with
             {
                 Boundary = stage =>
             {
-                if (replaced || stage != "renderer.verify.complete") return;
-                Directory.Move(f.Directory, held);
+                if (reached || stage != "renderer.verify.complete") return;
+                reached = true;
+                mutationError = Record.Exception(() => Directory.Move(f.Directory, held));
+                if (mutationError is not null) return;
                 Directory.CreateDirectory(f.Directory);
                 replaced = true;
             }
             };
-            Assert.Throws<IOException>(() => RendererPerfArtifactVerification.Verify(f.Directory, f.Report.Manifest.UnitId + ".json", budget));
-            Assert.True(replaced);
-            Assert.True(File.Exists(Path.Combine(held, f.Report.Manifest.UnitId + ".json")));
+            var error = Record.Exception(() => RendererPerfArtifactVerification.Verify(f.Directory, f.Report.Manifest.UnitId + ".json", budget));
+            Assert.True(reached);
+            if (replaced)
+            {
+                Assert.IsType<IOException>(error);
+                rootFile = Path.Combine(held, f.Report.Manifest.UnitId + ".json");
+            }
+            else { AssertBlockedReplacement(mutationError); Assert.Null(error); }
+            Assert.Equal(originalId, RendererPerfArtifactIdentity.Platform.Entry(null, rootFile));
+            Assert.Equal(original, File.ReadAllBytes(rootFile));
+            using (var released = new FileStream(rootFile, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) released.Flush(true);
+            _output.WriteLine("root replacement reached=true replaced={0} mutationError={1} readerError={2} unchanged=true released=true", replaced, mutationError, error);
         }
         finally { if (Directory.Exists(held)) Directory.Delete(held, true); }
     }
 
+    static void AssertBlockedReplacement(Exception? error)
+    {
+        Assert.True(OperatingSystem.IsWindows(), "Only Windows blocked replacement is an admitted alternative.");
+        Assert.True(error is IOException or UnauthorizedAccessException);
+        Assert.Contains(error.HResult & 0xffff, new[] { 5, 32 });
+    }
 }

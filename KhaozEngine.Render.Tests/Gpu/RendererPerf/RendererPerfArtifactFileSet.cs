@@ -7,7 +7,8 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 // Keeps handles alive so file IDs cannot be recycled while evidence is decoded. Unix opens and
 // entry queries are relative to retained no-follow directory handles. Windows checks retained
-// parent and leaf IDs with reparse-point handles. No advisory sharing lock is part of this proof.
+// parent and leaf IDs with reparse-point handles. Separate compatible-writer exclusion lasts
+// from before the first content read through final validation and disposal.
 internal sealed class RendererPerfArtifactFileSet : IDisposable
 {
     sealed record Lease(Lease? Parent, string Path, SafeFileHandle Handle, RendererPerfFileStatus Status);
@@ -33,6 +34,7 @@ internal sealed class RendererPerfArtifactFileSet : IDisposable
             if (status.Directory != directory || status != _identity.Entry(parent?.Handle, path))
                 throw new IOException("Artifact opened handle differs from its no-follow directory entry.");
             if (!directory && !_fileIds.Add(status.Id)) throw new IOException("Duplicate file identity or hard-link artifact alias.");
+            if (!directory) _identity.ExcludeWriters(handle);
             var lease = new Lease(parent, path, handle, status);
             _leases.Add(lease);
             return lease;

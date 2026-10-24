@@ -94,17 +94,30 @@ identities, refuses hard-link aliases, and rechecks all retained files and paren
 final certification boundary. macOS arm64/x64 uses fstat/fstatat and no-follow openat. Linux x64
 uses statx and no-follow openat. Windows uses disk-file IDs and reparse-point handles. Unavailable
 identity APIs or unsupported platforms refuse. Advisory sharing locks are not identity evidence.
-After decoding and reconciliation, the verifier rereads every retained file handle in a final
-content pass, comparing its full SHA-256 and exact length with the bytes originally decoded.
-Offset reads bypass FileStream's read buffer. This catches same-identity in-place changes from
-new or already-open writers before that pass. Every read is bounded to 65,536 bytes with the same
-before/after deadline and cancellation checks. Identity and containment are checked again afterward.
-An unavailable read/length/identity facility refuses verification, with no weaker fallback.
+Before the first content byte is read, each retained regular-file handle must exclude compatible
+writers through final validation and handle release. Windows requests GENERIC_READ with
+FILE_SHARE_READ | FILE_SHARE_DELETE, excluding both existing and new data-write handles. Directory
+and entry metadata handles retain their separate sharing policy. Unix acquires nonblocking
+LOCK_EX | LOCK_NB on the same descriptor. Ordinary .NET writers participate with shared flock locks
+on supported local filesystems. Shared reader locks would admit those writers. Contention,
+unsupported facilities and acquisition failures refuse immediately, preserving the native cause,
+without retries or a weaker fallback. The existing ownership closes every acquired handle on both
+success and refusal, releasing its exclusion.
 
-The content claim covers bytes observed during each file's final rehash. Identity and containment
-are checked afterward. A change after that file's rehash, including while another file is being
-checked, is outside that content check. These checks do not exclude writes, freeze later mutation,
-protect every noncooperating Unix writer, or provide an atomic multi-file filesystem transaction.
+Unix verification supports local APFS/HFS on macOS arm64/x64 and ext2/3/4, XFS, Btrfs, tmpfs and
+overlayfs on Linux x64, subject to successful handle-based filesystem queries and flock acquisition.
+Other filesystems, including NFS/SMB/CIFS, refuse because the ordinary .NET writer-sharing protocol
+cannot be established here. A disabled .NET file-locking configuration also refuses. Writers that
+bypass or disable that advisory protocol are noncooperating. Their writes are outside this Unix
+guarantee. Identity, alias and containment validation remain separate requirements.
+
+After decoding and reconciliation, the verifier rereads every retained file handle as defence in
+depth, comparing full SHA-256 and exact length with the bytes originally decoded. Offset reads bypass
+FileStream's read buffer. Every read is bounded to 65,536 bytes with the same before/after deadline
+and cancellation checks. Identity and containment are checked again afterward, with exclusion still
+held for earlier files while later files are validated. Unavailable read/length/identity facilities
+refuse. This finite guarantee ends when the reader releases its handles. It provides neither
+post-verification write protection nor an atomic multi-file filesystem transaction.
 Offline and workflow verification must repeat against received files. Verified summaries retain that association and their reference rates.
 `RendererPerfComparison.Compare(verifiedBaseline, verifiedCandidate)` requires it for verdicts.
 

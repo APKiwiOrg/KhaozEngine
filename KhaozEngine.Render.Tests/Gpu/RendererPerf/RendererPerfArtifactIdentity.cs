@@ -14,6 +14,7 @@ internal readonly record struct RendererPerfFileStatus(RendererPerfFileId Id, bo
 internal interface IRendererPerfArtifactIdentity
 {
     SafeFileHandle Open(SafeFileHandle? parent, string path, bool directory);
+    void ExcludeWriters(SafeFileHandle handle);
     RendererPerfFileStatus Handle(SafeFileHandle handle);
     RendererPerfFileStatus Entry(SafeFileHandle? parent, string path);
 }
@@ -38,7 +39,7 @@ internal sealed class RendererPerfArtifactIdentity : IRendererPerfArtifactIdenti
         {
             // OPEN_REPARSE_POINT makes the leaf observable rather than traversing it. Parent
             // directory identities are retained and checked separately by the reader.
-            handle = CreateFile(path, directory ? 0x80u : 0x80000000u, 7, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero);
+            handle = CreateFile(path, directory ? 0x80u : 0x80000000u, directory ? 7u : 5u, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero);
         }
         else
         {
@@ -49,13 +50,62 @@ internal sealed class RendererPerfArtifactIdentity : IRendererPerfArtifactIdenti
             if (fd < 0) throw Error("Artifact no-follow open failed");
             handle = new SafeFileHandle((IntPtr)fd, true);
         }
-        if (handle.IsInvalid) { handle.Dispose(); throw Error("Artifact handle open failed"); }
+        if (handle.IsInvalid) { var error = Error("Artifact handle open failed"); handle.Dispose(); throw error; }
         try
         {
             if (Handle(handle).Directory != directory) throw new IOException("Artifact has the wrong regular-file/directory kind.");
             return handle;
         }
         catch { handle.Dispose(); throw; }
+    }
+    public void ExcludeWriters(SafeFileHandle handle)
+    {
+        Supported();
+        // Windows regular-file Open denies FILE_SHARE_WRITE. Entry/directory metadata handles
+        // retain their separate sharing policy. Neither policy substitutes for native identity.
+        if (Windows) return;
+        try
+        {
+            // Ordinary .NET writers use LOCK_SH on supported local filesystems. LOCK_SH here
+            // would admit those writers. Take LOCK_EX|LOCK_NB on this exact retained descriptor.
+            // Never use .NET's best-effort fallback for unsupported locks, or retry a failed lock.
+            if (AppContext.TryGetSwitch("System.IO.DisableFileLocking", out bool disabled) && disabled
+                || AppContext.GetData("System.IO.DisableFileLocking") is string value && (value == "1" || bool.TryParse(value, out bool configured) && configured)
+                || Environment.GetEnvironmentVariable("DOTNET_SYSTEM_IO_DISABLEFILELOCKING") is string environment && (environment == "1" || bool.TryParse(environment, out bool enabled) && enabled))
+                throw new PlatformNotSupportedException("Artifact writer exclusion requires the .NET file-sharing protocol.");
+            RequireLocalFileSystem(handle);
+            if (Flock(handle, 2 | 4) != 0)
+            {
+                int error = Marshal.GetLastPInvokeError();
+                throw new IOException(error == (Mac ? 35 : 11)
+                    ? "Artifact writer exclusion is contended."
+                    : "Artifact writer exclusion is unavailable or failed.", new Win32Exception(error));
+            }
+            // The descriptor is never duplicated. Closing its retained SafeFileHandle releases
+            // the flock on every success/refusal path, after the reader's final validation.
+        }
+        catch (EntryPointNotFoundException error) { throw new PlatformNotSupportedException("Artifact writer exclusion facility unavailable.", error); }
+        catch (DllNotFoundException error) { throw new PlatformNotSupportedException("Artifact writer exclusion facility unavailable.", error); }
+    }
+    static void RequireLocalFileSystem(SafeFileHandle handle)
+    {
+        // .NET skips writers' sharing locks on NFS/SMB/CIFS or an unknown filesystem query.
+        // Admit known local filesystem protocols only, using this handle rather than a path.
+        if (Mac)
+        {
+            DarwinFileSystem fs;
+            int result = X64 ? FStatFs64(handle, out fs) : FStatFs(handle, out fs);
+            if (result != 0) throw Error("Artifact exclusion filesystem query failed");
+            if ((fs.Flags & 0x1000) != 0 && (fs.Name == "apfs" || fs.Name == "hfs")) return;
+            throw new PlatformNotSupportedException($"Artifact writer exclusion is unsupported on filesystem {fs.Name} (flags 0x{fs.Flags:x}).");
+        }
+        else
+        {
+            if (LinuxFStatFs(handle, out var fs) != 0) throw Error("Artifact exclusion filesystem query failed");
+            // Linux UAPI magic.h: ext2/3/4, XFS, Btrfs, tmpfs and overlayfs.
+            if (fs.Type is 0xef53 or 0x58465342 or 0x9123683e or 0x01021994 or 0x794c7630) return;
+            throw new PlatformNotSupportedException($"Artifact writer exclusion is unsupported on filesystem type 0x{fs.Type:x}.");
+        }
     }
     public RendererPerfFileStatus Handle(SafeFileHandle handle)
     {
@@ -116,6 +166,23 @@ internal sealed class RendererPerfArtifactIdentity : IRendererPerfArtifactIdenti
     }
     static IOException Error(string message) => new(message, new Win32Exception(Marshal.GetLastPInvokeError()));
 
+    // Darwin statfs INODE64 ABI, sys/mount.h. Linux x64 statfs, UAPI asm-generic/statfs.h.
+    [StructLayout(LayoutKind.Explicit, Size = 2168, CharSet = CharSet.Ansi)]
+    struct DarwinFileSystem
+    {
+        [FieldOffset(64)] internal uint Flags;
+        [FieldOffset(72), MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)] internal string Name;
+    }
+    [StructLayout(LayoutKind.Explicit, Size = 120)]
+    struct LinuxFileSystem { [FieldOffset(0)] internal long Type; }
+    [DllImport("libc", EntryPoint = "flock", SetLastError = true)]
+    static extern int Flock(SafeFileHandle handle, int operation);
+    [DllImport("libc", EntryPoint = "fstatfs", SetLastError = true)]
+    static extern int FStatFs(SafeFileHandle handle, out DarwinFileSystem status);
+    [DllImport("libc", EntryPoint = "fstatfs$INODE64", SetLastError = true)]
+    static extern int FStatFs64(SafeFileHandle handle, out DarwinFileSystem status);
+    [DllImport("libc", EntryPoint = "fstatfs", SetLastError = true)]
+    static extern int LinuxFStatFs(SafeFileHandle handle, out LinuxFileSystem status);
     // Darwin LP64 stat ABI. x86_64 uses the INODE64 symbol, arm64 uses the sole 64-bit ABI.
     // apple-oss-distributions/xnu bsd/sys/stat.h (__DARWIN_STRUCT_STAT64), sys/fcntl.h.
     [StructLayout(LayoutKind.Explicit, Size = 144)]

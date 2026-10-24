@@ -533,3 +533,191 @@ ordinary suite/determinism workload, native GPU/device/window/timing/stress/paid
 fact ran. Those gates remain separate. No manual validation is needed. Root owns actual-evidence
 audit, fresh scoped review, acceptance/push and later main reconciliation. A review failure returns
 for a scoped correction and affected proof, without weakening the guarantee.
+
+
+## Fix round3
+
+### Guard, rejected limitation and correction
+
+Started at physical `/Users/antonio/KhaozEngine/.worktrees/perf-baseline`, branch
+`feature/renderer-performance-baseline`, clean tracked index/tree and exact HEAD
+`a9bcaf880c8304e5a8f03789b94116f84e2dbd86`. Origin task branch remains
+`587eb9ed354fc12860a16f62088d24edd5426be8`. Read current contributor, security, platform,
+build/test and documentation rules, the full r2 rereview, relevant R1-1 finding, both prior fix
+appendices, canonical section 8 and CP-5/CP-7/CP-8. This correction retains the approved contract.
+
+The preceding 43745 bytes are preserved exactly, SHA256
+`7c875d2125b1dd69121d48fecf691c5f654f6558f8fc4e242c3fbb497a44e8bd`.
+New scratch evidence is under `/tmp/khaozengine-renderer-cold-publication/task4/fix-r3/`.
+All earlier logs, sources, payloads and verifier backups remain untouched.
+
+Root rejected the round2 per-file limitation. An ordinary compatible writer can overwrite an
+earlier registered producer after its final rehash while the inventory is rehashed, or overwrite
+a consumed root prefix during the root's own multichunk rehash. Both preserve native identity and
+exact length. The accumulated digest still contains the original bytes and the final identity pass
+can certify stale evidence. These writes occur during validation, before certification. Neither
+an atomic multi-file snapshot nor perpetual protection is needed to establish the defect.
+
+ArtifactFileSet now establishes compatible-writer exclusion on each retained regular-file handle
+before constructing its stream or reading content. ArtifactIdentity keeps native identity and
+no-follow status separate from this exclusion. Windows regular-file opens retain GENERIC_READ and
+FILE_SHARE_READ | FILE_SHARE_DELETE, omitting FILE_SHARE_WRITE. Existing data-write handles conflict
+with that share request and subsequent data-write opens conflict with the retained lease. Entry
+and directory metadata handles retain share mode 7. Native open failure evidence is captured
+before disposing an invalid handle.
+
+Unix uses a single nonblocking LOCK_EX | LOCK_NB flock on that same descriptor. Shared flock would
+admit the ordinary .NET writers used by the regressions. Contention, unsupported facilities and
+all acquisition failures refuse, without retries or fallback. A handle-based filesystem query
+requires a supported local filesystem. .NET skips writer-sharing locks on network or unknown
+filesystems, so NFS/SMB/CIFS and unsupported filesystem types refuse. Disabled .NET sharing also
+refuses. This adds no general filesystem service or new dependency.
+
+The original directory/file handles, no-follow entries, hard-link alias checks, exact lengths,
+strict codecs, associations and content hashes remain. The final full-content pass remains defence
+in depth inside the same original budget. It is no longer the proof of exclusion. Every acquired
+handle remains held through that pass and final identity/containment validation, then closes through
+DirectoryReader/FileSet disposal on success or refusal. Closing the Unix descriptor releases its
+flock. No descriptor is duplicated or reopened for content validation.
+
+### Platform contract and primary sources
+
+The living guarantee in `docs/RENDERER-PERFORMANCE.md` now covers ordinary cooperating writers for
+this finite retained-handle lifetime, including while later files are validated. It explicitly
+limits Unix support to local APFS/HFS on macOS arm64/x64 and ext2/3/4, XFS, Btrfs, tmpfs and
+overlayfs on Linux x64, with successful filesystem queries and flock acquisition. Noncooperating
+Unix writes, writers that disable or bypass the sharing protocol, writes after handle release and
+atomic multi-file transactions are not claimed. Received/offline/workflow evidence still requires
+verification again. Windows/Linux execution remains unproved by this local Mac run.
+
+Primary evidence includes [CreateFileW sharing/access compatibility](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew),
+[Apple flock](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/flock.2.html),
+[Apple close and advisory-lock release](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/close.2.html),
+[Linux flock](https://man7.org/linux/man-pages/man2/flock.2.html),
+[Linux v6.12 lock constants](https://github.com/torvalds/linux/blob/v6.12/include/uapi/asm-generic/fcntl.h),
+[Linux v6.12 statfs layout](https://github.com/torvalds/linux/blob/v6.12/include/uapi/asm-generic/statfs.h),
+[Linux filesystem constants](https://github.com/torvalds/linux/blob/v6.12/include/uapi/linux/magic.h),
+[glibc 2.40 statfs layout](https://github.com/bminor/glibc/blob/glibc-2.40/sysdeps/unix/sysv/linux/bits/statfs.h),
+[Darwin statfs layout](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/mount.h),
+[.NET10 sharing/cleanup owner](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Private.CoreLib/src/Microsoft/Win32/SafeHandles/SafeFileHandle.Unix.cs)
+and [.NET native flock/filesystem owner](https://github.com/dotnet/runtime/blob/v10.0.0/src/native/libs/System.Native/pal_io.c).
+`platform-sources.json` records source URLs, exact retained bytes and hashes. The initial web
+.NET page timed out and the guessed FileSystemType path returned 404. Successfully retained pinned
+source and pal_io.c supply the proof, rather than those failed lookups.
+
+The local SDK C ABI check exited 0 with warnings treated as errors. Darwin statfs is 2168 bytes,
+flags offset 64, filesystem name offset 72, MNT_LOCAL 0x1000, LOCK_EX 2, LOCK_NB 4, LOCK_UN 8,
+EWOULDBLOCK 35 and ENOTSUP 45. x64 uses fstatfs$INODE64 and arm64 uses fstatfs. Linux x64's
+120-byte statfs and type offset 0 are source/ABI analysis, not executed Linux evidence. The retained
+SafeFileHandle P/Invoke passes the real descriptor with SafeHandle lifetime protection.
+
+### Deterministic red and green evidence
+
+Both reds execute freshly built Release tests against unchanged a9bcaf880 reader source. The first
+10-case run has 7 failed and 3 passed, exit 1. The three passing new-writer pre-pass cases are the
+existing rehash detection, not exclusion proof. The five already-open cases fail because the reader
+reaches validation instead of refusing acquisition. The new late-sidecar and consumed-prefix
+new-writer cases fail because the old reader returns a verified wrapper after a successful flush.
+
+The second red adds actual observations and narrowly injected unavailable-facility/cleanup cases.
+All 9 cases fail, exit 1. TRX explicitly records successful flushed overwrites, preserved native IDs
+and lengths 227 and 525017, reached third content.before or first content.chunk.after, and verified
+old bytes for both new and already-open writers. The injected exclusion callback is never reached
+on the old owner. Cleanup cases demonstrate the missing write refusal at their actual held points.
+No sleeps, races, retries, test loops or synthetic load are used. `red-sources.json` identifies the
+actual pre-fix assembly and source hashes. `red-tests.patch` preserves the initial regression changes.
+
+The first focused green passes 23, failed 0, skipped 0. New writers are refused with actual sharing
+contention at the complete, later-file and consumed-prefix boundaries. Existing writers prevent the
+reader's target acquisition, before any content read from that file. Tests observe exact acquisition
+counts, native errno, unchanged bytes and no false verified wrapper after a permitted completed
+write. After every success/refusal, the old writer is disposed and a new ordinary writer opens,
+writes and flushes again. A valid console verification after restoring original bytes checks release
+of every file lease. Replacement cases permit only a meaningful Windows blocked-mutation alternative,
+with native refusal, unchanged identity/bytes and successful verification. Actual replacements
+require identity refusal and changed entry identity. No unrelated parse error satisfies these cases.
+
+The final affected run passes 136, failed 0, skipped 0, exit 0, after all behavioral edits. It
+includes the six adapted pre-pass cases, four new schedule cases, four unavailable-exclusion
+cases, three held refusal/cancellation release cases, all retained replacement/alias/link/reparse/
+escape/unavailable-identity checks, before/after read budget cases, accepted post-stamp Unit
+correction cases and actual console/publication tests. No unchanged broad lifecycle/protocol suite
+or ordinary full/determinism workload was repeated.
+
+Unavailable-exclusion tests inject only the platform operation through the identity boundary while
+FileSet and DirectoryReader perform actual acquisition, native status/entry queries, previous
+real exclusions, reads and disposal. Failure at acquisition 1 observes zero content reads and two
+closed handles. Failure at acquisition 3 observes two completed file acquisitions, ten prior
+content chunks and four closed handles. The exact thrown object survives. Missing-symbol refusal
+retains EntryPointNotFoundException. Unsupported-operation refusal retains native ENOTSUP evidence
+(45 on the Mac), distinct from actual contention errno 35. These are labelled injected failures,
+not claims that the local filesystem lacks flock. Every acquired file can be reopened, written and
+flushed after refusal. The actual console then verifies all files with no GPU providers.
+
+### Final affected payload and unchanged budgets
+
+Supported final setup uses `sh scripts/build-release-tests.sh KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj`,
+including the outside verifier. The outside measurement tool is built through the same supported
+setup and is not executed. All final build summaries report zero warnings/errors.
+The final affected selection ran once after final behavior changes, in the heavy build slot.
+
+Each real PrepareCollection/Collect/reserve/commit/Publish/Verify fixture retains 16944 frames,
+two recipes, 129 occurrences and 258 factory events. Complete nonempty and genuine Unsupported
+directories pass actual console verification. The held Invalid variant refuses while preserving
+raw frame/error and partial evidence. Fresh observed accounting is unchanged from earlier rounds.
+
+| Variant | Base | Inventory | Completion shape | T | R | Commits | Root including padding | Combined |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| complete-small | 199541974 | 282181 | 7093453 | 12462, 12461 | 51830784, 51826688 | 4832, 5263 | 199552584 | 199834765 |
+| complete-unsupported | 199541975 | 282181 | 7093454 | 12462, 12462 | 51830784, 51830784 | 2357, 2776 | 199547624 | 199829805 |
+| held-invalid | 199757075 | 282181 | 7093481 | 12410, 12409 | 51617792, 51613696 | 4832, 2800 | 199765255 | 200047436 |
+
+The original 256 MiB cap, 16 MiB completion reserve, graph budgets, deadline, coldStart clock,
+compiler profiles, schema, timed workload, native attempt limits and spend/attempt gates are
+unchanged. Exclusion and the defence-in-depth rehash consume the existing finite interval. They
+add no serialized payload and no new accounting exemption. Synthetic headless payload arithmetic
+does not establish native deadline or cost acceptance.
+
+### Finishing checks, retained evidence and handback
+
+Whole-solution format verification returns 0, formatted 0 of 9137 files. Outside-verifier format
+returns 0, formatted 0 of 3. Neither reports warnings/errors. Dashes, prose, file size, instruction
+and documentation-version guards return 0. File size retains its existing Scene3D smaller-than-
+baseline advisory and the baseline remains unchanged. The initial diff check returns 2 for an
+extra blank line at the unfinished appendix EOF. The completed appendix removes that blank line,
+then repeats the relevant text/diff checks. This was a documentation-only failure after green
+behavioral verification, without a reason to rerun the unchanged suite.
+
+Actionlint remains raw exit 1 for the unchanged ci.yml and the same five baseline ubuntu-26.04
+runner-label diagnostics. `actionlint-comparison.json` compares exact message/line/column triples
+with r2. No suppression, runner, workflow, settings or lint-configuration change hides this result.
+
+A separate actual-console invocation with DOTNET_SYSTEM_IO_DISABLEFILELOCKING=1 refuses the otherwise
+valid retained complete-small directory, raw exit 1, with the specific required-sharing-protocol
+cause. This sets only that child process environment. It changes no persistent setting. The normal
+console already verifies the same directory in the final affected fixture.
+
+`commands.jsonl` records actual argv, physical cwd, environment gates, integer exits, durations,
+log lengths and hashes, including expected reds/refusals and the initial whitespace failure.
+`observations.json` retains actual held-boundary, acquisition/refusal/release observations from TRX.
+`full-proof.json` retains the three literal FULL_PROOF records. The independent `audit.py` streams
+the real payloads in 65536-byte chunks, checks file lengths/hashes, decodes inventory counts and
+recomputes literal T/R/commit arithmetic. It checks all command log hashes, TRX counters, report
+prefix preservation, the three equal consumed Render.Tests assembly hashes and untouched accepted
+owners/canonical contracts/version/baselines.
+
+`source-hashes.json`, `final.patch`, `precommit-proof.json` and `postcommit-proof.json` identify exact
+sources, patch, manifest, report, commit, parent and unchanged origin. Normal hooks apply to the
+eight explicit paths. The staged engine version remains 21.13.0. No native GPU implementation,
+compiler configuration/profile, admission/spend gate, timed workload, schema or budget changes.
+
+This is local macOS filesystem and headless implementation proof. Windows/Linux runtime, native
+compiler correspondence, native payload/deadline/cost acceptance, billed minutes, main integration,
+ordinary full verification, release and original armour/consumer gates remain open. No measurement
+fact, native GPU/device/window/timing/paid/workflow/stress execution, full ordinary suite,
+determinism workload, subagent, setting change, stash, cleanup, push, main merge, tag or release
+occurs. Tests remove only their own temporary files. All earlier evidence and backups are retained.
+
+No manual validation is needed. Root owns actual-evidence verification and a fresh independent scoped
+review, then acceptance/push or a proper correction. A failed review returns to the retained branch
+for correction and affected proof, without weakening the approved finite exclusion contract.

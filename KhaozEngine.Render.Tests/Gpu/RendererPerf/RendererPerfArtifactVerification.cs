@@ -91,7 +91,8 @@ internal static class RendererPerfArtifactVerification
         readonly RendererPerfArtifactFileSet _files = new(directory, budget, identity);
         internal void ValidateAll()
         {
-            // Identity does not establish content stability. Re-read every retained handle after
+            // Compatible-writer exclusion is already held on every retained file. As defence in
+            // depth, re-read every retained handle after
             // decoding, including earlier files, before the final identity/containment checks.
             // RandomAccess bypasses FileStream's buffered bytes and does not reopen a path.
             byte[] chunk = new byte[65536];

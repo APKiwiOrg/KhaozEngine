@@ -56,14 +56,16 @@ public static class MapWaterScopedCompiler
                 var index = new MapBoundsIndex(parts.Select(MapWaterPolygons.Bounds.Of).ToArray());
                 var drawBounds = scene.Scope.DiscoveryBounds;
                 var drawCells = Candidates(parts, drawBounds, scene.Source.Data.TileSize, cellMetres, admission, pairs, ref candidates);
+                using var expandedStorage = admission.Workspace();
                 var cells = drawCells;
                 if (scene.Scope.MotionPaddingMetres > 0)
                 {
                     // Motion selects potential draw cells first. Their complete extents then select the
                     // separate clip dependencies, including cells beyond the padded draw window.
-                    var expanded = new HashSet<Cell>(cells);
+                    var expanded = MapPreparationCollections.CopySet(cells, expandedStorage, out long expandedBytes, entryBytes: 128);
                     foreach (var selected in drawCells)
                     {
+                        using var neighbourhoodPreparation = admission.BeginPreparation();
                         double padding = scene.Scope.MotionPaddingMetres;
                         var bounds = new MapBox3(selected.Min.X.ToDouble() - padding, -float.MaxValue, selected.Min.Z.ToDouble() - padding,
                             selected.Max.X.ToDouble() + padding, float.MaxValue, selected.Max.Z.ToDouble() + padding);
@@ -72,7 +74,12 @@ public static class MapWaterScopedCompiler
                         var nearby = index.Overlapping(new(Point(bounds.MinX, bounds.MinZ), Point(bounds.MaxX, bounds.MaxZ)), pairs, admission);
                         admission.ReserveBytes(checked(128L + nearby.Count * 8L));
                         foreach (var neighbour in Candidates(nearby.Select(i => parts[i]).ToArray(), bounds, scene.Source.Data.TileSize,
-                            cellMetres, admission, pairs, ref candidates)) expanded.Add(neighbour);
+                            cellMetres, admission, pairs, ref candidates))
+                        {
+                            if (expanded.Contains(neighbour)) continue;
+                            MapPreparationCollections.Set(expanded, expandedStorage, ref expandedBytes, entryBytes: 128);
+                            expanded.Add(neighbour);
+                        }
                     }
                     cells = expanded;
                 }

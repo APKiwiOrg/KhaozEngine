@@ -3,9 +3,9 @@ namespace KhaozEngine.Render3D.Internal;
 internal static partial class ShaderSources
 {
     // Exact binary32 orientation. Each input is a signed integer in units of 2^-149.
-    // Six coordinate products fit below 2^557. Positive and negative sums each use 576 bits.
+    // Wide fallback: six coordinate products fit below 2^557. Each magnitude sum uses 576 bits.
     // No float filter, optional double capability, epsilon or source-coordinate modification is involved.
-    const string WaterOpticsPredicatesGlsl = @"
+    const string WaterOpticsPredicatesGlsl = WaterOpticsNarrowPredicatesGlsl + @"
 struct OpticsWide { uint limb[18]; };
 
 void opticsWideAdd(inout OpticsWide sum, int word, uint value) {
@@ -41,7 +41,7 @@ void opticsWideProduct(inout OpticsWide positive, inout OpticsWide negative, uin
     }
 }
 
-int opticsOrient(uvec2 a, uvec2 b, uvec2 p) {
+int opticsOrientWide(uvec2 a, uvec2 b, uvec2 p) {
     OpticsWide positive, negative;
     for (int i = 0; i < 18; i++) { positive.limb[i] = 0u; negative.limb[i] = 0u; }
     opticsWideProduct(positive,negative,b.x,p.y,false);
@@ -55,6 +55,12 @@ int opticsOrient(uvec2 a, uvec2 b, uvec2 p) {
         if (positive.limb[i] < negative.limb[i]) return -1;
     }
     return 0;
+}
+
+int opticsOrient(uvec2 a, uvec2 b, uvec2 p) {
+    int baseShift = opticsOrientBaseShift(a,b,p);
+    if (baseShift >= 0) return opticsOrientNarrow(a,b,p,baseShift);
+    return opticsOrientWide(a,b,p);
 }
 ";
 }

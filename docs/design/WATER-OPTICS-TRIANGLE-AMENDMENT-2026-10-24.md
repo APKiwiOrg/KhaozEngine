@@ -154,8 +154,15 @@ this consumed value within the same 0.0001 m total. It does not receive another 
 
 The scene sampler implements the ordered binary32 operations with integer significands, guard,
 round and sticky bits, including nearest-even restoring division. Exact canonical-line containment
-sums six signed coordinate products in two 18-word integer accumulators. This avoids optional doubles,
-float contraction and native division tolerances without changing mode 0 or mode 1 arithmetic.
+sums six signed coordinate products. Each binary32 coordinate is an integer significand below `2^24`
+times a power of two, including unnormalized subnormal significands. Remove the minimum exponent shift
+of the nonzero products. When their exponent-shift span is at most 77, each product is below `2^125`
+and their total magnitude is below `6*2^125 < 2^128`. Two unsigned four-word accumulators therefore
+retain every bit and carry. Compare positive and negative magnitudes to determine sign, including exact
+cancellation. Zero products do not widen the domain. All-zero products return zero. Wider spans use
+the original two 18-word accumulators. No floating-point filter changes domain selection or sign.
+This avoids optional doubles, float contraction and native division tolerances without changing
+mode 0 or mode 1 arithmetic or the software interpolation operations.
 GPU queries use rounded local-coordinate subtraction directly. The inverse extent is used only for
 bin selection, whose additional rounding fits the existing outward acceleration-bin support.
 

@@ -2103,3 +2103,109 @@ SHA-256 c2386d0b5e603d32ed86e38058caf9caf627166c2070f120bee5b38721a4bcf3.
 Its archive/restoration and applicability checks exit 0. The prior archive is unchanged.
 Only this evidence record is committed. No partial replacement is committed under the
 final implementation subject. Integration, pushes and releases remain with the orchestrator.
+
+
+## Task 2b.3 continuation under SS-R17
+
+Status NEEDS_CONTEXT. Starting base 35c3ac37f. The starting guard and application of
+the SS-R16 archive pass. SS-R17 removes the fixed 0.25 mm width precondition and tries
+the exact combined 1 mm encoded-error gate at every bracket. The attempted encoder
+retains both original-member witnesses, includes final normal normalization/encoding,
+outward distance and the final placement-operation residual, and separately proves
+the skin-shortened actual placement. No cap, tolerance or accepted shape changes.
+
+The restored stage red exits 1, one failed test and 23/24 Hits. The added narrow-bracket
+large-witness-error control first fails compilation on the intended missing typed
+encoder door. After implementation, the stage diagnostic exits 0, one passed test
+and 24/24 Hits. The formerly failing rim/0.001/2^-12 row uses 203/1178 C/F. Counts are
+observations, never absolute test pins. Every row has one admission and restores the
+polynomial arena. The complete measured stage table follows.
+
+| Family | Margin | Approach | Hit | Initial C/F | Plane C/F | First event C/F | Refinement C/F | Total C/F | Exhausted |
+| --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- |
+| face | 0 | 2^-4 | True | 3/20 | 2/12 | 48/149 | 10/49 | 63/230 | False |
+| face | 0 | 2^-12 | True | 3/20 | 2/12 | 48/149 | 10/49 | 63/230 | False |
+| face | 0 | 2^-20 | True | 3/20 | 2/12 | 48/149 | 10/49 | 63/230 | False |
+| face | 0 | tangent | True | 32/51 | 2/8 | 49/104 | 32/108 | 115/271 | False |
+| rim | 0 | 2^-4 | True | 32/51 | 2/8 | 26/74 | 29/111 | 89/244 | False |
+| rim | 0 | 2^-12 | True | 32/51 | 2/8 | 49/109 | 48/154 | 131/322 | False |
+| rim | 0 | 2^-20 | True | 32/51 | 2/8 | 49/109 | 32/108 | 115/276 | False |
+| rim | 0 | tangent | True | 32/51 | 2/8 | 49/109 | 32/108 | 115/276 | False |
+| apex | 0 | 2^-4 | True | 7/27 | 2/12 | 19/120 | 10/49 | 38/208 | False |
+| apex | 0 | 2^-12 | True | 7/27 | 2/12 | 19/120 | 10/49 | 38/208 | False |
+| apex | 0 | 2^-20 | True | 7/27 | 2/12 | 19/120 | 10/49 | 38/208 | False |
+| apex | 0 | tangent | True | 16/27 | 2/8 | 31/75 | 8/39 | 57/149 | False |
+| face | 0.001 | 2^-4 | True | 3/20 | 2/12 | 23/122 | 10/49 | 38/203 | False |
+| face | 0.001 | 2^-12 | True | 3/20 | 2/12 | 52/138 | 10/49 | 67/219 | False |
+| face | 0.001 | 2^-20 | True | 3/20 | 2/12 | 52/138 | 10/49 | 67/219 | False |
+| face | 0.001 | tangent | True | 32/51 | 2/8 | 46/95 | 53/184 | 133/338 | False |
+| rim | 0.001 | 2^-4 | True | 32/51 | 2/8 | 76/377 | 104/1123 | 214/1559 | False |
+| rim | 0.001 | 2^-12 | True | 32/51 | 2/8 | 121/965 | 48/154 | 203/1178 | False |
+| rim | 0.001 | 2^-20 | True | 32/51 | 2/8 | 141/1927 | 48/154 | 223/2140 | False |
+| rim | 0.001 | tangent | True | 32/51 | 2/8 | 46/100 | 53/184 | 133/343 | False |
+| apex | 0.001 | 2^-4 | True | 7/27 | 2/12 | 22/119 | 10/49 | 41/207 | False |
+| apex | 0.001 | 2^-12 | True | 7/27 | 2/12 | 46/135 | 10/49 | 65/223 | False |
+| apex | 0.001 | 2^-20 | True | 7/27 | 2/12 | 46/135 | 10/49 | 65/223 | False |
+| apex | 0.001 | tangent | True | 16/27 | 2/8 | 32/79 | 8/39 | 58/153 | False |
+
+The expanded class exits 1, 28 executed, 20 passed and 8 failed. Three failures expose
+mandatory cap exhaustion, two arise from invalid exclusive output-stratum assertions
+on shared contacts, and three arise from incorrectly consuming work before primitive
+admission. Same-run lowered-cell and lowered-feature portions pass. The nine named
+brief tests, prefix lifetime, initial overlap, large-coordinate refusal and the
+narrow-bracket large-witness-error control pass. This is not a green full class.
+
+One bounded diagnostic records the whole required six-feature by three-target-stratum
+matrix, with both margins, without stopping at its first failed row. It exits 1, six
+executed, three passed and three failed. All 18 zero-margin rows pass. At Margin 0.001,
+11 pass and seven exhaust. Successful rows pass exact/outward combined-error checks.
+The seven failures trigger the mandatory stop before Common verification.
+
+| Requested pair | Initial C/F | Plane C/F | First event C/F | Refinement C/F | Total C/F | Last fraction bracket |
+| --- | --- | --- | --- | --- | --- | --- |
+| LowerCone/Edge | 117/171 | 2/10 | 133/1247 | 4/23 | 256/1451 | 0.9321966988892079,0.9943431454818217 |
+| Shoulder/Edge | 100/159 | 2/10 | 124/3927 | not reached | 226/4096 | 0,1 |
+| Rim/Edge | 102/165 | 2/10 | 128/3921 | not reached | 232/4096 | 0,1 |
+| Shoulder/Face | 3/20 | 2/12 | 153/1190 | 98/1326 | 256/2548 | 0.99609375,1 |
+| Rim/Face | 7/24 | 2/12 | 153/1164 | 94/1313 | 256/2513 | 0.9921875,1 |
+| Shoulder/Vertex | 18/29 | 2/8 | 99/4059 | not reached | 119/4096 | 0,1 |
+| Rim/Vertex | 20/31 | 2/8 | 103/4057 | not reached | 125/4096 | 0,1 |
+
+For Shoulder/Face, LowerCone/Edge and Rim/Face the last combined outward totals are
+0.0010920097478398564, 0.010986213766887395 and 0.0013812641935392915 m, respectively.
+Their complete encoded widths are 0.0010918378829956055, 0.01098605990409851 and
+0.0013810843229293823 m, with both witness residuals, normal and placement error added.
+All three also fail the exact skin-before-prefix check. The other four exhaust feature
+work before the first event, so no attained normal or combined encoder budget exists.
+The detailed continuation report records each component, the complete 36-row matrix,
+commands, exit codes, failed-test interpretation and self-review. No further algorithm
+correction follows this required stop.
+
+Exact commands run, each synchronously through build-slot without heavy.
+
+```bash
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexBracketSweepTests.StageDiagnostic' --logger 'console;verbosity=detailed'
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexBracketSweepTests'
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexBracketSweepTests.StageDiagnostic' --logger 'console;verbosity=detailed'
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexBracketSweepTests' --logger 'console;verbosity=detailed'
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexBracketSweepTests.CompletionStopDiagnostic' --logger 'console;verbosity=detailed'
+```
+
+The exits in order are 1, 1, 0, 1 and 1. Logs are under
+/tmp/khaozengine-short-shell/ss-r17, named stage-red.log, class-red.log, stage-green.log,
+class-first.log and completion-stop.log. All processes have finished.
+
+All four r0/r1 producers, old root-specific encoder entries, kernel/dispatch and migrated
+legacy tests are restored to the starting base. Shared arithmetic policies, capsule
+and support APIs, InstalledSweepLeaf, Movement and baseline sources are unchanged.
+The three Common selections, SS-R2 capsule families, roof/footprint protections and
+seven degree-1 navigation baselines are NOT RUN after the stop. No green retirement,
+full represented-pose or duck/cow completion is accepted.
+
+The archived attempt is task-2b.3-r17-attempt.diff in the existing SDD handoff directory,
+99,498 bytes, SHA-256 661ec3fb8466de0c67adf8369ffde8de81037375ab7af22c47f7502780c38b3c.
+Its guarded archive/restoration and git apply --check exit 0. Only this proof record
+is committed. No instrumentation or partial implementation is committed under the final
+subject. No subagent, reviewer, push, merge, fetch, branch change, tag, version bump,
+release, consumer launch, load run, loop or full suite occurred. The orchestrator must
+review the seven measured failures before another implementation run.

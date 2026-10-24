@@ -154,3 +154,11 @@ The existing [partial-write accounting gap #1547](https://github.com/APKiwiOrg/K
 remains open. Sidecar preparation is accounted, but a failed measurement's partial write can occur after
 its accounting snapshot. Headless success does not close or waive this limit. No optimization, consumer
 adoption, private content, Windows Vulkan expansion, release or other active lane is part of this proof.
+
+
+Cold publication correction uses the shared ordinary Release setup in
+[contributor rules](../CONTRIBUTOR-RULES.md#build-and-ci), including its outside-solution verifier
+prerequisite. The living [directory verification contract](../RENDERER-PERFORMANCE.md) describes
+platform file IDs, final identity checks and terminal publication failure ownership. macOS filesystem
+API tests are headless implementation evidence. Windows/Linux paths require their own execution
+proof. No native GPU, native deadline/cost, billed-minute or armour gate is closed by these tests.

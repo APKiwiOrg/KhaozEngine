@@ -111,6 +111,9 @@ internal static class RendererPerfUnit
             if (failures.Count == 0) budget.Check("renderer.inventory.freeze.after");
             if (report is not null && failures.Count == 0 && configuration is not null)
             {
+                // Freeze the same bounded empty failure projection that final Unit publication uses.
+                // Its required-byte metadata is retained base evidence, even with no failure events.
+                report = RendererPerfFailureText.Project(report, failures.ToImmutable(), 16777216);
                 var preparation = publication.PrepareCollection(report, inventory, budget);
                 failures.AddRange(preparation.Failures);
                 budget.Check("renderer.publication.prepare.after");
@@ -153,7 +156,8 @@ internal static class RendererPerfUnit
             {
                 var final = publication.Publish(report, inventory, budget);
                 report = final.Report; failures.AddRange(final.Failures);
-                if (failures.Count == 0) budget.Check("renderer.publication.return");
+                // Publish owns terminal enforcement through publication.return and its bounded
+                // disk correction. No separate failure-producing check may outlive that owner.
             }
             catch (Exception error)
             {

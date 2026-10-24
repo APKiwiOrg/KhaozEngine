@@ -37,15 +37,17 @@ public sealed partial class RendererPerfCompilerPublicationTests
         Assert.False(outcome.EarlyFailure.KnownFacts.ContainsKey("vendorId"));
         _output.WriteLine("early original aggregate preserved=true events=4 sameEvidence=true textComplete={0}", outcome.EarlyFailure.FailureText.Complete);
     }
-    sealed class ObservePublication(IRendererPerfUnitPublication actual) : IRendererPerfUnitPublication
+    sealed class ObservePublication(IRendererPerfUnitPublication actual, Action<RendererPerfUnitBudget>? observeBudget = null) : IRendererPerfUnitPublication
     {
         internal RendererPerfUnitFailure? Early;
+        internal RendererPerfPublicationResult? Final;
+        internal RendererPerfReport? Prepared;
         public RendererPerfCollectionPreparation PrepareCollection(RendererPerfReport report, RendererPerfCompilerInventory inventory, RendererPerfUnitBudget budget)
-            => actual.PrepareCollection(report, inventory, budget);
+        { Prepared = report; observeBudget?.Invoke(budget); return actual.PrepareCollection(report, inventory, budget); }
         public RendererPerfReadReservation? ReserveReport(GpuBackendKind backend) => actual.ReserveReport(backend);
         public void CommitReportBytes(RendererPerfReadReservation reservation, int bytes) => actual.CommitReportBytes(reservation, bytes);
         public RendererPerfPublicationResult Publish(RendererPerfReport report, RendererPerfCompilerInventory inventory, RendererPerfUnitBudget budget)
-            => actual.Publish(report, inventory, budget);
+            => Final = actual.Publish(report, inventory, budget);
         public RendererPerfFailurePublicationResult WriteFailure(RendererPerfUnitFailure failure, RendererPerfUnitBudget budget)
         { Early = failure; return actual.WriteFailure(failure, budget); }
     }

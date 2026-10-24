@@ -89,8 +89,20 @@ chunks no larger than 65,536 bytes. It checks safe relative paths, aliases, link
 nonempty lengths, SHA-256, strict schema, execution identity, decoded counts and all construction,
 read and result associations. Expected files come from producer registration, never enumeration. The existing fixed-cadence host telemetry producer also registers its exact JSONL output, without another sampler call.
 `RendererPerfAnalysis.ReadDirectory` calls this same verifier. Only verification constructs the
-immutable verified artifact. Verified summaries retain that association and their reference rates.
+immutable verified artifact. It retains actual handle identities and no-follow directory-entry
+identities, refuses hard-link aliases, and rechecks all retained files and parent directories at the
+final certification boundary. macOS arm64/x64 uses fstat/fstatat and no-follow openat. Linux x64
+uses statx and no-follow openat. Windows uses disk-file IDs and reparse-point handles. Unavailable
+identity APIs or unsupported platforms refuse. Advisory sharing locks are not identity evidence.
+These checks describe the directory at verification's final identity checks. They do not freeze it
+against later mutation or provide a filesystem transaction. Offline and workflow verification must
+repeat against received files. Verified summaries retain that association and their reference rates.
 `RendererPerfComparison.Compare(verifiedBaseline, verifiedCandidate)` requires it for verdicts.
+
+Ordinary local Release test setup runs `sh scripts/build-release-tests.sh KhaozEngine.slnx`, or passes
+`KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj` for the affected assembly. This builds its
+outside-solution process prerequisite before `dotnet test -c Release --no-build`. Full and selective
+ordinary CI use this same build owner. Process tests refuse a missing executable.
 
 The outside-solution `tools/Renderer.Perf.Verify` console takes exactly directory and report filename.
 It performs no backend registration, device creation or measurement. Exit zero means directory
@@ -99,6 +111,9 @@ identity checks, then verifies received files again rather than accepting parsed
 
 The root cap and depth remain 268,435,456 bytes and 32, including two 32-byte accounting slots.
 Root plus new compiler-inventory/compiler-failure files must fit the same combined byte cap.
+The concrete writer owns the terminal `publication.return` deadline/cancellation check after stamping,
+inside its bounded failed-final correction and partial recovery. Unit consumes the actual failure
+events once. A successful stamp cannot escape that correction owner through a later Unit check.
 Precollection encodes the retained root, inventory and completion shape before optional replay.
 The unchanged 16,777,216-byte completion reserve includes four option tables requiring up to
 6,717,440 encoded bytes. Vulkan headroom A admits T=min(16384,floor((A-786432)/4096)) and

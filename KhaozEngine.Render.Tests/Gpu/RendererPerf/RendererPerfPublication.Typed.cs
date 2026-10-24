@@ -147,6 +147,9 @@ internal sealed partial class RendererPerfPublicationWriter : IRendererPerfUnitP
             budget.Check("renderer.publication.stamp.before");
             recordCompletion(report);
             budget.Check("renderer.publication.stamp.after");
+            // This is Unit's terminal enforcement. It must share the final correction/recovery
+            // owner because the successful stamp already exists on disk at this boundary.
+            budget.Check("renderer.publication.return");
             return new(report, []);
         }
         catch (Exception error)

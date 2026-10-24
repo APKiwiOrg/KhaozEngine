@@ -12,7 +12,7 @@ public sealed partial class RendererPerfCompilerPublicationTests
         "../../../tools/Renderer.Perf.Verify/bin/Release/net10.0/Renderer.Perf.Verify.dll"));
     (int Exit, string Output) RunConsole(params string[] args)
     {
-        Assert.True(File.Exists(Verifier()), "Build the outside-solution Renderer.Perf.Verify project before this process selection.");
+        Assert.True(File.Exists(Verifier()), "Run scripts/build-release-tests.sh KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj before --no-build process tests.");
         var info = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true };
         info.ArgumentList.Add(Verifier());
         foreach (string arg in args) info.ArgumentList.Add(arg);

@@ -48,6 +48,7 @@ internal interface IRendererPerfUnitPublication
         RendererPerfUnitBudget budget);
     RendererPerfReadReservation? ReserveReport(GpuBackendKind backend);
     void CommitReportBytes(RendererPerfReadReservation reservation, int actualBytes);
+    // Owns the final publication.return budget check inside the same correction/recovery boundary.
     RendererPerfPublicationResult Publish(RendererPerfReport report, RendererPerfCompilerInventory inventory,
         RendererPerfUnitBudget budget);
     RendererPerfFailurePublicationResult WriteFailure(RendererPerfUnitFailure failure, RendererPerfUnitBudget budget);

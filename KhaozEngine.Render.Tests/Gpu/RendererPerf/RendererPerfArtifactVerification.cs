@@ -16,9 +16,9 @@ internal sealed class RendererPerfVerifiedArtifact
     RendererPerfVerifiedArtifact(RendererPerfReport report, RendererPerfCompilerInventory inventory,
         RendererPerfSidecarCounts counts, long combinedBytes)
     { Report = report; Inventory = inventory; Counts = counts; CombinedBytes = combinedBytes; }
-    internal static RendererPerfVerifiedArtifact Verify(string directory, string reportName, RendererPerfUnitBudget? budget)
+    internal static RendererPerfVerifiedArtifact Verify(string directory, string reportName, RendererPerfUnitBudget? budget, IRendererPerfArtifactIdentity? identity)
     {
-        var data = RendererPerfArtifactVerification.Read(directory, reportName, budget);
+        var data = RendererPerfArtifactVerification.Read(directory, reportName, budget, identity);
         return new(data.Report, data.Inventory, data.Counts, data.CombinedBytes);
     }
 }
@@ -28,12 +28,12 @@ internal static class RendererPerfArtifactVerification
 {
     internal sealed record Data(RendererPerfReport Report, RendererPerfCompilerInventory Inventory,
         RendererPerfSidecarCounts Counts, long CombinedBytes);
-    internal static RendererPerfVerifiedArtifact Verify(string directory, string reportName, RendererPerfUnitBudget? budget = null)
-        => RendererPerfVerifiedArtifact.Verify(directory, reportName, budget);
-    internal static Data Read(string directory, string reportName, RendererPerfUnitBudget? budget)
+    internal static RendererPerfVerifiedArtifact Verify(string directory, string reportName, RendererPerfUnitBudget? budget = null, IRendererPerfArtifactIdentity? identity = null)
+        => RendererPerfVerifiedArtifact.Verify(directory, reportName, budget, identity);
+    internal static Data Read(string directory, string reportName, RendererPerfUnitBudget? budget, IRendererPerfArtifactIdentity? identity)
     {
         budget?.Check("renderer.verify.before");
-        using var reader = new DirectoryReader(directory, budget);
+        using var reader = new DirectoryReader(directory, budget, identity ?? RendererPerfArtifactIdentity.Platform);
         var (root, rootLength, _) = reader.Read(reportName, RendererPerfReportJson.MaximumBytes);
         budget?.Check("renderer.verify.root.decode.before");
         var report = RendererPerfReportJson.Parse(root);
@@ -77,30 +77,28 @@ internal static class RendererPerfArtifactVerification
         if (!reasons.IsEmpty) throw new InvalidOperationException(string.Join(" ", reasons));
         RendererPerfPublicationAccount.Verify(report, inventory, inventoryBytes);
         budget?.Check("renderer.verify.complete");
-        return new(report, inventory, new(inventory.FactoryEvents.Length, inventory.Occurrences.Length, inventory.Recipes.Length,
+        var data = new Data(report, inventory, new(inventory.FactoryEvents.Length, inventory.Occurrences.Length, inventory.Recipes.Length,
             report.Pipelines.Length, report.Pipelines.Sum(p => p.Executables.Length), report.Pipelines.Sum(p => p.Executables.Sum(e => e.Statistics.Length))), combined);
+        reader.ValidateAll();
+        return data;
     }
 
-    // Exclusive handles stay open together. A second path to the same regular file cannot acquire
-    // another handle, including hard-link aliases, while the first evidence lease remains held.
-    sealed class DirectoryReader(string directory, RendererPerfUnitBudget? budget) : IDisposable
+    sealed class DirectoryReader(string directory, RendererPerfUnitBudget? budget, IRendererPerfArtifactIdentity identity) : IDisposable
     {
-        readonly string _root = System.IO.Path.GetFullPath(directory);
         readonly HashSet<string> _paths = new(StringComparer.OrdinalIgnoreCase);
         readonly List<FileStream> _leases = [];
+        readonly RendererPerfArtifactFileSet _files = new(directory, budget, identity);
+        internal void ValidateAll() => _files.ValidateAll();
         internal (byte[] Bytes, long Length, string Sha256) Read(string relative, int maximum)
         {
             budget?.Check("renderer.verify.file.before");
             RendererPerfSidecarRegistry.Path(relative);
             if (!_paths.Add(relative)) throw new InvalidOperationException("Duplicate or aliased artifact path.");
-            string path = Safe(relative);
-            long advertisedLength = new FileInfo(path).Length;
-            if (advertisedLength <= 0 || advertisedLength > maximum) throw new InvalidOperationException("Artifact is empty or exceeds its byte capacity.");
             budget?.Check("renderer.verify.file.open.before");
-            var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None, 65536, FileOptions.SequentialScan);
+            var stream = _files.Open(relative);
             _leases.Add(stream);
             long length = stream.Length;
-            if (!stream.CanSeek || length != advertisedLength || length <= 0 || length > maximum) throw new InvalidOperationException("Artifact is empty or exceeds its byte capacity.");
+            if (!stream.CanSeek || length <= 0 || length > maximum) throw new InvalidOperationException("Artifact is empty or exceeds its byte capacity.");
             budget?.Check("renderer.verify.file.open.after");
             byte[] result = new byte[checked((int)length)];
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
@@ -114,31 +112,15 @@ internal static class RendererPerfArtifactVerification
                 budget?.Check("renderer.verify.chunk.after");
             }
             budget?.Check("renderer.verify.file.end.before");
-            if (stream.Length != length || stream.ReadByte() != -1 || Safe(relative) != path || new FileInfo(path).Length != length)
+            if (stream.Length != length || stream.ReadByte() != -1)
                 throw new InvalidOperationException("Artifact changed during verification.");
             budget?.Check("renderer.verify.file.end.after");
             return (result, length, Convert.ToHexStringLower(hash.GetHashAndReset()));
         }
-        string Safe(string relative)
+        public void Dispose()
         {
-            var root = new DirectoryInfo(_root);
-            if (!root.Exists || root.LinkTarget is not null || (root.Attributes & FileAttributes.ReparsePoint) != 0)
-                throw new InvalidOperationException("Evidence root is missing or traverses a link/reparse point.");
-            string path = _root;
-            var parts = relative.Split('/');
-            for (int n = 0; n < parts.Length; n++)
-            {
-                path = System.IO.Path.Combine(path, parts[n]);
-                FileSystemInfo info = n == parts.Length - 1 ? new FileInfo(path) : new DirectoryInfo(path);
-                if (!info.Exists || info.LinkTarget is not null || (info.Attributes & FileAttributes.ReparsePoint) != 0
-                    || n == parts.Length - 1 && (info.Attributes & (FileAttributes.Directory | FileAttributes.Device)) != 0)
-                    throw new InvalidOperationException("Expected a regular artifact without link/reparse traversal: " + relative);
-            }
-            string full = System.IO.Path.GetFullPath(path);
-            if (!full.StartsWith(_root.TrimEnd(System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar, StringComparison.Ordinal))
-                throw new InvalidOperationException("Artifact escaped the evidence root.");
-            return full;
+            foreach (var stream in _leases) stream.Dispose();
+            _files.Dispose();
         }
-        public void Dispose() { foreach (var stream in _leases) stream.Dispose(); }
     }
 }

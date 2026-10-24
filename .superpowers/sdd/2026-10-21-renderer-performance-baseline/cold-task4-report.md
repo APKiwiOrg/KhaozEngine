@@ -179,3 +179,203 @@ native primary-backend correspondence, complete real compiler admission, real ve
 unchanged native deadline/cost, Windows filesystem behavior, or original armour/consumer acceptance.
 Root owns reconciliation, ordinary full suite, actual-evidence audit, fresh whole-amendment review and
 push. No manual validation is needed for this headless implementation. No native run is authorized.
+
+## Fix round1
+
+### Guard, ownership and finding matrix
+
+Resumed at physical `/Users/antonio/KhaozEngine/.worktrees/perf-baseline`, branch
+`feature/renderer-performance-baseline`, clean tracked tree/index and exact HEAD
+`3086ee6f6307cbb4a1abbcb0f818a12fe53e9c58`. Origin remains accepted/pushed
+`587eb9ed354fc12860a16f62088d24edd5426be8`. Read the full r0 review, original brief, current
+rules, canonical Task4 and CP-7/CP-8. Accepted Task1/2/3 contracts are retained.
+
+The preceding 15305 bytes are an exact preserved prefix with SHA256
+`a8554593181f2e59118c9b7ab0844e0959d7e257b431fc78726d17e36821e6f4`.
+All new evidence is under `/tmp/khaozengine-renderer-cold-publication/task4/fix-r1/`.
+Original Task4 logs, TRX, source manifests and payload directories remain untouched.
+
+| Finding | Final owner and proof |
+| --- | --- |
+| R0-1 ordinary setup | `scripts/build-release-tests.sh` builds the selected Release target, then the outside-solution verifier for the solution or Render.Tests. Full `ci.yml`, full/selective `ci-selective-test.sh` and documented local setup consume this owner. Fresh-output red/process green and bounded real-script orchestration fixtures prove the prerequisite without broadening selected tests |
+| R0-2 handle identity | ArtifactIdentity obtains actual handle and no-follow entry IDs. ArtifactFileSet retains directory/file handles, refuses duplicate file IDs and rechecks all files and directories before certification. Deterministic root/inventory/producer replacement, earlier-file replacement, root replacement, hard-link, symlink/reparse/escape and unavailable-identity cases exercise the actual reader |
+| R0-3 final completion | Typed PublicationWriter owns the existing `publication.return` check after stamp.after, inside its final/correction/recovery catch. Unit only transfers the typed result and new events. Actual Unit/file writer expiry/cancellation cases prove failed stored JSON/Markdown and actual ordered Error identity, including correction/recovery errors |
+
+### Supported build and fresh-output proof
+
+The supported local setup is `sh scripts/build-release-tests.sh KhaozEngine.slnx`, then the ordinary
+Release `dotnet test --no-build` selection. Passing the Render.Tests project supports the affected
+assembly route. The verifier stays outside the solution and keeps its one-way reference to Render.Tests.
+There is no reverse/circular reference, test-time build, missing-executable skip or stale-output fallback.
+Other selected test projects retain their original restore/build/test selection.
+
+Before the red, the entire existing verifier bin/obj directories were moved to owned
+`verifier-original-bin` and `verifier-original-obj`, preserving all 438 files. The exact original
+paths, lengths and SHA256 values are in `starting-manifest.json`. No unrelated build output was deleted.
+The original no-build console fact failed because its required DLL was absent, exit 1. The corrected
+supported solution setup built both solution and verifier from that absent-output state, exit 0,
+zero warnings/errors. The subsequent 17-case boundary/process selection passed with zero skips.
+This includes actual console argument/refusal checks and valid/corrupt directories with no providers.
+
+The bounded shell fixture executes the actual full workflow build command and actual selective
+script through stubbed dotnet/git command boundaries. It covers full fallback, selected Render.Tests,
+an unrelated selected assembly and prerequisite failure before tests. The full/determinism workload
+was never executed locally by these fixtures. The real fresh build/process proof is separate from
+those orchestration fixtures. Local instructions, contributor build rules, selective design and the
+living renderer contract point to the shared setup.
+
+### Identity guarantees, sources and limits
+
+The old FileShare.None lease assumption is removed. Native regular-file/directory kind and identity
+are established before allocating file payloads. IDs are independent of advisory lock availability.
+Handles remain alive through final validation, preventing reuse of the opened file's identity.
+Unix component opens and entry queries are relative to retained directory handles and refuse links.
+Windows uses disk-file IDs and reparse-point handles, with retained parent identities. Every registered
+file is rechecked, including earlier-read root/inventory files. Root replacement also refuses.
+The unchanged 65536-byte chunk, before/after budget, length, hash, schema, decoded count, stage,
+recipe and correspondence checks still run through the shared live/offline/console reader.
+
+- macOS arm64/x64 uses openat O_NOFOLLOW/O_DIRECTORY, fstat/fstatat and the LP64 144-byte stat ABI.
+  x64 selects INODE64 symbols and arm64 uses the sole 64-bit ABI. The local C ABI executable checked
+  size 144, device offset 0, mode offset 4, inode offset 8, nofollow 0x100, directory 0x100000,
+  close-on-exec 0x1000000, nonblock 4 and AT_SYMLINK_NOFOLLOW 0x20, exit 0.
+- Linux x64 uses the fixed 256-byte statx UAPI, requires returned TYPE/INO mask bits and uses
+  device-major/device-minor plus inode. It uses AT_EMPTY_PATH for handles and AT_SYMLINK_NOFOLLOW
+  for entries. Other Linux architectures and unavailable statx facilities explicitly refuse.
+- Windows uses GetFileInformationByHandleEx FILE_ID_INFO (volume plus 128-bit ID),
+  FILE_ATTRIBUTE_TAG_INFO, disk-file type and OPEN_REPARSE_POINT/BACKUP_SEMANTICS handles.
+  Unsupported identity facilities refuse. Size, timestamps, path text and a lucky reopen are not IDs.
+
+Primary definitions are the [pinned .NET10 Unix handle owner](https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.Private.CoreLib/src/Microsoft/Win32/SafeHandles/SafeFileHandle.Unix.cs),
+[Apple rename contract](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/rename.2.html),
+[Darwin stat ABI](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/stat.h),
+[Darwin fcntl flags](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/fcntl.h),
+[Linux statx ABI](https://github.com/torvalds/linux/blob/v6.12/include/uapi/linux/stat.h),
+[Linux open flags](https://github.com/torvalds/linux/blob/v6.12/include/uapi/asm-generic/fcntl.h),
+[statx API](https://man7.org/linux/man-pages/man2/statx.2.html),
+[Windows query API](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getfileinformationbyhandleex),
+[FILE_ID_INFO](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_id_info),
+[FILE_ATTRIBUTE_TAG_INFO](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_attribute_tag_info)
+and [CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew).
+`platform-sources.json` records these sources and hashes preserved local SDK declarations.
+The optional Python raw-source archival attempt returned HTTP 429, exit 1. The web reads and local
+SDK/ABI proof supply the source evidence, not that failed download.
+
+The held tests replace different regular bytes of identical length after the actual opened-handle
+boundary. Additional cases replace a file already read before the terminal certification checks.
+Every case now refuses. The unavailable platform seam preserves the same original refusal object
+and has no fallback. Existing link/reparse/escaped-parent and strict decoded-evidence assertions remain.
+The test boundary callback observes existing budget checks. It adds no clock origin or native work.
+
+The guarantee is bounded to final identity validation. It is not a filesystem transaction or a freeze
+against subsequent mutation. Receiving/offline/workflow owners must repeat verification on received
+files. These local executions prove macOS behavior. Windows/Linux code and ABI sources were checked,
+but neither platform path was executed locally. No Windows/Linux runtime proof is claimed.
+
+### Final completion and actual failure transport
+
+The `publication.return` check remains after stamp.after with the original budget, coldStart,
+absolute deadline and cancellation token. It is now inside the writer's existing catch. There is no
+new clock sample origin, relaxed deadline, publication retry or successful second completion.
+Unit performs only result/event transfer after this owner returns. It has no later deadline check
+that could fail outside disk correction. The interface comment records this completion ownership.
+
+The real Unit/file-writer tests hold a successful stamp.after observation and expire or cancel at
+the next enforcement. The original timeout/cancellation is the exact same object in the writer's
+new-event result and UnitOutcome. Later real correction/recovery write sentinels appear exactly once
+by ReferenceEquals in chronological final/correction/recovery order. The timeout message names the
+retained publication.return check. Cancellation retains the original token. Stored final JSON and
+Markdown say Failed and nonpromotion. Raw block/pipeline arrays remain retained from the successful
+initial partial. Existing early failure, preidentity, exhausted failure-text and pre-stamp interruption
+cases remain in the final selection.
+
+Those tests also exposed a required admission handoff fix. The driver's default failure-text metadata
+was incomplete with required bytes zero. Unit later canonicalized empty failures to complete with six
+required JSON bytes, after precollection had frozen a different base. Unit now projects that same
+empty failure evidence before PrepareCollection. This fixes the actual Unit/file-account path without
+changing a schema, cap, profile, native identity or workload. The successful stamp assertion proves
+that the real account and directory verifier agree before the post-stamp failure is injected.
+
+With the held clock, cancellation retains elapsed/cost zero. Expiry retains 600000 milliseconds and
+0.52 USD from the existing 0.052 USD/minute rate and original 100-tick origin. Correction/recovery
+errors retain these clock semantics. Failure writes may themselves fail, so bounded recovery is not a
+guarantee that arbitrary failing storage can persist every later error. Original actual write-failure
+and text-capacity tests remain authoritative. The existing partial-write accounting issue #1547 stays open.
+
+
+### Remeasured payload and verification evidence
+
+The final affected run retained all 16944 frames in each variant through real PrepareCollection,
+Collect, reservation/commit, Publish and Verify owners. The complete variants passed actual console
+verification. The original held Invalid variant retains raw errors and partial results and refuses.
+The measured section/request/commit/root sizes are unchanged from the prefix, observed again rather
+than forced by obsolete constants. New files live under fix-r1/full, never the original payload paths.
+
+| Variant | Base | Inventory | Completion shape | T | R | Committed | Root with stamp padding | Combined |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| complete-small | 199541974 | 282181 | 7093453 | 12462, 12461 | 51830784, 51826688 | 4832, 5263 | 199552584 | 199834765 |
+| complete-unsupported | 199541975 | 282181 | 7093454 | 12462, 12462 | 51830784, 51830784 | 2357, 2776 | 199547624 | 199829805 |
+| held-invalid | 199757075 | 282181 | 7093481 | 12410, 12409 | 51617792, 51613696 | 4832, 2800 | 199765255 | 200047436 |
+
+The independent audit reopens real files, streams hashes in 65536-byte chunks, decodes actual
+inventory totals and checks literal headroom/T/R/commit arithmetic. Each inventory still has 258
+factory events, 129 occurrences and two recipes. The existing original 199883475-byte history,
+23722707-byte contradiction and 176160768 threshold remain in the exact prefix. No cap, schema,
+reservation formula, raw frame field, compiler identity, pipeline or native implementation changed.
+
+All registered exact argv, physical cwd, environment gates, integer exits, log lengths and SHA256
+values are in fix-r1/commands.jsonl. It includes full expanded test filters rather than abbreviated
+commands. The cwd throughout is the physical guarded worktree. TRX retains actual process argv,
+stdout, exits, held-boundary observations, Error checks and FULL_PROOF rows.
+
+- fresh-red refused its absent verifier DLL, exit 1. orchestration-red also exited 1.
+- The initial identity red had four false certifications and one hold that did not trigger. The
+  corrected deterministic boundary test reproduced all five false certifications before the fix.
+- The initial Unit reds exposed the precollection failure-text mismatch before reaching stamp.
+  return-boundary-red after that handoff correction reached a successful stamp, then failed because
+  Unit alone owned the new failure. Its write-error cases expected three events and observed one.
+  Some initial no-write-error assertions indexed the empty writer event array. Final assertions
+  explicitly check the event count before indexing. These historical failures are not called passes.
+- One shell-fixture green attempt selected a nonexistent unrelated test project and failed its own
+  expected-test assertion. It was corrected to the real Attachments.Tests assembly. The final fixture
+  executes both actual orchestration owners and tests prerequisite failure before workload commands.
+- fresh-supported-build is the actual solution plus verifier Release setup from absent verifier
+  bin/obj output, exit 0. measurement-build and verifier-build-final also exit 0. All build summaries
+  report zero warnings/errors. The measurement fact was built only.
+- boundary-green passed 17, failed 0, skipped 0. The final focused selection passed 115, failed 0,
+  skipped 0, including all three full variants and previous failure/budget assertions. The separate
+  direct affected selection passed 476, failed 0, skipped 0. The full payload selection ran once
+  after final behavior changes. No ordinary full suite or determinism workload ran here.
+
+
+### Finishing dispositions and handback
+
+Whole-solution format verification returned 0, formatted 0 of 9135 files. Outside-verifier format
+returned 0, formatted 0 of 3 files. Neither log contains a warning/error. The scoped format apply
+changed three test files only. The final expanded shell orchestration fixture and syntax check
+returned 0. Final whole-tree dashes, prose, file size, instruction and doc-version checks plus diff
+checking are recorded with raw exits in commands.jsonl. No size baseline or version declaration grew.
+
+Actionlint is explicitly non-green. The exact starting CI workflow and changed CI workflow both
+return raw exit 1 with the same five unknown ubuntu-26.04 runner-label diagnostics. Starting lines
+37,72,207,300,394 map to current lines 37,72,208,301,395 after the added script-fixture line.
+There are no new diagnostic messages. actionlint-comparison.json retains that comparison. No lint
+configuration, runner admission, suppression, dependency or version was changed to hide the baseline.
+
+source-hashes.json and audit.json identify final sources, report prefix, exact logs/TRX and actual
+payload proofs. The audit also checks every original verifier backup file against starting-manifest.
+The diff and source manifest hashes, final commit/parent, tracked cleanliness and unchanged origin are
+recorded in precommit-proof.json and postcommit-proof.json. Normal hooks apply to explicit paths.
+
+The living renderer/verification and local contributor/build docs describe these changes. The staged
+version stays 21.13.0. Select/Authorize, fixed measurement fact, mode/spend/attempt policy, native
+pipelines, measured workload, primary profiles and caps are unchanged. There was no native GPU/device,
+window, timing, stress, paid, workflow or measurement-fact execution, full ordinary suite, subagent,
+settings change, cleanup, stash, push, main merge, tag or release. Test setup cleaned only its own
+owned temporary files. All original and new retained evidence remains available to root.
+
+These are headless implementation and local filesystem proofs. Native correspondence, complete native
+payloads, native deadline/cost, billed minutes and original armour/consumer gates remain open.
+Root owns actual-evidence audit, fresh scoped review, acceptance/push and later main reconciliation
+with the ordinary full suite. No manual validation is needed. Review objections require correction
+and new affected evidence, not weakening these contracts.

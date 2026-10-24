@@ -16,29 +16,16 @@ public sealed partial class RendererPerfCompilerPublicationTests
     {
         using var f = new RendererPerfCompilerPublicationFixture();
         string path = Path.Combine(f.Directory, f.Report.Manifest.UnitId + ".json");
-        bool sawVerification = false, afterVerification = false, triggered = false;
-        int lockedChecks = 0;
-        var clock = new RendererPerfClock(() =>
+        bool triggered = false;
+        var budget = f.Budget with
         {
-            if (!triggered && File.Exists(path))
-            {
-                bool locked = false;
-                try { using var probe = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None); }
-                catch (IOException) { locked = true; }
-                if (locked)
-                {
-                    sawVerification = true; lockedChecks++;
-                    if (stamp ? afterVerification : lockedChecks == 2)
-                    {
-                        triggered = true;
-                        if (cancel) f.Cancellation.Cancel(); else f.Now = 1500100;
-                    }
-                }
-                else if (sawVerification) afterVerification = true;
-            }
-            return f.Now;
-        }, 1000);
-        var budget = new RendererPerfUnitBudget(clock, 100, 1500100, f.Cancellation.Token);
+            Boundary = stage =>
+        {
+            if (triggered || stage != (stamp ? "renderer.publication.slot.after" : "renderer.verify.file.open.after")) return;
+            triggered = true;
+            if (cancel) f.Cancellation.Cancel(); else f.Now = 1500100;
+        }
+        };
         var writer = RendererPerfPublicationWriter.Files(f.Directory);
         Assert.True(writer.PrepareCollection(f.Report, f.Inventory, budget).Ready);
         var cold = f.Collect(writer, budget); Assert.Empty(cold.Failures);

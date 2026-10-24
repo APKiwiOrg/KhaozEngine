@@ -4,10 +4,11 @@ using System.Threading;
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 internal sealed record RendererPerfUnitBudget(RendererPerfClock Clock, long ColdStart, long Deadline,
-    CancellationToken Cancellation)
+    CancellationToken Cancellation, Action<string>? Boundary = null)
 {
     public void Check(string stage)
     {
+        Boundary?.Invoke(stage);
         Cancellation.ThrowIfCancellationRequested();
         long now = Clock.Now();
         if (now < ColdStart) throw new InvalidOperationException("The monotonic clock moved backwards at " + stage + ".");

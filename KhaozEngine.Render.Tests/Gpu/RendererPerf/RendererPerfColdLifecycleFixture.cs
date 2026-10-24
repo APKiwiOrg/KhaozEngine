@@ -38,9 +38,9 @@ internal sealed class RendererPerfColdLifecycleFixture : IDisposable
         Publication = new(this);
     }
     internal void Event(string stage) { Trace.Add(stage); Boundary?.Invoke(stage); }
-    internal RendererPerfUnitOutcome Run(IRendererPerfUnitPublication? publication = null)
+    internal RendererPerfUnitOutcome Run(IRendererPerfUnitPublication? publication = null, RendererPerfClock? unitClock = null)
     {
-        var clock = new RendererPerfClock(() => Now, 1000);
+        var clock = unitClock ?? new RendererPerfClock(() => Now, 1000);
         var budget = new RendererPerfUnitBudget(clock, 100, 600100, Cancellation.Token);
         var authorization = new RendererPerfAuthorization(Template.Identity.ManifestSha256, Template.Identity.WorkloadSha,
             Template.Identity.AuthorizationSha, Template.Identity.WorkloadSha, 1, [], 1, "linux-vulkan", "gpu-t4-linux", "gpu-hosted-bench.yml");
@@ -114,6 +114,7 @@ internal sealed class RendererPerfColdLifecycleFixture : IDisposable
                     throw new InvalidOperationException("An outstanding result reservation requires terminal refusal.");
                 Terminated++; _outstanding = null;
             }
+            if (report.Publication.OriginalFailure is null) budget.Check("renderer.publication.return");
             // This recording account does not certify files. Task4 owns real publication.
             return new(report with { Assessment = report.Assessment with { ValidForPromotion = false } }, []);
         }

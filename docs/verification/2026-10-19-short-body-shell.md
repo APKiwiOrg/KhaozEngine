@@ -1825,3 +1825,200 @@ certification path. Instrumentation, version, capsule APIs/arithmetic, r0/r1 pro
 InstalledSweepLeaf, raw identity, navigation baselines, arrival and roof/footprint protections
 remain as recorded above. Task 2b.2 is complete, with integration and Task 2b.3 left to the
 owning orchestrator. No manual validation is needed.
+
+
+## Task 2b.3 bounded bracket sweep refusal
+
+Status NEEDS_CONTEXT on BASE ab5180a0a. This is an evidence-only checkpoint. No bracket
+sweep or producer retirement is accepted. The task's early mandatory-fixture stop applies.
+The attempted implementation is archived locally at
+`.superpowers/sdd/2026-10-19-short-body-shell/task-2b.3-attempt.diff`.
+Its size is 25,330 bytes and SHA-256 is
+`154ff9ed9d97ae5c879724f952a5b87110bf5a75073a47529b9a8c392c5babcf`.
+Production and test files were restored to the accepted base before this documentation change.
+The archive passes `git apply --check` against that restored base, exit 0.
+
+### Diagnostic and exact stop
+
+The first new-class red ran through build-slot and exited 1 before test execution on the
+intended missing ConvexSweepEncoding.TryBracket API. The first coordinator diagnostic
+compiled successfully, then failed its one test with 14 refusals among 24 fixture rows.
+Seven rows exhausted 256 cells. Inspection found that a failed midpoint could fall back to
+whole-source static enumeration through a default endpoint loan. That is forbidden here.
+The diagnostic coordinator was corrected to loan only its active-feature certificate at the
+midpoint, including the existing static face common-point acceptance. If that feature cannot
+be revalidated, it refuses instead of restarting full original-target Distance. There are no
+moving feature equations, second Sweep route or new primitive admissions in this corrected
+attempt. The initial event loans the retained initial endpoint certificate.
+
+The corrected diagnostic still fails. Ten rows return Hit, fourteen refuse, and seven
+exhaust 256 cells. All 24 use one primitive admission, and all restore polynomial Used to
+zero. No partially consumed account is reset. Every observed value below is specific to this
+run, with no CPU, SIMD or schedule-dependent test pin. No tolerance, ceiling or budget changed.
+
+```bash
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexBracketSweepTests'
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexBracketSweepTests.StageDiagnostic' --logger 'console;verbosity=detailed'
+```
+
+The first command exits 1 with zero tests on the intended missing typed symbol. The second
+command ran once for each coordinator revision. Both exit 1, one executed and failed test,
+zero skipped. The corrected run has no compiler warnings or errors. Logs are
+`/tmp/khaozengine-short-shell/task-2b.3-red.log`, `task-2b.3-stage.log` and
+`task-2b.3-stage-retained.log` in that same directory. None is a green class run.
+
+### Fixture construction
+
+All shapes have radius 0.25, apex height 0.25, shoulder height 0.5 and head height 0.75.
+Each requested margin is exactly binary32 0 or 0.001. Let alpha be 2^-4, 2^-12 or 2^-20.
+The face fixture is a box with half extents (0.03125,1,2), centre (0.28125,0.625,0),
+feet (-margin-alpha/2,0,-0.5) and displacement (alpha,0,1). Its near face is x=0.25.
+The apex approach uses half extents (2,0.03125,2), centre (0,0.21875,0),
+feet (-0.5,margin+alpha/2,0) and displacement (1,-alpha,0). Its top is y=0.25.
+Both have an exact original-path contact at t=1/2.
+
+The rim approach is a tetrahedron with p=(0.25,0.75,0) and vertices p,
+p+(1,0,0)/32, p+(1,1,1)/32 and p+(1,2,-1)/32. Feet are
+(-margin-alpha/2,0,-0.09375), displacement is (alpha,0,0.1875), and t=1/2 is an
+attained contact. The zero-angle face and rim rows use alpha=0 with that tetrahedron at
+p=(0.25,0.625,0) or p=(0.25,0.75,0). The apex tangent tetrahedron has vertices
+(0,0.25,0), (0.03125,0.21875,0), (-0.03125,0.21875,0.03125) and
+(0,0.21875,-0.03125), with feet (-0.09375,margin,0) and displacement (0.1875,0,0).
+These closed contacts follow directly from the original shell and target equations.
+They were not weakened to allow Unresolved. The complete independent-oracle matrix is not
+claimed at this stop.
+
+### Stage breakdown
+
+C/F means cells/features. These are geometry-coordinator counts after one explicit primitive
+admission, excluding the kernel's original installed-vertex preflight feature charges. Adding
+that preflight cannot remove a cell exhaustion. Initial includes retained static classification.
+Plane includes the initial separator and failed full-path restriction. First event includes
+accepted temporal seeding, inner static attainment, original revalidation and any 2c.2 normal.
+Refinement includes cached restrictions, active-feature revalidation, earlier attained events
+and attempted encoding. Each row sums those four stages into its total.
+
+| Family | Margin | Approach | Published | Initial C/F | Plane C/F | First event C/F | Refinement C/F | Total C/F | Exhausted |
+| --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- |
+| face | 0 | 2^-4 | False | 3/20 | 2/23 | 117/851 | 134/935 | 256/1829 | True |
+| face | 0 | 2^-12 | False | 3/20 | 2/23 | 113/822 | 138/962 | 256/1827 | True |
+| face | 0 | 2^-20 | False | 3/20 | 2/23 | 125/1034 | 25/121 | 155/1198 | False |
+| face | 0 | tangent | False | 32/51 | 2/15 | 28/69 | 66/200 | 128/335 | False |
+| rim | 0 | 2^-4 | True | 32/51 | 2/15 | 19/61 | 38/135 | 91/262 | False |
+| rim | 0 | 2^-12 | False | 32/51 | 2/15 | 28/72 | 58/174 | 120/312 | False |
+| rim | 0 | 2^-20 | False | 32/51 | 2/15 | 28/72 | 66/200 | 128/338 | False |
+| rim | 0 | tangent | False | 32/51 | 2/15 | 28/72 | 66/200 | 128/338 | False |
+| apex | 0 | 2^-4 | True | 7/27 | 2/23 | 20/142 | 12/46 | 41/238 | False |
+| apex | 0 | 2^-12 | True | 7/27 | 2/23 | 20/142 | 12/46 | 41/238 | False |
+| apex | 0 | 2^-20 | False | 7/27 | 2/23 | 20/142 | 26/120 | 55/312 | False |
+| apex | 0 | tangent | True | 16/27 | 2/15 | 27/71 | 10/34 | 55/147 | False |
+| face | 0.001 | 2^-4 | False | 3/20 | 2/23 | 104/786 | 147/1072 | 256/1901 | True |
+| face | 0.001 | 2^-12 | False | 3/20 | 2/23 | 107/812 | 144/1135 | 256/1990 | True |
+| face | 0.001 | 2^-20 | False | 3/20 | 2/23 | 112/916 | 25/121 | 142/1080 | False |
+| face | 0.001 | tangent | True | 32/51 | 2/15 | 25/60 | 59/202 | 118/328 | False |
+| rim | 0.001 | 2^-4 | True | 32/51 | 2/15 | 69/364 | 119/1158 | 222/1588 | False |
+| rim | 0.001 | 2^-12 | False | 32/51 | 2/15 | 100/928 | 122/987 | 256/1981 | True |
+| rim | 0.001 | 2^-20 | True | 32/51 | 2/15 | 120/1890 | 59/202 | 213/2158 | False |
+| rim | 0.001 | tangent | True | 32/51 | 2/15 | 25/63 | 59/202 | 118/331 | False |
+| apex | 0.001 | 2^-4 | False | 7/27 | 2/23 | 244/1090 | 3/6 | 256/1146 | True |
+| apex | 0.001 | 2^-12 | True | 7/27 | 2/23 | 227/1066 | 12/46 | 248/1162 | False |
+| apex | 0.001 | 2^-20 | False | 7/27 | 2/23 | 231/1168 | 16/82 | 256/1300 | True |
+| apex | 0.001 | tangent | True | 16/27 | 2/15 | 19/52 | 13/54 | 50/148 | False |
+
+The refinement cells are separated further below. No full original-target enumeration is
+used by the corrected coordinator at a midpoint. Temporal events still use the accepted
+static inner-source verifier. Its root, original-member and penetration costs are included
+in the event column, not hidden or reset. There is no bound of 33 on those proposal costs.
+
+| Family | Margin | Approach | Interval / active feature / event / encoding cells | Contractions | Last [a,b] |
+| --- | ---: | --- | --- | ---: | --- |
+| face | 0 | 2^-4 | 3/2/129/0 | 2 | 0.47513670959043997,0.5999120019408407 |
+| face | 0 | 2^-12 | 3/2/133/0 | 2 | 0.47500121802090733,0.599669652024075 |
+| face | 0 | 2^-20 | 2/2/21/0 | 0 | 0,0.9500000095366614 |
+| face | 0 | tangent | 15/42/9/0 | 8 | 0.498046875,0.5 |
+| rim | 0 | 2^-4 | 12/13/12/1 | 10 | 0.4990234375,0.5 |
+| rim | 0 | 2^-12 | 13/36/9/0 | 7 | 0.4978162948226169,0.5017361081676769 |
+| rim | 0 | 2^-20 | 15/42/9/0 | 8 | 0.49805363019307447,0.5000067816840277 |
+| rim | 0 | tangent | 15/42/9/0 | 8 | 0.498046875,0.5 |
+| apex | 0 | 2^-4 | 11/0/0/1 | 11 | 0.499755859375,0.5 |
+| apex | 0 | 2^-12 | 11/0/0/1 | 11 | 0.499755859375,0.5 |
+| apex | 0 | 2^-20 | 5/2/19/0 | 3 | 0.4375,0.5 |
+| apex | 0 | tangent | 9/0/0/1 | 9 | 0.4990234375,0.5 |
+| face | 0.001 | 2^-4 | 3/2/142/0 | 2 | 0.4751429547008304,0.5999206348716802 |
+| face | 0.001 | 2^-12 | 3/4/137/0 | 2 | 0.4750012424349707,0.712501863652456 |
+| face | 0.001 | 2^-20 | 2/2/21/0 | 0 | 0,0.9500000097273963 |
+| face | 0.001 | tangent | 16/42/0/1 | 9 | 0.4990234375,0.5 |
+| rim | 0.001 | 2^-4 | 12/18/88/1 | 10 | 0.4990234375,0.5 |
+| rim | 0.001 | 2^-12 | 15/42/65/0 | 8 | 0.49978311880145604,0.5017430526006774 |
+| rim | 0.001 | 2^-20 | 16/42/0/1 | 9 | 0.49903023301230653,0.5000068088107651 |
+| rim | 0.001 | tangent | 16/42/0/1 | 9 | 0.4990234375,0.5 |
+| apex | 0.001 | 2^-4 | 3/0/0/0 | 3 | 0.437501333712129,0.5000015242424332 |
+| apex | 0.001 | 2^-12 | 11/0/0/1 | 11 | 0.4997558653267422,0.5000000059546498 |
+| apex | 0.001 | 2^-20 | 5/2/9/0 | 3 | 0.43750000002035283,0.5000000000232604 |
+| apex | 0.001 | tangent | 10/2/0/1 | 9 | 0.4990234375,0.5 |
+
+### Two independent bottlenecks
+
+The zero-margin face rows at 2^-4 and 2^-12 spend 117 and 113 cells on the first attained
+event. Those events are near t=0.95, while the exact first contact is t=0.5. Earlier event
+and original-normal work then consumes 129 and 133 additional cells, respectively. Both
+reach 256 while the bracket is still wider than 0.12 m. The corrected attempt reuses its
+initial plane and active original feature, but does not retain a reusable temporal-source
+refinement across those event requests. This is a measured coordinator limitation, not a
+proof that the accepted event producer can never fit a different coordinator policy.
+
+The apex margin 0.001, 2^-4 row spends 7 cells on initial classification, 2 on the plane,
+244 on the first event and the remaining 3 on prefix contractions. It exhausts with the
+fraction bracket [0.437501333712129,0.5000015242424332]. The rim margin 0.001, 2^-12
+row exhausts at 256/1981 with [0.49978311880145604,0.5017430526006774].
+
+Separately, the zero-margin 2^-20 apex row refuses without exhaustion at 55/312.
+Its bracket is [0.4375,0.5], a path width 0.06250000000002842 m. The retained axis
+plane's uniform correspondence error is 2.980277713504623e-8 m. With normal closure
+2^-20, that consumes 0.03125047683715824 of the fraction range. The true normal gap at fraction
+0.00025 before contact is only 2.384185791015625e-10 m, about 125 times smaller than
+the current uniform bound. Cached restriction alone cannot fix this direction's bound.
+The zero-margin face and rim tangencies similarly refuse near fraction brackets
+[0.498046875,0.5], with about 3e-8 m uniform error and quadratic normal closure.
+A later continuation needs a valid tighter correspondence proof or another accepted plane
+proposal strategy, as well as temporal event reuse. These observations do not authorize
+removing correspondence error, widening a tolerance or increasing the work cap.
+
+### Retirement and regressions
+
+No producer is retired at this stop. ConvexPlanarSweep, ConvexSweepEdges,
+ConvexSweepVertices and ConvexCircularVertexSweep remain exactly at ab5180a0a. The kernel
+and dispatch, root-specific encoder entries, shared CircularContactEquation and arithmetic
+policies, capsule APIs, ConvexAlgebraicRoots, ConvexQuadratic and static producers are restored.
+No existing regression is migrated. The direct circular-producer sign regression and initial
+overlap refusal assertions remain pending the successful replacement commit.
+
+The full new class, lowered-budget controls, all-six-feature/three-target-stratum matrix,
+duck/cow, represented-pose and large-coordinate completion, three Common selections, SS-R2
+capsule families, roof/footprint protections and seven degree-1 navigation baselines are not
+rerun after this mandatory stop. Earlier tasks' green results are historical only. Full
+solution verification remains Task 12. No green bracket sweep, complete error budget or
+retirement claim is made.
+
+### Self-review and continuation boundary
+
+The archived coordinator still has incomplete publication work. Its initial Hit bypasses the
+required distinct zero-prefix token. Its provisional encoder duplicates the target witness
+instead of preserving the complete attained query/target pair and combined correspondence
+budget. Default/foreign prefix lifetime controls and the complete Normalize/multiply/add
+operation enclosure also need review. Returning Hit in ten diagnostic rows is not acceptance
+of these unfinished proofs. The nine named tests were drafted before implementation, but
+only the missing-API red and the diagnostic ran. Their unexecuted assertions are not evidence.
+
+The first-event endpoint-selection policy is also unfinished. The prototype always loans
+its t=0 certificate, without comparing it with t=1 to enforce SS-R14's nearest-endpoint
+selection. Its cell totals therefore describe this attempt and are not a lower bound on
+what a fully compliant coordinator can achieve. This policy still needs implementation,
+alongside reusable temporal refinement and the complete publication proofs.
+
+The owning orchestrator must revisit the two measured bottlenecks before another attempt.
+Do not continue from the archived encoder as if it were complete. Keep the unchanged caps,
+one planar Sweep route, original raw identity and accepted certificate producers. Complete
+the mandatory fixture matrix before retiring the old producers in the final implementation
+commit. No subagent/reviewer, push, merge, tag, branch change, release, consumer launch,
+load run, test loop or full suite occurred. This checkpoint contains documentation only.

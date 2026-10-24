@@ -1,6 +1,10 @@
 name: Water optics compiler phase proof
 
 on:
+  # Deliberate bootstrap marker. Ordinary pushes trigger the workflow but skip its jobs.
+  push:
+    branches: ['feature/water-object-optics']
+    paths: ['.github/workflows/water-optics-compile-proof.yml']
   workflow_dispatch:
 
 permissions:
@@ -8,6 +12,10 @@ permissions:
 
 jobs:
   water-compile:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/feature/water-object-optics' &&
+      contains(github.event.head_commit.message, '[water-compile-proof]'))
     name: Water compiler / ${{ matrix.variant }}
     runs-on: windows-latest
     timeout-minutes: 30

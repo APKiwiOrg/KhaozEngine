@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Gpu;
 public enum WaterOpticsScenario { FlatBed, SkinnedBody, SlopingBank, Ledge, DeepShelf, StackedBodies, AdjacentFields }
 
 public readonly record struct WaterOpticsCase(float BedDepth = 2f, float ObjectDepth = 0.103f,
-    Vector3 Offset = default, int Samples = 1, bool Temporal = false, bool ReverseOrder = false)
+    Vector3 Offset = default, int Samples = 1, bool Temporal = false, bool ReverseOrder = false, bool ControlledLighting = false)
 {
     public WaterOpticsCase() : this(2f, 0.103f) { }
 }
@@ -106,7 +106,7 @@ public sealed class WaterOpticsProofScene : IDisposable
             scene.EffectTimeSeconds = 0f;
             DrawGeometry(scene, scenario, settings);
             foreach (WaterPlane plane in planes) scene.DrawWater(plane);
-            scene.PrepareFrame();
+            scene.PrepareFrame(Width, Height);
             using (GpuRecording.Open(device, _commands!, "WaterOpticsProofScene.Capture"))
                 scene.RenderInternal(_commands!, Width, Height, _framebuffer!);
             device.Submit(_commands!);
@@ -134,6 +134,9 @@ public sealed class WaterOpticsProofScene : IDisposable
             GlintStrength = 0f,
             GridFocusBias = 1f
         };
+        scene.Post.LightColor = settings.ControlledLighting ? new Color(0f, 0f, 0f, 1f) : new Color(1f, 0.95f, 0.86f, 1f);
+        scene.Post.FillLightColor = settings.ControlledLighting ? new Color(0f, 0f, 0f, 1f) : new Color(0.20f, 0.24f, 0.34f, 1f);
+        scene.Post.AmbientColor = settings.ControlledLighting ? Color.White : new Color(0.16f, 0.19f, 0.30f, 1f);
         _camera!.Position = settings.Offset + Eye;
         Vector3 direction = Vector3.Normalize(new Vector3(0f, 0.1f, 0f) - Eye);
         _camera.Yaw = MathF.Atan2(direction.X, direction.Z);
@@ -171,7 +174,8 @@ public sealed class WaterOpticsProofScene : IDisposable
         if (scenario == WaterOpticsScenario.SkinnedBody)
             scene.DrawSkinned(_body, _tube!.RestPose,
                 Matrix4x4.CreateTranslation(o + new Vector3(BodyX, -settings.ObjectDepth - 0.3f, 0f)),
-                new Color(0.95f, 0.34f, 0.12f, 1f));
+                settings.ControlledLighting ? new Color(0.36f, 0.29f, 0.20f, 1f)
+                    : new Color(0.95f, 0.34f, 0.12f, 1f));
         if (scenario == WaterOpticsScenario.Ledge)
             DrawBox(scene, new Vector3(1.8f, 0.4f, 1.8f),
                 o + new Vector3(BodyX, -settings.ObjectDepth - 0.2f, 0f),
@@ -220,6 +224,7 @@ public sealed class WaterOpticsProofScene : IDisposable
             ["bank"] = new(2.4f, 0.2f, 0.5f),
             ["shore"] = new(1.8f, -0.1f, 0.5f),
             ["dry-bank"] = new(3f, 0.5f, 0.5f),
+            ["beyond-bank"] = new(3.85f, 0f, 2.8f),
             ["seam-left"] = new(-0.1f, 0f, 1f),
             ["seam-right"] = new(0.1f, 0f, 1f)
         };

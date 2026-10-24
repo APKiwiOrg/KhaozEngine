@@ -42,6 +42,27 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class D3D11HlslRegisterAgreementTests
     {
         [Fact]
+        public void WaterOptics_AppendsAfterAtmosphereWithoutMovingExistingRegisters()
+        {
+            var source = KhaozEngine.Render3D.Internal.ShaderSources.WaterFrag;
+            CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
+                KhaozEngine.Render3D.Internal.ShaderSources.WaterVert, source, "WaterOptics");
+            GpuResourceLayoutElement[] elements = pair.Reflection.ResourceLayouts[0].Elements;
+            Assert.Equal(12, elements.Length);
+            // Reflected texture and sampler names may be empty. Binding position, kind and emitted register bind.
+            Assert.Equal(new[] { GpuResourceKind.TextureReadOnly, GpuResourceKind.Sampler,
+                GpuResourceKind.TextureReadOnly, GpuResourceKind.Sampler, GpuResourceKind.TextureReadOnly,
+                GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer, GpuResourceKind.UniformBuffer,
+                GpuResourceKind.TextureReadOnly, GpuResourceKind.Sampler, GpuResourceKind.TextureReadOnly,
+                GpuResourceKind.Sampler }, elements.Select(e => e.Kind));
+            var problems = new List<string>();
+            Compare("WaterOptics", pair.Reflection, problems, pair.VertexSource, pair.FragmentSource);
+            Assert.Empty(problems);
+            Assert.Contains("register(t4)", pair.FragmentSource);
+            Assert.Contains("register(s4)", pair.FragmentSource);
+        }
+
+        [Fact]
         public void EveryShippedGraphicsProgram_EmitsTheRegistersTheRegisterSchemeAssigns()
         {
             var problems = new List<string>();

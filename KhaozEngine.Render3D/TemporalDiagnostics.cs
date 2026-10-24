@@ -8,7 +8,7 @@ namespace KhaozEngine.Render3D;
 /// in the shape of <see cref="ShadowPassDiagnostics"/>: always on and allocation-free to read. Every field but the
 /// counts is written once per frame, on the frame's first render. The counts, <see cref="CountsFrameIndex"/> and the
 /// three pixel counts after it, are sampled only on <see cref="Scene3D.RequestTemporalCounts"/> and land at the
-/// <see cref="Scene3D.PrepareFrame"/> after the frame they were sampled on. They stay until the next request lands, so
+/// <see cref="Scene3D.PrepareFrame()"/> after the frame they were sampled on. They stay until the next request lands, so
 /// from the next render on they name an earlier frame than <see cref="FrameIndex"/>. Before the first render the whole
 /// value is <c>default</c>, so <see cref="UpscaleRatio"/> and <see cref="CountsFrameIndex"/> read 0 there rather than
 /// the 1 and -1 a rendered frame starts from. Read it on the render thread after the frame renders. Two readings are

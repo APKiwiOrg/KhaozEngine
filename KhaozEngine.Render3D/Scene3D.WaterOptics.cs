@@ -17,7 +17,7 @@ public sealed partial class Scene3D
 
     /// <summary>Invalidate a field immediately and defer texture destruction through the scene's retirement queue.
     /// Default is a no-op. Foreign, stale and double-released handles throw <see cref="ArgumentException"/>.</summary>
-    public void UnloadWaterOpticsField(WaterOpticsHandle handle) => _water.Optics.Unload(handle);
+    public void UnloadWaterOpticsField(WaterOpticsHandle handle) => _water.UnloadOpticsField(handle);
 
     /// <summary>Certified horizontal procedural swell padding for producer preflight against the effective look.
     /// FFT water is refused because it has no certified displacement envelope.</summary>

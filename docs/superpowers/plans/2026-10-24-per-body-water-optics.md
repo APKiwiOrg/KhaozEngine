@@ -140,6 +140,15 @@ new owner. This satisfies the spec's reload path without introducing a separate 
 
 ### Coverage and pre-recording preparation
 
+Execution ruling: `Scene3D.PrepareFrame(int viewportWidth, int viewportHeight)` supplies the dimensions
+needed to size targets before preparing optical resource sets. The original no-argument overload remains
+for legacy callers. `GameApp3D` forwards frame dimensions during its pre-record phase, and public fixture
+captures use the same preparation contract. `Render3DSurface` must not repair an unprepared bound frame
+after recording starts. Bound recording refuses changed or missing prepared viewport/target inputs before
+late target recreation. Tests cover first-frame sizing, resize, failed preparation retry, changed settings
+and host forwarding. Repeated preparation remains idempotent. This closes the plan's original viewport
+gap without weakening its preparation-before-recording requirement.
+
 Add `WaterOpticsCoverage.Validate(in WaterPlane plane, WaterSettings effective) -> void` as internal
 headless logic. An unbound plane returns unchanged. A bound plane requires its expanded rectangle to
 fit the binding rectangle. Expand XZ by `WaterSwellReach.Of(amplitude, wavelength, steepness).X` using
@@ -313,6 +322,8 @@ to measure opaque driver overhead. CPU payload ownership remains explicit throug
 `KhaozEngine.Render.Tests/Gpu/WaterOpticsGoldenTests.cs`.
 Modify `Rendering/WaterRenderer.cs`, `.Routing.cs`, `.SlotUpload.cs`, `Internal/ShaderSources.Water.cs`,
 `Scene3D.FramePrepare.cs`, `Render3D/UboLayoutTests.cs`, `Render3D/WaterTestFrames.cs` and the Task 1 fixture.
+The viewport preparation ruling also includes `Scene3D` target-sizing integration, `Render3DSurface`,
+`KhaozEngine.Game.Render3D/GameApp3D.cs` and the focused host preparation tests.
 
 **Interfaces:** Consume Task 3 Resolve and bindings. Produce
 `WaterRenderer.PrepareOpticsFrame(RenderResources targets, in FramePrepare frame)` and shader helper

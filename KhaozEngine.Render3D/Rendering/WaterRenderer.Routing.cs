@@ -131,7 +131,7 @@ namespace KhaozEngine.Render3D.Rendering
                     BindRoute(cl, route);
                     bound = route;
                 }
-                cl.SetGraphicsResourceSet(0, _set!, (uint)i * SlotBytes);
+                cl.SetGraphicsResourceSet(0, _opticsPrepared ? _planeSets[i] : _set!, (uint)i * SlotBytes);
                 switch (route)
                 {
                     case PlaneRoute.FlatQuad:

@@ -140,7 +140,7 @@ public sealed class WaterOpticsProofTests : IClassFixture<WaterOpticsProofScene>
         }
     }
 
-    static void Save(string name, WaterOpticsImage image)
+    internal static void Save(string name, WaterOpticsImage image)
     {
         string? directory = Environment.GetEnvironmentVariable("KE_WATER_OPTICS_OUTPUT");
         if (string.IsNullOrWhiteSpace(directory)) return;
@@ -154,7 +154,7 @@ public sealed class WaterOpticsProofTests : IClassFixture<WaterOpticsProofScene>
             }) });
     }
 
-    static void WriteMetrics<T>(string name, T metrics)
+    internal static void WriteMetrics<T>(string name, T metrics)
     {
         string? directory = Environment.GetEnvironmentVariable("KE_WATER_OPTICS_OUTPUT");
         if (string.IsNullOrWhiteSpace(directory)) return;

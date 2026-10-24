@@ -1,0 +1,195 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using KhaozEngine.Gpu;
+using KhaozEngine.Render3D.Internal;
+
+namespace KhaozEngine.Render3D.Rendering;
+
+internal sealed partial class WaterRenderer
+{
+    readonly Dictionary<WaterOpticsHandle, IGpuResourceSet> _opticsSets = new();
+    readonly HashSet<WaterOpticsHandle> _frameFields = new();
+    readonly List<WaterOpticsHandle> _unusedFields = new();
+    PreparedPlane[] _preparedPlanes = Array.Empty<PreparedPlane>();
+    IGpuResourceSet[] _planeSets = Array.Empty<IGpuResourceSet>();
+    IGpuBuffer? _boundUbo;
+    bool _opticsPrepared;
+    bool _opticsPreparationAttempted;
+    int _preparedPlaneCount;
+    WaterBathymetry? _preparedBathymetry;
+    int _preparedBathymetryRevision;
+    float _preparedTime;
+    WaterGridMode _preparedGridMode;
+    OceanInputs _preparedOcean;
+
+    readonly record struct OceanInputs(Vector4 Spectrum, Vector4 Swell, Vector4 Shape,
+        int Seed, int Cascades, int Resolution, Vector4 Focus, int Sectors, Vector3 Rotation, Vector4 WarpFoam)
+    {
+        internal static OceanInputs From(WaterSeaState s) => new(
+            new(s.WindSpeed, s.WindDirectionDegrees, s.FetchKilometres, s.DepthMetres),
+            new(s.DirectionalSpread, s.SwellAmount, s.SwellDirectionDegrees, s.SmallWaveCutoffMetres),
+            new(s.Choppiness, s.CascadeTileMetres, s.CascadeTileRatio, s.FoamGain),
+            s.Seed, s.CascadeCount, s.CascadeResolution,
+            new(s.OnshoreFocusPoint, s.OnshoreFocusStrength, s.FoamJacobianBias), s.OnshoreFocusSectors,
+            s.CascadeRotationDegrees, new(s.DomainWarpMetres, s.DomainWarpWavelengthMetres, s.FoamDissipationPerSecond, 0f));
+    }
+
+    // A look remains mutable. Store its resolved displacement values, never the bag's identity.
+    readonly record struct PreparedPlane(Vector4 Position, float HalfZ, WaterOpticsHandle Field,
+        Vector3 Origin, Vector2 Size, WaterWaveSource Source, Vector4 Swell, Vector4 Shape)
+    {
+        internal static PreparedPlane From(in WaterPlane plane, WaterSettings effective) => new(
+            new(plane.CenterX, plane.SurfaceY, plane.CenterZ, plane.HalfExtentX), plane.HalfExtentZ,
+            plane.Optics.Field, plane.Optics.Origin, plane.Optics.Size, effective.WaveSource,
+            new(effective.SwellAmplitude, effective.SwellWavelength, effective.SwellDirectionDegrees, effective.SwellSpreadDegrees),
+            new(effective.SwellSteepness, effective.SwellSpeed, effective.SwellComponents, effective.SwellSeed));
+    }
+
+    static GpuResourceLayoutElement[] AppendOpticsLayout(GpuResourceLayoutElement[] prefix)
+    {
+        Array.Resize(ref prefix, prefix.Length + 2);
+        prefix[^2] = new("OpticsTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment);
+        prefix[^1] = new("OpticsSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment);
+        return prefix;
+    }
+
+    IGpuResourceSet CreateWaterSet(RenderResources targets, IGpuTexture optics) =>
+        _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout,
+            _bathymetry.Texture, _bathymetry.Sampler, _ocean.Map, _ocean.Sampler,
+            targets.DepthColorTex, _gd.PointSampler, new GpuBufferRange(_ubo!, 0, SlotBytes),
+            _atmosphere.Uniforms, _atmosphere.SkyView, _atmosphere.SkySampler, optics, _gd.PointSampler));
+
+    bool TargetsMatch(RenderResources targets) => ReferenceEquals(_bound, targets)
+        && _boundGen == targets.Generation && ReferenceEquals(_boundUbo, _ubo)
+        && ReferenceEquals(_boundMap, _ocean.Map) && ReferenceEquals(_boundBathy, _bathymetry.Texture);
+
+    void RetireWaterSets()
+    {
+        if (_set is not null) _retired.Retire(_set);
+        _set = null;
+        foreach (IGpuResourceSet set in _opticsSets.Values) _retired.Retire(set);
+        _opticsSets.Clear();
+        _bound = null;
+    }
+
+    internal void UnloadOpticsField(WaterOpticsHandle handle)
+    {
+        Optics.Unload(handle);
+        RetireOpticsSet(handle);
+    }
+
+    void RetireOpticsSet(WaterOpticsHandle handle)
+    {
+        if (_opticsSets.Remove(handle, out IGpuResourceSet? set)) _retired.Retire(set);
+    }
+
+    WaterOpticsResources.Entry ResolveOptics(WaterOpticsHandle handle)
+    {
+        try { return Optics.Resolve(handle); }
+        catch (ArgumentException) { RetireOpticsSet(handle); throw; }
+    }
+
+    // Also serves the existing unbound standalone renderer. Bound draws never enter this fallback.
+    void BindTargets(RenderResources targets)
+    {
+        if (!TargetsMatch(targets))
+        {
+            RetireWaterSets();
+            _bound = targets;
+            _boundGen = targets.Generation;
+            _boundUbo = _ubo;
+            _boundMap = _ocean.Map;
+            _boundBathy = _bathymetry.Texture;
+        }
+        _set ??= CreateWaterSet(targets, _bathymetry.NeutralTexture);
+    }
+
+    /// <summary>Resolve every submission and prepare its immutable resource bindings before recording.
+    /// Failure leaves the frame unprepared. Unused sets retire so cached ownership stays bounded.</summary>
+    internal void PrepareOpticsFrame(RenderResources targets, in FramePrepare frame)
+    {
+        _opticsPrepared = false;
+        _opticsPreparationAttempted = true;
+        ReadOnlySpan<WaterPlane> planes = frame.WaterPlanes;
+        if (_bound is not null && !TargetsMatch(targets)) RetireWaterSets();
+        _frameFields.Clear();
+        for (int i = 0; i < planes.Length; i++)
+        {
+            WaterSettings effective = planes[i].Look?.ResolveInto(_effective, frame.Water) ?? frame.Water;
+            WaterOpticsCoverage.Validate(planes[i], effective);
+            if (!planes[i].Optics.IsBound) continue;
+            ResolveOptics(planes[i].Optics.Field);
+            _frameFields.Add(planes[i].Optics.Field);
+        }
+        _unusedFields.Clear();
+        foreach (WaterOpticsHandle handle in _opticsSets.Keys)
+            if (!_frameFields.Contains(handle)) _unusedFields.Add(handle);
+        foreach (WaterOpticsHandle handle in _unusedFields)
+        {
+            _retired.Retire(_opticsSets[handle]);
+            _opticsSets.Remove(handle);
+        }
+        if (planes.Length > 0)
+        {
+            EnsureUboCapacity(planes.Length);
+            BindTargets(targets);
+            if (_preparedPlanes.Length < planes.Length)
+            {
+                int capacity = Math.Max(planes.Length, _preparedPlanes.Length * 2);
+                _preparedPlanes = new PreparedPlane[capacity];
+                _planeSets = new IGpuResourceSet[capacity];
+            }
+            for (int i = 0; i < planes.Length; i++)
+            {
+                WaterPlane plane = planes[i];
+                WaterSettings effective = plane.Look?.ResolveInto(_effective, frame.Water) ?? frame.Water;
+                _preparedPlanes[i] = PreparedPlane.From(plane, effective);
+                IGpuResourceSet set = _set!;
+                if (plane.Optics.IsBound && !_opticsSets.TryGetValue(plane.Optics.Field, out set!))
+                {
+                    set = CreateWaterSet(targets, Optics.Resolve(plane.Optics.Field).Texture);
+                    _opticsSets.Add(plane.Optics.Field, set);
+                }
+                _planeSets[i] = set;
+            }
+        }
+        if (planes.Length < _preparedPlaneCount)
+            Array.Clear(_planeSets, planes.Length, _preparedPlaneCount - planes.Length);
+        _preparedPlaneCount = planes.Length;
+        _preparedBathymetry = frame.Water.Bathymetry;
+        _preparedBathymetryRevision = frame.Water.Bathymetry?.Revision ?? 0;
+        _preparedTime = frame.TimeSeconds;
+        _preparedGridMode = frame.Water.GridMode;
+        _preparedOcean = _preparedWantOcean ? OceanInputs.From(frame.Water.SeaState) : default;
+        _opticsPrepared = true;
+    }
+
+    internal void VerifyOpticsFrame(RenderResources targets, ReadOnlySpan<WaterPlane> planes, WaterSettings settings, float time)
+    {
+        if (!_opticsPrepared || _preparedPlaneCount != planes.Length || !TargetsMatch(targets)
+            || !ReferenceEquals(_preparedBathymetry, settings.Bathymetry)
+            || _preparedBathymetryRevision != (settings.Bathymetry?.Revision ?? 0) || _preparedTime != time
+            || _preparedGridMode != settings.GridMode
+            || (_preparedWantOcean && _preparedOcean != OceanInputs.From(settings.SeaState)))
+            throw ChangedOpticsInputs();
+        for (int i = 0; i < planes.Length; i++)
+        {
+            WaterSettings effective = planes[i].Look?.ResolveInto(_effective, settings) ?? settings;
+            if (_preparedPlanes[i] != PreparedPlane.From(planes[i], effective)) throw ChangedOpticsInputs();
+            if (planes[i].Optics.IsBound) ResolveOptics(planes[i].Optics.Field);
+        }
+    }
+
+    static InvalidOperationException ChangedOpticsInputs() => new(
+        "Water inputs changed or were not prepared. Queue all water and call Scene3D.PrepareFrame(width, height) before recording.");
+
+    void PackOptics(ref WaterUbo u, in WaterPlane plane)
+    {
+        WaterOpticsBinding binding = plane.Optics;
+        if (!binding.IsBound) return;
+        WaterOpticsField field = Optics.Resolve(binding.Field).Field;
+        u.OpticsRect = new(binding.Origin.X, binding.Origin.Z, 1f / binding.Size.X, 1f / binding.Size.Y);
+        u.OpticsParams = new(binding.Origin.Y, 1f, field.Width, field.Height);
+    }
+}

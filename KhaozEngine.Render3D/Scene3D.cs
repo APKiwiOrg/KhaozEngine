@@ -1388,7 +1388,7 @@ namespace KhaozEngine.Render3D
             // same way DrawnInstances / PassTimingsMs are - a Begin without a render leaves the last render's totals,
             // and a re-render never double-counts.
             _frameStats.Reset();
-            EnsureSize(viewportW, viewportH);
+            EnsurePreparedRenderSize(viewportW, viewportH);
             LatchFrameView(viewportW, viewportH);   // this render's view snapshot, now that the size and the camera are final
             // The caps-resolved FXAA decision (FXAA alone, opted in after MSAA, or an unsupported MSAA request
             // falling back to FXAA). Must be the same value for PrepareUniforms (flip parity) and Run.

@@ -69,6 +69,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>The depth texture, always bindable (a 1x1 placeholder when inactive).</summary>
         public IGpuTexture Texture => _map ?? _idle!;
+        internal IGpuTexture NeutralTexture => _idle!;
 
         /// <summary>The CLAMPED bilinear sampler the field is read through. Clamping matters: unlike a cascade the
         /// rectangle has edges, and wrapping one would put the far shore's depth against the near one. The shaders

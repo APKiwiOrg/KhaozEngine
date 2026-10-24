@@ -203,7 +203,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         /// <summary>
-        /// <see cref="Scene3D.PrepareFrame"/> is once per FRAME, and the second call for one <see cref="Scene3D.Begin"/>
+        /// <see cref="Scene3D.PrepareFrame()"/> is once per FRAME, and the second call for one <see cref="Scene3D.Begin"/>
         /// is a no-op. It has to be: <see cref="Render3DSurface.Render"/> calls it, so a host that also calls it by
         /// hand would prepare twice, and a second preparation re-advances the wave clock with a zero delta and hands
         /// the frame a surface one frame behind - silently, because nothing about the image says so. Measured

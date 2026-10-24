@@ -640,6 +640,7 @@ namespace KhaozEngine.Render3D
             post.LightColor = state.LightColor;
             post.AmbientColor = state.AmbientColor;
             post.FillLightColor = state.FillLightColor;
+            post.AmbientIrradiance = IrradianceSH.Zero;
             post.Sky.HorizonColor = state.HorizonColor;
             post.Sky.ZenithColor = state.ZenithColor;
             post.Sky.SunColor = state.SunColor;

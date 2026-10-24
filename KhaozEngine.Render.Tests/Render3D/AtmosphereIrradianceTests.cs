@@ -130,6 +130,34 @@ public sealed class AtmosphereIrradianceTests : IClassFixture<AtmosphereLighting
     }
 
     [Fact]
+    public void APhysicalSettingChangeRebuildsTheTable()
+    {
+        var settings = AtmosphereSettings.Earth();
+        var model = new AtmosphereModel(settings);
+        var sun = Direction(45, 2);
+        var frame = new AtmosphereFrame(sun, -sun, 0, Vector3.One);
+        var original = model.EvaluateIrradiance(.7f, frame);
+        int builds = model.IrradianceBuildCount;
+        Assert.Equal(1, builds);
+
+        settings.RayleighScatteringPerKm *= 2;
+        Assert.True(model.UpdateSettings(settings));
+        var rebuilt = model.EvaluateIrradiance(.7f, frame);
+
+        Assert.Equal(builds + 1, model.IrradianceBuildCount);
+        Assert.NotEqual(original, rebuilt);
+        var fresh = new AtmosphereModel(settings).EvaluateIrradiance(.7f, frame);
+        for (int i = 0; i < IrradianceSH.CoefficientCount; i++)
+        {
+            var expected = fresh.Coefficient(i);
+            Within(expected, rebuilt.Coefficient(i), Vector3.Abs(expected) * 1e-5f,
+                $"Rebuilt coefficient {i}");
+        }
+        Assert.Equal(rebuilt, model.EvaluateIrradiance(.7f, frame));
+        Assert.Equal(builds + 1, model.IrradianceBuildCount);
+    }
+
+    [Fact]
     public void TheTableBuildsOnceAndOnlyOnDemand()
     {
         var model = new AtmosphereModel(AtmosphereSettings.Earth());

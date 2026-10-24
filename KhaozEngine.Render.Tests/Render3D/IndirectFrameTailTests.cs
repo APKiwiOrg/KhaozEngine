@@ -108,6 +108,54 @@ public sealed class IndirectFrameTailTests
     }
 
     [Fact]
+    public void DisablingTheAtmosphereReturnsToThePaletteAmbient()
+    {
+        using var device = new FakeGpuDevice();
+        using ModelRenderer model = NewRenderer(device);
+        using var commands = new NullGpuCommandList();
+        var settings = new PixelPostProcessSettings { IndirectDiffuse = IndirectDiffuseMode.Directional };
+        settings.Atmosphere.Enabled = true;
+        var cycle = new SunCycleSettings();
+        SunCycle.Apply(SunCycle.Evaluate(.5f, cycle), settings);
+        Upload(model, commands, settings);
+        Assert.NotEqual(IrradianceSH.Zero, settings.AmbientIrradiance);
+
+        settings.Atmosphere.Enabled = false;
+        var palette = SunCycle.Evaluate(0, cycle);
+        SunCycle.Apply(palette, settings);
+
+        Assert.Equal(palette.AmbientColor, settings.AmbientColor);
+        Assert.Equal(palette.FillLightColor, settings.FillLightColor);
+        Assert.Equal(IrradianceSH.Zero, settings.AmbientIrradiance);
+        Upload(model, commands, settings);
+        ReadOnlySpan<Vector4> tail = MemoryMarshal.Cast<byte, Vector4>(model.FrameImage[TailOffset..]);
+        Assert.Equal(new Vector4(1, 0, 0, 0), tail[0]);
+        var ambient = new Vector3(palette.AmbientColor.R, palette.AmbientColor.G, palette.AmbientColor.B);
+        Assert.Equal(new Vector4(IrradianceSH.Uniform(ambient).Coefficient(0), 0), tail[1]);
+        for (int i = 2; i < tail.Length; i++) Assert.Equal(Vector4.Zero, tail[i]);
+    }
+
+    [Fact]
+    public void CustomIrradianceSetAfterPaletteApplyIsUploaded()
+    {
+        using var device = new FakeGpuDevice();
+        using ModelRenderer model = NewRenderer(device);
+        using var commands = new NullGpuCommandList();
+        var settings = new PixelPostProcessSettings { IndirectDiffuse = IndirectDiffuseMode.Directional };
+        settings.Atmosphere.Enabled = false;
+        SunCycle.Apply(SunCycle.Evaluate(0, new SunCycleSettings()), settings);
+        var custom = IrradianceSH.SkyAndGround(new Vector3(.4f, .6f, .8f), new Vector3(.2f, .1f, .05f));
+        settings.AmbientIrradiance = custom;
+
+        Upload(model, commands, settings);
+
+        ReadOnlySpan<Vector4> tail = MemoryMarshal.Cast<byte, Vector4>(model.FrameImage[TailOffset..]);
+        Assert.Equal(new Vector4(1, 0, 0, 0), tail[0]);
+        for (int i = 0; i < IrradianceSH.CoefficientCount; i++)
+            Assert.Equal(new Vector4(custom.Coefficient(i), 0), tail[i + 1]);
+    }
+
+    [Fact]
     public void DirectionalWithAtmospherePreservesZeroIrradiance()
     {
         using var device = new FakeGpuDevice();

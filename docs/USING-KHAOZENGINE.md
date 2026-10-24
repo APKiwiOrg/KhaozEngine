@@ -5316,7 +5316,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   Y7 = 1.092548*x*y, Y8 = 0.546274*(x*x - z*z)
   ```
 
-  Without the atmosphere, the consumer supplies `AmbientIrradiance`. If it remains `default` or `Zero`,
+  Without the atmosphere, `SunCycle.Apply` clears `AmbientIrradiance` to `Zero` alongside its palette ambient
+  and fill writes. Set a custom `AmbientIrradiance` after `SunCycle.Apply`. If it remains `default` or `Zero`,
   `Directional` uploads `IrradianceSH.Uniform` of `AmbientColor`'s RGB, so changing only the mode retains ambient
   light. Fill lighting remains independent in this path. Set `FillLightColor` to zero RGB when a custom ground
   hemisphere already accounts for that bounce.

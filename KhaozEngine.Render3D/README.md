@@ -631,8 +631,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   clamped to zero per channel, without another `1/pi`. `Uniform(Vector3 irradiance)` builds an isotropic value,
   and `SkyAndGround(Vector3 skyIrradiance, Vector3 groundIrradiance)` takes upward and downward hemisphere
   irradiance. Its span constructor requires nine coefficients, `Coefficient(index)` reads indices 0 to 8,
-  `Scale(Vector3 rgb)` scales channels and `+` adds coefficients. Without the atmosphere, supply the field
-  yourself. An unset or `Zero` value falls back to `Uniform` of `AmbientColor` RGB. Fill remains independent,
+  `Scale(Vector3 rgb)` scales channels and `+` adds coefficients. Without the atmosphere, `SunCycle.Apply`
+  clears the field to `Zero` with its palette ambient and fill writes. Set custom `AmbientIrradiance` after
+  `SunCycle.Apply`. An unset or `Zero` value falls back to `Uniform` of `AmbientColor` RGB. Fill remains independent,
   so zero `FillLightColor` RGB if your ground hemisphere already represents it. Water, particles, decals,
   billboards, outlines and silhouettes are unchanged.
 - Physical atmosphere: `PixelPostProcessSettings.Atmosphere` (`AtmosphereSettings`, **opt-in, default off**)
@@ -1022,8 +1023,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   both cascaded and point-light shadows. A field version change invalidates the shadow caches. Ordinary
   unflagged draws, roofs, skinned meshes, animated foliage, grass and ground cover keep their existing path.
   `InstanceData` stays 128 bytes, with `SpecParams.xyz` unchanged and `w` the 0/1 cut flag.
-  The shared frame UBO is 1376 bytes, interior vec4 tails at 1344 and 1360. Model set 0 binding 14 follows
-  atmosphere bindings 11 to 13 and reuses sampler 6, with six dynamic uniform descriptors unchanged.
+  The shared frame UBO is 1536 bytes, with interior vec4 tails at 1344 and 1360 and the appended 160-byte
+  indirect tail at 1376. Model set 0 binding 14 follows atmosphere bindings 11 to 13 and reuses sampler 6,
+  with six dynamic uniform descriptors unchanged.
   Cascade slots remain 256 bytes with tails at 96/112, point slots at 144/160. Rigid outline and silhouette
   payloads are 192 bytes in 256-byte slots, tails at 160/176, flags in `Params.w` and `Params.y` respectively.
   `InteriorCutBinding` shares the texture/sampler set per renderer and rebuilds it only on texture identity changes.

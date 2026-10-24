@@ -18,10 +18,11 @@ internal sealed class SubmissionTestBuffer : IGpuBuffer
     internal readonly byte[] Bytes;
     internal readonly GpuBufferUsage Usage;
     internal int DisposeCalls;
+    internal Action? OnDispose;
     internal SubmissionTestBuffer(uint bytes, GpuBufferUsage usage = GpuBufferUsage.StructuredBufferReadWrite)
     { Bytes = new byte[bytes]; Usage = usage; }
     public uint SizeInBytes => (uint)Bytes.Length;
-    public void Dispose() => DisposeCalls++;
+    public void Dispose() { DisposeCalls++; OnDispose?.Invoke(); }
 }
 
 // Copies preserve bytes. Tests control completion and count every submission and drain.

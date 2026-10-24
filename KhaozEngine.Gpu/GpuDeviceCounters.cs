@@ -22,8 +22,8 @@ namespace KhaozEngine.Gpu
     /// a backend that kept them and never stalled. The default value answers false and is what every incumbent
     /// Veldrid path gave, Veldrid Metal included. The three native backends give a true value instead: D3D11
     /// every field except the acquire pair, which it passes as zero because a Direct3D 11 present has no acquire
-    /// to wait on, and Vulkan and Metal every field including that pair, both of which really do wait on an
-    /// acquire.
+    /// to wait on, and Vulkan and Metal every field including that pair, using the backend-specific recording
+    /// rules documented below.
     /// </para>
     /// <para>
     /// THE TWO BACKPRESSURE READINGS ARE SEPARATE MEMBERS AND MUST STAY SEPARATE
@@ -53,10 +53,10 @@ namespace KhaozEngine.Gpu
         /// <param name="backpressureStallMs">Milliseconds those stalls spent blocked, summed.</param>
         /// <param name="offTimelineDeferred">Off-timeline buffer writes queued against an in-flight segment.</param>
         /// <param name="offTimelineOutstanding">Those queued writes still waiting for a segment to be reopened.</param>
-        /// <param name="acquireWaitCount">Present boundaries that blocked waiting for the next swapchain image.
-        /// Zero is the honest reading on a backend whose acquire never blocks the CPU, and on a headless device
-        /// with no swapchain at all.</param>
-        /// <param name="acquireWaitMs">Milliseconds those acquire waits spent blocked, summed.</param>
+        /// <param name="acquireWaitCount">Recorded swapchain acquisition entries since device creation.
+        /// See <see cref="AcquireWaitCount"/> for backend-specific recording rules.</param>
+        /// <param name="acquireWaitMs">Full API-call durations of the recorded acquisition entries, summed in
+        /// milliseconds. These durations include API work, not only blocking time.</param>
         public GpuDeviceCounters(
             long framesBegun,
             long drainCount,
@@ -168,24 +168,26 @@ namespace KhaozEngine.Gpu
         public long OffTimelineOutstanding { get; }
 
         /// <summary>
-        /// Present boundaries that BLOCKED waiting for the presentation engine to hand back the next swapchain
-        /// image, since device creation. A backend that acquires with a semaphore and lets the GPU do the waiting
-        /// reports zero here and a backend that blocks the CPU on the acquire reports one per frame, which is the
-        /// entire difference the two positions of that choice produce and the reason this pair exists at all.
+        /// Recorded swapchain acquisition entries since device creation. Metal records every current-frame
+        /// drawable-resolution API attempt, including nonblocking and nil results, at the first swapchain bind
+        /// or on demand for a present-only call. Repeated binds reuse the resolved result, including nil.
+        /// Construction and Present do not pre-acquire the next frame. Metal's <see cref="FramesBegun"/>
+        /// separately counts present boundaries, including skipped presents.
         /// <para>
-        /// ZERO IS A READING RATHER THAN A GAP on a backend with no acquire to wait on, and on a headless device
-        /// with no swapchain. Nothing else on this struct can distinguish "the CPU never waited" from "nobody
-        /// looked", which is what <see cref="HasValue"/> answers for the whole set.
+        /// Vulkan's semaphore path probes with a zero timeout and records only the subsequent blocking call
+        /// when the probe reports not ready. Its explicit CPU-stall path records each stalling acquire.
+        /// </para>
+        /// <para>
+        /// Direct3D 11 has no acquire step and reports zero, as does a headless device with no swapchain.
+        /// <see cref="HasValue"/> distinguishes a device that keeps counters from one that reports none.
         /// </para>
         /// </summary>
         public long AcquireWaitCount { get; }
 
         /// <summary>
-        /// Milliseconds those acquire waits spent blocked, summed. Carried beside the count for the reason
-        /// <see cref="BackpressureStallMs"/> is: a count with no cost attached cannot be weighed, and a duration
-        /// with no count cannot tell one long wait from many short ones. On a machine running at a pinned refresh
-        /// rate this is the only number that separates a CPU-blocking acquire from a semaphore one, because both
-        /// produce the same mean frame time by construction.
+        /// Full API-call durations of the entries counted by <see cref="AcquireWaitCount"/>, summed in
+        /// milliseconds. The durations include API work and are not isolated CPU blocking time. Interpret them
+        /// with the backend-specific recording rules and count, rather than as GPU execution time.
         /// </summary>
         public double AcquireWaitMs { get; }
     }

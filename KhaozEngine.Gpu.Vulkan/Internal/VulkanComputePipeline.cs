@@ -19,10 +19,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <see cref="IGpuComputeShader.ThreadGroupSizeX"/> off the shader that made this pipeline rather than a copy
     /// held here that could disagree with the SPIR-V. See <see cref="VulkanComputeShader"/>.</para>
     /// </summary>
-    internal sealed class VulkanComputePipeline : IGpuComputePipeline
+    internal sealed class VulkanComputePipeline : IGpuComputePipeline, IGpuPipelineDiagnostics, IGpuPipelineConstructionDiagnostics, IGpuBudgetedPipelineDiagnostics
     {
         readonly VulkanPipelineOwner _owner;
         readonly ulong[] _setLayouts;
+        readonly VulkanPipelineDiagnosticBinding? _diagnostics;
+        readonly GpuPipelineConstructionIdentity _constructionIdentity;
 
         ulong _handle;
 
@@ -31,8 +33,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="pipelineLayout">The shared <c>VkPipelineLayout</c> it was created with.</param>
         /// <param name="setLayouts">That layout's set-layout handles in slot order. Taken over rather than
         /// copied.</param>
+        /// <param name="diagnostics">Cold compiler-report binding for the exact created pipeline.</param>
         internal VulkanComputePipeline(VulkanPipelineOwner owner, ulong handle, ulong pipelineLayout,
-            ulong[] setLayouts)
+            ulong[] setLayouts, VulkanPipelineDiagnosticBinding? diagnostics = null)
         {
             ArgumentNullException.ThrowIfNull(owner);
             ArgumentNullException.ThrowIfNull(setLayouts);
@@ -41,7 +44,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _handle = handle;
             _setLayouts = setLayouts;
             PipelineLayout = pipelineLayout;
+            _diagnostics = diagnostics;
+            _constructionIdentity = diagnostics?.ConstructionIdentity ?? VulkanPipelineDiagnostics.DisabledIdentity;
         }
+
+        public GpuPipelineConstructionIdentity ConstructionIdentity => _constructionIdentity;
+        public GpuPipelineCompilerReadResult ReadCompilerReport(GpuPipelineCompilerReadRequest request,
+            System.Action<string> checkOperation, System.Threading.CancellationToken cancellation)
+            => _diagnostics?.Read(Handle, request, checkOperation, cancellation)
+                ?? VulkanPipelineDiagnostics.Production.Read(0, 0, new("", "", "", "", "unavailable"), request, checkOperation, cancellation, _constructionIdentity);
+
+        public GpuPipelineCompilerReport ReadCompilerReport()
+            => _diagnostics?.Read(Handle) ?? VulkanPipelineDiagnostics.Disabled(IsDisposed);
 
         /// <summary>The <c>VkPipeline</c>, which <c>vkCmdBindPipeline</c> names at the COMPUTE bind point.
         /// </summary>

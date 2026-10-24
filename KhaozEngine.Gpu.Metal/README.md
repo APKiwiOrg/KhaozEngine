@@ -246,8 +246,12 @@ ring's segment acquire ALONE, where the same field on the native Vulkan backend 
 waiting on its own oldest buffer slot: this backend has no command-buffer pool to wait on, so a non-zero
 reading is unambiguously a pipeline-depth statement about `KE_METAL_FRAMES_IN_FLIGHT`. The off-timeline pair is
 deliberately NOT part of that number, because a deferred write blocks nobody and usually happens at load time.
-`FramesBegun` and the acquire pair belong to the present boundary, so a headless device reports zero for all
-three, which is literally true rather than a placeholder.
+`FramesBegun` counts present boundaries, including skipped presents. `AcquireWaitCount` and `AcquireWaitMs`
+record every current-frame drawable-resolution API attempt and its full duration, including nonblocking and
+nil attempts. Resolution happens at the first swapchain framebuffer bind, or on demand for a present-only
+call. Repeated binds reuse the resolved frame, including nil. Construction and `Present` do not pre-acquire
+the next frame. The recorded duration includes API work and is not isolated blocking time. A headless device
+with no swapchain reports zero for `FramesBegun` and both acquire fields.
 
 **`GpuDeviceDiagnostics.SoftwareAdapter` is FALSE with confidence rather than null**, because Apple ships no
 software Metal rasterizer at all. That is a different fact from "nobody asked", which is what null means and
@@ -313,7 +317,8 @@ otherwise successful path still propagates. Pending pass state and the swapchain
 discarded, while staging blocks keep their arena ownership. Manual timestamp writes and batch ends
 also preserve the primary exception if closing their private blit or recording its boundary fails.
 
-`SupportsTimestamps` requires `MTLCommonCounterSetTimestamp`, stage-boundary or blit-command sampling,
+`SupportsTimestamps` requires `MTLCommonCounterTimestamp` within `MTLCommonCounterSetTimestamp`,
+stage-boundary or blit-command sampling,
 and a successful trial sample-buffer allocation. The probe releases that buffer immediately. Stage
 boundaries are preferred, including on Apple GPUs that do not support the blit sample command.
 
@@ -351,6 +356,59 @@ Metal retains encoded resources and disposal adds no drain. `MetalTimestampTests
 policy and `ComputeTimestampGpuTests` logs the native probe, branch and calibrated period. Apple
 Paravirtual may run the explicit unsupported branch. Real-hardware budget measurements require
 separate owner approval and a chosen device.
+
+## Optional compiler and memory diagnostics
+
+Metal pipelines implement `IGpuPipelineDiagnostics` and the device implements
+`IGpuResourceMemoryDiagnostics`. Read both outside measured frames. No diagnostic switch enables
+reflection, capture or invocation queries on ordinary pipelines. Cold reads enumerate the device's
+actual counter-set/counter names and supported stage, draw, dispatch, tile and blit sampling points.
+Enumeration is bounded to 64 sets and 256 counters per set. Overflow or malformed metadata is Invalid
+with its cause, never silently truncated. Advertised counters are Boolean capability metadata with
+HardwareLimit provenance. They are not sampled counter values. The independent timestamp capability
+requires the actual timestamp counter and a usable sample buffer, and retains unsupported/error reasons.
+A hosted device without that route remains usable for correctness and CPU work but cannot supply GPU timing.
+
+Reports retain exact input GLSL hashes, emitted MSL source hashes, entry points, local sizes, resolved
+layouts/render state and compile/configuration identity. Identity includes the pinned MSL language,
+fast-math and invariance options, front-end/cross-compiler pins, loaded SPIR-V toolchain identity,
+launch validation state and OS version. No native compiler version is exposed here. MSL source is not
+a native compiler artifact. Its `GpuDiagnosticDigest` has null Sha256, Unsupported status, provenance and a cause. GLSL and emitted MSL remain source evidence. Stage aggregates use `khaozengine.pipeline-stage-set/1` without substituting source hashes for native artifacts.
+Physical registers, spills and achieved occupancy also remain unsupported. Cold compute reads expose
+`threadExecutionWidth` and `maxTotalThreadsPerThreadgroup` as hardware limits with UInt64 values.
+They never populate achieved occupancy. Failed queries retain Invalid status and their native cause.
+Reads after pipeline/shader/device disposal or loss are Invalid and do not query native state.
+
+The memory ledger counts successful owned buffer/texture creation and disposal once. Buffer payload
+uses the requested logical window. Texture payload uses the existing packed upload layout, including
+mips, cube faces, layers and samples. In particular, the software D32FloatS8UInt upload layout is five
+bytes per texel, not the native texture allocation size. Ring capacity includes all aligned frame
+segments. Staging capacity includes texture staging buffers, setup uploads, arena blocks and timestamp
+result/marker buffers. Reused arena subleases do not allocate another block. Capacity overlaps logical
+ring windows and staging payload and must not be added to it. Logical peaks exclude extra staging
+capacity. Live resource count includes internal staging buffers but excludes borrowed drawables,
+views, shaders and opaque counter sample storage. Counts end at the existing explicit owner release
+or managed abandonment, not when the GPU becomes idle. Internal peak counts are retained, but the
+shared snapshot has no typed peak-count field. History and scratch roles are not supplied by this
+resource API and remain unsupported.
+
+Cold `MTLDevice.currentAllocatedSize` snapshots use the existing NSUInteger binding under the device's
+lifecycle lock. They describe device-wide native allocation, including internal/driver resources, and
+are separate from logical payload. `hasUnifiedMemory` supplies true, false or unknown provenance.
+Unified memory is shared CPU/GPU memory, not dedicated VRAM. Missing selectors and query failures
+retain typed Unsupported/Invalid allocation values with reasons. Residency and a hard budget remain
+unsupported. `recommendedMaxWorkingSetSize` is a performance recommendation, not residency or a budget.
+
+Apple defines [counter sampling](https://developer.apple.com/documentation/metal/sampling-gpu-data-into-counter-sample-buffers),
+[execution width](https://developer.apple.com/documentation/metal/mtlcomputepipelinestate/threadexecutionwidth),
+[threadgroup limits](https://developer.apple.com/documentation/metal/mtlcomputepipelinestate/maxtotalthreadsperthreadgroup),
+[device allocation](https://developer.apple.com/documentation/metal/mtldevice/currentallocatedsize),
+[unified memory](https://developer.apple.com/documentation/metal/mtldevice/hasunifiedmemory) and the
+[working-set recommendation](https://developer.apple.com/documentation/metal/mtldevice/recommendedmaxworkingsetsize).
+These APIs do not supply native compiler artifacts or physical register/spill/occupancy evidence here.
+Headless injected checks do not establish native availability or performance. The separate cold
+compiler collection session and native renderer acceptance remain later work. See the
+[renderer protocol](../docs/RENDERER-PERFORMANCE.md#cold-backend-evidence).
 
 ## Resources, and the one creation this backend refuses
 
@@ -1023,10 +1081,14 @@ flush a pending clear yet ([#1432](https://github.com/APKiwiOrg/KhaozEngine/issu
 ## The swapchain: a layer, a drawable, and a present that cannot be skipped silently
 
 `GpuDeviceContext.CreateForWindow` on this backend resolves the Cocoa `NSWindow` into a `CAMetalLayer` (adopting
-the host view's if it already has one, creating and attaching one if it does not), configures it, takes a
-drawable, and hands back a device whose `SwapchainFramebuffer` is the same object for the rest of its life.
-`Present()` presents the drawable the frame rendered into, applies anything a resize or a vsync change queued,
-and acquires the drawable the next frame will use.
+the host view's if it already has one, creating and attaching one if it does not), configures it, and hands
+back a device whose `SwapchainFramebuffer` is the same object for the rest of its life. Creation publishes only
+its dimensions and fixed outputs. The first swapchain framebuffer bind in a frame acquires its drawable, even
+through a cached wrapper, so `FramePhases` preparation runs before that wait. Repeated binds reuse that resolved
+attachment, including a nil drawable's orphan target. `Present()` presents the current drawable, applies queued
+resize or vsync changes, publishes resized dimensions and services the capture boundary. It leaves the next
+frame unresolved. A present-only call acquires its own current drawable on demand before presenting it.
+This timing is an optimization candidate. It does not establish an FPS gain.
 
 **The layer configuration is the deleted Veldrid Metal backend's, field for field, with one exception.** `device`,
 `pixelFormat` (`BGRA8Unorm`, or its sRGB sibling if the seam ever grows a way to ask), `framebufferOnly = true`
@@ -1060,8 +1122,8 @@ The first one WARNs once per device. A minimised window is the ordinary cause an
 
 **The drawable acquire is measured.** `-nextDrawable` BLOCKS when every drawable is still in flight, and Metal
 offers no zero-timeout probe, no semaphore form and no readiness query, so the stall is not removable. It is
-counted and timed into `GpuDeviceCounters.AcquireWaitCount` and `AcquireWaitMs` instead, one entry per boundary,
-which is exactly what that pair's own documentation says a CPU-blocking acquire reports. Expect it to be
+counted and timed into `GpuDeviceCounters.AcquireWaitCount` and `AcquireWaitMs` instead, one entry per acquired
+frame, including nil results. Construction and a completed present acquire no extra future drawable. Expect it to be
 non-zero under vsync: a vsync-paced frame SHOULD wait for a drawable. `maximumDrawableCount` is set to
 `KE_METAL_FRAMES_IN_FLIGHT`, so the depth of the drawable queue and the depth of the uniform ring are one
 number.
@@ -1092,8 +1154,9 @@ which is what `GpuDeviceCounters.HasValue` being true is for.
 takes the next drawable, with no drain because the write releases nothing. The layer may still hand back a pooled
 drawable made under the old value, so each acquire reads the texture's own `isFramebufferOnly`. The drawable held
 when the request arrives stays uncopyable, a recycled one stays uncopyable until the layer makes a fresh one, and
-the orphan target never is. `SwapchainCopyable` reports exactly that, `SwapchainCopySupported` is always true
-because any drawable can be vended copyable, and `CopySwapchainColor`
+the orphan target never is. `SwapchainCopyable` reports false until the frame has bound its drawable and after
+it presents. Reading it never acquires another drawable. For a resolved frame it reports whether that texture
+is copyable. `SwapchainCopySupported` is always true because any drawable can be vended copyable, and `CopySwapchainColor`
 throws `InvalidOperationException` when it is false. It throws the same exception for a list that never bound the
 swapchain framebuffer in its current recording, because only the frame's own list holds what the frame drew. The
 copy is a blit from the drawable's texture on the same encoder `CopyTexture` uses, so a pending clear lands first. Clearing the request writes `framebufferOnly = true` again at the next boundary.

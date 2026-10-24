@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Render3D.Diagnostics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 using static KhaozEngine.Render3D.Internal.FragmentPassResources;
@@ -149,25 +150,29 @@ namespace KhaozEngine.Render3D.Rendering
         /// into the write index's colour and confidence, reading the read index's history and previous depth. A frame
         /// that does not upscale (<see cref="Upscales"/>) records the second pass compiled for the display's own
         /// size.</summary>
+        internal RenderPassProfiling? Profiling { get; set; }
+
         public void Run(IGpuCommandList cl, TemporalHistory history, bool upscales, bool withoutVisibility = false)
         {
-            if (SkipPassForTests != TemporalSplitPass.Prepare)
-            {
-                cl.SetFramebuffer(_prepareFramebuffers[history.WriteIndex]
-                    ?? throw new InvalidOperationException("TemporalSplitResolve.Run was called before Bind."));
-                cl.SetPipeline(_preparePipeline);
-                cl.SetGraphicsResourceSet(0, _prepareSet!);
-                cl.Draw(3);
-            }
-            if (SkipPassForTests != TemporalSplitPass.Accumulate)
-            {
-                cl.SetFramebuffer(history.ResolveFramebuffer(history.WriteIndex));
-                cl.SetPipeline(AccumulatePrograms(upscales).Select(withoutVisibility));
-                cl.SetGraphicsResourceSet(0, (UsesVisibility(upscales, withoutVisibility) ? _accumulateSets
-                    : _fullyLitAccumulateSets)[history.ReadIndex]
-                    ?? throw new InvalidOperationException("TemporalSplitResolve.Run was called before Bind."));
-                cl.Draw(3);
-            }
+            using (Profiling?.Pass(cl, "temporal.prepare", executed: SkipPassForTests != TemporalSplitPass.Prepare) ?? default)
+                if (SkipPassForTests != TemporalSplitPass.Prepare)
+                {
+                    cl.SetFramebuffer(_prepareFramebuffers[history.WriteIndex]
+                        ?? throw new InvalidOperationException("TemporalSplitResolve.Run was called before Bind."));
+                    cl.SetPipeline(_preparePipeline);
+                    cl.SetGraphicsResourceSet(0, _prepareSet!);
+                    cl.Draw(3);
+                }
+            using (Profiling?.Pass(cl, "temporal.accumulate", executed: SkipPassForTests != TemporalSplitPass.Accumulate) ?? default)
+                if (SkipPassForTests != TemporalSplitPass.Accumulate)
+                {
+                    cl.SetFramebuffer(history.ResolveFramebuffer(history.WriteIndex));
+                    cl.SetPipeline(AccumulatePrograms(upscales).Select(withoutVisibility));
+                    cl.SetGraphicsResourceSet(0, (UsesVisibility(upscales, withoutVisibility) ? _accumulateSets
+                        : _fullyLitAccumulateSets)[history.ReadIndex]
+                        ?? throw new InvalidOperationException("TemporalSplitResolve.Run was called before Bind."));
+                    cl.Draw(3);
+                }
         }
 
         /// <summary>Let go of the sets and framebuffers, which name the scene's inputs and the history targets, into

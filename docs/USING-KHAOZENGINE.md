@@ -320,6 +320,7 @@ game.Run();
 ```
 
 `GameAppOptions` (a struct): `Title`, `Width`/`Height`, `DesignWidth`/`DesignHeight`, `ScaleMode`, `ClearColor`,
+`RendererInitializesSwapchain` (explicit opt-in, see the frame initialization policy below),
 `ResumeGapThresholdSeconds` (see the resume hook below), `PresentMode` + `FrameCapHz` + `WindowMode` (see below), and optional
 `WindowFactory` / `ViewportFactory` (e.g. `AppWindow.Scaled` for a display-fitted window, or an `AdaptiveViewport`
 for responsive layout), `AppUserModelId` (Windows taskbar identity), `SuppressParentConsoleAttach` (opt out of
@@ -344,7 +345,8 @@ by default, so a client no longer free-runs a whole core plus the GPU out of the
   simplification. The question the arm asks is whether the backend's present throttles the CPU from vsync alone,
   and the only backend that ever answered no was the Veldrid Metal incumbent, deleted in 18.0.0. `D3D11Native`
   and `VulkanNative` throttle, and (measured 2026-08-11) so does the engine's own **`MetalNative`**, whose
-  present blocks the CPU in the drawable acquire for the whole vertical-blank wait. With `PresentMode.Immediate`
+  frame loop blocks the CPU in the drawable acquire at its first swapchain bind.
+  Preparation runs before that wait. With `PresentMode.Immediate`
   (any backend) it stays uncapped, respecting the lowest-latency intent. A
   consumer-set value always wins: `FrameCap.Uncapped` is an intentional free-run (the pre-10.96 default) and
   `FrameCap.Hz(n)` / a positive `FrameCapHz` is a fixed cap. A positive `GameAppOptions.FrameCapHz` overrides
@@ -397,11 +399,13 @@ app.Display.ApplyDisplay(s);
 framebuffer semantics are unchanged (the backbuffer always tracks the physical drawable). **Mac/Metal caveat,
 now history:** setting vsync engages `CAMetalLayer.displaySyncEnabled`, and the Veldrid Metal present did not
 throttle the CPU from vsync alone. That was measured on `GpuBackendKind.Metal` and applied to it alone. The
-engine's own `MetalNative` was measured on 2026-08-11 and its present DOES throttle: the drawable acquire blocks
+engine's own `MetalNative` was measured on 2026-08-11 with acquisition at present. That acquire blocked
 once per frame for 15.175 ms of a 16.669 ms frame, a display pinned to 120 Hz paces it at 120 fps, and turning
 vsync off mid-session free-runs past 700 fps with visible tearing. The incumbent was deleted in 18.0.0, so vsync
 with no software cap is a healthy configuration on every live backend and `FrameCap.Auto` resolves to uncapped
-everywhere. Nothing branches on `GameApp.Backend` to set a cap. The one-time `Console.Error` warning is GONE at 18.0.0:
+everywhere. Metal now acquires at the first swapchain bind, after preparation, with the same vsync policy.
+The historical timings above are not a measurement of this deferred acquisition. Nothing branches on
+`GameApp.Backend` to set a cap. The one-time `Console.Error` warning is GONE at 18.0.0:
 `AppWindow.WarnIfMetalVsyncUncapped` and its one-shot latch were deleted with the backend that tripped them, so
 nothing on the frame-cap path writes to `Console.Error` any more. The pure predicate
 `DisplaySettings.RequiresFrameCapWarning(backend, presentMode, frameCapHz)` STAYS, now a constant `false`, as
@@ -572,8 +576,18 @@ below), `OnDispose()`. Properties you read: `Window`, `Clock`, `Viewport`, `Poin
 
 The windowed loop runs **two** callbacks per frame. `onPrepare` runs first, after the frame's `Dt` / `Input` /
 size are latched and **before** the frame's command list is opened. `onFrame` runs second, with that list open,
-bound to the swapchain and cleared. `Run(onFrame)` is exactly `Run(onFrame, null)`, so a host that wants one
+bound to the swapchain and cleared by default. `Run(onFrame)` is exactly `Run(onFrame, null)`, so a host that wants one
 callback keeps writing one.
+
+`AppWindow.RendererInitializesSwapchain` and `GameAppOptions.RendererInitializesSwapchain` default to false,
+including `default(GameAppOptions)` and raw struct initializers. Setting the option true skips both the host's
+initial swapchain bind and its `ClearColor` clear. `GameApp` applies it to both default and factory windows.
+The caller must ensure the renderer binds and initializes the entire output inside this frame's recording
+before any 2D draws or capture taps, including empty, loading and menu frames. The normal full-output 3D
+composition still binds, clears and overwrites its final target. `GameApp3D` does not opt in automatically:
+an overridden `OnRenderWorld` can render only part of the output or no world at all. Keep the default for
+those renderers and for 2D callbacks that rely on the host clear. The policy changes no preparation,
+recording, capture, submission, present or suppression ordering.
 
 ```csharp
 window.Run(
@@ -5276,9 +5290,41 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `Post.LightDirection`/`LightColor`/`AmbientColor`/`FillLightColor` every call. If your game reads those values
     to drive something else (for example a water horizon tint sampled from `Sky.HorizonColor`), re-tie it after
     `Apply` runs so it does not read a stale value from before the time of day advanced.
+- **Directional indirect diffuse** (`Post.IndirectDiffuse`, an `IndirectDiffuseMode`, since 21.13.0):
+  `Uniform` is the default and keeps the existing orientation-independent `AmbientColor` plus directional
+  `FillLightColor`, with unchanged pixels and a zero indirect frame tail. Opt in with
+  `scene.Post.IndirectDiffuse = IndirectDiffuseMode.Directional`. The six lit model and terrain fragments then
+  evaluate `Post.AmbientIrradiance` at the surface normal instead of reading the flat ambient colour. Water,
+  particles, decals, billboards, outlines and silhouettes keep their existing lighting.
+
+  `IndirectDiffuse` and `AmbientIrradiance` are public fields on `PixelPostProcessSettings`.
+  `AmbientIrradiance` defaults to `IrradianceSH.Zero` (`default`). `IrradianceSH` is a readonly value type with
+  nine pre-convolved RGB coefficients in a Y-up real L2 spherical harmonic basis. `Evaluate(Vector3 unitNormal)`
+  returns irradiance in `AmbientColor` units, clamped to zero per channel. No extra `1/pi` applies.
+  `Uniform(Vector3 irradiance)` builds an isotropic term, and
+  `SkyAndGround(Vector3 skyIrradiance, Vector3 groundIrradiance)` builds uniform hemispheres specified by their
+  upward and downward irradiance. A horizontal normal receives half of each. For custom coefficients, the
+  `ReadOnlySpan<Vector3>` constructor requires exactly nine, `Coefficient(index)` reads indices 0 to 8,
+  `Scale(Vector3 rgb)` scales channels, and `+` combines coefficients before evaluation clamps them.
+
+  Custom coefficients already include the clamped-cosine band weights `pi`, `2*pi/3` and `pi/4` for bands
+  0, 1 and 2. For a unit normal `(x, y, z)`, the basis order is:
+
+  ```text
+  Y0 = 0.282095, Y1 = 0.488603*y, Y2 = 0.488603*z, Y3 = 0.488603*x
+  Y4 = 1.092548*x*z, Y5 = 1.092548*y*z, Y6 = 0.315392*(3*y*y - 1)
+  Y7 = 1.092548*x*y, Y8 = 0.546274*(x*x - z*z)
+  ```
+
+  Without the atmosphere, `SunCycle.Apply` clears `AmbientIrradiance` to `Zero` alongside its palette ambient
+  and fill writes. Set a custom `AmbientIrradiance` after `SunCycle.Apply`. If it remains `default` or `Zero`,
+  `Directional` uploads `IrradianceSH.Uniform` of `AmbientColor`'s RGB, so changing only the mode retains ambient
+  light. Fill lighting remains independent in this path. Set `FillLightColor` to zero RGB when a custom ground
+  hemisphere already accounts for that bounce.
 - **Physical atmosphere** (`Post.Atmosphere`, an `AtmosphereSettings`, **default off**): an opt-in Hillaire 2020
-  scattering sky with CPU-derived key, ambient and fill light, matching water reflections and analytic height
-  fog. `AtmosphereSettings.Earth()` returns the default Earth preset with `Enabled = false`. Enable it explicitly:
+  scattering sky with CPU-derived key and indirect light, matching water reflections and analytic height fog.
+  `Uniform` keeps the existing ambient and fill. `Directional` derives sky and ground irradiance as described
+  below. `AtmosphereSettings.Earth()` returns the default Earth preset with `Enabled = false`. Enable it explicitly:
 
   ```csharp
   var cycle = new SunCycleSettings { NightKey = NightKeyMode.Moon };
@@ -5318,16 +5364,29 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `DayTint` and `DuskTint` default to white. `SunCycle` blends the day, dusk and night tints by its elevation
     weights, then applies that tint once to sky, fog colour, key, ambient and fill. `AmbientScale` and `FillScale`
     default to 1 and affect lighting only. The floors retain the hue of `NightTint` at every time of day,
-    independently of the current blended tint. With `S` the solar illuminance, `L` sky radiance and `E` sky
-    irradiance (each including the moon contribution), the per-channel controls are:
+    independently of the current blended tint. With `S` the solar illuminance, `L` sky radiance and `E` upward
+    sky irradiance (each including the moon contribution), the per-channel controls are:
 
     ```text
     Sky = max(S * pi * L * Tint, NightSkyFloor * NightTint)
-    Ambient = max(S * E * AmbientScale * Tint, NightAmbientFloor * NightTint)
+    Floor = NightAmbientFloor * NightTint
+    Ambient = max(S * E * AmbientScale * Tint, Floor)
+    Directional(up) = Ambient
+    Directional(down) = max(Fill, Floor)
     ```
 
     Key light uses source illuminance times source transmittance and tint, with the existing key fade.
     These values use the engine's Lambert lighting convention. Surface lighting has no extra `1/pi`.
+  - **Directional surface lighting.** With `IndirectDiffuse = Directional`, `SunCycle.Apply` and scene recording
+    write `AmbientIrradiance` from the physical model and zero `FillLightColor` RGB to avoid counting bounce
+    twice. `AmbientColor` still carries `AtmosphereLighting.Ambient`, and the returned `SunCycleState` keeps
+    its original ambient and fill values. Sky irradiance follows the sun and moon azimuth. `AmbientScale`
+    scales the sky, `FillScale` scales the ground bounce and the frame tint applies to both. Each vertical pole
+    receives its own hemispherical night-floor shortfall, so bringing one pole up to the floor does not raise
+    the other. At every source elevation the upward value equals `Ambient`, including its floor, and the
+    downward value equals `max(Fill, Floor)`, within floating-point precision. Switching back to `Uniform`
+    restores the directional fill and clears `AmbientIrradiance`. This is open-sky lighting without interior
+    occlusion or a probe volume.
   - **World mapping and altitude.** `WorldUnitsPerKilometre = 1000` means one world unit is one metre.
     `HeightKm(absoluteWorldY)` maps absolute Y, with Y = 0 at the planet surface. CPU lighting clamps underground
     camera heights to the surface. Its cached unit-source lighting interpolates by solar elevation and physical
@@ -5353,11 +5412,16 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     foliage, water, decals, billboards, particles, trails and beams participate. Debug lines and distortion draws
     retain their own paths.
   - **GPU-free model and fog oracle.** `AtmosphereModel` needs no device. It snapshots validated settings and
-    exposes `Transmittance`, `SingleScattering`, `MultiScattering`, `SkyRadiance`, `CreateFrame`, `EvaluateLighting`
-    and `SkyValue`. `CreateFrame(SunCycle.Evaluate(timeOfDay, cycle))` produces an `AtmosphereFrame` with independent
-    body directions, moon fraction, tint and key visibility. `EvaluateLighting(cameraHeightKm, frame)` returns
-    `AtmosphereLighting` (`Key`, `Ambient`, `Fill`, `Horizon`, and untinted source transmittances). `SkyValue` applies
-    illuminance, pi, tint and the sky floor, whereas `SkyRadiance` is unit-source radiance. Transport positions are
+    exposes `Transmittance`, `SingleScattering`, `MultiScattering`, `SkyRadiance`, `CreateFrame`, `EvaluateLighting`,
+    `EvaluateIrradiance` and `SkyValue`. `CreateFrame(SunCycle.Evaluate(timeOfDay, cycle))` produces an
+    `AtmosphereFrame` with independent body directions, moon fraction, tint and key visibility.
+    `EvaluateLighting(cameraHeightKm, frame)` returns
+    `AtmosphereLighting` (`Key`, `Ambient`, `Fill`, `Horizon`, and untinted source transmittances).
+    `EvaluateIrradiance(float cameraHeightKm, in AtmosphereFrame frame)` returns the matching `IrradianceSH`.
+    Its separate sky table builds lazily on first use, taking about 250 ms in the measured Earth fixture,
+    and rebuilds after physical-settings changes. Warm changing-frame evaluation allocates nothing.
+    `SkyValue` applies illuminance, pi, tint and the sky floor, whereas `SkyRadiance` is unit-source radiance.
+    Transport positions are
     planet-centred kilometres. `AtmosphereFog.Transmittance` accepts world distance and absolute endpoint heights
     and applies the onset itself.
     `Shade` accepts camera-relative positions plus the render origin, and `Compose`/`ComposePremultiplied` expose
@@ -5371,7 +5435,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   - **Phase 1 limits and evidence.** Analytic fog can be too bright in deep valleys under a low sun. The aerial
     perspective volume is deferred to [#1364](https://github.com/APKiwiOrg/KhaozEngine/issues/1364). The transport's
     ground boundary reflects direct source illumination only. Diffuse sky light reflected off that boundary and
-    its feedback into multi-scattering are omitted. Scene receivers still get the separate ambient term.
+    its feedback into multi-scattering are omitted. Scene receivers get sky ambient and directional fill in
+    `Uniform`, or directional sky irradiance and a ground hemisphere in `Directional`.
     The calibrated one-shot completed-frame timing on Apple M2 Max was 8.225700 ms off and 4.473500 ms on,
     delta -3.752200 ms, with a 463.707700 ms cold enabled frame. It is inconclusive and does not establish the
     0.3 ms target. It measured the earlier uniformly scaled floor fixture, before the final height correction.
@@ -8653,7 +8718,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.12.2" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.14.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8979,6 +9044,19 @@ developer text, never shown to players. A loaded profile equals the fresh build 
 The digests must cover every input a proof reads, not only the colliders: the world documents in canonical order,
 collider options, catalog rows that drive colliders, heights and medium, the ground height and normal providers,
 the clamp bounds and the classifier policy. Normalise text to LF before digesting so a CRLF checkout matches.
+For a filtered tile installation, also persist the selection policy explicitly in both bake creation and the
+runtime `NavBakeExpectation`:
+
+```csharp
+// Canonical policy version and inputs, encoded identically at bake and runtime.
+byte[] policyBytes = Encoding.UTF8.GetBytes("omit-kind/v1\nkind=Object\n");
+sources.AddHashOf("policy/colliders", policyBytes);
+```
+
+Change that digest when policy semantics or inputs change. `TileWorldColliders.Hash` still names the complete
+built set. Contact registration, live environment identity, format 2 and runtime profile validation do not
+automatically persist this source or replace it. Matching expectations load, while changing only this source
+returns `SourcesChanged` naming `policy/colliders`, even with identical full collider hashes and tuning.
 Prefer authored inputs to `TileWorldColliders.Hash` for walk surfaces yawed off a quarter turn, since that hash is
 not promised equal across x64 and ARM64. Rebake when any input, option, probed tuning field or the engine pin
 changes, and keep a game test that loads the shipped bake and expects `Loaded`. Load also compares the normalized
@@ -9078,7 +9156,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.12.2" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.14.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9877,7 +9955,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.12.2" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.14.0" />
 ```
 
 ```csharp
@@ -10239,6 +10317,51 @@ Reference evaluation and non-default diagnostic work policies bypass lookup and 
 Volumes, Proposals and curved-work counters count actual evaluation, never replayed hits.
 [Measured work](verification/2026-10-19-bake-proof-reuse.md) separates footprint savings from
 stable initial Holds and the existing tick memo. Neither is a new wall-clock speedup claim.
+
+### Support-query measurement
+
+Use the public types in namespace/package `KhaozEngine.Physics`, without reflection or friend access:
+
+```csharp
+var capture = SupportQueryCapture.Begin("player");
+using (capture)
+{
+    RunCompletePlayerSourceLifetime(); // synchronous consumer work, including reuse cleanup
+}
+SupportQueryMeasurement player = capture.Snapshot();
+long finds = player.Total[SupportQueryCounter.Find];
+long peakBytes = player.ByLabel["player"].ProofReuse.PeakBytes;
+bool complete = player.Total.ProofReuse.HasCompleteLifetimes;
+```
+
+`Begin` opts in only on the calling managed thread and suspends prior recorder callbacks. `Dispose` restores
+prior enablement, counters, routes and observers even when work throws, while carrying actual live retention
+balance through the boundary. Labels are nonblank, preserved exactly and compared ordinally. Nested work is
+exclusive to the innermost label and completed children enter the parent once. Snapshots are detached,
+cumulative and immutable. Sample only the active top scope, or its frozen final result on the creating thread.
+Never carry a scope across `await`, `Task.Run` or a thread handoff. Results may be read on any thread.
+
+`SupportQueryMeasurement.Combine` adds disjoint completed measurements, coalescing repeated labels. It does
+not deduplicate parent/child overlap or repeated cumulative snapshots. Independent consumer threads need
+their own scopes and an explicit join. The [two-body example](../KhaozEngine.Physics/README.md#support-query-measurement)
+shows `player` and `cow`, `using`/`finally` restoration, counter identities and every route getter.
+
+Contact bake workers receive immutable enablement and the build's label, record locally, restore their prior
+state and merge exactly once after all started workers join, including partial work before a failure escapes.
+Caller setup remains caller work. Extra bindings, leases, pins and speculative evaluation are real overhead,
+so counter totals and peaks may vary across worker degrees, processors and schedules despite equal bake bytes.
+Ordinary counters/routes add as checked `long`, while maximum retries and retention peaks take max and lifetime
+completeness takes logical AND. See the [worker proof and contract](../KhaozEngine.Movement/README.md#labelled-support-query-capture).
+
+`PeakKeys` counts occupied proof-reuse memo entries. `PeakBytes` charges owned table capacity and member/join
+payload by element size, including spare slots. Peaks describe the largest single session observed, never
+summed-worker or simultaneous process memory. They exclude CLR/allocator overhead, unrelated scratch,
+initial-Hold maps, GC allocation totals and RSS. `HasCompleteLifetimes` requires zero live keys/bytes at entry
+and the sampled boundary for every contributor. Begin before the first store and close every joined source
+group before sampling for bake peak evidence. Partial lifetimes can miss steady storage and are marked incomplete.
+Enabled capture/snapshot allocations are diagnostic overhead excluded from these bytes. Disabled paths retain
+their gates. Establish scopes outside timed regions where possible and materialize afterwards. This API supplies
+counts, not timers or RSS, and does not satisfy separately approved hosted timing or world-bake gates.
 
 ### Support neighborhoods
 
@@ -12026,8 +12149,9 @@ registering and stepping a body is in the package README's
 
 `TileWorldColliders.Build(document, catalogs, options)` describes the loaded plane-0 regions as static colliders
 and registers nothing: one ground mesh per region from the same triangles the renderer draws, a box per blocked
-wall edge, blocked tile and `Solid` or `Diagonal` object, and a thin box under each walk surface. `AddTo` registers them, and disposing the registration removes
-them. `Ground` is the floor sampler, read from the drawn ground only, so a deck or a bridge holds a body up as a
+wall edge, blocked tile and `Solid` or `Diagonal` object, and a thin box under each walk surface. `AddTo(world)`
+registers every collider. `AddTo(world, include)` registers a selected subset, and disposing the registration
+removes its installed statics. `Ground` is the floor sampler, read from the drawn ground only, so a deck or a bridge holds a body up as a
 static and never becomes the floor. `Medium` puts feet in water only below a water body's surface. Their delegates
 are the ground-height, ground-normal and medium arguments of `CharacterMovement.Step`. `Hash` is a stable digest of
 the whole collider set.
@@ -12060,6 +12184,34 @@ removal. Multiple registrations combine their public `GroundHandles` and pass th
 Adding statics remains supported on a backend without the optional factory until a view is requested, at which
 point `NotSupportedException` is expected. Rebuild the selection when replacing a registration. Handles are
 source-local, and a logical decorator must expose itself as the view's exact `SourceWorld`.
+
+To select physical statics before capture, use a pure synchronous predicate. This neutral example omits object
+boxes and keeps the engine's canonical provenance:
+
+```csharp
+Func<TileCollider, bool> include = collider => collider.Kind != TileColliderKind.Object;
+using TileColliderRegistration selected = colliders.AddTo(fullWorld, include);
+// Handles are compact. Map each back to the original complete collider sequence.
+for (int i = 0; i < selected.Handles.Count; i++)
+{
+    TileCollider original = colliders.Colliders[selected.ColliderIndices[i]];
+}
+```
+
+Run this installation instead of the default call in a fresh world. The predicate receives absolute poses once
+per collider in canonical order, before the single origin read and all insertion. It must not mutate or re-enter
+the world. Its decisions are captured. Empty selection is valid. `ColliderIndices` is strictly increasing and,
+like `Handles`, remains immutable metadata after removal. Original owner aliases, feature ranges and absolute
+transformed bounds survive partial selection. The complete captured resident `MovementExtent`, analytic ground
+and water remain unchanged, even when every collider is omitted. Only installed ground enters `GroundHandles`
+and exclusions. Physical capture sees the installed set, so rejected ground cannot supply a capture floor.
+
+The source remains caller-owned and must outlive contexts, views and registration, disposed in that order.
+Ordinary registration still authenticates the exact source and refuses stale static snapshots, while supported
+Bepu rebases and simulation steps preserve provenance. `Hash` always names the complete built set, independent
+of selection. Persist the [installation-policy source](#baked-profile-sets-groundnavigationbake) separately in both bake and
+runtime expectations. The [package contract](../KhaozEngine.TileWorld.Physics/README.md#filtered-installation)
+details rollback, default/all-true compatibility and the matching-load/policy-only refusal proof.
 
 The contract a consumer has to keep:
 
@@ -12556,8 +12708,8 @@ up to `TileWorldViewOptions.MaxRebuildsPerFlush` (16), leaving the rest counted 
 `Flush(int.MaxValue)` is the settle-now form for a view without a residency profile. A region kept by a three-state
 profile is never meshed in `Flush`: its marks submit background ground builds, plus cover once per region for a
 gameplay region, while the previous mesh keeps drawing, so `Flush(int.MaxValue)` no longer settles profile ground.
-Only `PrimeAround` and headless capture do. Active same-plane door clearances extend the ground-cover reach beyond
-the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by its border
+Only `PrimeAround` and explicit offline `SettleForCapture` calls do. Active same-plane door clearances extend
+the ground-cover reach beyond the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by its border
 data, solid footprints, upper roofs or tagged doors. A dirty region is never streamed out (unloading unsaved edits
 would throw, so it stays resident and logs once), and a torn region file throws `TileWorldException` straight out of
 `Update` rather than drawing a hole.
@@ -12584,6 +12736,20 @@ focus and default roof observer, keeps the overlapping region ring and settles n
 before rendering. A supplied `observer` stays fixed. Keep the document and catalogs unchanged.
 `frames` includes `warmupFrames`, and `onFrame(frame, capture)` streams the remaining frames with the same
 indices and ownership contract as `Render3DSnapshot.CaptureSequence` below.
+
+For a consumer-owned `TileWorldView` inside `Render3DSnapshot.CaptureSequence`, call
+`view.SettleForCapture(focusRegion, cameraTarget)` on the scene thread before the first written frame and
+after loading or unloading regions or announcing edits. The call blocks until ground (Gameplay and Decor),
+Gameplay ground cover, every selected prop layer and HLOD mesh, and the opted-in interior cut are applied,
+ignoring apply budgets. It keeps your loaded region set, camera field of view and `Observer` unchanged.
+The optional world-space `cameraTarget` places the interior-cut window, defaulting to the centre of
+`focusRegion`. An unchanged call retains the applied meshes and cover.
+
+While only the camera's interior-cut focus moves, call `view.SettleInteriorCutForCapture(cameraTarget)`
+before each offline draw. It synchronously publishes any required recentering without settling unrelated
+ground, cover or prop work, and does nothing when interior cutting is disabled. Both APIs are exclusively
+for offline and headless captures. Never call them from a windowed frame loop. Residency updates and
+primes keep their existing nonblocking cover and prop behavior.
 
 ---
 
@@ -17295,8 +17461,8 @@ the Pass-timings **post** row instead.
 
 **The pass-timing caveat (read it).** The per-pass numbers are **CPU encode time** (wall-clock spent recording a
 pass's commands), **not** true GPU execution time. The optional `IGpuTimestampPool` seam described under
-"GPU timestamps without waiting" is separate and is not connected to this HUD. The full explanation, and why a whole-frame GPU-time number was rejected, is in *Per-pass frame
-timing* below. The turn-key HUD is the zero-config path. The two sections that follow are the manual building
+"GPU timestamps without waiting" is separate and is not connected to this HUD. The CPU bracket contract
+is in *Per-pass frame timing* below. Nonblocking GPU intervals use the separate timestamp and observer seams. The turn-key HUD is the zero-config path. The two sections that follow are the manual building
 blocks (custom rows, a recorder, a bespoke overlay) for a game that wants more than the default panel.
 
 ---
@@ -17499,6 +17665,64 @@ needs a `SpriteBatch`. Like `UpdateOverlayView`, the widget never reads raw inpu
 `InputState` snapshot.
 
 ---
+
+## Optional GPU compiler and memory diagnostics
+
+The GPU seam defines optional cold diagnostics for pipelines and devices. Vulkan, D3D11 and Metal
+implement both. Set `KE_VULKAN_PIPELINE_DIAGNOSTICS=1` before device creation to request executable compiler statistics
+on supported drivers. Read them outside frame timing and retain the configuration digests with the evidence.
+Keep the request unset on production timing devices. See the [Vulkan diagnostic configuration](../KhaozEngine.Gpu.Vulkan/README.md#optional-compiler-and-memory-diagnostics).
+
+```csharp
+if (pipeline is IGpuPipelineDiagnostics compiler)
+{
+    GpuPipelineCompilerReport report = compiler.ReadCompilerReport();
+    // Preserve each executable's raw typed statistics and independent support states.
+}
+if (device is IGpuResourceMemoryDiagnostics memory)
+{
+    GpuResourceMemorySnapshot snapshot = memory.ReadMemorySnapshot();
+    // Keep logical payload separate from committed, resident and budget bytes.
+}
+```
+
+Every `GpuDiagnosticMetric` retains its value, unit, source, support status, reason and provenance.
+Unsupported or invalid values are null with a reason. DXBC temporary slots are intermediate-code
+statistics, not physical registers. Execution width is a limit, not achieved occupancy. Unified memory
+and unsupported residency are not dedicated VRAM. See the [GPU package reference](../KhaozEngine.Gpu/README.md#optional-compiler-and-memory-diagnostics)
+for the accounting and typed-scalar contract. For independently configured production and replay
+devices, that reference also owns immutable headless settings, effective configuration, detached
+construction witnesses and bounded compiler reads. Environment switches describe ordinary creation
+defaults. They are not a mechanism for changing an already frozen diagnostic instance.
+
+For D3D11, set `KE_D3D11_PIPELINE_DIAGNOSTICS=1` before creating a separate diagnostic device. Its
+pipeline reports retain the actual DXBC digest and `D3D11_SHADER_DESC` counts, including
+`TempRegisterCount` as intermediate-code slots. Physical registers, spills and achieved occupancy
+remain unsupported. Native committed memory, residency and budget also remain unsupported with reasons.
+The existing `KE_D3D11_RECORD` choice and actual debug-layer state enter diagnostic identity.
+
+Invocation collection is a separate D3D11-only capability. Set `KE_D3D11_INVOCATION_DIAGNOSTICS=1`
+before creating the diagnostic device, then use `ID3D11InvocationDiagnostics.CaptureInvocations`.
+Its callback must synchronously record and submit all intended work. The query `End` is appended after
+the callback. After `CaptureInvocations` returns, arrange normal submission or progress covering that
+`End`. A fence submitted inside the callback precedes `End` and does not establish query completion.
+Any caller-owned completion wait belongs outside the callback and timing. Read the returned
+`D3D11InvocationBlock` outside timing. `TryRead` returns false and a null report for pending data, which
+must remain pending until post-return progress occurs. It uses one non-flushing read and never waits
+or retries internally.
+Dispose the block after reading. An unsupported block does not call the callback. No invocation query
+is automatically inserted into the production pipeline or timestamp path. See the
+[D3D11 package reference](../KhaozEngine.Gpu.D3D11/README.md#optional-compiler-and-memory-diagnostics).
+
+For Metal, the same optional reads need no capture switch. Reports retain exact GLSL/emitted MSL
+source identity, resolved pipeline state and the active compile/validation configuration. Counter
+names and sampling points are advertised capabilities, not sampled runtime values. Compute execution
+width and maximum threadgroup size are limits. Native compiler artifacts, physical registers, spills
+and achieved occupancy remain unsupported. Memory snapshots distinguish logical payload and ring/staging
+capacity from device-wide `currentAllocatedSize`. `hasUnifiedMemory` identifies shared CPU/GPU memory.
+Residency and hard budget remain unsupported, and the working-set recommendation is not either field.
+See the [Metal diagnostic contract](../KhaozEngine.Gpu.Metal/README.md#optional-compiler-and-memory-diagnostics)
+for ownership, exclusion and failure semantics. Cold compiler collection and native proof are separate work.
 
 ## Per-pass frame timing (`Scene3D.EnableTiming` / `PassTimings`)
 
@@ -17912,7 +18136,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.12.2" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.14.0" />
 ```
 
 ```csharp
@@ -17948,7 +18172,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.12.2" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.14.0" />
 ```
 
 ```csharp
@@ -18192,7 +18416,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.12.2" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.14.0" />
 ```
 
 ```csharp
@@ -18230,9 +18454,15 @@ discards every draw in that frame. `SyncToVerticalBlank` always applies, where t
 on a machine outside that set. `ResizeSwapchain` and a `SyncToVerticalBlank` write both QUEUE and apply at the
 next `Present` after a drain, so they take no lock, make no native call and are safe from any thread, and a
 burst of thirty size events between two presents costs one apply. And the drawable acquire is counted and timed
-into `AcquireWaitCount` and `AcquireWaitMs`, one entry per boundary, because `-nextDrawable` BLOCKS and Metal
-offers no zero-timeout probe. Expect that pair to be non-zero under vsync: a vsync-paced frame SHOULD wait for a
-drawable.
+into `AcquireWaitCount` and `AcquireWaitMs`, one entry per acquired frame, because `-nextDrawable` BLOCKS and
+Metal offers no zero-timeout probe. Acquisition happens at the first swapchain framebuffer bind, including a
+cached wrapper, after `FramePhases` preparation. The default host initialization binds before `onFrame`.
+With `RendererInitializesSwapchain` enabled, offscreen rendering can precede acquisition at final composition.
+Repeated binds reuse the resolved frame, including nil.
+Construction publishes metadata only, and `Present` leaves the next frame unresolved. A present-only call
+acquires its own current drawable before presenting it. Resize dimensions still publish at the present boundary.
+This timing is an optimization candidate with no proven FPS gain. Expect that pair to be non-zero under vsync:
+a vsync-paced frame SHOULD wait for a drawable.
 
 **A fifth thing changes, and it is the one that touches resolution.** The layer's initial `drawableSize` is the
 content view's frame in POINTS multiplied by the window's backing scale factor, because a drawable size is in
@@ -18497,8 +18727,13 @@ Metal path**, which is the difference between a capture that carries GPU columns
 cumulative since the device was created, so a window is the difference between two sampled rows.
 `BackpressureStallCount` here counts the uniform ring's segment acquire alone, so a non-zero reading is
 unambiguously about `KE_METAL_FRAMES_IN_FLIGHT`, where the same field on `VulkanNative` also folds in a command
-list waiting on its own oldest buffer slot. `FramesBegun` and the acquire pair belong to the present boundary,
-so a headless device reports zero for all three, truthfully rather than as a placeholder.
+list waiting on its own oldest buffer slot. `FramesBegun` counts present boundaries, including skipped
+presents. `AcquireWaitCount` and `AcquireWaitMs` record every current-frame drawable-resolution API attempt
+and its full duration, including nonblocking and nil attempts. Resolution happens at the first swapchain
+framebuffer bind, or on demand for a present-only call. Repeated binds reuse the resolved frame, including nil.
+Construction and `Present` do not pre-acquire the next frame. The recorded duration includes API work and is
+not isolated blocking time. A headless device with no swapchain reports zero for `FramesBegun` and both
+acquire fields.
 `GpuDeviceDiagnostics.SoftwareAdapter` is `false` with confidence rather than null, because Apple ships no
 software Metal rasterizer, where the deleted Veldrid Metal path correctly reported null because it could not
 answer.
@@ -18923,13 +19158,13 @@ the session log naming the site and what the reason means, and the `deviceLossRe
 session header. Nothing you write has to catch anything, and there is no recovery path: a lost device stays lost,
 which is what the liveness token makes safe.
 
-**The device counts what it waited for, and a telemetry recording can carry it.** `AppWindow.Counters` (a
+**The device reports counters that a telemetry recording can carry.** `AppWindow.Counters` (a
 `GpuDeviceCounters`, also on `GpuDeviceContext.Counters` and `IGpuDevice.Counters`) reports, cumulative since the
 device was created: `FramesBegun`, `DrainCount` / `DrainMs` (time spent waiting for the GPU to go idle),
 `BackpressureStallCount` / `BackpressureStallMs` (frame boundaries that blocked on a uniform ring segment the GPU
 was still reading), `OffTimelineDeferred` / `OffTimelineOutstanding`, and `AcquireWaitCount` / `AcquireWaitMs`
-(present boundaries that blocked waiting for the presentation engine to hand back the next swapchain image). Add
-them to a session's sample rows in one line:
+(recorded acquisition entries and their full API-call durations, with backend-specific recording rules below).
+Add them to a session's sample rows in one line:
 
 ```csharp
 var row = new List<TelemetryChannel> { new("fps", _stats.Fps), new("frameMs", _stats.FrameMsAvg) };
@@ -18943,13 +19178,16 @@ The deleted Veldrid paths had neither a fence drain nor a segment ring to count,
 and `AppendTo` wrote no columns for them. That matters because ZERO STALLS IS THE GOOD RESULT: a capture full of
 zeros from a backend that never looked would read exactly like a clean run.
 
-**The acquire pair is what tells the two acquire models apart, and on a machine at a pinned refresh rate it is
-the ONLY thing that does.** `AcquireWaitCount` counts present boundaries that actually BLOCKED waiting for the
-next swapchain image, and it is a reading rather than a count of calls: the native Vulkan backend probes with a
-zero timeout first and records only the blocking call that follows. A backend that acquires with a semaphore and
-lets the GPU do the waiting reports zero here, and one that blocks the CPU reports one per frame, while both
-produce the same mean frame time by construction. Zero is a real reading rather than a gap on a backend with no
-acquire to wait on and on a headless device with no swapchain, which is exactly what `HasValue` is for.
+**The acquire pair has backend-specific recording rules.** `AcquireWaitCount` counts recorded acquisition
+entries, and `AcquireWaitMs` sums their full durations. Metal records every current-frame drawable-resolution
+API attempt, including nonblocking and nil attempts, at the first swapchain framebuffer bind or on demand for
+a present-only call. Repeated binds reuse the resolved frame, including nil. Its `FramesBegun` still counts
+present boundaries. Construction and `Present` do not pre-acquire the next frame. Vulkan's semaphore path
+probes with a zero timeout and records only the subsequent blocking call when the probe reports not ready.
+Its explicit CPU-stall path records each stalling acquire. The recorded durations include API work and are
+not isolated blocking time. Direct3D 11 has no acquire step and reports zero for the pair. A headless device
+with no swapchain also reports zero, which is a reading rather than a gap. `HasValue` distinguishes a device
+that keeps counters from one that reports no counters.
 
 **The numbers are cumulative on purpose, so your sampling cadence stops mattering.** A row carrying "the frame
 that just ended" describes one frame in however many you skipped between rows. Subtract the first row's
@@ -22563,7 +22801,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.12.2" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.14.0" />
 </ItemGroup>
 ```
 
@@ -23095,7 +23333,8 @@ unsignaled staging alive until a completion poll or owner teardown releases it. 
 flush or extra frame submission. `GpuRetireQueue` retains its separate existing retirement fence.
 
 The window exposes its owner as `Frame.Submission`. The loop calls `Begin` before `onPrepare`, records the
-initial clear, `onFrame` and capture taps in one list, then submits once. Participants receive `Submitted`
+host initialization (unless `RendererInitializesSwapchain` is enabled), `onFrame` and capture taps in one list,
+then submits once. Participants receive `Submitted`
 before capture `AfterSubmit` and `Present`. A suppressed frame or failure before submission calls `Abandon`.
 A failure after successful submission does not turn the decision into `Abandoned`.
 
@@ -23159,6 +23398,228 @@ Every adjacent interval must be shorter than one full counter wrap. Multiple wra
 be detected or reconstructed. No resolve drains, flushes, submits, synchronously maps or takes a blocking
 lock. A too-small output throws `ArgumentException` before polling. Null, foreign and disposed fences and
 disposed or lost devices follow the completion validation contract of `IGpuDevice.TryReadBuffer`.
+
+For opt-in measurement harnesses, the internal
+[`GpuPerfTimestampRing`](../KhaozEngine.Render.Tests/Gpu/Performance/GpuPerfTimestampRing.cs) is the shared
+retention reference, rather than a published package API. Construct one per fixed block with its exact
+sample count and marker count before warm-up. It preallocates three pools and each sample's immutable
+publication storage, supports 2 through 512 queries, and never grows a pool during recording. The renderer's
+outer pair leaves room for 255 scope occurrences. Coverage can supply its existing two- or five-marker
+layout without coupling the lifecycle to its report types.
+
+Call `TryBegin(commands, submission, sampleId, markerCount, out pool)` immediately after native Begin and
+before the host's first clear, bind or upload. Register and retain through that same `GpuFrameSubmission`
+before touching the pool. Write every reserved marker in order, including skipped cached occurrences,
+and retain their `NotExecuted` status in the adapter. Arm the existing completed-End tail for the final
+index. Unexpected occurrences call `InvalidateBlock`, rather than changing the frozen layout. Submit once
+through the retained submission owner. After each caller-owned batch drain, call `PollCompleted` once,
+including for a final batch of one or two frames. Call `CompleteBlock` after the final harvest to refuse
+missing identities. Duplicate identities, changed layouts or a full ring invalidate the block.
+
+Publication uses each sample's storage once and retains its fence until the callback returns successfully.
+Pending results after the drain, invalid or disjoint batches, bad periods or marker order, recording failures
+and callback failures quarantine their slots. Invalid results carry no usable ticks or period. Already
+published samples remain immutable, and other completed slots can still publish partial evidence. There is
+no ring-owned wait, flush, submit or retry. Dispose the submission owner before the ring. An early ring
+disposal frees unused pools immediately but retains quarantined pools until the owner's teardown releases
+their exact fences. This lifecycle is covered by headless parity cases against the coverage ring's retained
+submission behavior. Migrating the coverage adapter is a separate change.
+
+`Scene3D.PassObserver` is the optional public render-boundary seam. Implement
+`KhaozEngine.Render3D.Diagnostics.IRenderPassObserver` with `BeginPass(commands, key)`,
+`EndPass(commands, key)`, `SkipPass(commands, key)`, `BeginCpuPhase(id)` and `EndCpuPhase(id)`.
+`RenderPassKey` is the stable `(Id, Occurrence)` pair within a recording. The optional `FusedMotion`
+callback tags motion written by an existing MRT draw. It creates no independent motion interval or draw.
+An observer may insert diagnostic markers in GPU callbacks, but must preserve state and must not bind a
+framebuffer, submit, wait or mutate the scene. CPU callbacks must emit no GPU commands. Attach the observer
+before recording and do not change it during a frame. With null, scopes are inert value structs and the
+renderer retains its original commands, uploads and ordering without allocation or extra GPU work.
+
+A scene shares one observer and failure latch with its atmosphere, water, temporal, post, outline and
+transition owners. Attach it before `Begin` to observe scene-boundary work and before `PrepareFrame` to
+observe cold FFT work. The failure latch resets at `Begin`. A callback failure during scene begin or
+preparation remains latched through render entry and is reported after rendering, with the original render
+exception winning if both fail. The first callback exception stops
+further callbacks and invalidates profiling, while rendering continues. `Scene3D.PassObserverFailure` retains
+the callback exception. If rendering succeeds, the render call then throws `InvalidOperationException` with
+that exception as its cause. If rendering also throws, its original exception propagates unchanged. This
+contract includes End/Skip/CPU and fused metadata callbacks, so scope cleanup cannot mask a render failure.
+
+The geometry and atmosphere pass registry is below. Every command inside these owners belongs to one leaf.
+Group intervals contain children and their durations must not be added as extra work.
+
+| Keys | Ownership and occurrences |
+| --- | --- |
+| `device.scene.begin` | CPU-only leaf for the existing `Scene3D.Begin` operations, including pending-layout changes, retirement sealing/freeing and any fallback wait, before command-list begin/acquire. No GPU markers or duration |
+| `geometry.uploads`, `geometry.skinned-uploads` | Shared rigid, foliage, motion and palette/deformed-stream uploads |
+| `shadow.directional` | Whole executed cascade recording, or one skipped subtree when cached or inactive |
+| `shadow.directional.setup`, `.skinned-uploads`, `.finish` | Atlas clear, cascade uniforms and foliage uploads, GPU-skinned shadow slots, final scissor restoration |
+| `shadow.cascade.rigid` | Rigid and CPU-skinned segment, occurrence is cascade index |
+| `shadow.cascade.setup`, `.cpu-skinned` | Cascade bind and CPU-skinned draws, occurrence is cascade index |
+| `shadow.rigid.opaque`, `.cutout`, `.dissolve` | Consecutive same-route spans in original order, occurrence is segment encounter index across cascades |
+| `shadow.cascade.foliage`, `.gpu-skinned` | Later per-cascade segments, occurrence is cascade index, foliage aggregates patches |
+| `shadow.point` | Whole scheduled point recording, or a skipped subtree when inactive or entirely cached |
+| `shadow.point.static`, `.dynamic`, `.transient` | Rebuilt static base, dynamic base and transient rows, occurrence is atlas row |
+| `shadow.point.static.face`, `.dynamic.face`, `.transient.face` | One of six faces under its row, occurrence is `row * 6 + face` |
+| `shadow.point.static.setup`, `.rigid`, `.foliage`, `.gpu-skinned`, `.cpu-skinned`, and the matching `dynamic` or `transient` prefixes | Atlas bind/clear and face leaf work, occurrence is atlas row for setup or `row * 6 + face` for draws |
+| `shadow.point.uploads`, `.finish` | Shared face/proxy/caster uploads and final atlas scissor restoration |
+| `opaque.light-clusters`, `.clear`, `.depth-clear`, `.frame-uniforms` | Cluster uploads, MRT bind and color clears, depth clear, frame uniforms and initial pipeline bind |
+| `motion.clear`, `opaque.visibility-clear` | Existing motion sentinel and independent key-shadow visibility clears, in native order |
+| `opaque.rigid`, `.splat`, `.tile-ground`, `.foliage`, `.gpu-skinned`, `.cpu-skinned` | Main geometry routes, with fused motion metadata when the MRT is active |
+| `atmosphere.uniforms`, `.transmittance`, `.multiple-scattering`, `.sky-view` | Shared atmosphere UBO and separate LUT draws, static cached LUTs are skipped |
+| `background.sky`, `background.starfield` | Separate background draws, the unused route is skipped |
+
+The effect, copy and display owners add these keys. Every occurrence is zero unless listed otherwise.
+
+| Keys | Ownership and occurrences |
+| --- | --- |
+| `startup.ocean-prime` | Cold row FFT on its own preparer command list, separate from the frame layout and steady summaries |
+| `water`, `ocean` | Parents only, with skipped subtrees when inactive |
+| `device.water.geometry`, `device.water.bathymetry` | CPU-only leaf owners through `BeginCpuPhase`/`EndCpuPhase` under `water`. Geometry setup includes initial flat/focused index uploads before ocean recording. After `PrepareFrame()`, the geometry leaf also sizes the plane UBO, and bathymetry texture updates follow ocean recording and still run when every surface is culled. A `PrepareFrame(width, height)` frame never opens `device.water.bathymetry` |
+| `device.water.prepare` | CPU-only root owner on every `PrepareFrame(width, height)` frame, with or without water, inside `cpu.water.prepare`. It owns the bathymetry update, UBO sizing, water resource set creation and retirement before recording. `PrepareFrame()` never opens it |
+| `ocean.uniforms`, `.next-row`, `.column` | Shared ocean parameter upload, next frame's row FFT, current frame's column FFT, in native recording order |
+| `ocean.mip-copy`, `ocean.mips` | Base-level seed copy per array layer (occurrence is layer), then the existing whole-chain mip-generation command |
+| `water.surface` | Surface uploads, route binds and all queued water draws, after FFT work |
+| `copy.blob-depth-resolve`, `.depth-normal-resolve`, `.color-resolve` | Existing MSAA resolves, explicitly skipped on single-sample targets |
+| `copy.opaque-temporal`, `copy.transition-snapshot` | Opaque temporal copy and its existing target restores, previous resolved frame snapshot on transition activation |
+| `effects.textured-billboards`, `.beams`, `.trails`, `.overlay-meshes`, `.silhouettes` | Transparent model-target routes and their uploads |
+| `effects.blob-decals`, `.decals`, `.particles`, `.depth-lines`, `.distortion` | Blob and ground decals, particles, depth-tested lines and offset field |
+| `temporal.uniforms`, `.outline-inputs`, `.resolve`, `.depth-store` | Resolve UBOs, the one MRT outline-input draw, fused-entry resolve and separate depth store |
+| `temporal.visibility-store` | Existing once-per-resolved-frame R8 visibility history copy after either entry point, separate from depth storage |
+| `temporal.prepare`, `.accumulate` | Split-entry draws instead of fused resolve and depth store. The prepare draw also stores depth, so there is no independent depth-store duration |
+| `post.uniforms`, `.distortion-apply`, `.tonemap`, `.sharpen`, `.quantize`, `.edge`, `.fxaa` | Shared post UBOs and individual fullscreen draws, inactive draws are skipped |
+| `post.bloom.bright`, `.horizontal`, `.vertical`, `.composite` | Each of the four existing bloom draws, including both blur directions |
+| `post.mips`, `post.blit` | Existing source mip generation, final display bind/clear/blit |
+| `outline.uploads`, `.mask`, `.mask-resolve`, `.mask-mips`, `.visible-mask`, `.visible-resolve`, `.visible-mips`, `.composite` | Per-group target outlines, occurrence is the frame-local group index. Width growth is part of the composite shader, with no separate draw or duration |
+| `display.debug`, `.temporal-count-probe`, `.fills`, `.lines`, `.billboards-additive`, `.billboards-alpha`, `.transition` | Developer views and count-probe draw/copy, display overlays and transition writer |
+
+`GenerateMipmaps` is one command at the GPU seam. Its interval includes the native chain, with no fabricated
+per-level duration or extra copy, barrier or framebuffer bind. UI stays a harness-owned interval around the
+existing SpriteBatch calls, including their texture and scissor runs. Startup prime callbacks name their own
+command list. A frame-layout observer must not put those markers in a steady-frame pool.
+`cpu.water.prepare` covers the preparer CPU phase, including an actual cold prime wait when needed.
+CPU-only device scopes do not bracket the frame command list's GPU work. They reserve no GPU markers and
+publish `deviceOnly=true`, zero begin/end markers, null elapsed ticks and a null Unsupported GPU duration,
+including when valid frame timestamps are available. A skipped device row is NotExecuted. GPU rows retain
+`deviceOnly=false` and positive ordered markers. These rules apply to `device.scene.begin` as well as water.
+Their logical counters remain exclusive leaf work. Skipping the water parent also skips its two device
+upload leaves. `device.water.prepare` has no parent and runs on every viewport-prepared frame, so a
+viewport frame with no water reports it executed, Unsupported and with zero counters.
+
+All other occurrences are zero. Directional recording visits rigid/CPU work for all cascades, then foliage
+for all cascades, then GPU skinning for all cascades. These are separate measured segments rather than one
+invented contiguous interval per cascade. No draw is reordered to manufacture a profiling parent. Point
+rows keep the existing packed scheduling order and separate base/transient atlas identity. Cached base
+rows announce skipped occurrences before the packed traversal. The recorder adapter defers these
+notifications and writes their skipped subtrees at the positions in its actual frozen row schedule.
+Transient demand not admitted to the live atlas announces skipped rows after the packed traversal and
+before point-shadow finish. Each skipped row covers its reserved subtree with `NotExecuted` and no
+GPU duration. This also covers the first base rebuild while the transient atlas is still pending.
+Admission sorts static requests by stable light key, followed by nearest-first dynamic requests, while
+static rebuilds run stalest first and transient rows follow base rows. Leaf keys use the stable atlas row
+and row kind rather than packed upload indices, so cache reuse cannot rename later dynamic or transient
+leaves. A frozen layout must preserve
+the native relative order of executed rows. Changing that order requires a new layout. A null observer
+returns before any point row, face or leaf key is evaluated.
+
+CPU-only phases cover atmosphere lighting/LUT preparation, geometry grouping, visibility and shadow fitting,
+shared upload packing, skinned visibility/packing, cascade caster selection/culling and shadow uploads.
+They also cover work before `Scene3D.PassTimingsMs` starts. None emits a GPU marker.
+
+The test harness `RendererPerfPassObserver` binds the public keys to a frozen recorder layout before
+warming. Unknown keys invalidate that recording. Call its `BeginFrame` with the recorder's frame start to
+reset preallocated fused-motion flags. A total-only adapter ignores all GPU pass and fused callbacks while
+retaining explicit CPU phases. Pass keys and marker capacity must be frozen from the actual recipe schedule,
+including skips. Detailed markers can serialize Vulkan work or split Metal encoders, so retain their results
+separately from the outer-pair-only frame totals and report that instrumentation cost.
+
+The internal renderer adapter is
+[`RendererPerfRecorder`](../KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfRecorder.cs), with
+`RendererPerfDevice` and `RendererPerfCommandList` forwarding the native seam. Construct the recorder,
+fixed pass definitions, sample storage, CPU-span capacity and resource metadata capacity before warming.
+Pass definitions freeze IDs, occurrences, parents and increasing reserved marker pairs for GPU intervals.
+The `DeviceOnly` definitions for `device.*` CPU phases have marker indices zero and no GPU interval. They own
+device operations through those existing CPU callbacks. Harvest preserves that distinction as the required
+`deviceOnly` Boolean on every restored report pass row, shared through its raw pass schema. CPU-only rows require zero begin/end markers, null elapsed
+ticks and null GPU duration, with `Unsupported` when executed or `NotExecuted` when skipped. They can be
+published and promoted alongside valid frame/GPU timings. GPU rows carry `deviceOnly=false` and keep
+positive ordered marker pairs and supported-timing promotion checks. The device factory
+records pipeline topology, compiled local sizes and texture layers while returning native resource handles.
+Unknown imported texture layers or pipeline metadata remain explicit incomplete metrics, never zero work.
+Requested resource bytes are creation totals, not live memory, physical traffic or residency.
+
+The internal renderer report JSON uses `raw.format = "metric-vectors/2"` under the existing
+`khaozengine.renderer-perf-report/2` schema and unchanged 256 MiB cap. Report/1 is refused. `raw.metrics` stores metric name, unit,
+source, status and reason once. `raw.layouts` lists zero-based descriptor indices for each metric map.
+Maps encode `{layout, values, zeroRuns}`. Nonzero Available values retain layout order. The zero-run
+reference indexes a shared `raw.zeroRuns` pattern that explicitly counts positive zeros before, between
+and after those values. Each pattern's length is one more than the value count, and its expansion must
+match every Available slot exactly. Negative zero retains its sign and numeric slot. Unavailable descriptors retain their reason and reconstruct null without a slot.
+Scalar metrics encode `{schema, value}` against descriptors whose name is null. Use
+`RendererPerfReportJson.Parse` to restore the complete records before analysis. Native diagnostic typed
+scalars keep their original representation. `raw.passes` shares the pass identity, parent, marker and
+DeviceOnly metadata. Pass rows are `[schema, elapsedTicks, durationSchema, durationValue]`. The last two
+entries retain the scalar metric reference, including nullable values and signed zero. Ticks and duration
+values use empty arrays for null or singleton numeric arrays for present values, preserving the ban
+on null array entries. Both optional arrays are bounded to one number. `raw.cpuSpans` shares
+CPU ID/parent metadata. Frame CPU intervals use `{originTicks, schemas, startOffsets, durations}` with
+equally sized columns in original segment order. The origin is the smallest Int64 start tick, or zero
+for no segments. Offsets and durations are exact UInt64 differences. Checked integer addition reconstructs
+every absolute start and end tick without rounding, including the full Int64 range. Standalone drain,
+harvest and startup spans retain `{schema, startTicks, endTicks}`. Every frame, segment, counter, ownership
+flag and error is retained. The reader rejects malformed schemas, indices, value counts, column lengths
+and overflowing ticks before semantic validation.
+Memory observations retain startup/batch identity and failure reasons. Process and managed peaks refer
+to their exact observation and original metric source instead of replacing those raw snapshots.
+The [renderer performance reference](RENDERER-PERFORMANCE.md) defines the internal offline summaries
+and comparisons, including exact percentile ranks, separate iteration means, partition gaps, marker
+perturbation and reference provenance. Directory-aware `RendererPerfAnalysis.ReadDirectory` and the outside-solution
+`Renderer.Perf.Verify` console share registered-file verification, including hashes, identities, counts,
+recipe/stage correspondence and the combined root/compiler cap. Only that verifier produces a verified
+artifact. Byte/report/summary-only paths remain descriptive and refuse regression or promotion verdicts.
+Verified summaries retain their reference rates through an internal artifact association.
+These helpers add no package API or production instrumentation.
+
+Call `BeginFrame(localSampleId, frameId, sequenceIndex, submission)` at the host's outer boundary, before
+native Begin, and `EndFrame` only after the host returns from submission and Present/end-frame work. The
+command wrapper begins the ring immediately after native Begin and arms its sole final marker through the
+native completed-End interface. Pass callbacks consume the frozen marker order. `SkipPass` writes every
+reserved marker in a skipped subtree and retains `NotExecuted`. A total-only layout uses two queries,
+ignores pass callbacks and publishes no pass intervals. Missing, foreign or unexpected occurrences and
+fixed-capacity exhaustion invalidate the trace without expanding its storage.
+
+Logical counters partition into the deepest active GPU pass or CPU-only device leaf, or the explicit
+`unattributed` owner. Parents receive no exclusive commands when their work has leaf owners and do
+not receive a second copy of child work. Both device and command-list buffer uploads count once even when
+one forwards through the other. Texture uploads count the requested region payload. Whole-texture copies
+include known mip, layer and sample payloads, subresource copies use their requested rectangle, and resolves
+retain separate logical read/write byte estimates. These bytes are not measured off-chip traffic. Repeated
+binds are still forwarded in order, with redundant logical requests counted independently of emitted native
+state calls. An optional cold-supplied native cumulative counter can report emitted state calls. Without it,
+that metric is unsupported. Device wait/frame/acquire counters retain their native support status.
+
+`BeginCpuPhase(id)` and `EndCpuPhase(id)` produce exclusive CPU timeline segments. A nested phase pauses
+its parent and a later segment resumes it, retaining the logical parent ID without overlapping durations.
+The wrappers own begin/acquire, command-list End, Submit and Present segments. The host and renderer own
+pose/queue, preparation, grouping/culling, packing and pass scopes. Remaining time is `cpu.unattributed`.
+The outer CPU wall interval is authoritative, not a sum of inclusive parent spans. Batch drain, result harvest
+and immutable record construction happen after `EndFrame`, outside that wall interval.
+
+Managed allocation deltas retain separate scope labels. Current-thread bytes use the exact
+[`GC.GetAllocatedBytesForCurrentThread`](https://learn.microsoft.com/dotnet/api/system.gc.getallocatedbytesforcurrentthread)
+delta. Process bytes use the approximate
+[`GC.GetTotalAllocatedBytes(false)`](https://learn.microsoft.com/dotnet/api/system.gc.gettotalallocatedbytes)
+delta, include worker activity and overlap the thread total. Never add them. GC generation deltas have process
+scope. The recorder forces no collection and opens no no-GC region. A recording-thread change invalidates
+the thread delta. Working-set, private-byte, managed-live-heap and native-memory snapshots belong outside
+measured spans. `Harvest(sampleId, timestampResult)` creates Task 1 immutable records only after recording.
+
+With `enabled: false`, both wrapper factories return the original objects. With tracing enabled, cold-selected
+forwarders preserve the presence and absence of every current optional device/list interface, including native
+End tails, Vulkan rendering closure and D3D11 swapchain tracking. Submissions and swapchain captures unwrap
+only the harness command-list layer. No reflection, formatting, storage growth or extra native marker occurs
+inside recording. Headless allocation-region tests cover disabled forwarding and warmed enabled recording.
+They do not claim that native rendering, resource creation or result harvest allocates nothing.
 
 Native Direct3D 11 creates fixed timestamp queries and one disjoint query per pool.
 Timestamp and timestamp-disjoint queries are guaranteed from feature level 10_0. Begin records

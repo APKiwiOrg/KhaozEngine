@@ -23,6 +23,9 @@ namespace KhaozEngine.Tests.Gpu
     internal static class D3D11BackendRegistrationInitializer
     {
         [ModuleInitializer]
-        internal static void RegisterNativeD3D11() => D3D11BackendRegistration.EnsureRegistered();
+        internal static void RegisterNativeD3D11()
+        {
+            if (!RendererPerfAssemblyAccess.OfflineVerifier) D3D11BackendRegistration.EnsureRegistered();
+        }
     }
 }

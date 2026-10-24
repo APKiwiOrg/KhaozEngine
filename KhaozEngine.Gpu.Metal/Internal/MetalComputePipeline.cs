@@ -32,9 +32,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// declaration-order arithmetic section 2.2b forbids on a shipped path. The default infers the same
     /// mutability from the function's own <c>const device</c> and <c>constant</c> qualifiers.</para>
     /// </summary>
-    internal sealed class MetalComputePipeline : IGpuComputePipeline, IMetalOwnedResource
+    internal sealed class MetalComputePipeline : IGpuComputePipeline, IMetalOwnedResource, IGpuPipelineDiagnostics, IGpuPipelineConstructionDiagnostics
     {
         readonly IDeviceLiveness _liveness;
+        readonly object _diagnosticGate = new();
+        readonly MetalPipelineDiagnostics _diagnostics;
 
         // The handle, held in a field because the property refuses once disposed and ReleaseOnMacOs runs AFTER
         // the flag flips. Disposal is the one reader that must still see it.
@@ -45,8 +47,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// the workgroup size.</param>
         /// <param name="layouts">The declared resource layouts, in set order, already checked.</param>
         /// <param name="state">The <c>MTLComputePipelineState</c> at +1, or nil in a device-free test.</param>
+        /// <param name="readLimits">Cold query of this pipeline state's actual compute limits.</param>
+        /// <param name="readCounters">Cold query of this device's advertised counter metadata.</param>
         internal MetalComputePipeline(IDeviceLiveness liveness, MetalComputeShader shader,
-            MetalResourceLayout[] layouts, MTLComputePipelineState state)
+            MetalResourceLayout[] layouts, MTLComputePipelineState state,
+            Func<MetalComputeLimits>? readLimits = null, Func<MetalCounterMetadata>? readCounters = null)
         {
             ArgumentNullException.ThrowIfNull(liveness);
             ArgumentNullException.ThrowIfNull(shader);
@@ -56,6 +61,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             Shader = shader;
             Layouts = layouts;
             _state = state;
+            string layout = MetalPipelineIdentity.Layout(layouts);
+            _diagnostics = new(shader.Evidence is { } e ? [e] : [],
+                MetalPipelineIdentity.Compute(shader.Evidence, layout, shader.ThreadGroupSizeX, shader.ThreadGroupSizeY, shader.ThreadGroupSizeZ),
+                layout, readLimits, readCounters, shader.ThreadGroupSizeX, shader.ThreadGroupSizeY, shader.ThreadGroupSizeZ);
         }
 
         /// <summary>The name every refusal from this half of the row quotes.</summary>
@@ -149,10 +158,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// shader's reflection, or Metal rejected the function.</exception>
         [SupportedOSPlatform("macos")]
         internal static MetalComputePipeline Create(MTLDevice device, IDeviceLiveness liveness,
-            in GpuComputePipelineDescription description)
+            in GpuComputePipelineDescription description, Func<MetalCounterMetadata>? readCounters = null)
         {
             (MetalComputeShader shader, MetalResourceLayout[] layouts) = Check(liveness, description);
-            return CreateOnMacOs(device, liveness, shader, layouts);
+            return CreateOnMacOs(device, liveness, shader, layouts, readCounters);
         }
 
         /// <summary>
@@ -208,7 +217,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <inheritdoc/>
         /// <remarks>Releases the state object, once, and never on a dead device (M-F6).</remarks>
+        public GpuPipelineConstructionIdentity ConstructionIdentity => _diagnostics.ConstructionIdentity;
+
+        public GpuPipelineCompilerReport ReadCompilerReport()
+        {
+            lock (_diagnosticGate) return _diagnostics.Read(IsDisposed || Shader.IsDisposed || _liveness.IsDead);
+        }
+
         public void Dispose()
+        {
+            lock (_diagnosticGate) DisposeCore();
+        }
+
+        void DisposeCore()
         {
             if (IsDisposed) return;
             IsDisposed = true;
@@ -222,7 +243,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         static MetalComputePipeline CreateOnMacOs(MTLDevice device, IDeviceLiveness liveness,
-            MetalComputeShader shader, MetalResourceLayout[] layouts)
+            MetalComputeShader shader, MetalResourceLayout[] layouts, Func<MetalCounterMetadata>? readCounters)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
 
@@ -243,7 +264,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "of it rather than a syntax error in the emitted MSL.");
             }
 
-            return new MetalComputePipeline(liveness, shader, layouts, state);
+            try
+            {
+                return new MetalComputePipeline(liveness, shader, layouts, state,
+                () => MTLDiagnosticInterop.ReadLimits(state.Handle), readCounters);
+            }
+            catch { state.Release(); throw; }
         }
 
         [SupportedOSPlatform("macos")]

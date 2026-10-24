@@ -170,9 +170,10 @@ validates coverage, ensures UBO capacity and prepares all required resource sets
 UBO, ocean and bathymetry identities, bindings and effective displacement inputs used. Draw refuses a
 changed or released input instead of allocating a replacement resource set while recording.
 
-Move bathymetry Update into the existing water PrepareFrame before preparing sets. Existing ocean
-Record remains in Draw. Latch `_framePrepared` only after every preparation succeeds. Reject new water
-submissions after preparation. Preserve the legacy standalone renderer path where no optics is bound.
+Move bathymetry Update into `PrepareOpticsFrame` before preparing sets, under `device.water.prepare`. The `PrepareFrame()`
+path keeps it in Draw under its `device.water.bathymetry` owner. Existing ocean Record remains in Draw.
+Latch `_framePrepared` only after every preparation succeeds. Reject new water submissions after
+preparation. Preserve the legacy standalone renderer path where no optics is bound.
 
 ### TileWorld opt-in and source provenance
 

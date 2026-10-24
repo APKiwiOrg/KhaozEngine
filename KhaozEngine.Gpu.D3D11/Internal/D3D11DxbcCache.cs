@@ -58,6 +58,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal const string FileExtension = ".dxbc";
 
         readonly string _directory;
+        internal string DirectoryPath => _directory;
 
         /// <summary>Creates a cache rooted at <paramref name="directory"/>, which is created on first write
         /// rather than here: a process that only ever reads (every entry already present, or the cache empty and
@@ -112,8 +113,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// configured directory, which has no version segment and therefore no siblings to reason about.
         /// </summary>
         internal static D3D11DxbcCache? FromEnvironment()
+            => Open(Environment.GetEnvironmentVariable(EnvVarName));
+
+        internal static D3D11DxbcCache? Open(string? value)
             => GpuDiskCache.OpenDirectory(
-                Environment.GetEnvironmentVariable(EnvVarName), Subfolder, D3D11ShaderKey.EngineVersion)
+                value, Subfolder, D3D11ShaderKey.EngineVersion)
                     is { } directory
                 ? new D3D11DxbcCache(directory)
                 : null;

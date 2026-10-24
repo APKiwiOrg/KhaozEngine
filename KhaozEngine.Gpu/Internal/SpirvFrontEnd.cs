@@ -56,9 +56,10 @@ namespace KhaozEngine.Gpu.Internal
         /// <param name="glsl">The shader source, GLSL <c>#version 450</c>.</param>
         /// <param name="stage">Which stage the source is. Exactly one stage flag.</param>
         /// <param name="label">Optional name for the shader, included in any error message.</param>
+        /// <param name="cache">A device-owned memo, or null for the ordinary process memo.</param>
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V. The message names
         /// the label and the stage.</exception>
-        internal static byte[] ToSpirv(string glsl, GpuShaderStages stage, string? label = null)
+        internal static byte[] ToSpirv(string glsl, GpuShaderStages stage, string? label = null, SpirvCompileCache? cache = null)
         {
             if (glsl is null) throw new ArgumentNullException(nameof(glsl));
 
@@ -80,7 +81,7 @@ namespace KhaozEngine.Gpu.Internal
                 // the pin stays false, and would start handing one label's module to another the moment it was
                 // flipped, which is the run where a reader most needs the names to be right. Every call site names
                 // one source, so carrying it costs no entries.
-                return SpirvCompileCache.Shared.GetOrCompile(
+                return (cache ?? SpirvCompileCache.Shared).GetOrCompile(
                     OptionsIdentity(tag), stage, glsl,
                     () => Compile(glsl, kind, $"{tag}.{stage}"));
             }

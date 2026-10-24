@@ -106,9 +106,12 @@ internal sealed partial class WaterRenderer
     }
 
     /// <summary>Resolve every submission and prepare its immutable resource bindings before recording.
-    /// Failure leaves the frame unprepared. Unused sets retire so cached ownership stays bounded.</summary>
+    /// Failure leaves the frame unprepared. Unused sets retire so cached ownership stays bounded.
+    /// <c>device.water.prepare</c> owns this device work on every viewport-prepared frame, with or without water.
+    /// Device leaves cannot nest, so the bathymetry update here is charged to it directly.</summary>
     internal void PrepareOpticsFrame(RenderResources targets, in FramePrepare frame)
     {
+        using var device = Profiling?.Cpu("device.water.prepare") ?? default;
         _opticsPrepared = false;
         _opticsPreparationAttempted = true;
         RetryWaterOutputReplacement();
@@ -133,6 +136,8 @@ internal sealed partial class WaterRenderer
         }
         if (planes.Length > 0)
         {
+            // The sets below bind the depth field's texture, so its upload precedes them.
+            _bathymetry.Update(frame.Water.Bathymetry);
             EnsureUboCapacity(planes.Length);
             BindTargets(targets);
             if (_preparedPlanes.Length < planes.Length)

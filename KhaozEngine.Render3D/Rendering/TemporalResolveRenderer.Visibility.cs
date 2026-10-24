@@ -69,6 +69,7 @@ internal sealed partial class TemporalResolveRenderer
 
     void StoreVisibility(IGpuCommandList commands, TemporalHistory history)
     {
+        using var profile = Profiling?.Pass(commands, "temporal.visibility-store", executed: !VisibilityHistory.StoredThisFrame) ?? default;
         if (VisibilityHistory.StoredThisFrame) return;
         VisibilityHistory.Store(commands, _visibilityInput!, history.WriteIndex, LastCurrentVisibilityFullyLit);
         // Only publish jitter after the copy was successfully recorded for this frame.

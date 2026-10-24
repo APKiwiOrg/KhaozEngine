@@ -85,13 +85,15 @@ public readonly struct IrradianceSH : IEquatable<IrradianceSH>
 
     /// <summary>Returns irradiance at a unit surface normal, clamped to zero per channel.</summary>
     public Vector3 Evaluate(Vector3 unitNormal)
+        => Vector3.Max(EvaluateUnclamped(unitNormal), Vector3.Zero);
+
+    internal Vector3 EvaluateUnclamped(Vector3 unitNormal)
     {
         Span<float> basis = stackalloc float[CoefficientCount];
         IrradianceBasis.Evaluate(unitNormal, basis);
-        var irradiance = _e0 * basis[0] + _e1 * basis[1] + _e2 * basis[2]
+        return _e0 * basis[0] + _e1 * basis[1] + _e2 * basis[2]
             + _e3 * basis[3] + _e4 * basis[4] + _e5 * basis[5]
             + _e6 * basis[6] + _e7 * basis[7] + _e8 * basis[8];
-        return Vector3.Max(irradiance, Vector3.Zero);
     }
 
     /// <summary>Scales each coefficient by the corresponding RGB channel.</summary>

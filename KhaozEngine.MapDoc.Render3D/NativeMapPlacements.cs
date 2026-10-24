@@ -184,7 +184,14 @@ public static class NativeMapPlacements
             if (ordinaryDefaults.Length > 0) ordinary.Add(Shared(ordinaryDefaults, null));
             if (roofDefaults.Length > 0) roofLayers.Add(Shared(roofDefaults, null));
             // Frozen bindings, cluster lookup slots and the batch's copied list storage.
-            admission.ReserveBytes(checked(1024L + parts.Count * 192L + clusters.Count * 512L + cells.Cells.Sum(c => c.RoofEvaluation?.Roofs.Count ?? 0) * 128L + (ordinary.Count + roofLayers.Count) * 32L));
+            long roofMembers = clusters.Where(c => c.Request.Key.Cohort == 1).Sum(c => (long)c.RepresentedIds.Count);
+            long policyRows = cells.Cells.Sum(c => (long)(c.RoofEvaluation?.Roofs.Count ?? 0));
+            long containers = (long)ordinary.Count + roofLayers.Count + scene.Placements.Count +
+                cells.Cells.Sum(c => (long)c.Members.Count) + scene.EffectiveMarkers.Count;
+            // Lookup growth includes old/new backing overlap. Existing policy products already have
+            // their receipt in this operation and are not debited again for a cohort reference.
+            admission.ReserveBytes(checked(1024L + parts.Count * 192L + clusters.Count * 512L +
+                policyRows * 128L + roofMembers * 288L + containers * 32L));
             var preparedInventory = scene.Placements.Where(p => routing.Entries[p.PlacementId] != MapPlacementRoute.Cluster)
                 .Concat(cells.Cells.SelectMany(cell => cell.Members)).ToArray();
             var result = new MapPlacementRenderBatch(preparedInventory, MapEffectiveAnnotations.Markers(scene), ordinary, roofLayers, parts, routing, clusters, 0, cells);

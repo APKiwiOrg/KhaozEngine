@@ -11,16 +11,19 @@ internal sealed class MapRoofCohort : IPropClusterVisibility
 {
     readonly NativePropClusterCpuBuild _build;
     readonly int[] _indices;
+    readonly int _policyCapacity;
     MapFramePoint _observer;
     MapRoofMode _mode;
     bool _evaluated;
     internal MapRoofEvaluationBuffer Evaluation { get; }
     internal IReadOnlyDictionary<string, int> Indices { get; }
+    internal long RetainedBytes => checked(128L + 4L * _indices.LongLength + 64L * _policyCapacity + Evaluation.RetainedBytes);
     internal MapRoofCohort(NativePropClusterCpuBuild build, MapRoofEvaluationBuffer evaluation)
     {
         _build = build; Evaluation = evaluation;
-        Indices = evaluation.Roofs.Select((r, i) => (r.RoofPlacementId, i))
+        var indices = evaluation.Roofs.Select((r, i) => (r.RoofPlacementId, i))
             .ToDictionary(r => r.RoofPlacementId, r => r.i, StringComparer.Ordinal);
+        Indices = indices; _policyCapacity = indices.EnsureCapacity(0);
         _indices = new int[build.RepresentedIds.Count];
         for (int i = 0; i < _indices.Length; i++)
             _indices[i] = Indices.TryGetValue(build.RepresentedIds[i], out int index) ? index

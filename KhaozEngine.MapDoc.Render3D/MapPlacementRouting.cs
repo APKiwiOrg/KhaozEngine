@@ -130,6 +130,25 @@ public sealed class MapPlacementRouting
     }
     internal MapPlacementLayer? ClusterLayer(string id) => _policy.Layers.FirstOrDefault(l => l.Id == id && l.HlodDistance > 0);
     internal IReadOnlyList<MapPlacementLayer> ClusterLayers => _policy.Layers.Where(l => l.HlodDistance > 0).ToArray();
+    internal int ClusterLayerCount
+    {
+        get
+        {
+            int count = 0;
+            for (int i = 0; i < _policy.Layers.Count; i++) if (_policy.Layers[i].HlodDistance > 0) count++;
+            return count;
+        }
+    }
+    internal long ClusterAssetCount
+    {
+        get
+        {
+            long count = 0;
+            for (int i = 0; i < _policy.Layers.Count; i++)
+                if (_policy.Layers[i].HlodDistance > 0) count = checked(count + _policy.Layers[i].AssetIds.Count);
+            return count;
+        }
+    }
     internal MapPlacementRouting ForScene(MapScopedScene scene) => Create(scene, _policy, _animated).Routing
         ?? throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Canonical cluster cell routing refused caller policy.");
     static string Witness(MapScopedScene scene) => MapPlacementDigest.Hash(w =>

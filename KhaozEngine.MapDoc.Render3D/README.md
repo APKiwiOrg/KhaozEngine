@@ -113,6 +113,10 @@ per-cluster centre-distance coverage uses the complete cell area. Layer outer fa
 the internal shared CPU builder. That lower builder has no building intent and makes no independent roof promise.
 Roof cohorts retain complete neutral membership geometry acquired and admitted before selected decode.
 Closure follows admitted prism domains and their parent support, including native stored records.
+Policy replacement admits the new scene before releasing its predecessor. The canonical evaluation keeps
+its final scene charged for the cohort lifetime. Merge and contribution workspace release at last use.
+CPU meshes, detached outline and colour copies, evaluation dependencies and frame lookup capacities
+transfer into the batch's unique retained receipt.
 Incomplete full-room coverage refuses preparation. Individual resources remain resident for mixed visibility fallback. Individuals remain active until `AcceptCluster` receives the exact
 prepared build and the externally published mesh. It retains metadata only and never uploads or frees that handle.
 An empty welded proxy cannot be accepted, so individuals remain active. Placement registration bounds are

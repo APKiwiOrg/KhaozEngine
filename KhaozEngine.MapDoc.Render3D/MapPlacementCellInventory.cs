@@ -31,7 +31,8 @@ internal sealed class MapPlacementCellInventory : IDisposable
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var activation = admission.Enter();
         using var preparation = admission.BeginPreparation();
-        admission.ReserveBytes(checked(512L + 128L * selectedCount + 64L * scene.CapturedBuildingIntent.Roofs.Count));
+        admission.ReserveBytes(checked(512L + 128L * selectedCount + 64L * scene.CapturedBuildingIntent.Roofs.Count +
+            IntPtr.Size * (long)routing.ClusterLayerCount));
         var layers = routing.ClusterLayers;
         var roofs = scene.CapturedBuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var keys = layers.SelectMany(layer => scene.Placements
@@ -71,7 +72,7 @@ internal sealed class MapPlacementCellInventory : IDisposable
             evaluation = prepared.Buffer ?? throw new MapSceneSourceException(prepared.Status, prepared.Detail ?? "Canonical roof policy refused.", prepared.Capacity);
         }
         admission.ReserveBytes(checked(512L + 192L * complete.Placements.Count + 64L * complete.CapturedBuildingIntent.Roofs.Count +
-            256L * layer.AssetIds.Count));
+            256L * routing.ClusterAssetCount));
         var cellRouting = routing.ForScene(complete);
         var roofIds = complete.CapturedBuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var members = complete.Placements.Where(p => layer.AssetIds.Contains(p.AssetId) &&

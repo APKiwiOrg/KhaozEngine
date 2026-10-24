@@ -47,9 +47,12 @@ public sealed partial class MapPlacementRenderBatch : IDisposable
                 _parts.Sum(p => MapNativeInventory.Mesh(p.Payload.BorrowMesh, p.Payload.BorrowMaps)) +
                 _ordinary.Concat(_roofs).Sum(inventory.Layer) + Clusters.Sum(c => MapNativeInventory.Mesh(c.BorrowMesh) +
                     inventory.Layer(c.Request.BorrowLayer) + 16L * c.Request.Instances.Count +
-                    8L * c.BorrowContributions.Count + c.BorrowContributions.Sum(m => MapNativeInventory.Mesh(m))));
+                    8L * c.BorrowContributions.Count + c.BorrowContributions.Sum(m => MapNativeInventory.Mesh(m))) + FrameRetainedBytes);
         }
     }
+    long FrameRetainedBytes => checked(4L * _clusterParts.LongLength + IntPtr.Size * _roofCohorts.LongLength +
+        64L * _partIndices.EnsureCapacity(0) + 64L * _roofOutlineParts.EnsureCapacity(0) +
+        64L * _roofPolicies.EnsureCapacity(0) + _roofCohorts.Sum(c => c?.RetainedBytes ?? 0));
     public long InputRetainedBytes => _input?.RetainedBytes ?? 0;
     internal void AttachInput(MapPreparedInputLease input) => _input = input;
     internal MapPlacementRenderBatch(IReadOnlyList<MapResolvedPlacement> inventory, IReadOnlyList<MapEffectiveMarker> markers, IReadOnlyList<PropLayer> ordinary, IReadOnlyList<PropLayer> roofs,

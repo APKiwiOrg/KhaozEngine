@@ -12,6 +12,10 @@ admissible. A failure requires scoped correction and fresh approval, never an au
 The isolated project stays outside the solution. Its only fact is
 `Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit`, category `RendererPerformance`.
 `KE_RENDERER_PERF_UNIT` and `KE_RENDERER_PERF_REPORTS` are explicit. Discovery never opens a GPU.
+The entrypoint validates the absolute `GITHUB_WORKSPACE` as the Git top level and resolves the
+manifest and authorization Git facts there, including from a nested VSTest host directory. Frozen
+recipe source paths must belong to that checkout before startup. No working-directory change,
+output-directory manifest copy or alternate-checkout search is used.
 The workflow checks the authorization diff and exact bytes before renting a GPU runner and again
 on that runner. The entrypoint independently validates the strict manifest and runtime before
 native creation. Hosted NVIDIA T4 hardware, usable timestamps and a completed matching report are

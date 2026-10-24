@@ -282,7 +282,11 @@ adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
 
 The outside-solution `tools/Renderer.Perf.Tests` project exposes one fixed fact,
 `Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit`, category `RendererPerformance`.
-The workflow explicitly passes `KE_RENDERER_PERF_UNIT` and `KE_RENDERER_PERF_REPORTS`. Manifest,
+The workflow explicitly passes `KE_RENDERER_PERF_UNIT` and `KE_RENDERER_PERF_REPORTS`. The entrypoint
+requires an absolute `GITHUB_WORKSPACE` matching the Git top level. Manifest reads and authorization
+Git commands use that checkout regardless of the VSTest host's working directory. Source-file recipe
+paths must belong to the same checkout before startup. It never changes process working directory or
+searches another checkout for missing inputs. Manifest,
 runtime, recipe, shader source and current control hashes are validated before native creation.
 Shader identity hashes fully composed literal and generated readonly shader strings, including motion,
 temporal and water variants, generated visibility exports, backend-selected checked and certified temporal

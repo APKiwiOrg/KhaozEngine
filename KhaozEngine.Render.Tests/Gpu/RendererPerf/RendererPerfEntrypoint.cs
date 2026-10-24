@@ -23,15 +23,16 @@ internal static class RendererPerfEntrypoint
         Require(unit == Env("RENDERER_PERF_UNIT") && unit == Env("KE_RENDERER_PERF_UNIT")
             && directory == Env("KE_RENDERER_PERF_REPORTS"), "Explicit entrypoint inputs disagree with the workflow.");
         Require(unit.Length is >= 1 and <= 64 && unit[0] != '-' && unit.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-'), "Unsafe unit token.");
+        var checkout = new RendererPerfCheckout(Env("GITHUB_WORKSPACE"));
         string path = $"tools/Renderer.Perf.Tests/authorized/{unit}.json";
-        byte[] bytes = File.ReadAllBytes(path);
+        byte[] bytes = File.ReadAllBytes(checkout.ManifestPath(unit));
         byte[] authorizationBytes = File.ReadAllBytes(Path.Combine(directory, "authorization.json"));
         var authorization = RendererPerfManifest.ReadJson<RendererPerfAuthorization>(authorizationBytes, 64 * 1024);
         Require(authorization.ManifestSha256 == Env("RENDERER_PERF_MANIFEST_SHA256")
             && authorization.WorkloadSha == Env("RENDERER_PERF_WORKLOAD_SHA"), "Dispatch hashes disagree with independent authorization facts.");
-        string head = RendererPerfHostProcess.Run("git", "rev-parse", "HEAD");
-        string parents = RendererPerfHostProcess.Run("git", "rev-list", "--parents", "-n", "1", "HEAD");
-        string changes = RendererPerfHostProcess.Run("git", "diff", "--name-status", "--no-renames", authorization.WorkloadSha, "HEAD");
+        string head = checkout.Git("rev-parse", "HEAD");
+        string parents = checkout.Git("rev-list", "--parents", "-n", "1", "HEAD");
+        string changes = checkout.Git("diff", "--name-status", "--no-renames", authorization.WorkloadSha, "HEAD");
         Require(head == Env("TESTED_REF") && head == authorization.AuthorizationSha
             && parents == head + " " + authorization.WorkloadSha && changes == "A\t" + path,
             "Authorization must add only the manifest to its immutable workload parent.");
@@ -52,6 +53,7 @@ internal static class RendererPerfEntrypoint
             && environment.Count == manifest.Runtime.Environment.Count
             && environment.All(p => manifest.Runtime.Environment.TryGetValue(p.Key, out var value) && value == p.Value),
             "Observed runtime, GC, tiering or relevant environment differs from approval.");
+        checkout.ValidateRecipePaths(manifest);
         long coldStart = Stopwatch.GetTimestamp();
         var clock = new RendererPerfClock(Stopwatch.GetTimestamp, Stopwatch.Frequency);
         var budget = new RendererPerfUnitBudget(clock, coldStart,

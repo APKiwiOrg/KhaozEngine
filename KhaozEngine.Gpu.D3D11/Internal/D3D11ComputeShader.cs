@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu.Internal;
 using Vortice.Direct3D11;
@@ -27,46 +26,51 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// compute pipeline binds <see cref="Shader"/> and asks nothing else of a compiled module.
     /// </para>
     /// </summary>
-    [SupportedOSPlatform("windows")]
     internal sealed class D3D11ComputeShader : IGpuComputeShader
     {
-        readonly D3D11DeferredResource<D3D11CompiledCompute, ID3D11ComputeShader> _resource;
+        readonly DeviceLiveness _liveness;
+        readonly D3D11ShaderCompilation<D3D11PreparedCompute> _prepared;
+        readonly D3D11DeferredResource<D3D11PreparedCompute, Native> _resource;
 
-        internal D3D11ComputeShader(ID3D11Device device, DeviceLiveness liveness, D3D11CreationGate creation,
-            D3D11ShaderCompilation<D3D11CompiledCompute> compilation)
+        internal D3D11ComputeShader(DeviceLiveness liveness, object shader, byte[] bytecode,
+            uint threadGroupSizeX, uint threadGroupSizeY, uint threadGroupSizeZ, D3D11ShaderEvidence? diagnostics = null)
+            : this(liveness, D3D11ShaderCompilation<D3D11PreparedCompute>.Completed(new(new(bytecode, threadGroupSizeX, threadGroupSizeY, threadGroupSizeZ), diagnostics)),
+                _ => shader)
         {
-            _resource = new(liveness, compilation.Join, compiled => CreateWindows(device, liveness, creation, compiled));
+            ArgumentNullException.ThrowIfNull(shader);
+            ArgumentNullException.ThrowIfNull(bytecode);
+            _ = _resource.Value;
         }
 
-        /// <summary>The compiled compute module, which a compute pipeline binds.</summary>
-        internal ID3D11ComputeShader Shader => _resource.Value;
+        internal D3D11ComputeShader(DeviceLiveness liveness, D3D11ShaderCompilation<D3D11PreparedCompute> prepared,
+            Func<D3D11PreparedCompute, object> create)
+        {
+            ArgumentNullException.ThrowIfNull(liveness);
+            _liveness = liveness;
+            _prepared = prepared;
+            _resource = new(liveness, _prepared.Join, p => new(create(p)));
+        }
 
-        /// <summary>The module's DXBC bytes.</summary>
-        internal ReadOnlyMemory<byte> Bytecode => _resource.Prepared.Dxbc;
+        internal D3D11ShaderCompilation<D3D11PreparedCompute> Preparation => _prepared;
 
-        /// <inheritdoc/>
-        public uint ThreadGroupSizeX => _resource.Prepared.ThreadGroupSizeX;
-
-        /// <inheritdoc/>
-        public uint ThreadGroupSizeY => _resource.Prepared.ThreadGroupSizeY;
-
-        /// <inheritdoc/>
-        public uint ThreadGroupSizeZ => _resource.Prepared.ThreadGroupSizeZ;
-
-        /// <summary>True once disposed, whether or not anything native was released.</summary>
+        internal D3D11ShaderEvidence? DiagnosticEvidence => _prepared.Join().Evidence;
+        internal object ShaderHandle => _resource.Value.Shader;
+        internal bool DeviceIsDead => _liveness.IsDead;
+        /// <summary>The compiled compute module, joined and realized at first use.</summary>
+        [SupportedOSPlatform("windows")]
+        internal ID3D11ComputeShader Shader => (ID3D11ComputeShader)ShaderHandle;
+        internal ReadOnlyMemory<byte> Bytecode => _resource.Prepared.Code.Dxbc;
+        public uint ThreadGroupSizeX => _resource.Prepared.Code.ThreadGroupSizeX;
+        public uint ThreadGroupSizeY => _resource.Prepared.Code.ThreadGroupSizeY;
+        public uint ThreadGroupSizeZ => _resource.Prepared.Code.ThreadGroupSizeZ;
         internal bool IsDisposed => _resource.IsDisposed;
-
         internal void EnsureReady() => _ = _resource.Value;
-
         public void Dispose() => _resource.Dispose();
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static ID3D11ComputeShader CreateWindows(ID3D11Device device, DeviceLiveness liveness, D3D11CreationGate creation,
-            in D3D11CompiledCompute compiled)
+        sealed class Native(object shader) : IDisposable
         {
-            using var scope = creation.Enter();
-            ObjectDisposedException.ThrowIf(liveness.IsDead, device);
-            return device.CreateComputeShader(compiled.Dxbc);
+            internal object Shader { get; } = shader;
+            public void Dispose() => ((IDisposable)Shader).Dispose();
         }
     }
 }

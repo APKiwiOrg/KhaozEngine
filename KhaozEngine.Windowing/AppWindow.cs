@@ -65,7 +65,7 @@ namespace KhaozEngine.Windowing
         /// queries GLFW, so read it on the window thread that runs the frame loop.</summary>
         public int LogicalWidth => CurrentLogicalMetrics().Width;
         public int LogicalHeight => CurrentLogicalMetrics().Height;
-        /// <summary>Background colour cleared each frame.</summary>
+        /// <summary>Host clear colour, used unless <see cref="RendererInitializesSwapchain"/> is enabled.</summary>
         public Color ClearColor = new(0.10f, 0.12f, 0.16f, 1f);
 
         /// <summary>

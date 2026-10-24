@@ -1,3 +1,4 @@
+using KhaozEngine.Render3D.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -21,6 +22,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed partial class WaterRenderer : IDisposable, IFramePreparer
     {
+        internal RenderPassProfiling? Profiling { set => _ocean.Profiling = value; get => _ocean.Profiling; }
+
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
         /// (2 mat4 + 34 vec4 + three vec4[8] disc arrays; every member 16-byte aligned, so std140 needs no extra padding).</summary>
         [StructLayout(LayoutKind.Sequential)]
@@ -579,17 +582,21 @@ namespace KhaozEngine.Render3D.Rendering
             if (planes.Length == 0 && bounded.IsEmpty) return;
             LastClipmapRebuilds = 0;
             LastFocusedGridBuilds = 0;
-            EnsureUboCapacity(checked(planes.Length + bounded.Length));
             // FrustumPlanes needs the matrix and the boxes tested against its planes in the same frame. The planes
             // arrive reduced by the render origin and so does cullViewProj, so here both are render-relative.
-            int drawn = RoutePlanes(planes, settings, FrustumPlanes.Extract(cullViewProj));
-            if (_clipCount > 0)
+            int drawn;
+            using (Profiling?.Cpu("device.water.geometry") ?? default)
             {
-                EnsureClipPipeline();
-                EnsureClipBuffers(planes, settings, renderOrigin);
+                EnsureUboCapacity(checked(planes.Length + bounded.Length));
+                drawn = RoutePlanes(planes, settings, FrustumPlanes.Extract(cullViewProj));
+                if (_clipCount > 0)
+                {
+                    EnsureClipPipeline();
+                    EnsureClipBuffers(planes, settings, renderOrigin);
+                }
+                if (_flatCount > 0) EnsureFlatBuffers(_flatCount);
+                if (_gridCount > 0) EnsureGridBuffers(_gridCount);
             }
-            if (_flatCount > 0) EnsureFlatBuffers(_flatCount);
-            if (_gridCount > 0) EnsureGridBuffers(_gridCount);
 
             // ONE ocean update per frame, ahead of the per-plane loop and of BindTargets (which binds whatever maps
             // it produced). Every plane ON the ocean samples the same cascades: there is one sea state, not one per
@@ -609,10 +616,12 @@ namespace KhaozEngine.Render3D.Rendering
             var oceanMaps = OceanMaps.From(_ocean);
             // The depth field, likewise once per frame and ahead of BindTargets. Uploads only when the field
             // itself or its revision changed (#645), so the steady state is a compare and nothing else.
-            _bathymetry.Update(settings.Bathymetry);
+            using (Profiling?.Cpu("device.water.bathymetry") ?? default)
+                _bathymetry.Update(settings.Bathymetry);
             ShoreMaps shore = _bathymetry.Snapshot();
             // Nothing the view can reach: no slots, no geometry and no pass. The ocean demand compare and its record
             // above still ran over the whole queue, because PrepareFrame planned against the whole queue.
+            using var profile = Profiling?.Pass(cl, "water.surface", executed: drawn > 0 || !bounded.IsEmpty) ?? default;
             if (drawn == 0 && bounded.IsEmpty) return;
             BindTargets(res);
 

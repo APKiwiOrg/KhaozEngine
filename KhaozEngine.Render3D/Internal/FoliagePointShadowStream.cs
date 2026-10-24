@@ -117,10 +117,8 @@ internal sealed class FoliagePointShadowStream : IDisposable
         runs.Clear();
         foreach (FoliagePointShadowRange range in candidates)
         {
-            long end = (long)range.Start + range.Count;
-            for (int i = FirstAtOrAfter(range.Start); i < _casters.Length && _casters[i].SourceIndex < end; i++)
+            foreach (ref readonly FoliagePointShadowCaster caster in SelectRange(range))
             {
-                ref readonly FoliagePointShadowCaster caster = ref _casters[i];
                 var sphere = new PointShadowCasterSphere(
                     new Vector3(caster.Sphere.X, caster.Sphere.Y, caster.Sphere.Z), caster.Sphere.W);
                 if (!sphere.TouchesShadowingShell(lightPosition, radius, nearRadius, exclusionMin, exclusionMax))
@@ -140,6 +138,15 @@ internal sealed class FoliagePointShadowStream : IDisposable
     internal AnchoredRigidTransform? AnchoredPose(in FoliagePointShadowCaster caster) =>
         _anchor is { } anchor ? new(_localTransforms![caster.SourceIndex], anchor) : null;
 
+    /// <summary>Select proxies by original layout index, preserving the full walk's long range endpoint.</summary>
+    internal ReadOnlySpan<FoliagePointShadowCaster> SelectRange(FoliagePointShadowRange range)
+    {
+        if (range.Count <= 0) return ReadOnlySpan<FoliagePointShadowCaster>.Empty;
+        int first = FirstAtOrAfter(range.Start);
+        int end = FirstAtOrAfter((long)range.Start + range.Count);
+        return _casters.AsSpan(first, end - first);
+    }
+
     static void Append(List<FoliagePointShadowRun> runs, in FoliagePointShadowCaster caster)
     {
         int last = runs.Count - 1;
@@ -156,7 +163,7 @@ internal sealed class FoliagePointShadowStream : IDisposable
         runs.Add(new FoliagePointShadowRun(caster.Mesh, caster.Slot, 1));
     }
 
-    int FirstAtOrAfter(int sourceIndex)
+    int FirstAtOrAfter(long sourceIndex)
     {
         int low = 0, high = _casters.Length;
         while (low < high)

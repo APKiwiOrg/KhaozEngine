@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using KhaozEngine.Gpu.Internal;
@@ -168,7 +169,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 text.Append(source.Length.ToString(CultureInfo.InvariantCulture)).Append('\n').Append(source);
             }
 
-            return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
+            return HashUtf8(text.ToString());
+        }
+
+        internal static string HashUtf8(string text)
+            => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
+
+        internal static string Digest(Action<BinaryWriter> write)
+        {
+            using var stream = new MemoryStream();
+            using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true)) write(writer);
+            return Convert.ToHexStringLower(SHA256.HashData(stream.GetBuffer().AsSpan(0, checked((int)stream.Length))));
         }
 
         /// <summary>A short human-readable tag for <paramref name="key"/>, for a message that has to name a

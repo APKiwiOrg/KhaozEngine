@@ -101,7 +101,7 @@ public sealed class UpdaterUiColor
 /// Source-generated JSON context for <see cref="ApplyUpdateConfig"/>. Lets the updater shim
 /// (re)serialize the apply contract without reflection, so it can be published trimmed / AOT.
 /// </summary>
-[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSourceGenerationOptions(WriteIndented = true, NewLine = "\n")]
 [JsonSerializable(typeof(ApplyUpdateConfig))]
 [JsonSerializable(typeof(ApplyUpdateUiConfig))]
 [JsonSerializable(typeof(UpdaterUiColor))]

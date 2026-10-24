@@ -171,14 +171,14 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         // A tick that samples its look-ahead takes all three Finds, and one whose ascent is decided takes none.
         int signals = LookAheadReads(sample);
         Assert.True(signals is 0 or GroundSignals.Samples, $"{row.Name}: {signals} look-ahead reads");
-        int findBound = 1 + 8 * n + signals;
+        long findBound = 1 + 8 * n + signals;
         if (row.Explicit) findBound += 4 + 8 * c.MediumRetries;
         if (!row.Grounded || row.Normal.Y < 0.70710677f)
             findBound += 2 * Math.Max(1, c.ModeSegments) +
                 2 * (int)Math.Ceiling((Math.Abs(row.VerticalVelocity) + 25 * row.Dt) * row.Dt / 0.2);
         Assert.True(c.Find <= findBound, $"{row.Name}: {c.Find} > derived route {findBound}");
         Assert.InRange(c.MediumRetries, 0, row.Explicit ? 16 * n : 0);
-        int retry = row.Explicit ? 36 * c.MediumRetries + 16 * Math.Max(1, c.ModeSegments) : 0;
+        long retry = row.Explicit ? 36 * c.MediumRetries + 16 * Math.Max(1, c.ModeSegments) : 0;
         Assert.InRange(sample.Queries.Sweeps, 0, 3 + 36 * n + 2 * signals + retry);
         Assert.InRange(sample.Queries.Penetrations, 0, 5 + 28 * n + retry);
         Assert.InRange(sample.Queries.Features, 0, 2 + 16 * n + 2 * signals + retry);

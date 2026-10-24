@@ -1,7 +1,5 @@
 using System;
-using System.Runtime.Versioning;
 using KhaozEngine.Gpu.Internal;
-using Vortice.Direct3D11;
 
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
@@ -12,7 +10,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// IT CREATES NOTHING NATIVE, and that is a fact about Direct3D 11 rather than a shortcut. A graphics pipeline
     /// owns four state objects and an input layout because the fixed-function stages need them, and a dispatch has
     /// no fixed-function stages at all: <c>CSSetShader</c> takes the module the shader path already created, and
-    /// the register numbering is CPU-side arithmetic over the layouts. The shader is joined at first bind rather than pipeline creation. Its lifetime belongs to the
+    /// the register numbering is CPU-side arithmetic over the layouts. So the eager-creation rule of decision X1 is
+    /// satisfied here by there being nothing to defer, and the module's own lifetime belongs to the
     /// <see cref="IGpuComputeShader"/> the caller created and disposes, exactly as a graphics pipeline never
     /// disposes its shader set.
     /// </para>
@@ -32,18 +31,20 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// object it becomes worth measuring, and the shape to add is one more slot plus one more flag.
     /// </para>
     /// <para>
-    /// WINDOWS-ONLY AT THE TYPE LEVEL, like every other wrapper here, because it holds a
-    /// <see cref="D3D11ComputeShader"/>. That is a reference field, so nothing resolves the Vortice assembly by
-    /// loading this type, and the load-path guard stays satisfied.
+    /// Native shader creation remains Windows-only. This owner also accepts the native-operation seam's
+    /// handles for headless lifetime and diagnostic proofs without loading Vortice.
     /// </para>
     /// </summary>
-    [SupportedOSPlatform("windows")]
     internal sealed class D3D11ComputePipeline : IGpuComputePipeline, ID3D11ComputePipelineState,
-        ID3D11PipelineLayouts
+        ID3D11PipelineLayouts, IGpuPipelineDiagnostics, IGpuPipelineConstructionDiagnostics, IGpuBudgetedPipelineDiagnostics
     {
-        readonly D3D11DeferredResource<ReadOnlyMemory<byte>, Binding> _binding;
+        readonly D3D11ShaderCompilation<D3D11PipelineDiagnostics> _diagnostics;
+        readonly DeviceLiveness? _liveness;
 
         internal D3D11ComputePipeline(DeviceLiveness liveness, in GpuComputePipelineDescription description)
+            : this(description) { ArgumentNullException.ThrowIfNull(liveness); _liveness = liveness; }
+
+        internal D3D11ComputePipeline(in GpuComputePipelineDescription description)
         {
             if (description.Shader is not D3D11ComputeShader shader)
             {
@@ -55,8 +56,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             }
 
             Shader = shader;
-            _binding = new(liveness, () => shader.Bytecode, _ => new Binding(shader.Shader));
             ResourceLayouts = D3D11ResourceLayout.RequireAll(description.ResourceLayouts, "compute");
+            _diagnostics = D3D11PipelineIdentity.Compute(shader.Preparation, ResourceLayouts);
         }
 
         /// <summary>The compiled module this pipeline binds. Owned by the caller, never disposed here.</summary>
@@ -67,21 +68,29 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal D3D11ResourceLayout[] ResourceLayouts { get; }
 
         /// <summary>True once disposed. Nothing native is released, because nothing native was created.</summary>
-        internal bool IsDisposed => _binding.IsDisposed;
+        internal bool IsDisposed { get; private set; }
 
         /// <inheritdoc/>
-        object? ID3D11ComputePipelineState.ComputeShader => _binding.Value.Shader;
+        object? ID3D11ComputePipelineState.ComputeShader
+        {
+            get
+            {
+                ObjectDisposedException.ThrowIf(IsDisposed || _liveness?.IsDead == true, this);
+                return Shader.ShaderHandle;
+            }
+        }
 
         /// <inheritdoc/>
         D3D11ResourceLayout[] ID3D11PipelineLayouts.ResourceLayouts => ResourceLayouts;
 
-        public void Dispose() => _binding.Dispose();
+        public GpuPipelineConstructionIdentity ConstructionIdentity => _diagnostics.Join().ConstructionIdentity;
+        public GpuPipelineCompilerReadResult ReadCompilerReport(GpuPipelineCompilerReadRequest request,
+            System.Action<string> checkOperation, System.Threading.CancellationToken cancellation)
+            => _diagnostics.Join().Read(IsDisposed || _liveness?.IsDead == true || Shader.IsDisposed || Shader.DeviceIsDead, request, checkOperation, cancellation);
 
-        // The shader remains caller-owned. The binding only guards this pipeline's first use and disposal.
-        sealed class Binding(ID3D11ComputeShader shader) : IDisposable
-        {
-            internal ID3D11ComputeShader Shader { get; } = shader;
-            public void Dispose() { }
-        }
+        public GpuPipelineCompilerReport ReadCompilerReport()
+            => _diagnostics.Join().Read(IsDisposed || _liveness?.IsDead == true || Shader.IsDisposed || Shader.DeviceIsDead);
+
+        public void Dispose() => IsDisposed = true;
     }
 }

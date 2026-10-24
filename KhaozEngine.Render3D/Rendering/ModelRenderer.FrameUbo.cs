@@ -39,6 +39,7 @@ namespace KhaozEngine.Render3D.Rendering
             int count = BuildLightArrays(lights, _lightPosRadius, _lightColorIntensity, renderOrigin);
             UploadPointLights(cl, lights, renderOrigin);
             _renderOrigin = new Vector4(renderOrigin, s.Atmosphere.Enabled ? 1f : 0f);
+            _indirectUniforms = new IndirectUniforms(s);
 
             // Clip-space-Y correction is derived from the live backend (GpuClip), not baked for Metal: it is the
             // identity on Metal/D3D (byte-identical render) and flips clip-Y on inverted-Y backends (Vulkan).
@@ -71,6 +72,7 @@ namespace KhaozEngine.Render3D.Rendering
         // Cached this-frame render origin (set in SetFrameUniforms, default = zero = the absolute path), written at
         // RenderOriginOffset by WriteFrameUniformsTo. W gates atmosphere reads from this frame's upload.
         Vector4 _renderOrigin;
+        IndirectUniforms _indirectUniforms;
 
         /// <summary>Set this frame's cascaded shadow tail (per-cascade RECEIVER matrices + PCF/bias/strength/fade
         /// params). Call after <see cref="SetFrameUniforms"/> when the shadow-map tier is active. Leave unset (or pass
@@ -134,7 +136,7 @@ namespace KhaozEngine.Render3D.Rendering
         // The first five offsets are the same constants the five writes used, so those bytes are the same bytes.
         // PointShadowParams is MaxPointLights vec4s, which is LightArrayBytes by the same definition the two light
         // arrays use, so PointShadowAtlas lands one array past the tail's base and PointShadowFilter one vec4
-        // after that. The transient atlas shape and cluster fields follow, then the two interior-cut vec4 end the block.
+        // after that. The transient atlas shape, cluster fields and interior cut precede the indirect-light tail.
         void PackFrameImage()
         {
             Span<byte> img = _frameImage;
@@ -150,6 +152,7 @@ namespace KhaozEngine.Render3D.Rendering
             MemoryMarshal.Write(img.Slice((int)ClusterTailOffset), in _clusterDepth);
             MemoryMarshal.Write(img.Slice((int)(ClusterTailOffset + 16)), in _clusterCamera);
             MemoryMarshal.Write(img.Slice((int)InteriorCutWindowOffset), in _interiorCutUniforms);
+            _indirectUniforms.WriteTo(img);
             _frameImageDirty = false;
         }
 

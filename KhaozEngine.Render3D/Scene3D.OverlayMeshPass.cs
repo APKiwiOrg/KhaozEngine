@@ -48,6 +48,7 @@ namespace KhaozEngine.Render3D
         /// </summary>
         void DrawOverlayMeshes(IGpuCommandList cl, Matrix4x4 vp)
         {
+            using var profile = ProfilePass(cl, "effects.overlay-meshes", executed: _overlayMeshDraws.Count > 0);
             if (_overlayMeshDraws.Count == 0) return;
 
             cl.SetFramebuffer(_res.ModelFB);

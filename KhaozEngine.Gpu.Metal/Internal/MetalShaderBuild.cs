@@ -54,11 +54,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="fragmentGlsl">The fragment source, GLSL <c>#version 450</c>.</param>
         /// <param name="cache">The emission cache, or null to emit unconditionally. Null is what a test that
         /// wants to measure or compare the emission itself passes.</param>
+        /// <param name="memo">An explicit device frontend memo, or null for ordinary defaults.</param>
         /// <param name="label">Optional name for the program, included in every error message.</param>
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, the pair failed to
         /// cross-compile, or the emission could not be read (any of 2.2b pin 1's classes).</exception>
         internal static MetalMslProgram Pair(string vertexGlsl, string fragmentGlsl, MetalMslCache? cache,
-            string? label = null)
+            string? label = null, SpirvCompileCache? memo = null)
         {
             ArgumentNullException.ThrowIfNull(vertexGlsl);
             ArgumentNullException.ThrowIfNull(fragmentGlsl);
@@ -68,8 +69,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (cache?.TryLoad(key, tag) is { } hit) return hit.Program;
 
-            byte[] vertexSpirv = SpirvFrontEnd.ToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag);
-            byte[] fragmentSpirv = SpirvFrontEnd.ToSpirv(fragmentGlsl, GpuShaderStages.Fragment, tag);
+            byte[] vertexSpirv = SpirvFrontEnd.ToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag, memo);
+            byte[] fragmentSpirv = SpirvFrontEnd.ToSpirv(fragmentGlsl, GpuShaderStages.Fragment, tag, memo);
             CrossCompiledPair msl = SpirvCrossCompile.VertexFragmentToMsl(vertexSpirv, fragmentSpirv, tag);
 
             MetalMslProgram program = Assemble(msl.Reflection, msl.MslUse, tag,
@@ -89,11 +90,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="computeGlsl">The compute source, GLSL <c>#version 450</c>, with a
         /// <c>layout(local_size_x = ...) in;</c> declaration.</param>
         /// <param name="cache">The emission cache, or null to emit unconditionally.</param>
+        /// <param name="memo">An explicit device frontend memo, or null for ordinary defaults.</param>
         /// <param name="label">Optional name for the shader, included in every error message.</param>
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, failed to
         /// cross-compile, declares no resolvable workgroup size, or its emission could not be read.</exception>
         internal static (MetalMslProgram Program, uint X, uint Y, uint Z) Compute(string computeGlsl,
-            MetalMslCache? cache, string? label = null)
+            MetalMslCache? cache, string? label = null, SpirvCompileCache? memo = null)
         {
             ArgumentNullException.ThrowIfNull(computeGlsl);
 
@@ -103,7 +105,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (cache?.TryLoad(key, tag) is { } hit)
                 return (hit.Program, hit.ThreadGroupSizeX, hit.ThreadGroupSizeY, hit.ThreadGroupSizeZ);
 
-            byte[] spirv = SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag);
+            byte[] spirv = SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, memo);
             (uint x, uint y, uint z) = SpirvLocalSize.Parse(spirv, tag);
             CrossCompiledCompute msl = SpirvCrossCompile.ComputeToMsl(spirv, tag);
 

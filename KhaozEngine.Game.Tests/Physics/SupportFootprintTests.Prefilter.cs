@@ -53,10 +53,10 @@ public partial class SupportFootprintTests
             using var scene = new WorldFormScene(CostRows().Single(row => row.Name == name));
             SupportQueryDiagnostics.Reset();
             SupportSample cold = scene.Find();
-            int coldRejects = SupportQueryDiagnostics.Snapshot().PrefilterRejects;
+            long coldRejects = SupportQueryDiagnostics.Snapshot().PrefilterRejects;
             SupportQueryDiagnostics.Reset();
             SupportSample warm = scene.Find();
-            int warmRejects = SupportQueryDiagnostics.Snapshot().PrefilterRejects;
+            long warmRejects = SupportQueryDiagnostics.Snapshot().PrefilterRejects;
             Assert.True(warmRejects > 0, $"{name}: no member was rejected before the contact kernel.");
             Assert.Equal(coldRejects, warmRejects);
             Assert.Equal(cold.ToString(), warm.ToString());
@@ -95,18 +95,18 @@ public partial class SupportFootprintTests
         foreach (float offset in new[] { inside, outside })
         {
             Assert.Equal(Wall(request, offset, reference: true, out _), Wall(request, offset, reference: false,
-                out int rejects));
+                out long rejects));
             Assert.Equal(0, rejects);
         }
 
         // The prefilter's own boundary: the first represented offset it certifies, and the one step before it.
         int low = BitConverter.SingleToInt32Bits(outside), high = BitConverter.SingleToInt32Bits(0.5f);
-        Wall(request, 0.5f, reference: false, out int far);
+        Wall(request, 0.5f, reference: false, out long far);
         Assert.Equal(1, far);
         while (low + 1 < high)
         {
             int middle = low + (high - low) / 2;
-            Wall(request, BitConverter.Int32BitsToSingle(middle), reference: false, out int rejects);
+            Wall(request, BitConverter.Int32BitsToSingle(middle), reference: false, out long rejects);
             if (rejects == 0) low = middle;
             else high = middle;
         }
@@ -114,7 +114,7 @@ public partial class SupportFootprintTests
         {
             float offset = BitConverter.Int32BitsToSingle(bits);
             Assert.Equal(GeometrySign.Negative, Wall(request, offset, reference: true, out _));
-            Assert.Equal(GeometrySign.Negative, Wall(request, offset, reference: false, out int rejects));
+            Assert.Equal(GeometrySign.Negative, Wall(request, offset, reference: false, out long rejects));
             Assert.Equal(expected, rejects);
         }
     }
@@ -129,7 +129,7 @@ public partial class SupportFootprintTests
         // The same wall, certifiably clear of the contact segment, is a prefiltered non-member.
         SupportPolygon wall = Polygon([a, b, c, d], out _, upward: false);
         Assert.Equal(GeometrySign.Negative, Member(request, wall, reference: true, out _));
-        Assert.Equal(GeometrySign.Negative, Member(request, wall, reference: false, out int rejects));
+        Assert.Equal(GeometrySign.Negative, Member(request, wall, reference: false, out long rejects));
         Assert.Equal(1, rejects);
 
         // A repeated vertex leaves a zero-length edge, which the kernel refuses wherever the segment is.
@@ -185,7 +185,7 @@ public partial class SupportFootprintTests
                     if (KernelClearsHalfMargin(request, polygon, proposal, $"Case {i} step {step} proposal {proposal}"))
                         admitted++;
                     GeometrySign reference = Member(request, polygon, reference: true, out _, proposal);
-                    GeometrySign optimized = Member(request, polygon, reference: false, out int rejects, proposal);
+                    GeometrySign optimized = Member(request, polygon, reference: false, out long rejects, proposal);
                     Assert.True(reference == optimized, $"Case {i} step {step} proposal {proposal}: {optimized} " +
                         $"differs from reference {reference}.");
                     if (rejects == 0) continue;
@@ -219,7 +219,7 @@ public partial class SupportFootprintTests
         SupportPolygon far = At(0.5f);
         Assert.False(far.Normal.IsExact);
         Assert.True(far.ContactDomain.Admitted);
-        Member(request, far, reference: false, out int rejects);
+        Member(request, far, reference: false, out long rejects);
         Assert.Equal(1, rejects);
         Member(request, At(0), reference: false, out rejects);
         Assert.Equal(0, rejects);
@@ -245,7 +245,7 @@ public partial class SupportFootprintTests
     }
 
     // A wall facing the axis proposal's contact segment across x, at the given represented offset.
-    static GeometrySign Wall(in SupportFootprintRequest request, float x, bool reference, out int rejects) =>
+    static GeometrySign Wall(in SupportFootprintRequest request, float x, bool reference, out long rejects) =>
         Member(request, Polygon([new(x, -0.1f, -0.1f), new(x, 0.1f, -0.1f), new(x, 0.1f, 0.1f),
             new(x, -0.1f, 0.1f)], out _, upward: false), reference, out rejects);
 
@@ -280,7 +280,7 @@ public partial class SupportFootprintTests
     // One proposal's member verdict for one polygon, its contact capsule resting on y = 0. Begin resets the reused
     // collector.
     static GeometrySign Member(in SupportFootprintRequest request, SupportPolygon polygon, bool reference,
-        out int rejects, int index = 0)
+        out long rejects, int index = 0)
     {
         SupportFootprintCollector collector = Resting(request, index);
         bool enabled = SupportQueryDiagnostics.Enabled;

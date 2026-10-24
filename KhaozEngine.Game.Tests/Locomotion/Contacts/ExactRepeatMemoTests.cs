@@ -248,7 +248,8 @@ public sealed class ExactRepeatMemoTests(ITestOutputHelper output)
     [Fact]
     public void MemoTicksMatchTheUncachedEvaluatorOnEveryCostRow()
     {
-        int compared = 0, hits = 0;
+        int compared = 0;
+        long hits = 0;
         foreach (SupportCostRow scene in SupportGateCostScenes.Rows().Select(r => (SupportCostRow)r[0]))
             foreach (bool explicitDoor in scene.Dense ? new[] { scene.Explicit } : new[] { false, true })
             {
@@ -281,7 +282,7 @@ public sealed class ExactRepeatMemoTests(ITestOutputHelper output)
     static SupportSample Read(FootAnalyticGround? analytic, IPhysicsWorld world, IPhysicsQueryLease lease,
         in FootSupportQuery query, SupportFootprintBounds? scope, SupportRequestMemo memo, bool hit)
     {
-        int before = SupportQueryDiagnostics.Snapshot().FindMemoHits;
+        long before = SupportQueryDiagnostics.Snapshot().FindMemoHits;
         SupportSample sample = FootSupport.Find(analytic, world, lease, query, scope, memo);
         Assert.Equal(hit ? 1 : 0, SupportQueryDiagnostics.Snapshot().FindMemoHits - before);
         SupportSample oracle = FootSupport.Find(analytic, world, lease, query, scope, null);

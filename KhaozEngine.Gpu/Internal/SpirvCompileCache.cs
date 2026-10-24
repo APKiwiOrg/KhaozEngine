@@ -67,8 +67,12 @@ namespace KhaozEngine.Gpu.Internal
         /// The one every caller uses. Its enabled state is read from the environment at first touch, which is the
         /// only time reading it can be free of an ordering question.
         /// </summary>
-        internal static SpirvCompileCache Shared { get; } =
-            new(IsEnabled(Environment.GetEnvironmentVariable(DisableVariable)), DefaultCapacity);
+        internal static SpirvCompileCache Shared => ProcessMemo.Value;
+        static class ProcessMemo
+        {
+            internal static readonly SpirvCompileCache Value =
+                new(IsEnabled(Environment.GetEnvironmentVariable(DisableVariable)), DefaultCapacity);
+        }
 
         readonly ConcurrentDictionary<CacheKey, byte[]> _modules = new();
         readonly bool _enabled;

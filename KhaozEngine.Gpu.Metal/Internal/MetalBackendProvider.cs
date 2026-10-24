@@ -11,7 +11,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para>
     /// BOTH CREATION PATHS ARE REAL AS OF ROW 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/581).
     /// <see cref="IsSupported"/> acquires the device <c>KE_METAL_DEVICE</c> names and takes M-N4's four reads off
-    /// it, <see cref="CreateHeadless"/> hands back an offscreen device, and <see cref="CreateForWindow"/> hands
+    /// it, <see cref="CreateHeadless()"/> hands back an offscreen device, and <see cref="CreateForWindow"/> hands
     /// back one with a <c>CAMetalLayer</c> over the request's Cocoa window, its drawable already acquired.
     /// </para>
     /// <para>
@@ -39,9 +39,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// the two apart is what the whole soak measurement rests on.
     /// </para>
     /// </summary>
-    internal sealed class MetalBackendProvider : IGpuBackendProvider
+    internal sealed class MetalBackendProvider : IGpuBackendProvider, IGpuHeadlessDiagnosticProvider
     {
         static readonly ILogger log = Log.For<MetalBackendProvider>();
+        readonly Func<string, string?> _environment;
+        readonly Func<MetalHeadlessDiagnosticSettings, GpuProviderDevice>? _headless;
+        internal MetalBackendProvider(Func<string, string?>? environment = null,
+            Func<MetalHeadlessDiagnosticSettings, GpuProviderDevice>? headless = null)
+        { _environment = environment ?? Environment.GetEnvironmentVariable; _headless = headless; }
+
 
         // THE MACHINE GATE, asked at most once per provider instance, because the machine does not change while
         // the process runs and the probe really does create and release a Metal device to find out.
@@ -87,6 +93,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
+        public IGpuHeadlessDiagnosticSettings ResolveHeadlessSettings(GpuPipelineDiagnosticRequest request)
+            => MetalHeadlessDiagnosticSettings.Resolve(request, _environment, MetalValidationReader.Current());
+
+        public GpuProviderDevice CreateHeadless(IGpuHeadlessDiagnosticSettings settings)
+        {
+            if (settings is not MetalHeadlessDiagnosticSettings frozen)
+                throw new ArgumentException("Settings are not owned by this backend.", nameof(settings));
+            if (_headless is not null) return _headless(frozen);
+            if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("Metal requires macOS.");
+            return MetalGpuDevice.CreateHeadless(frozen);
+        }
+
         public GpuProviderDevice CreateHeadless()
         {
             if (!KhaozEngineMetal.IsPlatformSupported) throw NotOnThisPlatform("headless");

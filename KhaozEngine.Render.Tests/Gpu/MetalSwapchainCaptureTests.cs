@@ -22,6 +22,7 @@ namespace KhaozEngine.Tests.Gpu
         public void The_layer_is_configured_framebuffer_only_by_default()
         {
             (FakeMetalSwapchainApi api, MetalPresentBoundary boundary) = Build(scriptDrawables: 1);
+            _ = Bind(boundary);
 
             Assert.True(api.FramebufferOnly);
             Assert.True(boundary.HasDrawable);
@@ -32,10 +33,12 @@ namespace KhaozEngine.Tests.Gpu
         public void A_copy_source_request_clears_framebuffer_only_before_the_next_drawable_is_taken()
         {
             (FakeMetalSwapchainApi api, MetalPresentBoundary boundary) = Build(scriptDrawables: 2);
+            _ = Bind(boundary);
             api.Log.Clear();
 
             boundary.Pending.QueueFramebufferOnly(false);
             boundary.Present();
+            _ = Bind(boundary);
 
             int write = api.Log.IndexOf("SetFramebufferOnly(False)");
             int acquire = api.Log.IndexOf("acquire");
@@ -49,6 +52,7 @@ namespace KhaozEngine.Tests.Gpu
         public void The_drawable_taken_before_the_request_is_not_copyable_and_the_next_one_is()
         {
             (FakeMetalSwapchainApi api, MetalPresentBoundary boundary) = Build(scriptDrawables: 2);
+            _ = Bind(boundary);
 
             boundary.Pending.QueueFramebufferOnly(false);
 
@@ -58,6 +62,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(api.FramebufferOnly);
 
             boundary.Present();
+            _ = Bind(boundary);
 
             Assert.True(boundary.HasDrawable);
             Assert.True(boundary.CurrentDrawableCopyable);
@@ -66,17 +71,27 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Releasing_the_request_restores_framebuffer_only()
         {
-            (FakeMetalSwapchainApi api, MetalPresentBoundary boundary) = Build(scriptDrawables: 3);
+            (FakeMetalSwapchainApi api, MetalPresentBoundary boundary) = Build(scriptDrawables: 1);
+            _ = Bind(boundary);
 
             boundary.Pending.QueueFramebufferOnly(false);
+            api.ScriptDrawable();
             boundary.Present();
+            _ = Bind(boundary);
             Assert.True(boundary.CurrentDrawableCopyable);
 
             boundary.Pending.QueueFramebufferOnly(true);
+            api.ScriptDrawable(framebufferOnly: false);
+            api.ScriptDrawable();
             boundary.Present();
+            _ = Bind(boundary);
 
+            // Recycled textures retain their actual usage even after the layer request changes back.
             Assert.True(api.FramebufferOnly);
             Assert.True(boundary.HasDrawable);
+            Assert.True(boundary.CurrentDrawableCopyable);
+            boundary.Present();
+            _ = Bind(boundary);
             Assert.False(boundary.CurrentDrawableCopyable);
         }
 
@@ -84,18 +99,21 @@ namespace KhaozEngine.Tests.Gpu
         public void A_recycled_drawable_that_still_reports_framebuffer_only_is_not_copyable()
         {
             (FakeMetalSwapchainApi api, MetalPresentBoundary boundary) = Build(scriptDrawables: 1);
+            _ = Bind(boundary);
 
             // THE LAYER RECYCLES A POOLED DRAWABLE made before the write, then makes a fresh one.
             boundary.Pending.QueueFramebufferOnly(false);
             api.ScriptDrawable(framebufferOnly: true);
             api.ScriptDrawable();
             boundary.Present();
+            _ = Bind(boundary);
 
             Assert.False(api.FramebufferOnly);
             Assert.True(boundary.HasDrawable);
             Assert.False(boundary.CurrentDrawableCopyable);
 
             boundary.Present();
+            _ = Bind(boundary);
 
             Assert.True(boundary.CurrentDrawableCopyable);
         }
@@ -104,11 +122,13 @@ namespace KhaozEngine.Tests.Gpu
         public void An_orphan_bound_boundary_is_never_copyable()
         {
             (FakeMetalSwapchainApi api, MetalPresentBoundary boundary) = Build(scriptDrawables: 1);
+            _ = Bind(boundary);
 
             // A MINIMISED LAYER: the request lands, and the next acquire hands back no drawable.
             boundary.Pending.QueueFramebufferOnly(false);
             api.ScriptNoDrawable();
             boundary.Present();
+            _ = Bind(boundary);
 
             Assert.False(api.FramebufferOnly);
             Assert.True(boundary.IsOrphanBound);
@@ -129,7 +149,9 @@ namespace KhaozEngine.Tests.Gpu
             var calls = new FakeMetalEncoderCalls();
             using MetalCommandList list = harness.NewList(new object(), calls: calls);
             var swapchain = new MetalSwapchainFramebuffer(GpuPixelFormat.B8G8R8A8UNorm,
-                new MetalAttachment(new IntPtr(0x5C1), GpuPixelFormat.B8G8R8A8UNorm), new MetalDrawableSize(64, 64));
+                new MetalDrawableSize(64, 64), () => { });
+            swapchain.Adopt(new MetalAttachment(new IntPtr(0x5C1), GpuPixelFormat.B8G8R8A8UNorm),
+                new MetalDrawableSize(64, 64));
             var destination = new FakeTexture(64, 64, 1, 1, GpuPixelFormat.B8G8R8A8UNorm);
 
             list.Begin();
@@ -148,6 +170,21 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Throws<InvalidOperationException>(() => list.CopyFromDrawable(new IntPtr(0x5C1), destination));
             list.End();
         }
+
+        [Fact]
+        public void Copyability_checks_do_not_acquire_an_unresolved_frame()
+        {
+            (FakeMetalSwapchainApi api, MetalPresentBoundary boundary) = Build(scriptDrawables: 2);
+            Assert.False(boundary.CurrentDrawableCopyable);
+            Assert.Equal(0, api.AcquireCount);
+            _ = Bind(boundary);
+            boundary.Present();
+            Assert.False(boundary.CurrentDrawableCopyable);
+            Assert.Equal(1, api.AcquireCount);
+        }
+
+        static MetalBoundFramebuffer Bind(MetalPresentBoundary boundary)
+            => ((IMetalBoundFramebufferSource)boundary.Framebuffer).AsBound;
 
         static (FakeMetalSwapchainApi Api, MetalPresentBoundary Boundary) Build(int scriptDrawables)
         {

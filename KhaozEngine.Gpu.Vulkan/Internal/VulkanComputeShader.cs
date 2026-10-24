@@ -24,11 +24,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="modules">The device's ONE module cache, asked here and never held.</param>
         /// <param name="computeGlsl">The compute source, GLSL <c>#version 450</c>.</param>
         /// <param name="label">Optional name, included in a compile failure's message.</param>
+        /// <param name="compileCache">An explicit device memo, or null for ordinary defaults.</param>
         /// <param name="bytesCache">Optional disk cache checked before the front end.</param>
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, or the module
         /// declares no resolvable workgroup size.</exception>
         internal VulkanComputeShader(VulkanShaderModuleCache modules, string computeGlsl, string? label = null,
-            SpirvBytesCache? bytesCache = null)
+            SpirvBytesCache? bytesCache = null, SpirvCompileCache? compileCache = null)
         {
             ArgumentNullException.ThrowIfNull(modules);
             ArgumentNullException.ThrowIfNull(computeGlsl);
@@ -37,8 +38,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             byte[] spirv = bytesCache?.GetOrCompile(
                     SpirvFrontEnd.OptionsIdentity(tag), GpuShaderStages.Compute, computeGlsl,
-                    () => SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag))
-                ?? SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag);
+                    () => SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, compileCache))
+                ?? SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, compileCache);
             (uint x, uint y, uint z) = SpirvLocalSize.Parse(spirv, tag);
 
             ThreadGroupSizeX = x;
@@ -47,8 +48,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             // AFTER the size read, so a module the parser rejects never reaches the driver and never lands in the
             // cache under bytes nothing can dispatch.
+            DiagnosticIdentity = VulkanShaderIdentity.Compute(computeGlsl, spirv, tag);
             Module = modules.GetOrCreate(spirv);
         }
+
+        internal VulkanShaderIdentity DiagnosticIdentity { get; }
 
         /// <summary>The SHARED <c>VkShaderModule</c>, which a compute pipeline names.</summary>
         internal ulong Module { get; }

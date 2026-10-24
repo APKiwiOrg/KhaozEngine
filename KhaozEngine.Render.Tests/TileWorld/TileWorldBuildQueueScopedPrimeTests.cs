@@ -154,7 +154,7 @@ public class TileWorldBuildQueueScopedPrimeTests
     }
 
     [Fact]
-    public void Capture_prime_settles_all_full_ground_and_cover_without_applying_decor()
+    public void Capture_prime_settles_all_ground_and_cover_without_applying_hlod()
     {
         var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
@@ -184,11 +184,11 @@ public class TileWorldBuildQueueScopedPrimeTests
 
         queue.PrimeForCapture(default);
 
-        Assert.Equal(new[] { 1, 2, 3, 4 }, applied.ConvertAll(result => result.Key.Region.Rx));
-        Assert.Equal(4, built.Count);
-        Assert.All(built, key => Assert.True(key.Kind is TileWorldBuildKind.FullGround or TileWorldBuildKind.Cover));
-        Assert.Equal(2, queue.TrackedCount);
-        Assert.Equal(2, queue.InFlightCount);
+        Assert.Equal(new[] { 1, 2, 3, 4, 5 }, applied.ConvertAll(result => result.Key.Region.Rx));
+        Assert.Equal(5, built.Count);
+        Assert.All(built, key => Assert.True(key.Kind is TileWorldBuildKind.FullGround or TileWorldBuildKind.CoarseGround or TileWorldBuildKind.Cover));
+        Assert.Equal(1, queue.TrackedCount);
+        Assert.Equal(1, queue.InFlightCount);
         Assert.Equal(0, queue.ReadyCount);
     }
 

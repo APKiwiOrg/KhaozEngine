@@ -37,11 +37,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="vertexGlsl">The vertex source, GLSL <c>#version 450</c>.</param>
         /// <param name="fragmentGlsl">The fragment source.</param>
         /// <param name="label">Optional name, included in a compile failure's message.</param>
+        /// <param name="compileCache">An explicit device memo, or null for ordinary defaults.</param>
         /// <param name="bytesCache">Optional disk cache checked before the front end.</param>
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V. The message names the
         /// label and the stage.</exception>
         internal VulkanShaderSet(VulkanShaderModuleCache modules, string vertexGlsl, string fragmentGlsl,
-            string? label = null, SpirvBytesCache? bytesCache = null)
+            string? label = null, SpirvBytesCache? bytesCache = null, SpirvCompileCache? compileCache = null)
         {
             ArgumentNullException.ThrowIfNull(modules);
             ArgumentNullException.ThrowIfNull(vertexGlsl);
@@ -51,17 +52,20 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             // BOTH STAGES COMPILE BEFORE EITHER MODULE IS CREATED, so a fragment source that does not compile
             // leaves no orphaned vertex module in the cache under a program that was never built.
-            byte[] vertexSpirv = Compile(vertexGlsl, GpuShaderStages.Vertex, tag, bytesCache);
-            byte[] fragmentSpirv = Compile(fragmentGlsl, GpuShaderStages.Fragment, tag, bytesCache);
+            byte[] vertexSpirv = Compile(vertexGlsl, GpuShaderStages.Vertex, tag, bytesCache, compileCache);
+            byte[] fragmentSpirv = Compile(fragmentGlsl, GpuShaderStages.Fragment, tag, bytesCache, compileCache);
 
+            DiagnosticIdentity = VulkanShaderIdentity.Graphics(vertexGlsl, fragmentGlsl, vertexSpirv, fragmentSpirv, tag);
             VertexModule = modules.GetOrCreate(vertexSpirv);
             FragmentModule = modules.GetOrCreate(fragmentSpirv);
         }
 
-        static byte[] Compile(string glsl, GpuShaderStages stage, string tag, SpirvBytesCache? cache)
+        internal VulkanShaderIdentity DiagnosticIdentity { get; }
+
+        static byte[] Compile(string glsl, GpuShaderStages stage, string tag, SpirvBytesCache? cache, SpirvCompileCache? compileCache)
             => cache?.GetOrCompile(SpirvFrontEnd.OptionsIdentity(tag), stage, glsl,
-                   () => SpirvFrontEnd.ToSpirv(glsl, stage, tag))
-                ?? SpirvFrontEnd.ToSpirv(glsl, stage, tag);
+                   () => SpirvFrontEnd.ToSpirv(glsl, stage, tag, compileCache))
+                ?? SpirvFrontEnd.ToSpirv(glsl, stage, tag, compileCache);
 
         /// <summary>The vertex stage's SHARED <c>VkShaderModule</c>, which a graphics pipeline names.</summary>
         internal ulong VertexModule { get; }

@@ -46,6 +46,7 @@ public static class DungeonJson
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             PropertyNameCaseInsensitive = true,
             WriteIndented = true,
+            NewLine = "\n",
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         };
         options.Converters.Add(new JsonStringEnumConverter());

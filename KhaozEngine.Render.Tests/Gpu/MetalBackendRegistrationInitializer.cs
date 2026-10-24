@@ -25,6 +25,9 @@ namespace KhaozEngine.Tests.Gpu
     internal static class MetalBackendRegistrationInitializer
     {
         [ModuleInitializer]
-        internal static void RegisterNativeMetal() => MetalBackendRegistration.EnsureRegistered();
+        internal static void RegisterNativeMetal()
+        {
+            if (!RendererPerfAssemblyAccess.OfflineVerifier) MetalBackendRegistration.EnsureRegistered();
+        }
     }
 }

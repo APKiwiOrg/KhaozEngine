@@ -12,15 +12,22 @@ internal sealed class D3D11ShaderCompilation<T>
     static readonly object flightsGate = new();
     static readonly Dictionary<string, D3D11ShaderCompilation<T>> flights = new(StringComparer.Ordinal);
     readonly Task<Outcome> result;
+    readonly TaskScheduler scheduler;
 
     D3D11ShaderCompilation(Func<T> compile, TaskScheduler scheduler)
-        => result = Task.Factory.StartNew(() =>
+    {
+        this.scheduler = scheduler;
+        result = Task.Factory.StartNew(() =>
         {
             // A discarded shader may never join. Keep failures as data so abandonment cannot leave an
             // unobserved task exception, and rethrow the original exception and worker stack at first use.
             try { return new Outcome(compile(), null); }
             catch (Exception ex) { return new Outcome(default!, ExceptionDispatchInfo.Capture(ex)); }
         }, CancellationToken.None, TaskCreationOptions.DenyChildAttach, scheduler);
+    }
+
+    D3D11ShaderCompilation(Task<Outcome> result, TaskScheduler scheduler)
+    { this.result = result; this.scheduler = scheduler; }
 
     internal static D3D11ShaderCompilation<T> Start(Func<T> compile, string? cacheKey = null,
         TaskScheduler? scheduler = null)
@@ -42,6 +49,25 @@ internal sealed class D3D11ShaderCompilation<T>
             flights.Add(cacheKey, flight);
             return flight;
         }
+    }
+
+    internal static D3D11ShaderCompilation<T> Completed(T value)
+        => new(Task.FromResult(new Outcome(value, null)), D3D11ShaderCompileWorkers.Scheduler);
+
+    /// <summary>Prepare dependent CPU evidence only after this compile completes, without blocking a worker.</summary>
+    internal D3D11ShaderCompilation<TResult> Select<TResult>(Func<T, TResult> project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        D3D11ShaderCompilation<TResult>.Outcome Project(Outcome source)
+        {
+            if (source.Failure is not null) return new(default!, source.Failure);
+            try { return new(project(source.Value), null); }
+            catch (Exception error) { return new(default!, ExceptionDispatchInfo.Capture(error)); }
+        }
+        if (result.IsCompletedSuccessfully)
+            return new(Task.FromResult(Project(result.GetAwaiter().GetResult())), scheduler);
+        return new(result.ContinueWith(completed => Project(completed.GetAwaiter().GetResult()),
+            CancellationToken.None, TaskContinuationOptions.DenyChildAttach, scheduler), scheduler);
     }
 
     internal T Join()

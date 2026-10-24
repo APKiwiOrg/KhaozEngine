@@ -66,6 +66,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly D3D11FenceSubsystem? _timestampFences;
         readonly object? _submitLock;
         readonly bool _supportsTimestamps;
+        readonly D3D11MemoryDiagnostics? _memory;
 
         /// <summary>
         /// <paramref name="createCommandList"/> comes from the device rather than being built here, because which
@@ -105,7 +106,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             DeviceLiveness liveness, D3D11RingAllocator rings, Func<IGpuCommandList> createCommandList,
             in GpuCapabilities capabilities, D3D11CreationGate? creation = null,
             Func<IGpuFence>? createFence = null, D3D11DeviceLossLatch? loss = null,
-            ID3D11TimestampApi? timestamps = null, D3D11FenceSubsystem? timestampFences = null, object? submitLock = null)
+            ID3D11TimestampApi? timestamps = null, D3D11FenceSubsystem? timestampFences = null, object? submitLock = null,
+            D3D11MemoryDiagnostics? memory = null, D3D11DiagnosticOptions? diagnostics = null, D3D11HeadlessDiagnosticSettings? settings = null, D3D11DxbcCache? explicitCache = null)
         {
             ArgumentNullException.ThrowIfNull(device);
             ArgumentNullException.ThrowIfNull(context);
@@ -114,6 +116,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             ArgumentNullException.ThrowIfNull(createCommandList);
 
             _device = device;
+            _memory = memory;
             _context = context;
             _liveness = liveness;
             _rings = rings;
@@ -129,7 +132,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // Built here rather than passed in, because a shader compiler is a pure function of the device plus
             // two environment levers it reads ONCE (the FXC flags and the disk cache location, decisions S1 and
             // S4). Threading it through every construction path would put a session-level setting in a signature.
-            _shaders = new D3D11ShaderCompiler(device, liveness, _creation);
+            _shaders = settings is null ? new D3D11ShaderCompiler(device, liveness, _creation, diagnostics)
+                : new D3D11ShaderCompiler(liveness, new D3D11ShaderCompilerApi(device,
+                    new SpirvCompileCache(settings.CompileCache, SpirvCompileCache.DefaultCapacity)),
+                    explicitCache, settings.ShaderFlags, diagnostics!, new D3D11ShaderReflectionApi(), _creation);
         }
 
         /// <summary>Whether creation is serialized on this driver, for the session log. See
@@ -139,7 +145,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <inheritdoc/>
         public IGpuBuffer CreateBuffer(in GpuBufferDescription d)
         {
-            using (_creation.Enter()) return new D3D11Buffer(_device, _context, _liveness, _rings, d, _loss);
+            using (_creation.Enter()) return new D3D11Buffer(_device, _context, _liveness, _rings, d, _loss, _memory);
         }
 
         /// <inheritdoc/>
@@ -163,7 +169,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             string? unsupported = D3D11CapabilityRead.UnsupportedSampleCountMessage(d.SampleCount, _maxMsaaSampleCount);
             if (unsupported != null) throw new ArgumentException(unsupported, nameof(d));
 
-            using (_creation.Enter()) return new D3D11Texture(_device, _liveness, d);
+            using (_creation.Enter()) return new D3D11Texture(_device, _liveness, d, _memory);
         }
 
         /// <inheritdoc/>

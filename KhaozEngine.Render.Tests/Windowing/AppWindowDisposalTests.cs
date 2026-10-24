@@ -63,9 +63,13 @@ public sealed class AppWindowDisposalTests
         Assert.Throws<ObjectDisposedException>(() => window.AddCaptureTap(new Tap(() => { })));
         if (firstFailure is "release" or "query")
         {
-            Assert.Same(original, failure);
+            var transport = Assert.IsType<GpuDiagnosticFailureException>(failure);
+            var retained = Assert.Single(transport.Failures);
+            Assert.Same(original, retained.Error);
+            Assert.Equal(firstFailure == "release" ? "renderer.session.dispose.submission.consumer.0.0"
+                : "renderer.session.dispose.submission.pending.0.0", retained.Stage);
             Assert.Contains(firstFailure == "release" ? nameof(Release)
-                : nameof(Query), failure.StackTrace);
+                : nameof(Query), retained.Error.StackTrace);
         }
         else Assert.Null(failure);
 

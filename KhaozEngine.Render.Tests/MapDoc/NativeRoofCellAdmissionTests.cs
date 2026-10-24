@@ -11,6 +11,34 @@ namespace KhaozEngine.Tests.MapDoc;
 
 public sealed class NativeRoofCellAdmissionTests
 {
+    [Fact]
+    public void PrecapturedCells_LaterPlacementRefusalPreservesTheirReceipt()
+    {
+        var closure = NativeRenderAssetFixtures.Placements();
+        using var fixture = NativeSceneFixtures.SeparatedPlacements(closure, 1, new MapEffectiveTransform(8, 0, 8, 0, 1));
+        var scene = NativeSceneFixtures.Open(fixture, false).Acquire(NativePresentationFixtures.Scope).Scene!;
+        using var assets = NativeMapPlacementTests.Assets(closure);
+        using var input = MapPreparedInputLease.AssetOnly(assets, "synthetic", new(new()));
+        var policy = new MapPlacementPolicy([new("selected", new HashSet<string> { "prop-a" }, [10, 20], 4, 100, 30, 10, 0, true)], 100);
+        var routing = MapPlacementRouting.Create(scene, policy, new HashSet<string>()).Routing!;
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 65536));
+        using var active = admission.Enter();
+        using var cells = MapPlacementCellInventory.Capture(scene, routing);
+        var receipt = cells.PreparationOwnership!;
+        long bytes = receipt.Bytes;
+        // Routing hashing fits 8 KiB, but cell inventory plus construction does not.
+        using (admission.LimitPreparation(8192, "cells-and-construction"))
+        {
+            Assert.Throws<MapRenderAssetRefusal>(() => NativeMapPlacements.Prepare(scene, input, policy, routing, cells));
+            Assert.Equal(bytes, receipt.Bytes);
+            Assert.Equal(bytes, admission.RetainedBytes);
+            Assert.Equal(0, admission.WorkspaceBytes);
+            Assert.Equal(8192, admission.RemainingPreparedBytes);
+        }
+        cells.Dispose();
+        Assert.Equal(0, admission.RetainedBytes);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

@@ -29,11 +29,18 @@ internal sealed class MapPreparationScope : IDisposable
     {
         if (!_products.Remove(product)) throw new InvalidOperationException("The product is not owned by this preparation collector.");
     }
+    internal void EnsureCapacity(long bytes, MapPreparationReservation? dependency = null)
+    {
+        long available = Bytes;
+        foreach (var product in _products) available = checked(available + product.Bytes);
+        if (dependency is not null && !_products.Contains(dependency)) available = checked(available + dependency.Bytes);
+        if (bytes > available) Reserve(bytes - available);
+    }
     internal MapPreparationReservation Complete(long bytes, bool publishToParent = true)
     {
         ObjectDisposedException.ThrowIf(_disposed || _completed, this);
+        EnsureCapacity(bytes);
         foreach (var product in _products) _workspace.Absorb(product);
-        if (bytes > Bytes) Reserve(bytes - Bytes);
         var result = _workspace.Transfer(bytes);
         if (publishToParent) _previous?.Track(result);
         _completed = true;

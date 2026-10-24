@@ -44,7 +44,7 @@ public static class NativeMapPlacements
         using var preparation = admission.BeginPreparation();
         if (scene.Witness.ClosureHash != assets.Closure.Hash) throw new MapDocumentException("Placement assets belong to another closure.");
         cells ??= MapPlacementCellInventory.Capture(scene, routing);
-        if (cells.PreparationOwnership is { } cellOwner) preparation.WorkspaceOwner.Absorb(cellOwner);
+        using var cellDependency = cells.PreparationOwnership is { } cellOwner ? preparation.WorkspaceOwner.Borrow(cellOwner) : null;
         foreach (var placement in scene.Placements)
             if (!assets.ById.ContainsKey(placement.AssetId)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Placement has no selected asset: " + placement.AssetId);
         foreach (var placement in cells.Cells.SelectMany(cell => cell.Members))
@@ -195,6 +195,8 @@ public static class NativeMapPlacements
             var preparedInventory = scene.Placements.Where(p => routing.Entries[p.PlacementId] != MapPlacementRoute.Cluster)
                 .Concat(cells.Cells.SelectMany(cell => cell.Members)).ToArray();
             var result = new MapPlacementRenderBatch(preparedInventory, MapEffectiveAnnotations.Markers(scene), ordinary, roofLayers, parts, routing, clusters, 0, cells);
+            preparation.EnsureCapacity(result.RetainedBytes, cells.PreparationOwnership);
+            cellDependency?.Absorb();
             result.Own(preparation.Complete(result.RetainedBytes));
             return result;
 

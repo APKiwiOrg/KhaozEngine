@@ -48,6 +48,47 @@ internal sealed class MapPreparationReservation : IDisposable
             throw new InvalidOperationException("Workspace can move only between live owners in the same preparation view.");
         Bytes -= bytes; destination.Bytes = checked(destination.Bytes + bytes);
     }
+    internal Dependency Borrow(MapPreparationReservation product) => new(this, product);
+
+    /// <summary>Admits a dependency in the destination view without consuming its earlier owner on failure.</summary>
+    internal sealed class Dependency : IDisposable
+    {
+        readonly MapPreparationReservation _destination, _product;
+        readonly MapPreparationReservation? _foreign;
+        readonly IDisposable? _reference;
+        bool _absorbed;
+        internal Dependency(MapPreparationReservation destination, MapPreparationReservation product)
+        {
+            ObjectDisposedException.ThrowIf(destination._disposed || product._disposed, product);
+            if (destination._retained || !product._retained)
+                throw new InvalidOperationException("Only retained inventory can be borrowed by workspace.");
+            _destination = destination; _product = product;
+            if (destination._ledger == product._ledger)
+                _reference = destination._ledger.ReferenceWindow(product.Bytes, product._window, null);
+            else
+            {
+                _foreign = new(destination._ledger, destination._window, false);
+                _foreign.Reserve(product.Bytes);
+            }
+        }
+        internal void Absorb()
+        {
+            if (_absorbed) return;
+            if (_foreign is not null)
+            {
+                long bytes = _foreign.Bytes;
+                _product.Dispose();
+                _foreign.MoveWorkspaceTo(_destination, bytes);
+            }
+            else
+            {
+                _reference?.Dispose();
+                _destination.Absorb(_product);
+            }
+            _absorbed = true;
+        }
+        public void Dispose() { _reference?.Dispose(); _foreign?.Dispose(); }
+    }
     internal void Absorb(MapPreparationReservation product)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

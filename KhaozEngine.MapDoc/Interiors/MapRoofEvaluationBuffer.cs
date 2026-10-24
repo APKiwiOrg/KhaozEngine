@@ -58,27 +58,30 @@ public sealed class MapRoofEvaluationBuffer
     static MapRoofEvaluationBufferResult PrepareAdmitted(MapScopedScene scene, MapSceneAdmission admission, MapMembershipPreparation demand, bool requireCompletePolicy = false)
     {
         using var preparation = admission.BeginPreparation();
-        if (requireCompletePolicy)
+        try
         {
-            // Complete-policy validation consumes the same bounded geometry envelope before membership
-            // construction. Its planners and exact intermediates do not survive into the frame buffer.
-            using var validation = admission.BeginPreparation();
-            if (!admission.TryReservePreparation(demand.Bytes, 0, out var validationCapacity)) return Refused(validationCapacity!);
-            using var validationPrecharge = MapSceneAdmission.Suspend();
-            var errors = MapPrismCoverage.Validate(scene.SurfaceView, scene.Scope.Surfaces.Limits.Refinement ?? new());
-            if (errors.Count != 0) return new(MapSceneStatus.Invalid, null, "Incomplete canonical roof policy. " + string.Join("\n", errors));
+            var sceneOwner = requireCompletePolicy ? scene.PreparationOwnership : null;
+            using var dependency = sceneOwner is null ? null : preparation.WorkspaceOwner.Borrow(sceneOwner);
+            long sceneInventoryBytes = sceneOwner?.Bytes ?? 0;
+            if (requireCompletePolicy)
+            {
+                // The dependency remains charged in this view throughout validation and membership.
+                // A refusal releases only our borrowed attribution, preserving the original receipt.
+                using var validation = admission.BeginPreparation();
+                if (!admission.TryReservePreparation(demand.Bytes, 0, out var validationCapacity)) return Refused(validationCapacity!);
+                using var validationPrecharge = MapSceneAdmission.Suspend();
+                var errors = MapPrismCoverage.Validate(scene.SurfaceView, scene.Scope.Surfaces.Limits.Refinement ?? new());
+                if (errors.Count != 0) return new(MapSceneStatus.Invalid, null, "Incomplete canonical roof policy. " + string.Join("\n", errors));
+            }
+            if (!admission.TryReservePreparation(demand.Bytes, demand.Faces, out var capacity)) return Refused(capacity!);
+            MapRoofEvaluationBuffer buffer;
+            using (MapSceneAdmission.Suspend()) buffer = new(scene, demand, sceneInventoryBytes);
+            preparation.EnsureCapacity(buffer.RetainedBytes, sceneOwner);
+            dependency?.Absorb();
+            buffer.PreparationOwnership = preparation.Complete(buffer.RetainedBytes);
+            return new(scene.Witness.WholeWorldComplete ? MapSceneStatus.WholeWorldComplete : MapSceneStatus.CompleteForScope, buffer, null);
         }
-        long sceneInventoryBytes = 0;
-        if (requireCompletePolicy && scene.PreparationOwnership is { } dependency)
-        {
-            sceneInventoryBytes = dependency.Bytes;
-            preparation.WorkspaceOwner.Absorb(dependency);
-        }
-        if (!admission.TryReservePreparation(demand.Bytes, demand.Faces, out var capacity)) return Refused(capacity!);
-        using var precharged = MapSceneAdmission.Suspend();
-        var buffer = new MapRoofEvaluationBuffer(scene, demand, sceneInventoryBytes);
-        buffer.PreparationOwnership = preparation.Complete(buffer.RetainedBytes);
-        return new(scene.Witness.WholeWorldComplete ? MapSceneStatus.WholeWorldComplete : MapSceneStatus.CompleteForScope, buffer, null);
+        catch (MapSceneCapacityException error) { return Refused(error.Capacity); }
     }
     static MapRoofEvaluationBufferResult Refused(MapSceneCapacity capacity) => new(MapSceneStatus.CapacityExceeded, null, capacity.Message) { Capacity = capacity };
     static MapRoofEvaluationBufferResult Refused(MapSceneStatus status) => new(status, null, status switch

@@ -504,8 +504,13 @@ public sealed class TileWorldViewWaterOpticsTriangleTests
         Assert.Single(witness.Builds, b => b.Key == new TileWorldBuildKey(Origin, 0, TileWorldBuildKind.FullGround));
         view.Flush();
         Assert.Equal(0, view.PendingWaterCount);
+    }
 
+    [Fact]
+    public void ReleasedEpochNeverRestoresAnOlderWitness()
+    {
         // Edit and revert yields equal values but a fresh epoch. Released and recreated entries never restore it.
+        TileWorldDocument doc = Interior();
         var registry = new TileWaterDependencyRegistry();
         var dependency = new TileWaterOpticsDependency(Origin, 0);
         var pending = new TileWaterSourceStamp(doc, [dependency], registry);

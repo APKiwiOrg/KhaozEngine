@@ -246,6 +246,76 @@ public class TileWaterOpticsTests
     }
 
     [Fact]
+    public void WholeMetreOriginReducesExactlyByAnyRenderAnchor()
+    {
+        // About world (-515, y, 304) with a 0.3 m lattice. A +1024 m anchor grows both coordinates.
+        var region = new RegionCoord(-27, -16);
+        TileWorldDocument doc = LoadedPatch(region, 0.3f);
+        Grass(doc, region, 4, 4, 20, 20);
+        int x = region.OriginX + 10, z = region.OriginZ + 10;
+        doc.SetCornerHeightCm(x + 1, z + 1, 0, 40);
+        TileGroundSurfaceSnapshot surface = Surface(doc, region);
+        TileWaterTriangleBuild build = Single(Prepare(doc, region, 0f,
+            new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [region] = surface }, Plane(doc, x, z, 2, 2, 5f)));
+
+        Assert.InRange(build.Origin.X, -520f, -510f);
+        Assert.InRange(build.Origin.Z, 300f, 310f);
+        Assert.Equal(Math.Floor(build.Origin.X), build.Origin.X);
+        Assert.Equal(Math.Floor(build.Origin.Z), build.Origin.Z);
+        var anchor = new Vector3(1024f, 0f, 1024f);
+        Vector3 reduced = build.Origin - anchor;
+        Assert.Equal((double)build.Origin.X - anchor.X, reduced.X);
+        Assert.Equal((double)build.Origin.Z - anchor.Z, reduced.Z);
+        Assert.Equal(build.Origin.Y, reduced.Y);
+        float worldX = TileWorldSpace.WorldX(x + 0.75f, doc.TileSize), worldZ = TileWorldSpace.WorldZ(z + 0.25f, doc.TileSize);
+        Assert.Equal(Oracle(surface, 5f, worldX, worldZ), Sample(build, worldX, worldZ), 4);
+    }
+
+    [Theory]
+    [InlineData(31, 0)]
+    [InlineData(0, -32)]
+    [InlineData(1563, 0)]
+    [InlineData(-1563, 1563)]
+    public void OrdinaryMetreTileWaterPublishesFarFromTheWorldOrigin(int rx, int rz)
+    {
+        var region = new RegionCoord(rx, rz);
+        TileWorldDocument doc = LoadedPatch(region);
+        Grass(doc, region, 4, 4, 20, 20);
+        int x = region.OriginX + 10, z = region.OriginZ + 10;
+        doc.SetCornerHeightCm(x + 1, z + 1, 0, 120);
+        TileGroundSurfaceSnapshot surface = Surface(doc, region);
+        TileWaterTriangleBuild build = Single(Prepare(doc, region, 0f,
+            new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [region] = surface }, Plane(doc, x, z, 2, 2, 5f)));
+
+        Assert.True(Math.Max(Math.Abs(build.Origin.X), Math.Abs(build.Origin.Z)) > 1900f);
+        Assert.Equal(Math.Floor(build.Origin.X), build.Origin.X);
+        float worldX = TileWorldSpace.WorldX(x + 0.75f, 1f), worldZ = TileWorldSpace.WorldZ(z + 0.25f, 1f);
+        Assert.Equal(Oracle(surface, 5f, worldX, worldZ), Sample(build, worldX, worldZ), 3);
+    }
+
+    [Theory]
+    [InlineData(262144, 0, 1)]
+    [InlineData(262144, 0, 10)]
+    [InlineData(-262145, 0, 10)]
+    [InlineData(0, -262145, 10)]
+    public void OriginsAtOrBeyondTwoToTheTwentyFourMetresAreRefused(int rx, int rz, int offset)
+    {
+        var region = new RegionCoord(rx, rz);
+        TileWorldDocument doc = LoadedPatch(region);
+        Grass(doc, region, 0, 0, 24, 24);
+        // Every neighbour has a present snapshot, so only the origin rule can refuse.
+        var sources = new Dictionary<RegionCoord, TileGroundSurfaceSnapshot>();
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++) sources[region.Offset(dx, dz)] = Surface(doc, region.Offset(dx, dz));
+        TileWaterTriangleOutcome outcome = Prepare(doc, region, 0f, sources,
+            Plane(doc, region.OriginX + offset, region.OriginZ + offset, 2, 2, 5f));
+
+        Assert.Empty(outcome.Fields);
+        Assert.Equal(TileWaterOpticsFailureKind.UnrepresentableSurface, outcome.Failure!.Value.Kind);
+        Assert.True(TileWaterTrianglePreparation.MaxOriginMetres == 16777216d);
+    }
+
+    [Fact]
     public void UnconditionedSteepBedsAreRefusedAsUnrepresentable()
     {
         TileWorldDocument doc = LoadedPatch(tileSize: 0.01f);

@@ -58,8 +58,9 @@ internal static class TileWaterTrianglePreparation
 {
     // Every bin axis doubles per attempt, from one bin per field tile up to the 1024 axis limit.
     internal const int MaxPackingAttempts = 11;
-    const double Binary32Unit = 1d / (1 << 24);
     const double Binary64Slack = 1d / (1L << 50);
+    // Binding origins at or beyond 2^24 m have no exact whole-metre reduction guarantee.
+    internal const double MaxOriginMetres = 16777216d;
 
     internal static TileWaterOpticsFailureKind Kind(WaterOpticsSurfaceFailure reason) => reason switch
     {
@@ -238,9 +239,12 @@ internal static class TileWaterTrianglePreparation
                 }
             }
             if (vertices.Count == 0) return Fail(TileWaterOpticsFailureKind.IncompleteSurfaceCoverage);
-            float originX = Down(minX), originZ = Down(minZ);
-            if (!float.IsFinite(originX) || !float.IsFinite(originZ))
+            // Whole-metre binding origin. WorldFrame anchors are integer multiples of 128 m, so an integer origin
+            // below 2^24 m minus any anchor is an integer of magnitude below 2^25, exact in binary32 for every anchor.
+            double flooredX = Math.Floor(minX), flooredZ = Math.Floor(minZ);
+            if (!(Math.Abs(flooredX) < MaxOriginMetres && Math.Abs(flooredZ) < MaxOriginMetres))
                 return Fail(TileWaterOpticsFailureKind.UnrepresentableSurface);
+            float originX = (float)flooredX, originZ = (float)flooredZ;
 
             var triangles = new List<WaterOpticsTriangle>(vertices.Count / 3);
             var errors = new List<(double Depth, double Horizontal, double Slope)>(vertices.Count / 3);
@@ -274,9 +278,9 @@ internal static class TileWaterTrianglePreparation
             if (triangles.Count == 0 || sizeX <= 0f || sizeZ <= 0f)
                 return Fail(TileWaterOpticsFailureKind.IncompleteSurfaceCoverage);
 
-            // Scene3D reduces the exact binding origin by a WorldFrame anchor, a multiple of 128 m. A reduction that does
-            // not grow a coordinate is exact by the WorldFrame lemma, so it charges no positional error here. Source
-            // conversion error costs depth directly and through each triangle's slope.
+            // Render-origin reduction is charged zero: the binding origin is a whole metre below 2^24 m and every
+            // WorldFrame anchor is a multiple of 128 m, so origin minus anchor is exact for every anchor. Source
+            // conversion error against that origin costs depth directly and through each triangle's slope.
             double conversion = 0;
             foreach ((double depth, double horizontal, double slope) in errors)
                 conversion = Math.Max(conversion, depth + slope * horizontal);

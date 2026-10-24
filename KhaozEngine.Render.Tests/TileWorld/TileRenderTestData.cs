@@ -381,7 +381,7 @@ public sealed class RecordedOutlineGroup
     }
 }
 
-public sealed partial class RecordingTileWorldScene : ITileWorldScene
+public sealed partial class RecordingTileWorldScene : ITileWorldScene, ITileWorldWaterOpticsScene
 {
     readonly HashSet<int> _alive = new();
     int _next;

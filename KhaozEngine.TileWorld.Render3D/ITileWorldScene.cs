@@ -265,7 +265,7 @@ public interface ITileWorldScene
 
 /// <summary>The shipped <see cref="ITileWorldScene"/>: every member forwards straight to a <see cref="Scene3D"/>
 /// and its prop-renderer extension, so the seam costs one virtual call and adds no behaviour of its own.</summary>
-public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene
+public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene, ITileWorldWaterOpticsScene
 {
     readonly Scene3D _scene;
     readonly Scene3DAttachmentScene _attachments;
@@ -435,6 +435,15 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene
 
     /// <inheritdoc />
     public void DrawWater(in WaterPlane plane) => _scene.DrawWater(plane);
+
+    /// <inheritdoc />
+    public WaterOpticsHandle LoadWaterOpticsField(WaterOpticsField field) => _scene.LoadWaterOpticsField(field);
+
+    /// <inheritdoc />
+    public void UnloadWaterOpticsField(WaterOpticsHandle handle) => _scene.UnloadWaterOpticsField(handle);
+
+    /// <inheritdoc />
+    public float GetWaterOpticsPadding(WaterLook? look = null) => _scene.GetWaterOpticsPadding(look);
 
     sealed class ScenePropClusterOwner : ITileWorldPropClusterOwner
     {

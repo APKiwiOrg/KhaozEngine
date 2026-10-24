@@ -6,74 +6,52 @@ namespace KhaozEngine.TileWorld;
 
 public sealed partial class TileWorldView
 {
-    // One region-plane's collected water, plus the two things it was collected against. A rebuild is detected by
-    // the MESH HANDLE rather than announced: a remeshed region-plane comes back under a handle whose generation
-    // the scene bumped when it freed the old one (the mesh slot map bumps on Free, so a reused index can never
-    // reproduce a retired index plus generation pair), and any edit that could move a water tile or a corner
-    // height is exactly an edit that remeshes. That keeps the cache honest without the water path being wired
-    // into the rebuild path itself.
-    readonly record struct WaterCache(int MeshIndex, int MeshGeneration, WaterLook? Look, IReadOnlyList<WaterPlane> Planes);
+    readonly Dictionary<(RegionCoord Region, int Plane), TileWaterGeneration> _water = new();
 
-    readonly Dictionary<(RegionCoord Region, int Plane), WaterCache> _water = new();
+    // Empty preparations retain ground provenance, but own no water cache entry or field.
+    internal int WaterCacheCount
+    {
+        get
+        {
+            int count = 0;
+            foreach (var entry in _water)
+                if (entry.Value.Planes.Length > 0) count++;
+            return count;
+        }
+    }
 
-    /// <summary>How many region-planes the water cache is holding, for the tests that assert an unload drops
-    /// what it collected.</summary>
-    internal int WaterCacheCount => _water.Count;
-
-    /// <summary>Queues every loaded region-plane's water surfaces for this frame, through
-    /// <see cref="ITileWorldScene.DrawWater"/>.
-    /// <para><see cref="Draw"/> calls it after the ground and props unless
-    /// <see cref="TileWorldViewOptions.DrawWater"/> is false, so
-    /// a caller only calls it directly when it opted out of that and wants the planes at another point in its
-    /// frame. The planes themselves are collected once per region-plane mesh and cached, so a frame that
-    /// changed nothing is a walk over the loaded regions and one submit per plane.</para></summary>
+    /// <summary>Submit the water of complete prepared region generations. Call <see cref="Flush()"/>
+    /// after changing a look or source data and before submitting a frame. This walk never reads the
+    /// source document, prepares resources or performs I/O.</summary>
     public void DrawWaterPlanes()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-
-        foreach (KeyValuePair<RegionCoord, RegionHandles> entry in _loaded)
+        foreach (var entry in _water)
         {
-            MeshHandle?[] meshes = entry.Value.Meshes;
-            for (int plane = 0; plane < _planes; plane++)
-            {
-                IReadOnlyList<WaterPlane> planes = WaterOf(entry.Key, plane, meshes[plane]);
-                for (int i = 0; i < planes.Count; i++) _scene.DrawWater(planes[i]);
-            }
+            WaterPlane[] planes = entry.Value.Planes;
+            for (int i = 0; i < planes.Length; i++) _scene.DrawWater(planes[i]);
         }
-
-        PruneWater();
     }
 
-    // The cached planes of one region-plane, re-collected when the mesh behind it changed or the look did.
-    IReadOnlyList<WaterPlane> WaterOf(RegionCoord region, int plane, MeshHandle? mesh)
-    {
-        int index = mesh?.Index ?? -1, generation = mesh?.Generation ?? 0;
-        if (_water.TryGetValue((region, plane), out WaterCache cached)
-            && cached.MeshIndex == index && cached.MeshGeneration == generation
-            && ReferenceEquals(cached.Look, _options.WaterLook))
-            return cached.Planes;
+    IReadOnlyList<WaterPlane> PreparedWaterOf(RegionCoord region, int plane) =>
+        _water.TryGetValue((region, plane), out TileWaterGeneration? generation)
+            ? generation.Planes : Array.Empty<WaterPlane>();
 
-        // No mesh means the region-plane has no drawable tile at all, and a water tile is drawable by
-        // definition (it carries an underlay), so there is nothing to scan 4096 tiles for.
-        IReadOnlyList<WaterPlane> planes = mesh is null
-            ? Array.Empty<WaterPlane>()
-            : TileWaterPlanes.Collect(_doc, _catalogs, region, plane, _options.WaterLook);
-        _water[(region, plane)] = new WaterCache(index, generation, _options.WaterLook, planes);
-        return planes;
+    void ReleaseWater(RegionCoord region, int plane)
+    {
+        if (_water.Remove((region, plane), out TileWaterGeneration? old)) old.Dispose();
+        ForgetWaterFailure(region, plane);
+        _waterAttempts.Remove((region, plane));
     }
 
-    // Drops what an unloaded region left behind. The unload path lives in the view's main body and does not
-    // reach in here, so the drop happens at the end of the submit instead, where a full pass has just refreshed
-    // every entry a loaded region owns. The count test is the whole fast path: after that pass the cache holds
-    // exactly one entry per loaded region-plane unless something was unloaded.
-    void PruneWater()
+    void ReleaseAllWater()
     {
-        if (_water.Count == _loaded.Count * _planes) return;
-
-        List<(RegionCoord Region, int Plane)>? drop = null;
-        foreach ((RegionCoord Region, int Plane) key in _water.Keys)
-            if (!_loaded.ContainsKey(key.Region)) (drop ??= new List<(RegionCoord, int)>()).Add(key);
-        if (drop is null) return;
-        foreach ((RegionCoord Region, int Plane) key in drop) _water.Remove(key);
+        foreach (TileWaterGeneration generation in _water.Values) generation.Dispose();
+        _water.Clear();
+        _waterAttempts.Clear();
+        _waterSourceRefusals.Clear();
+        if (_waterFailures.Count == 0) return;
+        _waterFailures.Clear();
+        RebuildWaterFailures();
     }
 }

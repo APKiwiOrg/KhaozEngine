@@ -50,6 +50,7 @@ public sealed partial class TileWorldView
         ObserverIndoors = indoors;
         EnsureInterior();
         _interiorInputsDirty |= _dirtyOrder.Count > 0;
+        RefreshWaterPreparation();
         if (_dirtyOrder.Count == 0) return;
 
         int budget = Math.Max(1, maxRebuilds);
@@ -74,9 +75,10 @@ public sealed partial class TileWorldView
                 // Build BEFORE freeing. A mesher that throws must leave the old handle live and drawable rather
                 // than a freed one in the slot, which would be a use-after-free on the next frame.
                 InvalidateGround(region, handles, plane);
-                MeshHandle? rebuilt = BuildMesh(region, plane);
-                if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
-                handles.Meshes[plane] = rebuilt;
+                TileWaterPreparation? water = CaptureWater(region, plane);
+                if (water is null) continue;
+                GltfMesh? rebuilt = BuildGroundCpu(region, plane);
+                if (!PublishGround(region, plane, handles, rebuilt, water)) continue;
                 handles.Props[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
                 _propClusters.Request(handles.Props[plane]);
                 ReleaseAnimatedFoliage(handles, plane);

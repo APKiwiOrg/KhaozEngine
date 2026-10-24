@@ -77,7 +77,7 @@ public sealed partial class TileWorldView
         foreach (KeyValuePair<RegionCoord, RegionHandles> entry in _loaded)
         {
             if (entry.Value.Residency != TileRegionResidencyState.Gameplay) continue;
-            IReadOnlyList<WaterPlane> planes = WaterOf(entry.Key, plane, entry.Value.Meshes[plane]);
+            IReadOnlyList<WaterPlane> planes = PreparedWaterOf(entry.Key, plane);
             for (int i = 0; i < planes.Count; i++)
             {
                 WaterPlane candidatePlane = planes[i];

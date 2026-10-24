@@ -27,16 +27,45 @@ uint opticsInterpolate(int triangle, uvec2 p) {
     uvec3 b = uvec3(opticsScalar(triangle+3),opticsScalar(triangle+4),opticsScalar(triangle+5));
     uvec3 c = uvec3(opticsScalar(triangle+6),opticsScalar(triangle+7),opticsScalar(triangle+8));
     if ((a.z == b.z && a.z == c.z) || ((a.z | b.z | c.z) & 0x7fffffffu) == 0u) return a.z;
-    uint dx = opticsAdd(b.x,a.x^0x80000000u), dz = opticsAdd(b.y,a.y^0x80000000u);
-    uint ex = opticsAdd(c.x,a.x^0x80000000u), ez = opticsAdd(c.y,a.y^0x80000000u);
-    uint px = opticsAdd(p.x,a.x^0x80000000u), pz = opticsAdd(p.y,a.y^0x80000000u);
-    uint determinant = opticsAdd(opticsMul(dx,ez),opticsMul(dz,ex)^0x80000000u);
-    uint bn = opticsAdd(opticsMul(px,ez),opticsMul(pz,ex)^0x80000000u);
-    uint cn = opticsAdd(opticsMul(dx,pz),opticsMul(dz,px)^0x80000000u);
-    uint wb = opticsDiv(bn,determinant), wc = opticsDiv(cn,determinant);
-    uint db = opticsAdd(b.z,a.z^0x80000000u), dc = opticsAdd(c.z,a.z^0x80000000u);
-    uint near = opticsAdd(a.z,opticsMul(wb,db));
-    return opticsAdd(near,opticsMul(wc,dc));
+    // Fixed ordered interpolation shares one body per operation after exhaustive inlining.
+    // Slots 0..5 are dx,dz,ex,ez,px,pz, 6..7 temporaries, 8..10 det,bn,cn,
+    // 11..14 wb,wc,db,dc and 15 near/result. Every read follows its producing step.
+    uint r[16];
+    [[dont_unroll]] for (int step = 0; step < 23; step++) {
+        uint left = 0u, right = 0u;
+        int operation = 0, destination = step;
+        switch (step) {
+            case 0: left = b.x; right = a.x^0x80000000u; break;
+            case 1: left = b.y; right = a.y^0x80000000u; break;
+            case 2: left = c.x; right = a.x^0x80000000u; break;
+            case 3: left = c.y; right = a.y^0x80000000u; break;
+            case 4: left = p.x; right = a.x^0x80000000u; break;
+            case 5: left = p.y; right = a.y^0x80000000u; break;
+            case 6: left = r[0]; right = r[3]; operation = 1; destination = 6; break;
+            case 7: left = r[1]; right = r[2]; operation = 1; destination = 7; break;
+            case 8: left = r[6]; right = r[7]^0x80000000u; destination = 8; break;
+            case 9: left = r[4]; right = r[3]; operation = 1; destination = 6; break;
+            case 10: left = r[5]; right = r[2]; operation = 1; destination = 7; break;
+            case 11: left = r[6]; right = r[7]^0x80000000u; destination = 9; break;
+            case 12: left = r[0]; right = r[5]; operation = 1; destination = 6; break;
+            case 13: left = r[1]; right = r[4]; operation = 1; destination = 7; break;
+            case 14: left = r[6]; right = r[7]^0x80000000u; destination = 10; break;
+            case 15: left = r[9]; right = r[8]; operation = 2; destination = 11; break;
+            case 16: left = r[10]; right = r[8]; operation = 2; destination = 12; break;
+            case 17: left = b.z; right = a.z^0x80000000u; destination = 13; break;
+            case 18: left = c.z; right = a.z^0x80000000u; destination = 14; break;
+            case 19: left = r[11]; right = r[13]; operation = 1; destination = 6; break;
+            case 20: left = a.z; right = r[6]; destination = 15; break;
+            case 21: left = r[12]; right = r[14]; operation = 1; destination = 6; break;
+            case 22: left = r[15]; right = r[6]; destination = 15; break;
+        }
+        uint result;
+        if (operation == 0) result = opticsAdd(left,right);
+        else if (operation == 1) result = opticsMul(left,right);
+        else result = opticsDiv(left,right);
+        r[destination] = result;
+    }
+    return r[15];
 }
 
 uint opticsUnit(uint value) {

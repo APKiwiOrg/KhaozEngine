@@ -16,7 +16,7 @@ using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Gpu;
 
-public sealed class WaterOpticsTriangleGpuTests(ITestOutputHelper output)
+public sealed partial class WaterOpticsTriangleGpuTests(ITestOutputHelper output)
 {
     const string Diagnostic = @"#version 450
 #extension GL_EXT_control_flow_attributes : require

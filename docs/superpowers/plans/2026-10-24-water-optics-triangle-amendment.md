@@ -113,10 +113,17 @@ Mode 2 uses existing texture/sampler bindings 10/11 and unchanged 1088-byte UBO 
   binary32 operations. Apply source-local `dont_unroll` hints to that loop and the candidate, three-edge,
   wide-carry and 27-step division loops. Prove actual pinned SPIR-V DontUnroll and HLSL `[loop]` emission
   before the hosted compile proof. Source text alone does not pass this gate.
+- [ ] Retain one fixed 23-step interpolation loop with one emitted software add, multiply and divide
+  body, including one nested 27-step division loop. Select the original ordered scalar operand bits
+  and store each rounded result in a local 16-word register bank. Preserve sign-bit XOR subtraction,
+  signed zero, the constant/equal-zero early return and unchanged arithmetic helpers and CPU reference.
+  Verify actual production interpolation bitwise against that CPU reference on nonconstant depths,
+  cancellation and admitted subnormal intermediates, plus unchanged query, image and fallback proofs.
 - [ ] Pass the pending candidate-only cold Windows compile proof at dispatch `github.sha`, with caches
   off and optimized production flags. Require pixel FXC <= 5000 ms and the measured six-phase total
   <= 10000 ms. Reuse verified control run 40087661847 without recompiling its frozen inputs. These
-  fixed-proof engineering limits do not assert universal hardware performance. A miss requires investigation.
+  fixed-proof engineering limits do not assert universal hardware performance. Rolled-wide run
+  40091542332 missed both limits. The fixed interpolation schedule remains pending this proof.
 - [ ] Implement complementary separate lazy triangle pipelines in a subsequent scoped task so default
   legacy/bilinear construction cannot compile triangle arithmetic. Compile improvement alone does not
   complete Task 2. Retain the original numerical, resource, image and all-three-backend gates.

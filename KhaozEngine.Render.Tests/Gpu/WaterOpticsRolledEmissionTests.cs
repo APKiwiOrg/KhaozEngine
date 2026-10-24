@@ -16,11 +16,11 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class WaterOpticsRolledEmissionTests
 {
-    const string Evidence = "/tmp/khaozengine-water-triangles/rolled-wide/emission";
+    const string Evidence = "/tmp/khaozengine-water-triangles/rolled-interpolation/emission";
 
     // Catch loss of sharing or local loop controls in the actual pinned compiler output.
     [Fact]
-    public void ProductionWideProductsRetainOneSixTermBodyAndSixCarryBodies()
+    public void ProductionRetainsSharedInterpolationAndSixWideCarryBodies()
     {
         Directory.CreateDirectory(Evidence);
         byte[] vertex = SpirvFrontEnd.ToSpirv(ShaderSources.WaterVert, GpuShaderStages.Vertex, "Water");
@@ -33,6 +33,10 @@ public sealed class WaterOpticsRolledEmissionTests
         Loop[] loops = HlslLoops(hlsl);
         var opcodes = new Dictionary<uint, int>();
         var controls = new List<uint>();
+        var constants = new Dictionary<uint, uint>();
+        var lessBounds = new Dictionary<uint, uint>();
+        var retainedBounds = new List<uint>();
+        uint? loopControl = null;
         Assert.Equal(0x07230203u, Word(0));
         int offset = 20;
         while (offset < fragment.Length)
@@ -41,7 +45,21 @@ public sealed class WaterOpticsRolledEmissionTests
             int words = checked((int)(header >> 16));
             Assert.True(words > 0 && offset + 4 * words <= fragment.Length);
             opcodes[opcode] = opcodes.GetValueOrDefault(opcode) + 1;
-            if (opcode == 246) controls.Add(Word(offset + 12)); // OpLoopMerge control operand.
+            if (opcode == 43 && words == 4) constants[Word(offset + 8)] = Word(offset + 12); // OpConstant.
+            if (opcode == 177 && constants.TryGetValue(Word(offset + 16), out uint bound)) // OpSLessThan.
+                lessBounds[Word(offset + 8)] = bound;
+            if (opcode == 246)
+            {
+                loopControl = Word(offset + 12); // OpLoopMerge control operand.
+                controls.Add(loopControl.Value);
+            }
+            if (opcode == 250) // OpBranchConditional at the loop header.
+            {
+                if (loopControl == 2 && lessBounds.TryGetValue(Word(offset + 4), out uint limit))
+                    retainedBounds.Add(limit);
+                loopControl = null;
+            }
+            if (opcode == 249) loopControl = null; // OpBranch.
             offset += 4 * words;
         }
         Assert.Equal(fragment.Length, offset);
@@ -56,7 +74,8 @@ public sealed class WaterOpticsRolledEmissionTests
                 Instructions = opcodes.Values.Sum(),
                 Functions = opcodes.GetValueOrDefault(54u),
                 Calls = opcodes.GetValueOrDefault(57u),
-                LoopControls = controls
+                LoopControls = controls,
+                RetainedBounds = retainedBounds
             },
             Hlsl = new
             {
@@ -69,6 +88,19 @@ public sealed class WaterOpticsRolledEmissionTests
             Msl = new { Bytes = Encoding.UTF8.GetByteCount(msl), Sha256 = Hash(Encoding.UTF8.GetBytes(msl)) }
         }, new JsonSerializerOptions { WriteIndented = true }));
 
+        Assert.Equal(1, opcodes.GetValueOrDefault(54u)); // Exhaustively inlined OpFunction.
+        Assert.Equal(0, opcodes.GetValueOrDefault(57u)); // No surviving OpFunctionCall boundary.
+        Assert.Single(retainedBounds, b => b == 23);
+        Assert.Single(retainedBounds, b => b == 27);
+        Loop interpolation = Assert.Single(loops, l => l.Bound == 23);
+        Assert.True(interpolation.Retained, "Interpolation schedule lost its [loop] control.");
+        string body = hlsl[interpolation.Start..interpolation.End];
+        // These distinguish the unchanged add normalization and 24-bit multiply bodies after inlining.
+        Assert.Single(Regex.Matches(body, @"& 134217728u"));
+        Assert.Single(Regex.Matches(body, @"& 32768u"));
+        Loop division = Assert.Single(loops, l => l.Bound == 27 && l.Retained);
+        Assert.InRange(division.Start, interpolation.Start + 1, interpolation.End - 1);
+        Assert.True(division.End < interpolation.End);
         Loop product = Assert.Single(loops, l => l.Bound == 6);
         Assert.True(product.Retained, "Six-term product loop lost its [loop] control.");
         Loop[] carries = loops.Where(l => l.Bound == 18 && l.Retained).ToArray();
@@ -80,7 +112,7 @@ public sealed class WaterOpticsRolledEmissionTests
             Assert.InRange(l.Start, product.Start + 1, product.End - 1);
             Assert.True(l.End < product.End);
         });
-        foreach ((int bound, int count) in new[] { (32, 1), (3, 1), (27, 2) })
+        foreach ((int bound, int count) in new[] { (32, 1), (3, 1) })
         {
             Loop[] selected = loops.Where(l => l.Bound == bound && l.Retained).ToArray();
             Assert.Equal(count, selected.Length);

@@ -23475,7 +23475,8 @@ The effect, copy and display owners add these keys. Every occurrence is zero unl
 | --- | --- |
 | `startup.ocean-prime` | Cold row FFT on its own preparer command list, separate from the frame layout and steady summaries |
 | `water`, `ocean` | Parents only, with skipped subtrees when inactive |
-| `device.water.geometry`, `device.water.bathymetry` | CPU-only leaf owners through `BeginCpuPhase`/`EndCpuPhase`. Geometry setup includes initial flat/focused index uploads before ocean recording. After `PrepareFrame()`, bathymetry texture updates follow ocean recording and still run when every surface is culled. `PrepareFrame(width, height)` updates bathymetry before recording, as a root leaf inside `cpu.water.prepare`, ahead of the water resource sets that bind it |
+| `device.water.geometry`, `device.water.bathymetry` | CPU-only leaf owners through `BeginCpuPhase`/`EndCpuPhase` under `water`. Geometry setup includes initial flat/focused index uploads before ocean recording. After `PrepareFrame()`, the geometry leaf also sizes the plane UBO, and bathymetry texture updates follow ocean recording and still run when every surface is culled. A `PrepareFrame(width, height)` frame never opens `device.water.bathymetry` |
+| `device.water.prepare` | CPU-only root owner on every `PrepareFrame(width, height)` frame, with or without water, inside `cpu.water.prepare`. It owns the bathymetry update, UBO sizing, water resource set creation and retirement before recording. `PrepareFrame()` never opens it |
 | `ocean.uniforms`, `.next-row`, `.column` | Shared ocean parameter upload, next frame's row FFT, current frame's column FFT, in native recording order |
 | `ocean.mip-copy`, `ocean.mips` | Base-level seed copy per array layer (occurrence is layer), then the existing whole-chain mip-generation command |
 | `water.surface` | Surface uploads, route binds and all queued water draws, after FFT work |
@@ -23502,7 +23503,8 @@ publish `deviceOnly=true`, zero begin/end markers, null elapsed ticks and a null
 including when valid frame timestamps are available. A skipped device row is NotExecuted. GPU rows retain
 `deviceOnly=false` and positive ordered markers. These rules apply to `device.scene.begin` as well as water.
 Their logical counters remain exclusive leaf work. Skipping the water parent also skips its two device
-upload leaves.
+upload leaves. `device.water.prepare` has no parent and runs on every viewport-prepared frame, so a
+viewport frame with no water reports it executed, Unsupported and with zero counters.
 
 All other occurrences are zero. Directional recording visits rigid/CPU work for all cascades, then foliage
 for all cascades, then GPU skinning for all cascades. These are separate measured segments rather than one

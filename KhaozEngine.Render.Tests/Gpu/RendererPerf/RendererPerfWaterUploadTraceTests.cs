@@ -141,7 +141,7 @@ public sealed class RendererPerfWaterUploadTraceTests
     static GeometryTraceCommands.Event[] Trace(GeometryTraceCommands commands) =>
         commands.Events.Select(e => e with { Owner = null, Pipeline = null }).ToArray();
 
-    static void AssertNoParentWork(RendererPerfRecorder recorder, RendererPerfPassDefinition[] definitions)
+    internal static void AssertNoParentWork(RendererPerfRecorder recorder, RendererPerfPassDefinition[] definitions)
     {
         foreach (RendererPerfCounter counter in Enum.GetValues<RendererPerfCounter>())
         {
@@ -152,16 +152,20 @@ public sealed class RendererPerfWaterUploadTraceTests
         }
     }
 
-    sealed class WaterRig : IDisposable
+    // The viewport form prepares bound optics. Bound rigs bind the first plane to a field covering its footprint.
+    internal sealed class WaterRig : IDisposable
     {
         readonly PostTraceDevice _device = new();
         readonly IGpuTexture _texture;
         readonly IGpuFramebuffer _target;
+        readonly bool _viewport;
+        readonly WaterOpticsHandle _optics;
         internal readonly Scene3D Scene;
         internal readonly GeometryTraceCommands Commands;
         internal readonly WaterBathymetry Field = new(4, 0f, 0f, 8f);
-        internal WaterRig(bool focused = false, RendererPerfRecorder? recorder = null)
+        internal WaterRig(bool focused = false, RendererPerfRecorder? recorder = null, bool viewport = false, bool bound = false)
         {
+            _viewport = viewport;
             IGpuDevice device = recorder is null ? _device : RendererPerfDevice.Wrap(_device, recorder);
             _texture = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(32, 32,
                 GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget));
@@ -174,13 +178,19 @@ public sealed class RendererPerfWaterUploadTraceTests
             Scene.Post.Water.Bathymetry = Field;
             Commands = (GeometryTraceCommands)_device.Factory.CreateCommandList();
             _device.UploadTrace = Commands;
+            if (bound) _optics = Scene.LoadWaterOpticsField(new WaterOpticsField(2, 2, [2f, 2f, 2f, 2f]));
         }
-        internal void Frame(bool culled = false, IGpuCommandList? list = null, bool water = true)
+        internal void Frame(bool culled = false, IGpuCommandList? list = null, bool water = true, int planes = 1)
         {
             Commands.Events.Clear();
             Scene.Begin();
-            if (water) Scene.DrawWater(new WaterPlane(culled ? 100000f : 0f, 0f, 0f, 8f));
-            Scene.PrepareFrame();
+            float x = culled ? 100000f : 0f;
+            for (int i = 0; water && i < planes; i++)
+                Scene.DrawWater(i == 0 && _optics.IsValid
+                    ? new WaterPlane(x, 0f, 0f, 8f, optics: new WaterOpticsBinding(_optics, new Vector3(x - 8f, 0f, -8f), new Vector2(16f)))
+                    : new WaterPlane(x, 0f, 0f, 8f));
+            if (_viewport) Scene.PrepareFrame(32, 32);
+            else Scene.PrepareFrame();
             var commands = list ?? Commands;
             commands.Begin();
             try { Scene.RenderInternal(commands, 32, 32, _target); }

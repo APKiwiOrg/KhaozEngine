@@ -168,6 +168,107 @@ public class TileWaterOpticsTests
     }
 
     [Fact]
+    public void UnrepresentableLatticeAnchorRefusesInsteadOfMovingTheBed()
+    {
+        var region = new RegionCoord(262145, 0);
+        TileWorldDocument doc = LoadedPatch(region);
+        doc.SetCornerHeightCm(16777279, 10, 0, 0);
+        doc.SetCornerHeightCm(16777280, 10, 0, 200);
+        Assert.Equal(2f, doc.HeightAt(16777280f, -10f, 0));
+
+        bool success = TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out var failure);
+
+        // Before refusal existed this succeeded with depth 5, moving the zero-height west
+        // sample onto the first region corner, whose authored bed requires depth 3.
+        if (success) Assert.Equal(3f, Sample(build, 16777280f, -10f), 5);
+        Assert.False(success);
+        Assert.Null(build);
+        Assert.Equal(new TileWaterOpticsFailure(region, 0, 5f, TileWaterOpticsFailureKind.FieldTooLarge), failure);
+        Assert.Equal(2f, doc.HeightAt(16777280f, -10f, 0));
+    }
+
+    [Fact]
+    public void RepresentableOriginDoesNotHideCollapsedInteriorLatticePositions()
+    {
+        var region = new RegionCoord(262144, 0);
+        TileWorldDocument doc = LoadedPatch(region);
+        Assert.Equal(16777215d, (double)TileWorldSpace.WorldX(16777215, 1f));
+        Assert.Equal(16777216d, (double)TileWorldSpace.WorldX(16777216, 1f));
+        Assert.Equal(16777216d, (double)TileWorldSpace.WorldX(16777217, 1f));
+
+        Assert.False(TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out var failure));
+
+        Assert.Null(build);
+        Assert.Equal(new TileWaterOpticsFailure(region, 0, 5f, TileWaterOpticsFailureKind.FieldTooLarge), failure);
+    }
+
+    [Theory]
+    [InlineData(-262145, 0, 1f)]
+    [InlineData(0, 262145, 1f)]
+    [InlineData(0, -262145, 1f)]
+    [InlineData(200000, 0, 1.5f)]
+    [InlineData(0, -200000, 1.5f)]
+    [InlineData(4096, 0, 0.1f)]
+    [InlineData(0, 4096, 0.3f)]
+    [InlineData(0, 0, float.Epsilon)]
+    public void LossyLatticeMappingsAreRefusedOnEitherAxis(int rx, int rz, float tileSize)
+    {
+        var region = new RegionCoord(rx, rz);
+        TileWorldDocument doc = LoadedPatch(region);
+        doc.TileSize = tileSize;
+
+        Assert.False(TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out var failure));
+
+        Assert.Null(build);
+        Assert.Equal(new TileWaterOpticsFailure(region, 0, 5f, TileWaterOpticsFailureKind.FieldTooLarge), failure);
+    }
+
+    [Theory]
+    [InlineData(0, 0, 0.1f)]
+    [InlineData(2, -2, 0.1f)]
+    [InlineData(-1, 1, 0.3f)]
+    [InlineData(2, -2, 1.1f)]
+    [InlineData(0, 0, 2.54f)]
+    public void OrdinaryFractionalTileSizesKeepTheirAuthoredMapping(int rx, int rz, float tileSize)
+    {
+        var region = new RegionCoord(rx, rz);
+        TileWorldDocument doc = LoadedPatch(region);
+        doc.TileSize = tileSize;
+        int x = region.OriginX + 10, z = region.OriginZ + 10;
+        doc.SetCornerHeightCm(x, z, 0, 100);
+        doc.SetCornerHeightCm(x + 1, z, 0, 300);
+        doc.SetCornerHeightCm(x, z + 1, 0, 100);
+        doc.SetCornerHeightCm(x + 1, z + 1, 0, 300);
+        float worldX = TileWorldSpace.WorldX(x + 0.5f, tileSize);
+        float worldZ = TileWorldSpace.WorldZ(z + 0.5f, tileSize);
+        Assert.Equal(2f, doc.HeightAt(worldX, worldZ, 0), 4);
+
+        Assert.True(TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out _));
+
+        Assert.Equal(3f, Sample(build, worldX, worldZ), 4);
+        Assert.Equal(2f, doc.HeightAt(worldX, worldZ, 0), 4);
+    }
+
+    [Theory]
+    [InlineData(262142, 0)]
+    [InlineData(-262143, 0)]
+    [InlineData(0, 262142)]
+    [InlineData(0, -262143)]
+    public void LargeExactlyRepresentableLatticesRemainAvailable(int rx, int rz)
+    {
+        var region = new RegionCoord(rx, rz);
+        TileWorldDocument doc = LoadedPatch(region);
+        int x = region.OriginX + 10, z = region.OriginZ + 10;
+        doc.SetCornerHeightCm(x, z, 0, 200);
+        float worldX = TileWorldSpace.WorldX(x, 1f), worldZ = TileWorldSpace.WorldZ(z, 1f);
+
+        Assert.True(TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out _));
+
+        Assert.Equal(3f, Sample(build, worldX, worldZ), 4);
+        Assert.Equal(2f, doc.HeightAt(worldX, worldZ, 0));
+    }
+
+    [Fact]
     public void DependenciesIncludeNegativeAvailabilityRequestedAndDerivedPlanes()
     {
         TileWorldDocument doc = LoadedPatch();

@@ -51,6 +51,7 @@ internal static class TileWaterOptics
         float farZ = TileWorldSpace.WorldZ((int)south, tileSize);
         if (!float.IsFinite(origin.X) || !float.IsFinite(origin.Z) || !float.IsFinite(extent)
             || !float.IsFinite(farX) || !float.IsFinite(farZ) || extent <= 0f) return false;
+        if (!TileWaterOpticsMapping.IsRepresentable(minX, maxZ, samples, tileSize, origin, extent)) return false;
 
         var depths = new float[checked(samples * samples)];
         var dependencies = new List<TileWaterOpticsDependency>();

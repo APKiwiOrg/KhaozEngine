@@ -5,7 +5,8 @@ public enum TileWaterOpticsFailureKind
 {
     /// <summary>A required corner has no available owner, or its earlier-priority owner is unloaded.</summary>
     MissingHeightData,
-    /// <summary>The authored lattice or world mapping exceeds the supported field bounds.</summary>
+    /// <summary>The authored lattice exceeds supported bounds, or its float origin, spacing, extent or
+    /// reciprocal mapping cannot preserve bounded local lattice precision. The complete build is refused.</summary>
     FieldTooLarge,
 }
 

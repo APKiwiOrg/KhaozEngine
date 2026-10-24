@@ -52,8 +52,16 @@ internal sealed class MapPreparationReservation : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (product._disposed || product.Bytes == 0) return;
-        if (_retained || !product._retained || _ledger != product._ledger || _window != product._window)
-            throw new InvalidOperationException("An operation can only adopt its own unpublished products.");
+        if (_retained || !product._retained)
+            throw new InvalidOperationException("Only retained inventory can transfer into workspace.");
+        if (_ledger != product._ledger)
+        {
+            // A captured stage can enter another attempt. Refusal leaves its original owner intact.
+            Reserve(product.Bytes);
+            product.Dispose();
+            return;
+        }
+        if (_window != product._window) _ledger.Reattribute(product._window, _window, product.Bytes);
         _ledger.ReturnToWorkspace(product.Bytes);
         Bytes += product.Bytes; product.Bytes = 0;
     }

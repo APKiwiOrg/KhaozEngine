@@ -241,6 +241,9 @@ further narrowed by queue and plan views. Live workspace, retained inventory and
 share the allowance. Sequential temporary work reuses credit. Growth admits old and new arrays together.
 Each plan view includes reused context and selected decoded pieces, while shared input counts once in the
 attempt's ownership ledger. Decoder reservations mirror actual owned and temporary demand before allocation.
+Captured cell inventory entering another attempt is admitted there before its source receipt releases.
+Within one ledger, a handoff adds only the newly owning child-view demand. Common ancestors retain one
+charge for the same inventory.
 An operation observes new reservations through its own view of a shared decoder budget. Earlier payloads
 remain covered by their identity receipts and selected-input references.
 Original tighter decoder limits and their diagnostic identity remain binding. Disposal cancels pending work

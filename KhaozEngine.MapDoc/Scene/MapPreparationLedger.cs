@@ -76,6 +76,22 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
     { WorkspaceBytes -= bytes; RetainedBytes += bytes; }
     internal void ReturnToWorkspace(long bytes)
     { RetainedBytes -= bytes; WorkspaceBytes += bytes; }
+    internal void Reattribute(Window? source, Window? destination, long bytes)
+    {
+        Window? binding = null;
+        for (var view = destination; view is not null; view = view.Parent)
+        {
+            bool covered = false;
+            for (var previous = source; previous is not null; previous = previous.Parent)
+                if (previous == view) { covered = true; break; }
+            if (!covered && (binding is null || view.Remaining < binding.Remaining)) binding = view;
+        }
+        if (binding is not null && bytes > binding.Remaining)
+            throw new MapSceneCapacityException(binding.Capacity(bytes));
+        // Common ancestors already include this inventory. Only its attribution changes, not root demand.
+        Adjust(source, -bytes);
+        Adjust(destination, bytes);
+    }
     static void Adjust(Window? view, long bytes)
     { for (; view is not null; view = view.Parent) view.Live = checked(view.Live + bytes); }
 

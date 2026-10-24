@@ -111,10 +111,15 @@ per-cluster centre-distance coverage uses the complete cell area. Layer outer fa
 `HlodCrossfadeWidth`, including placement fades composed before LOD coverage. Each cell is independent.
 `NativeMapPlacements.PrepareCluster` validates the scene, frozen routes, cell domain, layer inventory, homogeneous roof roles and vertex precision before invoking
 the internal shared CPU builder. That lower builder has no building intent and makes no independent roof promise.
+Standalone cluster construction uses the same admitted merge envelope as batch construction. The caller
+disposes the returned `NativePropClusterCpuBuild` to release its retained receipt. Batch construction
+transfers that receipt into the batch without a second debit.
 Roof cohorts retain complete neutral membership geometry acquired and admitted before selected decode.
 Closure follows admitted prism domains and their parent support, including native stored records.
 Policy replacement admits the new scene before releasing its predecessor. The canonical evaluation keeps
 its final scene charged for the cohort lifetime. Merge and contribution workspace release at last use.
+Dependency attribution and construction peaks are admitted while earlier scene and cell receipts remain
+intact. Refusal releases borrowed attribution, and successful output completion consumes those receipts.
 CPU meshes, detached outline and colour copies, evaluation dependencies and frame lookup capacities
 transfer into the batch's unique retained receipt.
 Incomplete full-room coverage refuses preparation. Individual resources remain resident for mixed visibility fallback. Individuals remain active until `AcceptCluster` receives the exact

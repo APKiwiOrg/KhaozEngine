@@ -130,22 +130,13 @@ public static class NativeMapPlacements
                         sources.Add(id, Flatten(source.BorrowParts));
                     }
                     long mergeBytes = members.Sum(i => Bytes(sources[i.AssetId], default));
-                    NativePropClusterCpuBuild build;
-                    long clusterBytes;
-                    using (var mergePreparation = admission.BeginPreparation())
-                    {
-                        // Admit the transformed merge, request copies and final weld before construction.
-                        admission.ReserveBytes(checked(8 * mergeBytes));
-                        var shared = Shared(members, layer).WithHlod(sources, layer.HlodDistance, layer.HlodWeldCell, layer.HlodCrossfadeWidth);
-                        var request = new NativePropClusterRequest(cell.Key, 0, domain.Area, shared, members, domain.Anchor);
-                        sourcePreparation.Dispose();
-                        build = PrepareCluster(cells.Get(cell.Key), request);
-                        var inventoryMeasure = new MapNativeInventory();
-                        clusterBytes = checked(MapNativeInventory.Mesh(build.BorrowMesh) + inventoryMeasure.Layer(build.Request.BorrowLayer, false) +
-                            16L * build.Request.Instances.Count + 8L * build.BorrowContributions.Count +
-                            build.BorrowContributions.Sum(m => MapNativeInventory.Mesh(m)));
-                        mergePreparation.Complete(clusterBytes);
-                    }
+                    var (build, clusterBytes) = MapPlacementClusterPreparation.Build(mergeBytes, () =>
+                        {
+                            var shared = Shared(members, layer).WithHlod(sources, layer.HlodDistance, layer.HlodWeldCell, layer.HlodCrossfadeWidth);
+                            var request = new NativePropClusterRequest(cell.Key, 0, domain.Area, shared, members, domain.Anchor);
+                            sourcePreparation.Dispose();
+                            return request;
+                        }, request => PrepareCluster(cells.Get(cell.Key), request));
                     clusters.Add(build);
                     var anchor = new MapSubmissionAnchor(domain.Anchor.X, domain.Anchor.Y, domain.Anchor.Z);
                     string inventory = ClusterInventoryDigest(members, assets.Closure.Hash, layer.HlodWeldCell);
@@ -233,14 +224,29 @@ public static class NativeMapPlacements
         using var activation = admission.Enter();
         using var preparation = admission.BeginPreparation();
         var cell = MapPlacementCellInventory.Acquire(scene, routing, request.Key);
-        return PrepareCluster(cell.Scene, cell.Routing, request, cell, build);
+        ValidateCluster(cell.Scene, cell.Routing, request, cell);
+        long mergeBytes = request.Instances.Sum(i => MapNativeInventory.Mesh(request.BorrowLayer.HlodSourceMeshes![i.AssetId]));
+        try
+        {
+            // Canonical validation products end here. The returned build owns its independent receipt.
+            return MapPlacementClusterPreparation.Build(mergeBytes, () => request, build, publishToParent: false).Build;
+        }
+        catch (MapSceneCapacityException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
     }
 
     static NativePropClusterCpuBuild PrepareCluster(MapScopedScene scene, MapPlacementRouting routing,
         NativePropClusterRequest request, MapPlacementCellInventory.Cell cell,
         Func<NativePropClusterRequest, NativePropClusterCpuBuild> build)
     {
-        ArgumentNullException.ThrowIfNull(request); ArgumentNullException.ThrowIfNull(build);
+        ArgumentNullException.ThrowIfNull(build);
+        ValidateCluster(scene, routing, request, cell);
+        return build(request);
+    }
+
+    static void ValidateCluster(MapScopedScene scene, MapPlacementRouting routing,
+        NativePropClusterRequest request, MapPlacementCellInventory.Cell cell)
+    {
+        ArgumentNullException.ThrowIfNull(request);
         routing.Validate(scene);
         var roofs = scene.CapturedBuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var placements = scene.Placements.ToDictionary(p => p.PlacementId, StringComparer.Ordinal);
@@ -263,7 +269,6 @@ public static class NativeMapPlacements
             throw new MapDocumentException("Native cluster request disagrees with its frozen layer inventory.");
         MapPlacementCellInventory.RequireMembers(cell, request);
         CertifyCluster(request);
-        return build(request);
     }
 
     static void CertifyCluster(NativePropClusterRequest request)

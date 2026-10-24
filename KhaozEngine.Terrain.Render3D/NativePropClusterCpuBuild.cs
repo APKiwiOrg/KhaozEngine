@@ -32,8 +32,10 @@ public sealed class NativePropClusterRequest
 }
 
 /// <summary>Detached immutable CPU geometry. Publication owns its accepted GPU handle separately.</summary>
-public sealed class NativePropClusterCpuBuild
+public sealed class NativePropClusterCpuBuild : IDisposable
 {
+    IDisposable? _ownership;
+    internal void Own(IDisposable ownership) => _ownership = ownership;
     readonly GltfMesh _mesh;
     readonly GltfMesh[]? _contributions;
     public NativePropClusterRequest Request { get; }
@@ -48,4 +50,6 @@ public sealed class NativePropClusterCpuBuild
         Request = request; _mesh = mesh; _contributions = contributions;
         RepresentedIds = Array.AsReadOnly(request.Instances.Select(i => i.Id).ToArray());
     }
+    /// <summary>Releases this CPU product's admitted inventory. The caller owns standalone build disposal.</summary>
+    public void Dispose() => System.Threading.Interlocked.Exchange(ref _ownership, null)?.Dispose();
 }

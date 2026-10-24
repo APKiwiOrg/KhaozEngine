@@ -41,6 +41,7 @@ public sealed class NativePropClusterCpuBuild
     internal GltfMesh BorrowMesh => _mesh;
     internal GltfMesh BorrowContribution(int index) => _contributions?[index]
         ?? throw new InvalidOperationException("Native build did not admit selected contributions.");
+    internal IReadOnlyList<GltfMesh> BorrowContributions => _contributions ?? Array.Empty<GltfMesh>();
     public IReadOnlyList<string> RepresentedIds { get; }
     internal NativePropClusterCpuBuild(NativePropClusterRequest request, GltfMesh mesh, GltfMesh[]? contributions = null)
     {

@@ -16,8 +16,13 @@ public sealed partial class PropClusterRenderer
     internal static NativePropClusterCpuBuild BuildNativeCpu(NativePropClusterRequest request) => BuildNativeCpu(request, false);
 
     internal static NativePropClusterCpuBuild BuildNativeCpu(NativePropClusterRequest request, bool retainContributions)
+        => BuildNativeCpu(request, retainContributions, PropHlod.SelectMergedContribution);
+
+    internal static NativePropClusterCpuBuild BuildNativeCpu(NativePropClusterRequest request, bool retainContributions,
+        Func<GltfMesh, int, int, float, GltfMesh> selectContribution)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(selectContribution);
         var sources = request.BorrowLayer.HlodSourceMeshes ?? throw new ArgumentException("Native cluster requires its source inventory.", nameof(request));
         int vertexCount = 0, indexCount = 0;
         foreach (var instance in request.Instances)
@@ -60,7 +65,7 @@ public sealed partial class PropClusterRenderer
             for (int i = 0; i < contributions.Length; i++)
             {
                 int count = sources[request.Instances[i].AssetId].Indices32.Length;
-                contributions[i] = PropHlod.SelectMergedContribution(mesh, firstIndex, count, request.BorrowLayer.HlodWeldCell);
+                contributions[i] = selectContribution(mesh, firstIndex, count, request.BorrowLayer.HlodWeldCell);
                 firstIndex += count;
             }
         }

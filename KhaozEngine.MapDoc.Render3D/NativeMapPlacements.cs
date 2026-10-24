@@ -132,9 +132,9 @@ public static class NativeMapPlacements
                         sources.Add(id, Flatten(source.BorrowParts));
                     }
                     long mergeBytes = members.Sum(i => Bytes(sources[i.AssetId], default));
-                    // Each cached contribution runs the shared full-cohort range weld. Admit its scratch and
-                    // retained geometry before the lower builder allocates, including replacement overlap.
-                    admission.ReserveBytes(checked(8 * mergeBytes * (1L + (cell.Key.Cohort == 1 ? members.Length : 0))));
+                    // The transformed merge and final weld coexist. Selected contribution workspace has
+                    // a separate lifetime around each lower range weld, with retained output receipts.
+                    admission.ReserveBytes(checked(8 * mergeBytes));
                     var shared = Shared(members, layer).WithHlod(sources, layer.HlodDistance, layer.HlodWeldCell, layer.HlodCrossfadeWidth);
                     var request = new NativePropClusterRequest(cell.Key, 0, domain.Area, shared, members, domain.Anchor);
                     var build = PrepareCluster(cells.Get(cell.Key), request);
@@ -158,7 +158,9 @@ public static class NativeMapPlacements
                         }
                     var mesh = build.BorrowMesh;
                     var inventoryMeasure = new MapNativeInventory();
-                    long clusterBytes = checked(MapNativeInventory.Mesh(mesh) + inventoryMeasure.Layer(build.Request.BorrowLayer, false) + 16L * build.Request.Instances.Count);
+                    long clusterBytes = checked(MapNativeInventory.Mesh(mesh) + inventoryMeasure.Layer(build.Request.BorrowLayer, false) +
+                        16L * build.Request.Instances.Count + 8L * build.BorrowContributions.Count +
+                        build.BorrowContributions.Sum(m => MapNativeInventory.Mesh(m)));
                     if (mesh.TriangleCount == 0) { cellPreparation.Complete(clusterBytes); continue; }
                     var bounds = members.Select(i => boundsById[i.Id]).Aggregate(Union);
                     var key = new MapRenderKey(cell.Key.Cohort == 1 ? MapRenderKind.Roof : MapRenderKind.Placement, MapPlacementCells.Owner(cell.Key), "hlod", 0);
@@ -206,7 +208,7 @@ public static class NativeMapPlacements
 
     internal static NativePropClusterCpuBuild PrepareCluster(MapPlacementCellInventory.Cell cell, NativePropClusterRequest request) =>
         PrepareCluster(cell.Scene, cell.Routing, request, cell,
-            request.Key.Cohort == 1 ? static input => PropClusterRenderer.BuildNativeCpu(input, true) : PropClusterRenderer.BuildNativeCpu);
+            request.Key.Cohort == 1 ? MapRoofContributionPreparation.Build : PropClusterRenderer.BuildNativeCpu);
 
     internal static NativePropClusterCpuBuild PrepareCluster(MapScopedScene scene, MapPlacementRouting routing,
         NativePropClusterRequest request, Func<NativePropClusterRequest, NativePropClusterCpuBuild> build)

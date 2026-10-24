@@ -12,4 +12,5 @@ internal readonly record struct ConvexLeafEvidence(bool IsComplete, bool HasAtta
     bool HasNormalConeCertificate, float LowerDistance, float UpperDistance, Vector3 QueryWitness,
     Vector3 TargetWitness, Vector3 Normal, ConvexShellFeature QueryFeature, ConvexTargetFeature TargetFeature,
     int LocalFeatureId, GeometryVector QueryWitnessBounds, GeometryVector TargetWitnessBounds, GeometryVector TowardTargetBounds,
-    ConvexSweepStatus SweepStatus = ConvexSweepStatus.Unresolved, float CertifiedErrorMetres = 0);
+    ConvexSweepStatus SweepStatus = ConvexSweepStatus.Unresolved, float CertifiedErrorMetres = 0,
+    bool IsOverlapping = false, Vector3 Translation = default);

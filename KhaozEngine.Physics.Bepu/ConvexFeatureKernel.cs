@@ -12,8 +12,7 @@ internal static class ConvexFeatureKernel
         ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence)
     {
         evidence = default;
-        if (request.Operation is not (ConvexQueryOperation.Distance or ConvexQueryOperation.Sweep) ||
-            (request.Operation == ConvexQueryOperation.Distance && request.Displacement != Vector3.Zero) || !ConvexQueryPolicy.Contains(request) ||
+        if ((request.Operation != ConvexQueryOperation.Sweep && request.Displacement != Vector3.Zero) || !ConvexQueryPolicy.Contains(request) ||
             scratch is null || leaf.Geometry is not { } geometry || !leaf.Map.IsResolved ||
             geometry.Curved.HasValue || geometry.Children is not null || geometry.Mesh is not null || geometry.IsTriangle ||
             !geometry.Matches(geometry.Owner, geometry.Root) ||
@@ -34,6 +33,8 @@ internal static class ConvexFeatureKernel
             }
             return request.Operation == ConvexQueryOperation.Sweep
                 ? ConvexPlanarSweep.TryEvaluate(request, represented, ref work, scratch, out evidence)
+                : request.Operation is ConvexQueryOperation.Contacts or ConvexQueryOperation.Penetration
+                ? ConvexPlanarContacts.TryEvaluate(request, represented, ref work, scratch, out evidence)
                 : TryDistance(request, represented, ref work, scratch, out evidence);
         }
         catch (ConvexExactRefusalException)

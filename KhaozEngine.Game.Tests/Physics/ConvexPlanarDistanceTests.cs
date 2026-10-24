@@ -177,24 +177,19 @@ public sealed class ConvexPlanarDistanceTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void UnfinishedOperationsAndExhaustedDistanceRefuseAtomically()
+    public void ExhaustedPlanarOperationsRefuseAtomically()
     {
         using var fixture = new ConvexPlanarFixture(new(0.125f), Pose.At(new(1, 0.625f, 0)));
-        foreach (var operation in new[] { ConvexQueryOperation.Contacts, ConvexQueryOperation.Penetration })
+        foreach (var operation in new[] { ConvexQueryOperation.Distance, ConvexQueryOperation.Contacts, ConvexQueryOperation.Penetration })
         {
-            var request = new ConvexQueryRequest(Dyadic, Pose.Identity, Vector3.Zero, operation);
-            var work = new ConvexQueryWork();
-            Assert.False(ConvexFeatureKernel.TryEvaluate(request, fixture.Leaf, ref work, new(), out var evidence));
-            Assert.Equal(default, evidence);
-            Assert.False(evidence.IsComplete);
-        }
-        foreach (var workLimit in new[] { new ConvexQueryWork(maximumCells: 0), new ConvexQueryWork(maximumFeatures: 0), new ConvexQueryWork(maximumDescendants: 0) })
-        {
-            var work = workLimit;
-            var request = new ConvexQueryRequest(Dyadic, Pose.Identity, Vector3.Zero, ConvexQueryOperation.Distance);
-            Assert.False(ConvexFeatureKernel.TryEvaluate(request, fixture.Leaf, ref work, new(), out var evidence));
-            Assert.Equal(default, evidence);
-            Assert.True(work.Exhausted);
+            foreach (var workLimit in new[] { new ConvexQueryWork(maximumCells: 0), new ConvexQueryWork(maximumFeatures: 0), new ConvexQueryWork(maximumDescendants: 0) })
+            {
+                var work = workLimit;
+                var request = new ConvexQueryRequest(Dyadic, Pose.Identity, Vector3.Zero, operation);
+                Assert.False(ConvexFeatureKernel.TryEvaluate(request, fixture.Leaf, ref work, new(), out var evidence));
+                Assert.Equal(default, evidence);
+                Assert.True(work.Exhausted);
+            }
         }
     }
 

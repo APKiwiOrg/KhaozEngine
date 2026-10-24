@@ -140,12 +140,6 @@ public sealed class ConvexInitialStateTests(ITestOutputHelper output)
         Assert.Equal(default, e.Direction);
         Assert.False(ConvexPlanarContacts.TryTouchingConstraint(e, P.From(Vector3.UnitX), ref work, scratch, out var refused));
         Assert.Equal(default, refused);
-        foreach (var operation in new[] { ConvexQueryOperation.Contacts, ConvexQueryOperation.Penetration })
-        {
-            var fresh = new ConvexQueryWork();
-            Assert.False(ConvexFeatureKernel.TryEvaluate(Request() with { Operation = operation }, fixture.Leaf, ref fresh, new(), out var local));
-            Assert.Equal(default, local);
-        }
     }
 
     [Fact]

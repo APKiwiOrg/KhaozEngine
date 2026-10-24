@@ -7,6 +7,119 @@ namespace KhaozEngine.Tests.Physics;
 
 internal static partial class ShortBodyShellOracle
 {
+    // The caller supplies the evaluated shape and pose. No production witness, cached pose,
+    // feature enumeration or CSO hull participates in this independent enclosure.
+    internal static bool MemberTranslationEnclosedBy(in ConvexQueryShape shape, Pose pose,
+        ConvexOracleTarget target, in ConvexPenetrationResult result)
+    {
+        if (!result.Complete || !result.Overlapping || pose.Orientation != Quaternion.Identity ||
+            target.Vertices.Length < 4 || target.Faces.Length < 4) return false;
+        var points = new R[target.Vertices.Length][];
+        for (int i = 0; i < points.Length; i++)
+        {
+            var v = target.Vertices[i];
+            points[i] = [new R(v.X.Numerator, v.X.Denominator) - R.From(pose.Position.X),
+                new R(v.Y.Numerator, v.Y.Denominator) - R.From(pose.Position.Y),
+                new R(v.Z.Numerator, v.Z.Denominator) - R.From(pose.Position.Z)];
+        }
+        R[] movement = [R.From(result.Translation.X), R.From(result.Translation.Y), R.From(result.Translation.Z)];
+        R[] normal = [-movement[0], -movement[1], -movement[2]];
+        R lengthSquared = DotR(movement, movement);
+        if (lengthSquared.N.Sign <= 0 || lengthSquared.CompareTo(R.From(result.UpperDepth) * R.From(result.UpperDepth)) > 0) return false;
+        I support = MemberSupport(shape, points, normal);
+        if ((support.Upper + DotR(normal, movement)).N.Sign > 0) return false;
+        // For an exterior base placement, min unit support is minus its distance. Growing
+        // by the admitted ball adds exactly Margin to every unit support value.
+        var distance = Entry(shape.WithMargin(0), pose, target, Vector3.Zero);
+        if (distance.IsComplete && distance.Lower > 0)
+            return (R.From(shape.Margin) - R.From(distance.Upper)).CompareTo(R.From(result.LowerDepth)) >= 0 &&
+                (R.From(shape.Margin) - R.From(distance.Lower)).CompareTo(R.From(result.UpperDepth)) <= 0;
+        return MemberInnerDepthAtLeast(shape, points, target.Faces, R.From(result.LowerDepth));
+    }
+
+    static R DotR(R[] a, R[] b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    static R[] SubR(R[] a, R[] b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    static R[] CrossR(R[] a, R[] b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+
+    static I MemberSupport(ConvexQueryShape shape, R[][] points, R[] n)
+    {
+        R least = DotR(points[0], n);
+        foreach (var p in points) least = R.Min(least, DotR(p, n));
+        I radial = Root(n[0] * n[0] + n[2] * n[2]) * R.From(shape.Radius);
+        I ring = I.Point(R.From(shape.RingY) * n[1]) + radial;
+        I head = I.Point(R.From(shape.UpperY) * n[1]) + radial;
+        R apex = R.From(shape.LowerY) * n[1];
+        return new I(R.Max(apex, R.Max(ring.Lower, head.Lower)) - least,
+            R.Max(apex, R.Max(ring.Upper, head.Upper)) - least) + Root(DotR(n, n)) * R.From(shape.Margin);
+    }
+
+    // An independently authored rational polygon is an inner shell, not an oracle proxy
+    // miss. The normal fan of a polytope sum comprises either summand's faces and all
+    // edge cross products. Checking that complete fan proves a ball inside the inner sum.
+    static bool MemberInnerDepthAtLeast(ConvexQueryShape shape, R[][] target, int[][] faces, R depth)
+    {
+        var ring = new List<R[]>();
+        R radius = R.From(shape.Radius);
+        for (int quadrant = 0; quadrant < 4; quadrant++)
+            for (int i = 0; i < 16; i++)
+            {
+                R t = new(i, 16), denominator = R.One + t * t;
+                R x = (R.One - t * t) / denominator, z = new R(2, 1) * t / denominator;
+                for (int turn = 0; turn < quadrant; turn++) (x, z) = (-z, x);
+                ring.Add([x * radius, R.From(shape.RingY), z * radius]);
+            }
+        R[] apex = [R.Zero, R.From(shape.LowerY), R.Zero];
+        var shell = new List<R[]> { apex };
+        var edges = new List<R[]>();
+        var normals = new List<R[]> { new[] { R.Zero, R.One, R.Zero } };
+        for (int i = 0; i < ring.Count; i++)
+        {
+            R[] a = ring[i], b = ring[(i + 1) % ring.Count];
+            R[] edge = SubR(b, a), cone = SubR(a, apex);
+            shell.Add(a); shell.Add([a[0], R.From(shape.UpperY), a[2]]);
+            edges.Add(edge); edges.Add(cone);
+            normals.Add([edge[2], R.Zero, -edge[0]]);
+            normals.Add(CrossR(edge, SubR(apex, a)));
+        }
+        edges.Add([R.Zero, R.One, R.Zero]);
+        // Topology is copied directly from the installed snapshot, independently of the
+        // production source. Duplicate candidate normals are harmless exact predicates.
+        var targetEdges = new HashSet<(int, int)>();
+        // A normal of either orientation is checked, so hull winding is immaterial here.
+        foreach (var face in faces)
+        {
+            normals.Add(CrossR(SubR(target[face[1]], target[face[0]]), SubR(target[face[^1]], target[face[0]])));
+            for (int i = 0; i < face.Length; i++)
+            {
+                int a = face[i], b = face[(i + 1) % face.Length];
+                targetEdges.Add(a < b ? (a, b) : (b, a));
+            }
+        }
+        foreach (var (a, b) in targetEdges)
+            foreach (var edge in edges) normals.Add(CrossR(edge, SubR(target[b], target[a])));
+        var seen = new HashSet<(R, R, R)>();
+        R required = R.Max(R.Zero, depth - R.From(shape.Margin));
+        foreach (var n in normals)
+        {
+            R first = n[0].N.Sign != 0 ? n[0] : n[1].N.Sign != 0 ? n[1] : n[2];
+            if (first.N.IsZero) continue;
+            if (first.N.Sign < 0) first = -first;
+            R[] canonical = [n[0] / first, n[1] / first, n[2] / first];
+            if (!seen.Add((canonical[0], canonical[1], canonical[2]))) continue;
+            if (!Check(canonical) || !Check([-canonical[0], -canonical[1], -canonical[2]])) return false;
+        }
+        return true;
+
+        bool Check(R[] n)
+        {
+            R highest = DotR(shell[0], n), least = DotR(target[0], n);
+            foreach (var q in shell) highest = R.Max(highest, DotR(q, n));
+            foreach (var t in target) least = R.Min(least, DotR(t, n));
+            R h = highest - least;
+            return h.N.Sign >= 0 && (h * h - required * required * DotR(n, n)).N.Sign >= 0;
+        }
+    }
+
     // Meridian reduction is independent of the production feature/KKT construction. A full
     // Cartesian box has independent height and radial intervals. Distance decreases with radial
     // approach to the axis. Below the shoulder it decreases with height toward that shoulder.

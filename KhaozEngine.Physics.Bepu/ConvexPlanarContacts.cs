@@ -8,6 +8,17 @@ namespace KhaozEngine.Physics.Bepu;
 /// proves overlap. Every accepted normal supports both complete original solids.</summary>
 internal static class ConvexPlanarContacts
 {
+    internal static bool TryEvaluate(in ConvexQueryRequest request, in InstalledSweepLeaf leaf,
+        ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence)
+    {
+        evidence = default;
+        if (!TryClassify(request, leaf, ConvexCertificateFraction.From(0), ref work, scratch, out var initial)) return false;
+        if (initial.State != ConvexInitialState.Overlapping)
+        { evidence = initial.Contact with { CertifiedErrorMetres = 0.001f }; return true; }
+        if (!ConvexPlanarPenetration.TryEvaluate(initial, ref work, scratch, out var penetration)) return false;
+        evidence = penetration.Contact; return true;
+    }
+
     internal static bool TryClassify(in ConvexQueryRequest request, in InstalledSweepLeaf leaf,
         ConvexCertificateFraction fraction, ref ConvexQueryWork work, ConvexQueryScratch scratch,
         out ConvexInitialEvidence evidence)

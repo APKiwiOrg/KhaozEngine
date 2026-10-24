@@ -6,18 +6,21 @@ internal sealed class ConvexPlanarDispatch(InstalledSweepLeaf leaf, ConvexContac
 {
     internal readonly struct Evidence
     {
+        readonly ConvexQueryScratch? _scratch;
+        readonly int _generation;
+        internal bool IsAlive => _scratch is not null && _generation == _scratch.CertificateGeneration;
         internal ConvexPlanarDispatch? Owner { get; }
         internal ConvexLeafEvidence Local { get; }
         internal ConvexQueryOperation Operation { get; }
-        Evidence(ConvexPlanarDispatch owner, ConvexLeafEvidence local, ConvexQueryOperation operation)
-        { Owner = owner; Local = local; Operation = operation; }
+        Evidence(ConvexPlanarDispatch owner, ConvexLeafEvidence local, ConvexQueryOperation operation, ConvexQueryScratch scratch)
+        { Owner = owner; Local = local; Operation = operation; _scratch = scratch; _generation = scratch.CertificateGeneration; }
 
         internal static bool TryEvaluate(ConvexPlanarDispatch owner, in ConvexQueryRequest request,
             ref ConvexQueryWork work, ConvexQueryScratch scratch, out Evidence evidence)
         {
             evidence = default;
             if (!ConvexFeatureKernel.TryEvaluate(request, owner.Leaf, ref work, scratch, out var local)) return false;
-            evidence = new(owner, local, request.Operation);
+            evidence = new(owner, local, request.Operation, scratch);
             return true;
         }
     }
@@ -63,6 +66,26 @@ internal sealed class ConvexPlanarDispatch(InstalledSweepLeaf leaf, ConvexContac
         var local = evidence.Local;
         result = new(true, true, local.LowerDistance, local.UpperDistance, local.QueryWitness,
             local.TargetWitness, local.Normal, identity);
+        return true;
+    }
+
+    internal bool TryPublishContact(in Evidence evidence, out ConvexContact contact)
+    {
+        contact = default;
+        if (!ReferenceEquals(evidence.Owner, this) || !evidence.IsAlive ||
+            evidence.Operation is not (ConvexQueryOperation.Contacts or ConvexQueryOperation.Penetration) ||
+            !evidence.Local.IsComplete || evidence.Local.Normal == default) return false;
+        var local = evidence.Local;
+        contact = new(local.Normal, local.LowerDistance, local.UpperDistance, identity); return true;
+    }
+
+    internal bool TryPublishPenetration(in Evidence evidence, out ConvexPenetrationResult result)
+    {
+        result = default;
+        if (!TryPublishContact(evidence, out _)) return false;
+        var local = evidence.Local;
+        result = local.IsOverlapping ? new(true, true, local.Translation, -local.UpperDistance, -local.LowerDistance, identity) :
+            new(true, false, default, 0, 0, default);
         return true;
     }
 

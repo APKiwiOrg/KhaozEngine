@@ -1037,3 +1037,71 @@ feature limits derive from same-run successful probes, not absolute observed cou
 refusals return default evidence with Used=0. These observations add no tolerance or budget.
 
 Whole-tree dash, prose and file-size guards also exited 0. No cap or baseline changed.
+
+## Task 2c.2 partial member-depth construction
+
+This is a tested partial boundary, not acceptance of Task 2c.2. General planar edge exit
+candidates, including oblique circular-edge stationary witnesses, remain absent. No new Sweep
+is published. Task 2b.2, Task 2b.3 and whole-view traversal remain blocked on the unit's completion.
+
+ConvexPlanarPenetration consumes the accepted original-source initial relation on the same
+admitted account. Original face and vertex pairs propose attained stationary exits. Each pair
+passes complete continuous shell membership/support and every original target vertex support
+inequality. The pair difference is exactly collinear with its nonzero normal. The local exit
+is an upper proposal only, including an attractive nonminimum exit.
+
+ConvexPenetrationPolytope constructs a bounded inner CSO hull. Each rational vertex is an exact
+sum of an authenticated target vertex, an independently checked inner shell point and an
+independently checked inner margin-ball point. Operational support only proposes those points.
+Every incremental hull facet has exact orientation against a strict interior tetrahedron point.
+Visible faces and their closed horizon are replaced within the original general-sweep caps.
+The four-slot GJK simplex is unchanged. Positive offsets for all facets prove the origin is
+strictly inside. The least exact squared facet distance gives a centred inball and therefore a
+global depth lower bound. No EPA convergence criterion or failed expansion authorizes output.
+
+Storage uses at most 508 vertices, 256 faces, 1,524 face indices and 128 horizon entries.
+Retained rational coordinates and facet coefficients also obey the unused existing 2,048-scalar
+coefficient capacity. Every support, facet, certificate and refinement attempt stays on the
+existing sticky 256-cell and 4,096-feature account. Capacity or insufficient lower proof refuses
+with default evidence. There is no growing EPA list, new tolerance or widened ceiling.
+
+The certificate retains the strict initial relation, original support pair, local provenance,
+normal, global lower enclosure, encoded translation and signed constraint. Mathematical depth,
+translation length, both witnesses, unit-normal encoding and operational position-addition error
+share the existing 0.001 m budget. Both the encoded translation and the rounded destination
+pass exact original-member support checks. A further representable destination is another
+charged proposal, never a tolerance added to geometry.
+
+Contacts and Penetration use the existing TryEvaluate operation door for the certified subset.
+Negative separation is [-upperDepth,-lowerDepth], touching remains zero and separation remains
+positive. The dispatch ticket binds its raw owner, operation and scratch generation. Coincident
+members remain separate and foreign or expired tickets refuse. One member clearing another
+member is not asserted. Deepest-member selection, raw-ID ties and recovery requery remain Task 3/7.
+
+The independent MemberTranslationEnclosedBy oracle receives shape and evaluated pose explicitly.
+It copies installed snapshots, validates the translation by continuous support and independently
+proves a lower bound using the complete normal fan of an inscribed rational shell polygon sum.
+For a separated base under positive margin it instead consumes independent distance bounds.
+The mandatory left-translation control is accepted at feet (-1/8,0,0) and rejected unchanged at
+feet (-1/16,0,0). An attractive nonminimum stationary exit is rejected too.
+
+The current proposal coverage is deliberately incomplete. General finite edges and retained
+algebraic exit pairs require continuation before Task 2c.2 can be accepted. Algebraic path
+fractions also refuse. Face and vertex certificates never stand in for those missing proofs.
+
+
+### Task 2c.2 partial verification
+
+The named Release class first failed on the missing certificate type. Its first execution
+passed 3 and failed 4 on oracle/fixture construction. Corrected controls then passed all 7.
+The added rounded-destination control failed with 8 passing, then the implementation correction
+passed all 9. The final Common selections ran once each, synchronously through build-slot with
+--heavy. Game passed 457, footprint passed 741 and navigation passed 7, all with exit 0 and
+no skipped tests. The unchanged navigation test supplies null execution, selecting degree 1,
+and checks all seven original normalized hashes. The full solution and format remain Task 12.
+
+Same-run observations include 100 cells and 349 features for the isolated face exit, 108/501
+for the vertex exit, 88/328 for margin-only overlap and 87/326 for the 100 m rounded destination.
+The contained small box used 160/2225 at Margin 0 and 153/2230 at Margin 0.001. Its largest hull
+had 30 vertices and 56 faces, accounting for 370 rational scalar slots. These are observations,
+not CPU/SIMD/scheduling-dependent counter pins. Lowered limits derive from same-run probes.

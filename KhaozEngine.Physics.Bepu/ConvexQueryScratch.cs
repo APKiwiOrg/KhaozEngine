@@ -6,17 +6,20 @@ namespace KhaozEngine.Physics.Bepu;
 /// <summary>Query-private exact expressions, interval pending cells and operational simplex proposals.</summary>
 internal sealed class ConvexQueryScratch
 {
-    internal ConvexQueryScratch(int maximumCoefficients = SweepExactWorkspace.MaximumNumbers)
+    internal ConvexQueryScratch(int maximumCoefficients = SweepExactWorkspace.MaximumNumbers,
+        int penetrationVertices = CapsuleGeneralSweepPolicy.MaximumVertices, int penetrationFaces = CapsuleGeneralSweepPolicy.MaximumFaces)
     {
         if (maximumCoefficients < 0 || maximumCoefficients > SweepExactWorkspace.MaximumNumbers)
             throw new ArgumentOutOfRangeException(nameof(maximumCoefficients));
         Polynomials = new(maximumCoefficients);
+        Penetration = new(penetrationVertices, penetrationFaces, Polynomials);
     }
 
     internal int CertificateGeneration { get; private set; }
     int _retainedCheckpoint = -1;
     internal void BeginCertificates()
     {
+        Penetration.Reset();
         if (_retainedCheckpoint >= 0) Polynomials.Restore(_retainedCheckpoint);
         _retainedCheckpoint = -1;
         CertificateGeneration++;
@@ -31,6 +34,7 @@ internal sealed class ConvexQueryScratch
     internal ConvexRootCell[] RootCells { get; } = new ConvexRootCell[ConvexQueryPolicy.MaximumDepth + 1];
     internal Vector3[] ProposalSimplex { get; } = new Vector3[4];
     internal ConvexCircularEdges CircularEdges { get; } = new();
+    internal ConvexPenetrationPolytope Penetration { get; }
     // Callers derive a fraction width from the actual path and the existing spatial encoding budget.
     internal double MaximumFractionWidth { get; set; } = 0.001f / 4d;
 }
@@ -43,6 +47,7 @@ internal sealed class ConvexPolynomialWorkspace(int capacity)
     readonly ConvexRational[] _coefficients = new ConvexRational[capacity];
     internal int Used { get; private set; }
     internal int HighWater { get; private set; }
+    internal int Available => _coefficients.Length - Used;
 
     internal ConvexPolynomial Create(int length)
     {

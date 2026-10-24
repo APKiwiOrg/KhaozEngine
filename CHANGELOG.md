@@ -5,18 +5,23 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.12.2
+## 21.12.3
 
 2026-10-24
 
-- Preserve imported catalog IDs when ordinary publication also allocates new rows of the same type.
-  Reserve carried maxima before issuing IDs, regardless of edit order (Closes #1550).
 - Defer Metal drawable acquisition until the current frame first binds its swapchain, preserving cached
   framebuffer and capture behavior.
 - Add the default-off `RendererInitializesSwapchain` host option so a full-output renderer can avoid the
   redundant initial swapchain bind and clear.
 - Filter exact point-shadow hits before sorting and index submitted foliage point casters once per frame,
   preserving query order, signatures and draw runs.
+
+## 21.12.2
+
+2026-10-24
+
+- Preserve imported catalog IDs when ordinary publication also allocates new rows of the same type.
+  Reserve carried maxima before issuing IDs, regardless of edit order (Closes #1550).
 
 ## 21.12.1
 

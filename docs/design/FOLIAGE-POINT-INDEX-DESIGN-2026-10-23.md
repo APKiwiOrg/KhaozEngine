@@ -85,7 +85,8 @@ client frame intervals at the same quality and slow view. The 144 FPS target req
 
 The [implementation plan](../superpowers/plans/2026-10-23-foliage-point-index.md) assigns the code and
 tests. The parent owns final full verification, whole-branch review, main integration, release and released
-engine adoption. Current-main reconciliation is complete, and staged 21.12.2 is retained. Private diagnostic
+engine adoption. Current-main reconciliation is complete. Version 21.12.2 was subsequently released, so this batch is staged
+for 21.12.3. Private diagnostic
 archives never merge into `main`.
 
 ## Implementation evidence
@@ -124,7 +125,16 @@ Further investigation completed through the archived private native-pool probe. 
 mode-dependent instrumentation overhead. It is not an isolated causal pooling result and does not establish
 that the target was achieved. Its source, counters and UI fields stay out of production.
 
-The target assessment is complete with an unmet result in the direct pair and an unproven overall outcome.
-Current main has been reconciled at `c665943d3`, with staged 21.12.2 and its 2026-10-24 catalog entry retained.
-Final full-suite and backend verification, whole-branch review, main integration, release and released-engine
-game adoption remain pending with the parent.
+The target assessment remains an unmet direct pair and an unproven overall outcome. Reconciliation at
+`c665943d3` initially retained staged 21.12.2. The final source at `15eb297da` passed the Release build,
+38,582 CPU tests with 1,528 skips, 34 strict Metal cases and one additional recorder case. Independent
+whole-branch review approved it. The hosted full Metal, Direct3D 11 and Vulkan matrix passed all 29 jobs,
+including the three assembly-coverage checks and Vulkan synchronization validation with its log producer
+confirmed. The [verification record](../verification/mac-frame-performance-2026-10-24.json) preserves the
+exact tested source, commands, counts and evidence hashes.
+
+Tag `v21.12.2` now names the reconciled main commit `4bb5b0462`. This batch is therefore staged as 21.12.3,
+with the released catalog entry preserved. A fresh build of the staged metadata, main integration, package
+verification, an owner-started engine release and released-engine game adoption remain pending. The game
+finishing suite also has a separate solo-host readiness timeout under investigation in
+[Grimhollow #629](https://github.com/APKiwiOrg/Grimhollow/issues/629).

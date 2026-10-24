@@ -163,9 +163,14 @@
 - [x] Assess the 144 FPS target from measured frame intervals. The direct pair is below target, and the
   overall outcome remains unproven. Further investigation completed through the archived native-pool probe,
   which is not adopted. Neither the operation-count fixture nor that probe establishes target success.
-- [ ] Complete final full-suite and backend verification, whole-branch review, main integration, release and
-  the released-engine game handoff. Current-main reconciliation is complete at `c665943d3`, with staged
-  21.12.2 and its 2026-10-24 catalog entry retained. Never merge diagnostic archives.
+- [x] Complete source verification and independent whole-branch review at `15eb297da`. The Release build,
+  full CPU suite, focused Metal cases and hosted full backend matrix passed. The exact gates are in the
+  [verification record](../../verification/mac-frame-performance-2026-10-24.json).
+- [x] Recheck current main and tags. Version 21.12.2 was released at `4bb5b0462`, so this batch is staged as
+  21.12.3 with the released changelog entry preserved.
+- [ ] Build the staged metadata, integrate main, verify packages and complete the released-engine game
+  handoff. Never merge diagnostic archives. The separate game boot-timeout gate is
+  [Grimhollow #629](https://github.com/APKiwiOrg/Grimhollow/issues/629).
 
 ### Parent evidence status
 
@@ -180,8 +185,8 @@
   causal pooling result or evidence that the target was achieved. Its source, counters and UI fields must not
   enter production.
 - [Durable consumer evidence](https://github.com/APKiwiOrg/Grimhollow/blob/d279463f16b73200fc59cc7b908a2a7354c7fb6b/docs/verification/mac-frame-performance-2026-10-23.json)
-  records the private comparison and subsequent investigation. Final verification and integration gates remain
-  pending with the parent.
+  records the private comparison and subsequent investigation. Final source verification is now recorded
+  separately above. Integration, package verification, release and game adoption remain with the parent.
 
 ## Plan self-review
 

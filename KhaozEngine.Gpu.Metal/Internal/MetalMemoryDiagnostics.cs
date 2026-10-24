@@ -10,7 +10,7 @@ internal sealed record MetalNativeMemorySnapshot(GpuDiagnosticMetric AllocatedBy
 internal sealed class MetalMemoryDiagnostics : IGpuResourceMemoryDiagnostics
 {
     readonly object _gate = new();
-    readonly Dictionary<IntPtr, IDisposable> _stagingLeases = new();
+    readonly Dictionary<IntPtr, ulong> _stagingCapacities = new();
     ulong _buffers, _textures, _capacity, _peakBytes, _count, _peakCount;
 
     internal ulong PeakResourceCount { get { lock (_gate) return _peakCount; } }
@@ -40,17 +40,21 @@ internal sealed class MetalMemoryDiagnostics : IGpuResourceMemoryDiagnostics
         if (handle == IntPtr.Zero) throw new ArgumentException("A nil staging buffer cannot be owned.", nameof(handle));
         lock (_gate)
         {
-            if (_stagingLeases.ContainsKey(handle)) throw new InvalidOperationException("A Metal staging allocation was registered twice.");
-            var lease = Track(0, 0, bytes);
-            try { _stagingLeases.Add(handle, lease); }
-            catch { lease.Dispose(); throw; }
+            if (_stagingCapacities.ContainsKey(handle)) throw new InvalidOperationException("A Metal staging allocation was registered twice.");
+            ulong capacity = checked(_capacity + bytes), count = checked(_count + 1);
+            _stagingCapacities.Add(handle, bytes);
+            _capacity = capacity; _count = count;
+            _peakCount = Math.Max(_peakCount, count);
         }
     }
 
     internal void ReleaseStaging(IntPtr handle)
     {
         lock (_gate)
-            if (_stagingLeases.Remove(handle, out var lease)) lease.Dispose();
+            if (_stagingCapacities.Remove(handle, out ulong bytes))
+            {
+                _capacity -= bytes; _count--;
+            }
     }
 
     IDisposable Track(ulong buffers, ulong textures, ulong capacity)

@@ -23,6 +23,36 @@ internal sealed class ConvexPlanarDispatch(InstalledSweepLeaf leaf, ConvexContac
     }
 
     InstalledSweepLeaf Leaf { get; } = leaf;
+
+    internal readonly struct InitialEvidence
+    {
+        internal ConvexPlanarDispatch? Owner { get; }
+        internal ConvexInitialEvidence Local { get; }
+        internal ConvexQueryOperation Operation { get; }
+        InitialEvidence(ConvexPlanarDispatch owner, ConvexInitialEvidence local)
+        { Owner = owner; Local = local; Operation = local.Pair.Request.Operation; }
+
+        internal static bool TryEvaluate(ConvexPlanarDispatch owner, in ConvexQueryRequest request,
+            ConvexCertificateFraction fraction, ref ConvexQueryWork work, ConvexQueryScratch scratch, out InitialEvidence evidence)
+        {
+            evidence = default;
+            if (!ConvexPlanarContacts.TryClassify(request, owner.Leaf, fraction, ref work, scratch, out var local)) return false;
+            evidence = new(owner, local);
+            return true;
+        }
+    }
+
+    internal bool TryClassifyInitial(in ConvexQueryRequest request, ConvexCertificateFraction fraction,
+        ref ConvexQueryWork work, ConvexQueryScratch scratch, out InitialEvidence evidence) =>
+        InitialEvidence.TryEvaluate(this, request, fraction, ref work, scratch, out evidence);
+
+    internal bool TryPublishInitial(in InitialEvidence evidence, out ConvexInitialEvidence relation, out ConvexContactIdentity rawIdentity)
+    {
+        relation = default; rawIdentity = default;
+        if (!ReferenceEquals(evidence.Owner, this) || !evidence.Local.IsAlive || evidence.Operation != evidence.Local.Pair.Request.Operation) return false;
+        relation = evidence.Local; rawIdentity = identity; return true;
+    }
+
     internal bool TryEvaluate(in ConvexQueryRequest request, ref ConvexQueryWork work,
         ConvexQueryScratch scratch, out Evidence evidence) => Evidence.TryEvaluate(this, request, ref work, scratch, out evidence);
 

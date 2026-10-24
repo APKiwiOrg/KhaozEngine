@@ -5,6 +5,85 @@ namespace KhaozEngine.Tests.Physics;
 
 internal static partial class ShortBodyShellOracle
 {
+    // Copy only raw integer coefficients. All membership and support signs are recomputed
+    // in the oracle's independent quadratic field, before either vector is rounded to float.
+    internal static bool InitialConesContain(in ConvexQueryShape shape, Pose pose, ConvexOracleTarget target,
+        BigInteger[] point, BigInteger[] direction)
+    {
+        R d = R.Zero;
+        foreach (var terms in new[] { point, direction })
+            for (int i = 0; i < 18; i += 6)
+            {
+                if (terms[i + 2].IsZero) continue;
+                R field = new(terms[i + 4], terms[i + 5]);
+                if (!d.N.IsZero && d.CompareTo(field) != 0) return false;
+                d = field;
+            }
+        S C(R value) => new(value, R.Zero, d);
+        S Read(BigInteger[] terms, int index) => new(new(terms[index], terms[index + 1]), new(terms[index + 2], terms[index + 3]), d);
+        S[] world = [Read(point, 0), Read(point, 6), Read(point, 12)];
+        S x = world[0] - C(R.From(pose.Position.X)), y = world[1] - C(R.From(pose.Position.Y)), z = world[2] - C(R.From(pose.Position.Z));
+        S nx = Read(direction, 0), ny = Read(direction, 6), nz = Read(direction, 12);
+        R lower = R.From(shape.LowerY), ring = R.From(shape.RingY), upper = R.From(shape.UpperY), radius = R.From(shape.Radius);
+        S allowed = (y - C(ring)).Sign < 0 ? (y - C(lower)) * (radius / (ring - lower)) : C(radius);
+        if ((y - C(lower)).Sign < 0 || (C(upper) - y).Sign < 0 || (allowed * allowed - x * x - z * z).Sign < 0 ||
+            (nx * nx + ny * ny + nz * nz).Sign <= 0) return false;
+        S attained = x * nx + y * ny + z * nz;
+        if ((attained - ny * lower).Sign < 0) return false;
+        foreach (R height in new[] { ring, upper })
+        {
+            S gap = attained - ny * height;
+            if (gap.Sign < 0 || (gap * gap - (nx * nx + nz * nz) * (radius * radius)).Sign < 0) return false;
+        }
+        R[] Vertex(int i) => [new(target.Vertices[i].X.Numerator, target.Vertices[i].X.Denominator),
+            new(target.Vertices[i].Y.Numerator, target.Vertices[i].Y.Denominator), new(target.Vertices[i].Z.Numerator, target.Vertices[i].Z.Denominator)];
+        for (int i = 0; i < target.Vertices.Length; i++)
+        {
+            R[] v = Vertex(i);
+            if (((C(v[0]) - world[0]) * nx + (C(v[1]) - world[1]) * ny + (C(v[2]) - world[2]) * nz).Sign < 0) return false;
+        }
+        foreach (var face in target.Faces)
+        {
+            R[] a = Vertex(face[0]), b = Vertex(face[1]), c = Vertex(face[^1]);
+            R[] u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            if (((world[0] - C(a[0])) * (u[1] * v[2] - u[2] * v[1]) +
+                (world[1] - C(a[1])) * (u[2] * v[0] - u[0] * v[2]) +
+                (world[2] - C(a[2])) * (u[0] * v[1] - u[1] * v[0])).Sign > 0) return false;
+        }
+        return true;
+    }
+
+    internal static bool TargetSupports(ConvexOracleTarget target, Vector3 point, Vector3 towardTarget)
+    {
+        R[] p = [R.From(point.X), R.From(point.Y), R.From(point.Z)];
+        R[] n = [R.From(towardTarget.X), R.From(towardTarget.Y), R.From(towardTarget.Z)];
+        foreach (var v in target.Vertices)
+            if (((new R(v.X.Numerator, v.X.Denominator) - p[0]) * n[0] +
+                (new R(v.Y.Numerator, v.Y.Denominator) - p[1]) * n[1] +
+                (new R(v.Z.Numerator, v.Z.Denominator) - p[2]) * n[2]).N.Sign < 0) return false;
+        return towardTarget != Vector3.Zero;
+    }
+
+    internal static bool StrictCommonPoint(in ConvexQueryShape shape, Pose pose, ConvexOracleTarget target,
+        BigInteger xn, BigInteger xd, BigInteger yn, BigInteger yd, BigInteger zn, BigInteger zd)
+    {
+        R[] world = [new(xn, xd), new(yn, yd), new(zn, zd)];
+        R x = world[0] - R.From(pose.Position.X), y = world[1] - R.From(pose.Position.Y), z = world[2] - R.From(pose.Position.Z);
+        R lower = R.From(shape.LowerY), ring = R.From(shape.RingY), upper = R.From(shape.UpperY), radius = R.From(shape.Radius);
+        R allowed = y.CompareTo(ring) < 0 ? radius * (y - lower) / (ring - lower) : radius;
+        if (y.CompareTo(lower) <= 0 || y.CompareTo(upper) >= 0 || (allowed * allowed - x * x - z * z).N.Sign <= 0) return false;
+        R[] Vertex(int i) => [new(target.Vertices[i].X.Numerator, target.Vertices[i].X.Denominator),
+            new(target.Vertices[i].Y.Numerator, target.Vertices[i].Y.Denominator), new(target.Vertices[i].Z.Numerator, target.Vertices[i].Z.Denominator)];
+        foreach (var face in target.Faces)
+        {
+            R[] a = Vertex(face[0]), b = Vertex(face[1]), c = Vertex(face[^1]);
+            R[] u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            R[] n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+            if ((n[0] * (world[0] - a[0]) + n[1] * (world[1] - a[1]) + n[2] * (world[2] - a[2])).N.Sign >= 0) return false;
+        }
+        return target.Faces.Length >= 4;
+    }
+
     // For nonzero n a supporting point of K+mB has the unique offset m*n/|n|.
     // Remove that offset exactly, then prove membership and all three base support inequalities.
     // The test oracle's quadratic field is independent of the production predicates.

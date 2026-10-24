@@ -76,7 +76,8 @@ internal static class ConvexFeatureKernel
                     if ((Q.From(2048) - c).Sign < 0 || (Q.From(2048) + c).Sign < 0) return false;
             }
             var context = new ConvexDistanceContext(request, source, fraction, scratch, false);
-            if (!TryDistance(context, ref work, out var result)) return false;
+            if (!TryRetainedInterior(context, ref work, out var result) &&
+                !TryDistance(context, ref work, out result)) return false;
             certificate = result.Certificate;
             scratch.RetainCertificates(checkpoint);
             retained = true;
@@ -84,6 +85,26 @@ internal static class ConvexFeatureKernel
         }
         catch (ConvexExactRefusalException) { return work.Refuse(); }
         finally { if (!retained) scratch.Polynomials.Restore(checkpoint); }
+    }
+
+    // Retention can establish containment before enumerating distant boundary pairs. This
+    // changes neither the legacy Distance acceptance order nor any encoded Distance value.
+    static bool TryRetainedInterior(in ConvexDistanceContext context, ref ConvexQueryWork work, out ConvexStaticResult result)
+    {
+        result = default;
+        var source = context.Source;
+        if (source.Rank != 3 || source.FaceCount < 4 || !work.Cell()) return false;
+        P p = new(default, (Q.From(context.Request.Shape.RingY) + Q.From(context.Request.Shape.UpperY)) / Q.From(2), default);
+        for (int face = 0; face < source.FaceCount; face++)
+        {
+            if (!work.Feature()) return false;
+            P a = source.Vertex(source.FaceVertex(face, 0), context.Feet);
+            P n = P.Cross(source.Vertex(source.FaceVertex(face, 1), context.Feet) - a,
+                source.Vertex(source.FaceVertex(face, source.InteriorFaceSize(face) - 1), context.Feet) - a);
+            if (P.Dot(n, n).Sign <= 0 || P.Dot(n, p - a).Sign >= 0) return false;
+        }
+        return context.TryAccept(p, p, ConvexTargetFeature.Interior,
+            source.FaceCount + source.EdgeCount + source.VertexCount, true, out result);
     }
 
     static bool TryDistance(in ConvexDistanceContext context, ref ConvexQueryWork work, out ConvexStaticResult result)
@@ -148,6 +169,20 @@ internal static class ConvexFeatureKernel
         }
         result = default;
         return false;
+    }
+
+    internal static bool TryCommonSupportingNormal(in ConvexDistanceCertificate pair, P common, P towardTarget,
+        ref ConvexQueryWork work)
+    {
+        if (!pair.IsAlive || pair.IsCircular || !pair.Source.IsOriginal || pair.Fraction.Root is not null ||
+            !work.Feature() || !work.Cell() || P.Dot(towardTarget, towardTarget).Sign <= 0) return false;
+        P feet = P.From(pair.Request.Pose.Position) + P.From(pair.Request.Displacement) * pair.Fraction.Value;
+        if (!ConvexPlanarFeatures.Member(pair.Request.Shape, common) ||
+            !ConvexPlanarFeatures.NormalCone(pair.Request.Shape, common, towardTarget)) return false;
+        for (int face = 0; face < pair.Source.FaceCount; face++)
+            if (!work.Feature()) return false;
+        if (!ConvexPlanarFeatures.InTarget(pair.Source, feet, common)) return false;
+        return ConvexPlanarFeatures.SupportsTarget(pair.Source, feet, common, towardTarget, ref work);
     }
 
     internal static P Support(in ConvexQueryShape shape, P n)

@@ -28,6 +28,7 @@ internal readonly struct ConvexDistanceCertificate
     internal ConvexTargetFeature TargetFeature { get; }
     internal int LocalFeatureId { get; }
     internal bool IsAlive => _scratch is not null && _generation == _scratch.CertificateGeneration && Source.IsValid && (Circular is null || Circular.Root.IsAlive);
+    internal bool IsOwnedBy(ConvexQueryScratch scratch) => IsAlive && ReferenceEquals(scratch, _scratch);
 
     internal ConvexDistanceCertificate(in ConvexDistanceContext context, P q, P t, ConvexTargetFeature feature, int id, bool overlap)
     {

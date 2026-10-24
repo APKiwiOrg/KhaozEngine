@@ -949,4 +949,91 @@ All four required staged guards exited 0 after explicit staging and diff review.
 The staged set contains exactly 14 task-owned paths. The four r0/r1 sweep producers,
 InstalledSweepLeaf, capsule/support implementations and movement/baseline sources are unchanged.
 
+## Task 2c.1 attained initial relations
+
+ConvexPlanarContacts.TryClassify consumes one already admitted primitive and the original-source
+ConvexDistanceCertificate at the exact ConvexCertificateFraction. It neither normalizes motion
+nor changes Pose. Separated requires a strictly positive base-distance versus margin predicate.
+At positive margin, exact base distance less than margin proves grown overlap. Exact equality
+with a positive base distance proves touching. Circular equality uses the retained original-root
+predicate, including its original radical signs. An undecided sign is an atomic refusal.
+
+At margin zero, a common point is not an overlap test and its zero difference is not a normal.
+A touching direction must be nonzero and pass complete continuous shell support, original-target
+membership and support against every original vertex. Candidate directions include incident
+target faces, smooth shell gradients and the closed two-ray shoulder and rim cones. The latter
+are clipped by all target inequalities and select an attained feasible interval endpoint.
+Normals are never averaged across seams. Apex normals solve a closed disc and halfplane problem
+with Y=-1. The origin, line projections and line intersections propose candidates. Each is
+rechecked against every constraint and both complete solids.
+
+Strict zero-margin overlap requires a rational world point and strict inequalities for both
+full-dimensional solids. Target and shell interior points are proposals only. If necessary,
+the common point's active shell gradients select an inward original-vertex direction or a
+two-vertex combination. At the apex, a strict disc feasibility problem supplies an inward
+direction subject to every incident target face. Mixing toward the target centroid and
+shortening the step proposes interior points. Every final rational point is checked afresh
+against the complete curved shell and every original target face. Shortening consumes the
+same primitive's cell account. Exhaustion or unsupported exact arithmetic refuses, with no
+new tolerance or limit. No failure to find a normal or an interior proposal proves a state.
+
+Touching retains the exact nonzero direction and mathematical normalization construction.
+Its finite Vector3 encoding uses the existing ConvexDistanceEncoding enclosure and error
+checks. The operational normal has the opposite sign to query outward. Alternative incident
+closed-cone constraints are verified against the same original source and scratch generation.
+The source-bound initial dispatch ticket attaches only its own raw identity. Replacement
+invalidates prior tickets, including coincident geometry owned by different dispatchers.
+An overlapping relation supplies no penetration normal or completed Contacts result.
+Contacts and Penetration remain atomic refusals in TryEvaluate until Task 2c.2. The four r0/r1
+Sweep producers remain unchanged until Task 2b.3. Finite one-sided surfaces remain Task 5.
+
+The retention-only static entry point checks one strict interior axis point before enumerating
+distant boundary pairs. This is an exact membership proof against every source face and keeps
+a fully containing solid from spending the cell account before reaching containment. The legacy
+Distance entry point and its acceptance order remain unchanged. IsOwnedBy on the retained pair
+is the only additional certificate API, used to refuse foreign-scratch touching constraints.
+
+The independent oracle copies only the raw integer coefficients of attained quadratic points
+and directions. It recomputes both membership and complete support signs in its own quadratic
+field. A rounded normal can leave a closed target cone by one encoding bit, so these geometric
+assertions deliberately precede Vector3 encoding. Unit-normal enclosures, finite encodings and
+the operational sign are checked separately. All six shell regimes have finite face, edge and
+vertex controls for touching, strict separation and strict overlap, plus positive-margin growth.
+Additional controls exercise exact margin ties and adjacent floats, zero and both motion signs,
+an exact nonzero path fraction, containment, crossing solids, apex and seam cone intersections,
+an inward two-vertex overlap combination, retained root time, coincident owner tickets, expired
+and foreign scratch evidence and same-run cell/feature-limit refusals.
+
+### Task 2c.1 verification results
+
+The exact focused command was
+`build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexInitialStateTests'`.
+
+- Initial red exited 1 with CS0246 for the absent ConvexInitialEvidence. No tests executed.
+- First implementation and diagnostic runs each exited 1, with 6 passed and 2 failed.
+  The containment control spent the 256-cell account before boundary enumeration reached
+  containment. The retention-only strict interior check fixes that ordering. The other
+  failure incorrectly tested a rounded direction as an exact closed-cone member. The
+  independent oracle now recomputes exact coefficient signs before encoding.
+- The next run exited 1, with 7 passed and 1 fixture expectation failure. The head-disc edge
+  endpoints also lay on the disc, permitting a valid vertex witness. Lengthened that edge
+  beyond the disc so it requires an interior edge witness. Production provenance is unchanged.
+- Final focused green exited 0, with 12 passed, 0 failed and 0 skipped.
+
+The three exact Common commands in the amended plan ran once each, synchronously, through
+build-slot with --heavy. The Game selection passed 448, the footprint selection passed 741
+and the navigation selection passed 7. Every command exited 0, with no failed or skipped tests.
+This includes the complete unchanged eighteen-pair Distance matrix, capsule families,
+GroundCore, general and curved sweeps, captured stairs, roof/footprint protections and raw
+identity controls. All seven original normalized full-file hashes passed with null execution,
+which selects degree 1. No baseline, capsule, protection or r0/r1 producer source changed.
+
+Observed cells/features were 4/48 for apex/face touching, 137/270 for shoulder/edge touching,
+130/237 for head-disc/edge touching, 18/37 for rim/vertex touching, 22/46 and 15/39 for the
+apex and seam cone intersections and 31/64 for the inward two-vertex combination. The retained
+root-time and foreign-scratch control used 83/671, retained 132 coefficients and had high-water
+245. Its retained checkpoint stayed unchanged. All calls kept Descendants=1. Lowered cell and
+feature limits derive from same-run successful probes, not absolute observed counts. Their
+refusals return default evidence with Used=0. These observations add no tolerance or budget.
+
 Whole-tree dash, prose and file-size guards also exited 0. No cap or baseline changed.

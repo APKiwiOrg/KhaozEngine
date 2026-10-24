@@ -16,7 +16,8 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
         var reflection = new ReflectionApi();
         var compiler = new D3D11ShaderCompiler(new DeviceLiveness(), native, null, 0x8000,
             new(true, D3D11RecordMode.Deferred, false, false), reflection);
-        using var shader = compiler.CreateComputeShader("exact compute source");
+        using var shader = (D3D11ComputeShader)compiler.CreateComputeShader("exact compute source");
+        shader.EnsureReady();
         Assert.Equal("exact compute source", native.LastCompute);
         using var pipeline = new D3D11ComputePipeline(new GpuComputePipelineDescription(shader));
         var report = pipeline.ReadCompilerReport();
@@ -24,13 +25,15 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
         Assert.Equal("039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81", report.Identity.ShaderArtifactSha256.Sha256);
         Assert.Equal(8u, Assert.Single(report.Executables).LocalSizeX);
         Assert.Contains("cs_5_0", report.Identity.CompilerFlags);
-        using var shaders = compiler.CreateShaderSet("exact vertex source", "exact pixel source");
+        using var shaders = (D3D11ShaderSet)compiler.CreateShaderSet("exact vertex source", "exact pixel source");
+        shaders.EnsureReady();
         Assert.Equal("exact vertex source", native.LastVertex);
         Assert.Equal("exact pixel source", native.LastPixel);
         Assert.Equal(3, reflection.Reads);
         Assert.Equal(3, native.Handles.Count);
         native.FailPixel = true;
-        Assert.Throws<InvalidOperationException>(() => compiler.CreateShaderSet("vertex", "pixel"));
+        using var failed = (D3D11ShaderSet)compiler.CreateShaderSet("vertex", "pixel");
+        Assert.Throws<InvalidOperationException>(failed.EnsureReady);
         Assert.Equal(4, native.Handles.Count);
         Assert.Equal(1, native.Handles[3].Disposals);
         Assert.Equal(0, native.Handles[0].Disposals);
@@ -45,7 +48,8 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
             new ReflectionApi { Failure = new NotSupportedException("reflection unavailable") });
         using var shader = compiler.CreateComputeShader("compute source");
         using var pipeline = new D3D11ComputePipeline(new GpuComputePipelineDescription(shader));
-        Assert.Same(native.Handles[0], ((ID3D11ComputePipelineState)pipeline).ComputeShader);
+        var bound = ((ID3D11ComputePipelineState)pipeline).ComputeShader;
+        Assert.Same(native.Handles[0], bound);
         Assert.Equal(GpuDiagnosticStatus.Invalid, pipeline.ReadCompilerReport().Status);
         var result = pipeline.ReadCompilerReport(D3D11PipelineDiagnostics.Request, _ => { }, default);
         Assert.IsType<NotSupportedException>(Assert.Single(result.Failures).Error);

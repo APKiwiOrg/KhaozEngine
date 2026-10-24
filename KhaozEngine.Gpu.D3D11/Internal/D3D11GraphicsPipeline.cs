@@ -48,8 +48,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // Diagnostics and deferred creation must see the same immutable construction inputs.
             var snapshot = description;
             snapshot.BlendAttachments = (GpuBlendAttachment[])(description.BlendAttachments ?? []).Clone();
-            snapshot.Outputs = new GpuOutputDescription(description.Outputs.Depth,
-                (GpuPixelFormat[])(description.Outputs.Colour ?? []).Clone()).WithSampleCount(description.Outputs.SampleCount);
+            if (description.Outputs.Colour is { } colors)
+                snapshot.Outputs = new GpuOutputDescription(description.Outputs.Depth,
+                    (GpuPixelFormat[])colors.Clone()).WithSampleCount(description.Outputs.SampleCount);
             snapshot.VertexLayouts = new(description.VertexLayouts?.Count ?? 0);
             foreach (var layout in description.VertexLayouts ?? [])
                 snapshot.VertexLayouts.Add(new(layout.Stride, layout.InstanceStepRate,

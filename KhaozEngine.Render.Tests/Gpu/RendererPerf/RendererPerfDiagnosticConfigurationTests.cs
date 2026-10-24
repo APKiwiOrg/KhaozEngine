@@ -73,6 +73,7 @@ public sealed partial class RendererPerfDiagnosticConfigurationTests
         var compiler = new D3D11ShaderCompiler(new DeviceLiveness(), native, null, settings.ShaderFlags,
             settings.CompilerOptions(false), reflection);
         using var shader = (D3D11ComputeShader)compiler.CreateComputeShader("void main() {}");
+        shader.EnsureReady();
         Assert.Equal(settings.ShaderFlags, native.Flags);
         Assert.False(shader.DiagnosticEvidence!.ReflectionRequested);
         Assert.Equal(0, reflection.Reads);
@@ -80,6 +81,7 @@ public sealed partial class RendererPerfDiagnosticConfigurationTests
         var diagnostic = new D3D11ShaderCompiler(new DeviceLiveness(), native, null, replay.ShaderFlags,
             replay.CompilerOptions(false), reflection);
         using var second = (D3D11ComputeShader)diagnostic.CreateComputeShader("void main() {}");
+        second.EnsureReady();
         Assert.Equal(1, reflection.Reads);
         Assert.True(second.DiagnosticEvidence!.ReflectionRequested);
         Assert.False(replay.CompilerOptions(false).Invocations);

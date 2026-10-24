@@ -246,8 +246,12 @@ ring's segment acquire ALONE, where the same field on the native Vulkan backend 
 waiting on its own oldest buffer slot: this backend has no command-buffer pool to wait on, so a non-zero
 reading is unambiguously a pipeline-depth statement about `KE_METAL_FRAMES_IN_FLIGHT`. The off-timeline pair is
 deliberately NOT part of that number, because a deferred write blocks nobody and usually happens at load time.
-`FramesBegun` and the acquire pair belong to the present boundary, so a headless device reports zero for all
-three, which is literally true rather than a placeholder.
+`FramesBegun` counts present boundaries, including skipped presents. `AcquireWaitCount` and `AcquireWaitMs`
+record every current-frame drawable-resolution API attempt and its full duration, including nonblocking and
+nil attempts. Resolution happens at the first swapchain framebuffer bind, or on demand for a present-only
+call. Repeated binds reuse the resolved frame, including nil. Construction and `Present` do not pre-acquire
+the next frame. The recorded duration includes API work and is not isolated blocking time. A headless device
+with no swapchain reports zero for `FramesBegun` and both acquire fields.
 
 **`GpuDeviceDiagnostics.SoftwareAdapter` is FALSE with confidence rather than null**, because Apple ships no
 software Metal rasterizer at all. That is a different fact from "nobody asked", which is what null means and
@@ -1023,10 +1027,14 @@ flush a pending clear yet ([#1432](https://github.com/APKiwiOrg/KhaozEngine/issu
 ## The swapchain: a layer, a drawable, and a present that cannot be skipped silently
 
 `GpuDeviceContext.CreateForWindow` on this backend resolves the Cocoa `NSWindow` into a `CAMetalLayer` (adopting
-the host view's if it already has one, creating and attaching one if it does not), configures it, takes a
-drawable, and hands back a device whose `SwapchainFramebuffer` is the same object for the rest of its life.
-`Present()` presents the drawable the frame rendered into, applies anything a resize or a vsync change queued,
-and acquires the drawable the next frame will use.
+the host view's if it already has one, creating and attaching one if it does not), configures it, and hands
+back a device whose `SwapchainFramebuffer` is the same object for the rest of its life. Creation publishes only
+its dimensions and fixed outputs. The first swapchain framebuffer bind in a frame acquires its drawable, even
+through a cached wrapper, so `FramePhases` preparation runs before that wait. Repeated binds reuse that resolved
+attachment, including a nil drawable's orphan target. `Present()` presents the current drawable, applies queued
+resize or vsync changes, publishes resized dimensions and services the capture boundary. It leaves the next
+frame unresolved. A present-only call acquires its own current drawable on demand before presenting it.
+This timing is an optimization candidate. It does not establish an FPS gain.
 
 **The layer configuration is the deleted Veldrid Metal backend's, field for field, with one exception.** `device`,
 `pixelFormat` (`BGRA8Unorm`, or its sRGB sibling if the seam ever grows a way to ask), `framebufferOnly = true`
@@ -1060,8 +1068,8 @@ The first one WARNs once per device. A minimised window is the ordinary cause an
 
 **The drawable acquire is measured.** `-nextDrawable` BLOCKS when every drawable is still in flight, and Metal
 offers no zero-timeout probe, no semaphore form and no readiness query, so the stall is not removable. It is
-counted and timed into `GpuDeviceCounters.AcquireWaitCount` and `AcquireWaitMs` instead, one entry per boundary,
-which is exactly what that pair's own documentation says a CPU-blocking acquire reports. Expect it to be
+counted and timed into `GpuDeviceCounters.AcquireWaitCount` and `AcquireWaitMs` instead, one entry per acquired
+frame, including nil results. Construction and a completed present acquire no extra future drawable. Expect it to be
 non-zero under vsync: a vsync-paced frame SHOULD wait for a drawable. `maximumDrawableCount` is set to
 `KE_METAL_FRAMES_IN_FLIGHT`, so the depth of the drawable queue and the depth of the uniform ring are one
 number.
@@ -1092,8 +1100,9 @@ which is what `GpuDeviceCounters.HasValue` being true is for.
 takes the next drawable, with no drain because the write releases nothing. The layer may still hand back a pooled
 drawable made under the old value, so each acquire reads the texture's own `isFramebufferOnly`. The drawable held
 when the request arrives stays uncopyable, a recycled one stays uncopyable until the layer makes a fresh one, and
-the orphan target never is. `SwapchainCopyable` reports exactly that, `SwapchainCopySupported` is always true
-because any drawable can be vended copyable, and `CopySwapchainColor`
+the orphan target never is. `SwapchainCopyable` reports false until the frame has bound its drawable and after
+it presents. Reading it never acquires another drawable. For a resolved frame it reports whether that texture
+is copyable. `SwapchainCopySupported` is always true because any drawable can be vended copyable, and `CopySwapchainColor`
 throws `InvalidOperationException` when it is false. It throws the same exception for a list that never bound the
 swapchain framebuffer in its current recording, because only the frame's own list holds what the frame drew. The
 copy is a blit from the drawable's texture on the same encoder `CopyTexture` uses, so a pending clear lands first. Clearing the request writes `framebufferOnly = true` again at the next boundary.

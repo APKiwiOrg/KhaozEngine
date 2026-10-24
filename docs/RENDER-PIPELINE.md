@@ -88,7 +88,10 @@ flowchart LR
 
 1. Your game calls `Scene3D.Draw(...)` (3D) or `SpriteBatch.Draw(...)` (2D) inside a `Frame` callback that
    `AppWindow.Run` invokes once per frame. The loop runs TWO callbacks per frame, in this order: `onPrepare`
-   with no command list open, then `onFrame` with the frame's list open and cleared. `GameApp` splits its own
+   with no command list open, then `onFrame` with the frame's list open and cleared by default. The explicit
+   `AppWindow.RendererInitializesSwapchain` opt-in omits the initial output bind and clear, so the renderer must
+   initialize the full output before 2D draws and capture taps. Final 3D composition still binds, clears and
+   overwrites the entire output. `GameAppOptions` forwards the same opt-in, default false. `GameApp` splits its own
    body across them (`OnUpdate` + `OnPrepareWorld` in the first, `OnRenderWorld` + the 2D passes in the second),
    so a 3D game's `OnDraw3D` runs in the prepare phase and its recording in the record phase.
 2. `Scene3D` accumulates draws as instances keyed by `MeshHandle` (geometry was uploaded once via `LoadMesh`);

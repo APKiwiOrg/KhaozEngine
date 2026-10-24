@@ -47,8 +47,14 @@ internal static class WaterOpticsStreamedEmissionContract
         Assert.All(extracts, i => Assert.Equal(5, i.Length));
         Assert.DoesNotContain(code, i => Op(i) == 77 && i[3] == read[2]); // No dynamic record component.
         // Trace the two scalar normalized additions into unsigned overflow tests and scalar counters.
+        // Stop at this cache contribution loop's merge, before later unsigned loop comparisons.
+        uint[] visitBound = Assert.Single(code, i => Op(i) == 177 && i[3] == uses[1][4]
+            && constants.GetValueOrDefault(i[4]) == 6);
+        uint[] visitLoop = code.Skip(code.IndexOf(visitBound)).First(i => Op(i) == 246);
         int readAt = code.IndexOf(read);
-        uint[][] wraps = code.Skip(readAt).TakeWhile(i => Op(i) != 246).Where(i => Op(i) == 176).ToArray();
+        int visitEnd = code.FindIndex(readAt, i => Op(i) == 248 && i[1] == visitLoop[1]);
+        Assert.True(code.IndexOf(visitLoop) < readAt && visitEnd > readAt);
+        uint[][] wraps = code.Skip(readAt).Take(visitEnd - readAt).Where(i => Op(i) == 176).ToArray();
         Assert.Equal(2, wraps.Length);
         foreach (uint[] wrap in wraps)
         {

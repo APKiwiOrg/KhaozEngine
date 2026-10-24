@@ -32,14 +32,29 @@ internal static class WaterOpticsInterpolationEmissionContract
         Assert.DoesNotMatch(@"\buint\s+\w+\[16\]", hlsl);
         Assert.DoesNotMatch(@"\b\w+\s*\[[^\]]+\]", body); // No interpolation array addresses, even literal ones.
 
-        Instruction comparison = Assert.Single(code, i => i.Op == 177
-            && constants.GetValueOrDefault(i.Args[3]) == 23); // OpSLessThan.
+        Instruction comparison = Assert.Single(code, i => i.Op is 176 or 177
+            && constants.GetValueOrDefault(i.Args[3]) == 23); // OpULessThan or OpSLessThan.
         Instruction[] block = code.Where(i => i.Label == comparison.Label).ToArray();
         Instruction loop = Assert.Single(block, i => i.Op == 246); // OpLoopMerge.
         Assert.Equal(2u, loop.Args[2]); // DontUnroll.
         Instruction counter = Assert.Single(block, i => i.Op == 245 && i.Args[1] == comparison.Args[2]);
+        // A signed counter mixed with uint scalar assignments in the HLSL comma continuation
+        // reached FXC's l-value cast diagnostic. Keep all continuation expressions unsigned.
+        Assert.Equal(uintType, counter.Args[0]);
+        Assert.Equal(176u, comparison.Op); // OpULessThan.
         Assert.Equal(0u, constants[counter.Args[2]]);
-        Instruction[] registers = block.Where(i => i.Op == 245 && i.Args[0] == uintType).ToArray();
+        Assert.Equal(uintType, Assert.Single(code, i => i.Op == 43 && i.Args[1] == counter.Args[2]).Args[0]);
+        Assert.Equal(uintType, Assert.Single(code, i => i.Op == 43 && i.Args[1] == comparison.Args[3]).Args[0]);
+        Instruction increment = Assert.Single(code, i => i.Op == 128 && i.Args[1] == counter.Args[4]); // OpIAdd.
+        Assert.Equal(uintType, increment.Args[0]);
+        Assert.Equal(counter.Args[1], increment.Args[2]);
+        Assert.Equal(1u, constants[increment.Args[3]]);
+        uint oneType = Assert.Single(code, i => i.Op == 43 && i.Args[1] == increment.Args[3]).Args[0];
+        // OpIAdd permits different signedness at the same width. Its result controls HLSL's ++ type.
+        Assert.Contains(code, i => i.Op == 21 && i.Args[0] == oneType && i.Args[1] == 32);
+        Assert.Equal(loop.Args[1], increment.Label);
+        Instruction[] registers = block.Where(i => i.Op == 245 && i.Args[0] == uintType
+            && i.Args[1] != counter.Args[1]).ToArray();
         Assert.Equal(16, registers.Length);
         int start = code.IndexOf(block[0]);
         int end = code.FindIndex(start, i => i.Op == 248 && i.Label == loop.Args[0]);
@@ -82,6 +97,9 @@ internal static class WaterOpticsInterpolationEmissionContract
         uint result = Assert.Single(results); // Every slot receives the same rounded arithmetic result.
         Assert.Contains(code, i => i.Op == 245 && i.Args[0] == uintType && i.Args[1] == result);
         Assert.Equal(16, Regex.Matches(header, @"_\d+ = _\d+").Count);
+        string index = "_" + counter.Args[1];
+        Assert.Matches(@"^uint " + index + " = 0u; " + index + " < 23u; (?:_\\d+ = _\\d+, ){16}"
+            + index + @"\+\+$", header);
     }
 
     sealed record Instruction(uint Op, uint[] Args, uint Label);

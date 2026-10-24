@@ -31,33 +31,33 @@ uint opticsInterpolate(int triangle, uvec2 p) {
     // Slots 0..5 are dx,dz,ex,ez,px,pz, 6..7 temporaries, 8..10 det,bn,cn,
     // 11..14 wb,wc,db,dc and 15 near/result. Every read follows its producing step.
     uint r[16];
-    [[dont_unroll]] for (int step = 0; step < 23; step++) {
+    [[dont_unroll]] for (uint step = 0u; step < 23u; step++) {
         uint left = 0u, right = 0u;
-        int operation = 0, destination = step;
+        int operation = 0, destination = int(step);
         switch (step) {
-            case 0: left = b.x; right = a.x^0x80000000u; break;
-            case 1: left = b.y; right = a.y^0x80000000u; break;
-            case 2: left = c.x; right = a.x^0x80000000u; break;
-            case 3: left = c.y; right = a.y^0x80000000u; break;
-            case 4: left = p.x; right = a.x^0x80000000u; break;
-            case 5: left = p.y; right = a.y^0x80000000u; break;
-            case 6: left = r[0]; right = r[3]; operation = 1; destination = 6; break;
-            case 7: left = r[1]; right = r[2]; operation = 1; destination = 7; break;
-            case 8: left = r[6]; right = r[7]^0x80000000u; destination = 8; break;
-            case 9: left = r[4]; right = r[3]; operation = 1; destination = 6; break;
-            case 10: left = r[5]; right = r[2]; operation = 1; destination = 7; break;
-            case 11: left = r[6]; right = r[7]^0x80000000u; destination = 9; break;
-            case 12: left = r[0]; right = r[5]; operation = 1; destination = 6; break;
-            case 13: left = r[1]; right = r[4]; operation = 1; destination = 7; break;
-            case 14: left = r[6]; right = r[7]^0x80000000u; destination = 10; break;
-            case 15: left = r[9]; right = r[8]; operation = 2; destination = 11; break;
-            case 16: left = r[10]; right = r[8]; operation = 2; destination = 12; break;
-            case 17: left = b.z; right = a.z^0x80000000u; destination = 13; break;
-            case 18: left = c.z; right = a.z^0x80000000u; destination = 14; break;
-            case 19: left = r[11]; right = r[13]; operation = 1; destination = 6; break;
-            case 20: left = a.z; right = r[6]; destination = 15; break;
-            case 21: left = r[12]; right = r[14]; operation = 1; destination = 6; break;
-            case 22: left = r[15]; right = r[6]; destination = 15; break;
+            case 0u: left = b.x; right = a.x^0x80000000u; break;
+            case 1u: left = b.y; right = a.y^0x80000000u; break;
+            case 2u: left = c.x; right = a.x^0x80000000u; break;
+            case 3u: left = c.y; right = a.y^0x80000000u; break;
+            case 4u: left = p.x; right = a.x^0x80000000u; break;
+            case 5u: left = p.y; right = a.y^0x80000000u; break;
+            case 6u: left = r[0]; right = r[3]; operation = 1; destination = 6; break;
+            case 7u: left = r[1]; right = r[2]; operation = 1; destination = 7; break;
+            case 8u: left = r[6]; right = r[7]^0x80000000u; destination = 8; break;
+            case 9u: left = r[4]; right = r[3]; operation = 1; destination = 6; break;
+            case 10u: left = r[5]; right = r[2]; operation = 1; destination = 7; break;
+            case 11u: left = r[6]; right = r[7]^0x80000000u; destination = 9; break;
+            case 12u: left = r[0]; right = r[5]; operation = 1; destination = 6; break;
+            case 13u: left = r[1]; right = r[4]; operation = 1; destination = 7; break;
+            case 14u: left = r[6]; right = r[7]^0x80000000u; destination = 10; break;
+            case 15u: left = r[9]; right = r[8]; operation = 2; destination = 11; break;
+            case 16u: left = r[10]; right = r[8]; operation = 2; destination = 12; break;
+            case 17u: left = b.z; right = a.z^0x80000000u; destination = 13; break;
+            case 18u: left = c.z; right = a.z^0x80000000u; destination = 14; break;
+            case 19u: left = r[11]; right = r[13]; operation = 1; destination = 6; break;
+            case 20u: left = a.z; right = r[6]; destination = 15; break;
+            case 21u: left = r[12]; right = r[14]; operation = 1; destination = 6; break;
+            case 22u: left = r[15]; right = r[6]; destination = 15; break;
         }
         uint result;
         if (operation == 0) result = opticsAdd(left,right);

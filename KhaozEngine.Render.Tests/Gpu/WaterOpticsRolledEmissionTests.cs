@@ -46,7 +46,7 @@ public sealed class WaterOpticsRolledEmissionTests
             Assert.True(words > 0 && offset + 4 * words <= fragment.Length);
             opcodes[opcode] = opcodes.GetValueOrDefault(opcode) + 1;
             if (opcode == 43 && words == 4) constants[Word(offset + 8)] = Word(offset + 12); // OpConstant.
-            if (opcode == 177 && constants.TryGetValue(Word(offset + 16), out uint bound)) // OpSLessThan.
+            if (opcode is 176 or 177 && constants.TryGetValue(Word(offset + 16), out uint bound)) // OpULessThan or OpSLessThan.
                 lessBounds[Word(offset + 8)] = bound;
             if (opcode == 246)
             {

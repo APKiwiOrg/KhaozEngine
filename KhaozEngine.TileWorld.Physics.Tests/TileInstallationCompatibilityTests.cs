@@ -31,6 +31,18 @@ public class TileInstallationCompatibilityTests
     }
 
     [Fact]
+    public void AllTrueAndDefaultMatchPreFeatureBaseline()
+    {
+        string baseline = Encoding.UTF8.GetString(ReadFixture("json"));
+        Assert.Equal(baseline, RegistrationJson());
+        Assert.Equal(baseline, RegistrationJson(includeAll: true));
+        byte[] original = NavigationFile();
+        byte[] allTrue = NavigationFile(includeAll: true);
+        Assert.Equal(original, allTrue);
+        Assert.Equal(ReadFixture("navbake"), NormalizeNavigationFile(allTrue));
+    }
+
+    [Fact]
     public void HistoricalNavigationOracleIgnoresOnlyEngineVersion()
     {
         byte[] frozen = ReadFixture("navbake");
@@ -121,14 +133,16 @@ public class TileInstallationCompatibilityTests
         return normalized;
     }
 
-    private static string RegistrationJson()
+    private static string RegistrationJson(bool includeAll = false)
     {
         var colliders = TileWorldColliders.Build(TileWorldPhysicsTestData.EveryKindWorld(),
             TileWorldPhysicsTestData.Catalogs(), WorldId);
         string actualColliderHash = Convert.ToHexStringLower(colliders.Hash);
         Assert.Equal("6aa23030d83786938861832e5f220a95614c896da011eb21c14ef31a5e651851", actualColliderHash);
         using var physics = new BepuPhysicsWorld(Vector3.Zero);
-        using var installed = colliders.AddTo(physics);
+        using var installed = includeAll ? colliders.AddTo(physics, _ => true) : colliders.AddTo(physics);
+        Assert.Equal(actualColliderHash, Convert.ToHexStringLower(colliders.Hash));
+        Assert.Equal(Enumerable.Range(0, colliders.Colliders.Count), installed.ColliderIndices);
         var registration = installed.CreateMovementRegistration(WorldId);
         Assert.Equal(colliders.Colliders.Count, installed.Handles.Count);
         using var lease = physics.AcquireQueryReadLease();
@@ -196,9 +210,10 @@ public class TileInstallationCompatibilityTests
 
     private static uint? Bits(float? value) => value.HasValue ? BitConverter.SingleToUInt32Bits(value.Value) : null;
 
-    private static byte[] NavigationFile()
+    private static byte[] NavigationFile(bool includeAll = false)
     {
-        using var scene = new Scene(TileWorldNavigationBakeTests.DeckDoorWorld(), TileWorldNavigationBakeTests.Origin);
+        using var scene = new Scene(TileWorldNavigationBakeTests.DeckDoorWorld(), TileWorldNavigationBakeTests.Origin,
+            include: includeAll ? _ => true : null);
         using var capture = scene.Capture(TileWorldNavigationBakeTests.Options,
             feet => scene.Colliders.Medium.MediumAt(feet.X, feet.Z, feet.Y).InWater ? Wet : Dry);
         var sources = new NavBakeSources().Add("colliders", scene.Colliders.Hash);

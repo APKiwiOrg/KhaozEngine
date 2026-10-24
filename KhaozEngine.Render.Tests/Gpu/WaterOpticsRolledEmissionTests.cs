@@ -16,7 +16,7 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class WaterOpticsRolledEmissionTests
 {
-    const string Evidence = "/tmp/khaozengine-water-triangles/origin-fxc-fix/emission";
+    const string Evidence = "/tmp/khaozengine-water-triangles/streamed-wide/emission";
 
     // Catch loss of sharing or local loop controls in the actual pinned compiler output.
     [Fact]
@@ -88,14 +88,15 @@ public sealed class WaterOpticsRolledEmissionTests
             Msl = new { Bytes = Encoding.UTF8.GetByteCount(msl), Sha256 = Hash(Encoding.UTF8.GetBytes(msl)) }
         }, new JsonSerializerOptions { WriteIndented = true }));
 
+        Assert.DoesNotMatch(@"\buint\s+\w+\[18\]", hlsl);
         Assert.Equal(1, opcodes.GetValueOrDefault(54u)); // Exhaustively inlined OpFunction.
         Assert.Equal(0, opcodes.GetValueOrDefault(57u)); // No surviving OpFunctionCall boundary.
-        Assert.True(loops.Count(l => l.Bound == 6 && l.Retained) == 2
+        Assert.True(loops.Count(l => l.Bound == 6 && l.Retained) == 3
             && loops.Count(l => l.Bound == 4 && l.Retained) == 1
             && loops.Count(l => l.Bound == 2 && l.Retained) == 1,
-            "Expected two retained six-term predicates, one four-step bin mapping and one two-axis origin loop. "
+            "Expected three retained six-term bodies, one four-step bin mapping and one two-axis origin loop. "
             + "Actual retained bounds: " + string.Join(",", loops.Where(l => l.Retained).Select(l => l.Bound)));
-        Assert.Equal(new uint[] { 2, 3, 4, 6, 6, 18, 18, 18, 18, 18, 18, 23, 27, 32 },
+        Assert.Equal(new uint[] { 2, 3, 4, 6, 6, 6, 18, 23, 27, 32 },
             retainedBounds.Order().ToArray());
         Loop origin = Assert.Single(loops, l => l.Bound == 2 && l.Retained);
         string originBody = hlsl[origin.Start..origin.End];
@@ -128,30 +129,49 @@ public sealed class WaterOpticsRolledEmissionTests
         Loop division = Assert.Single(loops, l => l.Bound == 27 && l.Retained);
         Assert.InRange(division.Start, interpolation.Start + 1, interpolation.End - 1);
         Assert.True(division.End < interpolation.End);
-        Loop[] carries = loops.Where(l => l.Bound == 18 && l.Retained).ToArray();
-        Assert.Equal(6, carries.Length);
-        Loop product = Assert.Single(loops, l => l.Bound == 6
-            && carries.All(c => c.Start > l.Start && c.End < l.End));
-        Assert.True(product.Retained, "Wide six-term product loop lost its [loop] control.");
-        Loop narrow = Assert.Single(loops, l => l.Bound == 6 && l.Start != product.Start);
-        Assert.True(narrow.Retained, "Narrow six-term product loop lost its [loop] control.");
-        // One pair of low-half significands identifies one exact 24-by-24 product body.
-        Assert.Equal(2, Regex.Matches(hlsl[narrow.Start..narrow.End], @"& 65535u").Count);
-        Assert.Single(loops, l => l.Bound == 18 && !l.Retained); // Unhinted accumulator initialization.
-        Assert.All(carries, l =>
+        Loop scan = Assert.Single(loops, l => l.Bound == 18);
+        Assert.True(scan.Retained);
+        Loop contribution = Assert.Single(loops, l => l.Bound == 6 && l.Start > scan.Start && l.End < scan.End);
+        Loop product = Assert.Single(loops, l => l.Bound == 6 && l.End < scan.Start
+            && Regex.IsMatch(hlsl[l.Start..l.End], @"\w+\[\w+\] = uint4\("));
+        Loop narrow = Assert.Single(loops, l => l.Bound == 6 && l.Start != product.Start && l.Start != contribution.Start);
+        foreach (Loop exactProduct in new[] { product, narrow })
         {
-            Assert.True(l.Retained);
-            Assert.InRange(l.Start, product.Start + 1, product.End - 1);
-            Assert.True(l.End < product.End);
-        });
+            string exactBody = hlsl[exactProduct.Start..exactProduct.End];
+            Assert.Equal(2, Regex.Matches(exactBody, @"& 65535u").Count);
+            Assert.Equal(4, Regex.Matches(exactBody, @"\*").Count); // Four partial multiplies, one product body.
+            Assert.Equal(exactProduct == product ? 1 : 5, Regex.Matches(exactBody, @"uint\(\w+ < \w+\)").Count);
+        }
+        string preprocessing = hlsl[product.Start..product.End];
+        Assert.Single(Regex.Matches(preprocessing, @"\w+\[\w+\]")); // Only the local cache store is indexed.
+        Match safeSpill = Regex.Match(preprocessing, @"uint (\w+) = \(32u - (\w+)\) & 31u;");
+        Assert.True(safeSpill.Success);
+        Assert.Equal(2, Regex.Matches(preprocessing, @">> " + Regex.Escape(safeSpill.Groups[1].Value)).Count);
+        Assert.Contains("== 0u", preprocessing, StringComparison.Ordinal);
+        Match bank = Assert.Single(Regex.Matches(hlsl, @"uint4 (\w+)\[6\];"));
+        string cache = Regex.Escape(bank.Groups[1].Value);
+        Assert.Equal(2, Regex.Matches(hlsl, @"\b" + cache + @"\b").Count(m =>
+            m.Index < contribution.Start)); // Declaration and single preprocessing store.
+        Assert.Single(Regex.Matches(hlsl, cache + @"\[[^\]]+\] = uint4\("));
+        Assert.DoesNotMatch(@"=\s*" + cache + @"\s*[;,]", hlsl); // No whole-bank values or copy chains.
+        string visits = hlsl[contribution.Start..contribution.End];
+        Assert.DoesNotMatch(@"\*|uint4|\]\[|\bbreak\b|\breturn\b", visits);
+        Assert.Equal(new[] { "w", "x", "y", "z", "w" }, Regex.Matches(visits, cache + @"\[\w+\]\.([xyzw])")
+            .Select(m => m.Groups[1].Value).ToArray());
+        Assert.Equal(2, Regex.Matches(visits, @"uint\(\w+ < \w+\)").Count); // Scalar unsigned overflow counts.
+        string scanBody = hlsl[scan.Start..scan.End];
+        Assert.DoesNotMatch(@"\bbreak\b|\breturn\b|\[18\]", scanBody);
+        Assert.Single(Regex.Matches(scanBody, @"\(\w+ > \w+\) \? 1 : \(-1\)"));
+        Assert.True(narrow.End < product.Start && product.End < scan.Start);
+        WaterOpticsStreamedEmissionContract.Verify(fragment);
         foreach ((int bound, int count) in new[] { (32, 1), (3, 1) })
         {
             Loop[] selected = loops.Where(l => l.Bound == bound && l.Retained).ToArray();
             Assert.Equal(count, selected.Length);
             Assert.All(selected, l => Assert.True(l.Retained));
         }
-        Assert.Equal(14, loops.Count(l => l.Retained));
-        Assert.Equal(14, controls.Count(c => c == 2)); // SPIR-V DontUnroll.
+        Assert.Equal(10, loops.Count(l => l.Retained));
+        Assert.Equal(10, controls.Count(c => c == 2)); // SPIR-V DontUnroll.
         Assert.All(controls, c => Assert.True(c is 0 or 2));
         uint Word(int at) => BinaryPrimitives.ReadUInt32LittleEndian(fragment.AsSpan(at, 4));
     }

@@ -49,7 +49,7 @@ void main() {
     [GpuFact]
     public void CertifiedSpanCarryCancellationAndFallbackMatchIndependentDyadicOracle()
     {
-        Probe[] probes = Probes().ToArray();
+        Probe[] probes = Probes().Concat(StreamedBoundaries()).ToArray();
         using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
         IGpuDevice device = gpu.GpuDevice;
         IGpuResourceFactory f = device.Factory;
@@ -107,7 +107,9 @@ void main() {
             device.Capabilities.DeviceName,
             DispatchGpuMs = dispatchGpuMs,
             TimingStatus = timingStatus,
-            TimingScope = "One existing 87-probe dispatch, including dispatcher, direct narrow and forced wide outputs. Not wide-only.",
+            ProbeCount = probes.Length,
+            OriginalProbeCount = 87,
+            TimingScope = "One fixed mixed-probe dispatch including dispatcher, direct narrow and forced wide outputs. Expanded batch is not comparable to the original 87 probes or wide-only.",
             Probes = probes.Select((probe, i) => new
             {
                 probe.Name,
@@ -159,6 +161,27 @@ void main() {
         yield return new("all-subnormal-positive", [1, 2, 2, 4, 3, 7], true);
         yield return new("extreme-fallback", [1, 0x7f7fffff, 0x7f7fffff, 1, 0x7f7fffff, 0x7f7fffff], false);
         yield return new("extreme-fallback-negative", [0x80000001, 0x7f7fffff, 0x7f7fffff, 1, 0xff7fffff, 0x7f7fffff], false);
+    }
+
+    // These isolate absolute product shifts and the final third fragment, independent of span selection.
+    static IEnumerable<Probe> StreamedBoundaries()
+    {
+        foreach (int h in new[] { 0, 1, 31, 32, 63, 64, 506 })
+        {
+            int leftShift = Math.Min(h, 253), rightShift = h - leftShift;
+            uint left = ((uint)(leftShift + 1) << 23) | 0x7fffff;
+            uint right = ((uint)(rightShift + 1) << 23) | 0x7fffff;
+            yield return new($"stream-h{h}-offset{h % 32}-max-mantissas-positive", [0, 0, left, 0, 0, right], true);
+            yield return new($"stream-h{h}-offset{h % 32}-max-mantissas-negative", [0, 0, left | 0x80000000, 0, 0, right], true);
+        }
+        yield return new("stream-h0-min-max-subnormal", [0, 0, 1, 0, 0, 0x7fffff], true);
+        yield return new("stream-negative-zero-product", [0x80000000, 0, 0, 0x80000000, 1, 0x7f7fffff], true);
+        const uint top = 0x7f7fffff;
+        yield return new("stream-h506-complete-cancellation", [top, top, top - 1, top - 2, top - 2, top - 4], true);
+        yield return new("stream-h506-near-cancellation-negative", [top, top, top - 1, top - 2, top - 2, top - 3], true);
+        yield return new("stream-h506-near-cancellation-positive", [top - 1, top - 2, top, top, top - 2, top - 3], true);
+        yield return new("stream-long-carry-wide", [0xff7fffff, 1, top, 0xff7fffff, top, top], false);
+        yield return new("stream-long-carry-wide-reversed", [top, 0xff7fffff, 0xff7fffff, 1, top, top], false);
     }
 
     // Independent arbitrary-precision determinant of exact source bits in units of 2^-149.

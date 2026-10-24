@@ -108,11 +108,16 @@ Mode 2 uses existing texture/sampler bindings 10/11 and unchanged 1088-byte UBO 
   warmed zero managed allocation/upload/resource-set creation using the repository harness.
 - [ ] Run `WaterOpticsTriangle` plus existing `WaterOptics`, `UboLayoutTests` and
   `WaterBathymetryUploadGateTests` with GPU enabled. Require zero selected skips. Inspect readback evidence.
-- [ ] Retain one six-term wide-product loop with one unchanged product body and six emitted carry-loop
-  bodies. Preserve original operand order, both 18-word accumulators, narrow selection/arithmetic and
-  binary32 operations. Apply source-local `dont_unroll` hints to that loop and the candidate, three-edge,
-  wide-carry and 27-step division loops. Prove actual pinned SPIR-V DontUnroll and HLSL `[loop]` emission
-  before the hosted compile proof. Source text alone does not pass this gate.
+- [ ] Cache six exact products in one retained preprocessing loop with one unchanged product body,
+  preserving the original signed term order. Store three shifted fragments and start-word/sign in one
+  six-record local table, written once then read-only. Retain one 18-word low-to-high scan with one
+  nested six-contribution loop, literal record components and scalar positive/negative carry counters
+  bounded to 0 through 5. Normalize each word before comparison and let the highest differing word
+  override. Process word 17 and prove zero final carries from the below-2^557 total bound. Remove all
+  18-word banks and copy chains. Preserve the complete narrow classifier/span-77 arithmetic and binary32
+  helpers. Require actual pinned SPIR-V/HLSL dataflow and retained bounds
+  `2,3,4,6,6,6,18,23,27,32`, not source-only assertions. Stop at an emitted cache copy chain before hosted
+  expense. No sixfold unrolling, per-word product recomputation or precision/domain change is allowed.
 - [ ] Retain one fixed 23-step interpolation loop with one emitted software add, multiply and divide
   body, including one nested 27-step division loop. Select the original ordered scalar operand bits
   and store each rounded result in a local 16-word register bank. Preserve sign-bit XOR subtraction,
@@ -124,7 +129,7 @@ Mode 2 uses existing texture/sampler bindings 10/11 and unchanged 1088-byte UBO 
   one software multiply body for the four ordered bin-mapping steps, with a local two-word u/v bank,
   the original unit clamps, truncation and last-bin minima. Share one software add body for ordered
   X/Z triangle-origin subtraction, retaining sign-bit XOR and signed zeros. Require actual retained
-  SPIR-V and HLSL bodies alongside the prior wide-carry and interpolation structures before hosted
+  SPIR-V and HLSL bodies alongside the streamed-wide and interpolation structures before hosted
   proof. Preserve all 87 predicate probes, 235 original queries and 60 interpolation queries. Add
   independent bitwise rectangular-bin/origin coverage and retain six pixel-identical render controls.
 - [ ] Pass the pending candidate-only cold Windows compile proof at dispatch `github.sha`, with caches

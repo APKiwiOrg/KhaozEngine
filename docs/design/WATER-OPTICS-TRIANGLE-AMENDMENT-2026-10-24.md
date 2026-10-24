@@ -160,14 +160,27 @@ of the nonzero products. When their exponent-shift span is at most 77, each prod
 and their total magnitude is below `6*2^125 < 2^128`. Two unsigned four-word accumulators therefore
 retain every bit and carry. Compare positive and negative magnitudes to determine sign, including exact
 cancellation. Zero products do not widen the domain. All-zero products return zero. Wider spans use
-the original two 18-word accumulators. No floating-point filter changes domain selection or sign.
+the exact 18-word unsigned stream described below. No floating-point filter changes domain selection or sign.
 This avoids optional doubles, float contraction and native division tolerances without changing
 mode 0 or mode 1 arithmetic or the software interpolation operations.
 
-The wide fallback executes its six original products in order through one retained six-term loop,
-with scalar operand selection and one unchanged product body. Both 18-word accumulators are initialized
-once and compared afterward. Source-local `dont_unroll` controls retain the product, candidate,
-three-edge, wide-carry and 27-step division loops through the pinned SPIR-V and HLSL emissions.
+The wide fallback caches six exact 24-by-24 products in the original signed operand order through
+one retained preprocessing loop. One local six-record `uvec4` table stores three shifted fragments
+and a start-word/sign tag, written once per record and then read-only. No whole table is passed
+through a helper or copied as loop-carried state. Every shift count is bounded to 0 through 31,
+including the zero-offset selection. Products at shift 506 reach word 17.
+
+One retained low-to-high 18-word scan contains one retained six-contribution loop. Literal x/y/z
+record reads select each digit. Separate scalar unsigned positive and negative low words begin at
+their incoming carries. Unsigned wrap increments outgoing counters, each bounded to 0 through 5.
+The highest differing normalized word overrides the sign. All 18 words are processed. The six
+magnitudes total below `2^557`, so both final carries are zero within the 576-bit stream. Integer
+reassociation changes no exact determinant bit. No 18-word array, carry walk, early low-word return,
+17-word truncation or repeated product evaluation is permitted. Source-local `dont_unroll` controls
+retain preprocessing, scan, contributions, candidate, three-edge and 27-step division loops through
+the actual pinned SPIR-V and HLSL emissions. This internal replacement is authorized by the engine
+controller. Public domain, admission and error budgets are unchanged.
+
 Interpolation now retains its original 23 ordered software operations in one fixed `dont_unroll`
 loop, selecting scalar operands into one add, multiply or divide body and storing each rounded result
 in a local 16-word register bank. Every subtraction retains its sign-bit XOR. Constant/equal-zero
@@ -178,7 +191,7 @@ span-77 classifier and descending comparison. Bin mapping shares one software mu
 four ordered steps, u, v, column and row, with the unit clamp after each of the first two products.
 A local two-word bank retains u and v. Triangle origin subtraction shares one software add body
 through two ordered axes, X then Z, retaining the sign-bit XOR and signed-zero behavior. The arithmetic
-helpers, CPU reference, wide algorithm, admission and mode 0/1 arithmetic remain unchanged.
+helpers, CPU reference, exact wide sign, admission and mode 0/1 arithmetic remain unchanged.
 The previous rolled-wide and interpolation candidates failed cold compile admission in hosted runs
 40091542332 and 40094097628. The shared predicate and mapping candidate still requires a candidate-only
 hosted Windows proof, with pixel FXC at most 5000 ms and the measured six-phase total at most 10000 ms.

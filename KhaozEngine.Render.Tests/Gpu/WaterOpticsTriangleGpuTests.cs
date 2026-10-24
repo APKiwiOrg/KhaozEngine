@@ -338,7 +338,7 @@ void main() {
         throw new InvalidOperationException("Original-geometry ray missed a test point.");
     }
 
-    uint[] Capture(string name, WaterOpticsTriangleField field, Vector4[] queries)
+    uint[] Capture(string name, WaterOpticsTriangleField field, Vector4[] queries, string? diagnosticSource = null)
     {
         Assert.InRange(queries.Length, 1, 128);
         using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
@@ -370,7 +370,7 @@ void main() {
         bindings[11] = device.PointSampler;
         using IGpuResourceLayout layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(elements));
         using IGpuResourceSet set = f.CreateResourceSet(new GpuResourceSetDescription(layout, bindings));
-        using IGpuComputeShader shader = f.CreateComputeShaderFromSpirv(Source);
+        using IGpuComputeShader shader = f.CreateComputeShaderFromSpirv(diagnosticSource ?? Source);
         using IGpuComputePipeline pipeline = f.CreateComputePipeline(new GpuComputePipelineDescription(shader, layout));
         var elapsed = Stopwatch.StartNew();
         using (IGpuCommandList commands = f.CreateCommandList())

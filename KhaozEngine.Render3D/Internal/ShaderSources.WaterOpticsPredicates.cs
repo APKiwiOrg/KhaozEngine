@@ -3,48 +3,12 @@ namespace KhaozEngine.Render3D.Internal;
 internal static partial class ShaderSources
 {
     // Exact binary32 orientation. Each input is a signed integer in units of 2^-149.
-    // Wide fallback: six coordinate products fit below 2^557. Each magnitude sum uses 576 bits.
+    // Wide fallback: six coordinate products fit below 2^557. Each magnitude sum streams 576 bits.
     // No float filter, optional double capability, epsilon or source-coordinate modification is involved.
     const string WaterOpticsPredicatesGlsl = WaterOpticsNarrowPredicatesGlsl + @"
-struct OpticsWide { uint limb[18]; };
-
-void opticsWideAdd(inout OpticsWide sum, int word, uint value) {
-    [[dont_unroll]] for (int i = word; i < 18; i++) {
-        uint old = sum.limb[i];
-        sum.limb[i] = old+value;
-        value = sum.limb[i] < old ? 1u : 0u;
-        if (value == 0u) break;
-    }
-}
-
-void opticsWideProduct(inout OpticsWide positive, inout OpticsWide negative, uint a, uint b, bool minus) {
-    uint ae = (a >> 23u) & 255u, be = (b >> 23u) & 255u;
-    uint am = (a & 0x7fffffu) | (ae == 0u ? 0u : 0x800000u);
-    uint bm = (b & 0x7fffffu) | (be == 0u ? 0u : 0x800000u);
-    if (am == 0u || bm == 0u) return;
-    int shift = int(max(ae,1u)+max(be,1u))-2;
-    int word = shift/32;
-    uint offset = uint(shift%32);
-    uvec2 p = opticsProduct24(am,bm);
-    uint low = p.x << offset;
-    uint middle = offset == 0u ? p.y : (p.y << offset) | (p.x >> (32u-offset));
-    uint high = offset == 0u ? 0u : p.y >> (32u-offset);
-    bool neg = minus != (((a ^ b) & 0x80000000u) != 0u);
-    if (neg) {
-        opticsWideAdd(negative,word,low);
-        opticsWideAdd(negative,word+1,middle);
-        opticsWideAdd(negative,word+2,high);
-    } else {
-        opticsWideAdd(positive,word,low);
-        opticsWideAdd(positive,word+1,middle);
-        opticsWideAdd(positive,word+2,high);
-    }
-}
-
 int opticsOrientWide(uvec2 a, uvec2 b, uvec2 p) {
-    OpticsWide positive, negative;
-    for (int i = 0; i < 18; i++) { positive.limb[i] = 0u; negative.limb[i] = 0u; }
-    // Keep one product body through exhaustive inlining, with the original accumulator order.
+    uvec4 products[6];
+    // Cache each exact product once, in the original signed operand order.
     [[dont_unroll]] for (int term = 0; term < 6; term++) {
         uint left, right;
         bool minus;
@@ -54,13 +18,47 @@ int opticsOrientWide(uvec2 a, uvec2 b, uvec2 p) {
         else if (term == 3) { left = b.y; right = p.x; minus = true; }
         else if (term == 4) { left = b.y; right = a.x; minus = false; }
         else { left = a.y; right = p.x; minus = false; }
-        opticsWideProduct(positive,negative,left,right,minus);
+        uint ae = (left >> 23u) & 255u, be = (right >> 23u) & 255u;
+        uint am = (left & 0x7fffffu) | (ae == 0u ? 0u : 0x800000u);
+        uint bm = (right & 0x7fffffu) | (be == 0u ? 0u : 0x800000u);
+        uint shift = max(ae,1u)+max(be,1u)-2u;
+        uint offset = shift & 31u;
+        // Safe even if selections evaluate both operands. No shift by 32.
+        uint spill = (32u-offset) & 31u;
+        uvec2 product = opticsProduct24(am,bm);
+        uint low = product.x << offset;
+        uint middle = (product.y << offset) | (offset == 0u ? 0u : product.x >> spill);
+        uint high = offset == 0u ? 0u : product.y >> spill;
+        bool neg = minus != (((left ^ right) & 0x80000000u) != 0u);
+        products[term] = uvec4(low,middle,high,(shift >> 5u) | (neg ? 16u : 0u));
     }
-    for (int i = 17; i >= 0; i--) {
-        if (positive.limb[i] > negative.limb[i]) return 1;
-        if (positive.limb[i] < negative.limb[i]) return -1;
+    uint positiveCarry = 0u, negativeCarry = 0u;
+    int comparison = 0;
+    // Normalize both unsigned sums in base 2^32. Each outgoing carry is at most 5.
+    [[dont_unroll]] for (int word = 0; word < 18; word++) {
+        uint positive = positiveCarry, negative = negativeCarry;
+        uint positiveOverflow = 0u, negativeOverflow = 0u;
+        [[dont_unroll]] for (int term = 0; term < 6; term++) {
+            uvec4 product = products[term];
+            int delta = word-int(product.w & 15u);
+            uint digit = delta == 0 ? product.x : delta == 1 ? product.y : delta == 2 ? product.z : 0u;
+            if ((product.w & 16u) != 0u) {
+                uint next = negative+digit;
+                negativeOverflow += next < negative ? 1u : 0u;
+                negative = next;
+            } else {
+                uint next = positive+digit;
+                positiveOverflow += next < positive ? 1u : 0u;
+                positive = next;
+            }
+        }
+        positiveCarry = positiveOverflow;
+        negativeCarry = negativeOverflow;
+        // Higher normalized words dominate every lower difference. Never return early.
+        if (positive != negative) comparison = positive > negative ? 1 : -1;
     }
-    return 0;
+    // Six magnitudes total below 2^557, so both final carries are zero after 576 bits.
+    return comparison;
 }
 
 int opticsOrient(uvec2 a, uvec2 b, uvec2 p) {

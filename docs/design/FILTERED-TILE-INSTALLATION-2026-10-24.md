@@ -1,12 +1,17 @@
 # Filtered tile installation
 
-Status: proposed design for Grimhollow contact adoption. Baseline `4bb5b0462`, released `v21.12.2`.
+Status: proposed installer and public measurement design for Grimhollow contact adoption. Baseline `4bb5b0462`, released `v21.12.2`.
 
 ## Goal and boundary
 
 Let a consumer choose which built tile colliders enter a physical world while the existing engine installation
 retains canonical provenance, movement exclusions, absolute transformed bounds and source authentication.
 `PhysicsNavBake.Capture` must sample the physical set actually installed.
+
+Owner ruling CA-R3 adds supported public support-query measurement to this same release. Grimhollow
+CA-23 to CA-25 need engine-owned nested work, caller labels, parallel-worker aggregation and proof-reuse
+retention evidence. The existing private diagnostics are not a consumer contract. Outer Step/Hold counts
+and reflection cannot replace these measurements.
 
 Grimhollow omits Blocked boxes above water before installation. Its existing policy is in
 `Grimhollow.Shared/HollowmerePhysics.cs`, method `IsBlockedOverWater`. The consumer research counted 7,574
@@ -172,12 +177,194 @@ slope control. No new controller fix is justified by the inspected source. If th
 stop the installer handoff for a measured root-cause amendment rather than add a height clamp or enlarge
 the motion budget. Do not close #1352 from this design assessment.
 
+## FI-8. Public support-query measurement surface
+
+Add the API below to the dependency-free `KhaozEngine.Physics` namespace and package. It wraps the existing
+`SupportQueryDiagnostics` recorder. Keep `SupportQueryCounts`, `SupportQueryDiagnostics`, its `ThreadState`,
+worker plumbing and observer delegates internal. No new consumer friend assembly is permitted.
+
+```csharp
+public sealed class SupportQueryCapture : IDisposable
+{
+    public static SupportQueryCapture Begin(string label);
+    public SupportQueryMeasurement Snapshot();
+    public void Dispose();
+}
+
+public sealed class SupportQueryMeasurement
+{
+    public SupportQueryMetrics Total { get; }
+    public IReadOnlyDictionary<string, SupportQueryMetrics> ByLabel { get; }
+    public static SupportQueryMeasurement Combine(IEnumerable<SupportQueryMeasurement> measurements);
+}
+
+public sealed class SupportQueryMetrics
+{
+    public long this[SupportQueryCounter counter] { get; }
+    public SupportQueryRouteMetrics Routes { get; }
+    public SupportProofReuseMetrics ProofReuse { get; }
+}
+
+public sealed class SupportProofReuseMetrics
+{
+    public long PeakKeys { get; }
+    public long PeakBytes { get; }
+    public bool HasCompleteLifetimes { get; }
+}
+```
+
+These declarations specify signatures, not implementation bodies. The capture constructor is private, so
+Begin is its only entry point. All result constructors are internal.
+`SupportQueryRouteMetrics` is a sealed immutable class with public `long` getters named `WallRetries`,
+`PushedPlacements`, `MediumResolves`, `MaximumMediumRetries`, `GroundSegments`, `SlideSegments`, `AirSegments`,
+`WaterSegments`, `RoundedReads` and `MediumHandoffs`, matching the internal route fields.
+
+Move the existing `SupportQueryCounter` enum into its own file and make it public. Pin explicit values 0 through
+41 in its present order, from `Find` through `InitialHoldReuseHits`. Do not expose a Count sentinel. This includes
+all existing proposal/volume/static/mesh/member/extrema/join work, refusals, analytic samples, bindings, physics
+and movement leases, producer pins, ground/medium/mode work, world forms, footprint operands/certificates,
+Find memo, footprint reuse, EdgeSteps and initial Hold reuse. New counters append values. Never renumber or
+reuse a value. The indexer rejects an undefined value with `ArgumentOutOfRangeException`.
+
+Use `long` throughout the single internal counter storage, count snapshots, route totals, retention totals and
+merges, not just in the public adapter. Do not accumulate an `int` and widen its already overflowed value.
+Existing bounded per-session budgets and `Record`'s `int count = 1` argument stay unchanged. Enabled recorder
+arithmetic and public aggregation are checked, throwing `OverflowException` rather than wrapping. The enum
+promotion and new types are additive. Existing public signatures, package dependencies, formats and identities
+stay unchanged. Do not promote the 42-argument positional internal count record into a permanent public ABI.
+
+## FI-9. Scope lifetime and attribution
+
+`Begin` opts in only on the calling managed thread. Null labels throw `ArgumentNullException`. Empty or
+whitespace-only labels throw `ArgumentException`. Other labels are preserved exactly and compared ordinally,
+without trimming, case folding or culture. Labels are caller descriptions, such as `player`, `cow` or
+`player/preflight`, never engine-inferred body identities.
+
+A capture installs a fresh enabled counter/route recorder and suspends prior internal observation callbacks.
+It saves the entire prior thread state, including enabled state, count-array identity/content, ground and Find
+observers, ground observation, curved-work observer, routes and retention state. Scope operations use an
+internal capture frame, not a label lookup or dictionary mutation on every counter increment.
+
+Scopes can nest synchronously. Direct work belongs exclusively to the innermost label. A child has its own
+recorder. Closing it restores the parent's recorder without adding child counts to that recorder, and attaches
+its immutable labelled result once to the parent's completed children. Parent snapshots combine direct work
+and child rows. Thus `Total` counts every recorded operation once, and summing label counters equals `Total`.
+Two occurrences of the same label combine into one row. A nested Find is an engine increment under the active
+label, not a second measurement to add to its enclosing Step/Hold. Prior unrelated diagnostics receive none
+of the capture's counters. They resume with their original counters and callbacks.
+
+`Snapshot` returns a detached cumulative result, including completed child and joined worker work. It never
+resets counters. Only the active top scope may snapshot before disposal. After disposal, its creating thread
+can retrieve its frozen final snapshot. Result objects may be read on any thread. Earlier results cannot
+change after further work, nesting, disposal or combination. `ByLabel` enumerates in ordinal label order.
+An empty capture still exposes its label with zero metrics. Combining an empty sequence returns zero totals
+and no labels. Null sequences or null elements throw `ArgumentNullException`.
+
+`Dispose` finalizes once and restores state in a `finally`, including when snapshot materialization fails.
+A normal `using` restores state when the measured operation throws and leaves a partial, inspectable result.
+Dispose is idempotent after successful close. Wrong-thread use, out-of-order disposal or a parent snapshot
+while its child is active throws `InvalidOperationException` before altering either scope. The caller can then
+close scopes correctly. Do not hold a scope across `await`, `Task.Run` or a thread handoff. There is no
+`AsyncLocal`, process-global enable switch or implicit propagation to arbitrary consumer tasks. Independent
+consumer threads start their own scopes, join, then call `Combine` on their disjoint completed measurements.
+Do not combine both a parent snapshot and its child snapshot, or two cumulative snapshots of one interval.
+`Combine` adds the supplied measurements, it does not deduplicate overlapping evidence.
+
+## FI-10. Worker aggregation and retention meaning
+
+Extend the existing `WorkerDiagnostics.Plan/Enter/Exit/Merge` path, not the support call sites. The plan captures
+immutable enablement and the current label. It never sends the caller's capture object, mutable recorder or
+observer delegates to another thread. Preserve the existing explicitly opted-in internal test observers.
+Each worker installs fresh counters and scope metadata with its existing live retention balance, records
+nested work locally, exits in `finally` and restores its own prior
+state. After joining every started worker, the caller merges each record exactly once in worker-index order,
+under the label captured for that build. Caller-side snapshot, binding construction, first pins and disposal
+are counted on the caller. Do not count them again as worker contributions.
+
+Ordinary degree-one Contact baking remains on its current serial path. Parallel phases still join before
+returning or throwing. Include every started worker's partial record before propagating the existing selected
+failure, interrupt or cleanup failure. Never invent contributions for unstarted workers. A new build starts
+with new records, and a failed build must not leak enablement or labels into a later one. Measurement does not
+change phase scheduling, cutoff selection, source lifetime, graph bytes or default reuse choices.
+
+Counter values and ordinary route fields add. `MaximumMediumRetries`, `PeakKeys` and `PeakBytes` take the
+maximum, never the sum. `HasCompleteLifetimes` combines with logical AND, with true as the empty identity.
+These operations make aggregation independent of record arrival order and grouping. All supplied records are
+included once. This is determinism of reduction, not a claim that every execution does identical work.
+Extra worker bindings, leases and pins are real work. Cache publication, reuse policy and speculative work
+before a failure cutoff can change counts. Report raw totals. Do not normalize away worker overhead or claim
+that all counters, failure-path counts or peaks are invariant across worker counts, processors or schedules.
+
+Keep `SupportQueryDiagnostics.ProofReuseRetention` as the only retention accounting path. Its keys count
+occupied memo entries. Bytes charge the existing owned table capacity and member/join payload by element size,
+including spare fixed table slots. They exclude CLR headers, allocator overhead, unrelated scratch, initial-Hold
+maps, GC allocation totals and process RSS. Peaks are the largest single proof-reuse session capacities
+reported by retention events in the interval. They are not simultaneous process-wide or summed-worker peaks.
+This matches the existing recorder's `max(sessionKeys/sessionBytes)` semantics. A caller needing RSS measures
+it separately on the approved hosted run.
+
+Live retention balance is physical state and must survive a scope switch. Seed an entering capture with the
+current live Keys/Bytes but reset its observed session peaks. On exit restore saved callbacks/counters/routes
+and saved observed peaks, carrying the live Keys/Bytes delta through to the restored state. Do not restore
+obsolete live balances or zero them because measurement stopped. Acquiring in one scope and releasing in
+another must never manufacture a negative live balance. Apply the same rule to worker enter/exit restoration.
+This is a correction to scope bookkeeping, not a second retention recorder or per-memo observer registry.
+
+A row has `HasCompleteLifetimes` only when live retained Keys and Bytes are zero at entry and at the sampled
+boundary for each contributing interval/worker record. Otherwise its observed peaks may omit a pre-existing
+steady session, and the flag is false. Snapshots remain useful for counters but cannot claim complete retained
+memory evidence. Child scopes and repeated labels combine this flag conservatively. Wrap the complete source
+reuse lifetime, from before its first store through reset/disposal, for the CA-24 bake evidence. All joined bake
+source groups must close before its final measurement. Partial snapshots and failure records remain marked
+incomplete where needed. `PeakKeys` and `PeakBytes` are independent maxima and need not come from one session.
+
+Disabled support-query paths keep their current enablement gates and the existing unconditional live-retention
+balance. No second increment stream, per-record label lookup, clock read, callback dispatch, allocation, lock,
+thread hop or global scan is introduced when disabled. Counter widening and capture bookkeeping do not enable
+instrumentation implicitly. In particular, do not enlarge disabled worker-record allocations after widening
+counters. Gate record allocation/materialization and reduction on existing enablement, using the same state
+restoration path without records when disabled. Keep existing internal allocation-observer behavior intact.
+Enabled capture and snapshot allocations are diagnostics overhead, not movement
+or proof-reuse retained bytes. Establish labels/scopes outside timed regions where possible, materialize results
+afterwards and disclose enabled instrumentation in hosted evidence. This API supplies structural evidence,
+not timer values or an allocation-free profiling promise. Timing and allocation budgets remain separately
+approved harness work.
+
+## FI-11. Measurement acceptance and consumer handoff
+
+Tests must prove every public counter maps to the existing recorder, including values above `int.MaxValue`,
+without calling an internal writer through the public API. Internal unit fixtures may inject known records to
+exercise the adapter and reducers. Real movement and bounded Contact bake tests must collect through public
+capture, without reflection or private diagnostics in the consumer-facing fixture.
+
+SS-R3 applies. Compare same-run relationships and raw results from controlled equivalent fixtures. Serial
+and degree-three bounded bakes use identical explicit stable-Hold reuse settings and warmed equivalent world
+forms, then compare graph bytes, label membership and logical proof work such as Find and EdgeSteps. Check
+worker setup overhead through same-run relationships, not a machine-wide absolute counter literal. Check
+same-record merge permutations and groupings exactly. Do not pin CPU-, SIMD- or schedule-dependent extrema,
+member, fallback, footprint or retention byte literals. A changed worker count may report a different measured
+peak. Assert complete lifetimes and agreement with each run's own internal retention oracle, not peak equality
+between different schedules. Do not turn a functional worker-degree comparison into a timing or load run.
+
+Acceptance includes nested exclusive labels, immutable snapshots, disabled isolation, synchronous exception
+restoration, wrong-thread/LIFO refusal, repeated disposal, empty/invalid inputs, overflow, retention across
+scope boundaries, partial lifetimes, successful and failed worker joins, and byte parity with capture disabled.
+Use a non-friend test assembly for a small real public-only capture/combination proof. No consumer gains friend
+access. Existing engine diagnostic and cost-sampler tests continue to compile after internal widening.
+
+Living docs must show exact namespace/package, enablement, `using` restoration, label semantics, snapshot and
+combination rules, parallel bake behavior, maxima/byte/completeness meanings and thread/async restrictions.
+The handoff to Grimhollow names the single installer/measurement release tag, source SHA, package version and
+matching tool version. Its Tasks 13, 15 and 17 remain blocked until that release is available and adopted.
+Implementation of this design does not authorize a release, game pin change, world bake, SG-21 run or timing.
+
 ## Acceptance and delivery
 
 The implementation plan owns explicit cases for selected capture, canonical owners and aliases, transformed
 bounds at a nonzero origin, conservative extent, immutable generations, foreign-source refusal, ground
-exclusions, empty selection, callback failure, rollback and byte compatibility. It adds documentation and
-chooses one additive minor version in its final task, subject to the live staged-version rule.
+exclusions, empty selection, callback failure, rollback and byte compatibility. It adds scoped public
+measurement and bounded worker proofs before the final documentation and version task, which chooses one
+additive minor version subject to the live staged-version rule. Both APIs ship together under CA-R3.
 
 All local builds and tests use `build-slot`. The final full suite uses `--heavy`. No local stress, repeated
 test loops, timing claims, live consumer runs or navigation world bakes belong to this feature.

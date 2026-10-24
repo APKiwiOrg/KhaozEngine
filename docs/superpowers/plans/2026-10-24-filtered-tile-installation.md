@@ -6,12 +6,13 @@
 > `subagent-driven-development` skill. Steps use checkboxes for tracking.
 
 **Goal:** Install a consumer-selected tile collider subset with canonical engine provenance and authenticated
-ordinary movement registration, so complete physics and navigation capture observe the same installed set.
+ordinary movement registration, and ship supported labelled support-query capture in the same release.
 
 **Architecture:** Add a required-predicate overload to `TileWorldColliders.AddTo` and retain
 `TileColliderRegistration` as the sole installation owner. One internal installer snapshots original indices,
 copies existing provenance and performs the existing rollback transaction. Ordinary authentication, bounds
-capture, conservative resident extent and navigation serialization remain unchanged.
+capture, conservative resident extent and navigation serialization remain unchanged. A public scoped facade wraps
+the existing support recorder, with exclusive caller labels and the existing joined worker-record reduction.
 
 **Tech Stack:** C# on .NET 10, xUnit, KhaozEngine.TileWorld.Physics, Locomotion, Movement and the Bepu test backend.
 
@@ -29,16 +30,20 @@ capture, conservative resident extent and navigation serialization remain unchan
 - No local load, timing, repeated test loops, live consumer clients, world bakes or baseline growth approvals.
 - Use focused new types and test files within KESIZE. No exemption or baseline increase.
 - Namespace new tile tests under `KhaozEngine.Tests.TileWorld.Physics`. No new dependency edges are needed.
-- This design commit has no version bump. Task 5 chooses the implementation batch's version using current tags.
+- Public measurement wraps the existing recorder in KhaozEngine.Physics. No second counter path or consumer friend access.
+- Counter/route sums use long throughout. Retention and retry maxima use max, not sum.
+- SS-R3 forbids CPU-, SIMD- and schedule-dependent absolute counter pins. All worker fixtures are bounded and untimed.
+- Scopes are synchronous and thread-affine. Restore prior diagnostics and preserve physical retention balance.
+- This design commit has no version bump. Task 7 chooses the implementation batch's version using current tags.
 - Tags, publishing and Grimhollow repinning remain outside this implementation plan's execution authorization.
 
 ## Review Focus
 
-- A callback throws late or its closure later changes. Installation must leave no partial set or deferred policy.
-- A selector removes one wall-corner edge. The retained edge must keep the original shared placed owner.
-- A rotated walk surface sits outside a resident region in a rebased world. Its absolute bounds must remain canonical.
-- Ground is omitted, or everything is omitted. Exclusions must name only installed handles and analytic coverage must remain.
-- Handles are reused in another source or after mutation. Authentication must refuse substitution while preserving supported rebases.
+- A callback or worker band throws. Installation and diagnostics must unwind their own state and preserve the primary failure.
+- Partial placed owners and rebased skewed decks must retain original aliases and absolute transformed bounds.
+- Ground is omitted, or everything is omitted. Exclusions name only installed handles and analytic coverage remains.
+- Reused handles and static mutation must refuse substitution while supported rebases remain authenticated.
+- Nested labels and joined workers must count once, preserve live retention balance and mark partial memory evidence incomplete.
 
 ## File responsibilities
 
@@ -47,6 +52,14 @@ the one add transaction. `TileColliderRegistration.cs` retains lifetime ownershi
 index mapping. Its Movement partial consumes compact selected provenance. `TileColliderProvenance.cs`,
 `OrdinaryMovementRegistration*.cs` and `PhysicsNavBake*.cs` are reference contracts, not alternate places to
 implement filtering. New tests separate compatibility, installation, movement and navigation concerns.
+
+`SupportQueryDiagnostics` remains the only recorder. Extract its existing enum and count value model into
+`SupportQueryCounter.cs` and `SupportQueryCounts.cs`, without duplicating them. `SupportQueryCapture.cs` owns
+thread scope lifetime. `SupportQueryMeasurement.cs` owns detached labelled results and reduction.
+`SupportQueryMetrics.cs` owns the public read-only counter, route and retention models.
+`WorkerDiagnostics.cs` alone bridges measurements into the existing Contact navigation workers.
+Tasks 1 to 4 remain unchanged. Task 5 owns capture, Task 6 owns parallel and public consumer proofs, and
+Task 7 documents and versions both capabilities together. Execute these tasks in order.
 
 ### Task 1: Freeze unfiltered installation compatibility
 
@@ -277,30 +290,168 @@ Expected: green traversal and authentication tests. A red exact-scale regression
 - [ ] Commit `test(locomotion): pin analytic terrain riser traversal`. Leave #1352 open for its owner and
   Grimhollow's actual terrain audit. Do not close it merely because synthetic cases pass.
 
-### Task 5: Document the seam, select the version and verify the batch
+### Task 5: Add scoped public support-query capture and labelled reduction
 
 **Files:**
 
-- Modify `KhaozEngine.TileWorld.Physics/README.md`, `docs/USING-KHAOZENGINE.md` and this spec's indexed status.
+- Create `KhaozEngine.Physics/SupportQueryCounter.cs`, moving the existing enum and making it public.
+- Create `KhaozEngine.Physics/SupportQueryCounts.cs`, moving and widening the existing internal count model.
+- Create `KhaozEngine.Physics/SupportQueryCapture.cs`, `SupportQueryMeasurement.cs` and `SupportQueryMetrics.cs`.
+- Modify `KhaozEngine.Physics/SupportQueryDiagnostics.cs` and `SupportQueryDiagnostics.ProofReuse.cs` for shared
+  long storage, scope exchange metadata and live-retention carry, without adding a counting path.
+- Create `KhaozEngine.Movement.Tests/SupportQueryCaptureTests.cs`, `SupportQueryMeasurementReductionTests.cs`
+  and `SupportQueryCaptureRetentionTests.cs`.
+- Modify `KhaozEngine.Movement.Tests/ParallelContactBakeTests.cs` for the internal long-array and boxed-long
+  constructor fixtures. Adapt existing diagnostic test callers only where compilation requires the widened types.
+
+**Interfaces:**
+
+- Produces `SupportQueryCapture SupportQueryCapture.Begin(string label)`,
+  `SupportQueryMeasurement SupportQueryCapture.Snapshot()` and `void SupportQueryCapture.Dispose()`.
+- Produces `SupportQueryMeasurement SupportQueryMeasurement.Combine(IEnumerable<SupportQueryMeasurement> measurements)`,
+  `SupportQueryMetrics Total` and `IReadOnlyDictionary<string, SupportQueryMetrics> ByLabel`.
+- Produces `long SupportQueryMetrics.this[SupportQueryCounter counter]`, `SupportQueryRouteMetrics Routes`
+  and `SupportProofReuseMetrics ProofReuse`. FI-8 fixes all route getters and the retention getters
+  `long PeakKeys`, `long PeakBytes` and `bool HasCompleteLifetimes`.
+- Uses existing `SupportQueryDiagnostics.Record(SupportQueryCounter counter, int count = 1)`, `Snapshot`,
+  `Exchange`, `Merge` and `ProofReuseRetention`. Widen their internal storage/results, not the call-site count
+  argument or per-session budgets. Preserve all existing public movement and physics signatures.
+- Supplies Task 6 with internal thread-state label/completeness metadata, immutable result reduction and the
+  zero-copy ownership rule for saving/restoring the old recorder. No public mutation or observer hook is added.
+
+- [ ] Add these named tests before production edits. Confirm the missing public API failure using the focused
+  command below. Do not add implementation stubs to conceal the initial red result.
+
+| Test | Required assertions |
+| --- | --- |
+| `EveryPublicCounterReadsTheExistingRecorderAsLong` | For each of the 42 enum values, inject a distinct known count through the internal fixture and read it through the public indexer. Pin existing enum identities 0 through 41. Seed Find just below int.MaxValue, increment through Record, and assert the public long value crosses that boundary without wrap. |
+| `NestedLabelsCountEachOperationOnce` | Record direct work under `player`, then nested `player/preflight`, then `cow`. Public Total equals the sum of exclusive rows. Parent Snapshot contains child work once. A sibling with the same label coalesces. Earlier snapshots do not mutate. |
+| `CaptureRestoresEveryPriorValueWhenMeasuredWorkThrows` | Seed enabled and disabled prior states, all callbacks/observations, routes and an existing array. Throw inside using. Verify original state and array identity/content, callback identity and parent label are restored, with no measured counters leaking. Final partial result remains inspectable. |
+| `ScopeMisuseDoesNotCorruptTheActiveRecorder` | Null/blank labels reject. A different thread's Snapshot/Dispose and out-of-order disposal/parent Snapshot throw before mutation. Correct LIFO close still succeeds. Repeated Dispose does not merge a child twice. |
+| `DetachedMeasurementsCombineInOrdinalOrder` | Combine disjoint results in both orders and both associative groupings. All counters and normal routes sum, maximum retries and both retention peaks take max, completeness uses AND, keys are ordinal and case-sensitive. Empty input has zero totals and no labels. Undefined enum and null inputs reject. |
+| `CaptureAndCombinationRefuseLongOverflow` | Known synthetic records at long.MaxValue plus one throw OverflowException in enabled recorder/merge or public Combine. They never expose wrapped negative totals. |
+| `RetentionBalanceSurvivesNestedAndDisabledScopeBoundaries` | Use a bounded real source reuse session. Start/store before an inner capture and release inside it, then the reverse acquisition/release ordering. Restored live Keys/Bytes equal actual retained storage and finish at zero, including initially disabled diagnostics. No stale saved balance reappears. |
+| `RetentionPeaksDistinguishCompleteAndPartialLifetimes` | A capture enclosing store/reset/dispose reports positive peaks, zero final live balance and complete lifetimes. An interval entering or ending with retained storage is incomplete even if it sees no growth. Public peaks equal that interval's own internal retention oracle. No hard-coded element-size or byte peak. |
+| `DisabledThreadsAndPriorObserversStayIsolated` | A capture changes only its own thread. Fresh disabled threads remain disabled, counters do not increment and capture callbacks are suspended/restored. Snapshots allocate only on explicit capture paths. No test uses a clock or timing threshold. |
+
+```csharp
+Assert.Equal(expectedExistingRecorderValue, measured.Total[counter]);
+Assert.Equal(measured.Total[SupportQueryCounter.Find],
+    measured.ByLabel.Values.Sum(row => row[SupportQueryCounter.Find]));
+Assert.True(measured.Total[SupportQueryCounter.Find] > int.MaxValue);
+Assert.Equal(Math.Max(leftPeak, rightPeak), combined.Total.ProofReuse.PeakBytes);
+Assert.False(partial.Total.ProofReuse.HasCompleteLifetimes);
+Assert.Same(priorArray, restored.Counts);
+```
+
+```bash
+build-slot --label support-query-capture -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~SupportQueryCapture|FullyQualifiedName~SupportQueryMeasurementReductionTests'
+```
+
+- [ ] Move the enum/count definitions and implement the FI-8 immutable facade over those existing counts.
+  Pin enum numeric identities and internal constructors. Widen the single recorder, routes, retention and
+  arithmetic before exposing values. Fix internal fixture boxing and count-array types at their source.
+- [ ] Implement FI-9 scope stacking and detached snapshots in the focused capture/result types. Keep dictionary
+  grouping and allocations at scope/snapshot/reduction boundaries, not in Record. Restore all prior state in
+  finally, carrying only the live retention change rather than restoring an obsolete physical balance.
+- [ ] Implement FI-10 retention peak and completeness semantics using the existing retention events and baseline.
+  Do not add a per-memo registry or change reuse budget, evaluation, identities or source disposal behavior.
+- [ ] Run the focused command once after implementation. Also run the existing internal diagnostics and reuse
+  regressions with the command below. Expected all selected tests pass, zero warnings and no frozen navigation
+  fixture changes. Inspect disabled paths to confirm their existing gates and sole retention update remain.
+
+```bash
+build-slot --label support-query-existing-diagnostics -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~ParallelContactBakeTests|FullyQualifiedName~ContactNavigationProofReuseTests|FullyQualifiedName~ContactNavigationProofReuseScheduleTests'
+```
+
+- [ ] Stage explicit changed files and commit `feat(physics): expose scoped support-query measurement`.
+
+### Task 6: Add labelled parallel capture and public consumer proofs
+
+**Files:**
+
+- Modify `KhaozEngine.Physics/WorkerDiagnostics.cs` for immutable label/completeness propagation and existing reduction.
+- Modify `KhaozEngine.Movement/ContactNavigationWorkers.cs` for the record handoff, disabled record-allocation
+  guard and existing join/failure paths. Do not change its scheduler, graph algorithm or cleanup/failure precedence.
+- Create `KhaozEngine.Movement.Tests/PublicSupportQueryBakeTests.cs` and `SupportQueryWorkerRestorationTests.cs`.
+- Create `KhaozEngine.TileWorld.Physics.Tests/PublicSupportQueryMeasurementTests.cs`. This assembly has no
+  Physics friend access. Use its existing fixture composition and references, without adding a friend grant.
+- Reference `ParallelContactBakeTests.cs`, `ContactNavigationProofReuseTests.cs` and the bounded navigation fixtures.
+
+**Interfaces:**
+
+- Consumes the exact Task 5 public signatures and internal label/completeness metadata from FI-9/FI-10.
+- Appends `string? MeasurementLabel = null` to internal `WorkerDiagnosticsPlan`, and
+  `string? MeasurementLabel = null, bool HasCompleteLifetimes = true` to `WorkerDiagnosticsRecord`. Existing count, route and retention fields stay
+  the single worker measurement payload. Optional new internal parameters preserve existing internal callers.
+- Preserves `WorkerDiagnostics.Plan()`, `WorkerDiagnosticsScope.Enter(in WorkerDiagnosticsPlan plan, Action<ContactAllocationPhase, bool>? observer)`,
+  `WorkerDiagnosticsRecord WorkerDiagnosticsScope.Exit()` and `WorkerDiagnostics.Merge(ReadOnlySpan<WorkerDiagnosticsRecord> records)`.
+- Adds internal `void WorkerDiagnosticsScope.Restore()` as the single restoration helper used by Exit and the
+  disabled path, which skips widened record allocation/materialization/reduction. Preserve internal allocation observers.
+- Produces public-only bounded Contact capture evidence. Grimhollow consumes no internal worker APIs.
+
+- [ ] Write the following tests. Run the first focused command to expose absent worker metadata/restoration
+  behavior before changing the bridge. Cases already green after Task 5 remain composition evidence.
+
+| Test | Required assertions |
+| --- | --- |
+| `PublicCaptureCollectsEveryJoinedWorkerUnderItsBodyLabel` | Bake a small real Contact profile under `player` at degrees 1 and 3, explicitly enabling stable Hold reuse for both. Compare graph bytes with capture off. At the caller join, compare public metrics to that run's own internal worker-plus-caller oracle and assert positive Find, bindings, physics/movement leases, reuse work and session peaks. Label totals account for all records once. |
+| `WorkerCountPreservesLogicalProofWorkAndReportsRealSetup` | Use equivalent warmed worlds and matching explicit reuse policies. Degree 1/3 graph bytes, Find and EdgeSteps agree in the same test. Raw binding/pin/lease differences agree with the actual worker setup events, not an absolute CPU-dependent literal. Each run's public peaks match its own oracle and complete lifetimes are true. Do not assert equal peaks or all counters between degrees. |
+| `WorkerRecordReductionIsOrderAndGroupingIndependent` | Feed known disjoint records in forward/reverse order and associative groupings. Compare every public counter/route, ordinal label and max/completeness result exactly. Read records once per reduction. This pins arithmetic, not a physics work-count baseline. |
+| `FailedWorkerBuildMergesPartialWorkAndRestoresAllThreads` | Inject one bounded worker-band failure using existing build hooks. The selected original failure propagates after join. Every started worker contributes once, no unstarted worker contributes, partial counters/retention remain honest and caller/worker prior state and callbacks restore. A later bounded build starts clean. Preserve cleanup failure precedence. |
+| `DisabledBakeDoesNotInstallPublicCaptureOrChangeBytes` | Without Begin, serial/parallel output equals captured output. Existing disabled state and callbacks restore, no label state appears, no capture objects, dictionaries or widened worker-record arrays are created by the disabled path. The existing internal allocation observers still run. Inspect the bridge guard as well as asserting state. |
+| `NonFriendConsumerCapturesMovementAndCombinesBodyProfiles` | In TileWorld.Physics.Tests use only public physics/movement APIs to capture real Hold/Step work under two caller-supplied labels, including a nested preflight scope. Find and lease counters are positive, Total equals exclusive labels, immutable results combine in ordinal order and both scopes restore. Compile proves no friend access or reflection is needed. |
+
+```bash
+build-slot --label support-query-parallel -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~PublicSupportQueryBakeTests|FullyQualifiedName~SupportQueryWorkerRestorationTests|FullyQualifiedName~ParallelContactBakeTests'
+build-slot --label support-query-public-consumer -- dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release --filter 'FullyQualifiedName~PublicSupportQueryMeasurementTests|FullyQualifiedName~FilteredTileNavigationTests|FullyQualifiedName~TileInstallationCompatibilityTests'
+```
+
+- [ ] Extend the existing worker plan/scope/record path to carry the captured label and completeness baseline,
+  isolate all worker state and merge records after every started thread joins. Keep caller observer delegates
+  private to the caller, with the pre-existing explicit internal test opt-ins unchanged. Never transfer a
+  mutable public capture object or an ExecutionContext to a worker.
+- [ ] Preserve the current serial path. Attribute caller setup/pins and worker work once, using the original
+  immutable build label for worker records. Restore live retention deltas even on exceptional exit. No support
+  or controller increment call site changes are needed to collect workers. Reuse Restore for the disabled
+  path and gate widened worker-record allocation/materialization/reduction on the existing Enabled flag.
+- [ ] Run both focused commands once after implementation. Expected green, zero warnings, exact graph bytes
+  and no SS-R3-dependent absolute work pins. These small fixed-fixture checks authorize no timing or load.
+- [ ] Stage explicit changed files and commit `feat(physics): aggregate labelled worker support measurements`.
+
+### Task 7: Document both public APIs, select the version and verify the batch
+
+**Files:**
+
+- Modify `KhaozEngine.TileWorld.Physics/README.md`, `KhaozEngine.Physics/README.md`,
+  `KhaozEngine.Movement/README.md`, `docs/USING-KHAOZENGINE.md` and this spec's indexed status.
 - Modify `Directory.Build.props`, `CHANGELOG.md` and every declaration selected by `scripts/check-doc-versions.sh`.
 - Modify `docs/INDEX.md` only to reflect the implementation's actual status.
 
 **Interfaces:**
 
-- Documents the exact Task 2 API, its FI-1 to FI-6 contracts and the Task 4 result.
+- Documents the exact Task 2 and Task 5 APIs, FI-1 to FI-11 contracts, Task 4 traversal result and Task 6 worker proof.
 - Produces one version/changelog commit and a verified branch for the owning orchestrator.
 
 - [ ] Add an example calling `colliders.AddTo(physics, include)` with a neutral policy. Explain original-index
   mapping, absolute predicate poses, preserved resident extent, selected-only ground exclusions, source lifetime
   and the complete-set meaning of `colliders.Hash`. State that persisted filter policy inputs need their own
   navigation source identity. Keep Grimhollow's material policy in Grimhollow.
+- [ ] Add a public-only capture example with two body labels, using/finally restoration, Snapshot and Combine.
+  Explain synchronous thread ownership, exclusive nested attribution, ordinal labels, cumulative snapshots,
+  disjoint combination, worker aggregation and actual worker overhead. Define max-per-session retention bytes,
+  completeness and diagnostic allocation overhead. Require complete source lifetimes for bake peak evidence.
+  State that the API supplies counts, not timers or process RSS. Keep approved hosted timing/bake gates intact.
 - [ ] Sweep every Markdown file for `TileWorldColliders`, `TileColliderRegistration`, `AddTo`, `GroundHandles`
-  and the former all-colliders/index-for-index wording. Update living reference text, preserve dated history.
+  and the former all-colliders/index-for-index wording. Also sweep `SupportQueryDiagnostics`, `SupportQueryCounter`,
+  `SupportQueryCapture`, `SupportQueryMeasurement`, `SupportProofReuse`, worker diagnostics and private-only
+  measurement wording across every Markdown file. Update living references, preserve dated history.
 - [ ] Re-read live main, `<KhaozEngineVersion>` and newest release tags. Ride a staged version if present.
   Otherwise this additive API takes the next free minor, nominally `21.13.0` only if `21.12.2` is still current
   and released. Do not assume that number is free. Put the version and matching newest changelog entry in the
   same commit, and update the guarded version declarations in that commit. The changelog distinguishes the
-  filtered seam from unchanged default output and reports #1352 only to the extent actually proven.
+  filtered seam and supported measurement from unchanged default output, and reports #1352 only to the extent
+  actually proven. Both additive APIs ride this one selected version.
 - [ ] After the orchestrator reconciles current main into the branch, run the final Release verification once.
   Preserve full command exit statuses. Do not loop or turn a tracked failure into an unrecorded retry.
 
@@ -319,9 +470,12 @@ Expected: zero build warnings, no new or changed test failures, unchanged compat
 hashes, all guards exit 0. GPU, timing and hosted stress proofs are not implied by this result.
 
 - [ ] Stage explicit documentation/version paths, run staged dash, prose and file-size checks plus
-  `git diff --cached --check`, then commit `release(<selected-version>): stage filtered tile installation`.
+  `git diff --cached --check`, then commit `release(<selected-version>): stage filtered installation and measurement`.
   Use the numeric version verified in the preceding step as the commit scope.
-- [ ] Return the branch commits and verification evidence to the owning orchestrator. Integration and pushing
+- [ ] Return branch commits, enum/API contract, scoped enablement and restoration proof, worker/attribution and
+  retention semantics, non-friend consumer proof and verification evidence to the owning orchestrator. The final
+  release handoff must supply one exact tag/SHA/package/tool identity for Grimhollow Tasks 13, 15 and 17.
+  Installer availability alone does not satisfy CA-R3. Integration and pushing
   follow the engine's release-lock rules there. Any pre-merge package proof uses
   `KHAOZENGINE_FEED=/tmp/khaozengine-filtered-tile-installer/feed` and
   `build-slot --heavy --label filtered-private-pack -- scripts/pack-local-feed.sh`.

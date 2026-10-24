@@ -56,11 +56,15 @@ public class TileWorldFileTests
         Assert.Equal(new[] { "player" }, back.FindMarker("spawn")!.Tags);
         Assert.All(back.Regions.Values, r => Assert.False(r.Dirty));
 
-        string manifest1 = File.ReadAllText(Path.Combine(dir, "world.json"));
-        string region1 = File.ReadAllText(Path.Combine(dir, "regions", "r_0_0.json"));
+        byte[] manifest1 = File.ReadAllBytes(Path.Combine(dir, "world.json"));
+        Assert.Contains((byte)'\n', manifest1);
+        Assert.DoesNotContain((byte)'\r', manifest1);
+        byte[] region1 = File.ReadAllBytes(Path.Combine(dir, "regions", "r_0_0.json"));
+        Assert.DoesNotContain((byte)'\n', region1);
+        Assert.DoesNotContain((byte)'\r', region1);
         TileWorldFile.Save(back, dir, force: true);
-        Assert.Equal(manifest1, File.ReadAllText(Path.Combine(dir, "world.json")));
-        Assert.Equal(region1, File.ReadAllText(Path.Combine(dir, "regions", "r_0_0.json")));
+        Assert.Equal(manifest1, File.ReadAllBytes(Path.Combine(dir, "world.json")));
+        Assert.Equal(region1, File.ReadAllBytes(Path.Combine(dir, "regions", "r_0_0.json")));
     }
 
     [Fact]

@@ -102,8 +102,17 @@ public sealed record ServerStatusReport
     };
 
     /// <summary>Serializes this report to the contract JSON. <paramref name="indented"/> is for readable fixtures/logs.</summary>
-    public string ToJson(bool indented = false) =>
-        JsonSerializer.Serialize(this, indented ? ContractJsonIndented : ContractJson);
+    public string ToJson(bool indented = false)
+    {
+        if (indented)
+        {
+            // net8.0 has no JsonSerializerOptions.NewLine. System.Text.Json always escapes raw CR inside
+            // string values, so replacing CRLF only changes structural whitespace.
+            return JsonSerializer.Serialize(this, ContractJsonIndented).Replace("\r\n", "\n");
+        }
+
+        return JsonSerializer.Serialize(this, ContractJson);
+    }
 
     /// <summary>
     /// Tolerantly parses a status report from UTF-8 JSON bytes. Returns null on malformed/garbage input or a

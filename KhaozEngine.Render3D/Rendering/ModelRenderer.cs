@@ -28,7 +28,7 @@ namespace KhaozEngine.Render3D.Rendering
         // (MaxCascades light-clip matrices + params) = mat4[4] (256) + 3*vec4 (48) = 304, so 688 + 304 = 992, then
         // the render-origin vec4 = 1008, then the point-light shadow tail (vec4[16] + the atlas vec4 + the
         // filter vec4) = 1296 bytes, then the transient atlas vec4 and two-vec4 cluster tail = 1344 bytes.
-        // The two interior-cut vec4 append at 1344 and 1360, for 1376 bytes total.
+        // Interior-cut vec4 at 1344 and 1360, then the 160-byte indirect tail at 1376, for 1536 bytes total.
         // (internal so UboLayoutTests can assert these against Marshal.SizeOf/OffsetOf and the GLSL block.)
         internal const uint HeaderBytes = 176;
         internal const uint LightArrayBytes = MaxPointLights * 16;    // vec4 stride is 16 in std140
@@ -57,7 +57,7 @@ namespace KhaozEngine.Render3D.Rendering
         // Cluster selection data appends after every compatibility field, leaving all existing offsets unchanged.
         internal const uint ClusterTailOffset = PointShadowTransientTailOffset + PointShadowTransientTailBytes; // 1312
         internal const uint ClusterTailBytes = 32;                                             // two vec4
-        internal const uint UboBytes = InteriorCutWindowOffset + InteriorCutBytes;             // 1376
+        internal const uint UboBytes = IndirectUniforms.TailOffset + IndirectUniforms.TailBytes; // 1536
 
         // ---- GPU skinning (the default) PER-DRAW block geometry. The skinned pipeline's set 0 binding 3 is a
         // dynamic-offset UBO laid out as { mat4 Model; mat4 P } (see ShaderSources.SkinnedModelVert): the two header

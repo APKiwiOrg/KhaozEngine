@@ -286,10 +286,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// divide by <c>FramesBegun</c> while it is 0.
         /// </para>
         /// <para>
-        /// <b>THE ACQUIRE COUNT RUNS EXACTLY ONE AHEAD OF <c>FramesBegun</c> ON A WINDOWED DEVICE</b>, and that
-        /// offset is a fact rather than an off-by-one: the first drawable is acquired at CREATION, before any
-        /// frame exists, because M-W4 keeps the incumbent's timing of taking the next frame's drawable at the
-        /// boundary.
+        /// <b>THE ACQUIRE COUNT TRACKS CURRENT-FRAME RESOLUTION.</b> Construction takes no drawable. A normal
+        /// completed frame contributes one acquisition and one present boundary. Between them, a frame that
+        /// has bound its swapchain can already count its acquisition before <c>FramesBegun</c> counts its
+        /// present. No acquisition for a future frame follows that boundary.
         /// </para>
         /// </remarks>
         public GpuDeviceCounters Counters

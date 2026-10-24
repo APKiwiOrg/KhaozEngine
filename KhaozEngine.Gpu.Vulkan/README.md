@@ -266,7 +266,10 @@ diagnostic configuration. It enumerates `VK_KHR_pipeline_executable_properties` 
 `pipelineExecutableInfo` feature on the selected physical device. When both are supported, it enables
 them and creates every graphics and compute pipeline with `VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR`.
 Without this explicit request, the device enables neither the extension nor the feature and sets no
-pipeline capture flags. Use that production configuration for timing.
+pipeline capture flags. Use that production configuration for timing. The
+[GPU settings contract](../KhaozEngine.Gpu/README.md#optional-compiler-and-memory-diagnostics) owns
+instance-scoped production/replay configuration. Explicit settings avoid environment changes and
+retain the selected native adapter and code-generation choices across replay.
 
 Read a particular pipeline outside timing blocks through the optional seam, including compute pipelines
 created for equipment coverage:

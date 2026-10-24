@@ -54,7 +54,7 @@ public partial class SupportFootprintTests
         }
         using var scene = new WorldFormScene(row);
         scene.Checked($"{name} cold", out _);
-        scene.Checked($"{name} warm", out int warmBuilds);
+        scene.Checked($"{name} warm", out long warmBuilds);
         Assert.Equal(0, warmBuilds);
         scene.CheckedSubstep($"{name} substep");
     }
@@ -147,7 +147,7 @@ public partial class SupportFootprintTests
         Assert.Equal(GeometrySign.Negative, kernel.Measure(default, leaves[0], SupportNeighborhoodCurved.Side, out _));
         SupportQueryDiagnostics.Reset();
         Assert.Equal(GeometrySign.Negative, kernel.MeasureSign(default, leaves[0], SupportNeighborhoodCurved.Side));
-        int early = SupportQueryDiagnostics.Snapshot().TangentSamples;
+        long early = SupportQueryDiagnostics.Snapshot().TangentSamples;
         SupportQueryDiagnostics.Reset();
         kernel.Measure(default, leaves[0], SupportNeighborhoodCurved.Side, out _);
         Assert.True(early < SupportQueryDiagnostics.Snapshot().TangentSamples);
@@ -170,10 +170,10 @@ public partial class SupportFootprintTests
             kernel.Reset(start, end, GeometryInterval.Exact(radius), SupportCertification.ContactBand);
             SupportQueryDiagnostics.Reset();
             GeometrySign full = kernel.Measure(default, leaves[0], 0, out _);
-            int fullSamples = SupportQueryDiagnostics.Snapshot().TangentSamples;
+            long fullSamples = SupportQueryDiagnostics.Snapshot().TangentSamples;
             SupportQueryDiagnostics.Reset();
             Assert.Equal(full, kernel.MeasureSign(default, leaves[0], 0));
-            int signSamples = SupportQueryDiagnostics.Snapshot().TangentSamples;
+            long signSamples = SupportQueryDiagnostics.Snapshot().TangentSamples;
             if (radius < 1) Assert.True(signSamples < fullSamples, $"{signSamples} against {fullSamples} samples.");
             else Assert.Equal(fullSamples, signSamples);
         }
@@ -223,8 +223,8 @@ public partial class SupportFootprintTests
             for (int i = 0; i < 2 * Window + 2; i++, value = MathF.BitIncrement(value)) Compare(line(value));
             // The reference evaluator runs the full kernel unchanged.
             Aimed(line(low));
-            GeometrySign full = Full(out int fullSamples), reference;
-            int referenceSamples;
+            GeometrySign full = Full(out long fullSamples), reference;
+            long referenceSamples;
             using (SupportReferenceEvaluation.Begin()) reference = Sign(out referenceSamples);
             Assert.Equal(full, reference);
             Assert.Equal(fullSamples, referenceSamples);
@@ -234,8 +234,8 @@ public partial class SupportFootprintTests
         (GeometrySign, bool) Compare(Vector3 bottom)
         {
             Aimed(bottom);
-            GeometrySign full = Full(out int fullSamples);
-            GeometrySign sign = Sign(out int signSamples);
+            GeometrySign full = Full(out long fullSamples);
+            GeometrySign sign = Sign(out long signSamples);
             Assert.True(full == sign, $"{_context} at {bottom:R}: sign-only {sign}, full {full}.");
             Assert.True(signSamples <= fullSamples, $"{_context} at {bottom:R}: {signSamples} > {fullSamples} samples.");
             bool early = signSamples < fullSamples;
@@ -256,7 +256,7 @@ public partial class SupportFootprintTests
                 GeometryInterval.Exact(_probe), band);
         }
 
-        GeometrySign Full(out int samples)
+        GeometrySign Full(out long samples)
         {
             SupportQueryDiagnostics.Reset();
             GeometrySign verdict = kernel.Measure(default, _leaf, _part, out _);
@@ -264,7 +264,7 @@ public partial class SupportFootprintTests
             return verdict;
         }
 
-        GeometrySign Sign(out int samples)
+        GeometrySign Sign(out long samples)
         {
             SupportQueryDiagnostics.Reset();
             GeometrySign verdict = kernel.MeasureSign(default, _leaf, _part);

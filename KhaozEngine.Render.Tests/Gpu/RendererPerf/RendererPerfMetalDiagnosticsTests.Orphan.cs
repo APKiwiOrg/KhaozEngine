@@ -32,10 +32,15 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
     public void Orphan_owner_accounts_creation_reuse_resize_and_drawable_adoption()
     {
         using var rig = new OrphanRig();
+        Assert.Equal(0, rig.Api.AcquireCount);
+        Assert.Empty(rig.Native.Created);
+        Assert.Equal(0ul, rig.Memory.ReadMemorySnapshot().LiveResourceCount.Value!.UInt64);
+        rig.Bind();
         AssertOwnedOrphan(rig, 8294400, 8294400);
         IntPtr first = rig.Boundary.Framebuffer.Attachment.Texture;
         rig.Api.ScriptNoDrawable();
         rig.Boundary.Present();
+        rig.Bind();
         AssertOwnedOrphan(rig, 8294400, 8294400);
         Assert.Equal(first, rig.Boundary.Framebuffer.Attachment.Texture);
         Assert.Single(rig.Native.Created);
@@ -43,6 +48,7 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         rig.Boundary.QueueResize(2560, 1440);
         rig.Api.ScriptNoDrawable();
         rig.Boundary.Present();
+        rig.Bind();
         AssertOwnedOrphan(rig, 14745600, 14745600);
         Assert.Equal(1ul, rig.Memory.PeakResourceCount);
         Assert.Equal(first, Assert.Single(rig.Native.Released));
@@ -62,6 +68,7 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         };
         rig.Api.ScriptDrawable();
         rig.Boundary.Present();
+        rig.Bind();
         Assert.Equal(0ul, rig.Memory.ReadMemorySnapshot().LogicalTextureBytes.Value!.UInt64);
         Assert.Equal(0ul, rig.Memory.ReadMemorySnapshot().LiveResourceCount.Value!.UInt64);
         Assert.Equal(14745600ul, rig.Memory.ReadMemorySnapshot().PeakLogicalPayloadBytes.Value!.UInt64);
@@ -70,6 +77,7 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
 
         rig.Api.ScriptDrawable();
         rig.Boundary.Present();
+        rig.Bind();
         Assert.Equal(0ul, rig.Memory.ReadMemorySnapshot().LiveResourceCount.Value!.UInt64);
         Assert.Equal(0ul, rig.Memory.ReadMemorySnapshot().LogicalTextureBytes.Value!.UInt64);
         Assert.Equal(2, rig.Native.Created.Count);
@@ -84,6 +92,10 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
     public void Orphan_disposal_removes_ownership_once_and_preserves_dead_device_release_policy(bool dead)
     {
         using var rig = new OrphanRig();
+        Assert.Equal(0, rig.Api.AcquireCount);
+        Assert.Empty(rig.Native.Created);
+        Assert.Equal(0ul, rig.Memory.ReadMemorySnapshot().LiveResourceCount.Value!.UInt64);
+        rig.Bind();
         AssertOwnedOrphan(rig, 8294400, 8294400);
         if (dead) rig.Liveness.MarkDead();
         rig.Boundary.Dispose();
@@ -100,11 +112,17 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
     public void Failed_orphan_replacement_releases_the_prior_owner_without_counting_failed_creation()
     {
         using var rig = new OrphanRig();
+        Assert.Equal(0, rig.Api.AcquireCount);
+        Assert.Empty(rig.Native.Created);
+        Assert.Equal(0ul, rig.Memory.ReadMemorySnapshot().LiveResourceCount.Value!.UInt64);
+        rig.Bind();
         AssertOwnedOrphan(rig, 8294400, 8294400);
         rig.Native.RefuseTexture = true;
         rig.Boundary.QueueResize(2560, 1440);
         rig.Api.ScriptNoDrawable();
-        Assert.Throws<InvalidOperationException>(() => rig.Boundary.Present());
+        rig.Boundary.Present();
+        AssertOwnedOrphan(rig, 8294400, 8294400, bound: false);
+        Assert.Throws<InvalidOperationException>(rig.Bind);
         Assert.Equal(0ul, rig.Memory.ReadMemorySnapshot().LogicalTextureBytes.Value!.UInt64);
         Assert.Equal(0ul, rig.Memory.ReadMemorySnapshot().LiveResourceCount.Value!.UInt64);
         Assert.Equal(8294400ul, rig.Memory.ReadMemorySnapshot().PeakLogicalPayloadBytes.Value!.UInt64);
@@ -112,7 +130,7 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         Assert.Single(rig.Native.Released);
     }
 
-    static void AssertOwnedOrphan(OrphanRig rig, ulong bytes, ulong peak)
+    static void AssertOwnedOrphan(OrphanRig rig, ulong bytes, ulong peak, bool bound = true)
     {
         var snapshot = rig.Memory.ReadMemorySnapshot();
         Assert.Equal(bytes, snapshot.LogicalTextureBytes.Value!.UInt64);
@@ -120,7 +138,7 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         Assert.Equal(peak, snapshot.PeakLogicalPayloadBytes.Value!.UInt64);
         Assert.Equal(0ul, snapshot.LogicalBufferBytes.Value!.UInt64);
         Assert.Equal(0ul, snapshot.StagingCapacityBytes.Value!.UInt64);
-        Assert.True(rig.Boundary.IsOrphanBound);
+        Assert.Equal(bound, rig.Boundary.IsOrphanBound);
     }
 
     sealed class OrphanRig : IDisposable
@@ -141,6 +159,16 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
             Api.ScriptNoDrawable();
             Boundary = new(Api, Orphan, new MetalUncommittedBuffers(3), new WaitAccumulator(), submitLock,
                 () => { }, () => { }, new(1920, 1080), false, true, 3);
+        }
+
+        internal void Bind()
+        {
+            var source = (IMetalBoundFramebufferSource)Boundary.Framebuffer;
+            int before = Api.AcquireCount;
+            var first = source.AsBound;
+            Assert.Equal(before + 1, Api.AcquireCount);
+            Assert.Equal(first.Id, source.AsBound.Id);
+            Assert.Equal(before + 1, Api.AcquireCount);
         }
 
         public void Dispose() => Boundary.Dispose();

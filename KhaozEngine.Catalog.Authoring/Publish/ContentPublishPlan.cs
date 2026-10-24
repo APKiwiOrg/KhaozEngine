@@ -143,8 +143,8 @@ public sealed record ContentIdSeed(ContentTypeId Type, int SeededThrough);
 /// <summary>
 /// What step 3 did: every new row's id in edit ordinal order, and every high-water mark it seeded.
 /// <para>
-/// <see cref="Seeds"/> is EMPTY for an ordinary publish, because nothing carries an id there, and that
-/// emptiness is the assertion a test makes rather than a thing the step skips silently.
+/// <see cref="Seeds"/> is empty when publication carries no ids. It records only types whose marks
+/// moved, so carried ids already covered by both marks do not produce seed records.
 /// </para>
 /// </summary>
 /// <param name="Entries">One entry per row that needed an id, in edit ordinal order.</param>

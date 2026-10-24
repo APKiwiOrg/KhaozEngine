@@ -70,7 +70,7 @@ public partial class SupportFootprintTests
                 Assert.True(SharedMemberFactHits() > 0, $"{name} edge constants were recomputed.");
                 SupportQueryDiagnostics.Reset();
                 GeometrySign measured = SupportFootprintPolygon.Measure(polygon, moved, out var member);
-                int measureHits = SharedMemberFactHits();
+                long measureHits = SharedMemberFactHits();
                 GeometrySign reference;
                 SupportFootprintMember expectedMember;
                 using (SupportReferenceEvaluation.Begin())
@@ -83,7 +83,7 @@ public partial class SupportFootprintTests
                 SupportQueryDiagnostics.Reset();
                 GeometrySign proposal = SupportFootprintProposalGeometry.LowestExhaustive(polygon,
                     moved.FootProposal, out GeometryInterval lowest);
-                int proposalHits = SharedMemberFactHits();
+                long proposalHits = SharedMemberFactHits();
                 GeometrySign expectedProposal;
                 GeometryInterval expectedLowest;
                 using (SupportReferenceEvaluation.Begin())
@@ -114,7 +114,7 @@ public partial class SupportFootprintTests
         scene.Checked("facts pose mismatch", out _);
         Assert.NotEqual(before.Height, moved.Height);
         scene.World.Rebase(new(0, 0.125f, 0));
-        scene.Checked("facts version rebuilt", out int builds);
+        scene.Checked("facts version rebuilt", out long builds);
         Assert.True(builds > 0);
         SupportQueryDiagnostics.Reset();
         scene.Find();
@@ -152,7 +152,7 @@ public partial class SupportFootprintTests
             Assert.Equal(GeometrySign.Zero, polygon.SourcePredicates.NormalSlope(polygon, 1));
             SupportQueryDiagnostics.Reset();
             Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out var member));
-            int hits = SharedMemberFactHits();
+            long hits = SharedMemberFactHits();
             Assert.True(hits > 0);
             Assert.Equal(BitConverter.DoubleToInt64Bits(cosine == 1 ? 1 : unadjusted.Y.Lower),
                 BitConverter.DoubleToInt64Bits(member.UpwardLower));
@@ -212,7 +212,7 @@ public partial class SupportFootprintTests
             var request = FootSupport.DescribeFootprint(scene.Query) with { CosMaxSlope = cosine };
             SupportQueryDiagnostics.Reset();
             Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out var member));
-            int hits = SharedMemberFactHits();
+            long hits = SharedMemberFactHits();
             Assert.True(hits > 0);
             Assert.Equal(BitConverter.DoubleToInt64Bits(cosine == equalityCosine ? equalityCosine : unadjusted.Y.Lower),
                 BitConverter.DoubleToInt64Bits(member.UpwardLower));
@@ -251,7 +251,7 @@ public partial class SupportFootprintTests
         Assert.Equal(BitConverter.SingleToInt32Bits(expected.Error), BitConverter.SingleToInt32Bits(actual.Error));
     }
 
-    static int SharedMemberFactHits() => SupportQueryDiagnostics.Snapshot().SharedMemberFacts;
+    static long SharedMemberFactHits() => SupportQueryDiagnostics.Snapshot().SharedMemberFacts;
 
     [Fact]
     public void SharedMemberFactsCountersSurviveThreadStateSubtractionAndMerge()
@@ -278,11 +278,11 @@ public partial class SupportFootprintTests
         SupportCostRow[] rows = CostRows();
         using var counters = new WorldFormCounters();
         using var other = new WorldFormScene(rows.Single(row => row.Name == "stairs hull"));
-        int coldBuilds = 0;
+        long coldBuilds = 0;
         foreach (SupportCostRow row in rows)
         {
             using var scene = new WorldFormScene(row);
-            scene.Checked($"{row.Name} cold", out int builds);
+            scene.Checked($"{row.Name} cold", out long builds);
             coldBuilds += builds;
             scene.Checked($"{row.Name} warm", out builds);
             Assert.True(builds == 0, $"{row.Name} warm built {builds} world forms.");
@@ -292,7 +292,7 @@ public partial class SupportFootprintTests
             scene.CheckedFootprint($"{row.Name} raw members");
             SupportQueryDiagnostics.Reset();
             scene.Find();
-            int shared = SharedMemberFactHits();
+            long shared = SharedMemberFactHits();
             _output.WriteLine($"SharedMemberFacts {row.Name}: {shared}");
             if (row.Name is "flat box" or "flat hull" or "flat mesh" or "stairs box" or "stairs hull" or "stairs mesh")
                 Assert.True(shared > 0, $"{row.Name} did not read stored member facts.");
@@ -317,8 +317,8 @@ public partial class SupportFootprintTests
     {
         using var counters = new WorldFormCounters();
         using var scene = new WorldFormScene(CostRows().Single(row => row.Name == "flat box"));
-        SupportSample cold = scene.Checked("cold", out int coldBuilds);
-        SupportSample warm = scene.Checked("warm", out int warmBuilds);
+        SupportSample cold = scene.Checked("cold", out long coldBuilds);
+        SupportSample warm = scene.Checked("warm", out long warmBuilds);
         Assert.Equal(SupportStatus.Walkable, cold.Status);
         Assert.Equal(1, coldBuilds);
         Assert.Equal(0, warmBuilds);
@@ -332,7 +332,7 @@ public partial class SupportFootprintTests
         using var scene = new WorldFormScene(CostRows().Single(row => row.Name == "flat box"));
         SupportSample before = scene.Checked("before", out _);
         scene.World.Rebase(new(0, 0.125f, 0));
-        SupportSample after = scene.Checked("after", out int builds);
+        SupportSample after = scene.Checked("after", out long builds);
         Assert.Equal(1, builds);
         Assert.Equal(SupportStatus.Walkable, after.Status);
         Assert.Equal(before.Height - 0.125f, after.Height);
@@ -356,7 +356,7 @@ public partial class SupportFootprintTests
         // the only way to present either change under the published key.
         scene.SetPose(owner, pose => pose with { Position = pose.Position with { X = -0f } });
         Assert.Equal(0f, scene.StaticPose(owner).Position.X);
-        SupportSample signedZero = scene.Checked("signed zero", out int builds);
+        SupportSample signedZero = scene.Checked("signed zero", out long builds);
         Assert.Equal(0, builds);
         Assert.Equal(published, signedZero);
         Assert.Equal(2 * bound, scene.MaterializationPhases());
@@ -383,7 +383,7 @@ public partial class SupportFootprintTests
         ]), Pose.At(new(0, -1, 0)));
         using var scene = new WorldFormScene(world, new FootSupportQuery(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f,
             MathF.Cos(MathF.PI / 4)));
-        SupportSample rotated = scene.Checked("rotated child", out int builds);
+        SupportSample rotated = scene.Checked("rotated child", out long builds);
         Assert.Equal(1, builds);
         Assert.Equal(SupportStatus.Walkable, rotated.Status);
         Assert.Equal(owner, rotated.Static);
@@ -442,7 +442,7 @@ public partial class SupportFootprintTests
         var samples = new SupportSample[Readers];
         var curvedWork = new SupportCurvedWorkObservation[Readers];
         var observedWork = new int[Readers];
-        var builds = new int[Readers];
+        var builds = new long[Readers];
         using (var barrier = new Barrier(Readers))
         {
             BoundedThread[] readers = [.. Enumerable.Range(0, Readers).Select(slot => BoundedThread.Start(() =>
@@ -483,7 +483,7 @@ public partial class SupportFootprintTests
         Assert.Equal(owners.Length, builds.Sum());
         Assert.All(owners, owner => Assert.NotNull(scene.Form(owner)));
         InstalledSupportWorldForm[] forms = [.. owners.Select(owner => scene.Form(owner)!)];
-        Assert.Equal(expected.ToString(), scene.Checked("serial after readers", out int serialBuilds).ToString());
+        Assert.Equal(expected.ToString(), scene.Checked("serial after readers", out long serialBuilds).ToString());
         Assert.Equal(0, serialBuilds);
         Assert.All(owners.Zip(forms), pair => Assert.Same(pair.Second, scene.Form(pair.First)));
     }
@@ -530,7 +530,7 @@ public partial class SupportFootprintTests
             Assert.Equal(2, curvedWork.Count);
             Assert.All(curvedWork, observation => Assert.Equal(CapsuleFeatureStatus.Complete, observation.FootprintStatus));
         }
-        int builds = SupportQueryDiagnostics.Snapshot().WorldFormBuilds;
+        long builds = SupportQueryDiagnostics.Snapshot().WorldFormBuilds;
         SupportSample reference;
         using (SupportReferenceEvaluation.Begin()) reference = scene.Find();
         Assert.Equal(reference.ToString(), nested!.Value.ToString());
@@ -538,7 +538,7 @@ public partial class SupportFootprintTests
         Assert.Equal(scene.Owners().Length + 1, builds);
         Assert.NotNull(first);
         Assert.Same(first, scene.Form(owner));
-        scene.Checked("warm after observed", out int warmBuilds);
+        scene.Checked("warm after observed", out long warmBuilds);
         Assert.Equal(0, warmBuilds);
         Assert.Same(first, scene.Form(owner));
     }
@@ -647,14 +647,14 @@ public partial class SupportFootprintTests
 
         /// <summary>One Find checked against the reference, with the world forms the optimized run built. The
         /// reference run builds none.</summary>
-        internal SupportSample Checked(string context, out int builds)
+        internal SupportSample Checked(string context, out long builds)
         {
-            int optimized = -1;
+            long optimized = -1;
             SupportSample sample = SupportFootprintEquivalence.AssertMatchesReference(() =>
             {
                 SupportQueryDiagnostics.Reset();
                 SupportSample found = Find();
-                int built = SupportQueryDiagnostics.Snapshot().WorldFormBuilds;
+                long built = SupportQueryDiagnostics.Snapshot().WorldFormBuilds;
                 if (SupportReferenceEvaluation.Active) Assert.True(built == 0, $"{context}: the reference built {built}.");
                 else optimized = built;
                 return found;

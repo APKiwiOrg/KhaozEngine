@@ -124,6 +124,8 @@ public sealed class UpdateManifestTests
     {
         string json = Manifest("1.0.0", ("a", "h", 1)).Serialize();
 
+        Assert.Contains('\n', json);
+        Assert.DoesNotContain('\r', json);
         Assert.Contains("\"version\"", json);
         Assert.Contains("\"publishedAtUtc\"", json);
         Assert.Contains("\"sha256\"", json);

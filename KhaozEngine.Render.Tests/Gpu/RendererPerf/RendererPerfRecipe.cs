@@ -83,6 +83,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
     internal static readonly JsonSerializerOptions Json = new()
     {
         IncludeFields = true,
+        TypeInfoResolver = RendererPerfRecipeSettings.Resolver(),
         Converters = { new JsonStringEnumConverter() },
     };
     readonly HashSet<Scene3D> _usedScenes = [];
@@ -336,6 +337,8 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             LightColor = active ? new Color(1f, .95f, .86f, 1f) : Color.Black,
             FillLightColor = Color.Black,
             AmbientColor = active ? new Color(.16f, .19f, .3f, 1f) : Color.Black,
+            IndirectDiffuse = IndirectDiffuseMode.Uniform,
+            AmbientIrradiance = IrradianceSH.Zero,
             LightDirection = new Vector3(-.5f, -.85f, -.35f),
         };
         post.Quality.AntiAliasing = active ? AntiAliasing.Temporal : AntiAliasing.Off;

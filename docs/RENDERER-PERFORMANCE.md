@@ -14,7 +14,9 @@ pilot, retry, profiler capture or follow-up measurement. Software Vulkan and WAR
 correctness only. They cannot establish a hardware floor or a T4 result.
 
 The public deterministic recipes cover empty, village, outdoors, crowd and effects/UI scenes. They
-use fixed simulation sequences and no consumer assets. A full unit has 1,200 conditioning frames,
+use fixed simulation sequences and no consumer assets. The v1 settings encoding fixes uniform indirect
+lighting and zero irradiance coefficients. The harness explicitly selects and validates both values.
+Directional or nonzero input refuses construction instead of changing the frozen recipe identity. A full unit has 1,200 conditioning frames,
 five scenes, both layouts, three iterations, 192 warm-up and 256 measured frames per block, and twelve
 controls with 64 warm-up and 128 measured frames each. That is 16,944 retained frames. The smaller
 pilot has its own frozen schedule and 1,260 frames. Warm-up and conditioning remain separate from

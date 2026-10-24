@@ -38,6 +38,17 @@ namespace KhaozEngine.Windowing
         internal static void Run(Frame frame, bool render, IGpuDevice device, IGpuCommandList commands,
             Color clearColor, Action<Frame>? onPrepare, Action<Frame> onFrame, FrameCaptureTaps? taps,
             double frameMilliseconds)
+            => Run(frame, render, device, commands, clearColor, onPrepare, onFrame, taps, frameMilliseconds,
+                rendererInitializesSwapchain: false);
+
+        /// <summary>
+        /// The window's explicit renderer-owned initialization policy. When enabled, the record callback must bind
+        /// and initialize the entire swapchain output before any 2D draws or capture taps. Recording, submission,
+        /// suppression and exception handling follow the legacy overloads unchanged.
+        /// </summary>
+        internal static void Run(Frame frame, bool render, IGpuDevice device, IGpuCommandList commands,
+            Color clearColor, Action<Frame>? onPrepare, Action<Frame> onFrame, FrameCaptureTaps? taps,
+            double frameMilliseconds, bool rendererInitializesSwapchain)
         {
             bool capture = taps is { HasWork: true };
             // Prepare. The frame's dt / input / size are already latched onto `frame`, so a callback sees this
@@ -60,7 +71,7 @@ namespace KhaozEngine.Windowing
                 Exception? frameError = null;
                 try
                 {
-                    if (render)
+                    if (render && !rendererInitializesSwapchain)
                     {
                         commands.SetFramebuffer(device.SwapchainFramebuffer!);
                         commands.ClearColorTarget(0, clearColor);

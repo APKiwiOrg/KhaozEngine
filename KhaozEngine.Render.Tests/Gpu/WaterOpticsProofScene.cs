@@ -10,8 +10,11 @@ namespace KhaozEngine.Tests.Gpu;
 /// <summary>Public synthetic cases shared by the baseline and later optical acceptance tests.</summary>
 public enum WaterOpticsScenario { FlatBed, SkinnedBody, SlopingBank, Ledge, DeepShelf, StackedBodies, AdjacentFields }
 
+/// <summary>One capture configuration. Target sizes select the readback and viewport, with the
+/// unjittered camera aspect following them.</summary>
 public readonly record struct WaterOpticsCase(float BedDepth = 2f, float ObjectDepth = 0.103f,
-    Vector3 Offset = default, int Samples = 1, bool Temporal = false, bool ReverseOrder = false, bool ControlledLighting = false)
+    Vector3 Offset = default, int Samples = 1, bool Temporal = false, bool ReverseOrder = false, bool ControlledLighting = false,
+    int TargetWidth = WaterOpticsProofScene.Width, int TargetHeight = WaterOpticsProofScene.Height)
 {
     public WaterOpticsCase() : this(2f, 0.103f) { }
 }
@@ -58,8 +61,8 @@ public sealed class WaterOpticsProofScene : IDisposable
     const int Frames = 2;
 
     GpuDeviceContext? _gpu;
-    IGpuTexture? _target;
-    IGpuFramebuffer? _framebuffer;
+    readonly Dictionary<(int Width, int Height), (IGpuTexture Texture, IGpuFramebuffer Framebuffer)> _targets = [];
+    readonly Dictionary<string, WaterOpticsHandle> _fields = [];
     IGpuCommandList? _commands;
     Scene3D? _scene;
     MeshHandle _plane, _box;
@@ -76,6 +79,39 @@ public sealed class WaterOpticsProofScene : IDisposable
         prepare(_scene!);
     }
 
+    /// <summary>Load one named field once on this scene, outside recording, and return its live handle.</summary>
+    public WaterOpticsHandle Field(string key, Func<WaterOpticsField> create)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(create);
+        Device();
+        if (!_fields.TryGetValue(key, out WaterOpticsHandle handle))
+        {
+            handle = _scene!.LoadWaterOpticsField(create());
+            _fields.Add(key, handle);
+        }
+        return handle;
+    }
+
+    /// <summary>
+    /// Signed rest depths of the authored ramp <c>y = (x - 2) / 2</c> over <c>[0.5, 3.5]</c>, with
+    /// <paramref name="bedDepth"/> elsewhere, sampled at <paramref name="columns"/> evenly spaced X positions
+    /// from <paramref name="minX"/> to <paramref name="maxX"/> and repeated over <paramref name="rows"/>.
+    /// This is the independent geometric description of the drawn bed, not a renderer readback.
+    /// </summary>
+    public static float[] BankDepths(float bedDepth, int columns, float minX, float maxX, int rows = 2)
+    {
+        var depths = new float[checked(columns * rows)];
+        float step = (maxX - minX) / (columns - 1);
+        for (int x = 0; x < columns; x++)
+        {
+            float worldX = minX + x * step;
+            depths[x] = worldX < 0.5f || worldX > 3.5f ? bedDepth : 1f - worldX * 0.5f;
+        }
+        for (int z = 1; z < rows; z++) Array.Copy(depths, 0, depths, z * columns, columns);
+        return depths;
+    }
+
     public WaterOpticsImage Capture(WaterOpticsScenario scenario, in WaterOpticsCase settings,
         Func<WaterPlane, WaterPlane>? bind = null)
     {
@@ -87,11 +123,15 @@ public sealed class WaterOpticsProofScene : IDisposable
             throw new ArgumentOutOfRangeException(nameof(settings));
         if (settings.Samples is not (1 or 2 or 4 or 8) || (settings.Temporal && settings.Samples != 1))
             throw new ArgumentException("Select temporal rendering or a supported MSAA sample count.", nameof(settings));
+        if (settings.TargetWidth is < 64 or > 2048 || settings.TargetHeight is < 64 or > 2048)
+            throw new ArgumentOutOfRangeException(nameof(settings), "Target sizes must be between 64 and 2048.");
 
         IGpuDevice device = Device();
         if (device.Capabilities.HighestSupportedMsaaSampleCountAtMost(settings.Samples) != settings.Samples)
             throw new NotSupportedException($"{device.Backend} cannot render {settings.Samples} samples.");
         Scene3D scene = _scene!;
+        int width = settings.TargetWidth, height = settings.TargetHeight;
+        IGpuFramebuffer framebuffer = Target(device, width, height).Framebuffer;
         Configure(scene, settings);
         WaterPlane[] planes = Planes(scenario, settings);
         if (settings.ReverseOrder) Array.Reverse(planes);
@@ -106,15 +146,33 @@ public sealed class WaterOpticsProofScene : IDisposable
             scene.EffectTimeSeconds = 0f;
             DrawGeometry(scene, scenario, settings);
             foreach (WaterPlane plane in planes) scene.DrawWater(plane);
-            scene.PrepareFrame(Width, Height);
+            scene.PrepareFrame(width, height);
             using (GpuRecording.Open(device, _commands!, "WaterOpticsProofScene.Capture"))
-                scene.RenderInternal(_commands!, Width, Height, _framebuffer!);
+                scene.RenderInternal(_commands!, width, height, framebuffer);
             device.Submit(_commands!);
             device.WaitForIdle();
             device.Present();
         }
-        return new WaterOpticsImage(GpuReadback.ToRgba(device, _target!, Width, Height),
-            Width, Height, ProjectSamples(scenario, settings));
+        return new WaterOpticsImage(GpuReadback.ToRgba(device, Target(device, width, height).Texture, width, height),
+            width, height, ProjectSamples(scenario, settings));
+    }
+
+    (IGpuTexture Texture, IGpuFramebuffer Framebuffer) Target(IGpuDevice device, int width, int height)
+    {
+        if (_targets.TryGetValue((width, height), out var target)) return target;
+        IGpuTexture texture = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+            (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+        try
+        {
+            target = (texture, device.Factory.CreateFramebuffer(null, texture));
+        }
+        catch
+        {
+            texture.Dispose();
+            throw;
+        }
+        _targets.Add((width, height), target);
+        return target;
     }
 
     void Configure(Scene3D scene, in WaterOpticsCase settings)
@@ -137,7 +195,8 @@ public sealed class WaterOpticsProofScene : IDisposable
         scene.Post.LightColor = settings.ControlledLighting ? new Color(0f, 0f, 0f, 1f) : new Color(1f, 0.95f, 0.86f, 1f);
         scene.Post.FillLightColor = settings.ControlledLighting ? new Color(0f, 0f, 0f, 1f) : new Color(0.20f, 0.24f, 0.34f, 1f);
         scene.Post.AmbientColor = settings.ControlledLighting ? Color.White : new Color(0.16f, 0.19f, 0.30f, 1f);
-        _camera!.Position = settings.Offset + Eye;
+        _camera!.AspectRatio = (float)settings.TargetWidth / settings.TargetHeight;
+        _camera.Position = settings.Offset + Eye;
         Vector3 direction = Vector3.Normalize(new Vector3(0f, 0.1f, 0f) - Eye);
         _camera.Yaw = MathF.Atan2(direction.X, direction.Z);
         _camera.Pitch = MathF.Asin(direction.Y);
@@ -176,10 +235,12 @@ public sealed class WaterOpticsProofScene : IDisposable
                 Matrix4x4.CreateTranslation(o + new Vector3(BodyX, -settings.ObjectDepth - 0.3f, 0f)),
                 settings.ControlledLighting ? new Color(0.36f, 0.29f, 0.20f, 1f)
                     : new Color(0.95f, 0.34f, 0.12f, 1f));
+        // Controlled lighting gives the ledge the bed's opaque colour, so only the water can separate them.
         if (scenario == WaterOpticsScenario.Ledge)
             DrawBox(scene, new Vector3(1.8f, 0.4f, 1.8f),
                 o + new Vector3(BodyX, -settings.ObjectDepth - 0.2f, 0f),
-                new Color(0.72f, 0.68f, 0.56f, 1f));
+                settings.ControlledLighting ? new Color(0.36f, 0.29f, 0.20f, 1f)
+                    : new Color(0.72f, 0.68f, 0.56f, 1f));
         if (scenario == WaterOpticsScenario.DeepShelf)
             DrawBed(scene, settings.BedDepth * 0.5f, o, shelf: true);
         if (scenario == WaterOpticsScenario.StackedBodies)
@@ -226,18 +287,29 @@ public sealed class WaterOpticsProofScene : IDisposable
             ["dry-bank"] = new(3f, 0.5f, 0.5f),
             ["beyond-bank"] = new(3.85f, 0f, 2.8f),
             ["seam-left"] = new(-0.1f, 0f, 1f),
-            ["seam-right"] = new(0.1f, 0f, 1f)
+            ["seam-right"] = new(0.1f, 0f, 1f),
+            // Wet water-surface points over the authored ramp, at 0.5 m and 0.25 m rest depth.
+            ["ramp-deep"] = new(1f, 0f, 0.5f),
+            ["ramp-mid"] = new(1.5f, 0f, 0.5f),
+            // A water-surface point inside the 0.20 m shore feather, at 0.1 m rest depth.
+            ["shore-surface"] = new(1.8f, 0f, 0.5f),
+            // The ledge's front and left top edges, and a ray past its front onto the face below.
+            ["ledge-edge"] = new(BodyX, -settings.ObjectDepth, 0.9f),
+            ["ledge-side"] = new(BodyX - 0.9f, -settings.ObjectDepth, 0f),
+            ["beside-ledge"] = new(BodyX, -settings.ObjectDepth, 1.3f)
         };
         if (scenario == WaterOpticsScenario.StackedBodies)
         {
             // Keep the entire 5 by 5 patch in front of the upper water's projected front edge.
             world["lower"] = new(1f, 0f, 2f);
             world["upper"] = new(1f, 1.4f, 1f);
+            // Upper water over the enclosed space's roof, 0.2 m above its top face.
+            world["upper-cave"] = new(-2.4f, 1.4f, 1f);
         }
         var projected = new Dictionary<string, Vector2>();
         foreach (var (name, point) in world)
         {
-            if (!_camera!.WorldToScreen(point + settings.Offset, Width, Height, out Vector2 pixel))
+            if (!_camera!.WorldToScreen(point + settings.Offset, settings.TargetWidth, settings.TargetHeight, out Vector2 pixel))
                 throw new InvalidOperationException($"The {name} point is behind the proof camera.");
             projected.Add(name, pixel);
         }
@@ -252,11 +324,9 @@ public sealed class WaterOpticsProofScene : IDisposable
         {
             _gpu = GpuDeviceContext.CreateHeadless();
             IGpuDevice device = _gpu.GpuDevice;
-            _target = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
-                Width, Height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-            _framebuffer = device.Factory.CreateFramebuffer(null, _target);
+            IGpuFramebuffer framebuffer = Target(device, Width, Height).Framebuffer;
             _commands = device.Factory.CreateCommandList();
-            _scene = new Scene3D(device, _framebuffer.Outputs);
+            _scene = new Scene3D(device, framebuffer.Outputs);
             _plane = _scene.LoadMesh(MeshPrimitives.Plane());
             _box = _scene.LoadMesh(MeshPrimitives.Box());
             // The real four-bone tube used by BlobDecalGhostHoleGoldenTests, with no rigid substitute.
@@ -285,8 +355,12 @@ public sealed class WaterOpticsProofScene : IDisposable
         _gpu?.GpuDevice.WaitForIdle();
         _commands?.Dispose();
         _scene?.Dispose();
-        _framebuffer?.Dispose();
-        _target?.Dispose();
+        foreach (var (texture, framebuffer) in _targets.Values)
+        {
+            framebuffer.Dispose();
+            texture.Dispose();
+        }
+        _targets.Clear();
         _gpu?.Dispose();
     }
 }

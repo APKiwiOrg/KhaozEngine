@@ -51,6 +51,12 @@ public sealed class WaterOpticsCompilePhaseTests(ITestOutputHelper output)
         string root = Required("KE_WATER_COMPILE_SOURCE_ROOT");
         string variant = Required("KE_WATER_COMPILE_VARIANT");
         Assert.Equal("candidate", variant);
+        string programChoice = Required("KE_WATER_COMPILE_PROGRAM");
+        Assert.Contains(programChoice, new[] { "default", "triangle" });
+        bool triangle = programChoice == "triangle";
+        string program = triangle ? "WaterTriangle" : "Water";
+        string fragmentIdentity = triangle ? "ShaderSources.WaterTriangleFrag" : "ShaderSources.WaterFrag";
+        string artifactPrefix = "water-" + programChoice;
         string harnessSha = Required("KE_WATER_COMPILE_HARNESS_SHA");
         Assert.Matches("^[0-9a-f]{40}$", harnessSha);
         string expectedSource = harnessSha;
@@ -79,25 +85,25 @@ public sealed class WaterOpticsCompilePhaseTests(ITestOutputHelper output)
         try
         {
             string vertex = ShaderSources.WaterVert;
-            string fragment = ShaderSources.WaterFrag;
-            Save("water.vert.glsl", Encoding.UTF8.GetBytes(vertex));
-            Save("water.frag.glsl", Encoding.UTF8.GetBytes(fragment));
+            string fragment = triangle ? ShaderSources.WaterTriangleFrag : ShaderSources.WaterFrag;
+            Save(artifactPrefix + ".vert.glsl", Encoding.UTF8.GetBytes(vertex));
+            Save(artifactPrefix + ".frag.glsl", Encoding.UTF8.GetBytes(fragment));
 
             byte[] vertexSpirv = Measure("vertexFrontEnd", () => FrontEnd(vertex, GpuShaderStages.Vertex));
             Assert.Equal(1L, cache.CompileCount);
-            Save("water.vert.spv", vertexSpirv);
+            Save(artifactPrefix + ".vert.spv", vertexSpirv);
             byte[] fragmentSpirv = Measure("fragmentFrontEnd", () => FrontEnd(fragment, GpuShaderStages.Fragment));
             Assert.Equal(2L, cache.CompileCount);
-            Save("water.frag.spv", fragmentSpirv);
+            Save(artifactPrefix + ".frag.spv", fragmentSpirv);
             CrossCompiledPair pair = Measure("pairHlsl", () => Hlsl(vertexSpirv, fragmentSpirv));
-            Save("water.vert.hlsl", Encoding.UTF8.GetBytes(pair.VertexSource));
-            Save("water.frag.hlsl", Encoding.UTF8.GetBytes(pair.FragmentSource));
+            Save(artifactPrefix + ".vert.hlsl", Encoding.UTF8.GetBytes(pair.VertexSource));
+            Save(artifactPrefix + ".frag.hlsl", Encoding.UTF8.GetBytes(pair.FragmentSource));
             byte[] vertexDxbc = Measure("vertexFxc", () => Fxc(pair.VertexSource, D3D11ShaderProfile.Vertex, flags));
             VerifyDxbc(vertexDxbc, 1); // D3D11_SHVER_VERTEX_SHADER, shader model 5.0.
-            Save("water.vert.dxbc", vertexDxbc);
+            Save(artifactPrefix + ".vert.dxbc", vertexDxbc);
             byte[] fragmentDxbc = Measure("pixelFxc", () => Fxc(pair.FragmentSource, D3D11ShaderProfile.Fragment, flags));
             VerifyDxbc(fragmentDxbc, 0); // D3D11_SHVER_PIXEL_SHADER, shader model 5.0.
-            Save("water.frag.dxbc", fragmentDxbc);
+            Save(artifactPrefix + ".frag.dxbc", fragmentDxbc);
             var inputs = Measure("vertexReflection", () => D3D11Fxc.ReflectVertexInputs(vertexDxbc, "Water"));
             Assert.NotEmpty(inputs);
             Assert.Equal(2L, cache.CompileCount);
@@ -124,7 +130,11 @@ public sealed class WaterOpticsCompilePhaseTests(ITestOutputHelper output)
                 harnessSha256 = harnessHash,
                 verified,
                 failure,
-                program = "ShaderSources.WaterVert + ShaderSources.WaterFrag",
+                program,
+                programChoice,
+                vertexSource = "ShaderSources.WaterVert",
+                fragmentSource = fragmentIdentity,
+                artifactPrefix,
                 vertexProfile = D3D11ShaderProfile.Vertex,
                 pixelProfile = D3D11ShaderProfile.Fragment,
                 entryPoint = D3D11ShaderProfile.EntryPoint,

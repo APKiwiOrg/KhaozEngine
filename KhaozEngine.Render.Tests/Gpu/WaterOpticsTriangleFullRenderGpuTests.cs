@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Text.Json;
+using KhaozEngine.Render3D;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -95,6 +96,28 @@ public sealed class WaterOpticsTriangleFullRenderGpuTests(WaterOpticsTriangleFul
         Assert.True(maximum <= ParityRgbTolerance,
             $"Aged/fresh full-scene RGB distance {maximum:R} exceeds {ParityRgbTolerance}.");
         PrintTiming(fresh, freshFixture);
+    }
+
+    [GpuFact]
+    public void AlternatingKindsOnFocusedAndClipmapMatchIndependentControlInBothQueueOrders()
+    {
+        // Initialize the shared fixture's canonical captures before aging it through mixed capabilities.
+        _ = fixture.Captures;
+        var comparisons = new List<object>();
+        foreach (WaterGridMode grid in new[] { WaterGridMode.CameraFocused, WaterGridMode.Clipmap })
+        {
+            WaterOpticsImage mixed = fixture.CaptureMixed(grid, reverse: false, bilinearControl: false);
+            WaterOpticsImage control = fixture.CaptureMixed(grid, reverse: false, bilinearControl: true);
+            WaterOpticsImage reversed = fixture.CaptureMixed(grid, reverse: true, bilinearControl: false);
+            float delta = MaximumRgbDifference(mixed, control);
+            float reversal = MaximumRgbDifference(mixed, reversed);
+            comparisons.Add(new { Grid = grid.ToString(), MaximumRgbDistance = delta, ReversalDistance = reversal });
+            Write("mixed-capabilities", comparisons);
+            Assert.True(delta <= EquivalentRgbTolerance, $"{grid} mixed capability RGB distance {delta:R}.");
+            Assert.Equal(mixed.Rgba, reversed.Rgba);
+            // Nonvacuity. The triangle strip crosses genuinely wet bed, beside the submerged object.
+            Assert.True(Vector3.Distance(mixed.Sample("object"), fixture.Captures[WaterOpticsFullRenderMode.Opaque].Image.Sample("object")) > .12f);
+        }
     }
 
     static float MaximumRgbDifference(WaterOpticsImage a, WaterOpticsImage b)

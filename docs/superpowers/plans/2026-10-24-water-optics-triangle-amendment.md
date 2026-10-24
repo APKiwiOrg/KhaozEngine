@@ -136,15 +136,27 @@ Mode 2 uses existing texture/sampler bindings 10/11 and unchanged 1088-byte UBO 
   SPIR-V and HLSL bodies alongside the streamed-wide and interpolation structures before hosted
   proof. Preserve all 87 predicate probes, 235 original queries and 60 interpolation queries. Add
   independent bitwise rectangular-bin/origin coverage and retain six pixel-identical render controls.
-- [ ] Pass the pending candidate-only cold Windows compile proof at dispatch `github.sha`, with caches
-  off and optimized production flags. Require pixel FXC <= 5000 ms and the measured six-phase total
-  <= 10000 ms. Reuse verified control run 40087661847 without recompiling its frozen inputs. These
-  fixed-proof engineering limits do not assert universal hardware performance. Rolled-wide run
-  40091542332 and interpolation run 40094097628 missed both limits. The shared predicate and mapping
-  candidate remains pending this proof and fresh all-three-backend correctness.
-- [ ] Implement complementary separate lazy triangle pipelines in a subsequent scoped task so default
-  legacy/bilinear construction cannot compile triangle arithmetic. Compile improvement alone does not
-  complete Task 2. Retain the original numerical, resource, image and all-three-backend gates.
+- [ ] Controller ruling. Implement complementary default/triangle pipeline isolation now, independently
+  of the still-open opt-in budget. This supersedes only earlier sequencing. Run 40110871423 has six
+  successful phases and real pixel DXBC, with scalar storage and no 16-word interpolation bank.
+  Pixel FXC 8700.9521 ms fails 5000 ms, while total 9795.3314 ms meets 10000 ms. No limit is relaxed.
+- [ ] Construct separate default mode 0/1 and triangle-only mode 2 fragments from one physical shading
+  body. Default source excludes triangle integer helpers. Keep vertex variants, bindings 10/11,
+  payload 1088, slot 1280 and all exact arithmetic unchanged. Create focused and clipmap triangle
+  pairs independently and transactionally during preparation only for validated submitted demand.
+  Cache and revalidate immutable payload kind and geometry choice. Preserve queue order and slots
+  when switching optical capabilities on the same geometry. Resize existing variants transactionally,
+  retain valid pipelines on failure and retire replaced pipelines through the scene queue.
+- [ ] Prove real factory requests, failures/retry, warm reuse/allocation/upload/set bounds, same-route
+  mixed/reversed order, handle unload, teardown and deferred resize retirement with headless tests.
+  Preserve six matched captures before GPU overwrite. Require default/bilinear and triangle image parity.
+- [ ] After fresh parent review, run one candidate-only Windows matrix at dispatch github.sha, one
+  default focused pair and one triangle focused pair in isolated jobs with the same harness and SHA.
+  Caches remain off and optimized pins/six phase boundaries unchanged. Each program independently
+  requires pixel FXC <= 5000 ms and total <= 10000 ms, real DXBC and explicit identities/hashes.
+  Do not rerun frozen controls or the full FXC catalog. After native functional acceptance, run fresh
+  all-three-backend correctness, runtime, numerical and emission verification. Task 6B and Task 6C
+  remain unaccepted until ALL gates pass. Relocation is not performance acceptance.
 - [ ] Commit explicit paths as `feat(water): render certified triangle optical beds`.
 
 ### Task 3: Mesh output snapshots and strict source audit

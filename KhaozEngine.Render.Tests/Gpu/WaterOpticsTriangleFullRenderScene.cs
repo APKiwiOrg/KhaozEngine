@@ -120,12 +120,25 @@ public sealed class WaterOpticsTriangleFullRenderScene : IDisposable
         return result;
     }
 
-    WaterOpticsFullFrameTiming Frame(WaterOpticsFullRenderMode mode, bool measured)
+    public WaterOpticsImage CaptureMixed(WaterGridMode grid, bool reverse, bool bilinearControl)
+    {
+        EnsureScene();
+        Frame(WaterOpticsFullRenderMode.Triangles2, measured: false, grid, reverse, bilinearControl);
+        var image = new WaterOpticsImage(GpuReadback.ToRgba(Device, _target!, Size, Size), Size, Size, Samples());
+        string name = $"Mixed-{grid}-{reverse}-{bilinearControl}";
+        Directory.CreateDirectory(DirectoryPath);
+        PngWriter.Save(Path.Combine(DirectoryPath, name + ".png"), image.Rgba, Size, Size);
+        return image;
+    }
+
+    WaterOpticsFullFrameTiming Frame(WaterOpticsFullRenderMode mode, bool measured,
+        WaterGridMode? mixedGrid = null, bool reverse = false, bool bilinearControl = false)
     {
         IGpuDevice device = Device;
         Scene3D scene = _scene!;
         scene.Begin();
         scene.EffectTimeSeconds = 0;
+        scene.Post.Water.GridMode = mixedGrid ?? WaterGridMode.CameraFocused;
         Matrix4x4 ramp = Matrix4x4.Identity;
         ramp.M12 = .5f;
         // The same original affine bed is rendered in every capture. Neither topology nor feather changes.
@@ -144,7 +157,25 @@ public sealed class WaterOpticsTriangleFullRenderScene : IDisposable
                 _ => default
             };
             var binding = handle.IsValid ? new WaterOpticsBinding(handle, FieldOrigin, FieldSize) : default;
-            scene.DrawWater(new(0, 0, 0, 3.75f, 2.75f, optics: binding));
+            if (mixedGrid is null) scene.DrawWater(new(0, 0, 0, 3.75f, 2.75f, optics: binding));
+            else
+            {
+                // Four adjacent strips exercise legacy, triangle, bilinear, triangle on ONE geometry route.
+                // The control replaces only triangle payloads with the independent affine bilinear field.
+                for (int ordinal = 0; ordinal < 4; ordinal++)
+                {
+                    int i = reverse ? 3 - ordinal : ordinal;
+                    WaterOpticsHandle field = i switch
+                    {
+                        0 => default,
+                        2 => _bilinear,
+                        _ => bilinearControl ? _bilinear : _two
+                    };
+                    var optics = field.IsValid ? new WaterOpticsBinding(field, FieldOrigin, FieldSize) : default;
+                    scene.DrawWater(new(-2.8125f + i * 1.875f, 0, 0, .9375f, 2.75f,
+                        look: new WaterLook { SwellAmplitude = .01f, SwellSteepness = 0f }, optics: optics));
+                }
+            }
         }
 
         long start = Stopwatch.GetTimestamp();

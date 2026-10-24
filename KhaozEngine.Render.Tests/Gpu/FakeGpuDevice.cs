@@ -119,6 +119,9 @@ namespace KhaozEngine.Tests.Gpu
         internal int ThrowOnResourceSetCreate { get; set; }
         /// <summary>Absolute 1-based buffer creation to fail, or zero for no injected failure.</summary>
         internal int ThrowOnBufferCreate { get; set; }
+        internal int ThrowOnShaderCreate { get; set; }
+        internal int ThrowOnPipelineCreate { get; set; }
+        internal List<FakePipeline> Pipelines { get; } = new();
 
         internal void FailBufferCreationAfter(int successfulCreates) =>
             ThrowOnBufferCreate = Buffers.Count + successfulCreates + 1;
@@ -215,6 +218,8 @@ namespace KhaozEngine.Tests.Gpu
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
         {
             ShaderRequests.Add(new FakeShaderRequest(vertGlsl, fragGlsl));
+            if (ThrowOnShaderCreate == ShaderRequests.Count)
+                throw new InvalidOperationException("planned shader creation failure");
             var shaders = new FakeShaderSet(vertGlsl, fragGlsl);
             ShaderSets.Add(shaders);
             return shaders;
@@ -233,7 +238,11 @@ namespace KhaozEngine.Tests.Gpu
             if (d.ShaderSet is not FakeShaderSet shaders) return new FakePipeline();
             var request = new FakeGraphicsPipelineRequest(shaders.VertexGlsl, shaders.FragmentGlsl, d);
             GraphicsPipelines.Add(request);
-            return new FakePipeline(request);
+            if (ThrowOnPipelineCreate == GraphicsPipelines.Count)
+                throw new InvalidOperationException("planned pipeline creation failure");
+            var pipeline = new FakePipeline(request);
+            Pipelines.Add(pipeline);
+            return pipeline;
         }
         public IGpuCommandList CreateCommandList()
         {
@@ -369,7 +378,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Whether the owner freed this program.</summary>
         internal bool Disposed { get; private set; }
 
-        public void Dispose() => Disposed = true;
+        internal int DisposeCount { get; private set; }
+        public void Dispose() { DisposeCount++; Disposed = true; }
     }
 
     internal readonly record struct FakeShaderRequest(string VertexGlsl, string FragmentGlsl);
@@ -383,7 +393,9 @@ namespace KhaozEngine.Tests.Gpu
         /// them apart by their shader sources. Null for a pipeline a test made directly.</summary>
         internal FakeGraphicsPipelineRequest? Request { get; }
 
-        public void Dispose() { }
+        internal int DisposeCount { get; private set; }
+        internal bool Disposed => DisposeCount != 0;
+        public void Dispose() => DisposeCount++;
     }
 
     /// <summary>Drops every recorded command. The terminal sink <see cref="CommandTallyGpuCommandList"/> forwards

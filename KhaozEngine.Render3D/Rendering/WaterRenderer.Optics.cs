@@ -37,13 +37,13 @@ internal sealed partial class WaterRenderer
 
     // A look remains mutable. Store its resolved displacement values, never the bag's identity.
     readonly record struct PreparedPlane(Vector4 Position, float HalfZ, WaterOpticsHandle Field,
-        Vector3 Origin, Vector2 Size, WaterWaveSource Source, Vector4 Swell, Vector4 Shape)
+        Vector3 Origin, Vector2 Size, WaterWaveSource Source, Vector4 Swell, Vector4 Shape, int OpticalMode, PlaneRoute Geometry)
     {
-        internal static PreparedPlane From(in WaterPlane plane, WaterSettings effective) => new(
+        internal static PreparedPlane From(in WaterPlane plane, WaterSettings effective, int mode, PlaneRoute geometry) => new(
             new(plane.CenterX, plane.SurfaceY, plane.CenterZ, plane.HalfExtentX), plane.HalfExtentZ,
             plane.Optics.Field, plane.Optics.Origin, plane.Optics.Size, effective.WaveSource,
             new(effective.SwellAmplitude, effective.SwellWavelength, effective.SwellDirectionDegrees, effective.SwellSpreadDegrees),
-            new(effective.SwellSteepness, effective.SwellSpeed, effective.SwellComponents, effective.SwellSeed));
+            new(effective.SwellSteepness, effective.SwellSpeed, effective.SwellComponents, effective.SwellSeed), mode, geometry);
     }
 
     static GpuResourceLayoutElement[] AppendOpticsLayout(GpuResourceLayoutElement[] prefix)
@@ -111,6 +111,7 @@ internal sealed partial class WaterRenderer
     {
         _opticsPrepared = false;
         _opticsPreparationAttempted = true;
+        RetryWaterOutputReplacement();
         ReadOnlySpan<WaterPlane> planes = frame.WaterPlanes;
         if (_bound is not null && !TargetsMatch(targets)) RetireWaterSets();
         _frameFields.Clear();
@@ -144,7 +145,10 @@ internal sealed partial class WaterRenderer
             {
                 WaterPlane plane = planes[i];
                 WaterSettings effective = plane.Look?.ResolveInto(_effective, frame.Water) ?? frame.Water;
-                _preparedPlanes[i] = PreparedPlane.From(plane, effective);
+                int mode = plane.Optics.IsBound ? ResolveOptics(plane.Optics.Field).Payload.Mode : 0;
+                PlaneRoute geometry = GeometryRoute(plane, frame.Water);
+                PrepareWaterProgram(geometry, mode == 2);
+                _preparedPlanes[i] = PreparedPlane.From(plane, effective, mode, geometry);
                 IGpuResourceSet set = _set!;
                 if (plane.Optics.IsBound && !_opticsSets.TryGetValue(plane.Optics.Field, out set!))
                 {
@@ -176,8 +180,9 @@ internal sealed partial class WaterRenderer
         for (int i = 0; i < planes.Length; i++)
         {
             WaterSettings effective = planes[i].Look?.ResolveInto(_effective, settings) ?? settings;
-            if (_preparedPlanes[i] != PreparedPlane.From(planes[i], effective)) throw ChangedOpticsInputs();
-            if (planes[i].Optics.IsBound) ResolveOptics(planes[i].Optics.Field);
+            int mode = planes[i].Optics.IsBound ? ResolveOptics(planes[i].Optics.Field).Payload.Mode : 0;
+            if (_preparedPlanes[i] != PreparedPlane.From(planes[i], effective, mode, GeometryRoute(planes[i], settings)))
+                throw ChangedOpticsInputs();
         }
     }
 

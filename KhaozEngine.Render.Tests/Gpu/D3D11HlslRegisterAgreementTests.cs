@@ -41,12 +41,18 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class D3D11HlslRegisterAgreementTests
     {
-        [Fact]
-        public void WaterOptics_AppendsAfterAtmosphereWithoutMovingExistingRegisters()
+        [Theory]
+        [InlineData(false, false)]
+        [InlineData(false, true)]
+        [InlineData(true, false)]
+        [InlineData(true, true)]
+        public void WaterOptics_AppendsAfterAtmosphereWithoutMovingExistingRegisters(bool triangle, bool clipmap)
         {
-            var source = KhaozEngine.Render3D.Internal.ShaderSources.WaterFrag;
+            var source = triangle ? KhaozEngine.Render3D.Internal.ShaderSources.WaterTriangleFrag
+                : KhaozEngine.Render3D.Internal.ShaderSources.WaterFrag;
             CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
-                KhaozEngine.Render3D.Internal.ShaderSources.WaterVert, source, "WaterOptics");
+                clipmap ? KhaozEngine.Render3D.Internal.ShaderSources.WaterClipmapVert
+                    : KhaozEngine.Render3D.Internal.ShaderSources.WaterVert, source, "WaterOptics");
             GpuResourceLayoutElement[] elements = pair.Reflection.ResourceLayouts[0].Elements;
             Assert.Equal(12, elements.Length);
             // Reflected texture and sampler names may be empty. Binding position, kind and emitted register bind.

@@ -203,8 +203,27 @@ hosted Windows proof, with pixel FXC at most 5000 ms and the measured six-phase 
 These are engineering limits for that fixed proof, not universal hardware guarantees. Actual retained
 SPIR-V/HLSL bodies, bitwise query results and matched full-render pixels are required before the hosted
 proof. Fresh all-three-backend correctness and measured runtime observations remain pending gates.
-Separate lazy triangle pipelines must also isolate default legacy/bilinear compilation. That
-complementary isolation is separate work and remains required before Task 2 performance acceptance.
+Controller ruling: implement the already-required complementary default/triangle pipeline isolation
+now, independently of the still-open opt-in compile budget. This supersedes only the earlier ordering.
+Default mode 0/1 fragments exclude triangle integer helpers at source construction. Mode 2 fragments
+include the unchanged exact triangle helper and share one physical water-shading body. Focused and
+clipmap triangle programs prepare lazily and independently, before recording, from validated submitted
+payload kind and the same geometry classification used by drawing. Preparation has no frustum, so a
+submitted plane later culled may honestly cause compilation. The four internal programs preserve the
+vertex variants, bindings 10/11, 1088-byte payload, 1280-byte slot and public API.
+The triangle fragment retains its scene-depth fetch with a source-local NaN invariant guard. Valid scene depth is
+finite, so physical depth math is unchanged. Without that read, triangle specialization eliminates
+bindings 4/5 and compacts HLSL registers against the fixed twelve-element resource layout.
+
+Isolation is not compile-cost acceptance. Run 40110871423 produced real pixel DXBC with six successful
+phases and defined scalar interpolation storage, but pixel FXC 8700.9521 ms exceeds 5000 ms. Its total
+9795.3314 ms meets 10000 ms. Task 6B and Task 6C remain unaccepted until every existing gate passes.
+After fresh parent review, run one candidate-only Windows default/triangle program matrix at the same
+candidate SHA and harness, one focused pair per isolated job, each requiring pixel FXC <= 5000 ms and
+six-phase total <= 10000 ms. Preserve explicit program identities and artifact hashes. Only after native
+functional acceptance run fresh correctness verification on all three backends. Numerical, resource,
+retirement, allocation, matched-image and runtime gates remain unchanged. No further arithmetic change,
+new compiler option, relaxed budget or geometry/golden change is authorized in this scope.
 GPU queries use rounded local-coordinate subtraction directly. The inverse extent is used only for
 bin selection, whose additional rounding fits the existing outward acceleration-bin support.
 

@@ -16,17 +16,17 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class WaterOpticsRolledEmissionTests
 {
-    const string Evidence = "/tmp/khaozengine-water-triangles/scalar-interpolation/emission";
+    const string Evidence = "/tmp/khaozengine-water-triangles/lazy-pipelines/emission/triangle-structure";
 
     // Catch loss of sharing or local loop controls in the actual pinned compiler output.
     [Fact]
     public void ProductionRetainsSharedArithmeticMappingAndPredicateBodies()
     {
         Directory.CreateDirectory(Evidence);
-        byte[] vertex = SpirvFrontEnd.ToSpirv(ShaderSources.WaterVert, GpuShaderStages.Vertex, "Water");
-        byte[] fragment = SpirvFrontEnd.ToSpirv(ShaderSources.WaterFrag, GpuShaderStages.Fragment, "Water");
-        string hlsl = SpirvCrossCompile.VertexFragmentToHlsl(vertex, fragment, "Water").FragmentSource;
-        string msl = SpirvCrossCompile.VertexFragmentToMsl(vertex, fragment, "Water").FragmentSource;
+        byte[] vertex = SpirvFrontEnd.ToSpirv(ShaderSources.WaterVert, GpuShaderStages.Vertex, "WaterTriangle");
+        byte[] fragment = SpirvFrontEnd.ToSpirv(ShaderSources.WaterTriangleFrag, GpuShaderStages.Fragment, "WaterTriangle");
+        string hlsl = SpirvCrossCompile.VertexFragmentToHlsl(vertex, fragment, "WaterTriangle").FragmentSource;
+        string msl = SpirvCrossCompile.VertexFragmentToMsl(vertex, fragment, "WaterTriangle").FragmentSource;
         File.WriteAllBytes(Path.Combine(Evidence, "water.frag.spv"), fragment);
         File.WriteAllText(Path.Combine(Evidence, "water.frag.hlsl"), hlsl);
         File.WriteAllText(Path.Combine(Evidence, "water.frag.msl"), msl);

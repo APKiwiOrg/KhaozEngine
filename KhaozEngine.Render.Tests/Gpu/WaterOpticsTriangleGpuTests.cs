@@ -251,7 +251,7 @@ layout(std140,set=0,binding=0) uniform Inputs { vec4 OpticsRect; vec4 OpticsPara
             source += $"layout(std140,set=0,binding={i}) uniform Unused{i} {{ vec4 Keep{i}; }};\n";
             guard += $" | floatBitsToUint(Keep{i}.x)";
         }
-        source += ShaderSources.WaterOpticsGlsl + @"
+        source += ShaderSources.WaterTriangleOpticsGlsl + @"
 void main() {
     vec4 q = Queries[int(gl_FragCoord.x)];
     float depth = opticalBedDepth(vec3(q.x,q.z,q.y),q.w);
@@ -409,7 +409,7 @@ void main() {
             File.WriteAllText(Path.Combine(directory, "diagnostic.msl"), SpirvCrossCompile.ComputeToMsl(
                 SpirvFrontEnd.ToSpirv(Source, GpuShaderStages.Compute)).ComputeSource);
             byte[] vertex = SpirvFrontEnd.ToSpirv(ShaderSources.WaterVert, GpuShaderStages.Vertex);
-            byte[] fragment = SpirvFrontEnd.ToSpirv(ShaderSources.WaterFrag, GpuShaderStages.Fragment);
+            byte[] fragment = SpirvFrontEnd.ToSpirv(ShaderSources.WaterTriangleFrag, GpuShaderStages.Fragment);
             File.WriteAllBytes(Path.Combine(directory, "water-fragment.spv"), fragment);
             File.WriteAllText(Path.Combine(directory, "water-fragment.hlsl"),
                 SpirvCrossCompile.VertexFragmentToHlsl(vertex, fragment).FragmentSource);

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
@@ -95,17 +94,8 @@ namespace KhaozEngine.Render3D.Rendering
         internal const uint SlotBytes = 1280;   // Align256(1088)
 
         readonly IGpuDevice _gd;
-        readonly IGpuShaderSet _shaders;
-        readonly IGpuResourceLayout _layout;
         readonly AtmosphereBindings _atmosphere;
         readonly bool _ownsAtmosphere;
-        IGpuPipeline _pipe;   // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
-        GpuOutputDescription _outputs;
-        // The clipmap grid's own shader set + pipeline, built on FIRST USE and kept. It needs its own because the
-        // two grids do not share a vertex layout (12 bytes against 28); the resource LAYOUT and the fragment source
-        // are the same, so nothing else doubles. A scene that never selects WaterGridMode.Clipmap never creates it.
-        IGpuShaderSet? _clipShaders;
-        IGpuPipeline? _clipPipe;
         IGpuBuffer? _ubo;     // grown geometrically to hold _capacity slots
         // Grown-out UBOs and their sets enter the scene retirement queue because a submitted frame may still read
         // them. This is the same lifetime rule as ModelRenderer.EnsureInstanceCapacity.
@@ -200,88 +190,10 @@ namespace KhaozEngine.Render3D.Rendering
             _ownsAtmosphere = atmosphere is null;
             _outputs = colorOutput;
             var f = gd.Factory;
-            _shaders = f.CreateShadersFromSpirv(ShaderSources.WaterVert, ShaderSources.WaterFrag);
-            _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(AppendOpticsLayout(AtmosphereBindings.AppendLayout(
-                // ORDER WAS LOAD-BEARING, and not for the usual reason. Veldrid numbered a backend's resource slots
-                // with one counter PER KIND over this whole list, binding each element to the stages in its mask,
-                // while the cross-compiler numbered each stage DENSELY over only the bindings that stage declares.
-                // Those agreed only when every stage's resources were a PREFIX of this list. The vertex stage uses
-                // the bathymetry field, the ocean map and the shared UBO and nothing else, so both of those
-                // textures had to precede the fragment-only scene depth and their samplers likewise. Put the
-                // scene depth first instead and the vertex sampled an unbound slot and read zero, on Metal,
-                // silently. That is also why the ocean is ONE array texture (displacement layers then derivative
-                // layers) rather than the two it reads as.
-                //
-                // THAT BACKEND IS GONE (18.0.0) AND THE PREFIX RULE WITH IT (#604). The engine authors each Metal
-                // argument index off this list and the native backend binds against the same scheme, so a
-                // fragment-only element ahead of a vertex-read one is legal now. The order below is KEPT: moving it
-                // moves the emission on all three backends and buys nothing. Bathymetry leads the ocean for a
-                // SECOND reason anyway, one that never depended on the numbering: the vertex needs the depth before
-                // it sums the cascades, because the shoaling taper is per cascade and applied inside that loop.
-                // See ShaderSources.WaterShore.cs.
-                new GpuResourceLayoutElement("BathyTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("BathySamp", GpuResourceKind.Sampler, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("OceanMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("OceanSamp", GpuResourceKind.Sampler, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("DepthTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
-                // Dynamic-offset UBO read by BOTH stages (the vertex shader only needs ViewProj, folded into the
-                // same buffer under the one-UBO-per-set rule #604 retired, and left folded).
-                new GpuResourceLayoutElement("Water", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true)))));
+            _layout = CreateWaterLayout(f);
             _ocean = new OceanFftProducer(gd);
             _bathymetry = new WaterBathymetryMap(gd);
-            _pipe = Pipe(f, colorOutput, _shaders, false);
-        }
-
-        /// <summary>Rebuild the pipeline for a new colour-target output description (e.g. the MRT became
-        /// multisampled for MSAA). Layout/shaders/buffers are kept.</summary>
-        public void SetOutputs(GpuOutputDescription colorOutput)
-        {
-            _outputs = colorOutput;
-            _pipe.Dispose();
-            _pipe = Pipe(_gd.Factory, colorOutput, _shaders, false);
-            if (_clipPipe == null) return;
-            _clipPipe.Dispose();
-            _clipPipe = Pipe(_gd.Factory, colorOutput, _clipShaders!, true);
-        }
-
-        IGpuPipeline Pipe(IGpuResourceFactory f, GpuOutputDescription outputs, IGpuShaderSet shaders, bool clipmap)
-        {
-            // Position only for the camera-focused grid; the clipmap adds the coarse-neighbour offset, the morphed
-            // band-limit spacing and the morph weight (WaterClipmapVertex), which is why it cannot share this
-            // pipeline.
-            var vertexLayout = clipmap
-                ? new GpuVertexLayoutDescription(
-                    new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
-                    new GpuVertexElement("Coarse", GpuVertexElementFormat.Float2),
-                    new GpuVertexElement("Cell", GpuVertexElementFormat.Float1),
-                    new GpuVertexElement("Morph", GpuVertexElementFormat.Float1))
-                : new GpuVertexLayoutDescription(
-                    new GpuVertexElement("Position", GpuVertexElementFormat.Float3));
-            return f.CreateGraphicsPipeline(new GpuPipelineDescription
-            {
-                BlendFactor = Vector4.Zero,
-                BlendAttachments = new[] { GpuBlendAttachment.AlphaBlend },
-                // Depth test ON (Less) so terrain/props above the surface occlude the water; depth WRITE off so the
-                // resolved normal/linear-depth MRT the outline pass reads stays exactly what the opaque geometry
-                // wrote (see the WaterVert in-source note for the full reasoning).
-                DepthStencil = new GpuDepthStencilState(depthTestEnabled: true, depthWriteEnabled: false, GpuComparison.Less),
-                Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
-                Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _layout },
-                ShaderSet = shaders,
-                VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
-                Outputs = outputs,
-            });
-        }
-
-        /// <summary>Build the clipmap shader set + pipeline on first use, so a scene that never asks for
-        /// <see cref="WaterGridMode.Clipmap"/> pays nothing for it (not even a shader compile).</summary>
-        void EnsureClipPipeline()
-        {
-            if (_clipPipe != null) return;
-            _clipShaders = _gd.Factory.CreateShadersFromSpirv(ShaderSources.WaterClipmapVert, ShaderSources.WaterFrag);
-            _clipPipe = Pipe(_gd.Factory, _outputs, _clipShaders, true);
+            _defaultProgram = CreateWaterProgram(colorOutput, clipmap: false, triangle: false);
         }
 
         /// <summary>Ensure the UBO holds at least <paramref name="planeCount"/> slots, growing geometrically. A
@@ -531,6 +443,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// </summary>
         public void PrepareFrame(in FramePrepare frame)
         {
+            RetryWaterOutputReplacement();
             _opticsPrepared = false;
             _opticsPreparationAttempted = false;
             if (frame.WaterPlanes.Length == 0)
@@ -542,6 +455,9 @@ namespace KhaozEngine.Render3D.Rendering
                 _preparedWantOcean = false;
                 return;
             }
+            // Standalone legacy renderers also prepare before recording, without optical target bindings.
+            foreach (WaterPlane plane in frame.WaterPlanes)
+                if (!plane.Optics.IsBound) PrepareWaterProgram(GeometryRoute(plane, frame.Water), triangle: false);
             _preparedWantOcean = AnyPlaneWantsOcean(frame.WaterPlanes, frame.Water);
             _ocean.Prepare(frame.Water, frame.TimeSeconds, _preparedWantOcean,
                 wantMips: frame.Water.GridMode == WaterGridMode.Clipmap);
@@ -586,7 +502,6 @@ namespace KhaozEngine.Render3D.Rendering
             int drawn = RoutePlanes(planes, settings, FrustumPlanes.Extract(cullViewProj));
             if (_clipCount > 0)
             {
-                EnsureClipPipeline();
                 EnsureClipBuffers(planes, settings, renderOrigin);
             }
             if (_flatCount > 0) EnsureFlatBuffers(_flatCount);
@@ -717,11 +632,7 @@ namespace KhaozEngine.Render3D.Rendering
             _set?.Dispose();
             foreach (IGpuResourceSet set in _opticsSets.Values) set.Dispose();
             if (_ownsAtmosphere) _atmosphere.Dispose();
-            _clipPipe?.Dispose();
-            _pipe.Dispose();
-            _layout.Dispose();
-            _clipShaders?.Dispose();
-            _shaders.Dispose();
+            DisposeWaterPrograms();
             _ubo?.Dispose();
             _vb?.Dispose();
             _ib?.Dispose();

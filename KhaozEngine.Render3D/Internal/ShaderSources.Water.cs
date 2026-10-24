@@ -210,7 +210,12 @@ void main() {
         /// glint, foam, shore fade), <see cref="GerstnerWaves"/> (the swell's normal and fold, per pixel) and
         /// <see cref="SkyMath.ShadeDirection"/> (the reflected sky) exactly.
         /// </summary>
-        public const string WaterFrag = @"#version 450
+        public static readonly string WaterFrag = FragSource(triangle: false);
+
+        /// <summary>Exact triangle optics only, sharing the default fragment's physical shading body.</summary>
+        internal static readonly string WaterTriangleFrag = FragSource(triangle: true);
+
+        static string FragSource(bool triangle) => @"#version 450
 #extension GL_EXT_control_flow_attributes : require
 " + AtmosphereBindingsAt7Glsl + AtmosphereFogGlsl
     + WaterShoreBindingsGlsl + WaterFftBindingsGlsl + @"
@@ -374,7 +379,7 @@ vec3 skyAlongDirection(vec3 dir, float sunStrength) {
     return col;
 }
 
-" + WaterOpticsGlsl + @"
+" + (triangle ? WaterTriangleOpticsGlsl : WaterOpticsGlsl) + @"
 // Mirrors WaterMath.GlintRoughnessAt exactly: widen the specular lobe wherever the surface is under-sampled, by
 // camera distance OR by the pixel's world footprint against the ripple wavelength, whichever is worse. The
 // footprint is the measure that is actually right (what aliases is a wave narrower than a pixel, and distance is
@@ -474,6 +479,7 @@ void main() {
     // procedural surface renders exactly as it did before the FFT path existed.
     ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
     float groundDepth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
+" + (triangle ? WaterTriangleDepthBindingGuardGlsl : "") + @"
     vec4 ndc = vec4(gl_FragCoord.x / float(sz.x) * 2.0 - 1.0, 1.0 - gl_FragCoord.y / float(sz.y) * 2.0, groundDepth, 1.0);
     vec4 wp = InvViewProj * ndc;
     vec3 groundWorld = wp.xyz / wp.w;

@@ -123,7 +123,7 @@ public sealed class SupportCostHostedRecordTests
         {
             bool bounded = SupportCostVerdict.OutsideComparableEnvelope(row.Samples[0]);
             SupportCostTickBound bound = SupportCostTickBound.For(row.Operation == "ExplicitTick");
-            string Counts(Func<SupportCostSample, int> select, int cap) =>
+            string Counts(Func<SupportCostSample, long> select, int cap) =>
                 $"{row.Samples.Min(select)} to {row.Samples.Max(select)} / {(bounded ? cap.ToString(CultureInfo.InvariantCulture) : "n/a")}";
             text.AppendLine(($"| {row.Scene} | {Short(row.Operation)} | {ComparisonBasis(row)} | {median.Candidate:F3} | {median.Limit:F3} | " +
                 $"{Counts(s => s.Substeps, bound.Substeps)} | {Counts(s => s.Counts.Find, bound.Finds)} | " +

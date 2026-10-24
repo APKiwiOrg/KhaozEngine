@@ -16,7 +16,7 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class WaterOpticsRolledEmissionTests
 {
-    const string Evidence = "/tmp/khaozengine-water-triangles/shared-predicate-mapping/emission";
+    const string Evidence = "/tmp/khaozengine-water-triangles/origin-fxc-fix/emission";
 
     // Catch loss of sharing or local loop controls in the actual pinned compiler output.
     [Fact]
@@ -98,7 +98,22 @@ public sealed class WaterOpticsRolledEmissionTests
         Assert.Equal(new uint[] { 2, 3, 4, 6, 6, 18, 18, 18, 18, 18, 18, 23, 27, 32 },
             retainedBounds.Order().ToArray());
         Loop origin = Assert.Single(loops, l => l.Bound == 2 && l.Retained);
-        Assert.Single(Regex.Matches(hlsl[origin.Start..origin.End], @"& 134217728u"));
+        string originBody = hlsl[origin.Start..origin.End];
+        Assert.Single(Regex.Matches(originBody, @"& 134217728u"));
+        string originAxis = Regex.Match(origin.Header, @"int\s+(\w+)\s*=").Groups[1].Value;
+        Assert.NotEmpty(originAxis);
+        // Keep origin vector accesses static while retaining the loop for FXC.
+        Assert.DoesNotMatch(@"\[[^\]]*\b" + Regex.Escape(originAxis) + @"\b[^\]]*\]", originBody);
+        string axisZero = Regex.Match(originBody, @"bool (\w+) = " + Regex.Escape(originAxis) + @" == 0;")
+            .Groups[1].Value;
+        Assert.NotEmpty(axisZero);
+        string selection = @"if \(" + Regex.Escape(axisZero) + @"\)\s*\{\s*(\w+) = asuint\((\w+)\.x\);\s*\}"
+            + @"\s*else\s*\{\s*\1 = asuint\(\2\.([zy])\);\s*\}";
+        Assert.Equal(new[] { "z", "y" }, Regex.Matches(originBody, selection)
+            .Select(m => m.Groups[3].Value).ToArray());
+        Assert.Single(Regex.Matches(originBody, @"if \(" + Regex.Escape(axisZero)
+            + @"\)\s*\{\s*uint2 (\w+) = (\w+);\s*\1\.x = (\w+);\s*(\w+) = \1;\s*\}"
+            + @"\s*else\s*\{\s*uint2 (\w+) = \2;\s*\5\.y = \3;\s*\4 = \5;\s*\}"));
         Loop mapping = Assert.Single(loops, l => l.Bound == 4 && l.Retained);
         Assert.Single(Regex.Matches(hlsl[mapping.Start..mapping.End], @"& 32768u"));
         Assert.True(origin.End < mapping.Start);

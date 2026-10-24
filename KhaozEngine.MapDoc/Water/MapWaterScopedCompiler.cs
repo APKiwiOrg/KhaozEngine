@@ -64,6 +64,7 @@ public static class MapWaterScopedCompiler
                     var expanded = new HashSet<Cell>(cells);
                     foreach (var selected in drawCells)
                     {
+                        using var neighbourhoodPreparation = admission.BeginPreparation();
                         double padding = scene.Scope.MotionPaddingMetres;
                         var bounds = new MapBox3(selected.Min.X.ToDouble() - padding, -float.MaxValue, selected.Min.Z.ToDouble() - padding,
                             selected.Max.X.ToDouble() + padding, float.MaxValue, selected.Max.Z.ToDouble() + padding);

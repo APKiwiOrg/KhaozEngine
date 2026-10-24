@@ -39,7 +39,8 @@ public static class NativeMapTerrain
             admission.ReserveBytes(512);
             var canonical = Capture(scene, admission);
             var regionLookup = scene.PaintRegions.Values.SelectMany(p => p.Regions).ToLookup(r => r.Face);
-            var partitions = canonical.SelectMany(f => MapTerrainPaint.Partition(f, regionLookup[f.Face.Key], admission)).ToArray();
+            using var partitionScratch = admission.Workspace();
+            var partitions = canonical.SelectMany(f => MapTerrainPaint.Partition(f, regionLookup[f.Face.Key], admission, partitionScratch)).ToArray();
             var palettes = Palettes(canonical, partitions, maxMaterials, admission);
             var required = palettes.Sets.SelectMany(s => s).Distinct().Order().ToArray();
             var layers = new Dictionary<ushort, MapTerrainLayer>();
@@ -150,6 +151,11 @@ public static class NativeMapTerrain
     static PalettePlan Palettes(IReadOnlyList<MapTerrainCanonicalFace> canonical, IReadOnlyList<MapTerrainPartition> partitions,
         int maximum, MapSceneAdmission admission)
     {
+        using var preparation = admission.BeginPreparation();
+        admission.ReserveBytes(checked(512L + 128L * canonical.Count + 32L * partitions.Count));
+        using var scratch = admission.Workspace();
+        using var indexStorage = admission.Workspace();
+        long indexBytes = 0;
         var sets = new List<SortedSet<ushort>>();
         var byFace = new Dictionary<MapFaceKey, int>();
         var localOrdinals = new List<int>();
@@ -159,22 +165,34 @@ public static class NativeMapTerrain
             int current = -1, ordinal = 0;
             foreach (var face in owner)
             {
-                var needed = coverage[face.Face.Key].SelectMany(p => LayerIds(p.Paint)).Distinct().Order().ToArray();
-                if (needed.Length == 0) continue;
-                if (needed.Length > maximum) throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "One canonical terrain face exceeds material-set capacity.");
-                admission.ReserveBytes(checked(64L + 32L * needed.Length));
-                if (current < 0 || sets[current].Union(needed).Count() > maximum)
+                long bytes = checked(256L + 128L * coverage[face.Face.Key].Count() + 64L * maximum);
+                scratch.Reserve(bytes);
+                try
                 {
-                    current = sets.Count;
-                    sets.Add(new()); localOrdinals.Add(ordinal++);
+                    var needed = coverage[face.Face.Key].SelectMany(p => LayerIds(p.Paint)).Distinct().Order().ToArray();
+                    if (needed.Length == 0) continue;
+                    if (needed.Length > maximum) throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "One canonical terrain face exceeds material-set capacity.");
+                    if (current < 0 || sets[current].Union(needed).Count() > maximum)
+                    {
+                        admission.ReserveBytes(128);
+                        current = sets.Count;
+                        sets.Add(new()); localOrdinals.Add(ordinal++);
+                    }
+                    int added = 0;
+                    foreach (ushort id in needed) if (!sets[current].Contains(id)) added++;
+                    admission.ReserveBytes(checked(32L * added));
+                    sets[current].UnionWith(needed);
                 }
-                sets[current].UnionWith(needed);
+                finally { scratch.Release(bytes); }
+                MapPreparationCollections.Dictionary(byFace, indexStorage, ref indexBytes);
                 byFace.Add(face.Face.Key, current);
             }
         }
+        preparation.AdoptWorkspace(indexStorage, indexBytes);
+        preparation.Complete(checked(128L + indexBytes + 8L * sets.Capacity + 4L * localOrdinals.Capacity +
+            64L * sets.Count + sets.Sum(set => 32L * set.Count)));
         return new(sets, byFace, localOrdinals);
     }
-
     static MapBox3 Bounds(GltfMesh mesh, MapSubmissionAnchor anchor) => new(
         anchor.X + (double)mesh.Vertices.Min(v => v.Position.X), anchor.Y + (double)mesh.Vertices.Min(v => v.Position.Y),
         anchor.Z + (double)mesh.Vertices.Min(v => v.Position.Z), anchor.X + (double)mesh.Vertices.Max(v => v.Position.X),

@@ -112,7 +112,7 @@ public sealed class MapPlacementRouting
                 if (layer.LodDistances.Count > 0 && layer.LodDistances.Count != descriptor.LodResourceIds.Count)
                     return new(MapSceneStatus.Invalid, null);
             }
-        var roofs = scene.BuildingIntent.Roofs.Select(r => r.Id).ToFrozenSet(StringComparer.Ordinal);
+        var roofs = scene.CapturedBuildingIntent.Roofs.Select(r => r.Id).ToFrozenSet(StringComparer.Ordinal);
         var entries = new Dictionary<string, MapPlacementRoute>(StringComparer.Ordinal);
         foreach (var placement in scene.Placements)
         {

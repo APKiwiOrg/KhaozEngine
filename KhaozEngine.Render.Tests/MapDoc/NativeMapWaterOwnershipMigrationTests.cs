@@ -11,6 +11,28 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class NativeMapWaterOwnershipMigrationTests
 {
     [Fact]
+    public void WaterReaders_KeepOneCanonicalChargeAfterTheCompilerOwnerCloses()
+    {
+        using var fixture = NativeSceneFixtures.Create("water-notch");
+        var scene = NativeSceneFixtures.Open(fixture, false).Acquire(
+            NativeSceneFixtures.WaterWindow(0, 10, 7) with { MotionPaddingMetres = 1 }).Scene!;
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100_000_000));
+        using var active = admission.Enter();
+        using var water = MapWaterScopedCompiler.Compile(scene);
+        long before = admission.RetainedBytes;
+        using var first = NativeMapWater.Prepare(water, new WaterLook { SwellAmplitude = 0 }, new());
+        using var second = NativeMapWater.Prepare(water, new WaterLook { SwellAmplitude = 0 }, new());
+        long canonical = first.Cells.Sum(c => 256L + c.Regions.Sum(r => 128L + 144L * r.Triangles.Count));
+        long copies = first.RetainedBytes + second.RetainedBytes - 2 * canonical;
+        Assert.Equal(before + copies, admission.RetainedBytes);
+        water.Dispose();
+        Assert.Equal(canonical + copies, admission.RetainedBytes);
+        first.Dispose();
+        Assert.Equal(second.RetainedBytes, admission.RetainedBytes);
+        second.Dispose();
+        Assert.Equal(0, admission.RetainedBytes);
+    }
+    [Fact]
     public void WaterHandoff_ChargesCanonicalCellsOnceWhileBothAliasesAreLive()
     {
         using var fixture = NativeSceneFixtures.Create("water-notch");

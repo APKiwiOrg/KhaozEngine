@@ -50,6 +50,8 @@ public static class NativeMapPlacements
             if (!assets.ById.ContainsKey(placement.AssetId)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Canonical cell member has no selected asset: " + placement.AssetId);
         try
         {
+            admission.ReserveBytes(checked(1024L + 512L * assets.ById.Count + 128L * scene.Placements.Count +
+                assets.ById.Values.Sum(a => a.Lods.Sum(l => 128L + 32L * l.BorrowParts.Count))));
             var instances = new List<NativePropInstance>();
             var parts = new List<MapPlacementPart>();
             var boundsById = new Dictionary<string, MapBox3>(StringComparer.Ordinal);
@@ -136,7 +138,7 @@ public static class NativeMapPlacements
                     var anchor = new MapSubmissionAnchor(domain.Anchor.X, domain.Anchor.Y, domain.Anchor.Z);
                     var mesh = build.BorrowMesh;
                     var inventoryMeasure = new MapNativeInventory();
-                    long clusterBytes = checked(MapNativeInventory.Mesh(mesh) + inventoryMeasure.Layer(build.Request.BorrowLayer) + 16L * build.Request.Instances.Count);
+                    long clusterBytes = checked(MapNativeInventory.Mesh(mesh) + inventoryMeasure.Layer(build.Request.BorrowLayer, false) + 16L * build.Request.Instances.Count);
                     if (mesh.TriangleCount == 0) { cellPreparation.Complete(clusterBytes); continue; }
                     var bounds = members.Select(i => boundsById[i.Id]).Aggregate(Union);
                     var key = new MapRenderKey(MapRenderKind.Placement, MapPlacementCells.Owner(cell.Key), "hlod", 0);
@@ -165,11 +167,14 @@ public static class NativeMapPlacements
 
             PropLayer Shared(IReadOnlyList<NativePropInstance> rows, MapPlacementLayer? layer)
             {
+                using var layerPreparation = admission.BeginPreparation();
+                admission.ReserveBytes(checked(256L + 128L * rows.Count + handles.Values.Sum(t => 64L + 32L * t.Count + 8L * t.Sum(l => l.Parts.Count))));
                 var tiers = rows.Select(i => i.AssetId).Distinct(StringComparer.Ordinal).ToDictionary(id => id, id => handles[id], StringComparer.Ordinal);
-                admission.ReserveBytes(checked(256L + 128L * rows.Count + tiers.Values.Sum(t => 64L + 32L * t.Count + 4L * t.Sum(l => l.Parts.Count))));
                 var shared = PropLayer.PlacementLayer(rows, tiers, layer?.DrawRadius ?? policy.DefaultDrawRadius,
                     layer?.LodDistances ?? Array.Empty<float>(), layer?.LodCrossfadeWidth ?? 0, layer?.CastsShadows ?? true);
-                return layer is null ? shared : shared.WithIdentity(layer.Id);
+                var result = layer is null ? shared : shared.WithIdentity(layer.Id);
+                layerPreparation.Complete(checked(128L * rows.Count + 64L * tiers.Count + 8L * tiers.Values.Sum(t => t.Count) + 4L * result.LodDistances.Count));
+                return result;
             }
         }
         catch (MapSceneCapacityException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
@@ -198,7 +203,7 @@ public static class NativeMapPlacements
     {
         ArgumentNullException.ThrowIfNull(request); ArgumentNullException.ThrowIfNull(build);
         routing.Validate(scene);
-        var roofs = scene.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        var roofs = scene.CapturedBuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var placements = scene.Placements.ToDictionary(p => p.PlacementId, StringComparer.Ordinal);
         if (request.Instances.Count == 0) throw new MapDocumentException("Native cluster requires its effective members.");
         foreach (var instance in request.Instances)

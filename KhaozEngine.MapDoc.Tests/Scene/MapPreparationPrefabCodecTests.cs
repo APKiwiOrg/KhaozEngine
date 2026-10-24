@@ -15,8 +15,12 @@ public sealed class MapPreparationPrefabCodecTests
     {
         var patch = new MapSurfacePatch
         {
-            Key = new("invented", 0, 0), Width = 1, Depth = 1,
-            Heights = new int[4], Cells = new MapSurfaceCell[1], Presence = [1UL],
+            Key = new("invented", 0, 0),
+            Width = 1,
+            Depth = 1,
+            Heights = new int[4],
+            Cells = new MapSurfaceCell[1],
+            Presence = [1UL],
         };
         MapPrefabChild child = record
             ? new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "wall"),

@@ -8,19 +8,11 @@ namespace KhaozEngine.MapDoc.Render3D;
 /// <summary>Before-work storage admission for a preparation recorder, including replacement and snapshot overlap.</summary>
 internal sealed class MapRecordingAdmission(MapPreparationScope scope)
 {
+    long _resourceBytes;
     internal static long DrawBytes => Unsafe.SizeOf<MapDrawRecord>();
     internal void Resource(Dictionary<MapResourceReference, MapPreparedResource> resources)
     {
-        int old = resources.EnsureCapacity(0);
-        if (resources.Count < old) return;
-        int requested = checked(Math.Max(3, old * 2));
-        // Dictionary prime rounding stays within twice the requested capacity.
-        long envelope = checked(256L * requested);
-        scope.Reserve(envelope);
-        int capacity;
-        try { capacity = resources.EnsureCapacity(requested); }
-        catch { scope.Release(envelope); throw; }
-        scope.Release(checked(envelope + 128L * old - 128L * capacity));
+        MapPreparationCollections.Dictionary(resources, scope.WorkspaceOwner, ref _resourceBytes, 128);
     }
     internal void Draw(List<MapDrawRecord> draws)
     {

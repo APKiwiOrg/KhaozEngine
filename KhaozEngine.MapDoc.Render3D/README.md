@@ -152,6 +152,10 @@ the look or scene settings require preparation again. `MapWaterRenderBatch` expo
 retained bytes and preparation charge. Register once per resource generation, then call `Record` for each
 frame. Closed water has no draw. Meshes deduplicate vertices within their canonical cells and retain an
 original-domain clip payload, so displaced fragments cannot fill dry notches.
+Dispose the compilation result after preparation. The batch keeps a shared lease for its selected canonical
+cells. `RetainedBytes` includes those cells, while `PreparationChargeBytes` reports the batch's independent
+containers, mesh and clip inventory. Shared cells constrain each borrowing window and count once in the
+attempt ledger.
 The clip payload is a render derivation over the same body's neighbouring free-surface regions within the
 look's certified displacement halo. It is tested at displaced world position. Internal cell borders never
 become shorelines. The render digest includes every consumed neighbour region digest.
@@ -229,6 +233,8 @@ further narrowed by queue and plan views. Live workspace, retained inventory and
 share the allowance. Sequential temporary work reuses credit. Growth admits old and new arrays together.
 Each plan view includes reused context and selected decoded pieces, while shared input counts once in the
 attempt's ownership ledger. Decoder reservations mirror actual owned and temporary demand before allocation.
+An operation observes new reservations through its own view of a shared decoder budget. Earlier payloads
+remain covered by their identity receipts and selected-input references.
 Original tighter decoder limits and their diagnostic identity remain binding. Disposal cancels pending work
 without blocking the scheduler. A running worker retains its readers and CPU reservation until unwind.
 

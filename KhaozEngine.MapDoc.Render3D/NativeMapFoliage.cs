@@ -95,6 +95,7 @@ public static class NativeMapFoliage
         using var preparation = admission.BeginPreparation();
         try
         {
+            admission.ReserveBytes(checked(512L + 128L * samples.Count + 128L * scene.Placements.Count));
             var groups = new List<MapNativeFoliageGroup>();
             var identities = new List<MapFoliageSampleKey>();
             var generations = new List<MapFoliageGenerationKey>();

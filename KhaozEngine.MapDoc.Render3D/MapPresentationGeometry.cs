@@ -23,8 +23,8 @@ public sealed class MapPresentationPlacement
         if (collider is not null) { admission.ReserveBytes(PreparedShapeRay.Bytes(collider)); _collider = new(collider, pose); ColliderBounds = Bounds(collider, pose); }
         if (selection is not null) { admission.ReserveBytes(PreparedShapeRay.Bytes(selection)); _selection = new(selection, selectionPose); SelectionBounds = Bounds(selection, selectionPose); }
     }
-    internal long InventoryBytes => checked(128L + MapPresentationGeometry.ShapeBytes(_colliderShape) +
-        (ReferenceEquals(_colliderShape, _selectionShape) ? 0 : MapPresentationGeometry.ShapeBytes(_selectionShape)) +
+    internal long InventoryBytes => Inventory(new MapPresentationShapeInventory());
+    internal long Inventory(MapPresentationShapeInventory shapes) => checked(128L + shapes.Shape(_colliderShape) + shapes.Shape(_selectionShape) +
         (_colliderShape is null ? 0 : PreparedShapeRay.Bytes(_colliderShape)) +
         (_selectionShape is null ? 0 : PreparedShapeRay.Bytes(_selectionShape)));
     public string OwnerId { get; }
@@ -61,13 +61,18 @@ internal readonly record struct MapPresentationFace(string OwnerId, double Ax, d
 public sealed class MapPresentationGeometry
 {
     internal MapPreparationReservation? PreparationOwnership { get; private set; }
-    public long RetainedBytes => checked(512L + 128L * Faces.Length + 128L * Placements.Count +
-        28L * (Faces.Length + Placements.Count) + Placements.Sum(p => p.InventoryBytes));
+    public long RetainedBytes { get; }
     public IReadOnlyList<MapPresentationPlacement> Placements { get; }
     internal MapPresentationFace[] Faces { get; }
     internal MapPresentationPicker.Workspace PickWorkspace { get; }
-    MapPresentationGeometry(MapPresentationPlacement[] placements, MapPresentationFace[] faces)
-    { Placements = Array.AsReadOnly(placements); Faces = faces; PickWorkspace = new(checked(placements.Length + faces.Length)); }
+    MapPresentationGeometry(MapPresentationPlacement[] placements, MapPresentationFace[] faces, long bytes)
+    { Placements = Array.AsReadOnly(placements); Faces = faces; RetainedBytes = bytes; PickWorkspace = new(checked(placements.Length + faces.Length)); }
+    static long Inventory(IReadOnlyList<MapPresentationPlacement> placements, int faces)
+    {
+        var shapes = new MapPresentationShapeInventory();
+        return checked(512L + 128L * faces + 128L * placements.Count +
+            28L * (faces + placements.Count) + placements.Sum(p => p.Inventory(shapes)));
+    }
     public static MapPresentationGeometry Prepare(MapScopedScene scene, MapAssetClosure assets,
         IReadOnlyList<MapTerrainCanonicalFace>? faces = null)
     {
@@ -79,18 +84,24 @@ public sealed class MapPresentationGeometry
         using var preparation = admission.BeginPreparation();
         try
         {
-            admission.ReserveBytes(checked(512L + 128L * scene.Placements.Count + 128L * (faces?.Count ?? 0)));
+            admission.ReserveBytes(checked(512L + 32L * scene.Placements.Count));
             var rows = new List<MapPresentationPlacement>();
             var shapes = new Dictionary<string, (PhysicsShape? Collider, PhysicsShape? Selection)>();
+            using var shapeIndex = admission.Workspace();
+            long shapeIndexBytes = 0;
+            var inventory = new MapPresentationShapeInventory();
             foreach (var placement in scene.Placements.OrderBy(p => p.PlacementId, StringComparer.Ordinal))
             {
                 var asset = assets.GetAsset(placement.AssetId);
                 if (!shapes.TryGetValue(asset.Id, out var pair))
                 {
                     pair = (Read(asset.CollisionResourceId, MapResourceKind.Collider), Read(asset.SelectionResourceId, MapResourceKind.Selection));
+                    MapPreparationCollections.Dictionary(shapes, shapeIndex, ref shapeIndexBytes);
                     shapes.Add(asset.Id, pair);
+                    _ = inventory.Shape(pair.Collider); _ = inventory.Shape(pair.Selection);
                 }
                 if (pair.Collider is null && pair.Selection is null) continue;
+                using var copyPreparation = admission.BeginPreparation();
                 var transform = NativeMapPlacements.Pose(scene, placement);
                 float scale = (float)(asset.SourceUnitsToMetres * transform.Scale);
                 if (!float.IsFinite(scale) || scale <= 0) throw new MapDocumentException("Presentation scale must be finite and positive.");
@@ -103,43 +114,48 @@ public sealed class MapPresentationGeometry
                 var (sin, cos) = Math.SinCos(transform.YawRadians * .5);
                 var pose = new Pose(new((float)(transform.X - anchor.X), (float)(transform.Y - anchor.Y), (float)(transform.Z - anchor.Z)), new(0, (float)sin, 0, (float)cos));
                 var envelope = PropQueryGeometry.RaiseEnvelope(selection, pose, 1);
-                rows.Add(new(placement, anchor, pose, collider, envelope.Shape, envelope.Pose, envelope.RaiseMetres, admission));
+                var row = new MapPresentationPlacement(placement, anchor, pose, collider, envelope.Shape, envelope.Pose, envelope.RaiseMetres, admission);
+                rows.Add(row);
+                copyPreparation.Complete(checked(128L + row.Inventory(inventory)));
             }
-            var canonical = new MapPresentationFace[faces?.Count ?? 0];
-            for (int i = 0; i < canonical.Length; i++)
+            shapeIndex.Dispose();
+            admission.ReserveBytes(checked(128L * (faces?.Count ?? 0) + 28L * ((faces?.Count ?? 0) + rows.Count) + 8L * rows.Count));
+            long retained = Inventory(rows, faces?.Count ?? 0);
+            var ownership = preparation.Complete(retained); preparation.Dispose();
+            try
             {
-                var f = faces![i]; var t = f.Triangle;
-                canonical[i] = new(f.Face.Key.OwnerId, t.A.X.ToDouble(), t.A.Y.ToDouble(), t.A.Z.ToDouble(),
-                    t.B.X.ToDouble(), t.B.Y.ToDouble(), t.B.Z.ToDouble(), t.C.X.ToDouble(), t.C.Y.ToDouble(), t.C.Z.ToDouble());
+                var canonical = new MapPresentationFace[faces?.Count ?? 0];
+                for (int i = 0; i < canonical.Length; i++)
+                {
+                    var f = faces![i]; var t = f.Triangle;
+                    canonical[i] = new(f.Face.Key.OwnerId, t.A.X.ToDouble(), t.A.Y.ToDouble(), t.A.Z.ToDouble(),
+                        t.B.X.ToDouble(), t.B.Y.ToDouble(), t.B.Z.ToDouble(), t.C.X.ToDouble(), t.C.Y.ToDouble(), t.C.Z.ToDouble());
+                }
+                var result = new MapPresentationGeometry(rows.ToArray(), canonical, retained);
+                result.PreparationOwnership = ownership;
+                return result;
             }
-            var result = new MapPresentationGeometry(rows.ToArray(), canonical);
-            result.PreparationOwnership = preparation.Complete(result.RetainedBytes);
-            return result;
+            catch { ownership.Dispose(); throw; }
 
             PhysicsShape? Read(string? id, MapResourceKind kind)
             {
                 if (id is null) return null;
                 var resource = assets.GetResource(id);
                 if (resource.Kind != kind) throw new MapDocumentException("Presentation shape has the wrong resource kind.");
+                using var readPreparation = admission.BeginPreparation();
                 admission.ReserveBytes(checked(512 + 16L * resource.ByteLength)); admission.BeforePayload(resource.ByteLength);
                 using var stream = new MemoryStream(resource.Bytes.ToArray(), false);
                 var shape = PropCollisionFormat.Read(stream);
                 if (stream.Position != stream.Length) throw new MapDocumentException("Presentation shape has trailing bytes.");
                 _ = PropQueryGeometry.Bounds(shape, Pose.Identity);
+                readPreparation.Complete(ShapeBytes(shape));
                 return shape;
             }
         }
         catch (MapSceneCapacityException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
         catch (EndOfStreamException) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Presentation shape is truncated."); }
     }
-    internal static long ShapeBytes(PhysicsShape? shape) => checked(shape switch
-    {
-        null => 0,
-        ConvexHullShape hull => 128L + 12L * hull.Points.Length,
-        TriangleMeshShape mesh => 128L + 12L * mesh.Vertices.Length + 4L * mesh.Indices.Length,
-        CompoundShape compound => 128L + 64L * compound.Children.Length + compound.Children.Sum(c => ShapeBytes(c.Shape)),
-        _ => 64L,
-    });
+    internal static long ShapeBytes(PhysicsShape? shape) => new MapPresentationShapeInventory().Shape(shape);
     static long CopyBytes(PhysicsShape? shape) => checked(shape switch
     {
         null => 0,

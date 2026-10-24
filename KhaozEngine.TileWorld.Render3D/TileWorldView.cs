@@ -421,46 +421,6 @@ public sealed partial class TileWorldView : IDisposable
         LoadProfileRegion(region, residency);
     }
 
-    void LoadGameplayRegion(RegionCoord region, TileRegionProps[]? props)
-    {
-        WaterAvailabilityChanged(region);
-        var meshes = new MeshHandle?[_planes];
-        var water = new TileWaterGeneration?[_planes];
-        _loaded.EnsureCapacity(_loaded.Count + 1);
-        _water.EnsureCapacity(_water.Count + _planes);
-        TileRegionProps[] snapshots = props ?? new TileRegionProps[_planes];
-        IReadOnlyList<GroundCoverInstance> cover;
-        try
-        {
-            for (int plane = 0; plane < _planes; plane++)
-            {
-                TileWaterPreparation? preparation = CaptureWater(region, plane);
-                if (preparation is not null)
-                {
-                    GltfMesh? mesh = BuildGroundCpu(region, plane);
-                    if (!UploadGround(mesh, preparation, out meshes[plane], out water[plane])) Queue(region, plane);
-                }
-                if (props is null)
-                    snapshots[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
-            }
-            cover = BuildCover(region);
-            SealGameplayWater(region, meshes, water);
-        }
-        catch
-        {
-            FreeMeshes(meshes);
-            foreach (TileWaterGeneration? generation in water) generation?.Dispose();
-            for (int plane = 0; plane < _planes; plane++) ReleaseWater(region, plane);
-            throw;
-        }
-        _loaded[region] = new RegionHandles(
-            meshes, snapshots, cover, TileRegionResidencyState.Gameplay, profileManaged: false);
-        for (int plane = 0; plane < _planes; plane++)
-            if (water[plane] is { } generation) _water[(region, plane)] = generation;
-        RequestPropClusters(snapshots);
-        GeneratedCoverCount += cover.Count;
-    }
-
     /// <summary>Frees every mesh handle of one region and forgets it, along with any rebuild it had queued.
     /// Unloading a region that is not loaded does nothing.</summary>
     public void UnloadRegion(RegionCoord region)
@@ -688,13 +648,6 @@ public sealed partial class TileWorldView : IDisposable
         if (_dirty.Add((region, plane))) _dirtyOrder.Add((region, plane));
     }
 
-    // The legacy synchronous ground build, which the CPU witness records like every other build entry.
-    GltfMesh? BuildGroundCpu(RegionCoord region, int plane)
-    {
-        _onCpuBuild?.Invoke(new TileWorldBuildKey(region, plane, TileWorldBuildKind.FullGround));
-        return TileGroundMesher.Build(_doc, _catalogs, region, plane, _mesher);
-    }
-
     // Frees every archetype's parts exactly once. The placeholder set is shared by every unresolved archetype, so
     // the walk skips it and it is freed on its own afterwards.
     void UnloadPropMeshes()
@@ -711,6 +664,7 @@ public sealed partial class TileWorldView : IDisposable
         _scene.ReleaseGroundCover(handles.Cover);
         ReleaseAnimatedFoliage(handles);
         FreeMeshes(handles.Meshes);
+        Array.Clear(handles.Surfaces);
     }
 
     // Takes the array rather than the record, so the rollback in LoadRegion can free a half-filled plane array
@@ -737,6 +691,7 @@ public sealed partial class TileWorldView : IDisposable
     sealed class RegionHandles
     {
         public MeshHandle?[] Meshes { get; }
+        public TileGroundSurfaceSnapshot?[] Surfaces { get; }
         public TileRegionProps[] Props { get; }
         public IReadOnlyList<GroundCoverInstance> Cover { get; set; }
         public TileRegionResidencyState Residency { get; set; }
@@ -749,6 +704,7 @@ public sealed partial class TileWorldView : IDisposable
                              TileRegionResidencyState residency, bool profileManaged)
         {
             Meshes = meshes;
+            Surfaces = new TileGroundSurfaceSnapshot?[meshes.Length];
             Props = props;
             Cover = cover;
             Residency = residency;

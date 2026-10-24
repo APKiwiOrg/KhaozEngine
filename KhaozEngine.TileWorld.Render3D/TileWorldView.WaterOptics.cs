@@ -119,19 +119,22 @@ public sealed partial class TileWorldView
         water.Stamp.IsCurrent(_doc, _waterEpochs) &&
         water.Padding == (_opticsScene?.GetWaterOpticsPadding(_options.WaterLook) ?? 0f);
 
+    bool GroundInputsCurrent(TileGroundSurfaceSnapshot surface, TileWaterPreparation water) =>
+        WaterInputsCurrent(water) && surface.SourceWitness.IsCurrent(_doc, _catalogs, _mesher);
+
     // No GPU ownership escapes until both uploads succeed and the source remains current.
-    bool UploadGround(GltfMesh? mesh, TileWaterPreparation water, out MeshHandle? replacement,
+    internal bool UploadGround(TileGroundCpuBuild ground, TileWaterPreparation water, out MeshHandle? replacement,
         out TileWaterGeneration? generation)
     {
         replacement = null;
         generation = null;
-        if (!WaterInputsCurrent(water)) return false;
+        if (!GroundInputsCurrent(ground.Surface, water)) return false;
         try
         {
             generation = new TileWaterGeneration(water, _opticsScene);
-            replacement = mesh is null ? null : _scene.LoadMesh(mesh, _material);
+            replacement = ground.Mesh is null ? null : _scene.LoadMesh(ground.Mesh, _material);
             generation.SetLook(_options.WaterLook);
-            if (WaterInputsCurrent(water)) return true;
+            if (GroundInputsCurrent(ground.Surface, water)) return true;
         }
         catch
         {
@@ -151,17 +154,19 @@ public sealed partial class TileWorldView
     // A later plane's upload can announce a source change while earlier planes are staged.
     // Revalidate the whole staged region immediately before its first publication. Source arrivals
     // consumed by this capture must not cause a redundant upload on the first ordinary draw.
-    void SealGameplayWater(RegionCoord region, MeshHandle?[] meshes, TileWaterGeneration?[] water)
+    void SealGameplayWater(RegionCoord region, MeshHandle?[] meshes, TileWaterGeneration?[] water,
+        TileGroundSurfaceSnapshot?[] surfaces)
     {
         for (int plane = 0; plane < water.Length; plane++)
         {
             if (water[plane] is not { } generation) continue;
-            if (!WaterInputsCurrent(generation.Preparation))
+            if (surfaces[plane] is not { } surface || !GroundInputsCurrent(surface, generation.Preparation))
             {
                 if (meshes[plane] is { } stale) _scene.UnloadMesh(stale);
                 meshes[plane] = null;
                 generation.Dispose();
                 water[plane] = null;
+                surfaces[plane] = null;
                 Queue(region, plane);
                 continue;
             }
@@ -169,11 +174,11 @@ public sealed partial class TileWorldView
         }
     }
 
-    bool PublishGround(RegionCoord region, int plane, RegionHandles handles, GltfMesh? mesh,
+    bool PublishGround(RegionCoord region, int plane, RegionHandles handles, TileGroundCpuBuild ground,
         TileWaterPreparation water)
     {
         _water.EnsureCapacity(_water.Count + 1);
-        if (!UploadGround(mesh, water, out MeshHandle? replacement, out TileWaterGeneration? generation))
+        if (!UploadGround(ground, water, out MeshHandle? replacement, out TileWaterGeneration? generation))
         {
             Queue(region, plane);
             return false;
@@ -181,6 +186,7 @@ public sealed partial class TileWorldView
         MeshHandle? oldMesh = handles.Meshes[plane];
         _water.TryGetValue((region, plane), out TileWaterGeneration? oldWater);
         handles.Meshes[plane] = replacement;
+        handles.Surfaces[plane] = ground.Surface;
         _water[(region, plane)] = generation!;
         if (oldMesh is { } old) _scene.UnloadMesh(old);
         oldWater?.Dispose();
@@ -192,6 +198,7 @@ public sealed partial class TileWorldView
         if (_water.Remove((region, plane), out TileWaterGeneration? old)) old.Dispose();
         if (handles.Meshes[plane] is { } mesh) _scene.UnloadMesh(mesh);
         handles.Meshes[plane] = null;
+        handles.Surfaces[plane] = null;
         InvalidateGround(region, handles, plane);
     }
 

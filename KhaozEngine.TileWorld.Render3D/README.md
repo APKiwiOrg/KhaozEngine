@@ -725,6 +725,12 @@ collision, navigation, simulation, replication or hashes.
   caps. A generation stamp rejects a result whose region was demoted, unloaded or reloaded since it was asked
   for. A pure focus move reuses accepted clusters. Replacement failures keep the last accepted HLOD handle.
   Initial failures retry three times, log once, and keep individual geometry where it is resident.
+- Ground CPU results pair the uploaded mesh with an internal immutable `TileGroundSurfaceSnapshot`. It copies
+  position-only vertices and original 32-bit indices, retaining the actual LOD and world transform. Strict height
+  provenance and topology inputs belong to emitted tile or coarse-block index ranges, including feather children.
+  Detached builds preserve known-unloaded manifest entries. Admission validates the captured inputs against live
+  state. Empty snapshots mean known empty ground, while an absent accepted snapshot means unavailable ground.
+  `HeightAt` retains its bilinear contract. Triangle optical publication follows the separate amendment gate.
 - **Streaming a region dirties its dependants** in both directions. Ground meshes rebuild across their fixed
   border reach. Ground-cover caches also rebuild where a streamed solid footprint, upper roof or tagged door can
   change eligibility, including regions reached by the door clearance.

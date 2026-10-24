@@ -95,7 +95,7 @@ public sealed partial class TileWorldView
 
     // Full ground lands only on the gameplay generation that asked for it, and retires the coarse fallback.
     // Coarse ground lands only while no full replacement has been accepted since it was requested.
-    void ApplyGround(TileWorldBuildKey key, long generation, GltfMesh? mesh, TileWaterPreparation water)
+    void ApplyGround(TileWorldBuildKey key, long generation, TileGroundCpuBuild ground, TileWaterPreparation water)
     {
         if (!_loaded.TryGetValue(key.Region, out RegionHandles? handles)) return;
         int plane = key.Plane;
@@ -113,7 +113,7 @@ public sealed partial class TileWorldView
             return;
         }
 
-        PublishGround(key.Region, plane, handles, mesh, water);
+        PublishGround(key.Region, plane, handles, ground, water);
     }
 
     void CancelGround(RegionCoord region, int plane)

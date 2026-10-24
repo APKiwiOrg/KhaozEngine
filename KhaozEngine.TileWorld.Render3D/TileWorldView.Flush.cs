@@ -77,7 +77,7 @@ public sealed partial class TileWorldView
                 InvalidateGround(region, handles, plane);
                 TileWaterPreparation? water = CaptureWater(region, plane);
                 if (water is null) continue;
-                GltfMesh? rebuilt = BuildGroundCpu(region, plane);
+                TileGroundCpuBuild rebuilt = BuildGroundCpu(region, plane);
                 if (!PublishGround(region, plane, handles, rebuilt, water)) continue;
                 handles.Props[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
                 _propClusters.Request(handles.Props[plane]);
@@ -85,7 +85,7 @@ public sealed partial class TileWorldView
                 RebuildCover(region, handles);
                 // Only a mesh that was actually built counts. The budget exists to bound uploads and handle
                 // churn, and an empty region-plane produces neither.
-                if (rebuilt is not null) taken++;
+                if (rebuilt.Mesh is not null) taken++;
             }
         }
         finally

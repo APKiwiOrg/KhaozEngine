@@ -26,6 +26,7 @@ internal sealed class TileGroundCornerCache
     readonly int _plane;
     readonly float _tileSize;
     readonly bool _memoise;
+    readonly TileGroundSurfaceAudit.Builder? _audit;
     // One entry per region-local lattice corner, lz * Side + lx, all allocated together on first use.
     byte[]? _known;
     short[]? _height;
@@ -41,8 +42,9 @@ internal sealed class TileGroundCornerCache
     /// <param name="plane">The plane being meshed.</param>
     /// <param name="memoise">False computes every answer afresh, which is the direct path the memo is proved
     /// against.</param>
+    /// <param name="audit">Optional geometry-height witness recorder for this build.</param>
     internal TileGroundCornerCache(TileWorldDocument doc, TileGroundMesherOptions options, int originX, int originZ,
-                                   int plane, bool memoise)
+                                   int plane, bool memoise, TileGroundSurfaceAudit.Builder? audit = null)
     {
         _doc = doc;
         _options = options;
@@ -51,18 +53,26 @@ internal sealed class TileGroundCornerCache
         _plane = plane;
         _tileSize = doc.TileSize;
         _memoise = memoise;
+        _audit = audit;
     }
 
     /// <summary>The corner's height in centimetres, <see cref="TileWorldDocument.CornerHeightCm"/>.</summary>
     internal short HeightCm(int cornerX, int cornerZ)
     {
-        if (!TryEntry(cornerX, cornerZ, out int at)) return _doc.CornerHeightCm(cornerX, cornerZ, _plane);
+        if (!TryEntry(cornerX, cornerZ, out int at))
+            return AuditedHeight(cornerX, cornerZ, _doc.CornerHeightCm(cornerX, cornerZ, _plane));
         if ((_known![at] & KnownHeight) == 0)
         {
             _height![at] = _doc.CornerHeightCm(cornerX, cornerZ, _plane);
             _known[at] |= KnownHeight;
         }
-        return _height![at];
+        return AuditedHeight(cornerX, cornerZ, _height![at]);
+    }
+
+    short AuditedHeight(int cornerX, int cornerZ, short height)
+    {
+        _audit?.ReadHeight(cornerX, cornerZ, height);
+        return height;
     }
 
     /// <summary>What a vertex at this corner carries apart from its slots and weights: its region-local position

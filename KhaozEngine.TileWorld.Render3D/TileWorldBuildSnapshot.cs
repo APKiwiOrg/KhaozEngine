@@ -30,6 +30,10 @@ internal static class TileWorldBuildSnapshot
                     CopyPlane(source.Planes[plane], copy.Planes[plane]);
                 copy.Dirty = false;
             }
+        // Strict optical reads must still see known-unloaded candidates before a loaded fallback.
+        // Capture the manifest before this document is detached. No worker read can perform I/O.
+        foreach (var entry in document.UnloadedRegionHashes)
+            snapshot.UnloadedRegionHashes.Add(entry.Key, entry.Value);
         return snapshot;
     }
 

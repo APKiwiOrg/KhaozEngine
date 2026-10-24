@@ -108,6 +108,18 @@ Mode 2 uses existing texture/sampler bindings 10/11 and unchanged 1088-byte UBO 
   warmed zero managed allocation/upload/resource-set creation using the repository harness.
 - [ ] Run `WaterOpticsTriangle` plus existing `WaterOptics`, `UboLayoutTests` and
   `WaterBathymetryUploadGateTests` with GPU enabled. Require zero selected skips. Inspect readback evidence.
+- [ ] Retain one six-term wide-product loop with one unchanged product body and six emitted carry-loop
+  bodies. Preserve original operand order, both 18-word accumulators, narrow selection/arithmetic and
+  binary32 operations. Apply source-local `dont_unroll` hints to that loop and the candidate, three-edge,
+  wide-carry and 27-step division loops. Prove actual pinned SPIR-V DontUnroll and HLSL `[loop]` emission
+  before the hosted compile proof. Source text alone does not pass this gate.
+- [ ] Pass the pending candidate-only cold Windows compile proof at dispatch `github.sha`, with caches
+  off and optimized production flags. Require pixel FXC <= 5000 ms and the measured six-phase total
+  <= 10000 ms. Reuse verified control run 40087661847 without recompiling its frozen inputs. These
+  fixed-proof engineering limits do not assert universal hardware performance. A miss requires investigation.
+- [ ] Implement complementary separate lazy triangle pipelines in a subsequent scoped task so default
+  legacy/bilinear construction cannot compile triangle arithmetic. Compile improvement alone does not
+  complete Task 2. Retain the original numerical, resource, image and all-three-backend gates.
 - [ ] Commit explicit paths as `feat(water): render certified triangle optical beds`.
 
 ### Task 3: Mesh output snapshots and strict source audit

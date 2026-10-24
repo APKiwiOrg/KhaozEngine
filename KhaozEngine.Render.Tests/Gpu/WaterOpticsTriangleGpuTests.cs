@@ -19,6 +19,7 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class WaterOpticsTriangleGpuTests(ITestOutputHelper output)
 {
     const string Diagnostic = @"#version 450
+#extension GL_EXT_control_flow_attributes : require
 layout(local_size_x=1) in;
 layout(std430,set=0,binding=0) buffer Results { uvec4 Values[]; };
 layout(std140,set=0,binding=1) uniform Inputs {
@@ -234,6 +235,7 @@ void main() {
         var elements = new GpuResourceLayoutElement[12];
         var bindings = new IGpuBindableResource[12];
         string source = @"#version 450
+#extension GL_EXT_control_flow_attributes : require
 layout(location=0) out vec4 Output;
 layout(std140,set=0,binding=0) uniform Inputs { vec4 OpticsRect; vec4 OpticsParams; vec4 Queries[128]; };
 ";

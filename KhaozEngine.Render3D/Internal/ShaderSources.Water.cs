@@ -211,6 +211,7 @@ void main() {
         /// <see cref="SkyMath.ShadeDirection"/> (the reflected sky) exactly.
         /// </summary>
         public const string WaterFrag = @"#version 450
+#extension GL_EXT_control_flow_attributes : require
 " + AtmosphereBindingsAt7Glsl + AtmosphereFogGlsl
     + WaterShoreBindingsGlsl + WaterFftBindingsGlsl + @"
 layout(set=0, binding=4) uniform texture2D DepthTex;   // .r = resolved scene linear depth (single-channel R32F)

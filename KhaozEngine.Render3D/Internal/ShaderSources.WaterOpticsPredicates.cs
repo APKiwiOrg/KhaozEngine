@@ -9,7 +9,7 @@ internal static partial class ShaderSources
 struct OpticsWide { uint limb[18]; };
 
 void opticsWideAdd(inout OpticsWide sum, int word, uint value) {
-    for (int i = word; i < 18; i++) {
+    [[dont_unroll]] for (int i = word; i < 18; i++) {
         uint old = sum.limb[i];
         sum.limb[i] = old+value;
         value = sum.limb[i] < old ? 1u : 0u;
@@ -44,12 +44,18 @@ void opticsWideProduct(inout OpticsWide positive, inout OpticsWide negative, uin
 int opticsOrientWide(uvec2 a, uvec2 b, uvec2 p) {
     OpticsWide positive, negative;
     for (int i = 0; i < 18; i++) { positive.limb[i] = 0u; negative.limb[i] = 0u; }
-    opticsWideProduct(positive,negative,b.x,p.y,false);
-    opticsWideProduct(positive,negative,b.x,a.y,true);
-    opticsWideProduct(positive,negative,a.x,p.y,true);
-    opticsWideProduct(positive,negative,b.y,p.x,true);
-    opticsWideProduct(positive,negative,b.y,a.x,false);
-    opticsWideProduct(positive,negative,a.y,p.x,false);
+    // Keep one product body through exhaustive inlining, with the original accumulator order.
+    [[dont_unroll]] for (int term = 0; term < 6; term++) {
+        uint left, right;
+        bool minus;
+        if (term == 0) { left = b.x; right = p.y; minus = false; }
+        else if (term == 1) { left = b.x; right = a.y; minus = true; }
+        else if (term == 2) { left = a.x; right = p.y; minus = true; }
+        else if (term == 3) { left = b.y; right = p.x; minus = true; }
+        else if (term == 4) { left = b.y; right = a.x; minus = false; }
+        else { left = a.y; right = p.x; minus = false; }
+        opticsWideProduct(positive,negative,left,right,minus);
+    }
     for (int i = 17; i >= 0; i--) {
         if (positive.limb[i] > negative.limb[i]) return 1;
         if (positive.limb[i] < negative.limb[i]) return -1;

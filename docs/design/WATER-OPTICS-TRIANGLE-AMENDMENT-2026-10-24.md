@@ -163,6 +163,16 @@ cancellation. Zero products do not widen the domain. All-zero products return ze
 the original two 18-word accumulators. No floating-point filter changes domain selection or sign.
 This avoids optional doubles, float contraction and native division tolerances without changing
 mode 0 or mode 1 arithmetic or the software interpolation operations.
+
+The wide fallback executes its six original products in order through one retained six-term loop,
+with scalar operand selection and one unchanged product body. Both 18-word accumulators are initialized
+once and compared afterward. Source-local `dont_unroll` controls retain the product, candidate,
+three-edge, wide-carry and 27-step division loops through the pinned SPIR-V and HLSL emissions.
+The narrow selector and arithmetic remain unchanged. The cold compile admission gate is pending a
+candidate-only hosted Windows proof, with pixel FXC at most 5000 ms and the measured six-phase total
+at most 10000 ms. These are engineering limits for that fixed proof, not universal hardware guarantees.
+Separate lazy triangle pipelines must also isolate default legacy/bilinear compilation. That
+complementary isolation is separate work and remains required before Task 2 performance acceptance.
 GPU queries use rounded local-coordinate subtraction directly. The inverse extent is used only for
 bin selection, whose additional rounding fits the existing outward acceleration-bin support.
 

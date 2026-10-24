@@ -97,7 +97,7 @@ uint opticsDiv(uint a, uint b) {
     uint sig = 0u;
     // Restoring division emits the 24 significand bits and three rounding bits.
     // remainder is below 2*divisor, hence below 2^25 throughout.
-    for (int bit = 0; bit < 27; bit++) {
+    [[dont_unroll]] for (int bit = 0; bit < 27; bit++) {
         sig <<= 1u;
         if (remainder >= divisor) { remainder -= divisor; sig |= 1u; }
         if (bit != 26) remainder <<= 1u;

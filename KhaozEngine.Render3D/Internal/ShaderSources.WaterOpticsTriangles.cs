@@ -12,7 +12,7 @@ uint opticsScalar(int address) {
 int opticsAddress(int address) { return int(uintBitsToFloat(opticsScalar(address))); }
 
 bool opticsContains(int triangle, int edges, uvec2 p) {
-    for (int i = 0; i < 3; i++) {
+    [[dont_unroll]] for (int i = 0; i < 3; i++) {
         int reference = int(uintBitsToFloat(opticsScalar(triangle+9+i)));
         int edge = edges+4*(abs(reference)-1);
         int sign = opticsOrient(uvec2(opticsScalar(edge),opticsScalar(edge+1)),
@@ -55,7 +55,7 @@ bool tryOpticsTriangle(vec2 local, out float depth) {
     int bin = 16+2*(row*columns+column);
     int first = opticsAddress(bin), count = opticsAddress(bin+1);
     int triangles = opticsAddress(4), edges = opticsAddress(5);
-    for (int i = 0; i < 32; i++) {
+    [[dont_unroll]] for (int i = 0; i < 32; i++) {
         if (i >= count) break;
         int triangle = triangles+12*opticsAddress(first+i);
         if (!opticsContains(triangle,edges,p)) continue;

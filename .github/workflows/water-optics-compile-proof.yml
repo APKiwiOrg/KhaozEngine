@@ -23,10 +23,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - variant: baseline
-            source: b29ed0af73f51cb185b447f83eb8323de2979749
-          - variant: current
-            source: 327b6fe754dbb476dd8d4e2e978a8de49925015f
+          - variant: candidate
+            source: ${{ github.sha }}
     defaults:
       run:
         shell: pwsh
@@ -40,6 +38,9 @@ jobs:
       KE_WATER_COMPILE_VARIANT: ${{ matrix.variant }}
       KE_WATER_COMPILE_SOURCE_SHA: ${{ matrix.source }}
       KE_WATER_COMPILE_HARNESS_SHA: ${{ github.sha }}
+      # Controller admission budget for this fixed cold proof, not a hardware guarantee.
+      KE_WATER_COMPILE_PIXEL_BUDGET_MS: '5000'
+      KE_WATER_COMPILE_TOTAL_BUDGET_MS: '10000'
     steps:
       - name: Check out the committed dispatch harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -67,6 +68,7 @@ jobs:
           $harnessRoot = Join-Path $env:GITHUB_WORKSPACE 'harness'
           $harnessSha = git -C $harnessRoot rev-parse HEAD
           if ($LASTEXITCODE -ne 0 -or $harnessSha -cne $env:KE_WATER_COMPILE_HARNESS_SHA) { throw 'Harness SHA mismatch' }
+          if ($sourceSha -cne $harnessSha) { throw 'Candidate source must equal the dispatch harness SHA' }
           $relative = 'KhaozEngine.Render.Tests/Gpu/WaterOpticsCompilePhaseTests.cs'
           $harness = Join-Path $harnessRoot $relative
           git -C $harnessRoot diff --exit-code HEAD -- $relative
@@ -104,7 +106,12 @@ jobs:
           if ($c.total -ne '1' -or $c.executed -ne '1' -or $c.passed -ne '1' -or $c.failed -ne '0' -or $c.notExecuted -ne '0') { throw 'Expected selected=1 passed=1 failed=0 skipped=0' }
           $r = Get-Content "$env:KE_WATER_COMPILE_OUTPUT/measurements.json" -Raw | ConvertFrom-Json
           if (!$r.verified -or $r.sourceSha -cne $env:KE_WATER_COMPILE_SOURCE_SHA -or $r.harnessSha -cne $env:KE_WATER_COMPILE_HARNESS_SHA -or $r.successfulPhaseCount -ne 6 -or $r.phaseCount -ne 6) { throw 'Incomplete or mismatched measurements' }
-          'selected=1 passed=1 failed=0 skipped=0'
+          if ($r.variant -cne 'candidate' -or $r.expectedSourceSha -cne $env:KE_WATER_COMPILE_HARNESS_SHA) { throw 'Expected dispatch candidate only' }
+          $pixel = @($r.phases | Where-Object { $_.name -ceq 'pixelFxc' })
+          $total = ($r.phases | Measure-Object -Property wallMs -Sum).Sum
+          if ($pixel.Count -ne 1 -or ![double]::IsFinite($pixel[0].wallMs) -or ![double]::IsFinite($total)) { throw 'Invalid phase durations' }
+          if ($pixel[0].wallMs -gt [double]$env:KE_WATER_COMPILE_PIXEL_BUDGET_MS -or $total -gt [double]$env:KE_WATER_COMPILE_TOTAL_BUDGET_MS) { throw "Candidate exceeds cold compile admission budget. Pixel $($pixel[0].wallMs) ms, six phases $total ms" }
+          'selected=1 passed=1 failed=0 skipped=0, cold compile admission budget passed'
 
       - name: Upload variant measurements, sources, SPIR-V, HLSL, DXBC and test result
         if: always()

@@ -24,8 +24,6 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class WaterOpticsCompilePhaseTests(ITestOutputHelper output)
 {
     const string HarnessPath = "KhaozEngine.Render.Tests/Gpu/WaterOpticsCompilePhaseTests.cs";
-    const string Baseline = "b29ed0af73f51cb185b447f83eb8323de2979749";
-    const string Current = "327b6fe754dbb476dd8d4e2e978a8de49925015f";
     static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     [WaterCompileProofFact]
@@ -52,17 +50,13 @@ public sealed class WaterOpticsCompilePhaseTests(ITestOutputHelper output)
 
         string root = Required("KE_WATER_COMPILE_SOURCE_ROOT");
         string variant = Required("KE_WATER_COMPILE_VARIANT");
-        string expectedSource = variant switch
-        {
-            "baseline" => Baseline,
-            "current" => Current,
-            _ => throw new InvalidOperationException("Expected baseline or current source variant."),
-        };
+        Assert.Equal("candidate", variant);
+        string harnessSha = Required("KE_WATER_COMPILE_HARNESS_SHA");
+        Assert.Matches("^[0-9a-f]{40}$", harnessSha);
+        string expectedSource = harnessSha;
         string sourceSha = GitHead(root);
         Assert.Equal(expectedSource, Required("KE_WATER_COMPILE_SOURCE_SHA"));
         Assert.Equal(expectedSource, sourceSha);
-        string harnessSha = Required("KE_WATER_COMPILE_HARNESS_SHA");
-        Assert.Matches("^[0-9a-f]{40}$", harnessSha);
         string harnessHash = Hash(File.ReadAllBytes(Path.Combine(root, HarnessPath)));
         Assert.Equal(Required("KE_WATER_COMPILE_HARNESS_SHA256"), harnessHash);
         string directory = Path.GetFullPath(Required("KE_WATER_COMPILE_OUTPUT"));

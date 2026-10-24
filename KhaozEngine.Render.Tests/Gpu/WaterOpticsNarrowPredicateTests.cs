@@ -22,6 +22,7 @@ public sealed class WaterOpticsNarrowPredicateTests
         .GetField(name, BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
 
     static string Source => @"#version 450
+#extension GL_EXT_control_flow_attributes : require
 layout(local_size_x=1) in;
 layout(std430,set=0,binding=0) buffer Results { ivec4 Values[]; };
 layout(std430,set=0,binding=1) readonly buffer Inputs { uvec4 Bits[]; };
@@ -65,15 +66,38 @@ void main() {
         using IGpuResourceSet set = f.CreateResourceSet(new GpuResourceSetDescription(layout, result, input));
         using IGpuComputeShader shader = f.CreateComputeShaderFromSpirv(Source);
         using IGpuComputePipeline pipeline = f.CreateComputePipeline(new GpuComputePipelineDescription(shader, layout));
+        using IGpuTimestampPool? pool = device.Capabilities.SupportsTimestamps ? f.CreateTimestampPool(2) : null;
+        using IGpuFence? completion = pool is not null ? f.CreateFence() : null;
+        double? dispatchGpuMs = null;
+        string timingStatus = "Unsupported";
         using (IGpuCommandList commands = f.CreateCommandList())
         {
             commands.Begin();
+            if (pool is not null)
+            {
+                commands.BeginTimestamps(pool, 2);
+                commands.WriteTimestamp(pool, 0);
+            }
             commands.SetComputePipeline(pipeline);
             commands.SetComputeResourceSet(0, set);
             commands.Dispatch((uint)probes.Length, 1, 1);
+            if (pool is not null)
+            {
+                commands.WriteTimestamp(pool, 1);
+                commands.EndTimestamps(pool);
+            }
             commands.End();
-            device.Submit(commands);
+            if (completion is not null) device.Submit(commands, completion);
+            else device.Submit(commands);
             device.WaitForIdle();
+            if (pool is not null)
+            {
+                Span<ulong> ticks = stackalloc ulong[2];
+                GpuTimestampStatus status = pool.TryResolve(completion!, ticks, out double period);
+                timingStatus = status.ToString();
+                if (status == GpuTimestampStatus.Ready && double.IsFinite(period) && period > 0)
+                    dispatchGpuMs = ticks[1] * period / 1_000_000;
+            }
         }
         int[] values = GpuReadback.ReadBuffer<int>(device, result, probes.Length * 4);
         Directory.CreateDirectory(Evidence);
@@ -81,6 +105,9 @@ void main() {
         {
             device.Backend,
             device.Capabilities.DeviceName,
+            DispatchGpuMs = dispatchGpuMs,
+            TimingStatus = timingStatus,
+            TimingScope = "One existing 87-probe dispatch, including dispatcher, direct narrow and forced wide outputs. Not wide-only.",
             Probes = probes.Select((probe, i) => new
             {
                 probe.Name,

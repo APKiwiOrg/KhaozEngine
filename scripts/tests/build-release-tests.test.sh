@@ -41,6 +41,14 @@ check_verifier_after_target() {
     return 1
   fi
 }
+check_selected_only() {
+  if [ "$(sed -n '1p' "$PREREQUISITE_COMMANDS")" != "dotnet build $1 -c Release --no-restore${2:-}" ] \
+    || [ "$(wc -l < "$PREREQUISITE_COMMANDS" | tr -d ' ')" -ne 1 ]; then
+    echo "unrelated selection built more than its selected target: $1" >&2
+    cat "$PREREQUISITE_COMMANDS" >&2
+    return 1
+  fi
+}
 # Execute the actual workflow's full build setup with command stubs too.
 workflow_build=$(awk '/- name: Build \(full\)/ {found=1;next} found && /run:/ {sub(/^.*run: /, "");print;exit}' .github/workflows/ci.yml)
 [ -n "$workflow_build" ]
@@ -89,19 +97,81 @@ bash -e -c "$sync_build"
 check_verifier_after_target KhaozEngine.slnx
 printf 'native sync setup builds its verifier after the solution\n'
 
-# Full paths from Unix shells, Windows dotnet tools and Git Bash keep the selected build unchanged.
-for target in KhaozEngine.slnx ./KhaozEngine.slnx "$root/KhaozEngine.slnx" \
-  'D:/a/KhaozEngine/KhaozEngine/KhaozEngine.slnx' 'D:\a\KhaozEngine\KhaozEngine\KhaozEngine.slnx' \
-  KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj \
-  ./KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj \
-  "$root/KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj" \
-  'D:/a/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj' \
-  'D:\a\KhaozEngine\KhaozEngine\KhaozEngine.Render.Tests\KhaozEngine.Render.Tests.csproj'; do
+# A canonical basename outside this checkout must still inspect its actual solution roots.
+mkdir -p "$task_tmp/canonical basename"
+foreign_solution="$task_tmp/canonical basename/KhaozEngine.slnx"
+python3 scripts/gpu-test-shards.py build-solution metal-native rest KhaozEngine.slnx "$foreign_solution"
+foreign_relative=$(python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1]))' "$foreign_solution")
+for target in "$foreign_solution" "$foreign_relative"; do
+  : > "$PREREQUISITE_COMMANDS"
+  sh scripts/build-release-tests.sh "$target" --no-restore
+  check_selected_only "$target"
+done
+: > "$PREREQUISITE_COMMANDS"
+sh scripts/gpu-shard-build.sh "$foreign_solution"
+check_selected_only "$foreign_solution" ' -p:ShouldUnsetParentConfigurationAndPlatform=false'
+: > "$PREREQUISITE_COMMANDS"
+(cd "$task_tmp" && sh "$root/scripts/gpu-shard-build.sh" 'canonical basename/KhaozEngine.slnx')
+check_selected_only "$foreign_solution" ' -p:ShouldUnsetParentConfigurationAndPlatform=false'
+printf 'foreign canonical-basename solution keeps its unrelated roots on all supported routes\n'
+
+# The same filename can legitimately select this checkout's Render.Tests through its actual roots.
+python3 scripts/gpu-test-shards.py build-solution metal-native render-2 KhaozEngine.slnx "$foreign_solution"
+for target in "$foreign_solution" "$foreign_relative"; do
   : > "$PREREQUISITE_COMMANDS"
   sh scripts/build-release-tests.sh "$target" --no-restore
   check_verifier_after_target "$target"
 done
-printf 'solution and Render.Tests paths retain their arguments and produce the verifier\n'
+: > "$PREREQUISITE_COMMANDS"
+sh scripts/gpu-shard-build.sh "$foreign_solution"
+check_verifier_after_target "$foreign_solution" ' -p:ShouldUnsetParentConfigurationAndPlatform=false'
+: > "$PREREQUISITE_COMMANDS"
+(cd "$task_tmp" && sh "$root/scripts/gpu-shard-build.sh" 'canonical basename/KhaozEngine.slnx')
+check_verifier_after_target "$foreign_solution" ' -p:ShouldUnsetParentConfigurationAndPlatform=false'
+printf 'foreign canonical-basename solution with owned Render.Tests roots produces its verifier\n'
+
+mkdir -p "$task_tmp/foreign project/KhaozEngine.Render.Tests"
+foreign_project="$task_tmp/foreign project/KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj"
+printf '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>\n' > "$foreign_project"
+foreign_project_relative=$(python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1]))' "$foreign_project")
+for target in "$foreign_project" "$foreign_project_relative"; do
+  : > "$PREREQUISITE_COMMANDS"
+  sh scripts/build-release-tests.sh "$target" --no-restore
+  check_selected_only "$target"
+done
+printf 'foreign Render.Tests project paths do not claim this checkout verifier\n'
+
+# Ordinary canonical routes retain a shell-only fast path based on actual file identity.
+mkdir -p "$task_tmp/no-python"
+printf '#!/bin/sh\necho "canonical setup unexpectedly required Python" >&2\nexit 97\n' > "$task_tmp/no-python/python3"
+chmod +x "$task_tmp/no-python/python3"
+for target in KhaozEngine.slnx ./KhaozEngine.slnx "$root/KhaozEngine.slnx" \
+  "$root/scripts/../KhaozEngine.slnx" \
+  KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj \
+  ./KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj \
+  "$root/KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj"; do
+  : > "$PREREQUISITE_COMMANDS"
+  PATH="$task_tmp/no-python:$PATH" sh scripts/build-release-tests.sh "$target" --no-restore
+  check_verifier_after_target "$target"
+done
+printf 'owned solution and Render.Tests paths produce the verifier without Python\n'
+
+# Windows aliases are derived from the real checkout only on a native Windows shell.
+case "${OS:-}" in
+  Windows_NT)
+    native_root_forward=$(cygpath -am "$root")
+    native_root_backslash=$(cygpath -aw "$root")
+    for target in "$native_root_forward/KhaozEngine.slnx" "$native_root_backslash\\KhaozEngine.slnx" \
+      "$native_root_forward/KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj" \
+      "$native_root_backslash\\KhaozEngine.Render.Tests\\KhaozEngine.Render.Tests.csproj"; do
+      : > "$PREREQUISITE_COMMANDS"
+      PATH="$task_tmp/no-python:$PATH" sh scripts/build-release-tests.sh "$target" --no-restore
+      check_verifier_after_target "$target"
+    done
+    printf 'native Windows aliases identify the actual checkout files\n'
+    ;;
+  *) printf 'native Windows alias checks require a Windows shell and were not executed\n' ;;
+esac
 
 # Reduced solutions must build the verifier only when they actually include this repo's Render.Tests.
 export SHARD=render-2 BUILD_TARGET="$task_tmp/render.slnx"

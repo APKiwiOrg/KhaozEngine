@@ -14,6 +14,12 @@
 orchestrator owns Tasks 1 through 7. The Grimhollow coordinator retains Task 8. Release authorization
 remains separate and requires approval of the exact tag.
 
+Task 6 execution amendment: the required saddle proof failed with bilinear-only bed reconstruction.
+The [triangle amendment spec](../../design/WATER-OPTICS-TRIANGLE-AMENDMENT-2026-10-24.md) and
+[sequential subplan](2026-10-24-water-optics-triangle-amendment.md) govern its correction. They supersede
+the bilinear-only TileWorld and universal four-fetch requirements below. Direct bilinear fields retain
+their original contract. Task 6 and Task 7 admission remain gated on the unchanged saddle proof.
+
 ## Global constraints
 
 - Work in the isolated engine worktree on `feature/water-object-optics`. Preserve unrelated changes and stage and commit explicit paths.

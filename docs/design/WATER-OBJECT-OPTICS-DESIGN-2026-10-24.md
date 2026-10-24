@@ -8,6 +8,11 @@ by its Grimhollow coordinator. Release authorization is separate and requires ap
 
 Implementation plan: [per-body water optics](../superpowers/plans/2026-10-24-per-body-water-optics.md).
 
+Execution amendment: [triangle-backed optical beds](WATER-OPTICS-TRIANGLE-AMENDMENT-2026-10-24.md)
+supersedes this document's bilinear-only TileWorld reconstruction after the required saddle gate failed.
+The original bilinear resource remains supported. The amendment governs exact mesh-source optics,
+coverage and source-generation publication without changing terrain geometry or bank feathering.
+
 Related work: [#1300](https://github.com/APKiwiOrg/KhaozEngine/issues/1300), the native world-authoring
 R8b optical extension, and the Grimhollow duck consumer proof.
 

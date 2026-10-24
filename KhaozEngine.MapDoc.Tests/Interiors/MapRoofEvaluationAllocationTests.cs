@@ -305,16 +305,17 @@ public sealed class MapRoofEvaluationAllocationTests
         var admission = new MapSceneAdmission(new(MaxPreparedBytes: demand.Bytes, MaxPreparedFaces: (int)demand.Faces));
         var prepared = MapRoofEvaluationBuffer.Prepare(scene, admission);
         Assert.NotNull(prepared.Buffer);
-        Assert.Equal(demand.Bytes, admission.RetainedBytes);
+        Assert.Equal(prepared.Buffer.RetainedBytes, admission.RetainedBytes);
         Assert.Equal(demand.Faces, admission.PreparedFaces);
+        Assert.InRange(admission.RetainedBytes, 1, demand.Bytes - 1);
         MapRoofEvaluationBufferResult? second = null;
         var refused = MapRoofEvaluationBuffer.Prepare(scene, admission);
-        Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", 2m * demand.Bytes, demand.Bytes), refused.Capacity);
+        Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", (decimal)prepared.Buffer.RetainedBytes + demand.Bytes, demand.Bytes), refused.Capacity);
         long resultBytes = AllocationMeasurement.Measure("aggregate refusal result", () => second = DiagnosticResult(refused.Capacity!));
         long bytes = AllocationMeasurement.Measure("aggregate membership admission", () => second = MapRoofEvaluationBuffer.Prepare(scene, admission));
         Assert.Equal(MapSceneStatus.CapacityExceeded, second!.Status);
         Assert.Null(second.Buffer);
-        Assert.Equal(demand.Bytes, admission.RetainedBytes);
+        Assert.Equal(prepared.Buffer.RetainedBytes, admission.RetainedBytes);
         Assert.Equal(demand.Faces, admission.PreparedFaces);
         Assert.Equal(resultBytes, bytes);
     }

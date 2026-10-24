@@ -33,7 +33,13 @@ public sealed class MapNativeFoliageBatch : IDisposable
     public IReadOnlyList<GroundCoverBatch> CoverBatches { get; }
     public MapBox3? Bounds { get; }
     public string RenderDigest { get; }
-    public long PreparationChargeBytes { get; }
+    internal MapPreparationReservation? PreparationOwnership { get; private set; }
+    internal void Own(MapPreparationReservation ownership)
+    { PreparationOwnership = ownership; PreparationChargeBytes = ownership.Bytes; }
+    public long PreparationChargeBytes { get; private set; }
+    public long RetainedBytes => checked(512L + 64L * GeneratedIdentities.Count + 8L * (ExplicitIds.Count + GenerationKeys.Count) +
+        _parts.Sum(p => 256L + MapNativeInventory.Mesh(p.Payload.BorrowMesh, p.Payload.BorrowMaps)) +
+        _groups.Sum(g => 256L + 240L * g.Cover.Count + 128L * g.Models.Length));
     public long InputRetainedBytes => _input?.RetainedBytes ?? 0;
     internal void AttachInput(MapPreparedInputLease input) => _input = input;
     internal MapNativeFoliageBatch(MapSceneWitness witness, MapPlacementRouting routing, NativeFoliagePolicy policy,
@@ -144,5 +150,5 @@ public sealed class MapNativeFoliageBatch : IDisposable
                 MapExactValue.FromSingle(interactor.Position.Y), MapExactValue.FromSingle(interactor.Position.Z)), anchor)
         };
     }
-    public void Dispose() { if (_disposed) return; _disposed = true; _input?.Dispose(); }
+    public void Dispose() { if (_disposed) return; _disposed = true; _input?.Dispose(); PreparationOwnership?.Dispose(); }
 }

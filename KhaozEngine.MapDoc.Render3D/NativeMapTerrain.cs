@@ -17,6 +17,9 @@ namespace KhaozEngine.MapDoc.Render3D;
 /// come exclusively from the selected input lease, and no preparation path creates a device or uploads a resource.</summary>
 public static class NativeMapTerrain
 {
+    internal static long CanonicalRowBytes => System.Runtime.CompilerServices.Unsafe.SizeOf<MapCompiledFace>() +
+        System.Runtime.CompilerServices.Unsafe.SizeOf<MapExactTriangle>() + System.Runtime.CompilerServices.Unsafe.SizeOf<MapPaintCoverage>() +
+        System.Runtime.CompilerServices.Unsafe.SizeOf<MapSubmissionAnchor>() + IntPtr.Size;
     public static MapTerrainRenderBatch Prepare(MapScopedScene scene, MapPreparedInputLease input,
         IReadOnlyDictionary<ushort, string> materialIds) => Prepare(scene, input, materialIds, TileGroundMaterialConfig.MaxMaterials);
 
@@ -30,12 +33,14 @@ public static class NativeMapTerrain
         if (input.ClosureHash != scene.Witness.ClosureHash) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Stale, "Terrain and prepared input closures differ.");
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var admitted = admission.Enter();
+        using var preparation = admission.BeginPreparation();
         try
         {
             admission.ReserveBytes(512);
             var canonical = Capture(scene, admission);
             var regionLookup = scene.PaintRegions.Values.SelectMany(p => p.Regions).ToLookup(r => r.Face);
-            var partitions = canonical.SelectMany(f => MapTerrainPaint.Partition(f, regionLookup[f.Face.Key], admission)).ToArray();
+            using var partitionScratch = admission.Workspace();
+            var partitions = canonical.SelectMany(f => MapTerrainPaint.Partition(f, regionLookup[f.Face.Key], admission, partitionScratch)).ToArray();
             var palettes = Palettes(canonical, partitions, maxMaterials, admission);
             var required = palettes.Sets.SelectMany(s => s).Distinct().Order().ToArray();
             var layers = new Dictionary<ushort, MapTerrainLayer>();
@@ -57,6 +62,8 @@ public static class NativeMapTerrain
             foreach (var group in partitions.Where(p => palettes.ByFace.ContainsKey(p.Face)).GroupBy(p =>
                 (p.Face.OwnerId, p.Face.Patch, byKey[p.Face].Anchor, Palette: palettes.ByFace[p.Face])))
             {
+                using var groupPreparation = admission.BeginPreparation();
+                admission.ReserveBytes(MapTerrainMesh.WorkspaceBytes(group, byKey));
                 var material = materials[group.Key.Palette];
                 var mesh = MapTerrainMesh.Build(group, byKey, group.Key.Anchor, material, boundaries);
                 if (mesh.Mesh.TriangleCount == 0) continue;
@@ -66,9 +73,13 @@ public static class NativeMapTerrain
                 var key = new MapRenderKey(MapRenderKind.Terrain, group.Key.OwnerId, partId, 0);
                 parts.Add(new(key, group.Key.Anchor, Bounds(mesh.Mesh, group.Key.Anchor), mesh,
                     Digest(mesh, input.ClosureHash, group.Key.Anchor)));
+                groupPreparation.Complete(checked(512L + ModelVertex.SizeInBytes * (long)mesh.BorrowMesh.Vertices.Length +
+                    4L * mesh.BorrowMesh.Indices32.Length + 80L * mesh.FaceKeys.Count));
             }
             admission.ReserveBytes(checked(8L * (canonical.Count + partitions.Length + parts.Count + findings.Count)));
-            return new(input, canonical, partitions, parts, findings, admission.RetainedBytes);
+            var result = new MapTerrainRenderBatch(input, canonical, partitions, parts, findings, 0);
+            result.Own(preparation.Complete(result.RetainedBytes));
+            return result;
         }
         catch (MapSceneCapacityException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
         catch (Exception ex) when (ex is MapExactOverflowException or OverflowException)
@@ -77,6 +88,7 @@ public static class NativeMapTerrain
 
     static List<MapTerrainCanonicalFace> Capture(MapScopedScene scene, MapSceneAdmission admission)
     {
+        using var preparation = admission.BeginPreparation();
         var result = new List<MapTerrainCanonicalFace>();
         if (!scene.Scope.Channels.HasFlag(MapSceneChannels.Terrain)) return result;
         var view = scene.SurfaceView;
@@ -87,18 +99,21 @@ public static class NativeMapTerrain
                 view.EffectiveContext?.IsPartialPaint(s) != true).OrderBy(s => s.PaintPriority).ThenByDescending(s => s.Id, StringComparer.Ordinal).ToArray();
             foreach (var patch in surfaces.Patches.Values.Where(p => p.Key.SurfaceId == surface.Id))
             {
+                using var patchPreparation = admission.BeginPreparation();
+                int start = result.Count;
                 var compiled = MapSurfaceCompiler.Compile(surface, patch);
                 foreach (var source in paint)
                     foreach (var key in view.Witness.Present.Select(p => p.Key).Where(k => k.SurfaceId == source.Id).Order())
                         if (view.TryAcquiredPatch(key, out var overridePatch, out _) && overridePatch is not null)
-                            compiled = MapSurfaceCompiler.ApplyPaintOverride(compiled, source, overridePatch);
-                compiled = MapEffectiveGeometry.TransformPatch(view, compiled);
+                            compiled = Replace(compiled, MapSurfaceCompiler.ApplyPaintOverride(compiled, source, overridePatch));
+                compiled = Replace(compiled, MapEffectiveGeometry.TransformPatch(view, compiled));
                 for (int i = 0; i < compiled.Faces.Count; i++)
                 {
-                    admission.ReserveBytes(256);
+                    admission.ReserveBytes(CanonicalRowBytes);
                     var face = compiled.Faces[i];
                     result.Add(new(face, compiled.ExactTriangle(face), compiled.Paint[i], compiled.Anchor));
                 }
+                patchPreparation.Complete(checked(CanonicalRowBytes * (result.Count - start)));
             }
         }
         foreach (var strip in surfaces.AllRecords().OfType<MapWallStrip>().OrderBy(s => s.Id, StringComparer.Ordinal))
@@ -106,16 +121,25 @@ public static class NativeMapTerrain
             if (!surfaces.TryGetRecord(strip.LowerChain, out var lower) || lower is not MapBoundaryChain low ||
                 !surfaces.TryGetRecord(strip.UpperChain, out var upper) || upper is not MapBoundaryChain high)
                 throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Terrain wall requires both acquired boundary chains.");
+            using var stripPreparation = admission.BeginPreparation();
+            int start = result.Count;
             var compiled = MapWallStripCompiler.Compile(strip, MapBoundaryGeometry.ResolveChain(low, view), MapBoundaryGeometry.ResolveChain(high, view));
             foreach (var face in compiled.Faces)
             {
-                admission.ReserveBytes(256);
+                admission.ReserveBytes(CanonicalRowBytes);
                 result.Add(new(face, new(compiled.ExactVertices[face.A], compiled.ExactVertices[face.B], compiled.ExactVertices[face.C]),
                     new(face.Key, strip.MaterialId, 0, false, false), compiled.Anchor));
             }
+            stripPreparation.Complete(checked(CanonicalRowBytes * (result.Count - start)));
         }
-        return result.OrderBy(f => f.Face.Key).ToList();
+        admission.ReserveBytes(checked(8L * result.Count));
+        var ordered = result.OrderBy(f => f.Face.Key).ToList();
+        preparation.Complete(checked(CanonicalRowBytes * ordered.Count));
+        return ordered;
     }
+
+    static MapCompiledPatch Replace(MapCompiledPatch previous, MapCompiledPatch next)
+    { if (!ReferenceEquals(previous, next)) previous.PreparationOwnership?.Dispose(); return next; }
 
     internal static ushort[] LayerIds(MapPaintCoverage paint) => paint.OverlayCovers && paint.Overlay != 0
         ? paint.Feather && paint.Underlay != 0 && paint.Underlay != paint.Overlay
@@ -127,6 +151,11 @@ public static class NativeMapTerrain
     static PalettePlan Palettes(IReadOnlyList<MapTerrainCanonicalFace> canonical, IReadOnlyList<MapTerrainPartition> partitions,
         int maximum, MapSceneAdmission admission)
     {
+        using var preparation = admission.BeginPreparation();
+        admission.ReserveBytes(checked(512L + 128L * canonical.Count + 32L * partitions.Count));
+        using var scratch = admission.Workspace();
+        using var indexStorage = admission.Workspace();
+        long indexBytes = 0;
         var sets = new List<SortedSet<ushort>>();
         var byFace = new Dictionary<MapFaceKey, int>();
         var localOrdinals = new List<int>();
@@ -136,22 +165,34 @@ public static class NativeMapTerrain
             int current = -1, ordinal = 0;
             foreach (var face in owner)
             {
-                var needed = coverage[face.Face.Key].SelectMany(p => LayerIds(p.Paint)).Distinct().Order().ToArray();
-                if (needed.Length == 0) continue;
-                if (needed.Length > maximum) throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "One canonical terrain face exceeds material-set capacity.");
-                admission.ReserveBytes(checked(64L + 32L * needed.Length));
-                if (current < 0 || sets[current].Union(needed).Count() > maximum)
+                long bytes = checked(256L + 128L * coverage[face.Face.Key].Count() + 64L * maximum);
+                scratch.Reserve(bytes);
+                try
                 {
-                    current = sets.Count;
-                    sets.Add(new()); localOrdinals.Add(ordinal++);
+                    var needed = coverage[face.Face.Key].SelectMany(p => LayerIds(p.Paint)).Distinct().Order().ToArray();
+                    if (needed.Length == 0) continue;
+                    if (needed.Length > maximum) throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "One canonical terrain face exceeds material-set capacity.");
+                    if (current < 0 || sets[current].Union(needed).Count() > maximum)
+                    {
+                        admission.ReserveBytes(128);
+                        current = sets.Count;
+                        sets.Add(new()); localOrdinals.Add(ordinal++);
+                    }
+                    int added = 0;
+                    foreach (ushort id in needed) if (!sets[current].Contains(id)) added++;
+                    admission.ReserveBytes(checked(32L * added));
+                    sets[current].UnionWith(needed);
                 }
-                sets[current].UnionWith(needed);
+                finally { scratch.Release(bytes); }
+                MapPreparationCollections.Dictionary(byFace, indexStorage, ref indexBytes);
                 byFace.Add(face.Face.Key, current);
             }
         }
+        preparation.AdoptWorkspace(indexStorage, indexBytes);
+        preparation.Complete(checked(128L + indexBytes + 8L * sets.Capacity + 4L * localOrdinals.Capacity +
+            64L * sets.Count + sets.Sum(set => 32L * set.Count)));
         return new(sets, byFace, localOrdinals);
     }
-
     static MapBox3 Bounds(GltfMesh mesh, MapSubmissionAnchor anchor) => new(
         anchor.X + (double)mesh.Vertices.Min(v => v.Position.X), anchor.Y + (double)mesh.Vertices.Min(v => v.Position.Y),
         anchor.Z + (double)mesh.Vertices.Min(v => v.Position.Z), anchor.X + (double)mesh.Vertices.Max(v => v.Position.X),

@@ -24,6 +24,9 @@ internal static class MapFoliageWindowCapture
         ArgumentNullException.ThrowIfNull(limits);
         if (limits.MaxSourceUtf8Bytes < 0 || limits.MaxChunkDescriptors < 0 || limits.MaxPlacements < 0 ||
             limits.MaxSurfacePatches < 0 || limits.MaxPaintTargets < 0) throw new ArgumentOutOfRangeException(nameof(limits));
+        var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(source.Data.Limits, foliageLimits: limits);
+        using var activation = admission.Enter();
+        using var preparation = admission.BeginPreparation();
         var work = new MapFoliageContextWork(0, 0, 0, 0, 0, 0, 0);
         long expansions = MapPrefabResolver.ThreadExpansions, writes = MapFoliageJson.ThreadPayloadWrites;
         try
@@ -42,6 +45,7 @@ internal static class MapFoliageWindowCapture
                 {
                     work = work with { ChunkDescriptors = checked(work.ChunkDescriptors + 1) };
                     if (work.ChunkDescriptors > limits.MaxChunkDescriptors) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxChunkDescriptors), work.ChunkDescriptors, limits.MaxChunkDescriptors);
+                    admission.ReserveBytes(128);
                     chunks.Add((layer, key));
                     if (MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, key))) continue;
                     var read = MapFoliageSupport.Scope(layer, key, metadata.FloorsFor(layer, key), metadata.Transforms).WorldRectangle();
@@ -60,7 +64,6 @@ internal static class MapFoliageWindowCapture
                 }
             }
             // Source knowledge stays borrowed. Only the selected density payloads and effective dependency product are retained.
-            var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(source.Data.Limits, foliageLimits: limits);
             var requested = new MapFoliageWindowRequest(chunks, owners, seats.Values.ToArray());
             Bounds r = bounds ?? new(b.MinX, b.MinZ, b.MaxX, b.MaxZ);
             var frame = WorldFrame.Nearest((float)((r.MinX + r.MaxX) / 2), (float)((r.MinZ + r.MaxZ) / 2));
@@ -85,7 +88,9 @@ internal static class MapFoliageWindowCapture
             work = Observed();
             var witness = acquired.Witness with { ScopeDigest = scope.Digest, WholeWorldComplete = false };
             MapSceneSource.CheckManifest(source.Data.Directory, source.Data.ManifestDigest);
-            return new(MapFoliageStatus.Complete, new(kernel, source, scope, witness, chunks, work), work);
+            var context = new MapWindowFoliageContext(kernel, source, scope, witness, chunks, work);
+            context.PreparationOwnership = preparation.Complete(context.InventoryBytes);
+            return new(MapFoliageStatus.Complete, context, work);
         }
         catch (MapFoliageRefusal refusal) { return new(refusal.Status, null, Observed()); }
         catch (Exception error) when (MapSceneSource.Classify(error) is not null)

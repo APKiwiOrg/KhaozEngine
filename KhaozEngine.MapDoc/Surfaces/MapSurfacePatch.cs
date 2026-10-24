@@ -6,6 +6,7 @@ namespace KhaozEngine.MapDoc.Surfaces;
 /// <summary>A bounded authored rectangle within a signed 64-cell patch slot.</summary>
 public sealed partial class MapSurfacePatch
 {
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; set; }
     public MapPatchKey Key { get; set; }
     public int CellMinX { get; set; }
     public int CellMinZ { get; set; }
@@ -66,6 +67,7 @@ public sealed partial class MapSurfacePatch
     }
     public MapSurfacePatch Clone()
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         Scene.MapSceneAdmission.Current?.BeforeClone(this);
         var copy = new MapSurfacePatch
         {
@@ -82,6 +84,7 @@ public sealed partial class MapSurfacePatch
         copy.CornerDependencies.AddRange(CornerDependencies);
         copy.EdgeSubdivisions.AddRange(EdgeSubdivisions);
         CloneRecordsTo(copy);
+        copy.PreparationOwnership = preparation?.Complete(Scene.MapSceneAdmission.PatchBytes(copy));
         return copy;
     }
 

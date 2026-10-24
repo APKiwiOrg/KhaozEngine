@@ -18,46 +18,61 @@ internal static class MapTerrainPaint
     internal static FeatherKey Key(MapTerrainPartition p) => new(p.Face.OwnerId, p.PaintId, p.Paint.Underlay, p.Paint.Overlay);
 
     internal static IEnumerable<MapTerrainPartition> Partition(MapTerrainCanonicalFace face,
-        IEnumerable<MapPaintRegion> published, MapSceneAdmission admission)
+        IEnumerable<MapPaintRegion> published, MapSceneAdmission admission, MapPreparationReservation scratch)
     {
-        if (face.Face.Role == MapFaceRole.Wall)
+        int count = published.Count();
+        long rows = checked(16L * count);
+        scratch.Reserve(rows);
+        try
         {
-            yield return Create(null, face.Paint, new[] { face.Triangle.A, face.Triangle.B, face.Triangle.C });
-            yield break;
-        }
-        var triangle = face.Triangle;
-        var parent = MapWideRefinementGeometry.Normalize(new[] { MapWidePoint.From(triangle.A).Xz,
-            MapWidePoint.From(triangle.B).Xz, MapWidePoint.From(triangle.C).Xz });
-        var remaining = new List<IReadOnlyList<MapWideXz>> { parent };
-        foreach (var region in published)
-        {
-            var clip = MapWideRefinementGeometry.Normalize(region.Polygon.Select(p => MapWidePoint.From(p).Xz));
-            var next = new List<IReadOnlyList<MapWideXz>>();
-            foreach (var polygon in remaining)
+            var regions = published.ToArray();
+            long edges = checked(3L + regions.Sum(r => (long)r.Polygon.Count));
+            long bytes = face.Face.Role == MapFaceRole.Wall ? 144L : count == 0 ? 2048L
+                : checked(2L * MapPaintPreparation.WorkspaceForFace(count, edges));
+            scratch.Reserve(bytes);
+            try
             {
-                var inside = polygon;
-                for (int i = 0; i < clip.Count && inside.Count >= 3; i++)
+                if (face.Face.Role == MapFaceRole.Wall)
                 {
-                    var outside = MapEffectiveGeometry.ClipHalfPlane(inside, clip[i], clip[(i + 1) % clip.Count], inside: false);
-                    if (MapEffectiveGeometry.AreaWide(outside).Sign != 0)
+                    yield return Create(null, face.Paint, new[] { face.Triangle.A, face.Triangle.B, face.Triangle.C });
+                    yield break;
+                }
+                var triangle = face.Triangle;
+                var parent = MapWideRefinementGeometry.Normalize(new[] { MapWidePoint.From(triangle.A).Xz,
+            MapWidePoint.From(triangle.B).Xz, MapWidePoint.From(triangle.C).Xz });
+                var remaining = new List<IReadOnlyList<MapWideXz>> { parent };
+                foreach (var region in regions)
+                {
+                    var clip = MapWideRefinementGeometry.Normalize(region.Polygon.Select(p => MapWidePoint.From(p).Xz));
+                    var next = new List<IReadOnlyList<MapWideXz>>();
+                    foreach (var polygon in remaining)
                     {
-                        admission.ReserveBytes(checked(128 + 64L * outside.Count));
-                        next.Add(MapWideRefinementGeometry.Normalize(outside));
+                        var inside = polygon;
+                        for (int i = 0; i < clip.Count && inside.Count >= 3; i++)
+                        {
+                            var outside = MapEffectiveGeometry.ClipHalfPlane(inside, clip[i], clip[(i + 1) % clip.Count], inside: false);
+                            if (MapEffectiveGeometry.AreaWide(outside).Sign != 0)
+                            {
+                                next.Add(MapWideRefinementGeometry.Normalize(outside));
+                            }
+                            inside = MapEffectiveGeometry.ClipHalfPlane(inside, clip[i], clip[(i + 1) % clip.Count]);
+                        }
                     }
-                    inside = MapEffectiveGeometry.ClipHalfPlane(inside, clip[i], clip[(i + 1) % clip.Count]);
+                    remaining = next;
+                    yield return Create(region.PaintId, region.Material, region.Polygon);
+                }
+                foreach (var polygon in remaining)
+                    yield return Create(null, face.Paint, polygon.Select(p => Lift(triangle, p)).ToArray());
+
+                MapTerrainPartition Create(string? paintId, MapPaintCoverage paint, IReadOnlyList<MapExactPoint> polygon)
+                {
+                    admission.ReserveBytes(checked(128 + 48L * polygon.Count));
+                    return new(face.Face.Key, paintId, paint, polygon);
                 }
             }
-            remaining = next;
-            yield return Create(region.PaintId, region.Material, region.Polygon);
+            finally { scratch.Release(bytes); }
         }
-        foreach (var polygon in remaining)
-            yield return Create(null, face.Paint, polygon.Select(p => Lift(triangle, p)).ToArray());
-
-        MapTerrainPartition Create(string? paintId, MapPaintCoverage paint, IReadOnlyList<MapExactPoint> polygon)
-        {
-            admission.ReserveBytes(checked(128 + 48L * polygon.Count));
-            return new(face.Face.Key, paintId, paint, polygon);
-        }
+        finally { scratch.Release(rows); }
     }
 
     static MapExactPoint Lift(MapExactTriangle triangle, MapWideXz p) =>
@@ -67,33 +82,47 @@ internal static class MapTerrainPaint
     internal static IReadOnlyDictionary<FeatherKey, IReadOnlyList<Edge>> Boundaries(
         IReadOnlyList<MapTerrainPartition> partitions, MapSceneAdmission admission)
     {
+        using var preparation = admission.BeginPreparation();
+        int selected = partitions.Count(p => p.Paint.Feather && p.Paint.OverlayCovers && p.Paint.Overlay != 0 &&
+            p.Paint.Underlay != 0 && p.Paint.Underlay != p.Paint.Overlay);
+        admission.ReserveBytes(checked(128L * selected));
+        using var scratch = admission.Workspace();
+        using var indexStorage = admission.Workspace();
+        long indexBytes = 0, edgeBytes = 0;
         var result = new Dictionary<FeatherKey, IReadOnlyList<Edge>>();
         foreach (var group in partitions.Where(p => p.Paint.Feather && p.Paint.OverlayCovers && p.Paint.Overlay != 0 &&
             p.Paint.Underlay != 0 && p.Paint.Underlay != p.Paint.Overlay).GroupBy(Key))
         {
+            using var groupPreparation = admission.BeginPreparation();
             var lines = new Dictionary<Line, SortedDictionary<MapWideRational, (MapWideXz Point, int Delta)>>();
             foreach (var partition in group)
             {
-                var polygon = MapWideRefinementGeometry.Normalize(partition.Polygon.Select(p => MapWidePoint.From(p).Xz));
-                for (int i = 0; i < polygon.Count; i++)
+                long bytes = checked(256L + 256L * partition.Polygon.Count);
+                scratch.Reserve(bytes);
+                try
                 {
-                    var a = polygon[i]; var b = polygon[(i + 1) % polygon.Count];
-                    if (a == b) continue;
-                    admission.ReserveBytes(256);
-                    bool vertical = a.X.Equals(b.X);
-                    var slope = vertical ? default : b.Z.Subtract(a.Z).Divide(b.X.Subtract(a.X));
-                    var line = new Line(vertical, slope, vertical ? a.X : a.Z.Subtract(slope.Multiply(a.X)));
-                    if (!lines.TryGetValue(line, out var events)) lines.Add(line, events = new());
-                    var first = vertical ? a.Z : a.X; var last = vertical ? b.Z : b.X;
-                    // Keep the polygon's direction. Sorting the events then cancels opposite copies,
-                    // including one long edge opposed by several collinear subedges.
-                    Add(first, a, 1); Add(last, b, -1);
-                    void Add(MapWideRational coordinate, MapWideXz point, int delta)
+                    var polygon = MapWideRefinementGeometry.Normalize(partition.Polygon.Select(p => MapWidePoint.From(p).Xz));
+                    for (int i = 0; i < polygon.Count; i++)
                     {
-                        events.TryGetValue(coordinate, out var before);
-                        events[coordinate] = (point, before.Delta + delta);
+                        var a = polygon[i]; var b = polygon[(i + 1) % polygon.Count];
+                        if (a == b) continue;
+                        admission.ReserveBytes(1024);
+                        bool vertical = a.X.Equals(b.X);
+                        var slope = vertical ? default : b.Z.Subtract(a.Z).Divide(b.X.Subtract(a.X));
+                        var line = new Line(vertical, slope, vertical ? a.X : a.Z.Subtract(slope.Multiply(a.X)));
+                        if (!lines.TryGetValue(line, out var events)) lines.Add(line, events = new());
+                        var first = vertical ? a.Z : a.X; var last = vertical ? b.Z : b.X;
+                        // Keep the polygon's direction. Sorting the events then cancels opposite copies,
+                        // including one long edge opposed by several collinear subedges.
+                        Add(first, a, 1); Add(last, b, -1);
+                        void Add(MapWideRational coordinate, MapWideXz point, int delta)
+                        {
+                            events.TryGetValue(coordinate, out var before);
+                            events[coordinate] = (point, before.Delta + delta);
+                        }
                     }
                 }
+                finally { scratch.Release(bytes); }
             }
             var edges = new List<Edge>();
             foreach (var events in lines.Values)
@@ -109,8 +138,15 @@ internal static class MapTerrainPaint
                 }
                 if (winding != 0) throw new MapDocumentException("Terrain feather boundary is open.");
             }
-            result.Add(group.Key, edges.AsReadOnly());
+            var rows = edges.AsReadOnly();
+            long retained = checked(16L + 128L * edges.Capacity);
+            edgeBytes = checked(edgeBytes + retained);
+            groupPreparation.Complete(retained); groupPreparation.Dispose();
+            MapPreparationCollections.Dictionary(result, indexStorage, ref indexBytes);
+            result.Add(group.Key, rows);
         }
+        preparation.AdoptWorkspace(indexStorage, indexBytes);
+        preparation.Complete(checked(indexBytes + edgeBytes));
         return result;
     }
 }

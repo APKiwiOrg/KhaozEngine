@@ -461,7 +461,12 @@ internal static class MapPrefabJson
             using JsonDocument json = JsonDocument.ParseValue(ref reader);
             return MapSurfacePatchCodec.Decode(Encoding.UTF8.GetBytes(json.RootElement.GetRawText()), MapPrefabJson.Read<MapPatchKey>(json.RootElement.GetProperty("key")));
         }
-        public override void Write(Utf8JsonWriter w, MapSurfacePatch value, JsonSerializerOptions options) => w.WriteRawValue(MapSurfacePatchCodec.Encode(value));
+        public override void Write(Utf8JsonWriter w, MapSurfacePatch value, JsonSerializerOptions options)
+        {
+            byte[] bytes = MapSurfacePatchCodec.Encode(value, out var ownership);
+            using var consumed = ownership;
+            w.WriteRawValue(bytes);
+        }
     }
 
     sealed class RecordConverter : JsonConverter<MapTopologyRecord>
@@ -471,14 +476,18 @@ internal static class MapPrefabJson
         {
             using JsonDocument json = JsonDocument.ParseValue(ref reader);
             var patch = Envelope();
-            var root = JsonNode.Parse(MapSurfacePatchCodec.Encode(patch))!.AsObject();
+            byte[] bytes = MapSurfacePatchCodec.Encode(patch, out var ownership);
+            using var consumed = ownership;
+            var root = JsonNode.Parse(bytes)!.AsObject();
             root["records"] = new JsonArray(JsonNode.Parse(json.RootElement.GetRawText()));
             return MapSurfacePatchCodec.Decode(Encoding.UTF8.GetBytes(root.ToJsonString()), patch.Key).Records.Single();
         }
         public override void Write(Utf8JsonWriter w, MapTopologyRecord value, JsonSerializerOptions options)
         {
             var patch = Envelope(); patch.Records.Add(value);
-            using JsonDocument json = JsonDocument.Parse(MapSurfacePatchCodec.Encode(patch));
+            byte[] bytes = MapSurfacePatchCodec.Encode(patch, out var ownership);
+            using var consumed = ownership;
+            using JsonDocument json = JsonDocument.Parse(bytes);
             json.RootElement.GetProperty("records")[0].WriteTo(w);
         }
     }

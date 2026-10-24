@@ -78,6 +78,7 @@ public static class MapSupportResourceFile
     /// <summary>Payload, geometry and scope checks. Local references name this resource's own surfaces and records.</summary>
     internal static void Require(MapSupportResource resource)
     {
+        using var validation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         if (resource.PayloadVersion != 1) throw new MapDocumentException("Unsupported support resource payload version.");
         if (resource.Surfaces is null || resource.References is null) throw new MapDocumentException("Support resource collections must not be null.");
         var surfaces = new HashSet<string>(StringComparer.Ordinal);
@@ -94,9 +95,12 @@ public static class MapSupportResourceFile
         {
             if (patch is null || patch.Key != key || !surfaces.Contains(key.SurfaceId))
                 throw new MapDocumentException("Support resource patches must belong to a declared surface.");
-            _ = MapSurfacePatchCodec.Encode(patch);
+            _ = MapSurfacePatchCodec.Encode(patch, out var encoding);
+            using var consumedEncoding = encoding;
             var surface = resource.Surfaces.Refs.Single(s => s.Id == key.SurfaceId);
-            if (MapSurfaceCompiler.Compile(surface, patch).LegacyFallbackCells.Count != 0)
+            var compiled = MapSurfaceCompiler.Compile(surface, patch);
+            using var consumedGeometry = compiled.PreparationOwnership;
+            if (compiled.LegacyFallbackCells.Count != 0)
                 throw new MapDocumentException("Support resources cannot declare analytic fallback cells.");
             foreach (MapTopologyRecord record in patch.Records)
                 if (!anchors.TryAdd(record.Id, key)) throw new MapDocumentException($"Duplicate support resource record '{record.Id}'.");

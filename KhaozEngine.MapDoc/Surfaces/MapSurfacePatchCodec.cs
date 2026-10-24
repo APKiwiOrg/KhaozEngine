@@ -12,23 +12,31 @@ public static partial class MapSurfacePatchCodec
 {
     public const int MaxEncodedBytes = 1_048_576;
 
-    public static byte[] Encode(MapSurfacePatch patch)
+    public static byte[] Encode(MapSurfacePatch patch) => Encode(patch, out _);
+
+    internal static byte[] Encode(MapSurfacePatch patch, out Scene.MapPreparationReservation? ownership)
     {
         ArgumentNullException.ThrowIfNull(patch);
         IReadOnlyList<string> errors = patch.ValidateLocal();
         if (errors.Count != 0) throw new MapDocumentException(errors[0]);
-        using var output = new BoundedOutput();
+        using var sorting = Scene.MapSceneAdmission.Current?.Workspace();
+        long metadata = Scene.MapSceneAdmission.PatchBytes(patch) -
+            (4L * patch.Heights.Length + 8L * patch.Cells.Length + 8L * patch.Presence.Length);
+        sorting?.Reserve(checked(2L * metadata + 16L * patch.Records.Count));
+        using var output = new Scene.MapPreparationBuffer(MaxEncodedBytes);
+        using var packed = Scene.MapSceneAdmission.Current?.Workspace();
         using (var writer = new Utf8JsonWriter(output))
         {
             writer.WriteStartObject();
             writer.WritePropertyName("key"); WriteKey(writer, patch.Key);
             writer.WriteNumber("cellMinX", patch.CellMinX); writer.WriteNumber("cellMinZ", patch.CellMinZ);
             writer.WriteNumber("width", patch.Width); writer.WriteNumber("depth", patch.Depth);
-            Scene.MapSceneAdmission.Current?.ReserveBytes(checked(patch.Heights.Length * 4L));
+            packed?.Reserve(checked(patch.Heights.Length * 4L));
             byte[] heights = new byte[patch.Heights.Length * 4];
             for (int i = 0; i < patch.Heights.Length; i++) BinaryPrimitives.WriteInt32LittleEndian(heights.AsSpan(i * 4), patch.Heights[i]);
             writer.WriteBase64String("heights", heights);
-            Scene.MapSceneAdmission.Current?.ReserveBytes(checked(patch.Cells.Length * 8L));
+            packed?.Release(heights.Length);
+            packed?.Reserve(checked(patch.Cells.Length * 8L));
             byte[] cells = new byte[patch.Cells.Length * 8];
             for (int i = 0; i < patch.Cells.Length; i++)
             {
@@ -38,10 +46,12 @@ public static partial class MapSurfacePatchCodec
                 b[4] = (byte)cell.Cut; b[5] = cell.Rotation; b[6] = (byte)cell.Flags; b[7] = (byte)cell.Topology;
             }
             writer.WriteBase64String("cells", cells);
-            Scene.MapSceneAdmission.Current?.ReserveBytes(checked(patch.Presence.Length * 8L));
+            packed?.Release(cells.Length);
+            packed?.Reserve(checked(patch.Presence.Length * 8L));
             byte[] presence = new byte[patch.Presence.Length * 8];
             for (int i = 0; i < patch.Presence.Length; i++) BinaryPrimitives.WriteUInt64LittleEndian(presence.AsSpan(i * 8), patch.Presence[i]);
             writer.WriteBase64String("presence", presence);
+            packed?.Release(presence.Length);
             writer.WriteStartArray("cornerDependencies");
             foreach (MapCornerDependency d in patch.CornerDependencies.OrderBy(d => d.CornerZ).ThenBy(d => d.CornerX))
             {
@@ -60,13 +70,14 @@ public static partial class MapSurfacePatchCodec
             }
             writer.WriteEndArray(); WriteRecords(writer, patch.Records); writer.WriteEndObject();
         }
-        return output.Bytes();
+        return output.ToArray(out ownership);
     }
 
     public static MapSurfacePatch Decode(ReadOnlySpan<byte> bytes, MapPatchKey expectedKey)
     {
         if (bytes.Length > MaxEncodedBytes) throw Limit();
-        Scene.MapSceneAdmission.Current?.ReserveBytes(bytes.Length);
+        using var workspace = Scene.MapSceneAdmission.Current?.Workspace();
+        workspace?.Reserve(bytes.Length);
         try
         {
             // The parser's storage is bounded by the input cap. Size-based payload arrays follow dimension/length checks.
@@ -83,7 +94,7 @@ public static partial class MapSurfacePatchCodec
             if (!MapSurfacePatch.ValidRectangle(minX, minZ, width, depth))
                 throw new MapDocumentException("invalid patch width, depth or cell minimum");
             int cornerCount = (width + 1) * (depth + 1), cellCount = width * depth, wordCount = (cellCount + 63) / 64;
-            Scene.MapSceneAdmission.Current?.ReserveBytes(checked(2L * (cornerCount * 4L + cellCount * 8L + wordCount * 8L) + bytes.Length));
+            workspace?.Reserve(checked(2L * (cornerCount * 4L + cellCount * 8L + wordCount * 8L) + bytes.Length));
             byte[] heightBytes = Base64(root.GetProperty("heights"), cornerCount * 4, "heights");
             byte[] cellBytes = Base64(root.GetProperty("cells"), cellCount * 8, "cells");
             byte[] presenceBytes = Base64(root.GetProperty("presence"), wordCount * 8, "presence");
@@ -133,6 +144,13 @@ public static partial class MapSurfacePatchCodec
             }
             IReadOnlyList<string> errors = patch.ValidateLocal();
             if (errors.Count != 0) throw new MapDocumentException(errors[0]);
+            long owned = Scene.MapSceneAdmission.PatchBytes(patch);
+            if (workspace is not null)
+            {
+                if (owned > workspace.Bytes) workspace.Reserve(owned - workspace.Bytes);
+                patch.PreparationOwnership = workspace.Transfer(owned);
+                Scene.MapSceneAdmission.Current?.PreparationScope?.Track(patch.PreparationOwnership);
+            }
             return patch;
         }
         catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException or OverflowException or KeyNotFoundException)
@@ -193,27 +211,4 @@ public static partial class MapSurfacePatchCodec
     }
     static MapDocumentException Limit() => new($"patch payload exceeds {MaxEncodedBytes} bytes");
 
-    sealed class BoundedOutput : Stream
-    {
-        readonly MemoryStream _stream = new();
-        public byte[] Bytes()
-        { Scene.MapSceneAdmission.Current?.ReserveBytes(_stream.Length); return _stream.ToArray(); }
-        public override bool CanRead => false;
-        public override bool CanSeek => false;
-        public override bool CanWrite => true;
-        public override long Length => _stream.Length;
-        public override long Position { get => _stream.Position; set => throw new NotSupportedException(); }
-        public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
-        public override void Write(ReadOnlySpan<byte> buffer)
-        {
-            if (buffer.Length > MaxEncodedBytes - _stream.Length) throw Limit();
-            Scene.MapSceneAdmission.Current?.ReserveBytes(buffer.Length);
-            _stream.Write(buffer);
-        }
-        public override void Flush() { }
-        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-        public override void SetLength(long value) => throw new NotSupportedException();
-        protected override void Dispose(bool disposing) { if (disposing) _stream.Dispose(); base.Dispose(disposing); }
-    }
 }

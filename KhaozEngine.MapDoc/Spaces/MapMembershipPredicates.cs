@@ -9,6 +9,7 @@ namespace KhaozEngine.MapDoc.Spaces;
 /// <summary>Immutable exact edges, with the released cell or OA7 polygon boundary convention.</summary>
 internal sealed class MapMembershipPolygon
 {
+    internal long InventoryBytes => checked(128L + 45L * _vertices.Length + _edges.Sum(e => e.InventoryBytes));
     readonly MapExactXz[] _vertices;
     readonly MapMembershipAffine[] _edges;
     readonly bool[] _owns;
@@ -76,6 +77,7 @@ internal sealed class MapMembershipPolygon
 /// <summary>A compiled triangle whose filter and fixed-limb fallback agree with released wide predicates.</summary>
 internal sealed class MapMembershipTriangle
 {
+    internal long InventoryBytes => checked(192L + 27L + _height.InventoryBytes + _edges.Sum(e => e.InventoryBytes));
     readonly MapMembershipAffine[] _edges;
     readonly bool[] _owns;
     readonly int _orientation;

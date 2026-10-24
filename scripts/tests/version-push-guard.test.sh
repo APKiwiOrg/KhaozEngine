@@ -177,6 +177,87 @@ git add KhaozEngine.TileWorld.Netcode.Tests/TileNetcode/Example.cs
 git commit --quiet -m "test: add a regression"
 check "lowercase property with uppercase false rides a release" allowed "$(try_push main)"
 
+# Shared test imports must be proved at the same commit as the owning project. The safe fixture uses
+# the actual Catalog project and allocation props that exposed the false positive in PR #1548.
+new_shared_repo() {
+  _shared_case=$1
+  new_repo 1.0.0 > /dev/null
+  mkdir -p KhaozEngine.Catalog.Tests/Upgrade test-shared outside
+  cp "$SRC/../KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj" KhaozEngine.Catalog.Tests/
+  cp "$SRC/../test-shared/AllocationMeasurement.props" test-shared/
+  _shared_props=test-shared/AllocationMeasurement.props
+  case "$_shared_case" in
+    safe) ;;
+    false) printf '<Project><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>\n' > "$_shared_props" ;;
+    true) printf '<Project><PropertyGroup><IsPackable>true</IsPackable></PropertyGroup></Project>\n' > "$_shared_props" ;;
+    conditional) printf '<Project><ItemGroup Condition="false"><Compile Include="test.cs" /></ItemGroup></Project>\n' > "$_shared_props" ;;
+    conditional-property) printf '<Project><PropertyGroup><IsPackable Condition="false">false</IsPackable></PropertyGroup></Project>\n' > "$_shared_props" ;;
+    nested-import) printf '<Project><Import Project="safe.props" /></Project>\n' > "$_shared_props" ;;
+    choose) printf '<Project><Choose><When Condition="false"><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></When></Choose></Project>\n' > "$_shared_props" ;;
+    target) printf '<Project><Target Name="Pack" /></Project>\n' > "$_shared_props" ;;
+    cdata) printf '<Project><PropertyGroup><IsPackable><![CDATA[false]]></IsPackable></PropertyGroup></Project>\n' > "$_shared_props" ;;
+    sdk) printf '<Project><Sdk Name="Example.Sdk" /></Project>\n' > "$_shared_props" ;;
+    sdk-attribute) printf '<Project Sdk="Example.Sdk" />\n' > "$_shared_props" ;;
+    package-property) printf '<Project><PropertyGroup><GeneratePackageOnBuild>true</GeneratePackageOnBuild></PropertyGroup></Project>\n' > "$_shared_props" ;;
+    package-content) printf '<Project><ItemGroup><Content Include="payload" Pack="true" /></ItemGroup></Project>\n' > "$_shared_props" ;;
+    compile-pack) printf '<Project><ItemGroup><Compile Include="test.cs" Pack="true" /></ItemGroup></Project>\n' > "$_shared_props" ;;
+    pack-metadata) printf '<Project><ItemGroup><Compile Include="test.cs"><Pack>true</Pack></Compile></ItemGroup></Project>\n' > "$_shared_props" ;;
+    malformed) printf '<Project><ItemGroup><Compile Include="test.cs" /></Project>\n' > "$_shared_props" ;;
+    missing) rm "$_shared_props" ;;
+    outside|escape)
+      cp "$_shared_props" outside/safe.props
+      case "$_shared_case" in outside) _shared_path='../outside/safe.props' ;; escape) _shared_path='../test-shared/../outside/safe.props' ;; esac
+      sed "s#../test-shared/AllocationMeasurement.props#$_shared_path#" KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj > "$TMPROOT/project"
+      mv "$TMPROOT/project" KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj ;;
+    normalized)
+      sed 's#../test-shared/AllocationMeasurement.props#../test-shared/./AllocationMeasurement.props#' KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj > "$TMPROOT/project"
+      mv "$TMPROOT/project" KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj ;;
+    conditional-import)
+      sed 's#<Import Project=#<Import Condition="false" Project=#' KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj > "$TMPROOT/project"
+      mv "$TMPROOT/project" KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj ;;
+    symlink)
+      cp "$_shared_props" outside/safe.props
+      rm "$_shared_props"
+      ln -s ../outside/safe.props "$_shared_props" ;;
+  esac
+  printf '<Project />\n' > test-shared/safe.props
+  git add -A
+  git commit --quiet -m "test: configure shared test imports"
+  printf '%s' "$(pwd)"
+}
+
+for shared_case in safe false normalized true conditional conditional-property nested-import choose target cdata sdk sdk-attribute package-property package-content compile-pack pack-metadata malformed missing outside escape conditional-import symlink; do
+  w=$(new_shared_repo "$shared_case"); cd "$w"
+  git tag -a v1.0.0 -m "release(1.0.0): first" >/dev/null 2>&1
+  echo 'test' > KhaozEngine.Catalog.Tests/Upgrade/Example.cs
+  git add KhaozEngine.Catalog.Tests/Upgrade/Example.cs
+  git commit --quiet -m "test: add a catalog regression"
+  case "$shared_case" in safe|false|normalized) expected=allowed ;; *) expected=refused ;; esac
+  check "Catalog tests with $shared_case shared props are $expected" "$expected" "$(try_push main)"
+done
+
+# Neither a dirty import nor a safer import at the new endpoint may hide the committed packability.
+for shared_case in safe true; do
+  w=$(new_shared_repo "$shared_case"); cd "$w"
+  git tag -a v1.0.0 -m "release(1.0.0): first" >/dev/null 2>&1
+  echo 'test' > KhaozEngine.Catalog.Tests/Upgrade/Example.cs
+  git add KhaozEngine.Catalog.Tests/Upgrade/Example.cs
+  git commit --quiet -m "test: add a catalog regression"
+  case "$shared_case" in
+    safe) dirty_packable=true; expected=allowed ;;
+    true) dirty_packable=false; expected=refused ;;
+  esac
+  printf '<Project><PropertyGroup><IsPackable>%s</IsPackable></PropertyGroup></Project>\n' "$dirty_packable" > test-shared/AllocationMeasurement.props
+  check "committed $shared_case props override dirty $dirty_packable" "$expected" "$(try_push main)"
+  if [ "$shared_case" = true ]; then
+    sed 's#AllocationMeasurement.props#safe.props#' KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj > "$TMPROOT/project"
+    mv "$TMPROOT/project" KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj
+    git add KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj
+    git commit --quiet -m "test: switch to safe shared props"
+    check "previously packable shared imports remain version-bearing" refused "$(try_push main)"
+  fi
+done
+
 # Turning a previously packable or unknown project into tests still changes shipped packages.
 for test_packable in true unknown; do
   w=$(new_repo 1.0.0 "$test_packable"); cd "$w"

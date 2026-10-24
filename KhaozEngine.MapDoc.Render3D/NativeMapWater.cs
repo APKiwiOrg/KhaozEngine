@@ -40,8 +40,13 @@ public static class NativeMapWater
             throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Water requires complete requested and canonical-cell coverage.");
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(water.Limits);
         using var admitted = admission.Enter();
+        using var preparation = admission.BeginPreparation();
+        MapPreparationInventory? canonicalOwnership = null;
         try
         {
+            using var canonicalWork = MapPreparationInventory.Acquire(admission,
+                water.AcquiredCells.Concat(water.Cells).Distinct<MapWaterResourceCell>(System.Collections.Generic.ReferenceEqualityComparer.Instance)
+                    .Select(c => ((object)c, MapScopedWaterResult.CellInventoryBytes(c))));
             // Admit the scratch settings, explicit effective look and frozen frame copy before allocation.
             admission.ReserveBytes(2048);
             look = ResolveLook(look, settings);
@@ -62,6 +67,7 @@ public static class NativeMapWater
                     continue;
                 }
                 admission.ReserveBytes(256); seen.Add(cell.Key, cell.PayloadDigest);
+                using var cellPreparation = admission.BeginPreparation();
                 canonical.Add(cell);
                 long triangleCount = cell.Regions.Where(r => r.Kind == MapWaterRegionKind.FreeSurface).Sum(r => (long)r.Triangles.Count);
                 if (3L * triangleCount > MapWaterScopedCompiler.MaxEmittedVertices - emitted) throw new MapSceneCapacityException(nameof(MapWaterScopedCompiler.MaxEmittedVertices), checked(emitted + 3L * triangleCount), MapWaterScopedCompiler.MaxEmittedVertices);
@@ -100,15 +106,23 @@ public static class NativeMapWater
                 var bounds = new MapBox3(points.Min(p => p.X.ToDouble()) - halo, cell.SurfaceY - vertical, points.Min(p => p.Z.ToDouble()) - halo,
                     points.Max(p => p.X.ToDouble()) + halo, cell.SurfaceY + vertical, points.Max(p => p.Z.ToDouble()) + halo);
                 parts.Add(new(key, anchor, bounds, payload, clip.Digest));
+                cellPreparation.Complete(checked(512L + ModelVertex.SizeInBytes * (long)payload.BorrowMesh.Vertices.Length +
+                    4L * payload.BorrowMesh.Indices32.Length + payload.BorrowClipData.Length));
             }
             admission.ReserveBytes(checked(8L * (parts.Count + water.Cells.Count)));
-            return new(canonical, parts, MapFrozenWaterLook.Capture(look), admission.RetainedBytes);
+            var result = new MapWaterRenderBatch(canonical, parts, MapFrozenWaterLook.Capture(look), 0);
+            canonicalOwnership = MapPreparationInventory.Acquire(admission,
+                canonical.Select(c => ((object)c, MapScopedWaterResult.CellInventoryBytes(c))));
+            result.Own(preparation.Complete(result.OwnRetainedBytes));
+            result.OwnCanonical(canonicalOwnership); canonicalOwnership = null;
+            return result;
         }
         catch (Exception error) when (error is MapSceneCapacityException or MapWaterCapacityException)
         { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Water geometry is not representable."); }
         catch (ArgumentException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, error.Message); }
+        finally { canonicalOwnership?.Dispose(); }
     }
 
     static WaterLook ResolveLook(WaterLook look, WaterSettings settings)

@@ -15,56 +15,31 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 {
     readonly MapFoliageContextLimits? _foliageLimits = foliageLimits ?? limits.Preparation?.FoliageContext;
     [ThreadStatic] static MapSceneAdmission? t_current;
+    [ThreadStatic] static int t_suspensions;
     internal static MapSceneAdmission? Current => t_current;
-    long _preparationCeiling = limits.MaxPreparedBytes;
-    internal long RemainingPreparedBytes => _preparationCeiling - RetainedBytes;
+    readonly MapPreparationLedger _bytes = new(limits.MaxPreparedBytes, preparationLimitName);
+    internal long RemainingPreparedBytes => _bytes.Remaining;
+    internal long WorkspaceBytes => _bytes.WorkspaceBytes;
+    internal long RetainedBytes => _bytes.RetainedBytes;
+    internal long PeakBytes => _bytes.PeakBytes;
+    internal object WindowIdentity => _bytes.WindowIdentity;
+    internal IDisposable? ReferenceWindow(long bytes, object? origin = null, ICollection<object>? references = null)
+        => _bytes.ReferenceWindow(bytes, origin, references);
     internal long RemainingPreparedFaces => limits.MaxPreparedFaces - PreparedFaces;
     internal int RemainingPatchScopes => limits.MaxPatchScopes - PatchScopes;
-    PreparationWindow? _preparationWindow;
+    internal MapPreparationReservation Workspace() => _bytes.Workspace();
+    internal MapPreparationScope? PreparationScope { get; set; }
+    internal MapPreparationScope BeginPreparation() => new(this);
     internal PreparationWindow LimitPreparation(long bytes, string limitName = nameof(MapSceneLimits.MaxPreparedBytes), long reused = 0)
-        => new(this, bytes, limitName, reused);
-    MapSceneCapacityException PreparationCapacity(long bytes) => new(PreparedByteCapacity(bytes));
-    internal MapSceneCapacity PreparedByteCapacity(decimal bytes) => _preparationWindow?.Capacity(bytes)
-        ?? new(preparationLimitName, RetainedBytes + bytes, limits.MaxPreparedBytes);
-    internal sealed class PreparationWindow : IDisposable
+        => new(_bytes.OpenWindow(bytes, limitName, reused));
+    internal MapSceneCapacity PreparedByteCapacity(decimal bytes) => _bytes.Capacity(bytes);
+    internal sealed class PreparationWindow(MapPreparationLedger.Window window) : IDisposable
     {
-        readonly MapSceneAdmission _owner;
-        readonly long _previous, _start, _allowance, _reused;
-        readonly string _limitName;
-        readonly PreparationWindow? _previousWindow;
-        readonly bool _binding;
-        long _ceiling, _external;
-        internal PreparationWindow(MapSceneAdmission owner, long bytes, string limitName, long reused)
-        {
-            if (bytes < 0) throw new MapSceneCapacityException(limitName, reused, checked(bytes + reused));
-            _owner = owner; _start = owner.RetainedBytes; _previous = owner._preparationCeiling;
-            _previousWindow = owner._preparationWindow; _limitName = limitName; _reused = reused;
-            _allowance = checked(bytes + reused); _binding = bytes <= _previous - _start;
-            _ceiling = _start + Math.Min(bytes, _previous - _start);
-            owner._preparationCeiling = _ceiling; owner._preparationWindow = this;
-        }
-        internal MapSceneCapacity Capacity(decimal bytes) => _binding
-            ? new(_limitName, (decimal)_owner.RetainedBytes - _start + _reused + _external + bytes, _allowance)
-            : _previousWindow?.Capacity(_external + bytes)
-                ?? new(_owner.PreparationLimitName, (decimal)_owner.RetainedBytes + _external + bytes, _owner.PreparationAllowance);
-        internal void ChargeExternal(long bytes)
-        {
-            if (bytes < 0 || bytes > _owner.RemainingPreparedBytes) throw new MapSceneCapacityException(Capacity(bytes));
-            _ceiling -= bytes; _external = _external + bytes;
-            _owner._preparationCeiling = _ceiling;
-        }
-        public void Dispose()
-        { _owner._preparationCeiling = _previous; _owner._preparationWindow = _previousWindow; }
+        internal void ChargeExternal(long bytes) => window.ChargeExternal(bytes);
+        public void Dispose() => window.Dispose();
     }
-    string PreparationLimitName => preparationLimitName;
-    long PreparationAllowance => limits.MaxPreparedBytes;
-    // Only unused, pre-admitted generation capacity is returned. Retained batches keep their actual charge.
     internal void ReleaseUnusedBytes(long bytes)
-    {
-        if (bytes < 0 || bytes > RetainedBytes) throw new ArgumentOutOfRangeException(nameof(bytes));
-        RetainedBytes -= bytes;
-    }
-    internal long RetainedBytes { get; private set; }
+    { if (PreparationScope is { } scope) scope.Release(bytes); else _bytes.ReleaseLegacy(bytes); }
     internal long PreparedFaces { get; private set; }
     internal long PayloadReads { get; private set; }
     internal long FoliageSourceUtf8Bytes { get; private set; }
@@ -109,8 +84,9 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     sealed class Activation : IDisposable
     {
         readonly MapSceneAdmission? _previous = t_current;
-        internal Activation(MapSceneAdmission value) => t_current = value;
-        public void Dispose() => t_current = _previous;
+        bool _disposed;
+        internal Activation(MapSceneAdmission value) { if (t_suspensions == 0) t_current = value; }
+        public void Dispose() { if (_disposed) return; _disposed = true; t_current = _previous; }
     }
 
     internal static bool Supports(IMapSurfaceSource source) => source is MapDocumentSurfaceSource or MapStoredSurfaceSource or MapEffectiveSurfaceSource ||
@@ -136,25 +112,25 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     {
         capacity = PreparationRefusal(bytes, faces);
         if (capacity is not null) return false;
-        RetainedBytes += bytes;
+        ReserveBytes(bytes);
         PreparedFaces += faces;
         return true;
     }
 
     // A prepared product already charged its complete demand before creating any payload.
     internal static Suspension Suspend() => new(t_current);
-    internal readonly struct Suspension : IDisposable
+    internal sealed class Suspension : IDisposable
     {
         readonly MapSceneAdmission? _previous;
-        internal Suspension(MapSceneAdmission? previous) { _previous = previous; t_current = null; }
-        public void Dispose() => t_current = _previous;
+        bool _disposed;
+        internal Suspension(MapSceneAdmission? previous)
+        { _previous = previous; t_current = null; t_suspensions++; }
+        public void Dispose()
+        { if (_disposed) return; _disposed = true; t_suspensions--; t_current = _previous; }
     }
 
     internal void ReserveBytes(long bytes)
-    {
-        if (bytes < 0 || bytes > RemainingPreparedBytes) throw PreparationCapacity(bytes);
-        RetainedBytes = checked(RetainedBytes + bytes);
-    }
+    { if (PreparationScope is { } scope) scope.Reserve(bytes); else _bytes.ReserveLegacy(bytes); }
 
     internal void BeforeInputBytes(long bytes)
     {
@@ -178,7 +154,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 
     internal void BeforeClone(MapSurfacePatch patch)
     {
-        ReserveBytes(PatchBytes(patch));
+        ReserveBytes(PatchBytes(patch, forClone: true));
         entering?.Invoke("clone");
     }
 
@@ -198,21 +174,22 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         ReserveCompilation(faces);
     }
 
-    internal void ReserveCompilation(long faces)
+    internal void ReserveCompilation(long faces, MapPreparationReservation? workspace = null)
     {
         if (faces < 0 || faces > limits.MaxPreparedFaces - PreparedFaces) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPreparedFaces), (decimal)PreparedFaces + faces, limits.MaxPreparedFaces);
         long bytes = checked(faces * 1280);
-        ReserveBytes(bytes);
+        if (workspace is null) ReserveBytes(bytes); else workspace.Reserve(bytes);
         PreparedFaces = checked(PreparedFaces + faces);
         entering?.Invoke("compile");
     }
 
-    /// <summary>Copied payload values, excluding shared immutable strings and CLR object headers.</summary>
-    internal static long PatchBytes(MapSurfacePatch patch)
+    /// <summary>Owned payload and collection backing storage, excluding shared immutable strings and CLR object headers.</summary>
+    internal static long PatchBytes(MapSurfacePatch patch, bool forClone = false)
     {
         long bytes = checked(4L * patch.Heights.Length + 8L * patch.Cells.Length + 8L * patch.Presence.Length +
-            (long)Unsafe.SizeOf<MapCornerDependency>() * patch.CornerDependencies.Count +
-            (long)Unsafe.SizeOf<MapEdgeSubdivision>() * patch.EdgeSubdivisions.Count + IntPtr.Size * (long)patch.Records.Count);
+            (long)Unsafe.SizeOf<MapCornerDependency>() * (forClone ? CloneCapacity(patch.CornerDependencies.Count, false) : patch.CornerDependencies.Capacity) +
+            (long)Unsafe.SizeOf<MapEdgeSubdivision>() * (forClone ? CloneCapacity(patch.EdgeSubdivisions.Count, false) : patch.EdgeSubdivisions.Capacity) +
+            IntPtr.Size * (forClone ? CloneCapacity(patch.Records.Count, true) : patch.Records.Capacity));
         foreach (var record in patch.Records)
             bytes = checked(bytes + (record switch
             {
@@ -228,6 +205,15 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
                 _ => 0,
             }));
         return bytes;
+    }
+
+    internal static long CloneCapacity(int count, bool incremental)
+    {
+        if (count == 0) return 0;
+        if (!incremental) return Math.Max(4L, count);
+        long capacity = 4;
+        while (capacity < count) capacity *= 2;
+        return capacity;
     }
 
     static long RingBytes(MapWaterDomainDoc domain)

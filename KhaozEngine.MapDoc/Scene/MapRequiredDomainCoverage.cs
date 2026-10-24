@@ -15,6 +15,8 @@ public static class MapRequiredDomainCoverage
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(domains);
         var admission = new MapSceneAdmission(source.Data.Limits);
+        using var activation = admission.Enter();
+        using var preparation = admission.BeginPreparation();
         var witnesses = new List<MapSceneWitness>();
         string identity = "";
         try
@@ -39,7 +41,8 @@ public static class MapRequiredDomainCoverage
                     return new(result.Status, Combine(source, identity, witnesses, false), Array.Empty<MapScopedScene>());
                 scenes.Add(result.Scene);
             }
-            return new(MapSceneStatus.CompleteForScope, Combine(source, identity, witnesses, true), scenes.AsReadOnly());
+            return new(MapSceneStatus.CompleteForScope, Combine(source, identity, witnesses, true), scenes.AsReadOnly())
+            { PreparationOwnership = preparation.Complete(checked(128L * requested.Length + scenes.Sum(s => s.InventoryBytes))) };
         }
         catch (Exception error) when (MapSceneSource.Classify(error) is not null)
         {
@@ -79,10 +82,11 @@ public static class MapRequiredDomainCoverage
 /// <summary>Owns neutral snapshots until the last consumer of this lease explicitly releases it.</summary>
 public sealed class MapSceneCoverageLease : IDisposable
 {
+    internal MapPreparationReservation? PreparationOwnership { get; init; }
     public MapSceneStatus Status { get; }
     public MapSceneWitness Witness { get; }
     public IReadOnlyList<MapScopedScene> Scenes { get; private set; }
     internal MapSceneCoverageLease(MapSceneStatus status, MapSceneWitness witness, IReadOnlyList<MapScopedScene> scenes)
     { Status = status; Witness = witness; Scenes = scenes; }
-    public void Dispose() => Scenes = Array.Empty<MapScopedScene>();
+    public void Dispose() { PreparationOwnership?.Dispose(); Scenes = Array.Empty<MapScopedScene>(); }
 }

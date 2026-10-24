@@ -9,8 +9,10 @@ namespace KhaozEngine.MapDoc.Spaces;
 /// <summary>Prepared incident tests and the same endpoint-owned chain segments as the cold point adapter.</summary>
 internal sealed class MapMembershipPreparedPortal
 {
+    internal long InventoryBytes => checked(128L + _interval.Concat(_bottom).Concat(_top).Sum(s => 8L + s.InventoryBytes));
     internal sealed class Segment
     {
+        internal long InventoryBytes => checked(128L + 8L * Demands.Length + _line.InventoryBytes + (_height?.InventoryBytes ?? 0));
         readonly MapExactXz _a, _b;
         readonly MapMembershipAffine _line;
         readonly MapMembershipTriangle? _height;

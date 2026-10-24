@@ -30,6 +30,7 @@ public sealed class MapDrawSet
 /// <summary>Records complete typed submissions without creating a device or resolving a policy by digest.</summary>
 public sealed class MapDrawRecorder : IMapDrawSink
 {
+    readonly MapRecordingAdmission? _admission = KhaozEngine.MapDoc.Scene.MapSceneAdmission.Current?.PreparationScope is { } scope ? new(scope) : null;
     readonly Dictionary<MapResourceReference, MapPreparedResource> _resources = new();
     readonly List<MapDrawRecord> _draws = [];
     public void Register(MapPreparedResource resource)
@@ -56,6 +57,7 @@ public sealed class MapDrawRecorder : IMapDrawSink
                 throw new ArgumentException("A registered reference cannot change its prepared payload.", nameof(resource));
             return;
         }
+        _admission?.Resource(_resources);
         _resources.Add(resource.Reference, resource);
     }
 
@@ -83,7 +85,12 @@ public sealed class MapDrawRecorder : IMapDrawSink
                     if (!_resources.TryGetValue(part, out var mesh) || mesh.Payload is not MapRigidResource)
                         throw new InvalidOperationException("Foliage model part has no rigid registration.");
         }
+        _admission?.Draw(_draws);
         _draws.Add(draw);
     }
-    public MapDrawSet Snapshot() => new(_resources.Values.ToArray(), _draws.ToArray());
+    public MapDrawSet Snapshot()
+    {
+        _admission?.Snapshot(_resources.Count, _draws.Count);
+        return new(_resources.Values.ToArray(), _draws.ToArray());
+    }
 }

@@ -11,7 +11,10 @@ public readonly record struct MapPortalPlaneTriangle(MapVertexId A, MapVertexId 
 /// <summary>A membership plane only. It supplies no support, drawing, capture or collision faces.</summary>
 public sealed record MapOpeningPlane(string OpeningId, MapSubmissionAnchor Anchor, IReadOnlyList<Vector3> Offsets,
     IReadOnlyList<MapPortalPlaneTriangle> Triangles, IReadOnlyList<MapExactTriangle> ExactTriangles,
-    IReadOnlyList<MapFaceKey> Keys);
+    IReadOnlyList<MapFaceKey> Keys)
+{
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; init; }
+}
 
 /// <summary>Describes the canonical upward plane of absent cells without making them physical.</summary>
 public static class MapOpeningBoundary
@@ -29,6 +32,7 @@ public static class MapOpeningBoundary
         MapSurfacePatch patch = validated.Patch;
         if (opening.Patch != patch.Key || opening.SlotCells.Count == 0)
             throw new MapDocumentException("opening must name absent cells in its patch");
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         Scene.MapSceneAdmission.Current?.ReserveCompilation(checked(4L * opening.SlotCells.Count));
         try
         {
@@ -66,7 +70,12 @@ public static class MapOpeningBoundary
                     keys.Add(new(opening.Id, patch.Key, slot, parent, 0, MapSide.Front));
                 }
             }
-            return new(opening.Id, anchor, offsets.AsReadOnly(), triangles.AsReadOnly(), exact.AsReadOnly(), keys.AsReadOnly());
+            return new(opening.Id, anchor, offsets.AsReadOnly(), triangles.AsReadOnly(), exact.AsReadOnly(), keys.AsReadOnly())
+            {
+                PreparationOwnership = preparation?.Complete(checked(12L * offsets.Capacity +
+                    (long)System.Runtime.CompilerServices.Unsafe.SizeOf<MapPortalPlaneTriangle>() * triangles.Capacity +
+                    144L * exact.Capacity + (long)System.Runtime.CompilerServices.Unsafe.SizeOf<MapFaceKey>() * keys.Capacity))
+            };
 
             MapVertexId Vertex(MapSurfaceVertex vertex)
             {

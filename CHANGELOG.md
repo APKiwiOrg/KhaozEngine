@@ -15,6 +15,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   distance band. Roof layers use the same split for visible and hidden geometry, while exit fades remain ordinary.
 - Preserve flat material colour seams when source meshes are flattened for HLOD, including small colour
   differences at coincident corners (#1540).
+- Keep ordinary bug report text readable on busy machines while still masking secrets, home paths and reporter identity.
 
 ## 21.12.0
 

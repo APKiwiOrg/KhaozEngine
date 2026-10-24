@@ -47,11 +47,11 @@ case changes cannot expose the identity. Null, blank and terms shorter than thre
 masking ordinary text for short names. Supply every identity spelling the game logs.
 
 Matches use `[redacted]`, the existing privacy mask, so a diagnostic never distinguishes which private value stood
-there. The matcher is non-backtracking with the redactor's 250 ms timeout. A throwing callback or enumeration,
-an unsupported pattern, or a combined escaped pattern above 4096 characters masks every section string. A timeout
-masks the whole current string. The callback is not called at startup, on capture, on Cancel or when queued bundles
-are retried. The submission subject used for delivery is unchanged. This covers section text, not screenshots,
-clips or text the player writes in the confirmation screen.
+there. The matcher is non-backtracking with no wall-clock deadline. A throwing callback or enumeration,
+an unsupported pattern, or a combined escaped pattern above 4096 characters masks every section string. Input or
+intermediate strings above 4,194,304 UTF-16 code units are masked whole. The callback is not called at startup,
+on capture, on Cancel or when queued bundles are retried. The submission subject used for delivery is unchanged.
+This covers section text, not screenshots, clips or text the player writes in the confirmation screen.
 
 F10 opens a report by default. In the trigger frame the service freezes the clip, arms the screenshot and captures
 every section, then raises `ReportCaptured`. The confirmation screen opens once the screenshot is taken, usually the

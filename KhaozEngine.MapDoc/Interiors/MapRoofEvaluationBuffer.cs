@@ -14,6 +14,8 @@ public sealed record MapRoofEvaluationBufferResult(MapSceneStatus Status, MapRoo
 /// <summary>Prepared scoped membership and reusable roof intent. Roofs is a live read-only view.</summary>
 public sealed class MapRoofEvaluationBuffer
 {
+    internal MapPreparationReservation? PreparationOwnership { get; private set; }
+    public long RetainedBytes => checked(128L + _scratch.InventoryBytes + _intent.InventoryBytes);
     readonly MapScopedScene _scene;
     readonly MapSpaceMembership _membership;
     readonly MapSpaceMembershipScratch _scratch;
@@ -53,6 +55,7 @@ public sealed class MapRoofEvaluationBuffer
     }
     static MapRoofEvaluationBufferResult PrepareAdmitted(MapScopedScene scene, MapSceneAdmission admission, MapMembershipPreparation demand, bool requireCompletePolicy = false)
     {
+        using var preparation = admission.BeginPreparation();
         if (!admission.TryReservePreparation(demand.Bytes, demand.Faces, out var capacity)) return Refused(capacity!);
         using var precharged = MapSceneAdmission.Suspend();
         if (requireCompletePolicy)
@@ -61,6 +64,7 @@ public sealed class MapRoofEvaluationBuffer
             if (errors.Count != 0) return new(MapSceneStatus.Invalid, null, "Incomplete canonical roof policy. " + string.Join("\n", errors));
         }
         var buffer = new MapRoofEvaluationBuffer(scene, demand);
+        buffer.PreparationOwnership = preparation.Complete(buffer.RetainedBytes);
         return new(scene.Witness.WholeWorldComplete ? MapSceneStatus.WholeWorldComplete : MapSceneStatus.CompleteForScope, buffer, null);
     }
     static MapRoofEvaluationBufferResult Refused(MapSceneCapacity capacity) => new(MapSceneStatus.CapacityExceeded, null, capacity.Message) { Capacity = capacity };

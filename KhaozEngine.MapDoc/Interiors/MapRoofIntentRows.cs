@@ -10,6 +10,7 @@ namespace KhaozEngine.MapDoc.Interiors;
 /// <summary>Immutable visible/hidden rows and reusable per-roof membership flags for both policy adapters.</summary>
 internal sealed class MapRoofIntentRows
 {
+    internal long InventoryBytes => checked(128L + 25L * _rows.Length + _links.Sum(l => 64L + 32L * l.Rooms.Count));
     readonly record struct Link(int Roof, HashSet<string> Rooms, MapExactValue AboveY);
     readonly MapRoofIntent[] _visible, _concealed, _rows;
     readonly Link[] _links;

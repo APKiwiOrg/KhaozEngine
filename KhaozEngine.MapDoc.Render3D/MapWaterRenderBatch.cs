@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.MapDoc.Scene;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -14,21 +15,29 @@ internal sealed record MapWaterRenderPart(MapRenderKey Key, MapSubmissionAnchor 
 
 /// <summary>Immutable canonical inventory and device-free draw plan. Registration fixes one generation and
 /// frames retain the caller's captured look, never the camera's level or a global sea fallback.</summary>
-public sealed class MapWaterRenderBatch
+public sealed class MapWaterRenderBatch : IDisposable
 {
     readonly IReadOnlyList<MapWaterRenderPart> _parts;
     readonly MapFrozenWaterLook _look;
     MapPreparedResource[]? _registered;
     MapResourceStamp? _stamp;
+    MapPreparationInventory? _canonicalOwnership;
     public IReadOnlyList<MapWaterResourceCell> Cells { get; }
     public long RetainedBytes { get; }
-    public long PreparationChargeBytes { get; }
+    internal long CanonicalPreparationBytes { get; }
+    internal long OwnRetainedBytes => RetainedBytes - CanonicalPreparationBytes;
+    internal void OwnCanonical(MapPreparationInventory ownership) => _canonicalOwnership = ownership;
+    internal MapPreparationReservation? PreparationOwnership { get; private set; }
+    internal void Own(MapPreparationReservation ownership)
+    { PreparationOwnership = ownership; PreparationChargeBytes = ownership.Bytes; }
+    public long PreparationChargeBytes { get; private set; }
     internal MapWaterRenderBatch(IReadOnlyList<MapWaterResourceCell> cells, IReadOnlyList<MapWaterRenderPart> parts,
         MapFrozenWaterLook look, long charge)
     {
         Cells = Array.AsReadOnly(cells.ToArray()); _parts = Array.AsReadOnly(parts.ToArray()); _look = look;
         PreparationChargeBytes = charge;
-        RetainedBytes = checked(512L + cells.Sum(c => 256L + c.Regions.Sum(r => 128L + r.Triangles.Count * 144L)) +
+        CanonicalPreparationBytes = cells.Sum(MapScopedWaterResult.CellInventoryBytes);
+        RetainedBytes = checked(512L + 8L * cells.Count + CanonicalPreparationBytes +
             parts.Sum(p => 512L + ModelVertex.SizeInBytes * (long)p.Payload.BorrowMesh.Vertices.Length +
                 4L * p.Payload.BorrowMesh.Indices32.Length + p.Payload.BorrowClipData.Length));
     }
@@ -48,4 +57,6 @@ public sealed class MapWaterRenderBatch
             sink.Write(new(_registered[i].Reference, MapDrawChannels.Colour, _parts[i].Anchor, Matrix4x4.Identity,
                 MapRenderTransform.FocusLocal(frame.Focus, _parts[i].Anchor), null, null, new MapWaterFrame(_look), null));
     }
+    public void Dispose() { PreparationOwnership?.Dispose(); _canonicalOwnership?.Dispose(); }
+
 }

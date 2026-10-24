@@ -14,12 +14,15 @@ public static class MapCaptureFocus
     {
         if (request.Focus is { } explicitFocus) return explicitFocus;
         if (request.Route == MapCaptureRoute.View) return request.Framing.Eye;
+        using var preparation = MapSceneAdmission.Current?.BeginPreparation();
+        MapSceneAdmission.Current?.ReserveBytes(512);
         var b = request.Scope.DrawBounds; double x = b.MinX / 2 + b.MaxX / 2, z = b.MinZ / 2 + b.MaxZ / 2;
         var heights = new List<(string Owner, double Y)>();
         var surfaces = scene.Surfaces;
         foreach (var surface in surfaces.Refs.Where(s => s.Role == MapSurfaceRole.SupportFloor))
             foreach (var patch in surfaces.Patches.Values.Where(p => p.Key.SurfaceId == surface.Id))
             {
+                using var patchPreparation = MapSceneAdmission.Current?.BeginPreparation();
                 var compiled = MapEffectiveGeometry.TransformPatch(scene.SurfaceView, MapSurfaceCompiler.Compile(surface, patch));
                 foreach (var face in compiled.Faces)
                 {
@@ -31,7 +34,8 @@ public static class MapCaptureFocus
                     double v = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / den;
                     if (u < -1e-9 || v < -1e-9 || u + v > 1 + 1e-9) continue;
                     double y = u * t.A.Y.ToDouble() + v * t.B.Y.ToDouble() + (1 - u - v) * t.C.Y.ToDouble();
-                    if (y >= b.MinY && y <= b.MaxY && !heights.Any(h => h.Owner == surface.Id && Math.Abs(h.Y - y) < 1e-7)) heights.Add((surface.Id, y));
+                    if (y >= b.MinY && y <= b.MaxY && !heights.Any(h => h.Owner == surface.Id && Math.Abs(h.Y - y) < 1e-7))
+                    { preparation?.Reserve(64); heights.Add((surface.Id, y)); }
                 }
             }
         if (heights.Count != 1) throw new ArgumentException("FocusUnavailable");

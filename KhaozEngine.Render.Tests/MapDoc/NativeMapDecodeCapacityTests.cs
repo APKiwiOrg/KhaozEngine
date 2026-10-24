@@ -9,6 +9,45 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class NativeMapDecodeCapacityTests
 {
     [Fact]
+    public void CachedInput_CountsInEachWindowAndOnceInTheRoot()
+    {
+        using var fixture = ResidencyFixture.Placement(); var state = fixture.State(ResidencyFixture.Window());
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100_000));
+        using var active = admission.Enter(); using var cache = new MapRenderAssetCache();
+        var first = cache.Acquire(state.Closure, ["prop-a"], [], state.Extents, new(new())).Input!;
+        long bytes = admission.RetainedBytes;
+        Assert.Equal(first.RetainedBytes, bytes);
+        using (admission.LimitPreparation(bytes + 4096, "MaxPlanBytes"))
+        {
+            var loaded = cache.Acquire(state.Closure, ["prop-a"], [], state.Extents, new(new()));
+            Assert.True(loaded.Status == MapRenderAssetStatus.Complete, loaded.Detail);
+            using var second = loaded.Input!;
+            Assert.Equal(bytes, admission.RetainedBytes);
+            using var workspace = admission.Workspace(); workspace.Reserve(4096);
+            var error = Assert.Throws<MapSceneCapacityException>(() => workspace.Reserve(1));
+            Assert.Equal(new MapSceneCapacity("MaxPlanBytes", bytes + 4097, bytes + 4096), error.Capacity);
+        }
+        first.Dispose();
+        Assert.Equal(0, admission.RetainedBytes);
+    }
+
+    [Fact]
+    public void CacheDecode_AdmitsActualLiveDemandWithinALargerDeclaredEnvelope()
+    {
+        using var fixture = ResidencyFixture.Placement();
+        var state = fixture.State(ResidencyFixture.Window());
+        var scene = new MapSceneAdmission(new(MaxPreparedBytes: 32768));
+        using var active = scene.Enter();
+        using var cache = new MapRenderAssetCache();
+        var result = cache.Acquire(state.Closure, ["prop-a"], [], state.Extents, new(new(MaxPeakBytes: 65536)));
+        Assert.True(result.Status == MapRenderAssetStatus.Complete, result.Detail);
+        Assert.True(scene.RetainedBytes > 0);
+        result.Input!.Dispose();
+        Assert.Equal(0, scene.WorkspaceBytes);
+        Assert.Equal(0, scene.RetainedBytes);
+    }
+
+    [Fact]
     public void CompositionRefusal_RetainsTheCallerPlanWindow()
     {
         using var fixture = ResidencyFixture.Placement();

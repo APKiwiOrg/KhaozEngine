@@ -146,6 +146,7 @@ internal sealed class MapMembershipExact
 /// <summary>Immutable coefficient magnitude and a certified enclosing binary64 interval.</summary>
 internal sealed class MapMembershipCoefficient
 {
+    internal long InventoryBytes => 48L + _magnitude.LongLength;
     readonly byte[] _magnitude;
     readonly int _sign;
     internal MapMembershipInterval Interval { get; }
@@ -198,6 +199,7 @@ internal readonly record struct MapMembershipInterval(double Low, double High)
 /// <summary>Cleared-denominator affine numerator, with a positive constant denominator for heights.</summary>
 internal sealed class MapMembershipAffine
 {
+    internal long InventoryBytes => 64L + X.InventoryBytes + Z.InventoryBytes + C.InventoryBytes + D.InventoryBytes;
     internal MapMembershipCoefficient X { get; }
     internal MapMembershipCoefficient Z { get; }
     internal MapMembershipCoefficient C { get; }

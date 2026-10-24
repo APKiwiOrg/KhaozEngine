@@ -91,12 +91,17 @@ internal sealed class MapWaterClipHalo
     {
         // A resident cell can have wet geometry wholly beyond this halo. Reading it would make this resource's
         // bytes and digest depend on unrelated window memberships. Test actual original-domain coverage.
+        using var workspace = _admission.Workspace();
         foreach (var region in cell.Regions)
             foreach (var triangle in region.Triangles)
             {
-                _pairs.Charge(1); _admission.ReserveBytes(512);
-                if (MapWaterPolygons.ClipToRect(new[] { MapWidePoint.From(triangle.A).Xz, MapWidePoint.From(triangle.C).Xz,
+                _pairs.Charge(1); workspace.Reserve(512);
+                try
+                {
+                    if (MapWaterPolygons.ClipToRect(new[] { MapWidePoint.From(triangle.A).Xz, MapWidePoint.From(triangle.C).Xz,
                     MapWidePoint.From(triangle.B).Xz }, halo.Min, halo.Max).Count != 0) return true;
+                }
+                finally { workspace.Release(512); }
             }
         return false;
     }

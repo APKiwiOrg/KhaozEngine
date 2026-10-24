@@ -22,11 +22,24 @@ public sealed class MapPreparedInputLease : IDisposable
         internal int Owners = 1;
         internal Action? FinalRelease;
         internal long? RetainedOverride;
+        internal long? OwnBytes;
+        internal IReadOnlyList<MapPreparedInputLease> Pieces = [];
         internal MapRenderAssets Assets => assets;
         internal MapRenderMaterials.MaterialSet Materials => materials;
         internal string ProofDigest => proofDigest;
     }
     readonly Shared _shared;
+    MapPreparedInputBudget? _budgetView;
+    internal void BindBudget(MapPreparedInputBudget? view) => _budgetView = view;
+    internal IEnumerable<(object Identity, long Bytes)> BudgetInventory
+    {
+        get
+        {
+            yield return (_shared, _shared.OwnBytes ?? RetainedBytes);
+            foreach (var piece in _shared.Pieces)
+                foreach (var allocation in piece.BudgetInventory) yield return allocation;
+        }
+    }
     int _disposed;
     MapPreparedInputLease(Shared shared) => _shared = shared;
     void RequireLive() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -74,7 +87,8 @@ public sealed class MapPreparedInputLease : IDisposable
             foreach (var piece in pieces) retained.Add(piece.Retain());
             var assets = MapRenderAssets.Borrow(closure, pieces.SelectMany(p => p.Assets.ById.Values));
             var materials = new MapRenderMaterials.MaterialSet(pieces.SelectMany(p => p.Materials).ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal), budget, bytes);
-            var lease = new MapPreparedInputLease(new(assets, materials, proof) { RetainedOverride = bytes + pieces.Sum(p => p.RetainedBytes) });
+            var lease = new MapPreparedInputLease(new(assets, materials, proof)
+            { RetainedOverride = bytes + pieces.Sum(p => p.RetainedBytes), OwnBytes = bytes, Pieces = retained });
             lease.OnFinalRelease(() => { foreach (var piece in retained) piece.Dispose(); });
             return lease;
         }
@@ -91,7 +105,7 @@ public sealed class MapPreparedInputLease : IDisposable
         lock (_shared.Gate)
         {
             RequireLive(); checked { _shared.Owners++; }
-            return new(_shared);
+            return new(_shared) { _budgetView = _budgetView?.Retain() };
         }
     }
     public void Dispose()
@@ -99,6 +113,7 @@ public sealed class MapPreparedInputLease : IDisposable
         lock (_shared.Gate)
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            _budgetView?.Release(); _budgetView = null;
             if (--_shared.Owners != 0) return;
             try { _shared.Materials.Dispose(); _shared.Assets.Dispose(); }
             finally { _shared.FinalRelease?.Invoke(); }

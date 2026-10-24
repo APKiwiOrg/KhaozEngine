@@ -27,6 +27,7 @@ public static class MapWaterScopedCompiler
         limits ??= new(); limits.Validate();
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var admitted = admission.Enter();
+        using var preparation = admission.BeginPreparation();
         var pairs = new MapWaterWorkBudget(limits.MaxPairChecks, compile: true);
         var witnesses = new List<MapSceneWitness>();
         var cellKeys = new List<MapSceneResourceKey>();
@@ -45,6 +46,8 @@ public static class MapWaterScopedCompiler
             var water = scene.Water;
             foreach (var body in (water?.Bodies ?? []).OrderBy(b => b.Id, StringComparer.Ordinal))
             {
+                using var bodyPreparation = admission.BeginPreparation();
+                int bodyStart = allCells.Count;
                 var meter = new MapWaterWorkMeter(limits);
                 meter.ChargeDomain(body.Domain);
                 var effective = MapEffectiveWater.Resolve(scene.SurfaceView, body, pairs);
@@ -75,6 +78,8 @@ public static class MapWaterScopedCompiler
                 }
                 foreach (var cell in cells.OrderBy(c => c.Owner.X).ThenBy(c => c.Owner.Z).ThenBy(c => c.X).ThenBy(c => c.Z))
                 {
+                    using var cellPreparation = admission.BeginPreparation();
+                    int cellStart = allCells.Count;
                     // All pieces of the body participate, including pieces entirely outside the caller window.
                     // Candidate lookup avoids a full body-pieces traversal for every selected lattice cell.
                     var intersecting = index.Overlapping(new(cell.Min, cell.Max), pairs, admission);
@@ -128,7 +133,11 @@ public static class MapWaterScopedCompiler
                         // Membership is evaluated against the already complete canonical payload.
                         if (drawCells.Contains(cell) && Intersects(canonical, drawBounds, pairs, admission)) output.Add(canonical);
                     }
+                    cellPreparation.Complete(allCells.Skip(cellStart)
+                        .Sum(c => 256L + c.Regions.Sum(r => 128L + 144L * r.Triangles.Count)));
                 }
+                bodyPreparation.Complete(allCells.Skip(bodyStart)
+                    .Sum(c => 256L + c.Regions.Sum(r => 128L + 144L * r.Triangles.Count)));
             }
             return Result(MapSceneStatus.CompleteForScope, output);
         }
@@ -142,6 +151,8 @@ public static class MapWaterScopedCompiler
         MapScopedWaterResult Result(MapSceneStatus status, IReadOnlyList<MapWaterResourceCell> cells)
         {
             bool complete = status == MapSceneStatus.CompleteForScope;
+            // Failure witnesses are control-plane diagnostics, outside the exhausted preparation attempt.
+            using IDisposable? diagnostic = complete ? null : MapSceneAdmission.Suspend();
             var required = witnesses.SelectMany(w => w.Required).Concat(cellKeys).Distinct().OrderBy(k => k.Kind, StringComparer.Ordinal).ThenBy(k => k.Id, StringComparer.Ordinal).ToArray();
             var present = witnesses.SelectMany(w => w.Present).Concat(complete ? cellKeys : []).Distinct().OrderBy(k => k.Kind, StringComparer.Ordinal).ThenBy(k => k.Id, StringComparer.Ordinal).ToArray();
             var acquired = scene.Witness with
@@ -168,6 +179,14 @@ public static class MapWaterScopedCompiler
                 KnownEmpty = complete ? scene.Witness.KnownEmpty : [],
                 Unavailable = acquired.Unavailable
             };
+            long retained = complete ? checked(512L + 64L * (required.Length + present.Length) +
+                allCells.Sum(c => 256L + c.Regions.Sum(r => 128L + 144L * r.Triangles.Count))) : 0;
+            using var owned = complete ? preparation.Complete(retained, publishToParent: false) : null;
+            var ownership = complete ? MapPreparationInventory.Acquire(admission,
+                allCells.Select(c => ((object)c, MapScopedWaterResult.CellInventoryBytes(c)))
+                    .Append((new object(), checked(retained - allCells.Sum(MapScopedWaterResult.CellInventoryBytes)))),
+                ownership: owned) : null;
+            if (ownership is not null) preparation.TrackParentCleanup(ownership);
             return new(status, Array.AsReadOnly(cells.ToArray()), requested, acquired)
             {
                 Limits = scene.Source.Data.Limits,
@@ -175,7 +194,8 @@ public static class MapWaterScopedCompiler
                 MotionPaddingMetres = scene.Scope.MotionPaddingMetres,
                 CandidateCells = candidates,
                 PairChecks = pairs.Charged,
-                PreparationChargeBytes = admission.RetainedBytes
+                PreparationOwnership = ownership,
+                PreparationChargeBytes = retained
             };
         }
     }
@@ -183,6 +203,7 @@ public static class MapWaterScopedCompiler
     static HashSet<Cell> Candidates(IReadOnlyList<IReadOnlyList<MapWideXz>> parts, MapBox3 window, float tileSize,
         float size, MapSceneAdmission admission, MapWaterWorkBudget pairs, ref long candidates)
     {
+        using var preparation = admission.BeginPreparation();
         var result = new HashSet<Cell>();
         foreach (var part in parts)
         {
@@ -215,6 +236,7 @@ public static class MapWaterScopedCompiler
                         }
                 }
         }
+        preparation.Complete(checked(128L * result.Count));
         return result;
     }
 
@@ -237,11 +259,16 @@ public static class MapWaterScopedCompiler
 
     static bool Intersects(MapWaterResourceCell cell, MapBox3 window, MapWaterWorkBudget pairs, MapSceneAdmission admission)
     {
+        using var workspace = admission.Workspace();
         foreach (var triangle in cell.Regions.SelectMany(r => r.Triangles))
         {
-            pairs.Charge(1); admission.ReserveBytes(512);
-            if (MapWaterPolygons.ClipToRect(new[] { MapWidePoint.From(triangle.A).Xz, MapWidePoint.From(triangle.C).Xz, MapWidePoint.From(triangle.B).Xz },
-                Point(window.MinX, window.MinZ), Point(window.MaxX, window.MaxZ)).Count != 0) return true;
+            pairs.Charge(1); workspace.Reserve(512);
+            try
+            {
+                if (MapWaterPolygons.ClipToRect(new[] { MapWidePoint.From(triangle.A).Xz, MapWidePoint.From(triangle.C).Xz, MapWidePoint.From(triangle.B).Xz },
+                    Point(window.MinX, window.MinZ), Point(window.MaxX, window.MaxZ)).Count != 0) return true;
+            }
+            finally { workspace.Release(512); }
         }
         return false;
     }

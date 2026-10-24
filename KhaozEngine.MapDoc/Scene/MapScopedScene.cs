@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Storage;
@@ -11,6 +12,18 @@ namespace KhaozEngine.MapDoc.Scene;
 /// <summary>A neutral immutable scope snapshot. It makes no complete-document resource claim.</summary>
 public sealed class MapScopedScene
 {
+    internal MapPreparationReservation? PreparationOwnership { get; set; }
+    internal long InventoryBytes
+    {
+        get
+        {
+            var inventory = new MapSceneInventory();
+            return checked(512L + inventory.Product(_effective) + inventory.Surfaces(_surfaces) + inventory.View(SurfaceView) +
+                64L * (Witness.Required.Count + Witness.Present.Count + Witness.KnownEmpty.Count + Witness.Unavailable.Count) +
+                (_foliage?.Layers.Sum(l => MapSceneResourceBounds.FoliageMetadataBytes(l) +
+                    l.Chunks.Count * (long)MapFoliageChunk.ByteLength) ?? 0));
+        }
+    }
     readonly MapSceneSource _source;
     readonly MapEffectiveResolutionProduct _effective;
     internal MapEffectiveResolutionProduct Product => _effective;

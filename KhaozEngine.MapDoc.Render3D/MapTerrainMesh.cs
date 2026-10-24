@@ -19,6 +19,7 @@ internal static class MapTerrainMesh
     internal static void Admit(IEnumerable<MapTerrainPartition> partitions,
         IReadOnlyDictionary<MapFaceKey, MapTerrainCanonicalFace> canonical, MapSceneAdmission admission)
     {
+        using var workspace = admission.Workspace();
         // Admit the uncapped world-space refinement demand before any render grid or vertex stream exists.
         foreach (var partition in partitions)
         {
@@ -26,9 +27,25 @@ internal static class MapTerrainMesh
             foreach (var triangle in Triangles(partition, canonical[partition.Face].Face.Role))
             {
                 int divisions = Divisions(triangle, IsFeather(partition.Paint));
-                admission.ReserveCompilation((long)divisions * divisions);
+                long faces = (long)divisions * divisions;
+                admission.ReserveCompilation(faces, workspace);
+                workspace.Release(checked(1280L * faces));
             }
         }
+    }
+
+    internal static long WorkspaceBytes(IEnumerable<MapTerrainPartition> partitions,
+        IReadOnlyDictionary<MapFaceKey, MapTerrainCanonicalFace> canonical)
+    {
+        long faces = 0;
+        foreach (var partition in partitions)
+            if (NativeMapTerrain.LayerIds(partition.Paint).Length != 0)
+                foreach (var triangle in Triangles(partition, canonical[partition.Face].Face.Role))
+                {
+                    long divisions = Divisions(triangle, IsFeather(partition.Paint));
+                    faces = checked(faces + divisions * divisions);
+                }
+        return checked(1280L * faces);
     }
 
     internal static MapTerrainResource Build(IEnumerable<MapTerrainPartition> partitions,

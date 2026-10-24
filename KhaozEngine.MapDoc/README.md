@@ -190,7 +190,7 @@ scene, no completeness claim and a finding. Whole-world completeness additionall
 increase the captured query budgets. A manifest replacement is Stale even when the requested payloads still exist.
 
 Source ceilings bound tiles, metadata rows, memberships, scanned bytes and retained metadata before retention.
-Acquisition ceilings separately bound selected resources, patch scopes, prepared faces and copied/prepared bytes.
+Acquisition ceilings separately bound selected resources, patch scopes, prepared faces and peak workspace plus retained inventory.
 The internal admission allowance covers stored reads, resident/generated copies, support queries and paint compilation.
 External surface producers cannot participate in this internal protocol and scene acquisition refuses them before reads.
 Released surface calls without an admission allowance keep their existing behavior and refusal order.
@@ -199,6 +199,9 @@ nodes tested, including rejected siblings. The stable median tree has leaves of 
 separated-growth query visits at most `1 + 2 * ceil(log2(ceil(N / 8)))` nodes. Dependency discoveries report their own
 additional visits. Copied/prepared byte charges include intermediate work and are separate from decoded render asset
 retention, which is owned by the optional rendering package's selected input lease.
+Scoped water compilation results are disposable owners. Dispose a `MapScopedWaterResult` after its last
+consumer. Native render batches retain their selected canonical cells independently, sharing each cell's
+allocation receipt with the compiler result until the last owner releases it.
 
 ## Frame-local compiled geometry
 
@@ -1428,9 +1431,19 @@ not the whole world. Scope defaults admit 4096 selected resources, 256 patch sco
 faces and 67,108,864 prepared bytes before work. Point-query limits remain 256 patches, 4096 faces,
 64 intersections, 32 page reads, 64 record reads and depth 8. Explicit `MapQueryLimits` propagate through
 nested native acquisition, dependency closure and retained foliage, water, cluster and membership scopes.
+
+The prepared-byte allowance bounds live workspace plus unique retained product inventory and applicable
+borrowed-input obligations. It does not count cumulative allocation or measure the CLR heap or RSS.
+Temporary reservations end when their consumer finishes. Returned arrays, captured dependencies, mesh
+copies and reusable frame scratch keep their ownership charge until release. Array growth admits old
+and replacement storage together. Failed reservations change no byte counters. An observed peak is
+separate from current workspace and retained bytes. Reads, source UTF-8 work, faces, scopes and selected
+resources keep their cumulative work or count semantics. Child plan views share this same ledger and
+include reused context and selected decoded input, without duplicating global ownership.
 Query capacity results preserve the declared limit, demand and allowance. `IndexNodesVisited` counts rejected siblings.
 Capacity refusals retain a typed `MapSceneCapacity` in the source or scoped result, with `LimitName`,
-`Requested` and `Allowance`. Requested demand uses decimal to retain byte sums beyond int64.
+`Requested` and `Allowance`. Byte demand is current eligible live inventory plus the attempted reservation.
+The declared allowance and decimal demand survive sums beyond int64.
 The same values appear in `Findings`. `MapSceneCapacityException` exposes the same typed values. A bounded scan reports the first
 excess demand rather than continuing work to count the rest.
 

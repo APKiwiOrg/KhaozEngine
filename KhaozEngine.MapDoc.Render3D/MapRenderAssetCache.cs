@@ -45,18 +45,29 @@ public sealed class MapRenderAssetCache : IDisposable
                 w.WriteStartArray(); foreach (string id in selected) w.WriteStringValue(id); w.WriteEndArray();
                 w.WriteStartArray(); foreach (string id in required) w.WriteStringValue(id); w.WriteEndArray(); w.WriteEndArray();
             }));
-            if (_inputs.TryGetValue(key, out var cached)) return new(MapRenderAssetStatus.Complete, cached.Retain(), null);
-            // The full remaining decoder peak is admitted before any strict decode, including cached-set misses.
+            if (_inputs.TryGetValue(key, out var cached))
+            {
+                try { return new(MapRenderAssetStatus.Complete, Bind(cached), null); }
+                catch (MapSceneCapacityException error)
+                { return new(MapRenderAssetStatus.CapacityExceeded, null, error.Message) { Capacity = error.Capacity }; }
+            }
+            // CPU headroom is reserved before decode. The scene ledger observes actual decoder ownership and workspace.
             MapSceneCapacity? capacity = null;
             var cpu = _admission?.TryReserveCpu(budget.RemainingBytes, out capacity);
             if (capacity is not null) return new(MapRenderAssetStatus.CapacityExceeded, null, capacity.Message) { Capacity = capacity };
             var added = new List<string>();
             try
             {
+                var assetKeys = selected.ToDictionary(id => id, id => allowance.Key(Fingerprint(closure, id, proofs)), StringComparer.Ordinal);
+                var materialKeys = required.ToDictionary(id => id, id => Fingerprint(closure, id, null), StringComparer.Ordinal);
+                using var borrowed = MapPreparedInputBudget.Acquire(assetKeys.Values.Concat(materialKeys.Values)
+                    .Where(_pieces.ContainsKey).Select(k => _pieces[k]));
+                using var decoderWorkspace = new MapRenderDecodeWorkspace(budget);
+                budget = decoderWorkspace.Budget;
                 var pieces = new List<MapPreparedInputLease>();
                 foreach (string id in selected)
                 {
-                    string pieceKey = allowance.Key(Fingerprint(closure, id, proofs));
+                    string pieceKey = assetKeys[id];
                     if (!_pieces.TryGetValue(pieceKey, out var piece))
                     {
                         long before = budget.OwnedBytes;
@@ -73,7 +84,7 @@ public sealed class MapRenderAssetCache : IDisposable
                 }
                 foreach (string id in required)
                 {
-                    string pieceKey = Fingerprint(closure, id, null);
+                    string pieceKey = materialKeys[id];
                     if (!_pieces.TryGetValue(pieceKey, out var piece))
                     {
                         long before = budget.OwnedBytes;
@@ -87,21 +98,32 @@ public sealed class MapRenderAssetCache : IDisposable
                 cancellation.ThrowIfCancellationRequested();
                 long owned = budget.OwnedBytes;
                 var input = MapPreparedInputLease.Compose(closure, proofs.Digest, pieces, budget);
-                Track(input, budget.OwnedBytes - owned, cpu, encoded); _inputs.Add(key, input);
-                return new(MapRenderAssetStatus.Complete, input.Retain(), null);
+                Track(input, budget.OwnedBytes - owned, cpu, encoded);
+                decoderWorkspace.Finish();
+                MapPreparedInputLease selectedInput;
+                try { selectedInput = Bind(input, decoderWorkspace.Workspace); }
+                catch { input.Dispose(); throw; }
+                _inputs.Add(key, input);
+                return new(MapRenderAssetStatus.Complete, selectedInput, null);
             }
             catch (OperationCanceledException)
             {
                 foreach (string pieceKey in added) { _pieces[pieceKey].Dispose(); _pieces.Remove(pieceKey); }
                 throw;
             }
-            catch (Exception error) when (error is MapRenderAssetRefusal or MapDocumentException or GltfDecodeRefusal or OverflowException)
+            catch (Exception error) when (error is MapSceneCapacityException or MapRenderAssetRefusal or MapDocumentException or GltfDecodeRefusal or OverflowException)
             {
                 foreach (string pieceKey in added) { _pieces[pieceKey].Dispose(); _pieces.Remove(pieceKey); }
                 return new(MapRenderAssets.Status(error), null, error.Message) { Capacity = MapRenderDecodeCapacity.From(error) };
             }
             finally { cpu?.Dispose(); }
         }
+    }
+    static MapPreparedInputLease Bind(MapPreparedInputLease input, MapPreparationReservation? workspace = null)
+    {
+        var selected = input.Retain();
+        try { selected.BindBudget(MapPreparedInputBudget.Acquire([input], workspace)); return selected; }
+        catch { selected.Dispose(); throw; }
     }
     void Track(MapPreparedInputLease input, long owned, MapRenderAdmission.CpuLease? cpu, MapRenderAdmission.CpuLease? encoded)
     {

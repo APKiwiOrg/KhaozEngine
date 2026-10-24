@@ -35,7 +35,7 @@ A `RawSection` must pass through `Finish` before anything leaves the machine. On
 `CapturedSection` is public so a viewer can hold sections read back from a bundle, and the bundle writer trusts a
 hand-built one to be finished output. Keep `Write` cheap and write many
 short strings. One huge string costs escape scratch before the capture cap applies, and the redactor masks whole
-any string it cannot finish within its match timeout.
+any input or intermediate string above 4,194,304 UTF-16 code units. Matching has no wall-clock deadline.
 
 ## Drafts and bundles
 

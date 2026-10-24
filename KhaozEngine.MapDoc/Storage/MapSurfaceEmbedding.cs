@@ -18,7 +18,9 @@ internal static class MapSurfaceEmbedding
         int count = 0;
         foreach (MapSurfacePatch patch in set.Patches.Values)
         {
-            int length = checked(MapSurfacePatchCodec.Encode(patch).Length + (count++ == 0 ? 0 : 1));
+            byte[] encoded = MapSurfacePatchCodec.Encode(patch, out var ownership);
+            using var consumed = ownership;
+            int length = checked(encoded.Length + (count++ == 0 ? 0 : 1));
             if (length > maxEncodedBytes - bytes) throw Limit();
             bytes += length;
         }

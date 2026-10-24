@@ -27,7 +27,8 @@ internal static class MapSceneAcquisition
     {
         var data = source.Data;
         var admission = sharedAdmission ?? new MapSceneAdmission(data.Limits);
-        long visits = 0, metadataRows = 0, memberships = 0;
+        using var preparation = admission.BeginPreparation();
+        long visits = 0, metadataRows = 0, memberships = 0, retained = 0;
         string digest = "";
         var required = new HashSet<MapSceneResourceKey>();
         var present = new HashSet<MapSceneResourceKey>();
@@ -58,6 +59,7 @@ internal static class MapSceneAcquisition
             {
                 if (required.Contains(key)) return;
                 admission.BeforeResource(key);
+                admission.ReserveBytes(512);
                 required.Add(key);
                 metadataRows++;
                 if (data.Producing.TryGetValue(key, out var id)) AddOwner(id);
@@ -101,6 +103,7 @@ internal static class MapSceneAcquisition
             while (pending.Count != 0)
             {
                 string id = pending.Dequeue();
+                using var ownerPreparation = admission.BeginPreparation();
                 foreach (string dependency in data.Dependencies[id]) { memberships++; AddOwner(dependency); }
                 var owner = data.Owners[id];
                 foreach (var key in owner.Resources)
@@ -139,6 +142,7 @@ internal static class MapSceneAcquisition
             var selectedFoliage = required.Where(k => k.Kind == "Foliage").ToArray();
             var foliage = AcquireFoliage(data, selectedFoliage, admission, required, present, empty, unavailable, foliageRequest);
             if (unavailable.Count != 0) throw new MapSceneSourceException(MapSceneStatus.Incomplete, "Required foliage density is unavailable.");
+            admission.ReserveBytes(4096);
             var input = Merge(data, owners.Select(id => data.Owners[id]).ToArray());
             var acquiredNative = AcquireNative(data, nativeNeeded, admission, scope.Surfaces.Limits);
             foreach (var patch in acquiredNative.Patches) input.Surfaces.Patches.Add(patch.Key, patch.Value);
@@ -193,6 +197,8 @@ internal static class MapSceneAcquisition
             MapSceneSource.CheckManifest(data.Directory, data.ManifestDigest);
             var witness = Witness(true, whole);
             var scene = new MapScopedScene(source, scope, witness, product, view, foliage);
+            retained = scene.InventoryBytes;
+            scene.PreparationOwnership = preparation.Complete(retained);
             return new(whole ? MapSceneStatus.WholeWorldComplete : MapSceneStatus.CompleteForScope, scene, witness, Work(true));
         }
         catch (Exception error) when (MapSceneSource.Classify(error) is not null)
@@ -200,7 +206,7 @@ internal static class MapSceneAcquisition
             var status = Enum.Parse<MapSceneStatus>(MapSceneSource.Classify(error)!.Value.ToString());
             return new(status, null, Witness(false, false), Work(false)) { Capacity = MapSceneCapacity.From(error), Findings = Array.AsReadOnly(new[] { error.Message }) };
         }
-        MapSceneWork Work(bool accepted) => new(0, metadataRows, memberships, 0, accepted ? admission.RetainedBytes : 0,
+        MapSceneWork Work(bool accepted) => new(0, metadataRows, memberships, 0, accepted ? retained : 0,
             admission.PreparedFaces, admission.PayloadReads, visits);
         MapSceneWitness Witness(bool complete, bool whole) => new(source.ClosureHash, source.SourceGeneration, digest,
             Ordered(required), Ordered(present), complete ? Ordered(empty) : Array.Empty<MapSceneResourceKey>(), Ordered(unavailable), complete, whole)
@@ -293,6 +299,7 @@ internal static class MapSceneAcquisition
                 long bytes = MapFoliageChunk.ByteLength;
                 if (data.FoliageStorage is { } storage && storage.TryGetChunk(layer.Id, chunkKey, out var row) &&
                     storage.TryGetPack(layer.Id, row.OwnerRegion, out var pack)) bytes = checked(pack.ByteLength + pack.ChunkCount * (long)MapFoliageChunk.ByteLength);
+                using var chunkPreparation = admission.BeginPreparation();
                 admission.BeforePayload(bytes);
                 MapFoliageChunkRead read;
                 if (data.FoliageStorage is { } stored) read = stored.Read(layer.Id, chunkKey);
@@ -303,6 +310,7 @@ internal static class MapSceneAcquisition
                 }
                 if (read.Status != MapFoliageReadStatus.Found || read.Chunk is null) { unavailable.Add(key); continue; }
                 chunks.Add(read.Chunk); present.Add(key);
+                chunkPreparation.Complete(MapFoliageChunk.ByteLength);
             }
             long metadataBytes = checked(MapSceneResourceBounds.FoliageMetadataBytes(layer) - layer.ChunkDigests.Count * 80L + keys.Length * 80L);
             admission.BeforeInputBytes(metadataBytes);

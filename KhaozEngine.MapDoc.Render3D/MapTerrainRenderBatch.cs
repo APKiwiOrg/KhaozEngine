@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.MapDoc.Scene;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -24,8 +25,8 @@ internal sealed record MapTerrainPart(MapRenderKey Key, MapSubmissionAnchor Anch
 
 /// <summary>Immutable CPU terrain preparation. Keep the batch alive while using its registrations. Its input lease
 /// retains decoded material ownership independently of the caller's original lease. RetainedBytes charges owned
-/// geometry and provenance, InputRetainedBytes reports the shared decoded charge, and PreparationChargeBytes also
-/// includes all charged intermediate compilation work.</summary>
+/// geometry and provenance, InputRetainedBytes reports the shared decoded charge, and PreparationChargeBytes
+/// reports the retained ownership receipt after temporary compilation storage is released.</summary>
 public sealed class MapTerrainRenderBatch : IDisposable
 {
     const MapDrawChannels TerrainChannels = MapDrawChannels.Colour | MapDrawChannels.Shadow | MapDrawChannels.Camera |
@@ -40,7 +41,10 @@ public sealed class MapTerrainRenderBatch : IDisposable
     public IReadOnlyList<MapTerrainFinding> Findings { get; }
     public long RetainedBytes { get; }
     public long InputRetainedBytes => _input.RetainedBytes;
-    public long PreparationChargeBytes { get; }
+    internal MapPreparationReservation? PreparationOwnership { get; private set; }
+    internal void Own(MapPreparationReservation ownership)
+    { PreparationOwnership = ownership; PreparationChargeBytes = ownership.Bytes; }
+    public long PreparationChargeBytes { get; private set; }
     internal MapTerrainRenderBatch(MapPreparedInputLease input, IReadOnlyList<MapTerrainCanonicalFace> canonical,
         IReadOnlyList<MapTerrainPartition> partitions, IReadOnlyList<MapTerrainPart> parts,
         IReadOnlyList<MapTerrainFinding> findings, long charge)
@@ -48,7 +52,7 @@ public sealed class MapTerrainRenderBatch : IDisposable
         _input = input.Retain(); _parts = Array.AsReadOnly(parts.ToArray());
         CanonicalFaces = Array.AsReadOnly(canonical.ToArray()); Partitions = Array.AsReadOnly(partitions.ToArray());
         Findings = Array.AsReadOnly(findings.ToArray()); PreparationChargeBytes = charge;
-        RetainedBytes = checked(512L + canonical.Count * 1280L + partitions.Sum(p => 128L + 48L * p.Polygon.Count) +
+        RetainedBytes = checked(512L + canonical.Count * NativeMapTerrain.CanonicalRowBytes + partitions.Sum(p => 128L + 48L * p.Polygon.Count) +
             parts.Sum(p => 512L + ModelVertex.SizeInBytes * (long)p.Payload.BorrowMesh.Vertices.Length +
                 4L * p.Payload.BorrowMesh.Indices32.Length + 80L * p.Payload.FaceKeys.Count) + 128L * findings.Count +
             parts.Select(p => p.Payload.Materials).Distinct().Sum(m => 128L + 64L * m.Layers.Count));
@@ -78,5 +82,5 @@ public sealed class MapTerrainRenderBatch : IDisposable
         }
     }
 
-    public void Dispose() { if (_disposed) return; _disposed = true; _input.Dispose(); }
+    public void Dispose() { if (_disposed) return; _disposed = true; _input.Dispose(); PreparationOwnership?.Dispose(); }
 }

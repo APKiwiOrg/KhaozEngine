@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -41,7 +40,8 @@ public static class MapSurfaceSemantics
     }
     public static string PatchDigest(MapSurfacePatch patch)
     {
-        byte[] bytes = MapSurfacePatchCodec.Encode(patch);
+        byte[] bytes = MapSurfacePatchCodec.Encode(patch, out var ownership);
+        using var retained = ownership;
         using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(Encoding.UTF8.GetBytes("kemap/surface-patch/1\0"));
         hash.AppendData(bytes);
@@ -75,9 +75,8 @@ public static class MapSurfaceSemantics
             throw new MapDocumentException("invalid surface semantic metadata");
         MapSurfaceJson.RequirePaintPriority(surface);
         _ = surface.Frame.WorldXz(MapLatticeAddress.Corner(0, 0));
-        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        hash.AppendData(Encoding.UTF8.GetBytes("kemap/surface/1\0"));
-        using var sink = new HashSink(hash);
+        using var sink = new MapCanonical.HashingBufferWriter();
+        sink.Append(Encoding.UTF8.GetBytes("kemap/surface/1\0"));
         using (var w = new Utf8JsonWriter(sink))
         {
             w.WriteStartObject(); w.WriteString("id", surface.Id);
@@ -111,7 +110,7 @@ public static class MapSurfaceSemantics
             }
             w.WriteEndArray(); w.WriteEndObject();
         }
-        return Convert.ToHexStringLower(hash.GetHashAndReset());
+        return Convert.ToHexStringLower(sink.GetHashAndReset());
     }
 
     static bool IsDigest(string value) => value is not null && value.Length == 64 && value.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
@@ -124,20 +123,5 @@ public static class MapSurfaceSemantics
         w.WriteStartObject(); w.WriteString("surfaceId", key.SurfaceId);
         w.WriteString("slotX", key.SlotX.ToString(CultureInfo.InvariantCulture));
         w.WriteString("slotZ", key.SlotZ.ToString(CultureInfo.InvariantCulture)); w.WriteEndObject();
-    }
-    sealed class HashSink(IncrementalHash hash) : Stream
-    {
-        long _length;
-        public override bool CanRead => false;
-        public override bool CanSeek => false;
-        public override bool CanWrite => true;
-        public override long Length => _length;
-        public override long Position { get => _length; set => throw new NotSupportedException(); }
-        public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
-        public override void Write(ReadOnlySpan<byte> buffer) { hash.AppendData(buffer); _length = checked(_length + buffer.Length); }
-        public override void Flush() { }
-        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-        public override void SetLength(long value) => throw new NotSupportedException();
     }
 }

@@ -51,9 +51,12 @@ internal static class MapRoofPolicyAcquisition
             // geometry, never over the incidental bounds of newly discovered storage patches.
             if (required == bounds && !ReferenceEquals(current, cell)) return current;
             bounds = required;
-            var result = cell.AcquireDependencies(cell.Scope with { Surfaces = Scope(bounds, cell.Scope.Surfaces.Limits) });
-            current = result.Scene ?? throw new MapSceneSourceException(result.Status,
+            var result = current.AcquireDependencies(current.Scope with { Surfaces = Scope(bounds, current.Scope.Surfaces.Limits) });
+            var replacement = result.Scene ?? throw new MapSceneSourceException(result.Status,
                 "Canonical roof policy dependencies refused. " + string.Join("\n", result.Findings), result.Capacity);
+            // Admission includes the old and new snapshots until the replacement succeeds.
+            current.PreparationOwnership?.Dispose();
+            current = replacement;
         }
     }
     static MapBox3 PrismBounds(MapScopedSurfaces view, MapPrismDomain prism)

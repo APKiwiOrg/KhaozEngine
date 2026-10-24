@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using KhaozEngine.TileWorld;
@@ -23,13 +22,11 @@ public sealed class TileWorldGroundSurfacePairTests
         using var view = new TileWorldView(scene, doc, catalogs, new GreyboxMeshResolver(), OpticsOptions());
         TileGroundCpuBuild ground = TileGroundCpuBuild.Build(doc, catalogs, Origin, 0, TileGroundLod.Full,
             new TileGroundMesherOptions(), captureOpticalSurface: true);
-        var water = new TileWaterPreparation([], [],
-            new TileWaterSourceStamp(doc, [], new Dictionary<TileWaterOpticsDependency, long>()), 0, null);
-        Assert.True(view.UploadGround(ground, water, out MeshHandle? handle, out TileWaterGeneration? generation));
-        Assert.NotNull(handle);
-        Assert.Same(ground.Mesh, scene.GroundMeshes[handle.Value.Index]);
-        generation!.Dispose();
-        scene.UnloadMesh(handle.Value);
+        var water = new TileWaterPreparation([], new TileWaterSourceStamp(doc, [], null), 0, null);
+        TileWaterPublication.Group? group = view.StageGround(Origin, 0, ground, water);
+        Assert.NotNull(group);
+        Assert.Same(ground.Mesh, scene.GroundMeshes[group.Mesh!.Value.Index]);
+        view.DiscardGround(group);
     }
 
     [Fact]

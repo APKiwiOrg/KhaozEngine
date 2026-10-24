@@ -198,9 +198,11 @@ public sealed partial class TileWorldView : IDisposable
         _options = options ?? new TileWorldViewOptions();
         _waterDepthMode = _options.WaterDepthMode;
         if (!Enum.IsDefined(_waterDepthMode)) throw new ArgumentOutOfRangeException(nameof(options));
-        _opticsScene = _waterDepthMode == TileWaterDepthMode.AuthoredBed ? scene as ITileWorldWaterOpticsScene : null;
+        _opticsScene = _waterDepthMode == TileWaterDepthMode.AuthoredBed ? scene as ITileWorldWaterTriangleOpticsScene : null;
         if (_waterDepthMode == TileWaterDepthMode.AuthoredBed && _opticsScene is null)
-            throw new NotSupportedException("Authored bed water requires optical field preparation.");
+            throw new NotSupportedException("Authored bed water requires triangle optical field preparation.");
+        _publication = new TileWaterPublication(_opticsScene);
+        _acceptedSurface = AcceptedGroundSurface;
         _waterTileSize = doc.TileSize;
         _waterPlaneHeight = doc.PlaneHeight;
         _interiorMeshes = _options.InteriorMeshes;
@@ -395,7 +397,8 @@ public sealed partial class TileWorldView : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         UnloadRegion(region);
 
-        LoadGameplayRegion(region, props: null);
+        try { LoadGameplayRegion(region, props: null); }
+        finally { SweepWaterMetadata(); }
     }
 
     internal void LoadRegion(RegionCoord region, TileRegionResidencyState residency)
@@ -418,7 +421,8 @@ public sealed partial class TileWorldView : IDisposable
             PromoteToGameplay(region, existing);
             return;
         }
-        LoadProfileRegion(region, residency);
+        try { LoadProfileRegion(region, residency); }
+        finally { SweepWaterMetadata(); }
     }
 
     /// <summary>Frees every mesh handle of one region and forgets it, along with any rebuild it had queued.
@@ -436,9 +440,15 @@ public sealed partial class TileWorldView : IDisposable
             _propClusters.Unload(region, plane);
         }
         CancelCover(region);
-        if (!_loaded.Remove(region, out RegionHandles? handles)) return;
-        GeneratedCoverCount -= handles.Cover.Count;
-        FreeMeshes(handles);
+        ReleaseWaterSourceRefusals(region);
+        if (_loaded.Remove(region, out RegionHandles? handles))
+        {
+            GeneratedCoverCount -= handles.Cover.Count;
+            FreeMeshes(handles);
+            // Fields elsewhere that consumed these surfaces cannot outlive the drawn bed.
+            for (int plane = 0; plane < _planes; plane++) _publication.SourceRemoved((region, plane));
+        }
+        SweepWaterMetadata();
     }
 
     /// <summary>Queues one region-plane for a rebuild at the next <see cref="Flush()"/>. A plane outside the

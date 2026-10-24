@@ -8,48 +8,66 @@ namespace KhaozEngine.TileWorld;
 public sealed partial class TileWorldView
 {
     readonly TileWaterDepthMode _waterDepthMode;
-    readonly ITileWorldWaterOpticsScene? _opticsScene;
-    readonly Dictionary<TileWaterOpticsDependency, long> _waterEpochs = new();
-    readonly Dictionary<RegionCoord, long> _waterSourceRefusals = new();
-    readonly Dictionary<(RegionCoord Region, int Plane), TileWaterOpticsFailure> _waterFailures = new();
+    readonly ITileWorldWaterTriangleOpticsScene? _opticsScene;
+    readonly TileWaterPublication _publication;
+    readonly Func<RegionCoord, int, TileGroundSurfaceSnapshot?> _acceptedSurface;
+    readonly Dictionary<RegionCoord, HashSet<RegionCoord>> _waterSourceRefusals = new();
     readonly Dictionary<(RegionCoord Region, int Plane), WaterAttempt> _waterAttempts = new();
+    // Profile requests own their preparation stamps until the queue stops tracking that generation.
+    readonly Dictionary<TileWorldBuildKey, (long Generation, TileWaterPreparation Water)> _pendingWater = new();
+    readonly List<TileWorldBuildKey> _pendingRetired = new();
     readonly List<(RegionCoord Region, int Plane)> _waterRefresh = new();
     readonly List<(RegionCoord Region, int Plane)> _waterInvalidations = new();
-    IReadOnlyList<TileWaterOpticsFailure> _waterFailureSnapshot = Array.Empty<TileWaterOpticsFailure>();
-    long _waterRevision;
     float _waterTileSize, _waterPlaneHeight;
     readonly record struct WaterAttempt(long Revision, float TileSize, float PlaneHeight, float Padding);
 
     /// <summary>Bounded refusal diagnostics for resident region-planes. The read-only snapshot changes
     /// only when a preparation refusal changes or is resolved.</summary>
-    public IReadOnlyList<TileWaterOpticsFailure> WaterOpticsFailures => _waterFailureSnapshot;
+    public IReadOnlyList<TileWaterOpticsFailure> WaterOpticsFailures => _publication.Failures;
 
-    void RebuildWaterFailures() => _waterFailureSnapshot = Array.AsReadOnly(
-        new List<TileWaterOpticsFailure>(_waterFailures.Values).ToArray());
-
-    void ForgetWaterFailure(RegionCoord region, int plane)
+    /// <summary>Retained optical source-snapshot bytes, resident and awaiting publication. Zero outside
+    /// <see cref="TileWaterDepthMode.AuthoredBed"/>. Optical fields themselves are reported by the scene.</summary>
+    public TileWaterOpticsSourceBytes WaterOpticsSourceBytes
     {
-        if (_waterFailures.Remove((region, plane))) RebuildWaterFailures();
+        get
+        {
+            long resident = 0;
+            foreach (RegionHandles handles in _loaded.Values)
+                foreach (TileGroundSurfaceSnapshot? surface in handles.Surfaces)
+                    resident = checked(resident + (surface?.RetainedBytes ?? 0));
+            return new TileWaterOpticsSourceBytes(resident, _profileBuilds.ReadyBytes(PendingSurfaceBytes));
+        }
     }
 
-    void RecordWaterFailure(TileWaterOpticsFailure failure)
-    {
-        var key = (failure.Region, failure.Plane);
-        if (_waterFailures.TryGetValue(key, out TileWaterOpticsFailure old) && old == failure) return;
-        _waterFailures[key] = failure;
-        RebuildWaterFailures();
-    }
+    static long PendingSurfaceBytes(TileProfileBuildOutput output) =>
+        output is TileGroundBuildOutput ground ? ground.Ground.Surface?.RetainedBytes ?? 0 : 0;
 
-    WaterAttempt CurrentWaterAttempt(float padding) => new(_waterRevision, _doc.TileSize, _doc.PlaneHeight, padding);
+    internal TileWaterDependencyRegistry WaterRegistry => _publication.Registry;
+    internal int WaterRefusalCount => _publication.Refused.Count;
+    internal int WaterSourceRefusalCount => _waterSourceRefusals.Count;
+    internal int PendingWaterCount => _pendingWater.Count;
 
-    // All disk materialization happens here, before terrain capture and body/rim collection. The
-    // producer still performs the strict corner read and refuses genuinely absent coverage.
+    /// <summary>The surface identities a resident field consumed, empty when none is resident.</summary>
+    internal TileGroundSurfaceId[] WaterSourcesOf(RegionCoord region, int plane) =>
+        _publication.Resident.TryGetValue((region, plane), out TileWaterGeneration? generation) ? generation.Sources : [];
+
+    TileWaterSourceContext WaterSources => new(_doc, _catalogs, _mesher,
+        _waterDepthMode == TileWaterDepthMode.AuthoredBed ? _publication.Registry : null);
+
+    WaterAttempt CurrentWaterAttempt(float padding) =>
+        new(_publication.Registry.Revision, _doc.TileSize, _doc.PlaneHeight, padding);
+
+    float WaterPadding => _opticsScene?.GetWaterOpticsPadding(_options.WaterLook) ?? 0f;
+
+    // All disk materialization happens here, before terrain capture and body/rim collection. Mesh audits still
+    // perform strict corner reads and refuse genuinely absent coverage.
     void EnsureWaterSources(RegionCoord region)
     {
         if (_waterDepthMode != TileWaterDepthMode.AuthoredBed || _doc.Source is not { } source) return;
-        float padding = _opticsScene!.GetWaterOpticsPadding(_options.WaterLook);
+        float padding = WaterPadding;
         double margin = Math.Ceiling((double)padding / _doc.TileSize) + 1;
-        if (!double.IsFinite(margin) || margin < 1 || TileRegion.Size + 1 + 2 * margin > WaterOpticsField.MaxDimension)
+        if (!double.IsFinite(margin) || margin < 1 ||
+            TileRegion.Size + 1 + 2 * margin > WaterOpticsTriangleField.MaxDimension)
             return;
         long minX = (long)region.OriginX - (long)margin;
         long minZ = (long)region.OriginZ - (long)margin;
@@ -63,24 +81,32 @@ public sealed partial class TileWorldView
             {
                 var dependency = new RegionCoord(x, z);
                 if (source.IsLoaded(dependency) || !source.IsKnown(dependency)) continue;
-                var availability = new TileWaterOpticsDependency(dependency, null);
-                long epoch = _waterEpochs.GetValueOrDefault(availability);
-                if (_waterSourceRefusals.TryGetValue(dependency, out long refused) && refused == epoch) continue;
+                // Requests sharing this unavailable dependency must not reopen it every flush. The memo is
+                // owned by the regions that met it and released with the last of them or an availability change.
+                if (_waterSourceRefusals.TryGetValue(dependency, out HashSet<RegionCoord>? owners))
+                {
+                    owners.Add(region);
+                    continue;
+                }
                 try { source.EnsureLoaded(dependency); }
                 catch
                 {
-                    // Requests sharing this unavailable dependency must not reopen it every flush.
-                    // The source error still propagates on its first preparation attempt.
-                    _waterSourceRefusals[dependency] = epoch;
+                    _waterSourceRefusals[dependency] = new HashSet<RegionCoord> { region };
                     throw;
                 }
                 MarkRegionStreamed(dependency);
             }
     }
 
+    void ReleaseWaterSourceRefusals(RegionCoord owner)
+    {
+        foreach (var entry in _waterSourceRefusals)
+            if (entry.Value.Remove(owner) && entry.Value.Count == 0) _waterSourceRefusals.Remove(entry.Key);
+    }
+
     TileWaterPreparation? CaptureWater(RegionCoord region, int plane)
     {
-        float padding = _opticsScene?.GetWaterOpticsPadding(_options.WaterLook) ?? 0f;
+        float padding = WaterPadding;
         var key = (region, plane);
         WaterAttempt attempt = CurrentWaterAttempt(padding);
         if (_waterAttempts.TryGetValue(key, out WaterAttempt refused) && refused == attempt) return null;
@@ -89,131 +115,134 @@ public sealed partial class TileWorldView
         EnsureWaterSources(region);
         IReadOnlyList<WaterPlane> collected = TileWaterPlanes.Collect(_doc, _catalogs, region, plane, _options.WaterLook);
         var planes = new WaterPlane[collected.Count];
-        var fields = new List<TileWaterOpticsBuild>();
-        var levels = new HashSet<float>();
-        var dependencies = new HashSet<TileWaterOpticsDependency>
-        {
-            new(region, null), new(region, plane),
-        };
-        for (int i = 0; i < planes.Length; i++)
-        {
-            planes[i] = collected[i];
-            if (_waterDepthMode != TileWaterDepthMode.AuthoredBed || !levels.Add(planes[i].SurfaceY)) continue;
-            if (!TileWaterOptics.TryBuild(_doc, region, plane, planes[i].SurfaceY, padding, out TileWaterOpticsBuild build,
-                out TileWaterOpticsFailure failure))
-            {
-                _waterAttempts[key] = CurrentWaterAttempt(padding);
-                RecordWaterFailure(failure);
-                return null;
-            }
-            fields.Add(build);
-            foreach (TileWaterOpticsDependency dependency in build.Dependencies) dependencies.Add(dependency);
-        }
+        for (int i = 0; i < planes.Length; i++) planes[i] = collected[i];
         _waterAttempts.Remove(key);
-        ForgetWaterFailure(region, plane);
-        return new TileWaterPreparation(planes, fields.ToArray(),
-            new TileWaterSourceStamp(_doc, dependencies, _waterEpochs), padding, _options.WaterLook);
+        TileWaterDependencyRegistry? registry = _waterDepthMode == TileWaterDepthMode.AuthoredBed ? _publication.Registry : null;
+        return new TileWaterPreparation(planes,
+            new TileWaterSourceStamp(_doc, WaterDependencies(region, plane, planes), registry), padding, _options.WaterLook);
+    }
+
+    // Body and rim inputs. Bed sources are tracked by surface identity and witness instead. A body touching a
+    // region border reads rim corners that neighbouring regions can own, including derived planes.
+    IEnumerable<TileWaterOpticsDependency> WaterDependencies(RegionCoord region, int plane, WaterPlane[] planes)
+    {
+        yield return new TileWaterOpticsDependency(region, null);
+        yield return new TileWaterOpticsDependency(region, plane);
+        if (planes.Length == 0) yield break;
+        bool west = false, east = false, north = false, south = false;
+        float tileSize = _doc.TileSize;
+        foreach (WaterPlane p in planes)
+        {
+            double x0 = ((double)p.CenterX - p.HalfExtentX) / tileSize, x1 = ((double)p.CenterX + p.HalfExtentX) / tileSize;
+            double z0 = -((double)p.CenterZ + p.HalfExtentZ) / tileSize, z1 = -((double)p.CenterZ - p.HalfExtentZ) / tileSize;
+            west |= x0 < region.OriginX + 0.5;
+            east |= x1 > (double)region.OriginX + TileRegion.Size - 0.5;
+            south |= z0 < region.OriginZ + 0.5;
+            north |= z1 > (double)region.OriginZ + TileRegion.Size - 0.5;
+        }
+        for (int dz = south ? -1 : 0; dz <= (north ? 1 : 0); dz++)
+            for (int dx = west ? -1 : 0; dx <= (east ? 1 : 0); dx++)
+            {
+                RegionCoord rim = region.Offset(dx, dz);
+                if (rim != region) yield return new TileWaterOpticsDependency(rim, null);
+                for (int q = 0; q <= plane; q++)
+                    if (rim != region || q != plane) yield return new TileWaterOpticsDependency(rim, q);
+            }
     }
 
     bool WaterInputsCurrent(TileWaterPreparation water) =>
-        water.Stamp.IsCurrent(_doc, _waterEpochs) &&
-        water.Padding == (_opticsScene?.GetWaterOpticsPadding(_options.WaterLook) ?? 0f);
+        water.Stamp.IsCurrent(_doc, _waterDepthMode == TileWaterDepthMode.AuthoredBed ? _publication.Registry : null) &&
+        water.Padding == WaterPadding;
 
     bool GroundInputsCurrent(TileGroundSurfaceSnapshot? surface, TileWaterPreparation water) =>
         WaterInputsCurrent(water) && (surface is not null) == GroundSurfaceRequested &&
         (surface is null || surface.SourceWitness.IsCurrent(_doc, _catalogs, _mesher));
 
-    // No GPU ownership escapes until both uploads succeed and the source remains current.
-    internal bool UploadGround(TileGroundCpuBuild ground, TileWaterPreparation water, out MeshHandle? replacement,
-        out TileWaterGeneration? generation)
+    // Stage one source replacement with every dependent optical field. No GPU ownership escapes until all of the
+    // group's uploads succeed and the source remains current.
+    internal TileWaterPublication.Group? StageGround(RegionCoord region, int plane, TileGroundCpuBuild ground,
+        TileWaterPreparation water)
     {
-        replacement = null;
-        generation = null;
-        if (!GroundInputsCurrent(ground.Surface, water)) return false;
+        if (!GroundInputsCurrent(ground.Surface, water)) return null;
+        TileWaterPublication.Group group = _publication.Stage(region, plane, changesSource: true, ground.Surface, water,
+            _acceptedSurface, WaterSources);
+        group.Ground = ground;
         try
         {
-            generation = new TileWaterGeneration(water, _opticsScene);
-            replacement = ground.Mesh is null ? null : _scene.LoadMesh(ground.Mesh, _material);
-            generation.SetLook(_options.WaterLook);
-            if (GroundInputsCurrent(ground.Surface, water)) return true;
+            group.Mesh = ground.Mesh is null ? null : _scene.LoadMesh(ground.Mesh, _material);
+            foreach (TileWaterPublication.Member member in group.Members) member.Staged?.SetLook(_options.WaterLook);
+            if (GroundInputsCurrent(ground.Surface, water)) return group;
         }
         catch
         {
-            generation?.Dispose();
-            generation = null;
-            if (replacement is { } unpublished) _scene.UnloadMesh(unpublished);
-            replacement = null;
+            DiscardGround(group);
             throw;
         }
-        if (replacement is { } stale) _scene.UnloadMesh(stale);
-        replacement = null;
-        generation?.Dispose();
-        generation = null;
-        return false;
+        DiscardGround(group);
+        return null;
     }
 
-    // A later plane's upload can announce a source change while earlier planes are staged.
-    // Revalidate the whole staged region immediately before its first publication. Source arrivals
-    // consumed by this capture must not cause a redundant upload on the first ordinary draw.
-    void SealGameplayWater(RegionCoord region, MeshHandle?[] meshes, TileWaterGeneration?[] water,
-        TileGroundSurfaceSnapshot?[] surfaces)
+    internal void DiscardGround(TileWaterPublication.Group group)
     {
-        for (int plane = 0; plane < water.Length; plane++)
-        {
-            if (water[plane] is not { } generation) continue;
-            if (!GroundInputsCurrent(surfaces[plane], generation.Preparation))
-            {
-                if (meshes[plane] is { } stale) _scene.UnloadMesh(stale);
-                meshes[plane] = null;
-                generation.Dispose();
-                water[plane] = null;
-                surfaces[plane] = null;
-                Queue(region, plane);
-                continue;
-            }
-            if (_dirty.Remove((region, plane))) _dirtyOrder.Remove((region, plane));
-        }
+        if (group.Mesh is { } mesh) _scene.UnloadMesh(mesh);
+        group.Mesh = null;
+        _publication.Discard(group);
+    }
+
+    // Validate again immediately before the swap, after every upload of the transaction.
+    bool SealGround(TileWaterPublication.Group group)
+    {
+        TileWaterPublication.Member own = group.Members[0];
+        if (!GroundInputsCurrent(group.Ground!.Surface, own.Preparation)) return false;
+        _publication.Revalidate(group, WaterInputsCurrent, WaterSources);
+        return true;
+    }
+
+    void CommitGround(RegionHandles handles, TileWaterPublication.Group group)
+    {
+        int plane = group.Plane;
+        MeshHandle? oldMesh = handles.Meshes[plane];
+        handles.Meshes[plane] = group.Mesh;
+        handles.Surfaces[plane] = group.Ground!.Surface;
+        _publication.Commit(group, Queue);
+        if (oldMesh is { } old) _scene.UnloadMesh(old);
     }
 
     bool PublishGround(RegionCoord region, int plane, RegionHandles handles, TileGroundCpuBuild ground,
         TileWaterPreparation water)
     {
-        _water.EnsureCapacity(_water.Count + 1);
-        if (!UploadGround(ground, water, out MeshHandle? replacement, out TileWaterGeneration? generation))
+        TileWaterPublication.Group? group = StageGround(region, plane, ground, water);
+        if (group is not null && !SealGround(group))
+        {
+            DiscardGround(group);
+            group = null;
+        }
+        if (group is null)
         {
             Queue(region, plane);
             return false;
         }
-        MeshHandle? oldMesh = handles.Meshes[plane];
-        _water.TryGetValue((region, plane), out TileWaterGeneration? oldWater);
-        handles.Meshes[plane] = replacement;
-        handles.Surfaces[plane] = ground.Surface;
-        _water[(region, plane)] = generation!;
-        if (oldMesh is { } old) _scene.UnloadMesh(old);
-        oldWater?.Dispose();
+        CommitGround(handles, group);
         return true;
     }
 
-    void WithdrawWaterGround(RegionCoord region, int plane, RegionHandles handles)
+    void WithdrawWater(RegionCoord region, int plane)
     {
-        if (_water.Remove((region, plane), out TileWaterGeneration? old)) old.Dispose();
-        if (handles.Meshes[plane] is { } mesh) _scene.UnloadMesh(mesh);
-        handles.Meshes[plane] = null;
-        handles.Surfaces[plane] = null;
-        InvalidateGround(region, handles, plane);
+        _publication.Withdraw((region, plane));
+        if (_loaded.ContainsKey(region)) Queue(region, plane);
     }
 
     void WaterHeightChanged(RegionCoord region, int plane)
     {
         if (_waterDepthMode != TileWaterDepthMode.AuthoredBed) return;
-        _waterEpochs[new TileWaterOpticsDependency(region, plane)] = ++_waterRevision;
+        _publication.Registry.Changed(new TileWaterOpticsDependency(region, plane));
         InvalidateWaterSources();
     }
 
     void WaterAvailabilityChanged(RegionCoord region)
     {
         if (_waterDepthMode != TileWaterDepthMode.AuthoredBed) return;
-        _waterEpochs[new TileWaterOpticsDependency(region, null)] = ++_waterRevision;
+        _publication.Registry.Changed(new TileWaterOpticsDependency(region, null));
         _waterSourceRefusals.Remove(region);
         InvalidateWaterSources();
     }
@@ -221,70 +250,97 @@ public sealed partial class TileWorldView
     void InvalidateWaterSources()
     {
         _waterInvalidations.Clear();
-        foreach (var entry in _water)
-            if (!entry.Value.Preparation.Stamp.IsCurrent(_doc, _waterEpochs)) _waterInvalidations.Add(entry.Key);
-        foreach (var key in _waterInvalidations)
-            if (_loaded.TryGetValue(key.Region, out RegionHandles? handles))
-            {
-                WithdrawWaterGround(key.Region, key.Plane, handles);
-                Queue(key.Region, key.Plane);
-            }
+        TileWaterDependencyRegistry registry = _publication.Registry;
+        foreach (var entry in _publication.Resident)
+            if (!entry.Value.Preparation.Stamp.IsCurrent(_doc, registry) ||
+                entry.Value.Availability?.IsCurrent(_doc, registry) == false) _waterInvalidations.Add(entry.Key);
+        foreach (var entry in _publication.Refused)
+            if (!entry.Value.Preparation.Stamp.IsCurrent(_doc, registry) ||
+                entry.Value.Availability?.IsCurrent(_doc, registry) == false) _waterInvalidations.Add(entry.Key);
+        foreach (var key in _waterInvalidations) WithdrawWater(key.Region, key.Plane);
     }
 
     // Run even on an otherwise empty flush. Mutable effective scene/look displacement and document
     // scale changes are preparation inputs. Colour-only changes reuse the existing field bytes.
     void RefreshWaterPreparation()
     {
+        float padding = WaterPadding;
         if (_waterDepthMode == TileWaterDepthMode.AuthoredBed)
         {
             if (_waterTileSize != _doc.TileSize || _waterPlaneHeight != _doc.PlaneHeight)
             {
                 _waterTileSize = _doc.TileSize;
                 _waterPlaneHeight = _doc.PlaneHeight;
-                ++_waterRevision;
+                _publication.Registry.SettingsChanged();
                 foreach (var entry in _loaded)
                     for (int plane = 0; plane < _planes; plane++) Queue(entry.Key, plane);
             }
             InvalidateWaterSources();
             foreach (var entry in _waterAttempts)
-                if (entry.Value != CurrentWaterAttempt(_opticsScene!.GetWaterOpticsPadding(_options.WaterLook)))
-                    Queue(entry.Key.Region, entry.Key.Plane);
+                if (entry.Value != CurrentWaterAttempt(padding)) Queue(entry.Key.Region, entry.Key.Plane);
         }
         _waterRefresh.Clear();
-        foreach (var entry in _water)
+        foreach (var entry in _publication.Resident)
         {
-            float padding = _opticsScene?.GetWaterOpticsPadding(_options.WaterLook) ?? 0f;
             if (entry.Value.Padding != padding) _waterRefresh.Add(entry.Key);
             else entry.Value.SetLook(_options.WaterLook);
         }
-        foreach (var key in _waterRefresh)
+        foreach (var entry in _publication.Refused)
+            if (entry.Value.Preparation.Padding != padding) _waterRefresh.Add(entry.Key);
+        foreach (var key in _waterRefresh) RefreshWater(key, padding);
+    }
+
+    // A padding change rebuilds against unchanged accepted sources. A refused wider preparation may keep its old
+    // generation only when that generation's certificates still contain the new displacement.
+    void RefreshWater((RegionCoord Region, int Plane) key, float padding)
+    {
+        _publication.Resident.TryGetValue(key, out TileWaterGeneration? old);
+        if (old is not null && !old.Covers(padding))
         {
-            TileWaterGeneration old = _water[key];
-            if (!old.Covers(_opticsScene!.GetWaterOpticsPadding(_options.WaterLook), _doc.TileSize))
-            {
-                WithdrawWaterGround(key.Region, key.Plane, _loaded[key.Region]);
-                Queue(key.Region, key.Plane);
-                continue;
-            }
-            TileWaterPreparation? prepared = CaptureWater(key.Region, key.Plane);
-            if (prepared is null) continue;
-            TileWaterGeneration? next = new TileWaterGeneration(prepared, _opticsScene);
-            try
-            {
-                if (!WaterInputsCurrent(prepared) ||
-                    !_water.TryGetValue(key, out TileWaterGeneration? current) || !ReferenceEquals(current, old))
-                {
-                    if (_water.TryGetValue(key, out TileWaterGeneration? retained) && ReferenceEquals(retained, old) &&
-                        !old.Covers(_opticsScene?.GetWaterOpticsPadding(_options.WaterLook) ?? 0f, _doc.TileSize))
-                        WithdrawWaterGround(key.Region, key.Plane, _loaded[key.Region]);
-                    Queue(key.Region, key.Plane);
-                    continue;
-                }
-                _water[key] = next;
-                next = null;
-                old.Dispose();
-            }
-            finally { next?.Dispose(); }
+            WithdrawWater(key.Region, key.Plane);
+            old = null;
         }
+        TileWaterPreparation? prepared = CaptureWater(key.Region, key.Plane);
+        if (prepared is null) return;
+        TileWaterPublication.Group group = _publication.Stage(key.Region, key.Plane, changesSource: false, null,
+            prepared, _acceptedSurface, WaterSources);
+        TileWaterPublication.Member member = group.Members[0];
+        member.Staged?.SetLook(_options.WaterLook);
+        _publication.Revalidate(group, WaterInputsCurrent, WaterSources);
+        if (member.Dropped || (member.Outcome.Failure is not null && old is not null))
+        {
+            _publication.Discard(group);
+            if (member.Outcome.Failure is { } kept) _publication.RecordFailure(key, kept);
+            // Latch the refused preparation. Only an announced source or settings change retries it.
+            _waterAttempts[key] = CurrentWaterAttempt(padding);
+            if (member.Dropped) Queue(key.Region, key.Plane);
+            return;
+        }
+        _publication.Commit(group, Queue);
+    }
+
+    void SweepWaterMetadata()
+    {
+        if (_waterDepthMode != TileWaterDepthMode.AuthoredBed) return;
+        _pendingRetired.Clear();
+        foreach (var entry in _pendingWater)
+            if (!_profileBuilds.IsTracked(entry.Key, entry.Value.Generation)) _pendingRetired.Add(entry.Key);
+        foreach (TileWorldBuildKey key in _pendingRetired) _pendingWater.Remove(key);
+        if (_pendingRetired.Count > 0) _publication.SweepDue = true;
+        _pendingRetired.Clear();
+        if (!_publication.SweepDue) return;
+        _publication.Sweep(PendingStamps());
+    }
+
+    IEnumerable<TileWaterSourceStamp> PendingStamps()
+    {
+        foreach (var entry in _pendingWater) yield return entry.Value.Water.Stamp;
+    }
+
+    void TrackPendingWater(TileWorldBuildKey key, long generation, TileWaterPreparation water)
+    {
+        if (_waterDepthMode != TileWaterDepthMode.AuthoredBed) return;
+        _pendingWater[key] = (generation, water);
+        _publication.SweepDue = true;
     }
 }

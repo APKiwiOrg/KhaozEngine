@@ -5,34 +5,39 @@ using KhaozEngine.TileWorld.Render3D;
 
 namespace KhaozEngine.TileWorld;
 
-// A CPU preparation travels with its ground request, never with the completion-time document.
-// Availability identities also detect source changes made between stream notification and preparation.
-internal sealed record TileWaterPreparation(WaterPlane[] Planes, TileWaterOpticsBuild[] Fields,
-    TileWaterSourceStamp Stamp, float Padding, WaterLook? Look);
+// A CPU preparation travels with its ground request, never with the completion-time document. Optical
+// fields are built later, from the completed candidate and accepted mesh snapshots of one publication group.
+internal sealed record TileWaterPreparation(WaterPlane[] Planes, TileWaterSourceStamp Stamp, float Padding, WaterLook? Look);
 
+/// <summary>Document provenance of one preparation. Tracked entries own their registry epochs while the stamp is
+/// referenced by a resident generation, pending request or refusal. Availability identities also detect source
+/// changes made between stream notification and preparation.</summary>
 internal sealed class TileWaterSourceStamp
 {
     internal readonly record struct Entry(TileWaterOpticsDependency Dependency, long Epoch, TileRegion? Region);
     readonly Entry[] _entries;
     readonly float _tileSize, _planeHeight;
 
+    /// <summary>A null registry is the untracked default policy. It records document scale only.</summary>
     internal TileWaterSourceStamp(TileWorldDocument document, IEnumerable<TileWaterOpticsDependency> dependencies,
-        IReadOnlyDictionary<TileWaterOpticsDependency, long> epochs)
+        TileWaterDependencyRegistry? registry)
     {
         _tileSize = document.TileSize;
         _planeHeight = document.PlaneHeight;
         var entries = new List<Entry>();
-        foreach (TileWaterOpticsDependency dependency in dependencies)
-            entries.Add(new Entry(dependency, epochs.GetValueOrDefault(dependency),
-                document.GetRegion(dependency.Region)));
+        if (registry is not null)
+            foreach (TileWaterOpticsDependency dependency in dependencies)
+                entries.Add(new Entry(dependency, registry.Acquire(dependency), document.GetRegion(dependency.Region)));
         _entries = entries.ToArray();
     }
 
-    internal bool IsCurrent(TileWorldDocument document, IReadOnlyDictionary<TileWaterOpticsDependency, long> epochs)
+    internal ReadOnlySpan<Entry> Entries => _entries;
+
+    internal bool IsCurrent(TileWorldDocument document, TileWaterDependencyRegistry? registry)
     {
         if (_tileSize != document.TileSize || _planeHeight != document.PlaneHeight) return false;
         foreach (Entry entry in _entries)
-            if (entry.Epoch != epochs.GetValueOrDefault(entry.Dependency) ||
+            if (registry is null || !registry.IsCurrent(entry.Dependency, entry.Epoch) ||
                 (entry.Dependency.Plane is null && !ReferenceEquals(entry.Region, document.GetRegion(entry.Dependency.Region))))
                 return false;
         return true;
@@ -42,33 +47,46 @@ internal sealed class TileWaterSourceStamp
 // Owns each unique reference-level field once, regardless of the number of row-run submissions.
 internal sealed class TileWaterGeneration : IDisposable
 {
-    readonly ITileWorldWaterOpticsScene? _scene;
+    readonly ITileWorldWaterTriangleOpticsScene? _scene;
     readonly List<WaterOpticsHandle> _handles;
+    readonly int[] _planeFields;
     internal TileWaterPreparation Preparation { get; }
+    internal TileWaterTriangleBuild[] Fields { get; }
+    // Identities only. A generation never retains another region's surface payload.
+    internal TileGroundSurfaceId[] Sources { get; }
+    internal TileWaterSourceStamp? Availability { get; }
     internal WaterPlane[] Planes { get; private set; }
     internal WaterLook? Look { get; private set; }
     internal float Padding => Preparation.Padding;
     bool _disposed;
 
-    internal TileWaterGeneration(TileWaterPreparation preparation, ITileWorldWaterOpticsScene? scene)
+    internal TileWaterGeneration(TileWaterPreparation preparation, TileWaterTriangleOutcome outcome,
+        ITileWorldWaterTriangleOpticsScene? scene)
     {
         Preparation = preparation;
-        _handles = new List<WaterOpticsHandle>(preparation.Fields.Length);
+        Fields = outcome.Fields;
+        Sources = outcome.Sources;
+        Availability = outcome.Availability;
+        _handles = new List<WaterOpticsHandle>(Fields.Length);
         _scene = scene;
         Planes = (WaterPlane[])preparation.Planes.Clone();
+        _planeFields = new int[Planes.Length];
         Look = preparation.Look;
         try
         {
-            foreach (TileWaterOpticsBuild field in preparation.Fields)
-                _handles.Add(scene!.LoadWaterOpticsField(field.Field));
+            foreach (TileWaterTriangleBuild field in Fields) _handles.Add(scene!.LoadWaterOpticsTriangles(field.Field));
             for (int i = 0; i < Planes.Length; i++)
-                for (int f = 0; f < preparation.Fields.Length; f++)
-                    if (Planes[i].SurfaceY == preparation.Fields[f].Origin.Y)
+            {
+                _planeFields[i] = -1;
+                for (int f = 0; f < Fields.Length; f++)
+                    if (Planes[i].SurfaceY == Fields[f].Origin.Y)
                     {
-                        TileWaterOpticsBuild field = preparation.Fields[f];
-                        Planes[i] = Planes[i].WithOptics(new WaterOpticsBinding(_handles[f], field.Origin, field.Size));
+                        TileWaterTriangleBuild field = Fields[f];
+                        Planes[i] = Planes[i].WithOptics(new WaterOpticsBinding(_handles[f], field.Origin, field.Field.Size));
+                        _planeFields[i] = f;
                         break;
                     }
+            }
         }
         catch
         {
@@ -88,19 +106,28 @@ internal sealed class TileWaterGeneration : IDisposable
         Look = look;
     }
 
-    // A failed wider preparation can retain this generation only if its existing complete field
-    // already covers the effective displacement plus interpolation support.
-    internal bool Covers(float padding, float tileSize)
+    // A failed wider preparation can retain this generation only if every displaced rectangle still fits one
+    // immutable certificate of its field, the same containment the scene enforces at submission.
+    internal bool Covers(float padding)
     {
-        foreach (WaterPlane p in Planes)
+        for (int i = 0; i < Planes.Length; i++)
         {
-            WaterOpticsBinding b = p.Optics;
-            if (!b.IsBound) continue;
-            float reach = padding + tileSize;
-            if (p.CenterX - p.HalfExtentX - reach < b.Origin.X ||
-                p.CenterZ - p.HalfExtentZ - reach < b.Origin.Z ||
-                p.CenterX + p.HalfExtentX + reach > b.Origin.X + b.Size.X ||
-                p.CenterZ + p.HalfExtentZ + reach > b.Origin.Z + b.Size.Y) return false;
+            WaterPlane p = Planes[i];
+            if (!p.Optics.IsBound) continue;
+            TileWaterTriangleBuild field = Fields[_planeFields[i]];
+            double minX = (double)p.CenterX - p.HalfExtentX - padding - field.Origin.X;
+            double minZ = (double)p.CenterZ - p.HalfExtentZ - padding - field.Origin.Z;
+            double maxX = (double)p.CenterX + p.HalfExtentX + padding - field.Origin.X;
+            double maxZ = (double)p.CenterZ + p.HalfExtentZ + padding - field.Origin.Z;
+            bool inside = false;
+            foreach (WaterOpticsRectangle certificate in field.Field.CertifiedRectangles)
+                if (minX >= certificate.Minimum.X && minZ >= certificate.Minimum.Y &&
+                    maxX <= certificate.Maximum.X && maxZ <= certificate.Maximum.Y)
+                {
+                    inside = true;
+                    break;
+                }
+            if (!inside) return false;
         }
         return true;
     }

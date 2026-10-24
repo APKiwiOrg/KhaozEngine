@@ -738,7 +738,15 @@ collision, navigation, simulation, replication or hashes.
   retain the complete required footprint. Any portion outside signed tile coordinates makes that range optically
   unrepresentable, while valid interior ranges and legacy mesh construction remain usable. Check representability
   before interpreting missing-region diagnostics, then check availability separately from currentness.
-  `HeightAt` retains its bilinear contract. Triangle optical publication follows the separate amendment gate.
+  `HeightAt` retains its bilinear contract.
+- `AuthoredBed` requires a scene implementing `ITileWorldWaterTriangleOpticsScene`, refused at construction
+  before any upload. Its water binds immutable `WaterOpticsTriangleField` atlases built from the actual accepted
+  or same-transaction candidate snapshots, including neighbour regions and their actual LOD. Each certified
+  rectangle is the drawable row run expanded by displacement and `min(0.0001 m, TileSize / 1024)`. Only regions
+  whose triangles support that domain participate. A source replacement rebuilds every dependent field against
+  one candidate table, uploads them all, validates again and swaps the group together. An upload failure rolls
+  the whole group back. Refusals withdraw only the affected water, keep terrain and appear in
+  `WaterOpticsFailures`. `WaterOpticsSourceBytes` reports retained resident and pending source snapshot bytes.
 - **Streaming a region dirties its dependants** in both directions. Ground meshes rebuild across their fixed
   border reach. Ground-cover caches also rebuild where a streamed solid footprint, upper roof or tagged door can
   change eligibility, including regions reached by the door clearance.

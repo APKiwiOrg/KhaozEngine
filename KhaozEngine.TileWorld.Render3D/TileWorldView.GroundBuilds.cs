@@ -16,14 +16,14 @@ public sealed partial class TileWorldView
         _loaded.TryGetValue(region, out RegionHandles? handles) && (uint)plane < (uint)handles.Surfaces.Length
             ? handles.Surfaces[plane] : null;
 
+    // Every plane stages its own publication group. After the last upload all groups validate again, then the
+    // region and its groups publish together. A later plane can announce a source change while earlier planes
+    // are staged. Source arrivals consumed by this capture must not cause a redundant upload on the first draw.
     void LoadGameplayRegion(RegionCoord region, TileRegionProps[]? props)
     {
         WaterAvailabilityChanged(region);
-        var meshes = new MeshHandle?[_planes];
-        var water = new TileWaterGeneration?[_planes];
-        var surfaces = new TileGroundSurfaceSnapshot?[_planes];
+        var groups = new TileWaterPublication.Group?[_planes];
         _loaded.EnsureCapacity(_loaded.Count + 1);
-        _water.EnsureCapacity(_water.Count + _planes);
         TileRegionProps[] snapshots = props ?? new TileRegionProps[_planes];
         IReadOnlyList<GroundCoverInstance> cover;
         try
@@ -34,30 +34,38 @@ public sealed partial class TileWorldView
                 if (preparation is not null)
                 {
                     TileGroundCpuBuild ground = BuildGroundCpu(region, plane);
-                    if (UploadGround(ground, preparation, out meshes[plane], out water[plane]))
-                        surfaces[plane] = ground.Surface;
-                    else Queue(region, plane);
+                    groups[plane] = StageGround(region, plane, ground, preparation);
+                    if (groups[plane] is null) Queue(region, plane);
                 }
                 if (props is null)
                     snapshots[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
             }
             cover = BuildCover(region);
-            SealGameplayWater(region, meshes, water, surfaces);
+            for (int plane = 0; plane < _planes; plane++)
+            {
+                if (groups[plane] is not { } group) continue;
+                if (SealGround(group))
+                {
+                    if (_dirty.Remove((region, plane))) _dirtyOrder.Remove((region, plane));
+                    continue;
+                }
+                DiscardGround(group);
+                groups[plane] = null;
+                Queue(region, plane);
+            }
         }
         catch
         {
-            FreeMeshes(meshes);
-            foreach (TileWaterGeneration? generation in water) generation?.Dispose();
+            foreach (TileWaterPublication.Group? group in groups)
+                if (group is not null) DiscardGround(group);
             for (int plane = 0; plane < _planes; plane++) ReleaseWater(region, plane);
             throw;
         }
-        _loaded[region] = new RegionHandles(
-            meshes, snapshots, cover, TileRegionResidencyState.Gameplay, profileManaged: false);
-        for (int plane = 0; plane < _planes; plane++)
-        {
-            _loaded[region].Surfaces[plane] = surfaces[plane];
-            if (water[plane] is { } generation) _water[(region, plane)] = generation;
-        }
+        var handles = new RegionHandles(new MeshHandle?[_planes], snapshots, cover, TileRegionResidencyState.Gameplay,
+            profileManaged: false);
+        _loaded[region] = handles;
+        foreach (TileWaterPublication.Group? group in groups)
+            if (group is not null) CommitGround(handles, group);
         RequestPropClusters(snapshots);
         GeneratedCoverCount += cover.Count;
     }

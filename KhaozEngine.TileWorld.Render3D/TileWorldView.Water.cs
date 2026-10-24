@@ -6,15 +6,13 @@ namespace KhaozEngine.TileWorld;
 
 public sealed partial class TileWorldView
 {
-    readonly Dictionary<(RegionCoord Region, int Plane), TileWaterGeneration> _water = new();
-
     // Empty preparations retain ground provenance, but own no water cache entry or field.
     internal int WaterCacheCount
     {
         get
         {
             int count = 0;
-            foreach (var entry in _water)
+            foreach (var entry in _publication.Resident)
                 if (entry.Value.Planes.Length > 0) count++;
             return count;
         }
@@ -26,7 +24,7 @@ public sealed partial class TileWorldView
     public void DrawWaterPlanes()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        foreach (var entry in _water)
+        foreach (var entry in _publication.Resident)
         {
             WaterPlane[] planes = entry.Value.Planes;
             for (int i = 0; i < planes.Length; i++) _scene.DrawWater(planes[i]);
@@ -34,24 +32,20 @@ public sealed partial class TileWorldView
     }
 
     IReadOnlyList<WaterPlane> PreparedWaterOf(RegionCoord region, int plane) =>
-        _water.TryGetValue((region, plane), out TileWaterGeneration? generation)
+        _publication.Resident.TryGetValue((region, plane), out TileWaterGeneration? generation)
             ? generation.Planes : Array.Empty<WaterPlane>();
 
     void ReleaseWater(RegionCoord region, int plane)
     {
-        if (_water.Remove((region, plane), out TileWaterGeneration? old)) old.Dispose();
-        ForgetWaterFailure(region, plane);
+        _publication.Release((region, plane));
         _waterAttempts.Remove((region, plane));
     }
 
     void ReleaseAllWater()
     {
-        foreach (TileWaterGeneration generation in _water.Values) generation.Dispose();
-        _water.Clear();
+        _publication.ReleaseAll();
         _waterAttempts.Clear();
         _waterSourceRefusals.Clear();
-        if (_waterFailures.Count == 0) return;
-        _waterFailures.Clear();
-        RebuildWaterFailures();
+        _pendingWater.Clear();
     }
 }

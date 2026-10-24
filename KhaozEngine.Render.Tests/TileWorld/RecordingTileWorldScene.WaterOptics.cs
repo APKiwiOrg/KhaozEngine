@@ -10,25 +10,43 @@ public sealed partial class RecordingTileWorldScene
     int _opticsIndex;
     public Dictionary<WaterOpticsHandle, WaterOpticsField> OpticalFields { get; } = new();
     public List<WaterOpticsHandle> OpticalLoads { get; } = new();
+    /// <summary>Live triangle fields, recorded apart from bilinear fields.</summary>
+    public Dictionary<WaterOpticsHandle, WaterOpticsTriangleField> TriangleFields { get; } = new();
+    public List<WaterOpticsHandle> TriangleLoads { get; } = new();
     public List<WaterOpticsHandle> OpticalUnloads { get; } = new();
     public float OpticalPadding { get; set; }
+    /// <summary>One-based ordinal across both field kinds whose upload throws, uploading nothing.</summary>
     public int ThrowOnOpticalLoad { get; set; }
     public Action? BeforeOpticalLoad { get; set; }
 
     public WaterOpticsHandle LoadWaterOpticsField(WaterOpticsField field)
     {
-        BeforeOpticalLoad?.Invoke();
-        if (OpticalLoads.Count + 1 == ThrowOnOpticalLoad)
-            throw new InvalidOperationException("Refused optical upload.");
-        var handle = new WaterOpticsHandle(_opticsOwner, _opticsIndex++, 1);
+        WaterOpticsHandle handle = NextOpticalHandle();
         OpticalFields.Add(handle, field);
         OpticalLoads.Add(handle);
         return handle;
     }
 
+    public WaterOpticsHandle LoadWaterOpticsTriangles(WaterOpticsTriangleField field)
+    {
+        WaterOpticsHandle handle = NextOpticalHandle();
+        TriangleFields.Add(handle, field);
+        TriangleLoads.Add(handle);
+        return handle;
+    }
+
+    WaterOpticsHandle NextOpticalHandle()
+    {
+        BeforeOpticalLoad?.Invoke();
+        if (OpticalLoads.Count + TriangleLoads.Count + 1 == ThrowOnOpticalLoad)
+            throw new InvalidOperationException("Refused optical upload.");
+        return new WaterOpticsHandle(_opticsOwner, _opticsIndex++, 1);
+    }
+
     public void UnloadWaterOpticsField(WaterOpticsHandle handle)
     {
-        if (!OpticalFields.Remove(handle)) throw new ArgumentException("Stale optical handle.", nameof(handle));
+        if (!OpticalFields.Remove(handle) && !TriangleFields.Remove(handle))
+            throw new ArgumentException("Stale optical handle.", nameof(handle));
         OpticalUnloads.Add(handle);
     }
 

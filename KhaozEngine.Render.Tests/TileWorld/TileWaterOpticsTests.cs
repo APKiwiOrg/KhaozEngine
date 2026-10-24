@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D;
@@ -8,45 +9,73 @@ using Xunit;
 
 namespace KhaozEngine.Tests.TileWorld;
 
+/// <summary>The TileWorld triangle producer over actual completed mesh snapshots. Every expectation comes from
+/// the independent mesh-intersection oracle, never from the producer.</summary>
 public class TileWaterOpticsTests
 {
-    static TileWorldDocument LoadedPatch(RegionCoord center = default)
+    static TileWorldDocument LoadedPatch(RegionCoord center = default, float tileSize = 1f)
     {
-        var doc = new TileWorldDocument();
+        var doc = new TileWorldDocument { Id = "optics-patch", DisplayName = "Optics patch", PlaneCount = 1, TileSize = tileSize };
         for (int z = -1; z <= 1; z++)
             for (int x = -1; x <= 1; x++)
                 doc.GetOrCreateRegion(center.Offset(x, z));
         return doc;
     }
 
-    static float Sample(TileWaterOpticsBuild build, float worldX, float worldZ) =>
-        build.Field.SampleDepth((worldX - build.Origin.X) / build.Size.X,
-            (worldZ - build.Origin.Z) / build.Size.Y);
+    static void Grass(TileWorldDocument doc, RegionCoord region, int x0, int z0, int x1, int z1)
+    {
+        for (int z = z0; z < z1; z++)
+            for (int x = x0; x < x1; x++) doc.SetUnderlay(region.OriginX + x, region.OriginZ + z, 0, TileRenderTestData.Grass);
+    }
+
+    static TileGroundSurfaceSnapshot Surface(TileWorldDocument doc, RegionCoord region, TileGroundLod lod = TileGroundLod.Full) =>
+        TileGroundCpuBuild.Build(doc, TileRenderTestData.Catalogs, region, 0, lod, new TileGroundMesherOptions(),
+            captureOpticalSurface: true).Surface!;
+
+    static WaterPlane Plane(TileWorldDocument doc, int x, int z, int width, int height, float surfaceY) =>
+        TileWaterPlanes.ToPlane(new TileRect(x, z, width, height), surfaceY, doc.TileSize);
+
+    static TileWaterTriangleOutcome Prepare(TileWorldDocument doc, RegionCoord region, float padding,
+        IReadOnlyDictionary<RegionCoord, TileGroundSurfaceSnapshot> sources, params WaterPlane[] planes) =>
+        TileWaterTrianglePreparation.Prepare(new TileWaterPreparation(planes, new TileWaterSourceStamp(doc, [], null),
+            padding, null), region, 0, r => sources.GetValueOrDefault(r),
+            new TileWaterSourceContext(doc, TileRenderTestData.Catalogs, new TileGroundMesherOptions(),
+                new TileWaterDependencyRegistry()));
+
+    static TileWaterTriangleBuild Single(TileWaterTriangleOutcome outcome)
+    {
+        Assert.Null(outcome.Failure);
+        return Assert.Single(outcome.Fields);
+    }
+
+    static float Sample(TileWaterTriangleBuild build, float worldX, float worldZ) =>
+        build.Field.SampleDepth((worldX - build.Origin.X) / build.Field.Size.X,
+            (worldZ - build.Origin.Z) / build.Field.Size.Y);
+
+    static double Oracle(TileGroundSurfaceSnapshot surface, float reference, float worldX, float worldZ) =>
+        reference - TileWaterBedOracle.Height([surface], worldX, worldZ);
 
     [Fact]
-    public void FieldMatchesAuthoredBilinearHeightAt()
+    public void FieldMatchesTheActualMeshInsteadOfBilinearHeightAt()
     {
         TileWorldDocument doc = LoadedPatch();
-        // A non-planar saddle. At its center bilinear height is 1 m, while either
-        // triangle diagonal would give 0 m or 2 m. Optics promises authored bilinear heights.
+        Grass(doc, default, 8, 8, 13, 13);
+        // A non-planar saddle. Bilinear HeightAt gives 1 m at its center, while the mesh joins one diagonal.
         doc.SetCornerHeightCm(10, 10, 0, 0);
         doc.SetCornerHeightCm(11, 10, 0, 200);
         doc.SetCornerHeightCm(10, 11, 0, 200);
         doc.SetCornerHeightCm(11, 11, 0, 0);
+        TileGroundSurfaceSnapshot surface = Surface(doc, default);
+        TileWaterTriangleBuild build = Single(Prepare(doc, default, 0f, new Dictionary<RegionCoord, TileGroundSurfaceSnapshot>
+        {
+            [default] = surface,
+        }, Plane(doc, 10, 10, 1, 1, 0.75f)));
 
-        Assert.True(TileWaterOptics.TryBuild(doc, default, 0, 0.75f, 0f, out var build, out _));
-
-        Assert.Equal(new Vector3(-1f, 0.75f, -65f), build.Origin);
-        Assert.Equal(new Vector2(66f), build.Size);
-        Assert.Equal(67, build.Field.Width);
-        Assert.Equal(67, build.Field.Height);
         Assert.Equal(1f, doc.HeightAt(10.5f, -10.5f, 0), 5);
-        Assert.Equal(-0.25f, Sample(build, 10.5f, -10.5f), 5);
-        Assert.Equal(1.25f, doc.HeightAt(10.25f, -10.75f, 0), 5);
-        Assert.Equal(-0.5f, Sample(build, 10.25f, -10.75f), 5);
-        Assert.Equal(0.75f, Sample(build, 10f, -10f), 5);
-        Assert.Equal(-1.25f, Sample(build, 11f, -10f), 5);
-        Assert.All(build.Field.RestDepths.ToArray(), depth => Assert.True(float.IsFinite(depth)));
+        foreach ((float x, float z) in new[] { (10.5f, -10.5f), (10.25f, -10.75f), (10f, -10f), (11f, -10f), (10.9f, -10.2f) })
+            Assert.Equal(Oracle(surface, 0.75f, x, z), Sample(build, x, z), 5);
+        Assert.True(Math.Abs(Sample(build, 10.5f, -10.5f) - (0.75f - 1f)) > 0.5f);
+        Assert.All(build.Field.CertifiedRectangles.ToArray(), r => Assert.True(r.Minimum.X >= 0f && r.Maximum.X <= build.Field.Size.X));
     }
 
     [Fact]
@@ -54,173 +83,180 @@ public class TileWaterOpticsTests
     {
         var region = new RegionCoord(-1, 2);
         TileWorldDocument doc = LoadedPatch(region);
-        doc.SetCornerHeightCm(-65, 193, 0, 100);
-        doc.SetCornerHeightCm(1, 127, 0, 500);
+        Grass(doc, region, 4, 4, 20, 20);
         doc.SetCornerHeightCm(-54, 138, 0, 300);
+        doc.SetCornerHeightCm(-53, 139, 0, 100);
+        TileGroundSurfaceSnapshot surface = Surface(doc, region);
+        TileWaterTriangleBuild build = Single(Prepare(doc, region, 0f, new Dictionary<RegionCoord, TileGroundSurfaceSnapshot>
+        {
+            [region] = surface,
+        }, Plane(doc, -56, 136, 5, 5, 10f)));
 
-        Assert.True(TileWaterOptics.TryBuild(doc, region, 0, 10f, 0f, out var build, out _));
-
-        Assert.Equal(new Vector3(-65f, 10f, -193f), build.Origin);
-        Assert.Equal(new Vector2(66f), build.Size);
-        Assert.Equal(9f, build.Field.SampleDepth(0f, 0f));
-        Assert.Equal(5f, build.Field.SampleDepth(1f, 1f));
-        Assert.Equal(7f, Sample(build, -54f, -138f), 4);
+        Assert.True(build.Origin.Z < -136f);
+        foreach ((float x, float z) in new[] { (-54f, -138f), (-53.5f, -138.5f), (-53f, -139f), (-55.2f, -140.7f) })
+            Assert.Equal(Oracle(surface, 10f, x, z), Sample(build, x, z), 4);
     }
 
     [Fact]
-    public void PaddingRoundsOutwardThenAddsOneAuthoredCellHalo()
+    public void PaddingExpandsCertificatesOutwardWithoutMovingTriangles()
     {
-        TileWorldDocument doc = LoadedPatch();
-        doc.TileSize = 2f;
+        TileWorldDocument doc = LoadedPatch(tileSize: 2f);
+        Grass(doc, default, 4, 4, 20, 20);
+        TileGroundSurfaceSnapshot surface = Surface(doc, default);
+        WaterPlane plane = Plane(doc, 10, 10, 2, 3, 6f);
+        TileWaterTriangleBuild build = Single(Prepare(doc, default, 0.25f,
+            new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [default] = surface }, plane));
 
-        Assert.True(TileWaterOptics.TryBuild(doc, default, 0, 6f, 0.25f, out var build, out _));
-
-        Assert.Equal(new Vector3(-4f, 6f, -132f), build.Origin);
-        Assert.Equal(new Vector2(136f), build.Size);
-        Assert.Equal(69, build.Field.Width);
-        Assert.Equal(69, build.Field.Height);
-        Assert.Equal(6f, Sample(build, 64f, -64f));
+        WaterOpticsRectangle certificate = Assert.Single(build.Field.CertifiedRectangles.ToArray());
+        double reach = 0.25 + 0.0001;
+        Assert.InRange((double)certificate.Minimum.X + build.Origin.X, plane.CenterX - plane.HalfExtentX - reach - 1e-4,
+            plane.CenterX - plane.HalfExtentX - reach);
+        Assert.InRange((double)certificate.Maximum.Y + build.Origin.Z, plane.CenterZ + plane.HalfExtentZ + reach,
+            plane.CenterZ + plane.HalfExtentZ + reach + 1e-4);
+        // Complete supporting triangles reach whole tiles beyond the certificate, unclipped.
+        Assert.Equal(0f, (build.Origin.X / doc.TileSize) % 1f);
+        Assert.Equal(6f, Sample(build, 21f, -21f), 5);
     }
 
     [Fact]
     public void SameLevelRowRunsShareOneBuildDescription()
     {
         TileWorldDocument doc = LoadedPatch();
+        Grass(doc, default, 4, 4, 24, 24);
         for (int z = 10; z < 16; z++)
             for (int x = 10; x < (z < 12 ? 16 : 12); x++)
                 doc.SetUnderlay(x, z, 0, TileRenderTestData.Water);
+        doc.SetCornerHeightCm(11, 13, 0, -80);
         var planes = TileWaterPlanes.Collect(doc, TileRenderTestData.Catalogs, default, 0);
         Assert.Equal(2, planes.Count);
+        TileGroundSurfaceSnapshot surface = Surface(doc, default);
 
-        Assert.True(TileWaterOptics.TryBuild(doc, default, 0, -0.02f, 0f, out var build, out _));
+        TileWaterTriangleBuild build = Single(Prepare(doc, default, 0f,
+            new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [default] = surface }, planes.ToArray()));
 
+        Assert.Equal(2, build.Field.CertifiedRectangles.Length);
         foreach (WaterPlane plane in planes)
         {
             Assert.Equal(-0.02f, plane.SurfaceY);
-            Assert.InRange(plane.CenterX - plane.HalfExtentX, build.Origin.X, build.Origin.X + build.Size.X);
-            Assert.InRange(plane.CenterZ - plane.HalfExtentZ, build.Origin.Z, build.Origin.Z + build.Size.Y);
-            Assert.InRange(plane.CenterX + plane.HalfExtentX, build.Origin.X, build.Origin.X + build.Size.X);
-            Assert.InRange(plane.CenterZ + plane.HalfExtentZ, build.Origin.Z, build.Origin.Z + build.Size.Y);
-            Assert.Equal(-0.02f, Sample(build, plane.CenterX, plane.CenterZ), 5);
+            Assert.Equal(Oracle(surface, -0.02f, plane.CenterX, plane.CenterZ), Sample(build, plane.CenterX, plane.CenterZ), 5);
         }
+        Assert.Equal(Oracle(surface, -0.02f, 11f, -13f), Sample(build, 11f, -13f), 5);
     }
 
     [Fact]
     public void DistinctLevelsHaveDistinctReferenceMappings()
     {
         TileWorldDocument doc = LoadedPatch();
+        Grass(doc, default, 4, 4, 20, 20);
         doc.SetCornerHeightCm(10, 10, 0, 250);
+        TileGroundSurfaceSnapshot surface = Surface(doc, default);
+        TileWaterTriangleOutcome outcome = Prepare(doc, default, 0f,
+            new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [default] = surface },
+            Plane(doc, 9, 9, 2, 2, 2f), Plane(doc, 12, 12, 2, 2, 30f));
 
-        Assert.True(TileWaterOptics.TryBuild(doc, default, 0, 2f, 0f, out var low, out _));
-        Assert.True(TileWaterOptics.TryBuild(doc, default, 0, 30f, 0f, out var high, out _));
-
+        Assert.Null(outcome.Failure);
+        Assert.Equal(2, outcome.Fields.Length);
+        TileWaterTriangleBuild low = outcome.Fields[0], high = outcome.Fields[1];
         Assert.Equal(2f, low.Origin.Y);
         Assert.Equal(30f, high.Origin.Y);
         Assert.Equal(-0.5f, Sample(low, 10f, -10f), 4);
-        Assert.Equal(27.5f, Sample(high, 10f, -10f), 4);
+        Assert.Equal(Oracle(surface, 30f, 13f, -13f), Sample(high, 13f, -13f), 4);
+        // Immutable: a later document edit cannot change prepared bytes.
         doc.SetCornerHeightCm(10, 10, 0, 1000);
         Assert.Equal(-0.5f, Sample(low, 10f, -10f), 4);
-        Assert.Equal(27.5f, Sample(high, 10f, -10f), 4);
     }
 
     [Fact]
     public void MissingHaloRefusesTheWholeBuild()
     {
-        TileWorldDocument doc = LoadedPatch();
-        doc.RemoveRegion(new RegionCoord(-1, 1));
+        using var tmp = new TempDir();
+        TileWorldDocument authored = LoadedPatch();
+        Grass(authored, default, 56, 8, 64, 16);
+        TileWorldFile.Save(authored, tmp.Path);
+        TileWorldSource source = TileWorldSource.Open(tmp.Path);
+        source.EnsureLoaded(new RegionCoord(0, 0));
+        // East is known and unloaded. The mesh used its strict-read fallback at x = 64.
+        TileWorldDocument doc = source.Document;
+        TileGroundSurfaceSnapshot surface = Surface(doc, default);
 
-        Assert.False(TileWaterOptics.TryBuild(doc, default, 2, 8f, 0f, out var build, out var failure));
+        TileWaterTriangleOutcome outcome = Prepare(doc, default, 0f,
+            new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [default] = surface }, Plane(doc, 62, 10, 1, 2, 8f));
 
-        Assert.Null(build);
+        TileWaterOpticsFailure failure = outcome.Failure!.Value;
+        Assert.Empty(outcome.Fields);
         Assert.Equal(TileWaterOpticsFailureKind.MissingHeightData, failure.Kind);
-        Assert.Equal(new RegionCoord(-1, 1), failure.MissingRegion);
+        Assert.Equal(new RegionCoord(1, 0), failure.MissingRegion);
         Assert.Equal(default, failure.Region);
-        Assert.Equal(2, failure.Plane);
         Assert.Equal(8f, failure.ReferenceSurfaceY);
+        Assert.Contains(new TileWaterOpticsDependency(new RegionCoord(1, 0), null), outcome.Availability!.Entries.ToArray().Select(e => e.Dependency));
+
+        // The same unavailable owner is unrelated to an interior body of that region.
+        Assert.Null(Prepare(doc, default, 0f, new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [default] = surface },
+            Plane(doc, 58, 10, 2, 2, 8f)).Failure);
     }
 
     [Theory]
-    [InlineData(479f)]
+    [InlineData(1100f)]
     [InlineData(float.MaxValue)]
     public void OversizedFieldIsRefusedWithoutDownsampling(float padding)
     {
-        var doc = new TileWorldDocument();
+        TileWorldDocument doc = LoadedPatch();
+        Grass(doc, default, 4, 4, 20, 20);
+        TileWaterTriangleOutcome outcome = Prepare(doc, default, padding,
+            new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [default] = Surface(doc, default) },
+            Plane(doc, 10, 10, 2, 2, 3f));
 
-        Assert.False(TileWaterOptics.TryBuild(doc, default, 0, 3f, padding, out var build, out var failure));
-
-        Assert.Null(build);
-        Assert.Equal(TileWaterOpticsFailureKind.FieldTooLarge, failure.Kind);
-        Assert.Null(failure.MissingRegion);
+        Assert.Empty(outcome.Fields);
+        Assert.Equal(TileWaterOpticsFailureKind.FieldTooLarge, outcome.Failure!.Value.Kind);
+        Assert.Null(outcome.Failure!.Value.MissingRegion);
     }
 
     [Fact]
-    public void UnrepresentableCoordinatesAreRefusedBeforeReadingWrappedRegions()
+    public void MissingNeighbourSnapshotIsRefusedWithoutAManufacturedHalo()
     {
-        var doc = new TileWorldDocument();
-        Assert.False(TileWaterOptics.TryBuild(doc, new RegionCoord(int.MaxValue, 0), 0, 3f, 0f,
-            out var build, out var failure));
-        Assert.Null(build);
-        Assert.Equal(TileWaterOpticsFailureKind.FieldTooLarge, failure.Kind);
-        doc.TileSize = float.MaxValue;
-        Assert.False(TileWaterOptics.TryBuild(doc, default, 0, 3f, 0f, out build, out failure));
-        Assert.Null(build);
-        Assert.Equal(TileWaterOpticsFailureKind.FieldTooLarge, failure.Kind);
-    }
-
-    [Fact]
-    public void UnrepresentableLatticeAnchorRefusesInsteadOfMovingTheBed()
-    {
-        var region = new RegionCoord(262145, 0);
-        TileWorldDocument doc = LoadedPatch(region);
-        doc.SetCornerHeightCm(16777279, 10, 0, 0);
-        doc.SetCornerHeightCm(16777280, 10, 0, 200);
-        Assert.Equal(2f, doc.HeightAt(16777280f, -10f, 0));
-
-        bool success = TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out var failure);
-
-        // Before refusal existed this succeeded with depth 5, moving the zero-height west
-        // sample onto the first region corner, whose authored bed requires depth 3.
-        if (success) Assert.Equal(3f, Sample(build, 16777280f, -10f), 5);
-        Assert.False(success);
-        Assert.Null(build);
-        Assert.Equal(new TileWaterOpticsFailure(region, 0, 5f, TileWaterOpticsFailureKind.FieldTooLarge), failure);
-        Assert.Equal(2f, doc.HeightAt(16777280f, -10f, 0));
-    }
-
-    [Fact]
-    public void RepresentableOriginDoesNotHideCollapsedInteriorLatticePositions()
-    {
-        var region = new RegionCoord(262144, 0);
-        TileWorldDocument doc = LoadedPatch(region);
-        Assert.Equal(16777215d, (double)TileWorldSpace.WorldX(16777215, 1f));
-        Assert.Equal(16777216d, (double)TileWorldSpace.WorldX(16777216, 1f));
-        Assert.Equal(16777216d, (double)TileWorldSpace.WorldX(16777217, 1f));
-
-        Assert.False(TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out var failure));
-
-        Assert.Null(build);
-        Assert.Equal(new TileWaterOpticsFailure(region, 0, 5f, TileWaterOpticsFailureKind.FieldTooLarge), failure);
+        TileWorldDocument doc = LoadedPatch();
+        Grass(doc, default, 56, 8, 64, 16);
+        Grass(doc, new RegionCoord(1, 0), 0, 8, 8, 16);
+        TileWaterTriangleOutcome outcome = Prepare(doc, default, 1f,
+            new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [default] = Surface(doc, default) },
+            Plane(doc, 62, 10, 2, 2, 3f));
+        Assert.Equal(TileWaterOpticsFailureKind.MissingSurfaceData, outcome.Failure!.Value.Kind);
+        Assert.Equal(new RegionCoord(1, 0), outcome.Failure!.Value.MissingRegion);
+        Assert.Contains((new RegionCoord(1, 0), 0), outcome.SourceKeys);
     }
 
     [Theory]
-    [InlineData(-262145, 0, 1f)]
-    [InlineData(0, 262145, 1f)]
-    [InlineData(0, -262145, 1f)]
-    [InlineData(200000, 0, 1.5f)]
-    [InlineData(0, -200000, 1.5f)]
     [InlineData(4096, 0, 0.1f)]
-    [InlineData(0, 4096, 0.3f)]
-    [InlineData(0, 0, float.Epsilon)]
-    public void LossyLatticeMappingsAreRefusedOnEitherAxis(int rx, int rz, float tileSize)
+    [InlineData(0, -4096, 0.3f)]
+    [InlineData(1000, 1000, 1f)]
+    [InlineData(-3000, 20, 2.54f)]
+    public void DistantFieldsConvertThroughTheExactUploadedTransform(int rx, int rz, float tileSize)
     {
         var region = new RegionCoord(rx, rz);
-        TileWorldDocument doc = LoadedPatch(region);
-        doc.TileSize = tileSize;
+        TileWorldDocument doc = LoadedPatch(region, tileSize);
+        Grass(doc, region, 4, 4, 20, 20);
+        int x = region.OriginX + 10, z = region.OriginZ + 10;
+        doc.SetCornerHeightCm(x + 1, z + 1, 0, 150);
+        TileGroundSurfaceSnapshot surface = Surface(doc, region);
+        TileWaterTriangleBuild build = Single(Prepare(doc, region, 0f,
+            new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [region] = surface }, Plane(doc, x, z, 2, 2, 5f)));
 
-        Assert.False(TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out var failure));
+        float worldX = TileWorldSpace.WorldX(x + 0.75f, tileSize), worldZ = TileWorldSpace.WorldZ(z + 0.25f, tileSize);
+        Assert.Equal(Oracle(surface, 5f, worldX, worldZ), Sample(build, worldX, worldZ), 3);
+    }
 
-        Assert.Null(build);
-        Assert.Equal(new TileWaterOpticsFailure(region, 0, 5f, TileWaterOpticsFailureKind.FieldTooLarge), failure);
+    [Fact]
+    public void UnconditionedSteepBedsAreRefusedAsUnrepresentable()
+    {
+        TileWorldDocument doc = LoadedPatch(tileSize: 0.01f);
+        Grass(doc, default, 4, 4, 20, 20);
+        doc.SetCornerHeightCm(11, 11, 0, 32000);
+        TileWaterTriangleOutcome outcome = Prepare(doc, default, 0f,
+            new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [default] = Surface(doc, default) },
+            Plane(doc, 10, 10, 2, 2, 5f));
+
+        Assert.Empty(outcome.Fields);
+        Assert.Equal(TileWaterOpticsFailureKind.UnrepresentableSurface, outcome.Failure!.Value.Kind);
     }
 
     [Theory]
@@ -229,162 +265,72 @@ public class TileWaterOpticsTests
     [InlineData(-1, 1, 0.3f)]
     [InlineData(2, -2, 1.1f)]
     [InlineData(0, 0, 2.54f)]
-    public void OrdinaryFractionalTileSizesKeepTheirAuthoredMapping(int rx, int rz, float tileSize)
-    {
-        var region = new RegionCoord(rx, rz);
-        TileWorldDocument doc = LoadedPatch(region);
-        doc.TileSize = tileSize;
-        int x = region.OriginX + 10, z = region.OriginZ + 10;
-        doc.SetCornerHeightCm(x, z, 0, 100);
-        doc.SetCornerHeightCm(x + 1, z, 0, 300);
-        doc.SetCornerHeightCm(x, z + 1, 0, 100);
-        doc.SetCornerHeightCm(x + 1, z + 1, 0, 300);
-        float worldX = TileWorldSpace.WorldX(x + 0.5f, tileSize);
-        float worldZ = TileWorldSpace.WorldZ(z + 0.5f, tileSize);
-        Assert.Equal(2f, doc.HeightAt(worldX, worldZ, 0), 4);
-
-        Assert.True(TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out _));
-
-        Assert.Equal(3f, Sample(build, worldX, worldZ), 4);
-        Assert.Equal(2f, doc.HeightAt(worldX, worldZ, 0), 4);
-    }
-
-    [Theory]
-    [InlineData(4, 0, 0.1f)]
-    [InlineData(0, 4, 0.1f)]
-    [InlineData(-4, 0, 0.1f)]
-    [InlineData(0, -4, 0.1f)]
-    [InlineData(40, 0, 0.1f)]
-    [InlineData(0, -40, 0.1f)]
-    [InlineData(100, -100, 0.1f)]
-    [InlineData(-100, 100, 0.1f)]
-    [InlineData(20, -20, 0.3f)]
-    [InlineData(-40, 40, 0.3f)]
-    [InlineData(4, -4, 1.1f)]
+    [InlineData(40, -40, 0.1f)]
     [InlineData(-4, 4, 2.54f)]
-    [InlineData(40, -40, 0.01f)]
-    [InlineData(162, 0, 0.1f)]
-    [InlineData(0, 164, 0.1f)]
-    [InlineData(-165, 0, 0.1f)]
-    [InlineData(0, -163, 0.1f)]
-    public void FractionalGridsAtPracticalDistancesRemainAvailable(int rx, int rz, float tileSize)
+    [InlineData(100, -100, 1f)]
+    [InlineData(4, 0, 30f)]
+    [InlineData(-2, 1, 100f)]
+    public void OrdinaryTileSizesAndDistancesRemainAvailable(int rx, int rz, float tileSize)
     {
         var region = new RegionCoord(rx, rz);
-        TileWorldDocument doc = LoadedPatch(region);
-        doc.TileSize = tileSize;
+        TileWorldDocument doc = LoadedPatch(region, tileSize);
+        Grass(doc, region, 4, 4, 20, 20);
         int x = region.OriginX + 10, z = region.OriginZ + 10;
-        // A one-centimetre ramp gives a hand-derived center height of 1.005 m.
-        // This pins useful bed sampling without assuming a vertical bound for arbitrary slopes.
         doc.SetCornerHeightCm(x, z, 0, 100);
         doc.SetCornerHeightCm(x + 1, z, 0, 101);
         doc.SetCornerHeightCm(x, z + 1, 0, 100);
         doc.SetCornerHeightCm(x + 1, z + 1, 0, 101);
+        TileGroundSurfaceSnapshot surface = Surface(doc, region);
+        TileWaterTriangleBuild build = Single(Prepare(doc, region, 0f,
+            new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [region] = surface }, Plane(doc, x, z, 2, 2, 5f)));
+
         float worldX = TileWorldSpace.WorldX(x + 0.5f, tileSize);
         float worldZ = TileWorldSpace.WorldZ(z + 0.5f, tileSize);
-        Assert.Equal(1.005f, doc.HeightAt(worldX, worldZ, 0), 4);
-
-        Assert.True(TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out _));
-
-        Assert.Equal(3.995f, Sample(build, worldX, worldZ), 4);
-        Assert.Equal(1.005f, doc.HeightAt(worldX, worldZ, 0), 4);
-    }
-
-    [Theory]
-    [InlineData(163, 0)]
-    [InlineData(0, 163)]
-    [InlineData(-164, 0)]
-    [InlineData(0, -164)]
-    public void EncodedAndAffinePositionsMustStayWithinTheirMutualBudget(int rx, int rz)
-    {
-        var region = new RegionCoord(rx, rz);
-        TileWorldDocument doc = LoadedPatch(region);
-        doc.TileSize = 0.1f;
-        int x = region.OriginX + 10, z = region.OriginZ + 10;
-        doc.SetCornerHeightCm(x, z, 0, 100);
-        doc.SetCornerHeightCm(x + 1, z, 0, 101);
-        doc.SetCornerHeightCm(x, z + 1, 0, 100);
-        doc.SetCornerHeightCm(x + 1, z + 1, 0, 101);
-        float worldX = TileWorldSpace.WorldX(x + 0.5f, doc.TileSize);
-        float worldZ = TileWorldSpace.WorldZ(z + 0.5f, doc.TileSize);
-        Assert.Equal(1.005f, doc.HeightAt(worldX, worldZ, 0), 4);
-
-        // Each representation is within 97.6563 micrometres of authored positions.
-        // Opposite rounding makes their mutual displacement 97.7516 micrometres.
-        Assert.False(TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out var failure));
-
-        Assert.Null(build);
-        Assert.Equal(new TileWaterOpticsFailure(region, 0, 5f, TileWaterOpticsFailureKind.FieldTooLarge), failure);
-        Assert.Equal(1.005f, doc.HeightAt(worldX, worldZ, 0), 4);
-    }
-
-    [Theory]
-    [InlineData(262142, 0)]
-    [InlineData(-262143, 0)]
-    [InlineData(0, 262142)]
-    [InlineData(0, -262143)]
-    public void LargeExactlyRepresentableLatticesRemainAvailable(int rx, int rz)
-    {
-        var region = new RegionCoord(rx, rz);
-        TileWorldDocument doc = LoadedPatch(region);
-        int x = region.OriginX + 10, z = region.OriginZ + 10;
-        doc.SetCornerHeightCm(x, z, 0, 200);
-        float worldX = TileWorldSpace.WorldX(x, 1f), worldZ = TileWorldSpace.WorldZ(z, 1f);
-
-        Assert.True(TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out _));
-
-        Assert.Equal(3f, Sample(build, worldX, worldZ), 4);
-        Assert.Equal(2f, doc.HeightAt(worldX, worldZ, 0));
+        Assert.Equal(Oracle(surface, 5f, worldX, worldZ), Sample(build, worldX, worldZ), 4);
+        Assert.True(build.Field.ReconstructionErrorBoundMetres < Math.Min(0.0001, tileSize / 1024.0));
     }
 
     [Fact]
-    public void DependenciesIncludeNegativeAvailabilityRequestedAndDerivedPlanes()
+    public void CoarseInteriorsAndTransitionsUseTheirActualTriangles()
     {
         TileWorldDocument doc = LoadedPatch();
-        // Padding reaches exactly x=z=128. Its absent owners edge-extend from
-        // the loaded patch. Creating one of those owners must invalidate.
-        doc.SetCornerHeightCm(10, 10, 2, 0);
-        doc.SetCornerHeightCm(65, 10, 0, 200);
-
-        Assert.True(TileWaterOptics.TryBuild(doc, default, 2, 10f, 63f, out var build, out _));
-
-        Assert.Equal(2f, Sample(build, 65f, -10f), 4);
-        Assert.Equal(build.Dependencies.Count, build.Dependencies.Distinct().Count());
-        Assert.Contains(new TileWaterOpticsDependency(new RegionCoord(2, 2), null), build.Dependencies);
-        Assert.Contains(new TileWaterOpticsDependency(new RegionCoord(1, 2), null), build.Dependencies);
-        Assert.Contains(new TileWaterOpticsDependency(new RegionCoord(2, 1), null), build.Dependencies);
-        Assert.DoesNotContain(new TileWaterOpticsDependency(new RegionCoord(2, 2), 2), build.Dependencies);
-        Assert.Contains(new TileWaterOpticsDependency(new RegionCoord(1, 0), null), build.Dependencies);
-        Assert.Contains(new TileWaterOpticsDependency(new RegionCoord(1, 0), 2), build.Dependencies);
-        Assert.Contains(new TileWaterOpticsDependency(new RegionCoord(1, 0), 0), build.Dependencies);
-        Assert.Contains(new TileWaterOpticsDependency(default, 2), build.Dependencies);
-        Assert.DoesNotContain(new TileWaterOpticsDependency(default, 0), build.Dependencies);
+        Grass(doc, default, 0, 0, 64, 64);
+        doc.SetCornerHeightCm(13, 13, 0, 120);
+        doc.SetCornerHeightCm(9, 14, 0, -70);
+        TileGroundSurfaceSnapshot coarse = Surface(doc, default, TileGroundLod.Coarse4);
+        TileWaterTriangleBuild build = Single(Prepare(doc, default, 0f,
+            new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [default] = coarse }, Plane(doc, 8, 8, 8, 8, 1f)));
+        foreach ((float x, float z) in new[] { (13f, -13f), (9.5f, -14.5f), (12.25f, -9.75f), (15.9f, -15.9f) })
+            Assert.Equal(Oracle(coarse, 1f, x, z), Sample(build, x, z), 4);
     }
 
     [Fact]
     public void AdjacentFieldsAgreeOnTheirSharedBoundary()
     {
         TileWorldDocument doc = LoadedPatch();
-        for (int rz = -1; rz <= 1; rz++) doc.GetOrCreateRegion(new RegionCoord(2, rz));
+        Grass(doc, default, 56, 4, 64, 20);
+        Grass(doc, new RegionCoord(1, 0), 0, 4, 8, 20);
         doc.SetCornerHeightCm(64, 10, 0, 100);
         doc.SetCornerHeightCm(64, 11, 0, 300);
+        var sources = new Dictionary<RegionCoord, TileGroundSurfaceSnapshot>
+        {
+            [default] = Surface(doc, default), [new RegionCoord(1, 0)] = Surface(doc, new RegionCoord(1, 0)),
+        };
+        TileWaterTriangleBuild west = Single(Prepare(doc, default, 1f, sources, Plane(doc, 61, 9, 3, 3, 5f)));
+        TileWaterTriangleBuild east = Single(Prepare(doc, new RegionCoord(1, 0), 1f, sources, Plane(doc, 64, 9, 3, 3, 5f)));
 
-        Assert.True(TileWaterOptics.TryBuild(doc, default, 0, 5f, 0f, out var west, out _));
-        Assert.True(TileWaterOptics.TryBuild(doc, new RegionCoord(1, 0), 0, 5f, 0f, out var east, out _));
-
-        Assert.Equal(3.5f, Sample(west, 64f, -10.25f), 4);
-        Assert.Equal(3.5f, Sample(east, 64f, -10.25f), 4);
+        double expected = 5f - TileWaterBedOracle.Height(sources.Values, 64f, -10.25f);
+        Assert.Equal(expected, Sample(west, 64f, -10.25f), 4);
+        Assert.Equal(Sample(west, 64f, -10.25f), Sample(east, 64f, -10.25f), 5);
     }
 
     [Fact]
-    public void InvalidInputsAreRejectedBeforeSampling()
+    public void ProjectedAreaIsDecidedExactly()
     {
-        var doc = new TileWorldDocument();
-        Assert.Throws<ArgumentNullException>(() => TileWaterOptics.TryBuild(null!, default, 0, 0f, 0f, out _, out _));
-        Assert.Throws<ArgumentOutOfRangeException>(() => TileWaterOptics.TryBuild(doc, default, 4, 0f, 0f, out _, out _));
-        Assert.Throws<ArgumentOutOfRangeException>(() => TileWaterOptics.TryBuild(doc, default, 0, float.NaN, 0f, out _, out _));
-        Assert.Throws<ArgumentOutOfRangeException>(() => TileWaterOptics.TryBuild(doc, default, 0, 0f, -1f, out _, out _));
-        Assert.Throws<ArgumentOutOfRangeException>(() => TileWaterOptics.TryBuild(doc, default, 0, 0f, float.NaN, out _, out _));
-        doc.TileSize = 0f;
-        Assert.Throws<ArgumentOutOfRangeException>(() => TileWaterOptics.TryBuild(doc, default, 0, 0f, 0f, out _, out _));
+        Assert.False(TileWaterTrianglePreparation.HasProjectedArea(new Vector3(0, 0, 0), new Vector3(1, 5, 0), new Vector3(2, -3, 0)));
+        Assert.True(TileWaterTrianglePreparation.HasProjectedArea(new Vector3(0, 0, 0), new Vector3(1, 0, 0), new Vector3(0, 0, 1)));
+        float tiny = MathF.BitIncrement(1f) - 1f;
+        Assert.True(TileWaterTrianglePreparation.HasProjectedArea(new Vector3(1e6f, 0, 1e6f),
+            new Vector3(1e6f + 64f, 0, 1e6f), new Vector3(1e6f, 0, 1e6f + tiny * 1e6f)));
     }
 }

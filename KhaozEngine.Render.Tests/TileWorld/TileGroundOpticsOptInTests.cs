@@ -73,11 +73,8 @@ public sealed class TileGroundOpticsOptInTests
             new TileWorldViewOptions { WaterDepthMode = opticalView ? TileWaterDepthMode.AuthoredBed : TileWaterDepthMode.SceneDepth });
         TileGroundCpuBuild wrong = TileGroundCpuBuild.Build(doc, TileRenderTestData.Catalogs, Origin, 0,
             TileGroundLod.Full, new TileGroundMesherOptions(), captureOpticalSurface: !opticalView);
-        var water = new TileWaterPreparation([], [],
-            new TileWaterSourceStamp(doc, [], new Dictionary<TileWaterOpticsDependency, long>()), 0, null);
-        Assert.False(view.UploadGround(wrong, water, out MeshHandle? mesh, out TileWaterGeneration? generation));
-        Assert.Null(mesh);
-        Assert.Null(generation);
+        var water = new TileWaterPreparation([], new TileWaterSourceStamp(doc, [], null), 0, null);
+        Assert.Null(view.StageGround(Origin, 0, wrong, water));
         Assert.Empty(scene.GroundMeshes);
     }
 

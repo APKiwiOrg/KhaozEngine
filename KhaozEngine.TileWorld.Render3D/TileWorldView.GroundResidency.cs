@@ -81,9 +81,10 @@ public sealed partial class TileWorldView
             handles.FullGroundGenerations[plane] = 0;
             handles.CoarseGroundGenerations[plane] = generation;
         }
-        _profileBuilds.Request(new TileWorldBuildRequest<TileProfileBuildInput>(
-            GroundKey(region, plane, KindOf(lod)), generation,
+        TileWorldBuildKey key = GroundKey(region, plane, KindOf(lod));
+        _profileBuilds.Request(new TileWorldBuildRequest<TileProfileBuildInput>(key, generation,
             new TileGroundBuildInput(snapshot, materials, region, plane, lod, _mesher, water, GroundSurfaceRequested)));
+        TrackPendingWater(key, generation, water);
     }
 
     static TileWorldBuildKey GroundKey(RegionCoord region, int plane, TileWorldBuildKind kind) =>

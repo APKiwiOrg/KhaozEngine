@@ -23,6 +23,9 @@ public sealed class TileWorldViewWaterOpticsTests
         var doc = new TileWorldDocument { Id = "optical-publication", DisplayName = "Optical publication" };
         for (int z = -1; z <= 1; z++)
             for (int x = -1; x <= 1; x++) doc.GetOrCreateRegion(new RegionCoord(x, z));
+        // The bank supplies actual triangles around the certified domain. Zero underlay emits no bed.
+        for (int z = 2; z < 32; z++)
+            for (int x = 2; x < 32; x++) doc.SetUnderlay(x, z, plane, TileRenderTestData.Grass);
         // An L shaped body needs two row-run rectangles, both at reference level -0.02.
         for (int z = 10; z < 15; z++)
             for (int x = 10; x < (z < 12 ? 15 : 13); x++) doc.SetUnderlay(x, z, plane, TileRenderTestData.Water);
@@ -45,10 +48,16 @@ public sealed class TileWorldViewWaterOpticsTests
     static float Depth(RecordingTileWorldScene scene, WaterPlane plane, float x = 11f, float z = -11f)
     {
         Assert.True(plane.Optics.IsBound);
-        WaterOpticsField field = scene.OpticalFields[plane.Optics.Field];
+        WaterOpticsTriangleField field = scene.TriangleFields[plane.Optics.Field];
         return field.SampleDepth((x - plane.Optics.Origin.X) / plane.Optics.Size.X,
             (z - plane.Optics.Origin.Z) / plane.Optics.Size.Y);
     }
+
+    // The independent mesh-intersection oracle over the accepted actual snapshots.
+    static double Oracle(TileWorldView view, WaterPlane plane, float x = 11f, float z = -11f, int surface = 0,
+        params RegionCoord[] regions) =>
+        plane.SurfaceY - TileWaterBedOracle.Height((regions.Length == 0 ? new[] { Origin } : regions)
+            .Select(r => view.AcceptedGroundSurface(r, surface)), x, z);
 
     [Fact]
     public void LegacyModeKeepsDefaultSceneCompatibility()
@@ -72,11 +81,13 @@ public sealed class TileWorldViewWaterOpticsTests
         var scene = new RecordingTileWorldScene();
         using var view = View(scene, World());
         view.LoadRegion(Origin);
-        Assert.Single(scene.OpticalLoads);
+        Assert.Single(scene.TriangleLoads);
+        Assert.Empty(scene.OpticalLoads);
         Assert.Empty(scene.WaterDraws);
         WaterPlane[] planes = Water(view, scene);
         Assert.Equal(2, planes.Length);
         Assert.Equal(planes[0].Optics.Field, planes[1].Optics.Field);
+        Assert.Equal(Oracle(view, planes[0]), Depth(scene, planes[0]), 4);
         Assert.Equal(0.98f, Depth(scene, planes[0]), 4);
     }
 
@@ -89,7 +100,7 @@ public sealed class TileWorldViewWaterOpticsTests
         var first = Water(view, scene)[0].Optics;
         view.Flush();
         Assert.Equal(first.Field, Water(view, scene)[0].Optics.Field);
-        Assert.Single(scene.OpticalLoads);
+        Assert.Single(scene.TriangleLoads);
     }
 
     [Fact]
@@ -105,7 +116,7 @@ public sealed class TileWorldViewWaterOpticsTests
         var next = Water(view, scene)[0];
         Assert.Same(options.WaterLook, next.Look);
         Assert.Equal(first.Field, next.Optics.Field);
-        Assert.Single(scene.OpticalLoads);
+        Assert.Single(scene.TriangleLoads);
     }
 
     [Fact]
@@ -126,6 +137,7 @@ public sealed class TileWorldViewWaterOpticsTests
         view.Draw(Focus);
         var plane = Water(view, scene)[0];
         Assert.NotEqual(first, plane.Optics.Field);
+        Assert.Equal(Oracle(view, plane), Depth(scene, plane), 4);
         Assert.Equal(1.98f, Depth(scene, plane), 4);
         var mesh = scene.GroundMeshes[Assert.Single(scene.Drawn).Handle.Index];
         Assert.Contains(mesh.Vertices, v => Math.Abs(v.Position.X - 11f) < 0.001f &&
@@ -135,20 +147,30 @@ public sealed class TileWorldViewWaterOpticsTests
     [Fact]
     public void NewEarlierCornerOwnerInvalidatesFallback()
     {
-        var doc = World();
-        var east = new RegionCoord(2, 0);
-        var scene = new RecordingTileWorldScene { OpticalPadding = 63f };
+        // Tile 63 reads corner x = 64 from the west fallback until its owner arrives. Padding keeps the
+        // certified domain inside Origin while reaching that tile's actual triangles.
+        var doc = new TileWorldDocument { Id = "earlier-owner", DisplayName = "Earlier owner" };
+        doc.GetOrCreateRegion(Origin);
+        for (int z = 6; z < 18; z++)
+            for (int x = 56; x < 64; x++) doc.SetUnderlay(x, z, 0, TileRenderTestData.Grass);
+        doc.SetUnderlay(62, 11, 0, TileRenderTestData.Water);
+        var east = new RegionCoord(1, 0);
+        var scene = new RecordingTileWorldScene { OpticalPadding = 0.9f };
         using var view = View(scene, doc);
         view.LoadRegion(Origin);
-        var first = Water(view, scene)[0].Optics.Field;
+        var first = Water(view, scene)[0];
+        float before = Depth(scene, first, 63.75f, -11.25f);
+        Assert.Equal(Oracle(view, first, 63.75f, -11.25f), before, 4);
         doc.GetOrCreateRegion(east);
-        doc.SetCornerHeightCm(128, 11, 0, 150);
+        doc.SetCornerHeightCm(64, 11, 0, 150);
         view.LoadRegion(east);
         Assert.Empty(Water(view, scene));
         view.Flush();
         var plane = Water(view, scene)[0];
-        Assert.NotEqual(first, plane.Optics.Field);
-        Assert.Equal(-1.52f, Depth(scene, plane, 128, -11), 4);
+        Assert.NotEqual(first.Optics.Field, plane.Optics.Field);
+        double expected = Oracle(view, plane, 63.75f, -11.25f);
+        Assert.Equal(expected, Depth(scene, plane, 63.75f, -11.25f), 4);
+        Assert.True(Math.Abs(expected - before) > 0.3, $"before {before}, after {expected}");
     }
 
     [Fact]
@@ -164,6 +186,7 @@ public sealed class TileWorldViewWaterOpticsTests
         view.Flush();
         var plane = Water(view, scene)[0];
         Assert.NotEqual(first, plane.Optics.Field);
+        Assert.Equal(Oracle(view, plane, surface: 1), Depth(scene, plane), 4);
         Assert.Equal(1.98f, Depth(scene, plane), 4);
     }
 
@@ -171,16 +194,25 @@ public sealed class TileWorldViewWaterOpticsTests
     public void NeighbourUnloadCannotPublishAGuessedBed()
     {
         var doc = World();
+        var west = new RegionCoord(-1, 0);
+        for (int z = 6; z < 18; z++)
+            for (int x = -8; x < 6; x++) doc.SetUnderlay(x, z, 0, TileRenderTestData.Grass);
+        doc.SetUnderlay(0, 11, 0, TileRenderTestData.Water);
         var scene = new RecordingTileWorldScene();
         using var view = View(scene, doc);
+        view.LoadRegion(west);
         view.LoadRegion(Origin);
-        doc.RemoveRegion(new RegionCoord(-1, -1));
-        view.MarkRegionStreamed(new RegionCoord(-1, -1));
+        Assert.Contains(Water(view, scene), p => p.CenterX < 1f && p.Optics.IsBound);
+        doc.RemoveRegion(west);
+        view.UnloadRegion(west);
+        view.MarkRegionStreamed(west);
         view.Flush();
+        // The complete region-plane request withdraws. Origin's terrain remains.
         Assert.Empty(Water(view, scene));
-        Assert.Empty(scene.OpticalFields);
+        Assert.Equal(west, Assert.Single(view.WaterOpticsFailures).MissingRegion);
+        Assert.Empty(scene.TriangleFields);
         view.Draw(Focus);
-        Assert.Empty(scene.Drawn);
+        Assert.Single(scene.Drawn);
     }
 
     [Fact]
@@ -202,23 +234,25 @@ public sealed class TileWorldViewWaterOpticsTests
         scene.ClearFrame();
         view.Draw(Focus);
         var plane = Water(view, scene)[0];
+        Assert.Equal(Oracle(view, plane), Depth(scene, plane), 4);
         Assert.Equal(1.98f, Depth(scene, plane), 4);
-        Assert.Single(scene.OpticalFields);
+        Assert.Single(scene.TriangleFields);
     }
 
     [Fact]
     public void FailedReplacementKeepsOnlyACompleteGeneration()
     {
         var doc = World();
-        var scene = new RecordingTileWorldScene();
+        // A narrower displacement keeps the complete old field, whose certificates still contain it.
+        var scene = new RecordingTileWorldScene { OpticalPadding = 2f };
         using var view = View(scene, doc);
         view.LoadRegion(Origin);
-        scene.OpticalPadding = 2f;
+        scene.OpticalPadding = 1f;
         scene.ThrowOnOpticalLoad = 2;
         Assert.Throws<InvalidOperationException>(() => view.Flush());
         var retained = Water(view, scene)[0];
         Assert.Equal(0.98f, Depth(scene, retained), 4);
-        Assert.Single(scene.OpticalFields);
+        Assert.Single(scene.TriangleFields);
         // A failed geometry upload must also release its unpublished optical resources.
         scene.ThrowOnOpticalLoad = 0;
         scene.ThrowOnMeshLoad = scene.MeshLoads.Count + 1;
@@ -226,7 +260,7 @@ public sealed class TileWorldViewWaterOpticsTests
         view.MarkDirty(Origin, 0);
         Assert.Throws<InvalidOperationException>(() => view.Flush());
         Assert.Empty(Water(view, scene));
-        Assert.Empty(scene.OpticalFields);
+        Assert.Empty(scene.TriangleFields);
     }
 
     [Fact]
@@ -236,15 +270,15 @@ public sealed class TileWorldViewWaterOpticsTests
         var view = View(scene, World());
         view.LoadRegion(Origin);
         Assert.Equal(2, Water(view, scene).Length);
-        Assert.Single(scene.OpticalFields);
+        Assert.Single(scene.TriangleFields);
         view.UnloadRegion(Origin);
-        Assert.Empty(scene.OpticalFields);
+        Assert.Empty(scene.TriangleFields);
         Assert.Single(scene.OpticalUnloads);
         view.LoadRegion(Origin);
         view.Dispose();
         view.Dispose();
         Assert.Equal(2, scene.OpticalUnloads.Count);
-        Assert.Empty(scene.OpticalFields);
+        Assert.Empty(scene.TriangleFields);
     }
 
     [Fact]
@@ -259,32 +293,42 @@ public sealed class TileWorldViewWaterOpticsTests
         using var view = View(scene, source.Document);
         view.LoadRegion(Origin);
         Assert.NotNull(source.Document.GetRegion(new RegionCoord(-1, -1)));
-        Assert.Single(scene.OpticalFields);
+        Assert.Single(scene.TriangleFields);
         Assert.Equal(0.98f, Depth(scene, Water(view, scene)[0]), 4);
         view.Draw(Focus);
-        Assert.Single(scene.OpticalLoads);
+        Assert.Single(scene.TriangleLoads);
     }
 
     [Fact]
     public void RefusalSnapshotAndIoStayUnchangedUntilDependenciesChange()
     {
         var doc = World();
-        var absent = new RegionCoord(-1, -1);
+        var absent = new RegionCoord(-1, 0);
         doc.RemoveRegion(absent);
+        for (int z = 6; z < 18; z++)
+            for (int x = 0; x < 6; x++) doc.SetUnderlay(x, z, 0, TileRenderTestData.Grass);
+        doc.SetUnderlay(0, 11, 0, TileRenderTestData.Water);
         var scene = new RecordingTileWorldScene();
         using var view = View(scene, doc);
         view.LoadRegion(Origin);
         var failures = view.WaterOpticsFailures;
-        Assert.Equal(TileWaterOpticsFailureKind.MissingHeightData, Assert.Single(failures).Kind);
+        TileWaterOpticsFailure failure = Assert.Single(failures);
+        Assert.Equal(TileWaterOpticsFailureKind.MissingSurfaceData, failure.Kind);
+        Assert.Equal(absent, failure.MissingRegion);
+        int loads = scene.TriangleLoads.Count;
+        int meshes = scene.MeshLoads.Count;
         view.Flush();
         view.DrawWaterPlanes();
         Assert.Same(failures, view.WaterOpticsFailures);
-        Assert.Empty(scene.OpticalLoads);
+        Assert.Equal(loads, scene.TriangleLoads.Count);
+        Assert.Equal(meshes, scene.MeshLoads.Count);
         doc.GetOrCreateRegion(absent);
-        view.MarkRegionStreamed(absent);
+        for (int z = 6; z < 18; z++)
+            for (int x = -8; x < 0; x++) doc.SetUnderlay(x, z, 0, TileRenderTestData.Grass);
+        view.LoadRegion(absent);
         view.Flush();
         Assert.Empty(view.WaterOpticsFailures);
-        Assert.Single(scene.OpticalLoads);
+        Assert.Single(scene.TriangleFields);
     }
 
     [Fact]
@@ -295,8 +339,9 @@ public sealed class TileWorldViewWaterOpticsTests
         using var view = View(scene, doc);
         view.LoadRegion(Origin);
         Assert.Equal(TileWaterOpticsFailureKind.FieldTooLarge, Assert.Single(view.WaterOpticsFailures).Kind);
-        Assert.Empty(scene.MeshLoads);
-        Assert.Empty(scene.OpticalLoads);
+        // Invalid water withdraws while unrelated valid terrain still publishes.
+        Assert.NotEmpty(scene.MeshLoads);
+        Assert.Empty(scene.TriangleLoads);
     }
 
     [Theory]
@@ -314,7 +359,7 @@ public sealed class TileWorldViewWaterOpticsTests
         view.Flush();
         var next = Water(view, scene)[0].Optics;
         Assert.NotEqual(first.Field, next.Field);
-        Assert.Single(scene.OpticalFields);
+        Assert.Single(scene.TriangleFields);
         if (tileSize) Assert.Equal(first.Size * 2f, next.Size);
     }
 
@@ -331,7 +376,7 @@ public sealed class TileWorldViewWaterOpticsTests
         doc.RemoveRegion(Origin);
         AllocationMeasurement.NoPerCallAllocation("prepared water submission", view.DrawWaterPlanes);
         Assert.Equal(2, scene.WaterDraws.Count);
-        Assert.Single(scene.OpticalLoads);
+        Assert.Single(scene.TriangleLoads);
     }
 
     [Fact]
@@ -343,7 +388,7 @@ public sealed class TileWorldViewWaterOpticsTests
         var scene = new RecordingTileWorldScene { ThrowOnOpticalLoad = 2 };
         using var view = View(scene, doc);
         Assert.Throws<InvalidOperationException>(() => view.LoadRegion(Origin));
-        Assert.Empty(scene.OpticalFields);
+        Assert.Empty(scene.TriangleFields);
         Assert.Single(scene.OpticalUnloads);
         Assert.Empty(scene.MeshLoads);
         Assert.Equal(0, view.LoadedRegionCount);
@@ -354,8 +399,10 @@ public sealed class TileWorldViewWaterOpticsTests
     {
         using var tmp = new TempDir();
         var doc = World();
-        doc.SetUnderlay(70, 10, 0, TileRenderTestData.Water);
         for (int z = -1; z <= 1; z++) doc.GetOrCreateRegion(new RegionCoord(2, z));
+        for (int z = -4; z < 4; z++)
+            for (int x = 60; x < 68; x++) doc.SetUnderlay(x, z, 0, TileRenderTestData.Grass);
+        doc.SetUnderlay(64, 0, 0, TileRenderTestData.Water);
         TileWorldFile.Save(doc, tmp.Path);
         var source = TileWorldSource.Open(tmp.Path);
         source.EnsureLoaded(Origin);
@@ -369,23 +416,32 @@ public sealed class TileWorldViewWaterOpticsTests
         using var view = View(scene, source.Document);
         var error = Assert.Throws<TileWorldException>(() => view.LoadRegion(Origin));
         Assert.IsType<System.IO.FileNotFoundException>(error.InnerException);
+        Assert.Equal(1, view.WaterSourceRefusalCount);
         // This request shares the same unavailable source. It must refuse, without reopening the file.
         view.LoadRegion(east);
-        Assert.Equal(TileWaterOpticsFailureKind.MissingHeightData, Assert.Single(view.WaterOpticsFailures).Kind);
-        Assert.Equal(missing, Assert.Single(view.WaterOpticsFailures).MissingRegion);
-        Assert.Empty(scene.OpticalFields);
+        TileWaterOpticsFailure failure = Assert.Single(view.WaterOpticsFailures);
+        Assert.Equal(TileWaterOpticsFailureKind.MissingSurfaceData, failure.Kind);
+        Assert.Equal(missing, failure.MissingRegion);
+        Assert.Empty(scene.TriangleFields);
         view.Flush();
         System.IO.File.WriteAllBytes(file, bytes);
         view.MarkRegionStreamed(missing);
-        view.Flush();
-        Assert.Single(scene.OpticalFields);
+        Assert.Equal(0, view.WaterSourceRefusalCount);
+        foreach (RegionCoord support in new[] { missing, Origin, new RegionCoord(1, -1) }) view.LoadRegion(support);
+        view.Flush(int.MaxValue);
         Assert.Empty(view.WaterOpticsFailures);
+        Assert.Contains(Water(view, scene), p => p.CenterX > 64f && p.Optics.IsBound);
+        foreach (RegionCoord loaded in view.LoadedRegions) view.UnloadRegion(loaded);
+        Assert.Equal(0, view.WaterSourceRefusalCount);
+        Assert.Equal(0, view.WaterRegistry.EpochCount);
     }
 
     [Fact]
     public void LaterPlaneUploadCannotPublishAnInvalidatedEarlierPlane()
     {
         var doc = World();
+        for (int z = 6; z < 15; z++)
+            for (int x = 6; x < 15; x++) doc.SetUnderlay(x, z, 1, TileRenderTestData.Grass);
         doc.SetUnderlay(10, 10, 1, TileRenderTestData.Water);
         var scene = new RecordingTileWorldScene();
         using var view = View(scene, doc);
@@ -404,6 +460,7 @@ public sealed class TileWorldViewWaterOpticsTests
         var lower = Water(view, scene).Where(p => p.SurfaceY < 0f).ToArray();
         Assert.Equal(2, lower.Length);
         Assert.Equal(lower[0].Optics.Field, lower[1].Optics.Field);
+        Assert.All(lower, p => Assert.Equal(Oracle(view, p), Depth(scene, p), 4));
         Assert.All(lower, p => Assert.Equal(1.98f, Depth(scene, p), 4));
     }
 
@@ -420,16 +477,21 @@ public sealed class TileWorldViewWaterOpticsTests
             }, dispatcher);
         view.LoadRegion(Origin, TileRegionResidencyState.Gameplay);
         view.Draw(Focus);
-        scene.OpticalPadding = 40f;
+        scene.OpticalPadding = 3f;
         dispatcher.RunAll();
         view.Draw(Focus);
-        Assert.Empty(scene.OpticalFields);
+        Assert.Empty(scene.TriangleFields);
         view.Draw(Focus);
         dispatcher.RunAll();
         view.Draw(Focus);
-        var field = Assert.Single(scene.OpticalFields).Value;
-        Assert.Equal(147, field.Width);
-        Assert.Equal(147, field.Height);
+        var field = Assert.Single(scene.TriangleFields).Value;
+        // Every certificate contains its displaced rectangle at the current padding.
+        foreach (WaterPlane p in Water(view, scene))
+            Assert.Contains(field.CertifiedRectangles.ToArray(), c =>
+                c.Minimum.X <= p.CenterX - p.HalfExtentX - 3f - p.Optics.Origin.X &&
+                c.Maximum.X >= p.CenterX + p.HalfExtentX + 3f - p.Optics.Origin.X &&
+                c.Minimum.Y <= p.CenterZ - p.HalfExtentZ - 3f - p.Optics.Origin.Z &&
+                c.Maximum.Y >= p.CenterZ + p.HalfExtentZ + 3f - p.Optics.Origin.Z);
     }
 
     sealed class LegacyScene : ITileWorldScene

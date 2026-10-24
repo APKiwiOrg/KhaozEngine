@@ -51,7 +51,11 @@ public sealed partial class TileWorldView
         EnsureInterior();
         _interiorInputsDirty |= _dirtyOrder.Count > 0;
         RefreshWaterPreparation();
-        if (_dirtyOrder.Count == 0) return;
+        if (_dirtyOrder.Count == 0)
+        {
+            SweepWaterMetadata();
+            return;
+        }
 
         int budget = Math.Max(1, maxRebuilds);
         int taken = 0;
@@ -96,6 +100,7 @@ public sealed partial class TileWorldView
             _flushCover.Clear();
             _flushSnapshots.Clear();
             _flushMaterials = null;
+            SweepWaterMetadata();
         }
     }
 

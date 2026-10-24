@@ -25,10 +25,11 @@ internal static partial class SupportQueryDiagnostics
             Math.Max(t_retention.PeakKeys, sessionKeys), Math.Max(t_retention.PeakBytes, sessionBytes));
     }
 
-    internal static void MergeProofReuseRetention(in SupportProofReuseRetention retention)
+    internal static void MergeProofReuseRetention(in SupportProofReuseRetention retention, bool hasCompleteLifetimes = true)
     {
         if (!t_enabled) return;
         t_retention = new(checked(t_retention.Keys + retention.Keys), checked(t_retention.Bytes + retention.Bytes),
             Math.Max(t_retention.PeakKeys, retention.PeakKeys), Math.Max(t_retention.PeakBytes, retention.PeakBytes));
+        t_hasCompleteLifetimes &= hasCompleteLifetimes;
     }
 }

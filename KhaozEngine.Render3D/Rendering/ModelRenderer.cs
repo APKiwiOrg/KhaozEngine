@@ -57,7 +57,7 @@ namespace KhaozEngine.Render3D.Rendering
         // Cluster selection data appends after every compatibility field, leaving all existing offsets unchanged.
         internal const uint ClusterTailOffset = PointShadowTransientTailOffset + PointShadowTransientTailBytes; // 1312
         internal const uint ClusterTailBytes = 32;                                             // two vec4
-        internal const uint UboBytes = InteriorCutWindowOffset + InteriorCutBytes;             // 1376
+        internal const uint UboBytes = IndirectUniforms.TailOffset + IndirectUniforms.TailBytes; // 1536
 
         // ---- GPU skinning (the default) PER-DRAW block geometry. The skinned pipeline's set 0 binding 3 is a
         // dynamic-offset UBO laid out as { mat4 Model; mat4 P } (see ShaderSources.SkinnedModelVert): the two header

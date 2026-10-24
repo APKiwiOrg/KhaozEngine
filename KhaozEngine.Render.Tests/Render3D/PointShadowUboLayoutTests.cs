@@ -72,7 +72,8 @@ public sealed class PointShadowUboLayoutTests
         Assert.Equal(1296u, ModelRenderer.PointShadowTransientTailOffset);
         Assert.Equal(16u, ModelRenderer.PointShadowTransientTailBytes);
         Assert.Equal(1312u, ModelRenderer.ClusterTailOffset);
-        Assert.Equal(1376u, ModelRenderer.UboBytes);
+        Assert.Equal(1376u, IndirectUniforms.TailOffset);
+        Assert.Equal(1536u, ModelRenderer.UboBytes);
     }
 
     static ModelRenderer NewRenderer(FakeGpuDevice device)
@@ -122,7 +123,8 @@ public sealed class PointShadowUboLayoutTests
         Assert.Equal(OldUboBytes + ModelRenderer.PointShadowTailBytes,
             ModelRenderer.PointShadowTransientTailOffset);
         Assert.Equal(1312u, ModelRenderer.ClusterTailOffset);
-        Assert.Equal(1376u, ModelRenderer.UboBytes);
+        Assert.Equal(1376u, IndirectUniforms.TailOffset);
+        Assert.Equal(1536u, ModelRenderer.UboBytes);
     }
 
     [Fact]

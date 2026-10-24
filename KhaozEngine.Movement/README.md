@@ -436,8 +436,8 @@ Failures match the serial build. Every work item carries its position in the ser
 failure with the lowest position, with its original type and stack, which is the exception the serial build throws
 first. Nothing is published, every worker is joined and its leases released, and the caller's physics and borrowed
 views stay usable. When cleanup also fails, those failures ride on the primary exception as an `AggregateException`
-under `Exception.Data["CleanupFailures"]`. Workers copy the caller's diagnostic enablement, record into their own
-recorders and merge into the caller's after the join, and the caller's thread-local diagnostic state is restored.
+under `Exception.Data["CleanupFailures"]`. Workers copy immutable diagnostic enablement and the active capture
+label, record locally and merge after the join. Each worker restores its own prior thread-local state.
 
 On a 576-column fixture, degree 12 builds identical graph bits and spends 0.85 to 0.93 of the serial CPU time per proof,
 which projects to about 8 to 10 times faster on a 12-core machine the bake has to itself. Wall-clock speedups on a
@@ -446,6 +446,31 @@ the bake's limit. The
 [parallel contact bake cost record](../docs/superpowers/plans/proofs/2026-10-14-parallel-contact-bake-cost.md) has the
 metrics and the [parallel proof slowdown record](../docs/superpowers/plans/proofs/2026-10-14-parallel-proof-slowdown.md)
 the CPU-time analysis and the updated Hollowmere extrapolation. Both are local samples, not the hosted cost gate.
+
+### Labelled support-query capture
+
+The public `KhaozEngine.Physics.SupportQueryCapture.Begin(label)` enables structural measurement for a
+synchronous Contact build. Wrap `GroundNavigationBake.Create` or `BuildProfile` and the complete source/reuse
+lifetime in the scope. `Snapshot()` returns immutable cumulative `SupportQueryMeasurement` evidence, and
+`Combine` reduces disjoint results. The [Physics example and scope contract](../KhaozEngine.Physics/README.md#support-query-measurement)
+show two body labels, exception restoration, exclusive nesting and thread/async restrictions.
+
+Parallel phases retain the build's captured label, including when caller labels later nest. Every started
+worker joins and contributes once in worker-index order before return or failure propagation. Unstarted workers
+contribute nothing. Failure records retain completed partial work. Counts, route totals, bindings, leases and
+pins report actual evaluation and setup, including worker overhead. Equivalent warmed serial/degree-three
+fixtures pin equal bake bytes and logical Find/EdgeSteps work, and check each execution against its own worker
+oracle. They do not pin schedule-dependent absolute counts or require equal retention peaks across degrees.
+The non-friend TileWorld consumer proof captures real player/cow movement using only public APIs.
+
+Ordinary counts and routes add. `MaximumMediumRetries`, `ProofReuse.PeakKeys` and `PeakBytes` take maxima,
+and `HasCompleteLifetimes` combines with logical AND. Retention bytes describe the largest observed single
+proof-reuse session's owned capacity and payload, not summed workers, allocation totals or process RSS.
+For complete bake peak evidence, enter before the first store and close all joined source groups before the
+final snapshot. Entry or sampled live storage makes that contributor incomplete. Scope changes preserve actual
+live balances. Enabled capture/result allocations are diagnostic overhead, outside those retained bytes.
+Degree one keeps the serial path. Disabled workers materialize no diagnostic records. Measurement changes no
+schedule, graph bytes or reuse choice and supplies no timer. Existing approved hosted cost and bake gates remain.
 
 ### Aquatic profiles
 
@@ -613,6 +638,11 @@ Consumer guidance:
   machine that baked.
 - Prefer authored inputs to `TileWorldColliders.Hash` when the world holds walk surfaces yawed off a quarter turn,
   because that hash is not promised equal across x64 and ARM64.
+- A filtered tile installation requires an explicit `policy/colliders` source in both bake creation and the
+  runtime `NavBakeExpectation`. Use `sources.AddHashOf("policy/colliders", policyBytes)` with canonical policy
+  version/input bytes, and change its digest when either changes. The full collider hash, Contact registration,
+  live environment identity, format 2 and runtime profile validation never insert or replace this persisted
+  source. See the [installation policy example](../KhaozEngine.TileWorld.Physics/README.md#persist-the-installation-policy).
 - Rebake whenever a source input, the capture options, a probed tuning field or the engine pin changes. Keep a game
   test that loads the shipped bake with the shipped inputs and expects `Loaded`, so CI catches a stale artifact.
 - Any status other than `Loaded` means the bake does not describe this build. The engine never substitutes a fresh
@@ -638,7 +668,7 @@ per cell, about 2 to 2.3 times what it retains. These are single observations, n
 
 ## Bridge evidence and limits
 
-The real TileWorld bridge covered 11 focused cases through static colliders, `PhysicsNavBake` and the public
+The original TileWorld bridge covered 11 focused cases through static colliders, `PhysicsNavBake` and the public
 `GroundNavigation` surface. One normal 4 by 4 metre flat fixture produced this single observation:
 
 ```text
@@ -663,6 +693,18 @@ is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. A
 populated ground statics cannot supply capture ground, and small local physics coordinates or rebasing are
 required for large absolute positions. There is no ground-sampler fallback and no claim of full Hollowmere or
 steep-bank coverage from this profile.
+
+Filtered-installation integration adds bounded proof that capture sees exactly the installed statics, omitted
+ground leaves analytic coverage intact but supplies no physical capture floor, and an ordinary wading route
+crosses an omitted water box while a retained dry barrier stays disconnected. Matching policy sources load,
+and a policy-only digest change returns `SourcesChanged` naming `policy/colliders`. Default and all-true paths
+remain raw-byte equal, and historical navigation comparisons normalize only engine-version identity and its
+lengths. The seven existing contact baseline hashes and production engine-version mismatch refusals remain.
+
+The #1352 regression now pins a 0.5 m analytic rise through direct and ordinary Contact with `StepHeight = 0.6 m`
+at 30 and 60 Hz. Both cross grounded with paced ascent and settle at the landing. The inclusive 0.6 m boundary
+crosses, 0.61 m blocks and a continuous 60 degree slope stays unwalkable under the 20 degree gate. This is a
+regression pin, with no controller fix or claim about every terrain sampler. #1352 remains open for its owner.
 
 ## Range steering and movement drivers
 

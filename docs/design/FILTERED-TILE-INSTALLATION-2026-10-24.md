@@ -1,6 +1,10 @@
 # Filtered tile installation
 
-Status: proposed installer and public measurement design for Grimhollow contact adoption. Baseline `4bb5b0462`, released `v21.12.2`.
+Status: installer and public measurement implemented, staged together for 21.12.3. Baseline `4bb5b0462`,
+released `v21.12.2`. Living contracts are in the [TileWorld.Physics README](../../KhaozEngine.TileWorld.Physics/README.md#filtered-installation),
+[Physics README](../../KhaozEngine.Physics/README.md#support-query-measurement) and
+[Movement README](../../KhaozEngine.Movement/README.md#labelled-support-query-capture). The design below records
+the accepted requirements. Release and consumer adoption remain separate gates.
 
 ## Goal and boundary
 

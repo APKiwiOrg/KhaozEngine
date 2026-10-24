@@ -9,6 +9,14 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-24
 
+- Add filtered `TileWorldColliders.AddTo(world, include)` with compact handles, original `ColliderIndices`
+  and canonical movement provenance. Preserve default/all-true output and the complete collider hash.
+  Persist filtered bake policy identity explicitly through `NavBakeSources`.
+- Expose scoped labelled support-query measurements with checked long counters, joined-worker aggregation,
+  exclusive nested attribution and complete-lifetime proof-reuse retention peaks. Counts are structural
+  diagnostics, separate from timing and process memory.
+- Pin #1352's 0.5 m analytic rise at 30 and 60 Hz through direct and ordinary Contact, including paced
+  settling and step/slope boundary controls. The regression passes without a controller change.
 - Expose blocking offline `TileWorldView.SettleForCapture` and `SettleInteriorCutForCapture` for
   consumer-owned headless scenes. Settle ground, cover, selected prop layers and HLOD, and the interior cut
   before drawing, including Decor ground, without windowed apply budgets (#1375).

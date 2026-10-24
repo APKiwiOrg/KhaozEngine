@@ -1425,3 +1425,76 @@ The final staged dashes/prose/file-size/whitespace guards and whole-tree guards 
 size is 8,310 / 16,384 bytes. The documentation-version guard confirms unchanged 21.12.1 declarations
 and package inventory. No baseline or exemption changes. Task 2c.2 is complete at this boundary,
 with integration, push, packaging and release reserved for the owning orchestrator.
+
+
+## Task 2b.2 bounded temporal proposal refusal
+
+Task 2b.2 stops as NEEDS_CONTEXT on BASE b455cb675. The required early diagnostic
+exhausts the unchanged 256-cell account on the zero-margin HeadDisc/Face endpoint fixture.
+No implementation is accepted. Production code and tests are restored to the accepted base.
+This checkpoint changes this verification record only. The complete attempted diff remains at
+.superpowers/sdd/2026-10-19-short-body-shell/task-2b.2-attempt.diff, 41,986 bytes,
+SHA-256 30668d41e1a5ddecaf9b0f119c7eee3bf305e02d0b8e4f83976c53c6d29b076e.
+Its git apply --check succeeds against the restored base.
+
+The attempt uses at most four labelled original endpoint vertices in the existing proposal
+simplex capacity. Rounded GJK only proposes that inner source. The accepted static constructors
+verify its attained pair, exact barycentrics recover time, and original-member support and
+closed-cone predicates revalidate the pair. Rational overlapping upper endpoints consume the
+accepted 2c.2 penetration path. No Sweep is published and no inner-source miss publishes Clear.
+
+Both named runs use build-slot, synchronously and without --heavy. Logs are under
+/tmp/khaozengine-short-shell.
+
+| Log | Exit | Executed result |
+| --- | ---: | --- |
+| task-2b.2-red.log | 1 | No tests executed. Expected missing ConvexImpactCertificate type |
+| task-2b.2-early.log | 1 | 6 passed, 2 failed, 0 skipped, total 8 |
+
+The early run passes exact rank 0/1/2/3 affine recovery, the box event at both margins,
+the attained 1/3 tangent at both margins, inner-source miss refusal, and foreign-leaf,
+request, scratch and expired-loan controls. The closed-domain matrix passes apex, lower
+cone, shoulder and cylinder against face, edge and vertex. HeadDisc/Face then exhausts.
+The separate rounded circular tangent refuses before time recovery, without exhaustion.
+No full green result, complete matrix or circular margin-root coverage is claimed.
+
+Temporary stage traces give the following event-creation accounts. These are observations,
+never absolute counter assertions. Original validation includes touching normal checks and
+encoding. Penetration is separately shown. Post-return test assertions charge extra features.
+
+| Stage, cells / features | Box, Margin 0 | Box, Margin 0.001 | Cylinder tangent, Margin 0 | Cylinder tangent, Margin 0.001 | Rounded rim tangent, Margin 0.001 | Head disc face, Margin 0 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Original source preflight | 0 / 8 | 0 / 8 | 0 / 4 | 0 / 4 | 0 / 4 | 0 / 8 |
+| Support proposals and simplex reduction | 8 / 50 | 8 / 50 | 10 / 53 | 10 / 53 | 6 / 19 | 256 / 2910 |
+| Static attainment | 3 / 6 | 3 / 6 | 37 / 51 | 42 / 59 | 3 / 7 | 0 / 0 |
+| Margin comparison after static attainment | included below | included below | included below | included below | 0 / 1 | 0 / 0 |
+| Exact time recovery and margin comparison | 1 / 5 | 1 / 5 | 1 / 5 | 1 / 5 | 0 / 0 | 0 / 0 |
+| Original-member validation and touching encoding | 10 / 20 | 1 / 11 | 9 / 28 | 1 / 14 | 0 / 0 | 0 / 0 |
+| Accepted 2c.2 penetration and encoding | 88 / 773 | 86 / 736 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Total through return | 110 / 862 | 99 / 816 | 57 / 141 | 54 / 135 | 9 / 31 | 256 / 2918 |
+
+The zero-margin head-disc fixture is a dyadic rectangular hull above the head plane.
+Its near face spans X and Z in [-1/64, 1/64], Y=3/4, with its far face at Y=49/64.
+The query starts at feet (0,-1/8,0), moves by (0,1/8,0), and touches that finite face at t=1.
+The proposal phase consumes every cell before its first static certificate attempt.
+The trigger waits for a repeated retained endpoint label, four retained slots, or a rounded
+closest norm at most Margin. None triggers on this required endpoint contact. The feature
+account remains below its unchanged 4096 cap. This is an incomplete proposal policy, not
+proof that the temporal-source identity cannot succeed within the existing budgets.
+
+The rounded-rim fixture has R=5/16, head Y=3/4, original vertex (3/16,3/4,1/4),
+feet (-m,-2m,2m), displacement (-8,-15,31)/512 and m=0.001f.
+Its attained fraction is 1024*m/25. The radial and vertical offset is
+m*(9,20,12)/25, whose exact length is m. The original tangent direction is perpendicular
+to that offset. The attempt proposes an inner segment whose static distance is strictly
+above m, then refuses. It has not reached the necessary retained circular root or its
+unsquared sign predicates. That failure must not be described as an undecided root sign.
+
+The mandatory cap stop applies immediately. No later implementation, focused rerun,
+Common regression selection or full-suite verification runs on the unsuccessful attempt.
+Capsule families, seven degree-1 navigation baselines, roof and footprint protections,
+arrival geometry, raw identity and all four r0/r1 sweep producers remain unchanged.
+The archived attempt is incomplete and must not be applied as an accepted implementation.
+Original circular overlap, complete finite-stratum coverage and retained root barycentrics
+still need completion. The owning orchestrator must review the bounded proposal policy
+before continuing. No cap, tolerance, per-pair producer or second certification path is added.

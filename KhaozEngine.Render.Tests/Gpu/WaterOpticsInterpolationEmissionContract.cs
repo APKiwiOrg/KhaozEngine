@@ -38,8 +38,7 @@ internal static class WaterOpticsInterpolationEmissionContract
         Instruction loop = Assert.Single(block, i => i.Op == 246); // OpLoopMerge.
         Assert.Equal(2u, loop.Args[2]); // DontUnroll.
         Instruction counter = Assert.Single(block, i => i.Op == 245 && i.Args[1] == comparison.Args[2]);
-        // A signed counter mixed with uint scalar assignments in the HLSL comma continuation
-        // reached FXC's l-value cast diagnostic. Keep all continuation expressions unsigned.
+        // Keep the existing uint schedule alongside the defined scalar entry values.
         Assert.Equal(uintType, counter.Args[0]);
         Assert.Equal(176u, comparison.Op); // OpULessThan.
         Assert.Equal(0u, constants[counter.Args[2]]);
@@ -68,11 +67,17 @@ internal static class WaterOpticsInterpolationEmissionContract
         uint[] cases = destination.Args.Skip(3).Where((_, i) => i % 2 == 0).ToArray();
         var slots = new HashSet<int>();
         var results = new HashSet<uint>();
+        int loopStart = hlsl.IndexOf("for (" + header + ")", StringComparison.Ordinal);
+        Assert.InRange(loopStart, 0, hlsl.Length - 1);
+        string initialState = hlsl[..loopStart] + header[..header.IndexOf(';')] + ";";
+        string declarations = @"\buint\s+(?:_\d+(?:\s*=\s*\w+)?\s*,\s*)*";
         foreach (Instruction register in registers)
         {
             Assert.Equal(6, register.Args.Length);
             Assert.Equal(loop.Args[1], register.Args[5]); // Scalar comes from the continuation block.
-            Assert.Contains(code, i => i.Op == 1 && i.Args[0] == uintType && i.Args[1] == register.Args[2]); // OpUndef.
+            // Defined incoming state avoids copying undef values before a slot's first arithmetic write.
+            Assert.Contains(code, i => i.Op == 43 && i.Args[0] == uintType
+                && i.Args[1] == register.Args[2] && i.Args[2] == 0); // OpConstant uint zero, never OpUndef.
             Instruction next = Assert.Single(code, i => i.Op == 245 && i.Args[1] == register.Args[4]);
             Assert.Equal(uintType, next.Args[0]);
             Assert.Equal(36, next.Args.Length); // Sixteen cases plus the unchanged default route.
@@ -85,9 +90,10 @@ internal static class WaterOpticsInterpolationEmissionContract
             results.Add(incoming[cases[slot]]);
             Assert.All(Enumerable.Range(0, 16).Where(i => i != slot), i =>
                 Assert.Equal(register.Args[1], incoming[cases[i]]));
-            // The HLSL compiler input carries exactly these same independently declared scalar values.
-            Assert.Matches(@"\buint _" + register.Args[1] + @";", hlsl);
-            Assert.Matches(@"\buint _" + next.Args[1] + @";", hlsl);
+            // Zero entries may use a separate assignment or share the for initializer's uint declaration.
+            Assert.Matches(declarations + "_" + register.Args[1] + @"(?:\s*=\s*\w+)?\s*[,;]", initialState);
+            Assert.Matches(@"\b_" + register.Args[1] + @"\s*=\s*0u\s*[,;]", initialState);
+            Assert.Matches(declarations + "_" + next.Args[1] + @"(?:\s*=\s*\w+)?\s*[,;]", hlsl);
             Assert.Contains("_" + register.Args[1] + " = _" + next.Args[1], header, StringComparison.Ordinal);
             Assert.Contains(code.Skip(start).Take(end - start), i => i.Op is 245 or 198
                 && i.Args[1] != register.Args[1] && i.Args[1] != next.Args[1]
@@ -98,7 +104,8 @@ internal static class WaterOpticsInterpolationEmissionContract
         Assert.Contains(code, i => i.Op == 245 && i.Args[0] == uintType && i.Args[1] == result);
         Assert.Equal(16, Regex.Matches(header, @"_\d+ = _\d+").Count);
         string index = "_" + counter.Args[1];
-        Assert.Matches(@"^uint " + index + " = 0u; " + index + " < 23u; (?:_\\d+ = _\\d+, ){16}"
+        Assert.Matches(@"^uint (?:_\d+ = 0u, )*" + index + @" = 0u(?:, _\d+ = 0u)*; "
+            + index + " < 23u; (?:_\\d+ = _\\d+, ){16}"
             + index + @"\+\+$", header);
     }
 

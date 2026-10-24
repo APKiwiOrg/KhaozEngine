@@ -30,7 +30,7 @@ uint opticsInterpolate(int triangle, uvec2 p) {
     // Fixed ordered interpolation shares one body per operation after exhaustive inlining.
     // Slots 0..5 are dx,dz,ex,ez,px,pz, 6..7 temporaries, 8..10 det,bn,cn,
     // 11..14 wb,wc,db,dc and 15 near/result. Every read follows its producing step.
-    uint r[16];
+    uint r[16] = uint[16](0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u);
     [[dont_unroll]] for (uint step = 0u; step < 23u; step++) {
         uint left = 0u, right = 0u;
         int operation = 0, destination = int(step);

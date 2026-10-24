@@ -122,8 +122,10 @@ Mode 2 uses existing texture/sampler bindings 10/11 and unchanged 1088-byte UBO 
   body, including one nested 27-step division loop. Select the original ordered scalar operand bits
   and store each rounded result through literal-slot destinations in sixteen loop-carried scalar
   registers. Require actual pinned SPIR-V/HLSL scalar definitions, uses and loop phis, with no
-  16-element interpolation array or dynamic destination store. Preserve sign-bit XOR subtraction,
-  signed zero, the constant/equal-zero early return and unchanged arithmetic helpers and CPU reference.
+  16-element interpolation array or dynamic destination store. Require defined uint-zero entry values
+  for all sixteen scalar phis and prove every selected arithmetic read follows its producing write.
+  Preserve sign-bit XOR subtraction, signed zero, the constant/equal-zero early return and unchanged
+  arithmetic helpers and CPU reference.
   Verify actual production interpolation bitwise against that CPU reference on nonconstant depths,
   cancellation and admitted subnormal intermediates, plus unchanged query, image and fallback proofs.
 - [ ] Share the six original narrow predicate products in one retained six-term loop without changing

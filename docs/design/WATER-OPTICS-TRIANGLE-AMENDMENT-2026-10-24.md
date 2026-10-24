@@ -185,6 +185,9 @@ Interpolation now retains its original 23 ordered software operations in one fix
 loop, selecting scalar operands into one add, multiply or divide body and storing each rounded result
 in sixteen loop-carried scalar registers through literal-slot destination stores. Actual pinned
 SPIR-V/HLSL must contain no 16-element interpolation bank or dynamic destination store.
+All sixteen scalar entry values are explicitly uint zero. Every selected arithmetic read follows
+its producing write, so these initial values only define otherwise unused pass-through state.
+Native FXC acceptance of this initialization remains a separate pending proof.
 Every subtraction retains its sign-bit XOR. Constant/equal-zero
 depths still return before interpolation. This shares compiler input without relying on a function
 boundary surviving inlining. The narrow predicate also shares one unchanged product body through

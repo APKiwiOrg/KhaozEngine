@@ -150,12 +150,21 @@ provide this behavior.
 installation predicate. It must not be relabelled as a hash of installed statics. Different selected sets enter
 the existing ordinary semantic digest through their retained provenance and exclusions. The existing
 ordinary environment identity therefore distinguishes those sets without hashing a delegate or local handles.
-Consumers persisting filtered bakes must include their policy inputs in `NavBakeSources` or use the existing
-contact identity machinery. A full collider hash alone does not identify a filter policy.
+Consumers persisting filtered bakes must explicitly identify the installation policy and all its inputs in
+`NavBakeSources`, both when creating the bake and in its runtime `NavBakeExpectation`. Use
+`sources.AddHashOf("policy/colliders", policyBytes)` with canonical bytes naming the policy version and its
+inputs. Change that source digest when the policy semantics or inputs change. A full collider hash alone does
+not identify a filter policy. Creating an ordinary Contact registration or using navigation format 2 does not
+insert this source entry. The live environment identity and runtime profile validation do not replace it.
+A policy-only source change must refuse a stored bake even with identical complete collider hashes and tuning.
 
 The default call and an all-true predicate must preserve the same physical add order and poses, canonical
 owners, exclusions, extent bits and registration semantic digest. Existing collider hashes, contact identity
 version, navigation formats, pinned normalized navigation bytes and baseline hashes remain unchanged.
+Historical full-file comparisons normalize only the engine-version string, its encoded length and the enclosing
+identity-block length, following `ContactNavigationBaselineTests.NormalizeFile`. Every other identity, header
+and payload byte stays pinned. Same-build default and all-true serialized files remain equal without
+normalization. This test-only normalization does not relax engine-version load-mismatch checks.
 No baseline refresh is permitted to conceal a difference introduced by this seam.
 
 ## FI-7. #1352 assessment and acceptance

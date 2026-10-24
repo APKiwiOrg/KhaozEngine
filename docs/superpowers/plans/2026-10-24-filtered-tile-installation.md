@@ -26,6 +26,7 @@ the existing support recorder, with exclusive caller labels and the existing joi
 - Every filtered registration retains the existing captured `TileWorldColliders.MovementExtent`, unchanged.
 - Evaluate the predicate once per collider before any insertion. Store decisions, not the callback.
 - Preserve unfiltered collider hashes, registration identities, navigation formats and pinned baseline bytes.
+  Historical nav comparisons normalize only the engine-version identity and its lengths, as defined in Task 1.
 - Run local builds and tests through `build-slot`. Use `--heavy` for the final full suite and packaging.
 - No local load, timing, repeated test loops, live consumer clients, world bakes or baseline growth approvals.
 - Use focused new types and test files within KESIZE. No exemption or baseline increase.
@@ -79,8 +80,16 @@ Task 7 documents and versions both capabilities together. Execute these tasks in
 - Produces embedded pre-feature baseline fixtures and
   `TileInstallationCompatibilityTests.UnfilteredInstallationMatchesPreFeatureBaseline()`.
 - Baseline JSON records canonical owner rows, transformed bound float bits, exclusions, extent float bits and
-  semantic digest. The nav fixture is the complete `GroundNavigationBake.WriteTo(Stream)` output.
+  semantic digest. The nav fixture is the complete `GroundNavigationBake.WriteTo(Stream)` output with only its
+  engine-version string and length normalized to `0.0.0-golden`, and its enclosing identity-block length adjusted.
+  Every other identity, header and payload byte is pinned. Normalization is a historical test oracle only,
+  following `ContactNavigationBaselineTests.NormalizeFile`, and does not change production loading.
   Identify rows and exclusions by original collider index, never by backend-local handle integers.
+- Produces `internal static byte[] TileInstallationCompatibilityTests.NormalizeNavigationFile(byte[] file)` for
+  Task 3. Validate the file framing, replace only the identity's leading UTF-8 engine-version string and its
+  UInt16 length at offset 52, and adjust the header's UInt32 identity length at offset 8. Preserve the remaining
+  identity bytes, all other header bytes and the complete payload verbatim. Use public byte operations without
+  adding access to Movement internals.
 - Make the existing `DeckDoorWorld()`, `Origin`, `Options` and `Profiles` fixture members internal, with their
   current values unchanged, so the compatibility test uses the same inputs without copying their definitions.
 
@@ -88,17 +97,25 @@ Task 7 documents and versions both capabilities together. Execute these tasks in
   starting commit, before any production edit. Use `EveryKindWorld()` for collider and owner data, explicit
   world id `filtered-installation-baseline`, and the existing `DeckDoorWorld()`/`Options`/profiles case for
   navigation. Do not rename its existing source keys or change its tuning. Capture actual baseline values once,
-  commit them, then remove the temporary fixture-writing path from the test.
+  normalize only the nav file's engine-version identity and its lengths as above, commit them, then remove the
+  temporary fixture-writing path from the test.
 - [ ] Assert the existing EveryKindWorld hash remains
   `6aa23030d83786938861832e5f220a95614c896da011eb21c14ef31a5e651851`. Compare all JSON fields bitwise and the
-  entire navigation file bytewise. Keep the existing seven normalized contact-navigation baseline literals.
+  entire normalized navigation file bytewise. Keep the existing seven normalized contact-navigation baseline literals.
+- [ ] Add `HistoricalNavigationOracleIgnoresOnlyEngineVersion`. Two copies differing only in the engine-version
+  string, including different encoded lengths and the adjusted identity-block length, must normalize to the same
+  frozen bytes. A version-only release change must pass without regenerating the fixture.
+- [ ] Add `HistoricalNavigationOracleRejectsOtherChanges` with bounded mutations of pinned source, option,
+  profile, collider, column and graph bytes, plus other header bytes. Each must fail its historical comparison.
+  Keep all JSON fields bitwise pinned and preserve every non-version nav byte in the normalizer. Keep existing
+  engine-version load-mismatch tests unchanged.
 - [ ] Run the new baseline test on unchanged production code. This task establishes a green historical oracle,
   so it does not manufacture a red feature assertion. Later tasks must not regenerate these fixtures.
 
 ```csharp
 Assert.Equal("6aa23030d83786938861832e5f220a95614c896da011eb21c14ef31a5e651851", actualColliderHash);
 Assert.Equal(frozenRegistrationJson, actualRegistrationJson);
-Assert.Equal(frozenNavigationBytes, actualNavigationBytes);
+Assert.Equal(frozenNavigationBytes, NormalizeNavigationFile(actualNavigationBytes));
 ```
 
 ```bash
@@ -198,6 +215,7 @@ Expected: all selected classes pass, zero warnings, original compatibility fixtu
 
 - Consumes Task 2's overload and index mapping, plus existing `CreateMovementRegistration(string worldId)`.
 - Uses public `PhysicsNavBake.Capture`, `GroundNavigationBake.Create` and `WriteTo(Stream)` for capture comparisons.
+- Consumes Task 1's frozen normalized nav fixture and `TileInstallationCompatibilityTests.NormalizeNavigationFile`.
 - Produces selected-vs-manual-reference navigation proofs and default-vs-all-true byte comparisons.
 
 - [ ] Add `FilteredCaptureMatchesInstalledStaticsRatherThanMovementExclusions`. Build a bounded flat water-bed
@@ -216,14 +234,26 @@ Expected: all selected classes pass, zero warnings, original compatibility fixtu
 - [ ] Add `FilteringPhysicalGroundDoesNotRewriteAnalyticCoverage`. Reject a ground mesh while keeping resident
   analytic coverage. Complete capture has no physical floor in its column. A body querying captured analytic
   ground remains supported there. This pins the difference between physics selection and terrain declarations.
-- [ ] Add `AllTrueCaptureMatchesDefaultAndHistoricalBytes` using Task 1's navigation fixture, unchanged inputs and
-  complete byte comparison. Keep sources alive and unmodified until capture and profile construction finish.
+- [ ] Add `PolicySourceDigestChangeRefusesPersistedContactBake`. Use two bounded installations of the same built
+  colliders, one omitting the Blocked water collider and one retaining it. Keep complete collider hashes, engine
+  version, capture options, all other source entries and Contact tuning identical. Explicitly add a
+  `policy/colliders` source through `NavBakeSources.AddHashOf` using different canonical policy-version/input
+  bytes. Bake each installation with its matching sources. Both matching loads must return `Loaded`. Loading
+  either unchanged file against the other policy's expectation must return `SourcesChanged`. Only the expected
+  policy-source digest changes in each refusal check, with no file, graph checksum, engine-version or tuning edit.
+- [ ] Add `AllTrueCaptureMatchesDefaultAndHistoricalBytes` using Task 1's navigation fixture and unchanged inputs.
+  Compare complete normalized default and all-true files to the frozen fixture through Task 1's helper, which
+  normalizes only the engine-version string and its lengths and pins every other identity, header and payload
+  byte. Also require complete raw default/all-true file equality in the same build. Keep sources alive and
+  unmodified until capture and profile construction finish. Do not regenerate fixtures or weaken existing
+  engine-version load-mismatch checks.
 
 ```csharp
 Assert.Equal(referenceBytes, filteredBytes);
 Assert.False(allInstalledBytes.SequenceEqual(filteredBytes));
 Assert.Equal(NavPathStatus.Complete, waterBedRoute.Status);
-Assert.Equal(frozenNavigationBytes, allTrueNavigationBytes);
+Assert.Equal(frozenNavigationBytes, TileInstallationCompatibilityTests.NormalizeNavigationFile(defaultNavigationBytes));
+Assert.Equal(frozenNavigationBytes, TileInstallationCompatibilityTests.NormalizeNavigationFile(allTrueNavigationBytes));
 Assert.Equal(defaultNavigationBytes, allTrueNavigationBytes);
 ```
 
@@ -435,8 +465,12 @@ build-slot --label support-query-public-consumer -- dotnet test KhaozEngine.Tile
 
 - [ ] Add an example calling `colliders.AddTo(physics, include)` with a neutral policy. Explain original-index
   mapping, absolute predicate poses, preserved resident extent, selected-only ground exclusions, source lifetime
-  and the complete-set meaning of `colliders.Hash`. State that persisted filter policy inputs need their own
-  navigation source identity. Keep Grimhollow's material policy in Grimhollow.
+  and the complete-set meaning of `colliders.Hash`. Require an explicit installation-policy source in
+  `NavBakeSources` for both bake creation and the runtime `NavBakeExpectation`. Show
+  `sources.AddHashOf("policy/colliders", policyBytes)` with canonical policy-version/input bytes, and require its
+  digest to change when those semantics or inputs change. State that Contact registration, live environment
+  identity, format 2 and runtime profile validation do not automatically persist this entry or replace it.
+  Document Task 3's matching-load and policy-only `SourcesChanged` proof. Keep Grimhollow's material policy in Grimhollow.
 - [ ] Add a public-only capture example with two body labels, using/finally restoration, Snapshot and Combine.
   Explain synchronous thread ownership, exclusive nested attribution, ordinal labels, cumulative snapshots,
   disjoint combination, worker aggregation and actual worker overhead. Define max-per-session retention bytes,
@@ -451,7 +485,10 @@ build-slot --label support-query-public-consumer -- dotnet test KhaozEngine.Tile
   and released. Do not assume that number is free. Put the version and matching newest changelog entry in the
   same commit, and update the guarded version declarations in that commit. The changelog distinguishes the
   filtered seam and supported measurement from unchanged default output, and reports #1352 only to the extent
-  actually proven. Both additive APIs ride this one selected version.
+  actually proven. Both additive APIs ride this one selected version. Do not regenerate Task 1's fixtures or
+  refresh the seven existing contact-navigation baselines for version selection. The unchanged historical oracle
+  must pass a version-only change through Task 1's engine-version normalization. Every other pinned byte and
+  same-build raw default/all-true equality remain required, as do existing engine-version load refusals.
 - [ ] After the orchestrator reconciles current main into the branch, run the final Release verification once.
   Preserve full command exit statuses. Do not loop or turn a tracked failure into an unrecorded retry.
 

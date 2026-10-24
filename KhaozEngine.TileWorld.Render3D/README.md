@@ -274,8 +274,12 @@ construction, before any upload.
   corner cut, feather, coarse block or transition fan therefore shades exactly as it renders, rather than as the
   bilinear `HeightAt` interior, which keeps its own contract. TileWorld builds no bilinear field.
 - **Certified coverage.** Each certificate is a drawable row-run rectangle widened by the effective swell
-  displacement and the positional budget `min(0.0001 m, TileSize / 1024)`. Source conversion, render-origin
-  conversion and the field's `ReconstructionErrorBoundMetres` all share that one budget. Only regions whose
+  displacement and the positional budget `min(0.0001 m, TileSize / 1024)`. Source conversion and the field's
+  `ReconstructionErrorBoundMetres` share that one budget. Binding origin X and Z are the binary64 floor of the
+  minimum consumed vertex, in whole metres. Origin Y stays the reference level. Every `WorldFrame` render anchor
+  is a multiple of 128 m, so reducing a whole-metre origin by any anchor is exact in binary32 and render-origin
+  reduction is charged nothing against the budget. An origin whose X or Z magnitude is at or beyond 2^24 m has no
+  such guarantee and is refused as `UnrepresentableSurface`. Only regions whose
   triangles support a certificate participate. Packing doubles the bin axes from one bin per tile up to 1024 and
   never drops, downsamples or merges triangles. A domain spans fewer than 1024 tiles on each axis.
 - **Strict refusal, no fallback.** Opted-in water never falls back to scene depth, zero or deep water. A refusal

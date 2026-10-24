@@ -82,7 +82,9 @@ Each prepared bounded-water owner carries five things together, and publishes or
 ## Error budget and refusals
 
 The producer owns one positional budget covering source conversion, anchor and render-origin conversion and the
-field's upward-rounded `ReconstructionErrorBoundMetres`. TileWorld uses `min(0.0001 m, TileSize / 1024)`. R8b
+field's upward-rounded `ReconstructionErrorBoundMetres`. TileWorld uses `min(0.0001 m, TileSize / 1024)` and
+snaps binding origins to whole metres below 2^24 m, so reduction by any 128 m render anchor is exact and costs
+nothing. R8b
 selects and records its own bound before acceptance. It does not receive a second independent allowance.
 
 Map each typed `Reason` to a native diagnostic naming the body, domain and source. Keep the new generation

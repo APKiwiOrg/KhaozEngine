@@ -250,6 +250,74 @@ public class TileWaterOpticsTests
     }
 
     [Theory]
+    [InlineData(4, 0, 0.1f)]
+    [InlineData(0, 4, 0.1f)]
+    [InlineData(-4, 0, 0.1f)]
+    [InlineData(0, -4, 0.1f)]
+    [InlineData(40, 0, 0.1f)]
+    [InlineData(0, -40, 0.1f)]
+    [InlineData(100, -100, 0.1f)]
+    [InlineData(-100, 100, 0.1f)]
+    [InlineData(20, -20, 0.3f)]
+    [InlineData(-40, 40, 0.3f)]
+    [InlineData(4, -4, 1.1f)]
+    [InlineData(-4, 4, 2.54f)]
+    [InlineData(40, -40, 0.01f)]
+    [InlineData(162, 0, 0.1f)]
+    [InlineData(0, 164, 0.1f)]
+    [InlineData(-165, 0, 0.1f)]
+    [InlineData(0, -163, 0.1f)]
+    public void FractionalGridsAtPracticalDistancesRemainAvailable(int rx, int rz, float tileSize)
+    {
+        var region = new RegionCoord(rx, rz);
+        TileWorldDocument doc = LoadedPatch(region);
+        doc.TileSize = tileSize;
+        int x = region.OriginX + 10, z = region.OriginZ + 10;
+        // A one-centimetre ramp gives a hand-derived center height of 1.005 m.
+        // This pins useful bed sampling without assuming a vertical bound for arbitrary slopes.
+        doc.SetCornerHeightCm(x, z, 0, 100);
+        doc.SetCornerHeightCm(x + 1, z, 0, 101);
+        doc.SetCornerHeightCm(x, z + 1, 0, 100);
+        doc.SetCornerHeightCm(x + 1, z + 1, 0, 101);
+        float worldX = TileWorldSpace.WorldX(x + 0.5f, tileSize);
+        float worldZ = TileWorldSpace.WorldZ(z + 0.5f, tileSize);
+        Assert.Equal(1.005f, doc.HeightAt(worldX, worldZ, 0), 4);
+
+        Assert.True(TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out _));
+
+        Assert.Equal(3.995f, Sample(build, worldX, worldZ), 4);
+        Assert.Equal(1.005f, doc.HeightAt(worldX, worldZ, 0), 4);
+    }
+
+    [Theory]
+    [InlineData(163, 0)]
+    [InlineData(0, 163)]
+    [InlineData(-164, 0)]
+    [InlineData(0, -164)]
+    public void EncodedAndAffinePositionsMustStayWithinTheirMutualBudget(int rx, int rz)
+    {
+        var region = new RegionCoord(rx, rz);
+        TileWorldDocument doc = LoadedPatch(region);
+        doc.TileSize = 0.1f;
+        int x = region.OriginX + 10, z = region.OriginZ + 10;
+        doc.SetCornerHeightCm(x, z, 0, 100);
+        doc.SetCornerHeightCm(x + 1, z, 0, 101);
+        doc.SetCornerHeightCm(x, z + 1, 0, 100);
+        doc.SetCornerHeightCm(x + 1, z + 1, 0, 101);
+        float worldX = TileWorldSpace.WorldX(x + 0.5f, doc.TileSize);
+        float worldZ = TileWorldSpace.WorldZ(z + 0.5f, doc.TileSize);
+        Assert.Equal(1.005f, doc.HeightAt(worldX, worldZ, 0), 4);
+
+        // Each representation is within 97.6563 micrometres of authored positions.
+        // Opposite rounding makes their mutual displacement 97.7516 micrometres.
+        Assert.False(TileWaterOptics.TryBuild(doc, region, 0, 5f, 0f, out var build, out var failure));
+
+        Assert.Null(build);
+        Assert.Equal(new TileWaterOpticsFailure(region, 0, 5f, TileWaterOpticsFailureKind.FieldTooLarge), failure);
+        Assert.Equal(1.005f, doc.HeightAt(worldX, worldZ, 0), 4);
+    }
+
+    [Theory]
     [InlineData(262142, 0)]
     [InlineData(-262143, 0)]
     [InlineData(0, 262142)]

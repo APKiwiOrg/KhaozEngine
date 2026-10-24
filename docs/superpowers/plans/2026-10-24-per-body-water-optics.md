@@ -205,6 +205,14 @@ The resulting bilinear field matches the authored `HeightAt` function. It is not
 piecewise-triangle interior of a non-planar rendered terrain quad. Task 6 must test and render a saddle
 bank, and the visual gate rejects a bad shoreline rather than hiding that distinction.
 
+Execution ruling: the float mapping must preserve its lattice within a positional budget of
+`min(0.0001 metres, TileSize / 1024)`. Validate both axes, all encoded vertices, stored affine positions
+and their mutual displacement. Refuse collapsed or non-finite mappings as `FieldTooLarge` before
+publishing a field. Account for local UV arithmetic roundoff separately from absolute-position
+quantization. The positional budget is below one thousandth of a tile and small relative to the
+0.20 m bank feather. It is not a bound on vertical error for arbitrary terrain slopes. Tests retain
+ordinary fractional tile sizes beyond the origin and reject whole-sample shifts at large coordinates.
+
 `TileWaterOpticsBuild` contains Field, Origin, Size and
 `IReadOnlyList<TileWaterOpticsDependency> Dependencies`. The internal dependency record carries Region
 and nullable Plane, with null meaning an availability dependency. The public

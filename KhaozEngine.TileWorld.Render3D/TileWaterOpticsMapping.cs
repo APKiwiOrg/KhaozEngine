@@ -3,7 +3,7 @@ using System.Numerics;
 
 namespace KhaozEngine.TileWorld.Render3D;
 
-/// <summary>Admits float-origin fields only at the precision of their bounded local lattice.</summary>
+/// <summary>Admits float-origin fields within the positional budget and separate local arithmetic allowance.</summary>
 internal static class TileWaterOpticsMapping
 {
     // Binary32 round-to-nearest unit roundoff. The binding uses four roundings: reciprocal extent,
@@ -17,13 +17,16 @@ internal static class TileWaterOpticsMapping
         float inverseExtent = 1f / extent;
         if (!float.IsFinite(inverseExtent) || inverseExtent <= 0f) return false;
         int cells = samples - 1;
-        double cellTolerance = Gamma4 * cells;
+        double positionTolerance = Math.Min(0.0001, (double)tileSize / 1024);
+        // P metres of encoded-versus-affine discrepancy becomes at most P * N / S cells.
+        // Exact normalized indices lie in [-D, N + D]. Add the local operation error on that range.
+        double positionalCellError = positionTolerance * cells / extent;
+        double cellTolerance = positionalCellError + Gamma4 * (cells + positionalCellError);
         return Axis(minX, 1, false, origin.X) && Axis(maxZ, -1, true, origin.Z);
 
         bool Axis(int first, int step, bool worldZ, float anchor)
         {
             float worldPerTile = worldZ ? TileWorldSpace.WorldZ(1f, tileSize) : TileWorldSpace.WorldX(1f, tileSize);
-            double worldTolerance = cellTolerance * tileSize;
             float previous = 0f;
             for (int i = 0; i < samples; i++)
             {
@@ -40,11 +43,12 @@ internal static class TileWaterOpticsMapping
                 // between vertices is linear, so no interior interval can conceal a shifted anchor.
                 double authoredWorld = tile * (double)worldPerTile;
                 double mappedWorld = anchor + i * (double)extent / cells;
-                if (Math.Abs(world - authoredWorld) > worldTolerance
-                    || Math.Abs(mappedWorld - authoredWorld) > worldTolerance) return false;
+                if (Math.Abs(world - authoredWorld) > positionTolerance
+                    || Math.Abs(mappedWorld - authoredWorld) > positionTolerance
+                    || Math.Abs(world - mappedWorld) > positionTolerance) return false;
 
                 // Pin both the CPU reference division and the shader's uploaded reciprocal path.
-                // The error budget is in local cells and never grows with the absolute world position.
+                // Absolute-position quantization is admitted in metres above, independently of gamma4.
                 float local = world - anchor;
                 float cpuIndex = (local / extent) * cells;
                 float shaderIndex = (local * inverseExtent) * cells;

@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D.Internal;
 
@@ -20,9 +21,9 @@ internal static class WaterOpticsCoverage
         return padding;
     }
 
-    /// <summary>Refuse incomplete opted-in data before queueing a plane. Bounded four-fetch interpolation accepts
-    /// the exact field edges, including its final row and column. An unbound request keeps legacy behavior.</summary>
-    internal static void Validate(in WaterPlane plane, WaterSettings effective)
+    /// <summary>Refuse incomplete opted-in data before queueing a plane. Bilinear sampling accepts exact field
+    /// edges. Triangle requests must fit one immutable certificate. Unbound requests keep legacy behavior.</summary>
+    internal static void Validate(in WaterPlane plane, WaterSettings effective, WaterOpticsPayload payload = default)
     {
         if (!plane.Optics.IsBound) return;
         float padding = Padding(effective);
@@ -43,5 +44,6 @@ internal static class WaterOpticsCoverage
             || fieldMaxX <= binding.Origin.X || fieldMaxZ <= binding.Origin.Z
             || minX < binding.Origin.X || minZ < binding.Origin.Z || maxX > fieldMaxX || maxZ > fieldMaxZ)
             throw new ArgumentException("The optical field does not cover the water rectangle and its swell displacement.", nameof(plane));
+        payload.ValidateCoverage(binding, minX, minZ, maxX, maxZ);
     }
 }

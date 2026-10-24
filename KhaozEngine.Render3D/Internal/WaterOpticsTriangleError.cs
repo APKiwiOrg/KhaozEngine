@@ -11,7 +11,7 @@ internal static class WaterOpticsTriangleError
     // Constant nonzero divisors must be normal. All bound arithmetic itself is exact rational arithmetic.
     private static R Round(R magnitude) => magnitude / 16777216 + R.From(1.17549435E-38f);
 
-    internal static void Validate(ReadOnlySpan<WaterOpticsExactTriangle> triangles, Vector2 size)
+    internal static float Validate(ReadOnlySpan<WaterOpticsExactTriangle> triangles, Vector2 size)
     {
         R maximumArithmetic = 0, maximumMapping = 0;
         foreach (WaterOpticsExactTriangle triangle in triangles)
@@ -24,6 +24,17 @@ internal static class WaterOpticsTriangleError
         }
         if ((maximumArithmetic + maximumMapping).CompareTo((R)1 / 10000) > 0)
             Refuse("The slope-amplified coordinate and interpolation error exceeds 0.0001 metres.");
+        // Return the least binary32 upper bound. Later producers must charge this consumed budget
+        // before adding source conversion and render-origin error, rather than spending it twice.
+        R consumed = maximumArithmetic + maximumMapping;
+        int lo = 0, hi = BitConverter.SingleToInt32Bits(.0001f) + 1;
+        while (lo < hi)
+        {
+            int mid = lo + (hi - lo) / 2;
+            if (R.From(BitConverter.Int32BitsToSingle(mid)).CompareTo(consumed) < 0) lo = mid + 1;
+            else hi = mid;
+        }
+        return BitConverter.Int32BitsToSingle(lo);
     }
 
     private static R Arithmetic(WaterOpticsExactTriangle t)

@@ -117,9 +117,9 @@ internal sealed partial class WaterRenderer
         for (int i = 0; i < planes.Length; i++)
         {
             WaterSettings effective = planes[i].Look?.ResolveInto(_effective, frame.Water) ?? frame.Water;
-            WaterOpticsCoverage.Validate(planes[i], effective);
             if (!planes[i].Optics.IsBound) continue;
-            ResolveOptics(planes[i].Optics.Field);
+            WaterOpticsResources.Entry entry = ResolveOptics(planes[i].Optics.Field);
+            WaterOpticsCoverage.Validate(planes[i], effective, entry.Payload);
             _frameFields.Add(planes[i].Optics.Field);
         }
         _unusedFields.Clear();
@@ -188,8 +188,8 @@ internal sealed partial class WaterRenderer
     {
         WaterOpticsBinding binding = plane.Optics;
         if (!binding.IsBound) return;
-        WaterOpticsField field = Optics.Resolve(binding.Field).Field;
+        WaterOpticsPayload payload = Optics.Resolve(binding.Field).Payload;
         u.OpticsRect = new(binding.Origin.X, binding.Origin.Z, 1f / binding.Size.X, 1f / binding.Size.Y);
-        u.OpticsParams = new(binding.Origin.Y, 1f, field.Width, field.Height);
+        u.OpticsParams = new(binding.Origin.Y, payload.Mode, payload.Width, payload.Height);
     }
 }

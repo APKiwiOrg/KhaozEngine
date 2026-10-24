@@ -5549,12 +5549,28 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     knobs (a plane wanting no surf sets `SurfStrength = 0`, which is the whole per-body need), and the sample-
     count quality knobs. Setting `WaveSource = WaterWaveSource.Procedural` on a look is the inland-body case: it
     takes the plane off the shared ocean entirely, so it loses the sea's swell and whitecaps, and (since shoaling
-    and breaking surf ride the same gate) its breaking surf too. Costs zero new UBO bytes (the payload stays 672,
-    the slot stays 768), zero new GPU resources and zero new pipelines - each plane already owned its own slot in
+    and breaking surf ride the same gate) its breaking surf too. Costs zero new UBO bytes (the payload stays 1088,
+    the slot stays 1280), zero new GPU resources and zero new pipelines - each plane already owned its own slot in
     the water pass's uniform buffer, so an override is a different set of numbers written into a slot that was
     being written anyway. Per-body sea states, bathymetry and grid modes stay deferred to
     [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275). Rationale, including why a per-plane sea state
     is refused rather than deferred: `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
+  - **Independent optical bed**: create an immutable `WaterOpticsField` for a bilinear lattice or a
+    `WaterOpticsTriangleField` for a certified triangle surface in local metres. Triangle vertex components
+    are X, signed rest depth, Z. Load once with `scene.LoadWaterOpticsField(field)` or
+    `scene.LoadWaterOpticsTriangles(field)`. Bind the returned handle through `WaterOpticsBinding`, whose
+    origin Y is the reference surface height and whose XZ origin is the field minimum. Triangle bindings
+    use the field's exact `Size`. Their drawable rectangle, including effective procedural displacement,
+    must fit in one immutable certificate. FFT bindings remain unsupported without a certified envelope.
+    Queue water before `scene.PrepareFrame(width, height)` and record only after preparation succeeds.
+    Changes to prepared inputs require preparation again. Reuse handles across frames and call
+    `UnloadWaterOpticsField` to invalidate them immediately. Texture and retained CPU payload bytes remain
+    charged in `WaterOpticsStats` until GPU retirement completes. Handles from another or recreated scene
+    are invalid, so explicitly reload retained fields into the new scene. A producer charges the triangle
+    field's upward-rounded `ReconstructionErrorBoundMetres` together with its source and render-origin
+    conversion error within the total 0.0001 m budget. Scene upload throws `UnrepresentableSurface` for
+    nonzero subnormal atlas values or non-normal inverse extents rather than modify source coordinates.
+    Unbound planes keep legacy scene-depth behavior and existing bilinear fields keep their mapping rules.
   - **Settings** (`Post.Water`, scene-wide look, lives alongside `Post.Sky` for the same reason - both are
     scene-appearance bags reached off `Post`). Grouped by what they do:
     - *Body colour*: `DeepColor`/`ShallowColor`, graded by `AbsorptionPerMetre` (per-channel 1/metre coefficients;

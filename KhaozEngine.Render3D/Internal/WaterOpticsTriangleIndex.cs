@@ -9,7 +9,8 @@ internal static class WaterOpticsTriangleIndex
 {
     private const int ScalarLimit = WaterOpticsTriangleField.MaxDimension * WaterOpticsTriangleField.MaxDimension;
 
-    internal readonly record struct Packed(float[] Scalars, int Width, int Height, int Lines, int References, int MaximumOccupancy);
+    internal readonly record struct Packed(float[] Scalars, int Width, int Height, int Lines, int References,
+        int MaximumOccupancy, float ReconstructionErrorBound);
     private readonly record struct LineKey(BigInteger A, BigInteger B, BigInteger C);
 
     private sealed class Line
@@ -51,7 +52,7 @@ internal static class WaterOpticsTriangleIndex
 
         List<int>?[] bins = BuildBins(size, columns, rows, sources, fixedScalars, out int references, out int maximumOccupancy);
         WaterOpticsTriangleCoverage.Validate(triangles, bins, size, columns, rows, certificates);
-        WaterOpticsTriangleError.Validate(triangles, size);
+        float reconstructionError = WaterOpticsTriangleError.Validate(triangles, size);
 
         int used = checked((int)(fixedScalars + references));
         int width = Math.Min(WaterOpticsTriangleField.MaxDimension, Math.Max(2, used));
@@ -97,7 +98,7 @@ internal static class WaterOpticsTriangleIndex
             atlas[offset + 2] = line.Hi.X;
             atlas[offset + 3] = line.Hi.Y;
         }
-        return new(atlas, width, height, lines.Count, references, maximumOccupancy);
+        return new(atlas, width, height, lines.Count, references, maximumOccupancy, reconstructionError);
     }
 
     private static List<int>?[] BuildBins(Vector2 size, int columns, int rows, WaterOpticsTriangle[] triangles,
@@ -116,20 +117,20 @@ internal static class WaterOpticsTriangleIndex
             int z0 = Math.Max(0, (int)(minZ / size.Y * rows) - 1);
             int z1 = Math.Min(rows - 1, (int)(maxZ / size.Y * rows) + 1);
             for (int z = z0; z <= z1; z++)
-            for (int x = x0; x <= x1; x++)
-            {
-                Vector2 lo = new(WaterOpticsTriangleMath.BinMinimum(size.X, x, columns), WaterOpticsTriangleMath.BinMinimum(size.Y, z, rows));
-                Vector2 hi = new(WaterOpticsTriangleMath.BinMaximum(size.X, x, columns), WaterOpticsTriangleMath.BinMaximum(size.Y, z, rows));
-                if (!WaterOpticsTriangleMath.Intersects(t, lo, hi)) continue;
-                List<int> bin = bins[z * columns + x] ??= new List<int>();
-                if (bin.Count == WaterOpticsTriangleField.MaxTrianglesPerBin)
-                    throw new WaterOpticsSurfaceException(WaterOpticsSurfaceFailure.CapacityExceeded,
-                        $"Bin ({x}, {z}) exceeds 32 triangle candidates.");
-                bin.Add(ordinal);
-                references = checked(references + 1);
-                CheckCapacity(checked(fixedScalars + references));
-                maximumOccupancy = Math.Max(maximumOccupancy, bin.Count);
-            }
+                for (int x = x0; x <= x1; x++)
+                {
+                    Vector2 lo = new(WaterOpticsTriangleMath.BinMinimum(size.X, x, columns), WaterOpticsTriangleMath.BinMinimum(size.Y, z, rows));
+                    Vector2 hi = new(WaterOpticsTriangleMath.BinMaximum(size.X, x, columns), WaterOpticsTriangleMath.BinMaximum(size.Y, z, rows));
+                    if (!WaterOpticsTriangleMath.Intersects(t, lo, hi)) continue;
+                    List<int> bin = bins[z * columns + x] ??= new List<int>();
+                    if (bin.Count == WaterOpticsTriangleField.MaxTrianglesPerBin)
+                        throw new WaterOpticsSurfaceException(WaterOpticsSurfaceFailure.CapacityExceeded,
+                            $"Bin ({x}, {z}) exceeds 32 triangle candidates.");
+                    bin.Add(ordinal);
+                    references = checked(references + 1);
+                    CheckCapacity(checked(fixedScalars + references));
+                    maximumOccupancy = Math.Max(maximumOccupancy, bin.Count);
+                }
         }
         return bins;
     }

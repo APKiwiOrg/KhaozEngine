@@ -33,7 +33,7 @@ public readonly struct WaterOpticsBinding
     public WaterOpticsHandle Field { get; }
     /// <summary>Rectangle minimum in XZ and the source field's reference surface in Y.</summary>
     public Vector3 Origin { get; }
-    /// <summary>Positive rectangle extent along X and Z.</summary>
+    /// <summary>Positive rectangle extent along X and Z. Triangle payloads require their exact field size.</summary>
     public Vector2 Size { get; }
     /// <summary>Whether this submission opts into independent bed depth.</summary>
     public bool IsBound => Field.IsValid;
@@ -42,4 +42,10 @@ public readonly struct WaterOpticsBinding
 /// <summary>Optical resource diagnostics. Byte counts cover float32 texture payloads, excluding opaque driver
 /// overhead. Retired bytes remain counted until physical disposal. CPU samples remain owned by the retained field.</summary>
 public readonly record struct WaterOpticsStats(int LiveFields, long LiveTextureBytes,
-    long RetiredTextureBytes, long UploadCount);
+    long RetiredTextureBytes, long UploadCount)
+{
+    /// <summary>Owned immutable live CPU payload bytes, excluding object and array headers.</summary>
+    public long LiveRetainedCpuBytes { get; init; }
+    /// <summary>Owned immutable CPU payload bytes retained until actual resource retirement.</summary>
+    public long RetiredRetainedCpuBytes { get; init; }
+}

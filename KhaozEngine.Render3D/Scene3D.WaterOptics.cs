@@ -7,13 +7,17 @@ public sealed partial class Scene3D
 {
     readonly WaterSettings _waterOpticsScratch = new();
 
-    /// <summary>Live and retired float32 texture payload bytes and cumulative successful optical uploads.
-    /// Excludes opaque driver overhead. Each resource also retains its immutable CPU field.</summary>
+    /// <summary>Live and retired float32 texture and retained CPU payload bytes, plus cumulative successful
+    /// optical uploads. Excludes opaque driver overhead and managed headers.</summary>
     public WaterOpticsStats WaterOpticsStats => _water.Optics.Stats;
 
     /// <summary>Upload an immutable field once and return its scene-owned handle. Recreating a scene requires
     /// explicitly loading retained CPU fields again. Old scene handles cannot be reused.</summary>
     public WaterOpticsHandle LoadWaterOpticsField(WaterOpticsField field) => _water.Optics.Load(field);
+
+    /// <summary>Upload one immutable certified triangle atlas. Handles use the same scene ownership and
+    /// retirement contract as bilinear fields. A triangle binding requires the field's exact size.</summary>
+    public WaterOpticsHandle LoadWaterOpticsTriangles(WaterOpticsTriangleField field) => _water.Optics.LoadTriangles(field);
 
     /// <summary>Invalidate a field immediately and defer texture destruction through the scene's retirement queue.
     /// Default is a no-op. Foreign, stale and double-released handles throw <see cref="ArgumentException"/>.</summary>
@@ -39,8 +43,8 @@ public sealed partial class Scene3D
             throw new InvalidOperationException("Queue water before Scene3D.PrepareFrame().");
         if (plane.Optics.IsBound)
         {
-            _water.Optics.Resolve(plane.Optics.Field);
-            WaterOpticsCoverage.Validate(plane, plane.Look?.ResolveInto(_waterOpticsScratch, Post.Water) ?? Post.Water);
+            var payload = _water.Optics.Resolve(plane.Optics.Field).Payload;
+            WaterOpticsCoverage.Validate(plane, plane.Look?.ResolveInto(_waterOpticsScratch, Post.Water) ?? Post.Water, payload);
         }
         _waterPlanes.Add(plane);
     }

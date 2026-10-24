@@ -9,6 +9,18 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class WaterOpticsTriangleFieldTests
 {
     [Fact]
+    public void ImpossibleAtlasIsRefusedBeforeCopyingOrScanningSourceVertices()
+    {
+        // Even the header, one bin and 12 scalars per triangle exceed 1024 squared.
+        // A NaN first vertex distinguishes the preflight from the later input scan.
+        var triangles = new WaterOpticsTriangle[87_380];
+        triangles[0] = new(new(float.NaN, 0, 0), default, default);
+        var error = Assert.Throws<WaterOpticsSurfaceException>(() => new WaterOpticsTriangleField(
+            Vector2.One, 1, 1, triangles, [Rectangle(0, 0, 1, 1)]));
+        Assert.Equal(WaterOpticsSurfaceFailure.CapacityExceeded, error.Reason);
+    }
+
+    [Fact]
     public void CallerMutationCannotChangePackedGeometryOrCertificates()
     {
         WaterOpticsTriangle[] triangles = Square(2, -0.25f);
@@ -28,6 +40,7 @@ public sealed class WaterOpticsTriangleFieldTests
         Assert.Equal(2, field.TextureHeight);
         Assert.Equal(512L, field.TextureBytes);
         Assert.Equal(528L, field.RetainedBytes);
+        Assert.Equal(0, field.ReconstructionErrorBoundMetres);
         ReadOnlySpan<float> atlas = field.AtlasScalars;
         Assert.Equal(128, atlas.Length);
         Assert.Equal(new float[] { 1, 1, 1, 18, 20, 44, 2, 5, 64 }, atlas[..9].ToArray());
@@ -49,6 +62,7 @@ public sealed class WaterOpticsTriangleFieldTests
         ];
         var field = new WaterOpticsTriangleField(new(2), 3, 5, triangles, [Rectangle(0, 0, 2, 2)]);
         Assert.InRange(Math.Abs(field.SampleDepth(.25f, .75f) - expected), 0, .00001f);
+        Assert.InRange(field.ReconstructionErrorBoundMetres, float.Epsilon, .0001f);
     }
 
     [Theory]
@@ -184,12 +198,12 @@ public sealed class WaterOpticsTriangleFieldTests
         if (reverse) triangles.Reverse();
         var field = new WaterOpticsTriangleField(new(2), 3, 3, triangles.ToArray(), [Rectangle(0, 0, 2, 2)]);
         foreach (float u in new[] { 0, float.BitDecrement(.5f), .5f, float.BitIncrement(.5f), 1 })
-        foreach (float v in new[] { 0, float.BitIncrement(0), float.BitDecrement(.5f), .5f, float.BitIncrement(.5f), 1 })
-        {
-            Assert.True(field.TrySampleDepth(u, v, out float value));
-            // Independent affine oracle is q = x + 2z - 1.
-            Assert.InRange(Math.Abs(value - ((double)u * 2 + v * 4 - 1)), 0, .00001);
-        }
+            foreach (float v in new[] { 0, float.BitIncrement(0), float.BitDecrement(.5f), .5f, float.BitIncrement(.5f), 1 })
+            {
+                Assert.True(field.TrySampleDepth(u, v, out float value));
+                // Independent affine oracle is q = x + 2z - 1.
+                Assert.InRange(Math.Abs(value - ((double)u * 2 + v * 4 - 1)), 0, .00001);
+            }
         int edgeBase = (int)field.AtlasScalars[5];
         int verticalSharedLines = 0;
         for (int i = 0; i < field.EdgeLineCount; i++)
@@ -224,11 +238,11 @@ public sealed class WaterOpticsTriangleFieldTests
         }
         var field = new WaterOpticsTriangleField(Vector2.One, 7, 5, triangles, [Rectangle(0, 0, .5f, .5f)]);
         foreach (float u in new[] { float.BitDecrement(centerX), centerX, float.BitIncrement(centerX) })
-        foreach (float v in new[] { float.BitDecrement(centerZ), centerZ, float.BitIncrement(centerZ) })
-        {
-            Assert.True(field.TrySampleDepth(u, v, out float depth));
-            Assert.InRange(Math.Abs(depth - RayOracle(triangles, u, v)), 0, .00001);
-        }
+            foreach (float v in new[] { float.BitDecrement(centerZ), centerZ, float.BitIncrement(centerZ) })
+            {
+                Assert.True(field.TrySampleDepth(u, v, out float depth));
+                Assert.InRange(Math.Abs(depth - RayOracle(triangles, u, v)), 0, .00001);
+            }
     }
 
     [Fact]

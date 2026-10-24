@@ -3,12 +3,21 @@ namespace KhaozEngine.Render3D.Internal;
 internal static partial class ShaderSources
 {
     // Signed rest depths remain signed through interpolation. Only the final physical bed depth clamps land.
-    const string WaterOpticsGlsl = @"
+    internal const string WaterOpticsGlsl = @"
 layout(set=0, binding=10) uniform texture2D OpticsTex;
 layout(set=0, binding=11) uniform sampler OpticsSamp;
-
+" + WaterOpticsTriangleGlsl + @"
 float opticalBedDepth(vec3 waterRelative, float legacyDepth) {
     if (OpticsParams.y < 0.5) return legacyDepth;
+    if (OpticsParams.y > 1.5) {
+        vec2 local = uintBitsToFloat(uvec2(
+            opticsAdd(floatBitsToUint(waterRelative.x),floatBitsToUint(OpticsRect.x)^0x80000000u),
+            opticsAdd(floatBitsToUint(waterRelative.z),floatBitsToUint(OpticsRect.y)^0x80000000u)));
+        float signedDepth;
+        // An admitted point must hit. Discard is an invariant guard, never a fallback depth.
+        if (!tryOpticsTriangle(local,signedDepth)) discard;
+        return max(0.0,signedDepth + waterRelative.y - OpticsParams.x);
+    }
     vec2 uv = clamp((waterRelative.xz - OpticsRect.xy) * OpticsRect.zw, vec2(0.0), vec2(1.0));
     ivec2 dimensions = ivec2(OpticsParams.zw);
     vec2 lattice = uv * vec2(dimensions - ivec2(1));

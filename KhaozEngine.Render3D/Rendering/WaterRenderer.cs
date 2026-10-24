@@ -66,7 +66,7 @@ namespace KhaozEngine.Render3D.Rendering
             public SkyDiscVec4s SkyDiscDir;   // xyz = unit direction TO the body, w = radius
             public SkyDiscVec4s SkyDiscHalo;  // x = halo strength, y = halo falloff, z = physical primary marker
             public Vector4 OpticsRect;     // relative minimum XZ and inverse extent
-            public Vector4 OpticsParams;   // relative reference Y, enabled, width, height
+            public Vector4 OpticsParams;   // relative reference Y, mode (0, 1, 2), physical texture width, height
         }
 
         /// <summary>Byte size of <see cref="WaterUbo"/>, i.e. how much each slot actually uploads.

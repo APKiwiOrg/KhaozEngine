@@ -16,7 +16,7 @@ internal sealed class WaterOpticsResources : IDisposable
     readonly List<Entry?> _entries = new();
     bool _disposed;
     int _liveFields;
-    long _liveBytes, _retiredBytes, _uploadCount;
+    long _liveBytes, _retiredBytes, _uploadCount, _liveCpuBytes, _retiredCpuBytes;
 
     internal WaterOpticsResources(IGpuDevice device, GpuRetireQueue retired)
     {
@@ -26,24 +26,33 @@ internal sealed class WaterOpticsResources : IDisposable
         _retired = retired;
     }
 
-    internal WaterOpticsStats Stats => new(_liveFields, _liveBytes, _retiredBytes, _uploadCount);
+    internal WaterOpticsStats Stats => new(_liveFields, _liveBytes, _retiredBytes, _uploadCount)
+    {
+        LiveRetainedCpuBytes = _liveCpuBytes,
+        RetiredRetainedCpuBytes = _retiredCpuBytes
+    };
 
-    internal WaterOpticsHandle Load(WaterOpticsField field)
+    internal WaterOpticsHandle Load(WaterOpticsField field) => Load(new WaterOpticsPayload(field));
+
+    internal WaterOpticsHandle LoadTriangles(WaterOpticsTriangleField field) => Load(new WaterOpticsPayload(field));
+
+    WaterOpticsHandle Load(WaterOpticsPayload payload)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(field);
-        long liveBytes = checked(_liveBytes + field.SampleBytes);
+        payload.ValidateForUpload();
+        long liveBytes = checked(_liveBytes + payload.TextureBytes);
+        long cpuBytes = checked(_liveCpuBytes + payload.RetainedBytes);
         long uploads = checked(_uploadCount + 1);
         int liveFields = checked(_liveFields + 1);
         _entries.EnsureCapacity(checked(_slots.SlotCount + 1));
-        byte[] bytes = MemoryMarshal.AsBytes(field.RestDepths).ToArray();
+        byte[] bytes = MemoryMarshal.AsBytes(payload.Scalars).ToArray();
         IGpuTexture texture = _device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
-            (uint)field.Width, (uint)field.Height, GpuPixelFormat.R32Float, GpuTextureUsage.Sampled));
-        var entry = new Entry(this, field, texture);
+            (uint)payload.Width, (uint)payload.Height, GpuPixelFormat.R32Float, GpuTextureUsage.Sampled));
+        var entry = new Entry(this, payload, texture);
         int index = -1, generation = 0;
         try
         {
-            _device.UpdateTexture(texture, bytes, 0, 0, (uint)field.Width, (uint)field.Height);
+            _device.UpdateTexture(texture, bytes, 0, 0, (uint)payload.Width, (uint)payload.Height);
             _uploadCount = uploads;
             index = _slots.Alloc(out generation);
             entry.Handle = new WaterOpticsHandle(_owner, index, generation);
@@ -51,6 +60,7 @@ internal sealed class WaterOpticsResources : IDisposable
             else _entries[index] = entry;
             _liveFields = liveFields;
             _liveBytes = liveBytes;
+            _liveCpuBytes = cpuBytes;
             return entry.Handle;
         }
         catch
@@ -77,13 +87,15 @@ internal sealed class WaterOpticsResources : IDisposable
         _slots.Free(handle.Index, handle.Generation);
         _entries[handle.Index] = null;
         _liveFields--;
-        _liveBytes -= entry.Field.SampleBytes;
+        _liveBytes -= entry.Payload.TextureBytes;
+        _liveCpuBytes -= entry.Payload.RetainedBytes;
         Retire(entry);
     }
 
     void Retire(Entry entry)
     {
-        _retiredBytes = checked(_retiredBytes + entry.Field.SampleBytes);
+        _retiredBytes = checked(_retiredBytes + entry.Payload.TextureBytes);
+        _retiredCpuBytes = checked(_retiredCpuBytes + entry.Payload.RetainedBytes);
         _retired.Retire(entry);
     }
 
@@ -103,14 +115,14 @@ internal sealed class WaterOpticsResources : IDisposable
         readonly WaterOpticsResources _owner;
         bool _disposed;
 
-        internal Entry(WaterOpticsResources owner, WaterOpticsField field, IGpuTexture texture)
+        internal Entry(WaterOpticsResources owner, WaterOpticsPayload payload, IGpuTexture texture)
         {
             _owner = owner;
-            Field = field;
+            Payload = payload;
             Texture = texture;
         }
 
-        internal WaterOpticsField Field { get; }
+        internal WaterOpticsPayload Payload { get; }
         internal IGpuTexture Texture { get; }
         internal WaterOpticsHandle Handle { get; set; }
 
@@ -119,7 +131,8 @@ internal sealed class WaterOpticsResources : IDisposable
             if (_disposed) return;
             Texture.Dispose();
             _disposed = true;
-            _owner._retiredBytes -= Field.SampleBytes;
+            _owner._retiredBytes -= Payload.TextureBytes;
+            _owner._retiredCpuBytes -= Payload.RetainedBytes;
         }
     }
 }

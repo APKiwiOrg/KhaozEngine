@@ -62,6 +62,7 @@ public sealed class WaterOpticsTriangleField
     public int TextureHeight { get; }
     public long TextureBytes { get; }
     public long RetainedBytes { get; }
+    public float ReconstructionErrorBoundMetres { get; }
     public ReadOnlySpan<WaterOpticsRectangle> CertifiedRectangles { get; }
     public float SampleDepth(float u, float v);
     public bool TrySampleDepth(float u, float v, out float restDepth);
@@ -146,6 +147,32 @@ TileWorld preserves its positional budget `min(0.0001 m, TileSize/1024)` across 
 render-origin conversion. Account separately for slope-amplified coordinate and barycentric error.
 The triangle producer must certify a conservative 0.0001 m reconstruction-error budget. Refuse
 unrepresentable conditioning. This is not an excuse to reject ordinary 2 m, 30 m and 100 m fields.
+
+`ReconstructionErrorBoundMetres` is the least binary32 upper bound on the constructor's exact rational
+arithmetic plus local-mapping bound. The producer adds source conversion and render-origin costs to
+this consumed value within the same 0.0001 m total. It does not receive another independent budget.
+
+The scene sampler implements the ordered binary32 operations with integer significands, guard,
+round and sticky bits, including nearest-even restoring division. Exact canonical-line containment
+sums six signed coordinate products in two 18-word integer accumulators. This avoids optional doubles,
+float contraction and native division tolerances without changing mode 0 or mode 1 arithmetic.
+GPU queries use rounded local-coordinate subtraction directly. The inverse extent is used only for
+bin selection, whose additional rounding fits the existing outward acceleration-bin support.
+
+Scene upload refuses a nonzero subnormal atlas scalar or a non-normal inverse extent as
+`UnrepresentableSurface` before allocating a texture. Vulkan permits subnormal image-fetch results
+to flush before a bitcast, and a subnormal inverse exceeds the current relative bin-mapping proof.
+The immutable CPU field retains its broader source-bit contract. No upload rewrites source data.
+Supporting those GPU inputs requires a bit-preserving texture representation or a revised capability
+contract. A successful local backend run cannot substitute for that portability contract.
+
+Native division is insufficient for the constructor's `2^-24` relative rounding allowance.
+[D3D11 floating-point rules](https://learn.microsoft.com/en-us/windows/win32/direct3d11/floating-point-rules)
+permit reciprocal-based division, while the
+[Vulkan floating-point environment](https://docs.vulkan.org/spec/latest/appendices/spirvenv.html#spirvenv-precision-operation)
+allows 2.5 ULP for `OpFDiv` and permits subnormal image-fetch results to flush. `precise` alone
+does not supply the required division guarantee. The triangle integer implementation keeps the
+existing arithmetic certificate unchanged.
 
 The simple shader has a conservative fetch bound of `15 + 16*K`, up to 527 for K=32. Record actual
 occupancy and normal verification timing on each backend. Optimize only from evidence while retaining

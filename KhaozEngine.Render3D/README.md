@@ -801,6 +801,15 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   variance transfer) and `GerstnerWaves` (the swell, whose offset the vertex stage mirrors and whose normal and
   fold the fragment stage mirrors), all internal, headless-tested and mirroring the GLSL `WaterVert`/`WaterFrag`
   exactly.
+- Per-body optical beds use an immutable `WaterOpticsField` for bilinear data or a certified
+  `WaterOpticsTriangleField` for an actual triangle surface. Upload through `Scene3D.LoadWaterOpticsField`
+  or `LoadWaterOpticsTriangles`, then pass a `WaterOpticsBinding` on the plane. Triangle bindings require
+  the field's exact size and one certificate covering the displaced rectangle. Reuse the handle until
+  unload, then reload retained CPU fields explicitly for a new scene. `WaterOpticsStats` counts padded
+  live and retired texture bytes and retained CPU payload bytes through actual retirement. A triangle
+  producer includes `ReconstructionErrorBoundMetres` in its total error budget. Unsupported subnormal
+  atlas values or non-normal inverse extents refuse before upload. Unbound planes retain scene-depth
+  behavior. See [consumer use](../docs/USING-KHAOZENGINE.md) for preparation and lifetime details.
 - Per-plane water look (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
   identical**): a trailing optional constructor parameter on `WaterPlane`, so every call site written before this
   existed still compiles and still packs from the caller's own `WaterSettings` object unchanged. Every field on
@@ -816,7 +825,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   inland-body case: the plane leaves the shared ocean, so it loses the sea's swell, whitecaps and (shoaling/surf
   ride the same gate) its breaking surf. The shared ocean itself now runs on DEMAND - it bakes when any queued
   plane's effective wave source is `FftOcean`, rather than off the scene's own default, so a `Procedural` scene
-  with one ocean plane still gets a real ocean. Costs zero new UBO bytes (payload 672, slot 768), zero new GPU
+  with one ocean plane still gets a real ocean. Costs zero new UBO bytes (payload 1088, slot 1280), zero new GPU
   per-plane GPU resources and zero new pipelines: each plane already owned its slot in the water pass's uniform
   buffer, so an override is a different set of numbers written into a slot that was being written anyway. Every
   procedural plane whose effective swell does not displace (an amplitude or a wavelength that is zero or negative)

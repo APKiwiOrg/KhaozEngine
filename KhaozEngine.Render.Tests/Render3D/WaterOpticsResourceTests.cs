@@ -14,6 +14,9 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class WaterOpticsResourceTests
 {
+    static WaterOpticsStats Stats(int fields, long live, long retired, long uploads) =>
+        new(fields, live, retired, uploads) { LiveRetainedCpuBytes = live, RetiredRetainedCpuBytes = retired };
+
     static WaterOpticsField Field() => new(2, 2, [2f, -1f, 30f, 100f]);
 
     [Fact]
@@ -30,7 +33,7 @@ public sealed class WaterOpticsResourceTests
         WaterOpticsHandle handle = resources.Load(field);
         WaterOpticsResources.Entry entry = resources.Resolve(handle);
         Assert.Same(entry, resources.Resolve(handle));
-        Assert.Same(field, entry.Field);
+        Assert.Same(field, entry.Payload.BilinearField);
         Assert.Equal(handle, entry.Handle);
         Assert.True(handle.IsValid);
         FakeTexture texture = Assert.Single(factory.Textures);
@@ -40,7 +43,7 @@ public sealed class WaterOpticsResourceTests
         Assert.Equal(GpuPixelFormat.R32Float, texture.Format);
         Assert.Equal(GpuTextureUsage.Sampled, texture.Usage);
         Assert.Equal(new[] { 2f, -1f, 30f, 100f, 0f, 0.125f }, Assert.Single(uploads));
-        Assert.Equal(new WaterOpticsStats(1, 24, 0, 1), resources.Stats);
+        Assert.Equal(Stats(1, 24, 0, 1), resources.Stats);
     }
 
     [Fact]
@@ -57,7 +60,7 @@ public sealed class WaterOpticsResourceTests
 
         Array.Fill(source, 999f);
 
-        Assert.Equal(new[] { 2f, -1f, 30f, 100f }, resources.Resolve(handle).Field.RestDepths.ToArray());
+        Assert.Equal(new[] { 2f, -1f, 30f, 100f }, resources.Resolve(handle).Payload.BilinearField!.RestDepths.ToArray());
         Assert.NotNull(uploaded);
         Assert.Equal(new[] { 2f, -1f, 30f, 100f }, MemoryMarshal.Cast<byte, float>(uploaded).ToArray());
         Assert.Equal(1, resources.Stats.UploadCount);
@@ -104,17 +107,17 @@ public sealed class WaterOpticsResourceTests
         Assert.Throws<ArgumentException>(() => resources.Resolve(old));
         Assert.Throws<ArgumentException>(() => resources.Unload(old));
         Assert.False(texture.Disposed);
-        Assert.Equal(new WaterOpticsStats(0, 0, 16, 1), resources.Stats);
+        Assert.Equal(Stats(0, 0, 16, 1), resources.Stats);
         WaterOpticsHandle replacement = resources.Load(Field());
         var replacementTexture = (FakeTexture)resources.Resolve(replacement).Texture;
         Assert.NotSame(texture, replacementTexture);
         retired.BeginFrame();
         Assert.False(texture.Disposed);
-        Assert.Equal(new WaterOpticsStats(1, 16, 16, 2), resources.Stats);
+        Assert.Equal(Stats(1, 16, 16, 2), resources.Stats);
         retired.BeginFrame();
         Assert.True(texture.Disposed);
         Assert.False(replacementTexture.Disposed);
-        Assert.Equal(new WaterOpticsStats(1, 16, 0, 2), resources.Stats);
+        Assert.Equal(Stats(1, 16, 0, 2), resources.Stats);
         Assert.Equal(0, device.WaitForIdleCalls);
     }
 
@@ -134,7 +137,7 @@ public sealed class WaterOpticsResourceTests
         WaterOpticsHandle handle = resources.Load(Field());
         Assert.Equal(0, handle.Index);
         Assert.Equal(1, handle.Generation);
-        Assert.Equal(new WaterOpticsStats(1, 16, 0, 1), resources.Stats);
+        Assert.Equal(Stats(1, 16, 0, 1), resources.Stats);
     }
 
     [Fact]
@@ -150,7 +153,7 @@ public sealed class WaterOpticsResourceTests
 
         FakeTexture failed = Assert.Single(factory.Textures);
         Assert.False(failed.Disposed);
-        Assert.Equal(new WaterOpticsStats(0, 0, 16, 0), resources.Stats);
+        Assert.Equal(Stats(0, 0, 16, 0), resources.Stats);
         device.OnTextureUpload = null;
         WaterOpticsHandle handle = resources.Load(Field());
         Assert.Equal(0, handle.Index);
@@ -159,7 +162,7 @@ public sealed class WaterOpticsResourceTests
         Assert.False(failed.Disposed);
         retired.BeginFrame();
         Assert.True(failed.Disposed);
-        Assert.Equal(new WaterOpticsStats(1, 16, 0, 1), resources.Stats);
+        Assert.Equal(Stats(1, 16, 0, 1), resources.Stats);
     }
 
     [Fact]
@@ -177,10 +180,10 @@ public sealed class WaterOpticsResourceTests
         Assert.Throws<ArgumentException>(() => resources.Resolve(handle));
         Assert.Throws<ObjectDisposedException>(() => resources.Load(Field()));
         Assert.False(texture.Disposed);
-        Assert.Equal(new WaterOpticsStats(0, 0, 16, 1), resources.Stats);
+        Assert.Equal(Stats(0, 0, 16, 1), resources.Stats);
         retired.Dispose();
         Assert.True(texture.Disposed);
-        Assert.Equal(new WaterOpticsStats(0, 0, 0, 1), resources.Stats);
+        Assert.Equal(Stats(0, 0, 0, 1), resources.Stats);
     }
 
     [Fact]
@@ -196,7 +199,7 @@ public sealed class WaterOpticsResourceTests
         FakeTexture oldTexture = Assert.Single(factory.Textures.GetRange(from, factory.Textures.Count - from));
         oldScene.Dispose();
         Assert.True(oldTexture.Disposed);
-        Assert.Equal(new WaterOpticsStats(0, 0, 0, 1), oldScene.WaterOpticsStats);
+        Assert.Equal(Stats(0, 0, 0, 1), oldScene.WaterOpticsStats);
         Assert.Throws<ObjectDisposedException>(() => oldScene.LoadWaterOpticsField(field));
 
         using var newScene = new Scene3D(new FakeGpuDevice(), output);
@@ -210,13 +213,13 @@ public sealed class WaterOpticsResourceTests
             optics: new WaterOpticsBinding(reloaded, binding.Origin, binding.Size)));
         Assert.Equal(1, newScene.WaterPlaneCount);
         newScene.UnloadWaterOpticsField(reloaded);
-        Assert.Equal(new WaterOpticsStats(0, 0, 16, 1), newScene.WaterOpticsStats);
+        Assert.Equal(Stats(0, 0, 16, 1), newScene.WaterOpticsStats);
         Assert.Throws<ArgumentException>(() => newScene.UnloadWaterOpticsField(reloaded));
         newScene.UnloadWaterOpticsField(default);
         newScene.Begin();
         newScene.Begin();
         newScene.Begin();
-        Assert.Equal(new WaterOpticsStats(0, 0, 0, 1), newScene.WaterOpticsStats);
+        Assert.Equal(Stats(0, 0, 0, 1), newScene.WaterOpticsStats);
     }
 
     [GpuFact]
@@ -233,7 +236,7 @@ public sealed class WaterOpticsResourceTests
         samples[1023 * 1024] = 30f;
         samples[^1] = 100f;
         WaterOpticsHandle handle = resources.Load(new WaterOpticsField(1024, 1024, samples));
-        Assert.Equal(new WaterOpticsStats(1, 4_194_304, 0, 1), resources.Stats);
+        Assert.Equal(Stats(1, 4_194_304, 0, 1), resources.Stats);
         using IGpuTexture target = factory.CreateTexture(GpuTextureDescription.Texture2D(
             4, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
         using IGpuFramebuffer framebuffer = factory.CreateFramebuffer(null, target);

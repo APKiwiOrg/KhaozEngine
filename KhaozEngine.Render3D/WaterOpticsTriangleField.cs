@@ -30,6 +30,10 @@ public sealed class WaterOpticsTriangleField
         if (triangles.IsEmpty) throw new ArgumentException("At least one source triangle is required.", nameof(triangles));
         if (certifiedRectangles.IsEmpty)
             throw new ArgumentException("At least one certified rectangle is required.", nameof(certifiedRectangles));
+        long minimumScalars = checked(16L + 2L * binColumns * binRows + 12L * triangles.Length);
+        if (minimumScalars > (long)MaxDimension * MaxDimension)
+            throw new WaterOpticsSurfaceException(WaterOpticsSurfaceFailure.CapacityExceeded,
+                "Even the fixed atlas records exceed the scalar capacity.");
         WaterOpticsTriangle[] sources = triangles.ToArray();
         _certificates = certifiedRectangles.ToArray();
         foreach (WaterOpticsTriangle triangle in sources)
@@ -53,6 +57,7 @@ public sealed class WaterOpticsTriangleField
         EdgeLineCount = packed.Lines;
         CandidateReferenceCount = packed.References;
         MaximumBinOccupancy = packed.MaximumOccupancy;
+        ReconstructionErrorBoundMetres = packed.ReconstructionErrorBound;
         TextureWidth = packed.Width;
         TextureHeight = packed.Height;
         _atlas = packed.Scalars;
@@ -70,6 +75,10 @@ public sealed class WaterOpticsTriangleField
     public int TextureWidth { get; }
     public int TextureHeight { get; }
     public long TextureBytes { get; }
+
+    /// <summary>Upward-rounded bound consumed by local mapping and interpolation, in metres. Producers
+    /// must include this value with source conversion and render-origin costs in their total error budget.</summary>
+    public float ReconstructionErrorBoundMetres { get; }
 
     /// <summary>Owned padded float payload plus rectangle payload bytes, excluding object headers.</summary>
     public long RetainedBytes { get; }

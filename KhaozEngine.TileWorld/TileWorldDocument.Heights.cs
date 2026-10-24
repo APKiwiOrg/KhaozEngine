@@ -94,14 +94,41 @@ public sealed partial class TileWorldDocument
     short LiftedCm(int baseCm, int plane) =>
         (short)Math.Clamp(baseCm + plane * PlaneHeightCm, short.MinValue, short.MaxValue);
 
-    bool TryResolveCorner(int x, int z, out TileRegion? region, out int index)
+    bool TryResolveCorner(int x, int z, out TileRegion? region, out int index) =>
+        TryResolveCorner(x, z, strict: false, Span<RegionCoord>.Empty, out _, out region, out index, out _);
+
+    bool TryResolveCorner(int x, int z, bool strict, Span<RegionCoord> inspectedRegions,
+        out int inspectedCount, out TileRegion? region, out int index, out RegionCoord missingRegion)
     {
         int lx = RegionCoord.FloorMod(x, TileRegion.Size), lz = RegionCoord.FloorMod(z, TileRegion.Size);
-        if ((region = RegionAt(x, z)) is not null) { index = TilePlaneData.Index(lx, lz); return true; }
-        if ((region = RegionAt(x - 1, z)) is not null) { index = TilePlaneData.Index(TileRegion.Size - 1, lz); return true; }
-        if ((region = RegionAt(x, z - 1)) is not null) { index = TilePlaneData.Index(lx, TileRegion.Size - 1); return true; }
-        if ((region = RegionAt(x - 1, z - 1)) is not null) { index = TilePlaneData.Index(TileRegion.Size - 1, TileRegion.Size - 1); return true; }
+        inspectedCount = 0;
+        region = null;
         index = 0;
+        missingRegion = RegionCoord.Of(x, z);
+        for (int candidate = 0; candidate < 4; candidate++)
+        {
+            bool west = (candidate & 1) != 0, south = (candidate & 2) != 0;
+            // Strict reads cannot turn an unavailable edge into data from the opposite signed boundary.
+            // Legacy callers retain their original unchecked coordinate arithmetic.
+            if (strict && ((west && x == int.MinValue) || (south && z == int.MinValue))) continue;
+            RegionCoord coord = RegionCoord.Of(west ? x - 1 : x, south ? z - 1 : z);
+            if (strict)
+            {
+                if (inspectedRegions[..inspectedCount].Contains(coord)) continue;
+                inspectedRegions[inspectedCount++] = coord;
+            }
+            region = GetRegion(coord);
+            if (region is not null)
+            {
+                index = TilePlaneData.Index(west ? TileRegion.Size - 1 : lx, south ? TileRegion.Size - 1 : lz);
+                return true;
+            }
+            if (strict && UnloadedRegionHashes.ContainsKey(coord))
+            {
+                missingRegion = coord;
+                return false;
+            }
+        }
         return false;
     }
 }

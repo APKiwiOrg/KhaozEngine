@@ -17,6 +17,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Add opt-in D3D11 cold DXBC reflection and exact pipeline identities, live resource payload and ring-capacity
   diagnostics, and separate asynchronous invocation blocks. Reflection temporaries remain intermediate-code
   facts, and unavailable native allocation, residency and budget fields retain their reasons.
+- Add immutable headless diagnostic settings and effective configuration witnesses, with ordered creation
+  and cleanup failures and a shared cold-unit deadline. Production renderer publication remains gated on
+  registered-file accounting and verification.
 
 - Add Metal cold counter capabilities, compute limits and exact source/pipeline identities, plus owned
   resource payload, ring/staging capacity and native device allocation diagnostics with unified-memory

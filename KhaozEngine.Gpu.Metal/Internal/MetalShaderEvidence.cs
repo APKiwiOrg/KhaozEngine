@@ -6,14 +6,15 @@ namespace KhaozEngine.Gpu.Metal.Internal;
 internal sealed record MetalShaderEvidence(MetalShaderStage Stage, string EntryPoint, string SourceSha256,
     string Msl, string Configuration)
 {
-    internal static MetalShaderEvidence Capture(MetalMslStage stage, string glsl)
+    internal GpuEffectiveDiagnosticConfiguration? Effective { get; init; }
+    internal static MetalShaderEvidence Capture(MetalMslStage stage, string glsl, GpuEffectiveDiagnosticConfiguration? effective = null)
     {
-        var validation = MetalValidationReader.Current();
+        var validation = effective is null ? MetalValidationReader.Current() : default;
         string configuration = MslCompilePin.Identity + ";" + SpirvFrontEndPin.Identity + ";"
             + MslCrossCompilePin.Identity + ";" + SpirvToolchainVersion.Identity
             + ";capture=none;reflection=none;nativeCompilerVersion=unavailable;debugLayer="
-            + validation.DebugLayerArmed + ";shaderValidation=" + validation.ShaderValidationArmed
+            + (effective?.DebugLayerEnabled ?? validation.DebugLayerArmed) + ";shaderValidation=" + (effective?.ValidationEnabled ?? validation.ShaderValidationArmed)
             + ";os=" + System.Environment.OSVersion.VersionString;
-        return new(stage.Stage, stage.EntryPointName, GpuDiagnosticIdentityEncoding.Text(glsl, "glsl.utf8/1").Sha256 ?? "", stage.Msl, configuration);
+        return new(stage.Stage, stage.EntryPointName, GpuDiagnosticIdentityEncoding.Text(glsl, "glsl.utf8/1").Sha256 ?? "", stage.Msl, configuration) { Effective = effective };
     }
 }

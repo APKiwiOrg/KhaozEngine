@@ -11,7 +11,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para>
     /// THE PROBE AND BOTH CREATION PATHS ARE REAL. <see cref="IsSupported"/> resolves a loader, creates a
     /// throwaway instance and reads every physical device against section 5.2's requirements.
-    /// <see cref="CreateHeadless"/> builds a device with no surface extension at all (V-N6), which is what lets
+    /// <see cref="CreateHeadless()"/> builds a device with no surface extension at all (V-N6), which is what lets
     /// the golden suite run on a machine with no display server. <see cref="CreateForWindow"/> builds a surface
     /// from the window, filters candidates on whether their graphics family can present to it (V-N5), enables
     /// <c>VK_KHR_swapchain</c>, and creates the swapchain and takes the first acquire before it returns
@@ -26,7 +26,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// together would make the probe answer false for a reason that has nothing to do with the hardware.
     /// </para>
     /// <para>
-    /// KEEPING THEM APART IS NOT THE SAME AS NOT ASKING, and that is what <see cref="CreateHeadless"/> got wrong
+    /// KEEPING THEM APART IS NOT THE SAME AS NOT ASKING, and that is what <see cref="CreateHeadless()"/> got wrong
     /// until CI run 31062315211. It went straight to the device, so the only machine check on the creation path
     /// was whether the LOADER resolved, which is one of the three machine states
     /// (<see cref="VulkanSupportProbe"/> names all three). On a plain <c>ubuntu-latest</c> runner, a loader with
@@ -62,9 +62,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// has no analogue here and must not be added back by analogy.
     /// </para>
     /// </summary>
-    internal sealed class VulkanBackendProvider : IGpuBackendProvider
+    internal sealed class VulkanBackendProvider : IGpuBackendProvider, IGpuHeadlessDiagnosticProvider
     {
         static readonly ILogger log = Log.For<VulkanBackendProvider>();
+        readonly Func<string, string?> _environment;
+        readonly Func<VulkanHeadlessDiagnosticSettings, GpuProviderDevice>? _headless;
+        internal VulkanBackendProvider(Func<string, string?>? environment = null,
+            Func<VulkanHeadlessDiagnosticSettings, GpuProviderDevice>? headless = null)
+        { _environment = environment ?? Environment.GetEnvironmentVariable; _headless = headless; }
+
 
         // THE MACHINE GATE, asked at most once per provider instance, because the machine does not change while
         // the process runs and the probe is genuinely expensive: it creates and destroys a throwaway VkInstance
@@ -105,6 +111,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <inheritdoc/>
+        public IGpuHeadlessDiagnosticSettings ResolveHeadlessSettings(GpuPipelineDiagnosticRequest request)
+            => VulkanHeadlessDiagnosticSettings.Resolve(request, _environment);
+
+        public GpuProviderDevice CreateHeadless(IGpuHeadlessDiagnosticSettings settings)
+        {
+            if (settings is not VulkanHeadlessDiagnosticSettings frozen)
+                throw new ArgumentException("Settings are not owned by this backend.", nameof(settings));
+            if (_headless is not null) return _headless(frozen);
+            return VulkanGpuDevice.CreateHeadless(frozen);
+        }
+
         public GpuProviderDevice CreateHeadless()
         {
             // THE MACHINE IS ASKED BEFORE ANYTHING NATIVE IS CREATED. A machine that cannot run this backend must

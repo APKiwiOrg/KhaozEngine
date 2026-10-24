@@ -11,6 +11,8 @@ internal sealed partial class MetalGpuDevice : IGpuResourceMemoryDiagnostics
         lock (_lifecycle)
         {
             if (_disposed || _liveness.IsDead) return new([], [], GpuDiagnosticStatus.Invalid, "The Metal device was disposed or lost.");
+            if (_diagnosticConfiguration is { CompilerMetadataEnabled: false })
+                return new([], [], GpuDiagnosticStatus.Unsupported, "Cold counter metadata was not enabled on this explicit instance.");
             return TimestampApi?.ReadCounterMetadata() ?? new([], [], GpuDiagnosticStatus.Unsupported, "No timestamp capability API was created.");
         }
     }

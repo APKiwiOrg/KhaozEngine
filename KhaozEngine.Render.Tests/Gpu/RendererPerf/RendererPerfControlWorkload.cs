@@ -13,7 +13,7 @@ internal sealed class RendererPerfControlWorkload : IRendererPerfNativeWork
     readonly IGpuDevice _device;
     readonly RendererPerfControl _control;
     readonly RendererPerfControlFacts _facts;
-    readonly List<IDisposable> _owned = [];
+    readonly List<(string Kind, IDisposable Resource)> _owned = [];
     readonly List<IGpuBuffer> _outputs = [];
     readonly List<IGpuResourceSet> _sets = [];
     readonly List<IGpuTexture> _colors = [];
@@ -38,11 +38,13 @@ internal sealed class RendererPerfControlWorkload : IRendererPerfNativeWork
         }
         catch (Exception error)
         {
-            try { Dispose(); } catch (Exception cleanup) { error.Data[RendererPerfNativeSession.ConstructionCleanupErrors] = cleanup; }
-            throw;
+            var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+            RendererPerfFailures.Add(failures, "renderer.control.construct", error);
+            RendererPerfFailures.Release(failures, "renderer.session.dispose.control", Dispose);
+            throw new GpuDiagnosticFailureException(failures.ToImmutable());
         }
     }
-    T Own<T>(T resource) where T : IDisposable { _owned.Add(resource); return resource; }
+    T Own<T>(T resource) where T : IDisposable { _owned.Add((typeof(T).Name, resource)); return resource; }
     public IGpuFramebuffer Target { get; } = null!;
     public Color ClearColor => new(0f, 0f, 0f, 1f);
     public RendererPerfRecipeReport? Recipe => null;
@@ -187,9 +189,10 @@ internal sealed class RendererPerfControlWorkload : IRendererPerfNativeWork
     {
         if (_disposed) return;
         _disposed = true;
-        List<Exception> errors = [];
+        var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
         for (int i = _owned.Count - 1; i >= 0; i--)
-            try { _owned[i].Dispose(); } catch (Exception error) { errors.Add(error); }
-        if (errors.Count != 0) throw new AggregateException("Control resource cleanup failed.", errors);
+            RendererPerfFailures.Release(failures, "renderer.session.dispose.control." + _owned[i].Kind + "." + i,
+                _owned[i].Resource.Dispose);
+        if (failures.Count != 0) throw new GpuDiagnosticFailureException(failures.ToImmutable());
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using KhaozEngine.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu.Performance;
@@ -69,12 +70,15 @@ public sealed partial class GpuPerfTimestampRingTests
         using var rig = new Rig();
         var expected = new InvalidOperationException("first pool disposal failure");
         rig.Device.Pools[0].OnDispose = () => throw expected;
-        rig.Device.Pools[1].OnDispose = () => throw new InvalidOperationException("later pool disposal failure");
+        var later = new InvalidOperationException("later pool disposal failure");
+        rig.Device.Pools[1].OnDispose = () => throw later;
 
         var actual = Record.Exception(rig.Ring.Dispose);
 
         Assert.All(rig.Device.Pools, pool => Assert.Equal(1, pool.Disposals));
-        Assert.Same(expected, actual);
+        var transport = Assert.IsType<GpuDiagnosticFailureException>(actual);
+        Assert.Same(expected, transport.Failures[0].Error);
+        Assert.Same(later, transport.Failures[1].Error);
         rig.Ring.Dispose();
         Assert.All(rig.Device.Pools, pool => Assert.Equal(1, pool.Disposals));
     }

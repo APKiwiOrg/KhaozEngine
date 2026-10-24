@@ -119,10 +119,11 @@ public sealed class RendererPerfFrameBoundaryTests
         using var device = new GpuPerfTimestampTestDevice();
         device.Features = new(false, true, "NVIDIA T4", supportsCompletionFences: true) { SupportsTimestamps = true };
         var identity = RendererPerfProtocolTests.CompleteReport().Identity;
-        Assert.Throws<ArgumentException>(() => new RendererPerfNativeSession(device,
+        var failure = Assert.Throws<GpuDiagnosticFailureException>(() => new RendererPerfNativeSession(device,
             new(identity, true, true, null, ImmutableDictionary<string, RendererPerfMetric>.Empty),
             new("S0", RendererPerfLayout.PerPass, 0, 0, 1), [new("bad", 0, -1, 2, 1)], new(() => 0, 1000),
             (d, o) => throw new InvalidOperationException("work must not open")));
+        Assert.IsType<ArgumentException>(Assert.Single(failure.Failures).Error);
         Assert.Equal(3, device.Pools.Count);
         Assert.All(device.Pools, pool => Assert.Equal(1, pool.Disposals));
     }

@@ -106,7 +106,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             in GpuCapabilities capabilities, D3D11CreationGate? creation = null,
             Func<IGpuFence>? createFence = null, D3D11DeviceLossLatch? loss = null,
             ID3D11TimestampApi? timestamps = null, D3D11FenceSubsystem? timestampFences = null, object? submitLock = null,
-            D3D11MemoryDiagnostics? memory = null, D3D11DiagnosticOptions? diagnostics = null)
+            D3D11MemoryDiagnostics? memory = null, D3D11DiagnosticOptions? diagnostics = null, D3D11HeadlessDiagnosticSettings? settings = null, D3D11DxbcCache? explicitCache = null)
         {
             ArgumentNullException.ThrowIfNull(device);
             ArgumentNullException.ThrowIfNull(context);
@@ -131,7 +131,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // Built here rather than passed in, because a shader compiler is a pure function of the device plus
             // two environment levers it reads ONCE (the FXC flags and the disk cache location, decisions S1 and
             // S4). Threading it through every construction path would put a session-level setting in a signature.
-            _shaders = new D3D11ShaderCompiler(device, liveness, diagnostics);
+            _shaders = settings is null ? new D3D11ShaderCompiler(device, liveness, diagnostics)
+                : new D3D11ShaderCompiler(liveness, new D3D11ShaderCompilerApi(device,
+                    new SpirvCompileCache(settings.CompileCache, SpirvCompileCache.DefaultCapacity)),
+                    explicitCache, settings.ShaderFlags, diagnostics!, new D3D11ShaderReflectionApi());
         }
 
         /// <summary>Whether creation is serialized on this driver, for the session log. See

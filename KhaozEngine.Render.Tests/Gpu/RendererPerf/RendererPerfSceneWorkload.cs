@@ -17,7 +17,7 @@ internal sealed class RendererPerfSceneWorkload : IRendererPerfNativeWork
     readonly IGpuTexture _texture;
     readonly SpriteBatch? _ui;
     readonly Action<IGpuDevice, IGpuTexture>? _validate;
-    bool _cold, _validated;
+    bool _cold, _validated, _disposed;
     long _frames;
     int _firstIndex;
 
@@ -25,20 +25,18 @@ internal sealed class RendererPerfSceneWorkload : IRendererPerfNativeWork
         Action<IGpuDevice, IGpuTexture>? validate = null)
     {
         _device = device; _observer = observer; _identity = expected; _validate = validate;
-        _recipe = RendererPerfRecipe.Create(expected.Version.Split('/')[0]);
-        var facts = _recipe.Facts;
-        if (expected.Version != facts.Id + "/" + facts.Version || expected.Profile != facts.Profile
-            || expected.RecipeSha256 != facts.RecipeSha256 || expected.SettingsSha256 != facts.SettingsSha256
-            || expected.GeometrySha256 != facts.GeometrySha256 || expected.AssetSha256 != facts.AssetSha256)
-        {
-            _recipe.Dispose();
-            throw new RendererPerfProtocolException("Identity", "The native recipe differs from the authorized construction.");
-        }
+        RendererPerfRecipe? recipe = null;
         IGpuTexture? texture = null;
         IGpuFramebuffer? target = null;
         Scene3D? scene = null;
         try
         {
+            _recipe = recipe = RendererPerfRecipe.Create(expected.Version.Split('/')[0]);
+            var facts = _recipe.Facts;
+            if (expected.Version != facts.Id + "/" + facts.Version || expected.Profile != facts.Profile
+                || expected.RecipeSha256 != facts.RecipeSha256 || expected.SettingsSha256 != facts.SettingsSha256
+                || expected.GeometrySha256 != facts.GeometrySha256 || expected.AssetSha256 != facts.AssetSha256)
+                throw new RendererPerfProtocolException("Identity", "The native recipe differs from the authorized construction.");
             _texture = texture = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(RendererPerfRecipe.Width,
                 RendererPerfRecipe.Height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
             Target = target = device.Factory.CreateFramebuffer(null, texture);
@@ -50,10 +48,18 @@ internal sealed class RendererPerfSceneWorkload : IRendererPerfNativeWork
                 _ui = new SpriteBatch(device, target.Outputs);
             }
         }
-        catch
+        catch (Exception error)
         {
-            scene?.Dispose(); target?.Dispose(); texture?.Dispose(); _recipe.Dispose();
-            throw;
+            var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+            RendererPerfFailures.Add(failures, "renderer.scene.construct", error);
+            RendererPerfFailures.Release(failures, "renderer.session.dispose.scene", scene is null ? null : scene.Dispose);
+            if (scene is null || scene.DisposalSafeForDependants)
+            {
+                RendererPerfFailures.Release(failures, "renderer.session.dispose.target.0", target is null ? null : target.Dispose);
+                RendererPerfFailures.Release(failures, "renderer.session.dispose.texture.1", texture is null ? null : texture.Dispose);
+                RendererPerfFailures.Release(failures, "renderer.session.dispose.recipe.2", recipe is null ? null : recipe.Dispose);
+            }
+            throw new GpuDiagnosticFailureException(failures.ToImmutable());
         }
     }
 
@@ -142,6 +148,21 @@ internal sealed class RendererPerfSceneWorkload : IRendererPerfNativeWork
 
     public void Dispose()
     {
-        _ui?.Dispose(); Scene.Dispose(); Target.Dispose(); _texture.Dispose(); _recipe.Dispose();
+        if (_disposed) return;
+        _disposed = true;
+        var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+        RendererPerfFailures.Release(failures, "renderer.session.dispose.ui.0", _ui is null ? null : _ui.Dispose);
+        // SpriteBatch and Scene3D each own a prerequisite drain. A failed prerequisite retains dependants.
+        if (failures.Count == 0)
+        {
+            RendererPerfFailures.Release(failures, "renderer.session.dispose.scene.1", Scene.Dispose);
+            if (Scene.DisposalSafeForDependants)
+            {
+                RendererPerfFailures.Release(failures, "renderer.session.dispose.target.2", Target.Dispose);
+                RendererPerfFailures.Release(failures, "renderer.session.dispose.texture.3", _texture.Dispose);
+                RendererPerfFailures.Release(failures, "renderer.session.dispose.recipe.4", _recipe.Dispose);
+            }
+        }
+        if (failures.Count != 0) throw new GpuDiagnosticFailureException(failures.ToImmutable());
     }
 }

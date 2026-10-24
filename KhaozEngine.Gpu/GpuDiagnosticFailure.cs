@@ -19,4 +19,21 @@ public sealed class GpuDiagnosticFailureException : Exception
     }
 
     public ImmutableArray<GpuDiagnosticFailure> Failures { get; }
+    internal static void Append(ImmutableArray<GpuDiagnosticFailure>.Builder failures, string stage, Exception error)
+    {
+        if (error is GpuDiagnosticFailureException transport) failures.AddRange(transport.Failures);
+        else failures.Add(new(stage, error));
+    }
+
+    internal static GpuDiagnosticFailureException DuringCleanup(string stage, Exception original,
+        params (string Stage, Action Release)[] cleanup)
+    {
+        var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+        Append(failures, stage, original);
+        foreach (var release in cleanup)
+            try { release.Release(); }
+            catch (Exception error) { Append(failures, release.Stage, error); }
+        return new(failures.ToImmutable());
+    }
+
 }

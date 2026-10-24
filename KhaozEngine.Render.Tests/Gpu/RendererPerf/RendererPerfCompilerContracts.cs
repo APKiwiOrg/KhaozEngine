@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using KhaozEngine.Gpu;
 
@@ -24,4 +25,28 @@ internal sealed record RendererPerfCompilerEvidence(RendererPerfCollectionState 
     internal static RendererPerfCompilerEvidence Pending { get; } = new(RendererPerfCollectionState.Incomplete,
         "Construction capture and cold collection are not connected.", new(0, new(0, 0), new(0, 0), new(0, 0), new(0, 0),
             new(0, 0), 0, 0, 0, 0, 0, 0), null, null, [], null, [], []);
+}
+
+internal sealed record RendererPerfExecutionResult(RendererPerfReport? Report, ImmutableArray<GpuDiagnosticFailure> Failures);
+internal sealed record RendererPerfColdResult(RendererPerfCompilerInventory Inventory, RendererPerfCompilerEvidence Compiler,
+    ImmutableArray<GpuPipelineCompilerReport> Pipelines, ImmutableArray<GpuDiagnosticFailure> Failures);
+internal sealed record RendererPerfPublicationResult(RendererPerfReport Report, ImmutableArray<GpuDiagnosticFailure> Failures);
+internal sealed record RendererPerfFailurePublicationResult(RendererPerfUnitFailure Evidence, bool Written,
+    ImmutableArray<GpuDiagnosticFailure> Failures);
+internal sealed record RendererPerfCollectionPreparation(bool Ready, ImmutableArray<GpuDiagnosticFailure> Failures);
+internal sealed record RendererPerfUnitOutcome(RendererPerfReport? Report, RendererPerfCompilerInventory? Inventory,
+    RendererPerfUnitFailure? EarlyFailure, ImmutableArray<GpuDiagnosticFailure> Failures);
+internal sealed record RendererPerfUnitFailure(string Schema, RendererPerfAuthorization Authorization,
+    ImmutableDictionary<string, string> KnownFacts, long ColdStart, long EndTicks, long Frequency,
+    string OriginalFailure, ImmutableArray<string> Errors, ImmutableArray<RendererPerfCpuSpan> Stages,
+    RendererPerfFailureTextEvidence FailureText);
+internal interface IRendererPerfUnitPublication
+{
+    RendererPerfCollectionPreparation PrepareCollection(RendererPerfReport report, RendererPerfCompilerInventory inventory,
+        RendererPerfUnitBudget budget);
+    RendererPerfReadReservation? ReserveReport(GpuBackendKind backend);
+    void CommitReportBytes(RendererPerfReadReservation reservation, int actualBytes);
+    RendererPerfPublicationResult Publish(RendererPerfReport report, RendererPerfCompilerInventory inventory,
+        RendererPerfUnitBudget budget);
+    RendererPerfFailurePublicationResult WriteFailure(RendererPerfUnitFailure failure, RendererPerfUnitBudget budget);
 }

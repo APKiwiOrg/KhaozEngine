@@ -589,6 +589,22 @@ Vulkan and D3D11 compiler capture require an explicitly requested diagnostic dev
 source identity and cold capability/limit evidence without enabling reflection or capture. Its native
 compiler artifact, physical register, spill and occupancy fields remain unavailable with reasons.
 
+`GpuDeviceContext.ResolveHeadlessDiagnosticSettings(backend, request)` uses the optional
+`IGpuHeadlessDiagnosticProvider` route to freeze backend, adapter, compiler, cache, validation,
+recording, frame depth and drain choices. `WithDiagnostics` changes only the observation request.
+`WithAdapter` pins the production adapter for replay. Vulkan uses the native device UUID, D3D11 uses
+the DXGI adapter LUID and Metal uses its registry ID. Explicit creation and shader compilation do not
+re-read these environment choices. Ordinary creation overloads keep their existing defaults.
+
+`CreateHeadlessAttempt(backend, settings)` shares the ordinary process-wide creation and adoption
+gate. Success returns a context and no failures. Refusal returns no context and ordered
+`GpuDiagnosticFailure` events, including rejected-device cleanup, with their actual exception
+references. Only `GpuDiagnosticFailureException` is an ordered transport. An operational
+`AggregateException` remains one original exception. `IGpuDeviceDiagnosticConfiguration` exposes
+the full effective configuration separately from the request. The renderer lifecycle and bounded
+read tests are headless proofs. Native correspondence and registered-file certification require
+their separate acceptance gates.
+
 `GpuPipelineCompilerReport` identifies shader artifacts, pipeline state, compiler flags and diagnostic
 configuration by digest. Each executable retains vendor statistic names, descriptions and typed
 Boolean, Int64, UInt64 or Float64 values. `GpuDiagnosticMetric` carries a unit, source, status, reason

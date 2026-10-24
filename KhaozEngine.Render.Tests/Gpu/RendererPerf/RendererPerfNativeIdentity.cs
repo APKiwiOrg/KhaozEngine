@@ -23,14 +23,13 @@ internal static class RendererPerfNativeIdentity
         RendererPerfNativeFacts facts;
         if (device is VulkanGpuDevice vulkan)
         {
-            // The cache key was read from the exact physical device selected at creation.
-            var cache = Field<VulkanPipelines>(vulkan, "_pipelines").Cache;
-            var instance = Field<VulkanInstanceLease<VulkanInstance>>(vulkan, "_instance").Value;
-            var diagnostics = (Field<IVulkanPipelineApi>(cache, "_api") as IVulkanPipelineDiagnosticsSource)?.Diagnostics;
-            RendererPerfManifest.Require(instance.Validation == VulkanValidationMode.Off && (diagnostics?.CaptureFlags ?? 0) == 0,
-                "Admission", "Validation layers or captured diagnostic pipelines cannot enter timed blocks.");
-            var file = Field<VulkanPipelineCacheFile>(cache, "_file");
-            var identity = Field<VulkanPipelineCacheIdentity>(file, "_identity");
+            var configuration = vulkan.DiagnosticConfiguration;
+            RendererPerfManifest.Require(vulkan.DiagnosticValidationRequest == VulkanValidationMode.Off
+                && !configuration.ValidationEnabled && !configuration.DebugLayerEnabled
+                && !configuration.CompilerMetadataEnabled && !configuration.RuntimeInvocationsEnabled && configuration.PipelineCaptureFlags == 0,
+                "Admission", "Validation or compiler/invocation diagnostics cannot enter timed blocks.");
+            var identity = vulkan.DiagnosticAdapterIdentity
+                ?? throw new InvalidOperationException("The selected native Vulkan adapter identity was not retained.");
             facts = new(identity.VendorId, identity.DeviceId,
                 "VkPhysicalDeviceProperties.driverVersion=" + identity.DriverVersion.ToString(CultureInfo.InvariantCulture),
                 "vulkan-native", vulkan.TimestampSupport.ValidBits, vulkan.TimestampSupport.TickPeriodNanoseconds);

@@ -96,7 +96,14 @@ public sealed partial class GpuFrameSubmissionTests
         Assert.True(submission.TryRetain(ring, out var completion));
         Assert.True(ring.TryRecord(gpu, source, 0, 16, 1, completion!));
         gpu.FailSubmit = !successfulSubmit;
-        Assert.Throws<InvalidOperationException>(() => submission.Submit(gpu));
+        if (successfulSubmit) Assert.Throws<InvalidOperationException>(() => submission.Submit(gpu));
+        else
+        {
+            var failure = Assert.Throws<GpuDiagnosticFailureException>(() => submission.Submit(gpu));
+            Assert.Equal(2, failure.Failures.Length);
+            Assert.Equal("planned submit failure", failure.Failures[0].Error.Message);
+            Assert.Equal("abandoned callback", failure.Failures[1].Error.Message);
+        }
         submission.Abandon();
         Assert.Equal(1, ring.PendingCount);
         Assert.Equal(successfulSubmit ? 1 : 0, second.Submissions);

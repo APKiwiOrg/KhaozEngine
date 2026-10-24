@@ -184,6 +184,35 @@ internal static class RendererPerfCompilerCorrespondence
         }
     }
 
+    internal static ImmutableArray<string> Recipe(RendererPerfCompilerInventory inventory, RendererPerfPipelineRecipe recipe,
+        GpuPipelineCompilerReport report, RendererPerfCompilerReadEvidence read,
+        GpuEffectiveDiagnosticConfiguration production, GpuEffectiveDiagnosticConfiguration diagnostic)
+    {
+        var reasons = ImmutableArray.CreateBuilder<string>();
+        RendererPerfCompilerValidation.Pipeline(report);
+        Read(read, report, diagnostic, reasons);
+        if (report.Status == GpuDiagnosticStatus.Invalid) reasons.Add("Replay compiler report is invalid.");
+        if (recipe.RecipeSha256 != RendererPerfConstructionEncoding.Digest(recipe, inventory.Shaders, inventory.Layouts))
+            reasons.Add("Recipe digest disagrees with detached values.");
+        var occurrences = inventory.Occurrences.Where(o => o.RecipeId == recipe.Id).ToArray();
+        if (occurrences.Length == 0) reasons.Add("Replay has no captured successful production occurrence.");
+        foreach (var occurrence in occurrences)
+        {
+            Witness(recipe, inventory, occurrence.Production, production, reasons);
+            Witness(recipe, inventory, report.Identity, diagnostic, reasons);
+            if (!Same(occurrence.Production, report.Identity)) reasons.Add("Production and replay construction witnesses disagree.");
+        }
+        return reasons.ToImmutable();
+    }
+
+    internal static ImmutableArray<string> Configurations(GpuEffectiveDiagnosticConfiguration production,
+        GpuEffectiveDiagnosticConfiguration diagnostic)
+    {
+        var reasons = ImmutableArray.CreateBuilder<string>();
+        Configuration(production, diagnostic, reasons);
+        return reasons.ToImmutable();
+    }
+
     static void Configuration(GpuEffectiveDiagnosticConfiguration p, GpuEffectiveDiagnosticConfiguration d, ImmutableArray<string>.Builder reasons)
     {
         if (p.Backend is not (GpuBackendKind.VulkanNative or GpuBackendKind.Direct3D11Native))

@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 internal static class RendererPerfEntrypoint
 {
-    internal static void Run(string unit, string directory)
+    internal static void Run(string unit, string directory, IRendererPerfUnitPublication? publication = null)
     {
         Require(Env("GITHUB_ACTIONS") == "true" && Env("RUNNER_ENVIRONMENT") == "github-hosted" && Env("KE_GPU_TESTS") == "1"
             && Env("WORKFLOW_RUN_ATTEMPT") == "1" && Env("GITHUB_RUN_ATTEMPT") == "1",
@@ -51,7 +51,13 @@ internal static class RendererPerfEntrypoint
             && environment.Count == manifest.Runtime.Environment.Count
             && environment.All(p => manifest.Runtime.Environment.TryGetValue(p.Key, out var value) && value == p.Value),
             "Observed runtime, GC, tiering or relevant environment differs from approval.");
+        // Task4 must connect the registered-file account and verifier before any production unit can open a device.
+        Require(publication is not null, "The registered compiler publication account and certification route are not connected.");
         long coldStart = Stopwatch.GetTimestamp();
+        var clock = new RendererPerfClock(Stopwatch.GetTimestamp, Stopwatch.Frequency);
+        var budget = new RendererPerfUnitBudget(clock, coldStart,
+            checked(coldStart + manifest.Limits.UnitSeconds * clock.Frequency), default);
+        budget.Check("renderer.startup.before");
         RendererPerfExecutable.ValidateWork(manifest);
         var layouts = manifest.Recipes.ToDictionary(r => r.SceneId, RendererPerfExecutable.Layout, StringComparer.Ordinal);
         Directory.CreateDirectory(directory);
@@ -61,36 +67,37 @@ internal static class RendererPerfEntrypoint
         Write("control-definitions.json", manifest.Controls.Select(c => RendererPerfControls.Definition(c.Id)).ToArray());
         Write("frozen-layouts.json", layouts);
         foreach (var recipe in manifest.Recipes)
+        {
+            budget.Check("renderer.startup.recipe.before");
             File.Copy(RendererPerfRecipe.RecipePath(recipe.Version.Split('/')[0]), Path.Combine(directory, recipe.SceneId + "-recipe.json"), overwrite: true);
+            budget.Check("renderer.startup.recipe.after");
+        }
 
         // Assembly references alone do not run the test-support module initializers.
         if (manifest.Execution.Backend == "vulkan") KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan.Register();
         else KhaozEngine.Gpu.D3D11.KhaozEngineD3D11.Register();
-        // Cold recipes, compiler metadata, layouts, native creation and calibration count as startup.
-        using var context = GpuDeviceContext.CreateHeadless();
-        Require(context.InjectedModules is null || context.InjectedModules.Count == 0, "An injected capture or overlay module was detected.");
-        IGpuDevice device = context.GpuDevice;
-        var facts = RendererPerfNativeIdentity.Read(device);
-        string backend = device.Backend == GpuBackendKind.VulkanNative ? "vulkan" : "d3d11";
-        var identity = new RendererPerfRunIdentity(unit, authorization.ManifestSha256, manifest.WorkloadSha,
-            manifest.BaselineMainSha, head, Env("GITHUB_WORKFLOW_SHA"), Env("GITHUB_RUN_ID"), 1, Environment.ProcessId,
-            RendererPerfRecipe.Hash(File.ReadAllBytes(typeof(RendererPerfEntrypoint).Assembly.Location)),
-            RuntimeInformation.OSDescription, Image(), Cpu(), Environment.Version.ToString(), gc,
-            manifest.Runtime.TieredCompilation, environment, device.Capabilities.DeviceName,
-            facts.Vendor, facts.Device, facts.Driver, backend, facts.Recording, device.Diagnostics.SoftwareAdapter,
-            facts.TimestampBits, facts.TimestampPeriodNs, device.Capabilities.SupportsTimestamps, "none", "none", manifest.Execution.CompletionPolicy);
-        RendererPerfAdmission.Identity(manifest, identity);
-        Write("native-admission.json", new
-        {
-            identity,
-            facts,
-            coldStartTicks = coldStart,
-            frequency = Stopwatch.Frequency,
-            clockProbe = backend == "d3d11" ? "one cold two-query submission, no scene frame, no retry" : "selected physical-device timestamp limits"
-        });
         var telemetry = new RendererPerfHostTelemetry(directory);
-        var clock = new RendererPerfClock(Stopwatch.GetTimestamp, Stopwatch.Frequency);
-        RendererPerfReport report = RendererPerfDriver.Run(manifest, identity, CreateSession, clock, new EvidencePublication(directory));
+        RendererPerfRunIdentity identity = null!;
+        int operationOrdinal = 0;
+        GpuBackendKind backendKind = manifest.Execution.Backend == "vulkan"
+            ? GpuBackendKind.VulkanNative : GpuBackendKind.Direct3D11Native;
+        IGpuHeadlessDiagnosticSettings settings;
+        try
+        {
+            budget.Check("renderer.settings.before");
+            settings = GpuDeviceContext.ResolveHeadlessDiagnosticSettings(backendKind, new(false, false));
+            budget.Check("renderer.settings.after");
+        }
+        catch (Exception error)
+        {
+            var refused = RendererPerfUnit.RefuseBeforeCreation(authorization, budget, "gpu.context.provider", error, publication!);
+            throw new GpuDiagnosticFailureException(refused.Failures);
+        }
+        var outcome = RendererPerfUnit.Run(manifest, authorization, budget, settings,
+            GpuDeviceContext.CreateHeadlessAttempt, IdentifyProduction,
+            (device, capture) => (approved, block, unitClock) => CreateSession(device, capture, approved, block, unitClock), publication!);
+        RendererPerfReport report = outcome.Report ?? throw new InvalidOperationException(outcome.EarlyFailure?.OriginalFailure
+            ?? "No trustworthy native run identity or partial report was produced.");
         Require(report.Publication.State == RendererPerfPublicationState.Completed && report.Publication.ReturnedByRun
             && report.Publication.FinalUnitPublished && report.Assessment.ValidForPromotion,
             report.Publication.OriginalFailure ?? string.Join("\n", report.Assessment.Reasons));
@@ -105,7 +112,31 @@ internal static class RendererPerfEntrypoint
             && final.Publication.EstimatedCostUsd == report.Publication.EstimatedCostUsd,
             "The final file differs from the returned publication.");
 
-        IRendererPerfSession CreateSession(RendererPerfManifest approved, RendererPerfBlock block, RendererPerfClock unitClock)
+        RendererPerfRunIdentity IdentifyProduction(IGpuDevice device)
+        {
+            var facts = RendererPerfNativeIdentity.Read(device);
+            string backend = device.Backend == GpuBackendKind.VulkanNative ? "vulkan" : "d3d11";
+            identity = new RendererPerfRunIdentity(unit, authorization.ManifestSha256, manifest.WorkloadSha,
+                manifest.BaselineMainSha, head, Env("GITHUB_WORKFLOW_SHA"), Env("GITHUB_RUN_ID"), 1, Environment.ProcessId,
+                RendererPerfRecipe.Hash(File.ReadAllBytes(typeof(RendererPerfEntrypoint).Assembly.Location)),
+                RuntimeInformation.OSDescription, Image(), Cpu(), Environment.Version.ToString(), gc,
+                manifest.Runtime.TieredCompilation, environment, device.Capabilities.DeviceName,
+                facts.Vendor, facts.Device, facts.Driver, backend, facts.Recording, device.Diagnostics.SoftwareAdapter,
+                facts.TimestampBits, facts.TimestampPeriodNs, device.Capabilities.SupportsTimestamps, "none", "none", manifest.Execution.CompletionPolicy);
+            RendererPerfAdmission.Identity(manifest, identity);
+            Write("native-admission.json", new
+            {
+                identity,
+                facts,
+                coldStartTicks = coldStart,
+                frequency = Stopwatch.Frequency,
+                clockProbe = backend == "d3d11" ? "one cold two-query submission, no scene frame, no retry" : "selected physical-device timestamp limits"
+            });
+            return identity;
+        }
+
+        IRendererPerfSession CreateSession(IGpuDevice device, RendererPerfConstructionCapture capture,
+            RendererPerfManifest approved, RendererPerfBlock block, RendererPerfClock unitClock)
         {
             bool conditioning = block.SceneId == "conditioning:S3";
             var info = new RendererPerfSessionInfo(identity, true, true, null, ImmutableDictionary<string, RendererPerfMetric>.Empty,
@@ -116,14 +147,21 @@ internal static class RendererPerfEntrypoint
                 int id = int.Parse(block.SceneId.AsSpan(8), System.Globalization.CultureInfo.InvariantCulture);
                 var control = approved.Controls.Single(c => c.Id == id);
                 return new RendererPerfNativeSession(device, info, block, [], unitClock,
-                    (wrapped, _) => RendererPerfControls.Create(wrapped, control), telemetry.Read);
+                    (wrapped, _) => RendererPerfControls.Create(wrapped, control), telemetry.Read,
+                    capture, operationOrdinal++);
             }
             string scene = conditioning ? "S3" : block.SceneId;
             var recipe = approved.Recipes.Single(r => r.SceneId == scene);
             return new RendererPerfNativeSession(device, info, block, layouts[scene], unitClock,
-                (wrapped, observer) => new RendererPerfSceneWorkload(wrapped, observer, recipe), telemetry.Read);
+                (wrapped, observer) => new RendererPerfSceneWorkload(wrapped, observer, recipe), telemetry.Read,
+                capture, operationOrdinal++);
         }
-        void Write<T>(string name, T value) => File.WriteAllBytes(Path.Combine(directory, name), JsonSerializer.SerializeToUtf8Bytes(value, RendererPerfManifest.JsonOptions));
+        void Write<T>(string name, T value)
+        {
+            budget.Check("renderer.startup.write.before");
+            File.WriteAllBytes(Path.Combine(directory, name), JsonSerializer.SerializeToUtf8Bytes(value, RendererPerfManifest.JsonOptions));
+            budget.Check("renderer.startup.write.after");
+        }
     }
 
     static ImmutableDictionary<string, string> RuntimeEnvironment()
@@ -150,25 +188,4 @@ internal static class RendererPerfEntrypoint
     static string Env(string name) => Environment.GetEnvironmentVariable(name) ?? throw new InvalidOperationException(name + " must be explicit.");
     static void Require(bool condition, string reason) => RendererPerfManifest.Require(condition, "Entrypoint", reason);
 
-    sealed class EvidencePublication(string directory) : IRendererPerfPublication
-    {
-        public RendererPerfReport Publish(RendererPerfReport report, RendererPerfClock clock, long deadline)
-            => RendererPerfPublicationWriter.Files(directory, Prepare).Publish(report, clock, deadline);
-
-        RendererPerfReport Prepare(RendererPerfReport report)
-        {
-            // Preserve per-block model context. Task 14 owns canonical aggregation and comparisons.
-            var models = report.Blocks.Select(block => new
-            {
-                block.Block,
-                models = block.Measured.IsEmpty ? [] : RendererPerfWorkModels.ForFrame(block.Measured[0],
-                    block.Block.SceneId + "/" + block.Block.Layout + ", first retained measured frame")
-            }).ToArray();
-            File.WriteAllBytes(Path.Combine(directory, "work-models.json"), JsonSerializer.SerializeToUtf8Bytes(models, RendererPerfManifest.JsonOptions));
-            var sidecars = Directory.EnumerateFiles(directory).Where(path => !path.EndsWith(".trx", StringComparison.Ordinal)
-                && !path.EndsWith(".log", StringComparison.Ordinal) && !path.EndsWith(".partial.json", StringComparison.Ordinal))
-                .Select(path => new RendererPerfSidecar(Path.GetFileName(path), RendererPerfRecipe.Hash(File.ReadAllBytes(path)))).ToImmutableArray();
-            return report with { Sidecars = sidecars };
-        }
-    }
 }

@@ -122,12 +122,15 @@ public sealed partial class GpuFrameSubmissionTests
             Assert.True(old.TryRecord(gpu, source, 0, 16, 100, fence!));
             Assert.True(valid.TryRecord(gpu, source, 0, 16, 100, fence!));
             submission.Submit(gpu);
-            var failure = Assert.Throws<InvalidOperationException>(() => submission.Dispose());
+            var failure = Assert.Throws<GpuDiagnosticFailureException>(() => submission.Dispose());
+            Assert.Equal(2, failure.Failures.Length);
+            Assert.Equal("release failure", failure.Failures[0].Error.Message);
+            Assert.Equal("query failure", failure.Failures[1].Error.Message);
             Assert.Equal(0, valid.PendingCount);
             Assert.Equal(1, other.ReleaseCalls);
             Assert.Equal(1, old.PendingCount);
             Assert.All(gpu.Fences, item => Assert.Equal(0, item.DisposeCalls));
-            Assert.Equal("release failure", failure.Message);
+            Assert.Equal("renderer.session.dispose.submission.consumer.0.0", failure.Failures[0].Stage);
             Assert.Throws<ObjectDisposedException>(() => submission.Begin());
             faulty.FailQuery = faulty.FailRelease = false;
             submission.Dispose();

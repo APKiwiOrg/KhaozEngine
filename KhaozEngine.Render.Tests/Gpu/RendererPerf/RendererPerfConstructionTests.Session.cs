@@ -46,10 +46,11 @@ public sealed partial class RendererPerfConstructionTests
         var capture = new RendererPerfConstructionCapture(manifest);
         var original = new InvalidOperationException("original constructor failure");
         IGpuComputeShader? shader = null;
-        Assert.Same(original, Assert.Throws<InvalidOperationException>(() => Session(native, capture, new(() => 0, 1000), (d, _) =>
+        var construction = Assert.Throws<GpuDiagnosticFailureException>(() => Session(native, capture, new(() => 0, 1000), (d, _) =>
         {
             shader = d.Factory.CreateComputeShaderFromSpirv(ComputeSource); throw original;
-        })));
+        }));
+        Assert.Same(original, Assert.Single(construction.Failures).Error);
         // This only succeeds if the actual constructor catch ended its operation.
         capture.BeginOperation(1);
         var device = RendererPerfDevice.Wrap(native, Recorder(), capture);
@@ -60,8 +61,8 @@ public sealed partial class RendererPerfConstructionTests
         var disposeCapture = new RendererPerfConstructionCapture(OneOperation());
         var cleanup = new InvalidOperationException("work release failed");
         var session = Session(native, disposeCapture, new(() => 0, 1000), (d, _) => new Work(d) { Cleanup = cleanup });
-        var thrown = Assert.Throws<InvalidOperationException>(session.Dispose);
-        Assert.Same(cleanup, thrown.InnerException);
+        var thrown = Assert.Throws<GpuDiagnosticFailureException>(session.Dispose);
+        Assert.Same(cleanup, Assert.Single(thrown.Failures).Error);
         // Freeze refuses active operations. It proves EndOperation ran despite the cleanup failure.
         Assert.NotNull(disposeCapture.Freeze()); session.Dispose();
     }
@@ -82,7 +83,8 @@ public sealed partial class RendererPerfConstructionTests
         }))
         {
             RendererPerfFrameSample sample = default;
-            Assert.Same(original, Assert.Throws<InvalidOperationException>(() => session.Frame(0, ref sample)));
+            var frameFailure = Assert.Throws<GpuDiagnosticFailureException>(() => session.Frame(0, ref sample));
+            Assert.Same(original, Assert.Single(frameFailure.Failures).Error);
             Assert.Equal(original.Message, session.ReadInfo().Failure);
             Assert.Empty(sample.Metrics);
             Assert.Equal(original.Message, Assert.Single(sample.Errors));

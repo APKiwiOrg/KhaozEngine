@@ -10,7 +10,6 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 // The caller owns the native device. Each session owns a fresh workload, frame host and timestamp ring.
 internal sealed class RendererPerfNativeSession : IRendererPerfSession
 {
-    internal const string ConstructionCleanupErrors = "renderer-perf.construction-cleanup";
     readonly IGpuDevice _native, _device;
     readonly RendererPerfConstructionCapture? _capture;
     readonly RendererPerfSessionInfo _info;
@@ -81,19 +80,17 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         }
         catch (Exception error)
         {
-            var cleanup = ImmutableArray.CreateBuilder<string>();
-            void Release(Action? dispose)
+            var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+            RendererPerfFailures.Add(failures, "renderer.session.construct", error);
+            RendererPerfFailures.Release(failures, "renderer.session.dispose.submission.3", frame is null ? null : frame.DisposeSubmission);
+            if (frame is null || !frame.HasSubmission || frame.Submission.TeardownCompleted)
             {
-                try { dispose?.Invoke(); }
-                catch (Exception failure) { cleanup.Add(failure.Message); }
+                RendererPerfFailures.Release(failures, "renderer.session.dispose.commands.2", hostCommands is null ? null : hostCommands.Dispose);
+                RendererPerfFailures.Release(failures, "renderer.session.dispose.work.1", work is null ? null : work.Dispose);
+                RendererPerfFailures.Release(failures, "renderer.session.dispose.timestamps.0", ring is null ? null : ring.Dispose);
             }
-            Release(frame is null ? null : frame.DisposeSubmission);
-            Release(hostCommands is null ? null : hostCommands.Dispose);
-            Release(work is null ? null : work.Dispose);
-            Release(ring is null ? null : ring.Dispose);
-            Release(capture is null ? null : capture.EndOperation);
-            if (cleanup.Count != 0) error.Data[ConstructionCleanupErrors] = cleanup.ToImmutable();
-            throw;
+            RendererPerfFailures.Release(failures, "renderer.session.dispose.capture.4", capture is null ? null : capture.EndOperation);
+            throw new GpuDiagnosticFailureException(failures.ToImmutable());
         }
     }
 
@@ -110,17 +107,23 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
             _observer.BeginFrame();
             long start = _clock.Now();
             _recorder.BeginFrame(_next, _next, RendererPerfRecipe.SequenceIndex(frameIndex));
+            ImmutableArray<GpuDiagnosticFailure>.Builder? failures = null;
             try
             {
                 FramePhases.Run(_frame, true, _device, _frame.Commands, _work.ClearColor, _prepare, _record);
             }
             catch (Exception error)
             {
-                _failure ??= error.Message;
-                _recorder.Fail(error.Message);
-                throw;
+                _failure ??= error is GpuDiagnosticFailureException transport ? transport.Failures[0].Error.Message : error.Message;
+                RendererPerfFailures.Add(ref failures, "renderer.frame", error);
+                try { _recorder.Fail(error is GpuDiagnosticFailureException frameTransport ? frameTransport.Failures[0].Error.Message : error.Message); }
+                catch (Exception recovery) { RendererPerfFailures.Add(ref failures, "renderer.frame.finalize", recovery); }
             }
-            finally
+            sample = new(_next, RendererPerfRecipe.SequenceIndex(frameIndex), start, start, _clock.Frequency,
+                null, null, new(null, "ns", "native timestamp ring", RendererPerfMetricStatus.Unsupported,
+                    "Awaiting the one batch completion harvest."), [], [], ImmutableDictionary<string, RendererPerfMetric>.Empty,
+                []);
+            try
             {
                 if (_recorder.ReadCounter(_next, RendererPerfCounter.Submissions) != 1)
                     _recorder.Fail("An unexpected production submission occurred, including preparation.");
@@ -128,14 +131,27 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
                     _recorder.Fail("An unexpected production wait occurred.");
                 if (frameIndex >= 0 && !_block.SceneId.StartsWith("conditioning:", StringComparison.Ordinal) && _recorder.ReadCounter(_next, RendererPerfCounter.ResourceCreations) != 0)
                     _recorder.Fail("Hot resource growth occurred in a steady frame.");
+            }
+            catch (Exception error) { RendererPerfFailures.Add(ref failures, "renderer.frame.finalize", error); }
+            try
+            {
                 if (_native.Diagnostics.IsDeviceLost) _recorder.Fail(_native.Diagnostics.DeviceLossReason!);
-                _recorder.EndFrame();
+            }
+            catch (Exception error) { RendererPerfFailures.Add(ref failures, "renderer.frame.finalize", error); }
+            // Optional observation failure cannot leave the recorder open or erase already recorded raw work.
+            try { _recorder.EndFrame(); }
+            catch (Exception error) { RendererPerfFailures.Add(ref failures, "renderer.frame.finalize", error); }
+            try
+            {
                 string? error = _recorder.FrameFailure(_next);
-                sample = new(_next++, RendererPerfRecipe.SequenceIndex(frameIndex), start, _clock.Now(), _clock.Frequency,
+                sample = new(_next, RendererPerfRecipe.SequenceIndex(frameIndex), start, _clock.Now(), _clock.Frequency,
                     null, null, new(null, "ns", "native timestamp ring", RendererPerfMetricStatus.Unsupported,
                         "Awaiting the one batch completion harvest."), [], [], ImmutableDictionary<string, RendererPerfMetric>.Empty,
                         error is null ? [] : [error]);
             }
+            catch (Exception error) { RendererPerfFailures.Add(ref failures, "renderer.frame.finalize", error); }
+            finally { _next++; }
+            if (failures is not null) throw new GpuDiagnosticFailureException(failures.ToImmutable());
         }
         finally { _capture?.LeaveFrame(); }
     }
@@ -144,8 +160,12 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
     {
         _recorder.UseSubmission(frame.Submission);
         _recorder.BeginCpuPhase("prepare");
+        ImmutableArray<GpuDiagnosticFailure>.Builder? failures = null;
         try { _work.Prepare(_frameIndex); }
-        finally { _recorder.EndCpuPhase("prepare"); }
+        catch (Exception error) { RendererPerfFailures.Add(ref failures, "renderer.frame", error); }
+        try { _recorder.EndCpuPhase("prepare"); }
+        catch (Exception error) { RendererPerfFailures.Add(ref failures, "renderer.frame.finalize", error); }
+        if (failures is not null) throw new GpuDiagnosticFailureException(failures.ToImmutable());
     }
     void Record(Frame frame) => _work.Record(frame.Commands, _frameIndex);
 
@@ -158,28 +178,29 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
             if (samples[i].FrameId != _consumed + i) throw new InvalidOperationException("A foreign or duplicated frame entered harvest.");
         _drain = _harvest = null;
         long start = _clock.Now();
+        var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
         try { _native.WaitForIdle(); }
-        catch (Exception error)
-        {
-            _failure ??= error.Message;
-            // Completion failed, but CPU spans, counters and DeviceOnly ownership already exist.
-            try { HarvestPending(samples); }
-            catch (Exception harvest) { error.Data[ConstructionCleanupErrors] = ImmutableArray.Create(harvest.Message); }
-            throw;
-        }
+        catch (Exception error) { _failure ??= error is GpuDiagnosticFailureException transport ? transport.Failures[0].Error.Message : error.Message; RendererPerfFailures.Add(failures, "renderer.batch.complete", error); }
         long drained = _clock.Now();
-        _drain = new("batch.completionDrain", null, start, drained);
-        try { _ring.PollCompleted(); }
-        finally
+        if (failures.Count == 0)
         {
-            HarvestPending(samples);
-            _harvest = new("batch.harvest", null, drained, _clock.Now());
+            _drain = new("batch.completionDrain", null, start, drained);
+            try { _ring.PollCompleted(); }
+            catch (Exception error) { RendererPerfFailures.Add(failures, "renderer.batch.complete", error); }
         }
-        if (_next == _results.Length)
+        try { HarvestPending(samples); }
+        catch (Exception error) { RendererPerfFailures.Add(failures, "renderer.batch.harvest", error); }
+        finally { if (_drain is not null) _harvest = new("batch.harvest", null, drained, _clock.Now()); }
+        if (failures.Count == 0 && _next == _results.Length)
         {
-            if (!_ring.CompleteBlock()) _failure ??= _ring.Failure;
-            _work.ValidateOutput();
+            try
+            {
+                if (!_ring.CompleteBlock()) _failure ??= _ring.Failure;
+                _work.ValidateOutput();
+            }
+            catch (Exception error) { RendererPerfFailures.Add(failures, "renderer.batch.complete", error); }
         }
+        if (failures.Count != 0) throw new GpuDiagnosticFailureException(failures.ToImmutable());
     }
 
     void HarvestPending(Span<RendererPerfFrameSample> samples)
@@ -210,18 +231,15 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
     {
         if (_disposed) return;
         _disposed = true;
-        Exception? failure = null;
-        void Release(Action dispose)
+        var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+        RendererPerfFailures.Release(failures, "renderer.session.dispose.submission.3", _frame.DisposeSubmission);
+        if (failures.Count == 0 || _frame.Submission.TeardownCompleted)
         {
-            try { dispose(); }
-            catch (Exception error) { failure ??= error; }
+            RendererPerfFailures.Release(failures, "renderer.session.dispose.timestamps.0", _ring.Dispose);
+            RendererPerfFailures.Release(failures, "renderer.session.dispose.commands.2", _frame.Commands.Dispose);
+            RendererPerfFailures.Release(failures, "renderer.session.dispose.work.1", _work.Dispose);
         }
-        // Submission teardown releases every retained fence before its pools and scene resources.
-        Release(_frame.DisposeSubmission);
-        Release(_ring.Dispose);
-        Release(_frame.Commands.Dispose);
-        Release(_work.Dispose);
-        if (_capture is not null) Release(_capture.EndOperation);
-        if (failure is not null) throw new InvalidOperationException("Native session cleanup failed.", failure);
+        RendererPerfFailures.Release(failures, "renderer.session.dispose.capture.4", _capture is null ? null : _capture.EndOperation);
+        if (failures.Count != 0) throw new GpuDiagnosticFailureException(failures.ToImmutable());
     }
 }

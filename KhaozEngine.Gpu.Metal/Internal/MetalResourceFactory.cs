@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Internal;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
@@ -286,6 +287,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // identically. A lock here would buy one avoided allocation, once, at the cost of putting a lock on the
         // path M-W8 says has none.
         [SupportedOSPlatform("macos")]
+        internal void Configure(MetalHeadlessDiagnosticSettings settings, GpuEffectiveDiagnosticConfiguration effective, MetalMslCache? cache)
+        {
+            if (_shaders is not null) throw new InvalidOperationException("Shader settings were already frozen for this Metal device.");
+            _shaders = new MetalShaderCompiler(_device.Handle, _device.Liveness, _device.IndexTables,
+                cache, new SpirvCompileCache(settings.CompileCache, SpirvCompileCache.DefaultCapacity), effective);
+        }
+
         MetalShaderCompiler Shaders =>
             _shaders ??= new MetalShaderCompiler(_device.Handle, _device.Liveness, _device.IndexTables);
 

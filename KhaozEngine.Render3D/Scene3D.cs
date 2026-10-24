@@ -1945,63 +1945,6 @@ namespace KhaozEngine.Render3D
             return set;
         }
 
-        public void Dispose()
-        {
-            // Drain in-flight GPU work before destroying anything because uploads or draws may still be queued on
-            // the device's async submission thread (Mesa lavapipe can segfault on destroyed resources).
-            DisposeShadowReconfiguration();
-            _gd.WaitForIdle();
-            _retired.Dispose();    // flushes the retired tail (it would outlive the scene) and frees the fence barrier
-            DisposeFoliage();
-            _post.Dispose();
-            _lines.Dispose();
-            _depthLines.Dispose();
-            _fills.Dispose();
-            _billboards.Dispose();
-            _transitions.Dispose();
-            _texBillboards.Dispose();
-            _beams.Dispose();
-            _trails.Dispose();
-            _decalRenderer.Dispose();
-            _particleRenderer.Dispose();
-            _distortionRenderer.Dispose();
-            _sky.Dispose();
-            _starfield.Dispose();
-            _water.Dispose();
-            _overlayMeshes.Dispose();
-            _silhouettes.Dispose();
-            _targetOutlines.Dispose();
-            _res.Dispose();
-            foreach (var m in _meshes)
-                if (m is { } mesh)
-                {
-                    mesh.Vb.Dispose();
-                    mesh.OutlineNormalVb.Dispose();
-                    mesh.Ib.Dispose();
-                    mesh.MaterialSet?.Dispose();
-                    mesh.OutlineMaterialSet?.Dispose();
-                    mesh.ShadowCutoutSet?.Dispose();
-                }
-            foreach (var m in _skinnedMeshes)
-                if (m is { } e)
-                {
-                    e.Vb.Dispose();
-                    e.Ib.Dispose();
-                    e.MaterialSet?.Dispose();
-                    e.SkinnedMaterialSet?.Dispose();
-                    e.OutlineMaterialSet?.Dispose();
-                }
-            foreach (var s in _texBillboardSets) s?.Dispose();
-            _texBillboardSets.Clear();
-            foreach (var t in _textures) t?.Dispose();
-            _textures.Clear();
-            DisposeSplatMaterials();
-            DisposeModelWithInteriorCutBorrowers();
-            DisposeMotionVectorsView();
-            DisposeTileGroundAndPointShadowResources();
-            DisposeTemporalResolve();
-            _atmosphere.Dispose();
-        }
 
         /// <summary>A contiguous run of instances of one mesh handle inside the flat instance array.</summary>
         internal readonly struct MeshRun

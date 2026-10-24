@@ -25,11 +25,11 @@ internal sealed unsafe class VulkanPipelineExecutableApi : IVulkanPipelineExecut
         _loss = loss;
     }
 
-    internal static VulkanPipelineDiagnostics Discover(Vk vk, PhysicalDevice device, VulkanInstanceValidation validation)
+    internal static VulkanPipelineDiagnostics Discover(Vk vk, PhysicalDevice device, VulkanInstanceValidation validation, bool? compilerMetadata = null)
     {
         string configuration = validation.DiagnosticConfiguration;
-        if (Environment.GetEnvironmentVariable("KE_VULKAN_PIPELINE_DIAGNOSTICS") != "1")
-            return new(false, false, false, null, configuration);
+        bool requested = compilerMetadata ?? Environment.GetEnvironmentVariable("KE_VULKAN_PIPELINE_DIAGNOSTICS") == "1";
+        if (compilerMetadata is null && !requested) return new(false, false, false, null, configuration);
         try
         {
             bool extension = HasExtension(vk, device);
@@ -42,11 +42,12 @@ internal sealed unsafe class VulkanPipelineExecutableApi : IVulkanPipelineExecut
                 var features = new PhysicalDeviceFeatures2 { SType = StructureType.PhysicalDeviceFeatures2, PNext = &feature };
                 vk.GetPhysicalDeviceFeatures2(device, &features);
             }
-            return new(true, extension, extension && feature.PipelineExecutableInfo, null, configuration);
+            return new(requested, extension, extension && feature.PipelineExecutableInfo, null, configuration);
         }
         catch (InvalidOperationException error)
         {
-            return new(true, false, false, null, configuration, error.Message);
+            if (compilerMetadata.HasValue) throw;
+            return new(requested, false, false, null, configuration, error.Message);
         }
     }
 

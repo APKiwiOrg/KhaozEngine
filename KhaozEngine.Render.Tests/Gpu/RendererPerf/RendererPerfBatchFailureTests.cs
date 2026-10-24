@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using KhaozEngine.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
@@ -40,7 +41,8 @@ public sealed class RendererPerfBatchFailureTests
         {
             if (op == "drain") throw new InvalidOperationException("native drain failed");
         };
-        Assert.Throws<InvalidOperationException>(() => rig.Session.CompleteBatch(samples.AsSpan(3, 3)));
+        var failure = Assert.Throws<GpuDiagnosticFailureException>(() => rig.Session.CompleteBatch(samples.AsSpan(3, 3)));
+        Assert.Equal("native drain failed", Assert.Single(failure.Failures).Error.Message);
         rig.Device.Trace = null;
         var failed = rig.Session.ReadInfo();
         Assert.Null(failed.Drain);

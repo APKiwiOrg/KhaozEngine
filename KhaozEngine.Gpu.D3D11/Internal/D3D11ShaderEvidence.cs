@@ -8,6 +8,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal;
 
 internal sealed record D3D11DiagnosticOptions(bool Reflection, D3D11RecordMode RecordMode, bool DebugLayer, bool Invocations)
 {
+    internal GpuEffectiveDiagnosticConfiguration? Effective { get; init; }
     internal string Configuration => $"reflection={Reflection},record={RecordMode},debugLayer={DebugLayer},invocations={Invocations}";
     internal static D3D11DiagnosticOptions FromEnvironment(D3D11RecordMode mode, bool debugLayer)
         => new(Environment.GetEnvironmentVariable("KE_D3D11_PIPELINE_DIAGNOSTICS") == "1", mode, debugLayer,
@@ -29,6 +30,7 @@ internal interface ID3D11ShaderReflectionApi
 internal sealed record D3D11ShaderEvidence(string Source, string Artifact, string Stage, string Flags,
     string Configuration, GpuDiagnosticStatus Status, string? Reason, ImmutableArray<GpuPipelineStatistic> Statistics)
 {
+    internal GpuEffectiveDiagnosticConfiguration? Effective { get; init; }
     internal bool ReflectionRequested { get; init; }
     internal bool CountsComplete { get; init; }
     internal GpuPipelineStageIdentity StageIdentity { get; init; } = null!;
@@ -56,7 +58,7 @@ internal sealed record D3D11ShaderEvidence(string Source, string Artifact, strin
             string? rawFlags = null, string? rawConfiguration = null, ImmutableArray<GpuDiagnosticFailure> failures = default, bool countsComplete = false)
             => new(sourceHash, stageIdentity.ShaderArtifactSha256.Sha256 ?? "", stage, rawFlags ?? compilerFlags,
                 rawConfiguration ?? configuration, status, reason, statistics)
-            { ReflectionRequested = options.Reflection, CountsComplete = countsComplete, StageIdentity = stageIdentity, CodeGeneration = codeGeneration, CodeGenerationOptions = codeGenerationOptions, Failures = failures.IsDefault ? [] : failures };
+            { Effective = options.Effective, ReflectionRequested = options.Reflection, CountsComplete = countsComplete, StageIdentity = stageIdentity, CodeGeneration = codeGeneration, CodeGenerationOptions = codeGenerationOptions, Failures = failures.IsDefault ? [] : failures };
         if (dxbc.IsEmpty)
         {
             var error = new InvalidOperationException("The compiled DXBC module is empty.");

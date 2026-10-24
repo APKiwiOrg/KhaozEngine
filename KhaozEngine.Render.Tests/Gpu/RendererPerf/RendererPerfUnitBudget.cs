@@ -1,0 +1,17 @@
+using System;
+using System.Threading;
+
+namespace KhaozEngine.Tests.Gpu.RendererPerf;
+
+internal sealed record RendererPerfUnitBudget(RendererPerfClock Clock, long ColdStart, long Deadline,
+    CancellationToken Cancellation)
+{
+    public void Check(string stage)
+    {
+        Cancellation.ThrowIfCancellationRequested();
+        long now = Clock.Now();
+        if (now < ColdStart) throw new InvalidOperationException("The monotonic clock moved backwards at " + stage + ".");
+        if (now >= Deadline) throw new TimeoutException("UnitTimeout at " + stage + ".");
+    }
+    public double ElapsedMilliseconds() => checked(Clock.Now() - ColdStart) * 1000d / Clock.Frequency;
+}

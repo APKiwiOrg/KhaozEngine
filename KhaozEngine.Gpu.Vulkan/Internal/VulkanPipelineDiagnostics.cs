@@ -28,6 +28,9 @@ internal sealed class VulkanPipelineDiagnostics
     readonly string? _failure;
     readonly IVulkanCompilerMaterializer _materializer;
     readonly GpuEffectiveDiagnosticConfiguration? _effective;
+    internal bool StatisticsSupported => _extension && _feature;
+    internal VulkanPipelineDiagnostics WithConfiguration(GpuEffectiveDiagnosticConfiguration? effective)
+        => new(_requested, _extension, _feature, _api, _configuration, _failure, _materializer, effective);
 
     internal VulkanPipelineDiagnostics(bool requested, bool extensionSupported, bool featureEnabled,
         IVulkanPipelineExecutableApi? api, string configuration, string? failure = null,

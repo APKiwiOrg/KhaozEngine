@@ -56,7 +56,8 @@ internal sealed class D3D11PipelineDiagnostics
             allStages ? GpuDiagnosticIdentityEncoding.Stages("source", stageIdentities) : MissingStage("khaozengine.pipeline-stage-set/1"),
             allStages ? GpuDiagnosticIdentityEncoding.Stages("artifact", stageIdentities) : MissingStage("khaozengine.pipeline-stage-set/1"),
             GpuDiagnosticIdentityEncoding.Known(layout, "d3d11.layout/1"),
-            GpuDiagnosticIdentityEncoding.Text(string.Join(" | ", known.Select(s => s.Configuration)), "d3d11.diagnostic-configuration/1"),
+            known.FirstOrDefault()?.Effective is { } effective ? GpuDiagnosticIdentityEncoding.Configuration(effective)
+                : GpuDiagnosticIdentityEncoding.Text(string.Join(" | ", known.Select(s => s.Configuration)), "d3d11.diagnostic-configuration/1"),
             codeGeneration, flags, x, y, z, stageIdentities);
         _report = new(identity, status, reason, executables);
     }

@@ -29,7 +29,8 @@ internal sealed class MetalPipelineDiagnostics
         ConstructionIdentity = new(GpuDiagnosticIdentityEncoding.Known(stages.IsEmpty ? null : pipeline, "metal.pipeline/1"),
             GpuDiagnosticIdentityEncoding.Stages("source", stageIdentities), GpuDiagnosticIdentityEncoding.Stages("artifact", stageIdentities),
             GpuDiagnosticIdentityEncoding.Known(layout, "metal.layout/1"),
-            GpuDiagnosticIdentityEncoding.Text(string.Join(" | ", stages.Select(s => s.Configuration)), "metal.diagnostic-configuration/1"),
+            stages.FirstOrDefault()?.Effective is { } effective ? GpuDiagnosticIdentityEncoding.Configuration(effective)
+                : GpuDiagnosticIdentityEncoding.Text(string.Join(" | ", stages.Select(s => s.Configuration)), "metal.diagnostic-configuration/1"),
             GpuDiagnosticIdentityEncoding.CodeGeneration(GpuBackendKind.MetalNative,
                 [new("frontend", SpirvFrontEndPin.Identity), new("msl.compile", MslCompilePin.Identity),
                     new("msl.cross", MslCrossCompilePin.Identity), new("toolchain", SpirvToolchainVersion.Identity)]),

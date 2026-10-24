@@ -13,7 +13,7 @@ using KhaozEngine.Tests.Gpu.Performance;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
-internal sealed class RendererPerfConstructionFixture : IGpuDevice, IGpuResourceFactory
+internal sealed partial class RendererPerfConstructionFixture : IGpuDevice, IGpuResourceFactory
 {
     readonly GpuPerfTimestampTestDevice _inner = new();
     readonly FakeGpuResourceFactory _resources = new();
@@ -26,9 +26,9 @@ internal sealed class RendererPerfConstructionFixture : IGpuDevice, IGpuResource
     internal int Submissions => _inner.Submissions;
     internal int Waits => _inner.Waits;
     internal RendererPerfConstructionFixture() { _inner.Features = Features; _inner.Trace = op => Trace?.Invoke(op); }
-    public GpuDeviceDiagnostics Diagnostics => new(softwareAdapter: false);
+    public GpuDeviceDiagnostics Diagnostics { get { ColdAction?.Invoke("diagnostics"); return new(softwareAdapter: false); } }
     public IGpuResourceFactory Factory => this;
-    public GpuBackendKind Backend => GpuBackendKind.VulkanNative;
+    public GpuBackendKind Backend => ActualBackend;
     public GpuCapabilities Capabilities => Features;
     public IGpuFramebuffer? SwapchainFramebuffer => null;
     public IGpuSampler PointSampler => _inner.PointSampler;
@@ -45,21 +45,26 @@ internal sealed class RendererPerfConstructionFixture : IGpuDevice, IGpuResource
     public IGpuFence CreateFence() => _inner.CreateFence();
     public IGpuCommandList CreateCommandList() => new Commands(this);
     public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => new SubmissionTestBuffer(d.SizeInBytes, d.Usage);
-    public IGpuTexture CreateTexture(in GpuTextureDescription d) => _resources.CreateTexture(d);
-    public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour) => _resources.CreateFramebuffer(depth, colour);
+    public IGpuTexture CreateTexture(in GpuTextureDescription d)
+    {
+        var texture = _resources.CreateTexture(d);
+        if (texture is FakeTexture fake) fake.OnDispose = () => ColdAction?.Invoke("dispose.texture");
+        return texture;
+    }
+    public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour) { ColdAction?.Invoke("framebuffer"); return _resources.CreateFramebuffer(depth, colour); }
     public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d) => _resources.CreateResourceSet(d);
     public IGpuSampler CreateSampler(in GpuSamplerDescription d) => _resources.CreateSampler(d);
-    void Attempt() { FactoryAttempts++; if (FactoryFailure is { } failure) throw failure; }
+    void Attempt() { ColdAction?.Invoke("factory"); FactoryAttempts++; if (FactoryFailure is { } failure) throw failure; }
     public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
-    { LayoutAttempts++; Attempt(); return new Layout((GpuResourceLayoutElement[])d.Elements.Clone()); }
+    { LayoutAttempts++; ColdAction?.Invoke("layout"); Attempt(); return new Layout((GpuResourceLayoutElement[])d.Elements.Clone()) { Owner = this }; }
     public IGpuShaderSet CreateShadersFromSpirv(string v, string f)
-    { ShaderAttempts++; Attempt(); return new Shaders(v, f); }
+    { ShaderAttempts++; ColdAction?.Invoke("shader"); Attempt(); return new Shaders(v, f) { Owner = this }; }
     public IGpuComputeShader CreateComputeShaderFromSpirv(string source)
-    { ShaderAttempts++; Attempt(); return new ComputeShader(source); }
+    { ShaderAttempts++; ColdAction?.Invoke("shader"); Attempt(); return new ComputeShader(source) { Owner = this }; }
     public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
-    { GraphicsAttempts++; Attempt(); return new GraphicsPipeline(this, Witness(d)); }
+    { GraphicsAttempts++; ColdAction?.Invoke("pipeline"); Attempt(); return new GraphicsPipeline(this, Witness(d)); }
     public IGpuComputePipeline CreateComputePipeline(in GpuComputePipelineDescription d)
-    { ComputeAttempts++; Attempt(); return new ComputePipeline(this, Witness(d)); }
+    { ComputeAttempts++; ColdAction?.Invoke("pipeline"); Attempt(); return new ComputePipeline(this, Witness(d)); }
     public bool TryReadBuffer(IGpuBuffer staging, IGpuFence completion, uint offsetBytes, Span<byte> destination)
     {
         if (!completion.Signaled) return false;
@@ -77,7 +82,7 @@ internal sealed class RendererPerfConstructionFixture : IGpuDevice, IGpuResource
     public void Unmap(IGpuBuffer b) => throw new NotSupportedException();
     public void ResizeSwapchain(uint w, uint h) => throw new NotSupportedException();
     public void Present() => Trace?.Invoke("present");
-    public void Dispose() => _inner.Dispose();
+    public void Dispose() { ColdAction?.Invoke("context.dispose"); _inner.Dispose(); }
     sealed class Commands : IGpuCommandList, IGpuCommandListTimestampEnd
     {
         readonly RendererPerfConstructionFixture owner;
@@ -118,10 +123,13 @@ internal sealed class RendererPerfConstructionFixture : IGpuDevice, IGpuResource
         public void EndTimestamps(IGpuTimestampPool pool) => Native.EndTimestamps(pool);
         public void FinishTimestampsOnEnd(IGpuTimestampPool pool, uint index) => Native.FinishTimestampsOnEnd(pool, index);
     }
-    internal sealed record Layout(GpuResourceLayoutElement[] Elements) : IGpuResourceLayout { public void Dispose() { } }
-    sealed record Shaders(string Vertex, string Fragment) : IGpuShaderSet { public void Dispose() { } }
+    internal sealed record Layout(GpuResourceLayoutElement[] Elements) : IGpuResourceLayout
+    { internal RendererPerfConstructionFixture? Owner { get; init; } public void Dispose() => Owner?.ColdAction?.Invoke("dispose.layout"); }
+    sealed record Shaders(string Vertex, string Fragment) : IGpuShaderSet
+    { internal RendererPerfConstructionFixture? Owner { get; init; } public void Dispose() => Owner?.ColdAction?.Invoke("dispose.shader"); }
     sealed class ComputeShader : IGpuComputeShader
     {
+        internal RendererPerfConstructionFixture? Owner { get; init; }
         internal readonly string Source;
         internal ComputeShader(string source)
         {
@@ -136,18 +144,22 @@ internal sealed class RendererPerfConstructionFixture : IGpuDevice, IGpuResource
         public uint ThreadGroupSizeX { get; }
         public uint ThreadGroupSizeY { get; }
         public uint ThreadGroupSizeZ { get; }
-        public void Dispose() { }
+        public void Dispose() => Owner?.ColdAction?.Invoke("dispose.shader");
     }
     sealed record GraphicsPipeline(RendererPerfConstructionFixture Owner, GpuPipelineConstructionIdentity ConstructionIdentity)
-        : IGpuPipeline, IGpuPipelineConstructionDiagnostics, IGpuPipelineDiagnostics
+        : IGpuPipeline, IGpuPipelineConstructionDiagnostics, IGpuPipelineDiagnostics, IGpuBudgetedPipelineDiagnostics
     {
-        public void Dispose() { }
+        public GpuPipelineCompilerReadResult ReadCompilerReport(GpuPipelineCompilerReadRequest request, Action<string> check, System.Threading.CancellationToken cancellation)
+            => Owner.ColdRead(ConstructionIdentity, request, check, cancellation);
+        public void Dispose() => Owner.ColdAction?.Invoke("dispose.pipeline");
         public GpuPipelineCompilerReport ReadCompilerReport() { Owner.CompilerReads++; throw new InvalidOperationException("Forbidden live compiler read."); }
     }
     sealed record ComputePipeline(RendererPerfConstructionFixture Owner, GpuPipelineConstructionIdentity ConstructionIdentity)
-        : IGpuComputePipeline, IGpuPipelineConstructionDiagnostics, IGpuPipelineDiagnostics
+        : IGpuComputePipeline, IGpuPipelineConstructionDiagnostics, IGpuPipelineDiagnostics, IGpuBudgetedPipelineDiagnostics
     {
-        public void Dispose() { }
+        public GpuPipelineCompilerReadResult ReadCompilerReport(GpuPipelineCompilerReadRequest request, Action<string> check, System.Threading.CancellationToken cancellation)
+            => Owner.ColdRead(ConstructionIdentity, request, check, cancellation);
+        public void Dispose() => Owner.ColdAction?.Invoke("dispose.pipeline");
         public GpuPipelineCompilerReport ReadCompilerReport() { Owner.CompilerReads++; throw new InvalidOperationException("Forbidden live compiler read."); }
     }
     // Explicitly synthetic device facts, used only by headless correspondence cases.
@@ -155,9 +167,9 @@ internal sealed class RendererPerfConstructionFixture : IGpuDevice, IGpuResource
     internal static GpuEffectiveDiagnosticConfiguration Production => RendererPerfCompilerFixture.Configuration;
     internal static GpuEffectiveDiagnosticConfiguration Diagnostic => Production with
     { Requested = new(true, false), CompilerMetadataEnabled = true, PipelineExecutableFeatureEnabled = true, PipelineCaptureFlags = 0x40 };
-    static GpuPipelineStageIdentity Stage(string stage, string source) => new(stage, "main",
+    GpuPipelineStageIdentity Stage(string stage, string source) => new(stage, "main",
         GpuDiagnosticIdentityEncoding.Text(source, "glsl.utf8/1"), null,
-        GpuDiagnosticIdentityEncoding.Text("synthetic compiled bytes " + source, "spirv.bytes/1"));
+        GpuDiagnosticIdentityEncoding.Text("synthetic compiled bytes " + ArtifactSalt + source, "spirv.bytes/1"));
     static string LayoutHash(IGpuResourceLayout[] layouts) => Hash(w =>
     {
         w.Write(layouts.Length);
@@ -209,7 +221,7 @@ internal sealed class RendererPerfConstructionFixture : IGpuDevice, IGpuResource
     GpuPipelineConstructionIdentity Identity(ImmutableArray<GpuPipelineStageIdentity> stages, string pipeline, string layout, uint x, uint y, uint z)
         => new(GpuDiagnosticIdentityEncoding.Known(pipeline, "vulkan.pipeline/1"), GpuDiagnosticIdentityEncoding.Stages("source", stages),
             GpuDiagnosticIdentityEncoding.Stages("artifact", stages), GpuDiagnosticIdentityEncoding.Known(layout, "vulkan.layout/1"),
-            GpuDiagnosticIdentityEncoding.Configuration(Production), GpuDiagnosticIdentityEncoding.CodeGeneration(GpuBackendKind.VulkanNative, []),
+            GpuDiagnosticIdentityEncoding.Configuration(Configuration), GpuDiagnosticIdentityEncoding.CodeGeneration(GpuBackendKind.VulkanNative, []),
             Flags, x, y, z, stages);
     static string Hash(Action<BinaryWriter> write)
     {

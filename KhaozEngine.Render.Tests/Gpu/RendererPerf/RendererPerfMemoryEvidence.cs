@@ -10,7 +10,9 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 // Outside-frame observations retain their source and batch identity, even if a later read fails.
 internal sealed class RendererPerfMemoryEvidence
 {
-    readonly List<RendererPerfMemoryObservation> _observations = [];
+    readonly List<RendererPerfMemoryObservation> _observations;
+    internal RendererPerfMemoryEvidence(IEnumerable<RendererPerfMemoryObservation>? prior = null)
+        => _observations = prior is null ? [] : [.. prior];
 
     internal void Observe(string operation, string stage, int? firstFrame, long ticks, long frequency,
         RendererPerfMemoryReport? memory, string? failure = null)
@@ -40,17 +42,21 @@ internal sealed class RendererPerfMemoryEvidence
     {
         var observations = report.Memory.Observations;
         int operations = 1 + report.Manifest.Blocks.Length + report.Manifest.Controls.Length;
-        Require(observations.Length <= report.Batches.Length + operations, "Metric", "Memory observation capacity was exceeded.");
+        Require(observations.Length <= report.Batches.Length + operations + 1, "Metric", "Memory observation capacity was exceeded.");
         var identities = new HashSet<(string, string, int?)>();
         var operationIds = new HashSet<string>(report.Batches.Select(b => b.Operation), StringComparer.Ordinal)
-        { "conditioning:S3/TotalOnly/0" };
+        { "conditioning:S3/TotalOnly/0", "unit" };
         operationIds.UnionWith(report.Blocks.Select(b => $"{b.Block.SceneId}/{b.Block.Layout}/{b.Block.Iteration}"));
         operationIds.UnionWith(report.Controls.Select(c => $"control:{c.Control.Id}/TotalOnly/0"));
         foreach (var observation in observations)
         {
+            if (observation.Stage == "unit-final")
+                Require(observation == observations[^1] && report.Batches.All(b => b.EndTicks <= observation.AtTicks),
+                    "Metric", "Final production observation must follow every retained batch.");
             Require(operationIds.Contains(observation.Operation) && observation.Frequency > 0
                 && identities.Add((observation.Operation, observation.Stage, observation.FirstFrame)), "Metric", "Memory observation identity is invalid or duplicated.");
-            Require(observation.Stage == "startup" && observation.FirstFrame is null
+            Require(observation.Operation != "unit" && observation.Stage == "startup" && observation.FirstFrame is null
+                || observation.Operation == "unit" && observation.Stage == "unit-final" && observation.FirstFrame is null
                 || observation.Stage == "batch" && report.Batches.Any(b => b.Operation == observation.Operation
                     && b.FirstFrame == observation.FirstFrame && b.EndTicks >= observation.AtTicks
                     && b.StartTicks <= observation.AtTicks && b.Frequency == observation.Frequency),

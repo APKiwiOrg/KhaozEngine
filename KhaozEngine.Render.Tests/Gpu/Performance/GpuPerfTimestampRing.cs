@@ -51,11 +51,19 @@ internal sealed class GpuPerfTimestampRing : IGpuFrameCompletionConsumer, IGpuFr
             for (; created < _slots.Length; created++)
                 _slots[created] = new(device.Factory.CreateTimestampPool(markerCount), markerCount);
         }
-        catch
+        catch (Exception error)
         {
+            var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+            void Capture(string stage, Exception failure)
+            {
+                if (failure is GpuDiagnosticFailureException transport) failures.AddRange(transport.Failures);
+                else failures.Add(new(stage, failure));
+            }
+            Capture("renderer.session.construct", error);
             for (int i = 0; i < created; i++)
                 try { DisposePool(_slots[i]); }
-                catch { /* Preserve the allocation failure after attempting every owned pool. */ }
+                catch (Exception cleanup) { Capture("renderer.session.dispose.timestamps." + i, cleanup); }
+            if (failures.Count > 1) throw new GpuDiagnosticFailureException(failures.ToImmutable());
             throw;
         }
     }
@@ -106,7 +114,7 @@ internal sealed class GpuPerfTimestampRing : IGpuFrameCompletionConsumer, IGpuFr
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         // The caller harvests once after its existing batch drain. This ring adds no completion policy.
-        ExceptionDispatchInfo? error = null;
+        ImmutableArray<GpuDiagnosticFailure>.Builder? failures = null;
         foreach (var slot in _slots)
         {
             if (slot.State != State.Pending) continue;
@@ -145,10 +153,13 @@ internal sealed class GpuPerfTimestampRing : IGpuFrameCompletionConsumer, IGpuFr
             catch (Exception failure)
             {
                 Refuse("GPU timestamp resolution or publication failed.");
-                error ??= ExceptionDispatchInfo.Capture(failure);
+                failures ??= ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+                if (failure is GpuDiagnosticFailureException transport) failures.AddRange(transport.Failures);
+                else failures.Add(new("renderer.batch.complete", failure));
             }
         }
-        error?.Throw();
+        if (failures is { Count: 1 }) ExceptionDispatchInfo.Capture(failures[0].Error).Throw();
+        if (failures is not null) throw new GpuDiagnosticFailureException(failures.ToImmutable());
     }
 
     internal bool CompleteBlock()
@@ -223,9 +234,10 @@ internal sealed class GpuPerfTimestampRing : IGpuFrameCompletionConsumer, IGpuFr
         _disposed = true;
         _recording = null;
         bool retained = false;
-        ExceptionDispatchInfo? error = null;
-        foreach (var slot in _slots)
+        var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+        for (int ordinal = 0; ordinal < _slots.Length; ordinal++)
         {
+            var slot = _slots[ordinal];
             if (slot.Fence is not null)
             {
                 slot.State = State.Quarantined;
@@ -233,10 +245,16 @@ internal sealed class GpuPerfTimestampRing : IGpuFrameCompletionConsumer, IGpuFr
                 continue;
             }
             try { DisposePool(slot); }
-            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+            catch (Exception failure)
+            {
+                if (failure is GpuDiagnosticFailureException transport) failures.AddRange(transport.Failures);
+                else failures.Add(new("renderer.session.dispose.timestamps." + ordinal, failure));
+            }
         }
-        error?.Throw();
-        if (retained) throw new InvalidOperationException("Drain and dispose the frame submission before the timestamp ring.");
+        if (retained) failures.Add(new("renderer.session.dispose.timestamps.retained",
+            new InvalidOperationException("Drain and dispose the frame submission before the timestamp ring.")));
+        if (failures.Count == 1) ExceptionDispatchInfo.Capture(failures[0].Error).Throw();
+        if (failures.Count != 0) throw new GpuDiagnosticFailureException(failures.ToImmutable());
     }
 
     static void DisposePool(Slot slot)

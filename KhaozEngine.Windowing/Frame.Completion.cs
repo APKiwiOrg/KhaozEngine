@@ -20,5 +20,7 @@ public sealed partial class Frame
         _submission.Begin();
     }
 
+    internal bool HasSubmission => _submission is not null;
+
     internal void DisposeSubmission() => _submission?.Dispose();
 }

@@ -246,9 +246,12 @@ public class TileWorldPhysicsQueryTests
 
     // A world that records every static added and removed through it, forwards everything to the real backend, and
     // can be told to refuse one add or to fail a removal once.
-    sealed class RecordingWorld(IPhysicsWorld inner) : IPhysicsWorld
+    internal sealed class RecordingWorld(IPhysicsWorld inner) : IPhysicsWorld
     {
         public List<StaticHandle> Added { get; } = new();
+        public List<(PhysicsShape Shape, Pose Pose)> StaticAdds { get; } = new();
+        public List<StaticHandle> RemovalAttempts { get; } = new();
+        public int OriginReads { get; private set; }
 
         // Only the removals the backend carried out.
         public List<StaticHandle> Removed { get; } = new();
@@ -259,17 +262,22 @@ public class TileWorldPhysicsQueryTests
 
         // Handles whose next removal throws the given exception, once each.
         public Dictionary<StaticHandle, Exception> FailRemovalOnce { get; } = new();
+        public Dictionary<int, Exception> FailAddedRemovalOnce { get; } = new();
 
         public StaticHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null)
         {
             if (Added.Count == FailAddAt) throw AddFailure!;
             StaticHandle handle = inner.AddStatic(shape, pose, material);
+            if (FailAddedRemovalOnce.Remove(Added.Count, out Exception? failure))
+                FailRemovalOnce.Add(handle, failure);
             Added.Add(handle);
+            StaticAdds.Add((shape, pose));
             return handle;
         }
 
         public void RemoveStatic(StaticHandle handle)
         {
+            RemovalAttempts.Add(handle);
             if (FailRemovalOnce.Remove(handle, out Exception? failure)) throw failure;
             inner.RemoveStatic(handle);
             Removed.Add(handle);
@@ -298,7 +306,7 @@ public class TileWorldPhysicsQueryTests
             inner.SweepCapsule(capsule, pose, direction, maxDistance, out hit, filter);
         public bool ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv) =>
             inner.ComputePenetration(capsule, pose, out mtv);
-        public Vector3 Origin => inner.Origin;
+        public Vector3 Origin { get { OriginReads++; return inner.Origin; } }
         public bool CanRebase => inner.CanRebase;
         public void Rebase(Vector3 newOrigin) => inner.Rebase(newOrigin);
         public void Dispose() => inner.Dispose();

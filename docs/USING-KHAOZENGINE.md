@@ -8977,6 +8977,19 @@ developer text, never shown to players. A loaded profile equals the fresh build 
 The digests must cover every input a proof reads, not only the colliders: the world documents in canonical order,
 collider options, catalog rows that drive colliders, heights and medium, the ground height and normal providers,
 the clamp bounds and the classifier policy. Normalise text to LF before digesting so a CRLF checkout matches.
+For a filtered tile installation, also persist the selection policy explicitly in both bake creation and the
+runtime `NavBakeExpectation`:
+
+```csharp
+// Canonical policy version and inputs, encoded identically at bake and runtime.
+byte[] policyBytes = Encoding.UTF8.GetBytes("omit-kind/v1\nkind=Object\n");
+sources.AddHashOf("policy/colliders", policyBytes);
+```
+
+Change that digest when policy semantics or inputs change. `TileWorldColliders.Hash` still names the complete
+built set. Contact registration, live environment identity, format 2 and runtime profile validation do not
+automatically persist this source or replace it. Matching expectations load, while changing only this source
+returns `SourcesChanged` naming `policy/colliders`, even with identical full collider hashes and tuning.
 Prefer authored inputs to `TileWorldColliders.Hash` for walk surfaces yawed off a quarter turn, since that hash is
 not promised equal across x64 and ARM64. Rebake when any input, option, probed tuning field or the engine pin
 changes, and keep a game test that loads the shipped bake and expects `Loaded`. Load also compares the normalized
@@ -10237,6 +10250,51 @@ Reference evaluation and non-default diagnostic work policies bypass lookup and 
 Volumes, Proposals and curved-work counters count actual evaluation, never replayed hits.
 [Measured work](verification/2026-10-19-bake-proof-reuse.md) separates footprint savings from
 stable initial Holds and the existing tick memo. Neither is a new wall-clock speedup claim.
+
+### Support-query measurement
+
+Use the public types in namespace/package `KhaozEngine.Physics`, without reflection or friend access:
+
+```csharp
+var capture = SupportQueryCapture.Begin("player");
+using (capture)
+{
+    RunCompletePlayerSourceLifetime(); // synchronous consumer work, including reuse cleanup
+}
+SupportQueryMeasurement player = capture.Snapshot();
+long finds = player.Total[SupportQueryCounter.Find];
+long peakBytes = player.ByLabel["player"].ProofReuse.PeakBytes;
+bool complete = player.Total.ProofReuse.HasCompleteLifetimes;
+```
+
+`Begin` opts in only on the calling managed thread and suspends prior recorder callbacks. `Dispose` restores
+prior enablement, counters, routes and observers even when work throws, while carrying actual live retention
+balance through the boundary. Labels are nonblank, preserved exactly and compared ordinally. Nested work is
+exclusive to the innermost label and completed children enter the parent once. Snapshots are detached,
+cumulative and immutable. Sample only the active top scope, or its frozen final result on the creating thread.
+Never carry a scope across `await`, `Task.Run` or a thread handoff. Results may be read on any thread.
+
+`SupportQueryMeasurement.Combine` adds disjoint completed measurements, coalescing repeated labels. It does
+not deduplicate parent/child overlap or repeated cumulative snapshots. Independent consumer threads need
+their own scopes and an explicit join. The [two-body example](../KhaozEngine.Physics/README.md#support-query-measurement)
+shows `player` and `cow`, `using`/`finally` restoration, counter identities and every route getter.
+
+Contact bake workers receive immutable enablement and the build's label, record locally, restore their prior
+state and merge exactly once after all started workers join, including partial work before a failure escapes.
+Caller setup remains caller work. Extra bindings, leases, pins and speculative evaluation are real overhead,
+so counter totals and peaks may vary across worker degrees, processors and schedules despite equal bake bytes.
+Ordinary counters/routes add as checked `long`, while maximum retries and retention peaks take max and lifetime
+completeness takes logical AND. See the [worker proof and contract](../KhaozEngine.Movement/README.md#labelled-support-query-capture).
+
+`PeakKeys` counts occupied proof-reuse memo entries. `PeakBytes` charges owned table capacity and member/join
+payload by element size, including spare slots. Peaks describe the largest single session observed, never
+summed-worker or simultaneous process memory. They exclude CLR/allocator overhead, unrelated scratch,
+initial-Hold maps, GC allocation totals and RSS. `HasCompleteLifetimes` requires zero live keys/bytes at entry
+and the sampled boundary for every contributor. Begin before the first store and close every joined source
+group before sampling for bake peak evidence. Partial lifetimes can miss steady storage and are marked incomplete.
+Enabled capture/snapshot allocations are diagnostic overhead excluded from these bytes. Disabled paths retain
+their gates. Establish scopes outside timed regions where possible and materialize afterwards. This API supplies
+counts, not timers or RSS, and does not satisfy separately approved hosted timing or world-bake gates.
 
 ### Support neighborhoods
 
@@ -12024,8 +12082,9 @@ registering and stepping a body is in the package README's
 
 `TileWorldColliders.Build(document, catalogs, options)` describes the loaded plane-0 regions as static colliders
 and registers nothing: one ground mesh per region from the same triangles the renderer draws, a box per blocked
-wall edge, blocked tile and `Solid` or `Diagonal` object, and a thin box under each walk surface. `AddTo` registers them, and disposing the registration removes
-them. `Ground` is the floor sampler, read from the drawn ground only, so a deck or a bridge holds a body up as a
+wall edge, blocked tile and `Solid` or `Diagonal` object, and a thin box under each walk surface. `AddTo(world)`
+registers every collider. `AddTo(world, include)` registers a selected subset, and disposing the registration
+removes its installed statics. `Ground` is the floor sampler, read from the drawn ground only, so a deck or a bridge holds a body up as a
 static and never becomes the floor. `Medium` puts feet in water only below a water body's surface. Their delegates
 are the ground-height, ground-normal and medium arguments of `CharacterMovement.Step`. `Hash` is a stable digest of
 the whole collider set.
@@ -12058,6 +12117,34 @@ removal. Multiple registrations combine their public `GroundHandles` and pass th
 Adding statics remains supported on a backend without the optional factory until a view is requested, at which
 point `NotSupportedException` is expected. Rebuild the selection when replacing a registration. Handles are
 source-local, and a logical decorator must expose itself as the view's exact `SourceWorld`.
+
+To select physical statics before capture, use a pure synchronous predicate. This neutral example omits object
+boxes and keeps the engine's canonical provenance:
+
+```csharp
+Func<TileCollider, bool> include = collider => collider.Kind != TileColliderKind.Object;
+using TileColliderRegistration selected = colliders.AddTo(fullWorld, include);
+// Handles are compact. Map each back to the original complete collider sequence.
+for (int i = 0; i < selected.Handles.Count; i++)
+{
+    TileCollider original = colliders.Colliders[selected.ColliderIndices[i]];
+}
+```
+
+Run this installation instead of the default call in a fresh world. The predicate receives absolute poses once
+per collider in canonical order, before the single origin read and all insertion. It must not mutate or re-enter
+the world. Its decisions are captured. Empty selection is valid. `ColliderIndices` is strictly increasing and,
+like `Handles`, remains immutable metadata after removal. Original owner aliases, feature ranges and absolute
+transformed bounds survive partial selection. The complete captured resident `MovementExtent`, analytic ground
+and water remain unchanged, even when every collider is omitted. Only installed ground enters `GroundHandles`
+and exclusions. Physical capture sees the installed set, so rejected ground cannot supply a capture floor.
+
+The source remains caller-owned and must outlive contexts, views and registration, disposed in that order.
+Ordinary registration still authenticates the exact source and refuses stale static snapshots, while supported
+Bepu rebases and simulation steps preserve provenance. `Hash` always names the complete built set, independent
+of selection. Persist the [installation-policy source](#baked-profile-sets-groundnavigationbake) separately in both bake and
+runtime expectations. The [package contract](../KhaozEngine.TileWorld.Physics/README.md#filtered-installation)
+details rollback, default/all-true compatibility and the matching-load/policy-only refusal proof.
 
 The contract a consumer has to keep:
 

@@ -59,7 +59,7 @@ internal static class RendererPerfColdCollector
                     pipelineIndex = pipelines.Count; pipelines.Add(read.Report); reported[(int)recipe.Kind]++;
                     try { budget.Check("renderer.graph.read.after"); }
                     catch (Exception error) { RendererPerfFailures.Add(failures, "renderer.graph.read", error); }
-                    if (read.Request != reservation.Request)
+                    if (!ReferenceEquals(read.Request, reservation.Request))
                         throw new InvalidOperationException($"The native reader substituted the frozen request. Expected {reservation.Request}, returned {read.Request}.");
                     int bytes = RendererPerfCompilerReadContract.EncodedResultBytes(read);
                     commitAttempted = true;

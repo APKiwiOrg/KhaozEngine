@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 internal static class RendererPerfEntrypoint
 {
-    internal static void Run(string unit, string directory, IRendererPerfUnitPublication? publication = null)
+    internal static void Run(string unit, string directory)
     {
         Require(Env("GITHUB_ACTIONS") == "true" && Env("RUNNER_ENVIRONMENT") == "github-hosted" && Env("KE_GPU_TESTS") == "1"
             && Env("WORKFLOW_RUN_ATTEMPT") == "1" && Env("GITHUB_RUN_ATTEMPT") == "1",
@@ -25,8 +25,8 @@ internal static class RendererPerfEntrypoint
         Require(unit.Length is >= 1 and <= 64 && unit[0] != '-' && unit.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-'), "Unsafe unit token.");
         string path = $"tools/Renderer.Perf.Tests/authorized/{unit}.json";
         byte[] bytes = File.ReadAllBytes(path);
-        var authorization = RendererPerfManifest.ReadJson<RendererPerfAuthorization>(
-            File.ReadAllBytes(Path.Combine(directory, "authorization.json")), 64 * 1024);
+        byte[] authorizationBytes = File.ReadAllBytes(Path.Combine(directory, "authorization.json"));
+        var authorization = RendererPerfManifest.ReadJson<RendererPerfAuthorization>(authorizationBytes, 64 * 1024);
         Require(authorization.ManifestSha256 == Env("RENDERER_PERF_MANIFEST_SHA256")
             && authorization.WorkloadSha == Env("RENDERER_PERF_WORKLOAD_SHA"), "Dispatch hashes disagree with independent authorization facts.");
         string head = RendererPerfHostProcess.Run("git", "rev-parse", "HEAD");
@@ -40,8 +40,9 @@ internal static class RendererPerfEntrypoint
         var environment = RuntimeEnvironment();
         string gc = GCSettings.IsServerGC ? "server" : "workstation";
         Directory.CreateDirectory(directory);
-        File.WriteAllBytes(Path.Combine(directory, "runtime-admission.json"), JsonSerializer.SerializeToUtf8Bytes(new
-        { runtimeVersion = Environment.Version.ToString(), gcMode = gc, environment }, RendererPerfManifest.JsonOptions));
+        byte[] runtimeBytes = JsonSerializer.SerializeToUtf8Bytes(new
+        { runtimeVersion = Environment.Version.ToString(), gcMode = gc, environment }, RendererPerfManifest.JsonOptions);
+        File.WriteAllBytes(Path.Combine(directory, "runtime-admission.json"), runtimeBytes);
         Require(typeof(RendererPerfEntrypoint).Assembly.GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration == "Release"
             && Environment.Version.ToString() == manifest.Runtime.RuntimeVersion && gc == manifest.Runtime.GcMode
             && Env("DOTNET_TieredCompilation") == (manifest.Runtime.TieredCompilation ? "1" : "0")
@@ -51,39 +52,47 @@ internal static class RendererPerfEntrypoint
             && environment.Count == manifest.Runtime.Environment.Count
             && environment.All(p => manifest.Runtime.Environment.TryGetValue(p.Key, out var value) && value == p.Value),
             "Observed runtime, GC, tiering or relevant environment differs from approval.");
-        // Task4 must connect the registered-file account and verifier before any production unit can open a device.
-        Require(publication is not null, "The registered compiler publication account and certification route are not connected.");
         long coldStart = Stopwatch.GetTimestamp();
         var clock = new RendererPerfClock(Stopwatch.GetTimestamp, Stopwatch.Frequency);
         var budget = new RendererPerfUnitBudget(clock, coldStart,
             checked(coldStart + manifest.Limits.UnitSeconds * clock.Frequency), default);
-        budget.Check("renderer.startup.before");
-        RendererPerfExecutable.ValidateWork(manifest);
-        var layouts = manifest.Recipes.ToDictionary(r => r.SceneId, RendererPerfExecutable.Layout, StringComparer.Ordinal);
-        Directory.CreateDirectory(directory);
-        File.WriteAllBytes(Path.Combine(directory, "manifest.json"), bytes);
-        Write("shader-sources.json", RendererPerfExecutable.ShaderHashes);
-        Write("control-corpus.json", RendererPerfControlShaders.Corpus);
-        Write("control-definitions.json", manifest.Controls.Select(c => RendererPerfControls.Definition(c.Id)).ToArray());
-        Write("frozen-layouts.json", layouts);
-        foreach (var recipe in manifest.Recipes)
+        RendererPerfHostTelemetry? telemetry = null;
+        RendererPerfPublicationWriter writer = null!;
+        writer = RendererPerfPublicationWriter.Files(directory, value =>
         {
-            budget.Check("renderer.startup.recipe.before");
-            File.Copy(RendererPerfRecipe.RecipePath(recipe.Version.Split('/')[0]), Path.Combine(directory, recipe.SceneId + "-recipe.json"), overwrite: true);
-            budget.Check("renderer.startup.recipe.after");
-        }
-
-        // Assembly references alone do not run the test-support module initializers.
-        if (manifest.Execution.Backend == "vulkan") KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan.Register();
-        else KhaozEngine.Gpu.D3D11.KhaozEngineD3D11.Register();
-        var telemetry = new RendererPerfHostTelemetry(directory);
-        RendererPerfRunIdentity identity = null!;
-        int operationOrdinal = 0;
+            telemetry?.Register(writer, budget);
+            return value;
+        });
+        IRendererPerfUnitPublication publication = writer;
+        writer.RegisterExisting("authorization.json", RendererPerfArtifactProducers.Schema("authorization.json"), authorizationBytes);
+        writer.RegisterExisting("runtime-admission.json", RendererPerfArtifactProducers.Schema("runtime-admission.json"), runtimeBytes);
+        Dictionary<string, RendererPerfPassDefinition[]> layouts;
+        IGpuHeadlessDiagnosticSettings settings;
         GpuBackendKind backendKind = manifest.Execution.Backend == "vulkan"
             ? GpuBackendKind.VulkanNative : GpuBackendKind.Direct3D11Native;
-        IGpuHeadlessDiagnosticSettings settings;
         try
         {
+            budget.Check("renderer.startup.before");
+            RendererPerfExecutable.ValidateWork(manifest);
+            layouts = manifest.Recipes.ToDictionary(r => r.SceneId, RendererPerfExecutable.Layout, StringComparer.Ordinal);
+            Directory.CreateDirectory(directory);
+            writer.Produce("manifest.json", RendererPerfArtifactProducers.Schema("manifest.json"), bytes, budget);
+            Write("shader-sources.json", RendererPerfExecutable.ShaderHashes);
+            Write("control-corpus.json", RendererPerfControlShaders.Corpus);
+            Write("control-definitions.json", manifest.Controls.Select(c => RendererPerfControls.Definition(c.Id)).ToArray());
+            Write("frozen-layouts.json", layouts);
+            foreach (var recipe in manifest.Recipes)
+            {
+                budget.Check("renderer.startup.recipe.before");
+                string name = recipe.SceneId + "-recipe.json";
+                writer.Produce(name, RendererPerfArtifactProducers.Schema(name),
+                    File.ReadAllBytes(RendererPerfRecipe.RecipePath(recipe.Version.Split('/')[0])), budget);
+                budget.Check("renderer.startup.recipe.after");
+            }
+
+            // Assembly references alone do not run the test-support module initializers.
+            if (manifest.Execution.Backend == "vulkan") KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan.Register();
+            else KhaozEngine.Gpu.D3D11.KhaozEngineD3D11.Register();
             budget.Check("renderer.settings.before");
             settings = GpuDeviceContext.ResolveHeadlessDiagnosticSettings(backendKind, new(false, false));
             budget.Check("renderer.settings.after");
@@ -93,6 +102,9 @@ internal static class RendererPerfEntrypoint
             var refused = RendererPerfUnit.RefuseBeforeCreation(authorization, budget, "gpu.context.provider", error, publication!);
             throw new GpuDiagnosticFailureException(refused.Failures);
         }
+        telemetry = new RendererPerfHostTelemetry(directory);
+        RendererPerfRunIdentity identity = null!;
+        int operationOrdinal = 0;
         var outcome = RendererPerfUnit.Run(manifest, authorization, budget, settings,
             GpuDeviceContext.CreateHeadlessAttempt, IdentifyProduction,
             (device, capture) => (approved, block, unitClock) => CreateSession(device, capture, approved, block, unitClock), publication!);
@@ -101,16 +113,8 @@ internal static class RendererPerfEntrypoint
         Require(report.Publication.State == RendererPerfPublicationState.Completed && report.Publication.ReturnedByRun
             && report.Publication.FinalUnitPublished && report.Assessment.ValidForPromotion,
             report.Publication.OriginalFailure ?? string.Join("\n", report.Assessment.Reasons));
-        // Re-read the stamped bytes through the strict metric-vectors/2 codec before the fact can pass.
-        var final = RendererPerfReportJson.Parse(File.ReadAllBytes(Path.Combine(directory, unit + ".json")));
-        Require((final.Identity with { Environment = report.Identity.Environment }) == report.Identity
-            && final.Identity.Environment.Count == report.Identity.Environment.Count
-            && final.Identity.Environment.All(p => report.Identity.Environment.TryGetValue(p.Key, out var value) && value == p.Value)
-            && final.Publication.State == report.Publication.State && final.Publication.FinalUnitPublished
-            && final.Publication.ReturnedByRun && final.Publication.Errors.IsEmpty
-            && final.Publication.ElapsedMilliseconds == report.Publication.ElapsedMilliseconds
-            && final.Publication.EstimatedCostUsd == report.Publication.EstimatedCostUsd,
-            "The final file differs from the returned publication.");
+        // The typed writer verifies files before sampling completion. Its stamp changes only the
+        // two reserved accounting slots. Received workflow and offline directories are verified again.
 
         RendererPerfRunIdentity IdentifyProduction(IGpuDevice device)
         {
@@ -159,8 +163,23 @@ internal static class RendererPerfEntrypoint
         void Write<T>(string name, T value)
         {
             budget.Check("renderer.startup.write.before");
-            File.WriteAllBytes(Path.Combine(directory, name), JsonSerializer.SerializeToUtf8Bytes(value, RendererPerfManifest.JsonOptions));
+            writer.Produce(name, RendererPerfArtifactProducers.Schema(name),
+                JsonSerializer.SerializeToUtf8Bytes(value, RendererPerfManifest.JsonOptions), budget);
             budget.Check("renderer.startup.write.after");
+        }
+    }
+
+    sealed class EvidencePublication(string directory) : IRendererPerfPublication
+    {
+        public RendererPerfReport Publish(RendererPerfReport report, RendererPerfClock clock, long deadline)
+        {
+            RendererPerfPublicationWriter? writer = null;
+            writer = RendererPerfPublicationWriter.Files(directory, value =>
+            {
+                writer!.Produce("work-models.json", RendererPerfArtifactProducers.Schema("work-models.json"), RendererPerfArtifactProducers.WorkModels(value));
+                return value with { Sidecars = writer.ExpectedSidecars };
+            });
+            return writer.Publish(report, clock, deadline);
         }
     }
 

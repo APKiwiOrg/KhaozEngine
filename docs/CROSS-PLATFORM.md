@@ -309,13 +309,12 @@ the per-run `KE_RENDERER_PERF_` paths and tokens. These values and the exact .NE
 must match the approved manifest. No extra profiler or workload variant is admitted.
 
 Success requires exactly one executed, passed test with zero skips in TRX and a nonempty final JSON
-and Markdown pair. The workflow verifies `metric-vectors/2`, completed publication, promotion
+and Markdown pair. The workflow verifies report/2 and `metric-vectors/2`, completed publication, promotion
 validity, manifest/workload/authorization/workflow hashes, run ID, attempt, backend and native T4
-IDs. The entrypoint re-reads the final stamped JSON with the strict renderer codec. An `always()`
+IDs. The typed publication owner verifies the provisional directory before completion and stamps only its two reserved accounting slots. The trusted workflow then calls the same managed directory verifier on the stamped files. An `always()`
 upload preserves partial reports, exact manifest bytes, admission facts, frozen layouts, shader source
 hashes, control definitions, per-block work models and host telemetry, including failures.
-The current driver emits no compiler pipeline reports. Separate cold diagnostic collection remains
-a preparation dependency. D3D11 and Metal now implement optional backend diagnostics, but these
+The production unit captures construction, disposes production, then performs bounded cold replay and reads before registered-file publication. All use the original coldStart and deadline. Byte parsing alone cannot certify sidecar integrity. D3D11 and Metal now implement optional backend diagnostics, but these
 interfaces alone do not establish native compiler retention or achieved occupancy. See the
 [backend evidence boundary](RENDERER-PERFORMANCE.md#cold-backend-evidence).
 

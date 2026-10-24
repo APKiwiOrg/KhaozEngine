@@ -8,7 +8,7 @@ using System.Text.Json;
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 // One identified host snapshot every 64 ReadInfo boundaries. Never called from a frame bracket.
-internal sealed class RendererPerfHostTelemetry(string directory)
+internal sealed partial class RendererPerfHostTelemetry(string directory)
 {
     const string Query = "pci.device_id,driver_version,clocks.applications.graphics,clocks.current.graphics,pstate,utilization.gpu,temperature.gpu,power.draw,clocks_throttle_reasons.active";
     ImmutableDictionary<string, RendererPerfMetric> _last = ImmutableDictionary<string, RendererPerfMetric>.Empty;

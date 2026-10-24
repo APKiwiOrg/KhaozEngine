@@ -8,6 +8,7 @@ using static KhaozEngine.Tests.Gpu.RendererPerf.RendererPerfAnalysisFixture;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
+[Collection("NativeDeviceLifecycle")]
 public sealed class RendererPerfAnalysisTests
 {
     [Fact]
@@ -51,7 +52,7 @@ public sealed class RendererPerfAnalysisTests
                 : [new("first", 0, null, null, 1, 4, 80, Value(80), false),
                     new("second", 0, null, null, fault == "overlap" ? 3u : 5u, 6, fault == "overlap" ? 10u : 40u, Value(fault == "overlap" ? 10 : 40), false)]
         });
-        var summary = RendererPerfAnalysis.Analyze(report);
+        var summary = VerifiedAnalyze(report);
         Assert.False(summary.PromotionEligible);
         Assert.Contains(summary.Reasons, r => r.Contains("partition", StringComparison.OrdinalIgnoreCase));
         Assert.Null(summary.Blocks[1].Metrics["gpu.unattributed"].Mean.Value);
@@ -66,7 +67,7 @@ public sealed class RendererPerfAnalysisTests
             Metrics = f.Metrics.Add("gc.gen0.collections", Value(f.SequenceIndex == 7 ? 1 : 0, "count"))
                 .Add("logical.unattributed.Draws", Value(2, "count"))
         });
-        var row = RendererPerfAnalysis.Analyze(report).Blocks[0];
+        var row = VerifiedAnalyze(report).Blocks[0];
         Assert.Equal(100000000, row.Metrics["cpu.frame"].Mean.Value);
         Assert.Equal(50000000, row.Metrics["cpu.phase.prepare"].Mean.Value);
         Assert.Equal(40000000, row.Metrics["cpu.partitionGap"].Mean.Value);
@@ -78,7 +79,7 @@ public sealed class RendererPerfAnalysisTests
     public void Partial_publication_preserves_failure_and_cannot_be_promoted()
     {
         var report = Failed(Report());
-        var summary = RendererPerfAnalysis.Analyze(report);
+        var summary = VerifiedAnalyze(report);
         Assert.False(summary.PromotionEligible);
         Assert.Contains("partial write accounting gap #1547", summary.Reasons);
         Assert.Equal(report.Blocks.Length, summary.Raw.Blocks.Length);
@@ -89,7 +90,7 @@ public sealed class RendererPerfAnalysisTests
     public void Markdown_recomputes_failed_raw_publication_instead_of_publishing_stale_success()
     {
         var baseline = Report();
-        var previouslyValid = RendererPerfAnalysis.Analyze(baseline);
+        var previouslyValid = VerifiedAnalyze(baseline);
         Assert.Contains("Promotion eligible True", RendererPerfAnalysis.Markdown(previouslyValid));
         var changedPublication = previouslyValid with
         {
@@ -119,14 +120,14 @@ public sealed class RendererPerfAnalysisTests
             { CpuPhases = [new("first", null, 0, 60), new("second", null, overlap ? 50 : 60, 100)] })]
             })
         };
-        var summary = RendererPerfAnalysis.Analyze(candidate);
+        var summary = VerifiedAnalyze(candidate);
         var row = summary.Controls[0];
         Assert.Equal(60000000, row.Metrics["cpu.phase.first"].Mean.Value);
         Assert.Equal(overlap ? 50000000 : 40000000, row.Metrics["cpu.phase.second"].Mean.Value);
         Assert.Equal(100, row.Metrics["gpu.frame"].Mean.Value);
         Assert.Equal(2, summary.Raw.Controls[0].Measured[0].CpuPhases.Length);
         Assert.Equal(!overlap, summary.PromotionEligible);
-        var comparison = RendererPerfComparison.Compare(baseline, candidate);
+        var comparison = VerifiedCompare(baseline, candidate);
         Assert.Equal(!overlap, comparison.Compatible);
         if (overlap)
         {
@@ -151,15 +152,15 @@ public sealed class RendererPerfAnalysisTests
         report = report with { Assessment = report.Assessment with { WorkModels = [RendererPerfFloorModelTests.Model(50, 50, 0) with { PassId = "copy" }] } };
         var rates = ImmutableDictionary<string, RendererPerfReferenceRates>.Empty.Add("S3/copy/0",
             new(1e9, null, 1e9, null, null, 40, "fp32-fma", "synthetic matched transfer evidence"));
-        var row = RendererPerfAnalysis.Analyze(report, rates).Blocks[1];
+        var row = VerifiedAnalyze(report, rates).Blocks[1];
         Assert.Equal(100, row.Metrics["gap.copy.0.peakLowerBound"].Mean.Value);
         Assert.Equal(100, row.Metrics["gap.copy.0.calibratedReference"].Mean.Value);
         Assert.Equal(100, row.Metrics["gap.copy.0.excess"].Mean.Value);
         Assert.Equal(2, row.Metrics["gap.copy.0.ratio"].Mean.Value);
-        Assert.Null(RendererPerfAnalysis.Analyze(report).Blocks[1].Metrics["gap.copy.0.excess"].Mean.Value);
+        Assert.Null(VerifiedAnalyze(report).Blocks[1].Metrics["gap.copy.0.excess"].Mean.Value);
         var invalid = Map(report, (b, f) => b.Layout == RendererPerfLayout.TotalOnly ? f : f with
         { Passes = [f.Passes[0] with { ElapsedTicks = 99, Duration = Value(99) }] });
-        var metric = RendererPerfAnalysis.Analyze(invalid, rates).Blocks[1].Metrics["gap.copy.0.excess"].Mean;
+        var metric = VerifiedAnalyze(invalid, rates).Blocks[1].Metrics["gap.copy.0.excess"].Mean;
         Assert.Null(metric.Value);
         Assert.Equal(RendererPerfMetricStatus.Invalid, metric.Status);
         Assert.Contains("below the claimed lower bound", metric.Reason);
@@ -169,7 +170,7 @@ public sealed class RendererPerfAnalysisTests
     public void Marker_perturbation_is_separate_from_total_only_and_does_not_set_a_budget()
     {
         var report = Map(Report(), (b, f) => Duration(f, b.Layout == RendererPerfLayout.TotalOnly ? 100 : 130));
-        var summary = RendererPerfAnalysis.Analyze(report);
+        var summary = VerifiedAnalyze(report);
         Assert.Equal(30, summary.Perturbations["S3/0"].DifferenceNs.Value);
         Assert.Equal(100, summary.Blocks[0].Metrics["gpu.frame"].Mean.Value);
         Assert.Contains("MarkerPerturbationObserved", RendererPerfAnalysis.Markdown(summary));
@@ -189,7 +190,7 @@ public sealed class RendererPerfAnalysisTests
         int total, int detailed, int difference, string percent, int threshold, bool flagged)
     {
         var report = Map(Report(), (b, f) => Duration(f, b.Layout == RendererPerfLayout.TotalOnly ? total : detailed));
-        var summary = RendererPerfAnalysis.Analyze(report);
+        var summary = VerifiedAnalyze(report);
         var perturbation = summary.Perturbations["S3/0"];
         Assert.Equal(difference, perturbation.DifferenceNs.Value);
         Assert.Equal(double.Parse(percent, System.Globalization.CultureInfo.InvariantCulture), perturbation.Percent.Value!.Value, 10);
@@ -214,7 +215,7 @@ public sealed class RendererPerfAnalysisTests
         var report = Failed(Map(Report(), (b, f) => b.Layout != RendererPerfLayout.TotalOnly ? Duration(f, 120000) : invalid
             ? f with { GpuFrame = new(null, "ns", "synthetic outer pair", RendererPerfMetricStatus.Invalid, "disjoint baseline"), GpuElapsedTicks = null }
             : Duration(f, 0)));
-        var summary = RendererPerfAnalysis.Analyze(report);
+        var summary = VerifiedAnalyze(report);
         var perturbation = summary.Perturbations["S3/0"];
         Assert.Null(perturbation.Percent.Value);
         Assert.Equal(invalid ? RendererPerfMetricStatus.Invalid : RendererPerfMetricStatus.ModelIncomplete, perturbation.Percent.Status);
@@ -242,7 +243,7 @@ public sealed class RendererPerfAnalysisTests
         { Passes = [new("copy", 0, null, null, 1, 2, 80, Value(80), false)] });
         var rates = ImmutableDictionary<string, RendererPerfReferenceRates>.Empty.Add("S3/copy/0",
             new(1e9, null, -1, null, null, 40, "fp32-fma", "invalid synthetic calibration"));
-        var summary = RendererPerfAnalysis.Analyze(report, rates);
+        var summary = VerifiedAnalyze(report, rates);
         var metric = summary.Blocks[1].Metrics["gap.copy.0.excess"].Mean;
         Assert.Equal(RendererPerfMetricStatus.Invalid, metric.Status);
         Assert.Null(metric.Value);
@@ -259,7 +260,7 @@ public sealed class RendererPerfAnalysisTests
             evidence.Observe(entry.Item1, "startup", null, 0, 1000,
                 new([], ImmutableDictionary<string, RendererPerfMetric>.Empty.Add("managed.live.bytes", Value(entry.Item2, "bytes", "managed heap snapshot"))));
         evidence.Observe("control:4/TotalOnly/0", "startup", null, 0, 1000, null, "read failed");
-        var summary = RendererPerfAnalysis.Analyze(report with { Memory = evidence.Report() });
+        var summary = VerifiedAnalyze(report with { Memory = evidence.Report() });
         Assert.Equal(0, summary.Raw.Memory.Peaks["managed.live.bytes"].Observation);
         string markdown = RendererPerfAnalysis.Markdown(summary);
         Assert.Contains("900 bytes", markdown);

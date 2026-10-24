@@ -29,7 +29,7 @@ internal static class RendererPerfRawJson
         ImmutableArray<RendererPerfRecipeReport> Recipes, ImmutableArray<RendererPerfBlockReport> Blocks,
         RendererPerfMemoryReport Memory, ImmutableArray<GpuPipelineCompilerReport> Pipelines,
         ImmutableArray<RendererPerfControlReport> Controls, RendererPerfAssessment Assessment,
-        RendererPerfPublication Publication, ImmutableArray<RendererPerfSidecar> Sidecars,
+        RendererPerfPublication Publication, ImmutableArray<RendererPerfExpectedSidecar> Sidecars,
         ImmutableArray<RendererPerfFrameSample> Conditioning, ImmutableArray<RendererPerfBatchReport> Batches,
         ImmutableArray<RendererPerfStartupReport> Startup, RendererPerfCompilerEvidence Compiler, [property: JsonPropertyOrder(100)] Schema Raw)
     {
@@ -54,6 +54,15 @@ internal static class RendererPerfRawJson
         try
         {
             using JsonDocument document = RendererPerfManifest.ReadDocument(bytes, maximumBytes);
+            if (!document.RootElement.TryGetProperty("schema", out var schemaValue) || schemaValue.ValueKind != JsonValueKind.String)
+                throw new JsonException("Report schema is missing or invalid.");
+            string? version = schemaValue.GetString();
+            if (version != "khaozengine.renderer-perf-report/2")
+                throw new RendererPerfProtocolException("Schema", "Unsupported renderer report version " + version + ", expected renderer-perf-report/2.");
+            if (document.RootElement.TryGetProperty("pipelines", out var pipelines) && pipelines.ValueKind == JsonValueKind.Array && pipelines.GetArrayLength() > 1024
+                || document.RootElement.TryGetProperty("compiler", out var compiler) && compiler.ValueKind == JsonValueKind.Object
+                && compiler.TryGetProperty("results", out var results) && results.ValueKind == JsonValueKind.Array && results.GetArrayLength() > 1024)
+                throw new JsonException("Compiler report/result count exceeds the unique recipe capacity.");
             if (!document.RootElement.TryGetProperty("raw", out var raw)) throw new JsonException("Raw metric schema is required.");
             Schema schema = raw.Deserialize<Schema>(RendererPerfManifest.JsonOptions) ?? throw new JsonException("Null raw schema.");
             var tables = new Tables(schema);

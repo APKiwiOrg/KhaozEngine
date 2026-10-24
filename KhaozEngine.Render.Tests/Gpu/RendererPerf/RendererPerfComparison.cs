@@ -23,7 +23,13 @@ internal static class RendererPerfComparison
         => CompareRaw(baseline, candidate, null, null);
 
     internal static RendererPerfComparisonResult Compare(RendererPerfSummary baseline, RendererPerfSummary candidate)
-        => CompareRaw(baseline.Raw, candidate.Raw, baseline.References, candidate.References);
+        => baseline.VerifiedArtifact is { } before && candidate.VerifiedArtifact is { } after
+            && ReferenceEquals(baseline.Raw, before.Report) && ReferenceEquals(candidate.Raw, after.Report)
+            ? CompareValidated(Analyze(before, baseline.References), Analyze(after, candidate.References))
+            : CompareRaw(baseline.Raw, candidate.Raw, baseline.References, candidate.References);
+
+    internal static RendererPerfComparisonResult Compare(RendererPerfVerifiedArtifact baseline, RendererPerfVerifiedArtifact candidate)
+        => CompareValidated(Analyze(baseline), Analyze(candidate));
 
     static RendererPerfComparisonResult CompareRaw(RendererPerfReport baseline, RendererPerfReport candidate,
         ImmutableDictionary<string, RendererPerfReferenceRates>? baselineReferences,
@@ -43,7 +49,7 @@ internal static class RendererPerfComparison
 
     static RendererPerfComparisonResult CompareValidated(RendererPerfSummary baseline, RendererPerfSummary candidate)
     {
-        var differences = Differences(baseline.Raw, candidate.Raw);
+        var differences = Differences(baseline.Raw, candidate.Raw, baseline.VerifiedArtifact?.Inventory, candidate.VerifiedArtifact?.Inventory);
         var reasons = differences.Where(d => d.Incompatible).Select(d => "Incompatible " + d.Path + ".").ToList();
         if (!baseline.PromotionEligible) reasons.AddRange(baseline.Reasons.Select(r => "baseline: " + r));
         if (!candidate.PromotionEligible) reasons.AddRange(candidate.Reasons.Select(r => "candidate: " + r));
@@ -140,7 +146,8 @@ internal static class RendererPerfComparison
         return Available(candidate.Value!.Value - baseline.Value!.Value, unit, source);
     }
 
-    static ImmutableArray<RendererPerfIdentityDifference> Differences(RendererPerfReport baseline, RendererPerfReport candidate)
+    static ImmutableArray<RendererPerfIdentityDifference> Differences(RendererPerfReport baseline, RendererPerfReport candidate,
+        RendererPerfCompilerInventory? beforeInventory, RendererPerfCompilerInventory? afterInventory)
     {
         var changes = ImmutableArray.CreateBuilder<RendererPerfIdentityDifference>();
         void Compare<T>(string path, T a, T b, Func<string, bool> informational)
@@ -168,27 +175,28 @@ internal static class RendererPerfComparison
                 Shape = b.Measured.IsEmpty ? [] : Shape(b.Measured[0]).Select(p =>
                 new { Id = p.Item1, Occurrence = p.Item2, ParentId = p.Item3, ParentOccurrence = p.Item4, Begin = p.Item5, End = p.Item6, DeviceOnly = p.Item7 }).ToArray()
             }).ToArray(), _ => false);
-        // Pipeline/artifact hashes identify the candidate. Capture configuration still needs to match.
-        Compare("pipelines", baseline.Pipelines.Select(p => new
+        // A unique recipe can split or merge across builds. Logical occurrence roles are the join.
+        if (beforeInventory is not null && afterInventory is not null)
         {
-            p.Identity.PipelineSha256,
-            p.Identity.SourceSha256,
-            p.Identity.ShaderArtifactSha256,
-            p.Identity.LayoutSha256,
-            p.Identity.DiagnosticConfigurationSha256,
-            p.Identity.CompilerFlags
-        }).ToArray(),
-            candidate.Pipelines.Select(p => new
+            Compare("compiler.operations", beforeInventory.Operations, afterInventory.Operations, _ => false);
+            var before = beforeInventory.Occurrences.OrderBy(o => o.OperationOrdinal).ThenBy(o => o.Kind).ThenBy(o => o.CreationOrdinal).ToArray();
+            var after = afterInventory.Occurrences.OrderBy(o => o.OperationOrdinal).ThenBy(o => o.Kind).ThenBy(o => o.CreationOrdinal).ToArray();
+            Compare("compiler.roles", before.Select(o => new { o.OperationOrdinal, o.Kind, o.CreationOrdinal, o.BindCount }).ToArray(),
+                after.Select(o => new { o.OperationOrdinal, o.Kind, o.CreationOrdinal, o.BindCount }).ToArray(), _ => false);
+            for (int n = 0; n < Math.Min(before.Length, after.Length); n++)
             {
-                p.Identity.PipelineSha256,
-                p.Identity.SourceSha256,
-                p.Identity.ShaderArtifactSha256,
-                p.Identity.LayoutSha256,
-                p.Identity.DiagnosticConfigurationSha256,
-                p.Identity.CompilerFlags
-            }).ToArray(),
-            p => p.EndsWith(".pipelineSha256.sha256", StringComparison.Ordinal) || p.EndsWith(".sourceSha256.sha256", StringComparison.Ordinal)
-                || p.EndsWith(".shaderArtifactSha256.sha256", StringComparison.Ordinal));
+                var a = before[n].Production; var b = after[n].Production;
+                string path = $"compiler.occurrences[{n}]";
+                Compare(path + ".layout", a.LayoutSha256, b.LayoutSha256, _ => false);
+                Compare(path + ".codeGeneration", a.CodeGenerationSha256, b.CodeGenerationSha256, _ => false);
+                Compare(path + ".localSize", new { a.LocalSizeX, a.LocalSizeY, a.LocalSizeZ }, new { b.LocalSizeX, b.LocalSizeY, b.LocalSizeZ }, _ => false);
+                Compare(path + ".pipeline", a.PipelineSha256, b.PipelineSha256, _ => true);
+                Compare(path + ".source", a.SourceSha256, b.SourceSha256, _ => true);
+                Compare(path + ".artifact", a.ShaderArtifactSha256, b.ShaderArtifactSha256, _ => true);
+            }
+            Compare("compiler.production", baseline.Compiler.Production, candidate.Compiler.Production, _ => false);
+            Compare("compiler.diagnostic", baseline.Compiler.Diagnostic, candidate.Compiler.Diagnostic, _ => false);
+        }
         return changes.ToImmutable();
     }
 

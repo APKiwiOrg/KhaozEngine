@@ -561,6 +561,10 @@ jobs:
           New-Item -ItemType Directory -Force local-feed | Out-Null
           & dotnet build tools/Renderer.Perf.Tests/Renderer.Perf.Tests.csproj -c Release 2>&1 | Tee-Object -FilePath (Join-Path $env:KE_RENDERER_PERF_REPORTS 'build.log')
           if ($LASTEXITCODE -ne 0) { throw 'Renderer performance build failed' }
+          $trusted = Join-Path $env:GITHUB_WORKSPACE 'renderer-perf-trusted'
+          New-Item -ItemType Directory -Force (Join-Path $trusted 'local-feed') | Out-Null
+          & dotnet build (Join-Path $trusted 'tools/Renderer.Perf.Verify/Renderer.Perf.Verify.csproj') -c Release 2>&1 | Tee-Object -FilePath (Join-Path $env:KE_RENDERER_PERF_REPORTS 'verifier-build.log')
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted renderer verifier build failed' }
 
       - name: Measure exactly one authorized renderer unit
         shell: pwsh

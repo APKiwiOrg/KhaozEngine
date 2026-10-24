@@ -11,7 +11,9 @@ internal static class RendererPerfMarkdown
 {
     internal static string Summary(RendererPerfSummary summary)
     {
-        summary = RendererPerfAnalysis.Analyze(summary.Raw, summary.References);
+        summary = summary.VerifiedArtifact is { } artifact && ReferenceEquals(summary.Raw, artifact.Report)
+            ? RendererPerfAnalysis.Analyze(artifact, summary.References)
+            : RendererPerfAnalysis.Analyze(summary.Raw, summary.References);
         var report = summary.Raw;
         var text = new StringBuilder("# Renderer performance summary\n\n");
         text.Append("Unit ").Append(Cell(report.Identity.UnitId)).Append(". Publication ").Append(report.Publication.State)

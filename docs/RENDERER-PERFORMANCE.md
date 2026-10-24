@@ -52,19 +52,28 @@ evidence through this source path. Device-wide allocation snapshots retain unifi
 and stay separate from logical payload and ring/staging capacity. Residency and hard budget remain
 unavailable. Headless injected tests establish neither native support nor GPU measurements.
 
-The later cold compiler-collection session will consume reports from the actual created pipelines
-and device outside timing blocks, retaining all identities and unsupported/error reasons. Backend
-capability implementation does not implement that session, alter raw report schemas or authorize a
-workload manifest. The later native acceptance gates remain separate. #1547 remains open,
-and no native execution or performance claim follows from headless diagnostics tests.
-The strict raw reader currently requires all five pipeline digests, including an artifact digest.
-Metal's unavailable native artifact cannot be replaced by an MSL source hash. The later cold-session
-task must resolve that publication contract before embedding these reports. Backend reports retain
-the empty artifact digest and its reason without widening the current raw schema.
+The unit captures immutable factory inputs and every pipeline occurrence during the fixed workload.
+After production cleanup it replays unique recipes on a separate instance configured for compiler
+metadata and no runtime invocations. Production and replay must agree on source, layout, resolved
+state, code generation and actual primary-backend artifacts. Requested and effective configurations
+remain separate. Only the explicit diagnostic choices may differ. No extra frame or calibration is
+part of collection. Current live resource counts accompany actual backend peak logical payload bytes.
+Diagnostic memory does not increase the production peak.
+
+`GpuDiagnosticDigest` carries a nullable SHA-256, provenance, status and reason. Available identities
+require a lowercase 64-digit hash of actual nonempty bytes. Unsupported or Invalid identities require
+a null hash and an explicit cause. Metal retains MSL as source, with its native artifact Unsupported.
+Stage identities remain available for independent aggregate checks. File checksums never substitute
+for compiled-artifact digests. Complete optional Unsupported evidence can be verified. Invalid,
+unattempted or incomplete compiler evidence cannot promote.
+
+Headless capture, accounting and file tests establish implementation behavior only. Primary native
+correspondence, real compiler payloads, unchanged-deadline acceptance, billed cost and the original
+consumer acceptance remain separate owner-approved gates. #1547 remains open for those proofs.
 
 ## Raw artifact and strict reader
 
-`khaozengine.renderer-perf-report/1` JSON is canonical. Keep its exact manifest, workflow and source
+`khaozengine.renderer-perf-report/2` JSON is canonical. Report/1 is explicitly refused without migration. Keep its exact manifest, workflow and source
 identities, immutable run link, TRX, logs and SHA-256 sidecars. A checked-in baseline summary points
 to those immutable artifacts. It never overwrites an earlier baseline or checks in thousands of frames.
 
@@ -72,7 +81,32 @@ Use `RendererPerfReportJson.Parse` before any arithmetic. The decoder enforces t
 depth 32, required fields, finite values, exact counts, support semantics and publication rules.
 `RendererPerfAnalysis.Read(bytes)` uses that reader directly. `Analyze(report, references)` validates
 typed input by round-tripping the same codec. Both retain the complete decoded report as `Raw`.
-There is no alternate tolerant decoder or frame sampling path.
+There is no alternate tolerant decoder or frame sampling path. Byte/report analysis is descriptive
+and explicitly unverified. It cannot produce promotion eligibility or regression verdicts.
+
+`RendererPerfArtifactVerification.Verify(directory, reportName)` reopens registered regular files in
+chunks no larger than 65,536 bytes. It checks safe relative paths, aliases, links/reparse points,
+nonempty lengths, SHA-256, strict schema, execution identity, decoded counts and all construction,
+read and result associations. Expected files come from producer registration, never enumeration. The existing fixed-cadence host telemetry producer also registers its exact JSONL output, without another sampler call.
+`RendererPerfAnalysis.ReadDirectory` calls this same verifier. Only verification constructs the
+immutable verified artifact. Verified summaries retain that association and their reference rates.
+`RendererPerfComparison.Compare(verifiedBaseline, verifiedCandidate)` requires it for verdicts.
+
+The outside-solution `tools/Renderer.Perf.Verify` console takes exactly directory and report filename.
+It performs no backend registration, device creation or measurement. Exit zero means directory
+verification succeeded. The trusted workflow invokes its built DLL after independent execution
+identity checks, then verifies received files again rather than accepting parsed JSON alone.
+
+The root cap and depth remain 268,435,456 bytes and 32, including two 32-byte accounting slots.
+Root plus new compiler-inventory/compiler-failure files must fit the same combined byte cap.
+Precollection encodes the retained root, inventory and completion shape before optional replay.
+The unchanged 16,777,216-byte completion reserve includes four option tables requiring up to
+6,717,440 encoded bytes. Vulkan headroom A admits T=min(16384,floor((A-786432)/4096)) and
+R=786432+4096*T, refusing A below 786432. D3D11 reserves 1,048,576 bytes. Each native reader receives
+the exact frozen request, with one outstanding reservation and checked actual-byte commits. Native
+reports are retained through refusal. No cap increase, frame pruning or native-field truncation is
+an admission remedy. Live verification precedes completion sampling and the accounting stamp.
+Cancellation, deadline and write failures preserve partial evidence and ordered original exceptions.
 
 - `raw.format` must be `metric-vectors/2`. Shared metric descriptors retain name, unit, source,
   status and reason. A layout lists descriptor indices in order. Expand every referenced positive-zero
@@ -104,7 +138,7 @@ launches a workload or changes the raw artifact.
 Within the test assembly, an offline caller can read an existing artifact and save the derived view:
 
 ```csharp
-var summary = RendererPerfAnalysis.Read(File.ReadAllBytes(jsonPath));
+var summary = RendererPerfAnalysis.ReadDirectory(evidenceDirectory, reportName);
 File.WriteAllText(markdownPath, RendererPerfAnalysis.Markdown(summary));
 var comparison = RendererPerfComparison.Compare(baselineSummary, summary);
 File.WriteAllText(comparisonPath, RendererPerfComparison.Markdown(comparison));
@@ -171,13 +205,13 @@ threshold remain defined. An unavailable or invalid baseline or detailed mean ke
 remains unavailable or invalid, with no threshold decision. Keep both layouts and their raw samples. No guessed
 marker tax is subtracted from pass durations.
 
-Promotion eligibility requires the original valid assessment, completed returned final publication,
+Promotion eligibility requires directory verification, the original valid assessment, completed returned final publication,
 and no newly detected drift or invalid partition. Optional unsupported counters and incomplete work
 models do not become measurements and do not independently invalidate sound frame timing.
 Failed, refused or partial publication keeps original failure and cleanup errors. It cannot supply
 promotable evidence or numerical comparison deltas. The existing partial-write accounting gap
 [#1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547) remains a proof limit. Offline analysis
-does not repair sink accounting or certify final sidecar availability from JSON alone.
+does not infer native cost or certify final sidecar availability from JSON alone.
 
 ## Work models and reference gaps
 

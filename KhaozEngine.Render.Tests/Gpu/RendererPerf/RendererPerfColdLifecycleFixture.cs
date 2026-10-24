@@ -38,7 +38,7 @@ internal sealed class RendererPerfColdLifecycleFixture : IDisposable
         Publication = new(this);
     }
     internal void Event(string stage) { Trace.Add(stage); Boundary?.Invoke(stage); }
-    internal RendererPerfUnitOutcome Run()
+    internal RendererPerfUnitOutcome Run(IRendererPerfUnitPublication? publication = null)
     {
         var clock = new RendererPerfClock(() => Now, 1000);
         var budget = new RendererPerfUnitBudget(clock, 100, 600100, Cancellation.Token);
@@ -57,7 +57,7 @@ internal sealed class RendererPerfColdLifecycleFixture : IDisposable
                     capture: capture, operationOrdinal: ordinal);
                 SessionCreated?.Invoke(session);
                 return session;
-            }, Publication);
+            }, publication ?? Publication);
     }
     public void Dispose() { _provider.Dispose(); Cancellation.Dispose(); }
     internal sealed record Settings(GpuPipelineDiagnosticRequest Diagnostics, string? AdapterKey = null) : IGpuHeadlessDiagnosticSettings

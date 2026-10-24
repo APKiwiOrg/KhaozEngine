@@ -13,7 +13,9 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 internal sealed class RendererPerfNativeSizeFixture
 {
     const long Origin = 9_000_000_000_000_000;
-    readonly RendererPerfFrameSample _total = Record(false), _detailed = Record(true);
+    readonly RendererPerfFrameSample _total, _detailed;
+    internal RendererPerfNativeSizeFixture(bool retainHeldFailure = true)
+    { _total = Record(false, retainHeldFailure); _detailed = Record(true, retainHeldFailure); }
 
     internal RendererPerfFrameSample Replay(RendererPerfFrameSample frame, bool detailed)
     {
@@ -31,7 +33,7 @@ internal sealed class RendererPerfNativeSizeFixture
         };
     }
 
-    static RendererPerfFrameSample Record(bool detailed)
+    static RendererPerfFrameSample Record(bool detailed, bool retainHeldFailure)
     {
         string[] ids = ["shadow.cascade.rigid", "shadow.cascade.skinned", "shadow.cascade.foliage", "opaque.rigid",
             "opaque.terrain", "opaque.foliage", "opaque.skinned", "water.surface", "ocean.fft.column", "ocean.fft.row",
@@ -81,7 +83,7 @@ internal sealed class RendererPerfNativeSizeFixture
         }
         commands.End();
         Assert.Null(recorder.FrameFailure(0));
-        if (detailed) recorder.Fail("held recorder failure retained");
+        if (detailed && retainHeldFailure) recorder.Fail("held recorder failure retained");
         recorder.EndFrame();
         var sample = recorder.Harvest(0, new GpuPerfTimestampResult(
             [.. Enumerable.Range(0, (int)recorder.MarkerCount).Select(i => (ulong)(i * 3))], 1, true, "held marker ticks"));

@@ -23347,7 +23347,7 @@ Unknown imported texture layers or pipeline metadata remain explicit incomplete 
 Requested resource bytes are creation totals, not live memory, physical traffic or residency.
 
 The internal renderer report JSON uses `raw.format = "metric-vectors/2"` under the existing
-`khaozengine.renderer-perf-report/1` schema and 256 MiB cap. `raw.metrics` stores metric name, unit,
+`khaozengine.renderer-perf-report/2` schema and unchanged 256 MiB cap. Report/1 is refused. `raw.metrics` stores metric name, unit,
 source, status and reason once. `raw.layouts` lists zero-based descriptor indices for each metric map.
 Maps encode `{layout, values, zeroRuns}`. Nonzero Available values retain layout order. The zero-run
 reference indexes a shared `raw.zeroRuns` pattern that explicitly counts positive zeros before, between
@@ -23371,7 +23371,12 @@ Memory observations retain startup/batch identity and failure reasons. Process a
 to their exact observation and original metric source instead of replacing those raw snapshots.
 The [renderer performance reference](RENDERER-PERFORMANCE.md) defines the internal offline summaries
 and comparisons, including exact percentile ranks, separate iteration means, partition gaps, marker
-perturbation and reference provenance. These helpers add no package API or production instrumentation.
+perturbation and reference provenance. Directory-aware `RendererPerfAnalysis.ReadDirectory` and the outside-solution
+`Renderer.Perf.Verify` console share registered-file verification, including hashes, identities, counts,
+recipe/stage correspondence and the combined root/compiler cap. Only that verifier produces a verified
+artifact. Byte/report/summary-only paths remain descriptive and refuse regression or promotion verdicts.
+Verified summaries retain their reference rates through an internal artifact association.
+These helpers add no package API or production instrumentation.
 
 Call `BeginFrame(localSampleId, frameId, sequenceIndex, submission)` at the host's outer boundary, before
 native Begin, and `EndFrame` only after the host returns from submission and Present/end-frame work. The

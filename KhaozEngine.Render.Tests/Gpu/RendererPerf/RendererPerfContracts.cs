@@ -78,12 +78,11 @@ internal sealed record RendererPerfPublication(RendererPerfPublicationState Stat
     [JsonRequired]
     public RendererPerfFailureTextEvidence FailureText { get; init; } = new(false, 0, 0);
 }
-internal sealed record RendererPerfSidecar(string Path, string Sha256);
 internal sealed record RendererPerfReport(string Schema, RendererPerfManifest Manifest, RendererPerfRunIdentity Identity,
     ImmutableArray<RendererPerfRecipeReport> Recipes, ImmutableArray<RendererPerfBlockReport> Blocks,
     RendererPerfMemoryReport Memory, ImmutableArray<GpuPipelineCompilerReport> Pipelines,
     ImmutableArray<RendererPerfControlReport> Controls, RendererPerfAssessment Assessment,
-    RendererPerfPublication Publication, ImmutableArray<RendererPerfSidecar> Sidecars)
+    RendererPerfPublication Publication, ImmutableArray<RendererPerfExpectedSidecar> Sidecars)
 {
     [JsonRequired]
     public RendererPerfCompilerEvidence Compiler { get; init; } = RendererPerfCompilerEvidence.Pending;

@@ -601,12 +601,17 @@ gate. Success returns a context and no failures. Refusal returns no context and 
 `GpuDiagnosticFailure` events, including rejected-device cleanup, with their actual exception
 references. Only `GpuDiagnosticFailureException` is an ordered transport. An operational
 `AggregateException` remains one original exception. `IGpuDeviceDiagnosticConfiguration` exposes
-the full effective configuration separately from the request. The renderer lifecycle and bounded
-read tests are headless proofs. Native correspondence and registered-file certification require
-their separate acceptance gates.
+the full effective configuration separately from the request. `IGpuBudgetedPipelineDiagnostics` takes
+an immutable count/text request and returns the original request, retained/known/omitted counts,
+completion/refusal and actual staged failure events. It never receives renderer JSON or byte budgets.
+The renderer uses registered-file verification after bounded replay. Headless proofs do not establish
+native correspondence, payload admission or unchanged-deadline/cost acceptance.
 
-`GpuPipelineCompilerReport` identifies shader artifacts, pipeline state, compiler flags and diagnostic
-configuration by digest. Each executable retains vendor statistic names, descriptions and typed
+`GpuPipelineCompilerReport` uses typed `GpuDiagnosticDigest` identities for source, actual artifact,
+pipeline, layout, diagnostic configuration and code generation. Available requires a hash and provenance.
+Unsupported/Invalid requires a null hash and cause. Ordered stage identities retain actual byte digests
+and permit independent aggregate checks. `IGpuPipelineConstructionDiagnostics.ConstructionIdentity`
+is a detached precomputed witness, including after disposal. Live reads after disposal remain Invalid. Each executable retains vendor statistic names, descriptions and typed
 Boolean, Int64, UInt64 or Float64 values. `GpuDiagnosticMetric` carries a unit, source, status, reason
 and provenance. Unsupported or invalid values are null with a reason. Intermediate-code temporary
 slots cannot supply physical register or spill fields. Achieved occupancy requires runtime evidence.
@@ -617,7 +622,7 @@ nonnegative integer `registers`, `bytes`, `threads` or `count` values. Achieved 
 `GpuResourceMemorySnapshot` keeps logical buffer/texture payload, staging/ring capacity, history,
 scratch and peak payload separate from committed backing allocations, residency and budget. Categories
 may overlap as documented by their source. Do not sum payload and backing heaps, call unavailable
-residency zero, or describe unified memory as dedicated VRAM.
+residency zero, or describe unified memory as dedicated VRAM. LiveResourceCount is current at the observation. PeakLogicalPayloadBytes is the actual backend-maintained peak, not a sampled maximum or lifetime resource count.
 
 ## IGpuFencedReadback
 

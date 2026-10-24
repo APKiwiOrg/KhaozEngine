@@ -369,7 +369,7 @@ Reports retain exact input GLSL hashes, emitted MSL source hashes, entry points,
 layouts/render state and compile/configuration identity. Identity includes the pinned MSL language,
 fast-math and invariance options, front-end/cross-compiler pins, loaded SPIR-V toolchain identity,
 launch validation state and OS version. No native compiler version is exposed here. MSL source is not
-a native compiler artifact, so `ShaderArtifactSha256` stays empty with an Unsupported report reason.
+a native compiler artifact. Its `GpuDiagnosticDigest` has null Sha256, Unsupported status, provenance and a cause. GLSL and emitted MSL remain source evidence. Stage aggregates use `khaozengine.pipeline-stage-set/1` without substituting source hashes for native artifacts.
 Physical registers, spills and achieved occupancy also remain unsupported. Cold compute reads expose
 `threadExecutionWidth` and `maxTotalThreadsPerThreadgroup` as hardware limits with UInt64 values.
 They never populate achieved occupancy. Failed queries retain Invalid status and their native cause.

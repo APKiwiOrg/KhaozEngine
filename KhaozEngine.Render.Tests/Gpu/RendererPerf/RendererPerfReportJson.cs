@@ -112,11 +112,11 @@ internal static class RendererPerfReportJson
                 "Publication", "Invalid GPU queries, frame failures or incomplete pass timing cannot support promotion.");
         RendererPerfExecutionEvidence.Validate(report);
         ValidateNative(report);
-        foreach (RendererPerfSidecar sidecar in report.Sidecars)
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var sidecar in report.Sidecars)
         {
-            Hash(sidecar.Sha256, 64);
-            Require(Text(sidecar.Path) && !sidecar.Path.StartsWith('/') && !sidecar.Path.Contains('\\')
-                && !sidecar.Path.Contains(':') && !sidecar.Path.Split('/').Any(p => p is ".." or "." or ""), "Identity", "Sidecar path must be a relative artifact path.");
+            RendererPerfSidecarRegistry.Validate(sidecar);
+            Require(paths.Add(sidecar.Path), "Identity", "Duplicate or aliased expected sidecar.");
         }
     }
 
@@ -166,7 +166,7 @@ internal static class RendererPerfReportJson
                 && span.EndTicks <= frame.CpuEndTicks, "Sample", "CPU child is outside the frame wall interval.");
     }
 
-    static void ValidateWorkModels(ImmutableArray<RendererPassWorkModel> models)
+    internal static void ValidateWorkModels(ImmutableArray<RendererPassWorkModel> models)
     {
         var identities = new HashSet<(string, int)>();
         foreach (RendererPassWorkModel model in models)

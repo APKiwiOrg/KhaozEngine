@@ -286,7 +286,7 @@ if (pipeline is IGpuPipelineDiagnostics diagnostics)
 Reports identify the source, actual SPIR-V artifacts, entry points, resolved compute local size, resource
 layout, graphics state, compiler options and diagnostic configuration. Pipeline hashes exclude native
 handles. GLSL entry points are `main` and the backend supplies no specialization constants. Graphics
-source and artifact digests hash length-prefixed vertex and fragment data in that order. The configuration
+source and artifact aggregates use `khaozengine.pipeline-stage-set/1` over ordered vertex and fragment stage identities. Each member retains the exact GLSL or compiled SPIR-V digest. The configuration
 digest includes capture flags, the requested validation mode, the enabled instance layers and the enabled
 validation features. A missing validation layer produces a different identity for the same request.
 Disposed pipelines refuse native queries.
@@ -294,8 +294,12 @@ Disposed pipelines refuse native queries.
 Executable and statistic queries initialize every output structure and repeat the two-call protocol on
 `VK_INCOMPLETE`. Collection allows four attempts per enumeration, at most 64 executables and 256 statistics
 per executable. Counts above those fixed capacities, native errors and exhausted enumeration produce
-invalid reports, never truncated available evidence. Unsupported extensions or features and empty
-statistics remain unavailable with a reason.
+invalid reports, never truncated available evidence. The optional budgeted route checks native counts
+before output allocation/fill and text before conversion, including changed counts on all four attempts.
+It also enforces the caller-admitted total statistics limit, at most 16,384. The renderer derives that
+limit from actual retained bytes. It never assumes the hard native ceilings fit every remaining budget.
+The returned request/count/completion/refusal evidence preserves partial rows and actual failures.
+A genuine absent extension can be complete Unsupported. Supported capture omitted by configuration is Invalid.
 
 Raw vendor names, descriptions and Boolean, Int64, UInt64 or finite Float64 values are preserved with
 `vendor-defined` units. No vendor name is guessed to mean physical registers or spill bytes. Compiler

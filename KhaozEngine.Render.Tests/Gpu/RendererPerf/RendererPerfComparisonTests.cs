@@ -6,8 +6,14 @@ using static KhaozEngine.Tests.Gpu.RendererPerf.RendererPerfAnalysisFixture;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
+[Collection("NativeDeviceLifecycle")]
 public sealed class RendererPerfComparisonTests
 {
+    static RendererPerfComparisonResult VerifiedCompare(RendererPerfSummary baseline, RendererPerfSummary candidate)
+        => RendererPerfComparison.Compare(baseline, candidate);
+    static RendererPerfComparisonResult VerifiedCompare(RendererPerfReport baseline, RendererPerfReport candidate)
+        => RendererPerfAnalysisFixture.VerifiedCompare(baseline, candidate);
+
     [Theory]
     [InlineData("driver")]
     [InlineData("recipe")]
@@ -31,7 +37,7 @@ public sealed class RendererPerfComparisonTests
             // Frozen manifest rejection is also a compatibility refusal, never relaxed for analysis.
             _ => baseline with { Manifest = baseline.Manifest with { BatchSize = 2 } }
         };
-        var result = RendererPerfComparison.Compare(baseline, candidate);
+        var result = VerifiedCompare(baseline, candidate);
         Assert.False(result.Compatible);
         Assert.NotEmpty(result.Reasons);
         Assert.All(result.Rows, row => Assert.Null(row.Deltas["gpu.frame"].Mean.Value));
@@ -48,7 +54,7 @@ public sealed class RendererPerfComparisonTests
             Manifest = baseline.Manifest with { WorkloadSha = new string('d', 40), Recipes = [recipe] },
             Recipes = [baseline.Recipes[0] with { Identity = recipe }]
         };
-        var result = RendererPerfComparison.Compare(baseline, candidate);
+        var result = VerifiedCompare(baseline, candidate);
         Assert.True(result.Compatible);
         Assert.Contains(result.Differences, d => d.Path == "identity.workloadSha" && !d.Incompatible);
         Assert.Contains(result.Differences, d => d.Path.EndsWith("shaderSha256", StringComparison.Ordinal) && !d.Incompatible);
@@ -65,7 +71,7 @@ public sealed class RendererPerfComparisonTests
                 new("device.upload", 0, null, null, 0, 0, null,
                     new(null, "ns", "CPU device owner", RendererPerfMetricStatus.Unsupported, "CPU only"), true)]
         });
-        var summary = RendererPerfAnalysis.Read(RendererPerfReportJson.Serialize(report));
+        var summary = VerifiedAnalyze(report);
         var row = summary.Blocks.Single(b => b.Block.Layout == RendererPerfLayout.PerPass);
         Assert.Equal(100, row.Metrics["gpu.frame"].Mean.Value);
         Assert.Equal(20, row.Metrics["gpu.unattributed"].Mean.Value);
@@ -78,12 +84,12 @@ public sealed class RendererPerfComparisonTests
     public void Keeps_correlated_iteration_means_separate()
     {
         var report = Map(Report(full: true), (b, f) => Duration(f, b.Iteration switch { 0 => 100, 1 => 102, _ => 104 }));
-        var summary = RendererPerfAnalysis.Analyze(report);
+        var summary = VerifiedAnalyze(report);
         var combined = summary.Combined.Single(s => s.SceneId == "S0" && s.Layout == RendererPerfLayout.TotalOnly);
         Assert.Equal(new double?[] { 100, 102, 104 }, combined.IterationMeans.Select(m => m.Value));
         Assert.Equal(768, combined.Metrics["gpu.frame"].Count);
         Assert.Equal(102, combined.Metrics["gpu.frame"].Mean.Value);
-        var result = RendererPerfComparison.Compare(report, report);
+        var result = VerifiedCompare(report, report);
         Assert.Equal(3, result.Rows.Count(r => r.SceneId == "S0" && r.Layout == RendererPerfLayout.TotalOnly));
     }
 
@@ -95,7 +101,7 @@ public sealed class RendererPerfComparisonTests
         {
             Metrics = f.Metrics.Add("optional", new(null, "bytes", "logical payload", RendererPerfMetricStatus.Unsupported, "not exposed"))
         });
-        var delta = RendererPerfComparison.Compare(baseline, candidate).Rows[0].Deltas["counter.optional"];
+        var delta = VerifiedCompare(baseline, candidate).Rows[0].Deltas["counter.optional"];
         Assert.Null(delta.Mean.Value);
         Assert.Contains("not exposed", delta.Mean.Reason);
         Assert.Null(delta.Percent.Value);
@@ -105,18 +111,18 @@ public sealed class RendererPerfComparisonTests
     public void Incomplete_publication_and_drift_refuse_all_numeric_deltas()
     {
         var baseline = Report();
-        var partial = RendererPerfComparison.Compare(baseline, Failed(baseline));
+        var partial = VerifiedCompare(baseline, Failed(baseline));
         Assert.False(partial.Compatible);
         Assert.Null(partial.Rows[0].Deltas["gpu.frame"].Mean.Value);
         var drifting = Map(baseline, (_, f) => Duration(f, f.SequenceIndex < 64 ? 100 : 120));
-        var summary = RendererPerfAnalysis.Analyze(drifting);
+        var summary = VerifiedAnalyze(drifting);
         Assert.Contains(summary.Reasons, r => r.Contains("ClockOrWorkDrift", StringComparison.Ordinal));
         Assert.Equal(100, summary.Blocks[0].Metrics["gpu.frame"].First64.Value);
         Assert.Equal(120, summary.Blocks[0].Metrics["gpu.frame"].Last64.Value);
-        Assert.False(RendererPerfComparison.Compare(baseline, drifting).Compatible);
-        var previouslyValid = RendererPerfAnalysis.Analyze(baseline);
+        Assert.False(VerifiedCompare(baseline, drifting).Compatible);
+        var previouslyValid = VerifiedAnalyze(baseline);
         var changedPublication = previouslyValid with { Raw = Failed(baseline) };
-        Assert.False(RendererPerfComparison.Compare(previouslyValid, changedPublication).Compatible);
+        Assert.False(VerifiedCompare(previouslyValid, changedPublication).Compatible);
     }
 
     [Theory]
@@ -132,8 +138,8 @@ public sealed class RendererPerfComparisonTests
                 Recipes = baseline.Recipes.SetItem(0, baseline.Recipes[0] with
                 { Facts = baseline.Recipes[0].Facts.Add("nonfinite", Value(double.PositiveInfinity)) })
             };
-        var original = Assert.Throws<RendererPerfProtocolException>(() => RendererPerfAnalysis.Analyze(candidate));
-        var result = RendererPerfComparison.Compare(baseline, candidate);
+        var original = Assert.Throws<RendererPerfProtocolException>(() => VerifiedAnalyze(candidate));
+        var result = VerifiedCompare(baseline, candidate);
         Assert.False(result.Compatible);
         Assert.Contains($"candidate protocol {original.Code}: {original.Message}", result.Reasons);
         Assert.Empty(result.Differences);
@@ -147,7 +153,7 @@ public sealed class RendererPerfComparisonTests
     {
         var baseline = Map(Report(), (_, f) => f with { Metrics = f.Metrics.Add("zero", Value(0, "bytes")) });
         var candidate = Map(baseline, (_, f) => Duration(f, 110));
-        var result = RendererPerfComparison.Compare(baseline, candidate);
+        var result = VerifiedCompare(baseline, candidate);
         Assert.True(result.Compatible);
         Assert.Equal(10, result.Rows[0].Deltas["gpu.frame"].Mean.Value);
         Assert.Equal(10, result.Rows[0].Deltas["gpu.frame"].Percent.Value);
@@ -162,7 +168,7 @@ public sealed class RendererPerfComparisonTests
         var baseline = Report();
         var candidate = Failed(baseline with { Blocks = [baseline.Blocks[0]], Controls = [] });
         candidate = RendererPerfExecutionEvidenceTests.WithTrace(candidate);
-        var result = RendererPerfComparison.Compare(baseline, candidate);
+        var result = VerifiedCompare(baseline, candidate);
         Assert.False(result.Compatible);
         Assert.Equal(2, result.Rows.Length);
         Assert.Contains(result.Rows.Single(r => r.Layout == RendererPerfLayout.PerPass).Reasons,
@@ -177,15 +183,15 @@ public sealed class RendererPerfComparisonTests
         report = report with { Assessment = report.Assessment with { WorkModels = [RendererPerfFloorModelTests.Model(50, 50, 0) with { PassId = "copy" }] } };
         var rates = ImmutableDictionary<string, RendererPerfReferenceRates>.Empty.Add("S3/copy/0",
             new(1e9, null, 1e9, null, null, 40, "fp32-fma", "synthetic matched transfer evidence"));
-        var baseline = RendererPerfAnalysis.Analyze(report, rates);
-        var candidate = RendererPerfAnalysis.Analyze(report);
-        var result = RendererPerfComparison.Compare(baseline, candidate);
+        var baseline = VerifiedAnalyze(report, rates);
+        var candidate = VerifiedAnalyze(report);
+        var result = VerifiedCompare(baseline, candidate);
         Assert.Null(result.Rows[1].Deltas["gap.copy.0.excess"].Mean.Value);
         Assert.Contains("Missing", result.Rows[1].Deltas["gap.copy.0.excess"].Mean.Reason);
         // A partial component can retain the same source label without validating the full model.
-        var incomplete = RendererPerfAnalysis.Analyze(report, rates.SetItem("S3/copy/0", rates["S3/copy/0"] with
+        var incomplete = VerifiedAnalyze(report, rates.SetItem("S3/copy/0", rates["S3/copy/0"] with
         { PeakBandwidthBytesPerSecond = null, MeasuredBandwidthBytesPerSecond = null }));
-        var partial = RendererPerfComparison.Compare(baseline, incomplete);
+        var partial = VerifiedCompare(baseline, incomplete);
         Assert.Null(partial.Rows[1].Deltas["gap.copy.0.peakLowerBound"].Mean.Value);
         Assert.Null(partial.Rows[1].Deltas["gap.copy.0.calibratedReference"].Mean.Value);
     }
@@ -219,8 +225,8 @@ public sealed class RendererPerfComparisonTests
             _ => model
         };
         var references = ImmutableDictionary<string, RendererPerfReferenceRates>.Empty.Add("S3/copy/0", referenceA);
-        var baseline = RendererPerfAnalysis.Analyze(report, references);
-        var candidate = RendererPerfAnalysis.Analyze(report with { Assessment = report.Assessment with { WorkModels = [candidateModel] } },
+        var baseline = VerifiedAnalyze(report, references);
+        var candidate = VerifiedAnalyze(report with { Assessment = report.Assessment with { WorkModels = [candidateModel] } },
             references.SetItem("S3/copy/0", referenceB));
         Assert.True(baseline.PromotionEligible);
         Assert.True(candidate.PromotionEligible);
@@ -228,7 +234,7 @@ public sealed class RendererPerfComparisonTests
         Assert.Equal(RendererPerfMetricStatus.Available, candidate.Blocks[1].GapEvidence["copy.0"][0].Status);
         Assert.Equal(100, baseline.Blocks[1].Metrics["gap.copy.0.excess"].Mean.Value);
         Assert.Equal(0, candidate.Blocks[1].Metrics["gap.copy.0.excess"].Mean.Value);
-        var result = RendererPerfComparison.Compare(baseline, candidate);
+        var result = VerifiedCompare(baseline, candidate);
         foreach (var row in result.Rows.Concat(result.CombinedRows).Where(r => r.Layout == RendererPerfLayout.PerPass))
         {
             Assert.Equal(0, row.Deltas["gpu.frame"].Mean.Value);

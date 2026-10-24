@@ -5,14 +5,15 @@ using System.IO;
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 // A separate partial artifact survives a final write failure. Publication never starts another measurement.
-internal sealed class RendererPerfPublicationWriter(Action<RendererPerfReport, bool> write,
-    Action<RendererPerfReport> recordCompletion, Func<RendererPerfReport, RendererPerfReport>? prepare = null) : IRendererPerfPublication
+internal sealed partial class RendererPerfPublicationWriter(Action<RendererPerfReport, bool> write,
+    Action<RendererPerfReport> recordCompletion, Func<RendererPerfReport, RendererPerfReport>? prepare = null, string? directory = null,
+    Action<string, byte[]>? writeFailure = null) : IRendererPerfPublication
 {
     internal static RendererPerfPublicationWriter Files(string directory, Func<RendererPerfReport, RendererPerfReport>? prepare = null)
     {
         Directory.CreateDirectory(directory);
         var files = new RendererPerfPublicationFiles(directory);
-        return new(files.Write, files.RecordCompletion, prepare);
+        return new(files.Write, files.RecordCompletion, prepare, directory) { _files = files };
     }
 
     public RendererPerfReport Publish(RendererPerfReport report, RendererPerfClock clock, long deadline)

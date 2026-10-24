@@ -22,7 +22,10 @@ internal sealed record RendererPerfSummary(RendererPerfReport Raw, bool Promotio
     ImmutableArray<string> Reasons, ImmutableArray<RendererPerfBlockSummary> Blocks,
     ImmutableArray<RendererPerfCombinedSummary> Combined, ImmutableArray<RendererPerfBlockSummary> Controls,
     ImmutableDictionary<string, RendererPerfPerturbation> Perturbations,
-    ImmutableDictionary<string, RendererPerfReferenceRates> References);
+    ImmutableDictionary<string, RendererPerfReferenceRates> References)
+{
+    internal RendererPerfVerifiedArtifact? VerifiedArtifact { get; init; }
+}
 
 // Cold, offline arithmetic only. The strict codec remains the sole raw-data admission path.
 internal static class RendererPerfAnalysis
@@ -37,6 +40,14 @@ internal static class RendererPerfAnalysis
     internal static RendererPerfSummary Analyze(RendererPerfReport report,
         ImmutableDictionary<string, RendererPerfReferenceRates>? references = null)
         => Read(RendererPerfReportJson.Serialize(report), references);
+
+    internal static RendererPerfSummary ReadDirectory(string directory, string reportName,
+        ImmutableDictionary<string, RendererPerfReferenceRates>? referenceRates = null)
+        => Analyze(RendererPerfArtifactVerification.Verify(directory, reportName), referenceRates);
+
+    internal static RendererPerfSummary Analyze(RendererPerfVerifiedArtifact artifact,
+        ImmutableDictionary<string, RendererPerfReferenceRates>? references = null)
+        => AnalyzeDecoded(artifact.Report, references, artifact);
 
     internal static RendererPerfDistribution Distribution(ImmutableArray<RendererPerfMetric> metrics, int expected)
     {
@@ -98,10 +109,12 @@ internal static class RendererPerfAnalysis
     internal static RendererPerfMetric Unavailable(string unit, string source, string reason,
         RendererPerfMetricStatus status = RendererPerfMetricStatus.ModelIncomplete) => new(null, unit, source, status, reason);
 
-    static RendererPerfSummary AnalyzeDecoded(RendererPerfReport report, ImmutableDictionary<string, RendererPerfReferenceRates>? inputs)
+    static RendererPerfSummary AnalyzeDecoded(RendererPerfReport report, ImmutableDictionary<string, RendererPerfReferenceRates>? inputs, RendererPerfVerifiedArtifact? artifact = null)
     {
         var references = inputs ?? ImmutableDictionary<string, RendererPerfReferenceRates>.Empty;
         var reasons = report.Assessment.Reasons.ToList();
+        if (artifact is null) reasons.Add("Unverified artifacts. Directory verification is required for promotion.");
+        else if (!ReferenceEquals(artifact.Report, report)) throw new InvalidOperationException("Verified artifact association differs from the analyzed report.");
         if (!report.Assessment.ValidForPromotion) reasons.Add("The original assessment is not valid for promotion.");
         if (report.Publication.State != RendererPerfPublicationState.Completed || !report.Publication.FinalUnitPublished || !report.Publication.ReturnedByRun)
             reasons.Add(report.Publication.OriginalFailure ?? "Final completed publication is unavailable.");
@@ -159,7 +172,8 @@ internal static class RendererPerfAnalysis
         }
         var distinct = reasons.Distinct(StringComparer.Ordinal).ToImmutableArray();
         return new(report, report.Assessment.ValidForPromotion && distinct.IsEmpty, distinct, [.. blocks], combined,
-            controls, perturbations.ToImmutable(), references);
+            controls, perturbations.ToImmutable(), references)
+        { VerifiedArtifact = artifact };
     }
 
     internal static IEnumerable<(string, int, string?, int?, uint, uint, bool)> Shape(RendererPerfFrameSample frame)

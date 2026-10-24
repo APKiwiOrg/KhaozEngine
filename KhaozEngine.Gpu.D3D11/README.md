@@ -750,7 +750,7 @@ backend's own decision and is unchanged: it flips LAST, because every release ab
 Set `KE_D3D11_PIPELINE_DIAGNOSTICS=1` before device creation to collect cold shader evidence. Graphics
 and compute pipelines implement `IGpuPipelineDiagnostics`. The compiler retains each exact compiled
 DXBC SHA-256, source digest, entry point, profile, FXC flags and pinned front-end/cross-compile options.
-Graphics reports combine ordered stage digests with length-delimited identities. Each executable names
+Graphics reports retain ordered vertex/pixel stage identities and use `khaozengine.pipeline-stage-set/1` for their source/artifact aggregates. Each executable names
 its own DXBC digest. Pipeline identity includes local size, resource layouts, vertex input, blend,
 rasterizer, depth and output state. Diagnostic identity includes the effective `KE_D3D11_RECORD`
 driver, actual debug layer, reflection/invocation choices, reflected creator and loaded compiler DLL
@@ -760,7 +760,11 @@ the report. Missing metadata, empty statistics and reflection failures retain su
 
 `D3DReflect` and `ID3D11ShaderReflection::GetDesc` supply `InstructionCount`, `TempRegisterCount`,
 `ConstantBuffers`, `BoundResources`, signature counts and every other scalar instruction/resource
-count under their original API names/descriptions. Native `UINT` values are preserved losslessly in UInt64 metrics with the original
+count under their original API names/descriptions. The budgeted read route uses the fixed
+(2,30,60,4096,16384,4) executable/statistics/total/text/flags/attempt profile. It refuses smaller
+substitute requests. Creator text is bounded before conversion, and raw flags remain intact.
+Reports retain typed availability, original read requests and counts, completion/refusal and actual
+failure occurrences. The renderer's fixed byte reservation is 1,048,576. Native `UINT` values are preserved losslessly in UInt64 metrics with the original
 native type in Source. These are intermediate-code facts. Temporary slots never fill physical register,
 spill or achieved occupancy fields. Those hardware fields and unavailable hardware limits remain null.
 
@@ -796,10 +800,7 @@ releases it without hiding the original exception. Dispose the block after norma
 No forced flush, polling loop, timing retry or automatic invocation capture is added. Unsupported query
 creation does not revoke ordinary rendering or timestamp support.
 
-The later cold compiler session must retain the actual pipelines returned by the resource factory,
-read their `IGpuPipelineDiagnostics` reports and the device memory snapshot outside timing, and retain
-their identities. That session and its publication schema are separate work. These headless contracts
-provide no native correctness or performance result.
+The renderer cold session retains immutable actual construction witnesses, replays unique graphs only after production cleanup and uses the bounded diagnostic route. Registered-file verification checks report/2 identities and associations before completion. These headless contracts provide no native correctness, compiler payload, deadline or performance result.
 
 API authority is Microsoft's [D3DReflect reference](https://learn.microsoft.com/en-us/windows/win32/api/d3dcompiler/nf-d3dcompiler-d3dreflect),
 [shader description](https://learn.microsoft.com/en-us/windows/win32/api/d3d11shader/ns-d3d11shader-d3d11_shader_desc),

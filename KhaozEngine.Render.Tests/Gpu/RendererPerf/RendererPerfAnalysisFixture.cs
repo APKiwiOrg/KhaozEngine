@@ -37,6 +37,25 @@ internal static class RendererPerfAnalysisFixture
         return RendererPerfExecutionEvidenceTests.WithTrace(report);
     }
 
+    internal static RendererPerfSummary VerifiedAnalyze(RendererPerfReport report,
+        ImmutableDictionary<string, RendererPerfReferenceRates>? references = null)
+    {
+        // Failed documents remain descriptive. A successful arithmetic fixture gets real capture,
+        // admission, native-reader fake, files and directory verification, never an unchecked flag.
+        if (report.Publication.State != RendererPerfPublicationState.Completed || report.Publication.OriginalFailure is not null
+            || !report.Assessment.ValidForPromotion) return RendererPerfAnalysis.Analyze(report, references);
+        _ = RendererPerfReportJson.Serialize(report);
+        using var fixture = new RendererPerfCompilerPublicationFixture(report);
+        var published = fixture.Publish(RendererPerfPublicationWriter.Files(fixture.Directory));
+        if (!published.Failures.IsEmpty) throw new KhaozEngine.Gpu.GpuDiagnosticFailureException(published.Failures);
+        return RendererPerfAnalysis.ReadDirectory(fixture.Directory, report.Manifest.UnitId + ".json", references);
+    }
+    internal static RendererPerfComparisonResult VerifiedCompare(RendererPerfReport baseline, RendererPerfReport candidate)
+    {
+        try { return RendererPerfComparison.Compare(VerifiedAnalyze(baseline), VerifiedAnalyze(candidate)); }
+        catch (RendererPerfProtocolException) { return RendererPerfComparison.Compare(baseline, candidate); }
+    }
+
     internal static RendererPerfReport Map(RendererPerfReport report, Func<RendererPerfBlock, RendererPerfFrameSample, RendererPerfFrameSample> change)
         => report with { Blocks = [.. report.Blocks.Select(b => b with { Measured = [.. b.Measured.Select(f => change(b.Block, f))] })] };
 

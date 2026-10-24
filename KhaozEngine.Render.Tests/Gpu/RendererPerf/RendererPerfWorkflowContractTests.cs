@@ -9,6 +9,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
+[Collection("NativeDeviceLifecycle")]
 public sealed class RendererPerfWorkflowContractTests
 {
     [Fact]
@@ -152,28 +153,25 @@ public sealed class RendererPerfWorkflowContractTests
                 <TestRun><ResultSummary><Counters total="{counts[0]}" executed="{counts[1]}" passed="{counts[2]}" failed="{counts[3]}" notExecuted="{counts[4]}" /></ResultSummary>
                 <Results><UnitTestResult outcome="Passed" testName="Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit" /></Results></TestRun>
                 """);
-            Report = new JsonObject
+            var report = RendererPerfAnalysisFixture.Report();
+            report = report with
             {
-                ["schema"] = "khaozengine.renderer-perf-report/1",
-                ["raw"] = new JsonObject { ["format"] = "metric-vectors/2" },
-                ["identity"] = new JsonObject
+                Manifest = RendererPerfManifest.Parse(System.Text.Encoding.UTF8.GetBytes(Manifest.ToJsonString())),
+                Identity = report.Identity with
                 {
-                    ["unitId"] = "pilot-linux",
-                    ["manifestSha256"] = Environment["RENDERER_PERF_MANIFEST_SHA256"],
-                    ["workloadSha"] = Workload,
-                    ["authorizationSha"] = Environment["TESTED_REF"],
-                    ["workflowSha"] = Environment["GITHUB_WORKFLOW_SHA"],
-                    ["runId"] = "123",
-                    ["attempt"] = 1,
-                    ["vendorId"] = 4318,
-                    ["deviceId"] = 7864,
-                    ["softwareAdapter"] = false,
-                    ["backend"] = "vulkan"
-                },
-                ["publication"] = new JsonObject { ["state"] = "completed", ["returnedByRun"] = true, ["finalUnitPublished"] = true },
-                ["assessment"] = new JsonObject { ["validForPromotion"] = true }
+                    ManifestSha256 = Environment["RENDERER_PERF_MANIFEST_SHA256"],
+                    WorkloadSha = Workload,
+                    AuthorizationSha = Environment["TESTED_REF"],
+                    WorkflowSha = Environment["GITHUB_WORKFLOW_SHA"],
+                    RunId = "123"
+                }
             };
-            File.WriteAllText(Path.Combine(Reports, "pilot-linux.md"), "synthetic final report");
+            using (var fixture = new RendererPerfCompilerPublicationFixture(report, directory: Reports))
+            {
+                var result = fixture.Publish(RendererPerfPublicationWriter.Files(Reports));
+                Assert.Empty(result.Failures);
+            }
+            Report = JsonNode.Parse(File.ReadAllBytes(Path.Combine(Reports, "pilot-linux.json")))!.AsObject();
             SaveReport();
         }
         internal void SaveReport() => File.WriteAllText(Path.Combine(Reports, "pilot-linux.json"), Report.ToJsonString());

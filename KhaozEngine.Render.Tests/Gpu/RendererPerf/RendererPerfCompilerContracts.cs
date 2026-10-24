@@ -22,6 +22,8 @@ internal sealed record RendererPerfCompilerEvidence(RendererPerfCollectionState 
     ImmutableArray<RendererPerfCompilerResult> Results, string? InventoryPath, ImmutableArray<RendererPerfCpuSpan> Stages,
     ImmutableArray<string> Errors)
 {
+    [System.Text.Json.Serialization.JsonRequired]
+    public RendererPerfCompilerAccounting? Accounting { get; init; }
     internal static RendererPerfCompilerEvidence Pending { get; } = new(RendererPerfCollectionState.Incomplete,
         "Construction capture and cold collection are not connected.", new(0, new(0, 0), new(0, 0), new(0, 0), new(0, 0),
             new(0, 0), 0, 0, 0, 0, 0, 0), null, null, [], null, [], []);

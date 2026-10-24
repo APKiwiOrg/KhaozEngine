@@ -126,11 +126,17 @@ counter metadata, compute limits and typed memory diagnostics through actual res
 injected headless evidence requires root's independent review and later native proof. Native compiler
 artifacts, physical registers, spills, occupancy, residency and hard budget remain unavailable on
 this Metal path. Vulkan also implements both contracts.
-The timed entrypoint rejects captured diagnostic pipelines, and the driver currently constructs
-reports with an empty pipeline array. There is no separate
-cold compiler-collection session in this entrypoint. A later preparation task must supply or explicitly
-scope that diagnostic stage before claiming compiler coverage. Native committed/resident/budget fields
-and achieved occupancy remain unsupported where unavailable. Process observations cannot replace them.
+The timed entrypoint supplies compiler metadata and invocations off through immutable instance
+settings. Actual construction is captured without changing native returns. After both device lifecycles,
+the typed publication path verifies registered inventory and noncompiler files before completion.
+Report/2 retains exact typed scalar and stage evidence, bounded read requests and actual byte commits.
+The root and combined root/compiler cap remain 256 MiB, depth 32 and two 32-byte accounting slots.
+The workflow and offline directory reader call the same managed verifier. Parse alone never certifies.
+
+These are headless implementation boundaries. Native committed/resident/budget fields and achieved
+occupancy remain unsupported where unavailable. Process observations cannot replace them. Actual
+primary-backend correspondence, compiler payload admission and cold-stage cost still need the native
+gates below. No synthetic fixture closes the original consumer or armour acceptance.
 
 Root must independently review the reconciled dependency diff and source identities, then integrate and
 push accepted implementation before preparing precise pilot inputs. Each pilot needs its own approval

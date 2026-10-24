@@ -12,7 +12,9 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 internal sealed class RendererPerfPublicationFiles(string directory)
 {
     const int NumberWidth = 32;
-    readonly record struct Slot(string Name, int Start, int End);
+    RendererPerfUnitBudget? _budget;
+    internal void SetBudget(RendererPerfUnitBudget budget) => _budget = budget;
+    internal readonly record struct Slot(string Name, int Start, int End);
     Slot[] _slots = [];
     string? _finalPath;
 
@@ -25,12 +27,12 @@ internal sealed class RendererPerfPublicationFiles(string directory)
             (json, _slots) = Reserve(json);
             _finalPath = stem + ".json";
         }
-        Atomic(stem + ".json", json);
+        Atomic(stem + ".json", json, final && report.Publication.FinalUnitPublished ? _budget : null);
         string markdown = $"# Renderer performance unit {report.Manifest.UnitId}\n\n"
             + $"State {report.Publication.State}. Promotion {report.Assessment.ValidForPromotion}.\n\n"
             + $"Blocks {report.Blocks.Length}/{report.Manifest.Blocks.Length}. Controls {report.Controls.Length}/{report.Manifest.Controls.Length}.\n\n"
             + $"{report.Publication.OriginalFailure}\n" + string.Join("\n", report.Assessment.Reasons) + "\n";
-        Atomic(stem + ".md", Encoding.UTF8.GetBytes(markdown));
+        Atomic(stem + ".md", Encoding.UTF8.GetBytes(markdown), final && report.Publication.FinalUnitPublished ? _budget : null);
     }
 
     internal void RecordCompletion(RendererPerfReport report)
@@ -40,6 +42,7 @@ internal sealed class RendererPerfPublicationFiles(string directory)
         Span<byte> number = stackalloc byte[NumberWidth];
         foreach (var slot in _slots)
         {
+            _budget?.Check("renderer.publication.slot.before");
             double value = (slot.Name == "elapsedMilliseconds" ? report.Publication.ElapsedMilliseconds
                 : report.Publication.EstimatedCostUsd).Value ?? throw new InvalidOperationException("Publication accounting is unavailable.");
             if (!double.IsFinite(value)) throw new InvalidOperationException("Publication accounting is nonfinite.");
@@ -48,11 +51,12 @@ internal sealed class RendererPerfPublicationFiles(string directory)
             if (length > NumberWidth) throw new InvalidOperationException("Publication accounting exceeds its numeric slot.");
             stream.Position = slot.Start;
             stream.Write(number);
+            _budget?.Check("renderer.publication.slot.after");
         }
         stream.Flush();
     }
 
-    static (byte[], Slot[]) Reserve(byte[] bytes)
+    internal static (byte[] Bytes, Slot[] Slots) Reserve(byte[] bytes)
     {
         var reader = new Utf8JsonReader(bytes);
         var slots = new List<Slot>();
@@ -98,10 +102,22 @@ internal sealed class RendererPerfPublicationFiles(string directory)
         return (result, [.. reserved]);
     }
 
-    static void Atomic(string path, byte[] bytes)
+    internal static void Atomic(string path, byte[] bytes, RendererPerfUnitBudget? budget = null)
     {
         string temporary = path + ".tmp";
-        File.WriteAllBytes(temporary, bytes);
+        using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 65536))
+        {
+            for (int offset = 0; offset < bytes.Length;)
+            {
+                budget?.Check("renderer.publication.chunk.before");
+                int count = Math.Min(65536, bytes.Length - offset);
+                stream.Write(bytes.AsSpan(offset, count)); offset = checked(offset + count);
+                budget?.Check("renderer.publication.chunk.after");
+            }
+            stream.Flush();
+        }
+        budget?.Check("renderer.publication.rename.before");
         File.Move(temporary, path, overwrite: true);
+        budget?.Check("renderer.publication.rename.after");
     }
 }

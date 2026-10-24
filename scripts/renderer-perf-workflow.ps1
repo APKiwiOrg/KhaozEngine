@@ -97,7 +97,8 @@ try {
     $root = $document.RootElement
     $identity = $root.GetProperty('identity')
     $publication = $root.GetProperty('publication')
-    Require ($root.GetProperty('schema').GetString() -ceq 'khaozengine.renderer-perf-report/1' -and $root.GetProperty('raw').GetProperty('format').GetString() -ceq 'metric-vectors/2') 'Unexpected renderer report format'
+    Require ($root.GetProperty('schema').GetString() -cne 'khaozengine.renderer-perf-report/1') 'Unsupported renderer report/1, expected report/2'
+    Require ($root.GetProperty('schema').GetString() -ceq 'khaozengine.renderer-perf-report/2' -and $root.GetProperty('raw').GetProperty('format').GetString() -ceq 'metric-vectors/2') 'Unexpected renderer report format'
     Require ($publication.GetProperty('state').GetString() -ceq 'completed' -and $publication.GetProperty('returnedByRun').GetBoolean() -and $publication.GetProperty('finalUnitPublished').GetBoolean() -and $root.GetProperty('assessment').GetProperty('validForPromotion').GetBoolean()) 'Final report is unfinalized or invalid for promotion'
     foreach ($pair in @(@('unitId', $env:RENDERER_PERF_UNIT), @('manifestSha256', $env:RENDERER_PERF_MANIFEST_SHA256), @('workloadSha', $env:RENDERER_PERF_WORKLOAD_SHA), @('authorizationSha', $authorization.authorizationSha), @('workflowSha', $env:GITHUB_WORKFLOW_SHA), @('runId', $env:GITHUB_RUN_ID), @('backend', $backend))) {
         Require ($identity.GetProperty($pair[0]).GetString() -ceq $pair[1]) "Final report $($pair[0]) differs from execution"
@@ -107,4 +108,8 @@ try {
     if ($null -ne $document) { $document.Dispose() }
     $stream.Dispose()
 }
+$verifier = Join-Path (Split-Path -Parent $PSScriptRoot) 'tools/Renderer.Perf.Verify/bin/Release/net10.0/Renderer.Perf.Verify.dll'
+Require (Test-Path -LiteralPath $verifier -PathType Leaf) 'Trusted managed renderer verifier was not built'
+& dotnet $verifier $directory ($env:RENDERER_PERF_UNIT + '.json')
+Require ($LASTEXITCODE -eq 0) 'Managed renderer directory verification refused the received evidence'
 'Renderer evidence accepted'

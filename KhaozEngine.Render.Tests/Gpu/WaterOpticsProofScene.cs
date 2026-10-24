@@ -291,6 +291,8 @@ public sealed class WaterOpticsProofScene : IDisposable
             // Wet water-surface points over the authored ramp, at 0.5 m and 0.25 m rest depth.
             ["ramp-deep"] = new(1f, 0f, 0.5f),
             ["ramp-mid"] = new(1.5f, 0f, 0.5f),
+            // A water-surface point inside the 0.20 m shore feather, at 0.1 m rest depth.
+            ["shore-surface"] = new(1.8f, 0f, 0.5f),
             // The ledge's front and left top edges, and a ray past its front onto the face below.
             ["ledge-edge"] = new(BodyX, -settings.ObjectDepth, 0.9f),
             ["ledge-side"] = new(BodyX - 0.9f, -settings.ObjectDepth, 0f),

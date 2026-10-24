@@ -15,7 +15,7 @@ public sealed class WaterOpticsGoldenTests(WaterOpticsProofScene fixture) : ICla
     /// <summary>The approved ledge top, below the water surface.</summary>
     const float LedgeDepth = 0.3f;
 
-    WaterOpticsHandle _deep, _shallow, _bank, _bank30, _bank100, _left, _right, _tiltedBank, _tiltedBankDeeper, _upperCave;
+    WaterOpticsHandle _deep, _shallow, _bank, _bank30, _bank100, _left, _right, _tiltedBank, _tiltedBankDeeper, _slice, _sliceFlipped, _sliceRowError, _upperCave;
 
     void Prepare()
     {
@@ -27,6 +27,9 @@ public sealed class WaterOpticsGoldenTests(WaterOpticsProofScene fixture) : ICla
         (_left, _right) = Halves(fixture);
         _tiltedBank = fixture.Field("tilted-bank", () => TiltedBank(0f));
         _tiltedBankDeeper = fixture.Field("tilted-bank-deeper", () => TiltedBank(0.1f));
+        _slice = fixture.Field("tilted-slice-0.5", () => TiltedSlice(0.5f));
+        _sliceFlipped = fixture.Field("tilted-slice-minus-0.5", () => TiltedSlice(-0.5f));
+        _sliceRowError = fixture.Field("tilted-slice-0", () => TiltedSlice(0f));
         // The upper body's own bed: the enclosed space's roof at y = 1.2 over [-3.9, -0.9], else the floor at -2.
         _upperCave = fixture.Field("upper-cave", () =>
         {
@@ -265,14 +268,16 @@ public sealed class WaterOpticsGoldenTests(WaterOpticsProofScene fixture) : ICla
         Assert.True(wrong.Values.Max() > Allowance, $"The wrong right-hand patch must be visible ({wrong.Values.Max():F6}).");
     }
 
-    // Sampling wpAbsXz, reducing the relative binding twice, or rebasing only one axis slides this bank against its
-    // field. The field varies along X and Z, so a wrong U or V mapping both move the shore probe.
+    // Sampling wpAbsXz, reducing the relative binding twice, or rebasing only one axis slides this tilted bank
+    // against its origin control. A flipped V or a wrong Z source is consistent across frames, so the rebased
+    // tilted field is also matched at shore-surface (z = 0.5) with an independent slice that is uniform along Z.
     // Ripple detail is world-anchored, so it is disabled to compare the rebased frame with an origin control.
     [GpuFact]
     public void RenderOriginShiftKeepsOpticalSampling()
     {
         Prepare();
-        string[] probes = ["ramp-deep", "ramp-mid", "shore", "open", "beyond-bank"];
+        string[] probes = ["ramp-deep", "ramp-mid", "shore", "shore-surface", "open", "beyond-bank"];
+        string[] slice = ["shore-surface"];
         var control = new WaterOpticsCase(ControlledLighting: true);
         var shifted = control with { Offset = new Vector3(4096f, 0f, -8192f) };
         WaterOpticsImage origin = fixture.Capture(WaterOpticsScenario.SlopingBank, control, p => Wide(p, _tiltedBank));
@@ -282,18 +287,32 @@ public sealed class WaterOpticsGoldenTests(WaterOpticsProofScene fixture) : ICla
         WaterOpticsImage wrongZ = fixture.Capture(WaterOpticsScenario.SlopingBank, shifted,
             p => Wide(p, _tiltedBank, shiftZ: 0.5f));
         WaterOpticsImage changedDepth = fixture.Capture(WaterOpticsScenario.SlopingBank, shifted, p => Wide(p, _tiltedBankDeeper));
+        WaterOpticsImage sliceReference = fixture.Capture(WaterOpticsScenario.SlopingBank, shifted, p => Wide(p, _slice));
+        WaterOpticsImage flippedRow = fixture.Capture(WaterOpticsScenario.SlopingBank, shifted, p => Wide(p, _sliceFlipped));
+        WaterOpticsImage wrongRow = fixture.Capture(WaterOpticsScenario.SlopingBank, shifted, p => Wide(p, _sliceRowError));
         Save("rebase-origin-control", origin);
         Save("rebase-shifted", rebased);
         Save("rebase-wrong-mapping-x", wrongX);
         Save("rebase-wrong-mapping-z", wrongZ);
         Save("rebase-changed-depth", changedDepth);
+        Save("rebase-slice-reference", sliceReference);
+        Save("rebase-slice-flipped-row", flippedRow);
         Dictionary<string, float> distances = Measure(rebased, origin, probes);
         Dictionary<string, float> mappingX = Measure(wrongX, origin, probes);
         Dictionary<string, float> mappingZ = Measure(wrongZ, origin, probes);
         Dictionary<string, float> depth = Measure(changedDepth, origin, probes);
+        Dictionary<string, float> sliceMatch = Measure(rebased, sliceReference, slice);
+        Dictionary<string, float> flipped = Measure(flippedRow, sliceReference, slice);
+        Dictionary<string, float> rowError = Measure(wrongRow, sliceReference, slice);
         WriteMetrics("rebase-sampling", new { Distances = distances, WrongMappingHalfMetreX = mappingX,
-            WrongMappingHalfMetreZ = mappingZ, DepthPlusTenCentimetres = depth, Maximum = Allowance });
+            WrongMappingHalfMetreZ = mappingZ, DepthPlusTenCentimetres = depth, SliceReference = sliceMatch,
+            FlippedRowZMinusHalf = flipped, RowErrorZZero = rowError, Maximum = Allowance });
         AssertWithin(distances, "Rebased bank");
+        AssertWithin(sliceMatch, "Rebased bank against its z = 0.5 slice");
+        Assert.True(flipped["shore-surface"] > Allowance,
+            $"The flipped z = -0.5 row must be visible ({flipped["shore-surface"]:F6}).");
+        Assert.True(rowError["shore-surface"] > Allowance,
+            $"The z = 0 row must be visible ({rowError["shore-surface"]:F6}).");
         Assert.True(mappingX.Values.Max() > Allowance, $"A 0.5 m X mapping error must be visible ({mappingX.Values.Max():F6}).");
         Assert.True(mappingZ.Values.Max() > Allowance, $"A 0.5 m Z mapping error must be visible ({mappingZ.Values.Max():F6}).");
         Assert.True(depth.Values.Max() > Allowance, $"A 0.1 m depth change must be visible ({depth.Values.Max():F6}).");
@@ -441,6 +460,15 @@ public sealed class WaterOpticsGoldenTests(WaterOpticsProofScene fixture) : ICla
             for (int x = 0; x < columns; x++) depths[z * columns + x] += extra - 0.1f * worldZ;
         }
         return new WaterOpticsField(columns, rows, depths);
+    }
+
+    /// <summary>The tilted bank's depths at <paramref name="worldZ"/>, held uniform along Z over the same rectangle.
+    /// Its value at z = 0.5 is the independent expectation for a correct V mapping.</summary>
+    static WaterOpticsField TiltedSlice(float worldZ)
+    {
+        float[] depths = WaterOpticsProofScene.BankDepths(2f, 41, -5f, 5f);
+        for (int i = 0; i < depths.Length; i++) depths[i] -= 0.1f * worldZ;
+        return new WaterOpticsField(41, 2, depths);
     }
 
     static Dictionary<string, float> Measure(WaterOpticsImage wet, WaterOpticsImage reference, string[] probes)

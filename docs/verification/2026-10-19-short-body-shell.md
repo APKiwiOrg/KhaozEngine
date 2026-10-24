@@ -1196,3 +1196,123 @@ choose a dyadic overlapping upper endpoint for overlap events. Root-backed penet
 an atomic refusal. Root-defined touching events use Task 2c.1 touching normals. The attempted
 rational-only guard was reverted with the rest of the incomplete implementation, so the
 rootless irrational-fraction control remains part of the unintegrated continuation work.
+
+
+## Task 2c.2 continuation under SS-R12
+
+Status NEEDS_CONTEXT. No Task 2c.2 implementation completion is claimed. Production and tests
+are restored to the 00c1bce80 foundation. This section records the bounded attempt and its
+limitations, not a new certificate or changed budget. Tasks 2b.2 and 2b.3 remain blocked.
+
+The starting guard returned the required worktree, feature/short-body-shell, d4cb0001b and a
+clean tracked tree. The SS-R11 archive SHA-256 matched c40f3a13f565c4c5de9fe79511428bd16d10fc8ed27e048d1eab7f191608809a.
+It passed git apply --check and was applied before the diagnostic. No cap, tolerance, four-slot
+simplex, storage capacity, capsule source, baseline or r0/r1 producer changed.
+
+### First stage diagnostic
+
+One diagnostic run preceded algorithm changes. Temporary nested scopes attributed each
+successful cell and feature charge once. Support work nested inside EPA appears under support,
+not again under EPA. Plane verification includes the retained face and vertex proposals.
+
+| Stage, cells / features | Cylinder edge, Margin 0 | Rim edge, Margin 0 | Rim edge, Margin 0.001 |
+| --- | ---: | ---: | ---: |
+| Initial classification | 84 / 121 | 162 / 276 | 140 / 222 |
+| EPA expansion | 9 / 233 | 8 / 190 | 11 / 329 |
+| Support evaluation | 12 / 96 | 11 / 91 | 14 / 119 |
+| Plane verification | 77 / 644 | 75 / 624 | 79 / 664 |
+| Witness construction | 74 / 96 | 0 / 0 | 12 / 26 |
+| Encoding | 0 / 0 | 0 / 0 | 0 / 0 |
+| Total | 256 / 1190 | 256 / 1181 | 256 / 1360 |
+
+The diagnostic exited 1 with all three rows refusing. The witness stage here is the archived
+translated static certificate. The zero-margin rim never reaches it. Counts are observations,
+not CPU, SIMD or scheduling dependent test pins. Log names and exact selections follow below.
+
+### Corrected attempt and independent stop evidence
+
+The attempt kept one plane verifier. It constructed the exact shell support point at a rational
+direction and selected an original target support vertex, checking the complete support cones.
+It retained the original source, complete request, evaluated feet and certificate lifetime.
+The new witness path called no translated static distance certificate. Circle and Margin sphere
+proposals used exact rational parametrizations of their true surfaces. Original target topology
+identified exposed-feature provenance, without an edge or circular-edge stationary producer.
+The cylinder assertion allowed the closed Shoulder boundary. Rational fractions and original
+exact translated feet remained explicit. Root-defined penetration fractions still refused.
+
+The corrected focused run exited 1 with 3 passed, 19 failed, 0 skipped, total 22. The Release
+build emitted no compiler warnings or errors. All eight required generic edge rows refused at a
+cell or feature ceiling. However, those totals require the self-review qualification below.
+
+| Stage, cells / features | Cylinder edge, Margin 0 | Rim edge, Margin 0 | Rim edge, Margin 0.001 |
+| --- | ---: | ---: | ---: |
+| Initial classification | 84 / 121 | 162 / 276 | 140 / 222 |
+| EPA expansion | 34 / 2588 | 8 / 189 | 15 / 570 |
+| Support evaluation | 37 / 333 | 11 / 99 | 18 / 180 |
+| Plane verification | 101 / 971 | 75 / 685 | 83 / 773 |
+| Witness construction | 0 / 0 | 0 / 0 | 0 / 0 |
+| Encoding | 0 / 0 | 0 / 0 | 0 / 0 |
+| Total | 256 / 4013 | 256 / 1249 | 256 / 1745 |
+
+The zero-margin cone uses 190 / 318 for classification and 66 / 586 for plane proposals.
+The zero-margin shoulder uses 192 / 293 and 64 / 564 respectively. Both reach 256 cells before
+EPA seeding, witness construction or encoding. These failures are independent of the new
+witness binding defect. Surface proposals cannot affect a run that has not reached them.
+
+The zero-margin rim's last complete lower/upper is [0.0018728585267235082,
+0.007082350860313556] m, a 0.005209492333590048 m gap, at 254 cells / 1202 features with hull
+10 / 16. It refuses at 256 / 1249 without reaching witness construction. Thus even a corrected
+binding comparison cannot complete this recorded bracket inside the remaining work.
+
+The rounded rim reaches [0.0065234433551562936, 0.00652667930536875] m at 256 / 1745,
+hull 18 / 32. The cylinder reaches [0.04153649899673638, 0.04153649928761278] m at
+254 / 3863, hull 36 / 68. These narrow brackets are not completed certificates.
+
+### Self-review limitations and preservation
+
+The attempt introduced a binding defect. ConvexExactPoint's generated structural equality
+compares ConvexQuadratic and ConvexRational storage. A default rational zero and a constructed
+rational zero can represent the same number with different stored denominators. Comparing
+OriginalFeet == pair.Feet can therefore falsely reject identical exact feet. It must instead
+use exact coordinate differences and their signs. Simple face fixtures stopped at 159 / 2512
+without exhaustion, consistent with a pre-admission binding refusal. The new foreign-member,
+another-pose/shape and exact-fraction witness controls therefore did not reach their intended
+acceptance/rejection assertions. No green binding or witness-path claim is made.
+
+Most later exhaustion totals include futile refinements after this false refusal. They cannot
+be used as proof of intrinsic witness cost. The two pre-EPA zero-margin failures and the wide
+zero-margin rim bracket above are independent evidence for SS-R12's mandatory stop. No further
+algorithm variant, cap increase, producer, second path or test run was attempted after that stop.
+The owner and orchestrator must review initial classification and proposal work placement before
+another continuation. The structural equality defect must also be corrected before reuse.
+
+All temporary instrumentation was removed. The uninstrumented attempt is archived at
+.superpowers/sdd/2026-10-19-short-body-shell/task-2c.2-r12-attempt.diff,
+57,752 bytes, SHA-256 2d8c64abfc2ebc09eb4ca447d5262c245e06d2f1f4541bff8bf91ac8253a0c80.
+The archive passes reverse application against the attempt and forward application against the
+restored foundation. An exact status-set assertion verified ownership of the nine tracked and
+three new paths before restoration. Production, tests, capsule families, Movement, Locomotion,
+raw identity, roof and footprint protections and all seven degree-1 baseline sources are unchanged.
+
+### Commands and regression disposition
+
+All commands ran synchronously through build-slot, one at a time. No full suite, load test,
+timing proof, consumer run, world bake, merge, push, tag, branch change or subagent dispatch ran.
+
+```bash
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~SS12StageDiagnostic' --logger 'console;verbosity=detailed'
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~ConvexPlanarPenetrationTests&FullyQualifiedName!~SS12StageDiagnostic'
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexPlanarPenetrationTests' --logger 'console;verbosity=detailed'
+```
+
+| Log under /tmp/khaozengine-short-shell | Exit | Result |
+| --- | ---: | --- |
+| task-2c.2-r12-diagnostic.log | 1 | 0 passed, 3 failed, 0 skipped |
+| task-2c.2-r12-red.log | 1 | 10 passed, 11 failed, 0 skipped |
+| task-2c.2-r12-corrected.log | 1 | 3 passed, 19 failed, 0 skipped |
+
+There is no green focused completion. The three passing corrected tests are separated/touching
+and expired-loan contacts, rational-fraction/root-loan refusal and the independent reused-pose
+oracle control. The Common Game, footprint and seven degree-1 navigation selections were not
+run because SS-R12 requires stopping on these unchanged-cap failures. The foundation's previous
+457, 741 and 7 passes remain historical evidence only. Full solution verification stays Task 12.

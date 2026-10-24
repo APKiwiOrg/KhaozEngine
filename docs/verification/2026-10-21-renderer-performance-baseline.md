@@ -1,8 +1,9 @@
 # Renderer baseline implementation verification
 
-This record covers current-main reconciliation and headless implementation correctness only.
-It records no native baseline, hardware duration, artifact size, clock stability, floor, spend,
-promotion, release or consumer acceptance. The [living evidence contract](../RENDERER-PERFORMANCE.md)
+This record covers current-main reconciliation, headless implementation correctness and the first
+authorized pilot's early failure. It records no valid native baseline, hardware performance, clock
+stability, floor, promotion, release or consumer acceptance. The failed attempt's evidence size and
+observed runner charge are recorded below. The [living evidence contract](../RENDERER-PERFORMANCE.md)
 and [hosted admission contract](../CROSS-PLATFORM.md#paid-hosted-renderer-performance-mode) own those rules.
 
 ## Source and dependency boundary
@@ -170,6 +171,55 @@ suppressed and neither raw run is called green. The separate renderer workflow c
 
 Task15a's 39,108 passes are historical and are not current reconciliation evidence.
 
+## First authorized Linux pilot, attempt 1
+
+The integrated workload and trusted workflow are `d092cc35e487ac5d684d09a44920ca3cd2a201f0`.
+Authorization `a58e0d4153030f02c4af68cbfc9ea7aece5e1939` has that workload as its sole parent and adds
+only `tools/Renderer.Perf.Tests/authorized/pilot-linux.json`. Its exact manifest SHA-256 is
+`0c1bd0a14eaa3c58959f10c8073e5f7bb998cf3434e8776c666661393541aada`.
+
+The owner approved one Linux Vulkan T4 attempt with the fixed 1,260-frame, nine-operation pilot,
+600-second unit limit, 12-minute job limit and USD 0.624 GPU runner component cap. The attempt was
+consumed by [run 40133376096](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40133376096),
+created on 2026-10-24 UTC. It was not retried. CPU and GPU authorization passed, and both Release
+builds completed with zero warnings and errors. The one fixed measurement fact executed and failed,
+with zero skipped facts and zero measured frames.
+
+`RendererPerfEntrypoint.Run` read the manifest relative to the process working directory. VSTest
+started its host in `tools/Renderer.Perf.Tests/bin/Release/net10.0`, causing the lookup to repeat
+`tools/Renderer.Perf.Tests/authorized/pilot-linux.json` below that directory. The resulting
+`DirectoryNotFoundException` occurred at line 27, before runtime admission, coldStart, source-work
+validation or the entrypoint's device creation. The authorized manifest exists at the checkout root,
+and the retained artifact matches its dispatched hash. [Issue #1567](https://github.com/APKiwiOrg/KhaozEngine/issues/1567)
+tracks validated checkout-root resolution and an actual-entrypoint regression from a nested directory.
+Copying another manifest into the output directory or changing the process-wide working directory is
+not the intended correction.
+
+Artifact `renderer-perf-linux-vulkan`, ID `12575394993`, is 9,562 compressed bytes. GitHub reports
+archive SHA-256 `e008d07d5c787966ef05f276f998d3bc0cdb336719e6064e8abfbe69d092217f`.
+Its six files are the exact manifest, authorization, both build logs and measurement log/TRX.
+There is no runtime-admission file or final measurement report. The testhost banner confirms
+.NET 10.0.13 but establishes no complete runtime environment or native correspondence.
+The measurement TRX SHA-256 is `26762567e3dae766ae4d5979a69463c81fa2d6326e49bf683b296c0511d12fe7`.
+
+The paid job ran from 21:16:51 to 21:20:23 UTC, 212 seconds. The GitHub billing usage API reported
+four `actions_linux_4_core_gpu` minutes at USD 0.052 per minute, USD 0.208 net runner charges.
+The repository's same-day GPU SKU was absent before the attempt, and the workflow history contains
+only this GPU run on that date. This is observed provider usage, separate from a duration-based
+estimate. Storage, tax and currency conversion are outside the runner component. The attempt produced
+no performance, compiler, payload, deadline or baseline acceptance. Another attempt requires a corrected
+workload, independently reviewed preparation and fresh owner approval.
+
+The automatic main CI run [40101482323](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40101482323)
+passed 39,612 tests with zero failures and 1,530 skips across 41 normal assembly summaries. Its two
+six-case Foundation determinism checks are separate. This hosted result does not rewrite the earlier
+local failed run. The Metal push job in [40101482316](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40101482316)
+failed 52 process cases from a missing verifier build prerequisite, tracked by
+[#1565](https://github.com/APKiwiOrg/KhaozEngine/issues/1565), and one managed staging allocation
+case, tracked by [#1566](https://github.com/APKiwiOrg/KhaozEngine/issues/1566). The latter has a
+Metal-specific lease owner absent from Vulkan. Both defects remain open and are separate from this
+pilot's entrypoint failure. No native gate is waived.
+
 ## Outstanding native and preparation gates
 
 Accepted Tasks10/11 and the cold amendment implement optional D3D11, Vulkan and Metal diagnostics.
@@ -188,10 +238,10 @@ occupancy remain unsupported where unavailable. Process observations cannot repl
 primary-backend correspondence, compiler payload admission and cold-stage cost still need the native
 gates below. No synthetic fixture closes the original consumer or armour acceptance.
 
-Root must independently review the reconciled dependency diff and source identities, then integrate and
-push accepted implementation before preparing precise pilot inputs. Each pilot needs its own approval
-and sole-manifest authorization commit with exact workload/workflow/manifest/shader hashes and runtime
-identity. This record supplies no executable manifest or workflow dispatch authorization.
+The reconciled source was independently reviewed, integrated and pushed before the first pilot.
+Corrections still require review and verification before preparing another exact workload. Each pilot
+needs its own approval and sole-manifest authorization commit with exact
+workload/workflow/manifest/shader hashes and runtime identity. This record grants no further dispatch.
 
 Later native evidence must verify selected T4 vendor/device/driver, all five scenes and required rows,
 actual counts, valid outer timestamps and End tails, completion pacing, clock telemetry, perturbation,
@@ -201,7 +251,7 @@ recovery on the native sink. Actual billed minutes and full-unit budgets come fr
 synthetic fixtures. Full units need fresh approval after independent pilot review.
 
 The existing [partial-write accounting gap #1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547)
-remains open. #1546 closes only after main integration. #1530 remains separate D1 portable-math work.
+remains open. #1546 closed after main integration. #1530 remains separate D1 portable-math work.
 Sidecar preparation is accounted, but a failed measurement's partial write can occur after
 its accounting snapshot. Headless success does not close or waive this limit. No optimization, consumer
 adoption, private content, Windows Vulkan expansion, release or other active lane is part of this proof.

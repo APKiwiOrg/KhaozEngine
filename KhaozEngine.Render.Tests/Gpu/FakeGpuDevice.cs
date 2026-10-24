@@ -328,7 +328,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <see cref="FakeResourceSet.Disposed"/> does for a set.</summary>
         internal bool Disposed { get; private set; }
 
-        public void Dispose() => Disposed = true;
+        internal Action? OnDispose { get; set; }
+        public void Dispose() { OnDispose?.Invoke(); Disposed = true; }
     }
 
     internal sealed class FakeSampler : IGpuSampler { public void Dispose() { } }

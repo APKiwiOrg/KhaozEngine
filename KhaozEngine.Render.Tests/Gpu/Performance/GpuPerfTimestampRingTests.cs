@@ -71,7 +71,9 @@ public sealed partial class GpuPerfTimestampRingTests
             Assert.True(rig.Ring.TryBegin(rig.Commands, submission, 0, 3, out _));
             rig.Finish(3); submission.Submit(rig.Commands);
             other.WaitForIdle();
-            Assert.Throws<ArgumentException>(rig.Ring.PollCompleted);
+            var foreign = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(rig.Ring.PollCompleted).Failures);
+            Assert.Equal("renderer.batch.complete", foreign.Stage);
+            Assert.IsType<ArgumentException>(foreign.Error);
             Assert.True(rig.Ring.HasPending(other.Fences[0]));
         }
         else

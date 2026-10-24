@@ -46,7 +46,9 @@ public sealed partial class GpuPerfTimestampRingTests
         if (publication) rig.OnPublish = (index, _) => { if (index == 0) throw expected; };
         else rig.Device.Pools[0].ResolveFailure = expected;
         rig.Device.WaitForIdle();
-        Assert.Same(expected, Record.Exception(rig.Ring.PollCompleted));
+        var resolved = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(rig.Ring.PollCompleted).Failures);
+        Assert.Equal("renderer.batch.complete", resolved.Stage);
+        Assert.Same(expected, resolved.Error);
         Assert.Null(rig.Results[0]);
         Assert.NotNull(rig.Results[1]); Assert.NotNull(rig.Results[2]);
         Assert.True(rig.Ring.HasPending(rig.Device.Fences[0]));
@@ -79,7 +81,9 @@ public sealed partial class GpuPerfTimestampRingTests
         rig.Submission.Abandon();
         rig.Ring.PollCompleted();
         Assert.Equal(0, rig.Device.Pools[0].Resolves);
-        Assert.Throws<InvalidOperationException>(rig.Ring.Dispose);
+        var retained = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(rig.Ring.Dispose).Failures);
+        Assert.Equal("renderer.session.dispose.timestamps.retained", retained.Stage);
+        Assert.IsType<InvalidOperationException>(retained.Error);
         Assert.Equal(0, rig.Device.Pools[0].Disposals);
         Assert.Equal(1, rig.Device.Pools[1].Disposals);
         Assert.Equal(1, rig.Device.Pools[2].Disposals);

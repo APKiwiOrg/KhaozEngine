@@ -217,15 +217,14 @@ public sealed partial class Scene3D
         if (patches > 0) _model.BindPass(cl);
     }
 
-    void DisposeFoliage()
+    void DisposeFoliage(ResourceDisposal disposal)
     {
         _foliageDisposed = true;
-        _foliageShadowRenderer?.Dispose();
-        _foliageShadowRenderer = null;
+        if (disposal.Release("foliage.shadow", () => _foliageShadowRenderer?.Dispose())) _foliageShadowRenderer = null;
         foreach (FoliageBatch batch in _foliageBatches)
         {
             batch.IsDisposed = true;
-            batch.Buffer?.Dispose();
+            disposal.Release("foliage.buffer", () => batch.Buffer?.Dispose());
             batch.Buffer = null;
             batch.Pending = null;
         }

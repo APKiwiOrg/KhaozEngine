@@ -1,35 +1,27 @@
 using System;
-using System.Collections.Immutable;
-using KhaozEngine.Gpu;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D
 {
     public sealed partial class Scene3D
     {
+        bool _disposalComplete;
+        bool _pointShadowOwnersReleased;
         internal bool DisposalSafeForDependants { get; private set; }
         public void Dispose()
         {
             // Drain in-flight GPU work before destroying anything because uploads or draws may still be queued on
             // the device's async submission thread (Mesa lavapipe can segfault on destroyed resources).
             DisposeShadowReconfiguration();
-            var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
-            int ordinal = 0;
-            void Release(string kind, Action dispose)
-            {
-                try { dispose(); }
-                catch (Exception error)
-                {
-                    if (error is GpuDiagnosticFailureException transport) failures.AddRange(transport.Failures);
-                    else failures.Add(new("renderer.session.dispose.scene." + kind + "." + ordinal, error));
-                }
-                ordinal++;
-            }
-            Release("drain", _gd.WaitForIdle);
-            if (failures.Count != 0) throw new GpuDiagnosticFailureException(failures.ToImmutable());
-            Release("retirement", _retired.Dispose);
-            if (failures.Count != 0) throw new GpuDiagnosticFailureException(failures.ToImmutable());
+            if (_disposalComplete) return;
+            DisposalSafeForDependants = false;
+            var disposal = new ResourceDisposal();
+            if (!disposal.Release("drain", _gd.WaitForIdle)) disposal.ThrowIfFailed();
+            if (!disposal.Release("retirement", _retired.Dispose)) disposal.ThrowIfFailed();
             DisposalSafeForDependants = true;
-            Release("DisposeFoliage", DisposeFoliage);
+            _disposalComplete = true;
+            bool Release(string kind, Action? release) => disposal.Release(kind, release);
+            DisposeFoliage(disposal);
             Release("post", _post.Dispose);
             Release("lines", _lines.Dispose);
             Release("depthLines", _depthLines.Dispose);
@@ -72,13 +64,13 @@ namespace KhaozEngine.Render3D
             _texBillboardSets.Clear();
             foreach (var texture in _textures) Release("texture", () => texture?.Dispose());
             _textures.Clear();
-            Release("DisposeSplatMaterials", DisposeSplatMaterials);
-            Release("DisposeModelWithInteriorCutBorrowers", DisposeModelWithInteriorCutBorrowers);
-            Release("DisposeMotionVectorsView", DisposeMotionVectorsView);
-            Release("DisposeTileGroundAndPointShadowResources", DisposeTileGroundAndPointShadowResources);
-            Release("DisposeTemporalResolve", DisposeTemporalResolve);
+            DisposeSplatMaterials(disposal);
+            DisposeModelWithInteriorCutBorrowers(disposal);
+            DisposeMotionVectorsView(disposal);
+            DisposeTileGroundAndPointShadowResources(disposal);
+            DisposeTemporalResolve(disposal);
             Release("atmosphere", _atmosphere.Dispose);
-            if (failures.Count != 0) throw new GpuDiagnosticFailureException(failures.ToImmutable());
+            disposal.ThrowIfFailed();
         }
     }
 }

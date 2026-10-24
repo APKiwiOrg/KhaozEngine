@@ -144,7 +144,8 @@ public sealed partial class GpuPerfTimestampRingTests
         using var rig = new Rig();
         rig.Begin(0); rig.Finish(2u);
         rig.Device.FailSubmit = true;
-        Assert.Throws<InvalidOperationException>(() => rig.Submission.Submit(rig.Commands));
+        var submitted = Assert.Throws<InvalidOperationException>(() => rig.Submission.Submit(rig.Commands));
+        Assert.Equal("submit failure", submitted.Message);
         rig.Device.Fences[0].Signaled = true;
         rig.Ring.PollCompleted();
         rig.Submission.Begin(); rig.Commands.Begin();
@@ -168,7 +169,9 @@ public sealed partial class GpuPerfTimestampRingTests
         var participant = new GpuFrameSubmissionTests.Participant { ThrowAbandoned = true };
         Assert.True(rig.Submission.TryRegister(participant));
         if (ended) rig.Finish(2u);
-        Assert.Throws<InvalidOperationException>(rig.Submission.Abandon);
+        var abandoned = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(rig.Submission.Abandon).Failures);
+        Assert.Equal("renderer.frame.submission.participant.1", abandoned.Stage);
+        Assert.Equal("abandoned callback", abandoned.Error.Message);
         rig.Ring.PollCompleted();
         Assert.True(rig.Ring.HasPending(rig.Device.Fences[0]));
         Assert.Equal(0, rig.Device.Pools[0].Resolves);
@@ -186,7 +189,9 @@ public sealed partial class GpuPerfTimestampRingTests
         Assert.True(rig.Submission.TryRegister(new GpuFrameSubmissionTests.Participant { ThrowSubmitted = true }));
         Assert.True(rig.Ring.TryBegin(rig.Commands, rig.Submission, 0, 2u, out _));
         rig.Finish(2u);
-        Assert.Throws<InvalidOperationException>(() => rig.Submission.Submit(rig.Commands));
+        var submitted = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(() => rig.Submission.Submit(rig.Commands)).Failures);
+        Assert.Equal("renderer.frame.submission.participant.0", submitted.Stage);
+        Assert.Equal("submitted callback", submitted.Error.Message);
         rig.Device.WaitForIdle(); rig.Ring.PollCompleted();
         Assert.True(Assert.IsType<GpuPerfTimestampResult>(rig.Results[0]).Valid);
         Assert.Same(rig.Device.SubmittedFences[0], rig.Device.Pools[0].ResolvedFence);
@@ -201,7 +206,9 @@ public sealed partial class GpuPerfTimestampRingTests
         Assert.True(rig.Submission.TryRetain(consumer, out var fence));
         rig.Finish(2u); rig.Submission.Submit(rig.Commands);
         ((SubmissionTestFence)fence!).Signaled = true;
-        Assert.Throws<InvalidOperationException>(rig.Submission.Begin);
+        var query = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(rig.Submission.Begin).Failures);
+        Assert.Equal("renderer.frame.submission.pending.0.1", query.Stage);
+        Assert.Same(consumer.Error, query.Error);
         Assert.True(rig.Ring.HasPending(fence));
         Assert.Equal(0, ((SubmissionTestFence)fence).ResetCalls);
         consumer.Fail = false;
@@ -227,8 +234,9 @@ public sealed partial class GpuPerfTimestampRingTests
     sealed class ThrowingConsumer : IGpuFrameCompletionConsumer
     {
         internal bool Fail = true;
+        internal readonly Exception Error = new InvalidOperationException("consumer callback");
         public bool HasPending(IGpuFence completion)
-            => Fail ? throw new InvalidOperationException("consumer callback") : false;
+            => Fail ? throw Error : false;
         public void DiscardUnsubmitted(IGpuFence completion) { }
         public void ReleaseCompleted(IGpuFence completion) { }
     }

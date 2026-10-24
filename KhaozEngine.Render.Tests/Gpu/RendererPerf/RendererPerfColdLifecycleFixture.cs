@@ -25,6 +25,7 @@ internal sealed class RendererPerfColdLifecycleFixture : IDisposable
     internal Action<string>? Boundary;
     internal Func<IGpuDevice, RendererPerfBlock, IRenderPassObserver, IRendererPerfNativeWork>? WorkFactory;
     internal Func<IGpuDevice, RendererPerfRunIdentity>? Identify;
+    internal Action<RendererPerfNativeSession>? SessionCreated;
     internal RendererPerfColdLifecycleFixture()
     {
         Diagnostic.Configuration = RendererPerfConstructionFixture.Diagnostic;
@@ -51,9 +52,11 @@ internal sealed class RendererPerfColdLifecycleFixture : IDisposable
             {
                 int ordinal = CreatedSessions++;
                 var info = new RendererPerfSessionInfo(Template.Identity, true, true, null, ImmutableDictionary<string, RendererPerfMetric>.Empty);
-                return new RendererPerfNativeSession(device, info, block, [], unitClock,
+                var session = new RendererPerfNativeSession(device, info, block, [], unitClock,
                     (wrapped, observer) => WorkFactory?.Invoke(wrapped, block, observer) ?? new Work(this, wrapped, block),
                     capture: capture, operationOrdinal: ordinal);
+                SessionCreated?.Invoke(session);
+                return session;
             }, Publication);
     }
     public void Dispose() { _provider.Dispose(); Cancellation.Dispose(); }

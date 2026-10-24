@@ -13,7 +13,9 @@ public sealed partial class GpuPerfTimestampRingTests
         using var rig = new Rig();
         rig.Record(0);
 
-        Assert.Throws<InvalidOperationException>(rig.Ring.Dispose);
+        var retained = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(rig.Ring.Dispose).Failures);
+        Assert.Equal("renderer.session.dispose.timestamps.retained", retained.Stage);
+        Assert.IsType<InvalidOperationException>(retained.Error);
 
         Assert.Equal(new[] { 0, 1, 1 }, rig.Device.Pools.Select(pool => pool.Disposals));
         Assert.True(rig.Ring.HasPending(rig.Device.Fences[0]));
@@ -40,7 +42,9 @@ public sealed partial class GpuPerfTimestampRingTests
         if (discard) rig.Begin(0);
         else rig.Record(0);
         var fence = rig.Device.Fences[0];
-        Assert.Throws<InvalidOperationException>(rig.Ring.Dispose);
+        var retained = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(rig.Ring.Dispose).Failures);
+        Assert.Equal("renderer.session.dispose.timestamps.retained", retained.Stage);
+        Assert.IsType<InvalidOperationException>(retained.Error);
 
         if (discard)
         {

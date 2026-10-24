@@ -20,7 +20,7 @@ public sealed partial class GpuFrameSubmissionTests
         Assert.True(ring.TryRecord(gpu, source, 0, 16, 1, fence!));
         submission.Submit(gpu);
         gpu.FailWait = true;
-        Assert.Throws<InvalidOperationException>(() => submission.Dispose());
+        Assert.IsType<InvalidOperationException>(Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(() => submission.Dispose()).Failures).Error);
         Assert.True(ring.HasPending(fence!));
         Assert.Equal(0, gpu.Buffers[0].DisposeCalls);
         Assert.All(gpu.Fences, f => Assert.Equal(0, f.DisposeCalls));
@@ -96,7 +96,12 @@ public sealed partial class GpuFrameSubmissionTests
         Assert.True(submission.TryRetain(ring, out var completion));
         Assert.True(ring.TryRecord(gpu, source, 0, 16, 1, completion!));
         gpu.FailSubmit = !successfulSubmit;
-        if (successfulSubmit) Assert.Throws<InvalidOperationException>(() => submission.Submit(gpu));
+        if (successfulSubmit)
+        {
+            var notification = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(() => submission.Submit(gpu)).Failures);
+            Assert.Equal("renderer.frame.submission.participant.0", notification.Stage);
+            Assert.Equal("submitted callback", notification.Error.Message);
+        }
         else
         {
             var failure = Assert.Throws<GpuDiagnosticFailureException>(() => submission.Submit(gpu));
@@ -128,7 +133,9 @@ public sealed partial class GpuFrameSubmissionTests
         Assert.True(submission.TryRegister(participant));
         Assert.True(submission.TryRetain(ring, out var fence));
         Assert.True(ring.TryRecord(gpu, source, 0, 16, 1, fence!));
-        Assert.Throws<InvalidOperationException>(() => submission.Abandon());
+        var abandoned = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(() => submission.Abandon()).Failures);
+        Assert.Equal("renderer.frame.submission.participant.0", abandoned.Stage);
+        Assert.Equal("abandoned callback", abandoned.Error.Message);
         Assert.Equal(0, ring.PendingCount);
         Assert.Equal(0, gpu.SubmitCalls);
         Assert.Equal(1, participant.Abandons);

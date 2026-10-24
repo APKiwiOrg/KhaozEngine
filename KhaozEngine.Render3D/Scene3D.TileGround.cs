@@ -147,10 +147,16 @@ namespace KhaozEngine.Render3D
         }
 
         // Free every loaded tile-ground material and clear the list. Called from Dispose.
-        void DisposeTileGroundMaterials()
+        void DisposeTileGroundMaterials(Internal.ResourceDisposal disposal)
         {
-            foreach (var t in _tileGroundMaterials) t?.Dispose();
-            _tileGroundMaterials.Clear();
+            bool retained = false;
+            for (int i = 0; i < _tileGroundMaterials.Count; i++)
+                if (_tileGroundMaterials[i] is { } entry)
+                {
+                    if (entry.Dispose(disposal)) _tileGroundMaterials[i] = null;
+                    else retained = true;
+                }
+            if (!retained) _tileGroundMaterials.Clear();
         }
 
         /// <summary>A loaded tile-ground material: the albedo texture array (one layer per catalog material), the
@@ -165,7 +171,20 @@ namespace KhaozEngine.Render3D
             public TileGroundMaterialEntry(IGpuTexture albedo, IGpuBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
             { AlbedoArray = albedo; Ubo = ubo; Set = set; _ownedSampler = ownedSampler; }
             public void ReplaceSet(IGpuResourceSet set) => Set = set;
-            public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); Ubo.Dispose(); _ownedSampler?.Dispose(); }
+            public void Dispose()
+            {
+                var disposal = new Internal.ResourceDisposal();
+                Dispose(disposal);
+                disposal.ThrowIfFailed();
+            }
+            internal bool Dispose(Internal.ResourceDisposal disposal)
+            {
+                if (!disposal.Release("tileGround.set", Set.Dispose)) return false;
+                disposal.Release("tileGround.albedo", AlbedoArray.Dispose);
+                disposal.Release("tileGround.uniform", Ubo.Dispose);
+                disposal.Release("tileGround.sampler", () => _ownedSampler?.Dispose());
+                return true;
+            }
         }
     }
 }

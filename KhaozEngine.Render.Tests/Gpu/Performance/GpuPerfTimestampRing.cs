@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.ExceptionServices;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Tests.Gpu.Performance;
@@ -158,7 +157,6 @@ internal sealed class GpuPerfTimestampRing : IGpuFrameCompletionConsumer, IGpuFr
                 else failures.Add(new("renderer.batch.complete", failure));
             }
         }
-        if (failures is { Count: 1 }) ExceptionDispatchInfo.Capture(failures[0].Error).Throw();
         if (failures is not null) throw new GpuDiagnosticFailureException(failures.ToImmutable());
     }
 
@@ -214,8 +212,10 @@ internal sealed class GpuPerfTimestampRing : IGpuFrameCompletionConsumer, IGpuFr
     public void ReleaseCompleted(IGpuFence completion)
     {
         // Teardown only. GpuFrameSubmission drains and calls every consumer before freeing its fences.
-        ExceptionDispatchInfo? error = null;
-        foreach (var slot in _slots)
+        ImmutableArray<GpuDiagnosticFailure>.Builder? failures = null;
+        for (int ordinal = 0; ordinal < _slots.Length; ordinal++)
+        {
+            var slot = _slots[ordinal];
             if (ReferenceEquals(slot.Fence, completion))
             {
                 slot.Fence = null;
@@ -223,9 +223,15 @@ internal sealed class GpuPerfTimestampRing : IGpuFrameCompletionConsumer, IGpuFr
                 if (ReferenceEquals(_recording, slot)) _recording = null;
                 if (_disposed)
                     try { DisposePool(slot); }
-                    catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+                    catch (Exception failure)
+                    {
+                        failures ??= ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+                        if (failure is GpuDiagnosticFailureException transport) failures.AddRange(transport.Failures);
+                        else failures.Add(new("renderer.session.dispose.timestamps." + ordinal, failure));
+                    }
             }
-        error?.Throw();
+        }
+        if (failures is not null) throw new GpuDiagnosticFailureException(failures.ToImmutable());
     }
 
     public void Dispose()
@@ -253,7 +259,6 @@ internal sealed class GpuPerfTimestampRing : IGpuFrameCompletionConsumer, IGpuFr
         }
         if (retained) failures.Add(new("renderer.session.dispose.timestamps.retained",
             new InvalidOperationException("Drain and dispose the frame submission before the timestamp ring.")));
-        if (failures.Count == 1) ExceptionDispatchInfo.Capture(failures[0].Error).Throw();
         if (failures.Count != 0) throw new GpuDiagnosticFailureException(failures.ToImmutable());
     }
 

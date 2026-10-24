@@ -297,24 +297,20 @@ namespace KhaozEngine.Render3D
             return outF;
         }
 
-        /// <summary>
-        /// The tail of <see cref="Dispose"/>: the tile-ground materials, then this pass's atlas. There is no
-        /// ordering between the two, they are unrelated resources freed at the same moment.
-        /// <para>
-        /// They share one call because <c>Scene3D.cs</c> is at its file-size baseline and cannot grow a line, and
-        /// two statements on one line there is the worse answer. It sits in this file because this is the partial
-        /// that added the second release.
-        /// </para>
-        /// </summary>
-        void DisposeTileGroundAndPointShadowResources()
+        // Scene teardown releases materials independently. Atlases stay alive if either borrower retained them.
+        void DisposeTileGroundAndPointShadowResources(Internal.ResourceDisposal disposal)
         {
-            DisposeTileGroundMaterials();
-            DisposePointShadows();
-            DisposeFoliagePointShadows();
+            DisposeTileGroundMaterials(disposal);
+            if (_pointShadowOwnersReleased)
+            {
+                if (disposal.Release("pointShadow.transientAtlas", () => _pointShadowTransientAtlas?.Dispose())) _pointShadowTransientAtlas = null;
+                if (disposal.Release("pointShadow.atlas", () => _pointShadowAtlas?.Dispose())) _pointShadowAtlas = null;
+            }
+            DisposeFoliagePointShadows(disposal);
         }
 
         /// <summary>Release the atlas and its pass. Called from
-        /// <see cref="DisposeTileGroundAndPointShadowResources"/> and by
+        /// scene teardown and by
         /// <see cref="CommitPointShadowReplacement"/> when a layout is replaced.</summary>
         void DisposePointShadows()
         {

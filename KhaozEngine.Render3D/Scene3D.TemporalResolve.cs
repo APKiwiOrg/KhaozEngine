@@ -267,12 +267,16 @@ namespace KhaozEngine.Render3D
 
         /// <summary>From <c>Dispose</c>, after the device drained and the retire queue was disposed, so the history is
         /// released with no queue.</summary>
-        void DisposeTemporalResolve()
+        void DisposeTemporalResolve(Internal.ResourceDisposal disposal)
         {
-            _temporalPost?.Dispose();
-            _temporalResolve?.Dispose();
-            _laterRenderPost?.Dispose();
-            TemporalHistory.ReleaseTargets();
+            bool postReleased = disposal.Release("temporal.post", () => _temporalPost?.Dispose());
+            bool postSafe = postReleased || _temporalPost?.DisposalSafeForDependants == true;
+            if (postReleased) _temporalPost = null;
+            // The resolve's sets borrow history targets. Keep those targets if that owner retains its sets.
+            bool resolveReleased = postSafe && disposal.Release("temporal.resolve", () => _temporalResolve?.Dispose());
+            if (resolveReleased) _temporalResolve = null;
+            if (disposal.Release("temporal.laterPost", () => _laterRenderPost?.Dispose())) _laterRenderPost = null;
+            if (postSafe && resolveReleased) disposal.Release("temporal.history", () => TemporalHistory.ReleaseTargets());
         }
 
         static TemporalViewInput ViewInput(in FrameView view) => new(view.View, view.Projection);

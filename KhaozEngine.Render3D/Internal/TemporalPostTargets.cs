@@ -29,6 +29,8 @@ namespace KhaozEngine.Render3D.Internal
         GpuPixelFormat _colorFormat;
         int _resGeneration = int.MinValue, _historyGeneration = int.MinValue;
         int _generation;
+        bool _disposalCompleted;
+        internal bool DisposalSafeForDependants { get; private set; }
 
         public TemporalPostTargets(IGpuDevice gd) => _gd = gd;
 
@@ -106,18 +108,26 @@ namespace KhaozEngine.Render3D.Internal
         /// nothing is allocated.</summary>
         public void Release()
         {
-            if (_pingA is null && _opaque is null) return;
+            DisposalSafeForDependants = false;
+            if (_pingA is null && _opaque is null) { DisposalSafeForDependants = true; return; }
             _gd.WaitForIdle();
-            DisposeDisplay();
-            _opaque?.Dispose();
-            _opaque = null;
+            DisposalSafeForDependants = true;
+            var disposal = new ResourceDisposal();
+            DisposeDisplay(disposal);
+            if (disposal.Release("temporal.post.opaque", () => _opaque?.Dispose())) _opaque = null;
             _res = null;
             _history = null;
             _resGeneration = _historyGeneration = int.MinValue;
             _generation++;
+            disposal.ThrowIfFailed();
         }
 
-        public void Dispose() => Release();
+        public void Dispose()
+        {
+            if (_disposalCompleted) return;
+            try { Release(); }
+            finally { _disposalCompleted = DisposalSafeForDependants; }
+        }
 
         void CreateDisplay(int w, int h, GpuPixelFormat format, bool bloomEnabled)
         {
@@ -153,10 +163,21 @@ namespace KhaozEngine.Render3D.Internal
 
         void DisposeDisplay()
         {
-            _pingAFB?.Dispose(); _pingBFB?.Dispose(); _bloomAFB?.Dispose(); _bloomBFB?.Dispose();
-            _pingA?.Dispose(); _pingB?.Dispose(); _bloomA?.Dispose(); _bloomB?.Dispose();
-            _pingAFB = _pingBFB = _bloomAFB = _bloomBFB = null;
-            _pingA = _pingB = _bloomA = _bloomB = null;
+            var disposal = new ResourceDisposal();
+            DisposeDisplay(disposal);
+            disposal.ThrowIfFailed();
+        }
+
+        void DisposeDisplay(ResourceDisposal disposal)
+        {
+            bool pingA = disposal.Release("temporal.post.pingAFB", () => _pingAFB?.Dispose());
+            bool pingB = disposal.Release("temporal.post.pingBFB", () => _pingBFB?.Dispose());
+            bool bloomA = disposal.Release("temporal.post.bloomAFB", () => _bloomAFB?.Dispose());
+            bool bloomB = disposal.Release("temporal.post.bloomBFB", () => _bloomBFB?.Dispose());
+            if (pingA) { _pingAFB = null; if (disposal.Release("temporal.post.pingA", () => _pingA?.Dispose())) _pingA = null; }
+            if (pingB) { _pingBFB = null; if (disposal.Release("temporal.post.pingB", () => _pingB?.Dispose())) _pingB = null; }
+            if (bloomA) { _bloomAFB = null; if (disposal.Release("temporal.post.bloomA", () => _bloomA?.Dispose())) _bloomA = null; }
+            if (bloomB) { _bloomBFB = null; if (disposal.Release("temporal.post.bloomB", () => _bloomB?.Dispose())) _bloomB = null; }
             Width = Height = BloomWidth = BloomHeight = 0;
             BloomAllocated = false;
         }

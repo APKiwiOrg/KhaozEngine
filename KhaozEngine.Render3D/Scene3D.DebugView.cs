@@ -82,10 +82,9 @@ namespace KhaozEngine.Render3D
             _motionVectorsView = null;
         }
 
-        void DisposeMotionVectorsView()
+        void DisposeMotionVectorsView(Internal.ResourceDisposal disposal)
         {
-            _motionVectorsView?.Dispose();
-            _motionVectorsView = null;
+            if (disposal.Release("motionView", () => _motionVectorsView?.Dispose())) _motionVectorsView = null;
         }
     }
 }

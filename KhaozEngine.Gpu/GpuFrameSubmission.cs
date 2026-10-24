@@ -49,19 +49,21 @@ public sealed class GpuFrameSubmission : IDisposable
     public void Begin()
     {
         ObjectDisposedException.ThrowIf(disposed || teardown, this);
-        Abandon();
-        ExceptionDispatchInfo? error = null;
-        foreach (var slot in slots)
+        ImmutableArray<GpuDiagnosticFailure>.Builder? failures = null;
+        try { Abandon(); }
+        catch (Exception error) { Capture(ref failures, "renderer.frame.submission.abandon", error); }
+        for (int ordinal = 0; ordinal < slots.Length; ordinal++)
         {
+            var slot = slots[ordinal];
             if (!slot.Retained) continue;
             try
             {
-                if (!slot.Fence.Signaled || HasPending(slot, ref error)) continue;
+                if (!slot.Fence.Signaled || HasPending(slot, ordinal, ref failures)) continue;
                 slot.Fence.Reset(); slot.Clear();
             }
-            catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
+            catch (Exception failure) { Capture(ref failures, "renderer.frame.submission.reclaim." + ordinal, failure); }
         }
-        error?.Throw();
+        if (failures is not null) throw new GpuDiagnosticFailureException(failures.ToImmutable());
         recording = true;
     }
 
@@ -140,19 +142,22 @@ public sealed class GpuFrameSubmission : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         if (!recording) return;
         recording = false;
-        var slot = current < 0 ? null : slots[current];
+        int ordinal = current;
+        var slot = ordinal < 0 ? null : slots[ordinal];
         current = -1;
         // Quarantine before any external callback or query can throw or reenter the owner.
         if (slot is not null) slot.Retained = true;
-        ExceptionDispatchInfo? error = Notify(success: false);
+        ImmutableArray<GpuDiagnosticFailure>.Builder? failures = null;
+        if (Notify(success: false) is { } notification)
+            Capture(ref failures, "renderer.frame.submission.recovery", notification.SourceException);
         if (slot is not null)
         {
             for (int i = 0; i < slot.Count; i++)
                 try { slot.Consumers[i]!.DiscardUnsubmitted(slot.Fence); }
-                catch (Exception failure) { error ??= ExceptionDispatchInfo.Capture(failure); }
-            if (!HasPending(slot, ref error)) slot.Clear();
+                catch (Exception failure) { Capture(ref failures, "renderer.frame.submission.discard." + ordinal + "." + i, failure); }
+            if (!HasPending(slot, ordinal, ref failures)) slot.Clear();
         }
-        error?.Throw();
+        if (failures is not null) throw new GpuDiagnosticFailureException(failures.ToImmutable());
     }
 
     /// <summary>Abandon the open recording, drain submitted work at host teardown, release consumers and dispose
@@ -170,7 +175,6 @@ public sealed class GpuFrameSubmission : IDisposable
         }
         void ThrowFailures()
         {
-            if (failures.Count == 1) ExceptionDispatchInfo.Capture(failures[0].Error).Throw();
             if (failures.Count != 0) throw new GpuDiagnosticFailureException(failures.ToImmutable());
         }
         try { Abandon(); } catch (Exception error) { Capture("renderer.session.dispose.submission.abandon", error); }
@@ -227,11 +231,16 @@ public sealed class GpuFrameSubmission : IDisposable
                 else failures.Add(new("renderer.frame.submission.participant." + i, failure));
             }
         }
-        return failures is null ? null : ExceptionDispatchInfo.Capture(failures.Count == 1
-            ? failures[0].Error : new GpuDiagnosticFailureException(failures.ToImmutable()));
+        return failures is null ? null : ExceptionDispatchInfo.Capture(new GpuDiagnosticFailureException(failures.ToImmutable()));
     }
 
-    static bool HasPending(Slot slot, ref ExceptionDispatchInfo? error)
+    static void Capture(ref ImmutableArray<GpuDiagnosticFailure>.Builder? failures, string stage, Exception error)
+    {
+        failures ??= ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+        GpuDiagnosticFailureException.Append(failures, stage, error);
+    }
+
+    static bool HasPending(Slot slot, int ordinal, ref ImmutableArray<GpuDiagnosticFailure>.Builder? failures)
     {
         bool pending = false;
         for (int i = 0; i < slot.Count; i++)
@@ -239,7 +248,7 @@ public sealed class GpuFrameSubmission : IDisposable
             catch (Exception failure)
             {
                 pending = true;
-                error ??= ExceptionDispatchInfo.Capture(failure);
+                Capture(ref failures, "renderer.frame.submission.pending." + ordinal + "." + i, failure);
             }
         return pending;
     }

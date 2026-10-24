@@ -153,7 +153,7 @@ internal sealed class RendererPerfSceneWorkload : IRendererPerfNativeWork
         var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
         RendererPerfFailures.Release(failures, "renderer.session.dispose.ui.0", _ui is null ? null : _ui.Dispose);
         // SpriteBatch and Scene3D each own a prerequisite drain. A failed prerequisite retains dependants.
-        if (failures.Count == 0)
+        if (_ui is null || _ui.DisposalSafeForDependants)
         {
             RendererPerfFailures.Release(failures, "renderer.session.dispose.scene.1", Scene.Dispose);
             if (Scene.DisposalSafeForDependants)

@@ -191,13 +191,13 @@ public sealed partial class Scene3D
 
     /// <summary>Scene teardown. The scene's retire queue has already flushed, so the streams retired here are
     /// flushed again behind one device drain.</summary>
-    void DisposeFoliagePointShadows()
+    void DisposeFoliagePointShadows(Internal.ResourceDisposal disposal)
     {
-        foreach (FoliagePointShadowStream stream in _foliagePointStreams.Values) stream.Dispose();
+        foreach (FoliagePointShadowStream stream in _foliagePointStreams.Values) disposal.Release("foliagePoint.stream", stream.Dispose);
         _foliagePointStreams.Clear();
         _foliagePointSources.Clear();
         _foliagePointFaceRuns.Clear();
-        _retired.FlushAll();
+        disposal.Release("foliagePoint.retirement", _retired.FlushAll);
     }
 
     readonly record struct FoliagePointSource(FoliagePointShadowStream Stream, int RangeStart, int RangeCount);

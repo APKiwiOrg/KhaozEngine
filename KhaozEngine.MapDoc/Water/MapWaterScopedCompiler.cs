@@ -203,6 +203,7 @@ public static class MapWaterScopedCompiler
     static HashSet<Cell> Candidates(IReadOnlyList<IReadOnlyList<MapWideXz>> parts, MapBox3 window, float tileSize,
         float size, MapSceneAdmission admission, MapWaterWorkBudget pairs, ref long candidates)
     {
+        using var preparation = admission.BeginPreparation();
         var result = new HashSet<Cell>();
         foreach (var part in parts)
         {
@@ -235,6 +236,7 @@ public static class MapWaterScopedCompiler
                         }
                 }
         }
+        preparation.Complete(checked(128L * result.Count));
         return result;
     }
 
@@ -257,11 +259,16 @@ public static class MapWaterScopedCompiler
 
     static bool Intersects(MapWaterResourceCell cell, MapBox3 window, MapWaterWorkBudget pairs, MapSceneAdmission admission)
     {
+        using var workspace = admission.Workspace();
         foreach (var triangle in cell.Regions.SelectMany(r => r.Triangles))
         {
-            pairs.Charge(1); admission.ReserveBytes(512);
-            if (MapWaterPolygons.ClipToRect(new[] { MapWidePoint.From(triangle.A).Xz, MapWidePoint.From(triangle.C).Xz, MapWidePoint.From(triangle.B).Xz },
-                Point(window.MinX, window.MinZ), Point(window.MaxX, window.MaxZ)).Count != 0) return true;
+            pairs.Charge(1); workspace.Reserve(512);
+            try
+            {
+                if (MapWaterPolygons.ClipToRect(new[] { MapWidePoint.From(triangle.A).Xz, MapWidePoint.From(triangle.C).Xz, MapWidePoint.From(triangle.B).Xz },
+                    Point(window.MinX, window.MinZ), Point(window.MaxX, window.MaxZ)).Count != 0) return true;
+            }
+            finally { workspace.Release(512); }
         }
         return false;
     }

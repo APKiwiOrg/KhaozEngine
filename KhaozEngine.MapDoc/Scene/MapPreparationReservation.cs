@@ -41,6 +41,13 @@ internal sealed class MapPreparationReservation : IDisposable
         Bytes -= bytes;
         return owner;
     }
+    internal void MoveWorkspaceTo(MapPreparationReservation destination, long bytes)
+    {
+        ObjectDisposedException.ThrowIf(_disposed || destination._disposed, this);
+        if (_retained || destination._retained || _ledger != destination._ledger || _window != destination._window || bytes < 0 || bytes > Bytes)
+            throw new InvalidOperationException("Workspace can move only between live owners in the same preparation view.");
+        Bytes -= bytes; destination.Bytes = checked(destination.Bytes + bytes);
+    }
     internal void Absorb(MapPreparationReservation product)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

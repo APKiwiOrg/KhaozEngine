@@ -90,6 +90,7 @@ internal static class MapSurfaceSaveGuard
                 original.Width != current.Width || original.Depth != current.Depth || !original.Presence.SequenceEqual(current.Presence) ||
                 !original.EdgeSubdivisions.SequenceEqual(current.EdgeSubdivisions) || !original.CornerDependencies.SequenceEqual(current.CornerDependencies))
                 throw new MapDocumentException("unsupported partial edit: structure");
+            using var comparison = Scene.MapSceneAdmission.Current?.BeginPreparation();
             MapSurfacePatch beforeRecords = original.Clone(), afterRecords = current.Clone();
             // Compare canonical records without treating a permitted height or cell edit as a record edit.
             afterRecords.Heights = beforeRecords.Heights;

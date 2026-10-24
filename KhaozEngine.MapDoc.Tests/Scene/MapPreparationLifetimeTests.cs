@@ -7,6 +7,22 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 public sealed class MapPreparationLifetimeTests
 {
     [Fact]
+    public void WorkspaceHandoff_MovesAdmittedStorageWithoutAnotherDebit()
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 60));
+        using var operation = admission.BeginPreparation();
+        using var source = admission.Workspace(); source.Reserve(60);
+        operation.AdoptWorkspace(source, 40);
+        Assert.Equal(20, source.Bytes);
+        Assert.Equal(40, operation.Bytes);
+        Assert.Equal(60, admission.WorkspaceBytes);
+        Assert.Equal(60, admission.PeakBytes);
+        source.Dispose();
+        using var retained = operation.Complete(40);
+        Assert.Equal(0, admission.WorkspaceBytes);
+        Assert.Equal(40, admission.RetainedBytes);
+    }
+    [Fact]
     public void NestedBorrow_ChargesOnlyTheViewsThatDoNotAlreadyOwnIt()
     {
         var admission = new MapSceneAdmission(new(MaxPreparedBytes: 100));

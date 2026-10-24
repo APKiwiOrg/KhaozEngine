@@ -199,6 +199,9 @@ nodes tested, including rejected siblings. The stable median tree has leaves of 
 separated-growth query visits at most `1 + 2 * ceil(log2(ceil(N / 8)))` nodes. Dependency discoveries report their own
 additional visits. Copied/prepared byte charges include intermediate work and are separate from decoded render asset
 retention, which is owned by the optional rendering package's selected input lease.
+Scoped water compilation results are disposable owners. Dispose a `MapScopedWaterResult` after its last
+consumer. Native render batches retain their selected canonical cells independently, sharing each cell's
+allocation receipt with the compiler result until the last owner releases it.
 
 ## Frame-local compiled geometry
 

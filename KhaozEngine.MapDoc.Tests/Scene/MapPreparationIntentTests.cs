@@ -3,20 +3,24 @@ using System.Linq;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Surfaces;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc.Scene;
 
 public sealed class MapPreparationIntentTests
 {
-    [Fact]
-    public void EffectiveInventory_IncludesEveryCapturedIntentContainer()
+    [Theory]
+    [InlineData("all-resources")]
+    [InlineData("materialized")]
+    public void EffectiveInventory_IncludesEveryCapturedIntentContainer(string variant)
     {
-        var fixture = Prefabs.PrefabFixtures.Create("all-resources");
+        var fixture = Prefabs.PrefabFixtures.Create(variant);
         var product = MapEffectiveResolutionKernel.Resolve(MapEffectiveResolutionInput.FromDocument(fixture.Document),
             fixture.Assets, MapDocumentSurfaceSource.Capture(fixture.Document));
         var intent = product.CapturedBuildingIntent;
-        Assert.NotEmpty(intent.RoofLinks); Assert.NotEmpty(intent.RoofGroups); Assert.NotEmpty(intent.Storeys);
+        if (variant == "all-resources")
+        { Assert.NotEmpty(intent.RoofLinks); Assert.NotEmpty(intent.RoofGroups); Assert.NotEmpty(intent.Storeys); }
         // Enumerate owned containers and rows independently of all production receipts.
         long containers = 128;
         foreach (var link in intent.RoofLinks)
@@ -29,6 +33,19 @@ public sealed class MapPreparationIntentTests
             containers += IntPtr.Size + 128 + (light.Owner is null ? 0 : 32) + (light.ShadowExclusion is null ? 0 : 64);
         foreach (var marker in intent.Markers)
             containers += IntPtr.Size + 128 + IntPtr.Size * marker.Tags.Count + (marker.SupportBinding is null ? 0 : 64);
+        foreach (var placement in product.Placements) containers += IntPtr.Size * placement.Tags.Count;
+        foreach (var marker in product.EffectiveMarkers) containers += IntPtr.Size * marker.Tags.Count;
+        containers += (System.Runtime.CompilerServices.Unsafe.SizeOf<MapExactPoint>() + IntPtr.Size + 24L) * product.LightPointCapacity;
+        containers += 40L * product.WaterCornerCapacity;
+        foreach (var corners in product.WaterCorners) containers += 8 + 48L * corners.Value.Count;
+        foreach (var attachment in product.Attachments)
+        {
+            containers += IntPtr.Size;
+            if (!(fixture.Document.Prefabs?.Attachments ?? []).Any(a => ReferenceEquals(a, attachment)))
+                containers += 128L + 136L * attachment.Children.Count;
+        }
+        containers += 40L * product.SupportRequestCapacity;
+        foreach (var request in product.SupportRequests) { GC.KeepAlive(request); containers += 64; }
         var inventory = new MapSceneInventory();
         long other = inventory.Context(product.CapturedContext) + inventory.Water(product.CapturedWater) + 256L +
             128L * product.Placements.Count + 96L * product.PlacementSupports.Count +

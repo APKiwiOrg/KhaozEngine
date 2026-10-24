@@ -132,7 +132,8 @@ public static class MapFinePatchConversion
         {
             _ = MapSurfacePatchCodec.Encode(patch, out var encoding);
             using var consumedEncoding = encoding;
-            _ = MapSurfaceCompiler.Compile(fine, patch);
+            var compiled = MapSurfaceCompiler.Compile(fine, patch);
+            compiled.PreparationOwnership?.Dispose();
         }
         IReadOnlyList<MapAuthoredDifference> differences = MapConversionDifferences.Collect(surfaces, candidate,
             source, fine, cells, classifications, rim, request.Subdivision);

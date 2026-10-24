@@ -1484,11 +1484,11 @@ proof that the temporal-source identity cannot succeed within the existing budge
 
 The rounded-rim fixture has R=5/16, head Y=3/4, original vertex (3/16,3/4,1/4),
 feet (-m,-2m,2m), displacement (-8,-15,31)/512 and m=0.001f.
-Its attained fraction is 1024*m/25. The radial and vertical offset is
-m*(9,20,12)/25, whose exact length is m. The original tangent direction is perpendicular
-to that offset. The attempt proposes an inner segment whose static distance is strictly
-above m, then refuses. It has not reached the necessary retained circular root or its
-unsquared sign predicates. That failure must not be described as an undecided root sign.
+The previous report claimed an attained fraction of 1024*m/25 and offset
+m*(9,20,12)/25. The SS-R14 diagnostic below disproves that positive-time claim for the
+archived displacement. The line attains that offset at -1024*m/25, outside [0,1].
+The attempt proposes an inner segment whose static distance is strictly above m, then
+refuses. It reaches no retained circular root. This is not an undecided root sign.
 
 The mandatory cap stop applies immediately. No later implementation, focused rerun,
 Common regression selection or full-suite verification runs on the unsuccessful attempt.
@@ -1498,3 +1498,84 @@ The archived attempt is incomplete and must not be applied as an accepted implem
 Original circular overlap, complete finite-stratum coverage and retained root barycentrics
 still need completion. The owning orchestrator must review the bounded proposal policy
 before continuing. No cap, tolerance, per-pair producer or second certification path is added.
+
+
+## Task 2b.2 continuation under SS-R14
+
+Status NEEDS_CONTEXT on BASE bc9fa7dc5. The required first diagnostic compiles in Release
+without warnings or errors, passes seven tests and fails the archived rounded-rim test.
+All eighteen zero-margin finite-stratum rows now pass, including HeadDisc/Face at 28 cells.
+No production cap is exhausted except the intentional zero-cell negative control.
+The remaining failing fixture is strictly separated throughout [0,1], so it cannot supply
+the required attained positive-time event. No implementation is accepted at this checkpoint.
+
+The prototype seeds from exact original endpoint certificates, selects the attained target
+feature's exact affine sub-simplex, lifts its original vertices to the other endpoint and
+verifies the inner source before iterating. Separated certificates drive exact support
+directions. Exact squared-distance decrease gates continuation. Rounded reduction no longer
+blocks the first static certificate on a flat pair. Endpoint certificates are obtained
+inside this test entry point on the same primitive account. A coordinator loan of an already
+retained endpoint certificate remains unfinished.
+
+The only build/test run is the required stage diagnostic, synchronously through build-slot.
+
+```bash
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexTemporalSimplexTests' --logger 'console;verbosity=detailed'
+```
+
+Log /tmp/khaozengine-short-shell/task-2b.2-r14-diagnostic.log. Exit 1.
+Total 8, passed 7, failed 1, skipped 0. The failing test is
+RoundedCircularDoubleRootRetainsItsUnsquaredSigns, 32 cells and 74 features, no exhaustion,
+default impact evidence. The previous report contains the earlier test-first red result.
+There is no all-green class result from this continuation.
+
+Temporary cumulative traces produce the following stage differences. Counts are observations,
+never absolute assertions. Original validation includes touching encoding. Test assertions
+after return add features. A dash means the stage is not reached.
+
+| Stage, cells / features | Box m=0 | Box m=0.001 | Cylinder tangent m=0 | Cylinder tangent m=0.001 | Archived rounded rim m=0.001 | HeadDisc/Face m=0 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Original source preflight | 0 / 8 | 0 / 8 | 0 / 4 | 0 / 4 | 0 / 4 | 0 / 8 |
+| Original endpoint certificates | 2 / 10 | 2 / 10 | 36 / 57 | 36 / 57 | 23 / 42 | 7 / 19 |
+| Exact affine seed selection and lifting | 6 / 22 | 6 / 22 | 1 / 4 | 1 / 4 | 1 / 4 | 6 / 22 |
+| Exact-normal support and affine refinement | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 2 / 7 | 0 / 0 |
+| Inner static attainment | 6 / 12 | 6 / 12 | 17 / 22 | 22 / 29 | 6 / 14 | 6 / 12 |
+| Margin, exact progress and time recovery | 1 / 6 | 1 / 6 | 1 / 4 | 1 / 4 | 0 / 3 | 1 / 6 |
+| Original-member validation and touching encoding | 10 / 20 | 1 / 11 | 9 / 28 | 1 / 14 | - | 8 / 33 |
+| Accepted 2c.2 penetration and encoding | 88 / 773 | 86 / 736 | 0 / 0 | 0 / 0 | - | 0 / 0 |
+| Total through return | 113 / 851 | 102 / 805 | 64 / 119 | 61 / 112 | 32 / 74 | 28 / 100 |
+
+The rounded-rim trace reaches two noncircular static certificates, at cumulative 27 / 57 and
+32 / 72. Both are separated by more than m. The latter makes no exact distance progress and
+the attempt refuses. No circular retained root, exact margin tie, recovered time or original
+operational normal is reached. This is not a cap or radical-sign failure.
+
+The fixture's exact Y coordinates prove its separation independently of that implementation.
+Let m be the positive represented float 0.001f. The original target's minimum Y is 3/4.
+Feet Y is -2m-15t/512, so the grown query's maximum Y is 3/4-m-15t/512. The gap is
+m+15t/512, strictly positive for every t in [0,1]. Even the base query's vertical gap is
+at least 2m, already greater than the admitted margin. Thus no required event exists in
+the requested interval. An inner-source miss still does not publish Clear.
+
+The hand-derived offset m*(9,20,12)/25 has length m and is perpendicular to (8,15,-31).
+With the archived displacement (-8,-15,31)/512 it is attained at t=-1024m/25. Reversing
+that displacement would place the claimed tangent at positive time. No fixture or expected
+status is changed here. The owning orchestrator must resolve this input contradiction
+before another continuation. It must not be treated as a failure of circular certification.
+
+The eighteen closed-domain rows all pass at margin zero, including head disc and rim rows
+that the previous cap stop prevented from reaching. The both-margin full matrix, stationary
+intervals, arbitrary represented poses, independent oracle extension, immutable root-defined
+weights, circular strict-overlap normal conversion and remaining radical/budget controls
+remain incomplete. The three Common regression commands do not run after this mandatory
+diagnostic stop. No new capsule, footprint or degree-1 baseline result is claimed.
+
+All attempted source and test changes, including instrumentation, are archived and restored
+before this evidence-only commit. The new archive is
+.superpowers/sdd/2026-10-19-short-body-shell/task-2b.2-r14-attempt.diff, 55,132 bytes,
+SHA-256 0b9e8ee45cc0da4185334e448c1943fa207386fe08745799412e98995d9c591c.
+Its git apply --check exits 0 against the restored base. The earlier archive remains unchanged.
+The full report, stage matrix and self-review are in task-2b.2-report.md in that SDD directory.
+No source/test path, cap, ceiling, tolerance, r0/r1 producer, capsule arithmetic, baseline,
+arrival rule, roof/footprint protection or raw identity change is committed. No instrumentation
+remains in production. No push, merge, tag, branch change or integration runs.

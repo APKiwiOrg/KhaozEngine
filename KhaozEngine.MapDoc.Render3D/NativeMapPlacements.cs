@@ -89,18 +89,15 @@ public static class NativeMapPlacements
                 foreach (var lod in assets.ById[placement.AssetId].Lods)
                     for (int i = 0; i < lod.BorrowParts.Count; i++)
                     {
-                        using var copyPreparation = admission.BeginPreparation();
                         var part = lod.BorrowParts[i];
-                        admission.ReserveBytes(checked(512L + 4 * Bytes(part.Mesh, part.Maps)));
                         var key = new MapRenderKey(kind, placement.PlacementId, "part/" + i, lod.Index);
-                        var payload = new MapRigidResource(part.Mesh, part.Maps);
+                        var payload = MapPlacementPayloadPreparation.Copy(part.Mesh, part.Maps);
                         string digest = MapPlacementDigest.Hash(w =>
                         {
                             w.WriteStartArray(); w.WriteStringValue(assets.Closure.GetResource(lod.ResourceId).Reference.Sha256);
                             w.WriteNumberValue(assets.ById[placement.AssetId].Descriptor.SourceUnitsToMetres); w.WriteNumberValue(i); w.WriteEndArray();
                         });
                         parts.Add(new(key, handles[placement.AssetId][lod.Index].Parts[i], anchor, bounds, payload, digest));
-                        copyPreparation.Complete(checked(256L + MapNativeInventory.Mesh(payload.BorrowMesh, payload.BorrowMaps)));
                     }
             }
             var clusters = new List<NativePropClusterCpuBuild>();
@@ -124,20 +121,31 @@ public static class NativeMapPlacements
                     var members = cell.OrderBy(i => i.Id, StringComparer.Ordinal).ToArray();
                     using var cellPreparation = admission.BeginPreparation();
                     var domain = MapPlacementCells.Domain(cell.Key, scene.Source.Data.TileSize, members.Min(i => i.Anchor.Y));
+                    using var sourcePreparation = admission.Workspace();
                     var sources = new Dictionary<string, GltfMesh>(StringComparer.Ordinal);
                     foreach (string id in members.Select(i => i.AssetId).Distinct(StringComparer.Ordinal))
                     {
                         var source = assets.ById[id].Lods[^1];
-                        admission.ReserveBytes(checked(8 * source.BorrowParts.Sum(p => Bytes(p.Mesh, p.Maps))));
+                        sourcePreparation.Reserve(checked(8 * source.BorrowParts.Sum(p => Bytes(p.Mesh, p.Maps))));
                         sources.Add(id, Flatten(source.BorrowParts));
                     }
                     long mergeBytes = members.Sum(i => Bytes(sources[i.AssetId], default));
-                    // The transformed merge and final weld coexist. Selected contribution workspace has
-                    // a separate lifetime around each lower range weld, with retained output receipts.
-                    admission.ReserveBytes(checked(8 * mergeBytes));
-                    var shared = Shared(members, layer).WithHlod(sources, layer.HlodDistance, layer.HlodWeldCell, layer.HlodCrossfadeWidth);
-                    var request = new NativePropClusterRequest(cell.Key, 0, domain.Area, shared, members, domain.Anchor);
-                    var build = PrepareCluster(cells.Get(cell.Key), request);
+                    NativePropClusterCpuBuild build;
+                    long clusterBytes;
+                    using (var mergePreparation = admission.BeginPreparation())
+                    {
+                        // Admit the transformed merge, request copies and final weld before construction.
+                        admission.ReserveBytes(checked(8 * mergeBytes));
+                        var shared = Shared(members, layer).WithHlod(sources, layer.HlodDistance, layer.HlodWeldCell, layer.HlodCrossfadeWidth);
+                        var request = new NativePropClusterRequest(cell.Key, 0, domain.Area, shared, members, domain.Anchor);
+                        sourcePreparation.Dispose();
+                        build = PrepareCluster(cells.Get(cell.Key), request);
+                        var inventoryMeasure = new MapNativeInventory();
+                        clusterBytes = checked(MapNativeInventory.Mesh(build.BorrowMesh) + inventoryMeasure.Layer(build.Request.BorrowLayer, false) +
+                            16L * build.Request.Instances.Count + 8L * build.BorrowContributions.Count +
+                            build.BorrowContributions.Sum(m => MapNativeInventory.Mesh(m)));
+                        mergePreparation.Complete(clusterBytes);
+                    }
                     clusters.Add(build);
                     var anchor = new MapSubmissionAnchor(domain.Anchor.X, domain.Anchor.Y, domain.Anchor.Z);
                     string inventory = ClusterInventoryDigest(members, assets.Closure.Hash, layer.HlodWeldCell);
@@ -146,7 +154,8 @@ public static class NativeMapPlacements
                         {
                             var contribution = build.BorrowContribution(member);
                             if (contribution.TriangleCount == 0) continue;
-                            admission.ReserveBytes(checked(512L + 4 * Bytes(contribution, default)));
+                            // The batch owns this detached copy directly. Cell completion must not refund it.
+                            var payload = MapPlacementPayloadPreparation.Copy(contribution, default, preparation);
                             var outlineKey = new MapRenderKey(MapRenderKind.Roof, members[member].Id, "outline-hlod", 0);
                             string selectedId = members[member].Id;
                             string digest = MapAnchorRelativeDigest.Hash(anchor, w =>
@@ -154,23 +163,19 @@ public static class NativeMapPlacements
                                 w.WriteStartArray(); w.WriteStringValue("kemap/roof-outline-contribution/2");
                                 w.WriteStringValue(inventory); w.WriteStringValue(selectedId); w.WriteEndArray();
                             });
-                            parts.Add(new(outlineKey, new(nextHandle++), anchor, MeshBounds(contribution, anchor), new MapRigidResource(contribution, default), digest));
+                            parts.Add(new(outlineKey, new(nextHandle++), anchor, MeshBounds(contribution, anchor), payload, digest));
                         }
                     var mesh = build.BorrowMesh;
-                    var inventoryMeasure = new MapNativeInventory();
-                    long clusterBytes = checked(MapNativeInventory.Mesh(mesh) + inventoryMeasure.Layer(build.Request.BorrowLayer, false) +
-                        16L * build.Request.Instances.Count + 8L * build.BorrowContributions.Count +
-                        build.BorrowContributions.Sum(m => MapNativeInventory.Mesh(m)));
                     if (mesh.TriangleCount == 0) { cellPreparation.Complete(clusterBytes); continue; }
                     var bounds = members.Select(i => boundsById[i.Id]).Aggregate(Union);
                     var key = new MapRenderKey(cell.Key.Cohort == 1 ? MapRenderKind.Roof : MapRenderKind.Placement, MapPlacementCells.Owner(cell.Key), "hlod", 0);
-                    parts.Add(new(key, new(nextHandle++), anchor, bounds, new MapRigidResource(mesh, default),
+                    parts.Add(new(key, new(nextHandle++), anchor, bounds, MapPlacementPayloadPreparation.Copy(mesh, default, preparation),
                         MapAnchorRelativeDigest.Hash(anchor, w =>
                         {
                             w.WriteStartArray(); w.WriteStringValue(routing.PolicyDigest);
                             w.WriteStringValue(inventory); w.WriteEndArray();
                         })));
-                    cellPreparation.Complete(checked(clusterBytes + MapNativeInventory.Mesh(mesh) + 256L));
+                    cellPreparation.Complete(clusterBytes);
                 }
             }
             var defaults = instances.Where(i => policy.For(i.AssetId) is null).ToArray();

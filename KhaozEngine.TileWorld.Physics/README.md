@@ -39,13 +39,15 @@ non-ground additions remain visible to movement. Use that view for `CharacterMov
 `Ground` and `Medium` are the samplers, and their `HeightDelegate`, `NormalDelegate` and `MediumDelegate` are
 the ground-height, ground-normal and medium arguments of the movement APIs, each created once.
 
-`GroundHandles` is the cached read-only ground subset in canonical registration order. It retains its metadata
+`GroundHandles` is the cached read-only subset of installed ground in canonical registration order. Rejected
+ground has no handle or exclusion. The subset retains its metadata
 after `Remove`, just like `Handles`, but removed handles cannot be used to create a new view. If a backend does
 not support the optional query factory, `AddTo` still registers successfully and the view request throws
 `NotSupportedException`. For multiple registrations on one source, combine their live `GroundHandles` and call
 the generic factory once with that union. When replacing a registration, dispose its view first, remove the old
-registration, add the new registration and create a new view. The source world must outlive the view, and
-The query selection never mutates or removes ground from the complete capture world.
+registration, add the new registration and create a new view. Dispose movement contexts and query views before
+the registration, and the caller-owned source world last. Query selection never removes installed ground from
+the complete capture world.
 
 After an edit, remove the old registration, build again and add the new colliders. The ground sampler reads the
 document live, but its bounds were captured at build, and the medium sampler snapshots the water. Rebuild after edits.
@@ -82,6 +84,77 @@ exception is rethrown. If that rollback fails too, `AddTo` throws an `AggregateE
 exception is the add failure. `Remove` tries every handle once even when one fails, then rethrows the one failure as it was
 or several as an `AggregateException`. A second call retries only the handles that failed.
 
+## Filtered installation
+
+The overload `AddTo(IPhysicsWorld world, Func<TileCollider, bool> include)` selects whole colliders before
+physical insertion. For example, this neutral policy omits object boxes:
+
+```csharp
+using KhaozEngine.TileWorld.Physics;
+using KhaozEngine.Physics;
+
+Func<TileCollider, bool> include = collider => collider.Kind != TileColliderKind.Object;
+using TileColliderRegistration selected = colliders.AddTo(fullWorld, include);
+for (int i = 0; i < selected.Handles.Count; i++)
+{
+    TileCollider original = colliders.Colliders[selected.ColliderIndices[i]];
+    StaticHandle installed = selected.Handles[i];
+}
+```
+
+The predicate runs synchronously once per collider in canonical order, with absolute document-space poses,
+before reading `world.Origin` or inserting any static. Keep it pure: no mutation of the document, shapes or
+world, reentrant installation or concurrently changing inputs. Decisions are snapshotted, and the registration
+never calls the predicate again. Null arguments refuse. A predicate exception propagates unchanged with no
+insertion. Selected adds share the default rollback transaction and failure ordering.
+
+`Handles` is compact installed order. `ColliderIndices[i]` is its original `Colliders` index, strictly increasing.
+Both lists are immutable metadata retained after removal. The default overload installs every collider, with
+indices `0..Colliders.Count-1`. Default and all-true calls preserve add order, poses, owners, exclusions, extent,
+semantic digest and same-build serialized bake bytes. Historical tests normalize only engine-version identity
+and its framing lengths. Production engine-version load refusals still apply.
+
+Selection copies the original canonical owners, aliases, feature ranges and absolute transformed bounds,
+including partially selected placed owners. It retains the complete captured `MovementExtent`, even when
+ground or everything is omitted. Analytic ground, water and resident coverage remain available. Only installed
+ground enters `GroundHandles` and movement exclusions. `PhysicsNavBake.Capture` samples the installed physical
+set, so omitted ground supplies no capture floor even though the analytic sampler remains available.
+
+Keep the source alive and unchanged through contexts, leases and capture. The ordinary registration remains
+bound to its exact source. Equal handle values in another world cannot authenticate it. Static mutation
+invalidates published snapshots, while Bepu simulation steps and supported rebases preserve static provenance.
+Rebuild the ordinary environment after deliberate static changes. Removing any selected handle prohibits new
+movement registration from that installation. Dispose contexts and views before removing the registration,
+then dispose the source last. Rollback can still advance source generation history.
+
+### Persist the installation policy
+
+`colliders.Hash` always identifies the complete built sequence, independent of selection. The ordinary live
+semantic digest distinguishes selected provenance, but a persisted bake also needs an explicit policy source:
+
+```csharp
+using System.Text;
+using KhaozEngine.Movement;
+
+// Canonical UTF-8 with explicit LF, naming both policy version and inputs.
+byte[] policyBytes = Encoding.UTF8.GetBytes("omit-kind/v1\nkind=Object\n");
+var sources = new NavBakeSources().AddHashOf("world", canonicalWorldBytes);
+sources.AddHashOf("policy/colliders", policyBytes);
+GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles);
+
+// Runtime reconstructs the same canonical inputs, including the policy entry.
+var runtimeSources = new NavBakeSources().AddHashOf("world", canonicalWorldBytes);
+runtimeSources.AddHashOf("policy/colliders", policyBytes);
+var expected = new NavBakeExpectation(options, runtimeSources, profiles);
+NavBakeLoadResult loaded = GroundNavigationBake.Load(stream, expected);
+```
+
+Include every other proof input in both source builders too. Change the policy digest whenever its semantics
+or inputs change. Contact registration, live environment identity, format 2 and runtime profile validation do
+not insert this entry or replace it. The bounded integration proof loads each policy's bake with its matching
+expectation, then changes only `policy/colliders` and receives `SourcesChanged` naming that source, with the
+complete collider hash and tuning unchanged. Consumer material policies belong in the consumer.
+
 ## Types
 
 - **`TileWorldColliders`**: `Build`, `Colliders` (every `TileCollider` in canonical order), `Hash`, `Ground`,
@@ -91,7 +164,8 @@ or several as an `AggregateException`. A second call retries only the handles th
 - **`TileColliderOptions`**: `WallThickness` (0.1 m), `BlockedHeight` (null means the document's plane height) and
   `WalkSurfaceThickness` (0.1 m). `Build` refuses a value that is not a finite number above 0 with an
   `ArgumentOutOfRangeException` naming the option.
-- **`TileColliderRegistration`**: the static handles, index for index with `Colliders`, with `Remove` and `Dispose`.
+- **`TileColliderRegistration`**: compact `Handles`, original `ColliderIndices`, selected `GroundHandles`,
+  `Remove` and `Dispose`.
 - **`TileGroundSampler`**: `HeightAt(worldX, worldZ)` and `NormalAt(worldX, worldZ)`.
 - **`TileMediumSampler`**: `MediumAt(worldX, worldZ, feetY)`.
 
@@ -182,7 +256,8 @@ These providers were audited for a parallel contact navigation bake, `NavBakeExe
 ## Hash
 
 `Hash` is SHA-256 over every collider in order: its kind byte, its shape as `PropCollisionFormat.Write` writes it,
-and its pose as seven little-endian floats (position x, y, z, then orientation x, y, z, w). The same world and
+and its pose as seven little-endian floats (position x, y, z, then orientation x, y, z, w). Filtering installation
+does not change this complete-set hash or create an installed-subset hash. The same world and
 catalogs hash equal on every rebuild, whatever order the regions were loaded in. Ground meshes and every box on a
 quarter turn use no trigonometry, so they hash exactly across architectures. A walk surface on a yaw that is not a
 quarter turn takes its centre and orientation from `MathF` trigonometry, which can differ in the last bits between

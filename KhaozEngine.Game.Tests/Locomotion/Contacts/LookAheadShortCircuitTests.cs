@@ -19,8 +19,8 @@ public sealed class LookAheadShortCircuitTests(ITestOutputHelper output)
     static readonly MovementSpaceKey Room = new("world", "room");
 
     /// <summary>One tick. <paramref name="Result"/> is the whole explicit step result, or the dry state.</summary>
-    readonly record struct TickResult(object Result, MoveState State, MovementStepOutcome? Outcome, int Finds,
-        int LookAheadReads, int AnalyticSamples, int Bindings);
+    readonly record struct TickResult(object Result, MoveState State, MovementStepOutcome? Outcome, long Finds,
+        int LookAheadReads, long AnalyticSamples, long Bindings);
 
     // Every sparse cost scene, through the dry and the explicit door, with the row's own input and with an ascending,
     // a descending and a flat carried run, walked forward and back.

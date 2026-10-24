@@ -150,35 +150,31 @@ public sealed partial class TileWorldColliders
     /// <exception cref="AggregateException">Adding failed and removing what was added failed too. The add failure is
     /// the first inner exception.</exception>
     public TileColliderRegistration AddTo(IPhysicsWorld world)
+        => TileColliderInstallation.Install(world, Colliders, _provenance, MovementWorldId, MovementExtent, null);
+
+    /// <summary>
+    /// Adds only selected colliders as statics, retaining their canonical owners, absolute bounds and the full
+    /// resident movement extent. Physical poses are moved by <see cref="IPhysicsWorld.Origin"/> once, as in
+    /// <see cref="AddTo(IPhysicsWorld)"/>. Handles are compact, with original indices in
+    /// <see cref="TileColliderRegistration.ColliderIndices"/>.
+    /// <para>The policy runs synchronously once per collider in <see cref="Colliders"/> order, on absolute
+    /// document-space data, before reading the origin or adding any static. It must be pure for this call: do not
+    /// mutate the document, shapes or world, re-enter installation, or depend on concurrently changing state.
+    /// Decisions are captured and the callback is never invoked again by the registration.</para>
+    /// <para>A callback failure is rethrown unchanged without inserting statics. An add failure removes successfully
+    /// added selected statics through the same cleanup path as <see cref="AddTo(IPhysicsWorld)"/>.</para>
+    /// </summary>
+    /// <param name="world">The caller-owned world to add the selected statics to.</param>
+    /// <param name="include">A pure policy returning true to retain a whole collider, or false to omit it.</param>
+    /// <returns>The selected handles and original collider indices, including an empty disposable registration when
+    /// nothing is selected.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="world"/> or <paramref name="include"/> is null.</exception>
+    /// <exception cref="AggregateException">Adding and rollback both failed. The add failure is first.</exception>
+    public TileColliderRegistration AddTo(IPhysicsWorld world, Func<TileCollider, bool> include)
     {
         ArgumentNullException.ThrowIfNull(world);
-        Vector3 origin = world.Origin;
-        var handles = new StaticHandle[Colliders.Count];
-        var groundHandles = new List<StaticHandle>(Colliders.Count(collider => collider.Kind == TileColliderKind.Ground));
-        int added = 0;
-        try
-        {
-            for (; added < handles.Length; added++)
-            {
-                TileCollider collider = Colliders[added];
-                handles[added] = world.AddStatic(collider.Shape,
-                    new Pose(collider.Pose.Position - origin, collider.Pose.Orientation));
-                if (collider.Kind == TileColliderKind.Ground) groundHandles.Add(handles[added]);
-            }
-        }
-        catch (Exception addFailure)
-        {
-            try
-            {
-                new TileColliderRegistration(world, handles[..added]).Remove();
-            }
-            catch (Exception cleanupFailure)
-            {
-                throw new AggregateException(addFailure, cleanupFailure);
-            }
-            throw;
-        }
-        return new TileColliderRegistration(world, handles, groundHandles.ToArray(), _provenance, MovementWorldId, MovementExtent);
+        ArgumentNullException.ThrowIfNull(include);
+        return TileColliderInstallation.Install(world, Colliders, _provenance, MovementWorldId, MovementExtent, include);
     }
 
     static void RequirePositive(float value, string option)

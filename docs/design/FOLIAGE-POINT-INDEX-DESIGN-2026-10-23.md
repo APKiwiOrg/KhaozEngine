@@ -86,7 +86,7 @@ client frame intervals at the same quality and slow view. The 144 FPS target req
 The [implementation plan](../superpowers/plans/2026-10-23-foliage-point-index.md) assigns the code and
 tests. The parent owns final full verification, whole-branch review, main integration, release and released
 engine adoption. Current-main reconciliation is complete. Version 21.12.2 was subsequently released, so this batch is staged
-for 21.12.3. Private diagnostic
+for 21.12.3. It ships in 21.13.0, which replaced the untagged 21.12.3. Private diagnostic
 archives never merge into `main`.
 
 ## Implementation evidence

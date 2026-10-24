@@ -5290,9 +5290,40 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `Post.LightDirection`/`LightColor`/`AmbientColor`/`FillLightColor` every call. If your game reads those values
     to drive something else (for example a water horizon tint sampled from `Sky.HorizonColor`), re-tie it after
     `Apply` runs so it does not read a stale value from before the time of day advanced.
+- **Directional indirect diffuse** (`Post.IndirectDiffuse`, an `IndirectDiffuseMode`, since 21.13.0):
+  `Uniform` is the default and keeps the existing orientation-independent `AmbientColor` plus directional
+  `FillLightColor`, with unchanged pixels and a zero indirect frame tail. Opt in with
+  `scene.Post.IndirectDiffuse = IndirectDiffuseMode.Directional`. The six lit model and terrain fragments then
+  evaluate `Post.AmbientIrradiance` at the surface normal instead of reading the flat ambient colour. Water,
+  particles, decals, billboards, outlines and silhouettes keep their existing lighting.
+
+  `IndirectDiffuse` and `AmbientIrradiance` are public fields on `PixelPostProcessSettings`.
+  `AmbientIrradiance` defaults to `IrradianceSH.Zero` (`default`). `IrradianceSH` is a readonly value type with
+  nine pre-convolved RGB coefficients in a Y-up real L2 spherical harmonic basis. `Evaluate(Vector3 unitNormal)`
+  returns irradiance in `AmbientColor` units, clamped to zero per channel. No extra `1/pi` applies.
+  `Uniform(Vector3 irradiance)` builds an isotropic term, and
+  `SkyAndGround(Vector3 skyIrradiance, Vector3 groundIrradiance)` builds uniform hemispheres specified by their
+  upward and downward irradiance. A horizontal normal receives half of each. For custom coefficients, the
+  `ReadOnlySpan<Vector3>` constructor requires exactly nine, `Coefficient(index)` reads indices 0 to 8,
+  `Scale(Vector3 rgb)` scales channels, and `+` combines coefficients before evaluation clamps them.
+
+  Custom coefficients already include the clamped-cosine band weights `pi`, `2*pi/3` and `pi/4` for bands
+  0, 1 and 2. For a unit normal `(x, y, z)`, the basis order is:
+
+  ```text
+  Y0 = 0.282095, Y1 = 0.488603*y, Y2 = 0.488603*z, Y3 = 0.488603*x
+  Y4 = 1.092548*x*z, Y5 = 1.092548*y*z, Y6 = 0.315392*(3*y*y - 1)
+  Y7 = 1.092548*x*y, Y8 = 0.546274*(x*x - z*z)
+  ```
+
+  Without the atmosphere, the consumer supplies `AmbientIrradiance`. If it remains `default` or `Zero`,
+  `Directional` uploads `IrradianceSH.Uniform` of `AmbientColor`'s RGB, so changing only the mode retains ambient
+  light. Fill lighting remains independent in this path. Set `FillLightColor` to zero RGB when a custom ground
+  hemisphere already accounts for that bounce.
 - **Physical atmosphere** (`Post.Atmosphere`, an `AtmosphereSettings`, **default off**): an opt-in Hillaire 2020
-  scattering sky with CPU-derived key, ambient and fill light, matching water reflections and analytic height
-  fog. `AtmosphereSettings.Earth()` returns the default Earth preset with `Enabled = false`. Enable it explicitly:
+  scattering sky with CPU-derived key and indirect light, matching water reflections and analytic height fog.
+  `Uniform` keeps the existing ambient and fill. `Directional` derives sky and ground irradiance as described
+  below. `AtmosphereSettings.Earth()` returns the default Earth preset with `Enabled = false`. Enable it explicitly:
 
   ```csharp
   var cycle = new SunCycleSettings { NightKey = NightKeyMode.Moon };
@@ -5332,16 +5363,29 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `DayTint` and `DuskTint` default to white. `SunCycle` blends the day, dusk and night tints by its elevation
     weights, then applies that tint once to sky, fog colour, key, ambient and fill. `AmbientScale` and `FillScale`
     default to 1 and affect lighting only. The floors retain the hue of `NightTint` at every time of day,
-    independently of the current blended tint. With `S` the solar illuminance, `L` sky radiance and `E` sky
-    irradiance (each including the moon contribution), the per-channel controls are:
+    independently of the current blended tint. With `S` the solar illuminance, `L` sky radiance and `E` upward
+    sky irradiance (each including the moon contribution), the per-channel controls are:
 
     ```text
     Sky = max(S * pi * L * Tint, NightSkyFloor * NightTint)
-    Ambient = max(S * E * AmbientScale * Tint, NightAmbientFloor * NightTint)
+    Floor = NightAmbientFloor * NightTint
+    Ambient = max(S * E * AmbientScale * Tint, Floor)
+    Directional(up) = Ambient
+    Directional(down) = max(Fill, Floor)
     ```
 
     Key light uses source illuminance times source transmittance and tint, with the existing key fade.
     These values use the engine's Lambert lighting convention. Surface lighting has no extra `1/pi`.
+  - **Directional surface lighting.** With `IndirectDiffuse = Directional`, `SunCycle.Apply` and scene recording
+    write `AmbientIrradiance` from the physical model and zero `FillLightColor` RGB to avoid counting bounce
+    twice. `AmbientColor` still carries `AtmosphereLighting.Ambient`, and the returned `SunCycleState` keeps
+    its original ambient and fill values. Sky irradiance follows the sun and moon azimuth. `AmbientScale`
+    scales the sky, `FillScale` scales the ground bounce and the frame tint applies to both. Each vertical pole
+    receives its own hemispherical night-floor shortfall, so bringing one pole up to the floor does not raise
+    the other. At every source elevation the upward value equals `Ambient`, including its floor, and the
+    downward value equals `max(Fill, Floor)`, within floating-point precision. Switching back to `Uniform`
+    restores the directional fill and clears `AmbientIrradiance`. This is open-sky lighting without interior
+    occlusion or a probe volume.
   - **World mapping and altitude.** `WorldUnitsPerKilometre = 1000` means one world unit is one metre.
     `HeightKm(absoluteWorldY)` maps absolute Y, with Y = 0 at the planet surface. CPU lighting clamps underground
     camera heights to the surface. Its cached unit-source lighting interpolates by solar elevation and physical
@@ -5367,11 +5411,16 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     foliage, water, decals, billboards, particles, trails and beams participate. Debug lines and distortion draws
     retain their own paths.
   - **GPU-free model and fog oracle.** `AtmosphereModel` needs no device. It snapshots validated settings and
-    exposes `Transmittance`, `SingleScattering`, `MultiScattering`, `SkyRadiance`, `CreateFrame`, `EvaluateLighting`
-    and `SkyValue`. `CreateFrame(SunCycle.Evaluate(timeOfDay, cycle))` produces an `AtmosphereFrame` with independent
-    body directions, moon fraction, tint and key visibility. `EvaluateLighting(cameraHeightKm, frame)` returns
-    `AtmosphereLighting` (`Key`, `Ambient`, `Fill`, `Horizon`, and untinted source transmittances). `SkyValue` applies
-    illuminance, pi, tint and the sky floor, whereas `SkyRadiance` is unit-source radiance. Transport positions are
+    exposes `Transmittance`, `SingleScattering`, `MultiScattering`, `SkyRadiance`, `CreateFrame`, `EvaluateLighting`,
+    `EvaluateIrradiance` and `SkyValue`. `CreateFrame(SunCycle.Evaluate(timeOfDay, cycle))` produces an
+    `AtmosphereFrame` with independent body directions, moon fraction, tint and key visibility.
+    `EvaluateLighting(cameraHeightKm, frame)` returns
+    `AtmosphereLighting` (`Key`, `Ambient`, `Fill`, `Horizon`, and untinted source transmittances).
+    `EvaluateIrradiance(float cameraHeightKm, in AtmosphereFrame frame)` returns the matching `IrradianceSH`.
+    Its separate sky table builds lazily on first use, taking about 250 ms in the measured Earth fixture,
+    and rebuilds after physical-settings changes. Warm changing-frame evaluation allocates nothing.
+    `SkyValue` applies illuminance, pi, tint and the sky floor, whereas `SkyRadiance` is unit-source radiance.
+    Transport positions are
     planet-centred kilometres. `AtmosphereFog.Transmittance` accepts world distance and absolute endpoint heights
     and applies the onset itself.
     `Shade` accepts camera-relative positions plus the render origin, and `Compose`/`ComposePremultiplied` expose
@@ -5385,7 +5434,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   - **Phase 1 limits and evidence.** Analytic fog can be too bright in deep valleys under a low sun. The aerial
     perspective volume is deferred to [#1364](https://github.com/APKiwiOrg/KhaozEngine/issues/1364). The transport's
     ground boundary reflects direct source illumination only. Diffuse sky light reflected off that boundary and
-    its feedback into multi-scattering are omitted. Scene receivers still get the separate ambient term.
+    its feedback into multi-scattering are omitted. Scene receivers get sky ambient and directional fill in
+    `Uniform`, or directional sky irradiance and a ground hemisphere in `Directional`.
     The calibrated one-shot completed-frame timing on Apple M2 Max was 8.225700 ms off and 4.473500 ms on,
     delta -3.752200 ms, with a 463.707700 ms cold enabled frame. It is inconclusive and does not establish the
     0.3 ms target. It measured the earlier uniformly scaled floor fixture, before the final height correction.
@@ -8651,7 +8701,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.12.3" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.13.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9076,7 +9126,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.12.3" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.13.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9875,7 +9925,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.12.3" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.13.0" />
 ```
 
 ```csharp
@@ -17910,7 +17960,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.12.3" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.13.0" />
 ```
 
 ```csharp
@@ -17946,7 +17996,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.12.3" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.13.0" />
 ```
 
 ```csharp
@@ -18190,7 +18240,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.12.3" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.13.0" />
 ```
 
 ```csharp
@@ -22575,7 +22625,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.12.3" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.13.0" />
 </ItemGroup>
 ```
 

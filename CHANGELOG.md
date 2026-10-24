@@ -5,10 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.12.3
+## 21.13.0
 
 2026-10-24
 
+- Add opt-in directional indirect diffuse with `IrradianceSH`, physical sky irradiance and ground bounce.
+  Preserve uniform ambient lighting by default and light canopy and roof undersides from a ground hemisphere
+  when enabled (Closes #1553).
 - Defer Metal drawable acquisition until the current frame first binds its swapchain, preserving cached
   framebuffer and capture behavior.
 - Add the default-off `RendererInitializesSwapchain` host option so a full-output renderer can avoid the

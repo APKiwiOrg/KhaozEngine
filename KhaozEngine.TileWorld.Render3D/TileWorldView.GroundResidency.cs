@@ -83,7 +83,7 @@ public sealed partial class TileWorldView
         }
         _profileBuilds.Request(new TileWorldBuildRequest<TileProfileBuildInput>(
             GroundKey(region, plane, KindOf(lod)), generation,
-            new TileGroundBuildInput(snapshot, materials, region, plane, lod, _mesher, water)));
+            new TileGroundBuildInput(snapshot, materials, region, plane, lod, _mesher, water, GroundSurfaceRequested)));
     }
 
     static TileWorldBuildKey GroundKey(RegionCoord region, int plane, TileWorldBuildKind kind) =>

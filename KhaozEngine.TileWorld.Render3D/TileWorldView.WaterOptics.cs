@@ -119,8 +119,9 @@ public sealed partial class TileWorldView
         water.Stamp.IsCurrent(_doc, _waterEpochs) &&
         water.Padding == (_opticsScene?.GetWaterOpticsPadding(_options.WaterLook) ?? 0f);
 
-    bool GroundInputsCurrent(TileGroundSurfaceSnapshot surface, TileWaterPreparation water) =>
-        WaterInputsCurrent(water) && surface.SourceWitness.IsCurrent(_doc, _catalogs, _mesher);
+    bool GroundInputsCurrent(TileGroundSurfaceSnapshot? surface, TileWaterPreparation water) =>
+        WaterInputsCurrent(water) && (surface is not null) == GroundSurfaceRequested &&
+        (surface is null || surface.SourceWitness.IsCurrent(_doc, _catalogs, _mesher));
 
     // No GPU ownership escapes until both uploads succeed and the source remains current.
     internal bool UploadGround(TileGroundCpuBuild ground, TileWaterPreparation water, out MeshHandle? replacement,
@@ -160,7 +161,7 @@ public sealed partial class TileWorldView
         for (int plane = 0; plane < water.Length; plane++)
         {
             if (water[plane] is not { } generation) continue;
-            if (surfaces[plane] is not { } surface || !GroundInputsCurrent(surface, generation.Preparation))
+            if (!GroundInputsCurrent(surfaces[plane], generation.Preparation))
             {
                 if (meshes[plane] is { } stale) _scene.UnloadMesh(stale);
                 meshes[plane] = null;

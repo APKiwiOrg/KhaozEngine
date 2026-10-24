@@ -8,6 +8,9 @@ namespace KhaozEngine.TileWorld;
 // Synchronous ground preparation and the accepted CPU source table share mesh admission with worker builds.
 public sealed partial class TileWorldView
 {
+    // WaterDepthMode is init-only and captured at construction. Changing policy requires a new view.
+    bool GroundSurfaceRequested => _waterDepthMode == TileWaterDepthMode.AuthoredBed;
+
     // Null is unavailable, including an unloaded or pending source. A retained empty snapshot is known empty.
     internal TileGroundSurfaceSnapshot? AcceptedGroundSurface(RegionCoord region, int plane) =>
         _loaded.TryGetValue(region, out RegionHandles? handles) && (uint)plane < (uint)handles.Surfaces.Length
@@ -59,11 +62,11 @@ public sealed partial class TileWorldView
         GeneratedCoverCount += cover.Count;
     }
 
-    // The legacy synchronous ground build, which the CPU witness records like every other build entry.
-    TileGroundCpuBuild BuildGroundCpu(RegionCoord region, int plane)
+    // The synchronous factory used by both initial load and flush. Legacy views skip optical work entirely.
+    internal TileGroundCpuBuild BuildGroundCpu(RegionCoord region, int plane)
     {
         _onCpuBuild?.Invoke(new TileWorldBuildKey(region, plane, TileWorldBuildKind.FullGround));
-        return TileGroundCpuBuild.Build(_doc, _catalogs, region, plane, TileGroundLod.Full, _mesher);
+        return TileGroundCpuBuild.Build(_doc, _catalogs, region, plane, TileGroundLod.Full, _mesher, GroundSurfaceRequested);
     }
 
 }

@@ -20,9 +20,9 @@ public sealed class TileWorldGroundSurfacePairTests
         TileWorldDocument doc = World();
         TileWorldCatalogs catalogs = TileRenderTestData.Catalogs;
         var scene = new RecordingTileWorldScene();
-        using var view = new TileWorldView(scene, doc, catalogs, new GreyboxMeshResolver());
+        using var view = new TileWorldView(scene, doc, catalogs, new GreyboxMeshResolver(), OpticsOptions());
         TileGroundCpuBuild ground = TileGroundCpuBuild.Build(doc, catalogs, Origin, 0, TileGroundLod.Full,
-            new TileGroundMesherOptions());
+            new TileGroundMesherOptions(), captureOpticalSurface: true);
         var water = new TileWaterPreparation([], [],
             new TileWaterSourceStamp(doc, [], new Dictionary<TileWaterOpticsDependency, long>()), 0, null);
         Assert.True(view.UploadGround(ground, water, out MeshHandle? handle, out TileWaterGeneration? generation));
@@ -37,7 +37,7 @@ public sealed class TileWorldGroundSurfacePairTests
     {
         TileWorldDocument doc = World();
         var scene = new RecordingTileWorldScene();
-        using var view = new TileWorldView(scene, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver());
+        using var view = new TileWorldView(scene, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver(), OpticsOptions());
         Assert.Null(view.AcceptedGroundSurface(Origin, 0));
         view.LoadRegion(Origin);
         TileGroundSurfaceSnapshot first = Assert.IsType<TileGroundSurfaceSnapshot>(view.AcceptedGroundSurface(Origin, 0));
@@ -61,12 +61,13 @@ public sealed class TileWorldGroundSurfacePairTests
     {
         TileWorldDocument doc = World();
         var scene = new RecordingTileWorldScene();
-        using var view = new TileWorldView(scene, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver());
+        using var view = new TileWorldView(scene, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver(), OpticsOptions());
         view.LoadRegion(Origin);
         TileGroundSurfaceSnapshot first = view.AcceptedGroundSurface(Origin, 0)!;
         scene.ThrowOnMeshLoad = scene.MeshLoads.Count + 1;
-        doc.SetCornerHeightCm(10, 10, 0, 100);
-        view.MarkDirty(Origin, 0);
+        // A border dependency requests replacement while this accepted pair remains valid. Announcing
+        // a change to its own source would correctly withdraw authored-bed ground before replacement.
+        view.MarkDirty(new TileRect(64, 10, 1, 1), 0);
         Assert.Throws<InvalidOperationException>(() => view.Flush(int.MaxValue));
         Assert.Same(first, view.AcceptedGroundSurface(Origin, 0));
     }
@@ -78,7 +79,7 @@ public sealed class TileWorldGroundSurfacePairTests
         doc.SetUnderlay(10, 10, 0, 0);
         var scene = new RecordingTileWorldScene();
         var dispatcher = new ManualTileBuildDispatcher();
-        using TileWorldView view = ProfileFixture.CreateView(scene, doc, dispatcher, new ProfileBuildWitness());
+        using TileWorldView view = ProfileFixture.CreateView(scene, doc, dispatcher, new ProfileBuildWitness(), OpticsOptions());
         view.LoadRegion(Origin, TileRegionResidencyState.Gameplay);
         Assert.Null(view.AcceptedGroundSurface(Origin, 0));
         view.SettleForCapture(Origin);
@@ -94,7 +95,7 @@ public sealed class TileWorldGroundSurfacePairTests
         TileWorldDocument doc = World();
         var scene = new RecordingTileWorldScene();
         var dispatcher = new ManualTileBuildDispatcher();
-        using TileWorldView view = ProfileFixture.CreateView(scene, doc, dispatcher, new ProfileBuildWitness());
+        using TileWorldView view = ProfileFixture.CreateView(scene, doc, dispatcher, new ProfileBuildWitness(), OpticsOptions());
         view.LoadRegion(Origin, TileRegionResidencyState.Decor);
         Assert.Null(view.AcceptedGroundSurface(Origin, 0));
         view.Draw(Focus);
@@ -123,7 +124,7 @@ public sealed class TileWorldGroundSurfacePairTests
         TileWorldDocument doc = World();
         var scene = new RecordingTileWorldScene();
         var dispatcher = new ManualTileBuildDispatcher();
-        using TileWorldView view = ProfileFixture.CreateView(scene, doc, dispatcher, new ProfileBuildWitness());
+        using TileWorldView view = ProfileFixture.CreateView(scene, doc, dispatcher, new ProfileBuildWitness(), OpticsOptions());
         view.LoadRegion(Origin, TileRegionResidencyState.Gameplay);
         view.Draw(Focus);
         doc.SetSettings(10, 10, 0, TileSettings.NoDraw);
@@ -132,6 +133,8 @@ public sealed class TileWorldGroundSurfacePairTests
         Assert.Null(view.AcceptedGroundSurface(Origin, 0));
         Assert.Empty(scene.GroundMeshes);
     }
+
+    static TileWorldViewOptions OpticsOptions() => new() { WaterDepthMode = TileWaterDepthMode.AuthoredBed };
 
     static TileWorldDocument World()
     {

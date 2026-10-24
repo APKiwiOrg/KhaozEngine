@@ -6,8 +6,13 @@ namespace KhaozEngine.TileWorld;
 
 /// <summary>One emitted tile/block, including all feather children and empty topology decisions.
 /// Offsets address the completed mesh's original index buffer, never a reconstructed triangulation.</summary>
-internal readonly record struct TileGroundSurfaceRange(TileRect Tiles, int FirstIndex, int IndexCount,
-    int FirstHeight, int HeightCount, int FirstTopology, int TopologyCount);
+internal readonly record struct TileGroundSurfaceRange(TileGroundSurfaceExtent Tiles, int FirstIndex, int IndexCount,
+    int FirstHeight, int HeightCount, int TopologyMargin, bool HeightCoordinatesRepresentable)
+{
+    // This rectangle is also the compact association into the shared coordinate-indexed topology grid.
+    internal TileGroundAuditExtent TopologyExtent => Tiles.Expand(TopologyMargin);
+    internal bool IsRepresentable => HeightCoordinatesRepresentable && TopologyExtent.IsAddressable;
+}
 
 /// <summary>A strict read at the shared geometry-height read point, including negative availability queries.</summary>
 internal readonly struct TileGroundHeightWitness
@@ -69,6 +74,7 @@ internal sealed class TileGroundSurfaceAudit
     readonly TileGroundHeightWitness[] _heights;
     readonly int[] _rangeHeights;
     readonly Topology[] _topology;
+    readonly int _topologyX, _topologyZ, _topologyWidth;
     readonly float _tileSize, _planeHeight, _featherWidth;
     readonly int _planeCount, _plane;
 
@@ -89,12 +95,16 @@ internal sealed class TileGroundSurfaceAudit
     }
 
     TileGroundSurfaceAudit(TileWorldDocument document, int plane, TileGroundMesherOptions options,
-        TileGroundSurfaceRange[] ranges, TileGroundHeightWitness[] heights, int[] rangeHeights, Topology[] topology)
+        TileGroundSurfaceRange[] ranges, TileGroundHeightWitness[] heights, int[] rangeHeights, Topology[] topology,
+        int topologyX, int topologyZ, int topologyWidth)
     {
         _ranges = ranges;
         _heights = heights;
         _rangeHeights = rangeHeights;
         _topology = topology;
+        _topologyX = topologyX;
+        _topologyZ = topologyZ;
+        _topologyWidth = topologyWidth;
         _tileSize = document.TileSize;
         _planeHeight = document.PlaneHeight;
         _planeCount = document.PlaneCount;
@@ -113,15 +123,19 @@ internal sealed class TileGroundSurfaceAudit
     internal ReadOnlySpan<int> HeightIndices(int range) =>
         _rangeHeights.AsSpan(_ranges[range].FirstHeight, _ranges[range].HeightCount);
 
+    // Check this before interpreting missingRegion. An unaddressable footprint has no RegionCoord.
+    internal bool IsRangeRepresentable(int range) => _ranges[range].IsRepresentable;
+
     internal bool IsRangeAvailable(int range, out RegionCoord missingRegion)
     {
+        missingRegion = default;
+        if (!IsRangeRepresentable(range)) return false;
         foreach (int index in HeightIndices(range))
             if (!_heights[index].Available)
             {
                 missingRegion = _heights[index].MissingRegion;
                 return false;
             }
-        missingRegion = default;
         return true;
     }
 
@@ -132,9 +146,16 @@ internal sealed class TileGroundSurfaceAudit
             _planeCount != document.PlaneCount || _featherWidth != options.OverlayFeatherWidthMetres) return false;
         foreach (int index in HeightIndices(range))
             if (!_heights[index].IsCurrent(document)) return false;
-        TileGroundSurfaceRange r = _ranges[range];
-        foreach (Topology input in _topology.AsSpan(r.FirstTopology, r.TopologyCount))
-            if (input != Topology.Read(document, catalogs, input.X, input.Z, _plane)) return false;
+        // Currentness is separate from representability, so unsupported edge ranges do not abort ground
+        // admission or refuse another range's valid interior optical domain.
+        TileGroundAuditExtent inputs = _ranges[range].TopologyExtent.AddressablePart;
+        for (long z = inputs.Z; z < inputs.Z1; z++)
+            for (long x = inputs.X; x < inputs.X1; x++)
+            {
+                int at = checked((int)((z - _topologyZ) * _topologyWidth + x - _topologyX));
+                if (_topology[at] != Topology.Read(document, catalogs, checked((int)x), checked((int)z), _plane))
+                    return false;
+            }
         return true;
     }
 
@@ -159,9 +180,11 @@ internal sealed class TileGroundSurfaceAudit
         internal readonly List<TileGroundHeightWitness> Heights = new();
         internal readonly List<int> RangeHeights = new();
         // Private so the immutable witness's topology representation cannot escape.
-        readonly List<Topology> _topologies = new();
-        TileRect _tiles;
+        readonly Dictionary<(int X, int Z), Topology> _topologies = new();
+        TileGroundSurfaceExtent _tiles;
         int _firstIndex, _margin;
+        bool _heightCoordinatesRepresentable;
+        internal int ReadCount { get; private set; }
 
         internal Builder(TileWorldDocument document, TileWorldCatalogs catalogs, int plane, TileGroundMesherOptions options)
         {
@@ -173,16 +196,25 @@ internal sealed class TileGroundSurfaceAudit
 
         internal void Begin(TileRect tiles, int firstIndex, int margin)
         {
-            _tiles = tiles;
+            _tiles = new TileGroundSurfaceExtent(tiles.X, tiles.Z, tiles.Width, tiles.Height);
             _firstIndex = firstIndex;
             _margin = margin;
             _activeHeights.Clear();
+            _heightCoordinatesRepresentable = true;
         }
 
         internal void ReadHeight(int x, int z, short geometryHeightCm)
         {
+            // Legacy mesh arithmetic can wrap a corner beyond the last signed tile. Preserve that mesh,
+            // but never query the wrapped coordinate as if it were an actual optical dependency.
+            if (x < _tiles.X || x > _tiles.X1 || z < _tiles.Z || z > _tiles.Z1)
+            {
+                _heightCoordinatesRepresentable = false;
+                return;
+            }
             if (!_heightLookup.TryGetValue((x, z), out int index))
             {
+                ReadCount = checked(ReadCount + 1);
                 index = Heights.Count;
                 Heights.Add(new TileGroundHeightWitness(Document, x, z, Plane, geometryHeightCm));
                 _heightLookup.Add((x, z), index);
@@ -192,17 +224,40 @@ internal sealed class TileGroundSurfaceAudit
 
         internal void End(int endIndex)
         {
-            int firstHeight = RangeHeights.Count, firstTopology = _topologies.Count;
+            int firstHeight = RangeHeights.Count;
             RangeHeights.AddRange(_activeHeights);
-            TileRect inputs = _tiles.Expand(_margin);
-            for (int z = inputs.Z; z < inputs.Z1; z++)
-                for (int x = inputs.X; x < inputs.X1; x++)
-                    _topologies.Add(Topology.Read(Document, _catalogs, x, z, Plane));
+            TileGroundAuditExtent inputs = _tiles.Expand(_margin).AddressablePart;
+            for (long z = inputs.Z; z < inputs.Z1; z++)
+                for (long x = inputs.X; x < inputs.X1; x++)
+                {
+                    var key = (checked((int)x), checked((int)z));
+                    if (_topologies.ContainsKey(key)) continue;
+                    ReadCount = checked(ReadCount + 1);
+                    _topologies.Add(key, Topology.Read(Document, _catalogs, key.Item1, key.Item2, Plane));
+                }
             Ranges.Add(new TileGroundSurfaceRange(_tiles, _firstIndex, endIndex - _firstIndex,
-                firstHeight, RangeHeights.Count - firstHeight, firstTopology, _topologies.Count - firstTopology));
+                firstHeight, RangeHeights.Count - firstHeight, _margin, _heightCoordinatesRepresentable));
         }
 
-        internal TileGroundSurfaceAudit Complete() => new(Document, Plane, Options, Ranges.ToArray(),
-            Heights.ToArray(), RangeHeights.ToArray(), _topologies.ToArray());
+        internal TileGroundSurfaceAudit Complete()
+        {
+            // One immutable slot per coordinate, shared by every overlapping footprint. Any unused grid
+            // slots are still charged in RetainedBytes. Only recorded range footprints ever read them.
+            int minX = int.MaxValue, minZ = int.MaxValue, maxX = int.MinValue, maxZ = int.MinValue;
+            foreach (var key in _topologies.Keys)
+            {
+                minX = Math.Min(minX, key.X);
+                minZ = Math.Min(minZ, key.Z);
+                maxX = Math.Max(maxX, key.X);
+                maxZ = Math.Max(maxZ, key.Z);
+            }
+            int width = _topologies.Count == 0 ? 0 : checked((int)((long)maxX - minX + 1));
+            int height = _topologies.Count == 0 ? 0 : checked((int)((long)maxZ - minZ + 1));
+            var topology = new Topology[checked(width * height)];
+            foreach (var entry in _topologies)
+                topology[checked((int)(((long)entry.Key.Z - minZ) * width + entry.Key.X - minX))] = entry.Value;
+            return new(Document, Plane, Options, Ranges.ToArray(), Heights.ToArray(), RangeHeights.ToArray(),
+                topology, minX, minZ, width);
+        }
     }
 }

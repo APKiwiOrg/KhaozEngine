@@ -18,7 +18,7 @@ internal sealed record TileGroundBuildInput(
     RegionCoord Region,
     int Plane,
     TileGroundLod Lod,
-    TileGroundMesherOptions Options, TileWaterPreparation Water) : TileProfileBuildInput;
+    TileGroundMesherOptions Options, TileWaterPreparation Water, bool CaptureOpticalSurface) : TileProfileBuildInput;
 
 /// <summary>A built ground mesh, null when the region-plane has no drawable tile.</summary>
 internal sealed record TileGroundBuildOutput(TileGroundCpuBuild Ground, TileWaterPreparation Water) : TileProfileBuildOutput;
@@ -49,7 +49,7 @@ public sealed partial class TileWorldView
     {
         EnsureWaterSources(region);
         GroundCaptures++;
-        return TileWorldBuildSnapshot.CaptureGround(_doc, region);
+        return TileWorldBuildSnapshot.CaptureGround(_doc, region, GroundSurfaceRequested);
     }
 
     TileWorldCatalogs CaptureMaterials()
@@ -65,7 +65,8 @@ public sealed partial class TileWorldView
         return request.Input switch
         {
             TileGroundBuildInput ground => new TileGroundBuildOutput(TileGroundCpuBuild.Build(
-                ground.Document, ground.Catalogs, ground.Region, ground.Plane, ground.Lod, ground.Options), ground.Water),
+                ground.Document, ground.Catalogs, ground.Region, ground.Plane, ground.Lod, ground.Options,
+                ground.CaptureOpticalSurface), ground.Water),
             TileCoverBuildInput cover => new TileCoverBuildOutput(cover.Build()),
             _ => throw new InvalidOperationException($"Unknown profile build input {request.Input.GetType().Name}."),
         };

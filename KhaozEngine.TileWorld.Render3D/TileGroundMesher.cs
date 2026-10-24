@@ -129,9 +129,12 @@ public static partial class TileGroundMesher
             for (int lx = 0; lx < TileRegion.Size; lx++)
             {
                 int x = context.OriginX + lx, z = context.OriginZ + lz;
-                // Feather boundary probes can inspect two neighbouring tile rings.
-                int margin = (doc.GetSettings(x, z, plane) & TileSettings.FeatherOverlay) != 0 ? 2 : 0;
-                audit?.Begin(new TileRect(x, z, 1, 1), mesh.IndexCount, margin);
+                if (audit is not null)
+                {
+                    // Feather boundary probes can inspect two neighbouring tile rings.
+                    int margin = (doc.GetSettings(x, z, plane) & TileSettings.FeatherOverlay) != 0 ? 2 : 0;
+                    audit.Begin(new TileRect(x, z, 1, 1), mesh.IndexCount, margin);
+                }
                 if (TileGroundTriangles.IsDrawable(doc, x, z, plane)) AddTile(mesh, context, lx, lz);
                 audit?.End(mesh.IndexCount);
             }

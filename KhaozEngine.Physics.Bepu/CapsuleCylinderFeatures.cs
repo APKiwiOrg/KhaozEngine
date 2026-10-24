@@ -101,11 +101,11 @@ internal static class CapsuleCylinderFeatures
         GeometrySign outside = w.Sign(w.Subtract(rho2, R2));
         if (outside == GeometrySign.Unresolved) return false;
         if (outside != GeometrySign.Positive) return NonPositive(w.Sign(w.Subtract(z2, r2))) && w.IsResolved;
-        int difference = w.Subtract(w.Add(w.Add(rho2, R2), z2), r2);
+        var arithmetic = new CircularSweepArithmetic(w);
+        int difference = CircularContactEquation.Difference(rho2, R2, z2, r2, arithmetic);
         GeometrySign ds = w.Sign(difference);
         if (ds == GeometrySign.Unresolved) return false;
-        return (NonPositive(ds) || NonPositive(w.Sign(w.Subtract(w.Square(difference),
-            w.Multiply(w.Constant(4), w.Multiply(R2, rho2)))))) && w.IsResolved;
+        return (NonPositive(ds) || NonPositive(w.Sign(CircularContactEquation.SquaredDifference(difference, R2, rho2, arithmetic)))) && w.IsResolved;
     }
 
     static bool NonPositive(GeometrySign sign) => sign is GeometrySign.Zero or GeometrySign.Negative;

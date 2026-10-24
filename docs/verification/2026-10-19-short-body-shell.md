@@ -690,3 +690,103 @@ All builds and tests ran through build-slot, one at a time. No full suite, timin
 live run, push, merge, branch change, external write or delegation occurred. Explicit staging
 and self-review cover exactly fifteen task-owned paths. All four staged guards pass before
 the partial commit. Full solution verification and integration remain with the orchestrator.
+
+## Task 2b continuation under SS-R9
+
+### Shared rounded-circle equation
+
+CircularContactEquation owns the existing CapsuleCylinderFeatures.Contact rounded-rim
+expression. Its SweepExactWorkspace policy preserves the original capsule operand order,
+short circuit and sign guards. Its exact polynomial policy supplies the same expression to
+ConvexCircularVertexSweep. No capsule dimension, transform, support or test expectation changes.
+CircularProjection and its outward interval policy enclose the attained rim projection.
+
+For a moving represented vertex p(t), write rho squared = px squared + pz squared and
+z = py - circle height. The shared capsule expression is
+T = rho squared + R squared + z squared - m squared. Its squared equation is
+T squared - 4 R squared rho squared = 0. The original radial domain rho >= R and T >= 0
+are retained, so the unsquared equation is T = 2 R rho. This is the exact requested
+Minkowski margin, with no additional radius or skin. The polynomial is generally quartic.
+Square-free reduction, Sturm counts, dyadic isolation and exact radical signs select its
+first feasible root, including repeated algebraic roots. No midpoint authorizes a contact.
+For a cell with exactly one root the isolator now proves original feasibility before final
+spatial narrowing. A rejected root needs no narrow impact bracket. A feasible root is narrowed
+by counting only the left child, since the unique parent root must be in one of its children.
+The proof and every work, depth, storage and exact-integer ceiling remain unchanged.
+
+The rim requires ny >= 0. The shoulder requires ny <= 0 and
+(C-S)*ny + R*(rho-R) >= 0. Each represented target vertex offset v from the contacting
+vertex must satisfy v.n >= 0. Multiplication by positive rho expresses the latter as
+sqrt(rho squared)*(vx*px + vy*z + vz*pz) - R*(vx*px + vz*pz) >= 0.
+These are original radical predicates at the isolated root, not interval near-zero tests.
+They prove the query normal cone and support against the entire original target.
+
+Positive n.displacement at that attained root proves strict separation of the entire earlier
+original path. Its support gap at any earlier fraction s is (t-s)*n.displacement. The actual
+float skin-shortened placement receives a separate outward support-plane check against every
+represented target vertex. Point encoding, unit-normal encoding and the whole impact bracket
+share the unchanged 0.001 m evidence budget. Normalization near a small margin needs a tighter
+root enclosure. Nonexpansive disc projection and the 2/m normalization bound derive it from
+the existing quarter budget. This tightens arithmetic enclosure only.
+
+### Moving closed-pair completeness lemma and implementation boundary
+
+Let A(t) = K + mB + t*d and let T be the compact represented planar target. If the original
+path starts disjoint and has a first contact tau, compactness makes that contact attained.
+Convexity supplies a common supporting normal at an attained pair. Removing the exact
+Minkowski offset m*n/|n| leaves a base-shell witness in one of the six closed strata in the
+Task 2a table. The target witness belongs to a closed face, edge or vertex. The eighteen
+closed pairs therefore exhaust first contact geometrically, just as they exhaust distance.
+
+For a target edge, an interior witness has n.edge = 0. A segment endpoint belongs to the
+vertex construction. For a face, an exposed shell generator or head disc either meets a
+finite face interior or its projected intersection meets a polygon boundary. The latter
+reduces to the already incident edge or vertex construction. A seam belongs to every incident
+closed stratum and keeps its full common normal cone. No seam normal is averaged.
+
+An axis-parallel edge has constant radial data and retains its closed height crossings.
+An edge through the apex path retains the closed line intersection. An edge in a rim plane
+retains the closed disc/segment stationary and endpoint strata. A stationary interval has
+its first point at the original time endpoint or a closed domain boundary. An identically
+zero equation therefore needs the original domain boundaries, not a sign-crossing test.
+Isolated tangencies need square-free root existence plus a whole earlier-path dual proof.
+The tangent's own plane alone need not be strict. Zero paths and initial overlap require
+their separate attained initial-state reporting before any first-entry reduction.
+
+This proves the required moving enumeration obligation. It does not prove that the current
+producers solve every enumerated system. The new rounded circular vertex construction covers
+only roots with certified positive normal speed, or a boundary root at time zero. Its other
+roots, missing moving strata, undecided signs, excessive encoding error and exhausted work
+still refuse atomically. In particular this continuation is not a claim of Task 2b completion.
+
+### Continuation coverage and verification
+
+Sixteen new tests include thirteen independent moving impact comparisons for rounded shoulder
+and rim vertices against boxes and hulls. They cover identity poses, represented yaw, full represented
+3D poses, moving height and the closed shoulder/cone seam. A non-face zero-path rounded boundary,
+a squared inner-rim root with the margin larger than the radius, and sticky work denial with
+same-run derived limits and restored scratch are also covered. Initial positive overlap still
+refuses. Base circular vertex regimes and the apex and lower-cone vertex families, circular and
+apex interior edges, rounded cone/edge systems and the rest of the full pair matrix remain open.
+
+The independent oracle retains its separate rational meridian polygon construction. Those
+residuals now also propose high-precision rational directions, whose complete support-plane
+checks over every target vertex alone authorize separation. No production geometry, polynomial,
+transform or root helper supplies an expected answer. This fixes near-contact oracle refusals
+for rotated vertex fixtures without a tolerance or accepting a near-zero residual.
+
+The final Release Game selection adds ConvexRoundedVertexSweepTests to the prior 404-test filter.
+It passes all 420, including the unchanged SS-R2 shell, GroundCore, general cylinder/curved sweeps,
+captured stairs, support curved controls and SS-R5/SS-R6 identity tests. The original footprint
+selection passes all 741. The seven original normalized full-file navigation baselines pass at
+degree 1. Their source calls BuildFixture with null execution, and NavBakeExecution.Degree
+returns 1 for null. All hashes and baseline sources are unchanged. Both compiling commands
+report no warnings or errors. There are no failed or skipped tests in these final selections.
+
+All commands run synchronously through build-slot, one at a time. Exact commands, exit codes,
+reds, arithmetic reuse, self-review and remaining scope are recorded in the Task 2b report's
+Continuation section. Scratch logs are under /tmp/khaozengine-short-shell/. The new focused
+fixtures observe maxima of 93 cells and 1799 features. The final 420-test selection observes
+111 cells and 1799 features. These observations are diagnostic only. No absolute work counter
+is pinned. Full solution verification, formatting, version reconciliation and integration
+remain with the owning orchestrator. No full suite, timing/load run or release was started.

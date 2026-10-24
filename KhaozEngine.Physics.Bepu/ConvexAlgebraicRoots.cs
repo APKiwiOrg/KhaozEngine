@@ -65,11 +65,11 @@ internal static class ConvexAlgebraicRoots
                         if (!FeasibleAt(regime, cell.Upper, ref work)) continue;
                         first = new(true, true, cell.Upper, cell.Upper); return true;
                     }
-                    if (NarrowEnough(cell, scratch.MaximumFractionWidth, ref work))
-                    {
-                        if (!FeasibleRoot(regime, squareFree, sturm, ref cell, ref work)) continue;
-                        first = new(true, true, cell.Lower, cell.Upper); return true;
-                    }
+                    // A unique infeasible root needs no spatially narrow bracket. Prove the
+                    // original domains first, then retain that proof while narrowing this root.
+                    if (!FeasibleRoot(regime, squareFree, sturm, ref cell, ref work)) continue;
+                    if (!NarrowRoot(squareFree, sturm, ref cell, scratch.MaximumFractionWidth, ref work)) return false;
+                    first = new(true, true, cell.Lower, cell.Upper); return true;
                 }
                 Split(cell, out var left, out var right);
                 if (pending + 2 > scratch.RootCells.Length) throw new ConvexExactRefusalException();
@@ -100,6 +100,22 @@ internal static class ConvexAlgebraicRoots
         if (!work.Feature()) throw new ConvexExactRefusalException();
         return (ConvexRational.From(cell.Upper) - ConvexRational.From(cell.Lower))
             .CompareTo(ConvexRational.From(width)) <= 0;
+    }
+
+    static bool NarrowRoot(ConvexPolynomial equation, ConvexPolynomial[] chain, ref ConvexRootCell cell,
+        double width, ref ConvexQueryWork work)
+    {
+        while (!NarrowEnough(cell, width, ref work))
+        {
+            if (!work.Cell()) return false;
+            Split(cell, out var left, out var right);
+            // The parent contains exactly one root. Its absence from the left half proves
+            // it is in the right half, without visiting an additional empty pending cell.
+            cell = Count(chain, left.Lower, left.Upper, ref work) > 0 ? left : right;
+            if (equation.Evaluate(ConvexRational.From(cell.Upper)).IsZero)
+                cell = new(cell.Upper, cell.Upper, cell.Depth);
+        }
+        return true;
     }
 
     static ConvexPolynomial Gcd(ConvexPolynomial a, ConvexPolynomial b, ref ConvexQueryWork work)

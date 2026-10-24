@@ -20,16 +20,35 @@ internal static class ConvexSweepEncoding
         out ConvexLeafEvidence evidence)
     {
         evidence = default;
-        GeometryInterval length = Length(request.Displacement);
-        if (!length.IsResolved) return false;
-        GeometryInterval lo = Distance(length, lower), hi = Distance(length, upper);
-        float from = InstalledSweepBounds.Down(Math.Max(0, lo.Lower)), to = InstalledSweepBounds.Up(hi.Upper);
-        if (!float.IsFinite(from) || !float.IsFinite(to) || to < from) return false;
         GeometryVector worldPoint = (point + P.From(request.Pose.Position) + P.From(request.Displacement) * time).Bounds;
         GeometryInterval norm = Q.RootBounds(P.Dot(normal, normal));
         if (!norm.IsResolved || norm.Lower <= 0) return false;
         var n = normal.Bounds;
         GeometryVector unit = new(n.X.Divide(norm), n.Y.Divide(norm), n.Z.Divide(norm));
+        return Encode(request, lower, upper, worldPoint, unit, queryFeature, targetFeature, id, out evidence);
+    }
+
+    internal static bool TryEnclosedHit(in ConvexQueryRequest request, double lower, double upper,
+        GeometryVector worldPoint, GeometryVector normal, ConvexShellFeature queryFeature,
+        ConvexTargetFeature targetFeature, int id, out ConvexLeafEvidence evidence)
+    {
+        evidence = default;
+        var norm = normal.X.Square().Add(normal.Y.Square()).Add(normal.Z.Square()).Sqrt();
+        if (!normal.IsResolved || !norm.IsResolved || norm.Lower <= 0) return false;
+        GeometryVector unit = new(normal.X.Divide(norm), normal.Y.Divide(norm), normal.Z.Divide(norm));
+        return Encode(request, lower, upper, worldPoint, unit, queryFeature, targetFeature, id, out evidence);
+    }
+
+    static bool Encode(in ConvexQueryRequest request, double lower, double upper, GeometryVector worldPoint,
+        GeometryVector unit, ConvexShellFeature queryFeature, ConvexTargetFeature targetFeature, int id,
+        out ConvexLeafEvidence evidence)
+    {
+        evidence = default;
+        GeometryInterval length = Length(request.Displacement);
+        if (!length.IsResolved) return false;
+        GeometryInterval lo = Distance(length, lower), hi = Distance(length, upper);
+        float from = InstalledSweepBounds.Down(Math.Max(0, lo.Lower)), to = InstalledSweepBounds.Up(hi.Upper);
+        if (!float.IsFinite(from) || !float.IsFinite(to) || to < from) return false;
         if (!TryEncode(worldPoint, out var p, out double pointError) || !TryEncode(unit, out var toward, out double normalError) || toward == Vector3.Zero) return false;
         GeometryInterval error = GeometryInterval.Exact((double)to - from).Add(GeometryInterval.Exact(pointError))
             .Add(GeometryInterval.Exact(pointError)).Add(GeometryInterval.Exact(normalError));

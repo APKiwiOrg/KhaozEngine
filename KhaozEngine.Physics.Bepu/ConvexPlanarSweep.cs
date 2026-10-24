@@ -41,24 +41,25 @@ internal static class ConvexPlanarSweep
                 if (TryHit(request, leaf, time, q, grown, n, ConvexTargetFeature.Face, face, ref work, scratch, out evidence)) return true;
                 if (work.Exhausted) return false;
             }
-            if (request.Displacement != Vector3.Zero)
+            // A zero path still needs attained closed vertex and edge boundary certificates.
+            for (int vertex = 0; vertex < g.VertexCount; vertex++)
             {
-                for (int vertex = 0; vertex < g.VertexCount; vertex++)
-                {
-                    P a = ConvexPlanarFeatures.Vertex(leaf, vertex, request.Pose.Position);
-                    if (ConvexSweepVertices.TryEvaluate(request, leaf, a, g.FaceCount + g.EdgeCount + vertex,
-                        ref work, scratch, out evidence)) return true;
-                    if (work.Exhausted) return false;
-                }
-                for (int edge = 0; edge < g.EdgeCount; edge++)
-                {
-                    var ends = g.Edge(edge);
-                    P a = ConvexPlanarFeatures.Vertex(leaf, ends.A, request.Pose.Position);
-                    P v = ConvexPlanarFeatures.Vertex(leaf, ends.B, request.Pose.Position) - a;
-                    if (ConvexSweepEdges.TryEvaluate(request, leaf, a, v, g.FaceCount + edge,
-                        ref work, scratch, out evidence)) return true;
-                    if (work.Exhausted) return false;
-                }
+                P a = ConvexPlanarFeatures.Vertex(leaf, vertex, request.Pose.Position);
+                if (ConvexSweepVertices.TryEvaluate(request, leaf, a, g.FaceCount + g.EdgeCount + vertex,
+                    ref work, scratch, out evidence)) return true;
+                if (work.Exhausted) return false;
+                if (ConvexCircularVertexSweep.TryEvaluate(request, leaf, a, g.FaceCount + g.EdgeCount + vertex,
+                    ref work, scratch, out evidence)) return true;
+                if (work.Exhausted) return false;
+            }
+            for (int edge = 0; edge < g.EdgeCount; edge++)
+            {
+                var ends = g.Edge(edge);
+                P a = ConvexPlanarFeatures.Vertex(leaf, ends.A, request.Pose.Position);
+                P v = ConvexPlanarFeatures.Vertex(leaf, ends.B, request.Pose.Position) - a;
+                if (ConvexSweepEdges.TryEvaluate(request, leaf, a, v, g.FaceCount + edge,
+                    ref work, scratch, out evidence)) return true;
+                if (work.Exhausted) return false;
             }
             // Distance is a direction proposal only. The exact complete support function and
             // every represented target vertex independently certify the entire original path.

@@ -245,6 +245,8 @@ internal static partial class ShortBodyShellOracle
         }
         if (contact) return 1;
         if (separated) return -1;
+        foreach (var vertex in vertices)
+            if (SeparationLower(shape, vertices, MeridianDirection(shape, vertex)).N.Sign > 0) return -1;
         var fallback = Entry(shape, Pose.Identity, target, Vector3.Zero);
         return fallback.IsComplete ? fallback.Upper == 0 ? 1 : fallback.Lower > 0 ? -1 : 0 : 0;
     }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Physics;
 
@@ -57,8 +58,21 @@ internal static partial class ShortBodyShellOracle
         R allowed = y.CompareTo(ring) < 0 ? radius * (y - lower) / (ring - lower) : radius;
         if (y.CompareTo(lower) >= 0 && y.CompareTo(upper) <= 0 && radialSquare.CompareTo(allowed * allowed) <= 0)
             return I.Point(R.Zero);
-        I radial = Root(radialSquare), yi = I.Point(y);
         I best = default;
+        bool first = true;
+        foreach (var residual in MeridianResiduals(shape, x, y, z))
+        {
+            I distance = Sqrt(Square(residual.X) + Square(residual.Y));
+            best = first ? distance : new(R.Min(best.Lower, distance.Lower), R.Min(best.Upper, distance.Upper));
+            first = false;
+        }
+        return best;
+    }
+
+    static IEnumerable<(I Radial, I X, I Y)> MeridianResiduals(ConvexQueryShape shape, R x, R y, R z)
+    {
+        R radius = R.From(shape.Radius), lower = R.From(shape.LowerY), ring = R.From(shape.RingY), upper = R.From(shape.UpperY);
+        I radial = Root(x * x + z * z), yi = I.Point(y);
         (R X, R Y)[] polygon = [(R.Zero, lower), (radius, ring), (radius, upper), (R.Zero, upper)];
         for (int i = 0; i < polygon.Length; i++)
         {
@@ -68,10 +82,26 @@ internal static partial class ShortBodyShellOracle
             fraction = new(R.Max(R.Zero, R.Min(R.One, fraction.Lower)), R.Max(R.Zero, R.Min(R.One, fraction.Upper)));
             I rx = radial - (I.Point(a.X) + fraction * dx);
             I ry = yi - (I.Point(a.Y) + fraction * dy);
-            I distance = Sqrt(Square(rx) + Square(ry));
-            best = i == 0 ? distance : new(R.Min(best.Lower, distance.Lower), R.Min(best.Upper, distance.Upper));
+            yield return (radial, rx, ry);
         }
-        return best;
+    }
+
+    // A high-precision meridian residual proposes a rational direction. Only the independent
+    // complete support plane over every target vertex can prove separation, at any distance.
+    static R[] MeridianDirection(in ConvexQueryShape shape, R[] p)
+    {
+        (I Radial, I X, I Y) best = default;
+        I distance = default;
+        bool first = true;
+        foreach (var residual in MeridianResiduals(shape, p[0], p[1], p[2]))
+        {
+            I square = Square(residual.X) + Square(residual.Y);
+            if (first || square.Upper.CompareTo(distance.Upper) < 0) { best = residual; distance = square; }
+            first = false;
+        }
+        R Mid(I value) => (value.Lower + value.Upper) / new R(2, 1);
+        R radial = Mid(best.Radial), x = Mid(best.X), y = Mid(best.Y);
+        return radial.N.IsZero ? [R.Zero, y, R.Zero] : [x * p[0] / radial, y, x * p[2] / radial];
     }
 
     // Exact membership for represented witnesses. This intentionally does not repair a rounded

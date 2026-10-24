@@ -178,6 +178,79 @@ public sealed class PointCasterIndexTests
     }
 
     [Fact]
+    public void SparseQuerySortsOnlyTheFullWalksKeptSlots()
+    {
+        var casters = new List<PointCasterFullWalk.Caster>
+        {
+            new(0, new Vector3(2f, 0f, 0f), 0.25f),
+            new(1, Vector3.Zero, 0.25f),                         // wholly inside the near shell
+            new(2, new Vector3(0f, 0f, 2f), 0.25f),             // wholly inside the exclusion box
+        };
+        // These share a visited cell but all miss the light's sphere.
+        for (int slot = 3; slot < 259; slot++)
+            casters.Add(new(slot, new Vector3(7f, 7f, 7f), 0.25f));
+        casters.Add(new(259, new Vector3(-2f, 0f, 0f), 0.25f));
+        casters.Add(new(260, Vector3.Zero, 9f));                 // oversize, always tested
+        // The grid must still leave distant casters out of the exact tests.
+        for (int slot = 261; slot < 325; slot++)
+            casters.Add(new(slot, new Vector3(1_000f + slot, 0f, 0f), 0.25f));
+        var index = new PointCasterIndex();
+        index.Reset(325);
+        for (int i = casters.Count - 1; i >= 0; i--)
+        {
+            PointCasterFullWalk.Caster caster = casters[i];
+            index.Add(caster.Slot, 0, caster.Centre, caster.Radius);
+        }
+        index.Seal();
+        var hits = new List<int>();
+        var min = new Vector3(-0.5f, -0.5f, 1.5f);
+        var max = new Vector3(0.5f, 0.5f, 2.5f);
+
+        index.Query(Vector3.Zero, 3f, 1f, min, max, hits);
+
+        Assert.Equal(new[] { 0, 259, 260 }, PointCasterFullWalk.Slots(casters, Vector3.Zero, 3f, 1f, min, max));
+        Assert.Equal(new[] { 0, 259, 260 }, hits);
+        Assert.Equal(261, index.TouchTests);
+        Assert.Equal(3, index.SortInputs);
+    }
+
+    [Fact]
+    public void SortInputsAccumulateAcrossQueriesAndResetWithTheFrame()
+    {
+        var index = new PointCasterIndex();
+        index.Reset(3);
+        index.Add(2, 0, new Vector3(-2f, 0f, 0f), 0.25f);
+        index.Add(0, 0, new Vector3(2f, 0f, 0f), 0.25f);
+        index.Add(1, 0, Vector3.Zero, 0.25f);
+        index.Seal();
+        var hits = new List<int>();
+
+        index.Query(Vector3.Zero, 4f, 0f, default, default, hits);
+        Assert.Equal(new[] { 0, 1, 2 }, hits);
+        Assert.Equal(3, index.TouchTests);
+        Assert.Equal(3, index.SortInputs);
+
+        index.Query(Vector3.Zero, 4f, 5f, default, default, hits);
+        Assert.Empty(hits);
+        Assert.Equal(6, index.TouchTests);
+        Assert.Equal(3, index.SortInputs);
+
+        index.Query(Vector3.Zero, 4f, 0f, default, default, hits);
+        Assert.Equal(new[] { 0, 1, 2 }, hits);
+        Assert.Equal(9, index.TouchTests);
+        Assert.Equal(6, index.SortInputs);
+
+        index.Reset(3);
+        Assert.Equal(0, index.TouchTests);
+        Assert.Equal(0, index.SortInputs);
+        index.Seal();
+        index.Query(Vector3.Zero, 4f, 0f, default, default, hits);
+        Assert.Empty(hits);
+        Assert.Equal(0, index.TouchTests);
+        Assert.Equal(0, index.SortInputs);
+    }
+
+    [Fact]
     public void AWarmRebuildAndItsQueriesAllocateNothing()
     {
         List<PointCasterFullWalk.Caster> casters = RandomCasters(new Random(7), 300);

@@ -40,6 +40,8 @@ public sealed partial class Scene3D
 
     void DrawFoliageShadowCascade(IGpuCommandList cl, int cascade)
     {
+        using var pass = ProfilePass(cl, "shadow.cascade.foliage", cascade,
+            executed: _foliageShadowDraws.Count > 0);
         FrustumPlanes frustum = FrustumPlanes.Extract(_cascadeCpuVpsAbsolute[cascade]);
         foreach (FoliageDraw draw in _foliageShadowDraws)
         {

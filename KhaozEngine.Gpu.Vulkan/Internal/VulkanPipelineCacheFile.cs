@@ -205,11 +205,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// configured directory, which has no version segment and therefore no siblings to reason about.
         /// </summary>
         internal static VulkanPipelineCacheFile? FromEnvironment(VulkanPipelineCacheIdentity identity)
+            => Open(Environment.GetEnvironmentVariable(EnvVarName), identity);
+
+        internal static VulkanPipelineCacheFile? Open(string? value, VulkanPipelineCacheIdentity identity)
         {
             ArgumentNullException.ThrowIfNull(identity);
 
             return GpuDiskCache.OpenDirectory(
-                Environment.GetEnvironmentVariable(EnvVarName), Subfolder, EngineVersion) is { } directory
+                value, Subfolder, EngineVersion) is { } directory
                 ? new VulkanPipelineCacheFile(directory, identity)
                 : null;
         }

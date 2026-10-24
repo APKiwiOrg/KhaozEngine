@@ -17,5 +17,9 @@
     <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
     <ProjectReference Include="../KhaozEngine.Movement/KhaozEngine.Movement.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Fixtures/TileInstallationBaseline.json" />
+    <EmbeddedResource Include="Fixtures/TileInstallationBaseline.navbake" />
+  </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

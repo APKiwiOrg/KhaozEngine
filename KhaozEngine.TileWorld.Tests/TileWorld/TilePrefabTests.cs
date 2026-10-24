@@ -217,6 +217,9 @@ public class TilePrefabTests
         using var tmp = new TempDir();
         TilePrefab p = TilePrefabs.Extract(HouseWorld(), Cat, new TileRect(10, 10, 3, 2), 0, 2, name: "house");
         TilePrefabFile.Save(p, tmp.Sub("house.json"));
+        byte[] first = File.ReadAllBytes(tmp.Sub("house.json"));
+        Assert.Contains((byte)'\n', first);
+        Assert.DoesNotContain((byte)'\r', first);
         TilePrefab back = TilePrefabFile.Load(tmp.Sub("house.json"));
         Assert.Equal("house", back.Name);
         Assert.Equal(p.Planes[0]!.HeightsRelative, back.Planes[0]!.HeightsRelative);
@@ -224,6 +227,8 @@ public class TilePrefabTests
         TilePrefabObject rock = back.Objects.First(o => o.ArchetypeId == "rock_large");
         Assert.Equal((2, 2), (rock.SizeX, rock.SizeZ));
         Assert.Null(back.Planes[1]!.Overlay);
+        TilePrefabFile.Save(back, tmp.Sub("house.json"));
+        Assert.Equal(first, File.ReadAllBytes(tmp.Sub("house.json")));
     }
 
     [Fact]

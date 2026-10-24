@@ -274,3 +274,10 @@ Two known selection imprecisions surfaced after the split, both verified, both n
   correction above), so a csproj-only change elsewhere that `ArchitectureTests` would flag did not mark
   the rump affected, and was caught only at the next full run. Fix: `ci-selective-test.sh` now adds the
   rump to the affected set whenever the diff touches any `*.csproj` (Decision 5, step 3).
+
+
+Release test setup now uses `scripts/build-release-tests.sh` in both ordinary CI routes and the
+local contributor commands. It builds the selected test target and, for the solution or Render.Tests,
+then builds the outside-solution renderer verifier needed by process tests. The verifier depends on
+Render.Tests, so this ordering avoids a circular reference. Other selected assemblies keep the same
+selection, restore and test semantics. Missing or failed prerequisites refuse tests.

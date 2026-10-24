@@ -44,7 +44,8 @@ internal sealed class InteriorCutCostScene
         for (int z = 0; z < 7; z++)
             for (int x = 0; x < 7; x++)
             {
-                float cx = (x - 3) * 60f, cz = (z - 3) * 60f;
+                Vector2 centre = BuildingCentre(z * 7 + x, 7, 7, 60f);
+                float cx = centre.X, cz = centre.Y;
                 interiors[z * 7 + x] = new InteriorVolume
                 {
                     Outline = [new(cx - 12f, cz - 12f), new(cx + 12f, cz - 12f),
@@ -79,6 +80,10 @@ internal sealed class InteriorCutCostScene
             }
         return new InteriorCutCostScene(trees, interiors, sharedFields);
     }
+
+    internal static Vector2 BuildingCentre(int index, int columns, int rows, float spacing) =>
+        new((index % columns - (columns - 1) * .5f) * spacing,
+            (index / columns - (rows - 1) * .5f) * spacing);
 
     internal float SunAngleFor(int frame) => frame * (.2f / 60f);
     internal bool CutsFor(InteriorCutCostPerfGpuTests.Mode mode) =>

@@ -745,6 +745,68 @@ that interface and the device's teardown remains its only caller. Both types liv
 #531's extraction, shared with the other two native backends. WHERE in teardown the flip happens is still this
 backend's own decision and is unchanged: it flips LAST, because every release above it reads the token.
 
+## Optional compiler and memory diagnostics
+
+Set `KE_D3D11_PIPELINE_DIAGNOSTICS=1` before device creation to collect cold shader evidence. Graphics
+and compute pipelines implement `IGpuPipelineDiagnostics`. The compiler retains each exact compiled
+DXBC SHA-256, source digest, entry point, profile, FXC flags and pinned front-end/cross-compile options.
+Graphics reports retain ordered vertex/pixel stage identities and use `khaozengine.pipeline-stage-set/1` for their source/artifact aggregates. Each executable names
+its own DXBC digest. Pipeline identity includes local size, resource layouts, vertex input, blend,
+rasterizer, depth and output state. Diagnostic identity includes the effective `KE_D3D11_RECORD`
+driver, actual debug layer, reflection/invocation choices, reflected creator and loaded compiler DLL
+version/hash when readable. An unavailable compiler fingerprint is explicitly named in that identity.
+Reads use retained immutable evidence, never frame-time reflection. Disposal or device loss invalidates
+the report. Missing metadata, empty statistics and reflection failures retain support/error reasons.
+
+`D3DReflect` and `ID3D11ShaderReflection::GetDesc` supply `InstructionCount`, `TempRegisterCount`,
+`ConstantBuffers`, `BoundResources`, signature counts and every other scalar instruction/resource
+count under their original API names/descriptions. The budgeted read route uses the fixed
+(2,30,60,4096,16384,4) executable/statistics/total/text/flags/attempt profile. It refuses smaller
+substitute requests. Creator text is bounded before conversion, and raw flags remain intact.
+Reports retain typed availability, original read requests and counts, completion/refusal and actual
+failure occurrences. The renderer's fixed byte reservation is 1,048,576. Native `UINT` values are preserved losslessly in UInt64 metrics with the original
+native type in Source. These are intermediate-code facts. Temporary slots never fill physical register,
+spill or achieved occupancy fields. Those hardware fields and unavailable hardware limits remain null.
+
+Devices implement `IGpuResourceMemoryDiagnostics`. Buffers retain requested logical bytes, including
+only the logical window of a uniform ring. Textures count packed DXGI texel bytes over every mip,
+layer/cube face and sample. D32FloatS8UInt uses the eight-byte R32G8X24 resource representation.
+Staging/ring capacity counts the actual checked ring ByteWidth and requested packed staging payload.
+It overlaps logical payload and excludes native texture row padding. Resource creation is counted only
+after success, and disposal retires it once, including disposal after device death. Peak live payload
+is historical. Views/shaders and DXGI-owned backbuffers are excluded. An owned swapchain depth texture
+is included. History/scratch categories are unavailable because resource descriptions do not identify
+them. Native committed allocation sizes, residency, budget and unified/discrete memory classification
+remain unavailable. Adapter capacity and requested payload never substitute for native memory queries.
+
+Set `KE_D3D11_INVOCATION_DIAGNOSTICS=1` only on a separate untimed diagnostic device to use
+`ID3D11InvocationDiagnostics.CaptureInvocations(Action)`. The callback must synchronously record and
+submit its workload through the normal driver. Do not nest captures, wait inside the callback or leave
+deferred lists unsubmitted. Both engine Immediate and Deferred modes execute on the native immediate
+context, and the report retains the effective engine mode. Each explicit block owns one
+`D3D11_QUERY_PIPELINE_STATISTICS` query. It brackets the callback's native work without changing
+pipeline state or arming any timestamp/disjoint pool. A refused capture never calls the callback.
+
+After `CaptureInvocations` returns, arrange normal submission or progress covering the query `End`,
+which is appended after the callback. Fences submitted inside the callback precede `End` and do not
+establish query completion. Any caller-owned completion wait belongs outside the callback and timing.
+Keep pending results pending until that post-return progress occurs.
+
+The returned `D3D11InvocationBlock.TryRead` performs one `GetData` with
+`D3D11_ASYNC_GETDATA_DONOTFLUSH`, outside timed frames. S_FALSE returns false with a null report.
+S_OK preserves all eleven native UINT64 fields, including values above double's exact range. Failure
+is terminal with its HRESULT/reason and no counters. A failed callback balances a begun query and
+releases it without hiding the original exception. Dispose the block after normal completion/read.
+No forced flush, polling loop, timing retry or automatic invocation capture is added. Unsupported query
+creation does not revoke ordinary rendering or timestamp support.
+
+The renderer cold session retains immutable actual construction witnesses, replays unique graphs only after production cleanup and uses the bounded diagnostic route. Registered-file verification checks report/2 identities and associations before completion. These headless contracts provide no native correctness, compiler payload, deadline or performance result.
+
+API authority is Microsoft's [D3DReflect reference](https://learn.microsoft.com/en-us/windows/win32/api/d3dcompiler/nf-d3dcompiler-d3dreflect),
+[shader description](https://learn.microsoft.com/en-us/windows/win32/api/d3d11shader/ns-d3d11shader-d3d11_shader_desc),
+[pipeline statistics](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_query_data_pipeline_statistics)
+and [GetData completion rules](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-getdata).
+
 ## Per-frame memory: the constant-buffer ring
 
 **Every `GpuBufferUsage.UniformBuffer` buffer is ring-backed, and its `IGpuBuffer` identity never changes.** The

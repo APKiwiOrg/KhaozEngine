@@ -39,9 +39,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>DISPOSAL RELEASES BOTH HANDLES AND NEVER ON A DEAD DEVICE (M-F6)</b>, and the nil depth state
     /// makes its own release a no-op, so the colour-only case needs no branch.</para>
     /// </summary>
-    internal sealed class MetalGraphicsPipeline : IGpuPipeline, IMetalOwnedResource
+    internal sealed class MetalGraphicsPipeline : IGpuPipeline, IMetalOwnedResource, IGpuPipelineDiagnostics, IGpuPipelineConstructionDiagnostics
     {
         readonly IDeviceLiveness _liveness;
+        readonly object _diagnosticGate = new();
+        readonly MetalPipelineDiagnostics _diagnostics;
 
         // THE TWO HANDLES, held in fields rather than in the properties, because the properties refuse once
         // disposed and ReleaseOnMacOs runs AFTER the flag flips. Disposal is the one reader that must still see
@@ -55,8 +57,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <param name="renderState">The <c>MTLRenderPipelineState</c> at +1, or nil in a device-free test.</param>
         /// <param name="depthState">The <c>MTLDepthStencilState</c> at +1, or nil for a pipeline with no depth
         /// output.</param>
+        /// <param name="readCounters">Cold query of this device's advertised counter metadata.</param>
         internal MetalGraphicsPipeline(IDeviceLiveness liveness, MetalGraphicsPipelinePlan plan,
-            MTLRenderPipelineState renderState, MTLDepthStencilState depthState)
+            MTLRenderPipelineState renderState, MTLDepthStencilState depthState,
+            Func<MetalCounterMetadata>? readCounters = null)
         {
             ArgumentNullException.ThrowIfNull(liveness);
             ArgumentNullException.ThrowIfNull(plan);
@@ -65,6 +69,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             Plan = plan;
             _renderState = renderState;
             _depthStencilState = depthState;
+            string layout = MetalPipelineIdentity.Layout(plan.Layouts);
+            _diagnostics = new(plan.Shaders.Evidence, MetalPipelineIdentity.Graphics(plan, layout), layout, readCounters: readCounters);
         }
 
         /// <inheritdoc/>
@@ -182,12 +188,24 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// shader checks refused.</exception>
         [SupportedOSPlatform("macos")]
         internal static MetalGraphicsPipeline Create(MTLDevice device, IDeviceLiveness liveness,
-            in GpuPipelineDescription description)
-            => CreateOnMacOs(device, liveness, MetalGraphicsPipelinePlan.Build(liveness, description));
+            in GpuPipelineDescription description, Func<MetalCounterMetadata>? readCounters = null)
+            => CreateOnMacOs(device, liveness, MetalGraphicsPipelinePlan.Build(liveness, description), readCounters);
 
         /// <inheritdoc/>
         /// <remarks>Releases both state objects, once, and never on a dead device (M-F6).</remarks>
+        public GpuPipelineConstructionIdentity ConstructionIdentity => _diagnostics.ConstructionIdentity;
+
+        public GpuPipelineCompilerReport ReadCompilerReport()
+        {
+            lock (_diagnosticGate) return _diagnostics.Read(IsDisposed || Plan.Shaders.IsDisposed || _liveness.IsDead);
+        }
+
         public void Dispose()
+        {
+            lock (_diagnosticGate) DisposeCore();
+        }
+
+        void DisposeCore()
         {
             if (IsDisposed) return;
             IsDisposed = true;
@@ -203,7 +221,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         static MetalGraphicsPipeline CreateOnMacOs(MTLDevice device, IDeviceLiveness liveness,
-            MetalGraphicsPipelinePlan plan)
+            MetalGraphicsPipelinePlan plan, Func<MetalCounterMetadata>? readCounters)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
 
@@ -273,7 +291,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 }
             }
 
-            return new MetalGraphicsPipeline(liveness, plan, renderState, depthState);
+            try { return new MetalGraphicsPipeline(liveness, plan, renderState, depthState, readCounters); }
+            catch { depthState.Release(); renderState.Release(); throw; }
         }
 
         // M-B2 AND THE VERTEX PLAN, WRITTEN OUT. The layout index and the attribute's bufferIndex are the SAME

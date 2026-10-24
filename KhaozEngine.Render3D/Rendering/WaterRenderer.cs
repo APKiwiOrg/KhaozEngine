@@ -1,3 +1,4 @@
+using KhaozEngine.Render3D.Diagnostics;
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -20,6 +21,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed partial class WaterRenderer : IDisposable, IFramePreparer
     {
+        internal RenderPassProfiling? Profiling { set => _ocean.Profiling = value; get => _ocean.Profiling; }
+
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
         /// (2 mat4 + 36 vec4 + three vec4[8] disc arrays; every member 16-byte aligned, so std140 needs no extra padding).</summary>
         [StructLayout(LayoutKind.Sequential)]
@@ -461,7 +464,6 @@ namespace KhaozEngine.Render3D.Rendering
             _preparedWantOcean = AnyPlaneWantsOcean(frame.WaterPlanes, frame.Water);
             _ocean.Prepare(frame.Water, frame.TimeSeconds, _preparedWantOcean,
                 wantMips: frame.Water.GridMode == WaterGridMode.Clipmap);
-            _bathymetry.Update(frame.Water.Bathymetry);
         }
 
         /// <summary>Draw all queued water planes into ColorDepthFB (lit colour + read-only scene depth). Caller
@@ -495,17 +497,19 @@ namespace KhaozEngine.Render3D.Rendering
                 for (int i = 0; i < planes.Length; i++)
                     if (planes[i].Optics.IsBound) throw ChangedOpticsInputs();
                 if (_opticsPreparationAttempted) throw ChangedOpticsInputs();
-                EnsureUboCapacity(planes.Length);
             }
             // FrustumPlanes needs the matrix and the boxes tested against its planes in the same frame. The planes
             // arrive reduced by the render origin and so does cullViewProj, so here both are render-relative.
-            int drawn = RoutePlanes(planes, settings, FrustumPlanes.Extract(cullViewProj));
-            if (_clipCount > 0)
+            int drawn;
+            using (Profiling?.Cpu("device.water.geometry") ?? default)
             {
-                EnsureClipBuffers(planes, settings, renderOrigin);
+                // A prepared frame sized its slots before creating the sets that range over them.
+                if (!prepared) EnsureUboCapacity(planes.Length);
+                drawn = RoutePlanes(planes, settings, FrustumPlanes.Extract(cullViewProj));
+                if (_clipCount > 0) EnsureClipBuffers(planes, settings, renderOrigin);
+                if (_flatCount > 0) EnsureFlatBuffers(_flatCount);
+                if (_gridCount > 0) EnsureGridBuffers(_gridCount);
             }
-            if (_flatCount > 0) EnsureFlatBuffers(_flatCount);
-            if (_gridCount > 0) EnsureGridBuffers(_gridCount);
 
             // ONE ocean update per frame, ahead of the per-plane loop and of BindTargets (which binds whatever maps
             // it produced). Every plane ON the ocean samples the same cascades: there is one sea state, not one per
@@ -523,10 +527,16 @@ namespace KhaozEngine.Render3D.Rendering
                     + "Scene3D.PrepareFrame() (see IFramePreparer).");
             _ocean.Record(cl);
             var oceanMaps = OceanMaps.From(_ocean);
-            // Bathymetry uploads finished in PrepareFrame. Recording only reads its prepared snapshot.
+            // The depth field, likewise once per frame and ahead of BindTargets. Uploads only when the field
+            // itself or its revision changed (#645), so the steady state is a compare and nothing else. A prepared
+            // frame uploaded it before creating its sets, so recording only reads that snapshot.
+            if (!prepared)
+                using (Profiling?.Cpu("device.water.bathymetry") ?? default)
+                    _bathymetry.Update(settings.Bathymetry);
             ShoreMaps shore = _bathymetry.Snapshot();
             // Nothing the view can reach: no slots, no geometry and no pass. The ocean demand compare and its record
             // above still ran over the whole queue, because PrepareFrame planned against the whole queue.
+            using var profile = Profiling?.Pass(cl, "water.surface", executed: drawn > 0) ?? default;
             if (drawn == 0) return;
             if (!prepared) BindTargets(res);
 

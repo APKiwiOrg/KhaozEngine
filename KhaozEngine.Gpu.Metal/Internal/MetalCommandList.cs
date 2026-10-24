@@ -300,7 +300,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _commandBuffer = buffer;
             _uncommitted.Acquired();
 
-            // THE RING'S SEGMENT, and the ONLY place in a recording that can block (M-M3, M-R2). It advances the
+            // THE RING'S SEGMENT, which can block here before a swapchain bind may also wait. It advances the
             // rotation and waits there until the submission that last read the segment it claims has completed.
             // AFTER the acquisition rather than before it, so the uncommitted-buffer count during the wait is the
             // one MetalFramesInFlight.UncommittedBufferBound is stated over, and BEFORE the recording flag flips,

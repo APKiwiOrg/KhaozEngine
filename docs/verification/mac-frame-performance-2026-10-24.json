@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "status": "Production runtime source is verified at the tested commit. A fresh build of staged 21.12.3 metadata, integration, package verification and released-engine adoption remain pending. The 144 FPS target remains unproved.",
+  "testedCommit": "15eb297da2a98ccebfe691c561725611e5ea33b1",
+  "baseMainCommit": "4bb5b046252d452761194ae0c4c5b735aa944187",
+  "currentStagedVersion": "21.12.3",
+  "releasedVersionAtFinalPreflight": "21.12.2",
+  "releaseTagCommit": "4bb5b046252d452761194ae0c4c5b735aa944187",
+  "scope": [
+    "accepted-hit point caster sorting",
+    "current-frame deferred Metal drawable acquisition",
+    "default-off renderer-owned swapchain initialization",
+    "current-frame foliage point caster indexing"
+  ],
+  "review": {
+    "verdict": "Approved",
+    "reportSha256": "64d0805de7b03709e1e06f9541ae384d65305f41aa727ad23dfd78d2d1b40683",
+    "findings": 0
+  },
+  "local": {
+    "buildWarnings": 0,
+    "buildErrors": 0,
+    "cpu": {
+      "assemblies": 41,
+      "passed": 38582,
+      "failed": 0,
+      "skipped": 1528,
+      "total": 40110
+    },
+    "nativeRequestedGroups": {
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0,
+      "trxSha256": "24d04d47b079c1643ab087c0f84f7ba7d7fa33ea8839f38759473a656f36f10f"
+    },
+    "additionalRecorder": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "trxSha256": "fcc2b05efe72a33f036a94de852722cd0bad4daf6b29615da05333d68327c7d0"
+    },
+    "nativeDevice": "Apple M2 Max, MTLDebugDevice, API validation active",
+    "commands": [
+      {
+        "name": "build",
+        "command": "build-slot --heavy --label mac-frame-final-build -- dotnet build KhaozEngine.slnx -c Release",
+        "exit": 0,
+        "logSha256": "c0925ef9a76006a6fa54b4dd5a8225b761e035d43c8048c09a96d26f71a609fd"
+      },
+      {
+        "name": "cpu-suite",
+        "command": "build-slot --heavy --label mac-frame-final-cpu-suite -- dotnet test KhaozEngine.slnx -c Release --no-build --filter 'Category!=LiveSocket' --logger trx --results-directory /tmp/khaozengine-mac-frame-performance/final-verification/cpu-results",
+        "exit": 0,
+        "logSha256": "07d32b141e7980dbce799f1a950ef05dfb129ff9036a7b6cc660ca2ca5a4ef01"
+      },
+      {
+        "name": "strict-native",
+        "command": "build-slot --heavy --label mac-frame-final-strict-native -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native KE_METAL_REQUIRED=1 MTL_DEBUG_LAYER=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~MetalSwapchainGpuTests|FullyQualifiedName~RendererInitializationGpuTests|FullyQualifiedName~FoliageShadowGpuTests|FullyQualifiedName~PointShadowByteIdentityGpuTests' --logger 'trx;LogFileName=native.trx' --results-directory /tmp/khaozengine-mac-frame-performance/final-verification/native-results",
+        "exit": 0,
+        "logSha256": "8ccf96cdee5e95deb99c302345c1bf5ee8b78dcfc5f53442ae4b42548e421314"
+      },
+      {
+        "name": "dashes",
+        "command": "build-slot --label mac-frame-final-dashes -- sh scripts/check-dashes.sh --tree",
+        "exit": 0,
+        "logSha256": "a65a20c3d607a6a8fbc961b0b2ccedbe5ea090f2cafd0018f3053a994b15d5e6"
+      },
+      {
+        "name": "prose",
+        "command": "build-slot --label mac-frame-final-prose -- sh scripts/check-prose.sh --tree",
+        "exit": 0,
+        "logSha256": "ede45424bb80e26a5336d8666d93da735a50d255e88c61200a4937f7d92b93c0"
+      },
+      {
+        "name": "file-size",
+        "command": "build-slot --label mac-frame-final-file-size -- sh scripts/check-file-size.sh --tree",
+        "exit": 0,
+        "logSha256": "5d718d085c6cdad362600fa7ef51947aa494bbcbdc9950857f977de8ea8f9b85"
+      },
+      {
+        "name": "agent-instructions",
+        "command": "build-slot --label mac-frame-final-agent-instructions -- sh scripts/check-agent-instructions.sh --tree",
+        "exit": 0,
+        "logSha256": "6f16dfc8519317f3ddb74681f8be10eed8bdf44cc4a5ff18e051d978cf168c51"
+      },
+      {
+        "name": "doc-versions",
+        "command": "build-slot --label mac-frame-final-doc-versions -- bash scripts/check-doc-versions.sh",
+        "exit": 0,
+        "logSha256": "fb19db79ec63aab39a6b5b9b6f3bef841ff1c16ee0c484874d219df5aebe6c7c"
+      },
+      {
+        "name": "diff-check",
+        "command": "build-slot --label mac-frame-final-diff-check -- git diff --check HEAD",
+        "exit": 0,
+        "logSha256": "03822b63af9e441eac4e16daba0a4da8d50043f0006c1e6b208a07abf197fb53"
+      },
+      {
+        "name": "strict-native-recorder",
+        "command": "build-slot --heavy --label mac-frame-final-strict-recorder -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native KE_METAL_REQUIRED=1 MTL_DEBUG_LAYER=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~FrameHistoryRecorderGpuTests' --logger 'trx;LogFileName=recorder.trx' --results-directory /tmp/khaozengine-mac-frame-performance/final-verification/recorder-results",
+        "exit": 0,
+        "logSha256": "9d578455c0c961d3ae1b6d3ccab7b29e4d9848f4b88091609cb9980303beb819"
+      }
+    ],
+    "accounting": "Individual TRX outcomes and all 41 console summaries establish CPU skips. Raw TRX notExecuted summary counters were zero despite 1,528 NotExecuted outcomes. No test rerun was used to correct the report."
+  },
+  "hostedGpu": {
+    "runId": 40040731317,
+    "headSha": "15eb297da2a98ccebfe691c561725611e5ea33b1",
+    "url": "https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40040731317",
+    "status": "completed",
+    "conclusion": "success",
+    "jobsTotal": 29,
+    "jobsSuccessful": 29,
+    "selectedJobEvidence": [
+      {
+        "id": 120710987462,
+        "name": "ubuntu-latest / vulkan-native (sync validation)",
+        "conclusion": "success",
+        "logSha256": "7612b0233ea960de833f00074c16e9096f83350da8f7b85fdb75543a7d587318",
+        "logBytes": 1034275,
+        "evidence": [
+          "[2026-10-23 23:42:31.134] [INFO] [VulkanValidationLogHost] KE_VULKAN_VALIDATION='sync' armed a validation rung, so this test host configured a console sink for log categories starting with 'Vulkan' at Info and above. Engine-formatted validation lines ('Vulkan validation [<Severity>] <VUID>: <text>') therefore reach this log. The Khronos layer's own output is independent of this and arrives whether or not it is configured. An unarmed run configures nothing and this line is absent.",
+          "validation lines in TestResults/sync-validation.log: 0 at any severity, 0 at error severity"
+        ],
+        "validationProducerPresent": true
+      },
+      {
+        "id": 120718519155,
+        "name": "macos-26 / metal-native / full suite",
+        "conclusion": "success",
+        "logSha256": "7a238e9de283293e696a3188711715f16e867898a451f426c2097507eb77e2b9",
+        "logBytes": 34951,
+        "evidence": [
+          "The exact full-suite coverage check step completed successfully. No test totals were inferred from the log table."
+        ],
+        "coverageStep": {
+          "name": "Check every shard ran and every test assembly ran exactly once",
+          "conclusion": "success",
+          "number": 4
+        }
+      },
+      {
+        "id": 120718519167,
+        "name": "windows-latest / direct3d11-native / full suite",
+        "conclusion": "success",
+        "logSha256": "5959b93fe72aca328a173091cb26af61a0d86dcfc715c54e02986410920947f1",
+        "logBytes": 42845,
+        "evidence": [
+          "The exact full-suite coverage check step completed successfully. No test totals were inferred from the log table."
+        ],
+        "coverageStep": {
+          "name": "Check every shard ran and every test assembly ran exactly once",
+          "conclusion": "success",
+          "number": 4
+        }
+      },
+      {
+        "id": 120718519279,
+        "name": "ubuntu-latest / vulkan-native / full suite",
+        "conclusion": "success",
+        "logSha256": "180f92a09779975b295247547d35301d4ffd2ab617ba2d52dbb06ac325e46448",
+        "logBytes": 50130,
+        "evidence": [
+          "The exact full-suite coverage check step completed successfully. No test totals were inferred from the log table."
+        ],
+        "coverageStep": {
+          "name": "Check every shard ran and every test assembly ran exactly once",
+          "conclusion": "success",
+          "number": 4
+        }
+      }
+    ],
+    "acceptedByParent": true,
+    "acceptance": "Exact commit, all 29 jobs, all three full-suite coverage checks, the actual Vulkan validation-log producer and the zero-severity validation scan were verified."
+  },
+  "runtimeClaims": "Historical private full-client comparisons do not establish a cumulative gain, current-main performance, physical display cadence or 144 FPS. The foliage look check is inconclusive. The native-pool experiment is not adopted.",
+  "consumerGate": "https://github.com/APKiwiOrg/Grimhollow/issues/629",
+  "releaseAuthorization": "No new engine tag is authorized. A game-rooted session cannot create the engine release."
+}

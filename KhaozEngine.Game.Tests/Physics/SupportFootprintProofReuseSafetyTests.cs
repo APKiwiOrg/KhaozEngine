@@ -39,7 +39,7 @@ public sealed class SupportFootprintProofReuseSafetyTests(ITestOutputHelper outp
         using (var memo = new SupportFootprintProofMemo())
         {
             memo.Remember(key, empty, [], []);
-            tableBytes = SupportQueryDiagnostics.Retention.Bytes;
+            tableBytes = checked((int)SupportQueryDiagnostics.Retention.Bytes);
             Assert.InRange(tableBytes, 1, 2 * 1024 * 1024);
         }
         using (var memo = new SupportFootprintProofMemo(1))

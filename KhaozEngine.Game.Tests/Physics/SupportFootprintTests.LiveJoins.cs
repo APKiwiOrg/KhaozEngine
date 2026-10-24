@@ -88,7 +88,7 @@ public partial class SupportFootprintTests
 
         Assert.Equal(cold.ToString(), warm.ToString());
         Assert.Equal(reference.ToString(), warm.ToString());
-        int warmJoins = warmCounts.JoinsProved + warmCounts.TopologyJoins;
+        long warmJoins = warmCounts.JoinsProved + warmCounts.TopologyJoins;
         Assert.True(warmJoins < referenceCounts.JoinsProved,
             $"hidden crate: {warmJoins} joins against the reference's {referenceCounts.JoinsProved}.");
         Assert.True(warmCounts.JoinsSkipped > 0, "hidden crate: the support path skipped no pair.");

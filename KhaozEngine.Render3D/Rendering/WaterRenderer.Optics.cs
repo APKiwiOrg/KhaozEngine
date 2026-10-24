@@ -133,6 +133,9 @@ internal sealed partial class WaterRenderer
         }
         if (planes.Length > 0)
         {
+            // The sets below bind the depth field's texture, so its upload precedes them.
+            using (Profiling?.Cpu("device.water.bathymetry") ?? default)
+                _bathymetry.Update(frame.Water.Bathymetry);
             EnsureUboCapacity(planes.Length);
             BindTargets(targets);
             if (_preparedPlanes.Length < planes.Length)

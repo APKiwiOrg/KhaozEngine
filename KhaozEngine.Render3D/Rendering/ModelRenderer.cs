@@ -28,7 +28,7 @@ namespace KhaozEngine.Render3D.Rendering
         // (MaxCascades light-clip matrices + params) = mat4[4] (256) + 3*vec4 (48) = 304, so 688 + 304 = 992, then
         // the render-origin vec4 = 1008, then the point-light shadow tail (vec4[16] + the atlas vec4 + the
         // filter vec4) = 1296 bytes, then the transient atlas vec4 and two-vec4 cluster tail = 1344 bytes.
-        // The two interior-cut vec4 append at 1344 and 1360, for 1376 bytes total.
+        // Interior-cut vec4 at 1344 and 1360, then the 160-byte indirect tail at 1376, for 1536 bytes total.
         // (internal so UboLayoutTests can assert these against Marshal.SizeOf/OffsetOf and the GLSL block.)
         internal const uint HeaderBytes = 176;
         internal const uint LightArrayBytes = MaxPointLights * 16;    // vec4 stride is 16 in std140
@@ -57,7 +57,7 @@ namespace KhaozEngine.Render3D.Rendering
         // Cluster selection data appends after every compatibility field, leaving all existing offsets unchanged.
         internal const uint ClusterTailOffset = PointShadowTransientTailOffset + PointShadowTransientTailBytes; // 1312
         internal const uint ClusterTailBytes = 32;                                             // two vec4
-        internal const uint UboBytes = InteriorCutWindowOffset + InteriorCutBytes;             // 1376
+        internal const uint UboBytes = IndirectUniforms.TailOffset + IndirectUniforms.TailBytes; // 1536
 
         // ---- GPU skinning (the default) PER-DRAW block geometry. The skinned pipeline's set 0 binding 3 is a
         // dynamic-offset UBO laid out as { mat4 Model; mat4 P } (see ShaderSources.SkinnedModelVert): the two header
@@ -486,33 +486,6 @@ namespace KhaozEngine.Render3D.Rendering
                 VertexLayouts = new List<GpuVertexLayoutDescription> { skinnedVertexLayout },
                 Outputs = modelOutputs,
             });
-        }
-
-        /// <summary>Bind + clear the model framebuffer once per frame, before drawing instances.</summary>
-        public void BeginModelPass(IGpuCommandList cl, RenderResources res, PixelPostProcessSettings s)
-        {
-            cl.SetFramebuffer(res.ModelFB);
-            // All three colour targets are cleared to the background, and alpha 0 marks "background" for the
-            // starfield composite while the model writes alpha 1. That is what this pass wants on every backend.
-            //
-            // THE SECOND REASON THE THREE VALUES ARE EQUAL NAMES ONE IMPLEMENTATION: the VELDRID Metal backend
-            // wrote every clear into colorAttachments[0], so attachments 1 and 2 were never cleared there at all
-            // and they LOADED a freshly created private texture nothing had written. Equal values do not fix that,
-            // they only make the one attachment that does get cleared carry the value the other two should have
-            // had. The engine's own native Metal backend (GpuBackendKind.MetalNative) folds each clear into its
-            // own attachment's loadAction, so all three really are cleared there, which is a deliberate rendering
-            // change on the fleet's reference golden family rather than an invisible correction (decision M-A2 of
-            // docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md). The values were kept equal while the Veldrid
-            // Metal leg was still selectable, because this code could not tell which Metal it was on and had to
-            // be correct on both. That leg went in 18.0.0 and the constraint went with it.
-            var bg = s.BackgroundColor.WithAlpha(0f);
-            cl.ClearColorTarget(0, bg);
-            cl.ClearColorTarget(1, bg);
-            cl.ClearColorTarget(2, bg);
-            // Background carries the sentinel, which marks no opaque geometry for every motion reader (MotionMath).
-            if (res.MotionAllocated) cl.ClearColorTarget(MotionMath.Attachment, MotionMath.SentinelColor);
-            if (res.VisibilityAllocated) cl.ClearColorTarget((uint)ShadowVisibilityTargets.Attachment(res.MotionAllocated), Color.White);
-            cl.ClearDepthStencil(1f);
         }
 
         /// <summary>

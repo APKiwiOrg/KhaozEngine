@@ -88,9 +88,14 @@ Run from the repository root:
 
 ```sh
 mkdir -p local-feed
-dotnet build KhaozEngine.slnx -c Release
+sh scripts/build-release-tests.sh KhaozEngine.slnx
 dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
 ```
+
+The shared Release setup builds the selected target, then the outside-solution renderer verifier
+when the solution or Render.Tests owns the selection. Its process tests require that freshly built
+executable. Ordinary full and selective CI use the same setup. A raw solution build alone does not
+produce this test prerequisite. Other selected test assemblies keep their original build and test slice.
 
 Warnings are errors in every configuration. Fix warnings at the source. Do not add a blanket
 suppression or disable `TreatWarningsAsErrors`. The standing XML documentation suppression is the

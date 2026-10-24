@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Diagnostics;
 using static KhaozEngine.Render3D.Internal.FragmentPassResources;
 
 namespace KhaozEngine.Render3D.Rendering;
@@ -53,6 +54,7 @@ internal sealed class AtmosphereRenderer : IDisposable
     IGpuFramebuffer? _transmittanceFramebuffer, _multiFramebuffer;
     IGpuResourceSet? _multiSet, _skySet;
 
+    internal RenderPassProfiling? Profiling { get; set; }
     internal AtmosphereBindings Bindings { get; }
     internal IGpuTexture? TransmittanceTexture { get; private set; }
     internal IGpuTexture? MultiScatteringTexture { get; private set; }
@@ -117,12 +119,16 @@ internal sealed class AtmosphereRenderer : IDisposable
         {
             if (Bindings.Enabled)
             {
+                using var disabledPass = Profiling?.Pass(cl, "atmosphere.uniforms") ?? default;
                 AtmosphereUbo disabled = default;
                 cl.UpdateBuffer(Bindings.Uniforms, 0, in disabled);
                 Bindings.Enabled = false;
             }
+            else Profiling?.Pass(cl, "atmosphere.uniforms", executed: false);
+            SkipLuts(cl);
             return;
         }
+        using var cpu = Profiling?.Cpu("cpu.atmosphere.prepare") ?? default;
         var model = post.ResolveAtmosphereModel();
         var frame = ResolveFrame(post, model);
         float cameraHeightKm = post.Atmosphere.HeightKm(cameraRelative.Y + renderOrigin.Y);
@@ -131,21 +137,28 @@ internal sealed class AtmosphereRenderer : IDisposable
             lighting.SunTransmittance, lighting.MoonTransmittance);
         var ubo = PackUbo(post.Atmosphere, frame, lighting, scattering, cameraRelative, renderOrigin, view, projection,
             width, height, post.Hdr);
-        cl.UpdateBuffer(Bindings.Uniforms, 0, in ubo);
+        using (Profiling?.Pass(cl, "atmosphere.uniforms") ?? default) cl.UpdateBuffer(Bindings.Uniforms, 0, in ubo);
         Bindings.Enabled = true;
         EnsureStaticTargets();
         var decision = _policy.Decide(post.Atmosphere);
-        if (decision.RebuildStatic)
-        {
-            Draw(cl, _transmittanceFramebuffer!, _transmittancePipeline, _transmittanceSet);
-            Draw(cl, _multiFramebuffer!, _multiPipeline, _multiSet!);
-            StaticBuildCount++;
-        }
-        if (decision.DrawSkyView)
-        {
-            Draw(cl, _skyFramebuffer, _skyPipeline, _skySet!);
-            SkyViewDrawCount++;
-        }
+        using (Profiling?.Pass(cl, "atmosphere.transmittance", executed: decision.RebuildStatic) ?? default)
+            if (decision.RebuildStatic) Draw(cl, _transmittanceFramebuffer!, _transmittancePipeline, _transmittanceSet);
+        using (Profiling?.Pass(cl, "atmosphere.multiple-scattering", executed: decision.RebuildStatic) ?? default)
+            if (decision.RebuildStatic) Draw(cl, _multiFramebuffer!, _multiPipeline, _multiSet!);
+        if (decision.RebuildStatic) StaticBuildCount++;
+        using (Profiling?.Pass(cl, "atmosphere.sky-view", executed: decision.DrawSkyView) ?? default)
+            if (decision.DrawSkyView)
+            {
+                Draw(cl, _skyFramebuffer, _skyPipeline, _skySet!);
+                SkyViewDrawCount++;
+            }
+    }
+
+    void SkipLuts(IGpuCommandList cl)
+    {
+        Profiling?.Pass(cl, "atmosphere.transmittance", executed: false);
+        Profiling?.Pass(cl, "atmosphere.multiple-scattering", executed: false);
+        Profiling?.Pass(cl, "atmosphere.sky-view", executed: false);
     }
 
     static void Draw(IGpuCommandList cl, IGpuFramebuffer target, IGpuPipeline pipeline, IGpuResourceSet set)

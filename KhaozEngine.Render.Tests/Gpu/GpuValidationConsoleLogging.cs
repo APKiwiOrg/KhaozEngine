@@ -59,6 +59,7 @@ namespace KhaozEngine.Tests.Gpu
         [ModuleInitializer]
         internal static void Initialize()
         {
+            if (RendererPerfAssemblyAccess.OfflineVerifier) return;
             string? vulkanLever = Environment.GetEnvironmentVariable(
                 KhaozEngine.Gpu.Vulkan.Internal.VulkanValidation.EnvVarName);
             bool vulkanArmed = VulkanValidationConsoleLogging.IsArmed(vulkanLever);

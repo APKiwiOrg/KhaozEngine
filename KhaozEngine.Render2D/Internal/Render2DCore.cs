@@ -79,12 +79,14 @@ namespace KhaozEngine.Render2D.Internal
                 IGpuFramebuffer fb = f.CreateFramebuffer(null, target);
                 // A batch whose pipeline targets the offscreen framebuffer's format, sharing the same device so any
                 // texture/font created on it draws straight in. Disposed here; only the target texture survives.
-                var batch = new SpriteBatch(gd, fb.Outputs);
+                SpriteBatch? batch = null;
                 IGpuCommandList cl = f.CreateCommandList();
                 try
                 {
                     using (GpuRecording.Open(gd, cl, "Render2DSurface.CaptureToTexture"))
                     {
+                        // Claim recording before creating a batch whose safe teardown needs a drain.
+                        batch = new SpriteBatch(gd, fb.Outputs);
                         cl.SetFramebuffer(fb);
                         cl.ClearColorTarget(0, clear);
                         batch.NewFrame(cl, width, height);
@@ -96,7 +98,7 @@ namespace KhaozEngine.Render2D.Internal
                 finally
                 {
                     cl.Dispose();
-                    batch.Dispose();
+                    batch?.Dispose();
                     fb.Dispose();
                 }
             }
@@ -129,12 +131,14 @@ namespace KhaozEngine.Render2D.Internal
                 (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm,
                 GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
             IGpuFramebuffer fb = f.CreateFramebuffer(null, target);
-            var batch = new SpriteBatch(gd, fb.Outputs);
+            SpriteBatch? batch = null;
             IGpuCommandList cl = f.CreateCommandList();
             try
             {
                 using (GpuRecording.Open(gd, cl, "Render2DSurface.CaptureToRgba"))
                 {
+                    // A refused recording must not leave batch cleanup masking its original cause.
+                    batch = new SpriteBatch(gd, fb.Outputs);
                     cl.SetFramebuffer(fb);
                     cl.ClearColorTarget(0, clear);
                     batch.NewFrame(cl, width, height);
@@ -148,7 +152,7 @@ namespace KhaozEngine.Render2D.Internal
             finally
             {
                 cl.Dispose();
-                batch.Dispose();
+                batch?.Dispose();
                 fb.Dispose();
                 target.Dispose();
             }

@@ -334,9 +334,20 @@ namespace KhaozEngine.Gpu
                 // resource wrapper disposed after this context no-ops instead of waiting on a dead device.
                 // Through IGpuDeviceLifecycle rather than a cast to any one implementation, which is what keeps
                 // this context free of every backend. A device with nothing to latch skips it.
-                (GpuDevice as IGpuDeviceLifecycle)?.MarkDeviceDisposed();
-                // An adopted device owns whatever it is built on, so it disposes itself.
-                GpuDevice.Dispose();
+                var failures = System.Collections.Immutable.ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+                void Release(string stage, Action release)
+                {
+                    try { release(); }
+                    catch (Exception error)
+                    {
+                        if (error is GpuDiagnosticFailureException transport) failures.AddRange(transport.Failures);
+                        else failures.Add(new(stage, error));
+                    }
+                }
+                Release("gpu.context.dispose.mark", () => (GpuDevice as IGpuDeviceLifecycle)?.MarkDeviceDisposed());
+                // Backend teardown retains its own drain and liveness prerequisites.
+                Release("gpu.context.dispose.native", GpuDevice.Dispose);
+                if (failures.Count != 0) throw new GpuDiagnosticFailureException(failures.ToImmutable());
             }
         }
     }

@@ -3,7 +3,7 @@
 Windowing + input foundation for the custom MonoGame-free stack.
 
 - `AppWindow` - owns the Silk.NET (GLFW) window, the GPU device + swapchain (via `KhaozEngine.Gpu`), and the
-  frame loop. `Run(onFrame)` clears + presents around your callback; each `Frame` gives `Dt`, an engine-native
+  frame loop. By default `Run(onFrame)` clears and presents around your callback. Each `Frame` gives `Dt`, an engine-native
   `InputState`, framebuffer size, and the GPU command list to draw into. `AppWindow.Scaled(...)` fits a
   design-sized window to the display.
 - `GpuBackends` (18.0.0) - the one call that puts a graphics backend in the process, and the reason a repinned
@@ -38,6 +38,8 @@ Windowing + input foundation for the custom MonoGame-free stack.
   submits that list once before Present. Exceptions abandon unsubmitted recording. Completion consumers share
   one retained fence, and submission participants receive their decision even when diagnostic capacity is full.
   Window teardown disposes the owner before the command list and device. Ordinary completion polling never drains.
+  Submission teardown forwards the ordered `GpuDiagnosticFailureException` transport and retains its original
+  exception references. The [GPU diagnostic contract](../KhaozEngine.Gpu/README.md#optional-compiler-and-memory-diagnostics) owns that carrier.
 - **The frame's pre-record phase.** `Run(onFrame, onPrepare)` is the same loop with a second
   callback, invoked each frame after the frame's `Dt` / input / size are latched and **before** the frame's command
   list is opened. `Run(onFrame)` is exactly `Run(onFrame, null)`, so nothing changes for a host that does not want
@@ -49,6 +51,13 @@ Windowing + input foundation for the custom MonoGame-free stack.
   because that list is not open yet (and on a
   render-suppressed frame never is). Both callbacks run on a render-suppressed frame, so update-side work keeps
   advancing while minimized.
+- **Renderer-owned output initialization.** `AppWindow.RendererInitializesSwapchain` defaults to false.
+  Setting it true omits both the host's initial swapchain framebuffer bind and its `ClearColor` clear, allowing
+  offscreen rendering before the first output bind. The callback must bind and initialize the entire output
+  inside this frame's recording before any 2D draws or capture taps, including empty, loading and menu frames.
+  Keep the default for 2D, partial or custom renderers that rely on the host clear. A full-output 3D renderer
+  still performs its final output bind, clear and fullscreen overwrite. Recording, taps, submission and present
+  keep their existing order, and suppressed frames still open and present nothing.
 - **Present mode + frame cap** (since 9.23.0). The `AppWindow` ctor / `Scaled(...)` take a `PresentMode`
   (`Vsync` default, or `Immediate` = no vertical-blank sync) which selects the swapchain's `SyncToVerticalBlank`
   at creation. `AppWindow.FrameCapHz` (settable any time) paces `Run` to a target Hz with a monotonic-clock
@@ -423,7 +432,7 @@ which destroys it once the GPU has finished with it.
 
 A rendered frame with a tap registered runs in this order:
 
-1. `onPrepare`, then the frame's list opens, binds `SwapchainFramebuffer` and clears.
+1. `onPrepare`, then the frame's list opens. Unless `RendererInitializesSwapchain` is true, it binds `SwapchainFramebuffer` and clears.
 2. `onFrame`, the game's draws.
 3. Every tap's `Record(context)`, still inside the frame's list.
 4. The list closes and is submitted, with the fence a tap handed in or without one.
@@ -451,11 +460,12 @@ does not stop the registry, the command list, the device or the window from bein
 | `Retire(resource)` | destroy a resource once the GPU has finished with it |
 
 The swapchain copy goes through the device's `IGpuSwapchainCapture`. That copy needs a list that bound the
-swapchain framebuffer in its current recording, and the frame's list has, so a tap records its copies into
+swapchain framebuffer in its current recording. The host does this by default. With `RendererInitializesSwapchain`
+enabled, the renderer must bind and initialize it before taps run. A tap records its copies into
 `Commands` and never into a list of its own. The registry asks for copy-source usage on the swapchain images with
 the first tap and releases it after the last. Metal and Vulkan apply the change at a later present, so the first
 frame or two after the first tap may give a null image. A device with no swapchain capture always gives null. A
-frame whose `onFrame` draws nothing still captures the cleared image. The copy texture is remade when the
+frame whose `onFrame` draws nothing still captures the host-cleared image under the default policy. The copy texture is remade when the
 swapchain size changes and retired when the last tap leaves. A last tap that removes itself in `Record` and then
 acquires still gets this frame's image, and the registry retires that image at the end of the frame, after its
 submit. Window disposal releases the copy texture whatever the tap count.

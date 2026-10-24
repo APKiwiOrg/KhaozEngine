@@ -62,8 +62,7 @@ namespace KhaozEngine.Render3D
             _waterViewportPrepared = false;
             EnsureSize(viewportWidth, viewportHeight);
             _res.EnsureDistortion(_distortionSprites.Count > 0, DistortionQuality == DistortionQuality.Full ? 2 : 4);
-            PrepareSubsystems();
-            _water.PrepareOpticsFrame(_res, new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds));
+            PrepareSubsystems(optics: true);
             _preparedWaterTargets = WaterTargetInputs(viewportWidth, viewportHeight);
             _preparedWaterTargetGeneration = _res.Generation;
             _waterViewportPrepared = true;
@@ -77,17 +76,20 @@ namespace KhaozEngine.Render3D
             if (_framePrepared) return;
             if (HasBoundWater()) throw MissingWaterViewport();
             _waterViewportPrepared = false;
-            PrepareSubsystems();
+            PrepareSubsystems(optics: false);
             _framePrepared = true;
         }
 
-        void PrepareSubsystems()
+        // Optical bindings resolve inside the same preparer phase, after the legacy preparers they depend on.
+        void PrepareSubsystems(bool optics)
         {
+            using var phase = ProfileCpu("cpu.water.prepare");
             EnsurePointLightCapacity();
             HarvestTemporalCounts();   // an armed temporal count request: its one readback, here before any recording
             var frame = new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds);
             IFramePreparer[] preparers = _preparers ??= new IFramePreparer[] { _water };
             for (int i = 0; i < preparers.Length; i++) preparers[i].PrepareFrame(frame);
+            if (optics) _water.PrepareOpticsFrame(_res, frame);
         }
 
         bool _waterViewportPrepared;

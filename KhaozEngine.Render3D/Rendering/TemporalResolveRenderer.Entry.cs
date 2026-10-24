@@ -82,7 +82,8 @@ namespace KhaozEngine.Render3D.Rendering
         bool RunSplit(IGpuCommandList cl, TemporalHistory history)
         {
             if (Entry != TemporalResolveEntry.Split) return false;
-            _split!.Run(cl, history, TemporalSplitResolve.Upscales(LastUniforms), LastVisibilityDecisionSkipped);
+            _split!.Profiling = Profiling;
+            _split.Run(cl, history, TemporalSplitResolve.Upscales(LastUniforms), LastVisibilityDecisionSkipped);
             return true;
         }
     }

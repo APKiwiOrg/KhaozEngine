@@ -12554,8 +12554,8 @@ up to `TileWorldViewOptions.MaxRebuildsPerFlush` (16), leaving the rest counted 
 `Flush(int.MaxValue)` is the settle-now form for a view without a residency profile. A region kept by a three-state
 profile is never meshed in `Flush`: its marks submit background ground builds, plus cover once per region for a
 gameplay region, while the previous mesh keeps drawing, so `Flush(int.MaxValue)` no longer settles profile ground.
-Only `PrimeAround` and headless capture do. Active same-plane door clearances extend the ground-cover reach beyond
-the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by its border
+Only `PrimeAround` and explicit offline `SettleForCapture` calls do. Active same-plane door clearances extend
+the ground-cover reach beyond the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by its border
 data, solid footprints, upper roofs or tagged doors. A dirty region is never streamed out (unloading unsaved edits
 would throw, so it stays resident and logs once), and a torn region file throws `TileWorldException` straight out of
 `Update` rather than drawing a hole.
@@ -12582,6 +12582,20 @@ focus and default roof observer, keeps the overlapping region ring and settles n
 before rendering. A supplied `observer` stays fixed. Keep the document and catalogs unchanged.
 `frames` includes `warmupFrames`, and `onFrame(frame, capture)` streams the remaining frames with the same
 indices and ownership contract as `Render3DSnapshot.CaptureSequence` below.
+
+For a consumer-owned `TileWorldView` inside `Render3DSnapshot.CaptureSequence`, call
+`view.SettleForCapture(focusRegion, cameraTarget)` on the scene thread before the first written frame and
+after loading or unloading regions or announcing edits. The call blocks until ground (Gameplay and Decor),
+Gameplay ground cover, every selected prop layer and HLOD mesh, and the opted-in interior cut are applied,
+ignoring apply budgets. It keeps your loaded region set, camera field of view and `Observer` unchanged.
+The optional world-space `cameraTarget` places the interior-cut window, defaulting to the centre of
+`focusRegion`. An unchanged call retains the applied meshes and cover.
+
+While only the camera's interior-cut focus moves, call `view.SettleInteriorCutForCapture(cameraTarget)`
+before each offline draw. It synchronously publishes any required recentering without settling unrelated
+ground, cover or prop work, and does nothing when interior cutting is disabled. Both APIs are exclusively
+for offline and headless captures. Never call them from a windowed frame loop. Residency updates and
+primes keep their existing nonblocking cover and prop behavior.
 
 ---
 

@@ -104,8 +104,8 @@ namespace KhaozEngine.Render3D
             }
         }
 
-        // Free every loaded splat material and clear the list. Called from Dispose.
-        void DisposeSplatMaterials(Internal.ResourceDisposal disposal)
+        // Release independent bundles and report whether every shared shadow receiver set released.
+        bool DisposeSplatMaterials(Internal.ResourceDisposal disposal)
         {
             bool retained = false;
             for (int i = 0; i < _splatMaterials.Count; i++)
@@ -115,6 +115,7 @@ namespace KhaozEngine.Render3D
                     else retained = true;
                 }
             if (!retained) _splatMaterials.Clear();
+            return !retained;
         }
 
         /// <summary>A loaded splat-terrain material: the two 5-layer texture arrays (albedo, normal), the params UBO
@@ -135,6 +136,7 @@ namespace KhaozEngine.Render3D
                 Dispose(disposal);
                 disposal.ThrowIfFailed();
             }
+            // Shared bindings are relinquished once the set releases, even if a later child release fails.
             internal bool Dispose(Internal.ResourceDisposal disposal)
             {
                 if (!disposal.Release("splat.set", Set.Dispose)) return false;

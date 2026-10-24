@@ -146,8 +146,8 @@ namespace KhaozEngine.Render3D
             }
         }
 
-        // Free every loaded tile-ground material and clear the list. Called from Dispose.
-        void DisposeTileGroundMaterials(Internal.ResourceDisposal disposal)
+        // Release independent bundles and report whether every shared shadow receiver set released.
+        bool DisposeTileGroundMaterials(Internal.ResourceDisposal disposal)
         {
             bool retained = false;
             for (int i = 0; i < _tileGroundMaterials.Count; i++)
@@ -157,6 +157,7 @@ namespace KhaozEngine.Render3D
                     else retained = true;
                 }
             if (!retained) _tileGroundMaterials.Clear();
+            return !retained;
         }
 
         /// <summary>A loaded tile-ground material: the albedo texture array (one layer per catalog material), the
@@ -177,6 +178,7 @@ namespace KhaozEngine.Render3D
                 Dispose(disposal);
                 disposal.ThrowIfFailed();
             }
+            // Shared bindings are relinquished once the set releases, even if a later child release fails.
             internal bool Dispose(Internal.ResourceDisposal disposal)
             {
                 if (!disposal.Release("tileGround.set", Set.Dispose)) return false;

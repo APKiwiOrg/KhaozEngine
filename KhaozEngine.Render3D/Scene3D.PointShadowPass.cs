@@ -297,11 +297,10 @@ namespace KhaozEngine.Render3D
             return outF;
         }
 
-        // Scene teardown releases materials independently. Atlases stay alive if either borrower retained them.
-        void DisposeTileGroundAndPointShadowResources(Internal.ResourceDisposal disposal)
+        // Model-owned and external material receivers must all relinquish the shared atlas pair.
+        void DisposePointShadowResources(Internal.ResourceDisposal disposal, bool shadowReceiversReleased)
         {
-            DisposeTileGroundMaterials(disposal);
-            if (_pointShadowOwnersReleased)
+            if (_pointShadowOwnersReleased && shadowReceiversReleased)
             {
                 if (disposal.Release("pointShadow.transientAtlas", () => _pointShadowTransientAtlas?.Dispose())) _pointShadowTransientAtlas = null;
                 if (disposal.Release("pointShadow.atlas", () => _pointShadowAtlas?.Dispose())) _pointShadowAtlas = null;

@@ -41,13 +41,15 @@ namespace KhaozEngine.Render3D
             Release("silhouettes", _silhouettes.Dispose);
             Release("targetOutlines", _targetOutlines.Dispose);
             Release("res", _res.Dispose);
+            // Match the external shadow receivers defined by CollectLiveMaterialSets.
+            bool shadowReceiversReleased = true;
             foreach (var m in _meshes)
                 if (m is { } mesh)
                 {
                     Release("meshVb", mesh.Vb.Dispose);
                     Release("meshOutlineNormalVb", mesh.OutlineNormalVb.Dispose);
                     Release("meshIb", mesh.Ib.Dispose);
-                    Release("meshMaterialSet", () => mesh.MaterialSet?.Dispose());
+                    shadowReceiversReleased &= Release("meshMaterialSet", () => mesh.MaterialSet?.Dispose());
                     Release("meshOutlineMaterialSet", () => mesh.OutlineMaterialSet?.Dispose());
                     Release("meshShadowCutoutSet", () => mesh.ShadowCutoutSet?.Dispose());
                 }
@@ -56,20 +58,25 @@ namespace KhaozEngine.Render3D
                 {
                     Release("eVb", e.Vb.Dispose);
                     Release("eIb", e.Ib.Dispose);
-                    Release("eMaterialSet", () => e.MaterialSet?.Dispose());
-                    Release("eSkinnedMaterialSet", () => e.SkinnedMaterialSet?.Dispose());
+                    shadowReceiversReleased &= Release("eMaterialSet", () => e.MaterialSet?.Dispose());
+                    shadowReceiversReleased &= Release("eSkinnedMaterialSet", () => e.SkinnedMaterialSet?.Dispose());
                     Release("eOutlineMaterialSet", () => e.OutlineMaterialSet?.Dispose());
                 }
             foreach (var set in _texBillboardSets) Release("texturedBillboardSet", () => set?.Dispose());
             _texBillboardSets.Clear();
-            foreach (var texture in _textures) Release("texture", () => texture?.Dispose());
-            _textures.Clear();
-            DisposeSplatMaterials(disposal);
-            DisposeModelWithInteriorCutBorrowers(disposal);
+            // Per-mesh sets name these scene-loaded maps. Ground bundles own their maps separately.
+            if (shadowReceiversReleased)
+            {
+                foreach (var texture in _textures) Release("texture", () => texture?.Dispose());
+                _textures.Clear();
+            }
+            shadowReceiversReleased &= DisposeSplatMaterials(disposal);
+            shadowReceiversReleased &= DisposeTileGroundMaterials(disposal);
+            DisposeModelWithInteriorCutBorrowers(disposal, shadowReceiversReleased);
             DisposeMotionVectorsView(disposal);
-            DisposeTileGroundAndPointShadowResources(disposal);
+            DisposePointShadowResources(disposal, shadowReceiversReleased);
             DisposeTemporalResolve(disposal);
-            Release("atmosphere", _atmosphere.Dispose);
+            if (_pointShadowOwnersReleased) Release("atmosphere", _atmosphere.Dispose);
             disposal.ThrowIfFailed();
         }
     }

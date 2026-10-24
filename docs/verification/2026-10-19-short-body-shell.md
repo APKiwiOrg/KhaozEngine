@@ -2022,3 +2022,84 @@ one planar Sweep route, original raw identity and accepted certificate producers
 the mandatory fixture matrix before retiring the old producers in the final implementation
 commit. No subagent/reviewer, push, merge, tag, branch change, release, consumer launch,
 load run, test loop or full suite occurred. This checkpoint contains documentation only.
+
+
+## Task 2b.3 continuation under SS-R16
+
+The required repeated diagnostic remains red, 23 Hit rows and one refusal. The rim row
+with Margin 0.001 and approach 2^-12 still exhausts 256 cells, now with 1756 features.
+The continuation stops under SS-R16. No replacement or producer retirement is accepted.
+The implementation and instrumentation are archived and production/test files restored.
+
+The attempt retains temporal simplex labels, inner certificates, attained events and
+original support proofs across bracket requests. It first searches to the initial plane
+zero, uses exact represented coefficients under 2a source authentication, proposes retained
+exact feature normals before generic directions and reserves operational placement
+enclosures for final publication. Face first events now land at contact instead of near
+0.95. All 2^-20 and tangent rows publish in the diagnostic. These are diagnostic successes,
+not acceptance of the unfinished witness encoder and initial zero-prefix obligations.
+
+The unchanged 24-row fixture construction and the before table are recorded above.
+The same diagnostic was run once before and once after corrections. Both commands exit 1,
+each with one executed and failed test and zero skipped. Both Release builds have no
+compiler warnings or errors. No green full class or Common regression result is claimed.
+
+```bash
+build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexBracketSweepTests.StageDiagnostic' --logger 'console;verbosity=detailed'
+```
+
+The after table uses the same columns as the first attempt. C/F is cells/features.
+The first-event column includes endpoint selection, temporal/static attainment, original
+revalidation and any penetration normal. All 24 rows retain one primitive admission and
+restore polynomial Used to zero. These are same-run observations, never absolute test pins.
+
+| Family | Margin | Approach | Published | Initial C/F | Plane C/F | First event C/F | Refinement C/F | Total C/F | Exhausted |
+| --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- |
+| face | 0 | 2^-4 | True | 3/20 | 2/12 | 48/149 | 12/26 | 65/207 | False |
+| face | 0 | 2^-12 | True | 3/20 | 2/12 | 48/149 | 12/26 | 65/207 | False |
+| face | 0 | 2^-20 | True | 3/20 | 2/12 | 48/149 | 12/26 | 65/207 | False |
+| face | 0 | tangent | True | 32/51 | 2/8 | 49/104 | 50/137 | 133/300 | False |
+| rim | 0 | 2^-4 | True | 32/51 | 2/8 | 26/74 | 39/114 | 99/247 | False |
+| rim | 0 | 2^-12 | True | 32/51 | 2/8 | 49/109 | 72/211 | 155/379 | False |
+| rim | 0 | 2^-20 | True | 32/51 | 2/8 | 49/109 | 50/137 | 133/305 | False |
+| rim | 0 | tangent | True | 32/51 | 2/8 | 49/109 | 50/137 | 133/305 | False |
+| apex | 0 | 2^-4 | True | 7/27 | 2/12 | 19/120 | 12/26 | 40/185 | False |
+| apex | 0 | 2^-12 | True | 7/27 | 2/12 | 19/120 | 12/26 | 40/185 | False |
+| apex | 0 | 2^-20 | True | 7/27 | 2/12 | 19/120 | 12/26 | 40/185 | False |
+| apex | 0 | tangent | True | 16/27 | 2/8 | 31/75 | 10/22 | 59/132 | False |
+| face | 0.001 | 2^-4 | True | 3/20 | 2/12 | 23/122 | 12/26 | 40/180 | False |
+| face | 0.001 | 2^-12 | True | 3/20 | 2/12 | 52/138 | 12/26 | 69/196 | False |
+| face | 0.001 | 2^-20 | True | 3/20 | 2/12 | 52/138 | 12/26 | 69/196 | False |
+| face | 0.001 | tangent | True | 32/51 | 2/8 | 46/95 | 73/225 | 153/379 | False |
+| rim | 0.001 | 2^-4 | True | 32/51 | 2/8 | 76/377 | 106/1103 | 216/1539 | False |
+| rim | 0.001 | 2^-12 | False | 32/51 | 2/8 | 121/965 | 101/732 | 256/1756 | True |
+| rim | 0.001 | 2^-20 | True | 32/51 | 2/8 | 141/1927 | 66/183 | 241/2169 | False |
+| rim | 0.001 | tangent | True | 32/51 | 2/8 | 46/100 | 73/225 | 153/384 | False |
+| apex | 0.001 | 2^-4 | True | 7/27 | 2/12 | 22/119 | 12/26 | 43/184 | False |
+| apex | 0.001 | 2^-12 | True | 7/27 | 2/12 | 46/135 | 12/26 | 67/200 | False |
+| apex | 0.001 | 2^-20 | True | 7/27 | 2/12 | 46/135 | 12/26 | 67/200 | False |
+| apex | 0.001 | tangent | True | 16/27 | 2/8 | 32/79 | 15/47 | 65/161 | False |
+
+The remaining row spends 121 cells on its first event, then 101 on refinement. Those
+refinement cells split into 22 interval, 42 active-feature, 37 event and zero encoding.
+Eight successful contractions leave [0.49978311880145604,0.5017430526006774], about
+0.367488 mm of nominal path width, before a further temporal event exhausts.
+The mathematical map residual is zero. The row fails before encoding. This does not prove
+that no 1 mm result exists, only that this coordinator did not close its internal 0.25 mm
+bracket allocation inside the unchanged account. No cap, ceiling, tolerance or fixture
+was changed and no further algorithm run follows this stop.
+
+All four r0/r1 sweep producers, their existing regressions and the root-specific encoder
+remain unchanged. No six-feature/three-target-stratum completion, lowered-budget controls,
+duck/cow or represented-pose expansion is accepted. The Common selections, SS-R2 capsule
+families, roof/footprint regressions and seven degree-1 navigation baselines are NOT RUN
+after the mandatory stop. Capsule/support APIs and arithmetic, InstalledSweepLeaf, raw
+identity contracts, Movement and baseline sources have no diff from the starting base.
+
+The continuation report in the existing SDD handoff directory includes both stage tables,
+the complete refinement table, self-review and exact migration inventory disposition.
+The attempted production/test diff is task-2b.3-r16-attempt.diff, 45,159 bytes,
+SHA-256 c2386d0b5e603d32ed86e38058caf9caf627166c2070f120bee5b38721a4bcf3.
+Its archive/restoration and applicability checks exit 0. The prior archive is unchanged.
+Only this evidence record is committed. No partial replacement is committed under the
+final implementation subject. Integration, pushes and releases remain with the orchestrator.

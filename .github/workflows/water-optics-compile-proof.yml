@@ -1,0 +1,109 @@
+name: Water optics compiler phase proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  water-compile:
+    name: Water compiler / ${{ matrix.variant }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: baseline
+            source: b29ed0af73f51cb185b447f83eb8323de2979749
+          - variant: current
+            source: 327b6fe754dbb476dd8d4e2e978a8de49925015f
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: source
+    env:
+      KE_WATER_COMPILE_PROOF: '1'
+      KE_WATER_COMPILE_PROOF_REQUIRED: '1'
+      KE_SPIRV_CACHE: 'off'
+      KE_D3D11_SHADER_CACHE: 'off'
+      KE_D3D11_DEBUG: 'off'
+      KE_WATER_COMPILE_VARIANT: ${{ matrix.variant }}
+      KE_WATER_COMPILE_SOURCE_SHA: ${{ matrix.source }}
+      KE_WATER_COMPILE_HARNESS_SHA: ${{ github.sha }}
+    steps:
+      - name: Check out the committed dispatch harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: harness
+          persist-credentials: false
+
+      - name: Check out the isolated immutable source variant
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.source }}
+          path: source
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Verify identities and copy only the identical committed harness
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sourceSha = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $sourceSha -cne $env:KE_WATER_COMPILE_SOURCE_SHA) { throw 'Source SHA mismatch' }
+          $harnessRoot = Join-Path $env:GITHUB_WORKSPACE 'harness'
+          $harnessSha = git -C $harnessRoot rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $harnessSha -cne $env:KE_WATER_COMPILE_HARNESS_SHA) { throw 'Harness SHA mismatch' }
+          $relative = 'KhaozEngine.Render.Tests/Gpu/WaterOpticsCompilePhaseTests.cs'
+          $harness = Join-Path $harnessRoot $relative
+          git -C $harnessRoot diff --exit-code HEAD -- $relative
+          if ($LASTEXITCODE -ne 0) { throw 'Harness is not the committed file' }
+          Copy-Item $harness $relative
+          $hash = (Get-FileHash $harness -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ((Get-FileHash $relative -Algorithm SHA256).Hash.ToLowerInvariant() -cne $hash) { throw 'Harness copy mismatch' }
+          $out = Join-Path $env:RUNNER_TEMP "water-compile-${{ matrix.variant }}"
+          "KE_WATER_COMPILE_OUTPUT=$out" >> $env:GITHUB_ENV
+          "KE_WATER_COMPILE_SOURCE_ROOT=$PWD" >> $env:GITHUB_ENV
+          "KE_WATER_COMPILE_HARNESS_SHA256=$hash" >> $env:GITHUB_ENV
+          $sdk = dotnet --version
+          if ($LASTEXITCODE -ne 0) { throw 'SDK discovery failed' }
+          "KE_WATER_COMPILE_SDK=$sdk" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force local-feed | Out-Null
+          dotnet --info
+          if ($LASTEXITCODE -ne 0) { throw 'SDK info failed' }
+
+      # Restore/build only this test project and its existing references. Native dependencies come
+      # from the pinned NuGet graph and the repository host-native targets, as in cross-platform-gpu.
+      - name: Build the required project closure in Release
+        run: |
+          dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Release build failed' }
+
+      - name: Compile exactly one Water pair in one ordinary testhost invocation
+        run: |
+          dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --no-restore --filter 'FullyQualifiedName=KhaozEngine.Tests.Gpu.WaterOpticsCompilePhaseTests.ProductionWaterPair_RecordsCompilerPhases' --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=water-compile.trx' --results-directory "$env:RUNNER_TEMP/water-results-${{ matrix.variant }}" -- RunConfiguration.TreatNoTestsAsError=true
+          if ($LASTEXITCODE -ne 0) { throw 'Water compiler proof failed' }
+
+      - name: Require selected 1, passed 1, failed 0, skipped 0 and verified phase artifacts
+        run: |
+          [xml]$trx = Get-Content "$env:RUNNER_TEMP/water-results-${{ matrix.variant }}/water-compile.trx"
+          $c = $trx.TestRun.ResultSummary.Counters
+          if ($c.total -ne '1' -or $c.executed -ne '1' -or $c.passed -ne '1' -or $c.failed -ne '0' -or $c.notExecuted -ne '0') { throw 'Expected selected=1 passed=1 failed=0 skipped=0' }
+          $r = Get-Content "$env:KE_WATER_COMPILE_OUTPUT/measurements.json" -Raw | ConvertFrom-Json
+          if (!$r.verified -or $r.sourceSha -cne $env:KE_WATER_COMPILE_SOURCE_SHA -or $r.harnessSha -cne $env:KE_WATER_COMPILE_HARNESS_SHA -or $r.successfulPhaseCount -ne 6 -or $r.phaseCount -ne 6) { throw 'Incomplete or mismatched measurements' }
+          'selected=1 passed=1 failed=0 skipped=0'
+
+      - name: Upload variant measurements, sources, SPIR-V, HLSL, DXBC and test result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: water-compile-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/water-compile-${{ matrix.variant }}/
+            ${{ runner.temp }}/water-results-${{ matrix.variant }}/
+          if-no-files-found: error

@@ -93,8 +93,9 @@ dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocke
 ```
 
 The shared Release setup builds the selected target, then the outside-solution renderer verifier
-when the solution or Render.Tests owns the selection. Its process tests require that freshly built
-executable. Ordinary full and selective CI use the same setup. A raw solution build alone does not
+when the solution or Render.Tests owns the selection, including reduced native GPU shard solutions.
+Its process tests require that freshly built executable. Ordinary full and selective CI and the native
+GPU matrix use the same setup. A raw solution build alone does not
 produce this test prerequisite. Other selected test assemblies keep their original build and test slice.
 
 Warnings are errors in every configuration. Fix warnings at the source. Do not add a blanket

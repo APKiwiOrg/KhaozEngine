@@ -16,7 +16,7 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class WaterOpticsRolledEmissionTests
 {
-    const string Evidence = "/tmp/khaozengine-water-triangles/streamed-wide/emission";
+    const string Evidence = "/tmp/khaozengine-water-triangles/scalar-interpolation/emission";
 
     // Catch loss of sharing or local loop controls in the actual pinned compiler output.
     [Fact]
@@ -89,6 +89,7 @@ public sealed class WaterOpticsRolledEmissionTests
         }, new JsonSerializerOptions { WriteIndented = true }));
 
         Assert.DoesNotMatch(@"\buint\s+\w+\[18\]", hlsl);
+        Assert.DoesNotMatch(@"\buint\s+\w+\[16\]", hlsl);
         Assert.Equal(1, opcodes.GetValueOrDefault(54u)); // Exhaustively inlined OpFunction.
         Assert.Equal(0, opcodes.GetValueOrDefault(57u)); // No surviving OpFunctionCall boundary.
         Assert.True(loops.Count(l => l.Bound == 6 && l.Retained) == 3
@@ -123,6 +124,7 @@ public sealed class WaterOpticsRolledEmissionTests
         Loop interpolation = Assert.Single(loops, l => l.Bound == 23);
         Assert.True(interpolation.Retained, "Interpolation schedule lost its [loop] control.");
         string body = hlsl[interpolation.Start..interpolation.End];
+        WaterOpticsInterpolationEmissionContract.Verify(fragment, hlsl, body, interpolation.Header);
         // These distinguish the unchanged add normalization and 24-bit multiply bodies after inlining.
         Assert.Single(Regex.Matches(body, @"& 134217728u"));
         Assert.Single(Regex.Matches(body, @"& 32768u"));

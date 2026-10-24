@@ -63,7 +63,25 @@ uint opticsInterpolate(int triangle, uvec2 p) {
         if (operation == 0) result = opticsAdd(left,right);
         else if (operation == 1) result = opticsMul(left,right);
         else result = opticsDiv(left,right);
-        r[destination] = result;
+        // Literal destinations let the compiler carry independent scalar registers through the loop.
+        switch (destination) {
+            case 0: r[0] = result; break;
+            case 1: r[1] = result; break;
+            case 2: r[2] = result; break;
+            case 3: r[3] = result; break;
+            case 4: r[4] = result; break;
+            case 5: r[5] = result; break;
+            case 6: r[6] = result; break;
+            case 7: r[7] = result; break;
+            case 8: r[8] = result; break;
+            case 9: r[9] = result; break;
+            case 10: r[10] = result; break;
+            case 11: r[11] = result; break;
+            case 12: r[12] = result; break;
+            case 13: r[13] = result; break;
+            case 14: r[14] = result; break;
+            case 15: r[15] = result; break;
+        }
     }
     return r[15];
 }

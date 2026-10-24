@@ -120,7 +120,9 @@ Mode 2 uses existing texture/sampler bindings 10/11 and unchanged 1088-byte UBO 
   expense. No sixfold unrolling, per-word product recomputation or precision/domain change is allowed.
 - [ ] Retain one fixed 23-step interpolation loop with one emitted software add, multiply and divide
   body, including one nested 27-step division loop. Select the original ordered scalar operand bits
-  and store each rounded result in a local 16-word register bank. Preserve sign-bit XOR subtraction,
+  and store each rounded result through literal-slot destinations in sixteen loop-carried scalar
+  registers. Require actual pinned SPIR-V/HLSL scalar definitions, uses and loop phis, with no
+  16-element interpolation array or dynamic destination store. Preserve sign-bit XOR subtraction,
   signed zero, the constant/equal-zero early return and unchanged arithmetic helpers and CPU reference.
   Verify actual production interpolation bitwise against that CPU reference on nonconstant depths,
   cancellation and admitted subnormal intermediates, plus unchanged query, image and fallback proofs.

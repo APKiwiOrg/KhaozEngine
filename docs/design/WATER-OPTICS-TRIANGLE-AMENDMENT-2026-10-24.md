@@ -183,7 +183,9 @@ controller. Public domain, admission and error budgets are unchanged.
 
 Interpolation now retains its original 23 ordered software operations in one fixed `dont_unroll`
 loop, selecting scalar operands into one add, multiply or divide body and storing each rounded result
-in a local 16-word register bank. Every subtraction retains its sign-bit XOR. Constant/equal-zero
+in sixteen loop-carried scalar registers through literal-slot destination stores. Actual pinned
+SPIR-V/HLSL must contain no 16-element interpolation bank or dynamic destination store.
+Every subtraction retains its sign-bit XOR. Constant/equal-zero
 depths still return before interpolation. This shares compiler input without relying on a function
 boundary surviving inlining. The narrow predicate also shares one unchanged product body through
 a retained six-term loop in the original signed operand order, with unchanged four-word accumulators,

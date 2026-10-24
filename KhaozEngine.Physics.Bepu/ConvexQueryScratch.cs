@@ -26,7 +26,7 @@ internal sealed class ConvexQueryScratch
     }
     internal void RetainCertificates(int checkpoint)
     {
-        if (Polynomials.Used > checkpoint) _retainedCheckpoint = checkpoint;
+        if (Polynomials.Used > checkpoint && (_retainedCheckpoint < 0 || checkpoint < _retainedCheckpoint)) _retainedCheckpoint = checkpoint;
     }
 
     internal SweepExactWorkspace Exact { get; } = new();

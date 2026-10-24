@@ -85,11 +85,12 @@ internal sealed class ConvexPenetrationPolytope
         return a.Offset.Sign < 0 ? compare > 0 : compare < 0;
     }
 
-    internal bool TryExpand(in ConvexQueryRequest request, in ConvexPlanarSource source, P feet,
-        Facet closest, ref ConvexQueryWork work)
+    internal bool TryExpand(in ConvexQueryRequest request, Facet closest,
+        ConvexPenetrationProposal proposal, ref ConvexQueryWork work)
     {
         if (VertexCount == _vertices.Length) return work.Refuse();
-        if (!TrySupport(request, source, feet, closest.Normal, ref work, out var point)) return false;
+        if (!ConvexPenetrationSupport.TryRational(request.Shape, proposal.Direction, ref work, out var q)) return false;
+        P point = q - proposal.Target;
         if ((P.Dot(closest.Normal, point) - closest.Offset).Sign <= 0) return false;
         int horizon = 0, visible = 0;
         for (int i = 0; i < FaceCount; i++)
@@ -136,37 +137,8 @@ internal sealed class ConvexPenetrationPolytope
             P v = source.Vertex(i, feet); Q next = P.Dot(v, direction);
             if ((next - projection).Sign < 0) { t = v; projection = next; }
         }
-        // Rounding proposes dyadic inner points. Exact membership, rather than a numerical
-        // EPA stopping criterion, authenticates each one before it enters the lower hull.
-        Q scale = direction.X * direction.X;
-        if ((direction.Y * direction.Y - scale).Sign > 0) scale = direction.Y * direction.Y;
-        if ((direction.Z * direction.Z - scale).Sign > 0) scale = direction.Z * direction.Z;
-        if (scale.Sign <= 0) return false;
-        double divisor = Q.RootBounds(scale).Upper;
-        Vector3 n = new((float)(direction.X.Bounds.Lower / divisor), (float)(direction.Y.Bounds.Lower / divisor),
-            (float)(direction.Z.Bounds.Lower / divisor));
-        Vector3 proposed = ConvexQueryOperations.Support(request.Shape.WithMargin(0), n);
-        P q = P.From(proposed);
-        float factor = 1;
-        while (!ConvexPlanarFeatures.Member(request.Shape, q))
-        {
-            if (!work.Feature()) return false;
-            factor = MathF.BitDecrement(factor);
-            q = new(Q.From(proposed.X) * Q.From(factor), Q.From(proposed.Y), Q.From(proposed.Z) * Q.From(factor));
-        }
-        P rounding = default;
-        if (request.Shape.Margin > 0)
-        {
-            Vector3 m = Vector3.Normalize(n) * request.Shape.Margin;
-            rounding = P.From(m); factor = 1;
-            Q margin = Q.From(request.Shape.Margin);
-            while ((P.Dot(rounding, rounding) - margin * margin).Sign > 0)
-            {
-                if (!work.Feature()) return false;
-                factor = MathF.BitDecrement(factor); rounding = P.From(m) * Q.From(factor);
-            }
-        }
-        point = q + rounding - t;
+        if (!ConvexPenetrationSupport.TryRational(request.Shape, direction, ref work, out var q)) return false;
+        point = q - t;
         return point.X.Rational && point.Y.Rational && point.Z.Rational;
     }
 }

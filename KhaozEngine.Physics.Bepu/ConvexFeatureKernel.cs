@@ -54,17 +54,18 @@ internal static class ConvexFeatureKernel
     }
 
     internal static bool TryDistanceCertificate(in ConvexQueryRequest request, in ConvexPlanarSource source,
-        ConvexCertificateFraction fraction, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexDistanceCertificate certificate)
+        ConvexCertificateFraction fraction, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexDistanceCertificate certificate,
+        P translation = default, bool replace = true)
     {
         certificate = default;
         if (scratch is null || !source.IsValid || !fraction.IsValid || !ConvexQueryPolicy.Contains(request) || work.Exhausted || work.Descendants == 0) return false;
         if (fraction.Root is not null)
         {
-            if (fraction.Circular is null || !fraction.TryCompare(ConvexCertificateFraction.From(0), ref work, scratch, out int lower) || lower < 0 ||
+            if (translation != default || !replace || fraction.Circular is null || !fraction.TryCompare(ConvexCertificateFraction.From(0), ref work, scratch, out int lower) || lower < 0 ||
                 !fraction.TryCompare(ConvexCertificateFraction.From(1), ref work, scratch, out int upper) || upper > 0) return false;
             return fraction.Circular.TryAtFraction(request, source, fraction, ref work, scratch, out certificate);
         }
-        scratch.BeginCertificates();
+        if (replace) scratch.BeginCertificates();
         int checkpoint = scratch.Polynomials.Used;
         bool retained = false;
         try
@@ -76,7 +77,7 @@ internal static class ConvexFeatureKernel
                 foreach (Q c in new[] { p.X, p.Y, p.Z })
                     if ((Q.From(2048) - c).Sign < 0 || (Q.From(2048) + c).Sign < 0) return false;
             }
-            var context = new ConvexDistanceContext(request, source, fraction, scratch, false);
+            var context = new ConvexDistanceContext(request, source, fraction, scratch, false, translation);
             if (!TryRetainedInterior(context, ref work, out var result) &&
                 !TryDistance(context, ref work, out result)) return false;
             certificate = result.Certificate;
@@ -177,7 +178,7 @@ internal static class ConvexFeatureKernel
     {
         if (!pair.IsAlive || pair.IsCircular || !pair.Source.IsOriginal || pair.Fraction.Root is not null ||
             !work.Feature() || !work.Cell() || P.Dot(towardTarget, towardTarget).Sign <= 0) return false;
-        P feet = P.From(pair.Request.Pose.Position) + P.From(pair.Request.Displacement) * pair.Fraction.Value;
+        P feet = pair.Feet;
         if (!ConvexPlanarFeatures.Member(pair.Request.Shape, common) ||
             !ConvexPlanarFeatures.NormalCone(pair.Request.Shape, common, towardTarget)) return false;
         for (int face = 0; face < pair.Source.FaceCount; face++)

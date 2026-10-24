@@ -1316,3 +1316,112 @@ and expired-loan contacts, rational-fraction/root-loan refusal and the independe
 oracle control. The Common Game, footprint and seven degree-1 navigation selections were not
 run because SS-R12 requires stopping on these unchanged-cap failures. The foundation's previous
 457, 741 and 7 passes remain historical evidence only. Full solution verification stays Task 12.
+
+
+### Task 2c.2 continuation under SS-R13
+
+The continuation starts at 6babbf3dd and applies the archived SS-R12 attempt whose SHA-256
+is 2d8c64abfc2ebc09eb4ca447d5262c245e06d2f1f4541bff8bf91ac8253a0c80.
+The owner retains the 256-cell and 4096-feature caps, every storage/integer ceiling and every
+tolerance. No stationary edge producer, second certification path or capsule change is added.
+
+ConvexExactPoint equality compares numeric values instead of rational storage. Exact rational
+parts and signed squared radicals identify equal quadratic coordinates, including equivalent
+field encodings. Hashing uses the same normalized values. Default versus constructed zeros,
+unequal coordinates and equivalent sqrt(2) versus sqrt(8)/2 have dedicated controls.
+
+The exact rational inner CSO hull is built before static contact classification. Its complete
+facet scan supplies the minimum signed distance. A strictly positive lower radius proves every
+facet offset positive and therefore strict origin containment in an inner subset of the original
+CSO. ConvexPenetrationOrigin retains that overlap proof's original source, request, exact rational
+fraction and scratch generation. It claims neither an invented distance pair nor a common point.
+Only when the hull cannot prove overlap does the existing 2c.1 classifier report touching or
+separation. A classifier overlap without the required hull/upper certificate still refuses.
+
+ConvexPenetrationProposal computes each direction's original-target minimum and complete shell
+support enclosure once, binds them to source/request/exact feet, and supplies them to the sole
+plane verifier and hull refinement. A proposal is pruned before exact witness verification only
+when the lower endpoint of Support/|direction| cannot improve the best verified upper length.
+The encoded separator and the operational rounded destination remain checked against the original
+member. Exact surface witnesses and their closed support cones come from that verified plane,
+with source/request/pose and scratch lifetime binding. The lower inball and upper translation
+still share the unchanged 0.001 m encoded-error budget.
+
+Temporary nested scopes attributed every admitted cell and feature to one stage. Each of the five
+rows ran once before and once after the algorithm corrections. No counter is an absolute test pin.
+The EPA stage includes hull seeding, source validation and facet scans. Support work is charged
+under support, not again under its caller. The unmodified SS-R12 attempt gives the following table.
+
+| Stage, cells / features | Cylinder edge, Margin 0 | Rim edge, Margin 0 | Rim edge, Margin 0.001 | Cone edge, Margin 0 | Shoulder edge, Margin 0 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Initial classification | 84 / 121 | 162 / 276 | 140 / 222 | 190 / 318 | 192 / 293 |
+| EPA and hull maintenance | 34 / 2588 | 8 / 189 | 15 / 570 | 0 / 0 | 0 / 0 |
+| Support evaluation | 37 / 333 | 11 / 99 | 18 / 180 | 0 / 0 | 0 / 0 |
+| Plane verification | 101 / 971 | 75 / 685 | 83 / 773 | 66 / 586 | 64 / 564 |
+| Witness construction | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Encoding | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Total | 256 / 4013 | 256 / 1249 | 256 / 1745 | 256 / 904 | 256 / 857 |
+
+The SS-R13 corrections produce the following table. All five rows return live certificates,
+without exhaustion. Their last complete depth brackets are recorded in the implementation report.
+
+| Stage, cells / features | Cylinder edge, Margin 0 | Rim edge, Margin 0 | Rim edge, Margin 0.001 | Cone edge, Margin 0 | Shoulder edge, Margin 0 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Initial classification | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| EPA and hull maintenance | 9 / 241 | 11 / 336 | 11 / 337 | 4 / 70 | 8 / 198 |
+| Support evaluation | 67 / 611 | 69 / 631 | 69 / 645 | 62 / 561 | 66 / 601 |
+| Plane verification | 17 / 23 | 23 / 41 | 23 / 41 | 19 / 29 | 20 / 32 |
+| Witness construction | 1 / 14 | 1 / 21 | 1 / 21 | 1 / 25 | 1 / 21 |
+| Encoding | 0 / 1 | 0 / 1 | 0 / 1 | 0 / 1 | 0 / 1 |
+| Total | 94 / 890 | 104 / 1030 | 104 / 1045 | 86 / 686 | 95 / 853 |
+
+The initial before-change run exits 1 with six assertion failures, including the equality
+regression. The instrumented after-change run exits 1 with 21 passed and 7 failed out of 28.
+All five stage rows pass. The seven remaining failures require the exact minimum's feature labels
+rather than the attained plane's features. SS-R12 already defines support-functional witnesses.
+A plane inside the global error bracket may expose a different original feature than the exact
+minimum, so forcing those labels would require the stationary-pair construction SS-R11 forbids.
+The tests now check the actual support provenance instead. Independent installed snapshots prove
+the exposed target face/edge/vertex set, the local id must refer to vertices in that set, and exact
+shell equations check the reported query feature. All hand-derived optima and independent member
+translation oracle assertions remain, with no numeric relaxation.
+
+The before/after logs are task-2c.2-r13-before-red.log and task-2c.2-r13-after.log under
+/tmp/khaozengine-short-shell. All instrumentation and diagnostic-only classes are removed before
+final verification. No root-backed or rootless irrational fraction is admitted for penetration.
+The r0/r1 producers, installed capsule geometry/arithmetic, raw dispatch identity, arrival ball,
+roof and footprint protections and the seven degree-1 baseline sources remain unchanged.
+
+The first uninstrumented selection passes all support-provenance assertions but exits 1 with
+20 passed and 3 independent upper-oracle rejections. One focused diagnostic confirms that each
+rejection tests support in the encoded translation vector's own direction. A clearing vector
+need not itself be a separating normal after componentwise binary32 encoding. The independent
+member oracle now uses an exact translated snapshot and its existing GJK proposals plus exact
+continuous support predicates to find a positive separation lower bound. It reads no production
+normal or hull. Its existing 256-iteration ceiling and the ordinary distance-oracle stopping
+condition are unchanged. The independent lower-depth proof is unchanged. Failure to independently
+prove separation still rejects the upper side. A residual-overlap negative control is added.
+This oracle correction does not change any production work count in the after table.
+
+Final uninstrumented verification is green, with no compiler warnings or errors.
+
+| Log under /tmp/khaozengine-short-shell | Exit | Executed result |
+| --- | ---: | --- |
+| task-2c.2-r13-green-final.log | 0 | 24 passed, 0 failed, 0 skipped |
+| task-2c.2-r13-reg-game.log | 0 | 472 passed, 0 failed, 0 skipped |
+| task-2c.2-r13-reg-footprint.log | 0 | 741 passed, 0 failed, 0 skipped |
+| task-2c.2-r13-reg-navigation.log | 0 | 7 passed, 0 failed, 0 skipped |
+
+The three Common commands run exactly once, synchronously, including the unchanged capsule
+families and captured stairs. The seven unchanged normalized full-file hashes use null execution,
+hence degree 1. The final navigation command rebuilds Bepu after removing the unused scalar-count
+diagnostic accessor. No work, storage or exact-integer ceiling or tolerance is changed. No source
+change to the four r0/r1 producers, capsule APIs/arithmetic, InstalledSweepLeaf, Movement,
+Locomotion, raw layer identity, roof/footprint protections or baseline fixtures is present.
+The member certificate makes no global-union MTV claim. Whole-view completeness, deepest-member
+ties and recovery requery remain Tasks 3/7. Full solution verification remains Task 12.
+
+The final staged dashes/prose/file-size/whitespace guards and whole-tree guards pass. Instruction
+size is 8,310 / 16,384 bytes. The documentation-version guard confirms unchanged 21.12.1 declarations
+and package inventory. No baseline or exemption changes. Task 2c.2 is complete at this boundary,
+with integration, push, packaging and release reserved for the owning orchestrator.

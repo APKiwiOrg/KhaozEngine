@@ -127,6 +127,19 @@ internal readonly struct ConvexQuadratic
 
 internal readonly record struct ConvexExactPoint(ConvexQuadratic X, ConvexQuadratic Y, ConvexQuadratic Z)
 {
+    public bool Equals(ConvexExactPoint other) => Same(X, other.X) && Same(Y, other.Y) && Same(Z, other.Z);
+    public override int GetHashCode() => HashCode.Combine(ValueHash(X), ValueHash(Y), ValueHash(Z));
+
+    // Each nonrational field has a positive nonsquare radicand. Its rational part and
+    // signed squared radical identify the value even across equivalent field encodings.
+    static bool Same(ConvexQuadratic a, ConvexQuadratic b) => (a.A - b.A).Sign == 0 &&
+        a.B.Sign == b.B.Sign && (a.B * a.B * a.D - b.B * b.B * b.D).Sign == 0;
+    static int ValueHash(ConvexQuadratic value)
+    {
+        ConvexRational square = value.B * value.B * value.D;
+        return HashCode.Combine(value.A.Numerator, value.A.Denominator, value.B.Sign, square.Numerator, square.Denominator);
+    }
+
     internal static ConvexExactPoint From(Vector3 v) => new(ConvexQuadratic.From(v.X), ConvexQuadratic.From(v.Y), ConvexQuadratic.From(v.Z));
     internal GeometryVector Bounds => new(X.Bounds, Y.Bounds, Z.Bounds);
     public static ConvexExactPoint operator +(ConvexExactPoint a, ConvexExactPoint b) => new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);

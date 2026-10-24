@@ -9,7 +9,7 @@ using Q = KhaozEngine.Physics.Bepu.ConvexQuadratic;
 
 namespace KhaozEngine.Tests.Physics;
 
-public sealed class ConvexPlanarPenetrationTests(ITestOutputHelper output)
+public sealed partial class ConvexPlanarPenetrationTests(ITestOutputHelper output)
 {
     static readonly ConvexQueryShape Shape = new(ConvexQueryKind.ConeCylinder, 0.25f, 0, 0.5f, 1);
     static ConvexQueryRequest Request(float margin = 0) => new(Shape.WithMargin(margin), Pose.Identity,
@@ -54,11 +54,10 @@ public sealed class ConvexPlanarPenetrationTests(ITestOutputHelper output)
     public void LocalStationaryExitCannotBeatTheGlobalLowerProof()
     {
         using var fixture = new ConvexPlanarFixture(new(0.5f, 2, 2), Pose.At(new(0.625f, 0, 0)));
-        var e = Evaluate(fixture, Request(), out var work, out _);
+        var e = Evaluate(fixture, Request(), out var work, out var scratch);
         Assert.True(e.UpperDepth < 0.126f);
-        Assert.False(ConvexPenetrationCertificate.TryCreate(e.Initial, P.From(new(-0.25f, 0.75f, 0)),
-            P.From(new(1.125f, 0.75f, 0)), P.From(-Vector3.UnitX), ConvexTargetFeature.Face, 1,
-            e.GlobalLowerDepthBounds, ref work, out var rejected));
+        Assert.True(ConvexPenetrationPlane.TryCreate(Request(), e.Initial.Source, default, P.From(-Vector3.UnitX), ref work, out var plane));
+        Assert.False(ConvexPenetrationCertificate.TryCreate(e.Initial, plane, e.GlobalLowerDepthBounds, ref work, scratch, out var rejected));
         Assert.Equal(default, rejected);
         // The right exit is an attained stationary exit too, but is not the member minimum.
         float wrongDepth = 1.375f + 1f / 4096;
@@ -107,9 +106,10 @@ public sealed class ConvexPlanarPenetrationTests(ITestOutputHelper output)
             Assert.True(P.Dot(e.Direction, e.Direction).Sign > 0);
             Assert.True(ConvexPlanarFeatures.Member(Shape, e.Query));
             Assert.True(ConvexPlanarFeatures.NormalCone(Shape, e.Query, e.Direction));
-            Assert.True(ConvexPlanarFeatures.SupportsTarget(e.Initial.Pair.Source, default, e.Target,
+            Assert.True(ConvexPlanarFeatures.SupportsTarget(e.Attained.Source, e.Attained.Feet, e.Target,
                 e.Direction, ref work));
-            Assert.True(P.Dot(P.Cross(e.Query-e.Target, e.Direction), P.Cross(e.Query-e.Target, e.Direction)).Sign == 0);
+            // SS-R12 witnesses optimize the support functional, not a second distance problem.
+            Assert.True(P.Dot(e.Target - e.Query, e.Direction).Sign >= 0);
         }
     }
 
@@ -180,7 +180,7 @@ public sealed class ConvexPlanarPenetrationTests(ITestOutputHelper output)
         var e = Evaluate(vertex, Request(), out _, out _);
         double optimum = 0.25 - Math.Sqrt(0.203125 * 0.203125 + 0.046875 * 0.046875);
         Assert.True(e.LowerDepth <= optimum && e.UpperDepth >= optimum);
-        Assert.Equal(ConvexTargetFeature.Vertex, e.Contact.TargetFeature);
+        AssertSupportProvenance(e, vertex.Oracle);
         using var rounded = new ConvexPlanarFixture(new(0.5f, 2, 2), Pose.At(new(0.75048828125f, 0, 0)));
         var grown = Evaluate(rounded, Request(0.001f), out _, out _);
         Assert.True(grown.LowerDepth <= 0.001 - 1.0 / 2048 && grown.UpperDepth >= 0.001 - 1.0 / 2048);

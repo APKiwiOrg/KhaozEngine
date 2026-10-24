@@ -10,7 +10,7 @@ internal static partial class ShortBodyShellOracle
     // GJK proposes target barycentrics and a separating direction only. Exact independent
     // continuous support and attained point/meridian distance certify both ends of the result.
     // No proposed convergence or failed iteration can publish an expected distance.
-    static ConvexOracleEvent GeneralEntry(in ConvexQueryShape shape, Pose pose, ConvexOracleTarget target)
+    static ConvexOracleEvent GeneralEntry(in ConvexQueryShape shape, Pose pose, ConvexOracleTarget target, bool separationOnly = false)
     {
         var exact = new R[target.Vertices.Length][];
         var numeric = new D3[exact.Length];
@@ -37,7 +37,8 @@ internal static partial class ShortBodyShellOracle
         {
             if (!Closest(simplex, out var weights, out direction)) return default;
             var certificate = Bound(shape, exact, simplex, weights, direction, faceLower);
-            if (certificate.IsComplete && SingleBracket(certificate.Lower) == SingleBracket(certificate.Upper))
+            if (certificate.IsComplete && ((separationOnly && certificate.Lower > 0) ||
+                SingleBracket(certificate.Lower) == SingleBracket(certificate.Upper)))
                 return certificate;
             var reduced = new List<OracleVertex>();
             for (int i = 0; i < simplex.Count; i++) if (weights[i] > 0) reduced.Add(simplex[i]);

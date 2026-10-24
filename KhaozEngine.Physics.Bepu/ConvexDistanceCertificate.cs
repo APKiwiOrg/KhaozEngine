@@ -11,6 +11,8 @@ internal readonly struct ConvexDistanceCertificate
     internal ConvexQueryRequest Request { get; }
     internal ConvexPlanarSource Source { get; }
     internal ConvexCertificateFraction Fraction { get; }
+    internal P Translation { get; }
+    internal P Feet => P.From(Request.Pose.Position) + P.From(Request.Displacement) * Fraction.Value + Translation;
     readonly P _query, _target, _normal;
     internal P Query => IsCircular ? throw new ConvexExactRefusalException() : _query;
     internal P Target => IsCircular ? throw new ConvexExactRefusalException() : _target;
@@ -34,6 +36,7 @@ internal readonly struct ConvexDistanceCertificate
     {
         _scratch = context.Scratch; _generation = _scratch.CertificateGeneration;
         Request = context.Request; Source = context.Source; Fraction = context.Fraction;
+        Translation = context.Translation;
         _query = q; _target = t; _normal = t - q; _squared = P.Dot(_normal, _normal);
         BaseOverlap = overlap; QueryFeature = overlap ? ConvexShellFeature.Interior : ConvexPlanarFeatures.Classify(Request.Shape, q);
         TargetFeature = feature; LocalFeatureId = id;
@@ -44,6 +47,7 @@ internal readonly struct ConvexDistanceCertificate
     {
         _scratch = scratch; _generation = scratch.CertificateGeneration;
         Request = request; Source = source; Fraction = fraction; Circular = circular;
+        Translation = circular.Context.Translation;
         QueryFeature = circular.Feature; TargetFeature = targetFeature; LocalFeatureId = localFeatureId ?? circular.LocalFeatureId;
     }
 
@@ -74,14 +78,15 @@ internal readonly record struct ConvexStaticResult(ConvexLeafEvidence Evidence, 
 /// <summary>The same feature enumeration serves legacy encoding and retained certificates.
 /// The legacy accept path calls the original encoder without changing its operand order.</summary>
 internal readonly struct ConvexDistanceContext(ConvexQueryRequest request, ConvexPlanarSource source,
-    ConvexCertificateFraction fraction, ConvexQueryScratch scratch, bool encode)
+    ConvexCertificateFraction fraction, ConvexQueryScratch scratch, bool encode, P translation = default)
 {
     internal ConvexQueryRequest Request => request;
     internal ConvexPlanarSource Source => source;
     internal ConvexCertificateFraction Fraction => fraction;
     internal ConvexQueryScratch Scratch => scratch;
     internal bool Encode => encode;
-    internal P Feet => P.From(request.Pose.Position) + P.From(request.Displacement) * fraction.Value;
+    internal P Translation => translation;
+    internal P Feet => P.From(request.Pose.Position) + P.From(request.Displacement) * fraction.Value + translation;
     internal bool TryAccept(P q, P t, ConvexTargetFeature feature, int id, bool overlap, out ConvexStaticResult result)
     {
         result = default;

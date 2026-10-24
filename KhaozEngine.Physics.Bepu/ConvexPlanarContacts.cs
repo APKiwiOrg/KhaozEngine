@@ -12,11 +12,10 @@ internal static class ConvexPlanarContacts
         ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence)
     {
         evidence = default;
-        if (!TryClassify(request, leaf, ConvexCertificateFraction.From(0), ref work, scratch, out var initial)) return false;
-        if (initial.State != ConvexInitialState.Overlapping)
-        { evidence = initial.Contact with { CertifiedErrorMetres = 0.001f }; return true; }
-        if (!ConvexPlanarPenetration.TryEvaluate(initial, ref work, scratch, out var penetration)) return false;
-        evidence = penetration.Contact; return true;
+        if (!ConvexPlanarPenetration.TryEvaluate(request, leaf, ConvexCertificateFraction.From(0),
+            ref work, scratch, out var penetration, out var fallback)) return false;
+        evidence = penetration.IsAlive ? penetration.Contact : fallback;
+        return true;
     }
 
     internal static bool TryClassify(in ConvexQueryRequest request, in InstalledSweepLeaf leaf,
@@ -25,10 +24,18 @@ internal static class ConvexPlanarContacts
     {
         evidence = default;
         if (scratch is null || !ConvexPlanarSource.TryCreate(leaf, out var source)) return false;
+        return TryClassify(request, source, fraction, ref work, scratch, out evidence);
+    }
+
+    internal static bool TryClassify(in ConvexQueryRequest request, in ConvexPlanarSource source,
+        ConvexCertificateFraction fraction, ref ConvexQueryWork work, ConvexQueryScratch scratch,
+        out ConvexInitialEvidence evidence, P translation = default, bool replace = true)
+    {
+        evidence = default;
         bool accepted = false;
         try
         {
-            if (!ConvexFeatureKernel.TryDistanceCertificate(request, source, fraction, ref work, scratch, out var pair) ||
+            if (!ConvexFeatureKernel.TryDistanceCertificate(request, source, fraction, ref work, scratch, out var pair, translation, replace) ||
                 !pair.TryCompareSquaredMargin(request.Shape.Margin, ref work, scratch, out int sign)) return false;
             if (sign > 0)
             {
@@ -67,7 +74,7 @@ internal static class ConvexPlanarContacts
         finally
         {
             // A root-time caller loans its retained root. Ordinary replacement owns its storage.
-            if (!accepted && fraction.Root is null) scratch.BeginCertificates();
+            if (!accepted && fraction.Root is null && replace) scratch.BeginCertificates();
         }
     }
 
@@ -98,7 +105,7 @@ internal static class ConvexPlanarContacts
         catch (ConvexExactRefusalException) { return work.Refuse(); }
     }
 
-    static P Feet(in ConvexDistanceCertificate pair) => P.From(pair.Request.Pose.Position) + P.From(pair.Request.Displacement) * pair.Fraction.Value;
+    static P Feet(in ConvexDistanceCertificate pair) => pair.Feet;
     static GeometryVector Unit(GeometryVector direction, GeometryInterval length) =>
         new(direction.X.Divide(length), direction.Y.Divide(length), direction.Z.Divide(length));
     static GeometryVector Add(GeometryVector a, GeometryVector b) => new(a.X.Add(b.X), a.Y.Add(b.Y), a.Z.Add(b.Z));
@@ -111,7 +118,7 @@ internal static class ConvexPlanarContacts
         var normal = Unit(pair.NormalBounds, GeometryInterval.Exact(pair.Request.Shape.Margin));
         var d = P.From(pair.Request.Displacement).Bounds;
         var time = pair.Fraction.Bounds;
-        var point = Add(pair.TargetBounds, new(d.X.Multiply(time), d.Y.Multiply(time), d.Z.Multiply(time)));
+        var point = Add(Add(pair.TargetBounds, pair.Translation.Bounds), new(d.X.Multiply(time), d.Y.Multiply(time), d.Z.Multiply(time)));
         if (!ConvexDistanceEncoding.TryEnclosed(pair.Request, point, point, normal, GeometryInterval.Exact(0),
             pair.QueryFeature, pair.TargetFeature, pair.LocalFeatureId, false, out var contact)) return false;
         evidence = new(ConvexInitialState.Touching, pair, true, pair.IsCircular ? default : pair.Target + Feet(pair),

@@ -27,7 +27,15 @@ internal static partial class ShortBodyShellOracle
         R lengthSquared = DotR(movement, movement);
         if (lengthSquared.N.Sign <= 0 || lengthSquared.CompareTo(R.From(result.UpperDepth) * R.From(result.UpperDepth)) > 0) return false;
         I support = MemberSupport(shape, points, normal);
-        if ((support.Upper + DotR(normal, movement)).N.Sign > 0) return false;
+        if ((support.Upper + DotR(normal, movement)).N.Sign > 0)
+        {
+            // Componentwise float encoding need not preserve a separator's exact direction.
+            // Independently certify a dual plane at the exact translated snapshot instead.
+            var shift = InstalledPoseOracle.V.From(pose.Position) + InstalledPoseOracle.V.From(result.Translation);
+            var translated = new ConvexOracleTarget(Array.ConvertAll(target.Vertices, p => p - shift), target.Faces);
+            var clearance = GeneralEntry(shape, Pose.Identity, translated, separationOnly: true);
+            if (!clearance.IsComplete || clearance.Lower <= 0) return false;
+        }
         // For an exterior base placement, min unit support is minus its distance. Growing
         // by the admitted ball adds exactly Margin to every unit support value.
         var distance = Entry(shape.WithMargin(0), pose, target, Vector3.Zero);

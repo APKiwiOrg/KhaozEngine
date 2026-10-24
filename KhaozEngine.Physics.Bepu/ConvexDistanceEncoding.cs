@@ -13,7 +13,7 @@ internal static class ConvexDistanceEncoding
     {
         evidence = default;
         if (!certificate.IsAlive || !certificate.Source.IsOriginal) return false;
-        if (!certificate.IsCircular && certificate.Fraction.Root is null && certificate.Fraction.Value.Sign == 0)
+        if (!certificate.IsCircular && certificate.Fraction.Root is null && certificate.Fraction.Value.Sign == 0 && certificate.Translation == default)
             return TryCreate(certificate.Request, certificate.Query, certificate.Target, certificate.TargetFeature,
                 certificate.LocalFeatureId, certificate.BaseOverlap, out evidence);
         GeometryInterval length = certificate.IsCircular ? certificate.SquaredDistanceBounds.Sqrt() : Q.RootBounds(certificate.BaseSquaredDistance);
@@ -35,7 +35,8 @@ internal static class ConvexDistanceEncoding
         }
         GeometryVector d = P.From(certificate.Request.Displacement).Bounds;
         GeometryInterval time = certificate.Fraction.Bounds;
-        GeometryVector shift = new(d.X.Multiply(time), d.Y.Multiply(time), d.Z.Multiply(time));
+        GeometryVector offset = certificate.Translation.Bounds;
+        GeometryVector shift = new(d.X.Multiply(time).Add(offset.X), d.Y.Multiply(time).Add(offset.Y), d.Z.Multiply(time).Add(offset.Z));
         return TryEnclosed(certificate.Request, Translate(query, shift), Translate(target, shift), normal,
             overlap ? GeometryInterval.Exact(0) : length.Subtract(GeometryInterval.Exact(margin)), certificate.QueryFeature,
             certificate.TargetFeature, certificate.LocalFeatureId, overlap, out evidence);

@@ -790,3 +790,66 @@ fixtures observe maxima of 93 cells and 1799 features. The final 420-test select
 111 cells and 1799 features. These observations are diagnostic only. No absolute work counter
 is pinned. Full solution verification, formatting, version reconciliation and integration
 remain with the owning orchestrator. No full suite, timing/load run or release was started.
+
+## SS-R10 bracket design amendment, not implementation evidence
+
+The implementation plan's remaining Task 2 units now run in this order:
+
+1. 2b.1 retains pre-encoding static primal/dual certificates and proves translated intervals.
+2. 2c.1 certifies initial separation, touching and strict overlap.
+3. 2c.2 certifies planar minimum member penetration and complete leaf contacts.
+4. 2b.2 certifies attained events with a bounded time-labelled inner simplex.
+5. 2b.3 publishes one bracket sweep and retires the four r0/r1 shell sweep producers.
+
+For a fixed proposed direction n, the exact gap between the full represented target and
+`p+t*d+K+mBall` is bounded below by a constant minus `t*dot(n,d)`. Include one uniform
+represented-operation error over the complete cell in that constant. Positive endpoint
+lower gaps prove the whole closed fraction interval. Contiguous intervals prove the entire
+clear prefix. Only such dual proofs can authorize Clear. A rounded endpoint miss, an inner
+simplex miss or a failed root proposal proves nothing about the original path.
+
+For [a,b], define `B=(T-p)+[-b,-a]*d`. Propose at most four original labelled vertices
+`vi-p-ti*d` of B. A statically certified attained point y in their simplex retains exact
+nonnegative barycentrics summing to one. They recover `tau=sum(lambda*ti)` and
+`target=sum(lambda*vi)`, with `p+q+tau*d-target=q-y`. Thus an attained static base distance
+<= m proves an event on the original path. Four-vertex convex-hull coverage does not prove
+bounded GJK convergence. Rank-deficient sources need their own exact affine/barycentric
+membership, never vacuous solid halfspaces. An inner source cannot supply original raw
+identity, local topology or operational normal without full original-member revalidation.
+
+At m=0, prove exact common-point membership or strict overlap, never near-zero distance.
+At m=0.001, retain the base pair before Margin clipping, prove positive base distance <= m,
+and decide equality with original exact/root predicates. A zero base distance uses 2c's
+certified normal. Algebraic event times retain their attained witness and an outward time
+enclosure. Its upper endpoint need not itself touch, as with existing isolated-root evidence.
+Closed static roots, double roots and seams remain included. Required tangent fixtures must
+Hit under the production caps. Actual undecided signs, excessive correspondence/encoding
+error or exhausted work refuse atomically.
+
+Conditional on a proved decision at each midpoint, spatial time-bracket contraction to
+0.00025 m needs at most 33 bisections in the SB-7 displacement domain. This allocates part
+of the unchanged 0.001 m total evidence budget. It is not a whole-query work or convergence
+bound. Every proposal, original-target support check and root refinement shares the existing
+256-cell/4096-feature primitive account, admitted only once. The plan's expected small-fixture
+envelopes of 96 face, 224 rim and 160 apex cells are unmeasured design targets, not test pins
+or larger limits. Mandatory fixture exhaustion leaves implementation incomplete.
+
+For an operational Hit, prove both original normal cones, finite unit-normal encoding and
+the entire outward bracket/error. Its existing 0.001 m skin subtraction must be earlier than
+the proved lower bound whenever advance is positive. Separately certify the actual binary32
+Normalize/multiply/add placement. Initial touch/overlap instead has a zero-distance Hit with
+its explicit initial-state normal. A separated zero path is Clear without normalization.
+
+2b.3 removes ConvexPlanarSweep, ConvexSweepVertices, ConvexSweepEdges and
+ConvexCircularVertexSweep when their replacement lands. ConvexSweepEncoding becomes the sole
+bracket encoder. ConvexPlanarDispatch keeps original owner/operation/SS-R5/SS-R6 identity.
+Shared CircularContactEquation arithmetic, circular projection and exact-root machinery stay
+for static margin ties and unchanged capsule/support consumers. Preserve the r0/r1 regressions
+through the sole kernel route. No parallel shell sweep path remains.
+
+This design requires an internal amendment of 2a's certificate boundary, because its current
+public encoding discards the base normal inside Margin and cannot retain root/barycentric
+attainment. The spec is unchanged. This note does not accept Task 2b, complete Contacts or
+Penetration, unblock Task 3 or assert that the proposed work envelopes have been measured.
+No production/test code, geometry, tolerance, work ceiling, capsule API or baseline was changed
+in this design pass. No build or test was run for this documentation amendment.

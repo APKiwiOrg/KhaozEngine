@@ -143,11 +143,13 @@ Commit `feat(physics): define continuous short-shell query contracts`.
 
 ### Task 2: Certify continuous feature distance and planar targets (SB-2, SB-5, A/B)
 
-SS-R7 splits the remaining construction into 2a (planar Distance, local feature evidence,
-planar dispatch identity and distance/normal-cone oracles), 2b (Sweep roots) and 2c (Contacts,
-Penetration and bounded GJK/EPA proposals). Each unit receives its own review. Unfinished
-operations return false with default evidence. The original Task 2 obligations below remain
-required across those units.
+Task 2a is accepted at c22444992, including the foundation at 44a323502 and planar work at
+447e3d8a5. Preserve its eighteen closed static feature pairs and independent oracles.
+SS-R10 supersedes SS-R7's per-pair moving first-root construction. The remaining order is
+2b.1, 2c.1, 2c.2, 2b.2, 2b.3. Contacts and Penetration precede final Sweep publication so
+initial overlap and a zero-margin impact have certified normals. Each unit below ends at
+its own verified commit. Task 3 stays blocked until all five units pass their review gates.
+This amendment is design only. The committed r0/r1 sweep remains partial until 2b.3 replaces it.
 
 **Files:**
 - Create: `KhaozEngine.Physics.Bepu/ConvexQueryPolicy.cs`, `KhaozEngine.Physics.Bepu/ConvexQueryScratch.cs`, `KhaozEngine.Physics.Bepu/ConvexQueryOperations.cs`
@@ -164,49 +166,198 @@ required across those units.
 - Produces `ConvexAlgebraicRoots.TryIsolate(in ConvexFeatureRegime regime, double from, double to, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexRootBracket first) -> bool`. Regime owns exact polynomial coefficients, original radical signs and closed feature-domain inequalities. First owns the enclosing first feasible root or a proved empty interval. No uncertain sign becomes an empty interval.
 - Produces test-only ConvexOracleTarget snapshots read independently from installed Bepu primitives/topology/poses and `ShortBodyShellOracle.Entry(in ConvexQueryShape shape, Pose pose, ConvexOracleTarget target, Vector3 displacement) -> ConvexOracleEvent`, where ConvexOracleEvent holds Status and outward Lower/Upper distances. Also produces `NormalConeContains(in ConvexQueryShape shape, Vector3 queryWitness, Vector3 queryOutwardNormal) -> bool` and `MemberTranslationEnclosedBy(ConvexOracleTarget target, in ConvexPenetrationResult result) -> bool` on ShortBodyShellOracle. Operational contact/recovery normals point away from the target, so pass their negative to the query-normal-cone oracle.
 
-- [ ] **Step 1: Write planar feature reds using the oracle before the solver.**
+The Task 2a proof and observed verification remain in
+`docs/verification/2026-10-19-short-body-shell.md`. The interfaces above describe the accepted
+foundation, not permission to rebuild it or reset a primitive account inside another operation.
 
-Add `ConeSideHeadDiscAndRimsHaveAttainedDistanceWitnesses`,
-`CircleSupportIsNeverReplacedByInscribedVertices`, `ClosedDoubleRootIsContact`,
-`SharpShoulderNormalBelongsToTheNormalCone` and `PlanarPenetrationHasMinimumMemberTranslation`.
-Use duck and cow against finite box/hull faces, edges and vertices, including a thin blocker
-between any proposed polygon vertices. Assert exact dyadic tangency and both adjacent floats.
+#### Remaining Task 2 proof contract
 
-```csharp
-Assert.True(evidence.LowerDistance <= oracle.Lower && evidence.UpperDistance >= oracle.Upper);
-Assert.True(ShortBodyShellOracle.NormalConeContains(shape, evidence.QueryWitness, -evidence.Normal));
-Assert.True(evidence.HasAttainedWitness);
-Assert.False(uncertainEvidence.IsComplete);
+Let K be the base shell, V the original represented target vertices, p the original feet,
+d the original displacement and m the exact admitted Margin. For a fixed proposed direction n,
+the strict separating gap is
+`g(t) = min(v in V) dot(n,v) - dot(n,p) - hK(n) - m*|n| - t*dot(n,d)`.
+Use a certified upper bound for support and a lower bound for target projection, including
+represented forward/inverse errors actually used. A single uniform operation-error bound over
+the requested cell is subtracted from its constant term. The resulting lower gap is affine.
+Strict positivity at both closed endpoints proves every fraction between them. No contact
+enumeration or operational miss participates in Clear. Cache complete target support proofs,
+not an unchecked winning vertex. Adjacent proved intervals must share an endpoint.
+
+Distance certificates must survive before binary32 encoding, preserve the base pair even when
+`distance(K,T) <= m`, and evaluate `p+t*d` exactly from the original request. Rounded intermediate
+Pose values are proposals only. Retain exact quadratic expressions or an attained circular-root
+token, its original signs, closed domains, isolating interval and witness expressions. The
+existing SignAtRoot/GCD machinery decides exact equality. An interval containing zero is not a tie.
+Root tokens stay inside their scratch loan and coefficient-arena lifetime.
+
+For a static oblique segment `x(s)=a+s*v` and circle height H, retain
+`rho2=x.X^2+x.Z^2`, `z=x.Y-H`, `A=x.X*v.X+x.Z*v.Z` and `F=A+z*v.Y`.
+The original stationary equation is `sqrt(rho2)*F=R*A`, with polynomial
+`P=rho2*F^2-R^2*A^2`. The exact margin tie uses `D=rho2+R^2+z^2-m^2`,
+`Q=D^2-4*R^2*rho2` and the original `D=2*R*sqrt(rho2)` sign/domain.
+Use GCD/root signs at the same isolated feasible root of P to decide Q=0. Keep rho>0,
+closed segment/query domains and the original stationary radical signs. This is static
+2a certificate retention, not a new family of moving contact equations.
+
+Ordinary margin impacts use an attained base pair with `0 < distance(K,T) <= m` at the upper
+event time. At exact equality retain the exact sign proof. Base overlap uses 2c evidence.
+For m=0 an upper event needs exact common-point membership or 2c penetration evidence, never
+a small positive distance. A contact normal is separately certified against the original target.
+
+To find closed contacts without another moving-feature matrix, use a query-private temporal
+simplex. For a cell [a,b], `B = (T-p) + [-b,-a]*d`. It intersects `K+mBall` exactly when that time
+cell contains a contact. Propose at most four vertices `vi-p-ti*d` of B, with ti equal to a or b,
+and certify static Distance from K to their convex hull S using 2a's closed constructions.
+An attained y in S carries nonnegative barycentrics lambda summing exactly to one. Recover
+`tau = sum(lambda*ti)` and `target = sum(lambda*vi)`. Then
+`|p + q + tau*d - target| <= m` is an attained original-path contact at tau. A failed inner-simplex
+search proves nothing about B. Caratheodory gives witness coverage by four vertices, not bounded
+GJK convergence. Rank-zero through rank-three sources and barycentrics are required. No full
+extruded hull, doubled topology limit, installed registration or public callback API is added.
+
+The sweep retains a proved prefix [0,a] and an attained event time b. If b is algebraic,
+keep a dyadic enclosing upper endpoint bPlus and bisect [a,bPlus]. An outward endpoint is not
+itself an attained event, especially at an isolated tangent. Refine the same event token so
+a successful left-half event has its enclosing upper endpoint at or below the midpoint.
+Bisect the remaining fraction bracket. Certify [a,mid] by a dual plane, or obtain an attained event at or before mid
+from the temporal simplex. Either success halves the enclosing bracket. If neither succeeds,
+return Unresolved. A common normal at b need not prove the earlier prefix, especially at tangency.
+Proposal ordering can use cached Distance evidence and bounded Bepu GJK. Every proposal iteration,
+root refinement and certificate attempt shares the original 256-cell, 4096-feature account.
+Only the outer leaf admission calls Primitive. No retry starts a fresh account.
+
+For a 0.00025 m bracket allocation, pure time bisection needs at most
+`ceil(log2(max(1, |d|/0.00025)))`, at most 33 contractions in SB-7's displacement domain.
+The remaining 0.001 m budget covers outward distance, both witnesses, unit-normal encoding and
+operational correspondence. This allocation is an internal stopping target, never added skin.
+No distance gap is divided by an assumed approach angle. Exact or dyadically refined comparisons
+decide close margins. Precision or work denial gives Unresolved. There is no uniform convergence
+claim for all admitted inputs, including arbitrarily shallow grazing and binary32 positions whose
+encoding alone exceeds 1 mm. All closed tangency/seam fixtures below must actually Hit under the
+unchanged caps. Unresolved on those mandatory fixtures does not complete the task.
+
+#### Common verification for Tasks 2b.1 to 2b.3 and 2c.1 to 2c.2
+
+Each task first runs its named new test class red and then green, through build-slot in Release.
+At its finish, run the following focused Game selection. It includes every new Task 2 class
+accepted so far, the unchanged SS-R2 shell, GroundCore, general/cylinder/curved sweeps, captured
+stairs and SS-R5/SS-R6 controls. Classes from later units are absent until those units land.
+Run all three commands once, synchronously, and record exits and executed counts:
+
+```bash
+build-slot --label short-shell-design --heavy -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexIntervalCertificateTests|FullyQualifiedName~ConvexInitialStateTests|FullyQualifiedName~ConvexPlanarPenetrationTests|FullyQualifiedName~ConvexTemporalSimplexTests|FullyQualifiedName~ConvexBracketSweepTests|FullyQualifiedName~ConvexRoundedVertexSweepTests|FullyQualifiedName~ConvexPlanarSweepTests|FullyQualifiedName~ConvexSweepOracleTests|FullyQualifiedName~ConvexSweepPublicationTests|FullyQualifiedName~ConvexPlanarDistanceTests|FullyQualifiedName~ConvexCircularEdgeTests|FullyQualifiedName~ConvexGeneralPlanarTests|FullyQualifiedName~ConvexMarginOracleTests|FullyQualifiedName~ConvexFeaturePairCoverageTests|FullyQualifiedName~ConvexFeatureKernelTests|FullyQualifiedName~ConvexQueryContractTests|FullyQualifiedName~ShellGeometryTests|FullyQualifiedName~GroundCoreTests|FullyQualifiedName~CapturedStairExplicitSweepTests|FullyQualifiedName~BepuCertifiedCapsuleSweepTests|FullyQualifiedName~CertifiedRotatedBoxSweepTests|FullyQualifiedName~CertifiedHullSweepTests|FullyQualifiedName~CertifiedCurvedSweep|FullyQualifiedName~CertifiedCompoundSweepTests|FullyQualifiedName~CertifiedMeshSweepTests|FullyQualifiedName~CapsuleSweepValueTests|FullyQualifiedName~SupportNeighborhoodCurvedTests|FullyQualifiedName~SupportCurvedWorkTests|FullyQualifiedName~SupportDiscEdgeTests|FullyQualifiedName~ExactCurvedInstallControlTests|FullyQualifiedName~InstalledSupportPoseTests' --logger 'console;verbosity=detailed'
+build-slot --label short-shell-design --heavy -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~SupportFootprintTests|FullyQualifiedName~SupportFootprintProofReuseGeometryTests|FullyQualifiedName~SupportFootprintProofReuseWorkTests'
+build-slot --label short-shell-design --heavy -- dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ContactNavigationBaselineTests.SerialBakeMatchesNormalizedFullFileBaseline'
 ```
 
-- [ ] **Step 2: Run the kernel red.**
+Require all seven unchanged normalized hashes with null execution, hence degree 1. New counter
+tests compare same-run probes or exact charging relationships under SS-R3, never fixed observed
+counts. Do not change capsule APIs, InstalledSweepLeaf, capsule arithmetic or baseline sources.
+Stage explicit paths including the proof record and run the four Global Constraints guards
+before each commit. Full solution verification remains Task 12.
 
-Run `build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~ConvexFeatureKernelTests'`.
-Expected: missing kernel or failed continuous-volume assertions.
+### Task 2b.1: Retain static primal/dual certificates and prove translated intervals
 
-- [ ] **Step 3: Implement support proposals and finite closed feature certification.**
+**Files:**
+- Create: `KhaozEngine.Physics.Bepu/ConvexDistanceCertificate.cs`, `KhaozEngine.Physics.Bepu/ConvexCertificateFraction.cs`, `KhaozEngine.Physics.Bepu/ConvexPlanarSource.cs`, `KhaozEngine.Physics.Bepu/ConvexIntervalCertificate.cs`
+- Modify: `KhaozEngine.Physics.Bepu/ConvexFeatureKernel.cs`, `KhaozEngine.Physics.Bepu/ConvexPlanarFeatures.cs`, `KhaozEngine.Physics.Bepu/ConvexPlanarEdges.cs`, `KhaozEngine.Physics.Bepu/ConvexCircularEdges.cs`, `KhaozEngine.Physics.Bepu/ConvexDistanceEncoding.cs`, `KhaozEngine.Physics.Bepu/ConvexAlgebraicRoots.cs`
+- Test: `KhaozEngine.Game.Tests/Physics/ConvexIntervalCertificateTests.cs`
+- Modify: `docs/verification/2026-10-19-short-body-shell.md`
 
-Evaluate the three support generators from SB-2, with isotropic Margin added only when
-requested. Certify clear intervals with dual separating support planes. Enumerate apex,
-lower-cone, shoulder circle, cylindrical side, head disc and rim against finite target
-face/edge/vertex regimes. Isolate first feasible contact roots on the original [0,1] path
-using square-free polynomial reduction, Sturm root counts and dyadic interval isolation,
-then verify every original radical sign and closed domain predicate. Repeated roots are
-isolated from the square-free part, never detected by sign crossing alone. All integer
-intermediates obey the existing 4096-bit ceiling. Include
-zero-length paths, feature boundaries, interior stationary points and repeated roots.
-Distance/penetration witnesses must satisfy feature-domain and KKT normal conditions.
-GJK/EPA proposes candidates inside the same bounded account. Failed convergence cannot
-publish evidence. Outward encode the complete bracket, not only its midpoint.
+**Interfaces:**
+- `ConvexPlanarSource` is an internal read-only adapter for the authenticated installed planar leaf or a rank 0 to 3 simplex of at most four original source vertices. It retains vertex provenance and exact coordinates, not a new PhysicsShape. An inner source cannot authorize publication without revalidation against the original leaf.
+- `ConvexCertificateFraction` is a closed internal tagged value containing a dyadic/quadratic time or a barycentric time expression bound to one retained circular-root certificate. It encloses, compares and refines that same time without converting it to Pose or introducing arbitrary algebraic composition. Unsupported mixed roots refuse. Original-source predicates at a root-defined time use that root's exact signs and witness expressions.
+- Add `ConvexFeatureKernel.TryDistanceCertificate(in ConvexQueryRequest request, in ConvexPlanarSource source, ConvexCertificateFraction fraction, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexDistanceCertificate certificate) -> bool`. It consumes an already admitted primitive, preserves the original request and computes the base-shell pair before Margin clipping or encoding. Existing Distance outputs remain unchanged.
+- `ConvexDistanceCertificate` is a scratch-bound tagged attained pair, quadratic or circular-root, retaining base squared distance, exact witness construction, common normal, closed feature provenance and source token. Its `TryCompareSquaredMargin(float margin, ref ConvexQueryWork work, ConvexQueryScratch scratch, out int sign) -> bool` returns exactly -1, 0 or 1 only after proof. Retain root predicates before arena restoration, exposing the existing exact sign operation without changing capsule callers.
+- Add `ConvexIntervalCertificate.TryCreate(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, Vector3 direction, double from, double to, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexPlaneCertificate certificate) -> bool`. Directions are proposals. `ConvexPlaneCertificate` binds the original source/request, fixed direction, uniform error and strictly positive endpoint lower gaps. No rounded Distance normal is itself a dual certificate.
 
-- [ ] **Step 4: Run the same selection green.**
+- [ ] **Step 1:** Write `IntervalEndpointsProveEveryTranslatedFraction`, `MarginOverlapRetainsThePositiveBasePair`, `ExactMarginTieIsNotAnIntervalZero`, `FractionEvaluationKeepsTheOriginalFeetBits`, `InnerSourceCannotCertifyOriginalTargetClear` and `NestedCertificatesCannotResetPrimitiveWork`. Assert both admitted margins, all six static features, arbitrary represented poses, signed-zero canonicalization, a failed endpoint, exact tie and adjacent floats. Assert the complete existing eighteen-pair Distance matrix stays green. Prove any used transform error over the whole interval, not by sampling interior fractions.
+- [ ] **Step 2:** Run `build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexIntervalCertificateTests'` red. Record the intended new-symbol or behavioral failure.
+- [ ] **Step 3:** Extract the accepted static certificate path before encoding, preserving its arithmetic order for existing Distance callers. Add exact original-fraction evaluation and fixed-plane interval certification. Cache a plane's original target support proof for changed interval endpoints. Refine algebraic enclosures only under the existing account and integer cap. Do not call TryEvaluate or Primitive recursively.
+- [ ] **Step 4:** Run the same class green, then Common verification. Record actual cell/feature charging and scratch restoration. No public Sweep replacement or new contacts are enabled yet.
+- [ ] **Step 5:** Run staged guards and commit `refactor(physics): retain short-shell primal and interval certificates`.
 
-Expected: exit 0, actual circular volume proved and uncertain/overflow cases refused.
-Record feature/cell maxima for these finite fixtures, without elapsed time or throughput.
+### Task 2c.1: Certify initial separation, touching and strict overlap
 
-- [ ] **Step 5: Run guards and commit explicit Task 2 paths.**
+**Files:**
+- Create: `KhaozEngine.Physics.Bepu/ConvexInitialState.cs`, `KhaozEngine.Physics.Bepu/ConvexPlanarContacts.cs`
+- Modify: `KhaozEngine.Physics.Bepu/ConvexFeatureKernel.cs`, `KhaozEngine.Physics.Bepu/ConvexPlanarDispatch.cs`
+- Test: `KhaozEngine.Game.Tests/Physics/ConvexInitialStateTests.cs`
+- Modify: `KhaozEngine.Game.Tests/Physics/ShortBodyShellOracle.NormalCone.cs`, `docs/verification/2026-10-19-short-body-shell.md`
 
-Commit `feat(physics): certify continuous cone-cylinder feature distance`.
+**Interfaces:**
+- Consumes 2b.1's original-source static certificate without a new primitive admission.
+- `ConvexInitialState` has Separated, Touching and Overlapping. False evaluation means unresolved, with default evidence.
+- Add `ConvexPlanarContacts.TryClassify(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, ConvexCertificateFraction fraction, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexInitialEvidence evidence) -> bool`. Evidence binds state, attained pair/common point, closed cones and local provenance to the original source. Touching retains a nonzero common normal. A zero Distance value alone cannot distinguish touching from overlap.
+- For m=0, a common boundary point plus nonzero common supporting normal proves Touching. A rational point strictly inside both full-dimensional solids proves Overlapping. For m>0, exact base `distance < m` proves grown overlap, and exact positive `distance = m` proves Touching. An unclassified equality refuses. This unit does not claim complete penetration or overlapping Contacts.
+
+- [ ] **Step 1:** Write `InitialTouchKeepsEveryIncidentClosedCone`, `ZeroDistanceDoesNotInventAnOverlapNormal`, `StrictRationalCommonPointProvesOverlap`, `RoundedTouchUsesTheExactAdmittedMargin`, `InitialRelationIgnoresMotionDirection` and `InitialRelationKeepsCoincidentSourceTickets`. Assert all six shell features against finite faces/edges/vertices, contained and crossing solids, exact ties and adjacent floats. Assert a certified mathematical unit normal, finite encoding, correct query outward sign and no seam averaging.
+- [ ] **Step 2:** Run `build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexInitialStateTests'` red.
+- [ ] **Step 3:** Implement exact classification and touching constraints. For zero separation, propose a normal from the incident feature cones, then prove its support against both complete solids. Reject zero normals. Keep overlapping Contacts and Penetration atomic refusals until 2c.2. No mesh-volume inference is allowed, finite one-sided surfaces remain Task 5.
+- [ ] **Step 4:** Run the same class green, then Common verification. Independently compare the signed relation and cone membership, not the implementation's classification flag.
+- [ ] **Step 5:** Run staged guards and commit `feat(physics): certify short-shell initial contact states`.
+
+### Task 2c.2: Certify planar member penetration and complete leaf contacts
+
+**Files:**
+- Create: `KhaozEngine.Physics.Bepu/ConvexPlanarPenetration.cs`, `KhaozEngine.Physics.Bepu/ConvexPenetrationCertificate.cs`
+- Modify: `KhaozEngine.Physics.Bepu/ConvexPlanarContacts.cs`, `KhaozEngine.Physics.Bepu/ConvexFeatureKernel.cs`, `KhaozEngine.Physics.Bepu/ConvexPlanarDispatch.cs`, `KhaozEngine.Physics.Bepu/ConvexQueryOperations.cs`, `KhaozEngine.Physics.Bepu/ConvexQueryScratch.cs`
+- Test: `KhaozEngine.Game.Tests/Physics/ConvexPlanarPenetrationTests.cs`
+- Modify: `KhaozEngine.Game.Tests/Physics/ShortBodyShellOracle.Distance.cs`, `docs/verification/2026-10-19-short-body-shell.md`
+
+**Interfaces:**
+- Add `ConvexPlanarPenetration.TryEvaluate(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, ConvexCertificateFraction fraction, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexPenetrationCertificate certificate) -> bool`. The certificate retains a strict overlap witness, attained support pair, KKT normal, global minimum-depth enclosure, clearing translation and original local feature provenance.
+- Use bounded GJK/EPA only to propose CSO features. For `C = (p+fraction*d+K+mBall)-T`, an exact inscribed polytope containing the origin and a certified centred ball of radius r proves the minimum exit depth is at least r. A support plane and a verified separating translation prove the upper depth. Local KKT or EPA convergence alone does not prove the global minimum. Require the full encoded depth/translation error within 0.001 m and validate the encoded translation against the original member.
+- Scratch storage remains bounded by existing general-sweep vertex/face/index, pending and exact-arena capacities. New proposal records reuse those caps, never allocate a growing EPA list or enlarge the four-slot GJK simplex. Every support, facet and refinement attempt is charged. Refuse if a sufficiently tight global lower bound needs more storage or work.
+- Complete planar leaf Contacts and Penetration route through the unchanged TryEvaluate operation contract and owner-bound dispatch. Task 3/7 still own whole-view completeness, deepest-member selection, raw-ID ties and recovery requery. This task supplies a nonzero initial-overlap Hit normal to 2b.3.
+
+- [ ] **Step 1:** Write `PlanarPenetrationHasMinimumMemberTranslation`, `LocalStationaryExitCannotBeatTheGlobalLowerProof`, `EncodedTranslationClearsItsOriginalMember`, `InitialOverlapNormalHasAttainedSupportWitnesses`, `PlanarContactsKeepSignedBoundsAndRawConstraints` and `PenetrationDenialClearsEveryOutput`. Assert isolated contained/crossing overlaps, symmetric tied exits, both margins and oblique cone/rim features. Assert lower depth <= independent optimum <= upper depth, encoded error <= 0.001f, and no complete result from an uncertified EPA termination. Keep scratch/capacity refusal sticky.
+- [ ] **Step 2:** Run `build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexPlanarPenetrationTests'` red.
+- [ ] **Step 3:** Implement original-member minimum-depth certificates and complete signed leaf constraints. Retain every relevant raw constraint, never average a seam or infer a union MTV. A certified overlap with no certified normal/MTV still refuses the requested operation. Reuse the same admitted account and authenticated source.
+- [ ] **Step 4:** Run the same class green, then Common verification. Implement `ShortBodyShellOracle.MemberTranslationEnclosedBy` from independent installed snapshots. Test an attractive but nonminimum local exit and a translated placement that remains blocked by another member.
+- [ ] **Step 5:** Run staged guards and commit `feat(physics): certify planar short-shell penetration and contacts`.
+
+### Task 2b.2: Certify closed temporal-simplex impact witnesses
+
+**Files:**
+- Create: `KhaozEngine.Physics.Bepu/ConvexTemporalSimplex.cs`, `KhaozEngine.Physics.Bepu/ConvexImpactCertificate.cs`
+- Modify: `KhaozEngine.Physics.Bepu/ConvexPlanarSource.cs`, `KhaozEngine.Physics.Bepu/ConvexDistanceCertificate.cs`, `KhaozEngine.Physics.Bepu/ConvexCertificateFraction.cs`, `KhaozEngine.Physics.Bepu/ConvexQueryOperations.cs`, `KhaozEngine.Physics.Bepu/ConvexQueryScratch.cs`
+- Test: `KhaozEngine.Game.Tests/Physics/ConvexTemporalSimplexTests.cs`
+- Modify: `KhaozEngine.Game.Tests/Physics/ShortBodyShellOracle.Sweep.cs`, `docs/verification/2026-10-19-short-body-shell.md`
+
+**Interfaces:**
+- `ConvexTemporalVertex` binds one original target vertex id to an exact dyadic endpoint and its exact translated coordinates. At most four slots, inside the existing proposal-simplex capacity. `ConvexTemporalSimplex` retains rank, original provenance and exact barycentrics of its attained static witness.
+- Add `ConvexTemporalSimplex.TryImpact(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, double from, double to, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexImpactCertificate impact) -> bool`. It returns only an attained original-path event, never Clear. `ConvexImpactCertificate` retains exact or root-defined event time, base pair/common point, both cone proofs after original-member revalidation and true leaf-local provenance. Its outward time enclosure is not itself an event.
+- The source remains an inner proposal, never a substitute installed target. Recover tau from exact barycentrics. For m=0 require exact equality of the common point. For m=0.001 require base distance <= m by strict comparison or exact tie. Re-evaluate/classify the original leaf at tau for its operational normal, using 2c.2 when the base overlaps. A reduced-source normal or feature id cannot be published as an original target normal/id.
+- Extend static circular-root evidence to prove exact margin ties through its retained original polynomial/radical predicates and existing root sign/GCD machinery. No interval-zero acceptance, new moving pair equations or general symbolic solver. A mixed extension or undecided original predicate refuses.
+
+- [ ] **Step 1:** Write `TemporalBarycentricsRecoverAnOriginalPathEvent`, `InnerSimplexMissCannotPublishClear`, `TangentBetweenDyadicSamplesIsAnAttainedHit`, `ClosedApexAndRimSeamsKeepTheirOriginalDomains`, `RoundedCircularDoubleRootRetainsItsUnsquaredSigns` and `TemporalWitnessCannotBorrowAnotherLeafNormal`. Assert rank 0/1/2/3, repeated roots and stationary intervals, endpoint contact, arbitrary represented 3D boxes/hulls, and both margins. Include all six shell features against each finite target stratum, with base apex/vertex and shoulder/rim/interior-edge rows missing from r0/r1. At the margin tie assert sign == 0 exactly, the upper witness satisfies distance <= 0.001f, and original radical signs hold.
+- [ ] **Step 2:** Run `build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexTemporalSimplexTests'` red.
+- [ ] **Step 3:** Implement time-labelled inner-source proposals and static attained verification. Share 2a's feature constructors and exact sign paths, including closed quadratic intersections and circular stationarity. Preserve barycentrics through point, segment, finite-face and interior witness constructions. Charge every proposal/certificate under the enclosing primitive. Do not enumerate an extruded hull or introduce a second sweep path.
+- [ ] **Step 4:** Run the same class green, then Common verification. All mandatory exact tangencies and seams must produce attained events under production caps. Deliberate lowered budgets or unresolved arithmetic must return default evidence. A generic statement that GJK eventually converges is not acceptance evidence.
+- [ ] **Step 5:** Run staged guards and commit `feat(physics): certify closed short-shell temporal impact witnesses`.
+
+### Task 2b.3: Publish one bounded bracket sweep and retire r0/r1 producers
+
+**Files:**
+- Create: `KhaozEngine.Physics.Bepu/ConvexBracketSweep.cs`
+- Modify: `KhaozEngine.Physics.Bepu/ConvexFeatureKernel.cs`, `KhaozEngine.Physics.Bepu/ConvexSweepEncoding.cs`, `KhaozEngine.Physics.Bepu/ConvexPlanarDispatch.cs`
+- Remove: `KhaozEngine.Physics.Bepu/ConvexPlanarSweep.cs`, `KhaozEngine.Physics.Bepu/ConvexSweepEdges.cs`, `KhaozEngine.Physics.Bepu/ConvexSweepVertices.cs`, `KhaozEngine.Physics.Bepu/ConvexCircularVertexSweep.cs`
+- Test: `KhaozEngine.Game.Tests/Physics/ConvexBracketSweepTests.cs`
+- Modify: `KhaozEngine.Game.Tests/Physics/ConvexPlanarSweepTests.cs`, `KhaozEngine.Game.Tests/Physics/ConvexRoundedVertexSweepTests.cs`, `KhaozEngine.Game.Tests/Physics/ConvexSweepOracleTests.cs`, `KhaozEngine.Game.Tests/Physics/ConvexSweepPublicationTests.cs`, `docs/verification/2026-10-19-short-body-shell.md`
+
+**Interfaces:**
+- Add `ConvexBracketSweep.TryEvaluate(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence) -> bool`. This is the sole planar Sweep route from the existing kernel. It consumes 2b.1, 2c.1, 2c.2 and 2b.2 without new primitive admission.
+- Replace root-specific encoder inputs with `ConvexSweepEncoding.TryBracket(in ConvexQueryRequest request, in ConvexPlaneCertificate prefix, in ConvexImpactCertificate impact, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence) -> bool`. The prefix token also binds the accumulated endpoint and original request. Initial events have a distinct zero-prefix tag, never a fabricated positive clear interval. Preserve TryClear's full-path contract.
+- Maintain `a <= earliest contact <= b`, where a has a complete strict prefix and b is an attained event. First classify t=0. A separated zero path is Clear. Initial touch/overlap is Hit at distance zero with a certified contact/penetration normal. If a normal or classification is unavailable, return Unresolved. Never normalize a zero displacement.
+- First try full-path dual Clear, then find an attained event in [0,1] before entering bracket refinement. With a bracket, the next cutoff is always its dyadic midpoint h. A plane with closing slope <= 0 can cover the remaining path. Otherwise its zero only bounds whether it can certify [a,h]. Set a=h only after both endpoint gaps are strictly positive. If no proposed plane proves that cell, obtain an attained event at or before h, or refuse. Do not iterate sub-midpoint conservative half-gap steps. Only a dual proof advances a, and only an attained event moves b.
+- Encode the full bracket outward and the event's attained original-member witnesses/normal. Require total error <= 0.001f. Prove `max(0, hit.Distance-0.001f)` is before the lower clear bound whenever positive, then separately prove the actual binary32 Normalize/multiply/add placement with a dual certificate. If zero advance leaves an already separated pose, retain its initial separator. Initial overlap has zero advance and its explicit initial-state semantics.
+
+- [ ] **Step 1:** Write `BracketClearRequiresAnUnbrokenDualPrefix`, `EndpointMissCannotHidePassThrough`, `MarginImpactRetainsPositiveBaseDistance`, `ZeroMarginHitNeedsExactMembership`, `GrazingWidthUsesPathDistanceNotNormalGap`, `TangentAndDoubleRootAreHitsWithinProductionCaps`, `InitialOverlapAndZeroPathHaveCertifiedNormals`, `RoundedPlacementMustReearnClearance` and `LateRefusalErasesEarlierBracketAndIdentity`. Assert width and complete encoded error <= 0.001f, `hit.Distance-0.001f < ClearThroughDistance` when advance > 0, original-source cone/identity, and exact equality handling. Include approach components 2^-4, 2^-12 and 2^-20 plus zero-angle tangency, all six features, face/edge/vertex targets, both margins, duck/cow, full represented poses and a large-coordinate encoding refusal. Do not accept Unresolved for mandatory success fixtures.
+- [ ] **Step 2:** Run `build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexBracketSweepTests'` red.
+- [ ] **Step 3:** Implement the bracket coordinator, outward publication and final operational proof. Cache/revalidate active certificates rather than restarting the full static feature enumeration at every midpoint. Treat 33 as a time-contraction bound only, not a bound on proposal/refinement work. Observe the shared 256 cells, 4096 features, depth 48, four scratch loans and 4096-bit integers. Retire the four listed shell sweep producers in this same commit. Keep ConvexSweepEncoding as the sole bracket encoder and ConvexPlanarDispatch as the original owner/operation gate. Keep shared CircularContactEquation, its ICircularContactArithmetic/CircularSweepArithmetic/CircularPolynomialArithmetic policies, CircularProjection, ConvexAlgebraicRoots, ConvexQuadratic and capsule/support consumers. The polynomial policy serves the static exact margin-tie proof, the sweep policy preserves capsule operand order. Retain every r0/r1 geometry/identity regression through the sole kernel route, replacing obsolete assertions that initial overlap must refuse and direct calls to retired types.
+- [ ] **Step 4:** Run the same class green, then Common verification. Record success and refusal work by face, rim and apex, including same-run lowered-budget controls, arena restoration and no reset of a partially consumed account. For the required small box/tetrahedron fixtures, planning envelopes are 96 cells for face, 224 for rim and 160 for apex, all within 4096 features. These are unmeasured design expectations, not absolute test pins or new limits. If mandatory fixtures exhaust 256/4096, the task remains incomplete and the orchestrator revisits the algorithm. Do not widen a budget or relax a fixture to Unresolved.
+- [ ] **Step 5:** Run staged guards and commit `feat(physics): replace short-shell roots with a certified bracket sweep`.
 
 ### Task 3: Publish certified world/view queries with operational correspondence (SB-4 to SB-7, B/C)
 

@@ -8,33 +8,42 @@ using KhaozEngine.Terrain;
 namespace KhaozEngine.MapDoc.Render3D;
 
 /// <summary>Acquires complete logical cells selected by a window before mesh decode and proxy preparation.</summary>
-internal sealed class MapPlacementCellInventory
+internal sealed class MapPlacementCellInventory : IDisposable
 {
     internal sealed record Cell(PropClusterKey Key, MapScopedScene Scene, MapPlacementRouting Routing,
-        IReadOnlyList<MapResolvedPlacement> Members, IReadOnlySet<string> RoofIds, MapRoofEvaluationBuffer? RoofEvaluation);
+        IReadOnlyList<MapResolvedPlacement> Members, IReadOnlySet<string> RoofIds, MapRoofEvaluationBuffer? RoofEvaluation)
+    {
+        internal long RetainedBytes => checked(256L + 64L * Scene.Placements.Count + 32L * Members.Count +
+            64L * RoofIds.Count + (RoofEvaluation?.RetainedBytes ?? Scene.InventoryBytes));
+    }
 
     readonly Dictionary<PropClusterKey, Cell> _cells;
     MapPlacementCellInventory(Dictionary<PropClusterKey, Cell> cells) => _cells = cells;
+    internal MapPreparationReservation? PreparationOwnership { get; private set; }
     internal IReadOnlyCollection<Cell> Cells => _cells.Values;
     internal Cell Get(PropClusterKey key) => _cells[key];
 
     internal static MapPlacementCellInventory Capture(MapScopedScene scene, MapPlacementRouting routing)
     {
         routing.Validate(scene);
-        var layers = routing.ClusterLayers;
         int selectedCount = scene.Placements.Count(p => routing.Entries[p.PlacementId] == MapPlacementRoute.Cluster);
         if (selectedCount == 0) return new(new());
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var activation = admission.Enter();
-        admission.ReserveBytes(checked(128L + 64L * selectedCount));
-        var roofs = scene.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        using var preparation = admission.BeginPreparation();
+        admission.ReserveBytes(checked(512L + 128L * selectedCount + 64L * scene.CapturedBuildingIntent.Roofs.Count));
+        var layers = routing.ClusterLayers;
+        var roofs = scene.CapturedBuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var keys = layers.SelectMany(layer => scene.Placements
                 .Where(p => layer.AssetIds.Contains(p.AssetId) && routing.Entries[p.PlacementId] == MapPlacementRoute.Cluster)
                 .Select(p => MapPlacementCells.Key(layer.Id, NativeMapPlacements.Pose(scene, p), scene.Source.Data.TileSize, roofs.Contains(p.PlacementId))))
             .Distinct().OrderBy(k => k.LayerId, StringComparer.Ordinal).ThenBy(k => k.X).ThenBy(k => k.Z).ToArray();
         var cells = new Dictionary<PropClusterKey, Cell>();
         foreach (var key in keys) cells.Add(key, Acquire(scene, routing, key));
-        return new(cells);
+        return new(cells)
+        {
+            PreparationOwnership = preparation.Complete(checked(128L + 64L * cells.Count + cells.Values.Sum(c => c.RetainedBytes)))
+        };
     }
 
     internal static Cell Acquire(MapScopedScene scene, MapPlacementRouting routing, PropClusterKey key)
@@ -43,6 +52,8 @@ internal sealed class MapPlacementCellInventory
             ?? throw new MapDocumentException("Native cluster has no matching caller layer.");
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var activation = admission.Enter();
+        using var preparation = admission.BeginPreparation();
+        admission.ReserveBytes(512);
         var coverage = MapPlacementCells.Coverage(key, scene.Source.Data.TileSize);
         var result = scene.AcquireDependencies(scene.Scope with
         {
@@ -59,9 +70,10 @@ internal sealed class MapPlacementCellInventory
             var prepared = MapRoofEvaluationBuffer.Prepare(complete, admission, requireCompletePolicy: true);
             evaluation = prepared.Buffer ?? throw new MapSceneSourceException(prepared.Status, prepared.Detail ?? "Canonical roof policy refused.", prepared.Capacity);
         }
-        admission.ReserveBytes(checked(128L + 64L * complete.Placements.Count));
+        admission.ReserveBytes(checked(512L + 192L * complete.Placements.Count + 64L * complete.CapturedBuildingIntent.Roofs.Count +
+            256L * layer.AssetIds.Count));
         var cellRouting = routing.ForScene(complete);
-        var roofIds = complete.BuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        var roofIds = complete.CapturedBuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var members = complete.Placements.Where(p => layer.AssetIds.Contains(p.AssetId) &&
                 cellRouting.Entries[p.PlacementId] == MapPlacementRoute.Cluster &&
                 MapPlacementCells.Key(layer.Id, NativeMapPlacements.Pose(complete, p), scene.Source.Data.TileSize, roofIds.Contains(p.PlacementId)) == key)
@@ -69,7 +81,9 @@ internal sealed class MapPlacementCellInventory
         if (members.Length == 0)
             throw new MapSceneSourceException(MapSceneStatus.Invalid, "Native cluster cell discovery omitted its selected members.");
         admission.ReserveBytes(checked(32L * members.Length));
-        return new(key, complete, cellRouting, Array.AsReadOnly(members), roofIds, evaluation);
+        var cell = new Cell(key, complete, cellRouting, Array.AsReadOnly(members), roofIds, evaluation);
+        preparation.Complete(cell.RetainedBytes);
+        return cell;
     }
 
     internal static void RequireMembers(Cell cell, NativePropClusterRequest request)
@@ -77,4 +91,5 @@ internal sealed class MapPlacementCellInventory
         if (!cell.Members.Select(p => p.PlacementId).SequenceEqual(request.Instances.Select(i => i.Id)))
             throw new MapDocumentException("Native cluster request omits canonical cell members.");
     }
+    public void Dispose() => PreparationOwnership?.Dispose();
 }

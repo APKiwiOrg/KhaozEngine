@@ -44,6 +44,7 @@ public static class NativeMapPlacements
         using var preparation = admission.BeginPreparation();
         if (scene.Witness.ClosureHash != assets.Closure.Hash) throw new MapDocumentException("Placement assets belong to another closure.");
         cells ??= MapPlacementCellInventory.Capture(scene, routing);
+        if (cells.PreparationOwnership is { } cellOwner) preparation.WorkspaceOwner.Absorb(cellOwner);
         foreach (var placement in scene.Placements)
             if (!assets.ById.ContainsKey(placement.AssetId)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Placement has no selected asset: " + placement.AssetId);
         foreach (var placement in cells.Cells.SelectMany(cell => cell.Members))
@@ -212,6 +213,9 @@ public static class NativeMapPlacements
     {
         ArgumentNullException.ThrowIfNull(scene); ArgumentNullException.ThrowIfNull(routing); ArgumentNullException.ThrowIfNull(request);
         routing.Validate(scene);
+        var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
+        using var activation = admission.Enter();
+        using var preparation = admission.BeginPreparation();
         var cell = MapPlacementCellInventory.Acquire(scene, routing, request.Key);
         return PrepareCluster(cell.Scene, cell.Routing, request, cell, build);
     }

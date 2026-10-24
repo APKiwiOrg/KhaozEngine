@@ -126,6 +126,7 @@ public sealed class WaterOpticsRolledEmissionTests
         string body = hlsl[interpolation.Start..interpolation.End];
         WaterOpticsInterpolationEmissionContract.Verify(fragment, hlsl, body, interpolation.Header);
         WaterOpticsInterpolationEmissionContract.VerifyRejectsCorruptedRoutes(fragment, hlsl, body, interpolation.Header);
+        WaterOpticsInterpolationResultMutations.Verify(fragment, hlsl, body, interpolation.Header);
         // These distinguish the unchanged add normalization and 24-bit multiply bodies after inlining.
         Assert.Single(Regex.Matches(body, @"& 134217728u"));
         Assert.Single(Regex.Matches(body, @"& 32768u"));

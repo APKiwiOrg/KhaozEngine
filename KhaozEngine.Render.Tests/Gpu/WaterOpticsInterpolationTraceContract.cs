@@ -98,39 +98,135 @@ internal static class WaterOpticsInterpolationTraceContract
         Instruction nestedResult = Definition(nested, 245);
         Assert.Equal(innerMerge, nestedResult.Label);
         Assert.Equal(6, nestedResult.Args.Length);
-        Assert.NotEqual(nestedResult.Args[2], nestedResult.Args[4]);
-        foreach (uint value in new[] { left.Args[1], right.Args[1] })
-            foreach (uint branch in new[] { outer.Args[1], inner.Args[1], inner.Args[2] })
-                Assert.True(ReadsBeforeMerge(branch, branch == outer.Args[1] ? outerMerge : innerMerge, value));
+        Instruction add = HelperOutput(outer.Args[1], 0);
+        Instruction mul = HelperOutput(inner.Args[1], 1);
+        Instruction div = HelperOutput(inner.Args[2], 2);
+        PhiEdges(nestedResult, (mul.Args[1], mul.Label), (div.Args[1], div.Label));
+        PhiEdges(rounded, (add.Args[1], add.Label), (nestedResult.Args[1], innerMerge));
 
-        bool ReadsBeforeMerge(uint entry, uint stop, uint value)
+        Instruction HelperOutput(uint entry, int kind)
         {
+            uint exit = Assert.Single(code, i => i.Label == entry && i.Op == 247).Args[0];
+            Instruction wrapper = Assert.Single(code, i => i.Label == entry && i.Op == 251);
+            Assert.Equal(2, wrapper.Args.Length); // Inlined helper with structured early returns.
+            Assert.Equal(0u, constants[wrapper.Args[0]]);
             var pending = new Stack<uint>();
-            var visited = new HashSet<uint>();
+            var region = new HashSet<uint>();
             pending.Push(entry);
             while (pending.TryPop(out uint current))
             {
-                if (current == stop || !visited.Add(current)) continue;
-                foreach (Instruction instruction in code.Where(i => i.Label == current))
+                if (current == exit || !region.Add(current)) continue;
+                foreach (uint target in code.Where(i => i.Label == current).SelectMany(Targets))
+                    pending.Push(target);
+            }
+            Instruction[] helper = code.Where(i => region.Contains(i.Label)).ToArray();
+            Instruction output = Assert.Single(code, i => i.Label == exit && i.Op == 245);
+            Assert.Equal(left.Args[0], output.Args[0]);
+
+            // Identify the actual finite bit-pack independently of the returned phi's inputs.
+            // Numerical oracles cover helper math. This gate covers the path from its computed
+            // packed word, overflow and legal early returns to the shared rounded result.
+            Instruction packed = Assert.Single(helper, i => i.Op == 197
+                && Find(i.Args[2], 197) is { } high
+                && Find(high.Args[3], 196) is { } shift && Literal(shift.Args[3], 23)
+                && Find(i.Args[3], 199) is { } fraction && Literal(fraction.Args[3], 0x7fffff));
+            Instruction highBits = Definition(packed.Args[2], 197);
+            uint sign = highBits.Args[2];
+            Instruction shifted = Definition(highBits.Args[3], 196);
+            Instruction exponent = Definition(Definition(shifted.Args[2], 124).Args[2], 169);
+            Instruction fractionBits = Definition(packed.Args[3], 199);
+            uint significand = fractionBits.Args[2];
+            Instruction subnormal = Definition(exponent.Args[2], 176);
+            Assert.Equal(significand, subnormal.Args[2]);
+            Assert.True(Literal(subnormal.Args[3], 0x800000));
+            Assert.True(Literal(exponent.Args[3], 0));
+
+            uint roundExit = Assert.Single(code, i => i.Label == packed.Label && i.Op == 249).Args[0];
+            Instruction overflow = Assert.Single(helper, i => i.Op == 197
+                && i.Args[2] == sign && Literal(i.Args[3], 0x7f800000)
+                && code.Any(branch => branch.Op == 249 && branch.Label == i.Label && branch.Args[0] == roundExit));
+            Instruction normal = Assert.Single(code, i => i.Label == roundExit && i.Op == 245);
+            Assert.Equal(output.Args[0], normal.Args[0]);
+            PhiEdges(normal, (packed.Args[1], packed.Label), (overflow.Args[1], overflow.Label));
+            Instruction overflowCondition = Assert.Single(helper, i => i.Op == 175
+                && i.Args[2] == exponent.Args[4] && Literal(i.Args[3], 255));
+            Instruction overflowBranch = Conditional(overflowCondition);
+            Assert.Equal(overflow.Label, overflowBranch.Args[1]);
+            Assert.Equal(packed.Label, overflowBranch.Args[2]);
+
+            Instruction leftZero = Zero(left.Args[1]);
+            Instruction rightZero = Zero(right.Args[1]);
+            var returns = new List<(uint Value, uint Predecessor)> { (normal.Args[1], normal.Label) };
+            if (kind == 0)
+            {
+                Instruction bothZero = Assert.Single(helper, i => i.Op == 167
+                    && i.Args[2] == leftZero.Args[1] && i.Args[3] == rightZero.Args[1]);
+                Instruction bothSign = Mask(Assert.Single(helper, i => i.Op == 199
+                    && i.Args[2] == left.Args[1] && i.Args[3] == right.Args[1]).Args[1], 0x80000000);
+                returns.Add((bothSign.Args[1], Conditional(bothZero).Args[1]));
+                returns.Add((right.Args[1], Conditional(leftZero).Args[1]));
+                returns.Add((left.Args[1], Conditional(rightZero).Args[1]));
+                Instruction cancelled = Assert.Single(helper, i => i.Op == 170
+                    && Find(i.Args[2], 130) is not null && Literal(i.Args[3], 0));
+                uint zero = Assert.Single(code, i => i.Op == 43 && i.Args[0] == output.Args[0]
+                    && i.Args[2] == 0).Args[1];
+                returns.Add((zero, Conditional(cancelled).Args[1]));
+            }
+            else
+            {
+                Instruction signMask = Mask(Assert.Single(helper, i => i.Op == 198
+                    && i.Args[2] == left.Args[1] && i.Args[3] == right.Args[1]).Args[1], 0x80000000);
+                Assert.Equal(signMask.Args[1], sign);
+                if (kind == 1)
                 {
-                    if (instruction.Op is not (245 or 247 or 248 or 249 or 250 or 251)
-                        && instruction.Args.Skip(2).Contains(value)) return true;
-                    if (instruction.Op == 249) pending.Push(instruction.Args[0]);
-                    if (instruction.Op == 250)
-                    {
-                        pending.Push(instruction.Args[1]);
-                        pending.Push(instruction.Args[2]);
-                    }
-                    if (instruction.Op == 251)
-                    {
-                        pending.Push(instruction.Args[1]);
-                        foreach (uint target in instruction.Args.Skip(3).Where((_, i) => i % 2 == 0))
-                            pending.Push(target);
-                    }
+                    Instruction eitherZero = Assert.Single(helper, i => i.Op == 245
+                        && i.Args[0] == leftZero.Args[0] && i.Args.Length == 6
+                        && new[] { i.Args[2], i.Args[4] }.Order().SequenceEqual(
+                            new[] { leftZero.Args[1], rightZero.Args[1] }.Order()));
+                    PhiEdges(eitherZero, (leftZero.Args[1], leftZero.Label), (rightZero.Args[1], rightZero.Label));
+                    returns.Add((sign, Conditional(eitherZero).Args[1]));
+                }
+                else
+                {
+                    Instruction infinity = Assert.Single(helper, i => i.Op == 197
+                        && i.Args[2] == sign && Literal(i.Args[3], 0x7f800000) && i != overflow);
+                    returns.Add((infinity.Args[1], Conditional(rightZero).Args[1]));
+                    returns.Add((sign, Conditional(leftZero).Args[1]));
                 }
             }
-            return false;
+            PhiEdges(output, returns.ToArray());
+            return output;
+
+            Instruction Mask(uint value, uint mask) => Assert.Single(helper, i => i.Op == 199
+                && i.Args[2] == value && Literal(i.Args[3], mask));
+            Instruction Zero(uint value)
+            {
+                uint magnitude = Mask(value, 0x7fffffff).Args[1];
+                return Assert.Single(helper, i => i.Op == 170 && i.Args[2] == magnitude && Literal(i.Args[3], 0));
+            }
         }
+
+        void PhiEdges(Instruction phi, params (uint Value, uint Predecessor)[] expected)
+        {
+            Assert.Equal(2 + expected.Length * 2, phi.Args.Length);
+            var actual = Enumerable.Range(0, expected.Length)
+                .Select(n => (Value: phi.Args[2 + 2 * n], Predecessor: phi.Args[3 + 2 * n])).ToArray();
+            Assert.Equal(expected.Order(), actual.Order());
+            Assert.Equal(code.Where(i => Targets(i).Contains(phi.Label)).Select(i => i.Label).Order(),
+                actual.Select(p => p.Predecessor).Order());
+        }
+
+        static IEnumerable<uint> Targets(Instruction i) => i.Op switch
+        {
+            249 => i.Args,
+            250 => i.Args.Skip(1).Take(2),
+            251 => i.Args.Skip(1).Where((_, n) => n % 2 == 0),
+            _ => []
+        };
+        bool Literal(uint id, uint value) => constants.TryGetValue(id, out uint literal) && literal == value;
+        Instruction? Find(uint id, uint opcode) => code.SingleOrDefault(i => i.Op == opcode && i.Args[1] == id);
+        Instruction Conditional(Instruction condition) => Assert.Single(code,
+            i => i.Op == 250 && i.Args[0] == condition.Args[1]);
 
         Instruction Definition(uint id, uint opcode) => Assert.Single(code,
             i => i.Op == opcode && i.Args[1] == id);

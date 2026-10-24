@@ -88,6 +88,75 @@ internal static class ConvexAlgebraicRoots
         finally { scratch.Polynomials.Restore(checkpoint); }
     }
 
+    // The retained equation and Sturm chain live in the existing coefficient arena.
+    // Sign/refine operations restore only their temporaries and never reset query work.
+    internal static bool TryRetain(ConvexPolynomial polynomial, double from, double to,
+        ref ConvexQueryWork work, ConvexQueryScratch scratch, out Retained root)
+    {
+        root = null!;
+        if (work.Exhausted || work.Descendants == 0 || !ConvexIntervalCertificate.ValidInterval(from, to)) return false;
+        int checkpoint = scratch.Polynomials.Used;
+        bool retained = false;
+        try
+        {
+            if (!work.Feature() || !work.Cell()) return false;
+            var equation = SquareFree(scratch.Polynomials.Import(polynomial), ref work);
+            if (equation.Degree == 0) return false;
+            var chain = Sturm(equation, ref work);
+            var cell = new ConvexRootCell(from, to, 0);
+            if (equation.Evaluate(ConvexRational.From(from)).IsZero) cell = new(from, from, 0);
+            else if (Count(chain, from, to, ref work) != 1) return false;
+            root = new(equation, chain, cell, scratch);
+            retained = true;
+            return true;
+        }
+        catch (ConvexExactRefusalException) { return work.Refuse(); }
+        finally { if (!retained) scratch.Polynomials.Restore(checkpoint); }
+    }
+
+    internal sealed class Retained(ConvexPolynomial equation, ConvexPolynomial[] chain,
+        ConvexRootCell cell, ConvexQueryScratch owner)
+    {
+        readonly int _generation = owner.CertificateGeneration, _floor = owner.Polynomials.Used;
+        ConvexRootCell _cell = cell;
+        internal bool IsAlive => _generation == owner.CertificateGeneration && owner.Polynomials.Used >= _floor;
+        internal GeometryInterval Bounds => IsAlive ? GeometryInterval.Enclose(_cell.Lower, _cell.Upper) : default;
+        internal ConvexQueryScratch Owner => owner;
+        internal bool TrySign(ConvexPolynomial predicate, ref ConvexQueryWork work, ConvexQueryScratch scratch, out int sign)
+        {
+            sign = 0;
+            if (!IsAlive || !ReferenceEquals(owner, scratch) || work.Exhausted) return false;
+            int checkpoint = scratch.Polynomials.Used;
+            try { sign = SignAtRoot(predicate, equation, chain, ref _cell, ref work); return true; }
+            catch (ConvexExactRefusalException) { return work.Refuse(); }
+            finally { scratch.Polynomials.Restore(checkpoint); }
+        }
+        internal bool TryRadicalSign(ConvexRadicalPredicate predicate, ref ConvexQueryWork work, ConvexQueryScratch scratch, out int sign)
+        {
+            sign = 0;
+            if (!IsAlive || !ReferenceEquals(owner, scratch) || work.Exhausted) return false;
+            int checkpoint = scratch.Polynomials.Used;
+            try
+            {
+                if (!TrySign(predicate.D, ref work, scratch, out int d) || d < 0 ||
+                    !TrySign(predicate.K, ref work, scratch, out int k) || !TrySign(predicate.L, ref work, scratch, out int l)) return false;
+                if (d == 0 || l == 0) { sign = k; return true; }
+                if (k == 0 || k == l) { sign = l; return true; }
+                if (!TrySign(predicate.SquaredDifference(scratch.Polynomials), ref work, scratch, out int square)) return false;
+                sign = RadicalSign(k, l, d, square);
+                return true;
+            }
+            catch (ConvexExactRefusalException) { return work.Refuse(); }
+            finally { scratch.Polynomials.Restore(checkpoint); }
+        }
+        internal bool TryRefine(double width, ref ConvexQueryWork work, ConvexQueryScratch scratch)
+        {
+            if (!IsAlive || !ReferenceEquals(owner, scratch) || !double.IsFinite(width) || width <= 0 || work.Exhausted) return false;
+            try { return NarrowRoot(equation, chain, ref _cell, width, ref work); }
+            catch (ConvexExactRefusalException) { return work.Refuse(); }
+        }
+    }
+
     static ConvexPolynomial Normalize(ConvexPolynomial value)
     {
         ConvexRational leading = value[value.Degree];

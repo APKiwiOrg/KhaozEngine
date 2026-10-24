@@ -1,6 +1,6 @@
 # Short-body shell verification
 
-Task 1, Task 2a and partial Task 2b of the [short-body shell plan](../superpowers/plans/2026-10-19-short-body-shell.md).
+Task 1, Task 2a, partial Task 2b and Task 2b.1 certificate retention of the [short-body shell plan](../superpowers/plans/2026-10-19-short-body-shell.md).
 Requirements are [SB-2 to SB-4 and acceptance group A](../design/CONTACT-SHORT-BODY-SHELL-2026-10-19.md).
 This record covers value contracts, independent oracles, finite planar Distance certificates
 and the supported planar sweep strata recorded below. Complete Sweep coverage, Contacts,
@@ -853,3 +853,100 @@ attainment. The spec is unchanged. This note does not accept Task 2b, complete C
 Penetration, unblock Task 3 or assert that the proposed work envelopes have been measured.
 No production/test code, geometry, tolerance, work ceiling, capsule API or baseline was changed
 in this design pass. No build or test was run for this documentation amendment.
+
+
+## Task 2b.1 retained static and interval certificates
+
+The new query-private path retains attained base pairs before Minkowski-margin clipping or
+encoding. ConvexPlanarSource authenticates the installed represented planar leaf, or retains
+one to four original vertices as an inner rank 0 to 3 simplex. It carries exact coordinates
+and vertex provenance without constructing a PhysicsShape. Inner certificates cannot encode
+original-target results. The shared static enumeration keeps the legacy encoder at its original
+acceptance points, including the accepted circular-region path. No Sweep producer is replaced.
+
+ConvexDistanceCertificate is tagged quadratic or circular-root and is bound to its source,
+original request and scratch generation. A positive base pair remains positive inside the
+0.001 margin even when public Distance encodes zero. ConvexCertificateFraction carries an exact
+quadratic value or an affine expression in one retained circular root. It never constructs a
+rounded Pose. Independent roots refuse composition. Original-source predicates at a root time
+use the retained root's witness expressions and exact polynomial/radical signs.
+
+The circular certificate retains the original unsquared stationary equation. Its margin
+comparison reuses CircularContactEquation and the existing GCD/SignAtRoot machinery. It checks
+the original difference sign before using the squared equation, so an exact zero is a proved
+equality rather than an interval containing zero. The root equation and Sturm chain stay in
+the existing coefficient arena. Every sign operation restores its temporary coefficients.
+A replacement evaluation invalidates the prior generation and restores retained storage.
+Refusal also restores the caller's checkpoint, without resetting primitive work.
+
+For a fixed represented direction n, the interval certificate verifies every original target
+vertex and the complete apex, shoulder-disc and head-disc support, including m times norm(n).
+Its forward-operation error covers the full [0,1] coordinate range and remains constant while
+endpoints change. Fixed source vertices reuse the pinned RoundedDirection and Add operation
+enclosures, including scalar/SIMD reduction orders. Their residual from the exact represented
+vertex bounds the target error. Placement product and addition spacings use the complete affine
+coordinate range, including fraction conversion. No inverse is used.
+After subtracting that one uniform error, the gap is affine in the exact original fraction.
+Strictly positive endpoint lower bounds prove every fraction in the closed interval. A cached
+plane reuses its complete original-target support proof and charges changed endpoints to the
+same work account. Failed endpoints and exact ties never become interval Clear.
+
+ConvexIntervalCertificateTests covers the six named brief cases, both admitted margins, all
+six static shell features, original signed-zero feet bits, non-binary32 fractions, arbitrary
+represented target poses, all simplex ranks, positive base pairs inside the margin, exact
+margin ties and adjacent margins, retained root equality/refinement, original-target root
+revalidation, foreign-source refusal, coefficient exhaustion and stale scratch lifetimes.
+The six-feature retention test compares the entire encoded evidence with the legacy path.
+The unchanged eighteen-pair matrix remains part of the regression selection.
+
+### Task 2b.1 red and green evidence
+
+All commands ran synchronously through build-slot in Release. The focused command was
+`build-slot --label short-shell-design -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~ConvexIntervalCertificateTests'`.
+
+- Initial red, exit 1, no tests executed. The intended absent source, fraction, interval and
+  kernel certificate symbols failed compilation.
+- First implementation compile, exit 1, no tests executed. Corrected an internal result type
+  collision, a local variable collision and legacy predicate adapter overloads.
+- Initial green, exit 0, 7 passed.
+- Root-extension red, exit 1, no tests executed. The intended retained-root and bound-time
+  symbols were absent.
+- Root behavioral red, exit 1, 10 passed and 1 failed. A zero affine predicate retained degree
+  1 and caused GCD to refuse. Constant affine predicates now have canonical degree zero.
+- Expanded root green, exit 0, 11 passed.
+- Focused green before self-review, exit 0, 14 passed.
+- Ownership red, exit 1, 13 passed and 1 failed. Constant root-bound fraction refinement now
+  checks its scratch owner before skipping the refinement branch. Ownership green passed 14.
+- Translated-world red, exit 1, 14 passed and 2 failed. The initial safe global error bound was
+  too coarse at 100 m for millimetre evidence. Reused the pinned forward-operation enclosures
+  and full coordinate-range placement bounds. Final focused green passed 16, exit 0.
+
+The Common commands initially ran once in order, exit 0 each. The main selection was rerun
+after the interval-error refinement above and passed 436. The initial selection passed 434,
+including the unchanged eighteen-pair matrix and SS-R2 controls. The footprint selection passed
+741. All seven original normalized full-file navigation baselines passed with null execution,
+which NavBakeExecution.Degree maps to degree 1. No baseline or capsule source changed.
+
+Observed cells/features were 2/18 for the same-run nested-limit probe, 3/49 for each interval
+sequence, 82/687 for retained circular time comparisons and 82/666 for original-root
+revalidation plus foreign-source refusal. Circular storage retained 132 coefficients with a
+245 high-water mark. Cached endpoint changes charged one cell and two endpoint features.
+Temporary signs and failed revalidation restored the retained checkpoint. Coefficient-capacity
+zero and replacement by a point certificate restored Used to zero. These are observations,
+not absolute counter pins. Full solution verification remains Task 12.
+
+
+At 100 m, the final uniform directional forward-error bound was
+0.000022932887077331573 m. The closed interval endpoint lower gaps were
+0.0019759684801101125 m at margin zero and 0.0009759684326126615 m at margin 0.001.
+The complete coordinate-range proof covers every interior fraction. These observations
+introduce no tolerance, ceiling or budget. The final main selection executed all 16 new tests.
+
+
+All four required staged guards exited 0 after explicit staging and diff review.
+`sh scripts/check-dashes.sh staged`, `sh scripts/check-prose.sh staged`,
+`sh scripts/check-file-size.sh staged` and `git diff --cached --check`.
+The staged set contains exactly 14 task-owned paths. The four r0/r1 sweep producers,
+InstalledSweepLeaf, capsule/support implementations and movement/baseline sources are unchanged.
+
+Whole-tree dash, prose and file-size guards also exited 0. No cap or baseline changed.

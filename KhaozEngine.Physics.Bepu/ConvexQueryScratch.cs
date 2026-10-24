@@ -13,6 +13,19 @@ internal sealed class ConvexQueryScratch
         Polynomials = new(maximumCoefficients);
     }
 
+    internal int CertificateGeneration { get; private set; }
+    int _retainedCheckpoint = -1;
+    internal void BeginCertificates()
+    {
+        if (_retainedCheckpoint >= 0) Polynomials.Restore(_retainedCheckpoint);
+        _retainedCheckpoint = -1;
+        CertificateGeneration++;
+    }
+    internal void RetainCertificates(int checkpoint)
+    {
+        if (Polynomials.Used > checkpoint) _retainedCheckpoint = checkpoint;
+    }
+
     internal SweepExactWorkspace Exact { get; } = new();
     internal ConvexPolynomialWorkspace Polynomials { get; }
     internal ConvexRootCell[] RootCells { get; } = new ConvexRootCell[ConvexQueryPolicy.MaximumDepth + 1];

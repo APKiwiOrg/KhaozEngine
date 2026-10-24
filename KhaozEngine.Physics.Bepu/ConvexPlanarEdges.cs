@@ -7,10 +7,11 @@ namespace KhaozEngine.Physics.Bepu;
 /// Oblique circular strata use the shared disc projection and certified root-region producer.</summary>
 internal static class ConvexPlanarEdges
 {
-    internal static bool TryEvaluate(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, P a, P v,
-        int id, ref ConvexQueryWork work, out ConvexLeafEvidence evidence)
+    internal static bool TryEvaluate(in ConvexDistanceContext context, P a, P v,
+        int id, ref ConvexQueryWork work, out ConvexStaticResult result)
     {
-        evidence = default;
+        result = default;
+        var request = context.Request;
         if (!work.Feature() || !work.Cell()) return false;
         Q norm = P.Dot(v, v);
         if (norm.Sign <= 0) return false;
@@ -18,22 +19,22 @@ internal static class ConvexPlanarEdges
         Q r = Q.From(request.Shape.Radius), h = ring - lower;
         P apex = new(default, lower, default);
         Q parameter = P.Dot(apex - a, v) / norm;
-        if (Closed(parameter) && ConvexFeatureKernel.TryPair(request, leaf, apex, a + v * parameter,
-            ConvexTargetFeature.Edge, id, ref work, out evidence)) return true;
+        if (Closed(parameter) && ConvexFeatureKernel.TryPair(context, apex, a + v * parameter,
+            ConvexTargetFeature.Edge, id, ref work, out result)) return true;
         Q radialNorm = v.X * v.X + v.Z * v.Z, radialDot = a.X * v.X + a.Z * v.Z;
         if (radialNorm.Sign > 0)
         {
             parameter = -radialDot / radialNorm;
-            if (Closed(parameter) && ConvexFeatureKernel.TryPoint(request, leaf, a + v * parameter,
-                ConvexTargetFeature.Edge, id, ref work, out evidence)) return true;
+            if (Closed(parameter) && ConvexFeatureKernel.TryPoint(context, a + v * parameter,
+                ConvexTargetFeature.Edge, id, ref work, out result)) return true;
         }
         if (v.Y.Sign != 0)
         {
             foreach (Q y in new[] { lower, ring, upper, (ring + upper) / Q.From(2) })
             {
                 parameter = (y - a.Y) / v.Y;
-                if (Closed(parameter) && ConvexFeatureKernel.TryPoint(request, leaf, a + v * parameter,
-                    ConvexTargetFeature.Edge, id, ref work, out evidence)) return true;
+                if (Closed(parameter) && ConvexFeatureKernel.TryPoint(context, a + v * parameter,
+                    ConvexTargetFeature.Edge, id, ref work, out result)) return true;
             }
         }
         Q radialSquare = a.X * a.X + a.Z * a.Z;
@@ -51,7 +52,7 @@ internal static class ConvexPlanarEdges
                 if (rho.Sign <= 0 || (rho * rho - t.X * t.X - t.Z * t.Z).Sign != 0) continue;
                 Q along = (r * rho + h * (t.Y - lower)) / (r * r + hh);
                 P q = new(t.X * (r * along / rho), lower + h * along, t.Z * (r * along / rho));
-                if (ConvexFeatureKernel.TryPair(request, leaf, q, t, ConvexTargetFeature.Edge, id, ref work, out evidence)) return true;
+                if (ConvexFeatureKernel.TryPair(context, q, t, ConvexTargetFeature.Edge, id, ref work, out result)) return true;
             }
         // Exact surface intersections give attained overlap witnesses without a normal proposal.
         foreach (bool cone in new[] { false, true })
@@ -65,10 +66,10 @@ internal static class ConvexPlanarEdges
                 if (!Closed(s) || !work.Feature() || !work.Cell()) continue;
                 P t = a + v * s;
                 if (ConvexPlanarFeatures.Member(request.Shape, t) &&
-                    ConvexDistanceEncoding.TryCreate(request, t, t, ConvexTargetFeature.Edge, id, true, out evidence)) return true;
+                    context.TryAccept(t, t, ConvexTargetFeature.Edge, id, true, out result)) return true;
             }
         }
-        evidence = default;
+        result = default;
         return false;
     }
 

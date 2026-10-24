@@ -43,41 +43,49 @@ internal static class ConvexPlanarFeatures
         return true;
     }
 
-    internal static bool SupportsTarget(in InstalledSweepLeaf leaf, Vector3 feet, P t, P towardTarget,
+    internal static bool SupportsTarget(in InstalledSweepLeaf leaf, Vector3 feet, P t, P towardTarget, ref ConvexQueryWork work) =>
+        SupportsTarget(ConvexPlanarSource.FromRepresented(leaf), P.From(feet), t, towardTarget, ref work);
+
+    internal static bool OnFace(in InstalledSweepLeaf leaf, int face, Vector3 feet, P t) =>
+        OnFace(ConvexPlanarSource.FromRepresented(leaf), face, P.From(feet), t);
+
+    internal static bool SupportsTarget(in ConvexPlanarSource leaf, P feet, P t, P towardTarget,
         ref ConvexQueryWork work)
     {
-        for (int i = 0; i < leaf.Geometry.VertexCount; i++)
+        for (int i = 0; i < leaf.VertexCount; i++)
         {
             if (!work.Feature()) return false;
-            if (P.Dot(Vertex(leaf, i, feet) - t, towardTarget).Sign < 0) return false;
+            if (P.Dot(leaf.Vertex(i, feet) - t, towardTarget).Sign < 0) return false;
         }
         return true;
     }
 
-    internal static bool OnFace(in InstalledSweepLeaf leaf, int face, Vector3 feet, P t)
+    internal static bool OnFace(in ConvexPlanarSource leaf, int face, P feet, P t)
     {
-        var g = leaf.Geometry;
-        P a = Vertex(leaf, g.FaceVertex(face, 0), feet);
-        P normal = P.Cross(Vertex(leaf, g.FaceVertex(face, 1), feet) - a,
-            Vertex(leaf, g.FaceVertex(face, g.InteriorFaceSize(face) - 1), feet) - a);
+        var g = leaf;
+        P a = leaf.Vertex(g.FaceVertex(face, 0), feet);
+        P normal = P.Cross(leaf.Vertex(g.FaceVertex(face, 1), feet) - a,
+            leaf.Vertex(g.FaceVertex(face, g.InteriorFaceSize(face) - 1), feet) - a);
         if (P.Dot(normal, t - a).Sign != 0) return false;
         for (int i = 0; i < g.InteriorFaceSize(face); i++)
         {
-            P first = Vertex(leaf, g.FaceVertex(face, i), feet);
-            P edge = Vertex(leaf, g.FaceVertex(face, (i + 1) % g.InteriorFaceSize(face)), feet) - first;
+            P first = leaf.Vertex(g.FaceVertex(face, i), feet);
+            P edge = leaf.Vertex(g.FaceVertex(face, (i + 1) % g.InteriorFaceSize(face)), feet) - first;
             if (P.Dot(P.Cross(edge, t - first), normal).Sign < 0) return false;
         }
         return true;
     }
 
-    internal static bool InTarget(in InstalledSweepLeaf leaf, Vector3 feet, P p)
+    internal static bool InTarget(in ConvexPlanarSource leaf, P feet, P p)
     {
-        for (int face = 0; face < leaf.Geometry.FaceCount; face++)
+        if (leaf.Rank == 2) return OnFace(leaf, 0, feet, p);
+        if (leaf.Rank < 2) return false;
+        for (int face = 0; face < leaf.FaceCount; face++)
         {
-            var g = leaf.Geometry;
-            P a = Vertex(leaf, g.FaceVertex(face, 0), feet);
-            P n = P.Cross(Vertex(leaf, g.FaceVertex(face, 1), feet) - a,
-                Vertex(leaf, g.FaceVertex(face, g.InteriorFaceSize(face) - 1), feet) - a);
+            var g = leaf;
+            P a = leaf.Vertex(g.FaceVertex(face, 0), feet);
+            P n = P.Cross(leaf.Vertex(g.FaceVertex(face, 1), feet) - a,
+                leaf.Vertex(g.FaceVertex(face, g.InteriorFaceSize(face) - 1), feet) - a);
             if (P.Dot(n, p - a).Sign > 0) return false;
         }
         return true;

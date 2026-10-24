@@ -9,6 +9,38 @@ namespace KhaozEngine.Physics.Bepu;
 /// enlarges the shape. Every component enclosure and the whole bracket share the existing budget.</summary>
 internal static class ConvexDistanceEncoding
 {
+    internal static bool TryCreate(in ConvexDistanceCertificate certificate, out ConvexLeafEvidence evidence)
+    {
+        evidence = default;
+        if (!certificate.IsAlive || !certificate.Source.IsOriginal) return false;
+        if (!certificate.IsCircular && certificate.Fraction.Root is null && certificate.Fraction.Value.Sign == 0)
+            return TryCreate(certificate.Request, certificate.Query, certificate.Target, certificate.TargetFeature,
+                certificate.LocalFeatureId, certificate.BaseOverlap, out evidence);
+        GeometryInterval length = certificate.IsCircular ? certificate.SquaredDistanceBounds.Sqrt() : Q.RootBounds(certificate.BaseSquaredDistance);
+        if (!length.IsResolved) return false;
+        float margin = certificate.Request.Shape.Margin;
+        bool overlap;
+        if (!certificate.IsCircular) overlap = certificate.BaseOverlap || (certificate.BaseSquaredDistance - Q.From(margin) * Q.From(margin)).Sign <= 0;
+        else if (length.Upper <= margin) overlap = true;
+        else if (length.Lower > margin) overlap = false;
+        else return false;
+        GeometryVector query = certificate.QueryBounds, target = certificate.TargetBounds, delta = certificate.NormalBounds;
+        GeometryVector normal = new(GeometryInterval.Exact(0), GeometryInterval.Exact(0), GeometryInterval.Exact(0));
+        if (overlap) query = target;
+        else
+        {
+            normal = new(delta.X.Divide(length), delta.Y.Divide(length), delta.Z.Divide(length));
+            GeometryInterval m = GeometryInterval.Exact(margin);
+            query = new(query.X.Add(normal.X.Multiply(m)), query.Y.Add(normal.Y.Multiply(m)), query.Z.Add(normal.Z.Multiply(m)));
+        }
+        GeometryVector d = P.From(certificate.Request.Displacement).Bounds;
+        GeometryInterval time = certificate.Fraction.Bounds;
+        GeometryVector shift = new(d.X.Multiply(time), d.Y.Multiply(time), d.Z.Multiply(time));
+        return TryEnclosed(certificate.Request, Translate(query, shift), Translate(target, shift), normal,
+            overlap ? GeometryInterval.Exact(0) : length.Subtract(GeometryInterval.Exact(margin)), certificate.QueryFeature,
+            certificate.TargetFeature, certificate.LocalFeatureId, overlap, out evidence);
+    }
+
     internal static bool TryCreate(in ConvexQueryRequest request, P q, P t, ConvexTargetFeature targetFeature,
         int localFeatureId, bool overlap, out ConvexLeafEvidence evidence)
     {

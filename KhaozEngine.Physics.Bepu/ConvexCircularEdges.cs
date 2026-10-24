@@ -22,10 +22,11 @@ internal sealed class ConvexCircularEdges : ISupportCurvedRootFunction
         _roots = new(_supportWork, ConvexQueryPolicy.MaximumDepth + 1);
     }
 
-    internal bool TryEvaluate(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, P a, P v, int id,
-        ref ConvexQueryWork work, out ConvexLeafEvidence evidence)
+    internal bool TryEvaluate(in ConvexDistanceContext context, P a, P v, int id,
+        ref ConvexQueryWork work, out ConvexStaticResult result)
     {
-        evidence = default;
+        result = default;
+        var request = context.Request;
         // Horizontal edges already have exact radial stationarity in ConvexPlanarEdges.
         // For oblique edges the disc projection is strongly monotone with modulus vy^2.
         if (v.Y.Sign == 0) return false;
@@ -40,14 +41,49 @@ internal sealed class ConvexCircularEdges : ISupportCurvedRootFunction
                 if (!_roots.Solve(this, 0, 1, maximumRoots: 1)) return false;
                 if (_roots.Count == 0) continue;
                 GeometryInterval s = _roots.Get(0);
-                if (s.IsResolved && s.Lower == s.Upper && ConvexFeatureKernel.TryPoint(request, leaf,
-                    a + v * Q.From(s.Lower), ConvexTargetFeature.Edge, id, ref _work, out evidence)) return true;
-                if (!s.IsResolved || !TryCertificate(request, leaf, s, id, out evidence)) continue;
+                if (s.IsResolved && s.Lower == s.Upper && ConvexFeatureKernel.TryPoint(context,
+                    a + v * Q.From(s.Lower), ConvexTargetFeature.Edge, id, ref _work, out result)) return true;
+                if (!s.IsResolved) continue;
+                if (!context.Encode)
+                {
+                    if (!TryRetain(context, s, id, out var circular)) continue;
+                    result = new(default, new(request, context.Source, context.Fraction, context.Scratch, circular));
+                    return true;
+                }
+                if (!TryCertificate(request, context.Source.Leaf, s, id, out var evidence)) continue;
+                result = new(evidence, default);
                 return true;
             }
             return false;
         }
         finally { work = _work; }
+    }
+
+    bool TryRetain(in ConvexDistanceContext context, GeometryInterval s, int id, out ConvexCircularCertificate certificate)
+    {
+        certificate = null!;
+        var request = context.Request;
+        if (!_work.Feature()) return false;
+        GeometryVector n = Normal(s, out var radial);
+        if (!n.IsResolved || !radial.IsResolved || radial.Lower <= _radius.Bounds.Upper) return false;
+        bool rim = (_height - Q.From(request.Shape.UpperY)).Sign == 0;
+        if (rim ? n.Y.Lower < 0 : n.Y.Upper > 0) return false;
+        if (!rim)
+        {
+            GeometryInterval cone = (Q.From(request.Shape.RingY) - Q.From(request.Shape.LowerY)).Bounds.Multiply(n.Y)
+                .Add(_radius.Bounds.Multiply(radial.Subtract(_radius.Bounds)));
+            if (!cone.IsResolved || cone.Lower < 0) return false;
+        }
+        for (int i = 0; i < context.Source.VertexCount; i++)
+        {
+            if (!_work.Feature()) return false;
+            P offset = context.Source.Vertex(i, context.Feet) - _a;
+            P cross = P.Cross(offset, _v);
+            if (cross.X.Sign == 0 && cross.Y.Sign == 0 && cross.Z.Sign == 0) continue;
+            GeometryInterval residual = Dot(offset.Bounds, n);
+            if (!residual.IsResolved || residual.Lower < 0) return false;
+        }
+        return ConvexCircularCertificate.TryCreate(context, _a, _v, _radius, _height, s, id, ref _work, out certificate);
     }
 
     GeometryVector Point(GeometryInterval s) => new(_a.X.Bounds.Add(_v.X.Bounds.Multiply(s)),

@@ -46,23 +46,66 @@ internal static class ConvexFeatureKernel
     internal static bool TryDistance(in ConvexQueryRequest request, in InstalledSweepLeaf leaf,
         ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexLeafEvidence evidence)
     {
-        evidence = default;
-        var g = leaf.Geometry;
+        var context = new ConvexDistanceContext(request, ConvexPlanarSource.FromRepresented(leaf), ConvexCertificateFraction.From(0), scratch, true);
+        bool accepted = TryDistance(context, ref work, out var result);
+        evidence = result.Evidence;
+        return accepted;
+    }
+
+    internal static bool TryDistanceCertificate(in ConvexQueryRequest request, in ConvexPlanarSource source,
+        ConvexCertificateFraction fraction, ref ConvexQueryWork work, ConvexQueryScratch scratch, out ConvexDistanceCertificate certificate)
+    {
+        certificate = default;
+        if (scratch is null || !source.IsValid || !fraction.IsValid || !ConvexQueryPolicy.Contains(request) || work.Exhausted || work.Descendants == 0) return false;
+        if (fraction.Root is not null)
+        {
+            if (fraction.Circular is null || !fraction.TryCompare(ConvexCertificateFraction.From(0), ref work, scratch, out int lower) || lower < 0 ||
+                !fraction.TryCompare(ConvexCertificateFraction.From(1), ref work, scratch, out int upper) || upper > 0) return false;
+            return fraction.Circular.TryAtFraction(request, source, fraction, ref work, scratch, out certificate);
+        }
+        scratch.BeginCertificates();
+        int checkpoint = scratch.Polynomials.Used;
+        bool retained = false;
+        try
+        {
+            for (int i = 0; i < source.VertexCount; i++)
+            {
+                if (!work.Feature()) return false;
+                P p = source.Vertex(i);
+                foreach (Q c in new[] { p.X, p.Y, p.Z })
+                    if ((Q.From(2048) - c).Sign < 0 || (Q.From(2048) + c).Sign < 0) return false;
+            }
+            var context = new ConvexDistanceContext(request, source, fraction, scratch, false);
+            if (!TryDistance(context, ref work, out var result)) return false;
+            certificate = result.Certificate;
+            scratch.RetainCertificates(checkpoint);
+            retained = true;
+            return true;
+        }
+        catch (ConvexExactRefusalException) { return work.Refuse(); }
+        finally { if (!retained) scratch.Polynomials.Restore(checkpoint); }
+    }
+
+    static bool TryDistance(in ConvexDistanceContext context, ref ConvexQueryWork work, out ConvexStaticResult result)
+    {
+        result = default;
+        var g = context.Source;
+        var request = context.Request;
         for (int face = 0; face < g.FaceCount; face++)
         {
             if (!work.Feature() || !work.Cell()) return false;
-            P a = ConvexPlanarFeatures.Vertex(leaf, g.FaceVertex(face, 0), request.Pose.Position);
-            P b = ConvexPlanarFeatures.Vertex(leaf, g.FaceVertex(face, 1), request.Pose.Position);
-            P c = ConvexPlanarFeatures.Vertex(leaf, g.FaceVertex(face, g.InteriorFaceSize(face) - 1), request.Pose.Position);
+            P a = g.Vertex(g.FaceVertex(face, 0), context.Feet);
+            P b = g.Vertex(g.FaceVertex(face, 1), context.Feet);
+            P c = g.Vertex(g.FaceVertex(face, g.InteriorFaceSize(face) - 1), context.Feet);
             P n = P.Cross(c - a, b - a);
             Q norm = P.Dot(n, n);
             if (norm.Sign <= 0) return false;
             P q = Support(request.Shape, n), t = q + n * (P.Dot(a - q, n) / norm);
-            if (ConvexPlanarFeatures.OnFace(leaf, face, request.Pose.Position, t))
+            if (ConvexPlanarFeatures.OnFace(g, face, context.Feet, t))
             {
                 if (ConvexPlanarFeatures.Member(request.Shape, t) &&
-                    ConvexDistanceEncoding.TryCreate(request, t, t, ConvexTargetFeature.Face, face, true, out evidence)) return true;
-                if (TryPair(request, leaf, q, t, ConvexTargetFeature.Face, face, ref work, out evidence)) return true;
+                    context.TryAccept(t, t, ConvexTargetFeature.Face, face, true, out result)) return true;
+                if (TryPair(context, q, t, ConvexTargetFeature.Face, face, ref work, out result)) return true;
             }
             // A plane section wholly inside a finite face has no edge crossing. The segment
             // between opposing attained supports lies in the shell and crosses every such plane.
@@ -72,37 +115,38 @@ internal static class ConvexFeatureKernel
             Q fraction = P.Dot(a - opposite, n) / span;
             if (fraction.Sign < 0 || (Q.From(1) - fraction).Sign < 0) continue;
             P section = opposite + across * fraction;
-            if (ConvexPlanarFeatures.OnFace(leaf, face, request.Pose.Position, section) &&
+            if (ConvexPlanarFeatures.OnFace(g, face, context.Feet, section) &&
                 ConvexPlanarFeatures.Member(request.Shape, section) &&
-                ConvexDistanceEncoding.TryCreate(request, section, section, ConvexTargetFeature.Face, face, true, out evidence)) return true;
+                context.TryAccept(section, section, ConvexTargetFeature.Face, face, true, out result)) return true;
         }
         for (int vertex = 0; vertex < g.VertexCount; vertex++)
         {
-            P t = ConvexPlanarFeatures.Vertex(leaf, vertex, request.Pose.Position);
-            if (TryPoint(request, leaf, t, ConvexTargetFeature.Vertex, g.FaceCount + g.EdgeCount + vertex,
-                ref work, out evidence)) return true;
+            P t = g.Vertex(vertex, context.Feet);
+            if (TryPoint(context, t, ConvexTargetFeature.Vertex, g.FaceCount + g.EdgeCount + vertex,
+                ref work, out result)) return true;
             if (work.Exhausted) return false;
         }
         for (int edge = 0; edge < g.EdgeCount; edge++)
         {
             var ends = g.Edge(edge);
-            P a = ConvexPlanarFeatures.Vertex(leaf, ends.A, request.Pose.Position);
-            P v = ConvexPlanarFeatures.Vertex(leaf, ends.B, request.Pose.Position) - a;
-            if (ConvexPlanarEdges.TryEvaluate(request, leaf, a, v, g.FaceCount + edge, ref work, out evidence)) return true;
+            P a = g.Vertex(ends.A, context.Feet);
+            P v = g.Vertex(ends.B, context.Feet) - a;
+            if (ConvexPlanarEdges.TryEvaluate(context, a, v, g.FaceCount + edge, ref work, out result)) return true;
             if (work.Exhausted) return false;
-            if (scratch.CircularEdges.TryEvaluate(request, leaf, a, v, g.FaceCount + edge, ref work, out evidence)) return true;
+            if (context.Scratch.CircularEdges.TryEvaluate(context, a, v, g.FaceCount + edge, ref work, out result)) return true;
             if (work.Exhausted) return false;
         }
         // Containment has an attained common point even when no target boundary meets the shell.
+        if (g.Rank < 2) return false;
         foreach (float height in new[] { request.Shape.LowerY, request.Shape.RingY, request.Shape.UpperY })
         {
             if (!work.Feature() || !work.Cell()) return false;
             P p = new(default, Q.From(height), default);
-            if (ConvexPlanarFeatures.InTarget(leaf, request.Pose.Position, p) &&
-                ConvexDistanceEncoding.TryCreate(request, p, p, ConvexTargetFeature.Interior,
-                    g.FaceCount + g.EdgeCount + g.VertexCount, true, out evidence)) return true;
+            if (ConvexPlanarFeatures.InTarget(g, context.Feet, p) &&
+                context.TryAccept(p, p, ConvexTargetFeature.Interior,
+                    g.FaceCount + g.EdgeCount + g.VertexCount, true, out result)) return true;
         }
-        evidence = default;
+        result = default;
         return false;
     }
 
@@ -119,41 +163,43 @@ internal static class ConvexFeatureKernel
         return new(n.X * radius / radial, y, n.Z * radius / radial);
     }
 
-    internal static bool TryPoint(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, P t,
-        ConvexTargetFeature targetFeature, int featureId, ref ConvexQueryWork work, out ConvexLeafEvidence evidence)
+    internal static bool TryPoint(in ConvexDistanceContext context, P t,
+        ConvexTargetFeature targetFeature, int featureId, ref ConvexQueryWork work, out ConvexStaticResult result)
     {
-        evidence = default;
+        result = default;
+        var request = context.Request;
         if (!work.Feature() || !work.Cell()) return false;
         if (ConvexPlanarFeatures.Member(request.Shape, t))
-            return ConvexDistanceEncoding.TryCreate(request, t, t, targetFeature, featureId, true, out evidence);
+            return context.TryAccept(t, t, targetFeature, featureId, true, out result);
         Q r = Q.From(request.Shape.Radius), lower = Q.From(request.Shape.LowerY), ring = Q.From(request.Shape.RingY), upper = Q.From(request.Shape.UpperY);
         P apex = new(default, lower, default);
-        if (TryPair(request, leaf, apex, t, targetFeature, featureId, ref work, out evidence)) return true;
+        if (TryPair(context, apex, t, targetFeature, featureId, ref work, out result)) return true;
         P head = new(t.X, upper, t.Z);
-        if (TryPair(request, leaf, head, t, targetFeature, featureId, ref work, out evidence)) return true;
+        if (TryPair(context, head, t, targetFeature, featureId, ref work, out result)) return true;
         Q square = t.X * t.X + t.Z * t.Z;
         if (!square.Rational || square.Sign <= 0) return false;
         Q radial = Q.Root(square.A);
         Q h = ring - lower, parameter = (r * radial + h * (t.Y - lower)) / (r * r + h * h);
         P cone = new(t.X * (r * parameter / radial), lower + h * parameter, t.Z * (r * parameter / radial));
-        if (TryPair(request, leaf, cone, t, targetFeature, featureId, ref work, out evidence)) return true;
+        if (TryPair(context, cone, t, targetFeature, featureId, ref work, out result)) return true;
         P shoulder = new(t.X * (r / radial), ring, t.Z * (r / radial));
-        if (TryPair(request, leaf, shoulder, t, targetFeature, featureId, ref work, out evidence)) return true;
+        if (TryPair(context, shoulder, t, targetFeature, featureId, ref work, out result)) return true;
         P side = new(shoulder.X, t.Y, shoulder.Z);
-        if (TryPair(request, leaf, side, t, targetFeature, featureId, ref work, out evidence)) return true;
+        if (TryPair(context, side, t, targetFeature, featureId, ref work, out result)) return true;
         P rim = new(shoulder.X, upper, shoulder.Z);
-        return TryPair(request, leaf, rim, t, targetFeature, featureId, ref work, out evidence);
+        return TryPair(context, rim, t, targetFeature, featureId, ref work, out result);
     }
 
-    internal static bool TryPair(in ConvexQueryRequest request, in InstalledSweepLeaf leaf, P q, P t,
-        ConvexTargetFeature targetFeature, int featureId, ref ConvexQueryWork work, out ConvexLeafEvidence evidence)
+    internal static bool TryPair(in ConvexDistanceContext context, P q, P t,
+        ConvexTargetFeature targetFeature, int featureId, ref ConvexQueryWork work, out ConvexStaticResult result)
     {
-        evidence = default;
+        result = default;
+        var request = context.Request;
         if (!work.Feature() || !work.Cell()) return false;
         if (!ConvexPlanarFeatures.Member(request.Shape, q)) return false;
         P towardTarget = t - q;
         if (!ConvexPlanarFeatures.NormalCone(request.Shape, q, towardTarget) ||
-            !ConvexPlanarFeatures.SupportsTarget(leaf, request.Pose.Position, t, towardTarget, ref work)) return false;
-        return ConvexDistanceEncoding.TryCreate(request, q, t, targetFeature, featureId, false, out evidence);
+            !ConvexPlanarFeatures.SupportsTarget(context.Source, context.Feet, t, towardTarget, ref work)) return false;
+        return context.TryAccept(q, t, targetFeature, featureId, false, out result);
     }
 }

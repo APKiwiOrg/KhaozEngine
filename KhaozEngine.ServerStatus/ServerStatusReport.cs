@@ -98,6 +98,7 @@ public sealed record ServerStatusReport
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
         WriteIndented = true,
+        NewLine = "\n",
         Converters = { new ServerHealthJsonConverter() },
     };
 

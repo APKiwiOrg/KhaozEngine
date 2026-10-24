@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using KhaozEngine.Locomotion;
@@ -20,6 +21,25 @@ public class TileInstallationCompatibilityTests
 {
     private const string WorldId = "filtered-installation-baseline";
     private const int HeaderLength = 52;
+    private static readonly JsonSerializerOptions RegistrationJsonOptions = new()
+    {
+        WriteIndented = true,
+        NewLine = "\n"
+    };
+
+    [Fact]
+    public void RegistrationJsonUsesExplicitLfFormatting()
+    {
+        // Requiring shared options catches the platform-default writer even on an LF host.
+        var optionsField = Assert.Single(typeof(TileInstallationCompatibilityTests)
+            .GetFields(BindingFlags.NonPublic | BindingFlags.Static),
+            field => field.FieldType == typeof(JsonSerializerOptions));
+        var options = Assert.IsType<JsonSerializerOptions>(optionsField.GetValue(null));
+        Assert.True(options.WriteIndented);
+        Assert.Equal("\n", options.NewLine);
+        Assert.DoesNotContain('\r', RegistrationJson());
+        Assert.DoesNotContain('\r', RegistrationJson(includeAll: true));
+    }
 
     [Fact]
     public void UnfilteredInstallationMatchesPreFeatureBaseline()
@@ -202,7 +222,7 @@ public class TileInstallationCompatibilityTests
                 AnalyticMaximumYBits = Bits(extent.AnalyticMaximumY)
             },
             registration.SemanticDigest
-        }, new JsonSerializerOptions { WriteIndented = true }) + "\n";
+        }, RegistrationJsonOptions) + "\n";
     }
 
     private static uint[] Bits(Vector3 value) =>

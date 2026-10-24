@@ -30,6 +30,7 @@ public static class ContentBundleJson
     static readonly JsonWriterOptions WriterOptions = new()
     {
         Indented = true,
+        NewLine = "\n",
         SkipValidation = false,
     };
 

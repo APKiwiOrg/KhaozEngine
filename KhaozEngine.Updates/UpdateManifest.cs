@@ -36,7 +36,8 @@ public sealed class UpdateManifest
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true
+        WriteIndented = true,
+        NewLine = "\n"
     };
 
     /// <summary>

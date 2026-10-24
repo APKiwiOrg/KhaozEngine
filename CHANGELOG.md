@@ -9,6 +9,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-24
 
+- Make the tile installation compatibility baselines newline-stable across platforms (Closes #1562).
+- Keep persisted catalog, dungeon, input binding, updater, status and prop manifest JSON newline-stable.
 - Add opt-in directional indirect diffuse with `IrradianceSH`, physical sky irradiance and ground bounce.
   Preserve uniform ambient lighting by default and light canopy and roof undersides from a ground hemisphere
   when enabled (Closes #1553).

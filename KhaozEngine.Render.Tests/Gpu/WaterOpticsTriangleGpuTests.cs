@@ -213,21 +213,24 @@ void main() {
         }
     }
 
-    float[] CapturePhysical(float origin)
+    float[] CapturePhysical(float origin, WaterOpticsTriangleField? field = null, Vector4[]? queries = null,
+        Vector4? rectangle = null, string? evidenceName = null)
     {
+        field ??= KhaozEngine.Tests.Render3D.WaterOpticsTriangleResourceTests.Field();
+        queries ??= [new(origin + .25f, -origin + .25f, 3, 999),
+            new(origin + .5f, -origin + .5f, 5, 999),
+            new(origin + 1.5f, -origin + 1.5f, 2, 999), new(origin + 2, -origin + 2, 6, 999)];
+        Assert.InRange(queries.Length, 1, 128);
         using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
         IGpuDevice device = gpu.GpuDevice;
         IGpuResourceFactory f = device.Factory;
         using var retired = GpuRetireQueue.CreateFrameCounted(device, 2);
         using var resources = new WaterOpticsResources(device, retired);
-        WaterOpticsHandle handle = resources.LoadTriangles(KhaozEngine.Tests.Render3D.WaterOpticsTriangleResourceTests.Field());
+        WaterOpticsHandle handle = resources.LoadTriangles(field);
         var uniforms = new Vector4[130];
-        uniforms[0] = new(origin, -origin, .5f, .5f);
-        uniforms[1] = new(3, 2, 64, 2);
-        uniforms[2] = new(origin + .25f, -origin + .25f, 3, 999);
-        uniforms[3] = new(origin + .5f, -origin + .5f, 5, 999);
-        uniforms[4] = new(origin + 1.5f, -origin + 1.5f, 2, 999);
-        uniforms[5] = new(origin + 2, -origin + 2, 6, 999);
+        uniforms[0] = rectangle ?? new(origin, -origin, .5f, .5f);
+        uniforms[1] = new(3, 2, field.TextureWidth, field.TextureHeight);
+        queries.CopyTo(uniforms, 2);
         using IGpuBuffer input = f.CreateBuffer(new GpuBufferDescription(130 * 16, GpuBufferUsage.UniformBuffer));
         using IGpuBuffer zero = f.CreateBuffer(new GpuBufferDescription(16, GpuBufferUsage.UniformBuffer));
         device.UpdateBuffer(input, 0, uniforms);
@@ -261,7 +264,7 @@ void main() {
         bindings[11] = device.PointSampler;
         using IGpuResourceLayout layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(elements));
         using IGpuResourceSet set = f.CreateResourceSet(new GpuResourceSetDescription(layout, bindings));
-        using IGpuTexture target = f.CreateTexture(GpuTextureDescription.Texture2D(4, 1,
+        using IGpuTexture target = f.CreateTexture(GpuTextureDescription.Texture2D((uint)queries.Length, 1,
             GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
         using IGpuFramebuffer framebuffer = f.CreateFramebuffer(null, target);
         using IGpuShaderSet shaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, source);
@@ -288,13 +291,14 @@ void main() {
             device.Submit(commands);
             device.WaitForIdle();
         }
-        byte[] rgba = GpuReadback.ToRgba(device, target, 4, 1);
-        var depths = new float[4];
-        for (int i = 0; i < 4; i++) depths[i] = BitConverter.ToSingle(rgba, i * 4);
+        byte[] rgba = GpuReadback.ToRgba(device, target, queries.Length, 1);
+        var depths = new float[queries.Length];
+        for (int i = 0; i < depths.Length; i++) depths[i] = BitConverter.ToSingle(rgba, i * 4);
         string directory = "/tmp/khaozengine-water-triangles/task-2/" + device.Backend;
         Directory.CreateDirectory(directory);
-        File.WriteAllBytes(Path.Combine(directory, $"physical-{origin}.rgba"), rgba);
-        File.WriteAllText(Path.Combine(directory, $"physical-{origin}.json"), JsonSerializer.Serialize(depths));
+        string name = evidenceName ?? $"physical-{origin}";
+        File.WriteAllBytes(Path.Combine(directory, name + ".rgba"), rgba);
+        File.WriteAllText(Path.Combine(directory, name + ".json"), JsonSerializer.Serialize(depths));
         return depths;
     }
 

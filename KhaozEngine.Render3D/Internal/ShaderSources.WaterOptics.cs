@@ -10,9 +10,12 @@ layout(set=0, binding=11) uniform sampler OpticsSamp;
 float opticalBedDepth(vec3 waterRelative, float legacyDepth) {
     if (OpticsParams.y < 0.5) return legacyDepth;
     if (OpticsParams.y > 1.5) {
-        vec2 local = uintBitsToFloat(uvec2(
-            opticsAdd(floatBitsToUint(waterRelative.x),floatBitsToUint(OpticsRect.x)^0x80000000u),
-            opticsAdd(floatBitsToUint(waterRelative.z),floatBitsToUint(OpticsRect.y)^0x80000000u)));
+        uvec2 waterBits = floatBitsToUint(waterRelative.xz), originBits = floatBitsToUint(OpticsRect.xy);
+        uvec2 localBits = uvec2(0u);
+        [[dont_unroll]] for (int axis = 0; axis < 2; axis++) {
+            localBits[axis] = opticsAdd(waterBits[axis],originBits[axis]^0x80000000u);
+        }
+        vec2 local = uintBitsToFloat(localBits);
         float signedDepth;
         // An admitted point must hit. Discard is an invariant guard, never a fallback depth.
         if (!tryOpticsTriangle(local,signedDepth)) discard;

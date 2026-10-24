@@ -41,32 +41,38 @@ public sealed partial class WaterOpticsTriangleGpuTests
         VerifyOrderedBits("ordered-equal-zero", Square(-0f, 0, -0f, 0), points);
     }
 
-    uint[] VerifyOrderedBits(string name, WaterOpticsTriangle[] triangles, Vector2[] points)
+    uint[] VerifyOrderedBits(string name, WaterOpticsTriangle[] triangles, Vector2[] points,
+        WaterOpticsTriangleField? field = null)
     {
-        var field = new WaterOpticsTriangleField(new(2), 3, 5, triangles, [new(Vector2.Zero, new(2))]);
+        field ??= new WaterOpticsTriangleField(new(2), 3, 5, triangles, [new(Vector2.Zero, new(2))]);
         uint[] actual = Capture(name, field, points.Select(p => new Vector4(p, 1, 3)).ToArray());
-        Span<float> packed = stackalloc float[9];
         for (int i = 0; i < points.Length; i++)
         {
-            Vector2 p = points[i];
-            bool hit = false;
-            foreach (WaterOpticsTriangle t in triangles)
-            {
-                int winding = WaterOpticsTriangleMath.Orient(t.A.X, t.A.Z, t.B.X, t.B.Z, t.C.X, t.C.Z);
-                if (WaterOpticsTriangleMath.Orient(t.A.X, t.A.Z, t.B.X, t.B.Z, p.X, p.Y) * winding < 0
-                    || WaterOpticsTriangleMath.Orient(t.B.X, t.B.Z, t.C.X, t.C.Z, p.X, p.Y) * winding < 0
-                    || WaterOpticsTriangleMath.Orient(t.C.X, t.C.Z, t.A.X, t.A.Z, p.X, p.Y) * winding < 0)
-                    continue;
-                packed[0] = t.A.X; packed[1] = t.A.Z; packed[2] = t.A.Y;
-                packed[3] = t.B.X; packed[4] = t.B.Z; packed[5] = t.B.Y;
-                packed[6] = t.C.X; packed[7] = t.C.Z; packed[8] = t.C.Y;
-                AssertBits(WaterOpticsTriangleMath.Interpolate(packed, p.X, p.Y), actual[8 * i + 1], i, name);
-                hit = true;
-                break;
-            }
+            bool hit = TryOriginalDepth(triangles, points[i], out float depth);
             Assert.Equal(hit ? 1u : 0u, actual[8 * i]);
+            if (hit) AssertBits(depth, actual[8 * i + 1], i, name);
         }
         return actual;
+    }
+
+    static bool TryOriginalDepth(WaterOpticsTriangle[] triangles, Vector2 p, out float depth)
+    {
+        Span<float> packed = stackalloc float[9];
+        foreach (WaterOpticsTriangle t in triangles)
+        {
+            int winding = WaterOpticsTriangleMath.Orient(t.A.X, t.A.Z, t.B.X, t.B.Z, t.C.X, t.C.Z);
+            if (WaterOpticsTriangleMath.Orient(t.A.X, t.A.Z, t.B.X, t.B.Z, p.X, p.Y) * winding < 0
+                || WaterOpticsTriangleMath.Orient(t.B.X, t.B.Z, t.C.X, t.C.Z, p.X, p.Y) * winding < 0
+                || WaterOpticsTriangleMath.Orient(t.C.X, t.C.Z, t.A.X, t.A.Z, p.X, p.Y) * winding < 0)
+                continue;
+            packed[0] = t.A.X; packed[1] = t.A.Z; packed[2] = t.A.Y;
+            packed[3] = t.B.X; packed[4] = t.B.Z; packed[5] = t.B.Y;
+            packed[6] = t.C.X; packed[7] = t.C.Z; packed[8] = t.C.Y;
+            depth = WaterOpticsTriangleMath.Interpolate(packed, p.X, p.Y);
+            return true;
+        }
+        depth = 0;
+        return false;
     }
 
     static WaterOpticsTriangle[] Square(float a, float b, float c, float d) =>

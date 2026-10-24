@@ -16,11 +16,11 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class WaterOpticsRolledEmissionTests
 {
-    const string Evidence = "/tmp/khaozengine-water-triangles/rolled-interpolation/emission";
+    const string Evidence = "/tmp/khaozengine-water-triangles/shared-predicate-mapping/emission";
 
     // Catch loss of sharing or local loop controls in the actual pinned compiler output.
     [Fact]
-    public void ProductionRetainsSharedInterpolationAndSixWideCarryBodies()
+    public void ProductionRetainsSharedArithmeticMappingAndPredicateBodies()
     {
         Directory.CreateDirectory(Evidence);
         byte[] vertex = SpirvFrontEnd.ToSpirv(ShaderSources.WaterVert, GpuShaderStages.Vertex, "Water");
@@ -90,6 +90,18 @@ public sealed class WaterOpticsRolledEmissionTests
 
         Assert.Equal(1, opcodes.GetValueOrDefault(54u)); // Exhaustively inlined OpFunction.
         Assert.Equal(0, opcodes.GetValueOrDefault(57u)); // No surviving OpFunctionCall boundary.
+        Assert.True(loops.Count(l => l.Bound == 6 && l.Retained) == 2
+            && loops.Count(l => l.Bound == 4 && l.Retained) == 1
+            && loops.Count(l => l.Bound == 2 && l.Retained) == 1,
+            "Expected two retained six-term predicates, one four-step bin mapping and one two-axis origin loop. "
+            + "Actual retained bounds: " + string.Join(",", loops.Where(l => l.Retained).Select(l => l.Bound)));
+        Assert.Equal(new uint[] { 2, 3, 4, 6, 6, 18, 18, 18, 18, 18, 18, 23, 27, 32 },
+            retainedBounds.Order().ToArray());
+        Loop origin = Assert.Single(loops, l => l.Bound == 2 && l.Retained);
+        Assert.Single(Regex.Matches(hlsl[origin.Start..origin.End], @"& 134217728u"));
+        Loop mapping = Assert.Single(loops, l => l.Bound == 4 && l.Retained);
+        Assert.Single(Regex.Matches(hlsl[mapping.Start..mapping.End], @"& 32768u"));
+        Assert.True(origin.End < mapping.Start);
         Assert.Single(retainedBounds, b => b == 23);
         Assert.Single(retainedBounds, b => b == 27);
         Loop interpolation = Assert.Single(loops, l => l.Bound == 23);
@@ -101,10 +113,15 @@ public sealed class WaterOpticsRolledEmissionTests
         Loop division = Assert.Single(loops, l => l.Bound == 27 && l.Retained);
         Assert.InRange(division.Start, interpolation.Start + 1, interpolation.End - 1);
         Assert.True(division.End < interpolation.End);
-        Loop product = Assert.Single(loops, l => l.Bound == 6);
-        Assert.True(product.Retained, "Six-term product loop lost its [loop] control.");
         Loop[] carries = loops.Where(l => l.Bound == 18 && l.Retained).ToArray();
         Assert.Equal(6, carries.Length);
+        Loop product = Assert.Single(loops, l => l.Bound == 6
+            && carries.All(c => c.Start > l.Start && c.End < l.End));
+        Assert.True(product.Retained, "Wide six-term product loop lost its [loop] control.");
+        Loop narrow = Assert.Single(loops, l => l.Bound == 6 && l.Start != product.Start);
+        Assert.True(narrow.Retained, "Narrow six-term product loop lost its [loop] control.");
+        // One pair of low-half significands identifies one exact 24-by-24 product body.
+        Assert.Equal(2, Regex.Matches(hlsl[narrow.Start..narrow.End], @"& 65535u").Count);
         Assert.Single(loops, l => l.Bound == 18 && !l.Retained); // Unhinted accumulator initialization.
         Assert.All(carries, l =>
         {
@@ -118,8 +135,8 @@ public sealed class WaterOpticsRolledEmissionTests
             Assert.Equal(count, selected.Length);
             Assert.All(selected, l => Assert.True(l.Retained));
         }
-        Assert.Equal(11, loops.Count(l => l.Retained));
-        Assert.Equal(11, controls.Count(c => c == 2)); // SPIR-V DontUnroll.
+        Assert.Equal(14, loops.Count(l => l.Retained));
+        Assert.Equal(14, controls.Count(c => c == 2)); // SPIR-V DontUnroll.
         Assert.All(controls, c => Assert.True(c is 0 or 2));
         uint Word(int at) => BinaryPrimitives.ReadUInt32LittleEndian(fragment.AsSpan(at, 4));
     }

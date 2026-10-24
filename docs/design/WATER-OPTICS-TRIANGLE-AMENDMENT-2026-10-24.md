@@ -172,11 +172,19 @@ Interpolation now retains its original 23 ordered software operations in one fix
 loop, selecting scalar operands into one add, multiply or divide body and storing each rounded result
 in a local 16-word register bank. Every subtraction retains its sign-bit XOR. Constant/equal-zero
 depths still return before interpolation. This shares compiler input without relying on a function
-boundary surviving inlining. The arithmetic helpers, CPU reference, narrow selector and arithmetic
-remain unchanged. The previous rolled-wide candidate failed cold compile admission in hosted run
-40091542332. The fixed interpolation schedule still requires a candidate-only hosted Windows proof,
-with pixel FXC at most 5000 ms and the measured six-phase total at most 10000 ms. These are engineering
-limits for that fixed proof, not universal hardware guarantees.
+boundary surviving inlining. The narrow predicate also shares one unchanged product body through
+a retained six-term loop in the original signed operand order, with unchanged four-word accumulators,
+span-77 classifier and descending comparison. Bin mapping shares one software multiply body through
+four ordered steps, u, v, column and row, with the unit clamp after each of the first two products.
+A local two-word bank retains u and v. Triangle origin subtraction shares one software add body
+through two ordered axes, X then Z, retaining the sign-bit XOR and signed-zero behavior. The arithmetic
+helpers, CPU reference, wide algorithm, admission and mode 0/1 arithmetic remain unchanged.
+The previous rolled-wide and interpolation candidates failed cold compile admission in hosted runs
+40091542332 and 40094097628. The shared predicate and mapping candidate still requires a candidate-only
+hosted Windows proof, with pixel FXC at most 5000 ms and the measured six-phase total at most 10000 ms.
+These are engineering limits for that fixed proof, not universal hardware guarantees. Actual retained
+SPIR-V/HLSL bodies, bitwise query results and matched full-render pixels are required before the hosted
+proof. Fresh all-three-backend correctness and measured runtime observations remain pending gates.
 Separate lazy triangle pipelines must also isolate default legacy/bilinear compilation. That
 complementary isolation is separate work and remains required before Task 2 performance acceptance.
 GPU queries use rounded local-coordinate subtraction directly. The inverse extent is used only for

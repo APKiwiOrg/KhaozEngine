@@ -54,12 +54,18 @@ void opticsNarrowProduct(inout uvec4 positive, inout uvec4 negative, uint a, uin
 
 int opticsOrientNarrow(uvec2 a, uvec2 b, uvec2 p, int baseShift) {
     uvec4 positive = uvec4(0u), negative = uvec4(0u);
-    opticsNarrowProduct(positive,negative,b.x,p.y,false,baseShift);
-    opticsNarrowProduct(positive,negative,b.x,a.y,true,baseShift);
-    opticsNarrowProduct(positive,negative,a.x,p.y,true,baseShift);
-    opticsNarrowProduct(positive,negative,b.y,p.x,true,baseShift);
-    opticsNarrowProduct(positive,negative,b.y,a.x,false,baseShift);
-    opticsNarrowProduct(positive,negative,a.y,p.x,false,baseShift);
+    // Retain one product body with the same term and accumulator order as the wide path.
+    [[dont_unroll]] for (int term = 0; term < 6; term++) {
+        uint left, right;
+        bool minus;
+        if (term == 0) { left = b.x; right = p.y; minus = false; }
+        else if (term == 1) { left = b.x; right = a.y; minus = true; }
+        else if (term == 2) { left = a.x; right = p.y; minus = true; }
+        else if (term == 3) { left = b.y; right = p.x; minus = true; }
+        else if (term == 4) { left = b.y; right = a.x; minus = false; }
+        else { left = a.y; right = p.x; minus = false; }
+        opticsNarrowProduct(positive,negative,left,right,minus,baseShift);
+    }
     for (int i = 3; i >= 0; i--) {
         if (positive[i] > negative[i]) return 1;
         if (positive[i] < negative[i]) return -1;

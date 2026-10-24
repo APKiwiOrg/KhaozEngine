@@ -77,10 +77,20 @@ bool tryOpticsTriangle(vec2 local, out float depth) {
     int columns = opticsAddress(1), rows = opticsAddress(2);
     // The reciprocal and product each add at most u/(1-u) relative error. Together with the
     // bin product this is inside the constructor's outward 4u bin support and one-ULP expansion.
-    uint u = opticsUnit(opticsMul(p.x,floatBitsToUint(OpticsRect.z)));
-    uint v = opticsUnit(opticsMul(p.y,floatBitsToUint(OpticsRect.w)));
-    int column = min(int(uintBitsToFloat(opticsMul(u,floatBitsToUint(float(columns))))),columns-1);
-    int row = min(int(uintBitsToFloat(opticsMul(v,floatBitsToUint(float(rows))))),rows-1);
+    uint mapped[2];
+    int column = 0, row = 0;
+    // The first two rounded/clamped products feed the last two, in the original u,v,column,row order.
+    [[dont_unroll]] for (int step = 0; step < 4; step++) {
+        uint left, right;
+        if (step == 0) { left = p.x; right = floatBitsToUint(OpticsRect.z); }
+        else if (step == 1) { left = p.y; right = floatBitsToUint(OpticsRect.w); }
+        else if (step == 2) { left = mapped[0]; right = floatBitsToUint(float(columns)); }
+        else { left = mapped[1]; right = floatBitsToUint(float(rows)); }
+        uint result = opticsMul(left,right);
+        if (step < 2) mapped[step] = opticsUnit(result);
+        else if (step == 2) column = min(int(uintBitsToFloat(result)),columns-1);
+        else row = min(int(uintBitsToFloat(result)),rows-1);
+    }
     int bin = 16+2*(row*columns+column);
     int first = opticsAddress(bin), count = opticsAddress(bin+1);
     int triangles = opticsAddress(4), edges = opticsAddress(5);

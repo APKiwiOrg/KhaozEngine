@@ -119,11 +119,20 @@ Mode 2 uses existing texture/sampler bindings 10/11 and unchanged 1088-byte UBO 
   signed zero, the constant/equal-zero early return and unchanged arithmetic helpers and CPU reference.
   Verify actual production interpolation bitwise against that CPU reference on nonconstant depths,
   cancellation and admitted subnormal intermediates, plus unchanged query, image and fallback proofs.
+- [ ] Share the six original narrow predicate products in one retained six-term loop without changing
+  the span-77 classifier, product/add helpers, four-word accumulators or descending comparison. Share
+  one software multiply body for the four ordered bin-mapping steps, with a local two-word u/v bank,
+  the original unit clamps, truncation and last-bin minima. Share one software add body for ordered
+  X/Z triangle-origin subtraction, retaining sign-bit XOR and signed zeros. Require actual retained
+  SPIR-V and HLSL bodies alongside the prior wide-carry and interpolation structures before hosted
+  proof. Preserve all 87 predicate probes, 235 original queries and 60 interpolation queries. Add
+  independent bitwise rectangular-bin/origin coverage and retain six pixel-identical render controls.
 - [ ] Pass the pending candidate-only cold Windows compile proof at dispatch `github.sha`, with caches
   off and optimized production flags. Require pixel FXC <= 5000 ms and the measured six-phase total
   <= 10000 ms. Reuse verified control run 40087661847 without recompiling its frozen inputs. These
   fixed-proof engineering limits do not assert universal hardware performance. Rolled-wide run
-  40091542332 missed both limits. The fixed interpolation schedule remains pending this proof.
+  40091542332 and interpolation run 40094097628 missed both limits. The shared predicate and mapping
+  candidate remains pending this proof and fresh all-three-backend correctness.
 - [ ] Implement complementary separate lazy triangle pipelines in a subsequent scoped task so default
   legacy/bilinear construction cannot compile triangle arithmetic. Compile improvement alone does not
   complete Task 2. Retain the original numerical, resource, image and all-three-backend gates.

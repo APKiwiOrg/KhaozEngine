@@ -1,7 +1,7 @@
 # Private release-matched buffered frame recorder
 
 NEVER MERGE this diagnostic archive into `main`. Branch
-`probe/mac-frame-release-diagnostics` starts at released `v21.13.0`, commit
+`fix/mac-frame-release-diagnostics-probe` starts at released `v21.13.0`, commit
 `cc31c09f37a74332b716ec81b29265a755bcbb04`. No version, dependency or package bytes are
 changed by this archive. Only its private Windowing DLL is a candidate for substitution.
 

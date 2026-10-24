@@ -9,6 +9,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-24
 
+- Make D3D11 timestamp contention tests own their resolver thread, check completion before unlocking,
+  and join before disposing fixture resources (#1560).
 - Add filtered `TileWorldColliders.AddTo(world, include)` with compact handles, original `ColliderIndices`
   and canonical movement provenance. Preserve default/all-true output and the complete collider hash.
   Persist filtered bake policy identity explicitly through `NavBakeSources`.

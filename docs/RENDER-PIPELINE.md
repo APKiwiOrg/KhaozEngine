@@ -108,6 +108,12 @@ flowchart LR
    no-op (issue #429). Opening a second command list while the frame's is recording is refused by the seam's
    open-recording register on every backend, which is why the phase exists and why it stayed when the backend
    that used to corrupt the frame instead of refusing was deleted (issues #423 and #690).
+   `PrepareFrame(width, height)` is the viewport-aware form. It also fixes the frame's render targets and builds
+   the resource sets for bound optical water. The legacy no-argument form throws when bound water is queued.
+   `GameApp3D` passes the frame size, and `Render3DPreview.Capture` and the `Render3DSnapshot` captures prepare
+   with their own target size, so a draw callback that also prepares at that size is a latched no-op.
+   `Render3DSurface.Render` keeps the no-argument safety net, so bound water must already be prepared at the
+   frame's size. A custom host calls `PrepareFrame(width, height)` after queueing and before recording.
 4. At frame end, `Render3DSurface` / `Render2DSurface` flush through `ModelRenderer` / the sprite shader, which
    record commands on `GpuDeviceContext` - the opaque seam (device, buffers, pipelines, command list).
 5. `GpuBackendSelector` picked the backend at startup (`KE_GRAPHICS_BACKEND` override, then the game's stored
@@ -153,12 +159,41 @@ fragment-unused interpolant declared below a used one) miscompiles on D3D11/WARP
 white until a later fix. The cross-backend shader-authoring rules are in `docs/CROSS-PLATFORM.md` ("Authoring shaders
 that pass on all three backends").
 
+## Water depth sources
+
+The water pass needs a depth below each water fragment for its colour grading, ordinary shore foam and shore
+fade. Each `WaterPlane` selects its own source:
+
+```mermaid
+flowchart LR
+    UNB["Unbound WaterPlane<br/>(default)"] --> SD["Resolved scene depth<br/>first opaque surface"]
+    BIL["WaterOpticsField<br/>bilinear lattice"] --> LF["Scene3D.LoadWaterOpticsField"]
+    TRI["WaterOpticsTriangleField<br/>certified triangles"] --> LT["Scene3D.LoadWaterOpticsTriangles"]
+    LF & LT --> H["WaterOpticsHandle<br/>one R32Float texture"]
+    H --> B["WaterOpticsBinding on WaterPlane"] --> DW["DrawWater<br/>coverage check"] --> PF["PrepareFrame(width, height)"]
+    SD & PF --> WP["Water pass<br/>bed depth = max(0, rest + displaced Y - reference Y)"]
+```
+
+- **Unbound** planes reconstruct the first opaque surface from the resolved scene depth, which may be a creature or
+  a prop. This is the unchanged legacy path, with no optical upload.
+- **Bilinear fields** read four bounded texel fetches over an authored lattice. A vertical step softens across one
+  lattice cell.
+- **Triangle fields** read one bounded atlas: a bin of at most 32 candidate triangles, exact integer containment,
+  then barycentric depth. TileWorld builds them from its actual ground meshes under
+  `TileWaterDepthMode.AuthoredBed`.
+
+Coverage is checked when the plane is queued, never per fragment. A bound fragment never falls back to scene depth,
+and bound FFT water is refused until FFT has a certified displacement envelope. Scene depth still depth-tests every
+plane, so geometry above the surface occludes it. The FFT shoaling and surf bathymetry is a separate scene-wide
+input. API detail lives in the [Render3D package reference](../KhaozEngine.Render3D/README.md).
+
 ## Where to look in the code
 
 | Box | Type / file |
 |---|---|
 | Frame loop + window + swapchain | `KhaozEngine.Windowing/AppWindow.cs` (`Run`, `GpuDeviceContext.CreateForWindow`, `Present`) |
 | 3D submission API | `KhaozEngine.Render3D/Scene3D.cs` (`LoadMesh`, `Begin`, `Draw`) + `Render3DSurface.cs` |
+| Water optical beds | `KhaozEngine.Render3D/Scene3D.WaterOptics.cs`, `WaterOpticsField.cs`, `WaterOpticsTriangleField.cs`, `Internal/ShaderSources.WaterOptics.cs` |
 | 3D instanced draws + post | `KhaozEngine.Render3D/Rendering/` (`ModelRenderer`), `PixelPostProcessSettings.cs` |
 | Terrain splat pipeline | `KhaozEngine.Render3D/Internal/ShaderSources.cs` (`SplatFrag`), `Scene3D.cs` (`LoadSplatMaterial`), `KhaozEngine.Terrain.Render3D/TerrainScene3D.cs` (`LoadTerrainMaterial`) |
 | 2D batching | `KhaozEngine.Render2D/SpriteBatch.cs` + `Render2DSurface.cs` |

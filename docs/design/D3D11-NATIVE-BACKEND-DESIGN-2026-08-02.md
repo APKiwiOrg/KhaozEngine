@@ -231,7 +231,7 @@ Guard work the package creates, all mechanical:
   `Vortice.D3DCompiler` key, or `EveryThirdPartyPackage_IsDeliberatelyMapped` fails.
 - `KhaozEngine.slnx` gains the project, which force-adds `KhaozEngine.Tests` to the selective-test set, so
   the architecture guards run on the landing PR.
-- `check-doc-versions.sh` requires a bolded `**KhaozEngine.Gpu.D3D11**` catalog row in the root `README.md`
+- `check-doc-versions.sh` requires a `docs/PACKAGES.md` catalog row linking `KhaozEngine.Gpu.D3D11/README.md`
   and a `KhaozEngine.Gpu.D3D11/README.md` shipped via `<PackageReadmeFile>`.
 - `GpuPublicApiTests` is extended to scan the new assembly, which falls outside both existing lockdown scans
   as written.

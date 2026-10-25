@@ -14,7 +14,6 @@ namespace KhaozEngine.Render2D
     /// Complements <see cref="TextLayout"/> (which aligns/wraps within a width-region): this is the
     /// screen-author-friendly point API. The positioning math is split into pure, headless-testable helpers
     /// over <see cref="ITextMeasurer"/>; the <c>Draw*</c> methods add the GPU-backed <see cref="SpriteBatch"/>.
-    /// The MonoGame-free 5.x port of the 4.x KhaozEngine.UI TextHelper.
     /// </summary>
     public static class TextHelper
     {

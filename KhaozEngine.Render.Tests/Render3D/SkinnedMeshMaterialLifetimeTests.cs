@@ -143,8 +143,8 @@ public sealed class SkinnedMeshMaterialLifetimeTests
 
         FakeResourceSet newCpu = Assert.IsType<FakeResourceSet>(h.Scene.SkinnedCpuMaterialSetAt(mesh));
         FakeResourceSet newGpu = Assert.IsType<FakeResourceSet>(h.Scene.SkinnedGpuMaterialSetAt(mesh));
-        Assert.True(oldCpu.Disposed);
-        Assert.True(oldGpu.Disposed);
+        Assert.False(oldCpu.Disposed);
+        Assert.False(oldGpu.Disposed);
         Assert.NotSame(oldCpu, newCpu);
         Assert.NotSame(oldGpu, newGpu);
         Assert.Same(outline, h.Scene.SkinnedOutlineMaterialSetAt(mesh));

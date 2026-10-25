@@ -138,7 +138,7 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuResourceSet SetFor(RenderResources res)
         {
             if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen) return _set;
-            _set?.Dispose();
+            _retired.Retire(_set);
             _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _frameUbo, res.DepthColorTex, _gd.PointSampler));
             _bound = res; _boundGen = res.Generation;
             return _set;

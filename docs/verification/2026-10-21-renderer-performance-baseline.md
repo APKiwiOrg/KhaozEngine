@@ -367,6 +367,44 @@ component. No measured baseline, deadline or performance acceptance was produced
 consumed and authorizes no retry. Another attempt requires a corrected workload, independently
 reviewed preparation and fresh owner approval.
 
+## Fourth authorized Linux pilot, attempt 4
+
+The integrated workload and trusted workflow are `cc32e48f1f38c7a061defa2575e917182a1a5cf2`.
+Authorization `12fe530f63663422f12e794a8100e98047ecfd46` has that workload as its sole parent on
+`feature/renderer-pilot-linux-4`. Its exact manifest SHA-256 is
+`d300ce7d963bb3435624781a8201c85f0566c711e4877f3bfe990f8aa58dc154`.
+
+The fourth pilot approval was consumed by
+[run 40170634671](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40170634671), attempt 1,
+on 2026-10-25 UTC. Runtime admission passed with the exact approved 13-entry environment map.
+The isolated SDK check and native Tesla T4 admission passed. Conditioning frame 0 passed the
+#1579 temporal-history check, recorded exactly one submission and a native GPU frame time of
+35,928,480 ns, then failed with "An unexpected production wait occurred."
+
+The refusal was at `RendererPerfNativeSession.Frame`, line 131, which requires zero
+`WaitForIdleCalls` even on conditioning frames. Only conditioning frame 0, sequence 0, was recorded.
+Completed blocks were 0/2 and controls 0/6.
+[Issue #1582](https://github.com/APKiwiOrg/KhaozEngine/issues/1582) tracks the production wait and
+its conditioning contract.
+
+Artifact `renderer-perf-linux-vulkan`, ID `12589443946`, is 518,030 compressed bytes.
+GitHub reports archive SHA-256
+`5cedd852f395b22b5bd7a7e15963f123fefe4c9473ff2964426775ed1a146169`.
+It retains the partial JSON and Markdown report, runtime and native admission, compiler inventory,
+frozen layouts, telemetry, measurement log and TRX beside the preparation inputs and build logs.
+The partial JSON SHA-256 is
+`acf587ceee793f566fb3c98c77e36f94c24ca1674421a6fda6568dea267feeea`.
+The measurement TRX SHA-256 is
+`7eaf804f6a999ba2e73d4d6e6098a9e19be5975a14d72b2489be9cc4b1d8584a`.
+
+GPU job `121100654741` ran from 06:52:35 to 06:56:29 UTC, 234 seconds. The billing API's same-day
+`actions_linux_4_core_gpu` total rose from 9.0 to 13.0 minutes, attributing 4.0 GPU minutes to this
+attempt at USD 0.052 per minute, USD 0.208 net runner charges. This is observed provider usage,
+separate from a duration estimate. Storage, tax and currency conversion are outside the runner
+component. No measured baseline, deadline or performance acceptance was produced. The approval is
+consumed and authorizes no retry. Another attempt requires a corrected workload, independently
+reviewed preparation and fresh owner approval.
+
 ## First-frame temporal correction
 
 The third refusal came from applying the measured-history requirement to the first conditioning
@@ -382,6 +420,50 @@ and explicit history loss at measured index 0 and conditioning index 1. The orig
 refusal was reproduced before the correction. Existing workload and entrypoint tests rendered only
 negative warm-up indices. Driver tests supplied synthetic samples without the workload's check.
 This headless correction supplies no native measurement or permission for another pilot.
+
+## Conditioning wait correction
+
+The fourth refusal counted logical seam calls through `RendererPerfDevice.WaitForIdle`, not the
+backend's native drain total. A headless `RendererPerfNativeSession` using the real crowd workload
+reproduced the same four first-frame calls through `FramePhases.Run`:
+
+- `ModelRenderer.ReplaceShadowLayout` drains before replacing the initial shadow atlas and its receivers.
+- `Scene3D.EnsureSize` drains before rebuilding the MRT pipelines for the recipe's temporal attachments.
+- `RenderResources.DisposeTargets` drains before releasing the initial MRT targets.
+- `TemporalPostTargets.Ensure` drained even on first allocation, with no post targets to release.
+
+The first three protect replacement of existing resources. The initial correction accepted these cold waits
+and later lazy point-shadow atlas binding waits during conditioning, retaining their counters beside cold resource creation.
+The needless temporal post-target allocation drain is removed at its source. Display and opaque target
+replacement still drains before releasing old textures. This package change rides staged 21.14.0.
+
+The earlier workload tests rendered scenes directly without the native session's counter checks.
+Native-session boundary tests used synthetic work rather than a real scene. The wait is reproducible
+headlessly when the real scene and session are combined. It is not specific to a physical Vulkan device.
+The new scene tests retain cold waits and enforce the refusal on fresh measured frames and the first
+warm-up frame at both -64 and -192. Target lifetime tests cover first allocation and display-only or
+opaque-only replacement. The red run reproduced the exact production-wait refusal and the unnecessary
+allocation drain before either correction.
+
+The counter sweep found a remaining blocker. Each measured scene block starts fresh, so its first
+warm-up frame reaches the same shadow and MRT replacement waits. The initial correction still refused
+these frames, so cold resource preparation needed a further correction before another pilot.
+Exactly one logical submission remains mandatory on conditioning, warm-up and measured frames.
+Device loss still invalidates every frame. Resource creation remains permitted during conditioning
+and warm-up, and forbidden during measured frames. Vulkan setup flushes, descriptor or pipeline
+construction and timestamp resets do not add logical seam submissions or waits. Readback and the
+single batch completion drain remain outside the frame checks.
+
+The final correction retires replaced shadow atlases, receiver sets, MRT graphs, post bindings and
+pipelines through frame completion. `Scene3D.BeginFrame(frame.Submission)` shares the host completion
+fence, so retirement adds neither an in-frame drain nor another logical submission. All conditioning,
+warm-up and measured frames again require zero logical `WaitForIdleCalls`. Measured frames still
+refuse resource creation. No extra rendered priming frame is introduced. Headless scene-session tests
+cover cold conditioning, fresh warm-up at -64 and -192, warmed measured frames and an injected wait.
+Main's water optics variants retain their transactional pipeline replacement and deferred bindings.
+
+This correction provides headless correctness evidence only. It supplies no native baseline, timing
+acceptance or permission for another attempt. The consumed fourth approval remains consumed.
 
 ## Outstanding native and preparation gates
 

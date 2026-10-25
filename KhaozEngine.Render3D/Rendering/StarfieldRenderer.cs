@@ -59,9 +59,9 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>Rebuild the pipeline for a new colour-target output description (e.g. the MRT became multisampled
         /// for MSAA, and a pipeline's sample count must match its framebuffer). Layout / shaders / buffer are kept.</summary>
-        public void SetOutputs(GpuOutputDescription colorOutput)
+        public void SetOutputs(GpuOutputDescription colorOutput, GpuRetireQueue? retired = null)
         {
-            _pipe.Dispose();
+            ResourceRetirement.Free(_pipe, retired);
             _pipe = Pipe(_gd.Factory, colorOutput);
         }
 

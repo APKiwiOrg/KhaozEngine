@@ -71,6 +71,10 @@ flushes. `FlushAsync(subject, sink, token)` sends that account's reports and eve
 returns a `BugReportFlushResult` with how many were sent and how many were rejected. The queue holds at most 3
 reports or 30 MB, dropping the oldest, and expires reports after 7 days.
 
+If the queue cannot write a signed-in submission, the submitter sends the bundle directly. Sent and Rejected
+remain final results. An unsent result carries `queue_failed` because no durable copy could be kept.
+A signed-out submission is never sent directly.
+
 ## Viewer
 
 `BugReportViewerPage.Render(model)` returns one self-contained HTML page with the screenshot, a clip player, a frame

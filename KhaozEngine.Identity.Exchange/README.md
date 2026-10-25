@@ -8,6 +8,9 @@ Opt-in, in NO umbrella. It references `KhaozEngine.Identity` (the validator seam
 `KhaozEngine.Accounts` (the account store) and `KhaozEngine.Netcode` (`SignedToken`, `SigningSecret`) and nothing
 else. A dedicated auth service references it. A game server and a game client never need to.
 
+The auth service adds this package directly without taking the simulation stack from `Server` or a client
+umbrella. Clients need only the wire DTOs in `Identity`, which is included in `Foundation`.
+
 ## Public API
 
 | Type | What it does |

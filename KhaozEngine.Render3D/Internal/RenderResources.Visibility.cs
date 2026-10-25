@@ -27,10 +27,10 @@ internal sealed partial class RenderResources
         return _gd.Factory.CreateFramebuffer(DepthStencil, attachments.ToArray());
     }
 
-    void DisposeVisibility()
+    void DisposeVisibility(GpuRetireQueue? retired)
     {
-        MsLitVisibilityTex?.Dispose();
-        LitVisibilityTex?.Dispose();
+        ResourceRetirement.Free(MsLitVisibilityTex, retired);
+        ResourceRetirement.Free(LitVisibilityTex, retired);
         MsLitVisibilityTex = LitVisibilityTex = null;
     }
 }

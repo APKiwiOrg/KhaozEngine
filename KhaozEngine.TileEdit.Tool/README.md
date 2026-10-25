@@ -297,10 +297,10 @@ at or below 0, which the catalog loader would refuse. Those archetypes take a ha
 the measure result pass straight into `heights`, since both carry `id` and `height`.
 
 Writing changes catalog FILES, never the world, so it is not an undo step. Each height goes into the one file the
-loader recorded the archetype from (`TileWorldCatalogs.ArchetypeSource`). The writer edits the JSON text in place:
-a new `collisionHeight` goes right after `collisionKind` (or last when the entry has none) with the entry's own
-separator, line ending and indentation, an existing one has only its value replaced, and comments, trailing
-commas, a byte order mark and every other byte stay. A catalog with nothing to change is not rewritten. The
+loader recorded the archetype from (`TileWorldCatalogs.ArchetypeSource`). `CatalogWriter` edits the JSON text
+in place: a new `collisionHeight` goes right after `collisionKind` (or last when the entry has none) with
+the entry's own separator, line ending and indentation, an existing one has only its value replaced, and
+comments, trailing commas, a byte order mark and every other byte stay. A catalog with nothing to change is not rewritten. The
 number is the float's shortest invariant round-trip form. An archetype that already records a height is skipped
 unless `overwrite`, a height that is not a finite number above 0 or an id the open catalogs do not define is an
 error entry, and every file is checked to load before any is written.
@@ -371,6 +371,9 @@ Read an area with `tiles_get_rect` or `walkable_rect` for a few hundred tokens r
 batch of edits shows where the history and the dirty flag stand.
 
 ## Composition
+
+`QueryService`, `MutationService` and `RenderService` share the open `TileEditSession`.
+`TopDownOverlayPainter` paints the requested overlays into the captured top-down image.
 
 `Tools/McpBootstrap.cs` is the one place the server's services and verb classes are registered, shared by the
 stdio host in `Program.cs` and by the in-process wire-level tests, so the two can never disagree on which verbs

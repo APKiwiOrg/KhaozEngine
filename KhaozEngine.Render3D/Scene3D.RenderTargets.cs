@@ -37,17 +37,17 @@ namespace KhaozEngine.Render3D
         {
             var modelOut = _res.ModelFB.Outputs;
             _model.SetOutputs(modelOut);
-            _texBillboards.SetOutputs(modelOut);
-            _beams.SetOutputs(modelOut);
-            _trails.SetOutputs(modelOut);
+            _texBillboards.SetOutputs(modelOut, _retired);
+            _beams.SetOutputs(modelOut, _retired);
+            _trails.SetOutputs(modelOut, _retired);
             _overlayMeshes.SetOutputs(modelOut);
-            _silhouettes.SetOutputs(modelOut);
+            _silhouettes.SetOutputs(modelOut, _retired);
             _decalRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
             _particleRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
-            _sky.SetOutputs(_res.ColorDepthFB.Outputs);
-            _starfield.SetOutputs(_res.ColorDepthFB.Outputs);
+            _sky.SetOutputs(_res.ColorDepthFB.Outputs, _retired);
+            _starfield.SetOutputs(_res.ColorDepthFB.Outputs, _retired);
             _water.SetOutputs(_res.ColorDepthFB.Outputs);
-            _depthLines.SetOutputs(_res.ColorDepthFB.Outputs);
+            _depthLines.SetOutputs(_res.ColorDepthFB.Outputs, _retired);
         }
 
         /// <summary>
@@ -114,13 +114,11 @@ namespace KhaozEngine.Render3D
             if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged || bloomChanged || hdrChanged
                 || motionChanged)
             {
-                // A pipeline in flight may reference the old sample count / colour format / targets. A MSAA, HDR or
-                // temporal toggle is rare, so idling before recreating the MRT + rebuilding pipelines is cheap insurance.
+                // Outgoing targets, bindings and pipelines share the scene completion queue.
                 bool rebuild = sampleChanged || hdrChanged || motionChanged;
-                if (rebuild) _gd.WaitForIdle();
                 _res.Resize(tw, th, wantMips, samples, bloom, Post.Hdr.Enabled, motion, pings, visibility);
-                if (!_frameResolves) _post.BindTargets(_res);   // a resolving frame keeps _post on the display targets
-                _transitions.BindTargets(_res);
+                if (!_frameResolves) _post.BindTargets(_res, _retired);   // a resolving frame keeps _post on the display targets
+                _transitions.BindTargets(_res, _retired);
                 if (rebuild) RebuildMrtRenderers();   // match the renderers' pipelines to the new MRT
             }
             else

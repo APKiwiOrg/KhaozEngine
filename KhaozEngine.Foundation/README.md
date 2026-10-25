@@ -1,9 +1,8 @@
 # KhaozEngine.Foundation
 
-Umbrella metapackage for the MonoGame-free, GPU-free foundation. Contains no code, it is a
-curated dependency group: one `<PackageReference>` gives a gameplay-logic library, a tool, or
-any non-rendering project the engine's shared building blocks without pulling Windowing,
-Render2D/3D, Gui, Audio, or any GPU.
+Use this bundle for a gameplay-logic library, a headless tool or another project that needs the engine's shared
+building blocks. This code-free metapackage provides them with one package reference and no renderer, windowing
+or audio dependency.
 
 Pulls in:
 
@@ -54,7 +53,7 @@ Pulls in:
 - `KhaozEngine.MapDoc` - the zone/map document format: load/save/validate/migrate a versioned JSON model
   (terrain with parametric features, scatter and companion layers, exclusion/override shapes, authored
   placements, spawns, regions) plus `MapRuntime` builders that produce the exact `TerrainField`/
-  `ScatterConfig`/`PropPlacement` objects games consume. Native format 7 also carries rigid prefab payload 1,
+  `ScatterConfig`/`PropPlacement` objects games consume. Native format 9 also carries rigid prefab payload 1,
   effective support/paint/water, rooms, storeys, roof intent, lights and markers with pure edit preparation.
   The headless physics builder and authoring tools remain explicit opt-ins.
 - `KhaozEngine.TileWorld` - the OSRS-style tile world document: 64x64 tile regions with stacked planes, a
@@ -68,9 +67,6 @@ Pulls in:
 - `KhaozEngine.Updates` - delta auto-update pipeline.
 - `KhaozEngine.CodeHealth.Analyzers` - compile-time file-size ratchet diagnostics and `buildTransitive` baseline
   discovery. The umbrella packs it with `PrivateAssets="none"` so both assets flow to consumers.
-
-The old Localization and Pooling packages were absorbed into `App` and `Primitives` in 9.0.0,
-so they no longer appear as separate references.
 
 Also ships buildTransitive build defaults that flow to every consumer, whether Foundation is
 referenced directly or via `Game2D`/`Game3D`/`Server`:

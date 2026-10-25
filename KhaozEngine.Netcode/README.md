@@ -1,6 +1,19 @@
 # KhaozEngine.Netcode
 
-Game-agnostic, transport-free netcode primitives.
+Game-agnostic, transport-free netcode primitives using `System.Numerics`.
+
+## Sessions and rate limiting
+
+`INetTransport` is the byte-transport seam, with `NetConnectionId` identifying a peer and `NetEvent` carrying
+connection, disconnection and data events. `NetServer` and `NetClient` add the Hello/Welcome handshake and player
+slot assignment. The server's `IConnectionAuthenticator` validates the connect token and returns the verified
+subject. Use the in-memory transports below for local play and headless tests, or add
+`KhaozEngine.Netcode.LiteNetLib` for UDP.
+
+`RateLimiter` is a deterministic token bucket for one connection's inbound messages. Construct it with a burst
+`capacity` and `refillPerStep`, call `Refill()` once per simulation step and `TryConsume()` once per message.
+`Refill(steps)` scales the refill for a variable-length simulation frame. The bucket starts full, caps at
+`Capacity`, and uses no wall clock. The host decides how to handle a refused message.
 
 ## In-memory transports
 
@@ -243,7 +256,7 @@ var moves = new RemoteCommandQueue<MyCommand>(neutralCommand: MyCommand.Idle, ca
 The defensive hard cap behind the `NetServer` session inbox and the LiteNetLib transport inboxes. FIFO, and at
 capacity a new item evicts the oldest (drop-oldest, keep-newest) so a host that stalls or is flooded cannot grow
 undrained events without bound. `DroppedCount` counts the evictions, and stays 0 for a host that drains to empty
-each tick as contracted.
+each tick as contracted. `NetServer.DroppedEventCount` exposes the session inbox's count.
 
 `EnqueueTerminal` posts an item the cap does not apply to and an eviction will never drop. Use it for events
 whose loss corrupts state rather than merely losing traffic, because nothing re-announces them: a peer's
@@ -268,8 +281,8 @@ latest-wins) vs reliable (spawns/destroys/events, must-arrive-ordered) content a
 sub-batch. Because it names no transport type, a DTO that lives in a transport-agnostic project (e.g.
 one shared with a web server) can implement it without referencing any UDP library.
 
-> These two types now physically live in the zero-dependency **`KhaozEngine.Netcode.Abstractions`**
-> package (BCL only, no MonoGame). A MonoGame-free DTO project should reference **only** that package.
+> These two types live in the zero-dependency **`KhaozEngine.Netcode.Abstractions`** package (BCL only).
+> A transport-agnostic DTO project should reference **only** that package.
 > `KhaozEngine.Netcode` type-forwards both, so referencing `KhaozEngine.Netcode` still binds them with
 > no source change. The namespace stays `KhaozEngine.Netcode` either way.
 

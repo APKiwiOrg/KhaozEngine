@@ -1,14 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>KhaozEngine.Ecs</PackageId>
-    <!-- Graduated onto the shared 5.x line at 5.46.0 (was the 4.x <Version>); MonoGame-free foundation. -->
     <Version>$(KhaozEngineVersion)</Version>
     <Description>Game-agnostic struct-based archetype ECS: versioned entities, ref access, ForEach queries, command buffer, resources, systems.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
-    <!-- MonoGame-free: the ECS source uses no Xna types, so the custom 5.x stack can reuse it. Its only dep,
-         KhaozEngine.Serialization, is pure BCL. -->
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <!-- Parallel ForEach (7.42.0) fans archetype row ranges across the shared IJobScheduler worker-pool seam,

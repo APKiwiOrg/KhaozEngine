@@ -1,10 +1,10 @@
 # Using KhaozEngine - the consumer contract
 
 This is the authoritative guide to what KhaozEngine does and **how it must be used** by the games that depend
-on it. The engine is **MonoGame-free**: Silk.NET windowing/input, the engine's own Metal / Direct3D 11 / Vulkan
-backends behind `KhaozEngine.Gpu` for the GPU,
-Silk.NET.OpenAL for audio, `System.Numerics` math throughout. Read the [Hard rules](#hard-rules) first. The rest
-is reference.
+on it. The stack is Silk.NET windowing and input, the engine's own Metal, Direct3D 11 and Vulkan backends
+behind `KhaozEngine.Gpu` for the GPU, Silk.NET.OpenAL for audio, and `System.Numerics` math throughout. Read
+the [Hard rules](#hard-rules) first. The rest is reference. Every package is listed in
+[PACKAGES.md](PACKAGES.md).
 
 This file is large (about 540 KB) and is a reference, not a read-through. Jump via the contents below,
 or grep it: every section is an `##` heading named after the package or feature it covers.
@@ -163,7 +163,7 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
    [Overlapping windows](#overlapping-windows-windowstack-2130).
 6. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
    drawn. `GameApp` does this for you. If you build your own loop, do it yourself.
-7. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
+7. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4` for every vector and matrix. (An RGBA color
    is `KhaozEngine.Primitives.Color`, not a bare `Vector4`. GPU-layout structs still use `Vector4`.) To dim
    or brighten a color for a tint, use `color.ScaleRgb(factor)`: it scales RGB and keeps alpha. `color *
    factor` scales alpha too, which under the 2D batch's straight-alpha blend turns a dim into translucency
@@ -3709,6 +3709,38 @@ batch.DrawString(font, "Hello", new Vector2(100, 60), Color.White);  // a bare p
 batch.End();
 ```
 
+### Alpha-masked sprites
+
+`SpriteBatch.DrawMasked` draws source colour through an independently sampled alpha mask. Both source and
+mask regions are normalized `(u0, v0, u1, v1)` endpoints, not origin and size. Reverse either region to flip
+that input. Each destination can be a `Vector4(x, y, width, height)` or a typed `Rect`. For each destination
+type there are three forms, six overloads in total: explicit regions with flat tint, explicit regions with
+`top` and `bottom` tint, or whole source and mask regions with flat tint.
+
+```csharp
+batch.Begin(Viewport, SamplerMode.Point);
+batch.DrawMasked(source, destination, sourceUv, mask, maskUv, Color.White);
+batch.DrawMasked(source, gradientDestination, sourceUv, mask, maskUv, topTint, bottomTint,
+    SamplerMode.Linear);
+batch.DrawMasked(source, wholeImageDestination, mask, Color.White, SamplerMode.Point);
+batch.End();
+```
+
+The source follows the active `Begin` sampler. The mask defaults to `Linear` independently, including in a
+`Point` source pass. Source and tint are straight alpha. A vertical gradient interpolates RGBA, including
+tint alpha. Only mask alpha contributes coverage. Mask RGB is ignored, and coverage multiplies tinted source
+alpha once before the existing Alpha or Additive blend equation. UVs and tint belong to vertices, so changing
+only those does not split a run. Linear filtering needs padded atlas gutters because clamp addresses the full
+texture, not the selected region.
+
+The caller owns both inputs and must keep them alive through completion of queued GPU work. A completed
+same-device producer target with sampleable usage can be used directly as source or mask without copies or
+readback. Resolve MSAA inputs into sampleable single-sample textures first. Sampling an attachment while
+drawing into it is unsupported feedback. Masked pipelines are lazy. Ordinary draws keep their original
+shaders, two-resource bindings and 384-byte quad uploads. The shared run dispatch and lazy owner add CPU
+bookkeeping, not an extra ordinary texture fetch. See the
+[six API signatures](../KhaozEngine.Render2D/README.md#spritebatchdrawmasked).
+
 ### Fonts: no system font, no hard-coded path
 
 The engine never depends on a system font and you should never hard-code one (e.g. the macOS-only
@@ -3772,11 +3804,11 @@ inside the callback: the command list it is recording into still names them unti
 - Blend mode: `batch.BlendMode = BlendMode.Additive` switches subsequent draws to additive compositing (glows,
   sparks, beams); it can change mid-batch (per quad) and painter's order is preserved across modes. Each `Begin`
   resets it to `BlendMode.Alpha` (the default, source-over).
-- Texture grouping: `batch.GroupByTexture = true` groups queued quads by texture at flush regardless of
-  submission order (fewer draw calls when interleaved same-texture draws would otherwise split into separate
-  runs), trading away painter's order BETWEEN textures (order stays intact WITHIN one texture's group). Off by
-  default and reset by every `Begin`. Only turn it on for a pass whose visual correctness does not depend on
-  cross-texture draw order (e.g. not a scene with overlapping alpha-blended sprites of different textures).
+- Texture grouping: `batch.GroupByTexture = true` groups queued quads by their complete run key at flush.
+  Ordinary keys distinguish source texture and blend. Masked keys distinguish source texture, source sampler,
+  mask texture, mask sampler and blend. Order stays intact within a key, but order between keys is lost, even
+  for two masks of one source. Off by default and reset by every `Begin`. Only enable it when correctness does
+  not depend on order between keys. Each pass has one source sampler, selected by `Begin`.
 - `SpriteBatch.Flush()` submits queued draws without ending the active batch. Flush before enabling texture
   grouping and again before disabling it to isolate one unordered group inside a larger ordered pass. It
   preserves transform, sampler, blend and scissor state. Calling it outside `Begin`/`End` throws.
@@ -4962,9 +4994,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
 
       Both calls validate before queueing. If several valid requests arrive before the next frame, only the latest
       layout is kept. `Scene3D.Begin()` applies it before any command list begins. An unchanged layout is a no-op. A
-      changed layout waits for submitted GPU work once at that frame boundary, builds a complete atlas and replacement
-      bindings for rigid, skinned, splat, and tile-ground receivers, then swaps the graph as one transaction. This is
-      a rare settings-change hitch, not work added to ordinary frames. If allocation or binding creation fails, the
+      changed layout builds a complete atlas and replacement bindings for rigid, skinned, splat, and tile-ground
+      receivers, then swaps the graph as one transaction. The old graph and receiver sets enter the scene retirement
+      queue without a device drain. If allocation or binding creation fails, the
       current atlas and committed property values remain active. The scene logs one error for that failed request and
       remains drawable. A request changes only the atlas layout. The current shadow mode, strength, bias, distance,
       blend, and filtering settings stay unchanged. Issue requests on the scene thread, like every other `Scene3D`
@@ -17336,7 +17368,7 @@ Rules:
 
 ## Audio (`KhaozEngine.Audio`)
 
-`AudioSystem` over a cross-platform OpenAL (Silk.NET.OpenAL) backend, no MonoGame. Streaming music (WAV/OGG/MP3,
+`AudioSystem` over a cross-platform OpenAL (Silk.NET.OpenAL) backend. Streaming music (WAV/OGG/MP3,
 one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), SFX one-shots, and 3D positional audio
 (`PlaySfx`/`PlaySfx3D`/`SetListener`, a 16-voice pool, per-channel volume). `LoadContent(directory)` +
 `Update()` per frame.
@@ -17638,7 +17670,8 @@ trap is why a game ended up drawing a second always-on readout beside the engine
 **Frame draw counters (`RenderFrameStats`).** Each render surface keeps an always-on, allocation-free per-frame
 tally in `KhaozEngine.Primitives.RenderFrameStats`: `DrawCalls`, `Instances`, `Triangles` (estimated from the
 indexed-draw sizes), `BufferUpdateBytes` (per-frame streaming), plus the 2D `Quads` / `Flushes` /
-`TextureSwitches`. Read them after the frame's draws and sum with `+`:
+`TextureSwitches`. The latter counts source texture transitions, including the first bind. A mask-only
+switch can add a draw without changing it. Read them after the frame's draws and sum with `+`:
 
 **The upload split (read this before optimising an upload number).** `BufferUpdateBytes` is a TOTAL over four
 unrelated streams, so on its own it cannot tell you which one to go after. Four fields partition it exactly
@@ -23979,7 +24012,8 @@ Disposing a GPU resource (texture, buffer, resource set) while queued GPU work m
 is a use-after-free. Most hardware drivers absorb it silently, but Mesa lavapipe's async queue-submit
 thread crashes on it, which is how the engine found this class of bug. Any MID-LIFE disposal (an
 unload, a resize, a cache eviction: anything that is not part of full device teardown already guarded
-by a drain) must call `IGpuDevice.WaitForIdle()` first, then dispose:
+by a drain) must defer destruction through `GpuRetireQueue`, or call `IGpuDevice.WaitForIdle()` first
+when no completion queue is available, then dispose:
 
 ```csharp
 IGpuTexture old = _texture;
@@ -23995,8 +24029,11 @@ is disposed, `WaitForIdle` is a safe no-op AND disposing any resource the device
 no-op (device destruction already freed all child objects), so a wrapper that outlives its device at
 teardown can neither drain nor destroy against a dead device. The incumbent's deferred-disposal path was
 evaluated as a non-stalling alternative and rejected: under Mesa's threaded queue its disposal flush
-could lose a wakeup and hang the process, so the engine drains instead. The engine's own renderers follow this rule for resize-driven render target replacement
-(`RenderResources`, `Render3DPreview.Resize`), which has no frame boundary left to reach. A custom
+could lose a wakeup and hang the process. The engine's completion queue avoids that incumbent path.
+`Scene3D` now retires replaced cascade and point-shadow atlases, receiver sets, MRT attachments, dependent
+pipelines and post targets through its queue. Cached depth bindings for decals, particles, distortion and
+water retire with those targets. Standalone `RenderResources` and `Render3DPreview.Resize`
+keep the drain when no frame completion queue is supplied. A custom
 renderer or content-streaming system built directly on `KhaozEngine.Gpu` should follow the same rule for
 anything it frees outside of full teardown, or hand the resource to a `GpuRetireQueue` (below) and never
 drain at all.
@@ -24073,15 +24110,19 @@ whichever of those variables its backend reads, one extra sealed batch per extra
 `GpuRetireQueue.ValveDrains` counts the firings and
 `SealedBatchCount` is the batch-level view of the holding, next to `Scene3D.RetiredResourceCount`.
 
-**2D set eviction does not drain either, since 17.37.0.** `SpriteBatch` keeps one resource set per
-`(texture, sampler)` and evicts the ones unused for `600` frames, and that sweep used to take a full
+**2D set eviction does not drain either, since 17.37.0.** `SpriteBatch` keeps ordinary resource sets per
+`(texture, sampler)`, aged by source texture use. Masked sets are cached and aged per
+`(source, source sampler, mask, mask sampler)` tuple, shared across Alpha and Additive. After `600` unused
+frames, a masked tuple loses its set and both grouping keys, so a hot source cannot keep obsolete masks
+alive. The ordinary sweep used to take a full
 `WaitForIdle` on the frame thread every time anything aged out: a guaranteed hitch roughly every ten
 seconds for a game that streams sprites ([#84](https://github.com/APKiwiOrg/KhaozEngine/issues/84)). The
 evicted sets, and the buffers a UBO or vertex-buffer grow replaces, go to a `GpuRetireQueue` now. It is a
 frame-counted one rather than a fenced one, because `SpriteBatch.NewFrame` is called from inside the
 frame's own recording and a fence there would be the nested recording the seam refuses. Nothing about
 `SetEvictAfterFrames` changed: a set becomes eligible on exactly the frame it always did, and only the
-disposal moved behind the queue's deferral. Pixels are unaffected.
+disposal moved behind the queue's deferral. Masked eviction uses the same retirement queue. Eviction never
+owns the input textures or makes early caller disposal safe. Pixels are unaffected.
 
 **`GpuRetireQueue`: the whole mechanism, owned by the seam.** Feed it, advance it once per frame, dispose
 it at teardown. It is what both engine renderers use, and a renderer of your own gets the same behaviour
@@ -24102,6 +24143,28 @@ void Unload(MyThing thing)
 
 public void Dispose() => _retire.Dispose();   // one drain, then the tail
 ```
+
+A host that already owns `GpuFrameSubmission` can call `queue.BeginFrame(frame.Submission)` in its
+prepare callback instead. `Scene3D.BeginFrame(frame.Submission)` applies that policy to the scene queue
+while doing the ordinary scene begin work. The queue borrows the host fence and never resets or disposes
+it. It frees a batch only after completion. An abandoned recording unseals its retirement tail without
+freeing anything, because abandonment proves nothing about earlier submitted readers. A failed submit
+keeps the batch quarantined until completion or a successful host teardown drain. The host must submit
+before the next boundary and outlive the queue, or complete its own teardown before the scene is disposed.
+If no host completion slot is available, the call refuses without a new submission or an unsafe free. Devices without
+completion fences retain the existing drain fallback.
+
+Retirement increases peak memory by the pending outgoing graphs. After each boundary the existing queue
+cap limits sealed batches to `MaxSealedBatches` (normally eight), plus the current unsealed burst. For one
+replacement of a resource family per frame, this is at most nine outgoing generations plus the live one.
+Multiply each family's maximum graph bytes by nine for its extra queue-owned storage bound. Multiple replacements
+within one frame count as that frame's burst, which the host must bound. Logical cascade texture payload is
+`9 * cascadeCount * resolution^2` bytes per graph before native allocation alignment. Point atlases use
+`54 * faceResolution^2 * rows` bytes, for each base or transient graph. MRT storage follows dimensions,
+sample count, formats and optional attachments. Pipelines and descriptor sets add backend-specific storage. This bounds queue-owned logical resources,
+not total native VRAM, which also includes backend retirement and allocation alignment.
+The existing safety valve still drains if the CPU exceeds the cap. A host sharing three completion slots
+and completing each three-frame batch stays below it, without relaxing the frame guards.
 
 `Create` mints its fence by opening a command list of its own, so it must be built and advanced where
 NOTHING is recording on the device: the frame's PREPARE phase, not its record phase. Called from inside

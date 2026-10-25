@@ -69,7 +69,7 @@ public sealed partial class RendererPerfColdLifecycleTests
             receivers = ShadowReceivers(scene).Cast<FakeResourceSet>().ToArray();
             for (int i = 0; i < receivers.Length; i++)
             {
-                Assert.NotSame(before[i], receivers[i]); Assert.True(((FakeResourceSet)before[i]).Disposed);
+                Assert.NotSame(before[i], receivers[i]); Assert.False(((FakeResourceSet)before[i]).Disposed);
                 Assert.Contains(receivers[i].Resources, r => ReferenceEquals(r, baseAtlas.Texture));
                 Assert.Contains(receivers[i].Resources, r => ReferenceEquals(r, transientAtlas.Texture));
                 int index = i;

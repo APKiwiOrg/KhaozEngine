@@ -31,12 +31,12 @@ public sealed class ShadowLayoutReplacementTests
         bool replaced = rig.Replace(resolution: 3072, cascades: 4);
 
         Assert.True(replaced);
-        Assert.Equal(waits + 1, rig.Device.WaitForIdleCalls);
+        Assert.Equal(waits, rig.Device.WaitForIdleCalls);
         Assert.NotSame(oldAtlas, rig.AtlasHandle);
-        Assert.True(((FakeTexture)oldAtlas).Disposed);
+        Assert.False(((FakeTexture)oldAtlas).Disposed);
         Assert.Equal(3072, rig.Settings.ShadowMapResolution);
         Assert.Equal(4, rig.Settings.ShadowCascadeCount);
-        Assert.All(oldSets, set => Assert.True(set.Disposed));
+        Assert.All(oldSets, set => Assert.False(set.Disposed));
         Assert.Equal(7, rig.SamplingSets.Count);
         Assert.All(rig.SamplingSets, set => Assert.Same(rig.AtlasHandle, set.ShadowTexture));
         rig.RenderFrame();
@@ -62,7 +62,7 @@ public sealed class ShadowLayoutReplacementTests
         bool replaced = rig.Replace(resolution: 3072, cascades: 4);
 
         Assert.False(replaced);
-        Assert.Equal(waits + 1, rig.Device.WaitForIdleCalls);
+        Assert.Equal(waits, rig.Device.WaitForIdleCalls);
         Assert.Same(oldAtlas, rig.AtlasHandle);
         Assert.False(((FakeTexture)oldAtlas).Disposed);
         Assert.Equal(2048, rig.Settings.ShadowMapResolution);

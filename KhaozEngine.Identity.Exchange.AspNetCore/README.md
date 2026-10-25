@@ -9,6 +9,9 @@ framework (a `FrameworkReference`) and nothing else. With `KhaozEngine.Server.Ad
 packages that reference ASP.NET Core, so only a dedicated auth service carries it. A game server and a game client
 never need it.
 
+A simulation server that hosts no auth endpoint does not need the ASP.NET Core shared framework, so this
+handler stays outside `Server` as well as the client umbrellas.
+
 ## Mounting it
 
 ```csharp

@@ -33,9 +33,10 @@ the immediate transaction before any DDL runs. Missing ledger indexes alone are 
 including the unique index that enforces idempotency.
 
 Opt-in: pulls `Microsoft.Data.Sqlite` without touching the dependency-free `KhaozEngine.Commerce` core. Not
-bundled in the `Server` umbrella. Dispose the store to close the connection. The connection is never pooled, so the OS
-handle on the database file is genuinely released on dispose rather than parked in the provider's pool, and the
-file can be deleted, rotated or exclusively opened straight after (since 17.41.0).
+bundled in any umbrella, including `Server`. Add it explicitly when choosing SQLite for durable wallet storage.
+Dispose the store to close the connection. The connection is never pooled, so the OS handle on the database file
+is genuinely released on dispose rather than parked in the provider's pool, and the file can be deleted, rotated
+or exclusively opened straight after.
 
 The connection, the operation gate and that dispose are `KhaozEngine.Sqlite`'s `SqliteStoreConnection`, shared
 with every other SQLite store in the engine. `SqliteSchemaWidening` coordinates the schema check and locked recheck.

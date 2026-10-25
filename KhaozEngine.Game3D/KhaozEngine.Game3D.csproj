@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Game3D</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>Umbrella metapackage for a desktop 3D game on the KhaozEngine 5.x stack: a strict superset of KhaozEngine.Game2D plus Render3D, Render3D.Ecs (Transform3D, MeshInstance and the Scene3DBinder ECS draw) and Game.Render3D (the 3D scene integration: GameApp3D, IGameScene3D, and the SceneManager.Draw3D extension), the Ground* telegraph extensions, Terrain.Render3D (the chunked-LOD terrain mesh builder over KhaozEngine.Terrain's analytic field), and TileWorld.Render3D (the ground mesher, prop path, region streaming and snapshot capture that render a KhaozEngine.TileWorld document). One reference gives the full 2D + 3D + game-loop stack. No networking (Netcode) - add KhaozEngine.Netcode.LiteNetLib if you need it. Contains no code; just dependencies.</Description>
+    <Description>Desktop 3D game bundle containing Game2D plus Render3D, Attachments.Render3D, Render3D.Ecs, Game.Render3D, Particles.Render3D, Telegraphs.Render3D, Terrain.Render3D and TileWorld.Render3D. Includes 3D scenes, rigid attachments, ECS drawing, particles, ground telegraphs, terrain streaming and tile-world rendering with the complete 2D runtime and game-loop framework. Add Netcode.LiteNetLib for multiplayer transport. Contains only dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>

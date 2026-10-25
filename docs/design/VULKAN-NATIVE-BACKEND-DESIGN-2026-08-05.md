@@ -607,7 +607,7 @@ Guard work the package creates, all mechanical and all precedented:
   `EveryThirdPartyPackage_IsDeliberatelyMapped` fails.
 - `KhaozEngine.slnx` gains the project, which force-adds `KhaozEngine.Tests` to the selective-test set, so the
   architecture guards run on the landing PR.
-- `check-doc-versions.sh` requires a bolded `**KhaozEngine.Gpu.Vulkan**` catalog row in the root `README.md`
+- `check-doc-versions.sh` requires a `docs/PACKAGES.md` catalog row linking `KhaozEngine.Gpu.Vulkan/README.md`
   and a `KhaozEngine.Gpu.Vulkan/README.md` shipped via `<PackageReadmeFile>`.
 - `GpuPublicApiTests` extends its walk to the new assembly, for `Veldrid` and for `Silk` in the public surface.
 - The no-Veldrid-edge pair, generalised from the D3D11 originals: a csproj read and an IL reference walk. The

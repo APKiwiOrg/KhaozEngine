@@ -13,7 +13,7 @@ namespace KhaozEngine.Render2D
     /// <summary>
     /// Pure text-layout helpers (word-wrap + alignment) over an <see cref="ITextMeasurer"/>, plus draw
     /// overloads that take a <see cref="SpriteBatch"/> + <see cref="SpriteFont"/>. The layout math is
-    /// device-free and headless-testable. Ported from the 4.x <c>TextHelper</c> (which was MonoGame-bound).
+    /// device-free and headless-testable.
     /// </summary>
     public static class TextLayout
     {

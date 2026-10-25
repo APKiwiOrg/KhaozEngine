@@ -193,6 +193,8 @@ void main() {
                 new GpuVertexElement("Local", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Shape", GpuVertexElementFormat.Float4),
                 new GpuVertexElement("Mode", GpuVertexElementFormat.Float2));
+            _maskedOutput = output;
+            _maskedVertexLayout = vl;
             GpuPipelineDescription Describe(GpuBlendAttachment blend) => new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
@@ -260,6 +262,7 @@ void main() {
             _cl = cl; _vw = viewportW; _vh = viewportH; _flushIndex = 0; _beginIndex = 0; _batchActive = false;
             _frame++; _stats.Reset(); _lastBoundTex = null; _scissorStack.Clear();
             _retire.BeginFrame();   // frees what the GPU has provably finished with, and never stalls doing it
+            EvictMaskedSets();
             EvictStaleSets();
         }
 
@@ -651,7 +654,7 @@ void main() {
                 _gd.UpdateBuffer(vb, byteOffset, (ReadOnlySpan<V>)allVerts.Slice(start, count));
                 _stats.DrawCalls++;                                        // one draw call per emitted run
                 _stats.AddSpriteUpload((long)count * VertexSizeBytes);     // vertex bytes counted at upload
-                BindAndDraw(f, tex, vb, (uint)count, vertexStart);
+                BindAndDraw(f, key, tex, vb, (uint)count, vertexStart);
                 byteOffset += (uint)count * VertexSizeBytes;
                 vertexStart += (uint)count;
             }
@@ -689,20 +692,22 @@ void main() {
                 if (!ReferenceEquals(tex, _lastBoundTex)) { _stats.TextureSwitches++; _lastBoundTex = tex; }
                 _cl.SetPipeline(pipeline);
                 _stats.DrawCalls++;
-                BindAndDraw(f, tex, vb, groupCount, vertexStart);
+                BindAndDraw(f, key, tex, vb, groupCount, vertexStart);
                 vertexStart += groupCount;
             }
         }
 
-        // An additive run is keyed by an AdditiveKey wrapper. Everything else is a raw texture handle (alpha).
+        // Resolve masked bindings before the ordinary additive wrapper and raw alpha texture keys.
         void ResolveKey(object key, out IGpuTexture tex, out IGpuPipeline pipeline)
         {
+            if (TryResolveMaskedKey(key, out tex, out pipeline)) return;
             if (key is AdditiveKey ak) { tex = ak.Tex; pipeline = _additivePipeline; }
             else { tex = (IGpuTexture)key; pipeline = _pipeline; }
         }
 
-        void BindAndDraw(IGpuResourceFactory f, IGpuTexture tex, IGpuBuffer vb, uint vertexCount, uint vertexStart)
+        void BindAndDraw(IGpuResourceFactory f, object key, IGpuTexture tex, IGpuBuffer vb, uint vertexCount, uint vertexStart)
         {
+            if (TryBindMaskedAndDraw(key, vb, vertexCount, vertexStart)) return;
             var setKey = (tex, _sampler);
             if (!_sets.TryGetValue(setKey, out var set))
             {

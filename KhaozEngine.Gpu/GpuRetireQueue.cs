@@ -30,7 +30,7 @@ namespace KhaozEngine.Gpu
     /// the draws sitting in that list, and the resources freed immediately after it can still be referenced by
     /// them. That is a use-after-free with a drain in front of it, which reads as safe in review and segfaults
     /// under Mesa lavapipe. The per-frame answer is <see cref="GpuRetireQueue.Retire(System.IDisposable)"/> plus
-    /// <see cref="GpuRetireQueue.BeginFrame"/>, which is what the whole type is for.
+    /// <see cref="GpuRetireQueue.BeginFrame()"/>, which is what the whole type is for.
     /// </para>
     /// <para>
     /// It carries <see cref="Owner"/>, the recording that was open, for the same reason
@@ -81,7 +81,7 @@ namespace KhaozEngine.Gpu
     /// <item>A batch sealed as the counter moves to F holds exactly the resources retired while the counter read
     /// F-1 or less. Every command that could reference one of them was recorded into a frame whose command list
     /// was already submitted by then, because a host submits each frame's work between consecutive
-    /// <see cref="BeginFrame"/> calls (that is the contract, see the host note below).</item>
+    /// <see cref="BeginFrame()"/> calls (that is the contract, see the host note below).</item>
     /// <item>The batch's fence is submitted at that same boundary, so it sits AFTER all of that work in the
     /// submission stream. Polling it signaled therefore carries the same guarantee the <c>WaitForIdle</c> it
     /// replaced carried, taken at seal time rather than at free time. See <c>GpuRetireBarrier</c> for the
@@ -99,7 +99,7 @@ namespace KhaozEngine.Gpu
     /// which is the weaker argument and is why that factory carries its own contract.</para>
     /// <para><b>Not thread-safe.</b> It is the frame loop and nothing else: every member touches the same
     /// unsynchronized lists and frame counter, so retiring from a background build thread while the frame thread is
-    /// in <see cref="BeginFrame"/> corrupts it. A worker that wants a resource freed hands it to the frame thread
+    /// in <see cref="BeginFrame()"/> corrupts it. A worker that wants a resource freed hands it to the frame thread
     /// first, the way the streamer's apply step does.</para>
     /// <para><b>The safety valve.</b> On the fence path a batch lives until its fence signals, so a CPU that runs
     /// away from the GPU (a software rasterizer, a weak GPU, an offscreen loop with no swapchain to throttle it)
@@ -121,16 +121,17 @@ namespace KhaozEngine.Gpu
     /// the one the test gates on. The two frame-counted policies need no valve:
     /// a batch there dies on the count alone, which caps the holding at <see cref="FrameDelay"/> batches by
     /// construction.</para>
-    /// <para><b>It only frees on <see cref="BeginFrame"/>.</b> Nothing here is time-driven, so a renderer that
+    /// <para><b>Reclamation follows frame boundaries.</b> Standalone queues free on <see cref="BeginFrame()"/>.
+    /// A shared host can reclaim completed batches during its own begin or teardown. Nothing is time-driven, so a renderer that
     /// retires but never reaches a frame boundary holds every retired resource until <see cref="FlushAll"/> or
     /// teardown, which for a streaming world is the whole unloaded ring. A host that drives the renderer without a
     /// frame boundary (a tool, a test, an offscreen render) must call one of the two itself.</para>
     /// <para><b>Host contract.</b> A frame's command list must be submitted before the NEXT
-    /// <see cref="BeginFrame"/>. Every frame-loop host the engine ships does this (the windowed loop submits and
+    /// <see cref="BeginFrame()"/>. Every frame-loop host the engine ships does this (the windowed loop submits and
     /// presents at the end of the frame, and each offscreen capture submits inside the call that rendered), and
     /// point 1 above rests on it. A host that recorded draws across two Begin calls and submitted
     /// once at the end would break it, and would have been equally broken by the frame-count scheme.</para></summary>
-    public sealed class GpuRetireQueue : IDisposable
+    public sealed partial class GpuRetireQueue : IDisposable
     {
         /// <summary>Frame boundaries a retired resource waits before it is destroyed ON THE FALLBACK PATH (no
         /// GPU-completion fence). Three covers the deepest CPU-ahead-of-GPU window a vsynced frame loop reaches, so
@@ -195,7 +196,7 @@ namespace KhaozEngine.Gpu
         /// frame count plus one <see cref="IGpuDevice.WaitForIdle"/> everywhere else. A device with no completion
         /// fence is the supported fallback, not an error.
         /// <para>Minting a fence means opening a command list of its own, so this must be built for, and its
-        /// <see cref="BeginFrame"/> called from, a point where nothing is recording on the device. From inside an
+        /// <see cref="BeginFrame()"/> called from, a point where nothing is recording on the device. From inside an
         /// open recording the seam refuses that by name
         /// (<see cref="GpuNestedRecordingException"/>, <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/424">#424</see>).
         /// A renderer whose only per-frame hook is inside the record phase wants
@@ -359,7 +360,7 @@ namespace KhaozEngine.Gpu
         /// one <see cref="IGpuDevice.WaitForIdle"/> and frees the whole holding behind it (at least 1). This is the
         /// bound on how far the queue lets a CPU running ahead of the GPU grow it
         /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/425">#425</see>): after any
-        /// <see cref="BeginFrame"/>, no more than this many batches are held.
+        /// <see cref="BeginFrame()"/>, no more than this many batches are held.
         /// <para>It bounds BATCHES, not resources. One batch is one frame's retirements, so a caller that retires
         /// its whole world in a single frame still holds all of it for a frame or three, which is the caller's own
         /// burst and not something a deferral policy can shrink.</para>
@@ -381,7 +382,7 @@ namespace KhaozEngine.Gpu
 
         /// <summary>Batches sealed and waiting on their fence, one per frame boundary that had something to seal.
         /// This is the number the safety valve bounds, so it never exceeds <see cref="MaxSealedBatches"/> once a
-        /// <see cref="BeginFrame"/> has returned. Public because the valve's contract is written in batches rather
+        /// <see cref="BeginFrame()"/> has returned. Public because the valve's contract is written in batches rather
         /// than resources: <see cref="PendingCount"/> tells you how much is being held, this tells you how far
         /// behind the GPU is.</summary>
         public int SealedBatchCount => _batches.Count;
@@ -454,7 +455,7 @@ namespace KhaozEngine.Gpu
                 // Past the valve the ripeness question is already answered for every batch, so it is not asked.
                 // Re-polling the fences instead would rest on a backend surfacing its signal by the time
                 // WaitForIdle returns, which Metal signals from a completion handler and need not have run yet.
-                if (!valveOpen)
+                if (!valveOpen && !b.CompletionProved)
                 {
                     if (b.Fence is { } fence)
                     {
@@ -473,7 +474,7 @@ namespace KhaozEngine.Gpu
                 _pending.RemoveRange(0, b.Count);
                 _batched -= b.Count;
                 _batches.RemoveAt(0);
-                if (b.Fence is { } spent) _barrier!.Release(spent);
+                if (!b.SharedFence && b.Fence is { } spent) _barrier!.Release(spent);
             }
         }
 
@@ -498,7 +499,7 @@ namespace KhaozEngine.Gpu
         /// <see cref="GpuDrainDuringRecordingException"/> and frees nothing, because the drain it opens with says
         /// nothing about a list that has not been submitted, so the disposals behind it would be a use-after-free
         /// (see that type). The per-frame path is <see cref="Retire(System.IDisposable)"/> plus
-        /// <see cref="BeginFrame"/>, neither of which drains.</para>
+        /// <see cref="BeginFrame()"/>, neither of which drains.</para>
         /// <para><b>An EMPTY flush stays a no-op, deliberately, even mid-recording.</b> With nothing pending
         /// there is no drain and no disposal, so there is nothing for the refusal to protect, and refusing anyway
         /// would break the recovery path the seam's own nested-recording refusal creates: a capture refused
@@ -527,7 +528,7 @@ namespace KhaozEngine.Gpu
             _drainDevice();
             for (int i = 0; i < _pending.Count; i++) _pending[i].Dispose();
             _pending.Clear();
-            foreach (Batch b in _batches) if (b.Fence is { } fence) _barrier!.Release(fence);
+            foreach (Batch b in _batches) if (!b.SharedFence && b.Fence is { } fence) _barrier!.Release(fence);
             _batches.Clear();
             _batched = 0;
         }
@@ -551,9 +552,11 @@ namespace KhaozEngine.Gpu
             public readonly int Count;
             public readonly IGpuFence? Fence;
             public readonly int MaxRetiredAt;
-            public Batch(int count, IGpuFence? fence, int maxRetiredAt)
+            public readonly bool SharedFence, CompletionProved;
+            public Batch(int count, IGpuFence? fence, int maxRetiredAt, bool sharedFence = false, bool completionProved = false)
             {
                 Count = count; Fence = fence; MaxRetiredAt = maxRetiredAt;
+                SharedFence = sharedFence; CompletionProved = completionProved;
             }
         }
     }

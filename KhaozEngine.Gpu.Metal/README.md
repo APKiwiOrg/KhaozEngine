@@ -416,13 +416,10 @@ compiler collection session and native renderer acceptance remain later work. Se
 
 ## Resources, and the one creation this backend refuses
 
-`IGpuDevice.Factory` creates buffers, textures, samplers, fences, framebuffers and both pipelines, and the
-device's `PointSampler` and `LinearSampler` pair exists. A FRAMEBUFFER can be bound and cleared, which is row
-12's and which the render-pass section below covers, a RESOURCE SET can be bound, which is row 13's and which
-the bind-flush section covers, and a PIPELINE can be bound, which is row 11's and which the pipelines section
-covers. What is missing is the DRAW itself, so nothing is rendered yet: what is usable today is creation, the
-framebuffer bind and its clears, the resource-set binds, the pipeline binds, the device-level uploads, the
-record-time `UpdateBuffer` described below, and readback through `Map`.
+`IGpuDevice.Factory` creates buffers, textures, samplers, fences, framebuffers, resource layouts and sets,
+shader sets, compute shaders and both pipeline types. The device also owns shared `PointSampler` and
+`LinearSampler` instances. Command lists bind and clear framebuffers, bind resources and pipelines, draw,
+dispatch compute work, upload data and record transfers. Readback is available through `Map`.
 
 **The device's shared sampler pair is NON-OWNING, so a consumer that disposes what `PointSampler` handed it
 destroys nothing.** The device hands the same two objects to every caller for the process's life and releases

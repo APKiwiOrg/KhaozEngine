@@ -1,6 +1,6 @@
 # KhaozEngine.Diagnostics
 
-Game-agnostic logging **and runtime telemetry**. Pure .NET, no MonoGame dependency.
+Game-agnostic logging **and runtime telemetry**. Pure .NET.
 
 **Frameworks: `net8.0` and `net10.0`.** This leaf multi-targets `net8.0` alongside the engine-wide
 `net10.0` because `KhaozEngine.ServerStatus` references it and must be consumable from an Azure Functions

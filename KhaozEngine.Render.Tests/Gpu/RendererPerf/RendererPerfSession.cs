@@ -33,6 +33,7 @@ internal interface IRendererPerfNativeWork : IDisposable
     ImmutableDictionary<string, RendererPerfMetric> ControlMetrics => ImmutableDictionary<string, RendererPerfMetric>.Empty;
     void PrepareCold(int firstFrameIndex);
     void Prepare(int frameIndex);
+    void Prepare(int frameIndex, GpuFrameSubmission submission) => Prepare(frameIndex);
     void Record(IGpuCommandList commands, int frameIndex);
     void ValidateOutput() { }
 }

@@ -43,9 +43,9 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>Rebuild the pipeline for a new target output description (e.g. multisampled for MSAA - a
         /// pipeline's sample count must match its framebuffer). Layout/shaders/buffers are kept.</summary>
-        public void SetOutputs(GpuOutputDescription targetOutput)
+        public void SetOutputs(GpuOutputDescription targetOutput, GpuRetireQueue? retired = null)
         {
-            _pipeline.Dispose();
+            ResourceRetirement.Free(_pipeline, retired);
             _pipeline = BuildPipeline(_gd.Factory, targetOutput);
         }
 

@@ -5,6 +5,8 @@ The `ke-updater` dotnet tool. Generates, signs, and verifies KhaozEngine update 
 `ManifestSigner`, `ManifestVerifier`) for publish pipelines. The update client refuses unsigned
 manifests, so sign everything you publish.
 
+This is an author-time tool for publish pipelines, not a runtime package or an umbrella dependency.
+
 Install:
 
 ```bash

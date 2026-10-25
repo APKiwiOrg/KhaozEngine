@@ -5,6 +5,8 @@ controller and the netcode resolve against: authoritative on the server, re-run 
 prediction. Backends implement it (add [KhaozEngine.Physics.Bepu](../KhaozEngine.Physics.Bepu)
 explicitly, it is in no umbrella). Depends only on `System.Numerics`.
 
+The seam is included in `KhaozEngine.Foundation`, and through it in the game and server umbrellas.
+
 ## Support-query measurement
 
 `SupportQueryCapture`, `SupportQueryMeasurement`, `SupportQueryMetrics`, `SupportQueryCounter`,

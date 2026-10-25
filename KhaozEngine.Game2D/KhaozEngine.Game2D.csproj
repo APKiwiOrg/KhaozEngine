@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Game2D</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>Umbrella metapackage for a desktop 2D game on the KhaozEngine 5.x stack: the 2D runtime (Windowing, Render2D, Gui, Audio, Particles, Telegraphs) + the Game loop/scene framework (GameApp/SceneManager, now Render3D-free) + the MonoGame-free Foundation. No 3D (Render3D) and no networking (Netcode) - reference KhaozEngine.Game3D for the full 3D stack, or add KhaozEngine.Netcode.LiteNetLib for 2D multiplayer. Contains no code; just dependencies.</Description>
+    <Description>Desktop 2D game bundle with Windowing, Render2D, Gui, Audio, Particles, Telegraphs, the GameApp/SceneManager framework and Foundation. Includes the Metal, Direct3D 11 and Vulkan graphics backends with automatic platform registration, plus localization and code-health analyzers. Choose Game3D for 3D rendering, or add Netcode.LiteNetLib for multiplayer transport. Contains only dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
@@ -31,7 +31,7 @@
     <ProjectReference Include="../KhaozEngine.Particles/KhaozEngine.Particles.csproj" />
     <ProjectReference Include="../KhaozEngine.Telegraphs/KhaozEngine.Telegraphs.csproj" />
     <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
-    <!-- shared MonoGame-free foundation -->
+    <!-- shared foundation -->
     <!-- PrivateAssets keeps the BUILD asset flowing to the consumer (#722). The ProjectReference
          default is contentfiles;analyzers;build, which stamps exclude="Build,Analyzers" on the packed
          dependency, and that is what stopped Foundation's build/ files (the CETCompat and single-file

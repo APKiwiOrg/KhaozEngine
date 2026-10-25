@@ -95,6 +95,9 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   `TerrainChunkBuilder.Build` themselves. See the builder bullet above for the contract. Both settings are fixed
   for the sink's lifetime. A snow-line or rule change needs a new sink or `TerrainStreamer.Invalidate` to rebuild the
   loaded chunks.
+  CPU mesh builds run on background workers. The streamer's per-frame budget caps scene-thread GPU applies,
+  not CPU builds. Dispose the sink when rebuilding streaming against a surviving scene to release the loaded
+  ring and its props. The splat material remains caller-owned unless `ownsMaterial: true` was supplied.
   A game may also
   pass an **`IChunkDynamicsSource`** (`dynamicsSource` ctor param, requires `physics`) to spawn dynamic
   bodies per chunk: the source yields **`DynamicSpawn`**s (shape + pose + `DynamicBodyDescription`) for a
@@ -311,8 +314,9 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
 - **`TerrainChunkCollision`** - extracts a chunk's SURFACE triangles (skirts excluded, winding flipped so
   the collidable face points up) into a static `TriangleMeshShape`. `Build(TerrainChunkMesh)` or
   `Build(GltfMesh, surfaceVertexCount)`; returns null for an empty chunk. Render-free (no GPU), so terrain
-  collision is headless-testable. A Bepu mesh is not recentered, so the shape uses `Pose.Identity` (the
-  vertices carry world position). This is what `collideTerrain` uses per chunk.
+  collision is headless-testable. A Bepu mesh is not recentered. Register it at the chunk's region origin
+  reduced by `IPhysicsWorld.Origin`, because its vertices are chunk-local. This is what `collideTerrain` uses
+  per chunk.
 - **Splat materials** - **`TerrainMaterialLayer`** / **`TerrainLayeredMaterial`** (five tileable
   albedo + normal layers blended by the baked splat weights) and **`TerrainMaterialPresets.Procedural()`**
   (deterministic placeholder textures). Omit the material for the vertex-colour ramp fallback.

@@ -4,6 +4,8 @@ SQL Server and Azure SQL `IContentAuthoringStore` backend over `Microsoft.Data.S
 shared-authoring store for the content catalog. Opt-in: it is in no umbrella, and a game client never links it,
 because the read side is `KhaozEngine.Catalog` and takes no database dependency at all.
 
+It uses parameterized async ADO.NET with `@name` parameters and no ORM.
+
 ```csharp
 using KhaozEngine.Catalog.SqlServer;
 

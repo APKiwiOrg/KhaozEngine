@@ -92,7 +92,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// pipeline's sample count must match its framebuffer). Layout/shaders/buffers are kept.</summary>
         public void SetOutputs(GpuOutputDescription modelOutputs)
         {
-            _pipeline.Dispose();
+            if (!ShadowVisibilityTargets.HasVisibility(modelOutputs)) _visibilityShaders.Release(_retired);
+            _retired.Retire(_pipeline);
             _pipeline = BuildPipeline(_gd.Factory, modelOutputs);
             if (MotionMath.IsTemporal(modelOutputs)) return;
             // The temporal program the old pipeline used goes where this pass's grown-out buffers go.

@@ -2,8 +2,8 @@
 
 The editing kernel over a `KhaozEngine.TileWorld` document: every mutation is a reversible command, so undo
 and redo behave the same way whoever issued the edit. GPU-free and render-free, in the `Foundation` umbrella,
-referencing `KhaozEngine.TileWorld` and nothing else. Design rationale:
-`docs/design/TILE-WORLD-DESIGN-2026-08-15.md` in the engine repo.
+referencing `KhaozEngine.TileWorld` and `KhaozEngine.Imaging` for PNG heightmap imports. See the
+[tile-world design](../docs/design/TILE-WORLD-DESIGN-2026-08-15.md).
 
 ## Why it is its own package
 

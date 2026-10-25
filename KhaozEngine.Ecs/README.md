@@ -6,6 +6,9 @@ components are `struct`s implementing `IComponent`, stored in contiguous archety
 deferred structural changes, typed `Resources`, and ordered `ISystem`s. Independent of the
 input/screen packages and on the engine's shared version line.
 
+`CachedQuery` reuses a `Query` across ticks and rebuilds it when the backing `World` changes. Its
+matched archetypes still refresh when the world's archetype generation changes.
+
 ```csharp
 public struct Position : IComponent { public float X, Y; }
 public struct Velocity : IComponent { public float Dx, Dy; }
@@ -43,6 +46,11 @@ Opt-in data-parallel `World.ParallelForEach`/`Query.ParallelForEach` (fans an ar
 `EntityCommandBuffer` from an internal pool and returns it after playback. The lower-level
 `Query.ParallelForEach(action, scheduler, sink)` overload hands you freshly allocated, caller-owned buffers in
 your own sink instead, so external sink use never drains the World's pool.
+
+Parallel actions touch only the components handed to them by reference. The default-on
+`World.ParallelHazardChecks` guard throws `ParallelAccessViolationException` for a reentrant world call,
+including component reads and writes. Use the buffered overload for structural changes. A proven-pure
+shipping hot loop can disable the guard explicitly.
 
 `World.DefaultScheduler` (the scheduler a no-scheduler `ParallelForEach` call falls back to) defaults to the
 deterministic inline `SingleThreadedJobScheduler`, so a fresh `World` stays byte-identical to `ForEach` until

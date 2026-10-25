@@ -1,20 +1,17 @@
 # KhaozEngine.Game2D
 
-Umbrella metapackage for a desktop 2D game on the MonoGame-free KhaozEngine stack. Contains no
-code, it is a curated dependency group: one `<PackageReference>` instead of a dozen.
+Start a desktop 2D game with one package reference for windowing, rendering, UI, audio, particles and the game
+loop. This code-free metapackage bundles the runtime with the shared `KhaozEngine.Foundation` building blocks.
 
 Pulls in:
 
 - `KhaozEngine.Windowing` - `AppWindow` (Silk.NET/GLFW window + `Run` loop), the immutable
   `InputState` snapshot, `InputManager`/`Pointer`, and `GpuBackends`, the one boot registration.
 - `KhaozEngine.Gpu.Metal`, `KhaozEngine.Gpu.D3D11`, `KhaozEngine.Gpu.Vulkan` - the three
-  engine-owned graphics backends, carried here since 18.0.0. `KhaozEngine.Gpu` builds no device of
-  its own any more, so a graphics umbrella without them would ship a stack that throws at the first
-  device. ALL THREE ship rather than the build machine's one, because a NuGet package restores on
-  every platform its consumer builds on. A foreign one is inert: each is platform-guarded, its
-  interop sits behind `NoInlining` bodies the JIT never compiles off its platform, and
-  `GpuBackends.RegisterResolvedIfUnregistered()` registers only what this OS can run. A game needs
-  no startup call of its own, because `AppWindow` and both snapshot hosts make that one.
+  engine-owned graphics backends. All three ship so the bundle restores on every supported desktop platform.
+  Each backend is platform-guarded. `AppWindow` and both snapshot hosts call
+  `GpuBackends.RegisterResolvedIfUnregistered()` to register the resolved backend and this platform's fallback.
+  A game needs no backend package reference or registration call of its own.
 - `KhaozEngine.Render2D` - `SpriteBatch`, `SpriteFont`, `Texture2D`, `Camera2D`.
 - `KhaozEngine.Gui` - immediate-mode `GuiSurface` + the `ScreenStack`/widget retained UI.
 - `KhaozEngine.Audio` - OpenAL streaming music + SFX/3D positional one-shots.
@@ -30,9 +27,6 @@ Pulls in:
   `PrivateAssets="none"` so its analyzer assembly and `buildTransitive` baseline discovery props both flow
   through the packed umbrella and run in the consuming project's build.
 
-The old Effects package was absorbed into `Particles` in 9.0.0, so it no longer appears as a
-separate reference.
-
 ```xml
 <PackageReference Include="KhaozEngine.Game2D" Version="x.y.z" />
 ```
@@ -43,10 +37,9 @@ Deliberately NOT included:
 
 - No 3D. `Render3D` and the 3D bridges live in `KhaozEngine.Game3D` (a strict superset of this
   package). Reference that instead if you want a 3D world pass.
-- No networking. Add `KhaozEngine.Netcode.LiteNetLib` for 2D multiplayer.
+- Multiplayer transport. Add `KhaozEngine.Netcode.LiteNetLib` for 2D multiplayer. The bundle already carries
+  transport-free Netcode primitives through `Gui`.
 - No physics backend. The `Physics` seam rides in via Foundation, the BepuPhysics backend
   (`KhaozEngine.Physics.Bepu`) is an opt-in sibling you add explicitly.
-- No graphics backend is opt-in any more. The three above were opt-in siblings until 18.0.0, and
-  they are carried here now, so a repin drops any `KhaozEngineMetal.Register()` /
-  `KhaozEngineD3D11.Register()` / `KhaozEngineVulkan.Register()` line the game was making itself.
-  Keep the call only for a custom host that wants a backend this platform does not default to.
+
+A custom host can register a graphics backend explicitly when it needs a backend this platform does not default to.

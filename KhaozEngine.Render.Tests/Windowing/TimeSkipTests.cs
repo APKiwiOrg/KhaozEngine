@@ -4,7 +4,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Windowing
 {
-    /// <summary>5.x Windowing.TimeSkip (MonoGame-free port of the 4.x Time.TimeSkip). Pure / headless.</summary>
+    /// <summary>Headless tests for capped, scaled and minimum-threshold simulation catch-up.</summary>
     public class TimeSkipTests
     {
         [Fact]

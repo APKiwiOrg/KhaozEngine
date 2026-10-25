@@ -9,6 +9,32 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 public sealed class RendererPerfWorkflowTrustTests
 {
+    [Fact]
+    public void Renderer_measurement_environment_opts_out_of_cli_telemetry()
+    {
+        string environment = RendererJob().Split("    env:\n", 2)[1].Split("    steps:\n", 2)[0];
+        Assert.Equal("1", Setting(environment, "DOTNET_CLI_TELEMETRY_OPTOUT"));
+    }
+
+    [Fact]
+    public void Renderer_job_installs_an_exact_sdk_version()
+    {
+        string setup = RendererJob().Split("      - ").Single(step => step.StartsWith("uses: actions/setup-dotnet@", StringComparison.Ordinal));
+        string? version = Setting(setup, "dotnet-version");
+        Assert.NotNull(version);
+        Assert.Matches(@"^[0-9]+\.[0-9]+\.[0-9]+$", version);
+    }
+
+    static string RendererJob([CallerFilePath] string source = "")
+    {
+        string repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../.."));
+        return File.ReadAllText(Path.Combine(repo, ".github/workflows/gpu-hosted-bench.yml")).Split("  renderer-bench:\n", 2)[1];
+    }
+
+    static string? Setting(string block, string name) => block.Split('\n')
+        .Select(line => line.Trim().Split(':', 2))
+        .SingleOrDefault(pair => pair.Length == 2 && pair[0] == name)?[1].Trim().Trim('\'', '"');
+
     [Theory]
     [InlineData("pilot", "linux-vulkan", "gpu-t4-linux", 12)]
     [InlineData("full", "linux-vulkan", "gpu-t4-linux", 35)]

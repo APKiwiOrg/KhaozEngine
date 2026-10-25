@@ -310,7 +310,18 @@ Host telemetry uses `nvidia-smi` outside frame
 brackets at a fixed interval of 64 session-info boundaries. Unsupported fields retain their reasons.
 Runtime identity retains the effective `KE_`, `DOTNET_`, `COMPlus_` and `VK_` environment, excluding
 the per-run `KE_RENDERER_PERF_` paths and tokens. These values and the exact .NET runtime version
-must match the approved manifest. No extra profiler or workload variant is admitted.
+must match the approved manifest. The renderer job pins SDK `10.0.402`, paired with runtime
+`10.0.13` in Microsoft's [release metadata](https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json),
+so SDK installation does not float between approval and dispatch. Its measured step inherits
+`DOTNET_CLI_TELEMETRY_OPTOUT=1`. The SDK's
+[telemetry opt-out](https://github.com/dotnet/sdk/blob/v10.0.402/src/Cli/dotnet/Telemetry/Telemetry.cs#L47-L56)
+returns before creating a session ID, so its
+[MSBuild forwarding](https://github.com/dotnet/sdk/blob/v10.0.402/src/Cli/dotnet/Commands/MSBuild/MSBuildForwardingApp.cs#L78-L80)
+passes no per-invocation `DOTNET_CLI_TELEMETRY_SESSIONID` token. The opt-out itself and deterministic
+host-injected entries belong in the approved map, including VSTest's
+[`DOTNET_ROOT_<ARCH>`](https://github.com/dotnet/dotnet/blob/3073618cc1ab03586872e1cf3035afd377d66df6/src/vstest/src/Microsoft.TestPlatform.TestHostProvider/Hosting/DotnetTestHostManager.cs#L716-L733).
+The observed Linux x64 runner used `DOTNET_ROOT_X64=/usr/share/dotnet`. No environment key is
+exempted from exact matching by this correction. No extra profiler or workload variant is admitted.
 
 Success requires exactly one executed, passed test with zero skips in TRX and a nonempty final JSON
 and Markdown pair. The workflow verifies report/2 and `metric-vectors/2`, completed publication, promotion

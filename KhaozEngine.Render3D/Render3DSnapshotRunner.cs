@@ -4,7 +4,10 @@ using KhaozEngine.Windowing;
 
 namespace KhaozEngine.Render3D;
 
-/// <summary>Owns the headless scene and submission loop shared by final-frame and sequence captures.</summary>
+/// <summary>Owns the headless scene and submission loop shared by final-frame and sequence captures. Each frame
+/// is prepared at the capture size with <see cref="Scene3D.PrepareFrame(int,int)"/>, so bound water needs no
+/// preparation in the draw callback. A callback that already prepared at that size stays valid because
+/// preparation is latched per frame.</summary>
 internal static class Render3DSnapshotRunner
 {
     internal static void Validate(int width, int height, int frames, int warmupFrames)
@@ -43,8 +46,9 @@ internal static class Render3DSnapshotRunner
                 scene.Begin();
                 drawFrame(scene, frame);
                 // Producers run before opening the render list. Nested recording corrupts Direct3D11's
-                // immediate context, and PrepareFrame also advances pending temporal diagnostics.
-                scene.PrepareFrame();
+                // immediate context, and PrepareFrame also advances pending temporal diagnostics. The capture
+                // owns its image size, so bound water targets are prepared at that size.
+                scene.PrepareFrame(width, height);
                 using (GpuRecording.Open(gd, commands, "Render3DSnapshot.Capture"))
                     scene.RenderInternal(commands, width, height, framebuffer);
                 gd.Submit(commands);

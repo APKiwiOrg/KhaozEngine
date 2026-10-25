@@ -19,7 +19,10 @@ public sealed class WaterOpticsTriangleField
     private readonly float[] _atlas;
     private readonly WaterOpticsRectangle[] _certificates;
 
-    /// <summary>Copies the source, proves complete coverage and surface agreement, then packs owned storage.</summary>
+    /// <summary>Copies the source, proves complete coverage, then packs owned storage. Positive-area overlaps of
+    /// distinct planes refuse as ambiguous. Shared segments and points whose depths differ are certified instead:
+    /// their exact discontinuity is charged to <see cref="ReconstructionErrorBoundMetres"/>, and a total above
+    /// 0.0001 metres refuses as ambiguous.</summary>
     public WaterOpticsTriangleField(Vector2 size, int binColumns, int binRows,
         ReadOnlySpan<WaterOpticsTriangle> triangles, ReadOnlySpan<WaterOpticsRectangle> certifiedRectangles)
     {
@@ -76,8 +79,10 @@ public sealed class WaterOpticsTriangleField
     public int TextureHeight { get; }
     public long TextureBytes { get; }
 
-    /// <summary>Upward-rounded bound consumed by local mapping and interpolation, in metres. Producers
-    /// must include this value with source conversion and render-origin costs in their total error budget.</summary>
+    /// <summary>Upward-rounded bound consumed by local mapping, interpolation and shared-boundary depth
+    /// discontinuity, in metres. Every sample is within it of each drawn triangle containing the query, whichever
+    /// owns a boundary. Producers must include this value with source conversion and render-origin costs in
+    /// their total error budget.</summary>
     public float ReconstructionErrorBoundMetres { get; }
 
     /// <summary>Owned padded float payload plus rectangle payload bytes, excluding object headers.</summary>

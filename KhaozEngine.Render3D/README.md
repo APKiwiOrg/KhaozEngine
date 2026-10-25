@@ -847,8 +847,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   the field's exact size and one certificate covering the displaced rectangle. Reuse the handle until
   unload, then reload retained CPU fields explicitly for a new scene. `WaterOpticsStats` counts padded
   live and retired texture bytes and retained CPU payload bytes through actual retirement. A triangle
-  producer includes `ReconstructionErrorBoundMetres` in its total error budget. Unsupported subnormal
-  atlas values or non-normal inverse extents refuse before upload. Unbound planes retain scene-depth
+  producer includes `ReconstructionErrorBoundMetres`, which also certifies any coincident shared-boundary
+  depth seam, in its total error budget. Unsupported subnormal atlas values or non-normal inverse extents
+  refuse before upload. Unbound planes retain scene-depth
   behavior. See [consumer use](../docs/USING-KHAOZENGINE.md) for preparation and lifetime details.
 - Per-plane water look (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
   identical**): a trailing optional constructor parameter on `WaterPlane`, so every call site written before this

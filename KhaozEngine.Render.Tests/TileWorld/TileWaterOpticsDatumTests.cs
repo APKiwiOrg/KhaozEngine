@@ -89,10 +89,12 @@ public sealed class TileWaterOpticsDatumTests
         Assert.Equal(289, sampled);
     }
 
+    // The exact datum keeps the mid-edge vertices on their long edges. A water-level reference rounds them off by
+    // a binary32 step, which the field certifies as a shared-boundary discontinuity instead of refusing.
     [Theory]
-    [InlineData(0f, true)]
-    [InlineData(-0.02f, false)]
-    public void ExactDatumKeepsDrawnTJunctionsCollinear(float reference, bool accepted)
+    [InlineData(0f)]
+    [InlineData(-0.02f)]
+    public void TJunctionsPublishAgainstEitherDatum(float reference)
     {
         TileWorldDocument doc = SlopedCornerCuts();
         TileGroundSurfaceSnapshot surface = TileGroundCpuBuild.Build(doc, TileRenderTestData.Catalogs, Origin, 0,
@@ -121,15 +123,9 @@ public sealed class TileWaterOpticsDatumTests
         Assert.NotEmpty(triangles);
         WaterOpticsRectangle[] certificate = [new(new Vector2(2f, 2f), new Vector2(4f, 4f))];
 
-        if (accepted)
-        {
-            var field = new WaterOpticsTriangleField(new Vector2(6f), 6, 6, triangles.ToArray(), certificate);
-            Assert.True(field.TrySampleDepth(0.5f, 0.5f, out float deep));
-            Assert.Equal(1f, deep);
-            return;
-        }
-        WaterOpticsSurfaceException refused = Assert.Throws<WaterOpticsSurfaceException>(() =>
-            new WaterOpticsTriangleField(new Vector2(6f), 6, 6, triangles.ToArray(), certificate));
-        Assert.Equal(WaterOpticsSurfaceFailure.AmbiguousSurface, refused.Reason);
+        var field = new WaterOpticsTriangleField(new Vector2(6f), 6, 6, triangles.ToArray(), certificate);
+        Assert.True(field.TrySampleDepth(0.5f, 0.5f, out float deep));
+        Assert.Equal((float)((double)reference + 1), deep);
+        Assert.InRange(field.ReconstructionErrorBoundMetres, 0f, 0.0001f);
     }
 }

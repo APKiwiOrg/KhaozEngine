@@ -5,23 +5,45 @@ using R = KhaozEngine.Render3D.Internal.WaterOpticsExact;
 
 namespace KhaozEngine.Render3D.Internal;
 
-/// <summary>Exact closed convex clipping, surface agreement and certificate union containment.</summary>
+/// <summary>Exact closed convex clipping, surface agreement, shared-boundary discontinuity and certificate
+/// union containment.</summary>
 internal static class WaterOpticsTriangleCoverage
 {
-    internal static void Validate(WaterOpticsExactTriangle[] triangles, List<int>?[] bins,
+    private readonly record struct Line(R A, R B, R C);
+    private readonly record struct Contact(Line? Support, R Jump);
+
+    /// <summary>Refuses positive-area disagreement and uncovered certificates. Returns the exact depth
+    /// discontinuity charge of coincident shared boundaries, which the caller adds to the error bound.</summary>
+    internal static R Validate(WaterOpticsExactTriangle[] triangles, List<int>?[] bins,
         Vector2 size, int columns, int rows, WaterOpticsRectangle[] certificates)
     {
-        var pairs = new HashSet<long>();
+        // The exact query and its mapped point lie in one closed expanded bin, and so does every triangle
+        // between them. Moving each endpoint into the interior of its own triangle, the straight segment
+        // avoids every vertex. Each change of containing triangle then crosses one shared segment at an
+        // interior point, and the segment crosses each supporting line at most once. Beyond slope times
+        // displacement, the depth change is at most the sum over discontinuous lines in the bin of each
+        // line's largest jump. Point-only contacts follow in the limit, and their own jump is also charged.
+        var contacts = new Dictionary<long, Contact>();
+        R charge = 0;
         foreach (List<int>? bin in bins)
         {
             if (bin == null) continue;
+            var lines = new Dictionary<Line, R>();
+            R point = 0;
             for (int i = 0; i < bin.Count; i++)
             for (int j = i + 1; j < bin.Count; j++)
             {
                 int a = bin[i], b = bin[j];
-                if (!pairs.Add(((long)a << 32) | (uint)b)) continue;
-                ValidateAgreement(triangles[a], triangles[b]);
+                long key = ((long)a << 32) | (uint)b;
+                if (!contacts.TryGetValue(key, out Contact contact))
+                    contacts.Add(key, contact = Measure(triangles[a], triangles[b]));
+                if (contact.Jump.Sign == 0) continue;
+                if (contact.Support is not Line line) point = R.Max(point, contact.Jump);
+                else lines[line] = lines.TryGetValue(line, out R largest) ? R.Max(largest, contact.Jump) : contact.Jump;
             }
+            R sum = 0;
+            foreach (R largest in lines.Values) sum += largest;
+            charge = R.Max(charge, R.Max(sum, point));
         }
 
         foreach (WaterOpticsRectangle certificate in certificates)
@@ -41,18 +63,36 @@ internal static class WaterOpticsTriangleCoverage
                 }
             }
         }
+        return charge;
     }
 
-    private static void ValidateAgreement(WaterOpticsExactTriangle a, WaterOpticsExactTriangle b)
+    // Distinct planes agree at most on one line, so a positive-area overlap always holds two surfaces.
+    // Otherwise the closed intersection is a shared segment or a point. Both depths are linear along a
+    // segment, so the largest jump is reached at one of its clipped endpoints, which are all compared.
+    private static Contact Measure(WaterOpticsExactTriangle a, WaterOpticsExactTriangle b)
     {
-        if (a.SamePlane(b)) return;
+        if (a.SamePlane(b)) return default;
         List<P> intersection = ClipTriangle([a.A, a.B, a.C], b);
+        if (intersection.Count == 0) return default;
+        if (HasArea(intersection))
+            throw new WaterOpticsSurfaceException(WaterOpticsSurfaceFailure.AmbiguousSurface,
+                "Projected triangles with distinct planes overlap in positive area.");
+        R jump = 0;
+        P first = intersection[0], other = first;
         foreach (P point in intersection)
         {
-            if (!a.Height(point).Equals(b.Height(point)))
-                throw new WaterOpticsSurfaceException(WaterOpticsSurfaceFailure.AmbiguousSurface,
-                    "Projected triangles disagree on an overlapping face, edge or vertex.");
+            jump = R.Max(jump, R.Abs(a.Height(point) - b.Height(point)));
+            if (point != first) other = point;
         }
+        return new(other == first ? null : Through(first, other), jump);
+    }
+
+    // The normalized implicit line through two distinct exact points, equal for every collinear segment.
+    private static Line Through(P p, P q)
+    {
+        R a = p.Z - q.Z, b = q.X - p.X, c = p.X * q.Z - q.X * p.Z;
+        R scale = a.Sign != 0 ? a : b;
+        return new(a / scale, b / scale, c / scale);
     }
 
     private static void ProveCovered(List<P> rectangle, List<int>? bin, WaterOpticsExactTriangle[] triangles, int x, int z)

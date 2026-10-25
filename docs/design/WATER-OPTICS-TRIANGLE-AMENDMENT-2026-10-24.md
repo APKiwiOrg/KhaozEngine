@@ -134,16 +134,26 @@ The TileWorld producer stores rest depth against the exact datum 0. Each vertex 
 binary32 negation, and the binding reference Y is 0. `TileGroundMesher.WorldMatrix` has no Y translation, so
 world y is the mesh's binary32 y and depth conversion adds no error. Collinear drawn geometry, such as the
 mid-edge vertex of a sloped corner cut against its uncut neighbour's long edge, stays exactly collinear in the
-field. Subtracting from a water level such as rim minus 0.02 m would round that vertex off the long edge and
-the exact agreement proof would refuse it as two surfaces. The water level stays on the plane and keys field
+field. Subtracting from a water level such as rim minus 0.02 m would round that vertex off the long edge, and
+the field would charge that seam to its error bound. The water level stays on the plane and keys field
 sharing per reference level and domain, as well as refusal diagnostics.
 
 Canonicalize encoded vertices exactly. Collinear edge segments, including long/short T junctions,
 share one supporting-line record with lexicographically ordered extreme source endpoints. Exact
 predicate fallbacks during preparation may use BCL BigInteger over binary32 dyadic values. Do not
-weld near vertices, expand triangles with an epsilon, or move source geometry. Shared boundary heights
-must agree. Positive-area overlaps of distinct surfaces are refused rather than resolved by order.
-Closed predicates and the first ordinal settle boundary ownership without changing a continuous bed.
+weld near vertices, expand triangles with an epsilon, or move source geometry. Positive-area overlaps of
+distinct planes are refused as `AmbiguousSurface` at any depth difference, rather than resolved by order.
+
+Shared segments and points whose XZ geometry coincides but whose depths differ are certified instead. Feather
+subdivisions placed in binary32 on an uncut neighbour's sloping long edge are the motivating case, up to
+2.61e-8 m off the line. Depths are linear along a shared segment, so its exact largest jump is reached at a
+clipped endpoint. For each bin the constructor sums the largest jump of every discontinuous supporting line and
+also takes the largest point-only jump. The largest bin total is charged to `ReconstructionErrorBoundMetres`.
+A query and its mapped point share one expanded bin. Moved into the interiors of their triangles, the straight
+segment between them avoids every vertex and crosses each supporting line at most once, so the bin total bounds
+every jump it crosses. Closed predicates and the first ordinal still settle boundary ownership, and the owner is
+then within the bound of every drawn triangle containing the query. A continuous bed is charged nothing. A total
+above 0.0001 m with sampler error refuses as `AmbiguousSurface`. The mesher, terrain topology and LOD are unchanged.
 
 CPU and shader arithmetic and operation ordering must be explicit and independently tested. Canonical
 lines alone are not proof of numerical correctness at multi-edge vertices. Implement an error-bounded
@@ -157,7 +167,7 @@ The triangle producer must certify a conservative 0.0001 m reconstruction-error 
 unrepresentable conditioning. This is not an excuse to reject ordinary 2 m, 30 m and 100 m fields.
 
 `ReconstructionErrorBoundMetres` is the least binary32 upper bound on the constructor's exact rational
-arithmetic plus local-mapping bound. The producer adds source conversion and render-origin costs to
+arithmetic, local-mapping and shared-boundary discontinuity bound. The producer adds source conversion and render-origin costs to
 this consumed value within the same 0.0001 m total. It does not receive another independent budget.
 
 The scene sampler implements the ordered binary32 operations with integer significands, guard,

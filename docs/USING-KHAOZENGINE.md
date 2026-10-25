@@ -5633,8 +5633,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     charged in `WaterOpticsStats` until GPU retirement completes. Handles from another or recreated scene
     are invalid, so explicitly reload retained fields into the new scene. A producer charges the triangle
     field's upward-rounded `ReconstructionErrorBoundMetres` together with its source and render-origin
-    conversion error within the total 0.0001 m budget. Scene upload throws `UnrepresentableSurface` for
-    nonzero subnormal atlas values or non-normal inverse extents rather than modify source coordinates.
+    conversion error within the total 0.0001 m budget. That bound includes the measured depth discontinuity
+    of shared edges and T junctions whose XZ geometry coincides. Positive-area disagreement still refuses.
+    Scene upload throws `UnrepresentableSurface` for nonzero subnormal atlas values or non-normal inverse
+    extents rather than modify source coordinates.
     Unbound planes keep legacy scene-depth behavior and existing bilinear fields keep their mapping rules.
   - **Settings** (`Post.Water`, scene-wide look, lives alongside `Post.Sky` for the same reason - both are
     scene-appearance bags reached off `Post`). Grouped by what they do:

@@ -30,7 +30,8 @@ public sealed partial class Scene3D
 
     /// <summary>The non-throwing form of <see cref="GetWaterOpticsPadding"/>. Returns false with
     /// <see cref="WaterOpticsSurfaceFailure.UncertifiedDisplacement"/> and zero padding when the effective look
-    /// has no certified displacement envelope, such as FFT water.</summary>
+    /// has no certified displacement envelope, such as FFT water. <paramref name="reason"/> is meaningful only
+    /// when the method returns false.</summary>
     public bool TryGetWaterOpticsPadding(WaterLook? look, out float padding, out WaterOpticsSurfaceFailure reason)
     {
         bool certified = WaterOpticsCoverage.TryPadding(

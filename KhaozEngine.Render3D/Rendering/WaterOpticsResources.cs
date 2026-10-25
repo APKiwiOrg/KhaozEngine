@@ -73,9 +73,12 @@ internal sealed class WaterOpticsResources : IDisposable
         }
     }
 
+    /// <summary>Disposal is diagnosed first, so teardown in the wrong order names the disposed scene rather
+    /// than a stale handle.</summary>
     internal Entry Resolve(WaterOpticsHandle handle)
     {
-        if (_disposed || !handle.IsValid || handle.Owner != _owner || !_slots.IsValid(handle.Index, handle.Generation))
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!handle.IsValid || handle.Owner != _owner || !_slots.IsValid(handle.Index, handle.Generation))
             throw new ArgumentException("The optical field handle is foreign, stale or invalid.", nameof(handle));
         return _entries[handle.Index]!;
     }

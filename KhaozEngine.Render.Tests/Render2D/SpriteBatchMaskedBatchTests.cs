@@ -20,6 +20,71 @@ public class SpriteBatchMaskedBatchTests
             new Vector4(0.125f, 0.25f, 0.625f, 0.75f), mask,
             new Vector4(0.3f, 0.4f, 0.7f, 0.9f), Color.White, maskSampler);
 
+    [Fact]
+    public void SourceAndMaskSamplerSelectionsAreIndependent()
+    {
+        using var rig = Create();
+        using var source = Sprite();
+        using var mask = Sprite();
+        var pointSampler = rig.Device.PointSampler;
+        var linearSampler = rig.Device.LinearSampler;
+        rig.Frame(batch =>
+        {
+            batch.DrawMasked(source, Vector4.One, new Vector4(0, 0, 1, 1), mask,
+                new Vector4(0, 0, 1, 1), Color.White);
+            Masked(batch, source, mask, SamplerMode.Point);
+        }, sourceSampler: SamplerMode.Point);
+
+        Assert.Equal(2, rig.Draws.Count);
+        var defaultMaskSet = Assert.IsType<FakeResourceSet>(rig.Draws[0].Set0);
+        var explicitPointMaskSet = Assert.IsType<FakeResourceSet>(rig.Draws[1].Set0);
+        Assert.Same(pointSampler, defaultMaskSet.Resources[1]);
+        Assert.Same(linearSampler, defaultMaskSet.Resources[3]);
+        Assert.Same(pointSampler, explicitPointMaskSet.Resources[1]);
+        Assert.Same(pointSampler, explicitPointMaskSet.Resources[3]);
+        Assert.NotSame(defaultMaskSet, explicitPointMaskSet);
+
+        rig.Frame(batch =>
+        {
+            batch.DrawMasked(source, Vector4.One, new Vector4(0, 0, 1, 1), mask,
+                new Vector4(0, 0, 1, 1), Color.White);
+            Masked(batch, source, mask, SamplerMode.Point);
+        }, sourceSampler: SamplerMode.Linear);
+        Assert.Equal(2, rig.Draws.Count);
+        var linearSourceSet = Assert.IsType<FakeResourceSet>(rig.Draws[0].Set0);
+        var linearSourcePointMaskSet = Assert.IsType<FakeResourceSet>(rig.Draws[1].Set0);
+        Assert.Same(linearSampler, linearSourceSet.Resources[1]);
+        Assert.Same(linearSampler, linearSourceSet.Resources[3]);
+        Assert.Same(linearSampler, linearSourcePointMaskSet.Resources[1]);
+        Assert.Same(pointSampler, linearSourcePointMaskSet.Resources[3]);
+        Assert.NotSame(defaultMaskSet, linearSourceSet);
+        Assert.NotSame(explicitPointMaskSet, linearSourcePointMaskSet);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ChangingOnlyUvsOrTintDoesNotSplit(bool group)
+    {
+        using var rig = Create();
+        using var source = Sprite();
+        using var mask = Sprite();
+        rig.Frame(batch =>
+        {
+            Masked(batch, source, mask);
+            batch.DrawMasked(source, new Vector4(10, 20, 30, 40), new Vector4(1, 0, 0, 1),
+                mask, new Vector4(0, 1, 1, 0), Color.White);
+            batch.DrawMasked(source, new Vector4(10, 20, 30, 40), new Vector4(0, 0, 1, 1),
+                mask, new Vector4(0, 0, 1, 1),
+                new Color(1f, 0.5f, 0f, 0.25f), new Color(0f, 0.25f, 1f, 0.75f));
+        }, group: group);
+
+        int uvTintOnlyDrawCount = rig.Draws.Count;
+        Assert.Equal(1, uvTintOnlyDrawCount);
+        Assert.Equal(18u, rig.Draws[0].VertexCount);
+        Assert.Equal(3, rig.Batch.FrameStats.Quads);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

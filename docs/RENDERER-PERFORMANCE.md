@@ -23,6 +23,14 @@ pilot has its own frozen schedule and 1,260 frames. Warm-up and conditioning rem
 measured distributions. A three-frame batch has one completion drain and one harvest, including
 the final short batch. No frame trimming, fastest-iteration selection or adaptive warm-up is allowed.
 
+Cold preparation renders no hidden scene frame. The first counted conditioning frame uses driver
+index 0 and scene frame index 1. Its active temporal history is deliberately invalid with
+`FirstFrame`, since no previous frame exists. Only that first conditioning frame accepts this reset.
+Temporal recipes require valid history on every later conditioning or measured frame. Each measured
+scene block starts fresh at driver index -64 for the pilot or -192 for a full unit. These counted warm-up
+frames establish history before measured index 0. Periodic recipe inputs wrap negative indices modulo
+256, while the scene frame index and effect clock keep advancing through the block.
+
 The outer GPU pair precedes the host clear and follows native command-list End finalization.
 `TotalOnly` brackets the frame with two queries. `PerPass` adds frozen parent/child scopes and
 reserved skip slots. Detailed markers may change synchronization or encoder boundaries. Its frame

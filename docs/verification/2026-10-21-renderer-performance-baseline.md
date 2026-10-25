@@ -367,6 +367,22 @@ component. No measured baseline, deadline or performance acceptance was produced
 consumed and authorizes no retry. Another attempt requires a corrected workload, independently
 reviewed preparation and fresh owner approval.
 
+## First-frame temporal correction
+
+The third refusal came from applying the measured-history requirement to the first conditioning
+frame. Cold preparation renders no scene frame. Conditioning begins at driver index 0, but that is
+scene frame 1 with active temporal history reset to `FirstFrame`. Counted warm-up establishes history
+for measured blocks before driver index 0. The workload accepts only this first conditioning reset.
+It continues to reject disabled temporal rendering, later conditioning resets and invalid measured
+history. Actor, shadow and ocean checks remain active on that first conditioning frame.
+
+`RendererPerfSceneTemporalTests` exercises the real workload and scene temporal advance over inert
+resources. It covers conditioning index 0, both -64 and -192 warm-up starts through measured index 1,
+and explicit history loss at measured index 0 and conditioning index 1. The original conditioning
+refusal was reproduced before the correction. Existing workload and entrypoint tests rendered only
+negative warm-up indices. Driver tests supplied synthetic samples without the workload's check.
+This headless correction supplies no native measurement or permission for another pilot.
+
 ## Outstanding native and preparation gates
 
 Accepted Tasks10/11 and the cold amendment implement optional D3D11, Vulkan and Metal diagnostics.

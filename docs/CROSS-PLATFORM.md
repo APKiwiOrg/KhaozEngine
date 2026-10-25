@@ -302,6 +302,11 @@ advancing a scene frame or changing the producer's unrecorded-preparation invali
 Production point-shadow callbacks report unavailable transient rows as skipped subtrees before
 point-shadow finish, preserving the frozen order without a fabricated GPU interval.
 
+Cold preparation renders no scene priming frame. The first counted conditioning frame is scene
+frame 1 at driver index 0 and may report active temporal `FirstFrame` history. Later conditioning
+frames require valid history. Fresh measured blocks render their counted negative warm-up indices
+before index 0. Temporal recipes still require valid history on every measured frame.
+
 The existing driver owns every conditioned, warm and measured frame, three-frame completion,
 readback, drift check and publication deadline. Publication elapsed time and estimated cost include
 work-model generation, sidecar serialization and hashing inside the publication clock interval,

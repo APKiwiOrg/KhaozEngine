@@ -188,6 +188,76 @@ fresh; tracker docs/programs/x.md; put docs/programs/x-design.md '# x design\n';
 git rm -q docs/programs/x.md; run
 check staged_tracker_delete_orphaning_design_fails 1 "$rc"
 
+echo "== staged merge mode =="
+# Each case branches before main's changes, then leaves a real merge pending in the index.
+merge_main() {
+  git checkout -q topic
+  put topic.txt 'Topic work.\n'; commit topic
+  git merge --no-ff --no-commit main >"$TMPROOT/merge-out" 2>&1
+}
+
+fresh; git branch -m main; git branch topic
+put 'docs/art notes/old-2026-10-24.md' '# Old design\n'
+put 'docs/art notes/guide.md' 'See [plan](superpowers/plans/old.md).\n'; commit main
+merge_main; run
+check staged_merge_inherited_dated_doc_and_reference_pass 0 "$rc"
+
+fresh; git branch -m main; git branch topic
+put main.txt 'Main work.\n'; commit main; merge_main
+put 'docs/art notes/new-2026-10-25.md' '# New design\n'; git add -A; run
+said 'check-scratch: docs/art notes/new-2026-10-25.md: new doc named by date'
+check staged_merge_new_dated_doc_fails 1 "$rc"
+
+fresh; git branch -m main; git branch topic
+put 'docs/art notes/guide.md' 'See [plan](superpowers/plans/old.md).\n'; commit main; merge_main
+printf 'See [plan](superpowers/plans/new.md).\n' >> 'docs/art notes/guide.md'; git add -A; run
+said 'check-scratch: docs/art notes/guide.md: line 2 names a scratch file, superpowers/plans/new.md'
+check staged_merge_new_reference_fails 1 "$rc"
+
+# Line identity matters, even if the resolution moves or duplicates a parent's line.
+fresh; git branch -m main; git branch topic
+put 'docs/art notes/guide.md' 'See [plan](superpowers/plans/old.md).\n'; commit main; merge_main
+put 'docs/art notes/guide.md' 'New introduction.\nSee [plan](superpowers/plans/old.md).\nSee [plan](superpowers/plans/old.md).\n'
+git add -A; run
+check staged_merge_repositioned_parent_reference_passes 0 "$rc"
+
+# An inherited line in a different file does not excuse a new reference at this path.
+fresh; git branch -m main; git branch topic
+put docs/old.md 'See [plan](superpowers/plans/old.md).\n'; commit main; merge_main
+put 'docs/art notes/new.md' 'See [plan](superpowers/plans/old.md).\n'; git add -A; run
+said 'check-scratch: docs/art notes/new.md: line 1 names a scratch file'
+check staged_merge_reference_copied_to_new_path_fails 1 "$rc"
+
+# HEAD's version also counts when a resolution duplicates a line the topic deleted.
+fresh; put docs/guide.md 'See [plan](superpowers/plans/old.md).\nAnchor.\n'; commit old
+git branch -m main; git checkout -qb topic
+put docs/guide.md 'Topic replacement.\n'; commit topic
+git checkout -q main; put main.txt 'Main work.\n'; commit main
+git merge --no-ff --no-commit topic >"$TMPROOT/merge-out" 2>&1
+put docs/guide.md 'See [plan](superpowers/plans/old.md).\nAnchor.\nSee [plan](superpowers/plans/old.md).\n'; git add -A; run
+check staged_merge_reference_from_head_passes 0 "$rc"
+
+fresh; git branch -m main; git branch topic
+put 'docs/art notes/old-2026-10-24.md' '# Old design\n'
+put 'docs/art notes/guide.md' 'See [plan](superpowers/plans/old.md).\n'; commit main
+git worktree add -q "$TMPROOT/merge linked$case_no" topic; cd "$TMPROOT/merge linked$case_no"
+put topic.txt 'Topic work.\n'; commit topic
+git merge --no-ff --no-commit main >"$TMPROOT/merge-out" 2>&1
+GIT_DIR=$(git rev-parse --absolute-git-dir); export GIT_DIR
+run
+unset GIT_DIR
+check staged_linked_worktree_merge_inherited_content_passes 0 "$rc"
+
+fresh; git branch -m main; git branch topic; git branch extra
+put docs/main.md 'See [plan](superpowers/plans/main.md).\n'; commit main
+git checkout -q extra
+put 'docs/art notes/extra-2026-10-24.md' '# Extra design\n'
+put 'docs/art notes/extra.md' 'See [plan](superpowers/plans/extra.md).\n'; commit extra
+git checkout -q topic; put topic.txt 'Topic work.\n'; commit topic
+git merge --no-ff --no-commit main extra >"$TMPROOT/merge-out" 2>&1
+run
+check staged_octopus_merge_inherited_content_passes 0 "$rc"
+
 echo "== self exclusion =="
 fresh; mkdir -p Scripts/tests; cp "$SCRIPT" Scripts/check-scratch.sh; cp "$here/check-scratch.test.sh" Scripts/tests/check-scratch.test.sh
 commit scripts; run_in_repo() { set +e; sh Scripts/check-scratch.sh "$@" >"$OUTFILE" 2>&1; rc=$?; set -e; }; run_in_repo --tree

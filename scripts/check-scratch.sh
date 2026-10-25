@@ -22,6 +22,9 @@
 #   --tree      whole-tree mode - what CI runs. R1 on every tracked path, R2 on every tracked text file,
 #               R4 and R5 on the working tree.
 #
+# During a merge, R2 ignores lines already in the same file in any parent, and R3 ignores paths
+# already in any parent. Merge parents include HEAD and every entry in MERGE_HEAD.
+#
 # R2 skips this script, its test, and every pathspec listed in .scratch-check-ignore (one per line,
 # blank lines and # comments ignored), for content managed elsewhere such as third-party text.
 # Each violation is one stderr line, check-scratch: <path>: <reason>. Exit 0 clean, 1 on a violation,
@@ -134,6 +137,20 @@ hdr { next }
 /^\+/ { print file ":" ln ":" substr($0, 2); ln++; next }
 /^ / { ln++ }'
 
+# Parent grep records are parent:path:line:text, followed by added records marked +:path:line:text.
+# Compare full lines at the same path, independent of their line numbers or occurrence counts.
+merge_new_lines='
+{
+  sep = index($0, ":")
+  source = substr($0, 1, sep - 1)
+  record = substr($0, sep + 1)
+  if (!match(record, /:[0-9]+:/)) next
+  key = substr(record, 1, RSTART - 1) SUBSEP substr(record, RSTART + RLENGTH)
+  if (source == "+") {
+    if (!(key in existing)) print record
+  } else existing[key] = 1
+}'
+
 # R4 heading check on a tracker read from stdin. A ## line inside a ``` or ~~~ fenced block is quoted
 # text, not a heading.
 headings='
@@ -222,6 +239,13 @@ $progs
 EOF
 else
   staged=$(g diff --cached --name-only --diff-filter=d)
+  merge_parents=
+  if g rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+    merge_head_file=$(g rev-parse --git-path MERGE_HEAD) || exit 2
+    merge_heads=$(cat "$merge_head_file") || exit 2
+    merge_parents="HEAD
+$merge_heads"
+  fi
 
   # R1
   hits=$(printf '%s\n' "$staged" | grep -E "$scratch_paths" || true)
@@ -236,14 +260,36 @@ EOF
     echo "check-scratch: git diff failed" >&2
     exit 2
   }
-  out=$(printf '%s\n' "$diff" | awk "$added_lines" | awk "$classify")
+  added=$(printf '%s\n' "$diff" | awk "$added_lines")
+  if [ -n "$merge_parents" ]; then
+    parent_refs=$(
+      for parent in $merge_parents; do
+        rc=0
+        refs=$(g -c grep.column=false --no-pager grep -I -n -F --no-color -e superpowers/ "$parent" -- "$@") || rc=$?
+        if [ "$rc" -gt 1 ]; then echo "check-scratch: git grep failed" >&2; exit 2; fi
+        printf '%s\n' "$refs"
+      done
+    ) || exit 2
+    added=$({
+      printf '%s\n' "$parent_refs"
+      printf '%s\n' "$added" | sed 's/^/+:/'
+    } | awk "$merge_new_lines")
+  fi
+  out=$(printf '%s\n' "$added" | awk "$classify")
   if [ -n "$out" ]; then printf '%s\n' "$out" >&2; fail=1; fi
 
   # R3. -M so a rename reads as a rename, not an addition.
   dated=$(g diff --cached --name-only -M --diff-filter=A -- docs \
     | grep -E '^docs/' | grep -vE '^docs/verification/' \
     | grep -E '20[0-9][0-9]-[01][0-9]-[0-3][0-9]' || true)
-  report_each "new doc named by date, name docs by topic" <<EOF
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    in_parent=0
+    for parent in $merge_parents; do
+      if g cat-file -e "$parent:$f" 2>/dev/null; then in_parent=1; break; fi
+    done
+    if [ "$in_parent" -eq 0 ]; then report "$f" "new doc named by date, name docs by topic"; fi
+  done <<EOF
 $dated
 EOF
 

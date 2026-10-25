@@ -276,12 +276,14 @@ construction, before any upload.
 - **Certified coverage.** Each certificate is a drawable row-run rectangle widened by the effective swell
   displacement and the positional budget `min(0.0001 m, TileSize / 1024)`. Source conversion and the field's
   `ReconstructionErrorBoundMetres` share that one budget. Binding origin X and Z are the binary64 floor of the
-  minimum consumed vertex, in whole metres. Origin Y stays the reference level. Every `WorldFrame` render anchor
-  is a multiple of 128 m, so reducing a whole-metre origin by any anchor is exact in binary32 and render-origin
-  reduction is charged nothing against the budget. An origin whose X or Z magnitude is at or beyond 2^24 m has no
-  such guarantee and is refused as `UnrepresentableSurface`. Only regions whose
+  minimum consumed vertex, in whole metres. Origin Y stays the reference level. `WorldFrame` anchors are
+  multiples of 128 m with magnitude at most 2^22 m, so a whole-metre origin below 2^23 m minus any such anchor
+  stays an integer below 2^24 m and is exact in binary32. Render-origin reduction is therefore charged nothing
+  for the default quantized render origin and for any `WorldFrame` anchor. An origin whose X or Z magnitude is at
+  or beyond 2^23 m is refused as `UnrepresentableSurface`. An explicit off-grid `Scene3D.RenderOrigin` override
+  rounds the reduced origin like all other submitted geometry and is outside the certificate. Only regions whose
   triangles support a certificate participate. Packing doubles the bin axes from one bin per tile up to 1024 and
-  never drops, downsamples or merges triangles. A domain spans fewer than 1024 tiles on each axis.
+  never drops, downsamples or merges triangles. A domain spans at most 1024 tiles on each axis.
 - **Strict refusal, no fallback.** Opted-in water never falls back to scene depth, zero or deep water. A refusal
   withdraws the opted-in water of the whole region-plane, keeps its terrain, and is reported in
   `TileWorldView.WaterOpticsFailures` as a `TileWaterOpticsFailure` with its region, plane, reference level,

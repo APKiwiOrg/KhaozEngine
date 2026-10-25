@@ -3998,9 +3998,12 @@ scene.UnloadSharedTexture("art/hull.png");     // false when nothing was cached 
   consumer-reachable path is left having to call it for legacy content, and calling it by hand is then only an
   early no-op. **`PrepareFrame(width, height)` is the viewport-aware form.** It also fixes the frame's render
   targets and prepares bound optical water (see **Independent optical bed** under Water). The no-argument form is
-  the legacy form. It throws when bound water is queued, and the hosts above call that form, so a host drawing
-  bound water calls the viewport form itself before they run. `GameApp3D` already passes its frame size. The
-  order it enforces, the same order those hosts follow, is:
+  the legacy form and throws when bound water is queued. `GameApp3D` prepares with its frame size.
+  `Render3DPreview.Capture` and the `Render3DSnapshot` captures call `Begin` themselves and prepare with their own
+  target size, so a draw callback that also calls `PrepareFrame` with that size is a latched no-op.
+  `Render3DSurface.Render` records inside the frame's open list, so its call is the no-argument safety net and
+  bound water must already be prepared at the frame's size. A custom host calls `PrepareFrame(width, height)`
+  after queueing and before recording. The order it enforces, the same order those hosts follow, is:
 
 ```csharp
 scene.Begin();
@@ -5600,7 +5603,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     that displacement for preflight. Bound FFT water throws `NotSupportedException` because FFT has no certified
     displacement envelope. A stale, foreign or released handle throws. No opted-in pixel falls back to scene depth,
     zero or deep water. With an active render origin the scene subtracts the frame origin from the binding origin
-    exactly as it does from the plane, so rebasing changes the mapping, never the samples, and no large absolute
+    in the same way as it does from the plane, so rebasing changes the mapping, never the samples, and no large absolute
     coordinate reaches texture arithmetic.
 
     Bound water requires `scene.PrepareFrame(width, height)` after queueing and before recording. The no-argument
@@ -5849,7 +5852,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     same unresolved ripple detail, and the sum put the far lobe at about twice the surface's slope variance. Now
     the lobe carries exactly that variance until the floor takes over, and 1.12 to 1.17 times it on the floor.
     `VarianceToRoughness = 0` leaves the lobe on the floor alone, the 14.24.0 lobe.
-  - **Depth grading**: the reconstructed ground depth drives per-channel Beer-Lambert transmittance
+  - **Depth grading**: the plane's depth source drives per-channel Beer-Lambert transmittance
     (`exp(-AbsorptionPerMetre * depth)`), blending `ShallowColor` down into `DeepColor`. Because red is absorbed
     several times faster than blue, the ramp bends through green-teal instead of running straight down the line
     between two colours, which is what keeps the midtones clean. An all-zero `AbsorptionPerMetre` restores the
@@ -12563,6 +12566,10 @@ var options = new TileWorldViewOptions
 `WaterLook`. One surface height per body, so author a descending river as separate bodies with a drop between
 them. An overlay in a water material gets no surface (a fraction of a tile has no rim), and `TileRaycast.Pick`
 still lands on the bed, which is what an editor click wants.
+
+By default this water reads scene depth. `TileWorldViewOptions.WaterDepthMode = TileWaterDepthMode.AuthoredBed`
+binds each body to its actual rendered bed instead, with the strict contract in the
+[TileWorld authored optical beds reference](../KhaozEngine.TileWorld.Render3D/README.md#authored-optical-beds).
 
 For a player-facing ground click, use the view's visible-surface picker instead:
 

@@ -106,9 +106,11 @@ flowchart LR
    open-recording register on every backend, which is why the phase exists and why it stayed when the backend
    that used to corrupt the frame instead of refusing was deleted (issues #423 and #690).
    `PrepareFrame(width, height)` is the viewport-aware form. It also fixes the frame's render targets and builds
-   the resource sets for bound optical water, which the legacy no-argument form refuses. `GameApp3D` passes the
-   frame size. The engine's own render entry points call the no-argument form, so a host drawing bound water
-   prepares with the viewport form before they run.
+   the resource sets for bound optical water. The legacy no-argument form throws when bound water is queued.
+   `GameApp3D` passes the frame size, and `Render3DPreview.Capture` and the `Render3DSnapshot` captures prepare
+   with their own target size, so a draw callback that also prepares at that size is a latched no-op.
+   `Render3DSurface.Render` keeps the no-argument safety net, so bound water must already be prepared at the
+   frame's size. A custom host calls `PrepareFrame(width, height)` after queueing and before recording.
 4. At frame end, `Render3DSurface` / `Render2DSurface` flush through `ModelRenderer` / the sprite shader, which
    record commands on `GpuDeviceContext` - the opaque seam (device, buffers, pipelines, command list).
 5. `GpuBackendSelector` picked the backend at startup (`KE_GRAPHICS_BACKEND` override, then the game's stored

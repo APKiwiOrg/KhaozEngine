@@ -7,9 +7,10 @@ The 3D integration for `KhaozEngine.Game`, split out so a 2D game pulls **no 3D 
   - In `OnPrepareWorld` (the pre-record phase, before the frame's command list opens): `Scene.Begin()` ->
     `OnDraw3D(Scene)` -> `Scene.PrepareFrame(frame.Width, frame.Height)`, the viewport-aware form that also
     prepares bound optical water. A frame with no size falls back to `Scene.PrepareFrame()`. So `OnDraw3D` runs
-    after `OnUpdate` on the same frame, as it always did, but now at a point where a producer may still submit GPU work on a command list of its own. That is
-    what the FFT ocean's priming pass needs, and nesting it inside the frame's recording is refused by the seam on
-    every backend ([#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423),
+    after `OnUpdate` on the same frame, as it always did, but now at a point where a producer may still submit
+    GPU work on a command list of its own. That is what the FFT ocean's priming pass needs, and nesting it inside
+    the frame's recording is refused by the seam on every backend
+    ([#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423),
     [#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429), kept rather than retired with the Veldrid leg in
     [#690](https://github.com/APKiwiOrg/KhaozEngine/issues/690)).
   - In `OnRenderWorld` (the record phase): `Surface3D.Render(frame)`, plus feeding the per-pass timings to the

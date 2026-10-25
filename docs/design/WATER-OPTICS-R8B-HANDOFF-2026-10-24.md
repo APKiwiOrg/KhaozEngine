@@ -60,8 +60,11 @@ Each prepared bounded-water owner carries five things together, and publishes or
 2. **Local mapping.** Origin XZ is the field minimum and origin Y is the body's fixed reference surface, normally
    its compiled `SurfaceY`. Size equals the field `Size`. The binding lives in the same frame as the submitted
    `WaterPlane`, and Scene3D subtracts its render origin from both. After the native renderer reduces body
-   coordinates to its anchor, the field origin must still reduce exactly or within budget under every render
-   anchor, which are multiples of `WorldFrame.Grid`. Changing the surface level does not move the reference
+   coordinates to its anchor, the field origin must still reduce exactly or within budget under the scene's
+   render origin. The default quantized render origin is a `WorldFrame` anchor, a multiple of `WorldFrame.Grid`
+   with magnitude at most 2^22 m. An explicit off-grid `Scene3D.RenderOrigin` override is not a grid multiple. It
+   rounds the reduced origin like all other submitted geometry and is outside the certificate, so the producer
+   either charges that case or records it as unsupported. Changing the surface level does not move the reference
    level. Only a rebuilt generation or a deliberate re-anchor of the whole body does.
 3. **Coverage witness.** The certificate list, the drawable domain it was built for after original-domain clipping,
    and the padding used. Each submitted rectangle, widened by `GetWaterOpticsPadding(look)` and outward mapping
@@ -83,9 +86,9 @@ Each prepared bounded-water owner carries five things together, and publishes or
 
 The producer owns one positional budget covering source conversion, anchor and render-origin conversion and the
 field's upward-rounded `ReconstructionErrorBoundMetres`. TileWorld uses `min(0.0001 m, TileSize / 1024)` and
-snaps binding origins to whole metres below 2^24 m, so reduction by any 128 m render anchor is exact and costs
-nothing. R8b
-selects and records its own bound before acceptance. It does not receive a second independent allowance.
+snaps binding origins to whole metres below 2^23 m. Reduction by the default quantized render origin or any 128 m
+`WorldFrame` anchor is then exact and costs nothing. An explicit off-grid render origin override is outside that
+certificate. R8b selects and records its own bound before acceptance. It does not receive a second independent allowance.
 
 Map each typed `Reason` to a native diagnostic naming the body, domain and source. Keep the new generation
 unpublished. A previous generation stays visible only while its geometry and sources remain valid. No opted-in

@@ -164,13 +164,16 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   context on Direct3D11 and corrupts the frame (issue #423). `Render3DSurface.Render`,
   `Render3DPreview.Capture` and `Render3DSnapshot.Capture` all call it for you, so every consumer of the surface
   gets the phase rather than only `GameApp3D`, and since the record entry point is internal those are the only
-  ways a scene is rendered: nothing outside the engine is left having to call it, and a by-hand call is an early
-  no-op. Recording consumes the prepared frame, so a scene records once per `Begin` and a second viewport means a
+  ways a scene is rendered: for legacy content nothing outside the engine is left having to call it, and a
+  by-hand call is an early no-op. Recording consumes the prepared frame, so a scene records once per `Begin` and a second viewport means a
   second `Begin`. Costs nothing on a frame that queues no water. `PrepareFrame(width, height)` is the
-  viewport-aware form. It also fixes the frame's render targets and prepares bound optical water, which the
-  no-argument form refuses. The engine's own render entry points call the no-argument form, so a host drawing
-  bound water calls `PrepareFrame(width, height)` itself before they run. `GameApp3D` does so with the frame
-  size. On a WINDOWED host, `Render3DSurface.Render`'s own
+  viewport-aware form. It also fixes the frame's render targets and prepares bound optical water. The
+  no-argument form throws when bound water is queued. `GameApp3D` prepares with its frame size, and
+  `Render3DPreview.Capture` and the `Render3DSnapshot` captures, which call `Begin` themselves, prepare with
+  their own target size. A draw callback that also calls `PrepareFrame` with that size is a latched no-op.
+  `Render3DSurface.Render` records inside the frame's open list, so its own call is the no-argument safety net
+  described next, and bound water must already be prepared at the frame's size. A custom host calls
+  `PrepareFrame(width, height)` after queueing and before recording. On a WINDOWED host, `Render3DSurface.Render`'s own
   call is a safety net rather than the effective one - the frame's list is already open by then - so queue and
   prepare the scene in `AppWindow.Run`'s `onPrepare` callback instead (`GameApp3D` does, in `OnPrepareWorld`, see
   issue #429). A host that does neither no longer gets a silently corrupt frame on one backend: every scene path
@@ -823,7 +826,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   - **Triangle field**: `WaterOpticsTriangleField(size, binColumns, binRows, triangles, certifiedRectangles)` over
     `WaterOpticsTriangle` vertices in local metres, ordered X, signed rest depth, Z, loaded with
     `Scene3D.LoadWaterOpticsTriangles`. Pass the actual rendered triangles, for example `GltfMesh.Indices32`
-    over its `Vertices` positions, without clipping or welding them. The constructor proves that the projected triangles
+    over its `Vertices` positions, without clipping or welding them. Each world vertex `(x, y, z)` becomes
+    `(x - origin.X, reference - y, z - origin.Z)`, where `origin` is the binding origin and `reference` its Y,
+    so the middle component is the signed rest depth. The constructor proves that the projected triangles
     cover every `WaterOpticsRectangle` certificate with no hole and no disagreeing overlap, then packs one
     R32Float atlas. Bin axes range from 1 through 1024, atlas texture axes from 2 through `MaxDimension` (1024),
     and a bin holds at most `MaxTrianglesPerBin` (32) candidates. The shader selects the containing triangle with

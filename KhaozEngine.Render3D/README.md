@@ -169,8 +169,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   that also calls `PrepareFrame` with that size is a latched no-op. Since the record entry point is internal,
   those hosts and `Render3DSurface.Render` are the only ways a scene is rendered. A custom host calls
   `PrepareFrame(width, height)` after queueing and before recording. Recording consumes the prepared frame, so a
-  scene records once per `Begin` and a second viewport means a second `Begin`. Costs nothing on a frame that
-  queues no water. `Render3DSurface.Render` records inside the frame's open list and calls the no-argument form,
+  scene records once per `Begin` and a second viewport means a second `Begin`. Only a frame that queues bound
+  water freezes its inputs at preparation. A frame with no bound water keeps the legacy late binding on either
+  form, so its targets may still resize and its clipmap program may still be created while recording. The
+  no-argument form costs nothing on a frame that queues no water. The viewport form always sizes the targets and
+  opens `device.water.prepare`. `Render3DSurface.Render` records inside the frame's open list and calls the no-argument form,
   so bound water must already be prepared at the frame's size. On a WINDOWED host, `Render3DSurface.Render`'s own
   call is a safety net rather than the effective one - the frame's list is already open by then - so queue and
   prepare the scene in `AppWindow.Run`'s `onPrepare` callback instead (`GameApp3D` does, in `OnPrepareWorld`, see
@@ -897,9 +900,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   - **Preparation**: queue every plane, then call `Scene3D.PrepareFrame(width, height)` with the viewport size
     before opening the frame's command list. `GameApp3D` forwards its frame size automatically. The no-argument
     `PrepareFrame()` remains the legacy form and throws when bound water is queued. A changed viewport, target or
-    water input after preparation throws at recording rather than drawing stale resources.
+    water input after preparation throws at recording rather than drawing stale resources. Only a frame with bound
+    water freezes those inputs. Preparation revalidates coverage from the absolute queue, the rectangle
+    `DrawWater` admitted, so an explicit off-grid `RenderOrigin` cannot refuse an admitted plane.
   - **Lifetime**: reuse the handle across frames. `UnloadWaterOpticsField` invalidates either kind at once and
-    defers texture destruction through the scene's retirement queue. `WaterOpticsStats` counts live fields,
+    defers texture destruction through the scene's retirement queue. On a disposed scene, unloading or binding a
+    handle throws `ObjectDisposedException`. `WaterOpticsStats` counts live fields,
     padded live and retired texture bytes, uploads, and live and retired retained CPU payload bytes until actual
     retirement. Device recreation means a new scene: handles from another or an older scene are invalid, so the
     producer explicitly loads its retained CPU fields into the new scene.

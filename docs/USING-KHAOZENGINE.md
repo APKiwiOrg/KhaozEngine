@@ -4008,8 +4008,10 @@ scene.UnloadSharedTexture("art/hull.png");     // false when nothing was cached 
 - **`PrepareFrame(width, height)`, the frame's pre-recording phase.** Runs once per frame, after every `Draw*`
   call for that frame and **before the command list the scene renders into is opened**. The viewport-aware form
   also fixes the frame's render targets and prepares bound optical water (see **Independent optical bed** under
-  Water). The no-argument `PrepareFrame()` is the legacy form and throws when bound water is queued. Every host
-  the engine ships prepares for you, so a game needs no change. `GameApp3D` prepares with its frame size.
+  Water). The no-argument `PrepareFrame()` is the legacy form and throws when bound water is queued. Only a
+  frame that queues bound water freezes its inputs at preparation: a changed viewport, HDR, MSAA, grid mode or
+  water input then throws at recording. A frame with no bound water keeps the legacy late binding on either form.
+  Every host the engine ships prepares for you, so a game needs no change. `GameApp3D` prepares with its frame size.
   `Render3DPreview.Capture` and the `Render3DSnapshot` captures call `Begin` themselves and prepare with their own
   target size, so a draw callback needs no preparation, and one that also calls `PrepareFrame` with that size is a
   latched no-op. `Render3DSurface.Render` records inside the frame's open list, so its call is the no-argument
@@ -4029,10 +4031,12 @@ cl.Begin();
   Some existing producers use a command list of their own. The FFT ocean's priming pass retains that
   schedule, even though dependent buffer dispatches can now share one list without a drain. Opening one while the frame's list is recording is not harmless: with Direct3D11 in
   immediate-context mode a command list IS the device's immediate context, so opening one resets the state the
-  frame's list believes is still bound and the device faults a few draws later (issue #423). A frame that queues no
-  water does nothing here, and a host that skips the call gets an exception from the water pass rather than a
-  stale ocean. Calling it twice for one `Begin` is harmless: the second call is a no-op, so a host that prepares by
-  hand and then hands the scene to `Render3DSurface.Render` does not prepare the frame twice. Queueing a draw AFTER
+  frame's list believes is still bound and the device faults a few draws later (issue #423). With the no-argument
+  form a frame that queues no water does nothing here. The viewport form always sizes the targets and opens
+  `device.water.prepare`. A host that skips the call gets an exception from the water pass rather than a stale
+  ocean. A second call for one `Begin` never prepares again, so a host that prepares by hand and then hands the
+  scene to `Render3DSurface.Render` does not prepare the frame twice. On a frame with bound water a second
+  viewport call first verifies that the size and targets are unchanged and throws if they moved. Queueing a draw AFTER
   preparing is the one thing that is not harmless, and the water pass throws for it.
 
   **On a windowed host the effective call is the earlier one.** `Render3DSurface.Render` runs inside the frame's
@@ -5677,17 +5681,21 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
 
     Bound water requires `scene.PrepareFrame(width, height)` after queueing and before recording. The no-argument
     form throws for it. Changes to prepared inputs, the viewport or the render targets after preparation throw at
-    recording. Reuse handles across frames. `UnloadWaterOpticsField` invalidates either kind immediately and
-    defers texture destruction through the scene's retirement queue. `WaterOpticsStats` keeps texture and retained
+    recording. Only a frame with bound water freezes them: a frame with no bound water keeps the legacy late
+    binding. Preparation revalidates coverage from the absolute queue, exactly as `DrawWater` admitted it, so an
+    explicit off-grid `RenderOrigin` cannot turn an admitted plane into a refusal. Reuse handles across frames. `UnloadWaterOpticsField` invalidates either kind immediately and
+    defers texture destruction through the scene's retirement queue. After the scene is disposed, unloading or
+    binding a handle throws `ObjectDisposedException`. `WaterOpticsStats` keeps texture and retained
     CPU payload bytes charged until GPU retirement completes. Device recreation means a new scene. Handles from
     another or recreated scene are invalid, so explicitly reload retained fields into the new scene.
 
     TileWorld opts in per view with `TileWorldViewOptions.WaterDepthMode = TileWaterDepthMode.AuthoredBed` and
     builds triangle fields from its actual ground meshes. Its scene must implement
-    `ITileWorldWaterTriangleOpticsScene.TryGetWaterOpticsPadding`, which has no default body. An uncertified look
-    such as FFT does not throw there. It withdraws the opted-in water, records one `UncertifiedDisplacement`
-    diagnostic per region-plane with water, keeps terrain building, and republishes the water once the look is
-    certifiable. Any refusal withdraws the whole region-plane request, at every water level. Its other refusals,
+    `ITileWorldWaterTriangleOpticsScene`, whose `LoadWaterOpticsTriangles`, `UnloadWaterOpticsField` and
+    `TryGetWaterOpticsPadding` have no default bodies. An uncertified look such as FFT does not throw there. It
+    withdraws the opted-in water, records one diagnostic per region-plane with water, of the kind mapped from the
+    scene's `reason` (`UncertifiedDisplacement` for FFT), keeps terrain building without reading neighbour sources,
+    and republishes the water once the look is certifiable. Any refusal withdraws the whole region-plane request, at every water level. Its other refusals,
     content requirements and `WaterOpticsSourceBytes` diagnostic are in the
     [TileWorld package reference](../KhaozEngine.TileWorld.Render3D/README.md#authored-optical-beds).
   - **Settings** (`Post.Water`, scene-wide look, lives alongside `Post.Sky` for the same reason - both are
@@ -23561,7 +23569,7 @@ CPU-only device scopes do not bracket the frame command list's GPU work. They re
 publish `deviceOnly=true`, zero begin/end markers, null elapsed ticks and a null Unsupported GPU duration,
 including when valid frame timestamps are available. A skipped device row is NotExecuted. GPU rows retain
 `deviceOnly=false` and positive ordered markers. These rules apply to `device.scene.begin` as well as water.
-Their logical counters remain exclusive leaf work. Skipping the water parent also skips its two device
+Their logical counters remain exclusive leaf work. Skipping the water parent also skips its device
 upload leaves. `device.water.prepare` has no parent and runs on every viewport-prepared frame, so a
 viewport frame with no water reports it executed, Unsupported and with zero counters.
 

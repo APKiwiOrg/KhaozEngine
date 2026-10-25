@@ -7,10 +7,9 @@ namespace KhaozEngine.Render3D
     /// A 3D scene bound to an <see cref="AppWindow"/>: builds a <see cref="Scene3D"/> on the window's GPU device
     /// and renders it into the window's frames, so a Render2D HUD can draw on top. The window owns the device
     /// and the frame loop; this records into the frame's command list. Composition order, per frame:
-    /// <see cref="Scene3D.Begin"/> + submit instances + <see cref="Scene3D.PrepareFrame()"/> in the window's pre-record
-    /// phase, then <see cref="Render"/> in the record phase, then the 2D surface draws the HUD over it.
-    /// Call the viewport-aware preparation overload in that pre-record callback. Bound water cannot prepare
-    /// resources from the recording phase.
+    /// <see cref="Scene3D.Begin"/> + submit instances + <see cref="Scene3D.PrepareFrame(int, int)"/> with the frame's
+    /// size in the window's pre-record phase, then <see cref="Render"/> in the record phase, then the 2D surface
+    /// draws the HUD over it. Bound water cannot prepare resources from the recording phase.
     /// </summary>
     public sealed class Render3DSurface : IDisposable
     {

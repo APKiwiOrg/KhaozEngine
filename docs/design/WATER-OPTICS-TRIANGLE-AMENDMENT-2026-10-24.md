@@ -1,7 +1,9 @@
 # Triangle-backed optical beds
 
 Status: Execution amendment selected by the engine orchestrator under the owner's authorization to
-resolve failed optical gates. Implementation and verification remain open. No release is authorized.
+resolve failed optical gates. Implemented, staged for 21.14.0. Hosted gate passed (run 40155111807). Consumer
+Task 8 and native R8b remain open under https://github.com/APKiwiOrg/KhaozEngine/issues/1300. No release is
+authorized.
 
 Task 5 final evidence, local Metal, Release, with the exact datum and certified seam charge: the parent Task 6
 visual gate passes on local Metal. The unchanged saddle fact passes with one live field and upload. At the
@@ -13,8 +15,7 @@ with neighbouring fields and a 2048 m render-origin reduction. Every admitted GP
 field's certified bound of a binary64 drawn-mesh oracle. The largest error is 4.5e-8 m, at most 4.7 percent of
 that bound. Every image matches an independent field built from the drawn triangles at 0 RGB, and every negative
 witness fails both checks. The feather field holds 1052 triangles in 32 by 32 bins, with occupancy 30 and a
-certified bound of 9.86e-7 m. Hosted Metal, D3D11 and Vulkan verification, final reconciliation, review and the
-remaining parent gates stay open.
+certified bound of 9.86e-7 m.
 
 This amends [per-body water optics](WATER-OBJECT-OPTICS-DESIGN-2026-10-24.md) for the failed Task 6
 saddle gate. It supersedes the bilinear-only TileWorld producer and universal four-fetch requirement.

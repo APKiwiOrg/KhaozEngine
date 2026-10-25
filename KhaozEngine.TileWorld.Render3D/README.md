@@ -263,10 +263,16 @@ own through `TileWorldViewOptions.WaterLook`.
 ### Authored optical beds
 
 `TileWorldViewOptions.WaterDepthMode` is captured when the view is constructed. The default `SceneDepth` is the
-unchanged legacy path and needs no optical scene capability. `AuthoredBed` requires a scene implementing
-`ITileWorldWaterTriangleOpticsScene`, which extends `ITileWorldWaterOpticsScene` with `LoadWaterOpticsTriangles`.
-`Scene3DTileWorldScene` implements it. Any other scene is refused with `NotSupportedException` at view
-construction, before any upload.
+unchanged legacy path and needs no optical scene capability. Its water planes are still collected lazily, once per
+region-plane mesh at its first draw or pick, so loads, flushes and profile builds scan no water and a
+region-plane without a mesh is never scanned. `AuthoredBed` requires a scene implementing
+`ITileWorldWaterTriangleOpticsScene`: `LoadWaterOpticsTriangles`, `UnloadWaterOpticsField` and
+`TryGetWaterOpticsPadding`. `Scene3DTileWorldScene` implements it. Any other scene is refused with
+`NotSupportedException` at view construction, before any upload.
+
+A test or recording scene that implements the interface must return well-formed handles that its
+`UnloadWaterOpticsField` accepts exactly once, and a certified padding from `TryGetWaterOpticsPadding`. A false
+return withdraws the water, as an FFT look does.
 
 - **Actual rendered triangles.** Each region-plane and water level binds one immutable `WaterOpticsTriangleField`,
   shared by that level's planes over its domain and built from the accepted or same-transaction candidate ground
@@ -298,17 +304,30 @@ construction, before any upload.
   `IncompleteSurfaceCoverage`, `AmbiguousSurface`, `SurfaceCapacityExceeded` when every packing exceeds 32
   candidates per bin or the 1024 by 1024 atlas, `UnrepresentableSurface` when the error budget or a backend-safe
   scalar cannot be met, and `UncertifiedDisplacement` when the effective look has no certified displacement
-  envelope.
+  envelope. A neighbour region file that fails to load while its water sources are materialized never costs
+  terrain: the failure is remembered until that region's availability changes, the neighbour stays unloaded and
+  the strict reads refuse the water as `MissingHeightData` or `MissingSurfaceData` naming it. Nothing throws out of
+  `Flush`, `LoadRegion` or a profile build for an optics-only source.
+- **Latched attempts.** A field refusal that keeps a still-covering older generation latches the attempt until
+  its sources, settings or displacement change. The latch suppresses only the field. Ground still rebuilds, so a
+  residency promotion such as Coarse4 to Full lands, and the rebuilt region-plane keeps the latched refusal
+  instead of the old water.
 - **Content must supply a bed.** A certificate reaches past its water tiles, so the ground around opted-in water
   must emit triangles there. Water beside empty or `NoDraw` cells, or beside an unloaded neighbour region, is
   refused with `IncompleteSurfaceCoverage`, `MissingSurfaceData` or `MissingHeightData`, and zero underlay emits
-  no bed. Author a real bank around every opted-in body and keep its neighbours resident.
+  no bed. Author a real bank around every opted-in body and keep its neighbours resident. At the edge of the
+  loaded area a region-plane whose water touches an unloaded neighbour is withdrawn, at every water level, until
+  the neighbour loads. Keep the resident ring wider than the draw distance so visible water never sits on that
+  edge.
 - **Looks.** Opted-in water needs a look with a certified displacement envelope. `TileWaterLooks.River` qualifies.
   The view resolves the look once per flush through `ITileWorldWaterTriangleOpticsScene.TryGetWaterOpticsPadding`,
   which `Scene3DTileWorldScene` forwards to `Scene3D.TryGetWaterOpticsPadding`. The interface member has no
   default body, and its `reason` is meaningful only when it returns false. An uncertified look, such as FFT water,
-  withdraws the `AuthoredBed` water and records one `UncertifiedDisplacement` diagnostic per region-plane with
-  water. Terrain keeps building and publishing, and nothing throws. When the look becomes certifiable again the
+  withdraws the `AuthoredBed` water and records one diagnostic per region-plane with water, of the kind mapped from
+  the scene's `reason`. `UncertifiedDisplacement` maps to itself, as do the other `WaterOpticsSurfaceFailure`
+  values to their TileWorld kinds, and a reason without a TileWorld kind reports `UncertifiedDisplacement`. No
+  neighbour source is read while the look is uncertified. Terrain keeps building and publishing, and nothing
+  throws. When the look becomes certifiable again the
   water is prepared and republished. A colour-only look change reuses the uploaded optical bytes.
 - **Publication.** A source replacement rebuilds every dependent field against one candidate surface table,
   uploads them all, validates again and swaps the mesh and the fields together. An upload failure rolls the whole

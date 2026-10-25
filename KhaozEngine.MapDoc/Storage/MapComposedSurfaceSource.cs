@@ -16,6 +16,10 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
     readonly MapEffectiveSurfaceSource _generated;
     readonly string _nativeSnapshot, _nativeRoot;
     readonly IReadOnlyDictionary<string, MapEffectiveTransform?> _nativePoses;
+    internal IMapSurfaceSource Native => _native;
+    internal MapEffectiveSurfaceSource Generated => _generated;
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; }
+    internal long IndexBytes => checked(128L + MapSurfaceSourcePreparation.DictionaryBytes(_nativePoses));
     public MapEffectiveContext EffectiveContext { get; }
     public string SnapshotId { get; }
     public string RootSha256 => EffectiveContext.Digest;
@@ -23,6 +27,9 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
 
     internal MapComposedSurfaceSource(MapEffectiveContext context, IMapSurfaceSource native)
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(128L + 64L * context.Surfaces.Refs.Count));
+        MapSurfaceSourcePreparation.BeforeDictionary<string, MapEffectiveTransform?>(native.Surfaces.Count);
         EffectiveContext = context;
         _native = native;
         _nativeSnapshot = native.SnapshotId;
@@ -36,6 +43,7 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
             w.WriteStartArray(); w.WriteStringValue(context.Digest); w.WriteStringValue(_nativeSnapshot);
             w.WriteStringValue(_nativeRoot); w.WriteEndArray();
         });
+        PreparationOwnership = preparation?.Complete(checked(IndexBytes + _generated.IndexBytes));
     }
     public MapPatchRead ReadPatch(MapPatchKey key) => _nativePoses.ContainsKey(key.SurfaceId) ? _native.ReadPatch(key) : _generated.ReadPatch(key);
     public MapPatchFindResult FindPatches(MapSurfaceScope scope)

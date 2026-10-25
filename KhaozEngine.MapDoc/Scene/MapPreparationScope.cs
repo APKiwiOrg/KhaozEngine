@@ -29,6 +29,14 @@ internal sealed class MapPreparationScope : IDisposable
     {
         if (!_products.Remove(product)) throw new InvalidOperationException("The product is not owned by this preparation collector.");
     }
+    internal void Export(MapPreparationReservation product, MapPreparationScope destination)
+    {
+        ObjectDisposedException.ThrowIf(_disposed || _completed || destination._disposed || destination._completed, this);
+        if (!_products.Contains(product)) throw new InvalidOperationException("The product is not owned by this preparation collector.");
+        product.ReattributeTo(destination._workspace);
+        destination.Track(product);
+        _products.Remove(product);
+    }
     internal void EnsureCapacity(long bytes, MapPreparationReservation? dependency = null)
     {
         long available = Bytes;

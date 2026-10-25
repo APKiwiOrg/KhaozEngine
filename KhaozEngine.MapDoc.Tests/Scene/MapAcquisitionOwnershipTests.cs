@@ -44,6 +44,7 @@ public sealed class MapAcquisitionOwnershipTests
         fixture.Document.Surfaces.Patches.Add(patch.Key, patch);
         var source = MapDocumentSurfaceSource.Capture(fixture.Document);
         var admission = new MapSceneAdmission(new(MaxPreparedBytes: 2_000_000));
+        var diagnostics = admission.ObserveAcquisition();
         using var active = admission.Enter();
         using var collector = admission.BeginPreparation();
         for (int i = 0; i < 3; i++)
@@ -55,6 +56,9 @@ public sealed class MapAcquisitionOwnershipTests
             Assert.Equal(96L * (i + 1), admission.RetainedBytes);
             Assert.Equal(0, admission.WorkspaceBytes);
         }
+        Assert.Equal(3, diagnostics.Callers[MapAcquisitionCaller.Seat].Scopes);
+        Assert.Equal(2, diagnostics.Callers[MapAcquisitionCaller.Seat].RepeatedKeys);
+        Assert.True(diagnostics.Stages[MapAcquisitionStage.Seat].WorkspaceHighWater > 0);
     }
 
     [Fact]

@@ -14,7 +14,8 @@ internal sealed class MapSceneInventory
     internal long Surfaces(MapSurfaceSet surfaces)
     {
         if (!_seen.Add(surfaces)) return 0;
-        long bytes = checked(128L + 128L * surfaces.Refs.Count + 64L * surfaces.Patches.Count);
+        long bytes = checked(128L + surfaces.Refs.Sum(s => 128L + 8L * (s.IndoorSpan?.DomainTags.Count ?? 0)) +
+            8L * surfaces.Refs.Capacity + 64L * surfaces.Patches.Count);
         foreach (var patch in surfaces.Patches.Values)
             if (_seen.Add(patch)) bytes = checked(bytes + MapSceneAdmission.PatchBytes(patch));
         return bytes;
@@ -32,13 +33,13 @@ internal sealed class MapSceneInventory
     internal long Context(MapEffectiveContext context)
     {
         if (!_seen.Add(context)) return 0;
-        return checked(Surfaces(context.Surfaces) + 128L + 96L * context.Transforms.Count +
+        return checked(Surfaces(context.Surfaces) + 128L + context.IndexBytes + 96L * context.Transforms.Count +
             8L * context.Storeys.Count + context.WaterSources.Values.Sum(Body));
     }
     internal long Product(MapEffectiveResolutionProduct product)
     {
         if (!_seen.Add(product)) return 0;
-        return checked(Context(product.CapturedContext) + Water(product.CapturedWater) +
+        return checked(Context(product.CapturedContext) + Source(product.SurfaceSource) + Water(product.CapturedWater) +
             MapBuildingIntentPreparation.Bytes(product.CapturedBuildingIntent) + MapEffectiveProductPreparation.Tables(product) + 256L +
             128L * product.Placements.Count + 96L * product.PlacementSupports.Count +
             product.PaintRegions.Values.Sum(p => 128L + p.Regions.Sum(r => 128L + 48L * r.Polygon.Count)) +
@@ -48,6 +49,17 @@ internal sealed class MapSceneInventory
     {
         if (water is null || !_seen.Add(water)) return 0;
         return checked(128L + 8L * water.Media.Count + water.Bodies.Sum(Body));
+    }
+    internal long Source(IMapSurfaceSource source)
+    {
+        if (!_seen.Add(source)) return 0;
+        return source switch
+        {
+            MapEffectiveSurfaceSource effective => effective.IndexBytes,
+            MapComposedSurfaceSource composed => checked(composed.IndexBytes + Source(composed.Generated) + Source(composed.Native)),
+            MapSceneSurfaceSource subset => subset.IndexBytes,
+            _ => 0,
+        };
     }
     static long Body(MapWaterBodyDoc body) => checked(128L + 32L * body.Domain.Rects.Count +
         32L * body.Covers.Count + body.Domain.Rings.Sum(r => 32L + 24L * r.Vertices.Count));

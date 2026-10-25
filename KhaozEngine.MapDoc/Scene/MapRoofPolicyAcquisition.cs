@@ -51,6 +51,8 @@ internal static class MapRoofPolicyAcquisition
             // geometry, never over the incidental bounds of newly discovered storage patches.
             if (required == bounds && !ReferenceEquals(current, cell)) return current;
             bounds = required;
+            using var diagnostics = MapSceneAdmission.Current?.AcquisitionDiagnostics?.Enter(MapAcquisitionStage.Policy, MapAcquisitionCaller.PolicyReacquisition);
+            MapSceneAdmission.Current?.AcquisitionDiagnostics?.Scene(MapAcquisitionCaller.PolicyReacquisition);
             var result = current.AcquireDependencies(current.Scope with { Surfaces = Scope(bounds, current.Scope.Surfaces.Limits) });
             var replacement = result.Scene ?? throw new MapSceneSourceException(result.Status,
                 "Canonical roof policy dependencies refused. " + string.Join("\n", result.Findings), result.Capacity);

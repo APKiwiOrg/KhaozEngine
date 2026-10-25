@@ -80,6 +80,9 @@ public sealed class MapScopedScene
                 WholeWorldComplete = false
             }, new(0, 0, 0, 0, 0, 0, 0, 0))
             { Findings = Array.AsReadOnly(new[] { "Dependency acquisition cannot widen captured query budgets." }) };
-        return MapSceneAcquisition.Run(_source, scope, MapSceneAdmission.Current);
+        var admission = MapSceneAdmission.Current;
+        using var diagnostics = admission?.AcquisitionDiagnostics?.Enter(MapAcquisitionStage.Dependency, MapAcquisitionCaller.Dependency);
+        admission?.AcquisitionDiagnostics?.Scene(MapAcquisitionCaller.Dependency);
+        return MapSceneAcquisition.Run(_source, scope, admission);
     }
 }

@@ -195,6 +195,13 @@ default ceilings for this comparison. A manifest replacement is Stale even when 
 Source ceilings bound tiles, metadata rows, memberships, scanned bytes and retained metadata before retention.
 Acquisition ceilings separately bound selected resources, patch scopes, prepared faces and peak workspace plus retained inventory.
 The internal admission allowance covers stored reads, resident/generated copies, support queries and paint compilation.
+Native acquisitions retain selected copies and release discarded query facts before the next request. A seat query
+retains its answer and witness after releasing its view and compiled geometry. Resolver construction and final capture
+have separate owners. Final inventory includes each independent patch copy, acquired-facts containers and newly owned
+effective/composed source indexes. Pinned producer indexes stay borrowed. Dependency replacement admits the old and new
+snapshots together, and coverage keeps every distinct snapshot until its lease ends. `MaxPatchScopes` remains cumulative
+logical work even after a query releases its bytes. Internal opt-in diagnostics expose stage byte and receipt high waters
+and caller/repeated-source/key counts without publishing content identifiers. These are modeled bytes, not heap or RSS.
 External surface producers cannot participate in this internal protocol and scene acquisition refuses them before reads.
 Released surface calls without an admission allowance keep their existing behavior and refusal order.
 `MapSceneWork.PayloadReads` counts logical acquisitions, including cache hits. `IndexNodesVisited` counts hierarchy

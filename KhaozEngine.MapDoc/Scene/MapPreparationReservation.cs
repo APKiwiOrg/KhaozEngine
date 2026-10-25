@@ -6,7 +6,7 @@ namespace KhaozEngine.MapDoc.Scene;
 internal sealed class MapPreparationReservation : IDisposable
 {
     readonly MapPreparationLedger _ledger;
-    readonly MapPreparationLedger.Window? _window;
+    MapPreparationLedger.Window? _window;
     readonly bool _retained;
     internal MapPreparationReservation(MapPreparationLedger ledger, MapPreparationLedger.Window? window, bool retained)
     { _ledger = ledger; _window = window; _retained = retained; }
@@ -16,14 +16,18 @@ internal sealed class MapPreparationReservation : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _ledger.Add(_window, bytes, _retained);
+        bool newReceipt = _retained && Bytes == 0 && bytes > 0;
         Bytes += bytes;
+        _ledger.ReceiptChanged(newReceipt ? 1 : 0);
     }
     internal void Release(long bytes)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (bytes < 0 || bytes > Bytes) throw new ArgumentOutOfRangeException(nameof(bytes));
         _ledger.Remove(_window, bytes, _retained);
+        bool ended = _retained && Bytes > 0 && Bytes == bytes;
         Bytes -= bytes;
+        _ledger.ReceiptChanged(ended ? -1 : 0);
     }
     internal MapPreparationReservation Transfer(long bytes)
     {
@@ -31,6 +35,7 @@ internal sealed class MapPreparationReservation : IDisposable
         if (_retained || bytes < 0 || bytes > Bytes) throw new ArgumentOutOfRangeException(nameof(bytes));
         var owner = new MapPreparationReservation(_ledger, _window, true) { Bytes = bytes };
         _ledger.Transfer(bytes); Bytes -= bytes;
+        _ledger.ReceiptChanged(bytes > 0 ? 1 : 0);
         return owner;
     }
     internal MapPreparationReservation SplitRetained(long bytes)
@@ -39,6 +44,7 @@ internal sealed class MapPreparationReservation : IDisposable
         if (!_retained || bytes < 0 || bytes > Bytes) throw new ArgumentOutOfRangeException(nameof(bytes));
         var owner = new MapPreparationReservation(_ledger, _window, true) { Bytes = bytes };
         Bytes -= bytes;
+        _ledger.ReceiptChanged(bytes > 0 && Bytes > 0 ? 1 : 0);
         return owner;
     }
     internal void MoveWorkspaceTo(MapPreparationReservation destination, long bytes)
@@ -49,6 +55,14 @@ internal sealed class MapPreparationReservation : IDisposable
         Bytes -= bytes; destination.Bytes = checked(destination.Bytes + bytes);
     }
     internal Dependency Borrow(MapPreparationReservation product) => new(this, product);
+    internal void ReattributeTo(MapPreparationReservation destination)
+    {
+        ObjectDisposedException.ThrowIf(_disposed || destination._disposed, this);
+        if (!_retained || destination._retained || _ledger != destination._ledger)
+            throw new InvalidOperationException("Selective export requires retained inventory in the same ledger.");
+        _ledger.Reattribute(_window, destination._window, Bytes);
+        _window = destination._window;
+    }
 
     /// <summary>Admits a dependency in the destination view without consuming its earlier owner on failure.</summary>
     internal sealed class Dependency : IDisposable
@@ -105,6 +119,7 @@ internal sealed class MapPreparationReservation : IDisposable
         if (_window != product._window) _ledger.Reattribute(product._window, _window, product.Bytes);
         _ledger.ReturnToWorkspace(product.Bytes);
         Bytes += product.Bytes; product.Bytes = 0;
+        _ledger.ReceiptChanged(-1);
     }
     public void Dispose()
     {

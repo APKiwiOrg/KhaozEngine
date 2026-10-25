@@ -47,7 +47,7 @@ public sealed class MapPreparationIntentTests
         containers += 40L * product.SupportRequestCapacity;
         foreach (var request in product.SupportRequests) { GC.KeepAlive(request); containers += 64; }
         var inventory = new MapSceneInventory();
-        long other = inventory.Context(product.CapturedContext) + inventory.Water(product.CapturedWater) + 256L +
+        long other = inventory.Context(product.CapturedContext) + inventory.Source(product.SurfaceSource) + inventory.Water(product.CapturedWater) + 256L +
             128L * product.Placements.Count + 96L * product.PlacementSupports.Count +
             product.PaintRegions.Values.Sum(p => 128L + p.Regions.Sum(r => 128L + 48L * r.Polygon.Count)) +
             128L * (product.EffectiveLights.Count + product.EffectiveMarkers.Count + product.MarkerSupports.Count);

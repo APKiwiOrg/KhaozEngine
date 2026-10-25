@@ -22,6 +22,14 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     internal long WorkspaceBytes => _bytes.WorkspaceBytes;
     internal long RetainedBytes => _bytes.RetainedBytes;
     internal long PeakBytes => _bytes.PeakBytes;
+    internal MapAcquisitionDiagnostics? AcquisitionDiagnostics { get; private set; }
+    internal MapAcquisitionDiagnostics ObserveAcquisition()
+    {
+        if (AcquisitionDiagnostics is not null) return AcquisitionDiagnostics;
+        AcquisitionDiagnostics = new(() => (_bytes.RetainedBytes, _bytes.WorkspaceBytes, _bytes.RetainedReceipts));
+        _bytes.Changed = AcquisitionDiagnostics.Sample;
+        return AcquisitionDiagnostics;
+    }
     internal object WindowIdentity => _bytes.WindowIdentity;
     internal IDisposable? ReferenceWindow(long bytes, object? origin = null, ICollection<object>? references = null)
         => _bytes.ReferenceWindow(bytes, origin, references);
@@ -97,6 +105,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         if (!Supports(source)) throw new MapSceneSourceException(MapSceneStatus.Invalid, "Surface source cannot participate in scene admission.");
         if (PatchScopes >= limits.MaxPatchScopes) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPatchScopes), (long)PatchScopes + 1, limits.MaxPatchScopes);
         PatchScopes++;
+        AcquisitionDiagnostics?.Scope(source.SnapshotId);
     }
 
     internal bool CanReservePreparation(long bytes, long faces) => bytes >= 0 && faces >= 0 &&

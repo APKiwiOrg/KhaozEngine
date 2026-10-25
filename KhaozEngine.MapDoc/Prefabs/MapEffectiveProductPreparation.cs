@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Support;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Prefabs;
@@ -11,6 +12,25 @@ namespace KhaozEngine.MapDoc.Prefabs;
 /// <summary>Pre-copy admission and inventory for the effective product's owned tables.</summary>
 internal static class MapEffectiveProductPreparation
 {
+    internal static MapPreparationReservation? SourceOwnership(IMapSurfaceSource source) => source switch
+    {
+        MapEffectiveSurfaceSource effective => effective.PreparationOwnership,
+        MapComposedSurfaceSource composed => composed.PreparationOwnership,
+        _ => null,
+    };
+    internal static MapBuildingIntent CopyIntent(MapBuildingIntent intent, MapEffectiveContext context)
+    {
+        using var preparation = MapSceneAdmission.Current?.BeginPreparation();
+        var copy = intent.Clone();
+        MapSceneAdmission.Current?.ReserveBytes(checked(128L * copy.RoofLinks.Count + 16L * (copy.RoofGroups.Count + copy.Roofs.Count)));
+        var result = new MapBuildingIntent(copy.PayloadVersion, copy.RoofLinks.OrderBy(r => r.Id, StringComparer.Ordinal).Select(link =>
+            link with { AboveY = context.Transform(MapPrefabChildKind.RoofLink, link.Id)?.Height(MapExactValue.FromSingle(link.AboveY)).ToSingle() ?? link.AboveY }).ToArray(),
+            copy.RoofGroups.OrderBy(g => g.Id, StringComparer.Ordinal).ToArray(), copy.Lights, copy.Markers)
+        { Roofs = copy.Roofs.DistinctBy(r => (r.Kind, r.Id)).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray(), Storeys = copy.Storeys };
+        // Nested rows remain shared with the clone. Only replaced shells and rows retire here.
+        preparation?.Complete(MapBuildingIntentPreparation.Bytes(result));
+        return result;
+    }
     internal static void BeforeCopy(IReadOnlyList<MapResolvedPlacement> placements, IReadOnlyList<MapPlacementSupport> supports) =>
         MapSceneAdmission.Current?.ReserveBytes(checked(128L + 16L * (placements.Count + supports.Count)));
     internal static IReadOnlyDictionary<string, MapSupportBinding> CopySupports(IReadOnlyDictionary<string, MapSupportBinding> value, out int capacity)
@@ -35,7 +55,7 @@ internal static class MapEffectiveProductPreparation
         capacity = rows.EnsureCapacity(0);
         return new ReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>>(rows);
     }
-    internal static long Tables(MapEffectiveResolutionProduct product) => checked(
+    internal static long Tables(MapEffectiveResolutionProduct product) => checked(40L * product.PaintRegionCapacity +
         (System.Runtime.CompilerServices.Unsafe.SizeOf<MapExactPoint>() + IntPtr.Size + 24L) * product.LightPointCapacity +
         40L * product.WaterCornerCapacity + product.WaterCorners.Sum(c => 8L + 48L * c.Value.Count) +
         IntPtr.Size * (long)product.Attachments.Count + product.OwnedAttachmentBytes + 40L * product.SupportRequestCapacity + 64L * product.SupportRequests.Count +

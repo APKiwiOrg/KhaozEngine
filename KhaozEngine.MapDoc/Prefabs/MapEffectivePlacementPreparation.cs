@@ -14,7 +14,8 @@ internal static class MapEffectivePlacementPreparation
     internal static IReadOnlyList<MapResolvedPlacement> Resolve(IReadOnlyList<MapPrefabChild> children, MapAssetClosure assets,
         IReadOnlyDictionary<string, MapEffectiveTransform> transforms, IMapSurfaceSource source, MapQueryLimits limits,
         IReadOnlySet<string> standalone, IReadOnlyDictionary<string, string> owners,
-        out IReadOnlyList<MapPlacementSupport> supports, out IReadOnlyDictionary<string, MapSupportBinding> requests)
+        out IReadOnlyList<MapPlacementSupport> supports, out IReadOnlyDictionary<string, MapSupportBinding> requests,
+        out MapPreparationReservation? ownership)
     {
         using var preparation = MapSceneAdmission.Current?.BeginPreparation();
         MapSceneAdmission.Current?.ReserveBytes(checked(children.OfType<MapPrefabPlacementChild>()
@@ -36,7 +37,7 @@ internal static class MapEffectivePlacementPreparation
         }
         var result = MapResolverV2.ResolveEffectivePlacements(assets, inputs, transforms, source, limits, out supports, owners);
         requests = supportRequests;
-        preparation?.Complete(checked(128L * result.Count + result.Sum(p => 8L * p.Tags.Count) +
+        ownership = preparation?.Complete(checked(128L * result.Count + result.Sum(p => 8L * p.Tags.Count) +
             96L * (supports.Count + supportRequests.Count)));
         return result;
     }

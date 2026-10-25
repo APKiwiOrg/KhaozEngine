@@ -46,6 +46,7 @@ public sealed class MapEffectiveResources
 internal sealed class MapEffectiveContext
 {
     internal Scene.MapPreparationReservation? PreparationOwnership { get; }
+    internal long IndexBytes { get; }
     readonly IReadOnlyDictionary<string, MapSurfaceRef> _surfaces;
     readonly Dictionary<string, MapEffectiveTransform> _transformValues;
     internal MapSurfaceSet Surfaces { get; }
@@ -58,14 +59,21 @@ internal sealed class MapEffectiveContext
     {
         using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         Scene.MapSceneAdmission.Current?.ReserveBytes(checked(256L + 128L * surfaces.Refs.Count + 96L * transforms.Count + 8L * (storeys?.Count ?? 0)));
+        MapSurfaceSourcePreparation.BeforeDictionary<string, MapSurfaceRef>(surfaces.Refs.Count);
+        MapSurfaceSourcePreparation.BeforeDictionary<string, MapEffectiveTransform>(transforms.Count);
+        MapSurfaceSourcePreparation.BeforeDictionary<string, MapWaterBodyDoc>(waterSources?.Count ?? 0);
         Storeys = Array.AsReadOnly((storeys ?? Array.Empty<MapStoreyDoc>()).ToArray());
         var water = new MapWaterSet();
         water.Bodies.AddRange(waterSources ?? Array.Empty<MapWaterBodyDoc>());
-        WaterSources = new ReadOnlyDictionary<string, MapWaterBodyDoc>(water.Clone().Bodies.ToDictionary(b => b.Id, StringComparer.Ordinal));
+        var waterIndex = water.Clone().Bodies.ToDictionary(b => b.Id, StringComparer.Ordinal);
+        WaterSources = new ReadOnlyDictionary<string, MapWaterBodyDoc>(waterIndex);
         Surfaces = surfaces.Clone();
-        _surfaces = new ReadOnlyDictionary<string, MapSurfaceRef>(Surfaces.Refs.ToDictionary(s => s.Id, StringComparer.Ordinal));
+        var surfaceIndex = Surfaces.Refs.ToDictionary(s => s.Id, StringComparer.Ordinal);
+        _surfaces = new ReadOnlyDictionary<string, MapSurfaceRef>(surfaceIndex);
         _transformValues = new(transforms, StringComparer.Ordinal);
         Transforms = new ReadOnlyDictionary<string, MapEffectiveTransform>(_transformValues);
+        IndexBytes = checked(MapSurfaceSourcePreparation.DictionaryBytes(surfaceIndex) +
+            MapSurfaceSourcePreparation.DictionaryBytes(_transformValues) + MapSurfaceSourcePreparation.DictionaryBytes(waterIndex));
         Digest = digest;
         PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().Context(this));
     }

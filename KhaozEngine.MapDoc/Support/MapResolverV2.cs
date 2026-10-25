@@ -67,8 +67,9 @@ public static class MapResolverV2
     /// The per-point scope spans 2 m around the point in its nearest frame, with every role and the given budgets. Callers
     /// own their refusal wording.</summary>
     internal static MapSupportResult SeatSupport(MapExactPoint point, MapSupportBinding binding, IMapSurfaceSource surfaces,
-        IReadOnlyList<string> assetSha256, MapQueryLimits limits)
+        IReadOnlyList<string> assetSha256, MapQueryLimits limits, Scene.MapAcquisitionCaller caller = Scene.MapAcquisitionCaller.Seat)
     {
+        using var diagnostics = Scene.MapSceneAdmission.Current?.AcquisitionDiagnostics?.Enter(Scene.MapAcquisitionStage.Seat, caller);
         using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         Scene.MapSceneAdmission.Current?.ReserveBytes(96);
         var world = point with { Y = MapExactValue.FromSingle(binding.ReferenceY ?? 0) };
@@ -78,6 +79,7 @@ public static class MapResolverV2
         var scope = new MapSurfaceScope(frame, new(x - 2, z - 2), new(x + 2, z + 2), null, null, Enum.GetValues<MapSurfaceRole>(), null, limits);
         var view = MapScopedSurfaces.Acquire(surfaces, scope, assetSha256, MapScopedSurfaces.EffectiveQueryPolicyVersion,
             MapScopedSurfaces.EffectiveBuildPolicyVersion);
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(256L + 64L * view.Surfaces.Count + 64L * view.Witness.Records.Count));
         var query = new MapSupportQuery(view);
         var result = binding.Kind == MapSupportBindingKind.Surface ? query.SampleSurfaceExact(world, binding.SurfaceId!)
             : query.SelectExact(new(MapEffectiveGeometry.Presentation(view, world), null, binding.SpaceId, null, binding.SearchAbove!.Value, binding.SearchBelow!.Value, null), world);

@@ -12,6 +12,10 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
     internal long WorkspaceBytes { get; private set; }
     internal long RetainedBytes { get; private set; }
     internal long PeakBytes { get; private set; }
+    internal int RetainedReceipts { get; private set; }
+    internal Action? Changed { get; set; }
+    internal void ReceiptChanged(int delta) { RetainedReceipts = checked(RetainedReceipts + delta); Changed?.Invoke(); }
+    internal void Notify() => Changed?.Invoke();
     internal object WindowIdentity => (object?)_window ?? this;
     internal IDisposable? ReferenceWindow(long bytes, object? origin, ICollection<object>? references)
     {
@@ -136,6 +140,7 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
             if (bytes < 0 || bytes > _owner.Remaining) throw new MapSceneCapacityException(_owner.Capacity(bytes));
             _owner._external += bytes; _external += bytes; Adjust(this, bytes);
             _owner.PeakBytes = Math.Max(_owner.PeakBytes, _owner.WorkspaceBytes + _owner.RetainedBytes + _owner._external);
+            _owner.Notify();
         }
         public void Dispose()
         {

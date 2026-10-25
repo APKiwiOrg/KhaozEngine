@@ -65,6 +65,16 @@ internal static class TileWorldWaterTopologyFixtures
         () => CornerCutBlock(slopedCutEdges: true), [(new RegionCoord(0, 0), null)], new(11f, 3.2f, -9.4f),
         new(11f, -0.3f, -11f), 20f, 1, TileWaterTopologyWitness.HeightRuleSplit, 0.125f, BlockProbes(0));
 
+    internal static readonly TileWaterTopologyCase FeatherSubdivisions = new("feather-overlay-subdivisions",
+        FeatherBlock, [(new RegionCoord(0, 0), null)], new(11f, 3.2f, -9.4f), new(11f, -0.3f, -11f), 20f, 1,
+        TileWaterTopologyWitness.OtherDiagonal, 0.125f,
+        [.. BlockProbes(0), new(10.25f, -11f), new(10.75f, -11f), new(11.25f, -11f), new(11.75f, -11f),
+         new(11.0625f, -11f), new(10.5f, -10.9375f)]);
+
+    internal static readonly TileWaterTopologyCase DiagonalHalfOverlays = new("diagonal-half-overlays",
+        DiagonalHalfBlock, [(new RegionCoord(0, 0), null)], new(11f, 3.2f, -9.4f), new(11f, -0.3f, -11f), 20f, 1,
+        TileWaterTopologyWitness.HeightRuleSplit, 0.125f, BlockProbes(0));
+
     internal static readonly TileWaterTopologyCase CoarseInterior = new("coarse-interior-and-fans", CoarsePond,
         [(new RegionCoord(0, 0), TileRegionResidencyState.Decor)], new(22f, 9f, -10.5f), new(22f, -0.5f, -22f),
         40f, 1, TileWaterTopologyWitness.FullDetail, 0.5f,
@@ -88,7 +98,7 @@ internal static class TileWorldWaterTopologyFixtures
         TileWaterTopologyWitness.ShiftedBinding, 0.125f, BlockProbes(0), JitterAmplitude: 0f);
 
     internal static IReadOnlyList<TileWaterTopologyCase> All { get; } =
-        [OtherDiagonal, ForcedRotation, CornerCuts, SlopedCornerCuts, CoarseInterior, FullCoarseBorder, NearBlock, DistantBlock];
+        [OtherDiagonal, ForcedRotation, CornerCuts, SlopedCornerCuts, FeatherSubdivisions, DiagonalHalfOverlays, CoarseInterior, FullCoarseBorder, NearBlock, DistantBlock];
 
     static TileWorldDocument Doc(string id, int firstRegionX, int lastRegionX)
     {
@@ -131,14 +141,14 @@ internal static class TileWorldWaterTopologyFixtures
     }
 
     // Two by two water tiles around one deep shared corner, with grass banks at zero.
-    static TileWorldDocument DeepCornerBlock(int regionOffset)
+    static TileWorldDocument DeepCornerBlock(int regionOffset, short deepCm = -100)
     {
         int ox = 64 * regionOffset;
         TileWorldDocument doc = Doc(regionOffset == 0 ? "public-deep-corner-block" : "public-distant-deep-corner-block",
             regionOffset - 1, regionOffset + 1);
         Fill(doc, TileRenderTestData.Grass, ox + 7, 7, ox + 15, 15);
         Fill(doc, TileRenderTestData.Water, ox + 10, 10, ox + 12, 12);
-        doc.SetCornerHeightCm(ox + 11, 11, 0, -100);
+        doc.SetCornerHeightCm(ox + 11, 11, 0, deepCm);
         return doc;
     }
 
@@ -156,6 +166,35 @@ internal static class TileWorldWaterTopologyFixtures
             doc.SetOverlay(x, z, 0, TileRenderTestData.Road);
             doc.SetOverlayShape(x, z, 0, TileOverlayShape.CornerQuarter);
             doc.SetOverlayRotation(x, z, 0, rotations[tile++]);
+        }
+        return doc;
+    }
+
+    // A feathered full road overlay on the south pair of a block whose deep corner is an ordinary -0.70 m. The
+    // mesher subdivides triangles near the overlay boundary into sixteenths, so their vertices sit on the sloping
+    // shared edge at z = 11 as T junctions against the uncut north pair.
+    static TileWorldDocument FeatherBlock()
+    {
+        TileWorldDocument doc = DeepCornerBlock(0, -70);
+        foreach (int x in new[] { 10, 11 })
+        {
+            doc.SetOverlay(x, 10, 0, TileRenderTestData.Road);
+            doc.SetSettings(x, 10, 0, doc.GetSettings(x, 10, 0) | TileSettings.FeatherOverlay);
+        }
+        return doc;
+    }
+
+    // Road diagonal halves with material at rotations 0 to 3. Each rotation forces its own diagonal, which differs
+    // from the corner-height rule on the two southern tiles.
+    static TileWorldDocument DiagonalHalfBlock()
+    {
+        TileWorldDocument doc = DeepCornerBlock(0, -70);
+        int rotation = 0;
+        foreach ((int x, int z) in new[] { (10, 10), (11, 10), (10, 11), (11, 11) })
+        {
+            doc.SetOverlay(x, z, 0, TileRenderTestData.Road);
+            doc.SetOverlayShape(x, z, 0, TileOverlayShape.DiagonalHalf);
+            doc.SetOverlayRotation(x, z, 0, rotation++);
         }
         return doc;
     }

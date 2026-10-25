@@ -188,14 +188,16 @@ public sealed class TileWorldWaterTopologyScene : IDisposable
             {
                 (string kind, Vector2 local) = probes[i];
                 double x = origin.X + (double)local.X, z = origin.Z + (double)local.Y;
-                double oracle = kind == "miss" ? double.NaN : reference - TileWorldWaterTopologyOracle.Height(drawn, x, z);
+                double height = kind == "miss" ? double.NaN : TileWorldWaterTopologyOracle.Height(drawn, x, z);
+                double oracle = reference - height;
                 double other = double.NaN;
                 if (kind != "miss")
                 {
                     try { other = reference - TileWorldWaterTopologyOracle.Height(witness, x - witnessShift, z); }
                     catch (InvalidOperationException) { }
                 }
-                result.Depths.Add(new(kind, x, z, local, samples[i].Hit, samples[i].Depth, oracle, other));
+                result.Depths.Add(new(kind, x, z, local, samples[i].Hit, samples[i].Depth, oracle, other,
+                    group.First().SurfaceY - height));
             }
         }
         result.Milliseconds["OracleControlAndGpuProbes"] = watch.Elapsed.TotalMilliseconds;
@@ -257,8 +259,8 @@ public sealed class TileWorldWaterTopologyScene : IDisposable
             points.Add($"named-{i}", (c.Probes[i].X, c.Probes[i].Y, surface - TileWorldWaterTopologyOracle.Height(drawn, c.Probes[i].X, c.Probes[i].Y)));
         int lattice = 0;
         foreach (TileWaterDepthProbe probe in result.Depths)
-            if (probe.Kind == "lattice" && probe.OracleDepth >= DeepMetres)
-                points.Add($"deep-{lattice++}", (probe.WorldX, probe.WorldZ, probe.OracleDepth));
+            if (probe.Kind == "lattice" && probe.PhysicalDepth >= DeepMetres)
+                points.Add($"deep-{lattice++}", (probe.WorldX, probe.WorldZ, probe.PhysicalDepth));
         var pixels = new Dictionary<string, Vector2>();
         foreach ((string name, (double x, double z, double _)) in points)
             if (_camera!.WorldToScreen(new Vector3((float)x, surface, (float)z), Size, Size, out Vector2 pixel)

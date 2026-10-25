@@ -32,10 +32,11 @@ internal sealed record TileWaterFieldReport(Vector3 Origin, Vector2 Size, int Bi
     }
 }
 
-/// <summary>A GPU depth query against the drawn-mesh oracle and the case's witness surface. Witness is NaN where
-/// the witness surface does not reach the point.</summary>
+/// <summary>A GPU rest-depth query against the drawn-mesh oracle and the case's witness surface. Rest depth is
+/// relative to the binding's Origin Y, the datum 0 for TileWorld fields, so the oracle is datum minus drawn height.
+/// Physical depth is the water surface minus drawn height. Witness is NaN where its surface does not reach.</summary>
 internal readonly record struct TileWaterDepthProbe(string Kind, double WorldX, double WorldZ, Vector2 Local, bool Hit,
-    float GpuDepth, double OracleDepth, double WitnessDepth);
+    float GpuDepth, double OracleDepth, double WitnessDepth, double PhysicalDepth);
 
 /// <summary>Colour influence at one projected water-surface point, against the opaque control.</summary>
 internal readonly record struct TileWaterImageProbe(string Name, double WorldX, double WorldZ, Vector2 Pixel,
@@ -142,6 +143,8 @@ internal sealed class TileWaterTopologyCapture
             MaximumWitnessDeviation,
             MinimumOracleDepth = Admitted.Select(d => d.OracleDepth).DefaultIfEmpty(double.NaN).Min(),
             MaximumOracleDepth = Admitted.Select(d => d.OracleDepth).DefaultIfEmpty(double.NaN).Max(),
+            MinimumPhysicalDepth = Admitted.Select(d => d.PhysicalDepth).DefaultIfEmpty(double.NaN).Min(),
+            MaximumPhysicalDepth = Admitted.Select(d => d.PhysicalDepth).DefaultIfEmpty(double.NaN).Max(),
             Probes = Depths,
         },
         Image = new { ControlMaximumRgb, WitnessMaximumRgb, ProjectedDeepProbes, VisibleDeepProbes, Probes = ImageProbes },

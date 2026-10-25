@@ -49,6 +49,21 @@ public sealed class TileWorldWaterOpticsTopologyGpuTests(TileWorldWaterTopologyS
         Assert.Equal(16, capture.DrawnWaterTriangles);
     }
 
+    // Feather subdivisions on a sloping shared edge with an ordinary non-dyadic height are T junctions too.
+    [GpuFact]
+    public void FeatherOverlaySubdivisionsFollowTheirDrawnTriangles()
+    {
+        TileWaterTopologyCapture capture = Verify(F.FeatherSubdivisions);
+        Assert.True(capture.DrawnWaterTriangles > 64, $"Only {capture.DrawnWaterTriangles} drawn water triangles, so the feather did not subdivide.");
+    }
+
+    [GpuFact]
+    public void DiagonalHalfOverlaysWithMaterialFollowTheirForcedDiagonals()
+    {
+        TileWaterTopologyCapture capture = Verify(F.DiagonalHalfOverlays);
+        Assert.Equal(8, capture.DrawnWaterTriangles);
+    }
+
     [GpuFact]
     public void CoarseInteriorAndTransitionFansFollowTheDrawnCoarseMesh() => Verify(F.CoarseInterior);
 
@@ -136,6 +151,8 @@ public sealed class TileWorldWaterOpticsTopologyGpuTests(TileWorldWaterTopologyS
             $"Retained source bytes {r.SourceBytes.Resident}/{r.SourceBytes.Pending}.");
         foreach (TileWaterFieldReport f in r.Fields)
         {
+            // TileWorld fields store rest depth against the exact datum 0, so the binding reference Y is zero.
+            Assert.Equal(0f, f.Origin.Y);
             Assert.True(f.SourceOrderError is null, f.SourceOrderError);
             Assert.Equal(f.Triangles, f.SourceOrderMatched);
             Assert.InRange(f.DerivedPackingAttempts, 1, 11);

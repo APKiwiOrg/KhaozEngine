@@ -234,6 +234,147 @@ public sealed class SnapStripMotionTests
     }
 
     [Fact]
+    public void Identical_configure_preserves_ease_and_drag()
+    {
+        var motion = new SnapStripMotion();
+        motion.Configure(200f, 100, new(40f, 10f));
+        motion.CenterOn(50);
+        motion.Advance(0.09f);
+        motion.Configure(200f, 100, new(40f, 10f));
+        Assert.Equal(2117.5f, motion.Offset, 3);
+        Assert.True(motion.IsAnimating);
+        motion.Advance(0.045f);
+        Assert.Equal(2382.1875f, motion.Offset);
+        Assert.True(motion.IsAnimating);
+        motion.Advance(0.045f);
+        Assert.Equal(2420f, motion.Offset);
+        motion.BeginDrag();
+        motion.DragBy(-37f);
+        var before = State(motion);
+        motion.Configure(200f, 100, new(40f, 10f));
+        Assert.Equal(before, State(motion));
+        Assert.True(motion.IsDragActive);
+        Assert.Equal(2457f, motion.Offset);
+        motion.EndDrag();
+        Assert.Equal(51, motion.TargetIndex);
+        motion.Advance(0.18f);
+        Assert.Equal(2470f, motion.Offset);
+    }
+
+    [Theory]
+    [InlineData(0.09f)]
+    [InlineData(0.18f)]
+    public void Resize_and_roster_changes_keep_the_clamped_anchor(float elapsed)
+    {
+        var motion = Motion();
+        motion.CenterOn(50);
+        motion.Advance(elapsed);
+        motion.Configure(300f, 100, new(40f, 10f));
+        Assert.Equal(50, motion.TargetIndex);
+        Assert.Equal(2370f, motion.Offset);
+        Assert.Equal(2370f, motion.TargetOffset);
+        Assert.False(motion.IsAnimating);
+        motion.CenterOn(99, false);
+        motion.Configure(200f, 10, new(40f, 10f));
+        Assert.Equal(9, motion.TargetIndex);
+        Assert.Equal(290f, motion.Offset);
+        motion.Configure(200f, 0, new(40f, 10f));
+        Assert.Equal(-1, motion.TargetIndex);
+        Assert.Equal(0f, motion.Offset);
+        Assert.False(motion.CanStepPrevious);
+        Assert.False(motion.CanStepNext);
+        motion.Configure(200f, 100, new(40f, 10f));
+        Assert.Equal(0, motion.TargetIndex);
+        Assert.Equal(0f, motion.Offset);
+    }
+
+    [Theory]
+    [InlineData(300f, 100, 40f, 10f, 0.5f, 50, 2370f)]
+    [InlineData(200f, 10, 40f, 10f, 0.5f, 9, 290f)]
+    [InlineData(200f, 100, 60f, 10f, 0.5f, 50, 3430f)]
+    [InlineData(200f, 100, 40f, 20f, 0.5f, 50, 2920f)]
+    [InlineData(200f, 100, 40f, 10f, 0.25f, 50, 2470f)]
+    public void Changed_layout_ends_moved_drag_at_previous_target(float width, int count, float itemWidth,
+        float spacing, float anchor, int target, float offset)
+    {
+        var motion = Motion();
+        motion.CenterOn(50, false);
+        motion.BeginDrag();
+        motion.DragBy(-101f);
+        motion.Configure(width, count, new(itemWidth, spacing, anchor));
+        Assert.Equal(target, motion.TargetIndex);
+        Assert.Equal(offset, motion.Offset);
+        Assert.Equal(offset, motion.TargetOffset);
+        Assert.False(motion.IsDragActive);
+        Assert.False(motion.IsAnimating);
+        motion.DragBy(-37f);
+        motion.EndDrag();
+        motion.Advance(0.18f);
+        Assert.Equal(offset, motion.Offset);
+        Assert.Equal(target, motion.TargetIndex);
+    }
+
+    [Theory]
+    [InlineData(0, -1)]
+    [InlineData(1, 0)]
+    [InlineData(3, 2)]
+    public void Empty_fitting_and_hidden_views_cannot_step(int count, int target)
+    {
+        var motion = Motion();
+        motion.Configure(200f, count, new(40f, 10f));
+        motion.CenterOn(2, false);
+        Assert.Equal(target, motion.TargetIndex);
+        Assert.Equal(0f, motion.Offset);
+        Assert.False(motion.CanStepPrevious);
+        Assert.False(motion.CanStepNext);
+        Assert.False(motion.StepPrevious());
+        Assert.False(motion.StepNext());
+        motion.BeginDrag();
+        motion.DragBy(-37f);
+        motion.EndDrag();
+        Assert.Equal(target, motion.TargetIndex);
+        Assert.Equal(0f, motion.Offset);
+        Assert.False(motion.IsDragActive);
+        Assert.False(motion.IsAnimating);
+        motion.Configure(200f, 100, new(40f, 10f));
+        motion.CenterOn(50);
+        motion.Advance(0.09f);
+        motion.Configure(0f, 100, new(40f, 10f));
+        Assert.Equal(50, motion.TargetIndex);
+        Assert.Equal(0f, motion.Offset);
+        Assert.Equal(0f, motion.TargetOffset);
+        Assert.Equal(4990f, SnapStripGeometry.MaxScroll(motion.ViewportWidth, motion.ItemCount, motion.Metrics));
+        Assert.False(motion.IsAnimating);
+        Assert.False(motion.CanStepPrevious);
+        Assert.False(motion.CanStepNext);
+        Assert.False(motion.StepPrevious());
+        Assert.False(motion.StepNext());
+        Assert.Equal(50, motion.TargetIndex);
+        motion.Configure(200f, 100, new(40f, 10f));
+        Assert.Equal(50, motion.TargetIndex);
+        Assert.Equal(2420f, motion.Offset);
+        Assert.False(motion.IsAnimating);
+    }
+
+    [Fact]
+    public void Invalid_reconfiguration_preserves_moved_drag_and_release()
+    {
+        var motion = Motion();
+        motion.CenterOn(50, false);
+        motion.BeginDrag();
+        motion.DragBy(-37f);
+        var before = State(motion);
+        Assert.Throws<ArgumentOutOfRangeException>(() => motion.Configure(300f, 10, default));
+        Assert.Equal(before, State(motion));
+        motion.EndDrag();
+        Assert.Equal(51, motion.TargetIndex);
+        Assert.Equal(2457f, motion.Offset);
+        motion.Advance(0.18f);
+        Assert.Equal(2470f, motion.Offset);
+        Assert.False(motion.IsAnimating);
+    }
+
+    [Fact]
     public void Finite_long_delta_arrives_exactly()
     {
         var motion = Motion();
@@ -325,7 +466,10 @@ public sealed class SnapStripMotionTests
         var before = State(motion);
         Assert.Throws<ArgumentOutOfRangeException>(() => motion.Configure(viewportWidth, itemCount, metrics));
         Assert.Equal(before, State(motion));
-        motion.Advance(0.09f);
+        motion.Advance(0.045f);
+        Assert.Equal(2382.1875f, motion.Offset);
+        Assert.True(motion.IsAnimating);
+        motion.Advance(0.045f);
         Assert.Equal(2420f, motion.Offset);
         Assert.False(motion.IsAnimating);
     }

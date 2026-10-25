@@ -164,16 +164,25 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `GetOrLoad*` uploads again. There is no refcount and nothing evicts on its own. Calling the plain `Unload*` on a
   cached handle directly leaves the key pointing at a freed handle, so pair the two.
   `Scene3D.SharedAssetCount` is the diagnostic.
-- `Scene3D.PrepareFrame()` - the frame's pre-recording phase. Call it once per frame, after the frame's
-  `Draw*` calls and BEFORE opening the command list the scene is recorded into. Subsystems whose per-frame GPU work
-  cannot go in the frame's list (the FFT ocean's priming dispatch, which needs a submit + device wait of its own)
-  run there instead: opening a second command list while the frame's is recording resets the device's immediate
-  context on Direct3D11 and corrupts the frame (issue #423). `Render3DSurface.Render`,
-  `Render3DPreview.Capture` and `Render3DSnapshot.Capture` all call it for you, so every consumer of the surface
-  gets the phase rather than only `GameApp3D`, and since the record entry point is internal those are the only
-  ways a scene is rendered: nothing outside the engine is left having to call it, and a by-hand call is an early
-  no-op. Recording consumes the prepared frame, so a scene records once per `Begin` and a second viewport means a
-  second `Begin`. Costs nothing on a frame that queues no water. On a WINDOWED host, `Render3DSurface.Render`'s own
+- `Scene3D.PrepareFrame(width, height)` and `Scene3D.PrepareFrame()` - the frame's pre-recording phase. Call it
+  once per frame, after the frame's `Draw*` calls and BEFORE opening the command list the scene is recorded into.
+  Subsystems whose per-frame GPU work cannot go in the frame's list (the FFT ocean's priming dispatch, which needs
+  a submit + device wait of its own) run there instead: opening a second command list while the frame's is
+  recording resets the device's immediate context on Direct3D11 and corrupts the frame (issue #423). The
+  viewport-aware `PrepareFrame(width, height)` also fixes the frame's render targets and prepares bound optical
+  water. The no-argument form is the legacy form and throws when bound water is queued. `GameApp3D` prepares with
+  its frame size. `Render3DPreview.Capture` and the `Render3DSnapshot` captures call `Begin` themselves and
+  prepare with their own target size, so bound water needs no preparation in their draw callback, and a callback
+  that also calls `PrepareFrame` with that size is a latched no-op. Since the record entry point is internal,
+  those hosts and `Render3DSurface.Render` are the only ways a scene is rendered. A custom host calls
+  `PrepareFrame(width, height)` after queueing and before recording. Recording consumes the prepared frame, so a
+  scene records once per `Begin` and a second viewport means a second `Begin`. Only a frame that queues bound
+  water freezes its inputs at preparation. A frame with no bound water keeps the legacy late binding on either
+  form, so its targets may still resize and its clipmap program may still be created while recording. The
+  no-argument form costs nothing on a frame that queues no water. The viewport form always sizes the targets and
+  opens `device.water.prepare`. `Render3DSurface.Render` records inside the frame's open list and calls the
+  no-argument form, so bound water must already be prepared at the frame's size. On a WINDOWED host,
+  `Render3DSurface.Render`'s own
   call is a safety net rather than the effective one - the frame's list is already open by then - so queue and
   prepare the scene in `AppWindow.Run`'s `onPrepare` callback instead (`GameApp3D` does, in `OnPrepareWorld`, see
   issue #429). A host that does neither no longer gets a silently corrupt frame on one backend: every scene path
@@ -819,7 +828,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     coefficients restore the two-stop smoothstep over `ShallowDepth`.
   - **Foam** (`FoamColor`/`FoamStrength`/`FoamCrestCoverage`/`FoamShoreWidth`/`FoamPatternScale`): procedural, no
     texture assets. Whitecaps from the determinant of the swell's horizontal Jacobian (steepness-normalized, so
-    coverage means the same at any steepness) and a shoreline band from the reconstructed depth, both broken up by
+    coverage means the same at any steepness) and a shoreline band from the plane's depth source, both broken up by
     a scrolling pattern thresholded into graphic lobes. The fold eases toward 73% of itself as the pixel footprint
     on the still-water plane grows, which keeps distant whitecap coverage where the old per-vertex fold left it
     rather than whitening the horizon to the near field's density.
@@ -833,21 +842,89 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   becomes a rougher surface rather than stripes or glass, and
   the swell's shading contrast fades on the same measure. `DetailFadeDistance`/`DistantDetailScale` remain as an
   artistic extra layered on top. Plus the
-  depth-sampled shore fade (`ShoreFadeDistance`) and `Opacity`.
+  depth-driven shore fade (`ShoreFadeDistance`) and `Opacity`.
   **No refraction, no screen-space reflections, no caustics, no submerged view** (all out of scope) - a stylized
   LDR surface. Drawn after the sky + ground decals, before the MRT resolve, one draw per plane, with depth test ON
   (`Less`, so geometry above the surface occludes it) but depth WRITE OFF (so the resolved normal/linear-depth the
   outline pass reads is untouched - matching the ground-decal/beam/textured-billboard depth-interleave convention).
   Time is driven by the same `Scene3D.EffectTimeSeconds` clock the beam pulse/scroll uses (freeze it for a
-  deterministic frame). The depth grading, the shore foam and the shore fade all reconstruct the ground height
-  under each water pixel from the resolved scene depth via the same `gl_FragCoord` + raw-inverse-view-projection
-  convention the ground-decal pass uses; because that measurement is taken under the DISPLACED surface, a passing
-  crest carries the waterline and the foam line up the beach for free. The pure math is `WaterMath` (the ripple
+  deterministic frame). On an UNBOUND plane the depth grading, the shore foam and the shore fade reconstruct the
+  first opaque surface under each water pixel from the resolved scene depth via the same `gl_FragCoord` +
+  raw-inverse-view-projection convention the ground-decal pass uses. That surface can be a creature or a prop as
+  well as the bed. A plane bound to an optical field reads its own bed depth instead, described in the next item.
+  Either measurement is taken under the DISPLACED surface, so a passing crest carries the waterline and the foam
+  line up the beach for free. The pure math is `WaterMath` (the ripple
   normal, domain warp, distance detail fade, grid layout and focus warp, absorption, reflection blend, GGX and
   legacy glint, roughness widening, foam), `RippleSpectrum` (the ripple spectrum, the footprint band-limit and the
   variance transfer) and `GerstnerWaves` (the swell, whose offset the vertex stage mirrors and whose normal and
   fold the fragment stage mirrors), all internal, headless-tested and mirroring the GLSL `WaterVert`/`WaterFrag`
   exactly.
+- Per-body optical beds (`WaterPlane.Optics`, a `WaterOpticsBinding`, default unbound, or
+  `WaterPlane.WithOptics`). A bound plane drives depth grading, ordinary shore foam and `ShoreFadeDistance` from
+  its own signed bed depth, `max(0, restDepth + displacedY - referenceY)`, rather than from the first opaque
+  surface. Scene depth still depth-tests the plane, so geometry above the surface occludes it and a submerged
+  object is never read as the bed. FFT crest foam, shoaling and surf keep their existing inputs, and
+  `Post.Water.Bathymetry` is not reinterpreted. Unbound planes keep the legacy scene-depth source, with no optical
+  preparation or upload. Two immutable resource kinds share one generation-checked `WaterOpticsHandle`:
+  - **Bilinear direct field**: `WaterOpticsField(width, height, restDepths)`, a row-major lattice of finite
+    signed depths with 2 through `MaxDimension` (1024) samples per axis, loaded with
+    `Scene3D.LoadWaterOpticsField`. The shader reads it through four bounded R32Float texel fetches, so it does
+    not depend on float linear filtering, and the final row and column carry weight one at the outer edge. The
+    lattice spans the whole binding. Interpolation softens a vertical step across one lattice cell, so a
+    producer with steep drops must sample densely enough that one cell of softening is acceptable.
+  - **Triangle field**: `WaterOpticsTriangleField(size, binColumns, binRows, triangles, certifiedRectangles)` over
+    `WaterOpticsTriangle` vertices in local metres, ordered X, signed rest depth, Z, loaded with
+    `Scene3D.LoadWaterOpticsTriangles`. Pass the actual rendered triangles, for example `GltfMesh.Indices32` over
+    its `Vertices` positions, without clipping or welding them. Each world vertex `(x, y, z)` becomes `(x -
+    origin.X, reference - y, z - origin.Z)`, where `origin` is the binding origin and `reference` its Y, so the
+    middle component is the signed rest depth. The constructor proves that the projected triangles cover every
+    `WaterOpticsRectangle` certificate with no hole and no disagreeing overlap, then packs one R32Float atlas. Bin
+    axes range from 1 through 1024, atlas texture axes from 2 through `MaxDimension` (1024), and a bin holds at most
+    `MaxTrianglesPerBin` (32) candidates. The shader selects the containing triangle with exact integer predicates
+    and interpolates its three depths. Refusals throw `WaterOpticsSurfaceException`, an `ArgumentException` whose
+    `Reason` is `IncompleteCoverage`, `AmbiguousSurface`, `CapacityExceeded` or `UnrepresentableSurface`. The
+    appended `UncertifiedDisplacement` reason is reported by the padding preflight below, not by the constructor.
+    Map the typed reason rather than the message. `TrySampleDepth` returns false outside every certificate and
+    `SampleDepth` throws there. No sample value means missing data. Upload also refuses nonzero subnormal atlas
+    scalars and non-normal inverse extents as `UnrepresentableSurface` before allocating a texture.
+    `ReconstructionErrorBoundMetres` is the field's upward-rounded reconstruction bound, which a producer counts
+    with its own source and render-origin conversion error inside its single budget. It also includes the measured
+    depth discontinuity of coincident shared edges and T junctions. Positive-area disagreement still refuses as
+    `AmbiguousSurface`.
+  - **Binding and coverage**: `WaterOpticsBinding(handle, origin, size)` uses the plane's absolute frame. Origin XZ
+    is the field minimum. Origin Y is the reference the rest depths are measured from, the still-water surface or
+    any datum the producer subtracts exactly. TileWorld binds datum 0 and stores `-y`. A triangle binding requires
+    the field's exact `Size`. `DrawWater` refuses a bound plane whose rectangle, widened by the effective procedural
+    swell displacement, leaves the field or, for triangles, does not fit one certificate. Triangle coverage must extend
+    beyond each certificate by a rasterization margin. An edge fragment that rounds a few binary32 steps outside an
+    exact-fit certificate finds no triangle and is discarded by the invariant guard. TileWorld fields meet this because
+    their triangles extend at least one tile beyond every certificate. The enforced margin is tracked in
+    https://github.com/APKiwiOrg/KhaozEngine/issues/1581.
+    `Scene3D.GetWaterOpticsPadding` reports that displacement for producer preflight and throws
+    `NotSupportedException` for FFT water, because FFT has no certified displacement envelope.
+    `Scene3D.TryGetWaterOpticsPadding(look, out padding, out reason)` is the non-throwing form. It returns false
+    with zero padding and `UncertifiedDisplacement` for FFT water and for a swell whose inputs or reach are not
+    finite, where `GetWaterOpticsPadding` throws `ArgumentException`, and `reason` is meaningful only when it
+    returns false. Bound FFT water throws `NotSupportedException` at `DrawWater`. A stale, foreign or released
+    handle throws. No bound fragment falls back to scene depth, zero or deep water. With an active render origin the
+    scene subtracts the frame origin from the binding origin as it does from the plane centre, so texture mapping
+    never carries large absolute world coordinates and rebasing changes the mapping, not the samples.
+  - **Preparation**: queue every plane, then call `Scene3D.PrepareFrame(width, height)` with the viewport size
+    before opening the frame's command list. `GameApp3D` forwards its frame size automatically. The no-argument
+    `PrepareFrame()` remains the legacy form and throws when bound water is queued. A changed viewport, target or
+    water input after preparation throws at recording rather than drawing stale resources. Only a frame with bound
+    water freezes those inputs. Preparation revalidates coverage from the absolute queue, the rectangle
+    `DrawWater` admitted, so an explicit off-grid `RenderOrigin` cannot refuse an admitted plane.
+    Native bounded surfaces contribute ocean demand and reserve their shared uniform slots before optical sets
+    are created. They remain separate from the optical plane queue and its coverage certificates.
+  - **Lifetime**: reuse the handle across frames. `UnloadWaterOpticsField` invalidates either kind at once and
+    defers texture destruction through the scene's retirement queue. On a disposed scene, unloading or binding a
+    handle throws `ObjectDisposedException`. `WaterOpticsStats` counts live fields,
+    padded live and retired texture bytes, uploads, and live and retired retained CPU payload bytes until actual
+    retirement. Device recreation means a new scene: handles from another or an older scene are invalid, so the
+    producer explicitly loads its retained CPU fields into the new scene.
+  See [consumer use](../docs/USING-KHAOZENGINE.md) for a worked binding and
+  [TileWorld](../KhaozEngine.TileWorld.Render3D/README.md) for the triangle producer.
 - Per-plane water look (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
   identical**): a trailing optional constructor parameter on `WaterPlane`, so every call site written before this
   existed still compiles and still packs from the caller's own `WaterSettings` object unchanged. Every field on
@@ -863,7 +940,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   inland-body case: the plane leaves the shared ocean, so it loses the sea's swell, whitecaps and (shoaling/surf
   ride the same gate) its breaking surf. The shared ocean itself now runs on DEMAND - it bakes when any queued
   plane's effective wave source is `FftOcean`, rather than off the scene's own default, so a `Procedural` scene
-  with one ocean plane still gets a real ocean. Costs zero new UBO bytes (payload 672, slot 768), zero new GPU
+  with one ocean plane still gets a real ocean. Costs zero new UBO bytes (payload 1088, slot 1280), zero new GPU
   per-plane GPU resources and zero new pipelines: each plane already owned its slot in the water pass's uniform
   buffer, so an override is a different set of numbers written into a slot that was being written anyway. Every
   procedural plane whose effective swell does not displace (an amplitude or a wavelength that is zero or negative)

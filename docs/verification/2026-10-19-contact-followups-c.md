@@ -247,7 +247,7 @@ Exact reproduction, from the detached scratch worktree after copying the three b
 sources named above and creating `local-feed`:
 
 ```bash
-env -u KHAOZ_SUPPORT_COST_ARTIFACT -u KHAOZENGINE_SUPPORT_EQUIVALENCE_CAPTURE -u KHAOZENGINE_SUPPORT_CONTROL_CAPTURE -u KHAOZENGINE_SUPPORT_CURVED_CONTROL_CAPTURE -u KHAOZENGINE_SUPPORT_ANCHOR_CAPTURE KHAOZENGINE_SUPPORT_FIELD_BASELINE_CAPTURE=/Users/antonio/KhaozEngine/.worktrees/contact-followups-c/KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/support-equivalence-fields.jsonl build-slot --heavy --label fu-c-golden-freeze -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~FrozenEquivalenceFieldsRehashTheOriginalDigests'
+env -u KHAOZ_SUPPORT_COST_ARTIFACT -u KHAOZENGINE_SUPPORT_EQUIVALENCE_CAPTURE -u KHAOZENGINE_SUPPORT_CONTROL_CAPTURE -u KHAOZENGINE_SUPPORT_CURVED_CONTROL_CAPTURE -u KHAOZENGINE_SUPPORT_ANCHOR_CAPTURE KHAOZENGINE_SUPPORT_FIELD_BASELINE_CAPTURE=KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/support-equivalence-fields.jsonl build-slot --heavy --label fu-c-golden-freeze -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~FrozenEquivalenceFieldsRehashTheOriginalDigests'
 ```
 
 `RepresentedGoldenChangesHaveIndependentPerRowDerivations` compares old and current raw field

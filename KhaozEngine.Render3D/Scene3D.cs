@@ -1052,21 +1052,6 @@ namespace KhaozEngine.Render3D
         /// degradation policy itself.</summary>
         public ShadowMode ResolvedShadowMode => ResolvedShadows().Effective;
 
-        /// <summary>
-        /// Queue one stylized water surface for this frame, over <paramref name="plane"/>'s still-water height and XZ footprint,
-        /// drawn after the sky + ground decals: a Gerstner swell displacing the surface grid, a domain-warped non-tiling ripple
-        /// normal field with a distance detail fade, per-channel depth absorption blended toward the analytically reflected sky
-        /// by fresnel, a GGX sun glint, whitecap + shoreline foam, and a shore fade (knobs: <see cref="WaterSettings"/> on <see cref="Post"/>). Opt-in: no <see cref="DrawWater(in WaterPlane)"/> call this frame means the water pass
-        /// (<see cref="Rendering.WaterRenderer"/>) never runs, so existing scenes stay byte-stable. Presentation
-        /// only; cleared in <see cref="Begin"/>. Call once per frame per distinct body of water (a game with several
-        /// separate lakes/ponds queues one <see cref="WaterPlane"/> each).
-        /// </summary>
-        public void DrawWater(in WaterPlane plane) => _waterPlanes.Add(plane);
-
-        /// <summary>Count of water planes queued this frame. Internal: lets tests assert <see cref="Begin"/> clears
-        /// the queue and <see cref="DrawWater(in WaterPlane)"/> enqueues.</summary>
-        internal int WaterPlaneCount => _waterPlanes.Count;
-
 
         // ---- Camera-facing billboard overlay (immediate-mode; queued this frame, drawn on top after lines). ----
 
@@ -1403,7 +1388,7 @@ namespace KhaozEngine.Render3D
             // same way DrawnInstances / PassTimingsMs are - a Begin without a render leaves the last render's totals,
             // and a re-render never double-counts.
             _frameStats.Reset();
-            EnsureSize(viewportW, viewportH);
+            EnsurePreparedRenderSize(viewportW, viewportH);
             LatchFrameView(viewportW, viewportH);   // this render's view snapshot, now that the size and the camera are final
             // The caps-resolved FXAA decision (FXAA alone, opted in after MSAA, or an unsupported MSAA request
             // falling back to FXAA). Must be the same value for PrepareUniforms (flip parity) and Run.

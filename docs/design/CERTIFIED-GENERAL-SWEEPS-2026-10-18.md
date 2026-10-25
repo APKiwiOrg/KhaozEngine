@@ -5,12 +5,10 @@ explicit-tick reproduction recorded in closed duplicate #1459. Baseline `dcb0599
 Status: implemented with headless family and acquired movement acceptance. Identity and rotated
 boxes, installed convex hulls, finite one-sided mesh triangles, spheres, capsules, cylinders and
 supported flat compound descendants certify within GS-3 and the refusal boundaries below.
-The [implementation plan](../superpowers/plans/2026-10-18-certified-general-sweeps.md) carries the
-serial family gates. Current consumer use lives in the
+Current consumer use lives in the
 [backend README](../../KhaozEngine.Physics.Bepu/README.md).
 
-The original investigation is retained at `.superpowers/sdd/contact-followups/research-a.md` in the
-engine main checkout. At that baseline the first refused operation was the upward shell lift.
+The original investigation found that the first refused operation was the upward shell lift.
 The complete zero-margin contact query and acquisition succeeded, and borrowing the composed lease
 did not change the refusal. `SelectedSweepBoundsProved` rejected the selected hulls, meshes
 and tilted crate before aperture construction. Behind it, `CapsuleBoxFractionSweep` also

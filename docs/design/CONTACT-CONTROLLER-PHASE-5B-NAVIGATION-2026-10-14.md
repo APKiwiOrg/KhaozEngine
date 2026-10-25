@@ -8,7 +8,7 @@ choice below is a recorded ruling for the owner's review. Revision 6 answers rev
 
 Status: phase 5b ground navigation is released in 20.39.0. Contact aquatic navigation, footprint-only
 seeds and public explicit bake profiles are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).
-The [cost record](../superpowers/plans/proofs/2026-10-14-contact-controller-phase5b-cost.md) records the local evidence.
+The [cost record](../verification/2026-10-14-contact-controller-phase5b-cost.md) records the local evidence.
 
 Program row exit: legacy bakes still load, a new-controller bake round-trips, #1299 closes.
 

@@ -85,7 +85,7 @@ internal sealed partial class WaterRenderer
     }
     void ResetBoundedOutputs()
     {
-        _boundedPipe?.Dispose(); _boundedPipe = null;
+        _retired.Retire(_boundedPipe); _boundedPipe = null;
     }
     void PackBounded(int firstSlot, ReadOnlySpan<BoundedWaterDraw> draws, Matrix4x4 vp, Vector3 lightDirection,
         Color lightColor, Vector3 eye, WaterSettings settings, SkySettings sky, float time, Vector3 origin,

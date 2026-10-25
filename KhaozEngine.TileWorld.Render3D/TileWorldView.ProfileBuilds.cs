@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.TileWorld;
@@ -19,10 +18,10 @@ internal sealed record TileGroundBuildInput(
     RegionCoord Region,
     int Plane,
     TileGroundLod Lod,
-    TileGroundMesherOptions Options) : TileProfileBuildInput;
+    TileGroundMesherOptions Options, TileWaterPreparation Water, bool CaptureOpticalSurface) : TileProfileBuildInput;
 
 /// <summary>A built ground mesh, null when the region-plane has no drawable tile.</summary>
-internal sealed record TileGroundBuildOutput(GltfMesh? Mesh) : TileProfileBuildOutput;
+internal sealed record TileGroundBuildOutput(TileGroundCpuBuild Ground, TileWaterPreparation Water) : TileProfileBuildOutput;
 
 /// <summary>A built region cover batch.</summary>
 internal sealed record TileCoverBuildOutput(IReadOnlyList<GroundCoverInstance> Cover) : TileProfileBuildOutput;
@@ -48,8 +47,9 @@ public sealed partial class TileWorldView
 
     TileWorldDocument CaptureGround(RegionCoord region)
     {
+        EnsureWaterSources(region);
         GroundCaptures++;
-        return TileWorldBuildSnapshot.CaptureGround(_doc, region);
+        return TileWorldBuildSnapshot.CaptureGround(_doc, region, GroundSurfaceRequested);
     }
 
     TileWorldCatalogs CaptureMaterials()
@@ -64,8 +64,9 @@ public sealed partial class TileWorldView
         _onCpuBuild?.Invoke(request.Key);
         return request.Input switch
         {
-            TileGroundBuildInput ground => new TileGroundBuildOutput(TileGroundMesher.Build(
-                ground.Document, ground.Catalogs, ground.Region, ground.Plane, ground.Lod, ground.Options)),
+            TileGroundBuildInput ground => new TileGroundBuildOutput(TileGroundCpuBuild.Build(
+                ground.Document, ground.Catalogs, ground.Region, ground.Plane, ground.Lod, ground.Options,
+                ground.CaptureOpticalSurface), ground.Water),
             TileCoverBuildInput cover => new TileCoverBuildOutput(cover.Build()),
             _ => throw new InvalidOperationException($"Unknown profile build input {request.Input.GetType().Name}."),
         };
@@ -76,7 +77,7 @@ public sealed partial class TileWorldView
         switch (result.Payload)
         {
             case TileGroundBuildOutput ground:
-                ApplyGround(result.Key, result.Generation, ground.Mesh);
+                ApplyGround(result.Key, result.Generation, ground.Ground, ground.Water);
                 break;
             case TileCoverBuildOutput cover:
                 ApplyCover(result.Key.Region, result.Generation, cover.Cover);

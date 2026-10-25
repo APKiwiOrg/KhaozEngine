@@ -5,15 +5,17 @@ The 3D integration for `KhaozEngine.Game`, split out so a 2D game pulls **no 3D 
 - **`GameApp3D : GameApp`** - a `GameApp` that builds a `Render3DSurface` and drives the 3D pass across the frame's
   two phases, before the 2D HUD. Subclass it and override `OnDraw3D(Scene3D)`.
   - In `OnPrepareWorld` (the pre-record phase, before the frame's command list opens): `Scene.Begin()` ->
-    `OnDraw3D(Scene)` -> `Scene.PrepareFrame()`. So `OnDraw3D` runs after `OnUpdate` on the same frame, as it
-    always did, but now at a point where a producer may still submit GPU work on a command list of its own. That is
-    what the FFT ocean's priming pass needs, and nesting it inside the frame's recording is refused by the seam on
-    every backend ([#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423),
+    `OnDraw3D(Scene)` -> `Scene.PrepareFrame(frame.Width, frame.Height)`, the viewport-aware form that also
+    prepares bound optical water. A frame with no size falls back to `Scene.PrepareFrame()`. So `OnDraw3D` runs
+    after `OnUpdate` on the same frame, as it always did, but now at a point where a producer may still submit
+    GPU work on a command list of its own. That is what the FFT ocean's priming pass needs, and nesting it inside
+    the frame's recording is refused by the seam on every backend
+    ([#423](https://github.com/APKiwiOrg/KhaozEngine/issues/423),
     [#429](https://github.com/APKiwiOrg/KhaozEngine/issues/429), kept rather than retired with the Veldrid leg in
     [#690](https://github.com/APKiwiOrg/KhaozEngine/issues/690)).
   - In `OnRenderWorld` (the record phase): `Surface3D.Render(frame)`, plus feeding the per-pass timings to the
-    diagnostics HUD. `Render3DSurface.Render` calls `Scene.PrepareFrame()` too, and on this path it finds the frame
-    already prepared and no-ops - the phase's call is the effective one.
+    diagnostics HUD. `Render3DSurface.Render` calls the no-argument `Scene.PrepareFrame()` too, and on this path it
+    finds the frame already prepared and no-ops - the phase's call is the effective one.
   - No game code changes for this: `OnDraw3D` sees the same scene at the same point in the frame's logic.
 - **`IGameScene3D`** - a `GameScene` implements this (in addition to deriving `GameScene`) to submit a 3D world
   pass. Keeps 3D out of the base `GameScene`.

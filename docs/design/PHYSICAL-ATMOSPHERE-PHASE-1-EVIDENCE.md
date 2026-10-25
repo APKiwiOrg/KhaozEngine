@@ -52,9 +52,7 @@ a visible moon. Distant terrain loses contrast toward the horizon colour. Water
 changes from blue reflection to the fog horizon colour. The untextured additive
 controls remain visible without fog and lose energy with fog.
 
-The complete absolute capture paths and local test logs are in the Task 12 report
-at `.superpowers/sdd/2026-10-12-physical-atmosphere-phase-1/task-12-report.md`.
-These captures are inspection evidence, not committed reference grids.
+The captures and test logs were local inspection evidence, not committed reference grids.
 
 ## One completed-frame measurement before calibration
 
@@ -279,8 +277,7 @@ improves performance or establish the 0.3 ms target. The timing boundary remains
 preparation and readback. No retry or stress run was performed.
 
 CPU, GPU, shader-parity, formatting logs, the GPU TRX, measured pixels and five
-contact sheets are retained under
-`.superpowers/sdd/2026-10-12-physical-atmosphere-phase-1/task-12-evidence/calibration`.
+contact sheets were retained only in local scratch.
 No golden update variable was set. No grid, shader source, emission table, engine
 version or release file changed in this calibration.
 
@@ -323,8 +320,7 @@ and the three-family grid bake remain controller work.
 
 CPU floor, cache, uniform layout and binding checks are covered by the focused
 R14 runs. Emission-table regeneration and verification without update variables
-each passed 9/9. Logs, the GPU TRX, pixel values and before/after PNGs are in
-`.superpowers/sdd/2026-10-12-physical-atmosphere-phase-1/task-12-evidence/r14`.
+each passed 9/9. Logs, the GPU TRX, pixel values and before/after PNGs were local inspection evidence.
 No golden update variable, local grid bake or new frame timing was used.
 
 ## Hosted provenance

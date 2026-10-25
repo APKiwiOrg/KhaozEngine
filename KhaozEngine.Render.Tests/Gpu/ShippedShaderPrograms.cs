@@ -25,7 +25,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 129 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 131 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -49,7 +49,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
-        /// <summary>Every distinct base vertex and fragment pair, 92 of them.</summary>
+        /// <summary>Every distinct base vertex and fragment pair, 94 of them.</summary>
         static IEnumerable<ShippedGraphicsProgram> BaseGraphicsPrograms()
         {
             // Render2D.
@@ -171,6 +171,8 @@ namespace KhaozEngine.Tests.Gpu
             // Built lazily, only for a scene that asks for the clipmap grid, but it ships and it compiles.
             yield return new("WaterClipmap", ShaderSources.WaterClipmapVert, ShaderSources.WaterFrag);
             yield return new("BoundedWater", ShaderSources.BoundedWaterVert, ShaderSources.BoundedWaterFrag);
+            yield return new("WaterTriangle", ShaderSources.WaterVert, ShaderSources.WaterTriangleFrag);
+            yield return new("WaterClipmapTriangle", ShaderSources.WaterClipmapVert, ShaderSources.WaterTriangleFrag);
 
             // Render3D fullscreen passes, all sharing FullscreenVert.
             yield return new("AtmosphereTransmittance", ShaderSources.FullscreenVert, ShaderSources.AtmosphereTransmittanceFrag);

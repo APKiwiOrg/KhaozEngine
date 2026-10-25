@@ -4,15 +4,13 @@ Design for [#1429](https://github.com/APKiwiOrg/KhaozEngine/issues/1429),
 [#1455](https://github.com/APKiwiOrg/KhaozEngine/issues/1455) and
 [#1454](https://github.com/APKiwiOrg/KhaozEngine/issues/1454).
 Source baseline: `dcb0599e3a0bcd881cd268ac3b3a72b3ff49ba82`.
-Status: implemented on `fix/contact-followups` per the [implementation plan](../superpowers/plans/2026-10-18-contact-followups.md)
-and verified headless in the dry head. #1429 landed at 4ecf2669b, #1455 at 6dfd94eba to 488952a58 with the crest
+Status: implemented and verified headless in the dry head. #1429 landed at 4ecf2669b, #1455 at 6dfd94eba to 488952a58 with the crest
 region at d32762c9a, and #1454 at ff9bfbb7d and 39e920072. `ContactFollowupTraversalTests` pins the CF-6 movement
 proof. [General sweeps and acquired movement evidence](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md)
 complete #1355 for admitted families. [Lane C](CONTACT-CONTROLLER-FOLLOWUPS-C-2026-10-19.md)
 resolves #1494 exact-edge support and #1487 bounded curved work. The historical evidence below is retained.
 No timing, #1334, navigation, adoption or release
-acceptance follows. Research B in the owning checkout's
-`.superpowers/sdd/contact-followups/research-b.md` traces both geometry refusals at this baseline.
+acceptance follows. The geometry refusals and their decisions are recorded below.
 
 The binding contracts are [SG-1 to SG-24](CONTACT-CONTROLLER-SUPPORT-GATES-2026-10-11.md),
 the [curved proofs](CONTACT-CONTROLLER-SUPPORT-CURVED-PROOFS-2026-10-11.md),

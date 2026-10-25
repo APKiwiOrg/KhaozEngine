@@ -204,7 +204,6 @@
       }
     },
     "format": "clean, exit 0 as the last step of the chain",
-    "log": ".superpowers/sdd/2026-10-09-contact-controller-phase1/logs/p1-final.log",
     "log_sha256": "1e4c0b29927add764f79d08e2362512074d330a64699f685e3b6a08242e5a8df"
   },
   "skips": "Environment-gated GPU, live store and SQL Server facts, unchanged in kind from the 309c8e861 full run.",

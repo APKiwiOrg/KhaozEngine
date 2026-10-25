@@ -27,12 +27,12 @@ namespace KhaozEngine.Tests.Gpu
         readonly FakeGpuResourceFactory _factory;
 
         internal FakeGpuDevice(GpuBackendKind backend = GpuBackendKind.Vulkan, bool supportsShadowMaps = true,
-            int maxColorAttachments = 8)
+            int maxColorAttachments = 8, int maxMsaaSampleCount = 1)
         {
             Backend = backend;
             Capabilities = new GpuCapabilities(
                 clipSpaceYInverted: false, depthRangeZeroToOne: true, deviceName: "FakeGpuDevice",
-                samplerAnisotropy: false, samplerLodBias: false, maxMsaaSampleCount: 1,
+                samplerAnisotropy: false, samplerLodBias: false, maxMsaaSampleCount: maxMsaaSampleCount,
                 supportsShadowMaps: supportsShadowMaps, supportsCompute: false, supportsCompletionFences: false)
             { MaxColorAttachments = maxColorAttachments };
             _factory = new FakeGpuResourceFactory(maxColorAttachments);
@@ -74,10 +74,14 @@ namespace KhaozEngine.Tests.Gpu
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged { }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, T[] data) where T : unmanaged { }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged { }
-        public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height) { }
+        /// <summary>Observes or refuses an upload at the device boundary without replacing resource ownership.</summary>
+        internal Action<IGpuTexture, byte[]>? OnTextureUpload { get; set; }
+
+        public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height)
+            => OnTextureUpload?.Invoke(texture, data);
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height,
             uint mipLevel, uint arrayLayer)
-        { }
+            => OnTextureUpload?.Invoke(texture, data);
 
         // Readback is the one thing a fake genuinely cannot do: there are no pixels behind it. Throwing beats
         // handing back zeros, which would let a snapshot test "pass" against a black image.
@@ -115,6 +119,9 @@ namespace KhaozEngine.Tests.Gpu
         internal int ThrowOnResourceSetCreate { get; set; }
         /// <summary>Absolute 1-based buffer creation to fail, or zero for no injected failure.</summary>
         internal int ThrowOnBufferCreate { get; set; }
+        internal int ThrowOnShaderCreate { get; set; }
+        internal int ThrowOnPipelineCreate { get; set; }
+        internal List<FakePipeline> Pipelines { get; } = new();
 
         internal void FailBufferCreationAfter(int successfulCreates) =>
             ThrowOnBufferCreate = Buffers.Count + successfulCreates + 1;
@@ -211,6 +218,8 @@ namespace KhaozEngine.Tests.Gpu
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
         {
             ShaderRequests.Add(new FakeShaderRequest(vertGlsl, fragGlsl));
+            if (ThrowOnShaderCreate == ShaderRequests.Count)
+                throw new InvalidOperationException("planned shader creation failure");
             var shaders = new FakeShaderSet(vertGlsl, fragGlsl);
             ShaderSets.Add(shaders);
             return shaders;
@@ -229,7 +238,11 @@ namespace KhaozEngine.Tests.Gpu
             if (d.ShaderSet is not FakeShaderSet shaders) return new FakePipeline();
             var request = new FakeGraphicsPipelineRequest(shaders.VertexGlsl, shaders.FragmentGlsl, d);
             GraphicsPipelines.Add(request);
-            return new FakePipeline(request);
+            if (ThrowOnPipelineCreate == GraphicsPipelines.Count)
+                throw new InvalidOperationException("planned pipeline creation failure");
+            var pipeline = new FakePipeline(request);
+            Pipelines.Add(pipeline);
+            return pipeline;
         }
         public IGpuCommandList CreateCommandList()
         {
@@ -374,7 +387,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Whether the owner freed this program.</summary>
         internal bool Disposed { get; private set; }
 
-        public void Dispose() => Disposed = true;
+        internal int DisposeCount { get; private set; }
+        public void Dispose() { DisposeCount++; Disposed = true; }
     }
 
     internal readonly record struct FakeShaderRequest(string VertexGlsl, string FragmentGlsl);
@@ -388,7 +402,9 @@ namespace KhaozEngine.Tests.Gpu
         /// them apart by their shader sources. Null for a pipeline a test made directly.</summary>
         internal FakeGraphicsPipelineRequest? Request { get; }
 
-        public void Dispose() { }
+        internal int DisposeCount { get; private set; }
+        internal bool Disposed => DisposeCount != 0;
+        public void Dispose() => DisposeCount++;
     }
 
     /// <summary>Drops every recorded command. The terminal sink <c>CommandTallyGpuCommandList</c> forwards

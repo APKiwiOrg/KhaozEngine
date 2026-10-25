@@ -220,10 +220,10 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/MotionVectorsView.cs, the MotionVectors debug view.
                 ["MotionVectorsView"] = L(T("Motion"), S("Samp")),
 
-                // Render3D/Rendering/WaterRenderer.cs:188
+                // Render3D/Rendering/WaterRenderer.Pipelines.cs, shared by all five water programs.
                 ["Water"] = L(T("BathyTex", VF), S("BathySamp", VF), T("OceanMap", VF), S("OceanSamp", VF),
                     T("DepthTex"), S("Samp"), U("Water", VF, dynamic: true),
-                    U("Atmosphere", F), T("AtmoSkyView"), S("AtmoSkySampler")),
+                    U("Atmosphere", F), T("AtmoSkyView"), S("AtmoSkySampler"), T("OpticsTex"), S("OpticsSamp")),
                 ["BoundedWater"] = L(U("BoundedWaterTransform", VF, dynamic: true),
                     new GpuResourceLayoutElement("BoundedWaterDomain", GpuResourceKind.StructuredBufferReadOnly, F)),
             };

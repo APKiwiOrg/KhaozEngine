@@ -107,6 +107,18 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
     public int InFlightCount => _running + PendingCurrentCount();
     public int ReadyCount => _ready.Count;
 
+    /// <summary>Whether this exact generation is still queued, running or awaiting its apply.</summary>
+    public bool IsTracked(TileWorldBuildKey key, long generation) =>
+        _tracked.TryGetValue(key, out Slot slot) && slot.Generation == generation;
+
+    /// <summary>Sums a measure over collected results still awaiting their apply.</summary>
+    public long ReadyBytes(Func<TOutput, long> measure)
+    {
+        long total = 0;
+        foreach (TileWorldBuildResult<TOutput> result in _ready.Values) total = checked(total + measure(result.Payload));
+        return total;
+    }
+
     public void Request(TileWorldBuildRequest<TInput> request)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

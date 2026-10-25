@@ -9,7 +9,8 @@ namespace KhaozEngine.TileWorld;
 /// <summary>Detached terrain and material values for CPU region builds.</summary>
 internal static class TileWorldBuildSnapshot
 {
-    internal static TileWorldDocument CaptureGround(TileWorldDocument document, RegionCoord region)
+    internal static TileWorldDocument CaptureGround(TileWorldDocument document, RegionCoord region,
+        bool captureOpticalProvenance = false)
     {
         ArgumentNullException.ThrowIfNull(document);
         var snapshot = new TileWorldDocument
@@ -30,6 +31,11 @@ internal static class TileWorldBuildSnapshot
                     CopyPlane(source.Planes[plane], copy.Planes[plane]);
                 copy.Dirty = false;
             }
+        // Opted-in strict reads must still see known-unloaded candidates before a loaded fallback.
+        // Legacy workers do not need this optical manifest. No worker read can perform I/O.
+        if (captureOpticalProvenance)
+            foreach (var entry in document.UnloadedRegionHashes)
+                snapshot.UnloadedRegionHashes.Add(entry.Key, entry.Value);
         return snapshot;
     }
 

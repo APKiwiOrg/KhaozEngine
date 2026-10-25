@@ -155,6 +155,8 @@ namespace KhaozEngine.Tests.Gpu
                 ["Water"] = "WaterRenderer",
                 ["WaterClipmap"] = "WaterRenderer",
                 ["BoundedWater"] = "WaterRenderer bounded",
+                ["WaterTriangle"] = "WaterRenderer",
+                ["WaterClipmapTriangle"] = "WaterRenderer",
 
                 ["PostPalette"] = "PixelPostProcess pal",
                 ["PostEdge"] = "PixelPostProcess edge",
@@ -257,7 +259,7 @@ namespace KhaozEngine.Tests.Gpu
         public void WaterPrograms_AppendAtmosphereAfterTheDynamicWaterUniform()
         {
             var elements = VulkanDescriptorLimitTests.ShippedLayouts["Water"].Elements!;
-            Assert.Equal(10, elements.Length);
+            Assert.Equal(12, elements.Length);
             Assert.Equal("Water", elements[6].Name);
             Assert.True(elements[6].Dynamic);
             Declaration[] atmosphere =
@@ -265,9 +267,11 @@ namespace KhaozEngine.Tests.Gpu
                 new(0, 7, GpuResourceKind.UniformBuffer, "Atmosphere"),
                 new(0, 8, GpuResourceKind.TextureReadOnly, "AtmoSkyView"),
                 new(0, 9, GpuResourceKind.Sampler, "AtmoSkySampler"),
+                new(0, 10, GpuResourceKind.TextureReadOnly, "OpticsTex"),
+                new(0, 11, GpuResourceKind.Sampler, "OpticsSamp"),
             ];
             foreach (var program in ShippedShaderPrograms.GraphicsPrograms()
-                .Where(p => p.Name is "Water" or "WaterClipmap" or "BoundedWater"))
+                .Where(p => p.Name is "Water" or "WaterClipmap" or "BoundedWater" or "WaterTriangle" or "WaterClipmapTriangle"))
                 Assert.Equal(atmosphere, Parse(program.FragmentGlsl).Where(d => d.Set == 0 && d.Binding >= 7).ToArray());
         }
 
@@ -336,9 +340,9 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            // Main's visibility and fully lit variants plus R8a bounded water and five prepared
+            // Main's visibility, fully lit and triangle optics variants plus R8a bounded water and five prepared
             // foliage programs, including the two prepared colour and motion visibility variants.
-            Assert.Equal(129, catalog.Length);
+            Assert.Equal(131, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

@@ -350,7 +350,6 @@
   },
   "verifiedSourceCommit": "f0309a4f97efec3d01faadd6c112c146685f5f4e",
   "admission": {
-    "command": "build-slot --label p4b --heavy -- python3 .superpowers/sdd/2026-10-11-contact-controller-phase4b/run-final-fix2-verification.py",
     "label": "p4b",
     "heavy": true,
     "mode": "All commands ran sequentially under one admitted heavy slot."
@@ -463,48 +462,39 @@
     "commandResults": {
       "build": {
         "command": "dotnet build KhaozEngine.slnx -c Release",
-        "exitCode": 0,
-        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-build.log"
+        "exitCode": 0
       },
       "tests": {
         "command": "dotnet test KhaozEngine.slnx -c Release --no-build --filter 'Category!=LiveSocket'",
-        "exitCode": 0,
-        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-tests.log"
+        "exitCode": 0
       },
       "format": {
         "command": "dotnet format KhaozEngine.slnx --verify-no-changes --no-restore",
-        "exitCode": 0,
-        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-format.log"
+        "exitCode": 0
       },
       "dashes": {
         "command": "sh scripts/check-dashes.sh --tree",
-        "exitCode": 0,
-        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-dashes.log"
+        "exitCode": 0
       },
       "prose": {
         "command": "sh scripts/check-prose.sh --tree",
-        "exitCode": 0,
-        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-prose.log"
+        "exitCode": 0
       },
       "size": {
         "command": "sh scripts/check-file-size.sh --tree",
-        "exitCode": 0,
-        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-size.log"
+        "exitCode": 0
       },
       "instructions": {
         "command": "sh scripts/check-agent-instructions.sh --tree",
-        "exitCode": 0,
-        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-instructions.log"
+        "exitCode": 0
       },
       "feed": {
         "command": "sh scripts/check-local-feed.sh",
-        "exitCode": 0,
-        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-feed.log"
+        "exitCode": 0
       },
       "docVersions": {
         "command": "bash scripts/check-doc-versions.sh",
-        "exitCode": 0,
-        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-docVersions.log"
+        "exitCode": 0
       }
     },
     "initialRowsFailedBeforeImplementation": [

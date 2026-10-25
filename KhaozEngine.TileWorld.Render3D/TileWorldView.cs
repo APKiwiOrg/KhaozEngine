@@ -26,6 +26,9 @@ public enum RoofVisibility
 /// <summary>Knobs for <see cref="TileWorldView"/>.</summary>
 public sealed class TileWorldViewOptions
 {
+    /// <summary>Optical depth policy, captured when the view is constructed.</summary>
+    public TileWaterDepthMode WaterDepthMode { get; init; } = TileWaterDepthMode.SceneDepth;
+
     /// <summary>Horizontal radius in metres around the draw focus inside which a prop is drawn.</summary>
     public float PropDrawRadius { get; set; } = 96f;
 
@@ -193,6 +196,16 @@ public sealed partial class TileWorldView : IDisposable
         _doc = doc;
         _catalogs = catalogs;
         _options = options ?? new TileWorldViewOptions();
+        _waterDepthMode = _options.WaterDepthMode;
+        if (!Enum.IsDefined(_waterDepthMode)) throw new ArgumentOutOfRangeException(nameof(options));
+        _opticsScene = _waterDepthMode == TileWaterDepthMode.AuthoredBed ? scene as ITileWorldWaterTriangleOpticsScene : null;
+        if (_waterDepthMode == TileWaterDepthMode.AuthoredBed && _opticsScene is null)
+            throw new NotSupportedException("Authored bed water requires triangle optical field preparation.");
+        _publication = new TileWaterPublication(_opticsScene);
+        ResolveWaterDisplacement();
+        _acceptedSurface = AcceptedGroundSurface;
+        _waterTileSize = doc.TileSize;
+        _waterPlaneHeight = doc.PlaneHeight;
         _interiorMeshes = _options.InteriorMeshes;
         RoofMode = _options.RoofMode;
         _animatedFoliageStyles = new AnimatedFoliageStyleSnapshot(_options.AnimatedFoliageArchetypes,
@@ -385,7 +398,8 @@ public sealed partial class TileWorldView : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         UnloadRegion(region);
 
-        LoadGameplayRegion(region, props: null);
+        try { LoadGameplayRegion(region, props: null); }
+        finally { SweepWaterMetadata(); }
     }
 
     internal void LoadRegion(RegionCoord region, TileRegionResidencyState residency)
@@ -408,37 +422,8 @@ public sealed partial class TileWorldView : IDisposable
             PromoteToGameplay(region, existing);
             return;
         }
-        LoadProfileRegion(region, residency);
-    }
-
-    void LoadGameplayRegion(RegionCoord region, TileRegionProps[]? props)
-    {
-        var meshes = new MeshHandle?[_planes];
-        TileRegionProps[] snapshots = props ?? new TileRegionProps[_planes];
-        IReadOnlyList<GroundCoverInstance> cover;
-        try
-        {
-            for (int plane = 0; plane < _planes; plane++)
-            {
-                meshes[plane] = BuildMesh(region, plane);
-                if (props is null)
-                    snapshots[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
-            }
-            cover = BuildCover(region);
-        }
-        catch
-        {
-            // The array only reaches _loaded once every plane is built, so a mesher or an upload that throws on
-            // plane 3 of 4, or cover generation after plane 4, would otherwise orphan the uploads: nothing
-            // references them and UnloadRegion has nothing to find. Free what THIS call uploaded, then let the
-            // exception out unchanged.
-            FreeMeshes(meshes);
-            throw;
-        }
-        _loaded[region] = new RegionHandles(
-            meshes, snapshots, cover, TileRegionResidencyState.Gameplay, profileManaged: false);
-        RequestPropClusters(snapshots);
-        GeneratedCoverCount += cover.Count;
+        try { LoadProfileRegion(region, residency); }
+        finally { SweepWaterMetadata(); }
     }
 
     /// <summary>Frees every mesh handle of one region and forgets it, along with any rebuild it had queued.
@@ -446,18 +431,25 @@ public sealed partial class TileWorldView : IDisposable
     public void UnloadRegion(RegionCoord region)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        WaterAvailabilityChanged(region);
         _interiorInputsDirty = true;
         for (int plane = 0; plane < _planes; plane++)
         {
             if (_dirty.Remove((region, plane))) _dirtyOrder.Remove((region, plane));
-            _water.Remove((region, plane));
+            ReleaseWater(region, plane);
             CancelGround(region, plane);
             _propClusters.Unload(region, plane);
         }
         CancelCover(region);
-        if (!_loaded.Remove(region, out RegionHandles? handles)) return;
-        GeneratedCoverCount -= handles.Cover.Count;
-        FreeMeshes(handles);
+        ReleaseWaterSourceRefusals(region);
+        if (_loaded.Remove(region, out RegionHandles? handles))
+        {
+            GeneratedCoverCount -= handles.Cover.Count;
+            FreeMeshes(handles);
+            // Fields elsewhere that consumed these surfaces cannot outlive the drawn bed.
+            for (int plane = 0; plane < _planes; plane++) _publication.SourceRemoved((region, plane));
+        }
+        SweepWaterMetadata();
     }
 
     /// <summary>Queues one region-plane for a rebuild at the next <see cref="Flush()"/>. A plane outside the
@@ -466,6 +458,7 @@ public sealed partial class TileWorldView : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (plane < 0 || plane >= _planes) return;
+        WaterHeightChanged(region, plane);
         MarkInteriorDirty(region.Rect, plane);
         MarkCoverObjectsStale(region);
         Queue(region, plane);
@@ -480,6 +473,10 @@ public sealed partial class TileWorldView : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (worldRect.IsEmpty || plane < 0 || plane >= _planes) return;
+        RegionCoord waterMin = RegionCoord.Of(worldRect.X, worldRect.Z);
+        RegionCoord waterMax = RegionCoord.Of(worldRect.X1 - 1, worldRect.Z1 - 1);
+        for (int z = waterMin.Rz; z <= waterMax.Rz; z++)
+            for (int x = waterMin.Rx; x <= waterMax.Rx; x++) WaterHeightChanged(new RegionCoord(x, z), plane);
         MarkInteriorDirty(worldRect, plane);
         MarkCoverObjectsStale(worldRect);
         QueueBaseDependencies(worldRect, plane, excluded: null);
@@ -611,7 +608,7 @@ public sealed partial class TileWorldView : IDisposable
 
         foreach (RegionHandles handles in _loaded.Values) FreeMeshes(handles);
         _loaded.Clear();
-        _water.Clear();
+        ReleaseAllWater();
         _dirty.Clear();
         _dirtyOrder.Clear();
 
@@ -662,14 +659,6 @@ public sealed partial class TileWorldView : IDisposable
         if (_dirty.Add((region, plane))) _dirtyOrder.Add((region, plane));
     }
 
-    // The legacy synchronous ground build, which the CPU witness records like every other build entry.
-    MeshHandle? BuildMesh(RegionCoord region, int plane)
-    {
-        _onCpuBuild?.Invoke(new TileWorldBuildKey(region, plane, TileWorldBuildKind.FullGround));
-        GltfMesh? mesh = TileGroundMesher.Build(_doc, _catalogs, region, plane, _mesher);
-        return mesh is null ? null : _scene.LoadMesh(mesh, _material);
-    }
-
     // Frees every archetype's parts exactly once. The placeholder set is shared by every unresolved archetype, so
     // the walk skips it and it is freed on its own afterwards.
     void UnloadPropMeshes()
@@ -686,6 +675,7 @@ public sealed partial class TileWorldView : IDisposable
         _scene.ReleaseGroundCover(handles.Cover);
         ReleaseAnimatedFoliage(handles);
         FreeMeshes(handles.Meshes);
+        Array.Clear(handles.Surfaces);
     }
 
     // Takes the array rather than the record, so the rollback in LoadRegion can free a half-filled plane array
@@ -712,6 +702,7 @@ public sealed partial class TileWorldView : IDisposable
     sealed class RegionHandles
     {
         public MeshHandle?[] Meshes { get; }
+        public TileGroundSurfaceSnapshot?[] Surfaces { get; }
         public TileRegionProps[] Props { get; }
         public IReadOnlyList<GroundCoverInstance> Cover { get; set; }
         public TileRegionResidencyState Residency { get; set; }
@@ -724,6 +715,7 @@ public sealed partial class TileWorldView : IDisposable
                              TileRegionResidencyState residency, bool profileManaged)
         {
             Meshes = meshes;
+            Surfaces = new TileGroundSurfaceSnapshot?[meshes.Length];
             Props = props;
             Cover = cover;
             Residency = residency;

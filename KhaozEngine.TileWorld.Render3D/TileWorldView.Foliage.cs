@@ -53,6 +53,7 @@ public sealed partial class TileWorldView
 
     internal void MarkRegionStreamed(RegionCoord region)
     {
+        WaterAvailabilityChanged(region);
         MarkCoverObjectsStale(region);
         var regionRect = new TileRect(region.OriginX, region.OriginZ, TileRegion.Size, TileRegion.Size);
         for (int plane = 0; plane < _planes; plane++)

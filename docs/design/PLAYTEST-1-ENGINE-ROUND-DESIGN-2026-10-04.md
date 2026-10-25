@@ -1,9 +1,8 @@
 # Playtest 1 engine round: straight routes, smooth facing and directional locomotion
 
-Status: approved by the owner on 2026-10-04 and implemented through the
-[plan](../superpowers/plans/2026-10-04-playtest1-engine-round.md), full Release build and test green, staged for 20.23.0
+Status: approved by the owner on 2026-10-04 and implemented for 20.23.0
 with no tag. v20.22.0 shipped the dot lane telegraph first, so the version below moved to 20.23.0. The orchestrator
-ruled Q1 and Q2 below, and the plan's Outcome records every later ruling.
+ruled Q1 and Q2 below. The current P6E contract references record the surviving decisions.
 
 Consumer: Grimhollow `feature/continuous-movement` at `78294e64`, engine pin 20.20.0 moving to 20.21.0. Base: engine
 main `ee934bba5`, tag `v20.21.0`, `<KhaozEngineVersion>` 20.21.0, nothing staged. Rulings PT.1 to PT.3 in the

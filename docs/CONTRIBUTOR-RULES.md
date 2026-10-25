@@ -39,6 +39,17 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   assembly under `SerializedReportingTestFramework`, and the test joins a collection whose definition
   sets `DisableParallelization = true`. The region refuses to start in a collection that runs beside
   others. See [`test-shared/README.md`](../test-shared/README.md).
+- ULP-sensitive locomotion tests sweep start offsets across a tread or contact boundary. A single
+  start phase can hide penetration or stalls. Skip lists derived on arm64 are not portable to x64,
+  where SIMD width can change the last bits of a sweep result. Derive expectations from the body
+  model and check them across the start phases.
+- Geometric stop bounds retain at least half the contact skin before the analytic contact. Requiring
+  contact minus the full skin pins backend sweep precision. Any escape from a progress assertion for
+  a `Held` start or stall must assert its specific cause, such as the support query's refusal status.
+  A zero-progress tick alone does not justify the escape.
+- Each concurrently running movement test class owns its `GroundMoveContext`, including flat-world
+  fixtures. The context is single threaded and retains mutable step state and cached bindings, so
+  separate test classes must not share a static context.
 - A GPU test class that captures more than a few images shares one lazily created `Scene3D` through a
   class fixture. It also carries a parity test that ages the shared scene through several
   configurations and compares it with a fresh snapshot scene. `OceanFocusScene` is the reference.
@@ -93,9 +104,13 @@ dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocke
 ```
 
 The shared Release setup builds the selected target, then the outside-solution renderer verifier
-when the solution or Render.Tests owns the selection. Its process tests require that freshly built
-executable. Ordinary full and selective CI use the same setup. A raw solution build alone does not
+when the solution or Render.Tests owns the selection, including reduced native GPU shard solutions.
+Its process tests require that freshly built executable. Ordinary full and selective CI and the native
+GPU matrix use the same setup. A raw solution build alone does not
 produce this test prerequisite. Other selected test assemblies keep their original build and test slice.
+Canonical solution and project selection uses this checkout's actual file identity. Every other
+solution inspects its resolved project roots, including a foreign solution with the canonical basename.
+Unrelated roots never acquire the renderer verifier prerequisite.
 
 Warnings are errors in every configuration. Fix warnings at the source. Do not add a blanket
 suppression or disable `TreatWarningsAsErrors`. The standing XML documentation suppression is the
@@ -109,6 +124,17 @@ full test, the determinism pass and the SQL Server jobs, and cites the reused ru
 run, or on any lookup doubt, the tag runs the whole manual path and publishes. Only tag pushes publish.
 Convention, instruction budget and doc-version checks run before both paths. See
 [`design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md`](design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md).
+
+The whole-tree convention checks are `scripts/check-dashes.sh`, `scripts/check-prose.sh`,
+`scripts/check-file-size.sh`, `scripts/check-agent-instructions.sh`, `scripts/check-scratch.sh` and
+`scripts/check-home-paths.sh`, each run with `--tree`. The pre-commit hook runs the staged checks.
+The home-path guard checks added staged lines by default and all tracked text with `--tree`, including
+escaped Windows paths and memory project identifiers. Use repo-relative paths, or `~/` for paths
+outside the repo. Generic `runner`, `Shared` and angle-bracket placeholder names pass. Exceptional
+synthetic fixtures are listed by pathspec in `.home-paths-ignore`, one per line with blank lines and
+`#` comments ignored. Keep exceptions narrow. Staged checks read the exception list from the index
+so an unstaged exception cannot hide a path that the commit would ship. Run the guard's tests with
+`sh scripts/tests/check-home-paths.test.sh`.
 
 Never repeat tests in a loop or add CPU load on the dev Mac, which also hosts the org's self-hosted runners.
 Flake hunts and stress proofs run through `.github/workflows/stress-test.yml`, a caller of the org's shared
@@ -218,9 +244,11 @@ pattern using it matches nothing and reports clean. Use `git grep -w` or `git gr
 coverage, package readmes, example versions and the newest changelog heading. It cannot verify prose
 accuracy.
 
-A completed design document remains as history, but it is not a reference surface. Move shipped API
-and use instructions into the living docs. Any deferral left when a program completes becomes an
-issue. Root `docs/` contains living references only.
+A completed design document keeps the rationale still in force. Rewrite superseded reasoning in
+place and keep shipped API and use instructions in the living references. Any deferral left when a
+program completes becomes an issue. Root `docs/` contains living references only. Long-running work
+uses the tracker lifecycle in [Programs](programs/README.md). Specs, plans and execution ledgers stay
+in ignored local scratch.
 
 ## Issues and handoffs
 

@@ -219,7 +219,7 @@ The probe deleted 160 intermediate per-frame images after every successful captu
 
 ## Accepted D shipping-head confirmation
 
-The exact shipping source is `8307e93361ee66ef30b9a379d2b1eeaf0eb7501b`, including the Task 7d response deletion and the D3D11 non-finite-depth fix. A detached scratch worktree changed only `Directory.Build.props` to private package `21.6.0-svship.1`. The new version did not exist in the private feed and no same-version NuGet extraction existed. The feed was `/Users/antonio/.cache/khaozengine-probe-feed/taa-shadow-visibility`. The pack produced 222 package files and the scratch worktree was removed. The probe pin, both tool pins and all 222 vendored files are committed and pushed at `fc0684fe3cb54a8d92ba7ff8aa0752a1135e7b9d` on the diagnostic archive branch. No game shipping branch changed.
+The exact shipping source is `8307e93361ee66ef30b9a379d2b1eeaf0eb7501b`, including the Task 7d response deletion and the D3D11 non-finite-depth fix. A detached scratch worktree changed only `Directory.Build.props` to private package `21.6.0-svship.1`. The new version did not exist in the private feed and no same-version NuGet extraction existed. The feed was `~/.cache/khaozengine-probe-feed/taa-shadow-visibility`. The pack produced 222 package files and the scratch worktree was removed. The probe pin, both tool pins and all 222 vendored files are committed and pushed at `fc0684fe3cb54a8d92ba7ff8aa0752a1135e7b9d` on the diagnostic archive branch. No game shipping branch changed.
 
 | Identity | SHA256 |
 | --- | --- |
@@ -257,7 +257,7 @@ The committed shipping inputs retain the lossless normal RGB archive, region bit
 
 ## 7f shipping capture
 
-Source `8fe6c5927c6fd0fa4960bcd6dda88e2c209f8ff5`, private package `21.8.0-svcut.1`, probe `c480240d588a023dc8ac3f00311ddd478913f20a`. The detached pack changed only the version declaration and wrote exclusively to `/Users/antonio/.cache/khaozengine-probe-feed/taa-shadow-visibility`. All 222 package hashes and relevant source hashes are recorded in the manifest's separate `cost_cut_build` record. The pack scratch worktree was removed. The diagnostic probe pin and both tool pins were committed and pushed before capture, and its remote SHA was verified.
+Source `8fe6c5927c6fd0fa4960bcd6dda88e2c209f8ff5`, private package `21.8.0-svcut.1`, probe `c480240d588a023dc8ac3f00311ddd478913f20a`. The detached pack changed only the version declaration and wrote exclusively to `~/.cache/khaozengine-probe-feed/taa-shadow-visibility`. All 222 package hashes and relevant source hashes are recorded in the manifest's separate `cost_cut_build` record. The pack scratch worktree was removed. The diagnostic probe pin and both tool pins were committed and pushed before capture, and its remote SHA was verified.
 
 | Identity | SHA256 |
 | --- | --- |
@@ -306,7 +306,7 @@ The guarded source already had three stale artifact hashes (filter-baseline.md, 
 
 ## 7g.3a barrier lock release shipping capture
 
-Source `ef97639b6d2b33973715652a35858d55e0665a0f`, private package `21.8.0-svbar.1`, probe `bd396fd8bdbf6e811d35848fd2983337eec21a4c`. The source replaces the `precise` lock release with the barrier-ordered form, the same arithmetic on every backend. The detached pack changed only the version declaration and wrote exclusively to `/Users/antonio/.cache/khaozengine-probe-feed/taa-shadow-visibility`. The version did not exist in that feed or the NuGet cache before packing. All 222 package hashes and relevant source hashes are recorded in the manifest's separate `barrier_build` record. The pack scratch worktree was removed. The diagnostic probe pin and both tool pins were committed and pushed before capture, and its remote SHA was verified.
+Source `ef97639b6d2b33973715652a35858d55e0665a0f`, private package `21.8.0-svbar.1`, probe `bd396fd8bdbf6e811d35848fd2983337eec21a4c`. The source replaces the `precise` lock release with the barrier-ordered form, the same arithmetic on every backend. The detached pack changed only the version declaration and wrote exclusively to `~/.cache/khaozengine-probe-feed/taa-shadow-visibility`. The version did not exist in that feed or the NuGet cache before packing. All 222 package hashes and relevant source hashes are recorded in the manifest's separate `barrier_build` record. The pack scratch worktree was removed. The diagnostic probe pin and both tool pins were committed and pushed before capture, and its remote SHA was verified.
 
 | Identity | SHA256 |
 | --- | --- |

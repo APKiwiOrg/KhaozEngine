@@ -45,8 +45,8 @@ Windowing + input foundation for the custom MonoGame-free stack.
   list is opened. `Run(onFrame)` is exactly `Run(onFrame, null)`, so nothing changes for a host that does not want
   it. Use it for scene resource reservation and producers that submit GPU work on their own lists. The engine
   permits one recording per device. Prepare scenes and run producers before opening the host list. The sequence
-  is `Begin`, queue draws, `PrepareFrame`, then render in `onFrame`. `GameApp` and `GameApp3D` already provide
-  this ordering. A repeated
+  is `Begin`, queue draws, `PrepareFrame(width, height)` with the frame's size, then render in `onFrame`. `GameApp` and
+  `GameApp3D` already provide this ordering. A repeated
   preparation of an already prepared frame is a no-op. Do not record into `Frame.Commands` from `onPrepare`,
   because that list is not open yet (and on a
   render-suppressed frame never is). Both callbacks run on a render-suppressed frame, so update-side work keeps

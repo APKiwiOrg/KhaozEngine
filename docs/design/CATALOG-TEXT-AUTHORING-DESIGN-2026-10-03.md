@@ -1,7 +1,6 @@
 # Catalog text authoring
 
 Status: Implemented in 20.20.0 for [#1000](https://github.com/APKiwiOrg/KhaozEngine/issues/1000).
-The [implementation plan](../superpowers/plans/2026-10-03-catalog-text-authoring.md) staged the complete change.
 The names and signatures below are the shipped ones. `KhaozEngine.Catalog.Authoring/README.md` is the API
 reference, and this document keeps the rationale.
 

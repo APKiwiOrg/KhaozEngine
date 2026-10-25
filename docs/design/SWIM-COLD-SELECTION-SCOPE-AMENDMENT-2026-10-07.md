@@ -4,9 +4,7 @@ Status: approved by the coordinator under delegated authority on 2026-10-07, wit
 and the immutable-witness/readiness clarifications below. Record precedes shared production edits.
 F3's native G1b and world/release gates remain unchanged. No heavy run is authorized by this approval.
 
-Migration's durable CS1 record is
-[`SWIMMING-COLD-SCOPE-REVIEW.md`](https://github.com/APKiwiOrg/Grimhollow/blob/aec2e2443121da5d6fe124573d5c693b522b12d7/docs/superpowers/programs/world-authoring/SWIMMING-COLD-SCOPE-REVIEW.md).
-It reviewed readiness revision SHA-256 d72bbc015502dfec118cf9896e460555c45825fc137c275ea2f12eda6c9a04fb.
+The CS1 review used readiness revision SHA-256 d72bbc015502dfec118cf9896e460555c45825fc137c275ea2f12eda6c9a04fb.
 The coordinator separately approved the production amendment and all CS1 conditions.
 
 ## The acquisition cycle

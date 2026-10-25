@@ -2,9 +2,8 @@
 
 Status: approved by the owner on 2026-10-01. Implementation in four branches, see "Sequencing and release".
 
-Consumer: Grimhollow's move from tile movement to continuous movement, phase P2. The consumer spec is
-`docs/superpowers/specs/2026-10-01-continuous-movement-design.md` in the Grimhollow repository, and its
-epic is https://github.com/APKiwiOrg/Grimhollow/issues/399. The engine issues are #1219, #1220, #1221 and
+Consumer: Grimhollow's move from tile movement to continuous movement, phase P2, tracked in
+https://github.com/APKiwiOrg/Grimhollow/issues/399. The engine issues are #1219, #1220, #1221 and
 #1222. #34 is discussed under "What leaves this round".
 
 ## Why this round exists
@@ -88,6 +87,16 @@ or a crate top into the floor.
 Tests prove the three agree: at a grid of points across a test world, the sampler, a downward ray against the
 registered meshes, and the shared rule's triangles give the same height within 1 mm.
 
+Ruling B10 defines the sampler's three cases. Drawable ground uses its triangle. Outside the loaded
+region rectangle clamps just inside its edge. An internal missing/NoDraw tile uses the document's
+lattice height and an up normal. NaN input or no loaded regions returns zero/up rather than NaN.
+The sampler reads the document live but captures its bounds at construction, so edits require a
+collider/sampler rebuild. This fallback is not evidence of a physical face for navigation capture.
+
+Ruling B11 keeps descriptors and public delegates in document coordinates. AddTo subtracts the
+physics origin once, and wrapped delegates read the current origin at invocation. Applying an origin
+at both seams would make a rebased sampler disagree with installed geometry.
+
 ### Water
 
 `TileMediumSampler(x, z, feetY)` returns a `MovementMedium` from the shared water body rule (D2): a point
@@ -132,6 +141,11 @@ Two rules move from `KhaozEngine.TileWorld.Render3D` into `KhaozEngine.TileWorld
 
 The existing mesher and water goldens must pass unchanged. A failing golden means the move changed
 geometry, which is a defect, not a golden to refresh.
+
+Rulings A3 and A4 keep geometry description independent of catalogs and place every emitted lattice
+point through LatticePosition. Overlay presence uses the raw nonzero overlay ID. Normals, material
+slots and feathered-overlay presentation remain render-side, so consumers must not copy a second
+triangulation or infer geometry from a resolved material slot.
 
 ## 3. Pointer capture and the camera gestures (#1220)
 

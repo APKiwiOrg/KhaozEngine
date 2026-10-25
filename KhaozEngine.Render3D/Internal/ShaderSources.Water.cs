@@ -53,6 +53,8 @@ namespace KhaozEngine.Render3D.Internal
     vec4 SkyDiscColor[8];  // per reflected disc: rgb colour, a = opacity
     vec4 SkyDiscDir[8];    // xyz = unit direction TO the body, w = radius
     vec4 SkyDiscHalo[8];   // x = halo strength, y = halo falloff, z = physical primary marker
+    vec4 OpticsRect;       // relative minimum XZ and inverse extent
+    vec4 OpticsParams;     // relative reference Y, enabled, width, height
 };";
 
         // ---- Stylized ocean surface. Drawn AFTER the sky and the ground decals into ColorDepthFB (lit colour +
@@ -208,7 +210,13 @@ void main() {
         /// glint, foam, shore fade), <see cref="GerstnerWaves"/> (the swell's normal and fold, per pixel) and
         /// <see cref="SkyMath.ShadeDirection"/> (the reflected sky) exactly.
         /// </summary>
-        public const string WaterFrag = @"#version 450
+        public static readonly string WaterFrag = FragSource(triangle: false);
+
+        /// <summary>Exact triangle optics only, sharing the default fragment's physical shading body.</summary>
+        internal static readonly string WaterTriangleFrag = FragSource(triangle: true);
+
+        static string FragSource(bool triangle) => @"#version 450
+#extension GL_EXT_control_flow_attributes : require
 " + AtmosphereBindingsAt7Glsl + AtmosphereFogGlsl
     + WaterShoreBindingsGlsl + WaterFftBindingsGlsl + @"
 layout(set=0, binding=4) uniform texture2D DepthTex;   // .r = resolved scene linear depth (single-channel R32F)
@@ -371,6 +379,7 @@ vec3 skyAlongDirection(vec3 dir, float sunStrength) {
     return col;
 }
 
+" + (triangle ? WaterTriangleOpticsGlsl : WaterOpticsGlsl) + @"
 // Mirrors WaterMath.GlintRoughnessAt exactly: widen the specular lobe wherever the surface is under-sampled, by
 // camera distance OR by the pixel's world footprint against the ripple wavelength, whichever is worse. The
 // footprint is the measure that is actually right (what aliases is a wave narrower than a pixel, and distance is
@@ -470,10 +479,12 @@ void main() {
     // procedural surface renders exactly as it did before the FFT path existed.
     ivec2 sz = textureSize(sampler2D(DepthTex, Samp), 0);
     float groundDepth = texelFetch(sampler2D(DepthTex, Samp), ivec2(gl_FragCoord.xy), 0).r;
+" + (triangle ? WaterTriangleDepthBindingGuardGlsl : "") + @"
     vec4 ndc = vec4(gl_FragCoord.x / float(sz.x) * 2.0 - 1.0, 1.0 - gl_FragCoord.y / float(sz.y) * 2.0, groundDepth, 1.0);
     vec4 wp = InvViewProj * ndc;
     vec3 groundWorld = wp.xyz / wp.w;
     float depthBelowSurface = vWorldPos.y - groundWorld.y;
+    float bedDepth = opticalBedDepth(vWorldPos, depthBelowSurface);
 
     vec3 N;
     float lostSlopeVariance;
@@ -555,12 +566,12 @@ void main() {
     vec3 body;
     float bodyAlpha;
     if (absorb.r + absorb.g + absorb.b > 0.0) {
-        vec3 tr = exp(-absorb * max(depthBelowSurface, 0.0));
+        vec3 tr = exp(-absorb * max(bedDepth, 0.0));
         body = DeepColor.rgb + (ShallowColor.rgb - DeepColor.rgb) * tr;
         bodyAlpha = mix(DeepColor.a, ShallowColor.a, (tr.r + tr.g + tr.b) * (1.0 / 3.0));
     } else {
         float shallowW = shallowDepth <= 0.0 ? 0.0
-            : 1.0 - smoothstep(0.0, 1.0, clamp(depthBelowSurface / shallowDepth, 0.0, 1.0));
+            : 1.0 - smoothstep(0.0, 1.0, clamp(bedDepth / shallowDepth, 0.0, 1.0));
         body = mix(DeepColor.rgb, ShallowColor.rgb, shallowW);
         bodyAlpha = mix(DeepColor.a, ShallowColor.a, shallowW);
     }
@@ -645,7 +656,7 @@ void main() {
             : smoothstep(threshold, threshold + KE_WHITECAP_SOFTNESS, crestFold);
         float shoreWidth = FoamParams.z;
         float band = shoreWidth <= 0.0 ? 0.0
-            : 1.0 - smoothstep(0.0, 1.0, clamp(depthBelowSurface / shoreWidth, 0.0, 1.0));
+            : 1.0 - smoothstep(0.0, 1.0, clamp(bedDepth / shoreWidth, 0.0, 1.0));
         // FFT mode sources the break-up from the FFT foam/Jacobian channel itself (already de-tiled through the
         // vertex stage's sampling frame) instead of the fixed world-space lattice: FoamPatternScale and
         // WaveSpeed's foam-drift job both go inert here as a result (see WaterSettings.WaveSource's doc).
@@ -666,7 +677,7 @@ void main() {
     // Waterline alpha feather (mirrors WaterMath.ShoreFade): a much tighter distance than the depth grading above,
     // so the very edge softens out instead of clipping against the seabed.
     float shoreFadeDist = ShoreGlint.x;
-    float shoreFade = shoreFadeDist <= 0.0 ? 1.0 : smoothstep(0.0, 1.0, clamp(depthBelowSurface / shoreFadeDist, 0.0, 1.0));
+    float shoreFade = shoreFadeDist <= 0.0 ? 1.0 : smoothstep(0.0, 1.0, clamp(bedDepth / shoreFadeDist, 0.0, 1.0));
 
     float opacity = ShoreGlint.w;
     vec3 rgb = tint + LightColor.rgb * glint;

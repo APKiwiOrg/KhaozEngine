@@ -1,7 +1,6 @@
 # Rigid attachment sets
 
 Status: implemented and integrated into main at `a80fab6c4`, staged for `20.38.0`. The owner approved exact tag `v20.38.0` at that commit for a separate release chat.
-The [implementation plan](../superpowers/plans/2026-10-13-rigid-attachment-sets.md) is the execution contract.
 This document records the design rationale. The package READMEs and consumer guide describe current APIs.
 Package availability is determined by release tags, with consumer adoption gated on an approved release.
 
@@ -176,8 +175,7 @@ loads its resources, binds its joints and submits every material primitive with 
 
 The first consumer needs independently moving thigh and shin plates plus a pelvis attachment. The engine
 contract has no inventory, item, skill, equipment-slot or particular skeleton dependency. The approved
-consumer scope is recorded in the
-[Grimhollow design](https://github.com/APKiwiOrg/Grimhollow/blob/fe89a288b37a1175f92e1af63628781049eef930/docs/superpowers/specs/2026-10-13-masonry-stone-armour-design.md).
+consumer scope remains owned by Grimhollow.
 
 ## Existing capability
 

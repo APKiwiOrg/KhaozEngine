@@ -138,7 +138,7 @@ namespace KhaozEngine.Tests.Gpu
             Dictionary<string, string> emitted = EmitEverything();
             int distinct = emitted.Values.Distinct(StringComparer.Ordinal).Count();
 
-            // 266 combines main's visibility and fully lit temporal variants with R8a bounded water,
+            // 270 combines main's visibility, fully lit and triangle optics variants with R8a bounded water,
             // five prepared-foliage programs and their colour and motion visibility variants.
             // 250 adds ten fully lit temporal specializations. 230 adds 25 visibility pairs.
             // 180 added the GpuScaledCopy capture downscale pair.
@@ -150,7 +150,7 @@ namespace KhaozEngine.Tests.Gpu
             // and its depth store, 138 the MotionVectors debug view, 136 the thirteen temporal motion programs, 126
             // their eight opaque ones, 110 the five target-outline pairs and three point-skinned pairs, 94 the cascade
             // cutout pair and dissolve-aware skinned vertex, and the 76 above is the original 2026-08-08 measurement.
-            Assert.Equal(266, emitted.Count);
+            Assert.Equal(270, emitted.Count);
             Assert.True(distinct < emitted.Count,
                 $"The {emitted.Count} shipped stage emissions produced {distinct} distinct SPIR-V modules, so "
                 + "nothing is shared and decision V-S7's dedup buys nothing. Measured at 59 distinct on "

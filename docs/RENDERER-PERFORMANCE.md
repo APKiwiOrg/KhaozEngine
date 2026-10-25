@@ -2,7 +2,7 @@
 
 This is the living contract for the internal renderer baseline, offline summaries and comparisons.
 [CROSS-PLATFORM.md](CROSS-PLATFORM.md#paid-hosted-renderer-performance-mode) owns hosted admission
-and execution. The [implementation plan](superpowers/plans/2026-10-21-renderer-performance-baseline.md)
+and execution. The [cold publication design](design/RENDERER-COLD-PUBLICATION.md)
 retains the design rationale. This document records no measured baseline or performance budget.
 
 ## Evidence and authorization
@@ -23,15 +23,25 @@ pilot has its own frozen schedule and 1,260 frames. Warm-up and conditioning rem
 measured distributions. A three-frame batch has one completion drain and one harvest, including
 the final short batch. No frame trimming, fastest-iteration selection or adaptive warm-up is allowed.
 
+Cold preparation renders no hidden scene frame. The first counted conditioning frame uses driver
+index 0 and scene frame index 1. Its active temporal history is deliberately invalid with
+`FirstFrame`, since no previous frame exists. Only that first conditioning frame accepts this reset.
+Temporal recipes require valid history on every later conditioning or measured frame. Each measured
+scene block starts fresh at driver index -64 for the pilot or -192 for a full unit. These counted warm-up
+frames establish history before measured index 0. Periodic recipe inputs wrap negative indices modulo
+256, while the scene frame index and effect clock keep advancing through the block.
+
 The outer GPU pair precedes the host clear and follows native command-list End finalization.
 `TotalOnly` brackets the frame with two queries. `PerPass` adds frozen parent/child scopes and
 reserved skip slots. Detailed markers may change synchronization or encoder boundaries. Its frame
 total is diagnostic and never substitutes for a total-only frame result.
 
 The [consumer reference](USING-KHAOZENGINE.md#gpu-timestamps-without-waiting) owns the public observer
-registry. `device.scene.begin`, `device.water.geometry` and `device.water.bathymetry` are CPU-only
-leaves. Their counters are exclusive, their marker indices are zero, and their elapsed ticks and GPU
-durations are null. Executed rows are Unsupported and skipped rows are NotExecuted. These rows
+registry. `device.scene.begin`, `device.water.geometry`, `device.water.bathymetry` and
+`device.water.prepare` are CPU-only leaves. Their counters are exclusive, their marker indices are zero,
+and their elapsed ticks and GPU durations are null. Executed rows are Unsupported and skipped rows are
+NotExecuted. The bathymetry leaf belongs to `PrepareFrame()` frames under `water`.
+`device.water.prepare` is a root on every `PrepareFrame(width, height)` frame and is never skipped. These rows
 remain in strict raw publication beside valid GPU timing without inventing GPU intervals.
 Both warmed all-feature traces and cold MSAA/blob retirement traces are required correctness proofs.
 The [integration verification record](verification/2026-10-21-renderer-performance-baseline.md) separates
@@ -126,7 +136,8 @@ Offline and workflow verification must repeat against received files. Verified s
 Ordinary local Release test setup runs `sh scripts/build-release-tests.sh KhaozEngine.slnx`, or passes
 `KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj` for the affected assembly. This builds its
 outside-solution process prerequisite before `dotnet test -c Release --no-build`. Full and selective
-ordinary CI use this same build owner. Process tests refuse a missing executable.
+ordinary CI and the native GPU matrix use this same build owner, including native shard solutions
+that select Render.Tests. Process tests refuse a missing executable.
 
 The outside-solution `tools/Renderer.Perf.Verify` console takes exactly directory and report filename.
 It performs no backend registration, device creation or measurement. Exit zero means directory

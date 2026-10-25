@@ -9,7 +9,7 @@
 # corpus.veldrid-spirv.txt sibling are that comparison, taken in two processes.
 #
 # Rebuild: KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
-# Rows: 1072
+# Rows: 1088
 AtmosphereMultiScattering.fragment.hlsl 34864b3f97ad3f79b19eb98448bafe39c4eac61e24aad497e3297f5a35589548 18121
 AtmosphereMultiScattering.fragment.msl d938a869745f054ed6ac9d4571fbeadd01130d6f98d18f6052bffc83be5e3184 17554
 AtmosphereMultiScattering.fragment.spirv 1d5958cb8914edf4831bcfce3c4a00621f879c6c7dd505ee7884d093927a8a05 13736
@@ -74,14 +74,14 @@ Billboard.layout.msl 429da5a9dcc035f5ec2a732419a6460465f7d55d15b66556ea4e9442cb8
 Billboard.vertex.hlsl 640de8f553d855800d1bdbb5ab72052db6ed9b4f7f7db48376654131d991a3b2 996
 Billboard.vertex.msl 360ee4dc1345fb53df34513aee5885161a357ac6c47b73c678b1d2895abc9d46 659
 Billboard.vertex.spirv 380ca7819d9bd7f5871e1e10e21b418d70d0ec9b498849ce5f05719fd2ecdbc4 1220
-BoundedWater.fragment.hlsl 6d907fceeb3e8085f43b5a63e3b96b87f485bdb8c83726e6993218f6a14a121b 62560
-BoundedWater.fragment.msl 1be9834468f7d3e5e01e880669d5b85279df08db780e558635af5d8e896d1297 60997
-BoundedWater.fragment.spirv 146c5d3046f46c36df3ddb8c6914210116b362d590de59a21e4b88dfb73ca735 59276
-BoundedWater.layout.hlsl 21fa8939085386288fdb489afe269cd91b0cee8c20ba99797f28f2e4a4cd26c2 13 in[<unnamed>:Float3]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F]
-BoundedWater.layout.msl 21fa8939085386288fdb489afe269cd91b0cee8c20ba99797f28f2e4a4cd26c2 13 in[<unnamed>:Float3]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F]
-BoundedWater.vertex.hlsl cb17afd22db414950e2a9b3e096ea7450f8cc84cd263b5d8cf27683788230c57 15748
-BoundedWater.vertex.msl 90603deccfa2b7f67dcac578e5bfa49fe15404fdb794e8712261a35d45a4d76e 14813
-BoundedWater.vertex.spirv da3348f45587a14ddd687b0b3e3463d7e9a13ce0cabfe4e43ee5bdfc1879664f 15020
+BoundedWater.fragment.hlsl 3be521d4326d43cad08dca9596234a4d383ecb9b7e622da7c90c1d497d56ca88 63556
+BoundedWater.fragment.msl 3587f95cf0a206f0f6ee9e01df7161506a8656aa921b3af035871e57ce508cb6 61971
+BoundedWater.fragment.spirv b5b79a2d0490eaef038e7bc572b79760cd2152c2f2eb6cd4fc81323051116f17 61004
+BoundedWater.layout.hlsl 64e5c8dbebfc6f83798ec837e900754b5f61932514ad987dab706496bee2011a 15 in[<unnamed>:Float3]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F]
+BoundedWater.layout.msl 64e5c8dbebfc6f83798ec837e900754b5f61932514ad987dab706496bee2011a 15 in[<unnamed>:Float3]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F]
+BoundedWater.vertex.hlsl 5c0f1df5f93b2f0e8b69ecfbcfd95fccc8b34cdce1a02a0b837c93f84408f2df 15826
+BoundedWater.vertex.msl bd88db7867ed7655e8b8971b77fed67bacbbb350eb44db0c0612915b0a5c36cc 14847
+BoundedWater.vertex.spirv bb0856ba195126d8361b2843a2218b6b074cee03ead7995b9f03a3c657fa8509 15068
 Distortion.fragment.hlsl a5ee4397e3b8d70b8aabc6c98dabcba4d4875b1d0ba1123584ef083b68576a89 8353
 Distortion.fragment.msl 1de779ad2d5fc5cb6d26c51ea6456d02af660750148422c282fbfc42b56e11af 7830
 Distortion.fragment.spirv c101c352fcb988172d863646f3167f80ed61eaca68bd948b102b64e6633a342f 9644
@@ -1066,19 +1066,35 @@ TransitionSolid.layout.msl 1b5785191158b63346b254efec47babd1a2da88b3b32db89b767a
 TransitionSolid.vertex.hlsl a347eabae7dfefaef4fe9f4309e8a35ca7e6e43ba7af4fa24ea8c19f596b7c23 691
 TransitionSolid.vertex.msl 7d3fc4137f5af6120bc9543820004323db6f99a6317b2ce1c32efaa3721a3bc1 451
 TransitionSolid.vertex.spirv 70c6c952e9d7169003b08630f6c4ab41cedc76249a6ee43bd2aa849822574fc4 916
-Water.fragment.hlsl 8fada73667471249e726cff1c563dc819979952e4e72b24b9d277a8026fb83b1 60048
-Water.fragment.msl 0cdc691228c9df8de7872e4ca6d6eedccacad10d87a80cfc812227f9ebf3bd3b 58932
-Water.fragment.spirv bbb485c99cce9871d663083fec255e263216261f85cb9ed74e9bfc330d349b87 57268
-Water.layout.hlsl f030ac580b54cc83b4ed753621b281f2ef2a0d42d1dda72d5b785bf0a8aac04f 11 in[<unnamed>:Float3]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
-Water.layout.msl f030ac580b54cc83b4ed753621b281f2ef2a0d42d1dda72d5b785bf0a8aac04f 11 in[<unnamed>:Float3]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
-Water.vertex.hlsl 3b94e5b4487728bcb38a59d1c83d31ea3737eb5e76212120267d7eb9b39346cf 15565
-Water.vertex.msl b2e865ed8ba8ad4dee3f96450c2c816207b1e184e2ba4a0d7f94dcdb40c69996 14694
-Water.vertex.spirv 4a4f872a29da2be3725e32d3074869f64eaad8fe6d7fb11fadf2b0b689add8ed 14692
-WaterClipmap.fragment.hlsl 8fada73667471249e726cff1c563dc819979952e4e72b24b9d277a8026fb83b1 60048
-WaterClipmap.fragment.msl 0cdc691228c9df8de7872e4ca6d6eedccacad10d87a80cfc812227f9ebf3bd3b 58932
-WaterClipmap.fragment.spirv bbb485c99cce9871d663083fec255e263216261f85cb9ed74e9bfc330d349b87 57268
-WaterClipmap.layout.hlsl 8af5a46c57f0d544568c80948c7e1e343dd910e9a1d3b84ede75c83a0b31d95f 14 in[<unnamed>:Float3,<unnamed>:Float2,<unnamed>:Float1,<unnamed>:Float1]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
-WaterClipmap.layout.msl 8af5a46c57f0d544568c80948c7e1e343dd910e9a1d3b84ede75c83a0b31d95f 14 in[<unnamed>:Float3,<unnamed>:Float2,<unnamed>:Float1,<unnamed>:Float1]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
-WaterClipmap.vertex.hlsl 9f172f06cef886b1370fc7dc36039c392bb2379973a6e8d2e4b4621e9042758b 17967
-WaterClipmap.vertex.msl b94b5322a55280a0ef07256528de9bbaa30ff2d0ea89642b2c603b3514f2f100 17000
-WaterClipmap.vertex.spirv f5e3bd1a9eb085b405b0329b7429f900e44d67bd53ca25a6f98e5eb0939b361e 16536
+Water.fragment.hlsl 366033592e42a7c143d0ab546278a2aba53edc54e857ff2f919104bf9363192d 61044
+Water.fragment.msl c4a399d23261f435bc9e45ab33cfd3c10c4ef1b524b2d1272de64a9307009d0c 59906
+Water.fragment.spirv b72d639a0a79a09b3a021d4e0c6896d55460b2485a885ef4db980fe3a4146deb 58996
+Water.layout.hlsl 7716e5938202615b47067faf96713cad3153cb6fec04f0abed8370b587bf1b3e 13 in[<unnamed>:Float3]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+Water.layout.msl 7716e5938202615b47067faf96713cad3153cb6fec04f0abed8370b587bf1b3e 13 in[<unnamed>:Float3]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+Water.vertex.hlsl 2f7effec40a29d084928975b151cefc6565b4cd549eba5904c0107d3cf2c0ed1 15643
+Water.vertex.msl 7a91b9fb6b4ac0de384b9667c35e044b0b0c616448145086ae878b0b5e8232d9 14728
+Water.vertex.spirv 8601628c1c3b790dd9c460c31e9b9d89b4d424bbc44eb4e357742b75ff8cf5b2 14740
+WaterClipmap.fragment.hlsl 366033592e42a7c143d0ab546278a2aba53edc54e857ff2f919104bf9363192d 61044
+WaterClipmap.fragment.msl c4a399d23261f435bc9e45ab33cfd3c10c4ef1b524b2d1272de64a9307009d0c 59906
+WaterClipmap.fragment.spirv b72d639a0a79a09b3a021d4e0c6896d55460b2485a885ef4db980fe3a4146deb 58996
+WaterClipmap.layout.hlsl 55b3b2703d721bcaa3fd326728027a2b76894d2c5bab75a1d5a31ec76285b1d4 16 in[<unnamed>:Float3,<unnamed>:Float2,<unnamed>:Float1,<unnamed>:Float1]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+WaterClipmap.layout.msl 55b3b2703d721bcaa3fd326728027a2b76894d2c5bab75a1d5a31ec76285b1d4 16 in[<unnamed>:Float3,<unnamed>:Float2,<unnamed>:Float1,<unnamed>:Float1]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+WaterClipmap.vertex.hlsl 786bb9c86203a05ee76d69e05254bc3caf7a3538ea7b1cc790fa987e648bcd6c 18045
+WaterClipmap.vertex.msl 4ace724b6e524b895332fb7638712ee911e59dc9c21db6e10b1300844c18c61b 17034
+WaterClipmap.vertex.spirv 3754903d5fc4c0bf9f9f4e35c931be72cc386f17e3ad6d9eb563dad01cb42dbf 16584
+WaterClipmapTriangle.fragment.hlsl 23a08d7f580794e3c7ecfb8471fdb2c242d1fd2f97ad3c45aea87ac46b60b0c2 155068
+WaterClipmapTriangle.fragment.msl 8c0baed8d93e7b2a22eee0ed486e20c6f15f9618bc1afee58f65782e762f9f75 155585
+WaterClipmapTriangle.fragment.spirv afd56767717aaa3aad3491fc8c1019095cebe2b8c755c30f07f9705b405111f4 98408
+WaterClipmapTriangle.layout.hlsl 55b3b2703d721bcaa3fd326728027a2b76894d2c5bab75a1d5a31ec76285b1d4 16 in[<unnamed>:Float3,<unnamed>:Float2,<unnamed>:Float1,<unnamed>:Float1]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+WaterClipmapTriangle.layout.msl 55b3b2703d721bcaa3fd326728027a2b76894d2c5bab75a1d5a31ec76285b1d4 16 in[<unnamed>:Float3,<unnamed>:Float2,<unnamed>:Float1,<unnamed>:Float1]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+WaterClipmapTriangle.vertex.hlsl 786bb9c86203a05ee76d69e05254bc3caf7a3538ea7b1cc790fa987e648bcd6c 18045
+WaterClipmapTriangle.vertex.msl 4ace724b6e524b895332fb7638712ee911e59dc9c21db6e10b1300844c18c61b 17034
+WaterClipmapTriangle.vertex.spirv 3754903d5fc4c0bf9f9f4e35c931be72cc386f17e3ad6d9eb563dad01cb42dbf 16584
+WaterTriangle.fragment.hlsl 23a08d7f580794e3c7ecfb8471fdb2c242d1fd2f97ad3c45aea87ac46b60b0c2 155068
+WaterTriangle.fragment.msl 8c0baed8d93e7b2a22eee0ed486e20c6f15f9618bc1afee58f65782e762f9f75 155585
+WaterTriangle.fragment.spirv afd56767717aaa3aad3491fc8c1019095cebe2b8c755c30f07f9705b405111f4 98408
+WaterTriangle.layout.hlsl 7716e5938202615b47067faf96713cad3153cb6fec04f0abed8370b587bf1b3e 13 in[<unnamed>:Float3]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+WaterTriangle.layout.msl 7716e5938202615b47067faf96713cad3153cb6fec04f0abed8370b587bf1b3e 13 in[<unnamed>:Float3]|set0[<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:VF,<unnamed>:Sampler:VF,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+WaterTriangle.vertex.hlsl 2f7effec40a29d084928975b151cefc6565b4cd549eba5904c0107d3cf2c0ed1 15643
+WaterTriangle.vertex.msl 7a91b9fb6b4ac0de384b9667c35e044b0b0c616448145086ae878b0b5e8232d9 14728
+WaterTriangle.vertex.spirv 8601628c1c3b790dd9c460c31e9b9d89b4d424bbc44eb4e357742b75ff8cf5b2 14740

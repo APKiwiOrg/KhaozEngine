@@ -41,6 +41,7 @@ namespace KhaozEngine.Tests.Gpu
             model.UploadFoliageUniforms(commands, [default]);
             CaptureClipmapPipeline(device, framebuffer.Outputs, commands);
             CaptureBoundedWaterPipeline(scene);
+            CaptureTriangleOpticsPipelines(device, framebuffer.Outputs);
             // The point-shadow pass is allocated lazily, so a scene that is never asked for one builds none of its
             // four pipelines and the three caster programs would read here as uncaptured.
             Assert.True(scene.EnsurePointShadowAtlas(PointShadowAtlas.MinFaceResolution, 1));
@@ -205,6 +206,24 @@ namespace KhaozEngine.Tests.Gpu
             water.PrepareFrame(new FramePrepare(settings, planes, 0f));
             water.Draw(commands, resources, planes, Matrix4x4.Identity, Matrix4x4.Identity, -Vector3.UnitY, Color.White,
                 new Vector3(0f, 4f, 0f), settings, new SkySettings(), 0f);
+        }
+
+        // The triangle optics programs are created only when a bound triangle field is prepared, once per geometry.
+        static void CaptureTriangleOpticsPipelines(FakeGpuDevice device, GpuOutputDescription outputs)
+        {
+            using var resources = new RenderResources(device, 64, 64, false);
+            using var water = new WaterRenderer(device, outputs);
+            WaterOpticsHandle field = water.Optics.LoadTriangles(KhaozEngine.Tests.Render3D.WaterOpticsTriangleResourceTests.Field());
+            var look = new WaterLook { SwellAmplitude = .01f, SwellSteepness = 0f };
+            WaterPlane[] planes = [new WaterPlane(1f, 0f, 1f, .25f, look: look,
+                optics: new WaterOpticsBinding(field, Vector3.Zero, new Vector2(2f)))];
+            foreach (WaterGridMode mode in new[] { WaterGridMode.CameraFocused, WaterGridMode.Clipmap })
+            {
+                var settings = new WaterSettings { GridMode = mode, WaveSource = WaterWaveSource.Procedural };
+                var frame = new FramePrepare(settings, planes, 0f);
+                water.PrepareFrame(frame);
+                water.PrepareOpticsFrame(resources, frame);
+            }
         }
 
         static void CaptureTargetOutlinePipelines(Scene3D scene, IGpuFramebuffer framebuffer,

@@ -175,8 +175,9 @@ namespace KhaozEngine.Tests.Gpu
             // load-bearing because of exactly this numbering.
             ("WaterRenderer._layout",
                 new[] { T("BathyTex"), S("BathySamp"), T("OceanMap"), S("OceanSamp"), T("DepthTex"), S("Samp"),
-                    U("Water", dynamic: true) },
-                "t0 s0 t1 s1 t2 s2 b0"),
+                    U("Water", dynamic: true), U("Atmosphere"), T("AtmoSkyView"), S("AtmoSkySampler"),
+                    T("OpticsTex"), S("OpticsSamp") },
+                "t0 s0 t1 s1 t2 s2 b0 b1 t3 s3 t4 s4"),
         };
 
         /// <summary>

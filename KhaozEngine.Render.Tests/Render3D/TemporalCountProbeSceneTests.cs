@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.Render3D;
 /// <summary>
 /// The on-request temporal counts on the scene's frame path, headless on <see cref="HeadlessSceneRig"/>. A request
 /// arms only a render that runs the temporal resolve, which then records the probe right after the resolve over the
-/// very set it bound and copies the grid out. The next <see cref="Scene3D.PrepareFrame"/> reads it back. The fake
+/// very set it bound and copies the grid out. The next <see cref="Scene3D.PrepareFrame()"/> reads it back. The fake
 /// device refuses every map, so a frame that completes here read nothing back, and a map shows up as a throw.
 /// </summary>
 public sealed class TemporalCountProbeSceneTests

@@ -10,6 +10,7 @@ public sealed partial class TileWorldView
 {
     void LoadProfileRegion(RegionCoord region, TileRegionResidencyState residency)
     {
+        WaterAvailabilityChanged(region);
         var props = new TileRegionProps[_planes];
         for (int plane = 0; plane < _planes; plane++)
             props[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
@@ -47,7 +48,7 @@ public sealed partial class TileWorldView
         CancelCover(region);
         ReplaceCover(handles, Array.Empty<GroundCoverInstance>());
         ReleaseAnimatedFoliage(handles);
-        for (int plane = 0; plane < _planes; plane++) _water.Remove((region, plane));
+        for (int plane = 0; plane < _planes; plane++) ReleaseWater(region, plane);
         handles.Residency = TileRegionResidencyState.Decor;
         RequestGround(region, handles, TileGroundLod.Coarse4);
     }
@@ -67,6 +68,7 @@ public sealed partial class TileWorldView
     void RequestGroundPlane(RegionCoord region, RegionHandles handles, int plane, TileGroundLod lod,
                             TileWorldDocument snapshot, TileWorldCatalogs materials)
     {
+        TileWaterPreparation water = CaptureWater(region, plane);
         long generation = NextProfileGeneration();
         if (lod == TileGroundLod.Full)
         {
@@ -78,9 +80,10 @@ public sealed partial class TileWorldView
             handles.FullGroundGenerations[plane] = 0;
             handles.CoarseGroundGenerations[plane] = generation;
         }
-        _profileBuilds.Request(new TileWorldBuildRequest<TileProfileBuildInput>(
-            GroundKey(region, plane, KindOf(lod)), generation,
-            new TileGroundBuildInput(snapshot, materials, region, plane, lod, _mesher)));
+        TileWorldBuildKey key = GroundKey(region, plane, KindOf(lod));
+        _profileBuilds.Request(new TileWorldBuildRequest<TileProfileBuildInput>(key, generation,
+            new TileGroundBuildInput(snapshot, materials, region, plane, lod, _mesher, water, GroundSurfaceRequested)));
+        TrackPendingWater(key, generation, water);
     }
 
     static TileWorldBuildKey GroundKey(RegionCoord region, int plane, TileWorldBuildKind kind) =>
@@ -92,7 +95,7 @@ public sealed partial class TileWorldView
 
     // Full ground lands only on the gameplay generation that asked for it, and retires the coarse fallback.
     // Coarse ground lands only while no full replacement has been accepted since it was requested.
-    void ApplyGround(TileWorldBuildKey key, long generation, GltfMesh? mesh)
+    void ApplyGround(TileWorldBuildKey key, long generation, TileGroundCpuBuild ground, TileWaterPreparation water)
     {
         if (!_loaded.TryGetValue(key.Region, out RegionHandles? handles)) return;
         int plane = key.Plane;
@@ -110,10 +113,7 @@ public sealed partial class TileWorldView
             return;
         }
 
-        MeshHandle? replacement = mesh is null ? null : _scene.LoadMesh(mesh, _material);
-        if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
-        handles.Meshes[plane] = replacement;
-        _water.Remove((key.Region, plane));
+        PublishGround(key.Region, plane, handles, ground, water);
     }
 
     void CancelGround(RegionCoord region, int plane)

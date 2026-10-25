@@ -9,8 +9,7 @@ drove the requirement (replacing a thin "server is updating" overlay banner with
 both pieces are game-agnostic and every networked KE game reuses them.
 
 The product decisions (scope, placement, escape hatch, look) were locked with the user before this work
-started and are recorded in the consumer's design doc
-(`~/ConsumerGame/docs/superpowers/specs/2026-07-18-reconnecting-screen-design.md`). This doc covers only
+started. This doc covers only
 the engine-side API decisions, which were delegated here.
 
 ## What ships

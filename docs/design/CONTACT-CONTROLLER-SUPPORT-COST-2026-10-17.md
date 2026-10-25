@@ -3,14 +3,14 @@
 Status: approved direction (owner, 2026-10-16, option C), rulings SC-1 to SC-9 open to owner review.
 Rulings SC-1 to SC-9 shipped in 21.2.0, apart from the phase 6 aggregate budget of SC-1. Phase 2 rulings
 SC-10 to SC-17 are implemented and staged for 21.3.1. The local
-[phase 2 cost record](../superpowers/plans/proofs/2026-10-17-support-cost-option-c-phase2.md) shows SG-12 not
+[phase 2 cost record](../verification/2026-10-17-support-cost-option-c-phase2.md) shows SG-12 not
 met: ordinary rows pass 117, reject 22 and 5 are envelope rows, against 95 and 44 at the phase 1 head. Nine
 rows miss time, all on the stairs, hidden crate and pushed seat scenes. #1334 stays open.
 Issue: [#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334). Parent program: #438.
 Builds on [CONTACT-CONTROLLER-SUPPORT-GATES-2026-10-11.md](CONTACT-CONTROLLER-SUPPORT-GATES-2026-10-11.md)
 (SG-10, SG-12, SG-15, SG-20, SG-21, SG-24). Evidence: the hosted record
 [2026-10-14-support-cost-hosted-1334.md](../verification/2026-10-14-support-cost-hosted-1334.md) and the
-local attribution in the [cost record](../superpowers/plans/proofs/2026-10-17-support-cost-option-c.md).
+local attribution in the [cost record](../verification/2026-10-17-support-cost-option-c.md).
 
 ## Problem
 
@@ -257,7 +257,7 @@ height capped by an overhung edge and charged a false 0.0577 m rise. The shipped
 The crate's remaining 0.22 m lag is the designed paced climb.
 
 Measured after SC-10 to SC-17, one local sample per row at `15e3d0bfc`
-([phase 2 cost record](../superpowers/plans/proofs/2026-10-17-support-cost-option-c-phase2.md)): every substep row
+([phase 2 cost record](../verification/2026-10-17-support-cost-option-c-phase2.md)): every substep row
 passes and no row carries `G`. The flat hull and flat mesh dry ticks and the crate substeps now pass, as
 research 2 projected. The stairs box, hull and mesh Finds (60 us), the hidden crate Find (75.9 us) and the
 stairs, crate and pushed seat dry ticks (133.6 to 477.5 us against 111 to 124 us) still miss. These are the rows

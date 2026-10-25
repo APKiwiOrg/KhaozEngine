@@ -5,9 +5,9 @@ Date: 2026-10-24
 Status: Approved by the owner on 2026-10-24. The implementation plan and subagent-driven execution
 were also approved on 2026-10-24. Engine Tasks 1 through 7 are authorized, with consumer Task 8 owned
 by its Grimhollow coordinator. Release authorization is separate and requires approval of the exact tag.
-Implemented, staged for 21.14.0. Hosted gate passed (run 40155111807). Consumer Task 8 and native R8b remain
-open under https://github.com/APKiwiOrg/KhaozEngine/issues/1300. The native adapter contract is recorded in the
-[R8b handoff](WATER-OPTICS-R8B-HANDOFF-2026-10-24.md).
+Implemented, staged for 21.14.0. Water optics checks passed on hosted Metal, D3D11 and Vulkan (run 40155111807).
+Consumer Task 8 and native R8b remain open under https://github.com/APKiwiOrg/KhaozEngine/issues/1300.
+The native adapter contract is recorded in the [R8b handoff](WATER-OPTICS-R8B-HANDOFF-2026-10-24.md).
 
 Implementation plan: [per-body water optics](../superpowers/plans/2026-10-24-per-body-water-optics.md).
 

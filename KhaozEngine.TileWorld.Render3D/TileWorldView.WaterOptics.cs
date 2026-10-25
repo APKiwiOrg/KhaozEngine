@@ -158,7 +158,8 @@ public sealed partial class TileWorldView
         if (_waterAttempts.TryGetValue(key, out WaterAttempt latched) && latched == attempt &&
             _publication.FailureOf(key) is { } kept)
             return CollectWater(key, padding, kept);
-        // Latch even a throwing request. Only an announced source/settings change retries it.
+        // Latch the attempt. A recorded failure suppresses retries until an announced source or settings change. A throw
+        // that records no failure retries on the next queued rebuild.
         _waterAttempts[key] = attempt;
         EnsureWaterSources(region);
         TileWaterPreparation prepared = CollectWater(key, padding, null);

@@ -5683,8 +5683,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     form throws for it. Changes to prepared inputs, the viewport or the render targets after preparation throw at
     recording. Only a frame with bound water freezes them: a frame with no bound water keeps the legacy late
     binding. Preparation revalidates coverage from the absolute queue, exactly as `DrawWater` admitted it, so an
-    explicit off-grid `RenderOrigin` cannot turn an admitted plane into a refusal. Reuse handles across frames. `UnloadWaterOpticsField` invalidates either kind immediately and
-    defers texture destruction through the scene's retirement queue. After the scene is disposed, unloading or
+    explicit off-grid `RenderOrigin` cannot turn an admitted plane into a refusal. Reuse handles across frames.
+    `UnloadWaterOpticsField` invalidates either kind immediately and defers texture destruction through the scene's
+    retirement queue. After the scene is disposed, unloading or
     binding a handle throws `ObjectDisposedException`. `WaterOpticsStats` keeps texture and retained
     CPU payload bytes charged until GPU retirement completes. Device recreation means a new scene. Handles from
     another or recreated scene are invalid, so explicitly reload retained fields into the new scene.
@@ -5694,8 +5695,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `ITileWorldWaterTriangleOpticsScene`, whose `LoadWaterOpticsTriangles`, `UnloadWaterOpticsField` and
     `TryGetWaterOpticsPadding` have no default bodies. An uncertified look such as FFT does not throw there. It
     withdraws the opted-in water, records one diagnostic per region-plane with water, of the kind mapped from the
-    scene's `reason` (`UncertifiedDisplacement` for FFT), keeps terrain building without reading neighbour sources,
-    and republishes the water once the look is certifiable. Any refusal withdraws the whole region-plane request, at every water level. Its other refusals,
+    scene's `reason` (`UncertifiedDisplacement` for FFT), keeps terrain building without reading neighbour sources, and
+    republishes the water once the look is certifiable. Any refusal withdraws the whole region-plane request, at every
+    water level. Its other refusals,
     content requirements and `WaterOpticsSourceBytes` diagnostic are in the
     [TileWorld package reference](../KhaozEngine.TileWorld.Render3D/README.md#authored-optical-beds).
   - **Settings** (`Post.Water`, scene-wide look, lives alongside `Post.Sky` for the same reason - both are

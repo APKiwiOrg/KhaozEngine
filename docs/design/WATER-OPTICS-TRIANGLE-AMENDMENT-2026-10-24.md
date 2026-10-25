@@ -1,9 +1,9 @@
 # Triangle-backed optical beds
 
-Status: Execution amendment selected by the engine orchestrator under the owner's authorization to
-resolve failed optical gates. Implemented, staged for 21.14.0. Hosted gate passed (run 40155111807). Consumer
-Task 8 and native R8b remain open under https://github.com/APKiwiOrg/KhaozEngine/issues/1300. No release is
-authorized.
+Status: Execution amendment selected by the engine orchestrator under the owner's authorization to resolve failed
+optical gates. Implemented, staged for 21.14.0. Water optics checks passed on hosted Metal, D3D11 and Vulkan (run
+40155111807). Consumer Task 8 and native R8b remain open under
+https://github.com/APKiwiOrg/KhaozEngine/issues/1300. No release is authorized.
 
 Task 5 final evidence, local Metal, Release, with the exact datum and certified seam charge: the parent Task 6
 visual gate passes on local Metal. The unchanged saddle fact passes with one live field and upload. At the

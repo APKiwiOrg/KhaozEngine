@@ -8,6 +8,8 @@ namespace KhaozEngine.Render3D;
 public readonly record struct WaterOpticsTriangle(Vector3 A, Vector3 B, Vector3 C);
 
 /// <summary>A closed local XZ rectangle whose entire area and boundary have certified triangle support.</summary>
+/// <remarks>Triangle coverage should extend beyond each certificate by a rasterization margin, because an edge
+/// fragment rounded outside an exact-fit certificate finds no triangle and is discarded.</remarks>
 public readonly record struct WaterOpticsRectangle(Vector2 Minimum, Vector2 Maximum);
 
 /// <summary>An immutable, bounded scalar atlas of a certified single-valued piecewise planar optical bed.</summary>

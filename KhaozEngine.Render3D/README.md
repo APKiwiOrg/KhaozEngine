@@ -173,8 +173,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   water freezes its inputs at preparation. A frame with no bound water keeps the legacy late binding on either
   form, so its targets may still resize and its clipmap program may still be created while recording. The
   no-argument form costs nothing on a frame that queues no water. The viewport form always sizes the targets and
-  opens `device.water.prepare`. `Render3DSurface.Render` records inside the frame's open list and calls the no-argument form,
-  so bound water must already be prepared at the frame's size. On a WINDOWED host, `Render3DSurface.Render`'s own
+  opens `device.water.prepare`. `Render3DSurface.Render` records inside the frame's open list and calls the
+  no-argument form, so bound water must already be prepared at the frame's size. On a WINDOWED host,
+  `Render3DSurface.Render`'s own
   call is a safety net rather than the effective one - the frame's list is already open by then - so queue and
   prepare the scene in `AppWindow.Run`'s `onPrepare` callback instead (`GameApp3D` does, in `OnPrepareWorld`, see
   issue #429). A host that does neither no longer gets a silently corrupt frame on one backend: every scene path
@@ -887,7 +888,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     is the field minimum. Origin Y is the reference the rest depths are measured from, the still-water surface or
     any datum the producer subtracts exactly. TileWorld binds datum 0 and stores `-y`. A triangle binding requires
     the field's exact `Size`. `DrawWater` refuses a bound plane whose rectangle, widened by the effective procedural
-    swell displacement, leaves the field or, for triangles, does not fit one certificate.
+    swell displacement, leaves the field or, for triangles, does not fit one certificate. Triangle coverage must extend
+    beyond each certificate by a rasterization margin. An edge fragment that rounds a few binary32 steps outside an
+    exact-fit certificate finds no triangle and is discarded by the invariant guard. TileWorld fields meet this because
+    their triangles extend at least one tile beyond every certificate. The enforced margin is tracked in
+    https://github.com/APKiwiOrg/KhaozEngine/issues/1581.
     `Scene3D.GetWaterOpticsPadding` reports that displacement for producer preflight and throws
     `NotSupportedException` for FFT water, because FFT has no certified displacement envelope.
     `Scene3D.TryGetWaterOpticsPadding(look, out padding, out reason)` is the non-throwing form. It returns false

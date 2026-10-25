@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -12,6 +13,164 @@ namespace KhaozEngine.Tests.Render2D;
 
 public class SpriteBatchMaskedBatchTests
 {
+    [Theory]
+    [InlineData("source")]
+    [InlineData("mask")]
+    [InlineData("mask sampler")]
+    [InlineData("blend")]
+    public void GroupingUsesTheCompleteMaskedKey(string changed)
+    {
+        using var rig = Create();
+        using var source = Sprite();
+        using var secondSource = Sprite();
+        using var mask = Sprite();
+        using var secondMask = Sprite();
+        void DrawAba(SpriteBatch batch)
+        {
+            batch.DrawMasked(source, new Vector4(0, 0, 1, 1), mask, Color.White);
+            batch.BlendMode = changed == "blend" ? BlendMode.Additive : BlendMode.Alpha;
+            batch.DrawMasked(changed == "source" ? secondSource : source, new Vector4(1, 0, 1, 1),
+                changed == "mask" ? secondMask : mask, Color.White,
+                changed == "mask sampler" ? SamplerMode.Point : SamplerMode.Linear);
+            batch.BlendMode = BlendMode.Alpha;
+            // UVs and tint belong to vertices, so the third quad still joins the first key.
+            batch.DrawMasked(source, new Vector4(2, 0, 1, 1), new Vector4(1, 1, 0, 0),
+                mask, new Vector4(1, 0, 0, 1), new Color(1f, 0f, 0f, 0.5f));
+        }
+
+        rig.Frame(DrawAba);
+        var ungroupedABADraws = rig.Draws.ToList();
+        Assert.Equal(3, ungroupedABADraws.Count);
+        Assert.Equal(new[] { 0, 1, 2 }, rig.VertexUploads.SelectMany(OriginalQuadIndices));
+        rig.Frame(DrawAba, group: true);
+        var groupedABADraws = rig.Draws.ToList();
+        Assert.Equal(2, groupedABADraws.Count);
+        var firstGroupOriginalQuadIndices = OriginalQuadIndices(groupedABADraws[0], rig.VertexUploads);
+        Assert.Equal(new[] { 0, 2 }, firstGroupOriginalQuadIndices);
+        Assert.Equal(new[] { 1 }, OriginalQuadIndices(groupedABADraws[1], rig.VertexUploads));
+        Assert.Equal(new uint[] { 12, 6 }, groupedABADraws.Select(draw => draw.VertexCount));
+        Assert.Equal(new uint[] { 0, 12 }, groupedABADraws.Select(draw => draw.VertexStart));
+    }
+
+    [Fact]
+    public void GroupedBeginsKeepSourceSamplerBindingsSeparate()
+    {
+        using var rig = Create();
+        using var source = Sprite();
+        using var mask = Sprite();
+        rig.Frame(batch =>
+        {
+            Masked(batch, source, mask);
+            batch.End();
+            batch.Begin(SamplerMode.Point);
+            batch.GroupByTexture = true;
+            Masked(batch, source, mask);
+        }, group: true);
+
+        Assert.Equal(2, rig.Draws.Count);
+        var linearSet = Assert.IsType<FakeResourceSet>(rig.Draws[0].Set0);
+        var pointSet = Assert.IsType<FakeResourceSet>(rig.Draws[1].Set0);
+        Assert.NotSame(linearSet, pointSet);
+        Assert.Same(rig.Device.LinearSampler, linearSet.Resources[1]);
+        Assert.Same(rig.Device.PointSampler, pointSet.Resources[1]);
+        Assert.Same(linearSet.Resources[0], pointSet.Resources[0]);
+        Assert.Same(linearSet.Resources[2], pointSet.Resources[2]);
+        Assert.Same(linearSet.Resources[3], pointSet.Resources[3]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BlendModesSplitRunsButShareBindingSet(bool group)
+    {
+        using var rig = Create();
+        using var source = Sprite();
+        using var mask = Sprite();
+        rig.Frame(batch =>
+        {
+            Masked(batch, source, mask);
+            batch.BlendMode = BlendMode.Additive;
+            Masked(batch, source, mask);
+        }, group: group);
+
+        Assert.Equal(2, rig.Draws.Count);
+        var alphaSet = Assert.IsType<FakeResourceSet>(rig.Draws[0].Set0);
+        var additiveSet = Assert.IsType<FakeResourceSet>(rig.Draws[1].Set0);
+        Assert.Same(alphaSet, additiveSet);
+        Assert.Same(rig.MaskedOwner!.PipelineFor(BlendMode.Alpha), rig.Draws[0].Pipeline);
+        Assert.Same(rig.MaskedOwner.PipelineFor(BlendMode.Additive), rig.Draws[1].Pipeline);
+        Assert.Equal(1, rig.Batch.CachedMaskedSetCount);
+    }
+
+    [Fact]
+    public void TextAndOrdinaryDrawsStayInSubmissionOrder()
+    {
+        using var rig = Create();
+        using var font = SpriteFont.Build(rig.Device, DefaultFont.Bytes, 12);
+        using var source = Sprite();
+        using var mask = Sprite();
+        rig.Frame(batch =>
+        {
+            batch.DrawString(font, "AB", new Vector2(1, 2), Color.White);
+            Masked(batch, source, mask);
+            batch.Draw(source, new Vector4(3, 4, 5, 6), Color.White);
+        });
+
+        var textMaskPanelShaderOrder = rig.Draws.Select(rig.ShaderName).ToArray();
+        Assert.Equal(new[] { "Sprite2D", "Sprite2DMasked", "Sprite2D" }, textMaskPanelShaderOrder);
+        Assert.Equal(new uint[] { 12, 6, 6 }, rig.Draws.Select(draw => draw.VertexCount));
+        Assert.Equal(new uint[] { 0, 12, 18 }, rig.Draws.Select(draw => draw.VertexStart));
+        Assert.Same(font.Atlas.Handle, Assert.IsType<FakeResourceSet>(rig.Draws[0].Set0).Resources[0]);
+        Assert.Same(source.Handle, Assert.IsType<FakeResourceSet>(rig.Draws[2].Set0).Resources[0]);
+        Assert.Equal(2, Assert.IsType<FakeResourceSet>(rig.Draws[2].Set0).Resources.Length);
+    }
+
+    [Fact]
+    public void FlushAndScissorKeepTheActiveTransform()
+    {
+        using var rig = Create();
+        using var source = Sprite();
+        using var mask = Sprite();
+        var transform = Matrix4x4.CreateScale(2, 3, 1) * Matrix4x4.CreateTranslation(7, 11, 0);
+        rig.Frame(batch =>
+        {
+            batch.End();
+            batch.Begin(transform, SamplerMode.Point);
+            batch.BlendMode = BlendMode.Additive;
+            Masked(batch, source, mask);
+            batch.Flush();
+            Masked(batch, source, mask);
+            batch.SetScissor(new Rect(1, 1, 6, 6));
+            batch.SetScissor(new Rect(2, 2, 2, 2));
+            Masked(batch, source, mask);
+            batch.ClearScissor();
+            Masked(batch, source, mask);
+            batch.ClearScissor();
+            Masked(batch, source, mask);
+        });
+
+        Assert.Equal(5, rig.Draws.Count);
+        uint initialVpOffset = rig.Draws[0].DynamicOffset;
+        uint afterFlushVpOffset = rig.Draws[1].DynamicOffset;
+        uint afterNestedScissorVpOffset = rig.Draws[^1].DynamicOffset;
+        Assert.NotEqual(0u, initialVpOffset);
+        Assert.Equal(initialVpOffset, afterFlushVpOffset);
+        Assert.Equal(initialVpOffset, afterNestedScissorVpOffset);
+        Assert.All(rig.Draws, draw => Assert.Equal(initialVpOffset, draw.DynamicOffset));
+        var pointSampler = rig.Device.PointSampler;
+        var afterScissorSourceSampler = Assert.IsType<FakeResourceSet>(rig.Draws[^1].Set0).Resources[1];
+        var afterScissorBlend = rig.Batch.BlendMode;
+        Assert.Same(pointSampler, afterScissorSourceSampler);
+        Assert.Equal(BlendMode.Additive, afterScissorBlend);
+        Assert.All(rig.Draws, draw => Assert.Same(rig.MaskedOwner!.PipelineFor(BlendMode.Additive), draw.Pipeline));
+        Assert.Equal(0, rig.Batch.ScissorDepth);
+        Assert.Equal(2, rig.Commands.UniformUploads.Count);
+        var vpUpload = rig.Commands.UniformUploads[1];
+        Assert.Equal(0u, vpUpload.Offset);
+        Assert.Equal(transform * Matrix4x4.CreateOrthographicOffCenter(0, 64, 64, 0, -1, 1),
+            MemoryMarshal.Read<Matrix4x4>(vpUpload.Data.AsSpan((int)initialVpOffset)));
+    }
+
     static FakeTexture Texture() => new(4, 4, 1, 1, GpuPixelFormat.R8G8B8A8UNorm);
 
     static void Masked(SpriteBatch batch, Texture2D source, Texture2D mask,

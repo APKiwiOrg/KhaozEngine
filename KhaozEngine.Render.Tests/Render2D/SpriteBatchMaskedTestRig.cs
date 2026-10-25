@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
@@ -38,6 +39,28 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
     internal static RecordedVertex[] Vertices(VertexUpload upload) =>
         MemoryMarshal.Cast<byte, RecordedVertex>(upload.Data).ToArray();
 
+    // Grouping fixtures encode submission indices in each quad's X position.
+    internal static int[] OriginalQuadIndices(VertexUpload upload) => Vertices(upload)
+        .Where((_, index) => index % 6 == 0).Select(vertex => (int)vertex.Pos.X).ToArray();
+
+    internal static int[] OriginalQuadIndices(DrawBinding draw, IEnumerable<VertexUpload> uploads)
+    {
+        uint start = draw.VertexBufferOffset + draw.VertexStart * 64;
+        uint end = start + draw.VertexCount * 64;
+        // A grouped draw spans multiple source-run uploads in consecutive buffer ranges.
+        return uploads.Where(upload => ReferenceEquals(upload.Buffer, draw.VertexBuffer) &&
+                upload.Offset >= start && upload.Offset < end)
+            .OrderBy(upload => upload.Offset).SelectMany(OriginalQuadIndices).ToArray();
+    }
+
+    internal string ShaderName(DrawBinding draw)
+    {
+        string fragment = ((FakePipeline)draw.Pipeline!).Request!.Value.FragmentGlsl;
+        if (fragment == Factory.ShaderRequests[0].FragmentGlsl) return "Sprite2D";
+        if (fragment == MaskedSpriteShader.FragmentSource) return "Sprite2DMasked";
+        throw new InvalidOperationException("Unexpected sprite fragment shader.");
+    }
+
     internal MaskedSpriteBatchResources? MaskedOwner =>
         (MaskedSpriteBatchResources?)typeof(SpriteBatch).GetField("_maskedResources", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Batch);
 
@@ -67,6 +90,7 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
     {
         VertexUploads.Clear();
         Draws.Clear();
+        Commands.UniformUploads.Clear();
         using var recording = GpuRecording.Open(Device, Commands, "masked sprite test frame");
         Batch.NewFrame(Commands, 64, 64);
         Batch.Begin(sourceSampler);
@@ -112,7 +136,7 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
         public void Dispose() { Disposed = true; inner.Dispose(); }
     }
 
-    internal sealed class ForwardingFactory(FakeGpuResourceFactory inner) : IGpuResourceFactory
+    internal sealed class ForwardingFactory(IGpuResourceFactory inner, bool recordCommands = false) : IGpuResourceFactory
     {
         int _pipelineRequests;
         ConstructionFailure _failure;
@@ -125,10 +149,13 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
         internal Exception? LayoutDisposalFailure { get; set; }
         internal List<TrackedLayout> Layouts { get; } = new();
         internal int CommandListRequests { get; private set; }
+        internal List<RecordingCommands> CommandLists { get; } = new();
 
         public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
         {
             if (Failure == ConstructionFailure.Layout) throw CreationFailure;
+            // Native factories require their own layout handles in pipeline and descriptor creation.
+            if (inner is not FakeGpuResourceFactory) return inner.CreateResourceLayout(d);
             var layout = new TrackedLayout(inner.CreateResourceLayout(d), d) { DisposalFailure = LayoutDisposalFailure };
             Layouts.Add(layout);
             return layout;
@@ -145,7 +172,15 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
                 (Failure == ConstructionFailure.SecondPipeline && _pipelineRequests == 2)) throw CreationFailure;
             return inner.CreateGraphicsPipeline(d);
         }
-        public IGpuCommandList CreateCommandList() { CommandListRequests++; return inner.CreateCommandList(); }
+        public IGpuCommandList CreateCommandList()
+        {
+            CommandListRequests++;
+            var commands = inner.CreateCommandList();
+            if (!recordCommands) return commands;
+            var recorded = new RecordingCommands(commands);
+            CommandLists.Add(recorded);
+            return recorded;
+        }
         public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => inner.CreateBuffer(d);
         public IGpuTexture CreateTexture(in GpuTextureDescription d) => inner.CreateTexture(d);
         public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour) => inner.CreateFramebuffer(depth, colour);
@@ -158,15 +193,25 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
 
     internal sealed class RecordingDevice : IGpuDevice
     {
-        readonly FakeGpuDevice _inner;
-        internal RecordingDevice(FakeGpuDevice inner, IGpuResourceFactory factory)
+        readonly IGpuDevice _inner;
+        readonly bool _ownsDevice;
+        internal RecordingDevice(FakeGpuDevice inner, IGpuResourceFactory factory) : this((IGpuDevice)inner, factory)
         {
-            _inner = inner;
-            Factory = factory;
+            _ownsDevice = true;
             PointSampler = new TrackedSampler(inner.PointSampler);
             LinearSampler = new TrackedSampler(inner.LinearSampler);
         }
+        // Live devices keep their native sampler handles and remain owned by the GPU context.
+        internal RecordingDevice(IGpuDevice inner, IGpuResourceFactory factory)
+        {
+            _inner = inner;
+            Factory = factory;
+            PointSampler = inner.PointSampler;
+            LinearSampler = inner.LinearSampler;
+        }
         internal List<VertexUpload> Uploads { get; } = new();
+        internal int MapCalls { get; private set; }
+        internal int TextureUploadCalls { get; private set; }
         public GpuBackendKind Backend => _inner.Backend;
         public GpuCapabilities Capabilities => _inner.Capabilities;
         public IGpuResourceFactory Factory { get; }
@@ -174,8 +219,9 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
         public IGpuSampler PointSampler { get; }
         public IGpuSampler LinearSampler { get; }
         public bool SyncToVerticalBlank { get => _inner.SyncToVerticalBlank; set => _inner.SyncToVerticalBlank = value; }
-        public void Submit(IGpuCommandList cl) => _inner.Submit(cl);
-        public void Submit(IGpuCommandList cl, IGpuFence fence) => _inner.Submit(cl, fence);
+        static IGpuCommandList Native(IGpuCommandList cl) => cl is RecordingCommands recorded ? recorded.Inner : cl;
+        public void Submit(IGpuCommandList cl) => _inner.Submit(Native(cl));
+        public void Submit(IGpuCommandList cl, IGpuFence fence) => _inner.Submit(Native(cl), fence);
         public void WaitForIdle() => _inner.WaitForIdle();
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
         {
@@ -186,25 +232,30 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
             UpdateBuffer(b, offsetBytes, (ReadOnlySpan<T>)data);
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged =>
             UpdateBuffer(b, offsetBytes, new ReadOnlySpan<T>(in data));
-        public void UpdateTexture(IGpuTexture t, byte[] data, uint x, uint y, uint w, uint h) => _inner.UpdateTexture(t, data, x, y, w, h);
-        public void UpdateTexture(IGpuTexture t, byte[] data, uint x, uint y, uint w, uint h, uint mip, uint layer) => _inner.UpdateTexture(t, data, x, y, w, h, mip, layer);
-        public MappedData Map(IGpuTexture t, GpuMapMode mode) => _inner.Map(t, mode);
-        public MappedData Map(IGpuBuffer b, GpuMapMode mode) => _inner.Map(b, mode);
+        public void UpdateTexture(IGpuTexture t, byte[] data, uint x, uint y, uint w, uint h)
+        { TextureUploadCalls++; _inner.UpdateTexture(t, data, x, y, w, h); }
+        public void UpdateTexture(IGpuTexture t, byte[] data, uint x, uint y, uint w, uint h, uint mip, uint layer)
+        { TextureUploadCalls++; _inner.UpdateTexture(t, data, x, y, w, h, mip, layer); }
+        public MappedData Map(IGpuTexture t, GpuMapMode mode) { MapCalls++; return _inner.Map(t, mode); }
+        public MappedData Map(IGpuBuffer b, GpuMapMode mode) { MapCalls++; return _inner.Map(b, mode); }
         public void Unmap(IGpuTexture t) => _inner.Unmap(t);
         public void Unmap(IGpuBuffer b) => _inner.Unmap(b);
         public void ResizeSwapchain(uint w, uint h) => _inner.ResizeSwapchain(w, h);
         public void Present() => _inner.Present();
-        public void Dispose() => _inner.Dispose();
+        public void Dispose() { if (_ownsDevice) _inner.Dispose(); }
     }
 
-    internal sealed class RecordingCommands : IGpuCommandList
+    internal sealed class RecordingCommands(IGpuCommandList? inner = null) : IGpuCommandList
     {
-        readonly NullGpuCommandList _inner = new();
+        readonly IGpuCommandList _inner = inner ?? new NullGpuCommandList();
+        internal IGpuCommandList Inner => _inner;
         IGpuPipeline? _pipeline;
         IGpuResourceSet? _set0, _set1;
         IGpuBuffer? _vertexBuffer;
         uint _dynamicOffset, _vertexBufferOffset;
         internal List<DrawBinding> Draws { get; } = new();
+        internal List<VertexUpload> UniformUploads { get; } = new();
+        internal int CopyOperations { get; private set; }
         public void SetPipeline(IGpuPipeline p) { _pipeline = p; _inner.SetPipeline(p); }
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set) => SetGraphicsResourceSet(slot, set, 0);
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
@@ -241,15 +292,23 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
         public void SetFullScissorRects() => _inner.SetFullScissorRects();
         public void DrawIndexed(uint count, uint instances, uint start, int offset, uint instanceStart) =>
             _inner.DrawIndexed(count, instances, start, offset, instanceStart);
-        public void UpdateBuffer<T>(IGpuBuffer b, uint offset, in T data) where T : unmanaged => _inner.UpdateBuffer(b, offset, in data);
-        public void UpdateBuffer<T>(IGpuBuffer b, uint offset, ReadOnlySpan<T> data) where T : unmanaged => _inner.UpdateBuffer(b, offset, data);
-        public void CopyBuffer(IGpuBuffer src, uint srcOffset, IGpuBuffer dst, uint dstOffset, uint bytes) => _inner.CopyBuffer(src, srcOffset, dst, dstOffset, bytes);
-        public void CopyTexture(IGpuTexture src, IGpuTexture dst) => _inner.CopyTexture(src, dst);
-        public void CopyTextureSubresource(IGpuTexture src, uint mip, uint layer, IGpuTexture dst, uint w, uint h) => _inner.CopyTextureSubresource(src, mip, layer, dst, w, h);
-        public void CopyTextureSubresource(IGpuTexture src, uint mip, uint layer, IGpuTexture dst, uint dstMip, uint dstLayer, uint w, uint h) =>
-            _inner.CopyTextureSubresource(src, mip, layer, dst, dstMip, dstLayer, w, h);
+        public void UpdateBuffer<T>(IGpuBuffer b, uint offset, in T data) where T : unmanaged =>
+            UpdateBuffer(b, offset, new ReadOnlySpan<T>(in data));
+        public void UpdateBuffer<T>(IGpuBuffer b, uint offset, ReadOnlySpan<T> data) where T : unmanaged
+        {
+            UniformUploads.Add(new(b, offset, MemoryMarshal.AsBytes(data).ToArray()));
+            _inner.UpdateBuffer(b, offset, data);
+        }
+        public void CopyBuffer(IGpuBuffer src, uint srcOffset, IGpuBuffer dst, uint dstOffset, uint bytes)
+        { CopyOperations++; _inner.CopyBuffer(src, srcOffset, dst, dstOffset, bytes); }
+        public void CopyTexture(IGpuTexture src, IGpuTexture dst)
+        { CopyOperations++; _inner.CopyTexture(src, dst); }
+        public void CopyTextureSubresource(IGpuTexture src, uint mip, uint layer, IGpuTexture dst, uint w, uint h)
+        { CopyOperations++; _inner.CopyTextureSubresource(src, mip, layer, dst, w, h); }
+        public void CopyTextureSubresource(IGpuTexture src, uint mip, uint layer, IGpuTexture dst, uint dstMip, uint dstLayer, uint w, uint h)
+        { CopyOperations++; _inner.CopyTextureSubresource(src, mip, layer, dst, dstMip, dstLayer, w, h); }
         public void GenerateMipmaps(IGpuTexture t) => _inner.GenerateMipmaps(t);
-        public void ResolveTexture(IGpuTexture src, IGpuTexture dst) => _inner.ResolveTexture(src, dst);
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { CopyOperations++; _inner.ResolveTexture(src, dst); }
         public void SetComputePipeline(IGpuComputePipeline p) => _inner.SetComputePipeline(p);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) => _inner.SetComputeResourceSet(slot, set);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint offset) => _inner.SetComputeResourceSet(slot, set, offset);

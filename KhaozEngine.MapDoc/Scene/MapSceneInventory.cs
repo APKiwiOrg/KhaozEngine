@@ -19,14 +19,14 @@ internal sealed class MapSceneInventory
             if (_seen.Add(patch)) bytes = checked(bytes + MapSceneAdmission.PatchBytes(patch));
         return bytes;
     }
-    internal long View(MapScopedSurfaces view)
+    internal long View(MapScopedSurfaces view, bool includeContext = true)
     {
         if (!_seen.Add(view)) return 0;
-        long bytes = checked(256L + 128L * view.Surfaces.Count + 128L * view.Witness.Present.Count);
+        long bytes = checked(view.MetadataBytes + view.FactsContainerBytes);
         foreach (var key in view.Witness.Present)
             if (view.TryAcquiredPatch(key.Key, out var patch, out _) && patch is not null && _seen.Add(patch))
                 bytes = checked(bytes + MapSceneAdmission.PatchBytes(patch));
-        if (view.EffectiveContext is { } context) bytes = checked(bytes + Context(context));
+        if (includeContext && view.EffectiveContext is { } context) bytes = checked(bytes + Context(context));
         return bytes;
     }
     internal long Context(MapEffectiveContext context)

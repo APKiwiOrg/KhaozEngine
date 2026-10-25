@@ -69,6 +69,8 @@ public static class MapResolverV2
     internal static MapSupportResult SeatSupport(MapExactPoint point, MapSupportBinding binding, IMapSurfaceSource surfaces,
         IReadOnlyList<string> assetSha256, MapQueryLimits limits)
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        Scene.MapSceneAdmission.Current?.ReserveBytes(96);
         var world = point with { Y = MapExactValue.FromSingle(binding.ReferenceY ?? 0) };
         var frame = WorldFrame.Nearest(world.X.ToSingle(), world.Z.ToSingle());
         float x = world.X.Subtract(new((long)frame.X * (long)WorldFrame.Grid, 1)).ToSingle();
@@ -77,8 +79,10 @@ public static class MapResolverV2
         var view = MapScopedSurfaces.Acquire(surfaces, scope, assetSha256, MapScopedSurfaces.EffectiveQueryPolicyVersion,
             MapScopedSurfaces.EffectiveBuildPolicyVersion);
         var query = new MapSupportQuery(view);
-        return binding.Kind == MapSupportBindingKind.Surface ? query.SampleSurfaceExact(world, binding.SurfaceId!)
+        var result = binding.Kind == MapSupportBindingKind.Surface ? query.SampleSurfaceExact(world, binding.SurfaceId!)
             : query.SelectExact(new(MapEffectiveGeometry.Presentation(view, world), null, binding.SpaceId, null, binding.SearchAbove!.Value, binding.SearchBelow!.Value, null), world);
+        preparation?.Complete(96);
+        return result;
     }
 
     /// <summary>Resolves <paramref name="placements"/>, which belong to <paramref name="document"/>, in the given order

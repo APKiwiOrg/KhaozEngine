@@ -14,7 +14,12 @@ public enum MapAcquireStatus { Complete, Incomplete, CapacityExceeded, NotRepres
 /// <summary>Immutable acquired facts. No consumer access rereads the producer or its current generation.</summary>
 public sealed class MapScopedSurfaces
 {
+    internal Scene.MapPreparationReservation? PreparationOwnership { get; private set; }
     readonly MapAcquiredFacts _facts;
+    internal long FactsContainerBytes => _facts.ContainerBytes;
+    internal long MetadataBytes => checked(256L + 128L * Surfaces.Count + 128L * Witness.Present.Count +
+        64L * (Witness.Records.Count + Witness.KnownEmpty.Count + Witness.Unavailable.Count) +
+        8L * Identity.AssetSha256.Count + 4L * Scope.Roles.Count + 8L * (Scope.SpaceIds?.Count ?? 0));
     internal MapEffectiveContext? EffectiveContext { get; private init; }
     MapScopedSurfaces(MapScopedAcquisition.Result result, MapSurfaceScope scope, IReadOnlyList<string> assets,
         int queryPolicyVersion, int buildPolicyVersion)
@@ -74,6 +79,8 @@ public sealed class MapScopedSurfaces
         var admission = scope.SceneAdmission ?? Scene.MapSceneAdmission.Current;
         admission?.BeforeScope(source);
         using var admitted = admission?.Enter();
+        using var preparation = admission?.BeginPreparation();
+        admission?.ReserveBytes(checked(4L * scope.Roles.Count + 8L * (scope.SpaceIds?.Count ?? 0) + 8L * assetSha256.Count));
         MapSurfaceScope request = scope with
         {
             Roles = Array.AsReadOnly(scope.Roles.ToArray()),
@@ -85,14 +92,20 @@ public sealed class MapScopedSurfaces
         foreach (string asset in assets) MapSurfaceStorageLayout.RequireDigest(asset);
         if (queryPolicyVersion < 1 || buildPolicyVersion < 1) throw new ArgumentOutOfRangeException(nameof(queryPolicyVersion), "invalid acquisition policy version");
         var context = (source as IMapEffectiveSurfaceContext)?.EffectiveContext;
-        return new(context is null ? MapScopedAcquisition.Run(capable, request, work)
-            : MapEffectiveAcquisition.Run(capable, request, work, context), request, assets,
+        var facts = context is null ? MapScopedAcquisition.Run(capable, request, work)
+            : MapEffectiveAcquisition.Run(capable, request, work, context);
+        admission?.ReserveBytes(checked(256L + 128L * facts.Facts.Surfaces.Count() + 128L * facts.Facts.Present.Count() +
+            64L * (facts.Facts.Records.Count() + facts.Facts.KnownEmpty.Count() + facts.Facts.Unavailable.Count())));
+        var view = new MapScopedSurfaces(facts, request, assets,
             context is null ? queryPolicyVersion : 2, context is null ? buildPolicyVersion : 2)
         { EffectiveContext = context };
+        view.PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().View(view, includeContext: false));
+        return view;
     }
     public static MapScopedSurfaces CompleteView(MapSurfaceSet set)
     {
         ArgumentNullException.ThrowIfNull(set);
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         var facts = new MapAcquiredFacts();
         foreach (MapSurfaceRef surface in set.Refs.OrderBy(s => s.Id, StringComparer.Ordinal)) facts.AddSurface(surface);
         foreach (var entry in set.Patches)
@@ -114,13 +127,18 @@ public sealed class MapScopedSurfaces
             }
             w.WriteEndArray();
         });
-        return new(new(MapAcquireStatus.Complete, null, facts, snapshot, rootSha256, 0, 0), scope, Array.Empty<string>(), 1, 1)
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(512L + 128L * (facts.Surfaces.Count() + facts.Present.Count()) +
+            64L * (facts.Records.Count() + facts.KnownEmpty.Count())));
+        var view = new MapScopedSurfaces(new(MapAcquireStatus.Complete, null, facts, snapshot, rootSha256, 0, 0), scope, Array.Empty<string>(), 1, 1)
         {
             ListsEverySurface = true,
         };
+        view.PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().View(view, includeContext: false));
+        return view;
     }
     internal static MapScopedSurfaces CompleteEffective(MapEffectiveContext context, MapQueryLimits? queryLimits = null)
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         var facts = new MapAcquiredFacts();
         foreach (var surface in context.Surfaces.Refs) facts.AddSurface(surface);
         foreach (var entry in context.Surfaces.Patches)
@@ -143,9 +161,13 @@ public sealed class MapScopedSurfaces
             LocalMin = corners.Length == 0 ? Vector2.Zero : new(Outward(corners.Min(c => c.X.Floor()) - ax, true), Outward(corners.Min(c => c.Z.Floor()) - az, true)),
             LocalMax = corners.Length == 0 ? Vector2.Zero : new(Outward(corners.Max(c => c.X.Ceiling()) - ax, false), Outward(corners.Max(c => c.Z.Ceiling()) - az, false)),
         };
-        return new(new(MapAcquireStatus.Complete, null, facts, "effective:" + context.Digest, context.Digest, 0, 0), scope, new[] { context.Digest },
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(512L + 128L * (facts.Surfaces.Count() + facts.Present.Count()) +
+            64L * (facts.Records.Count() + facts.KnownEmpty.Count())));
+        var view = new MapScopedSurfaces(new(MapAcquireStatus.Complete, null, facts, "effective:" + context.Digest, context.Digest, 0, 0), scope, new[] { context.Digest },
             EffectiveQueryPolicyVersion, EffectiveBuildPolicyVersion)
         { EffectiveContext = context, ListsEverySurface = true };
+        view.PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().View(view, includeContext: false));
+        return view;
     }
     static MapSurfaceScope ResidentScope(MapAcquiredFacts facts)
     {

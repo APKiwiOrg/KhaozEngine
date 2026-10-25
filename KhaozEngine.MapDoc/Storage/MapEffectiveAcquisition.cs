@@ -129,7 +129,7 @@ internal sealed class MapEffectiveAcquisition
             if (read.Status != MapPatchStatus.Present || !_reserved.Contains(read.Key))
                 throw new MapDocumentException("unreserved discovery payload");
             Surface(read.Key.SurfaceId);
-            _facts.AddRead(read);
+            _facts.AddRead(read, ownsPayload: true);
         }
         foreach (MapPatchRead read in found.Unavailable)
         {
@@ -218,7 +218,7 @@ internal sealed class MapEffectiveAcquisition
         CheckPages(before, read.PagesRead);
         ReconcileReservations();
         if (read.Key != key) throw new MapDocumentException("acquisition returned a different patch key");
-        _facts.AddRead(read);
+        _facts.AddRead(read, ownsPayload: true);
     }
     MapSurfaceRef Surface(string id)
     {

@@ -39,6 +39,17 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   assembly under `SerializedReportingTestFramework`, and the test joins a collection whose definition
   sets `DisableParallelization = true`. The region refuses to start in a collection that runs beside
   others. See [`test-shared/README.md`](../test-shared/README.md).
+- ULP-sensitive locomotion tests sweep start offsets across a tread or contact boundary. A single
+  start phase can hide penetration or stalls. Skip lists derived on arm64 are not portable to x64,
+  where SIMD width can change the last bits of a sweep result. Derive expectations from the body
+  model and check them across the start phases.
+- Geometric stop bounds retain at least half the contact skin before the analytic contact. Requiring
+  contact minus the full skin pins backend sweep precision. Any escape from a progress assertion for
+  a `Held` start or stall must assert its specific cause, such as the support query's refusal status.
+  A zero-progress tick alone does not justify the escape.
+- Each concurrently running movement test class owns its `GroundMoveContext`, including flat-world
+  fixtures. The context is single threaded and retains mutable step state and cached bindings, so
+  separate test classes must not share a static context.
 - A GPU test class that captures more than a few images shares one lazily created `Scene3D` through a
   class fixture. It also carries a parity test that ages the shared scene through several
   configurations and compares it with a fresh snapshot scene. `OceanFocusScene` is the reference.

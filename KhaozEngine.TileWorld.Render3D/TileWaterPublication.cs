@@ -116,7 +116,7 @@ internal sealed class TileWaterPublication
                 {
                     // The backend refused a scalar before allocating. That refuses this member, not the group.
                     member.Outcome = member.Outcome.Refused(new TileWaterOpticsFailure(member.Key.Region,
-                        member.Key.Plane, refused.Field.Origin.Y, TileWaterTrianglePreparation.Kind(refused.Reason),
+                        member.Key.Plane, refused.Field.Level, TileWaterTrianglePreparation.Kind(refused.Reason),
                         Domain: refused.Field.Domain));
                 }
             }

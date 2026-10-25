@@ -743,14 +743,18 @@ collision, navigation, simulation, replication or hashes.
   before any upload. Its water binds immutable `WaterOpticsTriangleField` atlases built from the actual accepted
   or same-transaction candidate snapshots, including neighbour regions and their actual LOD. Each certified
   rectangle is the drawable row run expanded by displacement and `min(0.0001 m, TileSize / 1024)`. Only regions
-  whose triangles support that domain participate. Each field's origin is snapped down to whole metres. An
+  whose triangles support that domain participate. Each field's origin is snapped down to whole metres in XZ.
+  Its Y is the exact datum 0, so each vertex stores rest depth `-y` and collinear drawn heights stay collinear in
+  the field. The water level stays on the plane and the shader's `max(0, restDepth + displacedY - referenceY)`
+  gives the same physical depth. Fields are shared per reference level and domain. An
   origin at or beyond 2^23 m in X or Z is refused as `UnrepresentableSurface`. The budget charges nothing for
   render-origin reduction under the default quantized `Scene3D.RenderOrigin` or any other 128 m `WorldFrame`
   anchor. An explicit non-grid override rounds the reduced origin like all other submitted geometry and is outside
   the certified budget. A source replacement rebuilds every dependent field against
   one candidate table, uploads them all, validates again and swaps the group together. An upload failure rolls
   the whole group back. Refusals withdraw only the affected water, keep terrain and appear in
-  `WaterOpticsFailures`. `WaterOpticsSourceBytes` reports retained resident and pending source snapshot bytes.
+  `WaterOpticsFailures`. One refusal withdraws the water of its whole region-plane, at every reference level.
+  `WaterOpticsSourceBytes` reports retained resident and pending source snapshot bytes.
 - **Streaming a region dirties its dependants** in both directions. Ground meshes rebuild across their fixed
   border reach. Ground-cover caches also rebuild where a streamed solid footprint, upper roof or tagged door can
   change eligibility, including regions reached by the door clearance.

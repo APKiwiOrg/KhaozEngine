@@ -6,9 +6,11 @@ using KhaozEngine.TileWorld.Render3D;
 
 namespace KhaozEngine.TileWorld;
 
-/// <summary>One certified field for one reference level. Origin XZ is its absolute minimum and Y its reference
-/// surface. Domain is the tile-space extent of its certificates.</summary>
-internal sealed record TileWaterTriangleBuild(WaterOpticsTriangleField Field, Vector3 Origin, TileRect Domain);
+/// <summary>One certified field for one reference level. Origin XZ is its absolute minimum and Y is the exact
+/// datum 0, so rest depth is <c>-y</c>. Level is the water surface Y the field serves, the key planes bind by and
+/// refusals report. Domain is the tile-space extent of its certificates.</summary>
+internal sealed record TileWaterTriangleBuild(WaterOpticsTriangleField Field, Vector3 Origin, TileRect Domain,
+    float Level);
 
 /// <summary>Document inputs that witness validation reads. Never captured by a worker. The registry owns the
 /// availability epochs of every region a consumed strict read inspected.</summary>
@@ -52,8 +54,9 @@ internal sealed class TileWaterTriangleOutcome
 }
 
 /// <summary>Builds immutable triangle fields from actual completed mesh snapshots. Source positions are converted
-/// through each snapshot's exact uploaded transform in binary64. Conversion, render-origin and reconstruction
-/// error share the single budget <c>min(0.0001 m, TileSize / 1024)</c>.</summary>
+/// through each snapshot's exact uploaded transform in binary64. Rest depth is stored against the exact datum 0 as
+/// <c>q = -y</c>, so binary32 heights that are collinear in the drawn mesh stay collinear in the field. Conversion,
+/// render-origin and reconstruction error share the single budget <c>min(0.0001 m, TileSize / 1024)</c>.</summary>
 internal static class TileWaterTrianglePreparation
 {
     // Every bin axis doubles per attempt, from one bin per field tile up to the 1024 axis limit.
@@ -130,7 +133,8 @@ internal static class TileWaterTrianglePreparation
         List<TileWaterTriangleOutcome.Support> support, List<TileWaterOpticsDependency> inspected)
     {
         readonly record struct Bounds(double MinX, double MinZ, double MaxX, double MaxZ);
-        readonly record struct Vertex(double X, double Y, double Z, double Slack);
+        // YSlack is zero when the transform's Y row is the identity, as TileGroundMesher.WorldMatrix is.
+        readonly record struct Vertex(double X, double Y, double Z, double Slack, double YSlack);
 
         TileRect _domain;
         internal TileWaterTriangleBuild? Result { get; private set; }
@@ -258,15 +262,15 @@ internal static class TileWaterTrianglePreparation
                 for (int j = 0; j < 3; j++)
                 {
                     Vertex v = vertices[t + j];
-                    double exactX = v.X - originX, exactZ = v.Z - originZ, exactDepth = reference - v.Y;
+                    // Negation is exact, so depth error is only the binary32 rounding of y, zero for binary32 y.
+                    double exactX = v.X - originX, exactZ = v.Z - originZ, exactDepth = -v.Y;
                     local[j] = new Vector3((float)exactX, (float)exactDepth, (float)exactZ);
                     // Binary64 evaluation slack covers the transform sum and these subtractions.
                     double slackX = v.Slack + Binary64Slack * (Math.Abs(v.X) + Math.Abs(originX));
                     double slackZ = v.Slack + Binary64Slack * (Math.Abs(v.Z) + Math.Abs(originZ));
-                    double slackY = v.Slack + Binary64Slack * (Math.Abs(v.Y) + Math.Abs(reference));
                     horizontalError = Math.Max(horizontalError, Math.Max(
                         Math.Abs(local[j].X - exactX) + slackX, Math.Abs(local[j].Z - exactZ) + slackZ));
-                    depthError = Math.Max(depthError, Math.Abs(local[j].Y - exactDepth) + slackY);
+                    depthError = Math.Max(depthError, Math.Abs(local[j].Y - exactDepth) + v.YSlack);
                 }
                 if (!float.IsFinite(local[0].Y) || !float.IsFinite(local[1].Y) || !float.IsFinite(local[2].Y))
                     return Fail(TileWaterOpticsFailureKind.UnrepresentableSurface);
@@ -329,7 +333,7 @@ internal static class TileWaterTrianglePreparation
             if (field is null) return Fail(TileWaterOpticsFailureKind.SurfaceCapacityExceeded, columns: columns, rows: rows);
             if (!(conversion + field.ReconstructionErrorBoundMetres <= budget))
                 return Fail(TileWaterOpticsFailureKind.UnrepresentableSurface, columns: columns, rows: rows);
-            Result = new TileWaterTriangleBuild(field, new Vector3(originX, reference, originZ), _domain);
+            Result = new TileWaterTriangleBuild(field, new Vector3(originX, 0f, originZ), _domain, reference);
             return null;
         }
 
@@ -350,7 +354,10 @@ internal static class TileWaterTrianglePreparation
                 Math.Abs((double)p.Y) * (Math.Abs(m.M21) + Math.Abs(m.M22) + Math.Abs(m.M23)) +
                 Math.Abs((double)p.Z) * (Math.Abs(m.M31) + Math.Abs(m.M32) + Math.Abs(m.M33)) +
                 Math.Abs(m.M41) + Math.Abs(m.M42) + Math.Abs(m.M43);
-            return new Vertex(x, y, z, Binary64Slack * magnitude);
+            // The identity Y row evaluates y as exactly p.Y, otherwise y carries the transform slack.
+            bool exactY = m.M12 == 0f && m.M22 == 1f && m.M32 == 0f && m.M42 == 0f;
+            double slack = Binary64Slack * magnitude;
+            return new Vertex(x, y, z, slack, exactY ? 0d : slack);
         }
 
         static double Slope(Vector3 a, Vector3 b, Vector3 c)

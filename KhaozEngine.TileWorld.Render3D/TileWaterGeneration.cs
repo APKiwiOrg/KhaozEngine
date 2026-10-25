@@ -86,7 +86,7 @@ internal sealed class TileWaterGeneration : IDisposable
             {
                 _planeFields[i] = -1;
                 for (int f = 0; f < Fields.Length; f++)
-                    if (Planes[i].SurfaceY == Fields[f].Origin.Y)
+                    if (Planes[i].SurfaceY == Fields[f].Level)
                     {
                         TileWaterTriangleBuild field = Fields[f];
                         Planes[i] = Planes[i].WithOptics(new WaterOpticsBinding(_handles[f], field.Origin, field.Field.Size));

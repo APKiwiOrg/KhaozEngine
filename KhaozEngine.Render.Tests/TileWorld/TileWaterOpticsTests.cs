@@ -48,9 +48,10 @@ public class TileWaterOpticsTests
         return Assert.Single(outcome.Fields);
     }
 
+    // Physical depth as the shader forms it, without the clamp: rest depth plus level minus the datum.
     static float Sample(TileWaterTriangleBuild build, float worldX, float worldZ) =>
         build.Field.SampleDepth((worldX - build.Origin.X) / build.Field.Size.X,
-            (worldZ - build.Origin.Z) / build.Field.Size.Y);
+            (worldZ - build.Origin.Z) / build.Field.Size.Y) + build.Level - build.Origin.Y;
 
     static double Oracle(TileGroundSurfaceSnapshot surface, float reference, float worldX, float worldZ) =>
         reference - TileWaterBedOracle.Height([surface], worldX, worldZ);
@@ -157,8 +158,10 @@ public class TileWaterOpticsTests
         Assert.Null(outcome.Failure);
         Assert.Equal(2, outcome.Fields.Length);
         TileWaterTriangleBuild low = outcome.Fields[0], high = outcome.Fields[1];
-        Assert.Equal(2f, low.Origin.Y);
-        Assert.Equal(30f, high.Origin.Y);
+        Assert.Equal(2f, low.Level);
+        Assert.Equal(30f, high.Level);
+        Assert.Equal(0f, low.Origin.Y);
+        Assert.Equal(0f, high.Origin.Y);
         Assert.Equal(-0.5f, Sample(low, 10f, -10f), 4);
         Assert.Equal(Oracle(surface, 30f, 13f, -13f), Sample(high, 13f, -13f), 4);
         // Immutable: a later document edit cannot change prepared bytes.
@@ -364,7 +367,8 @@ public class TileWaterOpticsTests
                 float u = (float)((x + fx) * tileSize - build.Origin.X) / size.X;
                 float v = (float)(-(z + fz) * tileSize - build.Origin.Z) / size.Y;
                 float localX = u * size.X, localZ = v * size.Y;
-                Assert.True(build.Field.TrySampleDepth(u, v, out float depth));
+                Assert.True(build.Field.TrySampleDepth(u, v, out float rest));
+                double depth = (double)rest + build.Level - build.Origin.Y;
                 double worldX = (double)build.Origin.X + localX, worldZ = (double)build.Origin.Z + localZ;
                 double oracle = 5d - TileWaterBedOracle.Height([surface], worldX, worldZ);
                 Assert.True(Math.Abs(depth - oracle) <= budget,

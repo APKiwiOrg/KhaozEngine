@@ -121,8 +121,9 @@ public sealed class TileWorldViewWaterOpticsTriangleTests
         Assert.True(plane.Optics.IsBound);
         WaterOpticsTriangleField field = scene.TriangleFields[plane.Optics.Field];
         Assert.Equal(field.Size, plane.Optics.Size);
+        // Physical depth as the shader forms it, without the clamp: rest depth plus level minus the datum.
         return field.SampleDepth((x - plane.Optics.Origin.X) / plane.Optics.Size.X,
-            (z - plane.Optics.Origin.Z) / plane.Optics.Size.Y);
+            (z - plane.Optics.Origin.Z) / plane.Optics.Size.Y) + plane.SurfaceY - plane.Optics.Origin.Y;
     }
 
     static double OracleDepth(TileWorldView view, WaterPlane plane, float x, float z, params RegionCoord[] regions) =>
@@ -217,7 +218,7 @@ public sealed class TileWorldViewWaterOpticsTriangleTests
         Assert.Equal(2, scene.TriangleFields.Count);
         foreach (WaterPlane plane in planes)
         {
-            Assert.Equal(plane.SurfaceY, plane.Optics.Origin.Y);
+            Assert.Equal(0f, plane.Optics.Origin.Y);
             Assert.Equal(OracleDepth(view, plane, plane.CenterX, plane.CenterZ, Origin),
                 FieldDepth(scene, plane, plane.CenterX, plane.CenterZ), 4);
         }

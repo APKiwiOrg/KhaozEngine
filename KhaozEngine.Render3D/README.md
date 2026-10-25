@@ -878,6 +878,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     refuses nonzero subnormal atlas scalars and non-normal inverse extents as `UnrepresentableSurface` before
     allocating a texture. `ReconstructionErrorBoundMetres` is the field's upward-rounded reconstruction bound,
     which a producer counts with its own source and render-origin conversion error inside its single budget.
+    It also includes the measured depth discontinuity of coincident shared edges and T junctions. Positive-area
+    disagreement still refuses as `AmbiguousSurface`.
   - **Binding and coverage**: `WaterOpticsBinding(handle, origin, size)` uses the plane's absolute frame. Origin
     XZ is the field minimum. Origin Y is the reference the rest depths are measured from, the still-water surface
     or any datum the producer subtracts exactly. TileWorld binds datum 0 and stores `-y`. A triangle binding

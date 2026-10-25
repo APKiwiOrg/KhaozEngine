@@ -5645,7 +5645,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       field. Scene upload also refuses nonzero subnormal atlas scalars and non-normal inverse extents as
       `UnrepresentableSurface` rather than modify source coordinates. A producer charges the field's upward-rounded
       `ReconstructionErrorBoundMetres` together with its source and render-origin conversion error within its one
-      total budget.
+      total budget. That bound includes the measured depth discontinuity of shared edges and T junctions whose XZ
+      geometry coincides. Positive-area disagreement still refuses.
 
     Load once and bind the handle each frame. The binding's origin XZ is the field minimum in the plane's absolute
     frame, and its origin Y is the reference the rest depths are measured from, the still-water surface or any

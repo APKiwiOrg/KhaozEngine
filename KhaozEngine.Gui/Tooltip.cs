@@ -28,6 +28,18 @@ namespace KhaozEngine.Gui
         /// <summary>Resolved coloured runs for this line. Empty keeps the original uniform colour.</summary>
         public ReadOnlyMemory<ColoredTextRun> Runs { get; internal init; }
 
+        /// <summary>Optional leading icon, drawn only on this source line's first visual row.
+        /// Defaults to <c>null</c>, with no icon inset or gap.</summary>
+        public TooltipIcon? Icon { get; init; }
+
+        /// <summary>Use the tooltip's title font for this body line. Defaults to <c>false</c>.
+        /// Text uses this line's <see cref="Scale"/>, independently of <see cref="Tooltip.TitleScale"/>.</summary>
+        public bool TitleFont { get; init; }
+
+        /// <summary>Space in design units before this source line's first visual row, including the first
+        /// body line. Independent of <see cref="Scale"/>. Must be finite and nonnegative. Defaults to zero.</summary>
+        public float GapBefore { get; init; }
+
         /// <summary>Build a line from localized text (resolved now against the ambient catalog),
         /// optionally at <paramref name="scale"/>.</summary>
         public static TooltipLine Of(LocalizedText text, Vector4 color, float scale = 1f) =>
@@ -77,8 +89,11 @@ namespace KhaozEngine.Gui
         /// and unread in <see cref="TooltipAnchorMode.Centered"/>, so the pre-existing placement is untouched.
         /// </summary>
         public float AnchorOffsetX;
+        /// <summary>Space in design units between a leading icon and its text. Independent of
+        /// <see cref="TooltipLine.Scale"/>. Must be finite and nonnegative. Default <c>8f</c>.</summary>
+        public float IconGap;
         public static TooltipMetrics Default => new()
-        { PadX = 10, PadY = 8, TitleGap = 5, LineSpacing = 3, AnchorOffsetY = 10, Margin = 4, TopMargin = 0, TitleRightGap = 12, AnchorOffsetX = 0 };
+        { PadX = 10, PadY = 8, TitleGap = 5, LineSpacing = 3, AnchorOffsetY = 10, Margin = 4, TopMargin = 0, TitleRightGap = 12, AnchorOffsetX = 0, IconGap = 8f };
     }
 
     /// <summary>
@@ -146,6 +161,11 @@ namespace KhaozEngine.Gui
         public float MaxWidthFraction = 0f;
 
         public Vector4 Background = new(0.055f, 0.055f, 0.094f, 0.94f);
+
+        /// <summary>Optional tiled fill inside the existing one-unit border. Defaults to <c>null</c>,
+        /// keeping the flat <see cref="Background"/> fill. The caller owns the texture lifetime.</summary>
+        public TooltipBackdrop? Backdrop { get; set; }
+
         public Vector4 Border = new(0.24f, 0.255f, 0.31f, 0.78f);
         public Vector4 TitleColor = new(0.86f, 0.88f, 0.94f, 1f);
 

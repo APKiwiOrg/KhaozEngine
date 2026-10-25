@@ -274,6 +274,56 @@ public sealed class TooltipDrawTests
     }
 
     [Theory]
+    [InlineData(35f, 19f, 1e-6f)]
+    [InlineData(35f, 1e-6f, 1e-6f)]
+    [InlineData(1e-6f, 35f, 1e-6f)]
+    [InlineData(65f, 65f, 1f)]
+    [InlineData(float.MaxValue, 1f, float.Epsilon)]
+    [InlineData(1f, float.MaxValue, float.Epsilon)]
+    public void Excessive_tile_counts_fail_before_emission(float width, float height, float tileSize)
+    {
+        using var texture = Texture();
+        var sink = new RecordingSink { RejectSprites = true };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            TooltipBackdropPainter.Draw(ref sink, new Rect(10, 20, width, height),
+                new TooltipBackdrop(texture, tileSize, Vector4.One), 1f));
+        Assert.Empty(sink.Calls);
+    }
+
+    [Theory]
+    [InlineData(float.NaN, 19f)]
+    [InlineData(35f, float.NaN)]
+    [InlineData(float.PositiveInfinity, 19f)]
+    [InlineData(35f, float.PositiveInfinity)]
+    public void Nonfinite_interior_dimensions_fail_before_emission(float width, float height)
+    {
+        using var texture = Texture();
+        var sink = new RecordingSink { RejectSprites = true };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            TooltipBackdropPainter.Draw(ref sink, new Rect(10, 20, width, height),
+                new TooltipBackdrop(texture, 16f, Vector4.One), 1f));
+        Assert.Empty(sink.Calls);
+    }
+
+    [Fact]
+    public void Bounded_tile_grid_covers_the_entire_interior()
+    {
+        using var texture = Texture();
+        var sink = new RecordingSink();
+
+        TooltipBackdropPainter.Draw(ref sink, new Rect(10, 20, 64, 64),
+            new TooltipBackdrop(texture, 1f, Vector4.One), 1f);
+
+        Assert.Equal(4096, sink.Calls.Count);
+        Assert.Equal(new Rect(10, 20, 1, 1), sink.Calls[0].Bounds);
+        Assert.Equal(new Rect(73, 20, 1, 1), sink.Calls[63].Bounds);
+        Assert.Equal(new Rect(10, 21, 1, 1), sink.Calls[64].Bounds);
+        Assert.Equal(new Rect(73, 83, 1, 1), sink.Calls[^1].Bounds);
+    }
+
+    [Theory]
     [InlineData(0f, 19f)]
     [InlineData(35f, 0f)]
     [InlineData(0f, 0f)]
@@ -333,6 +383,7 @@ public sealed class TooltipDrawTests
     sealed class RecordingSink : ITooltipSink
     {
         public List<Drawn> Calls { get; } = new();
+        public bool RejectSprites { get; init; }
 
         public void Fill(in Rect bounds, Vector4 color) =>
             Calls.Add(new("Fill") { Bounds = bounds, Color = color });
@@ -340,8 +391,12 @@ public sealed class TooltipDrawTests
         public void Border(in Rect bounds, float thickness, Vector4 color) =>
             Calls.Add(new("Border") { Bounds = bounds, Thickness = thickness, Color = color });
 
-        public void Sprite(Texture2D texture, in Rect destination, Vector4 sourceUV, Vector4 tint) =>
+        public void Sprite(Texture2D texture, in Rect destination, Vector4 sourceUV, Vector4 tint)
+        {
+            if (RejectSprites)
+                throw new InvalidOperationException("Invalid tile geometry must fail before sprite emission.");
             Calls.Add(new("Sprite") { Texture = texture, Bounds = destination, SourceUV = sourceUV, Color = tint });
+        }
 
         public void Text(bool titleFont, string text, Vector2 position, Vector4 color, float scale) =>
             Calls.Add(new("Text") { TitleFont = titleFont, Text = text, Position = position, Color = color, Scale = scale });

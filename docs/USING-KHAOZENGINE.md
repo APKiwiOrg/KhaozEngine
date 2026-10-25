@@ -1793,7 +1793,9 @@ finite and positive. `GapBefore` and `Metrics.IconGap` must be finite and nonneg
 
 The backdrop replaces the flat fill inside the existing one-unit border without changing tooltip bounds.
 `TileSize` is a square size in design units. The whole source texture tiles from the interior's top-left
-in row-major order. Partial edge tiles crop their UVs proportionally rather than stretching. Tiles draw
+in row-major order. Partial edge tiles crop their UVs proportionally rather than stretching. Drawing
+throws `ArgumentOutOfRangeException` before any tile emission if the interior dimensions are nonfinite
+or the complete grid would exceed 4096 tiles. This bounds draw work without truncating coverage. Tiles draw
 first, then the existing border, title row, optional separator and each body's icon before its text.
 The caller owns icon and backdrop texture lifetimes, plus the sampler and scissor state. `Opacity` changes
 only alpha uniformly across all visuals. Coloured runs keep their source colours and receive the fade once.

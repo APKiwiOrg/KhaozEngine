@@ -806,7 +806,9 @@ chat.Draw(batch, white);
     `Backdrop` defaults to null, preserving the flat `Background` fill and existing tooltip defaults.
     A backdrop replaces that fill inside the existing one-unit border without changing bounds. Its finite
     positive `TileSize` is in design units. The whole texture tiles from the interior's top-left in row-major
-    order, and partial edge tiles crop their UVs proportionally. The border follows the tiles, then the title,
+    order, and partial edge tiles crop their UVs proportionally. Drawing throws `ArgumentOutOfRangeException`
+    before any tile emission if the interior dimensions are nonfinite or the complete grid would exceed
+    4096 tiles. This bounds draw work without truncating coverage. The border follows the tiles, then the title,
     optional separator and each body's icon before its text. The caller owns both icon and backdrop texture
     lifetimes. Drawing keeps the caller's sampler and scissor state.
     `TooltipLine.OfSegments` resolves `LabelSegment`s into one body line and keeps each segment's colour

@@ -3,6 +3,17 @@
 Status: Execution amendment selected by the engine orchestrator under the owner's authorization to
 resolve failed optical gates. Implementation and verification remain open. No release is authorized.
 
+Task 5 evidence, local Metal, Release: the unchanged saddle fact passes with one live field and upload. At
+the 0.08 m probe, authored influence is 0.0722819 against scene-depth control 0.20033678. Topology facts
+cover the other diagonal, absent-overlay forced rotation, all four corner-cut rotations on level cut edges, a
+Coarse4 interior with transition fans, a Full and Coarse4 region border with neighbouring fields and a 2048 m
+render-origin reduction. Each matches a binary64 drawn-mesh oracle within 2.7e-8 m at every admitted GPU
+probe. Its image matches an independent field built from the drawn triangles at 0 RGB. Its negative witness
+fails both checks. Corner cuts whose mid-edge points lie on sloping edges shared with an uncut neighbour are
+refused as AmbiguousSurface, and their authored water disappears. Each vertex's rest depth, reference minus
+height, rounds to binary32 separately, so an exactly collinear T junction no longer agrees exactly. Parent
+Task 6 remains open. Its look gate is not accepted until that refusal is fixed and the failing fact passes.
+
 This amends [per-body water optics](WATER-OBJECT-OPTICS-DESIGN-2026-10-24.md) for the failed Task 6
 saddle gate. It supersedes the bilinear-only TileWorld producer and universal four-fetch requirement.
 Existing `WaterOpticsField` callers retain their bilinear contract. All original immutable ownership,

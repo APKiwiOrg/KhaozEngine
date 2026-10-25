@@ -497,9 +497,64 @@ jobs:
           & (Join-Path $env:GITHUB_WORKSPACE 'renderer-perf-trusted/scripts/renderer-perf-workflow.ps1') -Mode Authorize
           if ($LASTEXITCODE -ne 0) { throw 'Renderer authorization failed' }
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: '10.0.402'
+      # SDK 10.0.402 includes runtime 10.0.13. SHA-512 values come from Microsoft's 10.0 releases.json.
+      - name: Install isolated renderer SDK (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          DOTNET_URL: https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.402/dotnet-sdk-10.0.402-linux-x64.tar.gz
+          DOTNET_SHA512: 1904a98dda2db34ba78ba3c4fb1b224455329af91c341d83547843c1839e112b04ae699ee92fa2449a8f62249196a938723078c0c60b9f65c88539d5687729c2
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/renderer-dotnet"
+          archive="$RUNNER_TEMP/renderer-dotnet.tar.gz"
+          mkdir "$dir"
+          curl -fsSL --retry 3 -o "$archive" "$DOTNET_URL"
+          echo "$DOTNET_SHA512  $archive" | sha512sum -c -
+          tar -xzf "$archive" -C "$dir"
+          echo "$dir" >> "$GITHUB_PATH"
+          {
+            echo "DOTNET_ROOT=$dir"
+            echo "DOTNET_ROOT_X64=$dir"
+            echo "DOTNET_HOST_PATH=$dir/dotnet"
+          } >> "$GITHUB_ENV"
+
+      - name: Install isolated renderer SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          DOTNET_URL: https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.402/dotnet-sdk-10.0.402-win-x64.zip
+          DOTNET_SHA512: ae4fd528cb7e9f6af6aaf7de36715a69f761f183744f1bb3025d19f5a92447090ec561410e46266c1d10a63781ed6f3de771760bc76c876d87daabc367b898cd
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $dir = Join-Path $env:RUNNER_TEMP 'renderer-dotnet'
+          $archive = Join-Path $env:RUNNER_TEMP 'renderer-dotnet.zip'
+          if (Test-Path -LiteralPath $dir) { throw 'Renderer dotnet root must be absent before installation' }
+          New-Item -ItemType Directory -Path $dir | Out-Null
+          Invoke-WebRequest -Uri $env:DOTNET_URL -OutFile $archive -UseBasicParsing
+          $actual = (Get-FileHash -Algorithm SHA512 $archive).Hash.ToLowerInvariant()
+          if ($actual -cne $env:DOTNET_SHA512) { throw "Renderer SDK archive SHA-512 $actual does not match $env:DOTNET_SHA512" }
+          Expand-Archive -Path $archive -DestinationPath $dir
+          $hostPath = Join-Path $dir 'dotnet.exe'
+          [IO.File]::AppendAllText($env:GITHUB_PATH, $dir + [Environment]::NewLine)
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "DOTNET_ROOT=$dir" + [Environment]::NewLine)
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "DOTNET_ROOT_X64=$dir" + [Environment]::NewLine)
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "DOTNET_HOST_PATH=$hostPath" + [Environment]::NewLine)
+
+      - name: Check exact renderer SDK and runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sdk = & dotnet --version
+          if ($LASTEXITCODE -ne 0 -or $sdk -cne '10.0.402') { throw "Expected renderer SDK 10.0.402, observed '$sdk' (exit $LASTEXITCODE)" }
+          $runtimes = @(& dotnet --list-runtimes)
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer runtime listing failed' }
+          $runtimes | Out-Host
+          $core = @($runtimes | Where-Object { $_ -cmatch '^Microsoft\.NETCore\.App ' })
+          if ($core.Count -ne 1 -or $core[0] -cnotmatch '^Microsoft\.NETCore\.App 10\.0\.13 \[') { throw "Expected exactly Microsoft.NETCore.App 10.0.13, observed: $($runtimes -join ', ')" }
+
       - name: GPU, driver model and the GRID driver (Windows)
         if: runner.os == 'Windows'
         continue-on-error: true

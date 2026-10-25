@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
@@ -19,10 +20,16 @@ public sealed class RendererPerfWorkflowTrustTests
     [Fact]
     public void Renderer_job_installs_an_exact_sdk_version()
     {
-        string setup = RendererJob().Split("      - ").Single(step => step.StartsWith("uses: actions/setup-dotnet@", StringComparison.Ordinal));
-        string? version = Setting(setup, "dotnet-version");
-        Assert.NotNull(version);
-        Assert.Matches(@"^[0-9]+\.[0-9]+\.[0-9]+$", version);
+        string[] installs = RendererJob().Split("      - ")
+            .Where(step => step.StartsWith("name: Install isolated renderer SDK", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(2, installs.Length);
+        foreach (string install in installs)
+        {
+            string? url = Setting(install, "DOTNET_URL");
+            Assert.NotNull(url);
+            string version = Regex.Match(url, @"/Sdk/([^/]+)/").Groups[1].Value;
+            Assert.Matches(@"^[0-9]+\.[0-9]+\.[0-9]+$", version);
+        }
     }
 
     static string RendererJob([CallerFilePath] string source = "")

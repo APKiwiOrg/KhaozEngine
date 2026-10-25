@@ -384,6 +384,9 @@ medium and the patches it read. `MapWaterCompileLimits` bounds pieces, vertices,
 checks and triangles. `MaxBoundCells` caps the cumulative bound-lattice slot and cell candidates before reads and
 sweeps, including absent, empty, skipped and face-free candidates. Negative limits throw at compile entry.
 Incomplete geometry remains explicit, and a capacity refusal keeps its counted work and no regions.
+Under a scene admission, water compilation releases each body's workspace and each consumed bound context
+before advancing. Only the escaping compiled body inventory remains charged. Effective water validation
+releases that inventory after checking the publication gate.
 
 ## Storage ownership
 

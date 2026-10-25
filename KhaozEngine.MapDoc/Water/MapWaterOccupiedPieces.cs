@@ -39,8 +39,10 @@ internal static class MapWaterOccupiedPieces
         }
         if (!MapWaterFootprints.HoldsEverything(view) || view.Scope.SpaceIds is not null || !MapWaterFootprints.ScopeHolds(view, min, max))
             throw new MapDocumentException("missing geometry: occupied water window is not proven complete in this view");
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         var result = MapOccupiedPartitions.BuildWide(view, min, max, limits, carve: true, meter);
         if (result.Status != MapRefinementStatus.Complete) throw MapOccupiedPartitions.Refusal(result.Status, result.Detail);
+        preparation?.Complete(new MapWaterInventory().Pieces(result.Pieces));
         return result.Pieces;
     }
 

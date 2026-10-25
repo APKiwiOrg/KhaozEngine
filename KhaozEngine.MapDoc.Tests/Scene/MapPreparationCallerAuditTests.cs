@@ -39,4 +39,17 @@ public sealed class MapPreparationCallerAuditTests
         Assert.Equal(0, admission.RetainedBytes);
         Assert.Equal(0, admission.WorkspaceBytes);
     }
+
+    [Fact]
+    public void EffectiveWaterValidation_ReleasesConsumedBodies()
+    {
+        var fixture = Prefabs.PrefabFixtures.RoomWater(connected: true);
+        var resources = Prefabs.PrefabFixtures.Effective(fixture);
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 10_000_000));
+        using var active = admission.Enter();
+        KhaozEngine.MapDoc.MapBoundDocumentValidation.ValidateEffectiveWater(resources, fixture.Assets);
+        Assert.True(admission.PreparedFaces > 0);
+        Assert.Equal(0, admission.RetainedBytes);
+        Assert.Equal(0, admission.WorkspaceBytes);
+    }
 }

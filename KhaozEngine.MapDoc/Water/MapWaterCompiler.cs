@@ -29,14 +29,23 @@ public static class MapWaterCompiler
         ArgumentNullException.ThrowIfNull(water);
         limits ??= new MapWaterCompileLimits();
         limits.Validate();
+        var admission = view.Scope.SceneAdmission ?? Scene.MapSceneAdmission.Current;
+        using var admitted = admission?.Enter();
+        using var preparation = admission?.BeginPreparation();
         MapWaterSet snapshot = water.Clone();
         MapWaterConnectivity? graph = null;
-        var bodies = new List<MapCompiledWaterBody>();
+        admission?.ReserveBytes(checked(128L + 32L * snapshot.Bodies.Count));
+        var bodies = new List<MapCompiledWaterBody>(snapshot.Bodies.Count);
         foreach (MapWaterBodyDoc body in snapshot.Bodies.Where(b => b is not null).OrderBy(b => b.Id, StringComparer.Ordinal))
         {
+            using var bodyPreparation = admission?.BeginPreparation();
             var compile = new BodyCompile(view, snapshot, body, limits);
-            bodies.Add(compile.Run(ref graph));
+            var compiled = compile.Run(ref graph);
+            bodyPreparation?.Complete(new MapWaterInventory().Body(compiled));
+            bodies.Add(compiled);
         }
+        var inventory = new MapWaterInventory();
+        preparation?.Complete(checked(128L + 8L * bodies.Capacity + bodies.Sum(inventory.Body)));
         return bodies.AsReadOnly();
     }
 
@@ -44,8 +53,11 @@ public static class MapWaterCompiler
     internal static MapCompiledWaterBody CompileCell(MapScopedSurfaces view, MapWaterSet water, MapWaterBodyDoc body,
         MapEffectiveWaterBody cell, MapWaterCompileLimits limits)
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         MapWaterConnectivity? graph = null;
-        return new BodyCompile(view, water, body, limits, cell).Run(ref graph);
+        var compiled = new BodyCompile(view, water, body, limits, cell).Run(ref graph);
+        preparation?.Complete(new MapWaterInventory().Body(compiled));
+        return compiled;
     }
 
     sealed class BodyCompile(MapScopedSurfaces view, MapWaterSet water, MapWaterBodyDoc body, MapWaterCompileLimits limits,

@@ -145,8 +145,9 @@ The released world-limit refusal precedes effective placement-coordinate represe
 ### Scoped simulation ownership
 
 `MapScopedWorldBuilder.Build` prepares one admitted `MapScopedScene` under its captured byte allowance. Patch,
-strip, shape decode and per-instance workspace releases after its consumer. Independent terrain meshes, placement
-shapes, water and descriptor containers keep one retained receipt on the returned `MapScopedWorld`.
+strip, water body, bound read, shape decode and per-instance workspace releases after its consumer.
+Independent terrain meshes, placement shapes, water and descriptor containers keep one retained receipt
+on the returned `MapScopedWorld`.
 Dispose a directly built scoped world after its last consumer. `MapSimulationCoverage.Acquire` owns its worlds
 and neutral coverage until `MapSimulationLease.Dispose`, and releases unpublished worlds if a later domain refuses.
 Navigation partitions, seams and links derived from a scoped world share that world's lifetime. Their workspace

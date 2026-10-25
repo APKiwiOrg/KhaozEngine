@@ -117,6 +117,7 @@ internal sealed class MapWaterRegionBuilder
     /// <summary>Adds one footprint rectangle's regions, or returns the typed failure of a bound read.</summary>
     internal (MapWaterCompileStatus Status, string? Detail)? Add(MapWaterFootprintRect rect)
     {
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         MapWideXz min = new(MapWideRational.Max(Wide(rect.Min.X), Wide(_domain.Min.X)), MapWideRational.Max(Wide(rect.Min.Z), Wide(_domain.Min.Z)));
         MapWideXz max = new(MapWideRational.Min(Wide(rect.Max.X), Wide(_domain.Max.X)), MapWideRational.Min(Wide(rect.Max.Z), Wide(_domain.Max.Z)));
         if (min.X.CompareTo(max.X) >= 0 || min.Z.CompareTo(max.Z) >= 0) return null;
@@ -129,6 +130,9 @@ internal sealed class MapWaterRegionBuilder
             upper = Read(rect, rect.Upper, windowMin, windowMax, upper: true);
             if (!Usable(upper)) return Failure(upper);
         }
+        // Face indexes and clipping scratch are consumed here. Region storage is covered by the
+        // body's domain and footprint reservations, then settled when its triangles are published.
+        preparation?.Reserve(checked(512L + 1280L * (lower.Faces.Count + (upper?.Faces.Count ?? 0))));
         Cells lowerCells = Index(lower), upperCells = upper is null ? Cells.Open : Index(upper);
         MapWideXz rectMin = MapWideXz.From(rect.Min), rectMax = MapWideXz.From(rect.Max);
         for (int piece = 0; piece < _domain.Pieces.Count; piece++)

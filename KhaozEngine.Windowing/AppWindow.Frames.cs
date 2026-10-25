@@ -71,7 +71,8 @@ namespace KhaozEngine.Windowing
                     new FrameDiagnosticsWindowState(_accumulator.IsFocused, _minimized,
                         !_backgroundThrottle.Plan(new WindowActivity(_accumulator.IsFocused, _minimized), _effectiveBaseCapHz).RenderAndPresent,
                         _window.FramebufferSize.X, _window.FramebufferSize.Y, _effectiveBaseCapHz, _presentMode == PresentMode.Vsync,
-                        RendererInitializesSwapchain),
+                        RendererInitializesSwapchain, _frame.PreparePhaseSplitActive,
+                        _frame.PreparePhaseSubmissionCount, _frame.PreparePhaseCompositeCount),
                     _device.Counters);
                 float fdt = (float)Math.Min(dt, 0.1);
                 // Capture first, so the snapshot reports what GLFW was told this frame. See AppWindow.PointerCapture.cs.

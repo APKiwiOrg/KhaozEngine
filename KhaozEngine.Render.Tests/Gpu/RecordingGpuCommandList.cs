@@ -61,6 +61,7 @@ namespace KhaozEngine.Tests.Gpu
         readonly List<Resolve> _resolves = new();
         readonly List<TextureCopy> _textureCopies = new();
         readonly List<ColourClear> _colourClears = new();
+        internal List<IGpuFramebuffer> BoundFramebuffers { get; } = new();
         int _draws;
         int _framebufferBinds;
 
@@ -98,6 +99,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Forget everything recorded so far (call between frames to assert on ONE frame).</summary>
         public void Clear()
         {
+            BoundFramebuffers.Clear();
             _uploads.Clear();
             _resolves.Clear();
             _textureCopies.Clear();
@@ -140,6 +142,7 @@ namespace KhaozEngine.Tests.Gpu
         public void End() => Inner.End();
         public void SetFramebuffer(IGpuFramebuffer fb)
         {
+            BoundFramebuffers.Add(fb);
             _framebufferBinds++;
             Inner.SetFramebuffer(fb);
         }

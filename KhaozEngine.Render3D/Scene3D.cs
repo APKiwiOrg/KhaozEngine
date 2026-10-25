@@ -740,6 +740,7 @@ namespace KhaozEngine.Render3D
         /// <summary>Start a frame: apply pending scene changes, latch <see cref="RenderOrigin"/>, take the next frame index, and clear the per-frame draw queues.</summary>
         public void Begin()
         {
+            CancelPreparedOutput();
             ApplyPendingShadowLayout();
             ApplyPendingPointShadowLayout();
             _retired.BeginFrame();   // frees mid-life mesh buffers whose retirement fence has signaled (no stall)
@@ -1399,6 +1400,12 @@ namespace KhaozEngine.Render3D
         /// </summary>
         internal void RenderInternal(IGpuCommandList cl, int viewportW, int viewportH, IGpuFramebuffer target)
         {
+            CancelPreparedOutput();
+            RenderInternalCore(cl, viewportW, viewportH, target, deferOutput: false);
+        }
+
+        void RenderInternalCore(IGpuCommandList cl, int viewportW, int viewportH, IGpuFramebuffer? target, bool deferOutput)
+        {
             // Reset the always-on frame counters here (not in Begin), so they are finalized per rendered frame the
             // same way DrawnInstances / PassTimingsMs are - a Begin without a render leaves the last render's totals,
             // and a re-render never double-counts.
@@ -1696,53 +1703,13 @@ namespace KhaozEngine.Render3D
             if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             RunTemporalResolve(cl);   // resolving renders only: internal to display history, then the depth store
-            postChain.Run(cl, postTargets, target, Post, runFxaa, distortionActive);
-            DrawDebugView(cl, target);   // a development view replaces the final image (Scene3D.DebugView.cs)
-            DrawTargetOutlines(cl, displayVp, target);
+            PixelPostProcess.PreparedOutput output = postChain.RunOffscreen(cl, postTargets, Post, runFxaa, distortionActive);
             if (EnableTiming) postMs = ElapsedMs(timingStart);
-            timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
-
-            // Filled overlay: rebind `target` and draw the accumulated translucent triangles over the post image,
-            // BEFORE the lines so an outline on a fill reads crisp. Depth off, alpha blend, unjittered like picking.
-            if (_fillVerts.Count > 0)
-            {
-                _fills.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_fillVerts), target);
-                _frameStats.DrawCalls++;
-            }
-
-            // Debug overlay: rebind `target` and draw the accumulated lines over the post image, depth off, alpha
-            // blend, unjittered so they line up with ScreenToGround picking.
-            if (_lineVerts.Count > 0)
-            {
-                _lines.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_lineVerts), target);
-                _frameStats.DrawCalls++;
-            }
-
-            // Billboards: after the line pass, additive first (glow) then alpha, same overlay framebuffer +
-            // ViewProjection. Each rebinds `target` (no clear) and uploads its own vertex span. Additive is
-            // order-independent (kept in submission order); the alpha stream is built back-to-front so overlapping
-            // translucent billboards composite far-to-near regardless of the order the host queued them.
-            if (_billboardAdditive.Count > 0)
-            {
-                _billboards.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_billboardAdditive), target, additive: true);
-                _frameStats.DrawCalls++;
-            }
-            BuildSortedAlphaBillboards();
-            if (_billboardAlpha.Count > 0)
-            {
-                _billboards.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
-                _frameStats.DrawCalls++;
-            }
-
-            // Screen-space teleport transition (blink / frozen-frame crossfade): a fullscreen pass over everything,
-            // last so it masks the whole 3D frame. No-op (and byte-identical) when none is active.
-            _transitions.Render(cl, _res, target, ScreenTransition);
-
-            if (EnableTiming)
-            {
-                transparentsMs += ElapsedMs(timingStart);
-                _passTimingsMs = new Scene3DPassTimingsMs(shadowDepthMs, modelMs, transparentsMs, waterSyncMs, postMs);
-            }
+            var timings = new Scene3DPassTimingsMs(shadowDepthMs, modelMs, transparentsMs, waterSyncMs, postMs);
+            if (deferOutput)
+                _preparedOutput = new PreparedSceneOutput(++_preparedSerial, _frameIndex, viewportW, viewportH,
+                    displayVp, postChain, output, timings, EnableTiming);
+            else RecordOutputTail(cl, target!, displayVp, postChain, in output, timings, EnableTiming, false);
         }
 
         /// <summary>Elapsed milliseconds since <paramref name="startTimestamp"/> (a <see cref="Stopwatch.GetTimestamp"/>
@@ -1970,6 +1937,8 @@ namespace KhaozEngine.Render3D
 
         public void Dispose()
         {
+            _preparedOutputDisposed = true;
+            CancelPreparedOutput();
             // Drain in-flight GPU work before destroying anything because uploads or draws may still be queued on
             // the device's async submission thread (Mesa lavapipe can segfault on destroyed resources).
             DisposeShadowReconfiguration();

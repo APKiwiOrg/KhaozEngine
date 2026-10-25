@@ -8,7 +8,8 @@ using KhaozEngine.Gpu;
 namespace KhaozEngine.Windowing;
 
 internal readonly record struct FrameDiagnosticsWindowState(bool Focused, bool Minimized, bool RenderSuppressed,
-    int Width, int Height, int EffectiveBaseCapHz, bool Vsync, bool RendererInitializesSwapchain = false);
+    int Width, int Height, int EffectiveBaseCapHz, bool Vsync, bool RendererInitializesSwapchain = false,
+    bool PreparePhaseSplitActive = false, long PreparePhaseSubmissionCount = 0, long PreparePhaseCompositeCount = 0);
 
 internal sealed class FrameDiagnosticsRecorder : IDisposable
 {

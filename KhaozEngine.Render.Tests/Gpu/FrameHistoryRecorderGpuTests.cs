@@ -10,6 +10,7 @@ using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
+using KhaozEngine.Render3D;
 using KhaozEngine.Windowing;
 using StbImageSharp;
 using Xunit;
@@ -36,14 +37,20 @@ namespace KhaozEngine.Tests.Gpu
         public void A_recorder_over_a_real_device_records_the_clip_and_the_screenshot()
         {
             if (!MetalDormancy.NativeDeviceAvailable(_out)) return;
+            RecordThroughALayerBackedDevice(_out, false);
+        }
 
-            RecordThroughALayerBackedDevice(_out);
+        [GpuFact(RequiresCompletionFences = true)]
+        public void A_split_scene_preserves_the_real_drawable_clip_and_trigger_frame_screenshot()
+        {
+            if (!MetalDormancy.NativeDeviceAvailable(_out)) return;
+            RecordThroughALayerBackedDevice(_out, true);
         }
 
         // Split out under the guard for the reason every Metal row in this assembly splits: CA1416 reads the
         // platform guard at the call site.
         [SupportedOSPlatform("macos")]
-        static void RecordThroughALayerBackedDevice(ITestOutputHelper output)
+        static void RecordThroughALayerBackedDevice(ITestOutputHelper output, bool split)
         {
             CAMetalLayer layer = CAMetalLayer.New();
             if (layer.IsNull)
@@ -78,6 +85,7 @@ namespace KhaozEngine.Tests.Gpu
             IGpuCommandList commands = device.Factory.CreateCommandList();
             var taps = new FrameCaptureTaps(device, device);
             var time = new SteppedTime();
+            Frame windowFrame = NewFrame(commands);
             FrameHistoryRecorder? recorder = null;
             var sprites = new SpriteBatch(device, device.SwapchainFramebuffer!.Outputs);
             IGpuTexture whiteHandle = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
@@ -85,9 +93,29 @@ namespace KhaozEngine.Tests.Gpu
             device.UpdateTexture(whiteHandle, new byte[] { 255, 255, 255, 255 }, 0, 0, 1, 1);
             var white = new Texture2D(whiteHandle, 1, 1);
             var primitives = new PrimitiveRenderer(white);
-
+            var scene = new Scene3D(device, device.SwapchainFramebuffer!.Outputs);
+            scene.Post.RenderScale = RenderScale.MatchViewport;
+            scene.Post.Hdr.Enabled = false;
+            scene.Post.Bloom.Enabled = false;
+            scene.Post.Outline = false;
+            scene.Post.Quantize = false;
+            scene.Post.Starfield = false;
+            scene.Post.Quality.AntiAliasing = AntiAliasing.Off;
+            var prepared = new PreparePhaseSceneSubmission(device, scene);
+            void Prepare(Frame frame, Color color)
+            {
+                if (!split) return;
+                scene.Begin();
+                scene.Post.BackgroundColor = color;
+                scene.PrepareFrame();
+                prepared.Prepare(frame);
+            }
             try
             {
+                if (split)
+                    FramePhases.Run(windowFrame, true, device, commands, first,
+                        f => Prepare(f, first), f => prepared.Render(f, device.SwapchainFramebuffer!),
+                        null, tick.TotalMilliseconds, true);
                 recorder = new FrameHistoryRecorder(new TapsCaptureHost(device, taps), new FrameHistoryOptions(), time);
                 Assert.True(recorder.IsAvailable);
                 recorder.Start();
@@ -108,10 +136,11 @@ namespace KhaozEngine.Tests.Gpu
                     }
 
                     int index = i;
-                    FramePhases.Run(NewFrame(commands), render: true, device, commands,
-                        ClearColour(i), onPrepare: null,
-                        onFrame: _ =>
+                    FramePhases.Run(windowFrame, render: true, device, commands,
+                        ClearColour(i), onPrepare: f => Prepare(f, ClearColour(index)),
+                        onFrame: f =>
                         {
+                            if (split) prepared.Render(f, device.SwapchainFramebuffer!);
                             if (index != ScreenshotFrame) return;
                             sprites.NewFrame(commands, (int)Width, (int)Height);
                             sprites.Begin();
@@ -119,7 +148,7 @@ namespace KhaozEngine.Tests.Gpu
                             sprites.End();
                             screenshot = recorder.CaptureScreenshotAsync();
                         },
-                        taps, tick.TotalMilliseconds);
+                        taps, tick.TotalMilliseconds, split);
                     time.Advance(tick);
                     // Paces the loop as a real 12 fps tick does, which leaves the worker a whole interval per
                     // encode. Without it this loop outruns the encoder and the queue drops frames by design.
@@ -169,8 +198,11 @@ namespace KhaozEngine.Tests.Gpu
             {
                 recorder?.Dispose();
                 taps.Dispose();
+                windowFrame.DisposeSubmission();
                 commands.Dispose();
                 device.WaitForIdle();
+                prepared.Dispose();
+                scene.Dispose();
                 primitives.Dispose();
                 white.Dispose();
                 sprites.Dispose();

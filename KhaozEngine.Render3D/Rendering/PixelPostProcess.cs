@@ -337,10 +337,18 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 Params = new Vector4(s.TransparentBackground ? 1f : 0f, flipV, 0, 0),
             };
+            _preparedFinal = final;
             cl.UpdateBuffer(_finalBuf, 0, in final);
         }
 
         public void Run(IGpuCommandList cl, IPostChainTargets res, IGpuFramebuffer swapchainFB, PixelPostProcessSettings s, bool runFxaa, bool distortionActive)
+        {
+            PreparedOutput output = RunOffscreen(cl, res, s, runFxaa, distortionActive);
+            DrawOutput(cl, swapchainFB, in output, refreshUniform: false);
+        }
+
+        internal PreparedOutput RunOffscreen(IGpuCommandList cl, IPostChainTargets res,
+            PixelPostProcessSettings s, bool runFxaa, bool distortionActive)
         {
             // Every set belongs to the targets BindTargets last bound, at the generation it bound them.
             if (!ReferenceEquals(res, _bound) || res.Generation != _boundGen)
@@ -493,13 +501,8 @@ namespace KhaozEngine.Render3D.Rendering
             // single-mip), so those stay byte-identical.
             if (src.MipLevels > 1) cl.GenerateMipmaps(src);
 
-            cl.SetFramebuffer(swapchainFB);
-            // Transparent clear when compositing offscreen, else opaque black. (The fullscreen blit overwrites
-            // every pixel via OverrideBlend, so this mainly documents intent. The alpha is set in the shader.)
-            cl.ClearColorTarget(0, s.TransparentBackground ? Color.Transparent : Color.Black);
-            cl.SetPipeline(_blitPipe);
-            cl.SetGraphicsResourceSet(0, blit);
-            cl.Draw(3);
+            return new PreparedOutput(this, res, res.Generation, blit, _preparedFinal,
+                s.TransparentBackground ? Color.Transparent : Color.Black);
         }
 
         public void Dispose()

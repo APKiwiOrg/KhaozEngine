@@ -14,6 +14,7 @@ namespace KhaozEngine.Render3D
     public sealed class Render3DSurface : IDisposable
     {
         readonly AppWindow _window;
+        readonly PreparePhaseSceneSubmission? _prepareSubmission;
 
         public Scene3D Scene { get; }
 
@@ -24,9 +25,19 @@ namespace KhaozEngine.Render3D
         /// runtime-mutable on <c>Scene.Post</c>.</summary>
         public Render3DSurface(AppWindow window, ShadowSettings? shadows = null)
         {
+            bool split = PreparePhaseSceneSubmission.Parse(Environment.GetEnvironmentVariable("KE_PREPARE_PHASE_SPLIT"));
+            if (split && (!window.RendererInitializesSwapchain || window.GpuDevice.Backend != Gpu.GpuBackendKind.MetalNative))
+                throw new InvalidOperationException("KE_PREPARE_PHASE_SPLIT requires MetalNative and renderer-owned swapchain initialization.");
             _window = window;
             Scene = new Scene3D(window.GpuDevice, window.GpuDevice.SwapchainFramebuffer!.Outputs, shadows);
+            if (split) _prepareSubmission = new PreparePhaseSceneSubmission(window.GpuDevice, Scene);
         }
+
+        /// <summary>Whether this surface uses the private prepare-phase submission experiment.</summary>
+        public bool PreparePhaseSplitEnabled => _prepareSubmission is not null;
+
+        /// <summary>Submit the private scene prefix after queue preparation and before the frame recording opens.</summary>
+        public void PrepareRender(Frame frame) => _prepareSubmission?.Prepare(frame);
 
         /// <summary>Record the queued 3D scene into this frame's command list, ending on the window framebuffer.
         /// Runs <see cref="Scene3D.PrepareFrame"/> first, so a consumer building a surface directly gets the frame's
@@ -53,10 +64,19 @@ namespace KhaozEngine.Render3D
         /// </para></summary>
         public void Render(Frame frame)
         {
-            Scene.PrepareFrame();
-            Scene.RenderInternal(frame.Commands, frame.Width, frame.Height, _window.GpuDevice.SwapchainFramebuffer!);
+            if (_prepareSubmission is not null)
+                _prepareSubmission.Render(frame, _window.GpuDevice.SwapchainFramebuffer!);
+            else
+            {
+                Scene.PrepareFrame();
+                Scene.RenderInternal(frame.Commands, frame.Width, frame.Height, _window.GpuDevice.SwapchainFramebuffer!);
+            }
         }
 
-        public void Dispose() => Scene.Dispose();
+        public void Dispose()
+        {
+            try { Scene.Dispose(); }
+            finally { _prepareSubmission?.Dispose(); }
+        }
     }
 }

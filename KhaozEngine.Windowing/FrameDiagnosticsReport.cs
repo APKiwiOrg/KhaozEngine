@@ -21,7 +21,7 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
         var samples = new FrameDiagnosticsSample[count];
         Array.Copy(buffer, samples, count);
         var engine = typeof(FrameDiagnosticsRecorder).Assembly;
-        return new FrameDiagnosticsReport(1, Environment.ProcessId,
+        return new FrameDiagnosticsReport(2, Environment.ProcessId,
             Assembly.GetEntryAssembly()?.FullName ?? "unknown", engine.FullName + " MVID=" + engine.ManifestModule.ModuleVersionId,
             frequency, (end.Timestamp - baseline.Timestamp) / (double)frequency, count, reason, baseline, end, samples,
             FrameDiagnosticsSummary.Create(baseline, end, samples, reason == "capacity", count == buffer.Length));
@@ -31,7 +31,7 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
 internal sealed record FrameDiagnosticsSummary(double FramesPerSecond, double MeanFrameMs, double MedianFrameMs,
     double P95FrameMs, double P99FrameMs, double WorstFrameMs, double ShareWithin144HzBudget,
     bool AllForegroundRenderedStableSize, bool CadenceCapped, bool BufferCapacityReached, bool CapacityLimited,
-    FrameDiagnosticsCounterDelta? CounterDelta)
+    bool AllPreparePhaseSubmissionsPaired, FrameDiagnosticsCounterDelta? CounterDelta)
 {
     internal static FrameDiagnosticsSummary Create(FrameDiagnosticsBoundary baseline, FrameDiagnosticsBoundary end,
         FrameDiagnosticsSample[] samples, bool capacityLimited, bool capacityReached)
@@ -42,6 +42,8 @@ internal sealed record FrameDiagnosticsSummary(double FramesPerSecond, double Me
         bool valid = Valid(baseline.Window, baseline.Window);
         bool capped = Capped(baseline.Window);
         bool countersSupported = baseline.Counters.HasValue;
+        bool paired = true;
+        FrameDiagnosticsWindowState previous = baseline.Window;
         for (int i = 0; i < samples.Length; i++)
         {
             var sample = samples[i];
@@ -52,6 +54,13 @@ internal sealed record FrameDiagnosticsSummary(double FramesPerSecond, double Me
             valid &= Valid(sample.BoundaryWindow, baseline.Window);
             capped |= Capped(sample.BoundaryWindow);
             countersSupported &= sample.Counters.HasValue;
+            var boundary = sample.BoundaryWindow;
+            long expected = baseline.Window.PreparePhaseSplitActive ? 1 : 0;
+            paired &= boundary.PreparePhaseSplitActive == baseline.Window.PreparePhaseSplitActive
+                && sample.CompletedFrameWindow.PreparePhaseSplitActive == baseline.Window.PreparePhaseSplitActive
+                && boundary.PreparePhaseSubmissionCount - previous.PreparePhaseSubmissionCount == expected
+                && boundary.PreparePhaseCompositeCount - previous.PreparePhaseCompositeCount == expected;
+            previous = boundary;
         }
         Array.Sort(milliseconds);
         int count = samples.Length;
@@ -60,13 +69,14 @@ internal sealed record FrameDiagnosticsSummary(double FramesPerSecond, double Me
         return new FrameDiagnosticsSummary(count / seconds, seconds * 1000 / count, median,
             milliseconds[(int)Math.Ceiling(count * 0.95) - 1], milliseconds[(int)Math.Ceiling(count * 0.99) - 1],
             milliseconds[count - 1], withinBudget / (double)count, valid, capped, capacityReached, capacityLimited,
-            countersSupported ? FrameDiagnosticsCounterDelta.Between(baseline.Counters, end.Counters, count) : null);
+            paired, countersSupported ? FrameDiagnosticsCounterDelta.Between(baseline.Counters, end.Counters, count) : null);
     }
 
     static bool Valid(FrameDiagnosticsWindowState value, FrameDiagnosticsWindowState baseline) =>
         value.Focused && !value.Minimized && !value.RenderSuppressed && value.Width > 0 && value.Height > 0
         && value.Width == baseline.Width && value.Height == baseline.Height
-        && value.RendererInitializesSwapchain == baseline.RendererInitializesSwapchain;
+        && value.RendererInitializesSwapchain == baseline.RendererInitializesSwapchain
+        && value.PreparePhaseSplitActive == baseline.PreparePhaseSplitActive;
 
     static bool Capped(FrameDiagnosticsWindowState value) => value.EffectiveBaseCapHz > 0 || value.Vsync;
 }

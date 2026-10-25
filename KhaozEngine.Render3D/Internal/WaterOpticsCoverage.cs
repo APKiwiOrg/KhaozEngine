@@ -39,8 +39,10 @@ internal static class WaterOpticsCoverage
         return float.IsFinite(padding) ? Envelope.Certified : Envelope.NonFiniteReach;
     }
 
-    /// <summary>Refuse incomplete opted-in data before queueing a plane. Bilinear sampling accepts exact field
-    /// edges. Triangle requests must fit one immutable certificate. Unbound requests keep legacy behavior.</summary>
+    /// <summary>Refuse incomplete opted-in data before queueing a plane. <paramref name="plane"/> is always the
+    /// absolute submission, so admission and prepare-time revalidation evaluate the same double-precision
+    /// rectangle. Bilinear sampling accepts exact field edges. Triangle requests must fit one immutable
+    /// certificate. Unbound requests keep legacy behavior.</summary>
     internal static void Validate(in WaterPlane plane, WaterSettings effective, WaterOpticsPayload payload = default)
     {
         if (!plane.Optics.IsBound) return;

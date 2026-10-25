@@ -27,12 +27,12 @@ namespace KhaozEngine.Tests.Gpu
         readonly FakeGpuResourceFactory _factory;
 
         internal FakeGpuDevice(GpuBackendKind backend = GpuBackendKind.Vulkan, bool supportsShadowMaps = true,
-            int maxColorAttachments = 8)
+            int maxColorAttachments = 8, int maxMsaaSampleCount = 1)
         {
             Backend = backend;
             Capabilities = new GpuCapabilities(
                 clipSpaceYInverted: false, depthRangeZeroToOne: true, deviceName: "FakeGpuDevice",
-                samplerAnisotropy: false, samplerLodBias: false, maxMsaaSampleCount: 1,
+                samplerAnisotropy: false, samplerLodBias: false, maxMsaaSampleCount: maxMsaaSampleCount,
                 supportsShadowMaps: supportsShadowMaps, supportsCompute: false, supportsCompletionFences: false)
             { MaxColorAttachments = maxColorAttachments };
             _factory = new FakeGpuResourceFactory(maxColorAttachments);

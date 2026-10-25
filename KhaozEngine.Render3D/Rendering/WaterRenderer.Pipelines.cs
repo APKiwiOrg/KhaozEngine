@@ -84,6 +84,8 @@ namespace KhaozEngine.Render3D.Rendering
             else if (clipmap) _clipProgram ??= CreateWaterProgram(_outputs, true, false);
         }
 
+        // Triangle programs exist only after a bound preparation. Unbound routes are created before drawing,
+        // at preparation or lazily by the legacy late binding in Draw.
         IGpuPipeline PreparedWaterPipeline(PlaneRoute route, bool triangle)
         {
             WaterProgram? program = triangle
@@ -97,7 +99,6 @@ namespace KhaozEngine.Render3D.Rendering
         public void SetOutputs(GpuOutputDescription colorOutput)
         {
             _pendingOutputs = colorOutput;
-            bool prepared = _opticsPrepared || _opticsPreparationAttempted;
             _opticsPrepared = false;
             WaterProgram?[] programs = [_defaultProgram, _clipProgram, _triangleProgram, _clipTriangleProgram];
             IGpuPipeline?[] replacements = new IGpuPipeline?[4];
@@ -109,7 +110,6 @@ namespace KhaozEngine.Render3D.Rendering
             }
             catch
             {
-                _opticsPreparationAttempted = true;
                 foreach (IGpuPipeline? replacement in replacements) replacement?.Dispose();
                 throw;
             }
@@ -121,7 +121,6 @@ namespace KhaozEngine.Render3D.Rendering
                 }
             _outputs = colorOutput;
             _pendingOutputs = null;
-            _opticsPreparationAttempted = prepared;
         }
 
         void RetryWaterOutputReplacement()

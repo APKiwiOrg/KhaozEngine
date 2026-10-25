@@ -448,7 +448,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             RetryWaterOutputReplacement();
             _opticsPrepared = false;
-            _opticsPreparationAttempted = false;
+            _preparedBound = false;
             if (frame.WaterPlanes.Length == 0)
             {
                 // Cleared rather than left at the previous frame's value. A host that prepares an empty frame and
@@ -490,14 +490,11 @@ namespace KhaozEngine.Render3D.Rendering
             if (planes.Length == 0) return;
             LastClipmapRebuilds = 0;
             LastFocusedGridBuilds = 0;
+            // Bound water records only against its prepared bindings. A frame with no bound water keeps the legacy
+            // late binding: when its inputs moved after preparation it sizes, uploads, binds and builds programs here.
             bool prepared = _opticsPrepared;
-            if (prepared) VerifyOpticsFrame(res, planes, settings, timeSeconds);
-            else
-            {
-                for (int i = 0; i < planes.Length; i++)
-                    if (planes[i].Optics.IsBound) throw ChangedOpticsInputs();
-                if (_opticsPreparationAttempted) throw ChangedOpticsInputs();
-            }
+            if (_preparedBound || AnyBound(planes)) VerifyOpticsFrame(res, planes, settings, timeSeconds);
+            else if (prepared && !OpticsFrameMatches(res, planes, settings, timeSeconds)) _opticsPrepared = prepared = false;
             // FrustumPlanes needs the matrix and the boxes tested against its planes in the same frame. The planes
             // arrive reduced by the render origin and so does cullViewProj, so here both are render-relative.
             int drawn;
@@ -506,6 +503,9 @@ namespace KhaozEngine.Render3D.Rendering
                 // A prepared frame sized its slots before creating the sets that range over them.
                 if (!prepared) EnsureUboCapacity(planes.Length);
                 drawn = RoutePlanes(planes, settings, FrustumPlanes.Extract(cullViewProj));
+                if (!prepared)
+                    for (int i = 0; i < planes.Length; i++)
+                        if (_routes[i] != PlaneRoute.Culled) PrepareWaterProgram(_routes[i], triangle: false);
                 if (_clipCount > 0) EnsureClipBuffers(planes, settings, renderOrigin);
                 if (_flatCount > 0) EnsureFlatBuffers(_flatCount);
                 if (_gridCount > 0) EnsureGridBuffers(_gridCount);

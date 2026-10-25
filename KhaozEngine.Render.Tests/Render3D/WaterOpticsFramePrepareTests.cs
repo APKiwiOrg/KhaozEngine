@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Game;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Tests.Gpu;
 using KhaozEngine.Windowing;
 using Xunit;
@@ -13,12 +14,13 @@ public sealed class WaterOpticsFramePrepareTests
 {
     sealed class Host : IDisposable
     {
-        internal readonly FakeGpuDevice Device = new();
+        internal readonly FakeGpuDevice Device;
         internal readonly Scene3D Scene;
         internal readonly WaterPlane Plane;
         internal FakeGpuResourceFactory Factory => (FakeGpuResourceFactory)Device.Factory;
-        internal Host()
+        internal Host(int maxMsaaSampleCount = 1)
         {
+            Device = new FakeGpuDevice(maxMsaaSampleCount: maxMsaaSampleCount);
             Scene = new Scene3D(Device, new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm));
             Scene.Post.Starfield = false;
             Scene.Post.RenderScale = RenderScale.MatchViewport;
@@ -74,6 +76,86 @@ public sealed class WaterOpticsFramePrepareTests
             change == "viewport" ? 160 : 128, 96, target));
         Assert.Same(before, h.Scene.ResolvedDepthTarget);
         Assert.Equal(textures, h.Factory.Textures.Count);
+    }
+
+    static void ChangeAfterPreparation(Scene3D scene, string change)
+    {
+        if (change == "hdr") scene.Post.Hdr.Enabled = !scene.Post.Hdr.Enabled;
+        if (change == "msaa") scene.Post.Quality.AntiAliasing = AntiAliasing.Msaa(4);
+        if (change == "grid") scene.Post.Water.GridMode = WaterGridMode.Clipmap;
+    }
+
+    // Only bound water freezes its inputs at preparation. A frame with no bound water keeps the legacy late
+    // binding on the viewport form too: targets resize and the clipmap program is created while recording.
+    [Theory]
+    [InlineData("hdr")]
+    [InlineData("msaa")]
+    [InlineData("grid")]
+    public void UnboundViewportPreparedFrameRendersAfterTargetOrGridChanges(string change)
+    {
+        using var device = new FakeGpuDevice(maxMsaaSampleCount: 4);
+        var factory = (FakeGpuResourceFactory)device.Factory;
+        using var scene = new Scene3D(device, new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm));
+        scene.Post.Starfield = false;
+        scene.Post.RenderScale = RenderScale.MatchViewport;
+        scene.Begin();
+        scene.DrawWater(new WaterPlane(0f, 0f, 0f, 5f, look: new WaterLook { SwellAmplitude = .01f, SwellSteepness = 0f }));
+        scene.PrepareFrame(128, 96);
+        int clipRequests = factory.ShaderRequests.FindAll(r => r.VertexGlsl == ShaderSources.WaterClipmapVert).Count;
+        ChangeAfterPreparation(scene, change);
+        using var commands = new NullGpuCommandList();
+        using IGpuFramebuffer target = factory.CreateFramebuffer(null, scene.ResolvedDepthTarget);
+        int textures = factory.Textures.Count;
+        scene.RenderInternal(commands, 128, 96, target);
+        // The late binding really ran: targets were rebuilt while recording, or the clipmap program was created.
+        if (change != "grid") Assert.True(factory.Textures.Count > textures);
+        if (change == "msaa") Assert.Equal(4, scene.ModelSampleCountForTests);
+        if (change == "grid")
+            Assert.Equal(clipRequests + 1, factory.ShaderRequests.FindAll(r => r.VertexGlsl == ShaderSources.WaterClipmapVert).Count);
+    }
+
+    [Theory]
+    [InlineData("hdr")]
+    [InlineData("msaa")]
+    [InlineData("grid")]
+    public void BoundViewportPreparedFrameRefusesTargetOrGridChanges(string change)
+    {
+        using var h = new Host(maxMsaaSampleCount: 4);
+        h.Queue();
+        h.Scene.PrepareFrame(128, 96);
+        ChangeAfterPreparation(h.Scene, change);
+        using var commands = new NullGpuCommandList();
+        using IGpuFramebuffer target = h.Factory.CreateFramebuffer(null, h.Scene.ResolvedDepthTarget);
+        Assert.Throws<InvalidOperationException>(() => h.Scene.RenderInternal(commands, 128, 96, target));
+    }
+
+    // DrawWater admits the absolute plane. Preparation must revalidate the same double-precision rectangle, not
+    // the separately reduced plane and binding origins, or a non-grid override refuses an admitted plane.
+    [Fact]
+    public void NonGridRenderOriginRevalidatesTheAbsoluteAdmissionAtPreparation()
+    {
+        using var device = new FakeGpuDevice();
+        using var scene = new Scene3D(device, new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm));
+        scene.Post.Starfield = false;
+        scene.Post.RenderScale = RenderScale.MatchViewport;
+        scene.Post.Water.SwellAmplitude = 0f;
+        var origin = new Vector3(.1f, 0f, .1f);
+        scene.RenderOrigin = origin;
+        // Zero slack in X: the certificate is exactly the absolute rectangle [90, 110].
+        var field = new WaterOpticsTriangleField(new(200f), 1, 1,
+            [new(new(0, -1, 0), new(200, -1, 0), new(200, -1, 200)), new(new(0, -1, 0), new(200, -1, 200), new(0, -1, 200))],
+            [new(new(90f, 0f), new(110f, 200f))]);
+        WaterOpticsHandle handle = scene.LoadWaterOpticsTriangles(field);
+        var plane = new WaterPlane(100f, 0f, 100f, 10f, optics: new WaterOpticsBinding(handle, Vector3.Zero, new Vector2(200f)));
+        var reduced = new WaterPlane(100f - origin.X, 0f, 100f - origin.Z, 10f,
+            optics: new WaterOpticsBinding(handle, -origin, new Vector2(200f)));
+        // Non-vacuity: the reduced floats round past the certificate.
+        Assert.Throws<ArgumentException>(() => WaterOpticsCoverage.Validate(reduced, scene.Post.Water,
+            new KhaozEngine.Render3D.Rendering.WaterOpticsPayload(field)));
+        scene.Begin();
+        Assert.True(scene.RenderOriginActive);
+        scene.DrawWater(plane);
+        scene.PrepareFrame(64, 64);
     }
 
     [Fact]

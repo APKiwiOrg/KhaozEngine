@@ -15,7 +15,9 @@ internal sealed partial class WaterRenderer
     IGpuResourceSet[] _planeSets = Array.Empty<IGpuResourceSet>();
     IGpuBuffer? _boundUbo;
     bool _opticsPrepared;
-    bool _opticsPreparationAttempted;
+    // Whether the last viewport preparation queued bound water. Such a frame stays strict even if recording
+    // later sees no bound plane.
+    bool _preparedBound;
     int _preparedPlaneCount;
     WaterBathymetry? _preparedBathymetry;
     int _preparedBathymetryRevision;
@@ -109,13 +111,20 @@ internal sealed partial class WaterRenderer
     /// Failure leaves the frame unprepared. Unused sets retire so cached ownership stays bounded.
     /// <c>device.water.prepare</c> owns this device work on every viewport-prepared frame, with or without water.
     /// Device leaves cannot nest, so the bathymetry update here is charged to it directly.</summary>
-    internal void PrepareOpticsFrame(RenderResources targets, in FramePrepare frame)
+    internal void PrepareOpticsFrame(RenderResources targets, in FramePrepare frame) =>
+        PrepareOpticsFrame(targets, frame, frame.WaterPlanes);
+
+    /// <summary>The scene form. <paramref name="absolute"/> is the absolute queue behind the render-relative
+    /// <see cref="FramePrepare.WaterPlanes"/>, in the same order. Coverage revalidates from it exactly as
+    /// <c>DrawWater</c> admitted it, never from separately reduced floats.</summary>
+    internal void PrepareOpticsFrame(RenderResources targets, in FramePrepare frame, ReadOnlySpan<WaterPlane> absolute)
     {
         using var device = Profiling?.Cpu("device.water.prepare") ?? default;
         _opticsPrepared = false;
-        _opticsPreparationAttempted = true;
+        _preparedBound = AnyBound(frame.WaterPlanes);
         RetryWaterOutputReplacement();
         ReadOnlySpan<WaterPlane> planes = frame.WaterPlanes;
+        if (absolute.Length != planes.Length) throw new ArgumentException("The absolute queue must match the frame.", nameof(absolute));
         if (_bound is not null && !TargetsMatch(targets)) RetireWaterSets();
         _frameFields.Clear();
         for (int i = 0; i < planes.Length; i++)
@@ -123,7 +132,7 @@ internal sealed partial class WaterRenderer
             WaterSettings effective = planes[i].Look?.ResolveInto(_effective, frame.Water) ?? frame.Water;
             if (!planes[i].Optics.IsBound) continue;
             WaterOpticsResources.Entry entry = ResolveOptics(planes[i].Optics.Field);
-            WaterOpticsCoverage.Validate(planes[i], effective, entry.Payload);
+            WaterOpticsCoverage.Validate(absolute[i], effective, entry.Payload);
             _frameFields.Add(planes[i].Optics.Field);
         }
         _unusedFields.Clear();
@@ -176,23 +185,38 @@ internal sealed partial class WaterRenderer
 
     internal void VerifyOpticsFrame(RenderResources targets, ReadOnlySpan<WaterPlane> planes, WaterSettings settings, float time)
     {
+        if (!OpticsFrameMatches(targets, planes, settings, time)) throw ChangedOpticsInputs();
+    }
+
+    // Whether recording still sees the inputs the prepared bindings were built from. Bound handles resolve here,
+    // so a released field throws instead of comparing equal.
+    bool OpticsFrameMatches(RenderResources targets, ReadOnlySpan<WaterPlane> planes, WaterSettings settings, float time)
+    {
         if (!_opticsPrepared || _preparedPlaneCount != planes.Length || !TargetsMatch(targets)
             || !ReferenceEquals(_preparedBathymetry, settings.Bathymetry)
             || _preparedBathymetryRevision != (settings.Bathymetry?.Revision ?? 0) || _preparedTime != time
             || _preparedGridMode != settings.GridMode
             || (_preparedWantOcean && _preparedOcean != OceanInputs.From(settings.SeaState)))
-            throw ChangedOpticsInputs();
+            return false;
         for (int i = 0; i < planes.Length; i++)
         {
             WaterSettings effective = planes[i].Look?.ResolveInto(_effective, settings) ?? settings;
             int mode = planes[i].Optics.IsBound ? ResolveOptics(planes[i].Optics.Field).Payload.Mode : 0;
             if (_preparedPlanes[i] != PreparedPlane.From(planes[i], effective, mode, GeometryRoute(planes[i], settings)))
-                throw ChangedOpticsInputs();
+                return false;
         }
+        return true;
+    }
+
+    static bool AnyBound(ReadOnlySpan<WaterPlane> planes)
+    {
+        for (int i = 0; i < planes.Length; i++)
+            if (planes[i].Optics.IsBound) return true;
+        return false;
     }
 
     static InvalidOperationException ChangedOpticsInputs() => new(
-        "Water inputs changed or were not prepared. Queue all water and call Scene3D.PrepareFrame(width, height) before recording.");
+        "Bound water inputs changed or were not prepared. Queue all water and call Scene3D.PrepareFrame(width, height) before recording.");
 
     void PackOptics(ref WaterUbo u, in WaterPlane plane)
     {

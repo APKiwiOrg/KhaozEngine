@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
@@ -54,7 +55,7 @@ namespace KhaozEngine.Render3D
             if (viewportHeight <= 0) throw new ArgumentOutOfRangeException(nameof(viewportHeight));
             if (_framePrepared)
             {
-                if (_waterViewportPrepared) VerifyPreparedWaterTargets(viewportWidth, viewportHeight);
+                if (_waterViewportPrepared && HasBoundWater()) VerifyPreparedWaterTargets(viewportWidth, viewportHeight);
                 return;
             }
             if (GpuRecording.OpenOwner(_gd) is { } owner)
@@ -89,7 +90,7 @@ namespace KhaozEngine.Render3D
             var frame = new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds);
             IFramePreparer[] preparers = _preparers ??= new IFramePreparer[] { _water };
             for (int i = 0; i < preparers.Length; i++) preparers[i].PrepareFrame(frame);
-            if (optics) _water.PrepareOpticsFrame(_res, frame);
+            if (optics) _water.PrepareOpticsFrame(_res, frame, CollectionsMarshal.AsSpan(_waterPlanes));
         }
 
         bool _waterViewportPrepared;
@@ -128,10 +129,12 @@ namespace KhaozEngine.Render3D
                 _water.VerifyOpticsFrame(_res, RelativeWaterPlanes(), Post.Water, EffectTimeSeconds);
         }
 
-        // Called before the recording path can resize or replace anything. Legacy callers retain EnsureSize.
+        // Called before the recording path can resize or replace anything. Only bound water freezes its targets at
+        // preparation. A frame with no bound water keeps the legacy late binding on either preparation form, so its
+        // targets may still resize here and the water pass rebinds them.
         void EnsurePreparedRenderSize(int width, int height)
         {
-            if (HasBoundWater() || (_framePrepared && _waterViewportPrepared)) VerifyPreparedWaterTargets(width, height);
+            if (HasBoundWater()) VerifyPreparedWaterTargets(width, height);
             EnsureSize(width, height);
         }
     }

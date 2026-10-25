@@ -51,8 +51,8 @@ internal static class WaterOpticsTriangleIndex
         for (int i = 0; i < orderedLines.Count; i++) orderedLines[i].Ordinal = i;
 
         List<int>?[] bins = BuildBins(size, columns, rows, sources, fixedScalars, out int references, out int maximumOccupancy);
-        WaterOpticsTriangleCoverage.Validate(triangles, bins, size, columns, rows, certificates);
-        float reconstructionError = WaterOpticsTriangleError.Validate(triangles, size);
+        WaterOpticsExact discontinuity = WaterOpticsTriangleCoverage.Validate(triangles, bins, size, columns, rows, certificates);
+        float reconstructionError = WaterOpticsTriangleError.Validate(triangles, size, discontinuity);
 
         int used = checked((int)(fixedScalars + references));
         int width = Math.Min(WaterOpticsTriangleField.MaxDimension, Math.Max(2, used));

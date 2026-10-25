@@ -24,7 +24,7 @@ public sealed class TileWaterOpticsDatumTests
 
     // Two by two water tiles around one deep shared corner with a corner cut on every tile, one per rotation. Three
     // cuts meet the deep corner, so their mid-edge points sit on sloping edges shared with an uncut neighbour.
-    static TileWorldDocument SlopedCornerCuts()
+    internal static TileWorldDocument SlopedCornerCuts()
     {
         var doc = new TileWorldDocument { Id = "sloped-corner-cuts", DisplayName = "Sloped corner cuts", PlaneCount = 1 };
         for (int z = -1; z <= 1; z++)
@@ -89,10 +89,33 @@ public sealed class TileWaterOpticsDatumTests
         Assert.Equal(289, sampled);
     }
 
+    // Independent binary64 drawn gap at every vertex lying strictly inside another triangle's projected edge. XZ
+    // coordinates are small dyadic values, so collinearity is exact. Equal exact cross products round equally, so
+    // a vertex exactly on its edge's depth line measures exactly zero.
+    static double SeamGap(List<WaterOpticsTriangle> triangles)
+    {
+        double gap = 0;
+        foreach (WaterOpticsTriangle owner in triangles)
+            foreach (Vector3 v in new[] { owner.A, owner.B, owner.C })
+                foreach (WaterOpticsTriangle other in triangles)
+                    foreach ((Vector3 p, Vector3 q) in new[] { (other.A, other.B), (other.B, other.C), (other.C, other.A) })
+                    {
+                        double ex = (double)q.X - p.X, ez = (double)q.Z - p.Z, vx = (double)v.X - p.X, vz = (double)v.Z - p.Z;
+                        double along = vx * ex + vz * ez;
+                        if (vx * ez - vz * ex != 0 || along <= 0 || along >= ex * ex + ez * ez) continue;
+                        // Depth off the edge's line, scaled by its longer axis: |(v - p).Y e - (q - p).Y (v - p)| / e.
+                        (double e, double t) = Math.Abs(ex) >= Math.Abs(ez) ? (ex, vx) : (ez, vz);
+                        gap = Math.Max(gap, Math.Abs(((double)v.Y - p.Y) * e - ((double)q.Y - p.Y) * t) / Math.Abs(e));
+                    }
+        return gap;
+    }
+
+    // The exact datum keeps the mid-edge vertices on their long edges. A water-level reference rounds them off by
+    // a binary32 step, which the field certifies as a shared-boundary discontinuity instead of refusing.
     [Theory]
-    [InlineData(0f, true)]
-    [InlineData(-0.02f, false)]
-    public void ExactDatumKeepsDrawnTJunctionsCollinear(float reference, bool accepted)
+    [InlineData(0f)]
+    [InlineData(-0.02f)]
+    public void TJunctionsPublishAgainstEitherDatum(float reference)
     {
         TileWorldDocument doc = SlopedCornerCuts();
         TileGroundSurfaceSnapshot surface = TileGroundCpuBuild.Build(doc, TileRenderTestData.Catalogs, Origin, 0,
@@ -119,17 +142,14 @@ public sealed class TileWaterOpticsDatumTests
             if (inside && area != 0) triangles.Add(new WaterOpticsTriangle(local[0], local[1], local[2]));
         }
         Assert.NotEmpty(triangles);
+        // The exact datum is why the producer is charged nothing at these seams, the water level is not.
+        if (reference == 0f) Assert.Equal(0.0, SeamGap(triangles));
+        else Assert.True(SeamGap(triangles) > 0, "A water-level datum should round a T junction off its long edge.");
         WaterOpticsRectangle[] certificate = [new(new Vector2(2f, 2f), new Vector2(4f, 4f))];
 
-        if (accepted)
-        {
-            var field = new WaterOpticsTriangleField(new Vector2(6f), 6, 6, triangles.ToArray(), certificate);
-            Assert.True(field.TrySampleDepth(0.5f, 0.5f, out float deep));
-            Assert.Equal(1f, deep);
-            return;
-        }
-        WaterOpticsSurfaceException refused = Assert.Throws<WaterOpticsSurfaceException>(() =>
-            new WaterOpticsTriangleField(new Vector2(6f), 6, 6, triangles.ToArray(), certificate));
-        Assert.Equal(WaterOpticsSurfaceFailure.AmbiguousSurface, refused.Reason);
+        var field = new WaterOpticsTriangleField(new Vector2(6f), 6, 6, triangles.ToArray(), certificate);
+        Assert.True(field.TrySampleDepth(0.5f, 0.5f, out float deep));
+        Assert.Equal((float)((double)reference + 1), deep);
+        Assert.InRange(field.ReconstructionErrorBoundMetres, 0f, 0.0001f);
     }
 }

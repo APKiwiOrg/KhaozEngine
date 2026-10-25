@@ -14,7 +14,8 @@ public enum TileWaterOpticsFailureKind
     MissingSurfaceData,
     /// <summary>The supporting triangles leave part of a certified rectangle uncovered, including a hole.</summary>
     IncompleteSurfaceCoverage,
-    /// <summary>Distinct supporting triangles disagree where their projections overlap.</summary>
+    /// <summary>Distinct supporting triangles disagree where their projections overlap in area, or a coincident
+    /// shared boundary's depth discontinuity with sampler error exceeds 0.0001 metres.</summary>
     AmbiguousSurface,
     /// <summary>Every bounded packing attempt exceeded 32 candidates per bin or the 1024 squared atlas.</summary>
     SurfaceCapacityExceeded,

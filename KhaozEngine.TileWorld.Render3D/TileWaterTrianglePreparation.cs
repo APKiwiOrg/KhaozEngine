@@ -8,9 +8,10 @@ namespace KhaozEngine.TileWorld;
 
 /// <summary>One certified field for one reference level. Origin XZ is its absolute minimum and Y is the exact
 /// datum 0, so rest depth is <c>-y</c>. Level is the water surface Y the field serves, the key planes bind by and
-/// refusals report. Domain is the tile-space extent of its certificates.</summary>
+/// refusals report. Domain is the tile-space extent of its certificates. ConversionErrorBoundMetres is the
+/// certified source conversion charge the build spent beside the field's reconstruction bound.</summary>
 internal sealed record TileWaterTriangleBuild(WaterOpticsTriangleField Field, Vector3 Origin, TileRect Domain,
-    float Level);
+    float Level, double ConversionErrorBoundMetres);
 
 /// <summary>Document inputs that witness validation reads. Never captured by a worker. The registry owns the
 /// availability epochs of every region a consumed strict read inspected.</summary>
@@ -333,7 +334,8 @@ internal static class TileWaterTrianglePreparation
             if (field is null) return Fail(TileWaterOpticsFailureKind.SurfaceCapacityExceeded, columns: columns, rows: rows);
             if (!(conversion + field.ReconstructionErrorBoundMetres <= budget))
                 return Fail(TileWaterOpticsFailureKind.UnrepresentableSurface, columns: columns, rows: rows);
-            Result = new TileWaterTriangleBuild(field, new Vector3(originX, 0f, originZ), _domain, reference);
+            Result = new TileWaterTriangleBuild(field, new Vector3(originX, 0f, originZ), _domain, reference,
+                conversion);
             return null;
         }
 

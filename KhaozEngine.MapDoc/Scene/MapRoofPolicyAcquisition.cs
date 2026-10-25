@@ -33,32 +33,45 @@ internal static class MapRoofPolicyAcquisition
                     Math.Max(bounds.MaxX, b.MaxX), 0, Math.Max(bounds.MaxZ, b.MaxZ));
             }
         var current = cell;
-        while (true)
+        bool completed = false;
+        try
         {
-            var required = bounds;
-            var view = current.SurfaceView;
-            for (int i = 0; i < view.Witness.Records.Count; i++)
+            while (true)
             {
-                var reference = view.Witness.Records[i];
-                if (!view.TryRecord(reference, out var record, out _, borrow: true))
-                    throw new MapSceneSourceException(MapSceneStatus.Incomplete, "Canonical roof policy omitted an admitted record.");
-                if (record is not MapPrismDomain prism) continue;
-                var domain = PrismBounds(view, prism);
-                required = new(Math.Min(required.MinX, domain.MinX), 0, Math.Min(required.MinZ, domain.MinZ),
-                    Math.Max(required.MaxX, domain.MaxX), 0, Math.Max(required.MaxZ, domain.MaxZ));
+                var required = bounds;
+                var view = current.SurfaceView;
+                for (int i = 0; i < view.Witness.Records.Count; i++)
+                {
+                    var reference = view.Witness.Records[i];
+                    if (!view.TryRecord(reference, out var record, out _, borrow: true))
+                        throw new MapSceneSourceException(MapSceneStatus.Incomplete, "Canonical roof policy omitted an admitted record.");
+                    if (record is not MapPrismDomain prism) continue;
+                    var domain = PrismBounds(view, prism);
+                    required = new(Math.Min(required.MinX, domain.MinX), 0, Math.Min(required.MinZ, domain.MinZ),
+                        Math.Max(required.MaxX, domain.MaxX), 0, Math.Max(required.MaxZ, domain.MaxZ));
+                }
+                // A newly acquired anchor can introduce another room or ancestor domain. Close over admitted
+                // geometry, never over the incidental bounds of newly discovered storage patches.
+                if (required == bounds && !ReferenceEquals(current, cell))
+                {
+                    cell.PreparationOwnership?.Dispose();
+                    completed = true;
+                    return current;
+                }
+                bounds = required;
+                using var diagnostics = MapSceneAdmission.Current?.AcquisitionDiagnostics?.Enter(MapAcquisitionStage.Policy, MapAcquisitionCaller.PolicyReacquisition);
+                MapSceneAdmission.Current?.AcquisitionDiagnostics?.Scene(MapAcquisitionCaller.PolicyReacquisition);
+                var result = current.AcquireDependencies(current.Scope with { Surfaces = Scope(bounds, current.Scope.Surfaces.Limits) });
+                var replacement = result.Scene ?? throw new MapSceneSourceException(result.Status,
+                    "Canonical roof policy dependencies refused. " + string.Join("\n", result.Findings), result.Capacity);
+                // Admission includes the old and new snapshots until the replacement succeeds.
+                if (!ReferenceEquals(current, cell)) current.PreparationOwnership?.Dispose();
+                current = replacement;
             }
-            // A newly acquired anchor can introduce another room or ancestor domain. Close over admitted
-            // geometry, never over the incidental bounds of newly discovered storage patches.
-            if (required == bounds && !ReferenceEquals(current, cell)) return current;
-            bounds = required;
-            using var diagnostics = MapSceneAdmission.Current?.AcquisitionDiagnostics?.Enter(MapAcquisitionStage.Policy, MapAcquisitionCaller.PolicyReacquisition);
-            MapSceneAdmission.Current?.AcquisitionDiagnostics?.Scene(MapAcquisitionCaller.PolicyReacquisition);
-            var result = current.AcquireDependencies(current.Scope with { Surfaces = Scope(bounds, current.Scope.Surfaces.Limits) });
-            var replacement = result.Scene ?? throw new MapSceneSourceException(result.Status,
-                "Canonical roof policy dependencies refused. " + string.Join("\n", result.Findings), result.Capacity);
-            // Admission includes the old and new snapshots until the replacement succeeds.
-            current.PreparationOwnership?.Dispose();
-            current = replacement;
+        }
+        finally
+        {
+            if (!completed && !ReferenceEquals(current, cell)) current.PreparationOwnership?.Dispose();
         }
     }
     static MapBox3 PrismBounds(MapScopedSurfaces view, MapPrismDomain prism)

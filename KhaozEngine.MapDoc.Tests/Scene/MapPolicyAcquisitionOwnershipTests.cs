@@ -53,6 +53,46 @@ public sealed class MapPolicyAcquisitionOwnershipTests
         Assert.Equal(0, admission.RetainedBytes);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LaterPolicyRefusal_ReleasesIntermediatesAndPreservesTheInput(bool enclosingCollector)
+    {
+        using var fixture = Chain();
+        var source = NativeSceneFixtures.Open(fixture, false);
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 2_000_000));
+        var diagnostics = admission.ObserveAcquisition();
+        using var active = admission.Enter();
+        using var collector = enclosingCollector ? admission.BeginPreparation() : null;
+        var first = MapSceneAcquisition.Run(source, MapSceneScopeTests.Window(0, 1), admission).Scene!;
+        long before = new MapAcquisitionInventoryOracle().Scene(first);
+        int expansions = 0;
+        MapSceneAdmission.PreparationWindow? laterWindow = null;
+        diagnostics.Boundary = boundary =>
+        {
+            if (boundary.Stage == MapAcquisitionStage.Policy && boundary.Entering && ++expansions == 2)
+                laterWindow = admission.LimitPreparation(0, "MaxPlanBytes");
+        };
+        try
+        {
+            var error = Assert.Throws<MapSceneSourceException>(() => MapRoofPolicyAcquisition.Complete(first));
+            Assert.Equal(new MapSceneCapacity("MaxPlanBytes", 140, 0), error.Capacity);
+        }
+        finally
+        {
+            laterWindow?.Dispose();
+            diagnostics.Boundary = null;
+        }
+        Assert.Equal(2, expansions);
+        Assert.True(first.Witness.CompleteForScope);
+        Assert.Single(first.SurfaceView.Witness.Present);
+        Assert.Equal(before, first.PreparationOwnership!.Bytes);
+        Assert.Equal(before, admission.RetainedBytes);
+        Assert.Equal(0, admission.WorkspaceBytes);
+        first.PreparationOwnership.Dispose();
+        Assert.Equal(0, admission.RetainedBytes);
+    }
+
     static NativeSceneFixture Chain()
     {
         var fixture = NativeSceneFixtures.Create("empty");

@@ -291,6 +291,98 @@ measurement and paid execution remain unproved here. The earlier local red full 
 39,612-pass suite and failed paid pilot retain their separate results above. No manual validation is
 needed for this preparation. Root owns main integration, push and the post-main pack.
 
+## Second authorized Linux pilot, attempt 2
+
+The integrated workload and trusted workflow are `4bfce4891646e90abeaaa120acbdfbf08cf8f166`.
+Authorization `c65fdfcc8f7536b7909f99916d1a92b07982c7b3` has that workload as its sole parent and adds
+only `tools/Renderer.Perf.Tests/authorized/pilot-linux.json`. Its exact manifest SHA-256 is
+`0127ae2f62bbab64ae3d9cbf7c688407d60e0dbb0dfba56d94d3ef5973326311`.
+
+The second pilot approval was consumed by
+[run 40152006665](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40152006665), attempt 1,
+on 2026-10-25 UTC. CPU and GPU authorization passed, and the isolated workload and trusted verifier
+Release builds completed. The one fixed measurement fact executed and failed, with zero skips and
+zero measured frames. The #1567 checkout-root correction worked. The entrypoint read the manifest
+and wrote `runtime-admission.json`, then refused at `RendererPerfEntrypoint.cs:47` with
+"Observed runtime, GC, tiering or relevant environment differs from approval."
+This occurred before recipe checks, coldStart or device creation.
+
+Runtime 10.0.13 and workstation GC matched approval. All 11 approved environment entries matched
+exactly, with no missing or mismatched values. The observed map contained two additional keys:
+
+| Key | Approved | Observed |
+| --- | --- | --- |
+| `DOTNET_CLI_TELEMETRY_SESSIONID` | Absent | A per-invocation session GUID was present |
+| `DOTNET_ROOT_X64` | Absent | `/usr/share/dotnet` |
+
+[Issue #1571](https://github.com/APKiwiOrg/KhaozEngine/issues/1571) tracks the measured-environment
+correction. Artifact `renderer-perf-linux-vulkan`, ID `12583271622`, is 9,658 compressed bytes.
+GitHub reports archive SHA-256
+`1d2e1ff49c91aa8cdf83b1f549c79490ad5b0ea5bc14c4bbe0f5294a042763a0`.
+Its seven files are the exact manifest, authorization, both build logs, measurement log/TRX and
+runtime admission. There is no native-admission file or final measurement report. The measurement
+TRX SHA-256 is `65a440c6ba1ce447b7c6c365da7cc9041d4c8f254dc2fd8cb82d734ced9c0337`.
+
+GPU job `121045384655` ran from 01:48:09 to 01:51:21 UTC, 192 seconds. The GitHub billing usage API
+attributed four `actions_linux_4_core_gpu` minutes at USD 0.052 per minute, USD 0.208 net runner
+charges. The repository's same-day GPU SKU was absent before dispatch. This is observed provider
+usage, separate from a duration-based estimate. Storage, tax and currency conversion are outside
+the runner component. No performance, compiler, payload, deadline or baseline acceptance was
+produced. The approval is consumed and authorizes no retry. Another attempt requires a corrected
+workload, independently reviewed preparation and fresh owner approval.
+
+## Third authorized Linux pilot, attempt 3
+
+The integrated workload and trusted workflow are `3f09d6807630a04043a61f4b615acf1bbcfd0db0`.
+Authorization `a5bbbefabbffcf20b2f0d3909f6176e304c23fe4` has that workload as its sole parent on
+`feature/renderer-pilot-linux-3`. Its exact manifest SHA-256 is
+`ed57a17a58bf7784b81c3de75baa971c0344b69b3a0a7f25959d8b2172ac9a52`.
+
+The third pilot approval was consumed by
+[run 40162752659](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40162752659), attempt 1,
+on 2026-10-25 UTC. Runtime admission passed with the exact approved 13-entry environment map.
+The #1571 correction worked. The isolated SDK check passed, and native admission passed on a
+Tesla T4, vendor `0x10de`, device `0x1eb8`, with 64-bit timestamps and a 1 ns period.
+
+The fixed measurement fact failed after 23.8 seconds with "The measured temporal history is invalid."
+The refusal was at `RendererPerfSceneWorkload.Record`, line 130, through
+`RendererPerfEntrypoint.cs`, line 115. Only conditioning frame 0, sequence 0, was recorded.
+Completed blocks were 0/2 and controls 0/6. The first scene frame deliberately has no valid previous
+history, but the workload required it immediately.
+[Issue #1579](https://github.com/APKiwiOrg/KhaozEngine/issues/1579) tracks this contract mismatch.
+
+Artifact `renderer-perf-linux-vulkan`, ID `12586184458`, is 517,933 compressed bytes.
+GitHub reports archive SHA-256
+`781d51a5aa9823e5477ef38df6244d491f27a6c2e3b6768cc947cbae268e012d`.
+It retains the partial JSON and Markdown report, runtime and native admission, compiler inventory,
+frozen layouts, telemetry, measurement log and TRX beside the preparation inputs and build logs.
+The measurement TRX SHA-256 is
+`105069ebd2bda10770f16be7af9eb555d063d61049ee833b4356041a68a627be`.
+
+GPU job `121077622984` ran from 04:41:07 to 04:45:14 UTC, 247 seconds. The billing API's same-day
+`actions_linux_4_core_gpu` total rose from 4.0 to 9.0 minutes, attributing 5.0 GPU minutes to this
+attempt at USD 0.052 per minute, USD 0.260 net runner charges. This is observed provider usage,
+separate from a duration estimate. Storage, tax and currency conversion are outside the runner
+component. No measured baseline, deadline or performance acceptance was produced. The approval is
+consumed and authorizes no retry. Another attempt requires a corrected workload, independently
+reviewed preparation and fresh owner approval.
+
+## First-frame temporal correction
+
+The third refusal came from applying the measured-history requirement to the first conditioning
+frame. Cold preparation renders no scene frame. Conditioning begins at driver index 0, but that is
+scene frame 1 with active temporal history reset to `FirstFrame`. Counted warm-up establishes history
+for measured blocks before driver index 0. The workload accepts only this first conditioning reset.
+It continues to reject disabled temporal rendering, later conditioning resets and invalid measured
+history. Actor, shadow and ocean checks remain active on that first conditioning frame.
+
+`RendererPerfSceneTemporalTests` exercises the real workload and scene temporal advance over inert
+resources. It covers conditioning index 0, both -64 and -192 warm-up starts through measured index 1,
+and explicit history loss at measured index 0 and conditioning index 1. The original conditioning
+refusal was reproduced before the correction. Existing workload and entrypoint tests rendered only
+negative warm-up indices. Driver tests supplied synthetic samples without the workload's check.
+This headless correction supplies no native measurement or permission for another pilot.
+
 ## Outstanding native and preparation gates
 
 Accepted Tasks10/11 and the cold amendment implement optional D3D11, Vulkan and Metal diagnostics.

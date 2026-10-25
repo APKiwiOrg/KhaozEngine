@@ -35,7 +35,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         => _bytes.ReferenceWindow(bytes, origin, references);
     internal long RemainingPreparedFaces => limits.MaxPreparedFaces - PreparedFaces;
     internal int RemainingPatchScopes => limits.MaxPatchScopes - PatchScopes;
-    internal MapPreparationReservation Workspace() => _bytes.Workspace();
+    internal MapPreparationReservation Workspace() => _bytes.Workspace(this);
     internal MapPreparationScope? PreparationScope { get; set; }
     internal MapPreparationScope BeginPreparation() => new(this);
     internal PreparationWindow LimitPreparation(long bytes, string limitName = nameof(MapSceneLimits.MaxPreparedBytes), long reused = 0)
@@ -139,7 +139,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     }
 
     internal void ReserveBytes(long bytes)
-    { if (PreparationScope is { } scope) scope.Reserve(bytes); else _bytes.ReserveLegacy(bytes); }
+    { if (PreparationScope is { } scope) scope.Reserve(bytes); else _bytes.ReserveLegacy(bytes, this); }
 
     internal void BeforeInputBytes(long bytes)
     {

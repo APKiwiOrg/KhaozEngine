@@ -46,16 +46,16 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
         return binding is null ? new(limitName, (decimal)WorkspaceBytes + RetainedBytes + _external + additional, allowance)
             : binding.Capacity(additional);
     }
-    internal MapPreparationReservation Workspace() => new(this, _window, false);
+    internal MapPreparationReservation Workspace(MapSceneAdmission admission) => new(this, _window, false, admission);
     internal Window OpenWindow(long bytes, string name, long reused)
     {
         if (bytes < 0 || reused < 0) throw new MapSceneCapacityException(name, reused, checked(bytes + reused));
         return new(this, _window, checked(bytes + reused), name, reused);
     }
-    internal void ReserveLegacy(long bytes)
+    internal void ReserveLegacy(long bytes, MapSceneAdmission admission)
     {
         object key = (object?)_window ?? this;
-        if (!_legacy.TryGetValue(key, out var owner)) _legacy.Add(key, owner = new(this, _window, true));
+        if (!_legacy.TryGetValue(key, out var owner)) _legacy.Add(key, owner = new(this, _window, true, admission));
         owner.Reserve(bytes);
     }
     internal void ReleaseLegacy(long bytes)

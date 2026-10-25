@@ -1450,6 +1450,9 @@ mesh copies and reusable scratch stay charged until release. Growth admits both 
 Failed policy closure preserves its input and releases intermediates. Failed reservations change no counters.
 Peaks remain separate from current bytes. Reads, UTF-8 work, faces, scopes and resources keep cumulative work/count semantics.
 Child windows attribute reused contexts and decoded inputs with one root charge. View leases survive product retirement and aggregation.
+Generic dependencies borrow direct storage separately from shared contexts, keeping one context attribution per child window.
+Foreign transfers adopt missing shared contexts from admitted destination workspace and retain their identities in its registry.
+All destination storage and window obligations are admitted before the source owner retires. Refusal preserves the source.
 Query capacity results preserve the declared limit, demand and allowance. `IndexNodesVisited` counts rejected siblings.
 Capacity refusals retain a typed `MapSceneCapacity` in the source or scoped result, with `LimitName`,
 `Requested` and `Allowance`. Byte demand is current eligible live inventory plus the attempted reservation.

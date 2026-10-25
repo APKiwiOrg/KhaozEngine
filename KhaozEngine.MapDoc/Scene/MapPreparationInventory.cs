@@ -18,8 +18,8 @@ internal sealed class MapPreparationInventory : IDisposable
     MapPreparationInventory(Shared shared) => _shared = shared;
     internal static MapPreparationInventory Acquire(MapSceneAdmission admission,
         IEnumerable<(object Identity, long Bytes)> inventory, MapPreparationReservation? workspace = null,
-        MapPreparationReservation? ownership = null, MapPreparationReservation? windowOwner = null) =>
-        Registries.GetValue(admission, static a => new(a)).Acquire(inventory, workspace, ownership, windowOwner);
+        MapPreparationReservation? ownership = null, MapPreparationReservation? windowOwner = null, bool admitWorkspace = false) =>
+        Registries.GetValue(admission, static a => new(a)).Acquire(inventory, workspace, ownership, windowOwner, admitWorkspace);
     internal MapPreparationInventory Retain()
     {
         lock (_shared.Pieces)
@@ -45,12 +45,14 @@ internal sealed class MapPreparationInventory : IDisposable
         readonly object _gate = new();
         readonly Dictionary<object, Entry> _entries = new(ReferenceEqualityComparer.Instance);
         internal MapPreparationInventory Acquire(IEnumerable<(object Identity, long Bytes)> inventory, MapPreparationReservation? workspace,
-            MapPreparationReservation? ownership, MapPreparationReservation? windowOwner)
+            MapPreparationReservation? ownership, MapPreparationReservation? windowOwner, bool admitWorkspace)
         {
             lock (_gate)
             {
                 var parts = inventory.DistinctBy(i => i.Identity, ReferenceEqualityComparer.Instance).ToArray();
                 long newBytes = parts.Where(p => !_entries.ContainsKey(p.Identity)).Sum(p => p.Bytes);
+                // Foreign dependencies adopt their portion of destination workspace, reserving only missing identities.
+                if (admitWorkspace) workspace!.Reserve(newBytes);
                 if (workspace is not null && newBytes > workspace.Bytes)
                     throw new InvalidOperationException("Decoded inventory exceeds its admitted owned reservation.");
                 if (ownership is not null && newBytes != ownership.Bytes)

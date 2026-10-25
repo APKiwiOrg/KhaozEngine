@@ -7,24 +7,26 @@ namespace KhaozEngine.MapDoc.Scene;
 /// <summary>Shared context allocations retained by a product, with attribution in its owning window.</summary>
 internal sealed class MapPreparationDependencies : IDisposable
 {
-    sealed record Piece(MapSceneAdmission Admission, long Bytes, MapPreparationInventory Lease);
+    sealed record Piece(long Bytes, MapPreparationInventory Lease);
     readonly Dictionary<object, Piece> _pieces = new(ReferenceEqualityComparer.Instance);
     internal long Bytes => _pieces.Values.Sum(p => p.Bytes);
     internal void Add(MapSceneAdmission admission, object identity, long bytes,
-        MapPreparationReservation? ownership = null, MapPreparationReservation? windowOwner = null)
+        MapPreparationReservation? ownership = null, MapPreparationReservation? windowOwner = null,
+        MapPreparationReservation? workspace = null)
     {
         if (_pieces.ContainsKey(identity)) return;
-        var lease = MapPreparationInventory.Acquire(admission, [(identity, bytes)], ownership: ownership, windowOwner: windowOwner);
-        _pieces.Add(identity, new(admission, bytes, lease));
+        var lease = MapPreparationInventory.Acquire(admission, [(identity, bytes)], workspace: workspace,
+            ownership: ownership, windowOwner: windowOwner, admitWorkspace: workspace is not null);
+        _pieces.Add(identity, new(bytes, lease));
     }
     internal long UniqueBytes(HashSet<object> seen) => _pieces.Where(p => seen.Add(p.Key)).Sum(p => p.Value.Bytes);
-    internal MapPreparationDependencies Rebind(MapPreparationReservation destination)
+    internal MapPreparationDependencies Rebind(MapPreparationReservation destination, MapPreparationReservation? workspace = null)
     {
         var result = new MapPreparationDependencies();
         try
         {
             foreach (var piece in _pieces)
-                result.Add(piece.Value.Admission, piece.Key, piece.Value.Bytes, windowOwner: destination);
+                result.Add(destination.Admission, piece.Key, piece.Value.Bytes, windowOwner: destination, workspace: workspace);
             return result;
         }
         catch { result.Dispose(); throw; }

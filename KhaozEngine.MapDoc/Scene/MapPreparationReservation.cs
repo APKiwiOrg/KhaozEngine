@@ -7,10 +7,11 @@ namespace KhaozEngine.MapDoc.Scene;
 internal sealed class MapPreparationReservation : IDisposable
 {
     readonly MapPreparationLedger _ledger;
+    internal MapSceneAdmission Admission { get; }
     MapPreparationLedger.Window? _window;
     readonly bool _retained;
-    internal MapPreparationReservation(MapPreparationLedger ledger, MapPreparationLedger.Window? window, bool retained)
-    { _ledger = ledger; _window = window; _retained = retained; }
+    internal MapPreparationReservation(MapPreparationLedger ledger, MapPreparationLedger.Window? window, bool retained, MapSceneAdmission admission)
+    { _ledger = ledger; _window = window; _retained = retained; Admission = admission; }
     bool _disposed;
     long _bytes;
     MapPreparationDependencies? _dependencies;
@@ -44,7 +45,7 @@ internal sealed class MapPreparationReservation : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         long direct = checked(bytes - (_dependencies?.Bytes ?? 0));
         if (_retained || direct < 0 || direct > _bytes) throw new ArgumentOutOfRangeException(nameof(bytes));
-        var owner = new MapPreparationReservation(_ledger, _window, true) { _bytes = direct, _dependencies = _dependencies };
+        var owner = new MapPreparationReservation(_ledger, _window, true, Admission) { _bytes = direct, _dependencies = _dependencies };
         _dependencies = null;
         _ledger.Transfer(direct); _bytes -= direct;
         _ledger.ReceiptChanged(direct > 0 ? 1 : 0);
@@ -54,7 +55,7 @@ internal sealed class MapPreparationReservation : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_retained || bytes < 0 || bytes > _bytes) throw new ArgumentOutOfRangeException(nameof(bytes));
-        var owner = new MapPreparationReservation(_ledger, _window, true) { _bytes = bytes };
+        var owner = new MapPreparationReservation(_ledger, _window, true, Admission) { _bytes = bytes };
         _bytes -= bytes;
         _ledger.ReceiptChanged(bytes > 0 && _bytes > 0 ? 1 : 0);
         return owner;
@@ -85,29 +86,36 @@ internal sealed class MapPreparationReservation : IDisposable
         readonly MapPreparationReservation _destination, _product;
         readonly MapPreparationReservation? _foreign;
         readonly IDisposable? _reference;
+        readonly MapPreparationDependencies? _dependencies;
         bool _absorbed;
-        internal Dependency(MapPreparationReservation destination, MapPreparationReservation product)
+        internal Dependency(MapPreparationReservation destination, MapPreparationReservation product, bool retainDependencies = true)
         {
             ObjectDisposedException.ThrowIf(destination._disposed || product._disposed, product);
             if (destination._retained || !product._retained)
                 throw new InvalidOperationException("Only retained inventory can be borrowed by workspace.");
             _destination = destination; _product = product;
-            if (destination._ledger == product._ledger)
-                _reference = destination._ledger.ReferenceWindow(product.Bytes, product._window, null);
-            else
+            try
             {
-                _foreign = new(destination._ledger, destination._window, false);
-                _foreign.Reserve(product.Bytes);
+                if (destination._ledger == product._ledger)
+                    _reference = destination._ledger.ReferenceWindow(product._bytes, product._window, null);
+                else
+                {
+                    _foreign = new(destination._ledger, destination._window, false, destination.Admission);
+                    _foreign.Reserve(product._bytes);
+                }
+                if (retainDependencies) _dependencies = product._dependencies?.Rebind(destination, _foreign);
             }
+            catch { Dispose(); throw; }
         }
         internal void Absorb()
         {
             if (_absorbed) return;
             if (_foreign is not null)
             {
-                long bytes = _foreign.Bytes;
+                _foreign.MoveWorkspaceTo(_destination, _foreign._bytes);
+                _dependencies?.MoveTo(_destination._dependencies ??= new());
+                // Every destination allocation and borrowing window is admitted before the source retires.
                 _product.Dispose();
-                _foreign.MoveWorkspaceTo(_destination, bytes);
             }
             else
             {
@@ -116,7 +124,7 @@ internal sealed class MapPreparationReservation : IDisposable
             }
             _absorbed = true;
         }
-        public void Dispose() { _reference?.Dispose(); _foreign?.Dispose(); }
+        public void Dispose() { _reference?.Dispose(); _dependencies?.Dispose(); _foreign?.Dispose(); }
     }
     internal void Absorb(MapPreparationReservation product, bool retainDependencies = true)
     {
@@ -126,9 +134,8 @@ internal sealed class MapPreparationReservation : IDisposable
             throw new InvalidOperationException("Only retained inventory can transfer into workspace.");
         if (_ledger != product._ledger)
         {
-            // A captured stage can enter another attempt. Refusal leaves its original owner intact.
-            Reserve(retainDependencies ? product.Bytes : product._bytes);
-            product.Dispose();
+            using var dependency = new Dependency(this, product, retainDependencies);
+            dependency.Absorb();
             return;
         }
         if (_window != product._window)

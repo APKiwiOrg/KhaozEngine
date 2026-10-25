@@ -236,5 +236,5 @@ at the level's raster scale. Builds run outside
 the bookkeeping lock. An invalidation during a build leaves its result stale, and a failed source
 read quarantines only that generation until invalidation permits a retry.
 
-The [world-map design](../docs/superpowers/specs/2026-10-12-world-map-design.md) describes the broader
+The [world-map design](../docs/design/WORLD-MAP.md) describes the broader
 engine round and the consumers of these contracts.

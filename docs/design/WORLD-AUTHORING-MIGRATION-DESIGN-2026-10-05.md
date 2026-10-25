@@ -74,7 +74,7 @@ Containment requires positive-area contact with a covered footprint. Multiple co
 portal or vertical-link openings whose exact bottom lies strictly below the level. OA29 assigns capsule overlap
 classification and the SM2 span certificate to G1b. R4 supplies exact samples, region triangles and explicit
 unresolved outcomes, with no native movement delegate or optical algorithm. OA30 approves the
-[implemented R4 plan](../superpowers/plans/2026-10-11-world-authoring-r4-bounded-water.md).
+[bounded water contract](NATIVE-AUTHORING-CONTRACTS.md#physical-and-water-boundaries).
 OA7's half-open XZ rule remains operative, with space ownership governing coincident boundaries.
 Actual old/new import boundary differences still need named acceptance.
 
@@ -410,8 +410,8 @@ Each round below is one separately reviewed implementation plan and one independ
 | R1 Native document and identity | C1, format 4 and render-free asset seam | Approved R1 plan and reconciled released CellOrigin main | Old analytic maps unchanged, immutable resolver, int64/redo/closure/hash tests |
 | R2 Exact authored terrain | C2, format 5, shared triangle compiler and surface commands | R1, DG9.1 cave choice and DG9.4 precision contract | Exact legacy terrain/paint plus selected cave geometry and layer ownership proofs |
 | R3 Shared shape and headless world | C3, asset collision payload 1 and GPU-free MapDoc.Physics | R1/R2 | Identical two-head statics/pick/reach/stance, doorway/bridge and cave floor/ceiling proofs, tiled nav/multi-cell evidence under the approved DG9.3 dependency split and DG9.4 |
-| [R4 Bounded water](../superpowers/plans/2026-10-11-world-authoring-r4-bounded-water.md) | C4, format 6, exact contained point/column queries, counted region compiler and undoable typed tools, implemented for 20.32.0 | R2/R3, OA27 to OA30 | Synthetic water oracle, approved vertical containment and ceiling ties, counted limits including MaxBoundCells, immutable build/residency/nav identity, editor/service parity and five DG9.5 headless scenes. Private source comparison stays outside this repository. G1b walker/capsule acceptance and R8 optical captures remain downstream |
-| [R5 Free buildings and interiors](../superpowers/plans/2026-10-12-world-authoring-r5-free-buildings-prefabs-interiors.md) | C5, format 7 and prefab payload 1, implemented and reviewed for 20.40.0 | R1 to R4, OA33/OA34 | Public synthetic geometry/ownership/membership/water/roof intent and shared command/MCP proofs. Candidate gates, private exhaustive comparison and hosted CI precede integration. Native routes, live doors and rendered roof/shadow/camera/light proof retain the later owners named in C5 |
+| [R4 Bounded water](NATIVE-AUTHORING-CONTRACTS.md#physical-and-water-boundaries) | C4, format 6, exact contained point/column queries, counted region compiler and undoable typed tools, implemented for 20.32.0 | R2/R3, OA27 to OA30 | Synthetic water oracle, approved vertical containment and ceiling ties, counted limits including MaxBoundCells, immutable build/residency/nav identity, editor/service parity and five DG9.5 headless scenes. Private source comparison stays outside this repository. G1b walker/capsule acceptance and R8 optical captures remain downstream |
+| [R5 Free buildings and interiors](NATIVE-AUTHORING-CONTRACTS.md#prefabs-interiors-and-publication) | C5, format 7 and prefab payload 1, implemented and reviewed for 20.40.0 | R1 to R4, OA33/OA34 | Public synthetic geometry/ownership/membership/water/roof intent and shared command/MCP proofs. Candidate gates, private exhaustive comparison and hosted CI precede integration. Native routes, live doors and rendered roof/shadow/camera/light proof retain the later owners named in C5 |
 | R6 General markers | C6, format 8, typed spawn projections | R1/R2/R5 | 38 exact fixture markers, elevated/local/free markers and no fake region discs |
 | R7 Native foliage | C7, format 9 and deterministic density commands | R2/R3/R5/R6 | Every density byte and generated sample, rotated building/door exclusions and reload stability |
 | R8 Native view and captures | C8, shared Render3D adapter/residency/capture | R2 to R7 | DG9.3/DG9.4 residency/HLOD/far-origin and cave lighting/camera proofs, DG9.5 water captures, preserved legacy goldens |
@@ -421,7 +421,7 @@ Each round below is one separately reviewed implementation plan and one independ
 
 Engine exit tests run synchronously in the owning plan's area projects. Rendering follows repository backend CI/golden policy. Build/verification is serialized through the shared slot, no stress loops or parallel local builds. This documents-only revision runs document guards, not production builds or full suites [E29, E31, G15].
 
-R1 to R4 execution plans are [native document and identity](../superpowers/plans/2026-10-05-world-authoring-r1-native-document-identity-assets.md), [authored terrain and paint](../superpowers/plans/2026-10-05-world-authoring-r2-authored-terrain-paint.md), [shared shapes and headless world](../superpowers/plans/2026-10-10-world-authoring-r3-shared-shapes-headless-world.md) and [bounded water](../superpowers/plans/2026-10-11-world-authoring-r4-bounded-water.md).
+R1 to R4 contracts cover [native document and identity](NATIVE-AUTHORING-CONTRACTS.md#authored-surfaces-and-scoped-acquisition), [authored terrain and paint](NATIVE-AUTHORING-CONTRACTS.md#authored-surfaces-and-scoped-acquisition), [shared shapes and headless world](NATIVE-AUTHORING-CONTRACTS.md#physical-and-water-boundaries) and [bounded water](NATIVE-AUTHORING-CONTRACTS.md#physical-and-water-boundaries).
 R1 to R3 are released prerequisites. OA27 to OA29 settle R4's containment, authored-space and downstream adapter
 contracts, and OA30 approves its executable plan. All eleven R4 tasks and the whole-branch fix wave are implemented
 and reviewed, released as 20.32.0. R5's OA33 gate and OA34 executable plan are implemented and reviewed,
@@ -525,7 +525,7 @@ All builds/runs used the serial wrapper. The first build hit macOS /tmp versus /
 Historical reproduction command at the proposal snapshot, retained as evidence only. Its scratch/source paths and old wrapper are not current execution instructions:
 
 ~~~bash
-/tmp/grand-world/slot-retry.sh authoring-design-probe /tmp/grand-world/world-authoring-spike/reproduce.log -- dotnet run --project /private/tmp/grand-world/world-authoring-spike/THROWAWAY.csproj -c Release -- /Users/antonio/Grimhollow/.worktrees/gw-authoring-design/assets/worlds/hollowmere /private/tmp/grand-world/world-authoring-spike/reproduce-output
+/tmp/grand-world/slot-retry.sh authoring-design-probe /tmp/grand-world/world-authoring-spike/reproduce.log -- dotnet run --project /private/tmp/grand-world/world-authoring-spike/THROWAWAY.csproj -c Release -- ~/Grimhollow/.worktrees/gw-authoring-design/assets/worlds/hollowmere /private/tmp/grand-world/world-authoring-spike/reproduce-output
 ~~~
 
 Spike Program.cs SHA-256: 2e0de8010dccea0f9039051b4665e31294d18e360f59063aac21c492c85a7be1.
@@ -572,7 +572,7 @@ Engine paths are relative to the pinned engine baseline, game paths to the pinne
 | E30 | Directory.Build.props:25 | Staged 20.24.0 |
 | E31 | docs/CONTRIBUTOR-RULES.md:109, AGENTS.md:97 | Package/release policy |
 | E32 | KhaozEngine.MapDoc/MapTiledFile.Save.cs:43 | Refuse unindexed overwrite of tiled directory |
-| G1 | Grimhollow docs/superpowers/specs/2026-10-01-continuous-movement-design.md:31, :39 | O3 substrate and O11 integration boundary |
+| G1 | [Grimhollow continuous movement program](https://github.com/APKiwiOrg/Grimhollow/issues/399) | O3 substrate and O11 integration boundary |
 | G2 | Grimhollow docs/architecture/ARCHITECTURE.md:118 | World files, counts and seven prefabs |
 | G3 | Grimhollow Grimhollow.Tests/World/HollowmereInteriorTests.cs:41, :68, :93 | Raised roofs and exact prefab/live interiors |
 | G4 | Grimhollow Grimhollow.Tests/World/HollowmereWorldTests.cs:145, assets/catalogs/archetypes.json:114 | Bridge deck and reserved flags |
@@ -606,4 +606,4 @@ Engine paths are relative to the pinned engine baseline, game paths to the pinne
 | E45 | KhaozEngine.TileWorld.Physics/TileColliderBuilder.Objects.cs:22, :45, :73, :109, :137 | Edge/corner, solid span, deck and terrain-relative collision |
 | E46 | KhaozEngine.MapEdit.Tool/Tools/DocumentTools.cs:13, :34, :60, KhaozEngine.MapEdit.Tool/Tools/MutationTools.cs:23, :50, :147, :403, :437, KhaozEngine.MapEdit.Tool/Tools/QueryTools.cs:15, :21, KhaozEngine.MapEdit.Tool/Tools/RenderTools.cs:19 | Existing native command families |
 
-Companion game specification: [Grimhollow option A](https://github.com/APKiwiOrg/Grimhollow/blob/feature/world-authoring/docs/superpowers/specs/2026-10-05-world-authoring-migration-design.md). Integration and production implementation stay with the owning orchestrator after written review.
+The companion game owns its world-authoring program. Integration and production implementation stay with the owning orchestrator after written review.

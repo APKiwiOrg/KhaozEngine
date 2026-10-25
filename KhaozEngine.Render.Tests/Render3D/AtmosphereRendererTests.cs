@@ -83,7 +83,7 @@ public sealed class AtmosphereRendererTests
         var fragmentBytes = SpirvFrontEnd.ToSpirv(fragment, GpuShaderStages.Fragment, program);
         var pair = SpirvCrossCompile.VertexFragmentToMsl(vertexBytes, fragmentBytes, program);
         var elements = pair.Reflection.ResourceLayouts[0].Elements;
-        Assert.Equal(prefix + 3 + (prefix == 11 ? 1 : 0), elements.Length);
+        Assert.Equal(prefix + 3 + (program == "Water" ? 2 : prefix == 11 ? 1 : 0), elements.Length);
         Assert.Equal(new[] { GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly,
             GpuResourceKind.Sampler }, elements.Skip(prefix).Take(3).Select(e => e.Kind));
         Assert.All(elements.Skip(prefix), e => Assert.Equal(GpuShaderStages.Fragment, e.Stages));

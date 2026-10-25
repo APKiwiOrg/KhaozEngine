@@ -1,6 +1,6 @@
 # Swimming contact backend evidence
 
-This is Task 2 implementation evidence for the [approved generic plan](../superpowers/plans/2026-10-06-swimming-generic-foundations.md).
+This is generic implementation evidence for the [swim environment facade](SWIM-ENVIRONMENT-FACADE-F3-2026-10-06.md).
 It does not amend accepted F3 or open native G1b.
 
 ## Validation state

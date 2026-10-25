@@ -109,7 +109,8 @@ public static partial class TileGroundMesher
         int plane,
         TileGroundLod lod,
         TileGroundMesherOptions? options,
-        bool memoiseCorners)
+        bool memoiseCorners,
+        TileGroundSurfaceAudit.Builder? audit = null)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(catalogs);
@@ -117,7 +118,7 @@ public static partial class TileGroundMesher
             throw new ArgumentOutOfRangeException(nameof(lod));
 
         var context = new TileMeshContext(doc, catalogs, options ?? new TileGroundMesherOptions(), region, plane,
-                                          memoiseCorners);
+                                          memoiseCorners, audit);
         var mesh = new MeshAccumulator();
         if (lod == TileGroundLod.Coarse4)
         {
@@ -127,9 +128,15 @@ public static partial class TileGroundMesher
         for (int lz = 0; lz < TileRegion.Size; lz++)
             for (int lx = 0; lx < TileRegion.Size; lx++)
             {
-                if (!TileGroundTriangles.IsDrawable(doc, context.OriginX + lx, context.OriginZ + lz, plane))
-                    continue;
-                AddTile(mesh, context, lx, lz);
+                int x = context.OriginX + lx, z = context.OriginZ + lz;
+                if (audit is not null)
+                {
+                    // Feather boundary probes can inspect two neighbouring tile rings.
+                    int margin = (doc.GetSettings(x, z, plane) & TileSettings.FeatherOverlay) != 0 ? 2 : 0;
+                    audit.Begin(new TileRect(x, z, 1, 1), mesh.IndexCount, margin);
+                }
+                if (TileGroundTriangles.IsDrawable(doc, x, z, plane)) AddTile(mesh, context, lx, lz);
+                audit?.End(mesh.IndexCount);
             }
         return mesh.ToMesh();
     }
@@ -140,11 +147,14 @@ public static partial class TileGroundMesher
         for (int lz = 0; lz < TileRegion.Size; lz += cellSize)
             for (int lx = 0; lx < TileRegion.Size; lx += cellSize)
             {
+                context.Audit?.Begin(new TileRect(context.OriginX + lx, context.OriginZ + lz, cellSize, cellSize),
+                    mesh.IndexCount, 4);
                 Coarse4CellInfo cell = ClassifyCoarse4Cell(
                     context, context.OriginX + lx, context.OriginZ + lz);
                 if (cell.Compatible)
                 {
                     AddCoarseCell(mesh, context, lx, lz, cellSize, Transitions(context, lx, lz, cell.Surface));
+                    context.Audit?.End(mesh.IndexCount);
                     continue;
                 }
 
@@ -156,6 +166,7 @@ public static partial class TileGroundMesher
                             continue;
                         AddTile(mesh, context, lx + dx, lz + dz);
                     }
+                context.Audit?.End(mesh.IndexCount);
             }
     }
 
@@ -308,7 +319,7 @@ public static partial class TileGroundMesher
             TileGroundMesherOptions options,
             RegionCoord region,
             int plane,
-            bool memoiseCorners)
+            bool memoiseCorners, TileGroundSurfaceAudit.Builder? audit = null)
         {
             Doc = doc;
             Catalogs = catalogs;
@@ -317,8 +328,11 @@ public static partial class TileGroundMesher
             OriginZ = region.OriginZ;
             Plane = plane;
             TileSize = doc.TileSize;
-            Corners = new TileGroundCornerCache(doc, options, region.OriginX, region.OriginZ, plane, memoiseCorners);
+            Audit = audit;
+            Corners = new TileGroundCornerCache(doc, options, region.OriginX, region.OriginZ, plane, memoiseCorners, audit);
         }
+
+        internal TileGroundSurfaceAudit.Builder? Audit { get; }
 
         /// <summary>This build's corner answers, each computed once however many tiles share the corner.</summary>
         public TileGroundCornerCache Corners { get; }
@@ -345,6 +359,8 @@ public static partial class TileGroundMesher
     {
         readonly List<ModelVertex> _vertices = new();
         readonly List<uint> _indices = new();
+
+        internal int IndexCount => _indices.Count;
 
         /// <summary>Appends one triangle as three fresh vertices.</summary>
         public void AddTriangle(ModelVertex a, ModelVertex b, ModelVertex c)

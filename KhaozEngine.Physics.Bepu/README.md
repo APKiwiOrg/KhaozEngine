@@ -50,6 +50,11 @@ either value shifts the bit-exact result legitimately.
   native batcher storage. Broad-phase traversal and managed overlap scratch still run. Eligible pairs
   retain their submission order, and every initialized batcher reaches one `Flush` in `finally`.
   Whole-navigation CPU impact requires separate measurement.
+  For a positive finite `SweepCapsule` distance, the full motion is carried in Bepu's velocity and
+  `maximumT` stays at 1. Bepu 2.4 applies that bound twice in mesh and compound child searches, so a
+  smaller bound would truncate the requested motion. Positive hits retain it while the handler tracks
+  the nearest hit separately. Only a hit at zero lowers it to zero, since no nearer hit is possible.
+  The returned hit time is scaled back to metres.
 - **Complete capsule contacts** - the owner and restricted views implement `IPhysicsCapsuleContacts`.
   A bounded empty selection returns a complete empty result with zero error, without capsule/hull
   face selection. Excessive coordinate spacing still refuses. Every candidate query retains the

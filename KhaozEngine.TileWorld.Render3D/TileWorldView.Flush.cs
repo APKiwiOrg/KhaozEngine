@@ -50,7 +50,12 @@ public sealed partial class TileWorldView
         ObserverIndoors = indoors;
         EnsureInterior();
         _interiorInputsDirty |= _dirtyOrder.Count > 0;
-        if (_dirtyOrder.Count == 0) return;
+        RefreshWaterPreparation();
+        if (_dirtyOrder.Count == 0)
+        {
+            SweepWaterMetadata();
+            return;
+        }
 
         int budget = Math.Max(1, maxRebuilds);
         int taken = 0;
@@ -74,16 +79,16 @@ public sealed partial class TileWorldView
                 // Build BEFORE freeing. A mesher that throws must leave the old handle live and drawable rather
                 // than a freed one in the slot, which would be a use-after-free on the next frame.
                 InvalidateGround(region, handles, plane);
-                MeshHandle? rebuilt = BuildMesh(region, plane);
-                if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
-                handles.Meshes[plane] = rebuilt;
+                TileWaterPreparation water = CaptureWater(region, plane);
+                TileGroundCpuBuild rebuilt = BuildGroundCpu(region, plane);
+                if (!PublishGround(region, plane, handles, rebuilt, water)) continue;
                 handles.Props[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
                 _propClusters.Request(handles.Props[plane]);
                 ReleaseAnimatedFoliage(handles, plane);
                 RebuildCover(region, handles);
                 // Only a mesh that was actually built counts. The budget exists to bound uploads and handle
                 // churn, and an empty region-plane produces neither.
-                if (rebuilt is not null) taken++;
+                if (rebuilt.Mesh is not null) taken++;
             }
         }
         finally
@@ -94,6 +99,7 @@ public sealed partial class TileWorldView
             _flushCover.Clear();
             _flushSnapshots.Clear();
             _flushMaterials = null;
+            SweepWaterMetadata();
         }
     }
 

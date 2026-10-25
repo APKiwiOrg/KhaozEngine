@@ -4,9 +4,8 @@ Status: integrated into main for 21.0.0 through PR #1414, after exact-head draft
 unfiltered hosted GPU proof and whole-branch review. The 21.0.0 release also carries the work
 previously staged as 20.41.0. Consumers adopt it from the released tag.
 
-The owner-approved [skinned stone armour straps spec](https://github.com/APKiwiOrg/Grimhollow/blob/0112d03c0144ff1f85526ff1057c5355bf260ee2/docs/superpowers/specs/2026-10-15-skinned-armour-straps-design.md)
-defines the requirement. The [implementation plan](../superpowers/plans/2026-10-15-skinned-attachment-parts.md)
-records the engine tasks and acceptance cases. This record supersedes the
+The consumer requirement is skinned stone armour straps. The engine contracts and acceptance
+cases are recorded below. This record supersedes the
 [rigid attachment design](RIGID-ATTACHMENT-SETS-DESIGN-2026-10-13.md) for current set APIs without
 changing its historical audit or original plan. Current use belongs in the
 [consumer guide](../USING-KHAOZENGINE.md#attachment-sets) and

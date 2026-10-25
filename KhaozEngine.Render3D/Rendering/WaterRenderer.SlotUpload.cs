@@ -43,11 +43,11 @@ namespace KhaozEngine.Render3D.Rendering
         /// old one held (a drawn plane's slot is repacked before every upload, and a culled plane's slot is uploaded
         /// without a repack but never read, so the carry-over only keeps unread bytes stable rather than being
         /// load-bearing).</summary>
-        void ResizeUboImage(int slots)
+        byte[] CreateUboImage(int slots)
         {
             var image = new byte[checked(slots * (int)SlotBytes)];
             _uboImage.AsSpan().CopyTo(image);
-            _uboImage = image;
+            return image;
         }
 
         /// <summary>Pack one plane's resolved uniforms into its slot of the mirror. The GPU sees nothing until

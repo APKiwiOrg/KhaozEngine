@@ -228,8 +228,8 @@ chrome to `PanelFrame`.
 
 ## First consumer
 
-Grimhollow adopts the stack after 21.3.0 is released. Its adoption spec is
-`docs/superpowers/specs/2026-10-16-window-stack-adoption-design.md` in that repository. It moves the side stone
+Grimhollow adopts the stack after 21.3.0 is released, tracked in
+[Grimhollow #557](https://github.com/APKiwiOrg/Grimhollow/issues/557). It moves the side stone
 (docked), Codex, Stats, skill guide, world map, bank, shop and dialogue (floating) and its debug menu
 (topmost) onto the stack, makes its bank and shop movable, replaces its local `WindowDrag` copy with this one,
 and deletes its hand-written hover and escape arbitration.

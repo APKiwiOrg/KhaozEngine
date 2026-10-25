@@ -81,7 +81,7 @@ Complete factories still validate real views, registration, boundaries and each 
 Every binding execution door requires a lease acquired from its environment context and physical view.
 Sharing a borrowed view does not make leases from different contexts interchangeable.
 
-The [phase 5a allocation proof](../docs/superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md)
+The [phase 5a allocation proof](../docs/verification/2026-10-13-contact-controller-phase5a-cost.md)
 records the production physics lease, ordinary pin, movement lease plus context release binding and player
 read scope independently. Its three bounded rectangular rows allocate only those tokens when warm.
 The read-release callback is cached per simulator. Timing is recorded evidence, with no SG-12 verdict.

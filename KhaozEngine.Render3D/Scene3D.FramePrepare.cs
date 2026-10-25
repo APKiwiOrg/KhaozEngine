@@ -1,3 +1,7 @@
+using System;
+using System.Runtime.InteropServices;
+using KhaozEngine.Gpu;
+using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D
@@ -25,7 +29,7 @@ namespace KhaozEngine.Render3D
         /// compute dispatch whose output another dispatch reads in the same frame, and the GPU seam's only ordering
         /// for that pair is a submit plus a device wait (#311), which means a command list of its own. Opening one
         /// while the frame's list is recording is what corrupts the device on Direct3D11 in immediate-context mode
-        /// (#423), so it happens here instead. A frame that queues no water does nothing at all here.
+        /// (#423), so it happens here instead. An empty water queue prepares no ocean resources.
         /// </para>
         /// <para>
         /// The order is <see cref="Begin"/> -> queue the frame's draws -> <c>PrepareFrame</c> -> open the frame's
@@ -33,7 +37,7 @@ namespace KhaozEngine.Render3D
         /// </para>
         /// <para>
         /// <b>Once per frame, and the second call is a no-op</b> rather than a second preparation.
-        /// <see cref="Render3DSurface.Render"/> calls it, so a host that also calls it by hand would otherwise
+        /// <see cref="Render3DSurface.Render"/> checks the no-argument latch, so a host would otherwise
         /// prepare twice, and a second preparation is not harmless: it advances the wave clock again with a zero
         /// delta and hands the frame a surface one frame behind, silently. The flag is cleared by
         /// <see cref="Begin"/>, so it is the FRAME that is prepared once, not the scene. Queueing a draw after
@@ -45,18 +49,93 @@ namespace KhaozEngine.Render3D
         /// begins again and re-queues, rather than rendering a second time off one preparation.
         /// </para>
         /// </summary>
+        public void PrepareFrame(int viewportWidth, int viewportHeight)
+        {
+            if (viewportWidth <= 0) throw new ArgumentOutOfRangeException(nameof(viewportWidth));
+            if (viewportHeight <= 0) throw new ArgumentOutOfRangeException(nameof(viewportHeight));
+            if (_framePrepared)
+            {
+                if (_waterViewportPrepared && HasBoundWater()) VerifyPreparedWaterTargets(viewportWidth, viewportHeight);
+                return;
+            }
+            if (GpuRecording.OpenOwner(_gd) is { } owner)
+                throw new GpuNestedRecordingException(owner, "scene viewport preparation");
+            _waterViewportPrepared = false;
+            EnsureSize(viewportWidth, viewportHeight);
+            _res.EnsureDistortion(_distortionSprites.Count > 0, DistortionQuality == DistortionQuality.Full ? 2 : 4);
+            PrepareSubsystems(optics: true);
+            _preparedWaterTargets = WaterTargetInputs(viewportWidth, viewportHeight);
+            _preparedWaterTargetGeneration = _res.Generation;
+            _waterViewportPrepared = true;
+            _framePrepared = true;
+        }
+
+        /// <summary>Prepare legacy scene-depth water and other frame producers. Bound water requires the
+        /// viewport overload in the host's pre-record callback, so targets are final before sets are created.</summary>
         public void PrepareFrame()
         {
             if (_framePrepared) return;
-            using (ProfileCpu("cpu.water.prepare"))
-            {
-                EnsurePointLightCapacity();
-                _framePrepared = true;
-                HarvestTemporalCounts();   // an armed temporal count request: its one readback, here before any recording
-                var frame = new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds);
-                IFramePreparer[] preparers = _preparers ??= new IFramePreparer[] { _water };
-                for (int i = 0; i < preparers.Length; i++) preparers[i].PrepareFrame(frame);
-            }
+            if (HasBoundWater()) throw MissingWaterViewport();
+            _waterViewportPrepared = false;
+            PrepareSubsystems(optics: false);
+            _framePrepared = true;
+        }
+
+        // Optical bindings resolve inside the same preparer phase, after the legacy preparers they depend on.
+        void PrepareSubsystems(bool optics)
+        {
+            using var phase = ProfileCpu("cpu.water.prepare");
+            EnsurePointLightCapacity();
+            HarvestTemporalCounts();   // an armed temporal count request: its one readback, here before any recording
+            var frame = new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds);
+            IFramePreparer[] preparers = _preparers ??= new IFramePreparer[] { _water };
+            for (int i = 0; i < preparers.Length; i++) preparers[i].PrepareFrame(frame);
+            if (optics) _water.PrepareOpticsFrame(_res, frame, CollectionsMarshal.AsSpan(_waterPlanes));
+        }
+
+        bool _waterViewportPrepared;
+        int _preparedWaterTargetGeneration;
+        PreparedWaterTargets _preparedWaterTargets;
+
+        readonly record struct PreparedWaterTargets(int ViewportWidth, int ViewportHeight,
+            int Width, int Height, int Samples, bool Mips, bool Bloom, bool Hdr, bool Motion,
+            bool Visibility, bool Pings, bool Distortion, DistortionQuality DistortionQuality, bool Resolve);
+
+        PreparedWaterTargets WaterTargetInputs(int width, int height)
+        {
+            var (w, h) = ComputeTargetSize(Post, width, height);
+            bool motion = TemporalActive;
+            return new(width, height, w, h, ResolvedMsaaSamples(), WantsMipDownsample(Post, width, height),
+                InternalBloomWanted, Post.Hdr.Enabled, motion,
+                ShadowVisibilityTargets.Requested(motion || _requestLitVisibility, _gd), InternalPingsWanted,
+                _distortionSprites.Count > 0, DistortionQuality, TemporalResolveActive);
+        }
+
+        bool HasBoundWater()
+        {
+            for (int i = 0; i < _waterPlanes.Count; i++)
+                if (_waterPlanes[i].Optics.IsBound) return true;
+            return false;
+        }
+
+        static InvalidOperationException MissingWaterViewport() => new(
+            "Bound water requires unchanged viewport and target inputs prepared with Scene3D.PrepareFrame(width, height) before recording.");
+
+        void VerifyPreparedWaterTargets(int width, int height)
+        {
+            if (!_framePrepared || !_waterViewportPrepared || _preparedWaterTargets != WaterTargetInputs(width, height)
+                || _preparedWaterTargetGeneration != _res.Generation) throw MissingWaterViewport();
+            if (_waterPlanes.Count > 0)
+                _water.VerifyOpticsFrame(_res, RelativeWaterPlanes(), Post.Water, EffectTimeSeconds);
+        }
+
+        // Called before the recording path can resize or replace anything. Only bound water freezes its targets at
+        // preparation. A frame with no bound water keeps the legacy late binding on either preparation form, so its
+        // targets may still resize here and the water pass rebinds them.
+        void EnsurePreparedRenderSize(int width, int height)
+        {
+            if (HasBoundWater()) VerifyPreparedWaterTargets(width, height);
+            EnsureSize(width, height);
         }
     }
 }

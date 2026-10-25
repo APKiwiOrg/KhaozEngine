@@ -36,8 +36,8 @@ random loss, socket timing, sleep or retry loop.
 
 Earlier task suites prove the rest of the traceability table: legacy exhaustion and restart, the four-way capability
 matrix and generation skew, marker-prefixed MOVE aliases and malformed control lengths, malformed component frames,
-typed deadlines and send failures, and the LiteNetLib packet-size query. The task-by-task record is the Outcome
-section of the [implementation plan](superpowers/plans/2026-10-03-grimhollow-delta-reliability.md).
+typed deadlines and send failures, and the LiteNetLib packet-size query. Current contracts and rationale live in the
+[delta reliability design](design/GRIMHOLLOW-DELTA-RELIABILITY-DESIGN-2026-10-02.md).
 
 ## Consumer size characterization
 

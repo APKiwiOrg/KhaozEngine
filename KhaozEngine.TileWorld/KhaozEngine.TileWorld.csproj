@@ -18,6 +18,9 @@
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Netcode.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Editing" />
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Render3D" />
+    <!-- The authored-bed facts read strict corner heights directly, the same internal read the ground
+         mesher's optical audit uses. -->
+    <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <!-- The collider builder places object boxes with the same quarter-turn basis the renderer uses
          (TileObjectPlacement.PlanarBasis and AnchorPlanar), so a box can never drift from its drawn model. -->
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Physics" />

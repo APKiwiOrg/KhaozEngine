@@ -35,7 +35,9 @@ namespace KhaozEngine.Tests.Render3D
             ReadOnlySpan<WaterPlane> planes, WaterSettings settings, Vector3 eye, Matrix4x4 viewProj)
         {
             if (commands is RecordingGpuCommandList recording) recording.Clear();
-            renderer.PrepareFrame(new FramePrepare(settings, planes, 0f));
+            var frame = new FramePrepare(settings, planes, 0f);
+            renderer.PrepareFrame(frame);
+            renderer.PrepareOpticsFrame(resources, frame);
             renderer.Draw(commands, resources, planes, viewProj, viewProj, -Vector3.UnitY, Color.White, eye, settings, Sky, 0f);
         }
 

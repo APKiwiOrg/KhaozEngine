@@ -201,16 +201,18 @@ of megabytes for two real images.
 
 ## Water (`TileWaterPlanes`, `TileWaterLooks`)
 
-Water is the engine's existing `Scene3D.DrawWater` pass laid over ground the author carved, so nothing new is
-drawn: the depth tint, the shore foam band and the waterline feather all read the resolved scene depth. This
-package only decides WHERE the planes go.
+Water is the engine's existing `Scene3D.DrawWater` pass laid over ground the author carved. Under the default
+`TileWorldViewOptions.WaterDepthMode`, `TileWaterDepthMode.SceneDepth`, the depth tint, the shore foam band and
+the waterline feather read the resolved scene depth, which is the first opaque surface and can be a creature or
+a prop. `TileWaterDepthMode.AuthoredBed` instead binds each body to its actual rendered bed, described under
+[Authored optical beds](#authored-optical-beds). Either way this package decides WHERE the planes go.
 
 **Water is authored as ground.** A tile is water when its UNDERLAY material carries `GroundMaterialKind.Water`,
 and the bed is sunk by lowering the corner heights, so the material's texture is the river BED and the surface is
 computed rather than placed. Only the underlay counts: an overlay drawn in a water material is a puddle-shaped
 decoration on ordinary ground and gets no surface, because an overlay cuts a fraction of a tile and a fraction of
 a tile has no rim to take a height from. A `NoDraw` tile is not water either, since water over a hole has no bed
-for the depth read to darken against. That body rule, which tiles are water, the body search, the rectangle cut and
+to darken against. That body rule, which tiles are water, the body search, the rectangle cut and
 the rim, is `TileWaterBodies` in `KhaozEngine.TileWorld`, GPU-free, and this package turns its bodies into planes.
 Collision, pathing, the raycast and the top-down painter are all unchanged:
 `TileRaycast.Pick` still lands on the bed, which is what an editor click wants.
@@ -257,6 +259,84 @@ a small normal strength, no surf, foam only in a narrow shore band, silty colour
 differs because of SCALE (the sea's 1.6 m foam band and 2.5 m ripple wavelength would each consume a river whole).
 **It is one shared instance of a class of public fields, so do not mutate it**: copy it, or pass a look of your
 own through `TileWorldViewOptions.WaterLook`.
+
+### Authored optical beds
+
+`TileWorldViewOptions.WaterDepthMode` is captured when the view is constructed. The default `SceneDepth` is the
+unchanged legacy path and needs no optical scene capability. Its water planes are still collected lazily, once per
+region-plane mesh at its first draw or pick, so loads, flushes and profile builds scan no water and a
+region-plane without a mesh is never scanned. `AuthoredBed` requires a scene implementing
+`ITileWorldWaterTriangleOpticsScene`: `LoadWaterOpticsTriangles`, `UnloadWaterOpticsField` and
+`TryGetWaterOpticsPadding`. `Scene3DTileWorldScene` implements it. Any other scene is refused with
+`NotSupportedException` at view construction, before any upload.
+
+A test or recording scene that implements the interface must return well-formed handles that its
+`UnloadWaterOpticsField` accepts exactly once, and a certified padding from `TryGetWaterOpticsPadding`. A false
+return withdraws the water, as an FFT look does.
+
+- **Actual rendered triangles.** Each region-plane and water level binds one immutable `WaterOpticsTriangleField`,
+  shared by that level's planes over its domain and built from the accepted or same-transaction candidate ground
+  snapshots, the same `Indices32` mesh instances uploaded for drawing, including neighbour regions at their actual
+  LOD. A diagonal, corner cut, feather, coarse block or transition fan therefore shades exactly as it renders,
+  rather than as the bilinear `HeightAt` interior, which keeps its own contract. TileWorld builds no bilinear
+  field.
+- **Certified coverage.** Each certificate is a drawable row-run rectangle widened by the effective swell
+  displacement and the positional budget `min(0.0001 m, TileSize / 1024)`. Source conversion and the field's
+  `ReconstructionErrorBoundMetres` share that one budget. Binding origin X and Z are the binary64 floor of the
+  minimum consumed vertex, in whole metres. Origin Y is the exact datum 0, not the water level. Each vertex stores
+  rest depth `q = -y`, an exact binary32 negation, so depth conversion adds no error and collinear drawn heights,
+  such as a sloped corner cut's mid-edge vertex on its neighbour's long edge, stay collinear. The shader's `max(0,
+  restDepth + displacedY - referenceY)` with reference 0 gives the same physical depth below the plane's water
+  level. `WorldFrame` anchors are multiples of 128 m with magnitude at most 2^22 m, so a whole-metre origin below
+  2^23 m minus any such anchor stays an integer below 2^24 m and is exact in binary32. Render-origin reduction is
+  therefore charged nothing for the default quantized render origin and for any `WorldFrame` anchor. An origin
+  whose X or Z magnitude is at or beyond 2^23 m is refused as `UnrepresentableSurface`. An explicit off-grid
+  `Scene3D.RenderOrigin` override rounds the reduced origin like all other submitted geometry and is outside the
+  certificate. Only regions whose triangles support a certificate participate. Packing doubles the bin axes from
+  one bin per tile up to 1024 and never drops, downsamples or merges triangles. A domain spans at most 1024 tiles
+  on each axis.
+- **Strict refusal, no fallback.** Opted-in water never falls back to scene depth, zero or deep water. A refusal
+  withdraws the whole region-plane request, the water at every level, and keeps its terrain. It is reported in
+  `TileWorldView.WaterOpticsFailures` as a `TileWaterOpticsFailure` with its region, plane, the water level in
+  `ReferenceSurfaceY`, `Kind`, blocking `MissingRegion`, tile `Domain` and the last attempted bin axes.
+  `TileWaterOpticsFailureKind` is `MissingHeightData` for a strict height-read fallback, `FieldTooLarge` for an
+  oversized or unaddressable domain, `MissingSurfaceData` for an absent, mismatched or stale source snapshot,
+  `IncompleteSurfaceCoverage`, `AmbiguousSurface`, `SurfaceCapacityExceeded` when every packing exceeds 32
+  candidates per bin or the 1024 by 1024 atlas, `UnrepresentableSurface` when the error budget or a backend-safe
+  scalar cannot be met, and `UncertifiedDisplacement` when the effective look has no certified displacement
+  envelope. A neighbour region file that fails to load while its water sources are materialized never costs
+  terrain: the failure is remembered until that region's availability changes, the neighbour stays unloaded and
+  the strict reads refuse the water as `MissingHeightData` or `MissingSurfaceData` naming it. Nothing throws out of
+  `Flush`, `LoadRegion` or a profile build for an optics-only source.
+- **Latched attempts.** A field refusal that keeps a still-covering older generation latches the attempt until
+  its sources, settings or displacement change. The latch suppresses only the field. Ground still rebuilds, so a
+  residency promotion such as Coarse4 to Full lands, and the rebuilt region-plane keeps the latched refusal
+  instead of the old water.
+- **Content must supply a bed.** A certificate reaches past its water tiles, so the ground around opted-in water
+  must emit triangles there. Water beside empty or `NoDraw` cells, or beside an unloaded neighbour region, is
+  refused with `IncompleteSurfaceCoverage`, `MissingSurfaceData` or `MissingHeightData`, and zero underlay emits
+  no bed. Author a real bank around every opted-in body and keep its neighbours resident. At the edge of the
+  loaded area a region-plane whose water touches an unloaded neighbour is withdrawn, at every water level, until
+  the neighbour loads. Keep the resident ring wider than the draw distance so visible water never sits on that
+  edge.
+- **Looks.** Opted-in water needs a look with a certified displacement envelope. `TileWaterLooks.River` qualifies.
+  The view resolves the look once per flush through `ITileWorldWaterTriangleOpticsScene.TryGetWaterOpticsPadding`,
+  which `Scene3DTileWorldScene` forwards to `Scene3D.TryGetWaterOpticsPadding`. The interface member has no
+  default body, and its `reason` is meaningful only when it returns false. An uncertified look, such as FFT water,
+  withdraws the `AuthoredBed` water and records one diagnostic per region-plane with water, of the kind mapped from
+  the scene's `reason`. `UncertifiedDisplacement` maps to itself, as do the other `WaterOpticsSurfaceFailure`
+  values to their TileWorld kinds, and a reason without a TileWorld kind reports `UncertifiedDisplacement`. No
+  neighbour source is read while the look is uncertified. Terrain keeps building and publishing, and nothing
+  throws. When the look becomes certifiable again the
+  water is prepared and republished. A colour-only look change reuses the uploaded optical bytes.
+- **Publication.** A source replacement rebuilds every dependent field against one candidate surface table,
+  uploads them all, validates again and swaps the mesh and the fields together. An upload failure rolls the whole
+  group back. No frame pairs a new mesh with an old field. Unrelated fields keep their handles.
+- **Frame and lifetime.** Bound water follows the scene's preparation rule: call `Scene3D.PrepareFrame(width,
+  height)` after `Draw` and before recording. Handles belong to the view's scene. A recreated scene needs a new
+  view, which prepares its own fields. `WaterOpticsSourceBytes` returns `TileWaterOpticsSourceBytes(Resident,
+  Pending)`, the owned snapshot bytes of loaded regions and of completed worker results awaiting publication, and
+  is zero under `SceneDepth`. The fields themselves are counted by the scene's `WaterOpticsStats`.
 
 ## Objects (`TileObjectProps`, `ITileMeshResolver`, `GreyboxMeshResolver`, `GltfMeshResolver`)
 
@@ -725,6 +805,22 @@ collision, navigation, simulation, replication or hashes.
   caps. A generation stamp rejects a result whose region was demoted, unloaded or reloaded since it was asked
   for. A pure focus move reuses accepted clusters. Replacement failures keep the last accepted HLOD handle.
   Initial failures retry three times, log once, and keep individual geometry where it is resident.
+- With `WaterDepthMode.AuthoredBed`, ground CPU results pair the uploaded mesh with an internal immutable
+  `TileGroundSurfaceSnapshot`. It copies position-only vertices and original 32-bit indices, retaining the actual
+  LOD and world transform. Strict height provenance and topology inputs belong to emitted tile or coarse-block
+  index ranges, including feather children and zero-output decisions. Overlapping topology footprints share one
+  immutable coordinate grid. Detached optical builds preserve known-unloaded manifest entries, and admission
+  validates captured inputs against live state. Default `SceneDepth` builds create no optical payload or audit,
+  and retain no accepted optical source. Their detached requests carry the same fixed choice as synchronous
+  builds. The depth mode is captured at construction. Changing it requires disposing and recreating the view.
+  An opted-in null mesh has a known-empty snapshot. An absent snapshot means unavailable or unprepared ground,
+  and must never be substituted with a manufactured empty source. Audit ranges use widened exclusive edges and
+  retain the complete required footprint. Any portion outside signed tile coordinates makes that range optically
+  unrepresentable, while valid interior ranges and legacy mesh construction remain usable. Check representability
+  before interpreting missing-region diagnostics, then check availability separately from currentness.
+  `HeightAt` retains its bilinear contract.
+- The `AuthoredBed` field contract, its refusals and its diagnostics are under
+  [Authored optical beds](#authored-optical-beds).
 - **Streaming a region dirties its dependants** in both directions. Ground meshes rebuild across their fixed
   border reach. Ground-cover caches also rebuild where a streamed solid footprint, upper roof or tagged door can
   change eligibility, including regions reached by the door clearance.

@@ -18,9 +18,8 @@ is claimed.
 Consumer: Grimhollow continuous movement phase P4, before P5 NPCs and interactions and P6 combat.
 Engine issue: [#1223](https://github.com/APKiwiOrg/KhaozEngine/issues/1223).
 Consumer epic: https://github.com/APKiwiOrg/Grimhollow/issues/399.
-The consumer contract is Grimhollow's
-`docs/superpowers/specs/2026-10-01-continuous-movement-design.md`, especially O4, O11, T6 and T10.
-Round 1's design and all four plans' Outcome blocks are required context for execution.
+The consumer program is [Grimhollow #399](https://github.com/APKiwiOrg/Grimhollow/issues/399).
+The engine contracts and surviving command, navigation, reach and movement decisions are recorded below.
 
 ## Intent and success
 
@@ -282,6 +281,24 @@ signature. Share column validation and layer extraction with the existing layere
 walked Stair links. It takes no unused jump-height or hop-cost argument. No height-map, hop-bake or
 point-planner default changes in this branch.
 
+### Guarded navigation contract references
+
+The B identifiers below are scoped to guarded navigation. They name the enduring implementation
+decisions without making legacy point queries inherit guarded semantics.
+
+| Id | Contract and reason |
+| --- | --- |
+| B1.1 | Grounded link generation shares the existing scan but emits Stair only. A dummy jump height must not accidentally admit Hop links or alter legacy ordering. |
+| B1.2 | MaxLayerCells is enforced after layer assignment and before dense arrays. A post-allocation guard would not bound memory. |
+| B2.2 | Guarded snapping requires an admitted raw-passable own cell and returns its centre. A nearby accepted ring cannot authorize crossing a rejected node. |
+| B3.1 | Safe search priority is separate from progress toward actual member feet. Zero heuristic must not pin every Partial to the start. |
+| B3.2 | Capture real admitted region members once before search. Empty membership refuses, with no invented target Y or anchor replacement. Discovery is separate from the expansion-node budget. |
+| B3.3 | Cross-layer or underpriced same-layer links disable the spatial lower-bound priority. Dijkstra ordering costs more expansions but preserves admissibility. |
+| B3.4, B3.5 | Member discovery uses the conservative anchor/extent bound and finite-safe double distance arithmetic. Bounds reduce discovery work without changing actual predicate membership, and wide differences avoid float overflow. |
+| B4.2 | A retained waypoint with zero XZ offset stays finite and Following until true membership or replanning. Same XZ on another floor is not arrival. |
+| B4.3 | A reached Complete endpoint outside membership makes replanning due, so small target motion cannot leave a permanent zero-direction hold. |
+| B4.4 | Advance the existing region corridor before query eligibility. Exhausted Partial waits with zero input during cooldown. A fresh exhausted Partial at zero cooldown returns Unreachable for that tick, then permits the next query, never a same-tick query loop. |
+
 ## 5. Physics bake and game-owned area masks
 
 ```csharp
@@ -359,6 +376,21 @@ arrays. The consumer chooses the bake bounds and cell size from its content and 
 A 0.25 m cell is the proposed Hollowmere acceptance fixture, with a 0.3 m player radius and a 1 m
 doorway. That is a test fixture, not an engine gameplay default. The full-world bake has a finite
 cell budget. Report startup cost and memory on the authorized implementation run before adoption.
+
+### Reach and capture contract references
+
+The C identifiers are scoped to reach geometry and physics profile construction.
+
+| Id | Contract and reason |
+| --- | --- |
+| C1.1 | Distance refuses a result above float.MaxValue, while Within compares the wider metric. Reusing a rounded Distance as a range is not identical to the exact comparison. |
+| C1.2, C1.4 | Stable interval/component and norm-minus-radius arithmetic retains residuals through result/range limits. No gameplay epsilon replaces that numerical work. |
+| C1.3 | Validate range plus tolerance against remaining float headroom before adding. Zero tolerance remains valid. |
+| C3.2 | Preflight padded centres and local probe arithmetic before arrays. Finite endpoints do not guarantee finite intermediate coordinates. |
+| C4.2 | Each DDA axis stops at its owning target cell, preserving half-open endpoint admission. |
+| C4.3 | The initial hold consumes slice one of MaxEdgeProbeSteps. Defaults leave 63 travel slices, so an otherwise legal long edge can conservatively refuse. |
+| C4.4 | Nearest-height support tags use step, grounded epsilon and radius times tan(slope). Absent/ambiguous data refuses instead of granting a shortcut. |
+| C4.5 | Pure endpoint height checks wrap the guarded planner. A profile's step class, including the existing 1 mm zero-step allowance, is not permission to cross an unproved height gap. |
 
 ## 6. Shared range steering and two adapters
 
@@ -448,6 +480,21 @@ dimensions, box yaw and range changes reset internally. A changed immutable prof
 instance.
 The kernel holds no target ids, world entities, wall clock, random generator or action queue.
 
+### Range-driver contract references
+
+The D identifiers here are scoped to movement drivers, distinct from delta-stream rulings.
+
+| Id | Contract and reason |
+| --- | --- |
+| D0.2 | After validation and reach evaluation, an active commitment or unsupported airborne automation is Suspended before InRange. The explicit route swimming option is separately admitted. Pure reach callers can use ReachGeometry. |
+| D0.3 | LocalPredictedState is an absolute read-only simulation copy. LocalRenderState includes presentation interpolation/correction and cannot govern exact stop-ring steering. |
+| D1.1 | Copy AcceptRadius as min(supplied, 1e-5 m), preserving supplied zero. Broad point tolerance must not consume a mandatory physical turn. |
+| D1.3 | Up to 32 live copy-state bisection candidates, with endpoint/final preflights, resolve near-ring travel. Support, medium and collision remain in the shared core, with no world step, position snap or entity publication. |
+| D3.1 | Nonfinite/unknown command requests become finite idle, and invalid yaw stores zero. Malformed automation must not send invalid wire floats. |
+| D3.2 | A double norm clamps oversized finite direction before camera projection, bounding pace without maximum-float overflow. |
+| D3.3 | CameraRelativeDir reports unit heading. Precise movement consumes the fraction once, so heading-only assertions cannot establish final travel. |
+| D5.1 | Reset for target identity/lifecycle changes. Shape/range changes reset internally, and replacing an immutable profile requires a new follower. Publish accepted NPC state once or submit one ordinary client command. Game policy owns cancellation, target validity and authority tolerance. |
+
 ## 7. What stays in the games
 
 | Engine | Grimhollow |
@@ -504,14 +551,14 @@ verification command. No outcome says a test ran unless its output and nonzero c
 
 The owner approved this written design on 2026-10-02. Four implementation plans are written:
 
-1. [Round 2 A](../superpowers/plans/2026-10-02-round2-a-command-fraction.md), branch `feature/round2-command-fraction`. Opt-in axis scaling, codec,
+1. [Fractional ordinary commands](#3-ordinary-commands-can-preserve-the-final-fraction), branch `feature/round2-command-fraction`. Opt-in axis scaling, codec,
    wire handshake and persistence compatibility. Opens the round's selected version through its
    integration owner, nominally 20.18.0. No worker selects a different bump on its own.
-2. [Round 2 B](../superpowers/plans/2026-10-02-round2-b-navigation-contracts.md), branch `feature/round2-navigation-contracts`. Goal-region search,
+2. [Guarded navigation contracts](#guarded-navigation-contract-references), branch `feature/round2-navigation-contracts`. Goal-region search,
    region follower, guarded traversal graph and grounded layered bake. Rides the same version.
-3. [Round 2 C](../superpowers/plans/2026-10-02-round2-c-reach-physics-nav.md), branch `feature/round2-reach-physics-nav`. Movement package and shape
+3. [Reach and capture contracts](#reach-and-capture-contract-references), branch `feature/round2-reach-physics-nav`. Movement package and shape
    reach, physics capture, area filters, capsule profiles and bridge acceptance. Needs B and rides.
-4. [Round 2 D](../superpowers/plans/2026-10-02-round2-d-movement-drivers.md), branch `feature/round2-movement-drivers`. Shared range steering, NPC
+4. [Range-driver contracts](#range-driver-contract-references), branch `feature/round2-movement-drivers`. Shared range steering, NPC
    and player adapters, complete real-command-path acceptance and consumer docs. Needs A, B and C.
 
 Each branch starts from current reconciled engine main, consumes its prerequisite's verified Outcome,

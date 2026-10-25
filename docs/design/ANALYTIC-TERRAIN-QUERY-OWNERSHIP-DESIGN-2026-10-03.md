@@ -1,6 +1,6 @@
 # Analytic terrain query ownership
 
-Status: root approved technical option A and this design for [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233) on 2026-10-03 within the owner-approved Grimhollow pivot scope. The [implementation plan](../superpowers/plans/2026-10-03-ground-query-ownership.md) also passed independent review. Implementation is authorized through bounded dispatches. No implementation proof or release is claimed.
+Status: root approved technical option A and this design for [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233) on 2026-10-03 within the owner-approved Grimhollow pivot scope. Implementation is authorized through bounded dispatches. No implementation proof or release is claimed.
 
 ## Problem and selected boundary
 

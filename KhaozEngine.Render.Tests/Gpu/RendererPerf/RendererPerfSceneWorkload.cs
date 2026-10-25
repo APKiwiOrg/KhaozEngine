@@ -92,7 +92,8 @@ internal sealed class RendererPerfSceneWorkload : IRendererPerfNativeWork
         if (_cold) throw new InvalidOperationException("Cold preparation runs once per fresh scene.");
         _firstIndex = firstFrameIndex;
         // Pair cold ocean preparation with its compute recording, without Begin or scene rendering.
-        // The first counted warm frame still owns frame index one, motion, TAA history and caches.
+        // The first counted frame owns scene frame one, motion, TAA history and caches.
+        // Conditioning starts at zero. Scene blocks start at their negative warm-up index.
         _recipe.PrepareCold(Scene, _device, firstFrameIndex);
         _recipe.StartBlockClock(firstFrameIndex);
         Scene.PassObserver = _observer;
@@ -127,7 +128,10 @@ internal sealed class RendererPerfSceneWorkload : IRendererPerfNativeWork
         if (Scene.DrawnSkinnedInstances != _recipe.Facts.ActorInstances || Scene.CulledSkinnedInstances != 0
             || !Scene.UseGpuSkinning || Scene.LastShadowPassDiagnostics.CascadeCount != _recipe.Facts.Schedule.DirectionalCascades)
             throw new InvalidOperationException("A native actor or shadow route differs from the frozen recipe.");
-        if (_recipe.Facts.Schedule.Temporal && !Scene.TemporalHistory.IsValid)
+        // Only conditioning starts a fresh scene at zero. Measured zero follows counted warm-up.
+        if (_recipe.Facts.Schedule.Temporal && !Scene.TemporalHistory.IsValid
+            && !(_firstIndex == 0 && frameIndex == 0 && _frames == 1 && Scene.TemporalActive
+                && Scene.TemporalHistory.LastReset == TemporalResetReason.FirstFrame))
             throw new InvalidOperationException("The measured temporal history is invalid.");
         if (_recipe.Facts.Schedule.Features?.WaterPlanes > 0 && Scene.LastWaterStats.OceanStalls != 0)
             throw new InvalidOperationException("The measured ocean unexpectedly primed again.");

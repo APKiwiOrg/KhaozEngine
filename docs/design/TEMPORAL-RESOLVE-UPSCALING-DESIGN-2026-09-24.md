@@ -223,8 +223,7 @@ here so the foundations and the resolve serve it.
 
 ## Plan amendments
 
-The implementation plan, [`2026-09-24-temporal-aa.md`](../superpowers/plans/2026-09-24-temporal-aa.md), read the code
-and changed these details. Its contract amendment blocks carry the evidence.
+Implementation review established the contract amendments below.
 
 1. A fifth preset, `UltraPerformance` at 1/3 per axis (72 jitter phases), and `UpscaleRatio` from 0.33 to 1.0. At a
    3456x2234 display even `Performance` shades more pixels than a fixed 1600x900 target, so the frame-time line needs a
@@ -1241,6 +1240,22 @@ and changed these details. Its contract amendment blocks carry the evidence.
     to D's `0.003688205 / 0.003739381`, while back dots stayed `364 / 759` versus A's `364 / 760`.
     No rising-only reset, multiplier, experimental branch or tuning switch ships.
 
+    **Exact visibility execution.** Direct3D 11 and Vulkan use twelve gathers for current/history
+    footprints. Metal keeps nine current loads and eight history gathers, because replacing its
+    current loads changes subsequent arithmetic despite exact raw readback. Large binade-boundary
+    footprints retain the reference path where reassociation would change coordinates. Gather count
+    is not a measured transaction count or speedup.
+
+    Cost optimization preserves the frozen release-only reference under the device comparison rules
+    below. Approximation requires a separate look decision. The owner cost target is at most 0.5 ms
+    resolve growth at 2560x1440 on each T4 backend, relative to the pre-visibility benchmark reference.
+    Correctness does not establish that timing target. Further billed measurement needs fresh approval.
+
+    After lock decay and ridge classification, an incoming positive-zero lock with finite release
+    arguments bypasses the twelve ordered barriers. Negative zero, nonzero locks and nonfinite
+    arguments retain the same helper. The fallback selection uses dont_flatten so the compiled HLSL
+    keeps a real branch, without changing the helper's arithmetic or precise markings.
+
     **History and lifetime.** `TemporalResolveInputs.KeyShadowVisibility` participates in `SameInputs` and both
     entry binding caches. `TemporalVisibilityHistory` owns two internal-resolution R8 textures following the colour
     owner's `ReadIndex`, `WriteIndex`, device, identity and target generation. A shared finish path uses
@@ -1265,8 +1280,18 @@ and changed these details. Its contract amendment blocks carry the evidence.
     classification and barrier-ordered lock release are unchanged. Fused, split, Native, precision and debug/count
     paths cache matching programs and binding sets. R8 storage and copies remain. Both transitions and every
     uncertified frame retain the ordinary check. Synthetic R8 stays unknown and the owned all-white fallback can
-    certify. This is no timing claim for shadowed frames. The [implementation record](../superpowers/specs/2026-10-19-taa-shadow-visibility-design.md#task-7h-k)
-    links the exactness and lifecycle evidence.
+    certify. This is no timing claim for shadowed frames. The
+    [measurement records](../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-request.md)
+    retain the exactness and lifecycle evidence.
+
+    Certified-versus-check comparisons have their own device rules. Exact hardware and llvmpipe
+    compare every channel exactly. Hardware NVIDIA Direct3D 11 keeps locks, marks, R8 and depth
+    exact and preserves colour/confidence nonfinite classes, reporting finite differences.
+    WARP keeps those same state channels exact but bounds colour and confidence separately by
+    worst absolute difference 0.0625 and differing share 0.0025. TemporalSoftwareCompileDivergenceRule
+    owns that constant pair. These rules do not change production fused/split identity, whose only
+    exception remains the existing llvmpipe colour rule. Saved atlas presence, requested shadow
+    mode and skipped shadow updates cannot certify a frame.
 
     **Capability policy.** Motion plus visibility requires five colour attachments. A device below five keeps the
     four-attachment lit layout and the existing supported fused resolve without visibility evidence. Bilinear PCF

@@ -1,0 +1,11 @@
+# Synthetic home paths exercise redaction, log locations and per-user install detection.
+# Keep these exceptions file-specific so other test and documentation paths remain guarded.
+KhaozEngine.BugReports.Client.Tests/Sections/ClientSectionsTests.cs
+KhaozEngine.BugReports.Tests/Core/BugReportSectionSetTests.cs
+KhaozEngine.Foundation.Tests/Diagnostics/ReportHomeRedactionAllocationTests.cs
+KhaozEngine.Foundation.Tests/Diagnostics/ReportHomeRedactionTests.cs
+KhaozEngine.Foundation.Tests/Diagnostics/ReportRedactorReuseTests.cs
+KhaozEngine.Foundation.Tests/Diagnostics/ReportRedactorTests.cs
+KhaozEngine.Foundation.Tests/Diagnostics/ReporterIdentityRedactionTests.cs
+KhaozEngine.Foundation.Tests/Logging/CrashReportTests.cs
+KhaozEngine.Foundation.Tests/Updates/SystemUpdaterEnvironmentTests.cs

@@ -443,8 +443,8 @@ On a 576-column fixture, degree 12 builds identical graph bits and spends 0.85 t
 which projects to about 8 to 10 times faster on a 12-core machine the bake has to itself. Wall-clock speedups on a
 shared machine follow the CPU share each worker gets, so the 1.7 and 4.6 times first measured under heavy load are not
 the bake's limit. The
-[parallel contact bake cost record](../docs/superpowers/plans/proofs/2026-10-14-parallel-contact-bake-cost.md) has the
-metrics and the [parallel proof slowdown record](../docs/superpowers/plans/proofs/2026-10-14-parallel-proof-slowdown.md)
+[parallel contact bake cost record](../docs/verification/2026-10-14-parallel-contact-bake-cost.md) has the
+metrics and the [parallel proof slowdown record](../docs/verification/2026-10-14-parallel-proof-slowdown.md)
 the CPU-time analysis and the updated Hollowmere extrapolation. Both are local samples, not the hosted cost gate.
 
 ### Labelled support-query capture
@@ -1135,8 +1135,8 @@ publishing a partial graph. Phase 5b ground navigation, KENB format 2 and public
 in 20.39.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles remain deferred
 to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). The frozen v1 fingerprint and legacy bake bytes
 are unchanged. Native G1b and the remaining adoption gates stay open. Local timing in the
-[5a proof](../docs/superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md) and the
-[5b cost record](../docs/superpowers/plans/proofs/2026-10-14-contact-controller-phase5b-cost.md) does not establish the
+[5a proof](../docs/verification/2026-10-13-contact-controller-phase5a-cost.md) and the
+[5b cost record](../docs/verification/2026-10-14-contact-controller-phase5b-cost.md) does not establish the
 hosted cost gate.
 
 `GroundMoveContext.StepExplicit` uses that profile's actual cadence and tuning with the existing

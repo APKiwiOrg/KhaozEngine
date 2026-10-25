@@ -4,7 +4,7 @@ namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>
     /// A scene subsystem that has GPU work of its OWN to submit for the frame, on a command list that is not the
-    /// frame's. <see cref="Scene3D.PrepareFrame"/> runs every preparer once per frame, after the frame's queues are
+    /// frame's. <see cref="Scene3D.PrepareFrame()"/> runs every preparer once per frame, after the frame's queues are
     /// filled and BEFORE the host opens the frame's command list.
     /// <para>
     /// <b>Why the phase exists at all.</b> A command list that opens while another is recording is not a second
@@ -26,7 +26,7 @@ namespace KhaozEngine.Render3D.Rendering
     internal interface IFramePreparer
     {
         /// <summary>Do this frame's pre-recording work. Called once per frame from
-        /// <see cref="Scene3D.PrepareFrame"/>, with no frame command list open, so an implementation may create,
+        /// <see cref="Scene3D.PrepareFrame()"/>, with no frame command list open, so an implementation may create,
         /// submit and drain command lists of its own. Must be cheap (ideally free) on a frame that has nothing to
         /// prepare, since it runs whether or not anything is queued for it.</summary>
         void PrepareFrame(in FramePrepare frame);

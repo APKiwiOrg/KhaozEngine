@@ -147,6 +147,8 @@ namespace KhaozEngine.Tests.Gpu
                 ["Starfield"] = "StarfieldRenderer",
                 ["Water"] = "WaterRenderer",
                 ["WaterClipmap"] = "WaterRenderer",
+                ["WaterTriangle"] = "WaterRenderer",
+                ["WaterClipmapTriangle"] = "WaterRenderer",
 
                 ["PostPalette"] = "PixelPostProcess pal",
                 ["PostEdge"] = "PixelPostProcess edge",
@@ -248,7 +250,7 @@ namespace KhaozEngine.Tests.Gpu
         public void WaterAndClipmap_AppendAtmosphereAfterTheDynamicWaterUniform()
         {
             var elements = VulkanDescriptorLimitTests.ShippedLayouts["Water"].Elements!;
-            Assert.Equal(10, elements.Length);
+            Assert.Equal(12, elements.Length);
             Assert.Equal("Water", elements[6].Name);
             Assert.True(elements[6].Dynamic);
             Declaration[] atmosphere =
@@ -256,8 +258,10 @@ namespace KhaozEngine.Tests.Gpu
                 new(0, 7, GpuResourceKind.UniformBuffer, "Atmosphere"),
                 new(0, 8, GpuResourceKind.TextureReadOnly, "AtmoSkyView"),
                 new(0, 9, GpuResourceKind.Sampler, "AtmoSkySampler"),
+                new(0, 10, GpuResourceKind.TextureReadOnly, "OpticsTex"),
+                new(0, 11, GpuResourceKind.Sampler, "OpticsSamp"),
             ];
-            foreach (var program in ShippedShaderPrograms.GraphicsPrograms().Where(p => p.Name is "Water" or "WaterClipmap"))
+            foreach (var program in ShippedShaderPrograms.GraphicsPrograms().Where(p => p.Name is "Water" or "WaterClipmap" or "WaterTriangle" or "WaterClipmapTriangle"))
                 Assert.Equal(atmosphere, Parse(program.FragmentGlsl).Where(d => d.Set == 0 && d.Binding >= 7).ToArray());
         }
 
@@ -327,7 +331,7 @@ namespace KhaozEngine.Tests.Gpu
                 .ToHashSet(StringComparer.Ordinal);
 
             // Ten certified FullyLit variants cover resolve, debug/count and both split sizes at both precisions.
-            Assert.Equal(121, catalog.Length);
+            Assert.Equal(123, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

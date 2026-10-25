@@ -27,6 +27,23 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   retain their reasons. Ordinary pipelines keep their existing compilation and timestamp configuration.
 - Keep warmed Metal staging accounting allocation-free when native blocks exceed the retention cap,
   preserving capacity, resource counts and native release behavior (Closes #1566).
+- Add per-body water optics. Immutable `WaterOpticsField` and `WaterOpticsTriangleField` resources load through
+  `Scene3D.LoadWaterOpticsField` or `LoadWaterOpticsTriangles`, release through `UnloadWaterOpticsField`, and bind
+  to a `WaterPlane` with `WaterOpticsBinding`. Bound water needs viewport-aware `Scene3D.PrepareFrame(int, int)`
+  before recording, and `TryGetWaterOpticsPadding` reports the padding a look needs. Unsupported surfaces refuse
+  completely with a typed `WaterOpticsSurfaceFailure`, FFT water without a certified displacement envelope refuses
+  as `UncertifiedDisplacement`, and surface error stays within 0.0001 metres. Device recreation means a new scene
+  plus an explicit reload of retained fields. Only frames with bound water freeze their inputs at preparation,
+  so unbound planes are unchanged. Partial for https://github.com/APKiwiOrg/KhaozEngine/issues/1300.
+- Add opt-in TileWorld `TileWaterDepthMode.AuthoredBed`, which needs a scene implementing
+  `ITileWorldWaterTriangleOpticsScene` (`LoadWaterOpticsTriangles`, `UnloadWaterOpticsField` and
+  `TryGetWaterOpticsPadding`). Fields are built from the actual rendered ground mesh. Refusals report a
+  `TileWaterOpticsFailureKind`, including `UncertifiedDisplacement`, and `WaterOpticsSourceBytes` reports retained
+  source bytes. Water at a region edge needs loaded, accepted neighbour ground, and a neighbour that fails to load
+  refuses the water without costing terrain. Default views are unchanged and still collect water lazily at draw.
+- `Render3DPreview` and `Render3DSnapshot` now prepare each frame with their viewport size.
+- Add the `device.water.prepare` renderer perf owner for viewport-path water preparation. Scene target creation
+  on resize and cold frames still has no device owner, filed as https://github.com/APKiwiOrg/KhaozEngine/issues/1569.
 - Land a Contact surface swimmer on a rising bank whatever the sign of its buoyant vertical speed. A body that
   settles on its waterline from below or rises with a wave now takes walkable footing that rises above its feet,
   rather than swimming into the bed until a terrain wall holds it (Closes #1572).
@@ -344,7 +361,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   fewer reads. Support reads build joins only where certification reads them, certify planar contacts on exact
   coordinates, cache mesh triangles in a bounded world form, admit vertical faces with a certified segment test and
   serve an exact repeat inside one lease interval from a memo, with results bit-identical to the reference
-  evaluator. The [phase 2 cost record](docs/superpowers/plans/proofs/2026-10-17-support-cost-option-c-phase2.md)
+  evaluator. The [phase 2 cost record](docs/verification/2026-10-17-support-cost-option-c-phase2.md)
   lists the stairs, crate and pushed seat rows that still miss SG-12.
 
 ## 21.3.0
@@ -417,7 +434,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the contact kernel, faces of one convex leaf join through their shared captured edge, and curved contact
   members stop bisecting once their verdict is certified. Results stay bit-identical to the reference
   evaluator, and the first warm query in a process no longer allocates. The
-  [cost record](docs/superpowers/plans/proofs/2026-10-17-support-cost-option-c.md) lists every ordinary
+  [cost record](docs/verification/2026-10-17-support-cost-option-c.md) lists every ordinary
   scene that still misses its SG-12 limits.
 
 ## 21.1.0
@@ -26924,7 +26941,7 @@ Publish hardening for every consumer game, by default. Two changes, both automat
 - No absolute build-box path in shipped DLLs. `Directory.Build.props` now sets `ContinuousIntegrationBuild=true` for
   Release builds (the configuration `dotnet pack` always runs), turning on deterministic builds + the well-known
   source-root pathmap. The source/PDB path embedded in each shipped DLL's PE debug directory is rewritten to
-  `/_/`-style instead of the packer's home path (e.g. `/Users/antonio/KhaozEngine/...`), which was recoverable via
+  `/_/`-style instead of the packer's home path (e.g. `~/KhaozEngine/...`), which was recoverable via
   `strings` even though PDBs themselves ship only in the never-pushed `.snupkg`. Local Debug builds keep real paths
   for step-into. Respects an explicit `ContinuousIntegrationBuild` override.
 

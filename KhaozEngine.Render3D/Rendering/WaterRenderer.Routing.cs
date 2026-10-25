@@ -47,7 +47,6 @@ namespace KhaozEngine.Render3D.Rendering
                 _routes = new PlaneRoute[capacity];
                 _routeSlots = new int[capacity];
             }
-            bool clipmap = settings.GridMode == WaterGridMode.Clipmap;
             _flatCount = _gridCount = _clipCount = 0;
             LastCulledPlanes = 0;
             for (int i = 0; i < planes.Length; i++)
@@ -58,12 +57,12 @@ namespace KhaozEngine.Render3D.Rendering
                     _routeSlots[i] = -1;
                     LastCulledPlanes++;
                 }
-                else if (UsesFlatQuad(planes[i], settings))
+                else if (GeometryRoute(planes[i], settings) == PlaneRoute.FlatQuad)
                 {
                     _routes[i] = PlaneRoute.FlatQuad;
                     _routeSlots[i] = _flatCount++;
                 }
-                else if (clipmap)
+                else if (GeometryRoute(planes[i], settings) == PlaneRoute.Clipmap)
                 {
                     // The clipmap's slices and their cache are keyed by queue index, so a culled plane keeps its
                     // slice and comes back without a rebuild when nothing it depends on moved.
@@ -94,24 +93,25 @@ namespace KhaozEngine.Render3D.Rendering
             return WaterSwellReach.MayBeVisible(plane, reach, frustum);
         }
 
-        /// <summary>Bind what a route draws through. Called only when the route differs from the previous draw's,
-        /// so a run of flat quads binds its buffers once.</summary>
-        void BindRoute(IGpuCommandList cl, PlaneRoute route)
+        static PlaneRoute GeometryRoute(in WaterPlane plane, WaterSettings settings) => UsesFlatQuad(plane, settings)
+            ? PlaneRoute.FlatQuad : settings.GridMode == WaterGridMode.Clipmap ? PlaneRoute.Clipmap : PlaneRoute.FocusedGrid;
+
+        /// <summary>Bind the geometry and optical capability when either differs from the previous draw.
+        /// Consecutive planes sharing both reuse their pipeline and buffer bindings.</summary>
+        void BindRoute(IGpuCommandList cl, PlaneRoute route, bool triangle)
         {
+            cl.SetPipeline(PreparedWaterPipeline(route, triangle));
             switch (route)
             {
                 case PlaneRoute.FlatQuad:
-                    cl.SetPipeline(_pipe);
                     cl.SetIndexBuffer(_flatIb!, GpuIndexFormat.UInt32);
                     cl.SetVertexBuffer(0, _flatVb!);
                     break;
                 case PlaneRoute.FocusedGrid:
-                    cl.SetPipeline(_pipe);
                     cl.SetIndexBuffer(_ib!, GpuIndexFormat.UInt32);
                     cl.SetVertexBuffer(0, _vb!);
                     break;
                 case PlaneRoute.Clipmap:
-                    cl.SetPipeline(_clipPipe!);
                     cl.SetIndexBuffer(_clipIb!, GpuIndexFormat.UInt32);
                     cl.SetVertexBuffer(0, _clipVb!);
                     break;
@@ -122,16 +122,19 @@ namespace KhaozEngine.Render3D.Rendering
         void DrawRoutedPlanes(IGpuCommandList cl, int planeCount)
         {
             PlaneRoute bound = PlaneRoute.Culled;
+            bool boundTriangle = false;
             for (int i = 0; i < planeCount; i++)
             {
                 PlaneRoute route = _routes[i];
                 if (route == PlaneRoute.Culled) continue;
-                if (route != bound)
+                bool triangle = _opticsPrepared && _preparedPlanes[i].OpticalMode == 2;
+                if (route != bound || triangle != boundTriangle)
                 {
-                    BindRoute(cl, route);
+                    BindRoute(cl, route, triangle);
+                    boundTriangle = triangle;
                     bound = route;
                 }
-                cl.SetGraphicsResourceSet(0, _set!, (uint)i * SlotBytes);
+                cl.SetGraphicsResourceSet(0, _opticsPrepared ? _planeSets[i] : _set!, (uint)i * SlotBytes);
                 switch (route)
                 {
                     case PlaneRoute.FlatQuad:

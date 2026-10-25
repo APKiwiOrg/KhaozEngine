@@ -7,7 +7,7 @@ Revision 3 answers review rounds 1 and 2.
 
 Status: implemented in staged 20.40.0. The provider audit endorses the TileWorld ground samplers, `TileMediumSampler`
 and the TileWorld registration, named by method in the Movement package README. The
-[local cost record](../superpowers/plans/proofs/2026-10-14-parallel-contact-bake-cost.md) holds the PB-5 metrics.
+[local cost record](../verification/2026-10-14-parallel-contact-bake-cost.md) holds the PB-5 metrics.
 
 Erratum: the first parameter of the new `GroundNavigationBake.Create` overload is named `capture`, not `bake`, to
 match the existing three argument overload.

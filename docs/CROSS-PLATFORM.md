@@ -302,6 +302,11 @@ advancing a scene frame or changing the producer's unrecorded-preparation invali
 Production point-shadow callbacks report unavailable transient rows as skipped subtrees before
 point-shadow finish, preserving the frozen order without a fabricated GPU interval.
 
+Cold preparation renders no scene priming frame. The first counted conditioning frame is scene
+frame 1 at driver index 0 and may report active temporal `FirstFrame` history. Later conditioning
+frames require valid history. Fresh measured blocks render their counted negative warm-up indices
+before index 0. Temporal recipes still require valid history on every measured frame.
+
 The existing driver owns every conditioned, warm and measured frame, three-frame completion,
 readback, drift check and publication deadline. Publication elapsed time and estimated cost include
 work-model generation, sidecar serialization and hashing inside the publication clock interval,
@@ -310,7 +315,27 @@ Host telemetry uses `nvidia-smi` outside frame
 brackets at a fixed interval of 64 session-info boundaries. Unsupported fields retain their reasons.
 Runtime identity retains the effective `KE_`, `DOTNET_`, `COMPlus_` and `VK_` environment, excluding
 the per-run `KE_RENDERER_PERF_` paths and tokens. These values and the exact .NET runtime version
-must match the approved manifest. No extra profiler or workload variant is admitted.
+must match the approved manifest. On Linux and Windows x64, the renderer job installs only the exact SDK
+`10.0.402` archive into a fresh `$RUNNER_TEMP/renderer-dotnet` directory. It verifies the archive against
+the pinned SHA-512 from Microsoft's [release metadata](https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json),
+which pairs that SDK with runtime `10.0.13`. The directory is prepended to `PATH`. `DOTNET_ROOT` and
+`DOTNET_ROOT_X64` point there, and `DOTNET_HOST_PATH` names its muxer. Both Release builds, the measured
+testhost and final trusted verification use this isolated installation. The matching
+[SDK resolver](https://github.com/dotnet/runtime/blob/v10.0.13/src/native/corehost/fxr/sdk_resolver.cpp#L109-L142)
+searches only that root without custom `global.json` paths. For .NET 7 and later,
+[framework lookup](https://learn.microsoft.com/en-us/dotnet/core/compatibility/deployment/7.0/multilevel-lookup)
+also uses one installation. The explicit [architecture root](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-environment-variables#dotnet_root-dotnet_rootx86-dotnet_root_x86-dotnet_root_x64)
+keeps Windows apphosts on the same runtime. Before building, an unconditional check requires
+`dotnet --version` to equal `10.0.402` and `dotnet --list-runtimes` to list exactly one
+`Microsoft.NETCore.App`, version `10.0.13`. Exact runtime admission still applies. Its measured step inherits
+`DOTNET_CLI_TELEMETRY_OPTOUT=1`. The SDK's
+[telemetry opt-out](https://github.com/dotnet/sdk/blob/v10.0.402/src/Cli/dotnet/Telemetry/Telemetry.cs#L47-L56)
+returns before creating a session ID, so its
+[MSBuild forwarding](https://github.com/dotnet/sdk/blob/v10.0.402/src/Cli/dotnet/Commands/MSBuild/MSBuildForwardingApp.cs#L78-L80)
+passes no per-invocation `DOTNET_CLI_TELEMETRY_SESSIONID` token. The opt-out itself and deterministic
+host and root entries belong in the approved map. VSTest preserves the supplied
+[`DOTNET_ROOT_<ARCH>`](https://github.com/dotnet/dotnet/blob/3073618cc1ab03586872e1cf3035afd377d66df6/src/vstest/src/Microsoft.TestPlatform.TestHostProvider/Hosting/DotnetTestHostManager.cs#L716-L733).
+No environment key is exempted from exact matching by this correction. No extra profiler or workload variant is admitted.
 
 Success requires exactly one executed, passed test with zero skips in TRX and a nonempty final JSON
 and Markdown pair. The workflow verifies report/2 and `metric-vectors/2`, completed publication, promotion

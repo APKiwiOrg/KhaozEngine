@@ -83,8 +83,7 @@ Run focused CPU contracts and the existing native foliage/point-shadow GPU tests
 `build-slot`. Preserve zero warmed allocations. Review the change independently, then compare direct
 client frame intervals at the same quality and slow view. The 144 FPS target requires direct evidence.
 
-The [implementation plan](../superpowers/plans/2026-10-23-foliage-point-index.md) assigns the code and
-tests. The parent owns final full verification, whole-branch review, main integration, release and released
+The integration owner handles final full verification, whole-branch review, main integration, release and released
 engine adoption. Current-main reconciliation is complete. Version 21.12.2 was subsequently released, so this batch is staged
 for 21.12.3. It ships in 21.13.0, which replaced the untagged 21.12.3. Private diagnostic
 archives never merge into `main`.

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Work in `/Users/antonio/KhaozEngine/.worktrees/private-ground-visibility` on `feature/private-ground-visibility`.
+- Work in `.worktrees/private-ground-visibility` on `feature/private-ground-visibility`.
 - `GroundItemVisibleToSlot == null` preserves every existing snapshot byte and interest result.
 - Filtering is server-only, keyed by authenticated slot and ground net ID, and excludes the entire entity.
 - Do not encode game accounts, item types, or pickup permission into the engine.

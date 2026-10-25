@@ -81,9 +81,7 @@ new API or claim it will make all existing corner fixtures eligible.
 
 ## Draft shared-seam review
 
-Reviewed the complete proposed spec at
-`docs/superpowers/specs/2026-10-07-capsule-feature-correspondence-design.md` in the owning low-lip
-worktree, SHA-256 `93ea3b111e55d3daae10f686cf0d3eb072a116516833e01b529838c70e66e0de`.
+Reviewed the complete proposed capsule feature correspondence specification, SHA-256 `93ea3b111e55d3daae10f686cf0d3eb072a116516833e01b529838c70e66e0de`.
 This is a bounded lifetime/selection compatibility review, not numerical verification or API approval.
 
 The optional feature query is compatible in direction. It neither replaces existing lease signatures

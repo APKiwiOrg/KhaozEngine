@@ -594,16 +594,14 @@
       "failed": 0,
       "skipped": 0,
       "exitCode": 0,
-      "invocations": 1,
-      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-8-fix-2-default-required.log"
+      "invocations": 1
     },
     "ContactLifetimeAllocationTests": {
       "passed": 7,
       "failed": 0,
       "skipped": 0,
       "exitCode": 0,
-      "invocations": 1,
-      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-8-fix-2-default-lifetime.log"
+      "invocations": 1
     },
     "defaultRuntimeRedBeforeFixtureFix": {
       "passed": 1,
@@ -611,8 +609,7 @@
       "exitCode": 1,
       "expectedBytes": 312,
       "actualBytes": 952,
-      "fixtureWitnessComparisonBytes": 640,
-      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-8-fix-2-default-red.log"
+      "fixtureWitnessComparisonBytes": 640
     }
   },
   "historicalFixRound1Verification": {

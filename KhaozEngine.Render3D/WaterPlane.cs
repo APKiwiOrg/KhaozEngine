@@ -24,8 +24,9 @@ namespace KhaozEngine.Render3D
     /// The LOOK comes from <see cref="PixelPostProcessSettings.Water"/>, which is the scene-wide default rather
     /// than the only option: pass a <see cref="WaterLook"/> and this plane draws with those overrides instead,
     /// leaving every other queued plane on the scene's look. That is what lets a still lake and an FFT sea share a
-    /// frame. Anything backing a once-per-frame GPU resource (the sea state's bake, the depth field) or selecting
-    /// the pass's geometry (the grid group) stays scene-wide, so it is not on <see cref="WaterLook"/> at all.
+    /// frame. Shared FFT resources (the sea state's bake and bathymetry) and the pass's geometry (the grid group)
+    /// stay scene-wide, so they are not on <see cref="WaterLook"/>. Per-body optical fields use <see cref="Optics"/>
+    /// independently of the look.
     /// </para>
     /// </remarks>
     public readonly struct WaterPlane
@@ -46,12 +47,15 @@ namespace KhaozEngine.Render3D
         /// nullable, so a look states only what differs from the scene.</summary>
         public WaterLook? Look { get; }
 
+        /// <summary>This body's optional immutable bed field and absolute mapping. Default keeps legacy scene depth.</summary>
+        public WaterOpticsBinding Optics { get; }
+
         /// <summary>Build a water plane request. <paramref name="halfExtentZ"/> defaults to
         /// <paramref name="halfExtentX"/> (a square footprint) when omitted/negative. <paramref name="look"/>
         /// defaults to <c>null</c>, i.e. the scene-wide look, so every call site written before per-plane looks
-        /// existed means exactly what it always did.</summary>
+        /// existed means exactly what it always did. <paramref name="optics"/> defaults to legacy scene depth.</summary>
         public WaterPlane(float centerX, float surfaceY, float centerZ, float halfExtentX, float halfExtentZ = -1f,
-            WaterLook? look = null)
+            WaterLook? look = null, WaterOpticsBinding optics = default)
         {
             CenterX = centerX;
             SurfaceY = surfaceY;
@@ -59,6 +63,11 @@ namespace KhaozEngine.Render3D
             HalfExtentX = halfExtentX;
             HalfExtentZ = halfExtentZ >= 0f ? halfExtentZ : halfExtentX;
             Look = look;
+            Optics = optics;
         }
+
+        /// <summary>Replace only the optical binding, preserving this plane's geometry and look.</summary>
+        public WaterPlane WithOptics(WaterOpticsBinding optics) =>
+            new(CenterX, SurfaceY, CenterZ, HalfExtentX, HalfExtentZ, Look, optics);
     }
 }

@@ -9,7 +9,7 @@ namespace KhaozEngine.Game
     /// <summary>
     /// A <see cref="GameApp"/> that also stands up a 3D scene: it builds a <see cref="Render3DSurface"/> bound to
     /// the window, and drives the 3D pass across the frame's two phases - <c>Scene.Begin()</c> ->
-    /// <see cref="OnDraw3D"/> -> <c>Scene.PrepareFrame()</c> in <see cref="GameApp.OnPrepareWorld"/>, then the
+    /// <see cref="OnDraw3D"/> -> <c>Scene.PrepareFrame(width, height)</c> in <see cref="GameApp.OnPrepareWorld"/>, then the
     /// compose in <see cref="GameApp.OnRenderWorld"/>, before the 2D HUD pass. A 3D game subclasses this instead of
     /// <see cref="GameApp"/> and overrides <see cref="OnDraw3D"/>; a 2D game uses <see cref="GameApp"/> and pulls
     /// no 3D renderer.
@@ -60,8 +60,9 @@ namespace KhaozEngine.Game
 
         /// <summary>
         /// The scene half of the frame's PRE-RECORD phase: begin the scene, let the game queue its draws, then run
-        /// <see cref="Scene3D.PrepareFrame"/> - all while the window's frame command list is still closed, which is
-        /// the whole point (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/429">#429</see>). The scene's
+        /// <see cref="Scene3D.PrepareFrame(int, int)"/> with the frame's viewport - all while the window's frame
+        /// command list is still closed, which is the whole point
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/429">#429</see>). The scene's
         /// per-pass timing flag is decided here too, so <see cref="OnDraw3D"/> and the passes it feeds see one value
         /// for the frame.
         /// </summary>
@@ -70,30 +71,33 @@ namespace KhaozEngine.Game
             DiagnosticsHud? hud = Diagnostics;
             if (DesiredEnableTiming(hud) is { } enableTiming) _surface3D.Scene.EnableTiming = enableTiming;
 
-            PrepareScene(_surface3D.Scene, _drawWorld);
+            PrepareScene(_surface3D.Scene, _drawWorld, frame.Width, frame.Height);
         }
 
         /// <summary>
         /// The frame's scene contract in one place: <see cref="Scene3D.Begin"/>, then the queue fill, then
-        /// <see cref="Scene3D.PrepareFrame"/>. It runs where no command list is open, so a producer that must submit
-        /// and drain a list of its own (the FFT ocean's priming pass) does it here rather than nested inside the
-        /// frame's recording, which is a device fault on Direct3D11 in immediate-context mode (#423).
+        /// <see cref="Scene3D.PrepareFrame(int, int)"/> for a positive viewport, or the legacy
+        /// <see cref="Scene3D.PrepareFrame()"/> when none is given. It runs where no command list is open, so a
+        /// producer that must submit and drain a list of its own (the FFT ocean's priming pass) does it here rather
+        /// than nested inside the frame's recording, which is a device fault on Direct3D11 in immediate-context mode
+        /// (#423).
         /// <para>
         /// Static and scene-parameterized so the ORDER is assertable headless, the way
         /// <see cref="DesiredEnableTiming"/> makes the timing decision assertable: the loop around it still needs a
         /// real window.
         /// </para>
         /// </summary>
-        internal static void PrepareScene(Scene3D scene, Action<Scene3D> drawWorld)
+        internal static void PrepareScene(Scene3D scene, Action<Scene3D> drawWorld, int viewportWidth = 0, int viewportHeight = 0)
         {
             scene.Begin();
             drawWorld(scene);
-            scene.PrepareFrame();
+            if (viewportWidth > 0 && viewportHeight > 0) scene.PrepareFrame(viewportWidth, viewportHeight);
+            else scene.PrepareFrame();
         }
 
         /// <summary>Records the 3D pass each frame before the 2D batch, into the frame's command list. The scene was
         /// begun, queued and prepared in <see cref="OnPrepareWorld"/>, so <see cref="Render3DSurface.Render"/>'s own
-        /// <see cref="Scene3D.PrepareFrame"/> call finds the frame already prepared and no-ops. Couples the scene's
+        /// <see cref="Scene3D.PrepareFrame()"/> call finds the frame already prepared and no-ops. Couples the scene's
         /// per-pass timing to the HUD: the resulting per-pass milliseconds are fed into the HUD's rolling meter after
         /// the render (the flag itself was set in the prepare phase).</summary>
         protected override void OnRenderWorld(Frame frame)

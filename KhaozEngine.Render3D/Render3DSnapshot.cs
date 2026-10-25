@@ -23,7 +23,9 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Render a multi-instance scene offscreen and return the final RGBA8 image, its dimensions, and the
-        /// backend reported by the device that rendered it.
+        /// backend reported by the device that rendered it. Each frame is prepared at the capture size with
+        /// <see cref="Scene3D.PrepareFrame(int,int)"/> after <paramref name="drawFrame"/>, so bound optical water
+        /// needs no preparation in the callback.
         /// </summary>
         public static Render3DCapture CaptureWithBackend(int width, int height, Action<Scene3D> setup,
             Action<Scene3D> drawFrame, int frames = 1, ShadowSettings? shadows = null)

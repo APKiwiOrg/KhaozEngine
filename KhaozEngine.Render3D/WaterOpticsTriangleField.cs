@@ -81,8 +81,8 @@ public sealed class WaterOpticsTriangleField
 
     /// <summary>Upward-rounded bound consumed by local mapping, interpolation and shared-boundary depth
     /// discontinuity, in metres. Every sample whose exact local query point lies in a certified rectangle is within
-    /// it of each drawn triangle containing the query, whichever owns a boundary. Producers must include this value with source conversion and render-origin costs in
-    /// their total error budget.</summary>
+    /// it of each drawn triangle containing the query, whichever owns a boundary. Producers must include this value
+    /// with source conversion and render-origin costs in their total error budget.</summary>
     public float ReconstructionErrorBoundMetres { get; }
 
     /// <summary>Owned padded float payload plus rectangle payload bytes, excluding object headers.</summary>

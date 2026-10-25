@@ -30,7 +30,7 @@ Render3D, with no TileWorld or MapDoc dependency:
 | `Scene3D.LoadWaterOpticsTriangles`, `Scene3D.UnloadWaterOpticsField` | Scene-owned `WaterOpticsHandle` and deferred retirement. |
 | `WaterOpticsBinding(handle, origin, size)`, `WaterPlane.Optics` | Per-submission mapping and opt-in. |
 | `Scene3D.GetWaterOpticsPadding(look)` | Certified procedural displacement for preflight. FFT is refused. |
-| `Scene3D.TryGetWaterOpticsPadding(look, out padding, out reason)` | Non-throwing preflight. False with `UncertifiedDisplacement` for FFT. `reason` is meaningful only on false. |
+| `Scene3D.TryGetWaterOpticsPadding(look, out padding, out reason)` | Non-throwing preflight. False with `UncertifiedDisplacement` for FFT or a non-finite swell. `reason` is meaningful only on false. |
 | `Scene3D.PrepareFrame(width, height)` | Required before recording any bound water. |
 | `Scene3D.WaterOpticsStats` | Live and retired texture and retained CPU bytes through actual retirement. |
 
@@ -56,53 +56,56 @@ Each prepared bounded-water owner carries five things together, and publishes or
 
 1. **Handle.** The `WaterOpticsHandle` from `LoadWaterOpticsTriangles` on the scene that draws the body. It is
    generation checked and valid only in that scene. Release it with `UnloadWaterOpticsField` when the last
-   prepared owner leaves. The texture outlives the call until in-flight frames retire. A new scene or device
-   needs the retained CPU field loaded again, never the old handle.
+   prepared owner leaves. The texture outlives the call until in-flight frames retire. A new scene or device needs
+   the retained CPU field loaded again, never the old handle.
 2. **Local mapping.** Origin XZ is the field minimum. Origin Y is the datum the rest depths are stored against,
    and the shader's `max(0, restDepth + displacedY - referenceY)` takes it as the reference. A native producer
-   must choose a datum from which every bed height subtracts exactly in binary32, because a rounded subtraction
-   can move a vertex off a collinear neighbour edge and the exact agreement proof then refuses the surface as
-   `AmbiguousSurface`. The TileWorld producer is the precedent: it uses the exact datum 0, storing `q = -y` per
-   vertex, and keys its fields and diagnostics by the water level, which stays on the plane. Size equals the
-   field `Size`. The binding lives in the same frame as the submitted
-   `WaterPlane`, and Scene3D subtracts its render origin from both. After the native renderer reduces body
-   coordinates to its anchor, the field origin must still reduce exactly or within budget under the scene's
-   render origin. The default quantized render origin is a `WorldFrame` anchor, a multiple of `WorldFrame.Grid`
-   with magnitude at most 2^22 m. An explicit off-grid `Scene3D.RenderOrigin` override is not a grid multiple. It
-   rounds the reduced origin like all other submitted geometry and is outside the certificate, so the producer
-   either charges that case or records it as unsupported. Changing the water surface level does not move the
-   datum. Only a rebuilt generation or a deliberate re-anchor of the whole body does.
+   must choose a datum from which every bed height subtracts exactly in binary32. A rounded subtraction can move a
+   vertex off a collinear neighbour edge. The field then charges that seam's depth discontinuity to
+   `ReconstructionErrorBoundMetres`, and refuses as `AmbiguousSurface` when the total exceeds 0.0001 m. The
+   TileWorld producer is the precedent: it uses the exact datum 0, storing `q = -y` per vertex, and keys its
+   fields and diagnostics by the water level, which stays on the plane. Size equals the field `Size`. The binding
+   lives in the same frame as the submitted `WaterPlane`, and Scene3D subtracts its render origin from both. After
+   the native renderer reduces body coordinates to its anchor, the field origin must still reduce exactly or
+   within budget under the scene's render origin. The default quantized render origin is a `WorldFrame` anchor, a
+   multiple of `WorldFrame.Grid` with magnitude at most 2^22 m. An explicit off-grid `Scene3D.RenderOrigin`
+   override is not a grid multiple. It rounds the reduced origin like all other submitted geometry and is outside
+   the certificate, so the producer either charges that case or records it as unsupported. Changing the water
+   surface level does not move the datum. Only a rebuilt generation or a deliberate re-anchor of the whole body
+   does.
 3. **Coverage witness.** The certificate list, the drawable domain it was built for after original-domain
    clipping, and the padding used. Each submitted rectangle, widened by the padding from
    `TryGetWaterOpticsPadding` or `GetWaterOpticsPadding` and outward mapping error, must fit one certificate.
    Larger swell, a changed domain or a changed look envelope invalidates the witness. Render3D admission accepts
-   `WaterPlane` rectangles. A native surface submitted through another path needs an equivalent Render3D
-   admission with the same one-certificate rule before it can bind a field. That admission is part of the open
-   R8b work.
+   `WaterPlane` rectangles. A native surface submitted through another path needs an equivalent Render3D admission
+   with the same one-certificate rule before it can bind a field. That admission is part of the open R8b work.
 4. **Byte charges.** `TextureBytes` for the padded GPU atlas and `RetainedBytes` for the owned CPU atlas and
    certificates count against the owner's residency budget from load until actual retirement, matching
    `WaterOpticsStats`. Retained source payloads used to build or revalidate the field count separately, as
    TileWorld reports through `WaterOpticsSourceBytes`. No charge may claim opaque driver overhead or managed
    headers.
 5. **Source digest.** The field identity is the body's compiled `Digest` plus the identities of every bed surface
-   generation it consumed, the anchor and the padding. A change to any of them prepares a replacement against
-   one candidate source table, uploads it, validates again and swaps geometry and field together. An upload
-   failure rolls the group back. A colour-only look change reuses the field.
+   generation it consumed, the anchor and the padding. A change to any of them prepares a replacement against one
+   candidate source table, uploads it, validates again and swaps geometry and field together. An upload failure
+   rolls the group back. A colour-only look change reuses the field.
 
 ## Error budget and refusals
 
 The producer owns one positional budget covering source conversion, anchor and render-origin conversion and the
-field's upward-rounded `ReconstructionErrorBoundMetres`. TileWorld uses `min(0.0001 m, TileSize / 1024)` and
-snaps binding origins to whole metres below 2^23 m. Reduction by the default quantized render origin or any 128 m
-`WorldFrame` anchor is then exact and costs nothing. Its datum 0 makes depth conversion exact as well. An
-explicit off-grid render origin override is outside that certificate. R8b selects and records its own bound
-before acceptance. It does not receive a second independent allowance.
+field's upward-rounded `ReconstructionErrorBoundMetres`. TileWorld uses `min(0.0001 m, TileSize / 1024)` and snaps
+binding origins to whole metres below 2^23 m. Reduction by the default quantized render origin or any 128 m
+`WorldFrame` anchor is then exact and costs nothing. Its datum 0 makes depth conversion exact as well. The
+certified bound then scales with absolute vertex height rather than depth, about 3.8e-5 m at 300 m in the
+[amendment's altitude measurement](WATER-OPTICS-TRIANGLE-AMENDMENT-2026-10-24.md#sampling-edges-and-precision). An
+explicit off-grid render origin override is outside that certificate. R8b selects and records its own bound before
+acceptance. It does not receive a second independent allowance.
 
 Map each typed `Reason` to a native diagnostic naming the body, domain and source. Keep the new generation
 unpublished. A previous generation stays visible only while its geometry and sources remain valid. No opted-in
 fragment falls back to scene depth, zero, deep water or a nearest triangle. Bound FFT water stays refused until it
-has a certified displacement envelope. `Scene3D.TryGetWaterOpticsPadding` reports that refusal as
-`UncertifiedDisplacement` without throwing, which is how TileWorld withdraws its water and keeps terrain.
+has a certified displacement envelope. `Scene3D.TryGetWaterOpticsPadding` reports that refusal, and a non-finite
+swell, as `UncertifiedDisplacement` without throwing, which is how TileWorld withdraws its water and keeps
+terrain.
 
 ## Acceptance still owed
 

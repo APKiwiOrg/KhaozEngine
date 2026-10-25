@@ -5664,15 +5664,16 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     scene.DrawWater(new WaterPlane(0f, 9.7f, 0f, 6f, 3f, calm, optics));
     scene.PrepareFrame(width, height);
     ```
-    `DrawWater` refuses a bound plane whose rectangle, widened by the effective procedural swell displacement, leaves
-    the field or, for a triangle field, does not fit one certificate. `scene.GetWaterOpticsPadding(look)` returns
-    that displacement for preflight and throws `NotSupportedException` for FFT. The non-throwing
-    `scene.TryGetWaterOpticsPadding(look, out float padding, out WaterOpticsSurfaceFailure reason)` returns false
-    with zero padding and `UncertifiedDisplacement` instead, and `reason` is meaningful only on false. Bound FFT
-    water throws `NotSupportedException` at `DrawWater` because FFT has no certified displacement envelope. A stale, foreign or released handle throws. No opted-in pixel falls back to scene depth,
-    zero or deep water. With an active render origin the scene subtracts the frame origin from the binding origin
-    in the same way as it does from the plane, so rebasing changes the mapping, never the samples, and no large
-    absolute coordinate reaches texture arithmetic.
+    `DrawWater` refuses a bound plane whose rectangle, widened by the effective procedural swell displacement,
+    leaves the field or, for a triangle field, does not fit one certificate. `scene.GetWaterOpticsPadding(look)`
+    returns that displacement for preflight. It throws `NotSupportedException` for FFT and `ArgumentException` for a
+    swell whose inputs or reach are not finite. The non-throwing `scene.TryGetWaterOpticsPadding(look, out float
+    padding, out WaterOpticsSurfaceFailure reason)` returns false with zero padding and `UncertifiedDisplacement` in
+    both cases, and `reason` is meaningful only on false. Bound FFT water throws `NotSupportedException` at
+    `DrawWater` because FFT has no certified displacement envelope. A stale, foreign or released handle throws. No
+    opted-in pixel falls back to scene depth, zero or deep water. With an active render origin the scene subtracts
+    the frame origin from the binding origin in the same way as it does from the plane, so rebasing changes the
+    mapping, never the samples, and no large absolute coordinate reaches texture arithmetic.
 
     Bound water requires `scene.PrepareFrame(width, height)` after queueing and before recording. The no-argument
     form throws for it. Changes to prepared inputs, the viewport or the render targets after preparation throw at

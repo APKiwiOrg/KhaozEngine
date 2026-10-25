@@ -138,23 +138,34 @@ field. Subtracting from a water level such as rim minus 0.02 m would round that 
 the field would charge that seam to its error bound. The water level stays on the plane and keys field
 sharing per reference level and domain, as well as refusal diagnostics.
 
+With datum 0 the rest depth is the absolute vertex height, so the certified arithmetic bound scales
+with absolute height, not with water depth. Binary32 rounding near height `|y|` is about `|y|` times
+2^-23. `TileWaterOpticsAltitudeTests` raises sloped corner cuts and a 2 m per metre bank to plus and
+minus 300 m. The worst certified bound is about 3.8e-5 m against the 1e-4 m budget, and off-grid
+samples against the binary64 drawn-mesh oracle err by at most 2.86e-5 m, so those fields publish with
+about 6.2e-5 m of headroom. The mapping term still grows with the steepest triangle's slope times the
+field extent. A very steep, wide field near the plus or minus 327.68 m short-centimetre height limit
+can exceed the budget and refuse as `UnrepresentableSurface`. No headless fixture pins that edge,
+because it is not ordinary content.
+
 Canonicalize encoded vertices exactly. Collinear edge segments, including long/short T junctions,
 share one supporting-line record with lexicographically ordered extreme source endpoints. Exact
 predicate fallbacks during preparation may use BCL BigInteger over binary32 dyadic values. Do not
 weld near vertices, expand triangles with an epsilon, or move source geometry. Positive-area overlaps of
 distinct planes are refused as `AmbiguousSurface` at any depth difference, rather than resolved by order.
 
-Shared segments and points whose XZ geometry coincides but whose depths differ are certified instead. Feather
-subdivisions placed in binary32 on an uncut neighbour's sloping long edge are the motivating case, up to
-2.61e-8 m off the line. Depths are linear along a shared segment, so its exact largest jump is reached at a
-clipped endpoint. For each bin the constructor sums the largest jump of every discontinuous supporting line and
-also takes the largest point-only jump. The largest bin total is charged to `ReconstructionErrorBoundMetres`.
-A query and its mapped point share one expanded bin. Moved into the interiors of their triangles, the straight
-segment between them avoids every vertex and crosses each supporting line at most once, so the bin total bounds
-every jump it crosses. Closed predicates and the first ordinal still settle boundary ownership. For every query
-whose exact local point lies in a certified rectangle, the owner is then within the bound of every drawn triangle
-containing the query. A continuous bed is charged nothing. A total
-above 0.0001 m with sampler error refuses as `AmbiguousSurface`. The mesher, terrain topology and LOD are unchanged.
+Shared segments and points whose XZ geometry coincides but whose depths differ are certified instead.
+Feather subdivisions placed in binary32 on an uncut neighbour's sloping long edge are the motivating
+case, up to 2.61e-8 m off the line. Depths are linear along a shared segment, so its exact largest jump
+is reached at a clipped endpoint. For each bin the constructor sums the largest jump of every
+discontinuous supporting line and also takes the largest point-only jump. The largest bin total is
+charged to `ReconstructionErrorBoundMetres`. A query and its mapped point share one expanded bin. Moved
+into the interiors of their triangles, the straight segment between them avoids every vertex and crosses
+each supporting line at most once, so the bin total bounds every jump it crosses. Closed predicates and
+the first ordinal still settle boundary ownership. For every query whose exact local point lies in a
+certified rectangle, the owner is then within the bound of every drawn triangle containing the query. A
+continuous bed is charged nothing. A total above 0.0001 m with sampler error refuses as
+`AmbiguousSurface`. The mesher, terrain topology and LOD are unchanged.
 
 CPU and shader arithmetic and operation ordering must be explicit and independently tested. Canonical
 lines alone are not proof of numerical correctness at multi-edge vertices. Implement an error-bounded
@@ -168,8 +179,9 @@ The triangle producer must certify a conservative 0.0001 m reconstruction-error 
 unrepresentable conditioning. This is not an excuse to reject ordinary 2 m, 30 m and 100 m fields.
 
 `ReconstructionErrorBoundMetres` is the least binary32 upper bound on the constructor's exact rational
-arithmetic, local-mapping and shared-boundary discontinuity bound. The producer adds source conversion and render-origin costs to
-this consumed value within the same 0.0001 m total. It does not receive another independent budget.
+arithmetic, local-mapping and shared-boundary discontinuity bound. The producer adds source conversion
+and render-origin costs to this consumed value within the same 0.0001 m total. It does not receive
+another independent budget.
 
 The scene sampler implements the ordered binary32 operations with integer significands, guard,
 round and sticky bits, including nearest-even restoring division. Exact canonical-line containment

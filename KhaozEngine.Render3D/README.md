@@ -863,37 +863,37 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     producer with steep drops must sample densely enough that one cell of softening is acceptable.
   - **Triangle field**: `WaterOpticsTriangleField(size, binColumns, binRows, triangles, certifiedRectangles)` over
     `WaterOpticsTriangle` vertices in local metres, ordered X, signed rest depth, Z, loaded with
-    `Scene3D.LoadWaterOpticsTriangles`. Pass the actual rendered triangles, for example `GltfMesh.Indices32`
-    over its `Vertices` positions, without clipping or welding them. Each world vertex `(x, y, z)` becomes
-    `(x - origin.X, reference - y, z - origin.Z)`, where `origin` is the binding origin and `reference` its Y,
-    so the middle component is the signed rest depth. The constructor proves that the projected triangles
-    cover every `WaterOpticsRectangle` certificate with no hole and no disagreeing overlap, then packs one
-    R32Float atlas. Bin axes range from 1 through 1024, atlas texture axes from 2 through `MaxDimension` (1024),
-    and a bin holds at most `MaxTrianglesPerBin` (32) candidates. The shader selects the containing triangle with
-    exact integer predicates and interpolates its three depths. Refusals throw `WaterOpticsSurfaceException`,
-    an `ArgumentException` whose `Reason` is `IncompleteCoverage`, `AmbiguousSurface`, `CapacityExceeded` or
-    `UnrepresentableSurface`. The appended `UncertifiedDisplacement` reason is reported by the padding preflight
-    below, not by the constructor. Map the typed reason rather than the message. `TrySampleDepth` returns false
-    outside every certificate and `SampleDepth` throws there. No sample value means missing data. Upload also
-    refuses nonzero subnormal atlas scalars and non-normal inverse extents as `UnrepresentableSurface` before
-    allocating a texture. `ReconstructionErrorBoundMetres` is the field's upward-rounded reconstruction bound,
-    which a producer counts with its own source and render-origin conversion error inside its single budget.
-    It also includes the measured depth discontinuity of coincident shared edges and T junctions. Positive-area
-    disagreement still refuses as `AmbiguousSurface`.
-  - **Binding and coverage**: `WaterOpticsBinding(handle, origin, size)` uses the plane's absolute frame. Origin
-    XZ is the field minimum. Origin Y is the reference the rest depths are measured from, the still-water surface
-    or any datum the producer subtracts exactly. TileWorld binds datum 0 and stores `-y`. A triangle binding
-    requires the field's
-    exact `Size`. `DrawWater` refuses a bound plane whose rectangle, widened by the effective procedural swell
-    displacement, leaves the field or, for triangles, does not fit one certificate. `Scene3D.GetWaterOpticsPadding`
-    reports that displacement for producer preflight and throws `NotSupportedException` for FFT water, because FFT
-    has no certified displacement envelope. `Scene3D.TryGetWaterOpticsPadding(look, out padding, out reason)` is
-    the non-throwing form. It returns false with zero padding and `UncertifiedDisplacement` for such a look, and
-    `reason` is meaningful only when it returns false. Bound FFT water throws `NotSupportedException` at
-    `DrawWater`. A stale, foreign or released handle throws. No bound fragment falls
-    back to scene depth, zero or deep water. With an active render origin the scene subtracts the frame origin
-    from the binding origin as it does from the plane centre, so texture mapping never carries large absolute
-    world coordinates and rebasing changes the mapping, not the samples.
+    `Scene3D.LoadWaterOpticsTriangles`. Pass the actual rendered triangles, for example `GltfMesh.Indices32` over
+    its `Vertices` positions, without clipping or welding them. Each world vertex `(x, y, z)` becomes `(x -
+    origin.X, reference - y, z - origin.Z)`, where `origin` is the binding origin and `reference` its Y, so the
+    middle component is the signed rest depth. The constructor proves that the projected triangles cover every
+    `WaterOpticsRectangle` certificate with no hole and no disagreeing overlap, then packs one R32Float atlas. Bin
+    axes range from 1 through 1024, atlas texture axes from 2 through `MaxDimension` (1024), and a bin holds at most
+    `MaxTrianglesPerBin` (32) candidates. The shader selects the containing triangle with exact integer predicates
+    and interpolates its three depths. Refusals throw `WaterOpticsSurfaceException`, an `ArgumentException` whose
+    `Reason` is `IncompleteCoverage`, `AmbiguousSurface`, `CapacityExceeded` or `UnrepresentableSurface`. The
+    appended `UncertifiedDisplacement` reason is reported by the padding preflight below, not by the constructor.
+    Map the typed reason rather than the message. `TrySampleDepth` returns false outside every certificate and
+    `SampleDepth` throws there. No sample value means missing data. Upload also refuses nonzero subnormal atlas
+    scalars and non-normal inverse extents as `UnrepresentableSurface` before allocating a texture.
+    `ReconstructionErrorBoundMetres` is the field's upward-rounded reconstruction bound, which a producer counts
+    with its own source and render-origin conversion error inside its single budget. It also includes the measured
+    depth discontinuity of coincident shared edges and T junctions. Positive-area disagreement still refuses as
+    `AmbiguousSurface`.
+  - **Binding and coverage**: `WaterOpticsBinding(handle, origin, size)` uses the plane's absolute frame. Origin XZ
+    is the field minimum. Origin Y is the reference the rest depths are measured from, the still-water surface or
+    any datum the producer subtracts exactly. TileWorld binds datum 0 and stores `-y`. A triangle binding requires
+    the field's exact `Size`. `DrawWater` refuses a bound plane whose rectangle, widened by the effective procedural
+    swell displacement, leaves the field or, for triangles, does not fit one certificate.
+    `Scene3D.GetWaterOpticsPadding` reports that displacement for producer preflight and throws
+    `NotSupportedException` for FFT water, because FFT has no certified displacement envelope.
+    `Scene3D.TryGetWaterOpticsPadding(look, out padding, out reason)` is the non-throwing form. It returns false
+    with zero padding and `UncertifiedDisplacement` for FFT water and for a swell whose inputs or reach are not
+    finite, where `GetWaterOpticsPadding` throws `ArgumentException`, and `reason` is meaningful only when it
+    returns false. Bound FFT water throws `NotSupportedException` at `DrawWater`. A stale, foreign or released
+    handle throws. No bound fragment falls back to scene depth, zero or deep water. With an active render origin the
+    scene subtracts the frame origin from the binding origin as it does from the plane centre, so texture mapping
+    never carries large absolute world coordinates and rebasing changes the mapping, not the samples.
   - **Preparation**: queue every plane, then call `Scene3D.PrepareFrame(width, height)` with the viewport size
     before opening the frame's command list. `GameApp3D` forwards its frame size automatically. The no-argument
     `PrepareFrame()` remains the legacy form and throws when bound water is queued. A changed viewport, target or

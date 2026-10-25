@@ -122,8 +122,15 @@ internal sealed class TileWaterTopologyCapture
         Backend = backend,
         Device = device,
         Error = Error?.ToString(),
-        Failures = Failures.Select(f => new { Kind = f.Kind.ToString(), f.Region, f.ReferenceSurfaceY,
-            Domain = f.Domain?.ToString(), f.BinColumns, f.BinRows }).ToArray(),
+        Failures = Failures.Select(f => new
+        {
+            Kind = f.Kind.ToString(),
+            f.Region,
+            f.ReferenceSurfaceY,
+            Domain = f.Domain?.ToString(),
+            f.BinColumns,
+            f.BinRows
+        }).ToArray(),
         ExpectedFields,
         LiveFieldDelta,
         UploadDelta,

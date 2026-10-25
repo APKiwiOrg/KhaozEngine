@@ -457,7 +457,8 @@ public class TileWaterOpticsTests
         doc.SetCornerHeightCm(64, 11, 0, 300);
         var sources = new Dictionary<RegionCoord, TileGroundSurfaceSnapshot>
         {
-            [default] = Surface(doc, default), [new RegionCoord(1, 0)] = Surface(doc, new RegionCoord(1, 0)),
+            [default] = Surface(doc, default),
+            [new RegionCoord(1, 0)] = Surface(doc, new RegionCoord(1, 0)),
         };
         TileWaterTriangleBuild west = Single(Prepare(doc, default, 1f, sources, Plane(doc, 61, 9, 3, 3, 5f)));
         TileWaterTriangleBuild east = Single(Prepare(doc, new RegionCoord(1, 0), 1f, sources, Plane(doc, 64, 9, 3, 3, 5f)));

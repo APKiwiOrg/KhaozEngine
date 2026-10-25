@@ -304,9 +304,17 @@ public sealed class WaterOpticsGoldenTests(WaterOpticsProofScene fixture) : ICla
         Dictionary<string, float> sliceMatch = Measure(rebased, sliceReference, slice);
         Dictionary<string, float> flipped = Measure(flippedRow, sliceReference, slice);
         Dictionary<string, float> rowError = Measure(wrongRow, sliceReference, slice);
-        WriteMetrics("rebase-sampling", new { Distances = distances, WrongMappingHalfMetreX = mappingX,
-            WrongMappingHalfMetreZ = mappingZ, DepthPlusTenCentimetres = depth, SliceReference = sliceMatch,
-            FlippedRowZMinusHalf = flipped, RowErrorZZero = rowError, Maximum = Allowance });
+        WriteMetrics("rebase-sampling", new
+        {
+            Distances = distances,
+            WrongMappingHalfMetreX = mappingX,
+            WrongMappingHalfMetreZ = mappingZ,
+            DepthPlusTenCentimetres = depth,
+            SliceReference = sliceMatch,
+            FlippedRowZMinusHalf = flipped,
+            RowErrorZZero = rowError,
+            Maximum = Allowance
+        });
         AssertWithin(distances, "Rebased bank");
         AssertWithin(sliceMatch, "Rebased bank against its z = 0.5 slice");
         Assert.True(flipped["shore-surface"] > Allowance,
@@ -375,7 +383,10 @@ public sealed class WaterOpticsGoldenTests(WaterOpticsProofScene fixture) : ICla
             WriteMetrics("maximum-field", new
             {
                 Backend = GoldenCompare.GoldenBackendToken(KhaozEngine.Gpu.GpuBackendSelector.Select()),
-                Size = size, BedReference = reference, LatticeControl = control, Maximum = Allowance,
+                Size = size,
+                BedReference = reference,
+                LatticeControl = control,
+                Maximum = Allowance,
                 TextureBytes = loaded.LiveTextureBytes - before.LiveTextureBytes,
                 Uploads = loaded.UploadCount - before.UploadCount
             });

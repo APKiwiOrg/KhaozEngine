@@ -56,8 +56,12 @@ public sealed class TileWorldWaterOpticsSaddleGpuTests
             scene.Post.AmbientColor = Color.White;
             var look = new WaterLook
             {
-                WaveSource = WaterWaveSource.Procedural, SwellAmplitude = 0f,
-                NormalStrength = 0f, ShoreFadeDistance = 0.20f, FoamStrength = 0f, GlintStrength = 0f,
+                WaveSource = WaterWaveSource.Procedural,
+                SwellAmplitude = 0f,
+                NormalStrength = 0f,
+                ShoreFadeDistance = 0.20f,
+                FoamStrength = 0f,
+                GlintStrength = 0f,
             };
             var adapter = new Scene3DTileWorldScene(scene);
             authored = new TileWorldView(adapter, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver(),

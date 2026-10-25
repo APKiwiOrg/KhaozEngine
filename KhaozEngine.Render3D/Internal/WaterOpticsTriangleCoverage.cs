@@ -31,16 +31,16 @@ internal static class WaterOpticsTriangleCoverage
             var lines = new Dictionary<Line, R>();
             R point = 0;
             for (int i = 0; i < bin.Count; i++)
-            for (int j = i + 1; j < bin.Count; j++)
-            {
-                int a = bin[i], b = bin[j];
-                long key = ((long)a << 32) | (uint)b;
-                if (!contacts.TryGetValue(key, out Contact contact))
-                    contacts.Add(key, contact = Measure(triangles[a], triangles[b]));
-                if (contact.Jump.Sign == 0) continue;
-                if (contact.Support is not Line line) point = R.Max(point, contact.Jump);
-                else lines[line] = lines.TryGetValue(line, out R largest) ? R.Max(largest, contact.Jump) : contact.Jump;
-            }
+                for (int j = i + 1; j < bin.Count; j++)
+                {
+                    int a = bin[i], b = bin[j];
+                    long key = ((long)a << 32) | (uint)b;
+                    if (!contacts.TryGetValue(key, out Contact contact))
+                        contacts.Add(key, contact = Measure(triangles[a], triangles[b]));
+                    if (contact.Jump.Sign == 0) continue;
+                    if (contact.Support is not Line line) point = R.Max(point, contact.Jump);
+                    else lines[line] = lines.TryGetValue(line, out R largest) ? R.Max(largest, contact.Jump) : contact.Jump;
+                }
             R sum = 0;
             foreach (R largest in lines.Values) sum += largest;
             charge = R.Max(charge, R.Max(sum, point));

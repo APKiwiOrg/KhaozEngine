@@ -106,7 +106,9 @@ public sealed class TileWorldViewWaterOpticsTriangleTests
         new(scene, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver(), options ?? Authored(),
             new TileWorldBuildQueueOptions
             {
-                MaxConcurrentBuilds = 8, MaxFullGroundAppliesPerPump = 8, MaxCoarseGroundAppliesPerPump = 8,
+                MaxConcurrentBuilds = 8,
+                MaxFullGroundAppliesPerPump = 8,
+                MaxCoarseGroundAppliesPerPump = 8,
             }, dispatcher, witness is null ? null : witness.Record);
 
     static WaterPlane[] Water(TileWorldView view, RecordingTileWorldScene scene)

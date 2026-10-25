@@ -64,18 +64,24 @@ public sealed class TileWorldWaterTopologyScene : IDisposable
         Configure(c);
         var look = new WaterLook
         {
-            WaveSource = WaterWaveSource.Procedural, SwellAmplitude = 0f,
-            NormalStrength = 0f, ShoreFadeDistance = 0.20f, FoamStrength = 0f, GlintStrength = 0f,
+            WaveSource = WaterWaveSource.Procedural,
+            SwellAmplitude = 0f,
+            NormalStrength = 0f,
+            ShoreFadeDistance = 0.20f,
+            FoamStrength = 0f,
+            GlintStrength = 0f,
         };
         var recorder = new TileWorldWaterTopologyRecorder(new Scene3DTileWorldScene(scene));
         var authoredOptions = new TileWorldViewOptions
         {
-            WaterDepthMode = TileWaterDepthMode.AuthoredBed, WaterLook = look,
+            WaterDepthMode = TileWaterDepthMode.AuthoredBed,
+            WaterLook = look,
             Mesher = new TileGroundMesherOptions { JitterAmplitude = c.JitterAmplitude },
         };
         var legacyOptions = new TileWorldViewOptions
         {
-            WaterLook = look, Mesher = new TileGroundMesherOptions { JitterAmplitude = c.JitterAmplitude },
+            WaterLook = look,
+            Mesher = new TileGroundMesherOptions { JitterAmplitude = c.JitterAmplitude },
         };
         TileWorldView? authored = null, legacy = null;
         var extra = new List<WaterOpticsHandle>();
@@ -292,7 +298,9 @@ public sealed class TileWorldWaterTopologyScene : IDisposable
         var view = new TileWorldView(target, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver(), options,
             new TileWorldBuildQueueOptions
             {
-                MaxConcurrentBuilds = 8, MaxFullGroundAppliesPerPump = 8, MaxCoarseGroundAppliesPerPump = 8,
+                MaxConcurrentBuilds = 8,
+                MaxFullGroundAppliesPerPump = 8,
+                MaxCoarseGroundAppliesPerPump = 8,
             }, dispatcher);
         foreach ((RegionCoord region, TileRegionResidencyState? residency) in c.Loads)
         {
@@ -353,8 +361,13 @@ public sealed class TileWorldWaterTopologyScene : IDisposable
         {
             Metrics = result.Metrics(Backend, DeviceName),
             ContactSheetOrder = order.Where(result.Images.ContainsKey).ToArray(),
-        }, new JsonSerializerOptions { WriteIndented = true, IncludeFields = true, NumberHandling =
-            System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals }));
+        }, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            IncludeFields = true,
+            NumberHandling =
+            System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals
+        }));
     }
 
     internal void WriteSheet(string name, IReadOnlyList<WaterOpticsImage> images)

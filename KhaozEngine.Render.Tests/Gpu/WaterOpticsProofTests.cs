@@ -81,8 +81,11 @@ public sealed class WaterOpticsProofTests : IClassFixture<WaterOpticsProofScene>
         float[] b = GoldenCompare.Downsample(fresh.Rgba, fresh.Width, fresh.Height);
         float worst = 0f;
         for (int i = 0; i < a.Length; i++) worst = MathF.Max(worst, MathF.Abs(a[i] - b[i]));
-        WriteMetrics("aged-fresh", new { WorstGridChannelDifference = worst,
-            Tolerance = GoldenCompare.InSessionTolerance });
+        WriteMetrics("aged-fresh", new
+        {
+            WorstGridChannelDifference = worst,
+            Tolerance = GoldenCompare.InSessionTolerance
+        });
         Assert.True(worst <= GoldenCompare.InSessionTolerance,
             $"Aged/fresh grid difference {worst:F6} exceeds {GoldenCompare.InSessionTolerance:F6}.");
     }
@@ -115,8 +118,10 @@ public sealed class WaterOpticsProofTests : IClassFixture<WaterOpticsProofScene>
         WriteMetrics("stacked-isolation", new
         {
             LowerPixel = new[] { point.X, point.Y },
-            FirstRow = cy - 2, LastRow = cy + 2,
-            ChangedLowerChannels = changed, UpperSampleDifference = upperDifference
+            FirstRow = cy - 2,
+            LastRow = cy + 2,
+            ChangedLowerChannels = changed,
+            UpperSampleDifference = upperDifference
         });
         Assert.True(upperDifference > 0.08f,
             "The upper probe must respond to upper water being switched off, so isolation is not vacuous.");
@@ -146,12 +151,16 @@ public sealed class WaterOpticsProofTests : IClassFixture<WaterOpticsProofScene>
         if (string.IsNullOrWhiteSpace(directory)) return;
         Directory.CreateDirectory(directory);
         PngWriter.Save(Path.Combine(directory, name + ".png"), image.Rgba, image.Width, image.Height);
-        WriteMetrics(name, new { image.Width, image.Height,
+        WriteMetrics(name, new
+        {
+            image.Width,
+            image.Height,
             Samples = System.Linq.Enumerable.ToDictionary(image.Samples, p => p.Key, p => new
             {
                 Pixel = new[] { p.Value.X, p.Value.Y },
                 Rgb = new[] { image.Sample(p.Key).X, image.Sample(p.Key).Y, image.Sample(p.Key).Z }
-            }) });
+            })
+        });
     }
 
     internal static void WriteMetrics<T>(string name, T metrics)

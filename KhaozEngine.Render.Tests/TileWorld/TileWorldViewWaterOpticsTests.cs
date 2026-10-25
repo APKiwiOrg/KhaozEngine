@@ -476,7 +476,8 @@ public sealed class TileWorldViewWaterOpticsTests
         using var view = new TileWorldView(scene, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver(),
             Authored(), new TileWorldBuildQueueOptions
             {
-                MaxConcurrentBuilds = 8, MaxFullGroundAppliesPerPump = 8,
+                MaxConcurrentBuilds = 8,
+                MaxFullGroundAppliesPerPump = 8,
             }, dispatcher);
         view.LoadRegion(Origin, TileRegionResidencyState.Gameplay);
         view.Draw(Focus);

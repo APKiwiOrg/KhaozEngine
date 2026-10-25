@@ -39,8 +39,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `ITileWorldWaterTriangleOpticsScene` (`LoadWaterOpticsTriangles`, `UnloadWaterOpticsField` and
   `TryGetWaterOpticsPadding`). Fields are built from the actual rendered ground mesh. Refusals report a
   `TileWaterOpticsFailureKind`, including `UncertifiedDisplacement`, and `WaterOpticsSourceBytes` reports retained
-  source bytes. Water at a region edge needs loaded, accepted neighbour ground, and a neighbour that fails to load
+  source bytes. Water shared with a known neighbour needs loaded, accepted neighbour ground, and a neighbour that fails to load
   refuses the water without costing terrain. Default views are unchanged and still collect water lazily at draw.
+- Fixed authored optical beds at world manifest edges by continuing the consumed ground beyond the boundary.
+  Known-unloaded neighbours and missing edge ground still refuse, and a newly known region invalidates the
+  continuation (Closes #1586).
 - `Render3DPreview` and `Render3DSnapshot` now prepare each frame with their viewport size.
 - Add the `device.water.prepare` renderer perf owner for viewport-path water preparation. Scene target creation
   on resize and cold frames still has no device owner, filed as https://github.com/APKiwiOrg/KhaozEngine/issues/1569.

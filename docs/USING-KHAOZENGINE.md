@@ -12883,7 +12883,9 @@ them. An overlay in a water material gets no surface (a fraction of a tile has n
 still lands on the bed, which is what an editor click wants.
 
 By default this water reads scene depth. `TileWorldViewOptions.WaterDepthMode = TileWaterDepthMode.AuthoredBed`
-binds each body to its actual rendered bed instead, with the strict contract in the
+binds each body to its actual rendered bed instead. Beyond the world manifest only, its certified bed continues
+the clamped ground at the edge. A known-unloaded neighbour still refuses, and empty edge ground supplies no bed
+to continue. The strict contract is in the
 [TileWorld authored optical beds reference](../KhaozEngine.TileWorld.Render3D/README.md#authored-optical-beds).
 
 For a player-facing ground click, use the view's visible-surface picker instead:

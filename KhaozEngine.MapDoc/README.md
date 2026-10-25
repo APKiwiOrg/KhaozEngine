@@ -1446,6 +1446,9 @@ and replacement storage together. Failed reservations change no byte counters. A
 separate from current workspace and retained bytes. Reads, source UTF-8 work, faces, scopes and selected
 resources keep their cumulative work or count semantics. Child plan views share this same ledger and
 include reused context and selected decoded input, without duplicating global ownership.
+Water footprint reads release their consumed bound and index scratch on return. Accumulated region
+polygons and closed contours transfer their admitted storage into the body collector before each append,
+remain charged through region emission, then settle into the compiled body's escaping inventory.
 Query capacity results preserve the declared limit, demand and allowance. `IndexNodesVisited` counts rejected siblings.
 Capacity refusals retain a typed `MapSceneCapacity` in the source or scoped result, with `LimitName`,
 `Requested` and `Allowance`. Byte demand is current eligible live inventory plus the attempted reservation.

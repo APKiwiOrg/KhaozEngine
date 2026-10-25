@@ -46,6 +46,7 @@ internal sealed class MapWaterRegionBuilder
     readonly MapWideRational _level;
     readonly MapRefinementLimits _reads;
     readonly MapWaterWorkMeter _meter;
+    readonly MapWaterRegionStorage _storage = new();
     readonly SortedDictionary<string, SpaceRegions> _spaces = new(StringComparer.Ordinal);
     readonly Dictionary<string, MapOccupiedFragment> _fragments = new(StringComparer.Ordinal);
     readonly Dictionary<string, MapWaterFragmentBounds> _bounds = new(StringComparer.Ordinal);
@@ -96,18 +97,18 @@ internal sealed class MapWaterRegionBuilder
                     var high = wet.Select(p => MapWideRational.Min(_level, occupied.Top(p) ?? _level)).Aggregate(MapWideRational.Max);
                     var bounds = MapWaterOccupiedPieces.Bounds(wet, low, high);
                     _bounds[fragment.Id] = new(fragment, _bounds.TryGetValue(fragment.Id, out var old) ? old.Bounds.Union(bounds) : bounds);
-                    if (occupied.Top(wet[0]) is null) regions[MapWaterRegionKind.FreeSurface].Add(wet);
+                    if (occupied.Top(wet[0]) is null) _storage.Polygons(regions[MapWaterRegionKind.FreeSurface], new[] { wet });
                     else
                     {
                         _meter.Pairs.Charge(1);
                         var lifted = wet.Select(p => occupied.Lift(p, true)).ToArray();
                         var (free, closed) = MapWaterPolygons.SplitAtHeight(lifted, _level);
-                        regions[MapWaterRegionKind.FreeSurface].AddRange(free.Select(Flatten));
-                        regions[MapWaterRegionKind.Closed].AddRange(closed.Select(Flatten));
+                        _storage.Polygons(regions[MapWaterRegionKind.FreeSurface], free.Select(Flatten));
+                        _storage.Polygons(regions[MapWaterRegionKind.Closed], closed.Select(Flatten));
                         if (closed.Count == 0)
                         {
                             var ties = lifted.Where(p => p.Y.CompareTo(_level) == 0).Select(p => p.Xz).Order().ToArray();
-                            if (ties.Length != 0) ClosedContours.Add(new(occupied.SpaceId, fragment.Id, ties[0], ties[^1]));
+                            if (ties.Length != 0) _storage.Append(ClosedContours, new(occupied.SpaceId, fragment.Id, ties[0], ties[^1]));
                         }
                     }
                 }
@@ -130,8 +131,8 @@ internal sealed class MapWaterRegionBuilder
             upper = Read(rect, rect.Upper, windowMin, windowMax, upper: true);
             if (!Usable(upper)) return Failure(upper);
         }
-        // Face indexes and clipping scratch are consumed here. Region storage is covered by the
-        // body's domain and footprint reservations, then settled when its triangles are published.
+        // Read outputs, indexes and clipping scratch end here. Appended polygons and contours
+        // transfer their share of this envelope into the body collector before this scope closes.
         preparation?.Reserve(checked(512L + 1280L * (lower.Faces.Count + (upper?.Faces.Count ?? 0))));
         Cells lowerCells = Index(lower), upperCells = upper is null ? Cells.Open : Index(upper);
         MapWideXz rectMin = MapWideXz.From(rect.Min), rectMax = MapWideXz.From(rect.Max);
@@ -220,7 +221,7 @@ internal sealed class MapWaterRegionBuilder
                 {
                     MapWideXz[] ties = lifted.Where(p => p.Y.CompareTo(_level) == 0).Select(p => p.Xz)
                         .OrderBy(p => p.X).ThenBy(p => p.Z).ToArray();
-                    if (ties.Length != 0) ClosedContours.Add(new(spaceId, Narrow(ties[0]), Narrow(ties[^1])));
+                    if (ties.Length != 0) _storage.Append(ClosedContours, new(spaceId, Narrow(ties[0]), Narrow(ties[^1])));
                 }
                 free.AddRange(above.Select(Flatten));
                 closed.AddRange(rest.Select(Flatten));
@@ -229,10 +230,10 @@ internal sealed class MapWaterRegionBuilder
         // Area both bounds left unread counts once, as the upper bound's.
         IReadOnlyList<IReadOnlyList<MapWideXz>> lowerOnly = Without(lowerGaps, upperGaps);
         SpaceRegions regions = Regions(spaceId);
-        regions[MapWaterRegionKind.FreeSurface].AddRange(Without(free, lowerOnly));
-        regions[MapWaterRegionKind.Closed].AddRange(Without(closed, lowerOnly));
-        regions[MapWaterRegionKind.Unresolved].AddRange(upperGaps);
-        regions[MapWaterRegionKind.Unresolved].AddRange(lowerOnly);
+        _storage.Polygons(regions[MapWaterRegionKind.FreeSurface], Without(free, lowerOnly));
+        _storage.Polygons(regions[MapWaterRegionKind.Closed], Without(closed, lowerOnly));
+        _storage.Polygons(regions[MapWaterRegionKind.Unresolved], upperGaps);
+        _storage.Polygons(regions[MapWaterRegionKind.Unresolved], lowerOnly);
         if (upperGaps.Count + lowerOnly.Count != 0) Unresolved ??= gap ?? $"unresolved bound area in space '{spaceId}'";
     }
 
@@ -325,7 +326,11 @@ internal sealed class MapWaterRegionBuilder
 
     SpaceRegions Regions(string spaceId)
     {
-        if (!_spaces.TryGetValue(spaceId, out SpaceRegions? regions)) _spaces.Add(spaceId, regions = new SpaceRegions());
+        if (!_spaces.TryGetValue(spaceId, out SpaceRegions? regions))
+        {
+            _storage.Reserve(256);
+            _spaces.Add(spaceId, regions = new SpaceRegions());
+        }
         return regions;
     }
 

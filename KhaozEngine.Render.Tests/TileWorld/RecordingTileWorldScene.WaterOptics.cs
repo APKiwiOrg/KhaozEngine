@@ -8,27 +8,17 @@ public sealed partial class RecordingTileWorldScene
 {
     readonly Guid _opticsOwner = Guid.NewGuid();
     int _opticsIndex;
-    public Dictionary<WaterOpticsHandle, WaterOpticsField> OpticalFields { get; } = new();
-    public List<WaterOpticsHandle> OpticalLoads { get; } = new();
-    /// <summary>Live triangle fields, recorded apart from bilinear fields.</summary>
+    /// <summary>Live triangle fields, the only kind the TileWorld optics capability can upload.</summary>
     public Dictionary<WaterOpticsHandle, WaterOpticsTriangleField> TriangleFields { get; } = new();
     public List<WaterOpticsHandle> TriangleLoads { get; } = new();
     public List<WaterOpticsHandle> OpticalUnloads { get; } = new();
     public float OpticalPadding { get; set; }
-    /// <summary>One-based ordinal across both field kinds whose upload throws, uploading nothing.</summary>
+    /// <summary>One-based upload ordinal that throws, uploading nothing.</summary>
     public int ThrowOnOpticalLoad { get; set; }
     /// <summary>One-based ordinal, counted like <see cref="ThrowOnOpticalLoad"/>, whose upload the backend refuses
     /// with <see cref="WaterOpticsSurfaceException"/> before allocating.</summary>
     public int RefuseSurfaceOnOpticalLoad { get; set; }
     public Action? BeforeOpticalLoad { get; set; }
-
-    public WaterOpticsHandle LoadWaterOpticsField(WaterOpticsField field)
-    {
-        WaterOpticsHandle handle = NextOpticalHandle();
-        OpticalFields.Add(handle, field);
-        OpticalLoads.Add(handle);
-        return handle;
-    }
 
     public WaterOpticsHandle LoadWaterOpticsTriangles(WaterOpticsTriangleField field)
     {
@@ -41,7 +31,7 @@ public sealed partial class RecordingTileWorldScene
     WaterOpticsHandle NextOpticalHandle()
     {
         BeforeOpticalLoad?.Invoke();
-        int ordinal = OpticalLoads.Count + TriangleLoads.Count + 1;
+        int ordinal = TriangleLoads.Count + 1;
         if (ordinal == ThrowOnOpticalLoad) throw new InvalidOperationException("Refused optical upload.");
         if (ordinal == RefuseSurfaceOnOpticalLoad)
             throw new WaterOpticsSurfaceException(WaterOpticsSurfaceFailure.UnrepresentableSurface,
@@ -51,12 +41,10 @@ public sealed partial class RecordingTileWorldScene
 
     public void UnloadWaterOpticsField(WaterOpticsHandle handle)
     {
-        if (!OpticalFields.Remove(handle) && !TriangleFields.Remove(handle))
+        if (!TriangleFields.Remove(handle))
             throw new ArgumentException("Stale optical handle.", nameof(handle));
         OpticalUnloads.Add(handle);
     }
-
-    public float GetWaterOpticsPadding(WaterLook? look = null) => OpticalPadding;
 
     /// <summary>Refuses an FFT look like the shipped scene. This fake has no scene default, so only the look counts.</summary>
     public bool TryGetWaterOpticsPadding(WaterLook? look, out float padding, out WaterOpticsSurfaceFailure reason)

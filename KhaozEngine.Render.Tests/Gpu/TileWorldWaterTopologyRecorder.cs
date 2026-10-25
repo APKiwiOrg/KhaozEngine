@@ -104,8 +104,6 @@ internal sealed class TileWorldWaterTopologyRecorder : ITileWorldScene, ITileWor
         float dissolve, bool dissolveComplement, bool cutInsideInteriors) =>
         _inner.DrawMeshOutlineDissolved(group, handle, world, dissolve, dissolveComplement, cutInsideInteriors);
 
-    public WaterOpticsHandle LoadWaterOpticsField(WaterOpticsField field) => _optics.LoadWaterOpticsField(field);
-
     public WaterOpticsHandle LoadWaterOpticsTriangles(WaterOpticsTriangleField field)
     {
         WaterOpticsHandle handle = _optics.LoadWaterOpticsTriangles(field);
@@ -119,8 +117,6 @@ internal sealed class TileWorldWaterTopologyRecorder : ITileWorldScene, ITileWor
         Fields.Remove(handle);
         _optics.UnloadWaterOpticsField(handle);
     }
-
-    public float GetWaterOpticsPadding(WaterLook? look = null) => _optics.GetWaterOpticsPadding(look);
 
     public bool TryGetWaterOpticsPadding(WaterLook? look, out float padding, out WaterOpticsSurfaceFailure reason) =>
         _optics.TryGetWaterOpticsPadding(look, out padding, out reason);

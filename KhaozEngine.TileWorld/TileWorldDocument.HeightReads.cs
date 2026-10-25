@@ -16,7 +16,7 @@ public sealed partial class TileWorldDocument
     /// <param name="inspectedCount">Number of unique coordinates inspected, including absent regions.</param>
     /// <param name="value">Resolved metres, owner and source plane. A derived plane reports plane zero.</param>
     /// <param name="missingRegion">The blocking unloaded candidate, or the primary owner when none resolves.</param>
-    public bool TryReadCornerHeight(int x, int z, int plane, Span<RegionCoord> inspectedRegions,
+    internal bool TryReadCornerHeight(int x, int z, int plane, Span<RegionCoord> inspectedRegions,
         out int inspectedCount, out TileCornerHeightRead value, out RegionCoord missingRegion)
     {
         RequirePlane(plane);

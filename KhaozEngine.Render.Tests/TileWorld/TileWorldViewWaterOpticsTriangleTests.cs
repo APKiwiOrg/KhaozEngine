@@ -146,7 +146,6 @@ public sealed class TileWorldViewWaterOpticsTriangleTests
         using var view = View(scene, Interior());
         view.LoadRegion(Origin);
         Assert.Single(scene.TriangleLoads);
-        Assert.Empty(scene.OpticalLoads);
         Assert.Empty(scene.WaterDraws);
         WaterPlane plane = Assert.Single(Water(view, scene));
         Assert.Equal(OracleDepth(view, plane, 11f, -11f, Origin), FieldDepth(scene, plane, 11f, -11f), 4);
@@ -162,7 +161,6 @@ public sealed class TileWorldViewWaterOpticsTriangleTests
         view.Draw(Focus);
         Assert.False(Assert.Single(Water(view, scene)).Optics.IsBound);
         Assert.Empty(scene.TriangleLoads);
-        Assert.Empty(scene.OpticalLoads);
         Assert.Null(view.AcceptedGroundSurface(Origin, 0));
         Assert.Equal(0, view.WaterRegistry.EpochCount);
         Assert.Equal(new TileWaterOpticsSourceBytes(0, 0), view.WaterOpticsSourceBytes);
@@ -621,7 +619,8 @@ public sealed class TileWorldViewWaterOpticsTriangleTests
         Assert.Empty(scene.TriangleFields);
     }
 
-    sealed class BilinearOnlyScene : ITileWorldScene, ITileWorldWaterOpticsScene
+    // Bilinear upload alone is not the capability. The view needs ITileWorldWaterTriangleOpticsScene.
+    sealed class BilinearOnlyScene : ITileWorldScene
     {
         public int Uploads { get; private set; }
         public int OpticalUploads { get; private set; }
@@ -638,6 +637,5 @@ public sealed class TileWorldViewWaterOpticsTriangleTests
             return new WaterOpticsHandle(Guid.NewGuid(), 0, 1);
         }
         public void UnloadWaterOpticsField(WaterOpticsHandle handle) { }
-        public float GetWaterOpticsPadding(WaterLook? look = null) => 0f;
     }
 }

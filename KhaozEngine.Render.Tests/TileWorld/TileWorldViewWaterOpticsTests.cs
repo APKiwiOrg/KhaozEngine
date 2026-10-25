@@ -83,7 +83,6 @@ public sealed class TileWorldViewWaterOpticsTests
         using var view = View(scene, World());
         view.LoadRegion(Origin);
         Assert.Single(scene.TriangleLoads);
-        Assert.Empty(scene.OpticalLoads);
         Assert.Empty(scene.WaterDraws);
         WaterPlane[] planes = Water(view, scene);
         Assert.Equal(2, planes.Length);

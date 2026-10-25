@@ -437,17 +437,11 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene, I
     public void DrawWater(in WaterPlane plane) => _scene.DrawWater(plane);
 
     /// <inheritdoc />
-    public WaterOpticsHandle LoadWaterOpticsField(WaterOpticsField field) => _scene.LoadWaterOpticsField(field);
-
-    /// <inheritdoc />
     public WaterOpticsHandle LoadWaterOpticsTriangles(WaterOpticsTriangleField field) =>
         _scene.LoadWaterOpticsTriangles(field);
 
     /// <inheritdoc />
     public void UnloadWaterOpticsField(WaterOpticsHandle handle) => _scene.UnloadWaterOpticsField(handle);
-
-    /// <inheritdoc />
-    public float GetWaterOpticsPadding(WaterLook? look = null) => _scene.GetWaterOpticsPadding(look);
 
     /// <inheritdoc />
     public bool TryGetWaterOpticsPadding(WaterLook? look, out float padding, out WaterOpticsSurfaceFailure reason) =>

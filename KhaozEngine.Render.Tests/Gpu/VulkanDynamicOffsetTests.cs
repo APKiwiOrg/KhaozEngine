@@ -56,7 +56,7 @@ namespace KhaozEngine.Tests.Gpu
             // Includes atmosphere producers, target outlines, the point-skinned caster header,
             // split resolves, the foliage cascade block, GpuScaledCopy, interior cut and its rigid cascade frame.
             // Certified temporal resolve and accumulation add two compact layouts.
-            Assert.Equal(67, shapes.Count);
+            Assert.Equal(68, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

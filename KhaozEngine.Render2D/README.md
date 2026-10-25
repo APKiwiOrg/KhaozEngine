@@ -10,24 +10,28 @@ flushes are safe. Calling it before `Begin` or after `End` throws `InvalidOperat
 
 2D rendering through the engine-owned `KhaozEngine.Gpu` abstraction, with `System.Numerics` math.
 
-- `SpriteBatch` - batched textured quads, alpha blend + tint, submission-ordered runs (consecutive same
-  -texture draws coalesce into one draw call, and interleaved textures split into separate runs so painter's order
-  across textures is preserved). `Begin` overloads for screen / `Camera2D` (world) / `IDesignViewport` (design)
+- `SpriteBatch` - batched textured quads, alpha blend + tint, submission-ordered runs (consecutive draws with
+  the same binding and blend key coalesce into one draw call, and different keys split runs so painter's order
+  is preserved). `DrawMasked` adds independent source and alpha-mask regions, flat tint or a vertical RGBA
+  gradient. `Begin` overloads for screen / `Camera2D` (world) / `IDesignViewport` (design)
   space, each with an optional `SamplerMode` (`Linear` / `Point`) and an optional `Matrix4x4` model transform
   (tilt/scale a composed group as one). `SetScissor`/`ClearScissor` DPI-aware clipping, which NESTS: an inner
   clip is intersected with whatever is already active and its `ClearScissor` restores that outer region rather
   than the whole framebuffer (`ScissorDepth` reports how many are active). `GroupByTexture` (opt-in,
-  off by default, reset by every `Begin`) groups queued quads by texture at flush regardless of submission
-  order, trading strict painter's order for fewer draw calls when interleaved same-texture draws would
-  otherwise split into separate runs - order stays intact WITHIN a texture group, so only enable it for a pass
-  whose correctness does not depend on cross-texture draw order. Quad corners are emitted in the batch's
+  off by default, reset by every `Begin`) groups queued quads by the complete run key at flush regardless of
+  submission order. Ordinary keys distinguish source texture and blend. Masked keys distinguish source texture,
+  source sampler, mask texture, mask sampler and blend. Order stays intact within a key, so only enable grouping
+  when correctness does not depend on order between keys. Quad corners are emitted in the batch's
   authoring space and transformed to clip space by the vertex shader (the `Begin`'s clip-corrected
   view-projection rides in a per-`Begin` uniform buffer), so there is no per-corner CPU `Vector4.Transform` -
   the transform is a single GPU multiply per vertex instead of four CPU transforms per quad. `FrameStats`
   exposes always-on per-frame draw counters (quads, draw calls, flushes, texture switches, vertex-upload bytes
   as a `Primitives.RenderFrameStats`), reset each `NewFrame` and read after the frame's draws. The batch caches one
-  resource set per `(texture, sampler)` and evicts the ones unused for 600 frames, so a game that streams sprites
-  does not accumulate one set per texture ever drawn. **That sweep never stalls the frame thread** (since 17.37.0):
+  ordinary resource set per `(texture, sampler)`, aged by source texture use. Masked sets are cached and aged
+  independently per `(source, source sampler, mask, mask sampler)` tuple, shared across blend modes. Entries
+  unused for 600 frames are evicted, including both masked grouping keys, so using a source with a new mask
+  does not retain its old masks. `TextureSwitches` counts source texture transitions, including the first bind.
+  A mask-only switch can add a draw without changing that counter. **That sweep never stalls the frame thread** (since 17.37.0):
   evicted sets, and the buffers a grow replaces, go to a `Gpu.GpuRetireQueue` and are destroyed a few frame
   boundaries later instead of behind the `WaitForIdle` the eviction path used to take every time anything aged out
   ([#84](https://github.com/APKiwiOrg/KhaozEngine/issues/84)). Eligibility is unchanged, only the disposal moved.
@@ -218,6 +222,43 @@ world/camera space, screen space, or a transformed pass leaves `DeviceScale` at 
 a no-op there. Inside a point-space pass `SpriteBatch` also snaps each text block's origin (its ascent baseline)
 to device pixels - once per `DrawString` or `DrawStringRuns` call, not per glyph - so text drawn with a `DpiFont` is crisp AND every glyph
 of a word stays on one baseline (snapping each glyph independently used to wave the baseline at fractional scales).
+
+## `SpriteBatch.DrawMasked`
+
+The six overloads accept either `(x, y, width, height)` as a `Vector4` or a typed `Rect`. Region arguments are
+independent normalized `(u0, v0, u1, v1)` endpoints, not origin and size. Either region can be reversed to flip
+that input. The short forms use `(0, 0, 1, 1)` for both regions.
+
+```csharp
+void DrawMasked(Texture2D tex, Vector4 destRect, Vector4 srcUV, Texture2D mask,
+    Vector4 maskUV, Color color, SamplerMode maskSampler = SamplerMode.Linear);
+void DrawMasked(Texture2D tex, Vector4 destRect, Vector4 srcUV, Texture2D mask,
+    Vector4 maskUV, Color top, Color bottom, SamplerMode maskSampler = SamplerMode.Linear);
+void DrawMasked(Texture2D tex, Vector4 destRect, Texture2D mask, Color color,
+    SamplerMode maskSampler = SamplerMode.Linear);
+void DrawMasked(Texture2D tex, Rect destRect, Vector4 srcUV, Texture2D mask,
+    Vector4 maskUV, Color color, SamplerMode maskSampler = SamplerMode.Linear);
+void DrawMasked(Texture2D tex, Rect destRect, Vector4 srcUV, Texture2D mask,
+    Vector4 maskUV, Color top, Color bottom, SamplerMode maskSampler = SamplerMode.Linear);
+void DrawMasked(Texture2D tex, Rect destRect, Texture2D mask, Color color,
+    SamplerMode maskSampler = SamplerMode.Linear);
+```
+
+The source uses the active `Begin` sampler. The mask sampler defaults to `Linear` independently, even in a
+`Point` source pass. Source and tint use straight alpha. The gradient interpolates all four tint channels
+vertically, including alpha. Mask RGB is ignored. Mask alpha multiplies tinted source alpha once before the
+existing Alpha or Additive blend equation. Linear filtering needs authored alpha and padded atlas gutters.
+Clamp addresses the full texture, so a region does not isolate adjacent atlas cells.
+
+The caller owns both textures and keeps their handles alive until queued GPU work completes. Sampleable,
+same-device render targets can be used as source or mask directly after their producer work completes, with
+no copy or readback. Resolve MSAA inputs to a sampleable single-sample texture first. Sampling an attachment
+while rendering into it is unsupported feedback. The batch owns only its binding sets and pipelines.
+
+Masked pipelines are created lazily on first masked use. Ordinary draws keep their existing shader pair,
+two-resource texture/sampler binding, 64-byte vertices and 384 uploaded bytes per quad. Masked draws reuse
+that vertex format, run builder, flush buffers and view-projection slots. Run dispatch and lazy-owner
+bookkeeping add CPU work without adding mask sampling or bindings to ordinary draws.
 
 ## `SpriteBatch.DrawQuad`
 

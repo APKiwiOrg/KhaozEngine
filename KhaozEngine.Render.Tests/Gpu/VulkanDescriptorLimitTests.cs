@@ -66,6 +66,7 @@ namespace KhaozEngine.Tests.Gpu
                 // Render2D/SpriteBatch.cs:190 and :194. The UBO is at SET 1, which is why "set 0 first" is false
                 // in shipped code and why the pipeline grouping below is the load-bearing half of this table.
                 ["SpriteBatch.texture"] = L(T("Tex"), S("Samp")),
+                ["SpriteBatch.maskedTexture"] = L(T("Tex"), S("Samp"), T("Mask"), S("MaskSamp")),
                 ["SpriteBatch.vp"] = L(U("Vp", V, dynamic: true)),
 
                 // Gpu/GpuScaledCopy.cs, the frame capture downscale. Fragment-stage, no uniform buffer.
@@ -243,6 +244,7 @@ namespace KhaozEngine.Tests.Gpu
         [
             // Render2D/SpriteBatch.cs:214, both the alpha and the additive pipeline through one Describe(blend).
             ("SpriteBatch", ["SpriteBatch.texture", "SpriteBatch.vp"]),
+            ("SpriteBatch masked", ["SpriteBatch.maskedTexture", "SpriteBatch.vp"]),
 
             // Gpu/GpuScaledCopy.cs, the frame capture downscale.
             ("GpuScaledCopy", ["GpuScaledCopy"]),
@@ -341,8 +343,8 @@ namespace KhaozEngine.Tests.Gpu
             // The atmosphere producers add three dense layouts and pipeline rows. GpuScaledCopy adds one of each.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
             // Certified resolve and accumulation add two compact layouts and four pipeline shapes.
-            Assert.Equal(67, ShippedLayouts.Count);
-            Assert.Equal(74, ShippedPipelines.Count);
+            Assert.Equal(68, ShippedLayouts.Count);
+            Assert.Equal(75, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

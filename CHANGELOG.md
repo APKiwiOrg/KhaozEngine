@@ -51,6 +51,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   (Closes #1576).
 - Add opt-in tiled tooltip backdrops, leading icons, title-font body lines and paragraph gaps, with shared
   icon-aware wrapping and placement that preserves existing tooltip defaults (Closes #1580).
+- Add `SpriteBatch.DrawMasked` for alpha-shaped sprites with independent source and mask regions,
+  tint, vertical gradients and mask-aware batching. Preserve ordinary sprite shaders and support
+  sampleable render targets without copies (Closes #1577).
 - Describe every package on its own terms. Package descriptions and READMEs say what each package is rather
   than what it replaced, and each package README now carries the detail the root catalog used to repeat. The
   package catalog moved from the root README to `docs/PACKAGES.md`, and the root README is now a short

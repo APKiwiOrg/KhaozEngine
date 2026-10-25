@@ -53,6 +53,17 @@ namespace KhaozEngine.Render2D
         readonly Dictionary<object, List<int>> _groupScratch = new();
         readonly List<object> _groupOrder = new();
 
+        /// <summary>Release a cached grouping key after pending runs have been reset.</summary>
+        /// <exception cref="InvalidOperationException">Runs are still pending.</exception>
+        public void ForgetGroup(object key)
+        {
+            if (_ranges.Count != 0) throw new InvalidOperationException("Reset pending runs before forgetting a group.");
+            _groupScratch.Remove(key);
+            _groupOrder.Remove(key);
+        }
+
+        internal bool HasGroup(object key) => _groupScratch.ContainsKey(key);
+
         /// <summary>
         /// Buckets this build's runs by key, regardless of submission order, for a caller that opts into
         /// texture-grouping and does not need strict painter's order. Returns the distinct keys in first-seen

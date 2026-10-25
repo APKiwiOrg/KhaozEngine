@@ -1445,7 +1445,7 @@ nested native acquisition, dependency closure and retained foliage, water, clust
 The prepared-byte allowance bounds live workspace plus unique retained product inventory and applicable
 borrowed-input obligations. It does not count cumulative allocation or measure the CLR heap or RSS.
 Temporary reservations end when their consumer finishes. Returned arrays, captured dependencies, mesh
-copies and reusable frame scratch keep their ownership charge until release. Array growth admits old
+copies, separate scene/view filter arrays and reusable frame scratch stay charged until release. Array growth admits old
 and replacement storage together. Failed reservations change no byte counters. An observed peak is
 separate from current workspace and retained bytes. Reads, source UTF-8 work, faces, scopes and selected
 resources keep their cumulative work or count semantics. Child plan views share this same ledger and

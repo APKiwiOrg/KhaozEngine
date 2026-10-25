@@ -10,6 +10,30 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 public sealed class MapAcquisitionInventoryTests
 {
     [Fact]
+    public void EmptyScene_RetainsBothIndependentFilterCopies()
+    {
+        using var fixture = NativeSceneFixtures.Create("empty");
+        var scope = MapSceneScopeTests.Window();
+        scope = scope with
+        {
+            Surfaces = scope.Surfaces with
+            {
+                Roles = Enumerable.Repeat(MapSurfaceRole.SupportFloor, 257).ToArray(),
+                SpaceIds = Enumerable.Range(0, 257).Select(i => "space-" + i).ToArray(),
+            },
+        };
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 2_000_000));
+        var scene = MapSceneAcquisition.Run(NativeSceneFixtures.Open(fixture, false), scope, admission).Scene!;
+        Assert.NotSame(scene.Scope.Surfaces.Roles, scene.SurfaceView.Scope.Roles);
+        Assert.NotSame(scene.Scope.Surfaces.SpaceIds, scene.SurfaceView.Scope.SpaceIds);
+        long expected = new MapAcquisitionInventoryOracle().Scene(scene);
+        Assert.Equal(expected, admission.RetainedBytes);
+        Assert.Equal(0, admission.WorkspaceBytes);
+        scene.PreparationOwnership!.Dispose();
+        Assert.Equal(0, admission.RetainedBytes);
+    }
+
+    [Fact]
     public void EffectiveProduct_IncludesGeneratedIndexesIntentWaterAndSupportTables()
     {
         var fixture = Prefabs.PrefabFixtures.Create("all-resources");

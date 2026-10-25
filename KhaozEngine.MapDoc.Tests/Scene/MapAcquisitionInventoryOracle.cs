@@ -19,7 +19,8 @@ internal sealed class MapAcquisitionInventoryOracle(IEnumerable<MapPrefabAttachm
 {
     readonly HashSet<object> _seen = new(ReferenceEqualityComparer.Instance);
     readonly HashSet<MapPrefabAttachmentTransfer> _borrowed = new(borrowed ?? [], ReferenceEqualityComparer.Instance);
-    internal long Scene(MapScopedScene scene) => 512 + Product(scene.Product) + Surfaces(Field<MapSurfaceSet>(scene, "_surfaces")) +
+    internal long Scene(MapScopedScene scene) => 512 + 4L * scene.Scope.Surfaces.Roles.Count +
+        8L * (scene.Scope.Surfaces.SpaceIds?.Count ?? 0) + Product(scene.Product) + Surfaces(Field<MapSurfaceSet>(scene, "_surfaces")) +
         View(scene.SurfaceView) + 64L * (scene.Witness.Required.Count + scene.Witness.Present.Count +
             scene.Witness.KnownEmpty.Count + scene.Witness.Unavailable.Count);
     internal long Product(MapEffectiveResolutionProduct product) => Context(product.CapturedContext) + Source(product.SurfaceSource) +
@@ -33,7 +34,7 @@ internal sealed class MapAcquisitionInventoryOracle(IEnumerable<MapPrefabAttachm
         8L * product.Placements.Sum(p => p.Tags.Count) + 8L * product.EffectiveMarkers.Sum(m => m.Tags.Count) +
         40L * Dictionary(product.PaintRegions).EnsureCapacity(0) +
         product.PaintRegions.Values.Sum(p => 128L + p.Regions.Sum(r => 128L + 48L * r.Polygon.Count));
-    long Context(MapEffectiveContext context)
+    internal long Context(MapEffectiveContext context)
     {
         if (!_seen.Add(context)) return 0;
         return Surfaces(context.Surfaces) + 128 + 96L * context.Transforms.Count + 8L * context.Storeys.Count +
@@ -70,7 +71,7 @@ internal sealed class MapAcquisitionInventoryOracle(IEnumerable<MapPrefabAttachm
         return 128 + surfaces.Refs.Sum(s => 128L + 8L * (s.IndoorSpan?.DomainTags.Count ?? 0)) + 8L * surfaces.Refs.Capacity + 64L * surfaces.Patches.Count +
             surfaces.Patches.Values.Sum(p => _seen.Add(p) ? Patch(p) : 0);
     }
-    long View(MapScopedSurfaces view)
+    internal long View(MapScopedSurfaces view)
     {
         if (!_seen.Add(view)) return 0;
         var facts = Field<MapAcquiredFacts>(view, "_facts");

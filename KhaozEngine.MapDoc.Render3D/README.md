@@ -111,7 +111,8 @@ per-cluster centre-distance coverage uses the complete cell area. Layer outer fa
 `HlodCrossfadeWidth`, including placement fades composed before LOD coverage. Each cell is independent.
 `NativeMapPlacements.PrepareCluster` validates the scene, frozen routes, cell domain, layer inventory, homogeneous roof roles and vertex precision before invoking
 the internal shared CPU builder. That lower builder has no building intent and makes no independent roof promise.
-Standalone cluster construction uses the same admitted merge envelope as batch construction. The caller
+Standalone cluster construction uses the same admitted merge envelope as batch construction. Its
+validation cell releases before merge begins, since the returned build retains independent inputs. The caller
 disposes the returned `NativePropClusterCpuBuild` to release its retained receipt. Batch construction
 transfers that receipt into the batch without a second debit.
 Roof cohorts retain complete neutral membership geometry acquired and admitted before selected decode.

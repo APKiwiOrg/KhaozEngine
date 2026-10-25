@@ -222,9 +222,11 @@ public static class NativeMapPlacements
         routing.Validate(scene);
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var activation = admission.Enter();
-        using var preparation = admission.BeginPreparation();
-        var cell = MapPlacementCellInventory.Acquire(scene, routing, request.Key);
-        ValidateCluster(cell.Scene, cell.Routing, request, cell);
+        using (admission.BeginPreparation())
+        {
+            var cell = MapPlacementCellInventory.Acquire(scene, routing, request.Key);
+            ValidateCluster(cell.Scene, cell.Routing, request, cell);
+        }
         long mergeBytes = request.Instances.Sum(i => MapNativeInventory.Mesh(request.BorrowLayer.HlodSourceMeshes![i.AssetId]));
         try
         {

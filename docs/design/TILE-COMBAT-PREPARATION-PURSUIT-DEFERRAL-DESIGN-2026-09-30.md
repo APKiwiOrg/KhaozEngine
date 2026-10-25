@@ -2,8 +2,7 @@
 
 Status: implemented in 20.15.1. Grimhollow adoption pending. The owner chose the fix direction, which is
 to defer the impact instead of ending it. This document decides the details. Design base: engine
-`800c132d9`, released 20.15.0. Implementation plan:
-[2026-09-30-preparation-pursuit-deferral.md](../superpowers/plans/2026-09-30-preparation-pursuit-deferral.md).
+`800c132d9`, released 20.15.0.
 Current API usage lives in the [consumer guide](../USING-KHAOZENGINE.md#authoritative-attack-preparation-20141)
 and [package reference](../../KhaozEngine.TileWorld.Netcode/README.md#authoritative-attack-preparation-20141).
 

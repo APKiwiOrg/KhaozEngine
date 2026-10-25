@@ -1,8 +1,6 @@
 # Baked ground navigation profiles and route-free approach
 
-Status: implemented and verified on `feature/grimhollow-nav-bake` through the
-[implementation plan](../superpowers/plans/2026-10-03-nav-profile-bake.md), with rulings O2.21 to O2.26 and N1 to N9
-recorded. The full Release build and test run passed at the Task 7 finish and the release note is staged for
+Status: implemented and verified. The current bake contracts and N rulings are recorded below. The full Release build and test run passed at the Task 7 finish and the release note is staged for
 `20.20.0`. No release or tag is claimed.
 
 Consumer: Grimhollow continuous movement pivot, player walk-up pathing after P5.

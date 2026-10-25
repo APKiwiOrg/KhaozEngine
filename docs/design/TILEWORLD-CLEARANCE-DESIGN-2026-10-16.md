@@ -1,8 +1,6 @@
 # Tile world clearance
 
-Status: shipped in 21.2.0. The consumer requirement is Grimhollow's
-[tree and building clearance spec](https://github.com/APKiwiOrg/Grimhollow/blob/e554bc700dd0c95d3aa413272a7c4b2c4da7f8e4/docs/superpowers/specs/2026-10-16-tree-building-clearance-design.md).
-The [implementation plan](../superpowers/plans/2026-10-16-tileworld-clearance.md) records the six engine tasks.
+Status: shipped in 21.2.0. The consumer requirement is tree and building clearance for Grimhollow.
 Current use belongs in the [TileWorld package reference](../../KhaozEngine.TileWorld/README.md#clearance), the
 [ke-tileedit reference](../../KhaozEngine.TileEdit.Tool/README.md#clearance) and the
 [consumer guide](../USING-KHAOZENGINE.md#tile-world-khaozenginetileworld). This record keeps the reasoning and

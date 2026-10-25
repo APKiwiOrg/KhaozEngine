@@ -2,7 +2,7 @@
 
 This is the living contract for the internal renderer baseline, offline summaries and comparisons.
 [CROSS-PLATFORM.md](CROSS-PLATFORM.md#paid-hosted-renderer-performance-mode) owns hosted admission
-and execution. The [implementation plan](superpowers/plans/2026-10-21-renderer-performance-baseline.md)
+and execution. The [cold publication design](design/RENDERER-COLD-PUBLICATION.md)
 retains the design rationale. This document records no measured baseline or performance budget.
 
 ## Evidence and authorization

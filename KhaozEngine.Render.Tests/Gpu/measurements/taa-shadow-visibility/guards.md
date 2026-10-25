@@ -35,7 +35,7 @@ build-slot --heavy --label taa-focus-gpu -- \
   --filter 'FullyQualifiedName~TemporalGameShadowGrainGpuTests|FullyQualifiedName~TemporalTextureLightGpuTests' \
   --logger 'console;verbosity=detailed' \
   --logger 'trx;LogFileName=task-1-metal.trx' \
-  --results-directory .superpowers/sdd/2026-10-19-taa-shadow-visibility/task-1-results
+  --results-directory /tmp/khaozengine-taa-shadow-visibility/task-1-results
 ```
 
 The Release build exited 0 with zero warnings and errors. The focused GPU command exited 1,

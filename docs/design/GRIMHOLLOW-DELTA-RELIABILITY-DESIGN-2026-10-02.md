@@ -6,8 +6,7 @@ release tags and the consumer switch remain separate owner actions.
 
 Program: [KhaozEngine #34](https://github.com/APKiwiOrg/KhaozEngine/issues/34) and the component defect
 [KhaozEngine #1229](https://github.com/APKiwiOrg/KhaozEngine/issues/1229). Consumer gate:
-[Grimhollow #399](https://github.com/APKiwiOrg/Grimhollow/issues/399), phase P8 of the continuous movement
-spec at `docs/superpowers/specs/2026-10-01-continuous-movement-design.md` in the consumer repository.
+[Grimhollow #399](https://github.com/APKiwiOrg/Grimhollow/issues/399), phase P8 of the continuous movement program.
 
 Evidence base: engine commit `11a3374273e20fb211602df63642488a43b8ba51`, wire generation 13. Code and test
 sources were inspected. This documentation task ran no build, test, client, GPU, or packet experiment.

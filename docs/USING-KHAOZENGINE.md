@@ -9164,8 +9164,8 @@ The build snapshots the physics basis and the environment producer identity, and
 first, publishes nothing and leaves the caller's world and views usable. On a 576-column fixture, degree 12 spends 0.85
 to 0.93 of the serial CPU time per proof, about 8 to 10 times faster on a 12-core machine the bake has to itself.
 Wall-clock speedup on a shared machine follows each worker's CPU share, so bake contact navigation with the machine
-otherwise idle. See the [cost record](superpowers/plans/proofs/2026-10-14-parallel-contact-bake-cost.md) and the
-[slowdown record](superpowers/plans/proofs/2026-10-14-parallel-proof-slowdown.md) for the metrics and the Hollowmere
+otherwise idle. See the [cost record](verification/2026-10-14-parallel-contact-bake-cost.md) and the
+[slowdown record](verification/2026-10-14-parallel-proof-slowdown.md) for the metrics and the Hollowmere
 extrapolation.
 
 ### Stable contact initial Holds
@@ -13983,7 +13983,7 @@ for configuration, resident scopes, replay and view lifetime.
 `SamplerSpace.Frame` ordinary ground samplers receive the original local axes and return local heights directly,
 including a nonzero physics Y origin. World samplers keep the direct dry path's rounded absolute translation.
 The registration's analytic range is absolute in both spaces. Wire generation 14 stays unchanged.
-The [allocation and local cost proof](superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md)
+The [allocation and local cost proof](verification/2026-10-13-contact-controller-phase5a-cost.md)
 records named lifetime tokens and three one-pair samples without a timing threshold or hosted cost-gate claim.
 
 `KhaozEngine.NetWorld` (`Server` umbrella; deps Locomotion/Netcode/Replication/Ecs, render-free) wires that

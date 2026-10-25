@@ -102,7 +102,7 @@ jobs:
       # analyzer only sees what the compiler sees, and the selective path builds a slice of the solution:
       # growth in an unaffected project would otherwise reach main uninspected. Mirrors the game repos'
       # "Repo convention checks" step in build-test.yml (issue #554).
-      - name: Repo convention checks (dash ban + prose ratchet + file-size ratchet + instruction budget)
+      - name: Repo convention checks (dash ban + prose ratchet + file-size ratchet + instruction budget + scratch check)
         run: |
           test -f .prose-baseline
           test -f .filesize-baseline
@@ -110,6 +110,8 @@ jobs:
           sh scripts/check-prose.sh --tree
           sh scripts/check-file-size.sh --tree
           sh scripts/check-agent-instructions.sh --tree
+          sh scripts/check-scratch.sh --tree
+          sh scripts/tests/check-scratch.test.sh
       # Fail fast if the docs' "current version" declarations drifted from Directory.Build.props. Runs
       # on every event, both paths, so a selective docs-only push is still guarded.
       - name: Check doc version consistency

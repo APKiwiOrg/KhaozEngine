@@ -14,8 +14,7 @@ capsule traversal, surface jumps and profile inputs. Both lanes own seam/shore a
 Tracking: [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299),
 [#1291](https://github.com/APKiwiOrg/KhaozEngine/issues/1291),
 [#1300](https://github.com/APKiwiOrg/KhaozEngine/issues/1300),
-[#1301](https://github.com/APKiwiOrg/KhaozEngine/issues/1301),
-[consumer design](https://github.com/APKiwiOrg/Grimhollow/blob/b28560ab/docs/superpowers/specs/2026-10-06-swimming-and-deep-water-design.md).
+[#1301](https://github.com/APKiwiOrg/KhaozEngine/issues/1301).
 
 ## Inspected gaps
 

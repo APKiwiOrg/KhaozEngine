@@ -269,8 +269,7 @@ follow the dynamic-offset rules the slot already obeys.
 
 ## Plan amendments
 
-The implementation plan, [`2026-09-24-temporal-aa.md`](../superpowers/plans/2026-09-24-temporal-aa.md), read the code
-and changed these details. Its contract amendment blocks carry the evidence.
+Implementation review established the contract amendments below.
 
 1. The point-light cluster grid is built on the jittered view-projection, not the unjittered one. A lit fragment finds
    its cluster through the raster matrix, so the grid has to match it or lights flicker at tile edges. The grid has no

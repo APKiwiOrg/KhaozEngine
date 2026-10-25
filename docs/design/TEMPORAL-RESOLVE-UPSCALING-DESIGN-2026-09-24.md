@@ -223,8 +223,7 @@ here so the foundations and the resolve serve it.
 
 ## Plan amendments
 
-The implementation plan, [`2026-09-24-temporal-aa.md`](../superpowers/plans/2026-09-24-temporal-aa.md), read the code
-and changed these details. Its contract amendment blocks carry the evidence.
+Implementation review established the contract amendments below.
 
 1. A fifth preset, `UltraPerformance` at 1/3 per axis (72 jitter phases), and `UpscaleRatio` from 0.33 to 1.0. At a
    3456x2234 display even `Performance` shades more pixels than a fixed 1600x900 target, so the frame-time line needs a
@@ -1281,8 +1280,9 @@ and changed these details. Its contract amendment blocks carry the evidence.
     classification and barrier-ordered lock release are unchanged. Fused, split, Native, precision and debug/count
     paths cache matching programs and binding sets. R8 storage and copies remain. Both transitions and every
     uncertified frame retain the ordinary check. Synthetic R8 stays unknown and the owned all-white fallback can
-    certify. This is no timing claim for shadowed frames. The [implementation record](../superpowers/specs/2026-10-19-taa-shadow-visibility-design.md#task-7h-k)
-    links the exactness and lifecycle evidence.
+    certify. This is no timing claim for shadowed frames. The
+    [measurement records](../../KhaozEngine.Render.Tests/Gpu/measurements/taa-shadow-visibility/benchmark-request.md)
+    retain the exactness and lifecycle evidence.
 
     Certified-versus-check comparisons have their own device rules. Exact hardware and llvmpipe
     compare every channel exactly. Hardware NVIDIA Direct3D 11 keeps locks, marks, R8 and depth

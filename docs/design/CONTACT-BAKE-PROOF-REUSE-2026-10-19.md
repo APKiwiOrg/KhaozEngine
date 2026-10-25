@@ -3,15 +3,13 @@
 Design for [#1401](https://github.com/APKiwiOrg/KhaozEngine/issues/1401), option B of the
 [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) contact-controller navigation lane.
 Source baseline: `f23e19ec0b814add04dd5d19ab05ea2b5129b7b9`, staged 21.5.2.
-Status: implemented under BB-R1 and the [seven-task plan](../superpowers/plans/2026-10-19-bake-proof-reuse.md).
+Status: implemented under BB-R1.
 [Verification](../verification/2026-10-19-bake-proof-reuse.md) records the unchanged payload/byte matrix,
 measured counters and final Release checks. Living use belongs in the Physics, Bepu and Movement
 READMEs and [consumer contract](../USING-KHAOZENGINE.md#exact-completed-footprint-reuse).
 BR-R4 and BR-R6 supersede the original staged-version premise after the releases of 21.5.2 and 21.6.0. This lane stages 21.6.1.
 
-The owning checkout's `.superpowers/sdd/bake-option-b/research.md` and `progress.md` supply the
-research and ruling. This spec retains their operative evidence and contracts so implementation
-does not depend on untracked notes. Product code and pinned hashes at the research's requested
+This document retains the operative evidence and contracts. Product code and pinned hashes at the research's requested
 `3eb6eeb22` and actual `f23e19ec0` baselines are identical. Only AGENTS.md changed between them.
 
 ## Problem and evidence

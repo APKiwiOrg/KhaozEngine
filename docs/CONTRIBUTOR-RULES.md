@@ -222,9 +222,11 @@ pattern using it matches nothing and reports clean. Use `git grep -w` or `git gr
 coverage, package readmes, example versions and the newest changelog heading. It cannot verify prose
 accuracy.
 
-A completed design document remains as history, but it is not a reference surface. Move shipped API
-and use instructions into the living docs. Any deferral left when a program completes becomes an
-issue. Root `docs/` contains living references only.
+A completed design document keeps the rationale still in force. Rewrite superseded reasoning in
+place and keep shipped API and use instructions in the living references. Any deferral left when a
+program completes becomes an issue. Root `docs/` contains living references only. Long-running work
+uses the tracker lifecycle in [Programs](programs/README.md). Specs, plans and execution ledgers stay
+in ignored local scratch.
 
 ## Issues and handoffs
 

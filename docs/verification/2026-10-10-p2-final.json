@@ -39,7 +39,6 @@
     "exit": 0,
     "waited_seconds": 0.026,
     "ran_seconds": 94.9,
-    "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2/logs/p2-fix-build.log",
     "log_sha256": "6b7dabeab92f240f7b34e4bbcf00ec36ccce1cc9f9a718cbbb5950797fb3ec70",
     "warnings": 0,
     "errors": 0
@@ -49,7 +48,6 @@
     "exit": 0,
     "waited_seconds": 0.029,
     "ran_seconds": 35.344,
-    "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2/logs/finish-contacts.log",
     "log_sha256": "40f4e7e664e6dcceb1ed13ed776700a036c32c8878bcbb7ede3694b76e2279ab",
     "totals": {
       "failed": 0,
@@ -63,7 +61,6 @@
     "exit": 0,
     "waited_seconds": 0.056,
     "ran_seconds": 172.099,
-    "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2/logs/p2-fix-tests.log",
     "log_sha256": "e7bcd40a49792b5dce8e9a67282f993d0de7cf5e03f6bcb92cb04342892cfe6a",
     "assemblies": 31,
     "totals": {
@@ -267,7 +264,6 @@
     "exit": 0,
     "waited_seconds": 0.023,
     "ran_seconds": 112.666,
-    "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2/logs/p2-fix-format.log",
     "log_sha256": "4f7a3cbdfcc4e62856741feb6ac7fd950c639fb5399b4be5c398788bb8cd7b91",
     "workspace_warnings": [
       "Warnings were encountered while loading the workspace. Set the verbosity option to the 'diagnostic' level to log warnings."
@@ -278,25 +274,21 @@
     "dashes": {
       "command": "sh scripts/check-dashes.sh --tree",
       "exit": 0,
-      "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2/logs/p2-fix-dashes.log",
       "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     "prose": {
       "command": "sh scripts/check-prose.sh --tree",
       "exit": 0,
-      "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2/logs/p2-fix-prose.log",
       "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     "file-size": {
       "command": "sh scripts/check-file-size.sh --tree",
       "exit": 0,
-      "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2/logs/p2-fix-file-size.log",
       "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     "agent-instructions": {
       "command": "sh scripts/check-agent-instructions.sh --tree",
       "exit": 0,
-      "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2/logs/p2-fix-agent-instructions.log",
       "log_sha256": "679537ce091d060bc73f6b2eb9ff4edaa12c678e4ad855015c3fe5b24a119c8c",
       "bytes": 7653,
       "limit_bytes": 16384
@@ -304,7 +296,6 @@
     "doc-versions": {
       "command": "bash scripts/check-doc-versions.sh",
       "exit": 0,
-      "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2/logs/p2-fix-doc-versions.log",
       "log_sha256": "27fdeff7ca43bd7ec89630b2dd5b211a2d47a1e45150ebe278f987d14455ce4e"
     }
   },

@@ -7,7 +7,7 @@ source/math approval. See `docs/verification/2026-10-08-installed-pose-green.jso
 source identities and the disclosed whitespace-only delta. This does not promise Complete for every
 in-domain input, universal ray/manifold agreement, runtime support, navigation, release or game repair.
 
-The approved [feature specification](../superpowers/specs/2026-10-07-capsule-feature-correspondence-design.md)
+The approved [feature contract](CAPSULE-FEATURE-CORRESPONDENCE.md)
 supplies the domain, ceilings and work caps. The existing [arithmetic](CAPSULE-FEATURE-NUMERICAL-PROOF-2026-10-07.md),
 [polyhedron](CAPSULE-FEATURE-POLYHEDRA-PROOF-2026-10-07.md) and
 [mesh](CAPSULE-FEATURE-MESH-PROOF-2026-10-07.md) records retain their earlier evidence. The expanded-path evidence is recorded separately above. The independent InstalledPose fixtures distinguish

@@ -7,14 +7,11 @@ Design for [#1494](https://github.com/APKiwiOrg/KhaozEngine/issues/1494) and
 Source baseline: `a1e82663567bda9301ad4eaceb7ebad40ee19f17`.
 Status: implemented in lane C, resolving #1494 and #1487 with represented support, bounded curved
 certification, the capsule crown and cylinder admission witness. The [verification record](../verification/2026-10-19-contact-followups-c.md)
-retains the original reds, fixed questions, golden derivations and deterministic counters. The [implementation plan](../superpowers/plans/2026-10-19-contact-followups-c.md)
-does not authorize release, adoption, timing or navigation work.
+retains the original reds, fixed questions, golden derivations and deterministic counters.
+Release, adoption, timing and navigation work require separate authorization.
 
-The design evidence is the owning checkout's
-`.superpowers/sdd/contact-followups/research-1494.md` (all 51 audited sites, prescription section 3,
-golden dispositions section 4 and acceptance A to E) and `research-1487.md` (exact Find,
-deterministic work trace and attained crown proof). This document records the decisions needed
-without requiring those untracked research files in an implementation checkout.
+This document records the represented-support decisions, exact Find work boundary and attained
+crown proof. The verification record retains the golden dispositions and deterministic work trace.
 
 ## Problem and evidence
 

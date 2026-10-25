@@ -1,7 +1,6 @@
 # NPC movement fixes: swimming routes, route pace and low lips
 
-Status: implemented and verified through the [implementation plan](../superpowers/plans/2026-10-03-npc-movement-fixes.md)
-on `feature/grimhollow-npc-movement`, with rulings M1 to M21 recorded in the plan's Outcome. Swimming routes (#1256),
+Status: implemented and verified. The current movement contracts and M rulings are recorded below. Swimming routes (#1256),
 route carry (#1257) and low prop support (#1253) are staged for 20.20.0. Smooth-slope bake edges (#1265) are deferred
 by ruling M20. No release or tag is claimed.
 
@@ -14,8 +13,8 @@ Base: engine main `fefb78876`. Newest tag `v20.19.0`. Main stages `20.20.0` unta
 [nav profile bake](NAV-PROFILE-BAKE-DESIGN-2026-10-03.md) and the route-free `DirectMoveToRange`. This round rides that
 staged version, and per ruling M1 the `20.20.0` tag waits for it. Line citations are at main unless marked v20.18.0.
 
-Prerequisite reading: the [round 2 design](CONTINUOUS-HOST-ROUND-2-DESIGN-2026-10-02.md) section 6, and Plan D's
-Outcome rulings in [round 2 D](../superpowers/plans/2026-10-02-round2-d-movement-drivers.md), especially D0.2
+Prerequisite reading: the [round 2 design](CONTINUOUS-HOST-ROUND-2-DESIGN-2026-10-02.md) section 6, and
+the [range-driver contracts](CONTINUOUS-HOST-ROUND-2-DESIGN-2026-10-02.md#range-driver-contract-references), especially D0.2
 (`Suspended` before `InRange` for airborne or committed automation) and D1.1 (follower accept radius clamped to
 1e-5 m so a broad tolerance cannot consume a mandatory turn).
 

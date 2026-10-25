@@ -22,57 +22,47 @@
       "command": "build-slot --label sg11-build -- dotnet build KhaozEngine.slnx -c Release",
       "exitCode": 0,
       "invocations": 1,
-      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-build.log",
       "sha256": "d7a1b016beedafcdb8644db3fa93e944fe121ecc8b1b485b93e927de99bd1730"
     },
     {
-      "command": "build-slot --label sg11-suite --heavy -- dotnet test KhaozEngine.slnx -c Release --no-build --filter \"Category!=LiveSocket\" --logger \"trx;LogFilePrefix=sg11\" --results-directory .superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results",
       "exitCode": 0,
       "invocations": 1,
-      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-suite.log",
       "sha256": "022c0d8994bc6fbb8fdb9c66e5c3bc0cdb1a07436814ed92e38503dea5ee0ae1"
     },
     {
       "command": "build-slot --label sg11-format -- dotnet format whitespace KhaozEngine.slnx --verify-no-changes --no-restore",
       "exitCode": 0,
       "invocations": 1,
-      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-format.log",
       "sha256": "5a641bc9967da09fdb498f209c8f5a6ebd8b62f91363c7d635cebc75e4d960f2"
     },
     {
       "command": "sh scripts/check-dashes.sh --tree",
       "exitCode": 0,
-      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-final-guard-0.log",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
       "command": "sh scripts/check-prose.sh --tree",
       "exitCode": 0,
-      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-final-guard-1.log",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
       "command": "sh scripts/check-file-size.sh --tree",
       "exitCode": 0,
-      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-final-guard-2.log",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
       "command": "sh scripts/check-agent-instructions.sh --tree",
       "exitCode": 0,
-      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-final-guard-3.log",
       "sha256": "679537ce091d060bc73f6b2eb9ff4edaa12c678e4ad855015c3fe5b24a119c8c"
     },
     {
       "command": "bash scripts/check-doc-versions.sh",
       "exitCode": 0,
-      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-final-guard-4.log",
       "sha256": "696e93d532ee8cad63ef443fb2a74c1548efbd0ba9946450f9f263d187c283a7"
     },
     {
       "command": "git diff --check",
       "exitCode": 0,
-      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-final-guard-5.log",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
   ],
@@ -121,7 +111,6 @@
           "pending": 0,
           "skipped": 7
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053322.trx",
         "sha256": "106988a1fa2aff4c64c10ff5251f0820bdb6c38fb9e784347fc991358578c732"
       },
       {
@@ -145,7 +134,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053323.trx",
         "sha256": "642a9c936ce4643a6dba43e3ab66b0503ab4ddf5d61d657b59feebde889bc063"
       },
       {
@@ -169,7 +157,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053327.trx",
         "sha256": "1850cd1bea925d84ffe2ae7928ec8404793b4f1e2ef5d929f054bde13e40580d"
       },
       {
@@ -193,7 +180,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053329.trx",
         "sha256": "b0f0bb1ade2d2ef5567609ce85e38de6791009a773e9bb7a7ebf68028147977a"
       },
       {
@@ -217,7 +203,6 @@
           "pending": 0,
           "skipped": 3
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053333.trx",
         "sha256": "99c8f90f49c504e7d3d42d311ae9d27c5f15dbbce2fd3b9de0c3adf3a96cb173"
       },
       {
@@ -241,7 +226,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053334.trx",
         "sha256": "188d89bb6388d864181a1562ee7bb328ecf2f1b5d4ffbdc9508f83cd19bcdabb"
       },
       {
@@ -265,7 +249,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053336.trx",
         "sha256": "4738b2e8fb7d5b4adb928d786cbaa4640fe1bf95ada2a9241accf87ee891b17f"
       },
       {
@@ -289,7 +272,6 @@
           "pending": 0,
           "skipped": 46
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053337.trx",
         "sha256": "3ce4cd1344d391d8584b54cb8a142cc0fa2da975e3ffc0d8b3e6595799da7e67"
       },
       {
@@ -313,7 +295,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053343.trx",
         "sha256": "f3c71e2d358334a4f04a7bc6d6f606f000039ecfbe9ed24b29ba9fdd60186996"
       },
       {
@@ -337,7 +318,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053344.trx",
         "sha256": "7f36089a918c59d764023b4a774e9ceaab211a117d1d96e854969c4e0856b373"
       },
       {
@@ -361,7 +341,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053345.trx",
         "sha256": "87c2a5124a52142c2c4220206e04f16ab340fd939db4fdab436a6cbe4a9bbfb7"
       },
       {
@@ -385,7 +364,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053346.trx",
         "sha256": "de04e90bb89b44c6d08dd09944b528e44dd7abfbf0ea924e45549a4faa681008"
       },
       {
@@ -409,7 +387,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053351.trx",
         "sha256": "1b055e60a97fb30a084fd3c9ebbe3f7c993bd626815af213f760fd9e4f58f2b6"
       },
       {
@@ -433,7 +410,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053359.trx",
         "sha256": "76caf9df8854ace739f4fd0b7d86a6ea6ba71ea1c553cfcd523c0e352099c009"
       },
       {
@@ -457,7 +433,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053402.trx",
         "sha256": "42072be0a6fcddd3dc5c2bcd612f53eb4cc4a60a0980b5bb9462a1e18602d8a1"
       },
       {
@@ -481,7 +456,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053405.trx",
         "sha256": "760e63c2df1edc187190cb812ada473d5975e75534f33e7d82543c441dd89fdb"
       },
       {
@@ -505,7 +479,6 @@
           "pending": 0,
           "skipped": 7
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053440.trx",
         "sha256": "fe87b642f12fe1b702183bf66f325df034a1ace39d16551b43c5a95a104a8105"
       },
       {
@@ -529,7 +502,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053446.trx",
         "sha256": "86c86f0c8a3c9a1252015147a07fbe6e6c90b24a89be29696a35085833d167e5"
       },
       {
@@ -553,7 +525,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053447.trx",
         "sha256": "5ada18a36109d32357b6842385f3db8600e8ad067a639bd7c1c35d3ee6f198c7"
       },
       {
@@ -577,7 +548,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053452.trx",
         "sha256": "588bbbd5d4d421945f675feb3dd19a7342d1b2572af49f2b07294c31a6949233"
       },
       {
@@ -601,7 +571,6 @@
           "pending": 0,
           "skipped": 3
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053453.trx",
         "sha256": "3e3a608ba87d5066ee52b45b1bb5b25b5d06d67eeca9d553884e9a6ae444a520"
       },
       {
@@ -625,7 +594,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053459.trx",
         "sha256": "ad4e2c1a16549b3ecb8484fbf8a26ba3f1fe9dc1f74d2d44680fa71276086c1b"
       },
       {
@@ -649,7 +617,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053505.trx",
         "sha256": "a0fa2e0f5846a3f7f4e6ebcfae0742eb91034c6d70a9f978782ef4507aa122d2"
       },
       {
@@ -673,7 +640,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053508.trx",
         "sha256": "96f4cb636a7d2addbf7699c82ffd41b73724f218d7a4e5e27b7af095c8a602d7"
       },
       {
@@ -697,7 +663,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053510.trx",
         "sha256": "34068218bb14adb156f5374fde94fff6f9bae7223fa365fdb47e59a490a9d567"
       },
       {
@@ -721,7 +686,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053511.trx",
         "sha256": "948f3719b8a230a953951acf2cd510b1e1eb0bd0683090ca24888e8357d0f863"
       },
       {
@@ -745,7 +709,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053513.trx",
         "sha256": "9529cec93dc265c2ea03e92cd95f4d7d421c44c0fce83aae27d7e6df628f3491"
       },
       {
@@ -769,7 +732,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053517.trx",
         "sha256": "2bff0b70c492044679602fd5548e9a5fa9063469c4477dacfc4eb67578edad8b"
       },
       {
@@ -793,7 +755,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053526.trx",
         "sha256": "943647b0c021bdb086b7ae6b9b3b26bf31b7bad51f139ead6f68bd9cc290dba0"
       },
       {
@@ -817,7 +778,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053527.trx",
         "sha256": "a391b2616ca664ab1b3a93a49ec7fc6936321589869ee2667d5df7edcb7e433c"
       },
       {
@@ -841,7 +801,6 @@
           "pending": 0,
           "skipped": 0
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053531.trx",
         "sha256": "2646230d6ac53c271abe7b289ce0b8e5d4adec3f9553f80ed225cc6c717dba68"
       },
       {
@@ -865,7 +824,6 @@
           "pending": 0,
           "skipped": 936
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053532.trx",
         "sha256": "4b8791b46fd791e5cdde8aa0cf5b132be503dfdddb2ea5bea0d49f84404eab1a"
       },
       {
@@ -889,7 +847,6 @@
           "pending": 0,
           "skipped": 9
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053543.trx",
         "sha256": "d3cdc0c4251af75ddf03fe37a2fd3124ef8dc54ebcbb64b6fe8d936f24c87f43"
       },
       {
@@ -913,7 +870,6 @@
           "pending": 0,
           "skipped": 317
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053554.trx",
         "sha256": "1230eac1fcd2ec63278e848080e5c8fe1c589cd51e61119832b7c64b0db34598"
       },
       {
@@ -937,7 +893,6 @@
           "pending": 0,
           "skipped": 1
         },
-        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053632.trx",
         "sha256": "634ae3d53ff8b35af3097f4460634cdf14105ffa95df678fa8942b2c716b6b8f"
       }
     ],

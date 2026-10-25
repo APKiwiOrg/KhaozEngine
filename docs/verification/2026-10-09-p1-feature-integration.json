@@ -5,7 +5,6 @@
   "brought_paths": 67,
   "byte_identical": "Every brought path except the correspondence spec equals 5eceb2c16.",
   "link_rewrite": {
-    "file": "docs/superpowers/specs/2026-10-07-capsule-feature-correspondence-design.md",
     "source_sha256": "e7034c1ba0fa1ce887487174c5ef8a0c7ce1503918859d7bb9785244cf39f52d",
     "final_sha256": "5e887a9eca0d81b12f82d39f5ef283138a927483fbfb280f9c09d43c578f4df1",
     "changed_lines": [4, 246],
@@ -39,7 +38,6 @@
     "game": { "passed": 162, "failed": 0, "skipped": 0, "total": 162 },
     "movement": { "passed": 12, "failed": 0, "skipped": 0, "total": 12 },
     "movement_note": "Lower than the source's 39 because the private eligibility cases live in LowLipTraversalTests files, which are not integrated.",
-    "log": ".superpowers/sdd/2026-10-09-contact-controller-phase1/logs/p1-feature-suite.log",
     "log_sha256": "bf935c4ab66cee3bed4587d334f7525e5f47ddf9c3b4e952991f0c5636397b04"
   },
   "format": {

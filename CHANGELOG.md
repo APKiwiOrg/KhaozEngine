@@ -358,7 +358,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   fewer reads. Support reads build joins only where certification reads them, certify planar contacts on exact
   coordinates, cache mesh triangles in a bounded world form, admit vertical faces with a certified segment test and
   serve an exact repeat inside one lease interval from a memo, with results bit-identical to the reference
-  evaluator. The [phase 2 cost record](docs/superpowers/plans/proofs/2026-10-17-support-cost-option-c-phase2.md)
+  evaluator. The [phase 2 cost record](docs/verification/2026-10-17-support-cost-option-c-phase2.md)
   lists the stairs, crate and pushed seat rows that still miss SG-12.
 
 ## 21.3.0
@@ -431,7 +431,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the contact kernel, faces of one convex leaf join through their shared captured edge, and curved contact
   members stop bisecting once their verdict is certified. Results stay bit-identical to the reference
   evaluator, and the first warm query in a process no longer allocates. The
-  [cost record](docs/superpowers/plans/proofs/2026-10-17-support-cost-option-c.md) lists every ordinary
+  [cost record](docs/verification/2026-10-17-support-cost-option-c.md) lists every ordinary
   scene that still misses its SG-12 limits.
 
 ## 21.1.0

@@ -36,6 +36,13 @@ if [ -f scripts/check-agent-instructions.sh ]; then
   fi
 fi
 
+# 1d) Scratch stays local. Check staged paths and text before accepting a commit.
+if [ -f scripts/check-scratch.sh ]; then
+  if ! sh scripts/check-scratch.sh; then
+    fail=1
+  fi
+fi
+
 # 2) version<->changelog coupling. Engine (has check-doc-versions.sh) couples any version tag;
 #    adopters couple the game version only (exclude the engine pin KhaozEngineVersion). LangVersion
 #    is a compiler setting, not an app version, so it is excluded in both cases.

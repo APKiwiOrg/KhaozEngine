@@ -18,9 +18,8 @@ is claimed.
 Consumer: Grimhollow continuous movement phase P4, before P5 NPCs and interactions and P6 combat.
 Engine issue: [#1223](https://github.com/APKiwiOrg/KhaozEngine/issues/1223).
 Consumer epic: https://github.com/APKiwiOrg/Grimhollow/issues/399.
-The consumer contract is Grimhollow's
-`docs/superpowers/specs/2026-10-01-continuous-movement-design.md`, especially O4, O11, T6 and T10.
-Round 1's design and all four plans' Outcome blocks are required context for execution.
+The consumer program is [Grimhollow #399](https://github.com/APKiwiOrg/Grimhollow/issues/399).
+The engine contracts and surviving command, navigation, reach and movement decisions are recorded below.
 
 ## Intent and success
 
@@ -552,14 +551,14 @@ verification command. No outcome says a test ran unless its output and nonzero c
 
 The owner approved this written design on 2026-10-02. Four implementation plans are written:
 
-1. [Round 2 A](../superpowers/plans/2026-10-02-round2-a-command-fraction.md), branch `feature/round2-command-fraction`. Opt-in axis scaling, codec,
+1. [Fractional ordinary commands](#3-ordinary-commands-can-preserve-the-final-fraction), branch `feature/round2-command-fraction`. Opt-in axis scaling, codec,
    wire handshake and persistence compatibility. Opens the round's selected version through its
    integration owner, nominally 20.18.0. No worker selects a different bump on its own.
-2. [Round 2 B](../superpowers/plans/2026-10-02-round2-b-navigation-contracts.md), branch `feature/round2-navigation-contracts`. Goal-region search,
+2. [Guarded navigation contracts](#guarded-navigation-contract-references), branch `feature/round2-navigation-contracts`. Goal-region search,
    region follower, guarded traversal graph and grounded layered bake. Rides the same version.
-3. [Round 2 C](../superpowers/plans/2026-10-02-round2-c-reach-physics-nav.md), branch `feature/round2-reach-physics-nav`. Movement package and shape
+3. [Reach and capture contracts](#reach-and-capture-contract-references), branch `feature/round2-reach-physics-nav`. Movement package and shape
    reach, physics capture, area filters, capsule profiles and bridge acceptance. Needs B and rides.
-4. [Round 2 D](../superpowers/plans/2026-10-02-round2-d-movement-drivers.md), branch `feature/round2-movement-drivers`. Shared range steering, NPC
+4. [Range-driver contracts](#range-driver-contract-references), branch `feature/round2-movement-drivers`. Shared range steering, NPC
    and player adapters, complete real-command-path acceptance and consumer docs. Needs A, B and C.
 
 Each branch starts from current reconciled engine main, consumes its prerequisite's verified Outcome,

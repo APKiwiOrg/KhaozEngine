@@ -2,9 +2,8 @@
 
 Status: approved by the owner on 2026-10-01. Implementation in four branches, see "Sequencing and release".
 
-Consumer: Grimhollow's move from tile movement to continuous movement, phase P2. The consumer spec is
-`docs/superpowers/specs/2026-10-01-continuous-movement-design.md` in the Grimhollow repository, and its
-epic is https://github.com/APKiwiOrg/Grimhollow/issues/399. The engine issues are #1219, #1220, #1221 and
+Consumer: Grimhollow's move from tile movement to continuous movement, phase P2, tracked in
+https://github.com/APKiwiOrg/Grimhollow/issues/399. The engine issues are #1219, #1220, #1221 and
 #1222. #34 is discussed under "What leaves this round".
 
 ## Why this round exists

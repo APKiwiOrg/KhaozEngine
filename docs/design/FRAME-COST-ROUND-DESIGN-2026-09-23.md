@@ -387,8 +387,7 @@ Measured by rerunning the Grimhollow probe as interleaved runs against 20.0.0 an
 
 ## Plan amendments
 
-Reading the code for the implementation plan (`docs/superpowers/plans/2026-09-23-frame-cost-round.md`) corrected
-the details below. Where an amendment and an earlier section disagree, the amendment wins. Two were owner decisions
+Code review corrected the details below. Where an amendment and an earlier section disagree, the amendment wins. Two were owner decisions
 and are marked with their outcome.
 
 Item 1.

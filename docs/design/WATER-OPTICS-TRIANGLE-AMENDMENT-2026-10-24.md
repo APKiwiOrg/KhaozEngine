@@ -22,8 +22,7 @@ saddle gate. It supersedes the bilinear-only TileWorld producer and universal fo
 Existing `WaterOpticsField` callers retain their bilinear contract. All original immutable ownership,
 strict coverage, pre-record preparation, retirement, legacy compatibility and backend gates still apply.
 
-Execution follows the [sequential amendment plan](../superpowers/plans/2026-10-24-water-optics-triangle-amendment.md)
-inside parent Task 6.
+This amendment was delivered inside parent Task 6 of the per-body water optics program.
 
 ## Evidence and decision
 

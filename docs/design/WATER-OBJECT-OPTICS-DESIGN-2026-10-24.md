@@ -9,7 +9,7 @@ Implemented, staged for 21.14.0. Water optics checks passed on hosted Metal, D3D
 Consumer Task 8 and native R8b remain open under https://github.com/APKiwiOrg/KhaozEngine/issues/1300.
 The native adapter contract is recorded in the [R8b handoff](WATER-OPTICS-R8B-HANDOFF-2026-10-24.md).
 
-Implementation plan: [per-body water optics](../superpowers/plans/2026-10-24-per-body-water-optics.md).
+Open work is tracked in https://github.com/APKiwiOrg/KhaozEngine/issues/1300.
 
 Execution amendment: [triangle-backed optical beds](WATER-OPTICS-TRIANGLE-AMENDMENT-2026-10-24.md)
 supersedes this document's bilinear-only TileWorld reconstruction after the required saddle gate failed.

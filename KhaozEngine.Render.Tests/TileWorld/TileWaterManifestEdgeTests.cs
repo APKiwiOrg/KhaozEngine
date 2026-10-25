@@ -197,6 +197,32 @@ public sealed class TileWaterManifestEdgeTests
     }
 
     [Fact]
+    public void SeamTieUsesTheEquallyNearSourceThatHasTheEdge()
+    {
+        TileWorldDocument doc = Document(default, River);
+        Fill(doc, 60, 8, 68, 13);
+        Fill(doc, 64, 0, 68, 2);
+        doc.SetUnderlay(65, 0, 0, TileRenderTestData.Water);
+        doc.SetUnderlay(64, 10, 0, TileRenderTestData.Water);
+
+        IReadOnlyList<WaterPlane> planes = TileWaterPlanes.Collect(doc, TileRenderTestData.Catalogs, River, 0);
+        Assert.Equal(2, planes.Count);
+        var sources = doc.LoadedRegions.ToDictionary(r => r.Coord, r => TileGroundCpuBuild.Build(doc,
+            TileRenderTestData.Catalogs, r.Coord, 0, TileGroundLod.Full, new TileGroundMesherOptions(),
+            captureOpticalSurface: true).Surface!);
+        TileWaterTriangleOutcome outcome = TileWaterTrianglePreparation.Prepare(new TileWaterPreparation(
+            planes.ToArray(), new TileWaterSourceStamp(doc, [], null), 0.5f, null), River, 0,
+            r => sources.GetValueOrDefault(r), new TileWaterSourceContext(doc, TileRenderTestData.Catalogs,
+                new TileGroundMesherOptions(), new TileWaterDependencyRegistry()));
+
+        Assert.Null(outcome.Failure);
+        TileWaterTriangleBuild build = Assert.Single(outcome.Fields);
+        Assert.Contains(planes, p => p.CenterZ > -1f);
+        Assert.Equal(-TileWaterBedOracle.Height([sources[River]], 64.75, 0),
+            RestDepth(build.Field, build.Origin.X, build.Origin.Z, 64.75f, 0.25f), 5);
+    }
+
+    [Fact]
     public void AppearingNorthInvalidatesTheContinuationAndRebuildsFromRealGround()
     {
         TileWorldDocument doc = RiverWorld();

@@ -130,26 +130,28 @@ internal sealed class TileWaterManifestContinuation(TileWorldDocument document, 
 
     Vertex? Sample(double x, double z)
     {
-        Source? nearest = null;
-        double distance = double.PositiveInfinity, px = 0, pz = 0;
+        double distance = double.PositiveInfinity;
         foreach (Source source in _sources)
         {
             double sx = Math.Clamp(x, source.Bounds.MinX, source.Bounds.MaxX);
             double sz = Math.Clamp(z, source.Bounds.MinZ, source.Bounds.MaxZ);
             double candidate = (sx - x) * (sx - x) + (sz - z) * (sz - z);
-            if (candidate >= distance) continue;
-            nearest = source;
-            distance = candidate;
-            px = sx;
-            pz = sz;
+            if (candidate < distance) distance = candidate;
         }
-        if (nearest is null) return null;
-        foreach (Edge edge in nearest.Edges)
-            if (edge.Contains(px, pz))
-            {
-                Vertex projected = edge.At(px, pz);
-                return projected with { X = x, Z = z };
-            }
+        // Only equally near sources may supply this seam, so a farther source cannot bridge an empty edge tile.
+        foreach (Source source in _sources)
+        {
+            double px = Math.Clamp(x, source.Bounds.MinX, source.Bounds.MaxX);
+            double pz = Math.Clamp(z, source.Bounds.MinZ, source.Bounds.MaxZ);
+            double candidate = (px - x) * (px - x) + (pz - z) * (pz - z);
+            if (candidate != distance) continue;
+            foreach (Edge edge in source.Edges)
+                if (edge.Contains(px, pz))
+                {
+                    Vertex projected = edge.At(px, pz);
+                    return projected with { X = x, Z = z };
+                }
+        }
         return null;
     }
 

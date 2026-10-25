@@ -42,6 +42,7 @@ internal sealed class AtmosphereRenderer : IDisposable
         public Vector4 FogHorizon;
     }
 
+    AtmosphereUbo _recordedUniforms;
     readonly IGpuDevice _gd;
     readonly AtmosphereUpdatePolicy _policy = new();
     readonly IGpuResourceLayout _transmittanceLayout, _multiLayout, _skyLayout;
@@ -118,6 +119,7 @@ internal sealed class AtmosphereRenderer : IDisposable
             if (Bindings.Enabled)
             {
                 AtmosphereUbo disabled = default;
+                _recordedUniforms = disabled;
                 cl.UpdateBuffer(Bindings.Uniforms, 0, in disabled);
                 Bindings.Enabled = false;
             }
@@ -131,6 +133,7 @@ internal sealed class AtmosphereRenderer : IDisposable
             lighting.SunTransmittance, lighting.MoonTransmittance);
         var ubo = PackUbo(post.Atmosphere, frame, lighting, scattering, cameraRelative, renderOrigin, view, projection,
             width, height, post.Hdr);
+        _recordedUniforms = ubo;
         cl.UpdateBuffer(Bindings.Uniforms, 0, in ubo);
         Bindings.Enabled = true;
         EnsureStaticTargets();
@@ -147,6 +150,11 @@ internal sealed class AtmosphereRenderer : IDisposable
             SkyViewDrawCount++;
         }
     }
+
+    // A later recording binds another Metal uniform segment. Replay the exact producer payload
+    // for overlay consumers without evaluating lighting, changing LUT policy or recording LUT draws.
+    internal void RefreshConsumerUniforms(IGpuCommandList commands) =>
+        commands.UpdateBuffer(Bindings.Uniforms, 0, in _recordedUniforms);
 
     static void Draw(IGpuCommandList cl, IGpuFramebuffer target, IGpuPipeline pipeline, IGpuResourceSet set)
     {

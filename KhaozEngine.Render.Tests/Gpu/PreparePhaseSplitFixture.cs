@@ -41,7 +41,8 @@ public sealed class PreparePhaseSplitFixture : IDisposable
     }
 
     internal byte[][] Render(bool split, bool transparent, bool temporal, bool geometry, bool hdr,
-        SceneDebugView debugView = SceneDebugView.None, bool resize = false, ScreenTransitionStyle? transitionStyle = null)
+        SceneDebugView debugView = SceneDebugView.None, bool resize = false, ScreenTransitionStyle? transitionStyle = null,
+        BillboardBlend? atmosphereBillboards = null)
     {
         EnsureScene();
         IGpuDevice gpu = _gpu!.GpuDevice;
@@ -51,6 +52,9 @@ public sealed class PreparePhaseSplitFixture : IDisposable
         device.Submits = device.Presents = 0;
         scene.CameraCut();
         scene.DebugView = debugView;
+        scene.Post.Atmosphere.Enabled = atmosphereBillboards.HasValue;
+        scene.Post.Atmosphere.WorldUnitsPerKilometre = 1;
+        scene.Post.Atmosphere.AerialDistanceScale = 20;
         scene.Post.RenderScale = RenderScale.MatchViewport;
         scene.Post.Quality.AntiAliasing = temporal ? AntiAliasing.Temporal : AntiAliasing.Off;
         scene.Post.Temporal.Upscale = TemporalUpscale.Native;
@@ -98,6 +102,12 @@ public sealed class PreparePhaseSplitFixture : IDisposable
                     if (index == 2) transition?.Begin();
                     if (index > 2) transition?.Update(0.05f, destinationReady: true);
                     scene.ScreenTransition = transition;
+                    if (atmosphereBillboards is { } blend)
+                    {
+                        scene.Post.Atmosphere.AerialDistanceScale = 4 + index * 4;
+                        scene.Camera.Frame(Vector3.Zero, new Vector3(2.2f + index * 0.04f, 2.2f + index * 0.3f, 2.2f));
+                        scene.DrawBillboard(new Vector3(0, 0.2f, 0), 1.4f, new Color(0.8f, 0.3f, 0.1f, 0.7f), blend);
+                    }
                     if (geometry)
                     {
                         Matrix4x4 world = Matrix4x4.CreateTranslation(index * 0.02f, 0, 0);

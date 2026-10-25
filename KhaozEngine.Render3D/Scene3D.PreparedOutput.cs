@@ -58,6 +58,8 @@ public sealed partial class Scene3D
         bool timingEnabled, bool refreshUniform)
     {
         long timingStart = timingEnabled ? Stopwatch.GetTimestamp() : 0;
+        if (refreshUniform && (_billboardAdditive.Count > 0 || _billboardAlphaItems.Count > 0))
+            _atmosphere.RefreshConsumerUniforms(cl);
         if (refreshUniform && _resolveThisRender
             && _frameDebugView is SceneDebugView.History or SceneDebugView.Disocclusion or SceneDebugView.Reactive)
             _temporalResolve!.RefreshDebugUniforms(cl);

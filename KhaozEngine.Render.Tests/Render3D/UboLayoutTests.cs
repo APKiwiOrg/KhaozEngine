@@ -119,9 +119,11 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(1536u, ModelRenderer.UboBytes);
         }
 
-        [Fact] public void LitFragments_DeclareTheIndirectTailAfterTheInteriorCut()
+        [Fact]
+        public void LitFragments_DeclareTheIndirectTailAfterTheInteriorCut()
             => IndirectFrameTailTests.VerifyLitFragmentTail();
-        [Fact] public void LitFragments_ReadIndirectDiffuse()
+        [Fact]
+        public void LitFragments_ReadIndirectDiffuse()
             => IndirectFrameTailTests.VerifyLitFragmentReads();
 
         [Fact]

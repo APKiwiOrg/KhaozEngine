@@ -15,7 +15,8 @@ recording opens. A prepared output names one scene frame, viewport size and post
 It can be consumed once. Beginning another scene frame, an ordinary render, failure or disposal
 invalidates it. The final blit uploads its frozen uniforms in the recording that consumes them,
 because Metal uniform segments belong to recordings. Temporal debug views likewise republish their
-resolve and visibility uniforms without advancing history again. Scene disposal drains pending GPU work before
+resolve and visibility uniforms without advancing history again. Queued billboard overlays republish
+the cached atmosphere payload without recalculating lighting or sky textures. Scene disposal drains pending GPU work before
 the prefix list is disposed.
 
 Vsync, software caps, graphics quality and drawable/ring depth are not changed. The extra recording

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
@@ -45,6 +46,32 @@ public sealed class PreparedSceneOutputTests
         Assert.Contains(rig.Tail.Uploads, upload =>
             upload.Bytes == KhaozEngine.Render3D.Internal.TemporalResolveUniforms.SizeInBytes
             && upload.FramebufferBindsBefore == 0);
+    }
+
+    [Theory]
+    [InlineData(BillboardBlend.Alpha)]
+    [InlineData(BillboardBlend.Additive)]
+    public void Prepared_billboards_republish_the_exact_atmosphere_payload_without_rebuilding_luts(BillboardBlend blend)
+    {
+        using var rig = new Rig();
+        rig.Prefix.CapturePayloads = true;
+        rig.Scene.Post.Atmosphere.Enabled = true;
+        rig.Scene.Post.Atmosphere.WorldUnitsPerKilometre = 1;
+        rig.Scene.Begin();
+        rig.Scene.DrawBillboard(Vector3.Zero, 1.4f, new Color(0.8f, 0.3f, 0.1f, 0.7f), blend);
+        rig.Scene.PrepareFrame();
+        long token = rig.Scene.PrepareOutput(rig.Prefix, 32, 24);
+        var atmosphere = rig.Scene.AtmosphereForTests;
+        var prefix = Assert.Single(rig.Prefix.Uploads, u => ReferenceEquals(u.Buffer, atmosphere.Bindings.Uniforms));
+        int staticBuilds = atmosphere.StaticBuildCount, skyDraws = atmosphere.SkyViewDrawCount;
+        rig.Scene.Post.Atmosphere.AerialDistanceScale += 5;
+        rig.Scene.Camera.Frame(Vector3.Zero, new Vector3(20, 40, 30));
+        rig.Scene.RenderPreparedOutput(rig.Tail, 32, 24, rig.Output, token);
+        var tail = Assert.Single(rig.Tail.Uploads, u => ReferenceEquals(u.Buffer, atmosphere.Bindings.Uniforms));
+        Assert.Equal(prefix.Data, tail.Data);
+        Assert.Equal(0, tail.FramebufferBindsBefore);
+        Assert.Equal(staticBuilds, atmosphere.StaticBuildCount);
+        Assert.Equal(skyDraws, atmosphere.SkyViewDrawCount);
     }
 
     [Fact]
@@ -169,6 +196,56 @@ public sealed class PreparedSceneOutputTests
         prepared.Prepare(frame);
         prepared.Render(frame, output.Framebuffer);
         Assert.Equal(1, frame.PreparePhaseCompositeCount);
+    }
+
+    [Fact]
+    public void Failure_after_the_prefix_submits_abandons_the_tail_and_drains_before_scene_resources_are_freed()
+    {
+        using var gpu = new FakeGpuDevice(GpuBackendKind.MetalNative);
+        using var output = new PostChainRig.Output(gpu, 32, 24);
+        using var device = new FrameOutputDevice(gpu, output);
+        var scene = new Scene3D(device, output.Framebuffer.Outputs);
+        using var prepared = new PreparePhaseSceneSubmission(device, scene);
+        using var commands = device.Factory.CreateCommandList();
+        var factory = (FakeGpuResourceFactory)gpu.Factory;
+        int beforeMesh = factory.Buffers.Count;
+        MeshHandle mesh = scene.LoadMesh(MeshPrimitives.Sphere(0.5f));
+        var meshBuffers = factory.Buffers.Skip(beforeMesh).ToArray();
+        Assert.NotEmpty(meshBuffers);
+        var frame = new Frame { Commands = commands, Width = 32, Height = 24 };
+        bool disposed = false;
+        try
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+                KhaozEngine.Tests.Windowing.RendererFramePolicy.Run(frame, true, device, commands, Color.Black,
+                    f =>
+                    {
+                        scene.Begin(); scene.Draw(mesh, Matrix4x4.Identity, Color.White);
+                        scene.PrepareFrame(); prepared.Prepare(f);
+                    },
+                    f => { prepared.Render(f, output.Framebuffer); throw new InvalidOperationException("injected UI failure"); },
+                    null, true));
+            Assert.Equal(1, device.Submits);
+            Assert.Equal(0, device.Presents);
+            Assert.Equal(1, frame.PreparePhaseCompositeCount);
+            Assert.Null(GpuRecording.OpenOwner(device));
+            bool drained = false;
+            gpu.OnWaitForIdle = () =>
+            {
+                if (!drained) Assert.All(meshBuffers, buffer => Assert.False(buffer.Disposed));
+                drained = true;
+            };
+            scene.Dispose(); disposed = true;
+            gpu.OnWaitForIdle = null;
+            Assert.True(drained);
+            Assert.All(meshBuffers, buffer => Assert.True(buffer.Disposed));
+        }
+        finally
+        {
+            gpu.OnWaitForIdle = null;
+            if (!disposed) scene.Dispose();
+            frame.DisposeSubmission();
+        }
     }
 
     sealed class Tap(Action<FrameCaptureContext> record) : IFrameCaptureTap

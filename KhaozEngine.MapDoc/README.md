@@ -1449,6 +1449,10 @@ include reused context and selected decoded input, without duplicating global ow
 Water footprint reads release their consumed bound and index scratch on return. Accumulated region
 polygons and closed contours transfer their admitted storage into the body collector before each append,
 remain charged through region emission, then settle into the compiled body's escaping inventory.
+Published contour, region, triangle and cleaned wide-polygon lists retain their full backing capacity
+in that inventory, including spare slots. Their read-only wrappers expose capacity to the inventory
+without copying or releasing admitted storage during publication. Footprint and occupied-piece rows
+use exact-sized arrays. The full body-list container and consumed bound-read lists charge capacity explicitly.
 Query capacity results preserve the declared limit, demand and allowance. `IndexNodesVisited` counts rejected siblings.
 Capacity refusals retain a typed `MapSceneCapacity` in the source or scoped result, with `LimitName`,
 `Requested` and `Allowance`. Byte demand is current eligible live inventory plus the attempted reservation.

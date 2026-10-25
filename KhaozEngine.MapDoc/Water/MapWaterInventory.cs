@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using KhaozEngine.MapDoc.Spaces;
@@ -10,8 +11,11 @@ namespace KhaozEngine.MapDoc.Water;
 internal sealed class MapWaterInventory
 {
     readonly HashSet<object> _seen = new(ReferenceEqualityComparer.Instance);
+    /// <summary>Publishes without a copy while keeping spare backing slots visible to inventory.</summary>
+    internal static IReadOnlyList<T> ReadOnly<T>(List<T> rows) => new RetainedRows<T>(rows);
     internal long Pieces(IReadOnlyList<MapOccupiedPiece> pieces) => checked(Rows(pieces, 8) + pieces.Sum(Piece));
-    long Rows<T>(IReadOnlyList<T> rows, int element) => _seen.Add(rows) ? checked((long)element * rows.Count) : 0;
+    long Rows<T>(IReadOnlyList<T> rows, int element) => _seen.Add(rows)
+        ? checked((long)element * (rows is RetainedRows<T> retained ? retained.Capacity : rows.Count)) : 0;
     internal long Body(MapCompiledWaterBody body)
     {
         if (!_seen.Add(body)) return 0;
@@ -44,5 +48,10 @@ internal sealed class MapWaterInventory
         if (!_seen.Add(piece)) return 0;
         return checked(128L + Rows(piece.Polygon, 128) + Rows(piece.LowerFaces, Unsafe.SizeOf<MapBoundFace>()) +
             (piece.UpperFaces is null ? 0 : Rows(piece.UpperFaces, Unsafe.SizeOf<MapBoundFace>())) + Rows(piece.Path, 8));
+    }
+
+    sealed class RetainedRows<T>(List<T> rows) : ReadOnlyCollection<T>(rows)
+    {
+        internal int Capacity => ((List<T>)Items).Capacity;
     }
 }

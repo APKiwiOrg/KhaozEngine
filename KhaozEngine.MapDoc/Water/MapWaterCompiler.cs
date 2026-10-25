@@ -199,7 +199,7 @@ public static class MapWaterCompiler
                         }
             Absorb(builder);
             _regions = builder.Emit(level);
-            _closedContours = builder.ClosedContours.AsReadOnly();
+            _closedContours = MapWaterInventory.ReadOnly(builder.ClosedContours);
             _deepest = builder.DeepestBed;
             _fragmentBounds = builder.FragmentBounds;
             incomplete ??= builder.Unresolved is { } gap ? $"{_label}: {gap}" : null;

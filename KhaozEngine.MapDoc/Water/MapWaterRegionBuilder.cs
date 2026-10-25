@@ -171,11 +171,11 @@ internal sealed class MapWaterRegionBuilder
                 if (triangles.Count != 0)
                 {
                     _fragments.TryGetValue(space, out var fragment);
-                    regions.Add(new MapWaterRegion(fragment?.SpaceId ?? space, kind, triangles.AsReadOnly())
-                    { Fragment = fragment, WidePolygons = fragment is null ? Array.Empty<IReadOnlyList<MapWideXz>>() : polygons[kind].Select(p => (IReadOnlyList<MapWideXz>)Clean(p).AsReadOnly()).ToArray() });
+                    regions.Add(new MapWaterRegion(fragment?.SpaceId ?? space, kind, MapWaterInventory.ReadOnly(triangles))
+                    { Fragment = fragment, WidePolygons = fragment is null ? Array.Empty<IReadOnlyList<MapWideXz>>() : polygons[kind].Select(p => MapWaterInventory.ReadOnly(Clean(p))).ToArray() });
                 }
             }
-        return regions.AsReadOnly();
+        return MapWaterInventory.ReadOnly(regions);
     }
 
     MapWaterBoundRead Read(MapWaterFootprintRect rect, MapBoundRef bound, MapExactXz min, MapExactXz max, bool upper)

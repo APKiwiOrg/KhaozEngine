@@ -138,7 +138,7 @@ public sealed class MapSimulationCoverageAdmissionTests
         using var fixture = Create();
         const int points = 8192;
         var assets = ComplexAssets(fixture.Assets, points, compound);
-        var placements = Enumerable.Range(0, 3).Select(i => new MapResolvedPlacement("repeated-" + i, "crate", "crate", null,
+        var placements = Enumerable.Range(0, 6).Select(i => new MapResolvedPlacement("repeated-" + i, "crate", "crate", null,
             new(new(i, 5, 10), 0, 2), [])).ToArray();
         IReadOnlyList<MapPlacementGeometry>? admitted = null;
         (long Bytes, long Reads) Measure(int count)
@@ -159,18 +159,21 @@ public sealed class MapSimulationCoverageAdmissionTests
         Assert.True(instance >= 3L * points * 12);
         Assert.Equal(1, one.Reads);
         Assert.Equal(one.Reads, two.Reads);
+        // Five live outputs exceed the initial decoder peak, so the sixth shape is the binding stage.
+        var five = Measure(5);
         int preparations = 0;
-        var bounded = new MapSceneAdmission(new(MaxPreparedBytes: checked(two.Bytes + points * 12L - 1)),
+        var bounded = new MapSceneAdmission(new(MaxPreparedBytes: checked(five.Bytes + points * 12L - 1)),
             stage => { if (stage == "geometry") preparations++; });
         using (bounded.Enter())
             Assert.Throws<MapSceneCapacityException>(() => MapPlacementShapes.Prepare(placements, assets, null));
-        Assert.Equal(2, preparations);
-        Assert.InRange(bounded.RetainedBytes, two.Bytes, two.Bytes + points * 12L - 1);
+        Assert.Equal(5, preparations);
+        Assert.Equal(0, bounded.RetainedBytes);
+        Assert.Equal(0, bounded.WorkspaceBytes);
         Assert.Null(MapSceneAdmission.Current);
         // Released callers retain their existing unmetered path and output.
         var released = MapPlacementShapes.Prepare(placements, assets, null);
-        Assert.Equal(3, released.Count);
-        Assert.Equal(admitted!.Select(p => p.Digest), released.Take(2).Select(p => p.Digest));
+        Assert.Equal(6, released.Count);
+        Assert.Equal(admitted!.Take(2).Select(p => p.Digest), released.Take(2).Select(p => p.Digest));
     }
 
     static void RemoveUpperLayer(MapDocument document)

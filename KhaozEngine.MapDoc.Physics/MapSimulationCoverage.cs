@@ -30,7 +30,7 @@ public sealed class MapSimulationCoverage
             return new(coverage.Status, coverage.Witness, Array.Empty<MapScopedWorld>(), null)
             { Capacity = coverage.Capacity, Findings = coverage.Findings };
         var witness = coverage.Witness;
-        var worlds = new List<MapScopedWorld>();
+        var worlds = ownership.Worlds;
         foreach (var scene in coverage.Scenes)
         {
             var result = MapScopedWorldBuilder.Build(scene, _assets, _options);
@@ -47,8 +47,14 @@ public sealed class MapSimulationCoverage
     sealed class Acquisition(MapSceneCoverageLease coverage) : IDisposable
     {
         internal MapSceneCoverageLease Coverage => coverage;
+        internal List<MapScopedWorld> Worlds { get; } = new();
         internal bool Transferred;
-        public void Dispose() { if (!Transferred) coverage.Dispose(); }
+        public void Dispose()
+        {
+            if (Transferred) return;
+            foreach (var world in Worlds) world.Dispose();
+            coverage.Dispose();
+        }
     }
 }
 
@@ -66,6 +72,7 @@ public sealed class MapSimulationLease : IDisposable
     { Status = status; Witness = witness; Worlds = worlds; _coverage = coverage; }
     public void Dispose()
     {
+        foreach (var world in Worlds) world.Dispose();
         Worlds = Array.Empty<MapScopedWorld>();
         _coverage?.Dispose(); _coverage = null;
     }

@@ -13,8 +13,11 @@ namespace KhaozEngine.MapDoc.Physics;
 /// <summary>The collider and selection shapes one native asset carries, read from a verified closure. Shapes stay in
 /// asset source units. <see cref="SourceUnitsToMetres"/> converts them. An asset is solid exactly when it declares a
 /// collider. A selection volume alone makes an asset examinable without blocking.</summary>
-public sealed class MapAssetShapes
+public sealed class MapAssetShapes : IDisposable
 {
+    internal MapPreparationReservation? PreparationOwnership { get; set; }
+    /// <summary>Releases the decoded output's preparation credit after its last consumer.</summary>
+    public void Dispose() => PreparationOwnership?.Dispose();
     /// <summary>The asset these shapes belong to.</summary>
     public string AssetId { get; }
 
@@ -64,21 +67,31 @@ public sealed class MapAssetShapes
     {
         ArgumentNullException.ThrowIfNull(closure);
         ArgumentNullException.ThrowIfNull(assetId);
+        var admission = MapSceneAdmission.Current;
+        using var preparation = admission?.BeginPreparation();
         MapResolvedAsset asset = closure.GetAsset(assetId);
-        var support = asset.SupportResourceIds.Select(id => closure.BorrowSupport(id)).Select(r => r with
+        admission?.ReserveBytes(checked(128L + 128L * asset.SupportResourceIds.Count));
+        var borrowed = asset.SupportResourceIds.Select(id => closure.BorrowSupport(id)).ToArray();
+        admission?.ReserveBytes(borrowed.Sum(s => checked(128L + 8L * s.References.Count + 64L * s.Surfaces.Patches.Count +
+            128L * s.Surfaces.Refs.Count + s.Surfaces.Refs.Sum(r => 8L * (r.IndoorSpan?.DomainTags.Count ?? 0)))));
+        var support = borrowed.Select(r => r with
         { Surfaces = r.Surfaces.Clone(), References = Array.AsReadOnly(r.References.ToArray()) }).ToArray();
 
         (PhysicsShape? collider, string? colliderSha256) =
             ReadShape(closure, asset.Id, asset.CollisionResourceId, MapResourceKind.Collider);
         (PhysicsShape? selection, string? selectionSha256) =
             ReadShape(closure, asset.Id, asset.SelectionResourceId, MapResourceKind.Selection);
-        return new MapAssetShapes(asset.Id, collider, colliderSha256, selection, selectionSha256, asset.SourceUnitsToMetres, Array.AsReadOnly(support));
+        var result = new MapAssetShapes(asset.Id, collider, colliderSha256, selection, selectionSha256, asset.SourceUnitsToMetres, Array.AsReadOnly(support));
+        result.PreparationOwnership = preparation?.Complete(new MapPhysicsInventory().Asset(result));
+        return result;
     }
 
     static (PhysicsShape? Shape, string? Sha256) ReadShape(MapAssetClosure closure, string assetId, string? resourceId,
         MapResourceKind kind)
     {
         if (resourceId is null) return (null, null);
+        var current = MapSceneAdmission.Current;
+        using var preparation = current?.BeginPreparation();
         MapResolvedResource resource = closure.GetResource(resourceId);
         if (resource.Kind != kind)
             throw new MapDocumentException(
@@ -112,6 +125,7 @@ public sealed class MapAssetShapes
         }
 
         RefuseUninstallable(shape, assetId, resourceId);
+        if (preparation is not null) preparation.Complete(new MapPhysicsInventory().Shape(shape));
         return (shape, resource.Reference.Sha256);
     }
 

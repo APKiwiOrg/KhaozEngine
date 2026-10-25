@@ -107,7 +107,7 @@ the scaled source unchanged. Envelopes shape interaction only. They are never in
 ## Terrain physics
 
 ```csharp
-MapTerrainChunkSet chunks = MapTerrainPhysics.Compile(view, new MapTerrainChunkPolicy(MaxTrianglesPerChunk: 1024));
+using MapTerrainChunkSet chunks = MapTerrainPhysics.Compile(view, new MapTerrainChunkPolicy(MaxTrianglesPerChunk: 1024));
 ```
 
 `Compile` groups R2's compiled support floors, ceilings and wall strip sides of a complete view into one-sided
@@ -141,6 +141,18 @@ and collider floors duplicated by support surfaces are refused.
 for resolver 1, every resolution, placement and terrain refusal, a static beyond `MapWorldBuilder.MaxCoordinateMetres`
 (1,000,000 m) on an axis and two statics with one owner id.
 The released world-limit refusal precedes effective placement-coordinate representability checks.
+
+### Scoped simulation ownership
+
+`MapScopedWorldBuilder.Build` prepares one admitted `MapScopedScene` under its captured byte allowance. Patch,
+strip, shape decode and per-instance workspace releases after its consumer. Independent terrain meshes, placement
+shapes, water and descriptor containers keep one retained receipt on the returned `MapScopedWorld`.
+Dispose a directly built scoped world after its last consumer. `MapSimulationCoverage.Acquire` owns its worlds
+and neutral coverage until `MapSimulationLease.Dispose`, and releases unpublished worlds if a later domain refuses.
+Navigation partitions, seams and links derived from a scoped world share that world's lifetime. Their workspace
+releases on return and their retained descriptor inventory joins the world receipt. Navigation rejects disposed
+worlds. `MapTerrainChunkSet` and `MapAssetShapes` also release their own metered preparation credit on disposal
+when used as standalone products.
 
 ### Feature query diagnostics
 

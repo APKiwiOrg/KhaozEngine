@@ -197,10 +197,13 @@ public static class MapNavTiling
 
     static IReadOnlyList<MapNavLink> LinkDescriptors(MapScopedSurfaces view, MapWorldGrids grids)
     {
+        var admission = MapSceneAdmission.Current;
+        var output = admission?.PreparationScope;
         MapSceneAdmission.Current?.ReserveBytes(checked(view.Witness.Records.Count * 512L));
         var links = new List<MapNavLink>();
         foreach (MapRecordRef reference in view.Witness.Records.OrderBy(r => r.Id, StringComparer.Ordinal))
         {
+            using var recordPreparation = output is null ? null : admission?.BeginPreparation();
             MapTopologyRecord record = Record<MapTopologyRecord>(view, reference);
             if (record is not (MapCavePortal or MapVerticalLink)) continue;
             var tiles = new SortedSet<MapNavTileCoord>(TileOrder);
@@ -225,6 +228,7 @@ public static class MapNavTiling
             if (tiles.Count < 2) continue;
             string semantic = MapSurfaceSemantics.RecordDigest(reference.Anchor, record);
             MapSceneAdmission.Current?.ReserveBytes(checked(tiles.Count * 16L + (long)tiles.Count * (tiles.Count - 1) / 2 * 512L));
+            output?.Reserve(checked((long)tiles.Count * (tiles.Count - 1) / 2 * 256L));
             MapNavTileCoord[] reached = tiles.ToArray();
             for (int i = 0; i < reached.Length; i++)
                 for (int j = i + 1; j < reached.Length; j++)
@@ -366,6 +370,7 @@ public static class MapNavTiling
     public static IReadOnlyList<MapNavTile> Partition(MapScopedWorld world, MapWorldGrids grids, MapNavTileOptions options)
     {
         ArgumentNullException.ThrowIfNull(world);
+        world.RequireAlive();
         ArgumentNullException.ThrowIfNull(grids);
         ValidateOptions(options);
         grids.ValidateDomain(world.TileSize, world.Bounds);
@@ -382,8 +387,12 @@ public static class MapNavTiling
         try
         {
             using var admitted = world.Admission.Enter();
-            return PartitionDescriptors(world.Bounds, world.Statics, Array.Empty<MapLegacySculptTile>(), world.Water, true, "",
+            using var preparation = world.Admission.BeginPreparation();
+            preparation.Reserve(128);
+            var result = PartitionDescriptors(world.Bounds, world.Statics, Array.Empty<MapLegacySculptTile>(), world.Water, true, "",
                 grids, options, minX, maxX, minZ, maxZ, count);
+            world.Retain(preparation.Complete(checked(128L + 512L * result.Count)));
+            return result;
         }
         catch (MapSceneCapacityException error) { throw new MapDocumentException("navigation capacity: " + error.Message, error); }
     }
@@ -393,11 +402,16 @@ public static class MapNavTiling
     {
         ArgumentNullException.ThrowIfNull(tiles);
         ArgumentNullException.ThrowIfNull(world);
+        world.RequireAlive();
         ValidateOptions(options);
         try
         {
             using var admitted = world.Admission.Enter();
-            return SeamDescriptors(tiles, world.Bounds, options);
+            using var preparation = world.Admission.BeginPreparation();
+            preparation.Reserve(checked(128L + 512L * tiles.Count));
+            var result = SeamDescriptors(tiles, world.Bounds, options);
+            world.Retain(preparation.Complete(checked(128L + 256L * result.Count)));
+            return result;
         }
         catch (MapSceneCapacityException error) { throw new MapDocumentException("navigation capacity: " + error.Message, error); }
     }
@@ -406,12 +420,17 @@ public static class MapNavTiling
     public static IReadOnlyList<MapNavLink> Links(MapScopedWorld world, MapWorldGrids grids)
     {
         ArgumentNullException.ThrowIfNull(world);
+        world.RequireAlive();
         ArgumentNullException.ThrowIfNull(grids);
         grids.ValidateDomain(world.TileSize, world.Bounds);
         try
         {
             using var admitted = world.Admission.Enter();
-            return LinkDescriptors(world.Surfaces, grids);
+            using var preparation = world.Admission.BeginPreparation();
+            preparation.Reserve(128);
+            var result = LinkDescriptors(world.Surfaces, grids);
+            world.Retain(preparation.Complete(checked(128L + 256L * result.Count)));
+            return result;
         }
         catch (MapSceneCapacityException error) { throw new MapDocumentException("navigation capacity: " + error.Message, error); }
     }
@@ -541,8 +560,13 @@ public static class MapNavTiling
                     MapBox3 capture = Grow(TileBounds(tile, grids, 0, 0), margin);
                     var min = new MapWideXz(MapWideRational.FromDouble(capture.MinX), MapWideRational.FromDouble(capture.MinZ));
                     var max = new MapWideXz(MapWideRational.FromDouble(capture.MaxX), MapWideRational.FromDouble(capture.MaxZ));
-                    MapSceneAdmission.Current?.ReserveBytes(checked(256L + polygon.Count * 256L));
-                    if (MapWaterPolygons.ClipToRect(polygon, min, max).Count > 0) tiles.Add(tile);
+                    using var clipping = MapSceneAdmission.Current?.Workspace();
+                    clipping?.Reserve(checked(256L + polygon.Count * 256L));
+                    if (MapWaterPolygons.ClipToRect(polygon, min, max).Count > 0)
+                    {
+                        MapSceneAdmission.Current?.ReserveBytes(64);
+                        tiles.Add(tile);
+                    }
                 }
             }
         }
@@ -657,7 +681,8 @@ public static class MapNavTiling
     {
         if (portal.Interval.Count < 2)
             throw new MapDocumentException($"invalid vertex sequence: portal '{portal.Id}'");
-        MapSceneAdmission.Current?.ReserveBytes(checked(portal.Interval.Count * 64L));
+        using var preparation = MapSceneAdmission.Current?.Workspace();
+        preparation?.Reserve(checked(portal.Interval.Count * 64L));
         MapExactXz[] points = portal.Interval.Select(v => MapEffectiveGeometry.Vertex(view, v)).ToArray();
         for (int i = 1; i < points.Length; i++)
             AddReach(tiles, grids, points[i - 1].X.ToDouble(), points[i - 1].Z.ToDouble(), points[i].X.ToDouble(),
@@ -667,6 +692,9 @@ public static class MapNavTiling
     static void AddOpening(MapScopedSurfaces view, MapHorizontalOpening opening, MapWorldGrids grids,
         SortedSet<MapNavTileCoord> tiles)
     {
+        var admission = MapSceneAdmission.Current;
+        var output = admission?.PreparationScope;
+        using var preparation = output is null ? null : admission?.BeginPreparation();
         MapSurfacePatch patch = view.Patch(opening.Patch).Patch
             ?? throw new MapDocumentException($"missing geometry: opening '{opening.Id}' patch {opening.Patch}");
         MapOpeningPlane plane = MapOpeningBoundary.Compile(Surface(view, opening.Patch.SurfaceId), patch, opening);
@@ -676,11 +704,12 @@ public static class MapNavTiling
                 MapEffectiveGeometry.Point(view, opening.Patch.SurfaceId, local.B), MapEffectiveGeometry.Point(view, opening.Patch.SurfaceId, local.C));
             double[] xs = { t.A.X.ToDouble(), t.B.X.ToDouble(), t.C.X.ToDouble() };
             double[] zs = { t.A.Z.ToDouble(), t.B.Z.ToDouble(), t.C.Z.ToDouble() };
-            AddReach(tiles, grids, xs.Min(), zs.Min(), xs.Max(), zs.Max());
+            AddReach(tiles, grids, xs.Min(), zs.Min(), xs.Max(), zs.Max(), output);
         }
     }
 
-    static void AddReach(SortedSet<MapNavTileCoord> tiles, MapWorldGrids grids, double ax, double az, double bx, double bz)
+    static void AddReach(SortedSet<MapNavTileCoord> tiles, MapWorldGrids grids, double ax, double az, double bx, double bz,
+        MapPreparationScope? output = null)
     {
         (int minX, int maxX) = TileAxis(Math.Min(ax, bx), Math.Max(ax, bx), grids.Origin.X, grids.NavTileSize);
         (int minZ, int maxZ) = TileAxis(Math.Min(az, bz), Math.Max(az, bz), grids.Origin.Y, grids.NavTileSize);
@@ -688,7 +717,11 @@ public static class MapNavTiling
             for (long x = minX; x <= maxX; x++)
             {
                 var coord = new MapNavTileCoord((int)x, (int)z);
-                if (!tiles.Contains(coord)) MapSceneAdmission.Current?.ReserveBytes(64);
+                if (!tiles.Contains(coord))
+                {
+                    if (output is null) MapSceneAdmission.Current?.ReserveBytes(64);
+                    else output.Reserve(64);
+                }
                 tiles.Add(coord);
             }
     }

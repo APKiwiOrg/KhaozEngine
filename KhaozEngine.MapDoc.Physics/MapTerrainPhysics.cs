@@ -9,6 +9,7 @@ using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Physics;
@@ -76,8 +77,11 @@ public sealed class MapTerrainChunk
 }
 
 /// <summary>The physics chunks of one complete surface view.</summary>
-public sealed class MapTerrainChunkSet
+public sealed class MapTerrainChunkSet : IDisposable
 {
+    internal MapPreparationReservation? PreparationOwnership { get; set; }
+    /// <summary>Releases this product's preparation credit after its last consumer.</summary>
+    public void Dispose() => PreparationOwnership?.Dispose();
     /// <summary>Every chunk, ordered by ordinal <see cref="MapTerrainChunk.ChunkId"/>.</summary>
     public IReadOnlyList<MapTerrainChunk> Chunks { get; }
 
@@ -130,8 +134,12 @@ public static class MapTerrainPhysics
         if (view.Status != MapAcquireStatus.Complete)
             throw new MapDocumentException($"terrain physics needs a complete surface view, not {view.Status}" +
                 (view.Detail is null ? "" : ": " + view.Detail));
+        var admission = view.Scope.SceneAdmission ?? MapSceneAdmission.Current;
+        using var admitted = admission?.Enter();
+        using var preparation = admission?.BeginPreparation();
+        admission?.ReserveBytes(checked(256L + 96L * view.Surfaces.Count + 32L * view.Witness.Present.Count));
         var surfaces = view.Surfaces.ToDictionary(s => s.Id, StringComparer.Ordinal);
-        var chunker = new Chunker(policy.MaxTrianglesPerChunk);
+        var chunker = new Chunker(policy.MaxTrianglesPerChunk, preparation);
         int skipped = 0;
         string owner = "the view";
         try
@@ -142,18 +150,20 @@ public static class MapTerrainPhysics
                     throw new MapDocumentException($"terrain physics patch '{key}' has no declared surface");
                 if (surface.Role != MapSurfaceRole.PaintOverride)
                 {
+                    using var patchPreparation = admission?.BeginPreparation();
                     owner = $"patch '{key}'";
-                    MapSurfacePatch patch = view.Patch(key).Patch ??
-                        throw new MapDocumentException($"terrain physics patch '{key}' is unavailable");
-                    MapCompiledPatch compiled = MapEffectiveGeometry.TransformPatch(view, MapSurfaceCompiler.Compile(surface, patch));
+                    MapCompiledPatch compiled = MapEffectiveGeometry.Patch(view, key);
+                    admission?.ReserveBytes(checked(512L + 256L * compiled.Faces.Count + 32L * Encoding.UTF8.GetByteCount(key.SurfaceId)));
                     skipped += compiled.LegacyFallbackCells.Count;
                     chunker.AddPatch(key, compiled.ExactVertices, compiled.Faces);
                 }
                 foreach (MapWallStrip strip in view.RecordsIn(key).OfType<MapWallStrip>())
                 {
+                    using var stripPreparation = admission?.BeginPreparation();
                     owner = $"wall strip '{strip.Id}'";
                     MapCompiledStrip compiled = MapWallStripCompiler.Compile(strip,
                         Chain(view, strip, strip.LowerChain), Chain(view, strip, strip.UpperChain));
+                    admission?.ReserveBytes(checked(512L + 256L * compiled.Faces.Count + 32L * Encoding.UTF8.GetByteCount(strip.Id)));
                     chunker.AddStrip(strip.Id, compiled.ExactVertices, compiled.Faces);
                 }
             }
@@ -162,7 +172,10 @@ public static class MapTerrainPhysics
         {
             throw new MapDocumentException($"terrain physics geometry is not representable in {owner}", error);
         }
-        return new(chunker.Finish(), view.ReadWitness, skipped);
+        admission?.ReserveBytes(checked(128L + 24L * chunker.Count));
+        var result = new MapTerrainChunkSet(chunker.Finish(), view.ReadWitness, skipped);
+        result.PreparationOwnership = preparation?.Complete(new MapPhysicsInventory().Terrain(result));
+        return result;
     }
 
     static MapChainResolution Chain(MapScopedSurfaces view, MapWallStrip strip, MapRecordRef reference)
@@ -179,9 +192,10 @@ public static class MapTerrainPhysics
     }
 
     /// <summary>Recursive splitting under the triangle cap and the anchor extent.</summary>
-    sealed class Chunker(int cap)
+    sealed class Chunker(int cap, MapPreparationScope? output)
     {
         readonly List<MapTerrainChunk> _chunks = new();
+        internal int Count => _chunks.Count;
 
         internal void AddPatch(MapPatchKey key, IReadOnlyList<MapExactPoint> exact, IReadOnlyList<MapCompiledFace> faces)
         {
@@ -305,6 +319,10 @@ public static class MapTerrainPhysics
 
         void Emit(string id, MapSubmissionAnchor anchor, IReadOnlyList<MapExactPoint> exact, MapCompiledFace[] faces)
         {
+            // Builder maps and copy overlap belong to the current patch. Independent output survives it.
+            MapSceneAdmission.Current?.ReserveBytes(checked(512L + 256L * faces.Length + 8L * Encoding.UTF8.GetByteCount(id)));
+            long reserved = checked(512L + 2L * id.Length + faces.Length * (48L + System.Runtime.CompilerServices.Unsafe.SizeOf<MapFaceKey>() + 1));
+            output?.Reserve(reserved);
             var slots = new Dictionary<int, int>();
             var vertices = new List<Vector3>();
             var indices = new int[faces.Length * 3];
@@ -322,9 +340,11 @@ public static class MapTerrainPhysics
                 roles[i] = face.Role;
             }
             Vector3[] offsets = vertices.ToArray();
-            _chunks.Add(new(id, anchor, new TriangleMeshShape(offsets, indices), owners, roles,
+            var chunk = new MapTerrainChunk(id, anchor, new TriangleMeshShape(offsets, indices), owners, roles,
                 Digest(id, anchor, offsets, indices, owners, roles),
-                MapPrefabSupportBounds.Of(slots.Keys.Select(source => exact[source]).ToArray())));
+                MapPrefabSupportBounds.Of(slots.Keys.Select(source => exact[source]).ToArray()));
+            _chunks.Add(chunk);
+            output?.Release(reserved - new MapPhysicsInventory().Chunk(chunk));
 
             int Vertex(int source)
             {

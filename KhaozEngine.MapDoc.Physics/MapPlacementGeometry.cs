@@ -82,6 +82,7 @@ public static class MapPlacementShapes
     internal static IReadOnlyList<MapPlacementGeometry> Prepare(IReadOnlyList<MapResolvedPlacement> placements,
         MapAssetClosure closure, IReadOnlyDictionary<string, MapEffectiveTransform>? transforms)
     {
+        using var preparation = MapSceneAdmission.Current?.BeginPreparation();
         MapSceneAdmission.Current?.ReserveBytes(checked(256L + placements.Count * 32L));
         var assets = new Dictionary<string, MapAssetShapes>(StringComparer.Ordinal);
         var result = new List<MapPlacementGeometry>(placements.Count);
@@ -92,6 +93,7 @@ public static class MapPlacementShapes
             MapEffectiveTransform? precise = transforms?.GetValueOrDefault("Placement:" + placement.PlacementId);
             result.Add(Build(placement, shapes, precise));
         }
+        if (preparation is not null) preparation.Complete(new MapPhysicsInventory().Placements(result));
         return result.AsReadOnly();
     }
 
@@ -116,6 +118,7 @@ public static class MapPlacementShapes
                 $"Shapes of asset '{shapes.AssetId}' cannot bound placement '{placement.PlacementId}' of asset '{placement.AssetId}'.",
                 nameof(shapes));
         if (shapes.Collider is null && shapes.Selection is null) { spatialBounds = null; return null; }
+        using var preparation = MapSceneAdmission.Current?.BeginPreparation();
         MapPlacementGeometry geometry = Build(placement, shapes);
         MapBox3 envelope = geometry.Envelope.Bounds;
         spatialBounds = geometry.ColliderBounds is { } conservative ? conservative.Union(envelope) : envelope;
@@ -124,6 +127,7 @@ public static class MapPlacementShapes
 
     static MapPlacementGeometry Build(MapResolvedPlacement placement, MapAssetShapes shapes, MapEffectiveTransform? precise = null)
     {
+        using var preparation = MapSceneAdmission.Current?.BeginPreparation();
         MapTransform transform = placement.Transform;
         MapEffectiveTransform effective = precise ?? MapEffectiveTransform.From(transform);
         float scale = (float)(shapes.SourceUnitsToMetres * effective.Scale);
@@ -146,9 +150,17 @@ public static class MapPlacementShapes
         MapInteractionEnvelope envelope =
             MapInteractionEnvelope.Build(placement.PlacementId, source, selection is null, worldPose);
         string digest = Digest(placement, shapes, scale, envelope.RaiseMetres, precise);
-        return new MapPlacementGeometry(placement.PlacementId, placement.NumericId, shapes.AssetId, collider, worldPose,
+        var result = new MapPlacementGeometry(placement.PlacementId, placement.NumericId, shapes.AssetId, collider, worldPose,
             colliderBounds, envelope, digest)
         { EffectiveTransform = effective, SourceCollider = shapes.Collider, SourceUnitsToMetres = shapes.SourceUnitsToMetres };
+        if (preparation is not null)
+        {
+            var inventory = new MapPhysicsInventory();
+            // The decoded asset owns these shared inputs until the placement collection takes its output.
+            _ = inventory.Shape(shapes.Collider); _ = inventory.Shape(shapes.Selection);
+            preparation.Complete(inventory.Placement(result));
+        }
+        return result;
     }
 
     /// <summary>The rotation by <paramref name="yaw"/> radians about world Y, (0, sin, 0, cos) of half the yaw. The

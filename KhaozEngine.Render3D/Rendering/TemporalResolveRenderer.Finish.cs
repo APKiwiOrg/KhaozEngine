@@ -41,6 +41,7 @@ namespace KhaozEngine.Render3D.Rendering
         void RecordFinishProbe(IGpuCommandList cl)
         {
             if (!_countsArmed || CurrentSet is not { } set) return;
+            using var profile = Profiling?.Pass(cl, "display.temporal-count-probe") ?? default;
             _countsArmed = false;
             (_countProbe ??= new TemporalCountProbe(_gd, ResolveLayout, FullyLitResolveLayout, _fragmentSourceForTests)).Record(cl, set, LastVisibilityDecisionSkipped);
         }

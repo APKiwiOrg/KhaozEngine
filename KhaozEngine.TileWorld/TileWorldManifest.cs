@@ -150,6 +150,7 @@ internal static class TileWorldJson
             ReadCommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true,
             WriteIndented = indented,
+            NewLine = "\n",
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         };
         o.Converters.Add(new JsonStringEnumConverter());

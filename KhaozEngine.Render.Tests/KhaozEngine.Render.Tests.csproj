@@ -22,6 +22,7 @@
     <PackageReference Include="BepuPhysics" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Gpu/RendererPerf/controls/*.glsl" />
     <None Update="Fixtures/nameplate-legacy-draw-calls.txt" CopyToOutputDirectory="PreserveNewest" />
     <!-- Gpu/FaceSeamReachTests.cs replays two retained cube-face seam captures through the GPU case's own
          measurement: the shipped filter on WARP and the clamped-face control on Metal. -->

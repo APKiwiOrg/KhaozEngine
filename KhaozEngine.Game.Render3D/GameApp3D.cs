@@ -60,8 +60,9 @@ namespace KhaozEngine.Game
 
         /// <summary>
         /// The scene half of the frame's PRE-RECORD phase: begin the scene, let the game queue its draws, then run
-        /// <see cref="Scene3D.PrepareFrame()"/> - all while the window's frame command list is still closed, which is
-        /// the whole point (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/429">#429</see>). The scene's
+        /// <see cref="Scene3D.PrepareFrame(int, int)"/> with the frame's viewport - all while the window's frame
+        /// command list is still closed, which is the whole point
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/429">#429</see>). The scene's
         /// per-pass timing flag is decided here too, so <see cref="OnDraw3D"/> and the passes it feeds see one value
         /// for the frame.
         /// </summary>
@@ -75,9 +76,11 @@ namespace KhaozEngine.Game
 
         /// <summary>
         /// The frame's scene contract in one place: <see cref="Scene3D.Begin"/>, then the queue fill, then
-        /// <see cref="Scene3D.PrepareFrame()"/>. It runs where no command list is open, so a producer that must submit
-        /// and drain a list of its own (the FFT ocean's priming pass) does it here rather than nested inside the
-        /// frame's recording, which is a device fault on Direct3D11 in immediate-context mode (#423).
+        /// <see cref="Scene3D.PrepareFrame(int, int)"/> for a positive viewport, or the legacy
+        /// <see cref="Scene3D.PrepareFrame()"/> when none is given. It runs where no command list is open, so a
+        /// producer that must submit and drain a list of its own (the FFT ocean's priming pass) does it here rather
+        /// than nested inside the frame's recording, which is a device fault on Direct3D11 in immediate-context mode
+        /// (#423).
         /// <para>
         /// Static and scene-parameterized so the ORDER is assertable headless, the way
         /// <see cref="DesiredEnableTiming"/> makes the timing decision assertable: the loop around it still needs a

@@ -48,9 +48,10 @@ public class TileWaterOpticsTests
         return Assert.Single(outcome.Fields);
     }
 
+    // Physical depth as the shader forms it, without the clamp: rest depth plus level minus the datum.
     static float Sample(TileWaterTriangleBuild build, float worldX, float worldZ) =>
         build.Field.SampleDepth((worldX - build.Origin.X) / build.Field.Size.X,
-            (worldZ - build.Origin.Z) / build.Field.Size.Y);
+            (worldZ - build.Origin.Z) / build.Field.Size.Y) + build.Level - build.Origin.Y;
 
     static double Oracle(TileGroundSurfaceSnapshot surface, float reference, float worldX, float worldZ) =>
         reference - TileWaterBedOracle.Height([surface], worldX, worldZ);
@@ -157,8 +158,10 @@ public class TileWaterOpticsTests
         Assert.Null(outcome.Failure);
         Assert.Equal(2, outcome.Fields.Length);
         TileWaterTriangleBuild low = outcome.Fields[0], high = outcome.Fields[1];
-        Assert.Equal(2f, low.Origin.Y);
-        Assert.Equal(30f, high.Origin.Y);
+        Assert.Equal(2f, low.Level);
+        Assert.Equal(30f, high.Level);
+        Assert.Equal(0f, low.Origin.Y);
+        Assert.Equal(0f, high.Origin.Y);
         Assert.Equal(-0.5f, Sample(low, 10f, -10f), 4);
         Assert.Equal(Oracle(surface, 30f, 13f, -13f), Sample(high, 13f, -13f), 4);
         // Immutable: a later document edit cannot change prepared bytes.
@@ -294,11 +297,11 @@ public class TileWaterOpticsTests
     }
 
     [Theory]
-    [InlineData(262144, 0, 1)]
-    [InlineData(262144, 0, 10)]
-    [InlineData(-262145, 0, 10)]
-    [InlineData(0, -262145, 10)]
-    public void OriginsAtOrBeyondTwoToTheTwentyFourMetresAreRefused(int rx, int rz, int offset)
+    [InlineData(131072, 0, 1)]
+    [InlineData(131072, 0, 10)]
+    [InlineData(-131073, 0, 10)]
+    [InlineData(0, -131073, 10)]
+    public void OriginsAtOrBeyondTwoToTheTwentyThreeMetresAreRefused(int rx, int rz, int offset)
     {
         var region = new RegionCoord(rx, rz);
         TileWorldDocument doc = LoadedPatch(region);
@@ -312,7 +315,77 @@ public class TileWaterOpticsTests
 
         Assert.Empty(outcome.Fields);
         Assert.Equal(TileWaterOpticsFailureKind.UnrepresentableSurface, outcome.Failure!.Value.Kind);
-        Assert.True(TileWaterTrianglePreparation.MaxOriginMetres == 16777216d);
+        Assert.True(TileWaterTrianglePreparation.MaxOriginMetres == 8388608d);
+    }
+
+    [Fact]
+    public void OriginJustBelowTwoToTheTwentyThreeMetresPublishes()
+    {
+        var region = new RegionCoord(131071, 0);
+        TileWorldDocument doc = LoadedPatch(region);
+        Grass(doc, region, 0, 0, 24, 24);
+        var sources = new Dictionary<RegionCoord, TileGroundSurfaceSnapshot>();
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++) sources[region.Offset(dx, dz)] = Surface(doc, region.Offset(dx, dz));
+        TileWaterTriangleBuild build = Single(Prepare(doc, region, 0f, sources,
+            Plane(doc, region.OriginX + 10, region.OriginZ + 10, 2, 2, 5f)));
+
+        Assert.InRange(build.Origin.X, 8388000f, 8388607f);
+        Assert.Equal(Math.Floor(build.Origin.X), build.Origin.X);
+    }
+
+    // Local points the field evaluates exactly: u * Size reproduces the binary32 local coordinate the field
+    // samples, so the binary64 oracle is compared at the same world point against the whole positional budget.
+    [Theory]
+    [InlineData(0, 0, 1f)]
+    [InlineData(-1, 1, 0.1f)]
+    [InlineData(2, -2, 0.3f)]
+    [InlineData(-3000, 20, 2.54f)]
+    [InlineData(1000, 1000, 1f)]
+    [InlineData(131071, 0, 1f)]
+    [InlineData(-131072, 131071, 1f)]
+    public void PublishedFieldStaysWithinTheBudgetOfTheIndependentOracle(int rx, int rz, float tileSize)
+    {
+        var region = new RegionCoord(rx, rz);
+        TileWorldDocument doc = LoadedPatch(region, tileSize);
+        Grass(doc, region, 4, 4, 20, 20);
+        int x = region.OriginX + 10, z = region.OriginZ + 10;
+        doc.SetCornerHeightCm(x + 1, z + 1, 0, 40);
+        doc.SetCornerHeightCm(x, z + 2, 0, -25);
+        doc.SetCornerHeightCm(x + 2, z, 0, 15);
+        TileGroundSurfaceSnapshot surface = Surface(doc, region);
+        TileWaterTriangleBuild build = Single(Prepare(doc, region, 0f,
+            new Dictionary<RegionCoord, TileGroundSurfaceSnapshot> { [region] = surface }, Plane(doc, x, z, 2, 2, 5f)));
+
+        double budget = Math.Min(0.0001, tileSize / 1024.0);
+        Assert.True(build.Field.ReconstructionErrorBoundMetres <= budget);
+        Vector2 size = build.Field.Size;
+        foreach (double fx in new[] { 0.05, 0.37, 0.5, 0.83, 1.0, 1.29, 1.62, 1.95 })
+            foreach (double fz in new[] { 0.05, 0.41, 0.77, 1.0, 1.18, 1.5, 1.93 })
+            {
+                // World X is tile X times size and world Z is minus tile Z times size.
+                float u = (float)((x + fx) * tileSize - build.Origin.X) / size.X;
+                float v = (float)(-(z + fz) * tileSize - build.Origin.Z) / size.Y;
+                float localX = u * size.X, localZ = v * size.Y;
+                Assert.True(build.Field.TrySampleDepth(u, v, out float rest));
+                double depth = (double)rest + build.Level - build.Origin.Y;
+                double worldX = (double)build.Origin.X + localX, worldZ = (double)build.Origin.Z + localZ;
+                double oracle = 5d - TileWaterBedOracle.Height([surface], worldX, worldZ);
+                Assert.True(Math.Abs(depth - oracle) <= budget,
+                    $"({worldX}, {worldZ}) depth {depth} oracle {oracle} budget {budget}");
+            }
+    }
+
+    [Fact]
+    public void PartialTriangleRangeIsRefusedRatherThanTrimmed()
+    {
+        var tiles = new TileGroundSurfaceExtent(0, 0, 1, 1);
+        Assert.Equal(18, TileWaterTrianglePreparation.TriangleEnd(new TileGroundSurfaceRange(tiles, 12, 6, 0, 0, 0, true)));
+        Assert.Equal(12, TileWaterTrianglePreparation.TriangleEnd(new TileGroundSurfaceRange(tiles, 12, 0, 0, 0, 0, true)));
+        Assert.Throws<InvalidOperationException>(() =>
+            TileWaterTrianglePreparation.TriangleEnd(new TileGroundSurfaceRange(tiles, 12, 7, 0, 0, 0, true)));
+        Assert.Throws<InvalidOperationException>(() =>
+            TileWaterTrianglePreparation.TriangleEnd(new TileGroundSurfaceRange(tiles, 0, 2, 0, 0, 0, true)));
     }
 
     [Fact]

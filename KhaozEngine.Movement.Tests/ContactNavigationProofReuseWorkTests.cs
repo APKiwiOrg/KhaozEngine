@@ -103,7 +103,7 @@ public sealed class ContactNavigationProofReuseWorkTests(ContactNavigationProofR
 
     // Source sessions end before another source, band or phase. No work in this projection depends on which
     // worker claimed a source. First pins and shared world-form construction are deliberately outside it.
-    static int[] WorkCounts(SupportQueryCounts c) => [c.Find, c.FindMemoHits, c.Volumes, c.Proposals,
+    static long[] WorkCounts(SupportQueryCounts c) => [c.Find, c.FindMemoHits, c.Volumes, c.Proposals,
         c.FootprintReuseHits, c.FootprintReuseMisses, c.FootprintReuseStores, c.FootprintReuseBudgetSkips,
         c.EdgeSteps, c.InitialHoldReuseHits, c.AnalyticSamples, c.Bindings];
 

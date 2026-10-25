@@ -257,6 +257,78 @@ Rows that compare two grids they rendered themselves in one session, such as `Fa
 not held to that value. They compare two code paths that legitimately differ by edge noise, and use
 `GoldenCompare.InSessionTolerance` (0.06), the value they were calibrated against.
 
+## Paid hosted renderer performance mode
+
+The [renderer performance reference](RENDERER-PERFORMANCE.md) owns offline decoding, statistics,
+compatibility, reference gaps and compact summaries. Native admission and execution remain here.
+
+`gpu-hosted-bench.yml` has a separate renderer mode. Ordinary filtered benches and the existing
+coverage mode retain their jobs, device checks and artifact layout. Renderer mode accepts only
+`renderer-perf-unit`, `renderer-perf-manifest-sha256` and `renderer-perf-workload-sha`, with one named
+leg and the default filter. It refuses combined coverage inputs, `all`, free-form filters, mutable
+refs and attempts after one. This public repository uses hosted runners exclusively.
+
+An owner-approved manifest uses `khaozengine.renderer-perf-unit/1`. Authorization commit B has
+exactly one parent, measured workload A, and adds only
+`tools/Renderer.Perf.Tests/authorized/<unit>.json`. Pass B's full immutable SHA as `ref` and hash
+the exact UTF-8 manifest bytes. Hosted CPU admission runs from a separate checkout of the workflow's
+own SHA, treating the requested checkout only as manifest and git data. Its trusted fixed hosted
+runner allowlist selects one job with the validated preset cap before allocating a GPU runner.
+Partial renderer inputs also refuse ordinary and coverage allocation. Those modes otherwise retain
+their existing selection and execution. The renderer job uses the same trusted revision for repeated
+authorization and final evidence checks, enforces a 12-minute pilot
+or 35-minute full cap and retains the existing pinned PowerShell bootstrap, GRID setup, NVIDIA
+adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
+
+The outside-solution `tools/Renderer.Perf.Tests` project exposes one fixed fact,
+`Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit`, category `RendererPerformance`.
+The workflow explicitly passes `KE_RENDERER_PERF_UNIT` and `KE_RENDERER_PERF_REPORTS`. Manifest,
+runtime, recipe, shader source and current control hashes are validated before native creation.
+Shader identity hashes fully composed literal and generated readonly shader strings, including motion,
+temporal and water variants, generated visibility exports, backend-selected checked and certified temporal
+programs, plus the frozen outdoors recipe's specialized FFT kernels and controls.
+The deterministic name-ordered hashes are retained in `shader-sources.json`.
+Cold inspection checks the selected native vendor `0x10de`, device `0x1eb8`, software-adapter flag,
+driver, recording mode and timestamp capability. D3D11 uses one cold two-query calibration
+submission, with no scene frame and no retry. Vulkan reads the selected device's timestamp limits
+and pipeline-cache identity. A disabled or unavailable cache identity refuses admission.
+Layouts are frozen on inert headless devices, with no extra native discovery frames.
+Cold ocean setup records, submits and drains its prepared compute work before warm-up, without
+advancing a scene frame or changing the producer's unrecorded-preparation invalidation rule.
+Production point-shadow callbacks report unavailable transient rows as skipped subtrees before
+point-shadow finish, preserving the frozen order without a fabricated GPU interval.
+
+The existing driver owns every conditioned, warm and measured frame, three-frame completion,
+readback, drift check and publication deadline. Publication elapsed time and estimated cost include
+work-model generation, sidecar serialization and hashing inside the publication clock interval,
+including failed measurements. The absolute deadline and two-stage final accounting stamp still apply.
+Host telemetry uses `nvidia-smi` outside frame
+brackets at a fixed interval of 64 session-info boundaries. Unsupported fields retain their reasons.
+Runtime identity retains the effective `KE_`, `DOTNET_`, `COMPlus_` and `VK_` environment, excluding
+the per-run `KE_RENDERER_PERF_` paths and tokens. These values and the exact .NET runtime version
+must match the approved manifest. No extra profiler or workload variant is admitted.
+
+Success requires exactly one executed, passed test with zero skips in TRX and a nonempty final JSON
+and Markdown pair. The workflow verifies report/2 and `metric-vectors/2`, completed publication, promotion
+validity, manifest/workload/authorization/workflow hashes, run ID, attempt, backend and native T4
+IDs. The typed publication owner verifies the provisional directory before completion and stamps only its two reserved accounting slots. The trusted workflow then calls the same managed directory verifier on the stamped files. An `always()`
+upload preserves partial reports, exact manifest bytes, admission facts, frozen layouts, shader source
+hashes, control definitions, per-block work models and host telemetry, including failures.
+The production unit captures construction, disposes production, then performs bounded cold replay and reads before registered-file publication. All use the original coldStart and deadline. Byte parsing alone cannot certify sidecar integrity. D3D11 and Metal now implement optional backend diagnostics, but these
+interfaces alone do not establish native compiler retention or achieved occupancy. See the
+[backend evidence boundary](RENDERER-PERFORMANCE.md#cold-backend-evidence).
+
+Implementation ships no executable approval manifest and authorizes no dispatch or measurement.
+Task 15 must reconcile and review integration, obtain each precise pilot approval, verify native
+control output and compiler retention including Windows FXC, inspect clocks and marker perturbation,
+confirm complete counts and End-tail ownership, check native artifact sizes under the 256 MiB cap,
+and record actual billed minutes. It must review the cold ocean recording, submission and drain as
+startup work and deadline cost. Review the production skipped-transient-row callbacks and their native
+command parity during Task 15. Its readers must retain `metric-vectors/2`, DeviceOnly rows,
+memory observations/peaks and the two-stage publication stamp. A full unit needs fresh approval
+after pilot review. Failure requires scoped correction and fresh approval. Windows Vulkan,
+profilers, consumer fit, optimization and release remain separate decisions.
+
 ## CI matrix (`.github/workflows/cross-platform-gpu.yml`)
 
 For diagnosis, a dispatch may set `renderTestFilter` to a vstest filter. That targets only

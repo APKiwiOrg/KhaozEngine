@@ -115,6 +115,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
     vec4 InteriorCutWindow; vec4 InteriorCutHeights;
+    vec4 IndirectParams;
+    vec4 IrradianceSH[9];
 };
 " + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 layout(set=0, binding=3) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
@@ -196,7 +198,7 @@ void main() {
     // Key+fill+cel+point-light accumulation is the shared block (ShaderSources.LightingCommonGlsl), spliced in above.
     vec3 diffuse; vec3 specColor;
     computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
-    vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;
+    vec3 lit = albedo * (indirectDiffuse(N, vWorldPos) + diffuse) + specColor;
     // Per-instance rigid dissolve (issue #253), gated with an if (NOT a multiply) so a draw carrying no dissolve is
     // byte-identical to the pre-dissolve path: the else branch is exactly `lit + vEmissive.rgb`, the old expression.
     // When dissolving, vEmissive carries the emissive EDGE colour (substituted engine-side in the Draw overload), so
@@ -251,6 +253,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
     vec4 InteriorCutWindow; vec4 InteriorCutHeights;
+    vec4 IndirectParams;
+    vec4 IrradianceSH[9];
 };
 " + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 layout(set=0, binding=3) uniform texture2D Albedo;
@@ -315,7 +319,7 @@ void main() {
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
     computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
-    vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;   // no base emissive: vEmissive is the edge colour here
+    vec3 lit = albedo * (indirectDiffuse(N, vWorldPos) + diffuse) + specColor;   // no base emissive: vEmissive is the edge colour here
     // Emissive edge: a bright band just above the discard threshold. step(threshold) suppresses any edge at
     // threshold 0 (a fully-solid avatar routed through this pipeline still reads clean).
     float edge = (1.0 - smoothstep(threshold, threshold + edgeW, mask)) * step(0.001, threshold);
@@ -476,6 +480,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
     vec4 InteriorCutWindow; vec4 InteriorCutHeights;
+    vec4 IndirectParams;
+    vec4 IrradianceSH[9];
 };
 " + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 layout(set=1, binding=0) uniform texture2D Albedo;
@@ -521,7 +527,7 @@ void main() {
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
     computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
-    vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
+    vec3 lit = albedo * (indirectDiffuse(N, vWorldPos) + diffuse) + specColor + vEmissive.rgb;
     lit = atmosphereFog(lit, vWorldPos, false, RenderOrigin.w > 0.5);
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
@@ -555,6 +561,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
     vec4 InteriorCutWindow; vec4 InteriorCutHeights;
+    vec4 IndirectParams;
+    vec4 IrradianceSH[9];
 };
 " + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 layout(set=1, binding=0) uniform texture2D Albedo;
@@ -617,7 +625,7 @@ void main() {
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
     computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
-    vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;
+    vec3 lit = albedo * (indirectDiffuse(N, vWorldPos) + diffuse) + specColor;
     float edge = (1.0 - smoothstep(threshold, threshold + edgeW, mask)) * step(0.001, threshold);
     lit += vEmissive.rgb * edge;
     lit = atmosphereFog(lit, vWorldPos, false, RenderOrigin.w > 0.5);

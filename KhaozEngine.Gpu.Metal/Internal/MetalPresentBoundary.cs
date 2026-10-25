@@ -8,13 +8,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
     /// THE FRAME BOUNDARY, IN ONE PLACE: present the drawable the frame just rendered into, apply anything a
-    /// resize or a vsync change queued, and acquire the drawable the NEXT frame will render into. Work-breakdown
+    /// resize or a vsync change queued. The current frame acquires at its first swapchain bind. Work-breakdown
     /// row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/581).
     ///
     /// <para><b>NOTHING IN THIS TYPE TOUCHES OBJECTIVE-C, WHICH IS HOW MM7 IS ANSWERED AS FAR AS IT CAN BE.</b>
-    /// The design records that not one line of the incumbent's swapchain ran in CI on any leg, ever. A headless
-    /// runner cannot drive a real <c>CAMetalLayer</c>, so every native call goes behind
-    /// <see cref="IMetalSwapchainApi"/> and everything that DECIDES anything is here, driven by a fake on every
+    /// Native layer tests need macOS and a GPU. Cross-platform contract tests instead put every call behind
+    /// <see cref="IMetalSwapchainApi"/>, and everything that DECIDES anything is here, driven by a fake on every
     /// leg: the order of the boundary, the skipped present, the orphan target, the counters, the coalescing and
     /// the drain before an apply.</para>
     ///
@@ -23,10 +22,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// while every commit to that queue goes through one lock (M-N2). The APPLY goes next, still under the lock
     /// and after a drain, because that is the one instant the boundary provably owns the queue and no recording is
     /// in flight (M-W7). The CAPTURE boundary goes after the present and outside the lock, because a capture
-    /// brackets whole frames and the arm is consumed at present N to close at present N+1 (M-G5). The ACQUIRE goes
-    /// LAST and holds NOTHING, because <c>nextDrawable</c> BLOCKS and blocking inside the submit lock would stop
-    /// every other thread's submit for the length of a display refresh, which is exactly the "held for
-    /// microseconds, not a frame" rule M-W8 states.</para>
+    /// brackets whole frames and the arm is consumed at present N to close at present N+1 (M-G5). The next
+    /// frame stays unresolved until its first swapchain bind, after FramePhases has run preparation. Acquisition
+    /// holds NOTHING, because <c>nextDrawable</c> BLOCKS and must not stop other threads' submits (M-W8).
+    /// A present-only frame resolves its own drawable before taking the present buffer.</para>
     ///
     /// <para><b>THE PRESENT BUFFER IS TAKEN BEFORE THE LOCK FOR THE SAME REASON, AND ON THIS ONE THE FAILURE IS
     /// WORSE THAN A STALL.</b> M-W6's buffer comes from <c>-commandBuffer</c>, which BLOCKS once the queue's own
@@ -51,12 +50,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// did NOT block, and <c>GpuDeviceCounters.AcquireWaitCount</c> already documents that reading: a backend that
     /// blocks the CPU on the acquire reports one per frame.</para>
     ///
-    /// <para><b>THE PRESENTED DRAWABLE IS RELEASED THE MOMENT ITS PRESENT IS COMMITTED, and the framebuffer goes
-    /// on naming its texture until the acquire republishes.</b> That gap is safe because an
-    /// <c>MTLCommandBuffer</c> retains every resource it references until it completes (M-H3), so the committed
-    /// present buffer is itself an owner of the drawable and therefore of the texture. It is also a gap nothing
-    /// can record into: it is inside <see cref="Present"/>, on the submit thread, at the one instant M-W5's own
-    /// rule says no recording is in flight.</para>
+    /// <para><b>THE PRESENTED DRAWABLE IS RELEASED THE MOMENT ITS PRESENT IS COMMITTED.</b> The framebuffer's
+    /// native binding data is invalidated first. Committed command buffers retain their referenced resources
+    /// until completion (M-H3). Publication changes only on the single ordered frame owner, with no recording
+    /// across Present, because bound records share the framebuffer's attachment array.</para>
     ///
     /// <para><b>A DRAWABLE IS COPYABLE ONLY IF ITS OWN TEXTURE REPORTS <c>framebufferOnly</c> FALSE.</b> A
     /// swapchain capture request queues the layer write and the boundary applies it before the acquire, but the
@@ -85,6 +82,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         long _skippedPresents;
         int _skipReported;
         bool _orphanBound;
+        bool _acquired;
         bool _syncRequested;
         bool _syncApplied;
         bool _drawableFramebufferOnly = true;
@@ -139,10 +137,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // Configure, so no capture request can be standing yet and there is nothing to re-apply after it.
             _api.Configure(_size, colourSrgb, syncToVerticalBlank, maximumDrawableCount);
 
-            // THE FIRST ACQUIRE IS A REAL ONE and it is counted like every other. It happens before any frame
-            // exists, which is why AcquireWaitCount runs exactly one ahead of FramesBegun on a device that has
-            // presented at all, and that offset is a fact rather than an off-by-one.
-            Framebuffer = new MetalSwapchainFramebuffer(_colourFormat, Acquire(), _size);
+            // Metadata is available immediately, but native binding data is resolved only when needed.
+            Framebuffer = new MetalSwapchainFramebuffer(_colourFormat, _size, AcquireAndPublish);
         }
 
         /// <summary>
@@ -165,9 +161,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>Whether the framebuffer currently points at the orphan target rather than at a drawable's
         /// texture.</summary>
-        internal bool IsOrphanBound => _orphanBound;
+        internal bool IsOrphanBound => _acquired && _orphanBound;
 
-        /// <summary>Whether a drawable is held for the next frame. False after a nil acquire, which is the state
+        /// <summary>Whether a drawable is held for the current frame. False after a nil acquire, which is the state
         /// the next present skips in.</summary>
         internal bool HasDrawable => _drawable != IntPtr.Zero;
 
@@ -220,8 +216,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal void QueueResize(uint width, uint height) => _pending.QueueResize(width, height);
 
         /// <summary>
-        /// THE BOUNDARY. Present, apply, service the capture, acquire. See the type remarks for why each step is
-        /// where it is.
+        /// THE BOUNDARY. Resolve if unused, present, apply, service the capture. See the type remarks for the
+        /// ordering and lock boundaries.
         /// <para>
         /// IT NEVER THROWS AND NEVER REPORTS FAILURE UPWARD. A nil drawable is M-W5's orphan path, and a device
         /// that has gone is answered by the caller before this is reached: the frame loop above is unchanged in
@@ -236,6 +232,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // conditional on something and this one is not.
             Interlocked.Increment(ref _framesBegun);
 
+            // Preserve present-without-draw: resolve this frame, never a future frame. A nil result is also
+            // an attempted acquisition, so a bound orphan is not retried at Present.
+            AcquireAndPublish();
+
             // M-W6's BUFFER IS TAKEN BEFORE THE LOCK, AND THAT IS THE SECOND BLOCKING CALL KEPT OUT OF IT.
             // -commandBuffer blocks once the queue's own maximum of uncommitted buffers is reached
             // (MetalUncommittedBuffers), and every commit that could release one goes through this same lock, so
@@ -245,21 +245,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
             IntPtr presentBuffer = _drawable != IntPtr.Zero ? _api.AcquirePresentBuffer() : IntPtr.Zero;
             if (presentBuffer != IntPtr.Zero) _uncommitted.Acquired();
 
+            Framebuffer.Reset(_size);
             lock (_submitLock)
             {
                 PresentHeldDrawable(presentBuffer);
                 ApplyPending();
             }
+            _acquired = false;
 
             // AFTER THE PRESENT AND OUTSIDE THE LOCK (M-G5, row 16's handoff). A capture brackets whole frames,
             // so the arm is consumed at this present and the trace closes at the next one, which is what makes it
             // catch the offscreen model pass as well as the composite. Nothing armed is one flag read and a
             // return, so an ordinary frame pays nothing. Outside the lock because a capture START and a capture
             // STOP both call into Metal and the stop drains, and a drain inside the submit lock is exactly what
-            // the acquire below is kept out of it for.
+            // the drawable acquire is kept out of it for.
             _afterPresent();
-
-            AcquireAndPublish();
         }
 
         /// <summary>
@@ -270,6 +270,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (_disposed) return;
             _disposed = true;
+            _acquired = false;
+            Framebuffer.Reset(_size);
 
             if (_drawable != IntPtr.Zero)
             {
@@ -316,7 +318,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             // RELEASED HERE rather than at the next acquire, which is where the incumbent released it. See the
             // type remarks: the committed present buffer retains the drawable until it completes, so this is
-            // never the last reference to a texture the framebuffer still names.
+            // never the last reference to a texture the committed frame still uses.
             _api.ReleaseDrawable(_drawable);
             _drawable = IntPtr.Zero;
         }
@@ -328,7 +330,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             // NO DRAIN FOR THIS ONE. A framebufferOnly write releases and recreates nothing: a drawable already
             // vended keeps its usage, and only the drawables the layer makes afterwards change. It runs before the
-            // acquire below, and the acquire reads the texture's own flag either way.
+            // next frame's acquire, and the acquire reads the texture's own flag either way.
             if (_pending.TakeFramebufferOnly(out bool? framebufferOnly) && framebufferOnly is { } only)
             {
                 _api.SetFramebufferOnly(only);
@@ -347,6 +349,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 _size = requested.AtLeastOnePixel;
                 _api.SetDrawableSize(_size);
+                Framebuffer.Reset(_size);
             }
 
             if (sync is { } enabled)
@@ -360,6 +363,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         void AcquireAndPublish()
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_acquired) return;
+
             // READ BEFORE THE ACQUIRE OVERWRITES IT, so the release below is a TRANSITION rather than a question
             // asked every frame. An unconditional call would be a harmless no-op on the real target and would put
             // a release in the log of every ordinary boundary, which makes "the orphan dies at the next
@@ -368,6 +374,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             MetalAttachment attachment = Acquire();
             Framebuffer.Adopt(attachment, _size);
+            _acquired = true;
 
             // THE ORPHAN DIES AT THE NEXT SUCCESSFUL ACQUIRE, and AFTER the publish rather than before it (M-W5).
             // Its lifetime is the DEVICE's precisely so a recording that bound it is not left naming a destroyed

@@ -28,6 +28,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return Acquire(key, window: null);
         }
 
+        internal static GpuProviderDevice CreateHeadless(VulkanHeadlessDiagnosticSettings settings)
+            => Acquire(new VulkanInstanceKey(false, default, settings.Validation), null, settings);
+
         /// <summary>
         /// Create a WINDOWED device: a surface from the window, the presenting-family check V-N5 makes against it,
         /// <c>VK_KHR_swapchain</c> on the device, and the first swapchain plus the first acquire inside the
@@ -68,13 +71,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // over, and a throw anywhere below would otherwise hold the process instance alive for the rest of the
         // run. Ownership transfers on a SUCCESSFUL construction only, which is the same rule
         // GpuDeviceContext.Adopt applies one level up.
-        static GpuProviderDevice Acquire(in VulkanInstanceKey key, VulkanWindowRequest? window)
+        static GpuProviderDevice Acquire(in VulkanInstanceKey key, VulkanWindowRequest? window, VulkanHeadlessDiagnosticSettings? settings = null)
         {
             VulkanInstanceLease<VulkanInstance> lease = VulkanInstance.Acquire(key);
 
             try
             {
-                return Create(lease, window);
+                return Create(lease, window, settings);
+            }
+            catch (Exception error) when (settings is not null)
+            {
+                throw GpuDiagnosticFailureException.DuringCleanup("gpu.context.provider", error,
+                    ("gpu.context.provider.dispose.instance", lease.Dispose));
             }
             catch
             {
@@ -90,7 +98,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return validation;
         }
 
-        static GpuProviderDevice Create(VulkanInstanceLease<VulkanInstance> lease, VulkanWindowRequest? window)
+        static GpuProviderDevice Create(VulkanInstanceLease<VulkanInstance> lease, VulkanWindowRequest? window, VulkanHeadlessDiagnosticSettings? settings = null)
         {
             VulkanInstance instance = lease.Value;
             Vk vk = instance.Api;
@@ -108,7 +116,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             try
             {
-                return CreateOn(lease, vk, instance, surfaces, surface, window);
+                return CreateOn(lease, vk, instance, surfaces, surface, window, settings);
+            }
+            catch (Exception error) when (settings is not null)
+            {
+                throw GpuDiagnosticFailureException.DuringCleanup("gpu.context.provider", error,
+                    ("gpu.context.provider.dispose.surface", () => surfaces?.DestroySurface(surface)));
             }
             catch
             {
@@ -120,7 +133,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         static GpuProviderDevice CreateOn(VulkanInstanceLease<VulkanInstance> lease, Vk vk, VulkanInstance instance,
-            VulkanSurfaceApi? surfaces, ulong surface, VulkanWindowRequest? window)
+            VulkanSurfaceApi? surfaces, ulong surface, VulkanWindowRequest? window, VulkanHeadlessDiagnosticSettings? settings = null)
         {
             bool windowed = window is not null;
 
@@ -161,8 +174,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     MeetsRequirements: rejection is null, RejectionReason: rejection);
             }
 
-            VulkanDeviceRequest request = VulkanPhysicalDeviceSelection.FromEnvironment();
+            VulkanDeviceRequest request = settings?.Device ?? VulkanPhysicalDeviceSelection.FromEnvironment();
             int chosen = VulkanPhysicalDeviceSelection.Choose(request, candidates, out string? warning);
+            if (settings?.AdapterKey is { } pinned)
+            {
+                chosen = -1;
+                for (int i = 0; i < handles.Length; i++)
+                    if (candidates[i].MeetsRequirements && AdapterKey(vk, handles[i]) == pinned) { chosen = i; break; }
+                if (chosen < 0)
+                    throw new InvalidOperationException("The pinned Vulkan UUID is unavailable or ineligible.");
+            }
             if (warning != null) log.Warn(warning);
             if (chosen == VulkanPhysicalDeviceSelection.NoDevice) throw NoEligibleDevice(candidates);
 
@@ -177,7 +198,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // candidate it last asked about.
             surfaces?.BindPhysicalDevice(handles[chosen]);
 
-            Device device = CreateDevice(vk, handles[chosen], read.GraphicsQueueFamily, features, windowed);
+            VulkanPipelineDiagnostics? pipelineDiagnostics = VulkanPipelineExecutableApi.Discover(
+                vk, handles[chosen], instance.ValidationConfiguration, settings?.Diagnostics.CompilerMetadata);
+            var explicitPipelineCache = settings is null ? null : VulkanPipelineCacheFile.Open(settings.PipelineCache, read.PipelineCacheIdentity);
+            var explicitSpirvCache = settings is null ? null : SpirvBytesCache.Open(settings.SpirvCache);
+            GpuEffectiveDiagnosticConfiguration? effective = settings is null ? null
+                : EffectiveConfiguration(vk, handles[chosen], read, settings, pipelineDiagnostics!, instance.ValidationConfiguration,
+                    explicitPipelineCache?.Path, explicitSpirvCache?.DirectoryPath);
+            pipelineDiagnostics = pipelineDiagnostics?.WithConfiguration(effective);
+            Device device = CreateDevice(vk, handles[chosen], read.GraphicsQueueFamily, features, windowed, pipelineDiagnostics);
             var liveness = new DeviceLiveness();
             var loss = new VulkanDeviceLossLatch(liveness);
 
@@ -185,6 +214,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             {
                 vk.GetDeviceQueue(device, read.GraphicsQueueFamily, 0, out Queue graphicsQueue);
                 Name(instance, device, graphicsQueue);
+                if (pipelineDiagnostics is not null && pipelineDiagnostics.CaptureFlags != 0)
+                    pipelineDiagnostics.Bind(new VulkanPipelineExecutableApi(vk, instance.Handle, device, liveness, loss));
 
                 // THE ONE TIMELINE (V-F1), created with the device because everything else is created against it:
                 // a submission takes its next value, a fence holds one, the retire list gates on one, and the ring
@@ -198,7 +229,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // reads of the environment could disagree if the variable changed mid-run, and a device whose
                 // lists were three slots deep and whose uniform rings were four segments deep is exactly the
                 // shared-number-two-indexes confusion section 6.1 warns about.
-                int framesInFlight = VulkanFramesInFlight.FromEnvironment(out string? unrecognizedDepth);
+                string? unrecognizedDepth = null;
+                int framesInFlight = settings?.FramesInFlight ?? VulkanFramesInFlight.FromEnvironment(out unrecognizedDepth);
                 if (unrecognizedDepth != null)
                     log.Warn(VulkanFramesInFlight.UnrecognizedWarning(unrecognizedDepth));
                 log.Info(VulkanFramesInFlight.ActiveDescription(framesInFlight));
@@ -228,17 +260,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     // THE PIPELINE SEAM (row 13), a pure driver-call adapter like the four above it: the vertex
                     // input derivation, the blend attachment count, the dynamic state list and the whole disk
                     // cache all sit above it in device-free types.
-                    new VulkanPipelineApi(vk, device, loss, liveness),
+                    new VulkanPipelineApi(vk, device, loss, liveness, pipelineDiagnostics),
                     // THE DISK PIPELINE CACHE, OPENED HERE rather than inside the constructor, and keyed on the
                     // device's own identity off the SAME physical-device read, so the file the cache is seeded
                     // from belongs to the device that was actually selected (V-S7). The open also PRUNES stale
                     // engine-version folders, which is exactly why it is a caller's call: a device built over
                     // fake seams by the test hook passes null and sweeps nothing.
-                    VulkanPipelineCacheFile.FromEnvironment(read.PipelineCacheIdentity),
+                    settings is null ? VulkanPipelineCacheFile.FromEnvironment(read.PipelineCacheIdentity)
+                        : explicitPipelineCache,
                     // THE DEVICE-FREE SPIR-V CACHE, opened beside the device cache for the same reason: opening
                     // prunes old version folders, so fake-seam devices and resource-factory tests pass null and
                     // cannot sweep a developer's cache as a side effect.
-                    SpirvBytesCache.FromEnvironment(),
+                    settings is null ? SpirvBytesCache.FromEnvironment() : explicitSpirvCache,
                     // The device's own maxDescriptorSetUniformBuffersDynamic, read off the SAME physical-device
                     // read the support probe gated on, so 8.3's third and fourth defences measure against one
                     // number rather than two reads that can disagree.
@@ -257,8 +290,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                             window.Request.SyncToVerticalBlank,
                             window.Acquire),
                     createTimestampApi: () => new VulkanTimestampApi(vk, device, loss, liveness),
-                    timestamps: new VulkanTimestampSupport(read.TimestampValidBits, read.TimestampPeriodNanoseconds));
+                    timestamps: new VulkanTimestampSupport(read.TimestampValidBits, read.TimestampPeriodNanoseconds),
+                    compileCache: settings is null ? null : new SpirvCompileCache(settings.CompileCache, SpirvCompileCache.DefaultCapacity));
 
+                created.DiagnosticAdapterIdentity = read.PipelineCacheIdentity;
+                created.DiagnosticValidationRequest = instance.Validation;
+                created._diagnosticConfiguration = effective;
                 log.Info(created.Memory.Describe());
 
                 // The strict rung's FIRST controlled point. Device creation is the noisiest moment a validation
@@ -272,6 +309,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // a driver capability, so there is nothing to ask and nulls are the honest answer rather than a
                 // gap.
                 return new GpuProviderDevice(created, ThreadingCaps: null, ThreadingProbeFailure: null);
+            }
+            catch (Exception error) when (settings is not null)
+            {
+                throw GpuDiagnosticFailureException.DuringCleanup("gpu.context.provider", error,
+                    ("gpu.context.provider.dispose.device", () => vk.DestroyDevice(device, null)));
             }
             catch
             {
@@ -289,7 +331,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // incumbent's cross-family path is not reproduced because its queue-create loop writes the graphics family
         // index for every entry instead of the loop variable, which is a spec violation validation flags.
         static Device CreateDevice(Vk vk, PhysicalDevice physicalDevice, uint queueFamily,
-            in VulkanFeatureSelection features, bool windowed)
+            in VulkanFeatureSelection features, bool windowed, VulkanPipelineDiagnostics? diagnostics)
         {
             float priority = 1.0f;
             var queueInfo = new DeviceQueueCreateInfo(
@@ -298,8 +340,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 queueCount: 1,
                 pQueuePriorities: &priority);
 
+            bool capture = diagnostics is not null && diagnostics.CaptureFlags != 0;
+            var executable = new PhysicalDevicePipelineExecutablePropertiesFeaturesKHR(
+                sType: StructureType.PhysicalDevicePipelineExecutablePropertiesFeaturesKhr,
+                pipelineExecutableInfo: capture);
             var features13 = new PhysicalDeviceVulkan13Features(
                 sType: StructureType.PhysicalDeviceVulkan13Features,
+                pNext: capture ? &executable : null,
                 dynamicRendering: true,
                 synchronization2: true);
 
@@ -322,12 +369,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 pNext: &features12,
                 features: core);
 
-            // ONE DEVICE EXTENSION ON THE WINDOWED PATH AND NONE AT ALL ON THE HEADLESS ONE (V-N6).
-            // VK_KHR_swapchain is windowed-only, and asking for it on a runner with no display server would fail
-            // creation outright, which is every runner the golden suite has.
-            nint extensionNames = windowed
-                ? SilkMarshal.StringArrayToPtr(new[] { VulkanInstanceLayout.SwapchainDeviceExtension })
-                : 0;
+            // Production keeps V-N6. Compiler statistics are a separate, explicitly requested device configuration.
+            var extensions = new List<string>();
+            if (windowed) extensions.Add(VulkanInstanceLayout.SwapchainDeviceExtension);
+            if (capture) extensions.Add(VulkanPipelineExecutableApi.ExtensionName);
+            nint extensionNames = extensions.Count != 0 ? SilkMarshal.StringArrayToPtr(extensions.ToArray()) : 0;
 
             try
             {
@@ -336,7 +382,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     pNext: &features2,
                     queueCreateInfoCount: 1,
                     pQueueCreateInfos: &queueInfo,
-                    enabledExtensionCount: windowed ? 1u : 0u,
+                    enabledExtensionCount: (uint)extensions.Count,
                     ppEnabledExtensionNames: (byte**)extensionNames,
                     // NO LAYERS. Device layers were deprecated in Vulkan 1.0.13 and modern loaders ignore them
                     // entirely, so the incumbent's device-layer list is dead weight that reads as a working

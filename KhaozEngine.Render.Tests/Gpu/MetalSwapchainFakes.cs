@@ -232,6 +232,8 @@ namespace KhaozEngine.Tests.Gpu
         /// </summary>
         internal bool ReleaseIsInert { get; set; }
 
+        internal Action? OnRelease { get; set; }
+
         public MetalAttachment Ensure(MetalDrawableSize size, GpuPixelFormat format)
         {
             EnsureCount++;
@@ -246,6 +248,7 @@ namespace KhaozEngine.Tests.Gpu
 
         public void Release()
         {
+            OnRelease?.Invoke();
             ReleaseCount++;
             Log.Add("orphanRelease");
             if (!ReleaseIsInert) IsLive = false;

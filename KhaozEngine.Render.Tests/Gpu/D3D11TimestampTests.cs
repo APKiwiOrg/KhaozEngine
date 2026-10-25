@@ -3,8 +3,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using System.Threading;
-using System.Threading.Tasks;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Gpu.Internal;
@@ -12,7 +10,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
 {
-    public sealed class D3D11TimestampTests
+    public sealed partial class D3D11TimestampTests
     {
         [D3D11TimestampGpuFact]
         public void FeatureLevel10OrAboveGuaranteesNativeTimestampBatch()
@@ -127,38 +125,6 @@ void main() { }");
             Assert.Equal(0d, period);
             Assert.Equal(new ulong[] { 90, 91 }, ticks);
             Assert.Equal(new[] { "Read(disjoint)", "Read(0)", "Read(1)" }, api.Calls.Where(x => x.StartsWith("Read", StringComparison.Ordinal)));
-        }
-
-        [Fact]
-        public async Task ContendedImmediateContextReturnsPendingWithoutPolling()
-        {
-            var api = new D3D11TimestampTestApi();
-            var timeline = new D3D11TimestampTestTimeline { Completed = 1 };
-            object gate = new();
-            using var fences = new D3D11FenceSubsystem(timeline, gate);
-            using var pool = new D3D11TimestampPool(api, fences, gate, 2);
-            using var fence = (D3D11GpuFence)fences.CreateFence();
-            fence.Arm(1);
-            using var commands = Recorder(fences);
-            Record(commands, pool);
-            using var held = new ManualResetEventSlim();
-            using var release = new ManualResetEventSlim();
-            Task holder = Task.Run(() => { lock (gate) { held.Set(); release.Wait(); } });
-            held.Wait();
-            try
-            {
-                ulong[] ticks = [90, 91];
-                GpuTimestampStatus status = await Task.Run(() =>
-                {
-                    GpuTimestampStatus result = pool.TryResolve(fence, ticks, out double period);
-                    Assert.Equal(0d, period);
-                    return result;
-                }).WaitAsync(TimeSpan.FromSeconds(10));
-                Assert.Equal(GpuTimestampStatus.Pending, status);
-                Assert.Equal(new ulong[] { 90, 91 }, ticks);
-                Assert.Equal(0, timeline.Polls);
-            }
-            finally { release.Set(); await holder; }
         }
 
         [Theory]

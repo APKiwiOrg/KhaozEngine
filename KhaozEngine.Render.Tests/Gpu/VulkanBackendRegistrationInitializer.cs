@@ -24,6 +24,9 @@ namespace KhaozEngine.Tests.Gpu
     internal static class VulkanBackendRegistrationInitializer
     {
         [ModuleInitializer]
-        internal static void RegisterNativeVulkan() => VulkanBackendRegistration.EnsureRegistered();
+        internal static void RegisterNativeVulkan()
+        {
+            if (!RendererPerfAssemblyAccess.OfflineVerifier) VulkanBackendRegistration.EnsureRegistered();
+        }
     }
 }

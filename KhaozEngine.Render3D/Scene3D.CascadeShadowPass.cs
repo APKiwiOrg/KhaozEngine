@@ -20,7 +20,8 @@ namespace KhaozEngine.Render3D
                 // is re-rendered this frame). Then decide whether the depth pass must actually re-run: the atlas
                 // persists across frames, so an unchanged static scene reuses it and skips every caster draw.
                 SetShadowReceiverTail();
-                BuildShadowCasterSpans(_shadowCasterRunsScratch, _shadowCasterModelsScratch);
+                using (ProfileCpu("cpu.shadow.caster-selection"))
+                    BuildShadowCasterSpans(_shadowCasterRunsScratch, _shadowCasterModelsScratch);
                 bool hadPrevious = _shadowPassRendered;
                 bool anySkinnedCaster = skinnedCasterCount > 0;
                 // A skinned caster dirties the pass while it EXISTS, so the frame the last one vanishes on is the
@@ -49,13 +50,16 @@ namespace KhaozEngine.Render3D
                     // SIGNATURE above stays the FULL list on purpose - the cull is a pure function of the caster
                     // transforms (already in that signature) and the cascade matrices (already in the light-matrix
                     // compare), so it can never change the drawn set without one of those dirtying the pass first.
-                    BuildCascadeCasterSpans(_cascadeCount);
-                    RenderShadowDepthPass(cl, _cascadeCasterSpans);
+                    using (ProfileCpu("cpu.shadow.cascade-culling")) BuildCascadeCasterSpans(_cascadeCount);
+                    using (ProfilePass(cl, "shadow.directional")) RenderShadowDepthPass(cl, _cascadeCasterSpans);
                     // What this pass just drew becomes next frame's reference (see Scene3D.ShadowDirtyState.cs).
                     CommitShadowDirtyState(anySkinnedCaster, anyFoliageCaster);
                 }
                 else
+                {
                     _shadowPassSkippedLastFrame = true;
+                    SkipProfilePass(cl, "shadow.directional");
+                }
                 // Recorded AFTER the decision so one snapshot describes one frame: the per-cascade rigid span counts
                 // and the raw draw calls only exist once the pass has walked them, and a skipped frame must report
                 // zero of both rather than the last rendered pass's numbers (issue #410).
@@ -64,7 +68,10 @@ namespace KhaozEngine.Render3D
                 if (EnableTiming) shadowDepthMs = ElapsedMs(timingStart);
             }
             else
+            {
                 _model.ClearShadowUniforms();
+                SkipProfilePass(cl, "shadow.directional");
+            }
 
             return shadowDepthMs;
         }

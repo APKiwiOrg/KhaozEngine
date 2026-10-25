@@ -755,11 +755,13 @@ without physics, rebuilding layer grids through `NavGrid.FromBlockedSurfaces`. H
 `KhaozEngine.Physics` grants `InternalsVisibleTo` to `KhaozEngine.Movement` for the per-worker diagnostics of a
 parallel contact bake and its reference/diagnostic controls. Movement uses these internal members:
 
-- `WorkerDiagnostics.Plan()`, which copies diagnostic enablement, the allocation-observer factory and a separately
-  opted-in test Find observer. Ordinary caller ThreadState observers are never inherited.
+- `WorkerDiagnostics.Plan()`, which copies immutable diagnostic enablement, the active public capture label, the
+  allocation-observer factory and a separately opted-in test Find observer. Ordinary caller ThreadState observers
+  are never inherited.
 - `WorkerDiagnostics.Merge(...)`, which adds worker records to the calling thread's recorder after the join.
 - `WorkerDiagnosticsPlan.Observer(int)`, which gives one worker its own allocation observer during setup.
-- `WorkerDiagnosticsRecord`, the counts, routes and per-session retention maxima one worker hands back.
+- `WorkerDiagnosticsRecord`, the counts, routes, label, lifetime completeness and per-session retention maxima one
+  worker hands back.
 - `WorkerDiagnosticsScope.Enter` and `Exit`, which swap a fresh recorder onto a worker thread and restore every prior
   thread value.
 - `ContactAllocationPhase`, the argument type of the allocation observer delegate.
@@ -772,6 +774,14 @@ any caller swap another subsystem's recorder or observer. `WorkerDiagnostics.Set
 `SupportQueryDiagnostics.ThreadState` and `SupportQueryDiagnostics.Exchange` are used only by tests, through the
 existing test assembly grants. The two packages ship together under one `KhaozEngineVersion`, so the grant cannot
 skew across versions.
+
+Consumers instead use public `SupportQueryCapture` and immutable `SupportQueryMeasurement` in Physics,
+with `SupportQueryCounter`, `SupportQueryMetrics`, `SupportQueryRouteMetrics` and `SupportProofReuseMetrics`.
+These wrap the same recorder without exposing mutable thread state or granting consumer friend access.
+The existing worker bridge carries labels and lifetime completeness and merges once after join. Disabled
+workers restore state without allocating or materializing widened records. The
+[public contract](../KhaozEngine.Physics/README.md#support-query-measurement) owns scope, reduction and
+retention semantics. No package dependency changes.
 
 The same package owns `MoveToRange`, `DirectMoveToRange`, `RangeSteering`, `RangeMoveStatus`,
 `NpcGroundMovement` and `PlayerPathMovement`. These adapters compose the three existing references only.

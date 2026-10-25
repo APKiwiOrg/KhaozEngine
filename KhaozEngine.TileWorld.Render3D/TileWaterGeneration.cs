@@ -7,7 +7,10 @@ namespace KhaozEngine.TileWorld;
 
 // A CPU preparation travels with its ground request, never with the completion-time document. Optical
 // fields are built later, from the completed candidate and accepted mesh snapshots of one publication group.
-internal sealed record TileWaterPreparation(WaterPlane[] Planes, TileWaterSourceStamp Stamp, float Padding, WaterLook? Look);
+// An uncertified preparation was captured under a refused displacement. It publishes terrain only, and its
+// water becomes an UncertifiedDisplacement refusal.
+internal sealed record TileWaterPreparation(WaterPlane[] Planes, TileWaterSourceStamp Stamp, float Padding, WaterLook? Look,
+    bool Uncertified = false);
 
 /// <summary>Document provenance of one preparation. Tracked entries own their registry epochs while the stamp is
 /// referenced by a resident generation, pending request or refusal. Availability identities also detect source
@@ -74,12 +77,16 @@ internal sealed class TileWaterGeneration : IDisposable
         Look = preparation.Look;
         try
         {
-            foreach (TileWaterTriangleBuild field in Fields) _handles.Add(scene!.LoadWaterOpticsTriangles(field.Field));
+            foreach (TileWaterTriangleBuild field in Fields)
+            {
+                try { _handles.Add(scene!.LoadWaterOpticsTriangles(field.Field)); }
+                catch (WaterOpticsSurfaceException refused) { throw new TileWaterFieldRefusedException(field, refused); }
+            }
             for (int i = 0; i < Planes.Length; i++)
             {
                 _planeFields[i] = -1;
                 for (int f = 0; f < Fields.Length; f++)
-                    if (Planes[i].SurfaceY == Fields[f].Origin.Y)
+                    if (Planes[i].SurfaceY == Fields[f].Level)
                     {
                         TileWaterTriangleBuild field = Fields[f];
                         Planes[i] = Planes[i].WithOptics(new WaterOpticsBinding(_handles[f], field.Origin, field.Field.Size));
@@ -139,4 +146,13 @@ internal sealed class TileWaterGeneration : IDisposable
         foreach (WaterOpticsHandle handle in _handles) _scene!.UnloadWaterOpticsField(handle);
         _handles.Clear();
     }
+}
+
+/// <summary>The backend refused one field's scalars before allocating. Names that field, so the refusal reports
+/// its own reference level and domain.</summary>
+internal sealed class TileWaterFieldRefusedException(TileWaterTriangleBuild field, WaterOpticsSurfaceException refused)
+    : Exception(refused.Message, refused)
+{
+    internal TileWaterTriangleBuild Field { get; } = field;
+    internal WaterOpticsSurfaceFailure Reason { get; } = refused.Reason;
 }

@@ -30,6 +30,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             typeof(KhaozEngineVulkan).Assembly.GetName().Version?.ToString(3) ?? "unknown";
 
         readonly string _directory;
+        internal string DirectoryPath => _directory;
         int _hits;
         int _misses;
         int _writes;
@@ -53,8 +54,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 : null;
 
         internal static SpirvBytesCache? FromEnvironment()
+            => Open(Environment.GetEnvironmentVariable(EnvVarName));
+
+        internal static SpirvBytesCache? Open(string? value)
             => GpuDiskCache.OpenDirectory(
-                Environment.GetEnvironmentVariable(EnvVarName), Subfolder, EngineVersion) is { } directory
+                value, Subfolder, EngineVersion) is { } directory
                     ? new SpirvBytesCache(directory)
                     : null;
 

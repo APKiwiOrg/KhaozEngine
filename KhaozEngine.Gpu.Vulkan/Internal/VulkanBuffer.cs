@@ -98,7 +98,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     VulkanMemoryTiling.Linear,
                     requirements.PrefersDedicated,
                     requirements.RequiresDedicated,
-                    new VulkanDedicatedTarget(Buffer: Handle, Image: 0)));
+                    new VulkanDedicatedTarget(Buffer: Handle, Image: 0)),
+                    new VulkanMemoryPayload(BufferBytes: description.SizeInBytes,
+                        StagingCapacityBytes: ringBacked || description.Usage.HasFlag(GpuBufferUsage.Staging) ? nativeBytes : 0));
 
                 owner.Api.BindBufferMemory(Handle, _allocation.Memory, _allocation.Offset);
 

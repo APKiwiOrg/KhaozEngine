@@ -199,7 +199,11 @@ public sealed partial class Scene3D
                 }
                 groupDraws++;
             }
-            if (!_targetOutlines.HasQueuedDraws) continue;
+            if (!_targetOutlines.HasQueuedDraws)
+            {
+                _targetOutlines.SkipGroup(cl, groupIndex);
+                continue;
+            }
             bool occluded = group.Occlusion == MeshOutlineOcclusion.SceneDepth;
             _targetOutlines.Render(cl, _res, target, group.Color, group.WidthPixels, Post.BackgroundColor.R,
                 Post.Pixelated, groupIndex, occluded);

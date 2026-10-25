@@ -38,11 +38,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// every child object, so a wrapper disposed afterwards must do nothing rather than release twice.
     /// </para>
     /// </summary>
-    [SupportedOSPlatform("windows")]
     internal sealed class D3D11Buffer : IGpuBuffer, ID3D11RingBacked, ID3D11BindableViews, ID3D11ReadableStaging
     {
         readonly DeviceLiveness _liveness;
         readonly D3D11RingAllocator _rings;
+        readonly D3D11ResourceObjects _native;
+        readonly IDisposable? _payload;
 
         /// <param name="device">The device the buffer and its views are created on.</param>
         /// <param name="context">The immediate context a ring-backed buffer maps itself through.</param>
@@ -52,14 +53,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="loss">The device's device-loss latch, or null on a path that has none. It reaches exactly
         /// one place from here: the ring's mapping mechanism, whose <c>Map</c> is a decision G3 check site
         /// (https://github.com/APKiwiOrg/KhaozEngine/issues/500).</param>
+        /// <param name="memory">The owning device's payload ledger, or null when no device owns the resource.</param>
+        [SupportedOSPlatform("windows")]
         internal D3D11Buffer(ID3D11Device device, ID3D11DeviceContext context, DeviceLiveness liveness,
-            D3D11RingAllocator rings, in GpuBufferDescription description, D3D11DeviceLossLatch? loss = null)
+            D3D11RingAllocator rings, in GpuBufferDescription description, D3D11DeviceLossLatch? loss = null,
+            D3D11MemoryDiagnostics? memory = null)
+            : this(liveness, rings, description, b => CreateWindows(device, context, b, loss), memory) { }
+
+        internal D3D11Buffer(DeviceLiveness liveness, D3D11RingAllocator rings, in GpuBufferDescription description,
+            Func<D3D11Buffer, D3D11ResourceObjects> create, D3D11MemoryDiagnostics? memory)
         {
-            ArgumentNullException.ThrowIfNull(device);
-            ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(liveness);
             ArgumentNullException.ThrowIfNull(rings);
-
             _liveness = liveness;
             _rings = rings;
             SizeInBytes = description.SizeInBytes;
@@ -69,11 +74,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             Validate(description, Views);
 
-            Buffer = CreateBufferWindows(device, description, Views, rings.FramesInFlight);
-            if (Views.Ring)
-                Ring = new D3D11UniformRing(rings, new D3D11BufferRingMemory(context, Buffer, loss), SizeInBytes);
-            if (Views.ShaderResource) ShaderResourceView = CreateRawSrvWindows(device, Buffer, SizeInBytes);
-            if (Views.UnorderedAccess) UnorderedAccessView = CreateRawUavWindows(device, Buffer, SizeInBytes);
+            _native = create(this);
+            try
+            {
+                if (Views.Ring) Ring = new D3D11UniformRing(rings, _native.RingMemory
+                    ?? throw new InvalidOperationException("A uniform ring requires native mapping support."), SizeInBytes);
+                _payload = memory?.TrackBuffer(description, rings.FramesInFlight);
+            }
+            catch { _native.Dispose(); throw; }
         }
 
         /// <summary>The LOGICAL size, which is what the seam asked for. A ring-backed buffer's native allocation
@@ -97,13 +105,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal D3D11BufferViewPlan Views { get; }
 
         /// <summary>The native buffer.</summary>
-        internal ID3D11Buffer Buffer { get; }
+        internal ID3D11Buffer Buffer => (ID3D11Buffer)_native.Resource;
 
         /// <summary>The full-range RAW shader resource view, or null when the usage earns none.</summary>
-        internal ID3D11ShaderResourceView? ShaderResourceView { get; }
+        internal ID3D11ShaderResourceView? ShaderResourceView => (ID3D11ShaderResourceView?)_native.Srv;
 
         /// <summary>The full-range RAW unordered access view, or null when the usage earns none.</summary>
-        internal ID3D11UnorderedAccessView? UnorderedAccessView { get; }
+        internal ID3D11UnorderedAccessView? UnorderedAccessView => (ID3D11UnorderedAccessView?)_native.Uav;
 
         /// <summary>True once disposed, whether or not anything native was released.</summary>
         internal bool IsDisposed { get; private set; }
@@ -116,13 +124,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // first-constant addend the bind computes, never a different resource.
 
         /// <inheritdoc/>
-        object? ID3D11BindableViews.BufferObject => Buffer;
+        object? ID3D11BindableViews.BufferObject => _native.Resource;
 
         /// <inheritdoc/>
-        object? ID3D11BindableViews.ShaderResourceViewObject => ShaderResourceView;
+        object? ID3D11BindableViews.ShaderResourceViewObject => _native.Srv;
 
         /// <inheritdoc/>
-        object? ID3D11BindableViews.UnorderedAccessViewObject => UnorderedAccessView;
+        object? ID3D11BindableViews.UnorderedAccessViewObject => _native.Uav;
 
         /// <inheritdoc/>
         object? ID3D11BindableViews.SamplerStateObject => null;
@@ -130,7 +138,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // ---- ID3D11MappableResource: what a staging Map needs, answered by the resource ----
 
         /// <inheritdoc/>
-        object ID3D11MappableResource.MapTarget => Buffer;
+        object ID3D11MappableResource.MapTarget => _native.Resource;
 
         /// <inheritdoc/>
         /// <remarks>Staging is the readback case. DYNAMIC and the ring's dynamic buffers are accepted too because
@@ -153,6 +161,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (IsDisposed) return;
             IsDisposed = true;
+            _payload?.Dispose();
             if (_liveness.IsDead) return;   // the device already freed every child object
 
             // THE UNMAP COMES FIRST, and it is not tidiness. Releasing a mapped resource leaves the runtime
@@ -160,9 +169,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // allocator's registry would have the next submit unmap it a second time.
             if (Ring is not null) _rings.Forget(Ring);
 
-            ShaderResourceView?.Dispose();
-            UnorderedAccessView?.Dispose();
-            Buffer.Dispose();
+            _native.Dispose();
+        }
+
+        [SupportedOSPlatform("windows")]
+        static D3D11ResourceObjects CreateWindows(ID3D11Device device, ID3D11DeviceContext context,
+            D3D11Buffer owner, D3D11DeviceLossLatch? loss)
+        {
+            ArgumentNullException.ThrowIfNull(device); ArgumentNullException.ThrowIfNull(context);
+            var d = new GpuBufferDescription(owner.SizeInBytes, owner.Usage, owner.StructureByteStride);
+            var buffer = CreateBufferWindows(device, d, owner.Views, owner._rings.FramesInFlight);
+            ID3D11ShaderResourceView? srv = null;
+            try
+            {
+                srv = owner.Views.ShaderResource ? CreateRawSrvWindows(device, buffer, owner.SizeInBytes) : null;
+                var uav = owner.Views.UnorderedAccess ? CreateRawUavWindows(device, buffer, owner.SizeInBytes) : null;
+                return new(buffer, srv, uav, RingMemory: owner.Views.Ring ? new D3D11BufferRingMemory(context, buffer, loss) : null);
+            }
+            catch { srv?.Dispose(); buffer.Dispose(); throw; }
         }
 
         // Everything a wrong answer here corrupts silently rather than fails, so it is checked at creation where
@@ -192,6 +216,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // A RING-BACKED BUFFER IS THE ONLY ONE CREATED AT A SIZE THE CALLER DID NOT ASK FOR: its 256-aligned
         // stride times the frame count, DYNAMIC plus CPU write, so a per-frame write is a memcpy into a mapped
         // segment instead of the incumbent's blocking staging map. Everything else is unchanged.
+        [SupportedOSPlatform("windows")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         static ID3D11Buffer CreateBufferWindows(ID3D11Device device, in GpuBufferDescription description,
             in D3D11BufferViewPlan views, int framesInFlight)
@@ -222,6 +247,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         // R32_Typeless plus the Raw flag, counted in 4-byte elements. That pair IS what makes it a byte-address
         // view, which is what the cross-compiled HLSL declares.
+        [SupportedOSPlatform("windows")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         static ID3D11ShaderResourceView CreateRawSrvWindows(ID3D11Device device, ID3D11Buffer buffer, uint sizeInBytes)
         {
@@ -230,6 +256,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             return device.CreateShaderResourceView(buffer, d);
         }
 
+        [SupportedOSPlatform("windows")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         static ID3D11UnorderedAccessView CreateRawUavWindows(ID3D11Device device, ID3D11Buffer buffer, uint sizeInBytes)
         {

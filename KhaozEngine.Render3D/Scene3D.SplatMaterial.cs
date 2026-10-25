@@ -104,11 +104,18 @@ namespace KhaozEngine.Render3D
             }
         }
 
-        // Free every loaded splat material and clear the list. Called from Dispose.
-        void DisposeSplatMaterials()
+        // Release independent bundles and report whether every shared shadow receiver set released.
+        bool DisposeSplatMaterials(Internal.ResourceDisposal disposal)
         {
-            foreach (var s in _splatMaterials) s?.Dispose();
-            _splatMaterials.Clear();
+            bool retained = false;
+            for (int i = 0; i < _splatMaterials.Count; i++)
+                if (_splatMaterials[i] is { } entry)
+                {
+                    if (entry.Dispose(disposal)) _splatMaterials[i] = null;
+                    else retained = true;
+                }
+            if (!retained) _splatMaterials.Clear();
+            return !retained;
         }
 
         /// <summary>A loaded splat-terrain material: the two 5-layer texture arrays (albedo, normal), the params UBO
@@ -123,7 +130,22 @@ namespace KhaozEngine.Render3D
             public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, IGpuBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
             { AlbedoArray = albedo; NormalArray = normal; Ubo = ubo; Set = set; _ownedSampler = ownedSampler; }
             public void ReplaceSet(IGpuResourceSet set) => Set = set;
-            public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); NormalArray.Dispose(); Ubo.Dispose(); _ownedSampler?.Dispose(); }
+            public void Dispose()
+            {
+                var disposal = new Internal.ResourceDisposal();
+                Dispose(disposal);
+                disposal.ThrowIfFailed();
+            }
+            // Shared bindings are relinquished once the set releases, even if a later child release fails.
+            internal bool Dispose(Internal.ResourceDisposal disposal)
+            {
+                if (!disposal.Release("splat.set", Set.Dispose)) return false;
+                disposal.Release("splat.albedo", AlbedoArray.Dispose);
+                disposal.Release("splat.normal", NormalArray.Dispose);
+                disposal.Release("splat.uniform", Ubo.Dispose);
+                disposal.Release("splat.sampler", () => _ownedSampler?.Dispose());
+                return true;
+            }
         }
     }
 }

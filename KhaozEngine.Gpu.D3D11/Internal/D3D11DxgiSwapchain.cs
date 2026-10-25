@@ -50,6 +50,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly ID3D11DeviceContext _context;
         readonly IDXGISwapChain _swapchain;
         readonly DeviceLiveness _liveness;
+        readonly D3D11MemoryDiagnostics? _memory;
 
         ID3D11RenderTargetView? _renderTargetView;
         D3D11Texture? _depthTexture;
@@ -58,12 +59,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
         D3D11DxgiSwapchain(ID3D11Device device, ID3D11DeviceContext immediateContext, IDXGISwapChain swapchain,
-            GpuPixelFormat? depthFormat, DeviceLiveness liveness)
+            GpuPixelFormat? depthFormat, DeviceLiveness liveness, D3D11MemoryDiagnostics? memory)
         {
             _device = device;
             _context = immediateContext;
             _swapchain = swapchain;
             _liveness = liveness;
+            _memory = memory;
             DepthFormat = depthFormat;
         }
 
@@ -84,11 +86,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="depthFormat">The depth attachment format, or null for none, which is what the engine's
         /// own windowed path passes.</param>
         /// <param name="liveness">The device's liveness token, so a release after device death is a no-op.</param>
+        /// <param name="memory">Tracks the optional owned depth attachment. DXGI owns the backbuffers.</param>
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
         internal static D3D11DxgiSwapchain CreateWindows(ID3D11Device device, ID3D11DeviceContext immediateContext,
             IDXGIAdapter adapter, IntPtr hwnd, uint width, uint height, GpuPixelFormat? depthFormat,
-            DeviceLiveness liveness)
+            DeviceLiveness liveness, D3D11MemoryDiagnostics? memory = null)
         {
             ArgumentNullException.ThrowIfNull(device);
             ArgumentNullException.ThrowIfNull(immediateContext);
@@ -113,7 +116,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // does the same, on the same flag.
             factory.MakeWindowAssociation(hwnd, WindowAssociationFlags.IgnoreAltEnter);
 
-            return new D3D11DxgiSwapchain(device, immediateContext, swapchain, depthFormat, liveness);
+            return new D3D11DxgiSwapchain(device, immediateContext, swapchain, depthFormat, liveness, memory);
         }
 
         /// <inheritdoc/>
@@ -250,7 +253,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (DepthFormat is GpuPixelFormat depthFormat)
             {
                 _depthTexture = new D3D11Texture(_device, _liveness, new GpuTextureDescription(
-                    actualWidth, actualHeight, depthFormat, GpuTextureUsage.DepthStencil));
+                    actualWidth, actualHeight, depthFormat, GpuTextureUsage.DepthStencil), _memory);
                 depthStencilView = _depthTexture.DepthStencilView;
             }
 

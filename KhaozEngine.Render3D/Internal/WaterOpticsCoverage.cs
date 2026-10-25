@@ -6,19 +6,37 @@ namespace KhaozEngine.Render3D.Internal;
 /// <summary>Headless admission checks for complete optical coverage, including certified swell displacement.</summary>
 internal static class WaterOpticsCoverage
 {
+    enum Envelope { Certified, Fft, NonFiniteInputs, NonFiniteReach }
+
     /// <summary>Horizontal displacement padding for the effective per-plane settings.</summary>
-    internal static float Padding(WaterSettings effective)
+    internal static float Padding(WaterSettings effective) => Resolve(effective, out float padding) switch
     {
-        if (effective.WaveSource == WaterWaveSource.FftOcean)
-            throw new NotSupportedException("Bound water optics requires a certified displacement envelope. FFT water has none.");
+        Envelope.Certified => padding,
+        Envelope.Fft => throw new NotSupportedException(
+            "Bound water optics requires a certified displacement envelope. FFT water has none."),
+        Envelope.NonFiniteInputs => throw new ArgumentException("Optical coverage requires finite swell inputs.",
+            nameof(effective)),
+        _ => throw new ArgumentException("The swell displacement envelope is not finite.", nameof(effective)),
+    };
+
+    /// <summary>The non-throwing preflight. Every refusal is an uncertified displacement envelope.</summary>
+    internal static bool TryPadding(WaterSettings effective, out float padding)
+    {
+        if (Resolve(effective, out padding) == Envelope.Certified) return true;
+        padding = 0f;
+        return false;
+    }
+
+    static Envelope Resolve(WaterSettings effective, out float padding)
+    {
+        padding = 0f;
+        if (effective.WaveSource == WaterWaveSource.FftOcean) return Envelope.Fft;
         if (!float.IsFinite(effective.SwellAmplitude) || !float.IsFinite(effective.SwellWavelength)
             || !float.IsFinite(effective.SwellSteepness))
-            throw new ArgumentException("Optical coverage requires finite swell inputs.", nameof(effective));
-        float padding = WaterSwellReach.Of(effective.SwellAmplitude, effective.SwellWavelength,
+            return Envelope.NonFiniteInputs;
+        padding = WaterSwellReach.Of(effective.SwellAmplitude, effective.SwellWavelength,
             effective.SwellSteepness).X;
-        if (!float.IsFinite(padding))
-            throw new ArgumentException("The swell displacement envelope is not finite.", nameof(effective));
-        return padding;
+        return float.IsFinite(padding) ? Envelope.Certified : Envelope.NonFiniteReach;
     }
 
     /// <summary>Refuse incomplete opted-in data before queueing a plane. Bilinear sampling accepts exact field

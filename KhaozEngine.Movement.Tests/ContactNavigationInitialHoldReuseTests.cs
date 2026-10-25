@@ -27,7 +27,7 @@ public class ContactNavigationInitialHoldReuseTests(ITestOutputHelper output)
             byte[] referenceFile;
             using (ContactNavigationBuildHooks.Install(new() { DisableInitialHoldReuse = true }))
                 referenceFile = fixture.Build(new(2));
-            int referenceEdgeSteps = SupportQueryDiagnostics.Snapshot().EdgeSteps;
+            long referenceEdgeSteps = SupportQueryDiagnostics.Snapshot().EdgeSteps;
             SupportQueryDiagnostics.Reset();
             byte[] parallelFile = fixture.Build(new(2));
             SupportQueryCounts counts = SupportQueryDiagnostics.Snapshot();

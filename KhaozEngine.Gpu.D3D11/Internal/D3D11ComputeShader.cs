@@ -26,28 +26,33 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// compute pipeline binds <see cref="Shader"/> and asks nothing else of a compiled module.
     /// </para>
     /// </summary>
-    [SupportedOSPlatform("windows")]
     internal sealed class D3D11ComputeShader : IGpuComputeShader
     {
         readonly DeviceLiveness _liveness;
 
-        internal D3D11ComputeShader(DeviceLiveness liveness, ID3D11ComputeShader shader, byte[] bytecode,
-            uint threadGroupSizeX, uint threadGroupSizeY, uint threadGroupSizeZ)
+        internal D3D11ComputeShader(DeviceLiveness liveness, object shader, byte[] bytecode,
+            uint threadGroupSizeX, uint threadGroupSizeY, uint threadGroupSizeZ, D3D11ShaderEvidence? diagnostics = null)
         {
             ArgumentNullException.ThrowIfNull(liveness);
             ArgumentNullException.ThrowIfNull(shader);
             ArgumentNullException.ThrowIfNull(bytecode);
 
             _liveness = liveness;
-            Shader = shader;
+            _shader = shader;
+            DiagnosticEvidence = diagnostics;
             Bytecode = bytecode;
             ThreadGroupSizeX = threadGroupSizeX;
             ThreadGroupSizeY = threadGroupSizeY;
             ThreadGroupSizeZ = threadGroupSizeZ;
         }
 
-        /// <summary>The compiled compute module, which a compute pipeline binds.</summary>
-        internal ID3D11ComputeShader Shader { get; }
+        readonly object _shader;
+        internal D3D11ShaderEvidence? DiagnosticEvidence { get; }
+        internal object ShaderHandle => _shader;
+        internal bool DeviceIsDead => _liveness.IsDead;
+        /// <summary>The compiled compute module, which a native compute pipeline binds.</summary>
+        [SupportedOSPlatform("windows")]
+        internal ID3D11ComputeShader Shader => (ID3D11ComputeShader)_shader;
 
         /// <summary>The module's DXBC bytes.</summary>
         internal ReadOnlyMemory<byte> Bytecode { get; }
@@ -70,7 +75,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             IsDisposed = true;
             if (_liveness.IsDead) return;   // the device already freed every child object
 
-            Shader.Dispose();
+            ((IDisposable)_shader).Dispose();
         }
     }
 }

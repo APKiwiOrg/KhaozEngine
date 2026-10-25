@@ -72,6 +72,25 @@ public sealed class WaterOpticsCoverageTests
     }
 
     [Fact]
+    public void PaddingPreflightRefusesUncertifiedDisplacementWithoutThrowing()
+    {
+        using Scene3D scene = Scene();
+        var swell = new WaterLook { SwellAmplitude = 0.01f, SwellWavelength = 2f * MathF.PI, SwellSteepness = -0.5f };
+        Assert.True(scene.TryGetWaterOpticsPadding(swell, out float padding, out _));
+        Assert.Equal(scene.GetWaterOpticsPadding(swell), padding);
+        var fft = new WaterLook { WaveSource = WaterWaveSource.FftOcean, SwellAmplitude = 0f };
+        Assert.False(scene.TryGetWaterOpticsPadding(fft, out padding, out WaterOpticsSurfaceFailure reason));
+        Assert.Equal((0f, WaterOpticsSurfaceFailure.UncertifiedDisplacement), (padding, reason));
+        Assert.Throws<NotSupportedException>(() => scene.GetWaterOpticsPadding(fft));
+        var nonFinite = new WaterLook { SwellAmplitude = float.NaN };
+        Assert.False(scene.TryGetWaterOpticsPadding(nonFinite, out padding, out reason));
+        Assert.Equal((0f, WaterOpticsSurfaceFailure.UncertifiedDisplacement), (padding, reason));
+        Assert.Throws<ArgumentException>(() => scene.GetWaterOpticsPadding(nonFinite));
+        scene.Post.Water.WaveSource = WaterWaveSource.FftOcean;
+        Assert.False(scene.TryGetWaterOpticsPadding(null, out _, out _));
+    }
+
+    [Fact]
     public void EffectivePerPlaneSwellUsesOrbitalReachRatherThanAmplitude()
     {
         using Scene3D scene = Scene();

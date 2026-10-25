@@ -26,8 +26,17 @@ namespace KhaozEngine.Game
         public int DesignHeight;
         /// <summary>How the design space maps onto the window (default <see cref="ScaleMode.Fit"/>).</summary>
         public ScaleMode ScaleMode;
-        /// <summary>Background colour cleared each frame (default dark).</summary>
+        /// <summary>Host clear colour (default dark), used unless <see cref="RendererInitializesSwapchain"/> is enabled.</summary>
         public Color ClearColor;
+
+        /// <summary>
+        /// Opt in to <see cref="AppWindow.RendererInitializesSwapchain"/>. Default false, including raw and
+        /// default-constructed options, keeps the host's initial swapchain bind and clear. The caller must ensure
+        /// its renderer initializes the full output in the frame's recording before 2D draws or capture, on every
+        /// rendered frame including empty, loading and menu frames. Applied to both the default and a custom
+        /// <see cref="WindowFactory"/> window. Not enabled automatically for 3D subclasses or custom renderers.
+        /// </summary>
+        public bool RendererInitializesSwapchain;
 
         /// <summary>
         /// How the window presents frames (default <see cref="PresentMode.Vsync"/>). <see cref="PresentMode.Immediate"/>

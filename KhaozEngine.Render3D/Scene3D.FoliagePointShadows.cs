@@ -27,8 +27,10 @@ public sealed partial class Scene3D
     readonly Dictionary<FoliageBatch, int> _foliagePointSourceOrder = new();
     int _foliagePointFrame = -1;
 
+    readonly FoliagePointCasterIndex _foliagePointIndex = new();
+    readonly List<FoliagePointCasterRef> _foliagePointHits = new();
+
     // One light's runs, shared by its six faces.
-    readonly List<FoliagePointShadowRun> _foliagePointRuns = new();
     readonly List<FoliagePointFaceRun> _foliagePointFaceRuns = new();
     int _foliagePointFaceLight = -1;
 
@@ -64,6 +66,7 @@ public sealed partial class Scene3D
         _foliagePointRanges.Clear();
         _foliagePointPending.Clear();
         _foliagePointSourceOrder.Clear();
+        _foliagePointIndex.Reset();
 
         foreach (FoliageDraw draw in _foliageShadowDraws)
         {
@@ -75,7 +78,11 @@ public sealed partial class Scene3D
             }
             _foliagePointPending.Add(new FoliagePointPending(order, draw.Batch, draw.Patch.Start, draw.Count));
         }
-        if (_foliagePointPending.Count == 0) return;
+        if (_foliagePointPending.Count == 0)
+        {
+            _foliagePointIndex.Seal();
+            return;
+        }
         _foliagePointPending.Sort(static (a, b) =>
         {
             int comparison = a.Order.CompareTo(b.Order);
@@ -103,6 +110,12 @@ public sealed partial class Scene3D
             _foliagePointSources.Add(new FoliagePointSource(FoliagePointStreamFor(first.Batch),
                 rangeStart, _foliagePointRanges.Count - rangeStart));
         }
+        for (int sourceOrdinal = 0; sourceOrdinal < _foliagePointSources.Count; sourceOrdinal++)
+        {
+            FoliagePointSource source = _foliagePointSources[sourceOrdinal];
+            _foliagePointIndex.Add(sourceOrdinal, source.Stream, FoliagePointRanges(source));
+        }
+        _foliagePointIndex.Seal();
     }
 
     FoliagePointShadowStream FoliagePointStreamFor(FoliageBatch batch)
@@ -133,20 +146,13 @@ public sealed partial class Scene3D
         Vector3 exclusionMin, Vector3 exclusionMax)
     {
         EnsureFoliagePointShadowFrame();
-        foreach (FoliagePointSource source in _foliagePointSources)
+        _foliagePointIndex.Query(lightPosition, radius, nearRadius, exclusionMin, exclusionMax, _foliagePointHits);
+        foreach (FoliagePointCasterRef reference in _foliagePointHits)
         {
-            source.Stream.Query(FoliagePointRanges(source), lightPosition, radius, nearRadius,
-                exclusionMin, exclusionMax, _foliagePointRuns);
-            ReadOnlySpan<FoliagePointShadowCaster> casters = source.Stream.Casters;
-            foreach (FoliagePointShadowRun run in _foliagePointRuns)
-            {
-                for (uint slot = run.Start; slot < run.Start + run.Count; slot++)
-                {
-                    ref readonly FoliagePointShadowCaster caster = ref casters[(int)slot];
-                    MixPointSignature(ref hash, SignatureWord((uint)caster.Mesh.Index, (uint)caster.Mesh.Generation));
-                    MixPointSignature(ref hash, caster.Transform);
-                }
-            }
+            FoliagePointSource source = _foliagePointSources[reference.SourceOrdinal];
+            ref readonly FoliagePointShadowCaster caster = ref source.Stream.Casters[(int)reference.ProxySlot];
+            MixPointSignature(ref hash, SignatureWord((uint)caster.Mesh.Index, (uint)caster.Mesh.Generation));
+            MixPointSignature(ref hash, caster.Transform);
         }
     }
 
@@ -154,23 +160,40 @@ public sealed partial class Scene3D
     /// pipeline. The query runs on the light's first face and is reused by the other five. Returns the draws.</summary>
     int DrawFoliagePointShadowFace(IGpuCommandList cl, PointShadowRenderer renderer, PointShadowAtlas atlas,
         int packedIndex, int face, int row, Vector3 lightPosition, float radius, float nearRadius,
-        Vector3 exclusionMin, Vector3 exclusionMax)
+        Vector3 exclusionMin, Vector3 exclusionMax, in PackedPointShadowSlot packed)
     {
         if (face == 0 || packedIndex != _foliagePointFaceLight)
         {
             EnsureFoliagePointShadowFrame();
             _foliagePointFaceLight = packedIndex;
             _foliagePointFaceRuns.Clear();
-            foreach (FoliagePointSource source in _foliagePointSources)
+            _foliagePointIndex.Query(lightPosition, radius, nearRadius, exclusionMin, exclusionMax, _foliagePointHits);
+            int lastSource = -1;
+            foreach (FoliagePointCasterRef reference in _foliagePointHits)
             {
+                FoliagePointSource source = _foliagePointSources[reference.SourceOrdinal];
                 if (source.Stream.Buffer is not { } buffer) continue;
-                source.Stream.Query(FoliagePointRanges(source), lightPosition, radius, nearRadius,
-                    exclusionMin, exclusionMax, _foliagePointRuns);
-                foreach (FoliagePointShadowRun run in _foliagePointRuns)
-                    _foliagePointFaceRuns.Add(new FoliagePointFaceRun(buffer, run));
+                ref readonly FoliagePointShadowCaster caster = ref source.Stream.Casters[(int)reference.ProxySlot];
+                int last = _foliagePointFaceRuns.Count - 1;
+                if (last >= 0 && lastSource == reference.SourceOrdinal)
+                {
+                    FoliagePointFaceRun previous = _foliagePointFaceRuns[last];
+                    FoliagePointShadowRun run = previous.Run;
+                    if (run.Mesh.Index == caster.Mesh.Index && run.Mesh.Generation == caster.Mesh.Generation
+                        && run.Start + run.Count == reference.ProxySlot)
+                    {
+                        _foliagePointFaceRuns[last] = previous with { Run = run with { Count = run.Count + 1 } };
+                        continue;
+                    }
+                }
+                _foliagePointFaceRuns.Add(new FoliagePointFaceRun(buffer,
+                    new FoliagePointShadowRun(caster.Mesh, reference.ProxySlot, 1)));
+                lastSource = reference.SourceOrdinal;
             }
         }
 
+        using var pass = ProfilePointPass(cl, packed, PointProfilePass.Foliage, face,
+            executed: _foliagePointFaceRuns.Count > 0);
         int draws = 0;
         foreach (FoliagePointFaceRun faceRun in _foliagePointFaceRuns)
         {
@@ -189,13 +212,13 @@ public sealed partial class Scene3D
 
     /// <summary>Scene teardown. The scene's retire queue has already flushed, so the streams retired here are
     /// flushed again behind one device drain.</summary>
-    void DisposeFoliagePointShadows()
+    void DisposeFoliagePointShadows(Internal.ResourceDisposal disposal)
     {
-        foreach (FoliagePointShadowStream stream in _foliagePointStreams.Values) stream.Dispose();
+        foreach (FoliagePointShadowStream stream in _foliagePointStreams.Values) disposal.Release("foliagePoint.stream", stream.Dispose);
         _foliagePointStreams.Clear();
         _foliagePointSources.Clear();
         _foliagePointFaceRuns.Clear();
-        _retired.FlushAll();
+        disposal.Release("foliagePoint.retirement", _retired.FlushAll);
     }
 
     readonly record struct FoliagePointSource(FoliagePointShadowStream Stream, int RangeStart, int RangeCount);

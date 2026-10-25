@@ -22,13 +22,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// teardown-order straggler into a crash.
     /// </para>
     /// </summary>
-    [SupportedOSPlatform("windows")]
     internal sealed class D3D11ShaderSet : ID3D11ShaderSet
     {
         readonly DeviceLiveness _liveness;
 
-        internal D3D11ShaderSet(DeviceLiveness liveness, ID3D11VertexShader vertexShader,
-            ID3D11PixelShader pixelShader, byte[] vertexShaderBytecode)
+        internal D3D11ShaderSet(DeviceLiveness liveness, object vertexShader,
+            object pixelShader, byte[] vertexShaderBytecode, D3D11ShaderEvidence? vertexEvidence = null,
+            D3D11ShaderEvidence? pixelEvidence = null)
         {
             ArgumentNullException.ThrowIfNull(liveness);
             ArgumentNullException.ThrowIfNull(vertexShader);
@@ -36,16 +36,23 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             ArgumentNullException.ThrowIfNull(vertexShaderBytecode);
 
             _liveness = liveness;
-            VertexShader = vertexShader;
-            PixelShader = pixelShader;
+            VertexHandle = vertexShader;
+            PixelHandle = pixelShader;
+            VertexEvidence = vertexEvidence;
+            PixelEvidence = pixelEvidence;
             VertexShaderBytecode = vertexShaderBytecode;
         }
 
+        internal object VertexHandle { get; }
+        internal object PixelHandle { get; }
+        internal D3D11ShaderEvidence? VertexEvidence { get; }
+        internal D3D11ShaderEvidence? PixelEvidence { get; }
+        internal bool DeviceIsDead => _liveness.IsDead;
         /// <inheritdoc/>
-        public ID3D11VertexShader VertexShader { get; }
+        public ID3D11VertexShader VertexShader => (ID3D11VertexShader)VertexHandle;
 
         /// <inheritdoc/>
-        public ID3D11PixelShader PixelShader { get; }
+        public ID3D11PixelShader PixelShader => (ID3D11PixelShader)PixelHandle;
 
         /// <inheritdoc/>
         public ReadOnlyMemory<byte> VertexShaderBytecode { get; }
@@ -59,8 +66,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             IsDisposed = true;
             if (_liveness.IsDead) return;   // the device already freed every child object
 
-            VertexShader.Dispose();
-            PixelShader.Dispose();
+            ((IDisposable)VertexHandle).Dispose();
+            ((IDisposable)PixelHandle).Dispose();
         }
     }
 }

@@ -577,8 +577,8 @@ catalog archetype up front, so a region load is placements alone.
   profile is never meshed in `Flush`. Each mark submits detached ground to the background queue and spends one unit
   of budget. A gameplay region also requests its cover once per region per drain, while a decor region submits
   coarse ground only. The previous mesh and cover keep drawing until their replacements apply. So
-  `Flush(int.MaxValue)` no longer settles profile ground. Only `TileRegionResidency.PrimeAround` and headless
-  capture build profile work on the calling thread.
+  `Flush(int.MaxValue)` no longer settles profile ground. Only `TileRegionResidency.PrimeAround` and explicit
+  offline `SettleForCapture` calls build profile work on the calling thread.
 - `Draw(focus)` flushes, then queues every loaded region: each plane's ground mesh at its world transform, that
   plane's ground props, and its roofs. `focus` is the point the prop draw radius (`PropDrawRadius`, 96 m) is
   measured from, which is the camera subject rather than the observer tile.
@@ -743,10 +743,18 @@ collision, navigation, simulation, replication or hashes.
   before any upload. Its water binds immutable `WaterOpticsTriangleField` atlases built from the actual accepted
   or same-transaction candidate snapshots, including neighbour regions and their actual LOD. Each certified
   rectangle is the drawable row run expanded by displacement and `min(0.0001 m, TileSize / 1024)`. Only regions
-  whose triangles support that domain participate. A source replacement rebuilds every dependent field against
+  whose triangles support that domain participate. Each field's origin is snapped down to whole metres in XZ.
+  Its Y is the exact datum 0, so each vertex stores rest depth `-y` and collinear drawn heights stay collinear in
+  the field. The water level stays on the plane and the shader's `max(0, restDepth + displacedY - referenceY)`
+  gives the same physical depth. Fields are shared per reference level and domain. An
+  origin at or beyond 2^23 m in X or Z is refused as `UnrepresentableSurface`. The budget charges nothing for
+  render-origin reduction under the default quantized `Scene3D.RenderOrigin` or any other 128 m `WorldFrame`
+  anchor. An explicit non-grid override rounds the reduced origin like all other submitted geometry and is outside
+  the certified budget. A source replacement rebuilds every dependent field against
   one candidate table, uploads them all, validates again and swaps the group together. An upload failure rolls
   the whole group back. Refusals withdraw only the affected water, keep terrain and appear in
-  `WaterOpticsFailures`. `WaterOpticsSourceBytes` reports retained resident and pending source snapshot bytes.
+  `WaterOpticsFailures`. One refusal withdraws the water of its whole region-plane, at every reference level.
+  `WaterOpticsSourceBytes` reports retained resident and pending source snapshot bytes.
 - **Streaming a region dirties its dependants** in both directions. Ground meshes rebuild across their fixed
   border reach. Ground-cover caches also rebuild where a streamed solid footprint, upper roof or tagged door can
   change eligibility, including regions reached by the door clearance.
@@ -774,8 +782,33 @@ field filtering opted-in object and walk-surface hits. Collision and interaction
 
 ## Headless capture (`TileWorldSnapshot`)
 
+**Consumer-owned scenes.** Call `TileWorldView.SettleForCapture(RegionCoord focus, Vector3? interiorFocus = null)`
+on the view's scene thread before the first offline frame and again after loading or unloading regions or
+announcing edits. It blocks until queued ground (Gameplay and Decor), Gameplay ground cover, selected prop
+layers and their HLOD meshes, and the opted-in interior cut have built and applied, ignoring the windowed
+apply budgets. It uses the currently loaded regions and does not load or unload a region, move the camera,
+change its field of view, set `Observer` or render a frame. `focus` orders result application by region proximity.
+`interiorFocus` is the world-space camera subject for the interior-cut window, defaulting to the centre of
+`focus`. Repeating the call without changes retains the applied meshes and cover.
+
+For a camera move within the same loaded region set, use `SettleInteriorCutForCapture(Vector3 focus)` before
+each offline draw to synchronously publish any required interior-cut recentering without rebuilding ground,
+cover or selected props. It does nothing when interior cutting is disabled. Both calls are for offline and
+headless captures only. Never call either from a windowed frame loop. Ordinary residency `Update`,
+`PrimeAround`, `Flush` and `Draw` retain their existing background and budgeted behavior.
+
+```csharp
+using var view = new TileWorldView(scene, doc, catalogs, resolver, options);
+foreach (RegionCoord region in captureRegions)
+    view.LoadRegion(region);
+view.SettleForCapture(focusRegion, cameraTarget);
+// In the offline capture callback, after updating the camera target:
+view.SettleInteriorCutForCapture(cameraTarget);
+view.Draw(cameraTarget);
+```
+
 Two single-image RGBA8 captures over `Render3DSnapshot`, both building a throwaway view, loading the regions the shot can see,
-settling every queued rebuild before the first frame, and rendering `CaptureFrames` (2) frames so nothing that
+flushing ground rebuilds before the first frame, and rendering `CaptureFrames` (2) frames so nothing that
 warms up over a frame is read back cold. Needs a headless GPU device.
 
 - `CaptureTopDown(doc, catalogs, resolver, rect, plane, pxPerTile, options, configureScene, drawFrame)` is the orthographic

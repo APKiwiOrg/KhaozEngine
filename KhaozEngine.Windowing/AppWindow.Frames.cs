@@ -11,6 +11,15 @@ namespace KhaozEngine.Windowing
     /// </summary>
     public sealed partial class AppWindow
     {
+        /// <summary>
+        /// Opt in to renderer-owned swapchain initialization. Default false preserves the host's initial output
+        /// bind and <see cref="ClearColor"/> clear. When true, the host omits both, allowing offscreen work before
+        /// the first swapchain bind. The renderer must bind and initialize the full output in this frame's recording
+        /// before any 2D draws or capture taps, including empty, loading and menu frames. Keep false for partial
+        /// renderers or callbacks that rely on the host clear. This does not remove the renderer's final clear.
+        /// </summary>
+        public bool RendererInitializesSwapchain { get; set; }
+
         /// <summary>Run the frame loop until the window closes, calling <paramref name="onFrame"/> each frame. The loop
         /// is paced to the resolved <see cref="FrameCapHz"/> with a monotonic-clock limiter after present (independent
         /// of the swapchain's vsync). The <see cref="BackgroundThrottle"/> policy adjusts pacing when the window is
@@ -76,10 +85,11 @@ namespace KhaozEngine.Windowing
                 _frame.Commands = _cl;
                 _frame.RenderSuppressed = !render;
 
-                // The frame's whole shape: prepare (nothing open) -> open + clear -> record -> capture taps -> end +
+                // The frame's whole shape: prepare -> open + optional host clear -> record -> capture taps -> end +
                 // submit -> taps' after-submit -> present. Both callbacks always run, so update advances even on a
                 // render-suppressed frame. The taps get the unclamped delta (see AppWindow.CaptureTaps.cs).
-                FramePhases.Run(_frame, render, _device, _cl, ClearColor, onPrepare, record, _captureTaps, dt * 1000.0);
+                FramePhases.Run(_frame, render, _device, _cl, ClearColor, onPrepare, record, _captureTaps,
+                    dt * 1000.0, RendererInitializesSwapchain);
 
                 // Pace the loop to the plan's cap. Silk's own loop runs the callback as fast as the GPU allows (a
                 // Metal present does not throttle the CPU), so idle here to hold the target cadence - the base

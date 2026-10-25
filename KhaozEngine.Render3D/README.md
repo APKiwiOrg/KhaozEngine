@@ -513,12 +513,27 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   avoiding D3D11's partial-uniform staging path. It shipped off while a windowed swapchain corruption on the Veldrid
   Metal backend was open, and that backend was deleted in 18.0.0. The Showcase 3D room's F key flips the path live
   for a windowed A/B. See `docs/USING-KHAOZENGINE.md`.
+- Optional pass tracing: `Scene3D.PassObserver` accepts `IRenderPassObserver` from
+  `KhaozEngine.Render3D.Diagnostics`. `RenderPassKey(Id, Occurrence)` identifies each logical interval.
+  Begin/End callbacks enclose the existing commands, `SkipPass` records inactive or cached work, and
+  `FusedMotion` tags motion already written by the geometry MRT draw without a second GPU interval.
+  CPU phase callbacks cover grouping, visibility and upload packing, including work before the older timing
+  buckets. Null is the production default and adds no allocation, marker, submission, barrier or target bind.
+  The observer must preserve rendering state and must not submit or wait. CPU callbacks emit no GPU work.
+  The first callback exception invalidates profiling and is exposed by `Scene3D.PassObserverFailure`.
+  Recording continues and a successful frame then throws with that failure as its inner exception. An original
+  rendering failure propagates unchanged. Attach observers before recording and keep them stable for the frame.
+  Attach before `Begin` for scene-boundary work. The failure latch resets there and preserves preparation
+  failures through rendering. CPU-only device leaves own scene begin, water geometry setup and bathymetry
+  updates without GPU markers. The complete geometry, shadow, water, effect, temporal, post and display
+  registry and occurrence rules are in `docs/USING-KHAOZENGINE.md`.
 - Per-pass timing: `Scene3D.EnableTiming` (default `false`, no cost when off - a single `bool` check, no
   `Stopwatch` call, no allocation) brackets each render pass with a CPU `Stopwatch` and exposes the result as
   `Scene3D.PassTimingsMs` (a `Scene3DPassTimingsMs`: `ShadowDepthMs`/`ModelMs`/`TransparentsMs`/`PostMs`). This is
   CPU time spent RECORDING each pass's commands. The optional `KhaozEngine.Gpu` timestamp-pool seam
-  separately measures GPU execution on supported devices. `Scene3D.EnableTiming` still reports CPU time. See `docs/USING-KHAOZENGINE.md` for the full explanation and why a whole-frame GPU-time number was
-  considered and rejected (it would need a per-frame `WaitForIdle`, which breaks frame pacing). `Scene3D` has no
+  separately measures GPU execution on supported devices, with completed-frame tails and retained completion
+  fences. `Scene3D.EnableTiming` still reports CPU time. See `docs/USING-KHAOZENGINE.md` for the separate
+  nonblocking GPU measurement contract. `Scene3D` has no
   dependency on `KhaozEngine.Diagnostics`, so feed these numbers into a `KhaozEngine.Diagnostics.PassTimings`
   meter yourself (one `Sample(name, ms)` call per pass per frame) to get rolling avg/min/max and a
   `DiagnosticsOverlay.PassTimingsSection` row set, the same shape `FrameStats`/`PerformanceSection` give you.
@@ -623,8 +638,21 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   // each frame, timeOfDay in [0,1) comes from YOUR game clock:
   SunCycle.Apply(SunCycle.Evaluate(timeOfDay, cycle), scene.Post);
   ```
+- Directional indirect diffuse (21.13.0): the public field `PixelPostProcessSettings.IndirectDiffuse` defaults to
+  `IndirectDiffuseMode.Uniform`, preserving flat `AmbientColor`, directional fill and existing pixels. Set it to
+  `Directional` to evaluate the public `AmbientIrradiance` field at each surface normal in the six lit model and
+  terrain fragments. The field defaults to `IrradianceSH.Zero` (`default`). `IrradianceSH` holds nine pre-convolved
+  RGB coefficients in a Y-up real L2 basis. `Evaluate(Vector3 unitNormal)` returns irradiance in ambient units,
+  clamped to zero per channel, without another `1/pi`. `Uniform(Vector3 irradiance)` builds an isotropic value,
+  and `SkyAndGround(Vector3 skyIrradiance, Vector3 groundIrradiance)` takes upward and downward hemisphere
+  irradiance. Its span constructor requires nine coefficients, `Coefficient(index)` reads indices 0 to 8,
+  `Scale(Vector3 rgb)` scales channels and `+` adds coefficients. Without the atmosphere, `SunCycle.Apply`
+  clears the field to `Zero` with its palette ambient and fill writes. Set custom `AmbientIrradiance` after
+  `SunCycle.Apply`. An unset or `Zero` value falls back to `Uniform` of `AmbientColor` RGB. Fill remains independent,
+  so zero `FillLightColor` RGB if your ground hemisphere already represents it. Water, particles, decals,
+  billboards, outlines and silhouettes are unchanged.
 - Physical atmosphere: `PixelPostProcessSettings.Atmosphere` (`AtmosphereSettings`, **opt-in, default off**)
-  replaces the palette sky with Hillaire 2020 scattering, derives key, ambient and fill lighting on the CPU,
+  replaces the palette sky with Hillaire 2020 scattering, derives key and indirect lighting on the CPU,
   reflects the same sky in water and applies analytic height fog to terrain, models and effects.
   `AtmosphereSettings.Earth()` returns the default preset, also disabled. Use the camera-aware returning overload:
 
@@ -655,7 +683,15 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Day and dusk tints default to white. The blended tint applies once to sky, fog and lighting. The floors always
   carry night hue, including at twilight, with per-channel `max(S * pi * L * Tint, NightSkyFloor * NightTint)`
   for sky and `max(S * E * AmbientScale * Tint, NightAmbientFloor * NightTint)` for ambient. `L` and `E` include
-  sun and moon. Ambient and fill scales default to 1 and affect lighting only.
+  sun and moon, with `E` the upward sky irradiance. Ambient and fill scales default to 1 and affect lighting only.
+  In `Uniform`, ambient and directional fill retain their existing behavior. In `Directional`, `SunCycle.Apply`
+  and scene recording write `AmbientIrradiance` and zero `FillLightColor` RGB because ground bounce is already
+  in the SH. `AmbientColor` and the returned `SunCycleState` retain their original values. The sky follows both
+  source azimuths with `AmbientScale`, the ground uses `FillScale` and both receive the frame tint.
+  `Evaluate(up)` equals `AtmosphereLighting.Ambient`, including its floor, and `Evaluate(down)` equals
+  `max(Fill, NightAmbientFloor * NightTint)` at every elevation within floating-point precision. Each pole's
+  floor shortfall is added as its own hemisphere without raising the other pole. Switching back to `Uniform`
+  restores fill and clears the SH. Directional indirect light does not yet include interior occlusion.
   `WorldUnitsPerKilometre = 1000` maps absolute Y = 0 to the planet surface. Lighting interpolates physical
   altitude across eight cached quadratic slices. `AerialDistanceScale = 20` compresses fog distance and endpoint
   heights together, without changing sky or lighting altitude. Zero disables fog. `AerialOnsetDistance = 0`
@@ -668,7 +704,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
 
   `AtmosphereModel` is GPU-free. `CreateFrame` consumes a `SunCycle.Evaluate` state and returns `AtmosphereFrame`,
   with body directions, moon fraction, tint and key visibility. `EvaluateLighting(heightKm, frame)` returns
-  `AtmosphereLighting` with `Key`, `Ambient`, `Fill`, `Horizon` and untinted source transmittances. `SkyValue`
+  `AtmosphereLighting` with `Key`, `Ambient`, `Fill`, `Horizon` and untinted source transmittances.
+  `EvaluateIrradiance(float cameraHeightKm, in AtmosphereFrame frame)` returns directional `IrradianceSH`.
+  Its separate table builds lazily in about 250 ms in the measured Earth fixture and rebuilds on physical
+  settings changes. Warm frame evaluation allocates nothing. `SkyValue`
   supplies controlled sky values, while `SkyRadiance` exposes unit-source radiance. The model snapshots settings,
   so call `UpdateSettings` after edits. `AtmosphereFog` is the CPU height-fog oracle, exposing transmission and
   composition with alpha-aware and additive handling. CPU fog samples sky-view texels directly at the same UV
@@ -680,7 +719,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
 
   Phase 1 fog can be too bright in deep valleys under a low sun. The aerial perspective volume remains
   [#1364](https://github.com/APKiwiOrg/KhaozEngine/issues/1364). Diffuse sky light reflected off the transport's
-  ground boundary and its feedback into multi-scattering are omitted, while scene receivers still get ambient.
+  ground boundary and its feedback into multi-scattering are omitted. Scene receivers get sky ambient and
+  directional fill in `Uniform`, or directional sky irradiance and a ground hemisphere in `Directional`.
   Clouds, cloud shadows and stars under atmosphere remain phases 2 to 4 (#1367, #1368, #1369).
   The one-shot completed-frame timing was inconclusive, with an on-minus-off delta of -3.752200 ms.
   It does not establish the 0.3 ms target. See the [consumer guide](../docs/USING-KHAOZENGINE.md) for controls
@@ -1007,8 +1047,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   both cascaded and point-light shadows. A field version change invalidates the shadow caches. Ordinary
   unflagged draws, roofs, skinned meshes, animated foliage, grass and ground cover keep their existing path.
   `InstanceData` stays 128 bytes, with `SpecParams.xyz` unchanged and `w` the 0/1 cut flag.
-  The shared frame UBO is 1376 bytes, interior vec4 tails at 1344 and 1360. Model set 0 binding 14 follows
-  atmosphere bindings 11 to 13 and reuses sampler 6, with six dynamic uniform descriptors unchanged.
+  The shared frame UBO is 1536 bytes, with interior vec4 tails at 1344 and 1360 and the appended 160-byte
+  indirect tail at 1376. Model set 0 binding 14 follows atmosphere bindings 11 to 13 and reuses sampler 6,
+  with six dynamic uniform descriptors unchanged.
   Cascade slots remain 256 bytes with tails at 96/112, point slots at 144/160. Rigid outline and silhouette
   payloads are 192 bytes in 256-byte slots, tails at 160/176, flags in `Params.w` and `Params.y` respectively.
   `InteriorCutBinding` shares the texture/sampler set per renderer and rebuilds it only on texture identity changes.

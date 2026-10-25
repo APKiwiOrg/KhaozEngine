@@ -41,29 +41,35 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly IntPtr _contents;
         readonly MetalRingAllocator? _rings;
         readonly MetalUniformRing? _ring;
+        readonly IDisposable? _memoryLease;
+        readonly IMetalResourceNative? _native;
 
         bool _disposed;
 
         /// <summary>
         /// INTERNAL RATHER THAN PRIVATE SO THE RING HARNESS CAN BUILD ONE OVER PINNED MEMORY, which is the same
         /// seam <see cref="MetalUniformRing"/>, <see cref="MetalStagingArena"/> and <c>MetalCommandList</c>
-        /// already take. Everything the seam reaches still goes through <see cref="Create"/>, which is where the
+        /// already take. Everything the seam reaches still goes through <c>Create</c>, which is where the
         /// allocation, the rounding and the <c>contents()</c> checks live: a caller here is stating it has those
         /// answers already.
         /// </summary>
         internal MetalBuffer(IDeviceLiveness liveness, MTLBuffer buffer, IntPtr contents, uint sizeInBytes,
-            GpuBufferUsage usage, MetalRingAllocator? rings)
+            GpuBufferUsage usage, MetalRingAllocator? rings, MetalMemoryDiagnostics? memory = null,
+            IMetalResourceNative? native = null)
         {
             _liveness = liveness;
             _buffer = buffer;
             _contents = contents;
             SizeInBytes = sizeInBytes;
             Usage = usage;
+            _native = native;
 
-            if (rings is null || !MetalBufferPolicy.IsRingBacked(usage)) return;
-
-            _rings = rings;
-            _ring = new MetalUniformRing(rings, contents, sizeInBytes);
+            if (rings is not null && MetalBufferPolicy.IsRingBacked(usage))
+            {
+                _rings = rings;
+                _ring = new MetalUniformRing(rings, contents, sizeInBytes);
+            }
+            _memoryLease = memory?.TrackBuffer(new(sizeInBytes, usage), rings?.FramesInFlight ?? 0);
         }
 
         /// <inheritdoc/>
@@ -128,10 +134,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// segments against (M-M3). Null leaves even a uniform buffer a plain Shared buffer of the requested
         /// size, which is the incumbent's shape and is what a device built before the ring existed would
         /// give.</param>
+        /// <param name="memory">The device's owned payload ledger, when diagnostics are available.</param>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static MetalBuffer Create(MTLDevice device, IDeviceLiveness liveness,
-            in GpuBufferDescription description, MetalRingAllocator? rings)
+            in GpuBufferDescription description, MetalRingAllocator? rings, MetalMemoryDiagnostics? memory = null)
+            => Create(new MetalResourceNative(device), liveness, description, rings, memory);
+
+        internal static MetalBuffer Create(IMetalResourceNative native, IDeviceLiveness liveness,
+            in GpuBufferDescription description, MetalRingAllocator? rings, MetalMemoryDiagnostics? memory = null)
         {
             MetalBufferPolicy.RequireCreatable(description.Usage);
 
@@ -151,7 +162,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 ? RingAllocationBytes(description.SizeInBytes, rings.FramesInFlight)
                 : MetalBufferPolicy.AllocationBytes(description.SizeInBytes);
 
-            MTLBuffer buffer = device.NewBuffer(allocation, MTLResourceOptions.SharedDefaultCache);
+            MTLBuffer buffer = native.NewBuffer(allocation);
             if (buffer.IsNull)
             {
                 throw new InvalidOperationException(
@@ -162,17 +173,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             // ONCE. Metal documents the pointer as stable for the buffer's life, and the uniform ring's whole
             // saving is that a record-time write is a memcpy with no message send in front of it.
-            IntPtr contents = buffer.Contents();
-            if (contents == IntPtr.Zero)
+            try
             {
-                buffer.Release();
-                throw new InvalidOperationException(
-                    "A Shared MTLBuffer answered a null -contents pointer, which cannot happen for the storage "
-                    + "mode this backend creates every buffer with. Something has changed about the storage mode "
-                    + "rather than about this allocation.");
+                IntPtr contents = native.Contents(buffer);
+                if (contents == IntPtr.Zero)
+                    throw new InvalidOperationException(
+                        "A Shared MTLBuffer answered a null -contents pointer, which cannot happen for the storage "
+                        + "mode this backend creates every buffer with. Something has changed about the storage mode "
+                        + "rather than about this allocation.");
+                return new MetalBuffer(liveness, buffer, contents, description.SizeInBytes, description.Usage, rings, memory, native);
             }
-
-            return new MetalBuffer(liveness, buffer, contents, description.SizeInBytes, description.Usage, rings);
+            catch { native.Release(buffer.Handle); throw; }
         }
 
         /// <summary>
@@ -290,6 +301,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (_disposed) return;
             _disposed = true;
+            _memoryLease?.Dispose();
 
             // BEFORE the liveness check, deliberately. The patches are managed state and dropping them is
             // correct on a dead device too, where the release below is skipped: a queued patch on a device that
@@ -297,6 +309,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (_ring is not null) _rings?.Forget(_ring);
 
             if (_liveness.IsDead) return;
+            if (_native is not null) { _native.Release(_buffer.Handle); return; }
             if (!KhaozEngineMetal.IsPlatformSupported) return;
 
             ReleaseOnMacOs();

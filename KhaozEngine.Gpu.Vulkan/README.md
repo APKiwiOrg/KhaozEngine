@@ -259,6 +259,71 @@ later destroy is a no-op, and the reason reaches you two ways: an ERROR line in 
 `deviceLossReason` field of the telemetry session header. There is no recovery path, which is what the liveness
 token makes safe. Teardown calls `vkDeviceWaitIdle` FIRST, before anything is destroyed.
 
+## Optional compiler and memory diagnostics
+
+Set `KE_VULKAN_PIPELINE_DIAGNOSTICS=1` before creating the Vulkan device to request a separate compiler
+diagnostic configuration. It enumerates `VK_KHR_pipeline_executable_properties` and queries the
+`pipelineExecutableInfo` feature on the selected physical device. When both are supported, it enables
+them and creates every graphics and compute pipeline with `VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR`.
+Without this explicit request, the device enables neither the extension nor the feature and sets no
+pipeline capture flags. Use that production configuration for timing. The
+[GPU settings contract](../KhaozEngine.Gpu/README.md#optional-compiler-and-memory-diagnostics) owns
+instance-scoped production/replay configuration. Explicit settings avoid environment changes and
+retain the selected native adapter and code-generation choices across replay.
+
+Read a particular pipeline outside timing blocks through the optional seam, including compute pipelines
+created for equipment coverage:
+
+```csharp
+if (pipeline is IGpuPipelineDiagnostics diagnostics)
+{
+    GpuPipelineCompilerReport report = diagnostics.ReadCompilerReport();
+    foreach (GpuPipelineExecutableReport executable in report.Executables)
+        foreach (GpuPipelineStatistic statistic in executable.Statistics)
+        {
+            // Retain Name, Description and the typed Metric without converting UInt64 to double.
+        }
+}
+```
+
+Reports identify the source, actual SPIR-V artifacts, entry points, resolved compute local size, resource
+layout, graphics state, compiler options and diagnostic configuration. Pipeline hashes exclude native
+handles. GLSL entry points are `main` and the backend supplies no specialization constants. Graphics
+source and artifact aggregates use `khaozengine.pipeline-stage-set/1` over ordered vertex and fragment stage identities. Each member retains the exact GLSL or compiled SPIR-V digest. The configuration
+digest includes capture flags, the requested validation mode, the enabled instance layers and the enabled
+validation features. A missing validation layer produces a different identity for the same request.
+Disposed pipelines refuse native queries.
+
+Executable and statistic queries initialize every output structure and repeat the two-call protocol on
+`VK_INCOMPLETE`. Collection allows four attempts per enumeration, at most 64 executables and 256 statistics
+per executable. Counts above those fixed capacities, native errors and exhausted enumeration produce
+invalid reports, never truncated available evidence. The optional budgeted route checks native counts
+before output allocation/fill and text before conversion, including changed counts on all four attempts.
+It also enforces the caller-admitted total statistics limit, at most 16,384. The renderer derives that
+limit from actual retained bytes. It never assumes the hard native ceilings fit every remaining budget.
+The returned request/count/completion/refusal evidence preserves partial rows and actual failures.
+A genuine absent extension can be complete Unsupported. Supported capture omitted by configuration is Invalid.
+
+Raw vendor names, descriptions and Boolean, Int64, UInt64 or finite Float64 values are preserved with
+`vendor-defined` units. No vendor name is guessed to mean physical registers or spill bytes. Compiler
+occupancy estimates do not supply achieved runtime occupancy. Those normalized fields remain unavailable
+until a documented mapping or runtime source exists. See the [Khronos query requirements](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPipelineExecutableStatisticsKHR.html).
+No internal representations or profiler installation are requested.
+
+The device also implements `IGpuResourceMemoryDiagnostics`. `ReadMemorySnapshot()` reports requested live
+buffer bytes and texture texel payload, including mips, expanded cubemap faces, array layers and samples.
+Native image payload uses checked 64-bit arithmetic. The 32-bit mapping ceiling applies only to staging.
+Staging buffers and uniform rings report retained capacity separately, with overlap identified in the
+source. Logical payload stays counted until native resource retirement. Peak payload and resource count
+exclude backing heaps. Committed bytes count each `vkAllocateMemory` result once, including retained empty
+pool chunks and chunks awaiting retirement, until native release. Driver-owned allocations are outside
+that count. Do not add logical payload and committed bytes.
+
+History and scratch categories, native residency, `VK_EXT_memory_budget` and unified-memory classification
+remain explicitly unavailable. Allocation requirements and heap capacity do not stand in for payload,
+residency or budget. A disposed or lost device returns invalid supported-memory fields. Native extension
+and vendor-statistic availability on a hosted driver still needs a separately authorized pilot.
+
 ## One timeline, and why one is enough
 
 **The device owns ONE `VkSemaphore` of type TIMELINE, created at 0.** Every submission takes its next value,

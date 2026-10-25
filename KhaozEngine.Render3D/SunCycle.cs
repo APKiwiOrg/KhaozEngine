@@ -612,8 +612,8 @@ namespace KhaozEngine.Render3D
                 post.AtmosphereCycle = state;
                 post.LightDirection = physical.LightDirection;
                 post.LightColor = physical.LightColor;
-                post.AmbientColor = physical.AmbientColor;
-                post.FillLightColor = physical.FillLightColor;
+                AtmosphereSurfaceLighting.Write(post, model, heightKm, frame,
+                    PhysicalColor(lighting.Ambient), PhysicalColor(lighting.Fill));
                 post.Sky.HorizonColor = physical.HorizonColor;
                 post.Sky.ZenithColor = physical.ZenithColor;
                 post.Sky.SunColor = physical.SunColor;
@@ -640,6 +640,7 @@ namespace KhaozEngine.Render3D
             post.LightColor = state.LightColor;
             post.AmbientColor = state.AmbientColor;
             post.FillLightColor = state.FillLightColor;
+            post.AmbientIrradiance = IrradianceSH.Zero;
             post.Sky.HorizonColor = state.HorizonColor;
             post.Sky.ZenithColor = state.ZenithColor;
             post.Sky.SunColor = state.SunColor;

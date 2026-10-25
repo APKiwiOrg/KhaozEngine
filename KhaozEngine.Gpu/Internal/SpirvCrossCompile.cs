@@ -97,11 +97,11 @@ namespace KhaozEngine.Gpu.Internal
         /// <see cref="VertexFragmentToHlsl"/>, which is the shape every call site actually has: the engine's
         /// shaders are GLSL constants, not SPIR-V blobs. It runs BOTH halves of the toolchain, which is why it
         /// stays on this side of the split rather than moving with the front end.</summary>
-        internal static CrossCompiledPair GlslPairToHlsl(string vertexGlsl, string fragmentGlsl, string? label = null)
+        internal static CrossCompiledPair GlslPairToHlsl(string vertexGlsl, string fragmentGlsl, string? label = null, SpirvCompileCache? memo = null)
         {
             string tag = label ?? "shader pair";
-            byte[] vertexSpirv = SpirvFrontEnd.ToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag);
-            byte[] fragmentSpirv = SpirvFrontEnd.ToSpirv(fragmentGlsl, GpuShaderStages.Fragment, tag);
+            byte[] vertexSpirv = SpirvFrontEnd.ToSpirv(vertexGlsl, GpuShaderStages.Vertex, tag, memo);
+            byte[] fragmentSpirv = SpirvFrontEnd.ToSpirv(fragmentGlsl, GpuShaderStages.Fragment, tag, memo);
             return VertexFragmentToHlsl(vertexSpirv, fragmentSpirv, tag);
         }
 

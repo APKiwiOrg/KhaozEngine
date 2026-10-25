@@ -90,8 +90,13 @@ public sealed partial class Scene3D
             }
             // Sizes the frame's three skinned destinations and uploads the ONE shared bone palette both passes
             // read. See Scene3D.GpuSkinning.cs.
-            if (UseGpuSkinning) PrepareGpuSkinnedFrame(cl, shadowMapActive);
-            else if (_cpuSkinnedDraws.Count > 0) UploadCpuSkinnedFrame(cl);   // Scene3D.MotionTarget.cs
+            using (ProfilePass(cl, "geometry.skinned-uploads",
+                executed: UseGpuSkinning ? _gpuSkinnedDraws.Count > 0 : _cpuSkinnedDraws.Count > 0))
+            {
+                if (UseGpuSkinning) PrepareGpuSkinnedFrame(cl, shadowMapActive);
+                else if (_cpuSkinnedDraws.Count > 0) UploadCpuSkinnedFrame(cl);
+            }
         }
+        else SkipProfilePass(cl, "geometry.skinned-uploads");
     }
 }

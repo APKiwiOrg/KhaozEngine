@@ -122,6 +122,9 @@ internal sealed class TileWorldWaterTopologyRecorder : ITileWorldScene, ITileWor
 
     public float GetWaterOpticsPadding(WaterLook? look = null) => _optics.GetWaterOpticsPadding(look);
 
+    public bool TryGetWaterOpticsPadding(WaterLook? look, out float padding, out WaterOpticsSurfaceFailure reason) =>
+        _optics.TryGetWaterOpticsPadding(look, out padding, out reason);
+
     MeshHandle Remember(MeshHandle handle, GltfMesh mesh)
     {
         _meshes[(handle.Index, handle.Generation)] = mesh;

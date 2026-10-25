@@ -179,8 +179,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         MetalTexture CreateOrphanTarget(MetalDrawableSize size, GpuPixelFormat format)
-            => MetalTexture.Create(_device, _liveness,
+            => CreateOrphanTarget(new MetalResourceNative(_device), _liveness, Memory, size, format);
+
+        internal static MetalTexture CreateOrphanTarget(IMetalResourceNative native, IDeviceLiveness liveness,
+            MetalMemoryDiagnostics memory, MetalDrawableSize size, GpuPixelFormat format)
+            => MetalTexture.Create(native, liveness,
                 GpuTextureDescription.Texture2D(size.Width, size.Height, format,
-                    GpuTextureUsage.RenderTarget));
+                    GpuTextureUsage.RenderTarget), memory);
     }
 }

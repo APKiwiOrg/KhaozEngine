@@ -5,6 +5,91 @@ controller and the netcode resolve against: authoritative on the server, re-run 
 prediction. Backends implement it (add [KhaozEngine.Physics.Bepu](../KhaozEngine.Physics.Bepu)
 explicitly, it is in no umbrella). Depends only on `System.Numerics`.
 
+## Support-query measurement
+
+`SupportQueryCapture`, `SupportQueryMeasurement`, `SupportQueryMetrics`, `SupportQueryCounter`,
+`SupportQueryRouteMetrics` and `SupportProofReuseMetrics` are public in namespace/package
+`KhaozEngine.Physics`. They wrap the existing recorder without consumer friend access or reflection.
+`Begin(string label)` enables fresh counters on the calling managed thread and suspends prior recorder
+callbacks. Closing restores its exact prior enablement, counters, routes, observations and callbacks, while
+preserving physical live retention balance across the scope boundary. Other threads are not enabled by this scope.
+
+These consumer-supplied functions run synchronously and close each complete source/reuse lifetime:
+
+```csharp
+using KhaozEngine.Physics;
+
+var player = SupportQueryCapture.Begin("player");
+try
+{
+    RunPlayerSourceLifetime();
+}
+finally
+{
+    player.Dispose();
+}
+SupportQueryMeasurement playerProfile = player.Snapshot();
+
+var cow = SupportQueryCapture.Begin("cow");
+using (cow)
+{
+    RunCowSourceLifetime();
+}
+SupportQueryMeasurement cowProfile = cow.Snapshot();
+SupportQueryMeasurement combined = SupportQueryMeasurement.Combine([playerProfile, cowProfile]);
+long finds = combined.Total[SupportQueryCounter.Find];
+long playerFinds = combined.ByLabel["player"][SupportQueryCounter.Find];
+bool complete = combined.Total.ProofReuse.HasCompleteLifetimes;
+```
+
+`using` and `finally` restore state when measured work throws. The closed capture retains a partial frozen
+snapshot inspectable on its creating thread. Scopes are synchronous and thread-affine, close in reverse order
+and must never cross `await`, `Task.Run` or a thread handoff. Wrong-thread use, out-of-order disposal and sampling
+a parent with an active child throw `InvalidOperationException` before changing state. Successful disposal is
+idempotent. Immutable results may be read on any thread.
+
+Labels are caller descriptions, never inferred body IDs. Null labels throw `ArgumentNullException`, blank
+labels throw `ArgumentException`. Other labels are preserved exactly, including whitespace, and compared and
+enumerated ordinally with case sensitivity. Nested direct work belongs exclusively to the innermost label.
+A closed child contributes once to its parent's snapshot. Repeated labels coalesce into one row, so summing
+label counters equals `Total`. A nested engine Find is counted under the active label, not a second interval.
+
+`Snapshot()` is detached and cumulative, never a reset. Before disposal only the active top scope can sample.
+Earlier snapshots cannot change. An empty capture still has its zero-valued label. `Combine` adds disjoint
+measurements without deduplication. Never combine parent and child snapshots, or multiple cumulative snapshots
+covering the same work. Independent consumer threads start their own scopes, join, then combine their results.
+There is no implicit propagation to arbitrary consumer tasks. An empty combination has no labels and zero
+totals. Null sequences or elements throw `ArgumentNullException`.
+
+The counter indexer returns `long`. The 42 `SupportQueryCounter` identities are explicit values 0 through 41,
+from `Find` to `InitialHoldReuseHits`, with new counters appended and no Count sentinel. Undefined values throw
+`ArgumentOutOfRangeException`. Enabled recording and aggregation use checked long arithmetic and throw
+`OverflowException` on overflow. Ordinary counters and routes add. `Routes` exposes `WallRetries`,
+`PushedPlacements`, `MediumResolves`, `MaximumMediumRetries`, `GroundSegments`, `SlideSegments`, `AirSegments`,
+`WaterSegments`, `RoundedReads` and `MediumHandoffs`. Only `MaximumMediumRetries` takes the maximum.
+
+Contact navigation joins every started worker and merges its local record exactly once in worker-index order,
+under the label captured when that build started. Partial worker work merges before the selected build failure
+propagates. Workers restore their own prior state. Degree one retains its serial path. Caller-side binding,
+lease, pin and disposal work is counted on the caller. Extra worker setup and speculative work are real raw
+counts. Equal graph bytes do not imply equal counters or peaks across worker counts, CPUs or schedules.
+Capture changes neither scheduling nor default reuse. See the [Movement worker contract](../KhaozEngine.Movement/README.md#labelled-support-query-capture).
+
+`ProofReuse.PeakKeys` counts occupied memo entries and `PeakBytes` charges owned table capacity and member/join
+payload by element size, including spare fixed slots. Each is the maximum observed single-session value, not
+a sum of workers or simultaneous process peak. The two maxima need not describe the same session. They exclude
+CLR headers, allocator overhead, unrelated scratch, initial-Hold maps, GC allocation totals and process RSS.
+Combining takes maxima and combines `HasCompleteLifetimes` with logical AND, whose empty identity is true.
+Completeness requires zero live retained keys and bytes at entry and at the sampled boundary for every
+contributor. Partial or pre-existing lifetimes can miss steady storage and make that flag false.
+
+For bake peak evidence, begin before the first source store and sample only after every joined source group
+has reset or disposed. Partial snapshots remain useful for counters, but cannot establish complete memory
+evidence. Enabled scopes and snapshot objects allocate diagnostic overhead excluded from proof-reuse bytes.
+Create scopes outside timed regions where possible and materialize results afterwards. Disabled paths retain
+their existing gates and allocate no widened worker records. This API supplies counts, not timers or RSS.
+Hosted timing, allocation and world-bake acceptance gates still require their separate approval and evidence.
+
 ## Types
 
 - **`IPhysicsWorld`** - static bodies (`AddStatic`/`RemoveStatic`), dynamic bodies

@@ -47,11 +47,15 @@ public sealed class FrameCaptureSubmissionTests
     }
 
     [Theory]
-    [InlineData("prepare")]
-    [InlineData("begin")]
-    [InlineData("frame")]
-    [InlineData("tap")]
-    public void Captured_frame_failure_before_submit_abandons_the_begun_submission(string phase)
+    [InlineData("prepare", false)]
+    [InlineData("begin", false)]
+    [InlineData("frame", false)]
+    [InlineData("tap", false)]
+    [InlineData("prepare", true)]
+    [InlineData("begin", true)]
+    [InlineData("frame", true)]
+    [InlineData("tap", true)]
+    public void Captured_frame_failure_before_submit_abandons_the_begun_submission(string phase, bool rendererOwned)
     {
         using var device = new OpenListTrackingGpuDevice(completionFences: true);
         using var commands = device.Factory.CreateCommandList();
@@ -64,15 +68,16 @@ public sealed class FrameCaptureSubmissionTests
         try
         {
             var failure = Assert.Throws<InvalidOperationException>(() =>
-                FramePhases.Run(frame, true, device, commands, Color.Black, f =>
+                RendererFramePolicy.Run(frame, true, device, commands, Color.Black, f =>
                 {
                     Assert.True(f.Submission.TryRegister(consumer));
                     Fail("prepare");
-                }, _ => Fail("frame"), taps, 16));
+                }, _ => Fail("frame"), taps, rendererOwned));
             Assert.Equal("planned " + phase, failure.Message);
             Assert.Equal(1, consumer.Abandons);
             Assert.Equal(0, consumer.Submissions);
             Assert.Equal(0, device.Submits);
+            Assert.Equal(0, device.Presents);
             Assert.Equal(0, device.OpenLists);
             Assert.Equal(0, after);
         }

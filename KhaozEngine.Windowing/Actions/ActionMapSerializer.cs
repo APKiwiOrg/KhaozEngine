@@ -40,6 +40,7 @@ namespace KhaozEngine.Windowing.Actions
         static readonly JsonSerializerOptions Options = new()
         {
             WriteIndented = true,
+            NewLine = "\n",
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
             Converters = { new JsonStringEnumConverter() },

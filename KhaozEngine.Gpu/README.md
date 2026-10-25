@@ -181,13 +181,16 @@ What it owns today:
   `BackpressureStallCount` / `BackpressureStallMs`, `OffTimelineDeferred` / `OffTimelineOutstanding`, and
   `AcquireWaitCount` / `AcquireWaitMs`. All three native backends fill it, and they are the only backends since
   18.0.0.
-  - **The acquire pair is the one reading that separates the two acquire models.** `AcquireWaitCount` is present
-    boundaries that BLOCKED waiting for the presentation engine to hand back the next swapchain image, and it is
-    a READING rather than a count of calls: the native Vulkan backend probes with a zero timeout first and records
-    only the blocking call that follows. A backend that acquires with a semaphore and lets the GPU do the waiting
-    reports zero, and one that blocks the CPU reports one per frame. Zero is a reading rather than a gap on a
-    backend with no acquire at all and on a headless device with no swapchain, which is why `HasValue` below is
-    what answers "did anybody look".
+  - **The acquire pair has backend-specific recording rules.** `AcquireWaitCount` counts recorded acquisition
+    entries, and `AcquireWaitMs` sums their full durations. Metal records every current-frame drawable-resolution
+    API attempt, including nonblocking and nil attempts, at the first swapchain framebuffer bind or on demand for
+    a present-only call. Repeated binds reuse the resolved frame, including nil. Its `FramesBegun` still counts
+    present boundaries. Construction and `Present` do not pre-acquire the next frame. Vulkan's semaphore path
+    probes with a zero timeout and records only the subsequent blocking call when the probe reports not ready.
+    Its explicit CPU-stall path records each stalling acquire. The recorded durations include API work and are
+    not isolated blocking time. Direct3D 11 has no acquire step and reports zero for the pair. A headless device
+    with no swapchain also reports zero, which is a reading rather than a gap. `HasValue` below answers whether
+    the device keeps counters.
   - **`HasValue` is the whole point, because absent is not zero.** Zero stalls is the PASSING result of a field
     soak, so a backend that keeps no counters must not report the same numbers as one that counted and found
     nothing. The default value answers false, which no live backend gives any more. The
@@ -409,6 +412,22 @@ What it owns today:
   adjacent interval must be shorter than one complete counter wrap. Allocate a fixed caller-owned ring with one
   pool per retained frame. When all pools are pending, record no timestamps that frame and keep rendering.
   The consumer guide's "GPU timestamps without waiting" gives the full lifetime and invalid-result contract.
+  Opt-in performance harnesses use the internal
+  [`GpuPerfTimestampRing`](../KhaozEngine.Render.Tests/Gpu/Performance/GpuPerfTimestampRing.cs) reference
+  lifecycle. It freezes three pools and the marker count before warming, with 2 to 512 queries per pool.
+  Unlike optional overlay collection, a full ring or missing sample invalidates its block. The caller drains
+  once per batch of at most three, including the final short batch, then harvests once. The ring retains the
+  exact submission fence through immutable publication and quarantines pending or invalid results without
+  waiting or polling again. Pass labels and skipped-pass status remain adapter-owned.
+  The internal renderer harness adds `RendererPerfRecorder`, `RendererPerfDevice` and
+  `RendererPerfCommandList` beside its protocol records. They retain fixed command-owner, CPU-span,
+  dispatch-size and framebuffer-format storage before recording. Logical requested calls, redundant bind
+  requests, upload bytes and copy bytes stay separate from optional native emitted-state counters.
+  Disabled tracing returns the native objects unchanged. Enabled forwarding preserves optional capture,
+  fenced readback, memory, lifecycle, backend command-list and completed-End interfaces without wrapping
+  resource handles or adding a submit or wait. These are test-harness references, not package APIs.
+  Their [offline analysis contract](../docs/RENDERER-PERFORMANCE.md) keeps outer GPU totals, diagnostic
+  pass intervals, logical work and native memory provenance separate. Unsupported values stay unavailable.
 - **`GpuRetireQueue`** (since 17.37.0) - deferred disposal for anything a renderer frees MID-LIFE (a streamed mesh
   unloaded while the scene runs, a sprite atlas whose descriptor set fell out of the working set). `Retire(resource)`
   costs nothing at the call site, `BeginFrame()` seals the frame's retirements into one batch behind a fence and
@@ -560,6 +579,53 @@ there on `build` and on a rid-agnostic `publish`, no-op on Windows, macOS and `p
 `<KhaozEngineFlattenHostNatives>false</KhaozEngineFlattenHostNatives>`. It ships here as well as in `Foundation`
 because `Foundation` is not in this package's dependency closure, so a project that references this one and no
 umbrella would otherwise get nothing. One physical rule file, so the two copies cannot drift.
+
+## Optional compiler and memory diagnostics
+
+`IGpuPipelineDiagnostics.ReadCompilerReport()` and
+`IGpuResourceMemoryDiagnostics.ReadMemorySnapshot()` are optional cold interfaces. Query them outside
+measured frames. These contracts do not add members to `IGpuPipeline`, `IGpuComputePipeline` or
+`IGpuDevice`. The [Vulkan backend](../KhaozEngine.Gpu.Vulkan/README.md#optional-compiler-and-memory-diagnostics)
+[D3D11 backend](../KhaozEngine.Gpu.D3D11/README.md#optional-compiler-and-memory-diagnostics) and
+[Metal backend](../KhaozEngine.Gpu.Metal/README.md#optional-compiler-and-memory-diagnostics) implement both.
+Vulkan and D3D11 compiler capture require an explicitly requested diagnostic device. Metal retains
+source identity and cold capability/limit evidence without enabling reflection or capture. Its native
+compiler artifact, physical register, spill and occupancy fields remain unavailable with reasons.
+
+`GpuDeviceContext.ResolveHeadlessDiagnosticSettings(backend, request)` uses the optional
+`IGpuHeadlessDiagnosticProvider` route to freeze backend, adapter, compiler, cache, validation,
+recording, frame depth and drain choices. `WithDiagnostics` changes only the observation request.
+`WithAdapter` pins the production adapter for replay. Vulkan uses the native device UUID, D3D11 uses
+the DXGI adapter LUID and Metal uses its registry ID. Explicit creation and shader compilation do not
+re-read these environment choices. Ordinary creation overloads keep their existing defaults.
+
+`CreateHeadlessAttempt(backend, settings)` shares the ordinary process-wide creation and adoption
+gate. Success returns a context and no failures. Refusal returns no context and ordered
+`GpuDiagnosticFailure` events, including rejected-device cleanup, with their actual exception
+references. Only `GpuDiagnosticFailureException` is an ordered transport. An operational
+`AggregateException` remains one original exception. `IGpuDeviceDiagnosticConfiguration` exposes
+the full effective configuration separately from the request. `IGpuBudgetedPipelineDiagnostics` takes
+an immutable count/text request and returns the original request, retained/known/omitted counts,
+completion/refusal and actual staged failure events. It never receives renderer JSON or byte budgets.
+The renderer uses registered-file verification after bounded replay. Headless proofs do not establish
+native correspondence, payload admission or unchanged-deadline/cost acceptance.
+
+`GpuPipelineCompilerReport` uses typed `GpuDiagnosticDigest` identities for source, actual artifact,
+pipeline, layout, diagnostic configuration and code generation. Available requires a hash and provenance.
+Unsupported/Invalid requires a null hash and cause. Ordered stage identities retain actual byte digests
+and permit independent aggregate checks. `IGpuPipelineConstructionDiagnostics.ConstructionIdentity`
+is a detached precomputed witness, including after disposal. Live reads after disposal remain Invalid. Each executable retains vendor statistic names, descriptions and typed
+Boolean, Int64, UInt64 or Float64 values. `GpuDiagnosticMetric` carries a unit, source, status, reason
+and provenance. Unsupported or invalid values are null with a reason. Intermediate-code temporary
+slots cannot supply physical register or spill fields. Achieved occupancy requires runtime evidence.
+Execution width and maximum threadgroup sizes remain hardware limits. Normalized available fields use
+nonnegative integer `registers`, `bytes`, `threads` or `count` values. Achieved occupancy uses a Float64
+`ratio` between zero and one.
+
+`GpuResourceMemorySnapshot` keeps logical buffer/texture payload, staging/ring capacity, history,
+scratch and peak payload separate from committed backing allocations, residency and budget. Categories
+may overlap as documented by their source. Do not sum payload and backing heaps, call unavailable
+residency zero, or describe unified memory as dedicated VRAM. LiveResourceCount is current at the observation. PeakLogicalPayloadBytes is the actual backend-maintained peak, not a sampled maximum or lifetime resource count.
 
 ## IGpuFencedReadback
 

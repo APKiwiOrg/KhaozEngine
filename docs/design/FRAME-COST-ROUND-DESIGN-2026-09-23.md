@@ -118,8 +118,9 @@ A new internal type, `PointCasterIndex`, in its own file, owned by `Scene3D` and
 - Casters are binned by sphere centre into a uniform 3D grid with a fixed internal cell size of 8 m. A caster whose
   radius exceeds the cell size, such as a region ground chunk, goes to an oversize list instead.
 - A light query visits the cells its sphere overlaps, grown by one cell size, plus the oversize list. The
-  candidates are sorted by slot, then filtered with the exact touch test. The result is the same set of casters,
-  in the same ascending slot order, that the full walk produces today.
+  candidates are filtered with the exact touch test, then only the kept slots are sorted. The result is the same
+  set of casters, in the same ascending slot order, that the full walk produces today. Query ordering was updated
+  in the Mac frame performance round on 2026-10-23.
 - All storage is grow-only and reused across frames, so a steady frame allocates nothing.
   `PointShadowAllocationTests.PreparePointShadowsOnASteadyFrameAllocatesNothing` keeps holding.
 - The index is independent of the key-light tier. Reusing `_shadowCasterSpheres` was rejected because it is

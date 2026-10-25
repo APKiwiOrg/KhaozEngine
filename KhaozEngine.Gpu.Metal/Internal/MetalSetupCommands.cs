@@ -344,6 +344,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 }
                 else
                 {
+                    AbandonStagingDiagnostics();
                     _staging.Clear();
                     _stagedBytes = 0;
                 }
@@ -372,6 +373,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (_liveness.IsDead)
             {
                 _buffer = default;
+                AbandonStagingDiagnostics();
                 _staging.Clear();
                 _stagedBytes = 0;
 
@@ -413,6 +415,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
             foreach (MTLBuffer staged in _staging) _native.ReleaseStaging(staged);
             _staging.Clear();
             _stagedBytes = 0;
+        }
+
+        void AbandonStagingDiagnostics()
+        {
+            if (_native is IMetalStagingAbandon diagnostics)
+                foreach (MTLBuffer staged in _staging) diagnostics.AbandonStaging(staged);
         }
     }
 }

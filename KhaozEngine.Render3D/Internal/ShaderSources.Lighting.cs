@@ -40,6 +40,17 @@ layout(std430, set=0, binding=2) readonly buffer PointLightClusterBuffer {
         //      copied byte-for-byte from the old duplicated blocks (only vWorldPos was renamed to the `worldPos`
         //      parameter), so behaviour is bit-identical on every backend.
         public const string LightingCommonGlsl = @"
+vec3 indirectDiffuse(vec3 N, vec3 worldPos) {
+    if (IndirectParams.x < 0.5) return Ambient.rgb;
+    float x = N.x, y = N.y, z = N.z;
+    vec3 e = IrradianceSH[0].xyz * 0.282095
+        + IrradianceSH[1].xyz * (0.488603 * y) + IrradianceSH[2].xyz * (0.488603 * z)
+        + IrradianceSH[3].xyz * (0.488603 * x) + IrradianceSH[4].xyz * (1.092548 * x * z)
+        + IrradianceSH[5].xyz * (1.092548 * y * z) + IrradianceSH[6].xyz * (0.315392 * (3.0 * y * y - 1.0))
+        + IrradianceSH[7].xyz * (1.092548 * x * y) + IrradianceSH[8].xyz * (0.546274 * (x * x - z * z));
+    return max(e, vec3(0.0));
+}
+
 // Cascaded bilinear 3x3 PCF shadow lookup. Returns 1 = fully lit, 0 = fully in shadow, from the key light's
 // CASCADED depth atlas: N frustum-slice ortho cascades (tightest first) packed side-by-side in one R32F texture. Picks
 // the tightest cascade whose light-clip projection of worldPos lands inside its map, manual-depth-compares a bilinear

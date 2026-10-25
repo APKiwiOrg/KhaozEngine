@@ -240,7 +240,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     VulkanMemoryTiling.Linear,
                     requirements.PrefersDedicated,
                     requirements.RequiresDedicated,
-                    new VulkanDedicatedTarget(Buffer: StagingBuffer, Image: 0)));
+                    new VulkanDedicatedTarget(Buffer: StagingBuffer, Image: 0)),
+                    new VulkanMemoryPayload(TextureBytes: VulkanStagingLayout.TotalBytes(StagingShape),
+                        StagingCapacityBytes: VulkanStagingLayout.TotalBytes(StagingShape)));
 
                 owner.Api.BindBufferMemory(StagingBuffer, allocation.Memory, allocation.Offset);
                 return allocation;
@@ -280,7 +282,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     VulkanMemoryTiling.Optimal,
                     requirements.PrefersDedicated,
                     requirements.RequiresDedicated,
-                    new VulkanDedicatedTarget(Buffer: 0, Image: Image)));
+                    new VulkanDedicatedTarget(Buffer: 0, Image: Image)),
+                    new VulkanMemoryPayload(TextureBytes: checked(VulkanStagingLayout.PayloadBytes(
+                        StagingShape with { ArrayLayers = ActualArrayLayers }) * SampleCount)));
 
                 owner.Api.BindImageMemory(Image, allocation.Memory, allocation.Offset);
 

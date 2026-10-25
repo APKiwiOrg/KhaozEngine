@@ -359,13 +359,13 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         SupportSample start;
         GroundSeatResult seat;
         float startFeetY;
-        int finds;
+        long finds;
         try
         {
             ContactQueryContext queries = interval.Queries;
             startFeetY = (float)Oracle(scene, partition, from).Height;
             start = Find(queries, from, startFeetY);
-            int before = SupportQueryDiagnostics.Snapshot().Find;
+            long before = SupportQueryDiagnostics.Snapshot().Find;
             seat = GroundSeat.Resolve(queries, start, from, startFeetY, to, Vector2.Normalize(to - from), FootRadius,
                 Tuning, CosMaxSlope);
             finds = SupportQueryDiagnostics.Snapshot().Find - before;
@@ -553,7 +553,7 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         // its own row with the same complete content.
         var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(true));
         SupportSample served, fresh;
-        int hits;
+        long hits;
         try
         {
             served = Read(world, lease, targetQuery);

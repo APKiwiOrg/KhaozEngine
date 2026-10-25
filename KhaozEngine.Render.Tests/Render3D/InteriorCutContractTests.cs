@@ -68,7 +68,8 @@ public sealed class InteriorCutContractTests
     {
         Assert.Equal(1344u, ModelRenderer.InteriorCutWindowOffset);
         Assert.Equal(1360u, ModelRenderer.InteriorCutHeightsOffset);
-        Assert.Equal(1376u, ModelRenderer.UboBytes);
+        Assert.Equal(1376u, IndirectUniforms.TailOffset);
+        Assert.Equal(1536u, ModelRenderer.UboBytes);
         var reflected = SpirvCrossCompile.GlslPairToHlsl(ShaderSources.ModelVert, ShaderSources.ModelFrag);
         var elements = Assert.Single(reflected.Reflection.ResourceLayouts).Elements;
         Assert.Equal(15, elements.Length);
@@ -77,8 +78,10 @@ public sealed class InteriorCutContractTests
         foreach (var (_, source) in MotionUboLayoutTests.FrameBlockSources)
         {
             string[] members = MotionUboLayoutTests.Members(source, "uniform U {");
-            Assert.Equal("vec4 InteriorCutWindow", members[^2]);
-            Assert.Equal("vec4 InteriorCutHeights", members[^1]);
+            int indirect = Array.IndexOf(members, "vec4 IndirectParams");
+            int interior = indirect < 0 ? members.Length - 2 : indirect - 2;
+            Assert.Equal("vec4 InteriorCutWindow", members[interior]);
+            Assert.Equal("vec4 InteriorCutHeights", members[interior + 1]);
         }
         using var device = new FakeGpuDevice();
         using var renderer = new ModelRenderer(device, Outputs, 16, 1);

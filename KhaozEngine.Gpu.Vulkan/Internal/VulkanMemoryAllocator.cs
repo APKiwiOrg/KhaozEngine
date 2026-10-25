@@ -40,7 +40,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// Vulkan loader. That matters more here than anywhere else in this backend, for the reason the VMA
     /// counterargument above gives.</para>
     /// </summary>
-    internal sealed class VulkanMemoryAllocator : IDisposable
+    internal sealed partial class VulkanMemoryAllocator : IDisposable
     {
         static readonly ILogger log = Log.For<VulkanMemoryAllocator>();
 
@@ -145,9 +145,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         /// <param name="request">The requirements, translated out of <c>VkMemoryRequirements</c> and
         /// <c>VkMemoryDedicatedRequirements</c>.</param>
+        /// <param name="payload">Logical resource sizes, independent of native requirements and heap sizes.</param>
         /// <exception cref="InvalidOperationException">No memory type satisfies the usage within the request's own
         /// type mask, or the allocator has already been torn down.</exception>
-        internal VulkanMemoryAllocation Allocate(in VulkanMemoryRequest request)
+        internal VulkanMemoryAllocation Allocate(in VulkanMemoryRequest request, VulkanMemoryPayload? payload = null)
         {
             if (request.Size == 0)
             {
@@ -179,9 +180,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             {
                 RequireOpen();
 
-                return WantsDedicated(request, reserved)
+                VulkanMemoryAllocation allocation = WantsDedicated(request, reserved)
                     ? AllocateDedicated(request, (uint)chosen, traits, reserved)
                     : AllocatePooled(request, (uint)chosen, traits, reserved, rung);
+                _memoryDiagnostics.Allocate(allocation, payload);
+                return allocation;
             }
         }
 
@@ -219,6 +222,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 if (_closed || chunk.IsDestroyed) return;
 
                 chunk.Free(allocation.Offset);
+                _memoryDiagnostics.Free(allocation);
 
                 if (chunk.IsDedicated)
                 {
@@ -358,6 +362,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 _api, typeIndex, traits, tiling, size, _facts.NonCoherentAtomSize, dedicated, isDedicated);
 
             Interlocked.Increment(ref _lifetime);
+            _memoryDiagnostics.Commit(size);
             WarnIfNearTheAllocationLimit(Interlocked.Increment(ref _live));
             return chunk;
         }
@@ -366,7 +371,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             _retire.Retire(() =>
             {
-                if (chunk.Destroy()) Interlocked.Decrement(ref _live);
+                lock (_gate)
+                {
+                    if (!chunk.Destroy()) return;
+                    _memoryDiagnostics.ReleaseChunk(chunk.Size);
+                    Interlocked.Decrement(ref _live);
+                }
             });
         }
 
@@ -380,18 +390,27 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             {
                 for (int i = 0; i < chunks.Count; i++)
                 {
-                    if (end(chunks[i])) ended++;
+                    if (end(chunks[i]))
+                    {
+                        _memoryDiagnostics.ReleaseChunk(chunks[i].Size);
+                        ended++;
+                    }
                 }
             }
 
             for (int i = 0; i < _dedicated.Count; i++)
             {
-                if (end(_dedicated[i])) ended++;
+                if (end(_dedicated[i]))
+                {
+                    _memoryDiagnostics.ReleaseChunk(_dedicated[i].Size);
+                    ended++;
+                }
             }
 
             Interlocked.Add(ref _live, -ended);
             _pools.Clear();
             _dedicated.Clear();
+            _memoryDiagnostics.ClearPayload();
             return ended;
         }
 

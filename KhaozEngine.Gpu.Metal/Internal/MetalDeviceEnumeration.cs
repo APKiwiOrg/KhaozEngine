@@ -67,9 +67,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static MetalSelectedDevice AcquireSelected()
+        internal static MetalSelectedDevice AcquireSelected(MetalDeviceRequest? frozen = null)
         {
-            MetalDeviceRequest request = MetalDeviceSelection.FromEnvironment();
+            MetalDeviceRequest request = frozen ?? MetalDeviceSelection.FromEnvironment();
             return request.Kind == MetalDeviceRequestKind.Default
                 ? AcquireSystemDefault()
                 : AcquireEnumerated(request);

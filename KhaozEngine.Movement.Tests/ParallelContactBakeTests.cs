@@ -120,7 +120,7 @@ public class ParallelContactBakeTests
     [Fact]
     public void WorkerDiagnosticsScopeRestoresEveryPriorThreadValue()
     {
-        int[] counts = new int[24];
+        long[] counts = new long[24];
         Action begin = () => { }, end = () => { };
         Action<SupportFindObservation> find = _ => { };
         Action<ContactAllocationPhase, bool> observer = (_, _) => { };
@@ -241,7 +241,7 @@ public class ParallelContactBakeTests
         ConstructorInfo constructor = typeof(SupportQueryCounts).GetConstructors().Single();
         Assert.Equal(Enum.GetNames<SupportQueryCounter>(), constructor.GetParameters().Select(parameter => parameter.Name));
         var counts = (SupportQueryCounts)constructor.Invoke(
-            [.. Enumerable.Range(1, constructor.GetParameters().Length).Select(value => (object)value)]);
+            [.. Enumerable.Range(1, constructor.GetParameters().Length).Select(value => (object)(long)value)]);
         var routes = new SupportRouteCounts(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
         SupportQueryDiagnostics.ThreadState prior = SupportQueryDiagnostics.Exchange(
             SupportQueryDiagnostics.ThreadState.Fresh(true));

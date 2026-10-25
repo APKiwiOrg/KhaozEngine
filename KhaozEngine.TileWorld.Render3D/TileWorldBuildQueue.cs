@@ -163,7 +163,7 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
     }
 
     public void PrimeForCapture(RegionCoord focus) =>
-        Prime(focus, key => key.Kind is TileWorldBuildKind.FullGround or TileWorldBuildKind.Cover or TileWorldBuildKind.InteriorCut);
+        Prime(focus, key => key.Kind is TileWorldBuildKind.FullGround or TileWorldBuildKind.CoarseGround or TileWorldBuildKind.Cover or TileWorldBuildKind.InteriorCut);
 
     internal void PrimeHlod(RegionCoord focus) =>
         Prime(focus, key => key.Kind == TileWorldBuildKind.Hlod);

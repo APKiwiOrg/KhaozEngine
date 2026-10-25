@@ -90,6 +90,6 @@ foreach (AssetEntry entry in manifest.Props)
     }
 }
 
-File.WriteAllText(manifestPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+File.WriteAllText(manifestPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true, NewLine = "\n" }));
 Console.WriteLine($"ke-propbake: {baked} surface(s) + {baked + blockers} collision shape(s) baked, {blockers} blocker(s); manifest stamped.");
 return 0;

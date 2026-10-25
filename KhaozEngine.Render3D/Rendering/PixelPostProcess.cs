@@ -1,3 +1,4 @@
+using KhaozEngine.Render3D.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -25,6 +26,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed partial class PixelPostProcess : IDisposable
     {
+        internal RenderPassProfiling? Profiling { get; set; }
+
         // The typed post UBOs (internal so UboLayoutTests can size-check them against the GPU allocations).
         internal struct EdgeUbo { public Vector4 OutlineColor; public Vector4 Texel; public Vector4 Thresh; public Vector4 Fade; }
         internal struct FinalUbo { public Vector4 Params; }   // .x=transparentBg, .y=flipV
@@ -205,6 +208,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// lines up.</summary>
         public void PrepareUniforms(IGpuCommandList cl, IPostChainTargets res, PixelPostProcessSettings s, in CameraDepth cam, bool runFxaa, bool distortionActive)
         {
+            using var profile = Profiling?.Pass(cl, "post.uniforms") ?? default;
             var pal = _palScratch;
             // Zero the colour region (MaxPaletteColors vec4 = 256 floats) so stale colors from a larger previous
             // palette don't leak. The two Info floats that follow (count, dither) are always rewritten below.
@@ -361,8 +365,9 @@ namespace KhaozEngine.Render3D.Rendering
             // Shared free-ping ping-pong for the single-input passes (tonemap / quantize / outline / FXAA): each
             // writes to the ping NOT holding src so no pass reads its own output. Source/PingB -> PingA, PingA ->
             // PingB. The resource set already carries the right textures per source, so the pass logic is uniform.
-            void Simple(IGpuPipeline pipe, IGpuResourceSet fromColor, IGpuResourceSet fromPingA, IGpuResourceSet fromPingB)
+            void Simple(string id, IGpuPipeline pipe, IGpuResourceSet fromColor, IGpuResourceSet fromPingA, IGpuResourceSet fromPingB)
             {
+                using var profile = Profiling?.Pass(cl, id) ?? default;
                 bool fromA = ReferenceEquals(src, res.PingA);
                 IGpuResourceSet set = ReferenceEquals(src, color) ? fromColor : fromA ? fromPingA : fromPingB;
                 cl.SetFramebuffer(fromA ? res.PingBFB : res.PingAFB);
@@ -372,15 +377,16 @@ namespace KhaozEngine.Render3D.Rendering
                 src = fromA ? res.PingB : res.PingA;
             }
 
-            void RunQuantize() => Simple(_palPipe, fromSource.Palette, _paletteFromPingA, _paletteFromPingB);
-            void RunOutline() => Simple(_edgePipe, fromSource.Edge, _edgeFromPingA, _edgeFromPingB);
-            void RunTonemap() => Simple(_tonePipe, fromSource.Tone, _toneFromPingA, _toneFromPingB);
-            void RunFxaa() => Simple(_fxaaPipe, fromSource.Fxaa, _fxaaFromPingA, _fxaaFromPingB);
+            void RunQuantize() => Simple("post.quantize", _palPipe, fromSource.Palette, _paletteFromPingA, _paletteFromPingB);
+            void RunOutline() => Simple("post.edge", _edgePipe, fromSource.Edge, _edgeFromPingA, _edgeFromPingB);
+            void RunTonemap() => Simple("post.tonemap", _tonePipe, fromSource.Tone, _toneFromPingA, _toneFromPingB);
+            void RunFxaa() => Simple("post.fxaa", _fxaaPipe, fromSource.Fxaa, _fxaaFromPingA, _fxaaFromPingB);
 
             // The temporal sharpen picks its target as Simple does. Its input is the chain source (a history colour,
             // so at most two textures) or a ping, and TemporalSharpenPass caches one set per texture it is handed.
             void RunSharpen()
             {
+                using var profile = Profiling?.Pass(cl, "post.sharpen") ?? default;
                 bool fromA = ReferenceEquals(src, res.PingA);
                 _sharpen!.Draw(cl, src, fromA ? res.PingBFB : res.PingAFB);
                 src = fromA ? res.PingB : res.PingA;
@@ -395,24 +401,33 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 IGpuResourceSet brightSet = ReferenceEquals(src, color) ? fromSource.Bright!
                                           : ReferenceEquals(src, res.PingA) ? _brightFromPingA! : _brightFromPingB!;
-                cl.SetFramebuffer(res.BloomAFB!);
-                cl.SetPipeline(_brightPipe);
-                cl.SetGraphicsResourceSet(0, brightSet);
-                cl.Draw(3);
+                using (Profiling?.Pass(cl, "post.bloom.bright") ?? default)
+                {
+                    cl.SetFramebuffer(res.BloomAFB!);
+                    cl.SetPipeline(_brightPipe);
+                    cl.SetGraphicsResourceSet(0, brightSet);
+                    cl.Draw(3);
+                }
 
                 // Separable gaussian blur: horizontal (BloomA -> BloomB), then vertical (BloomB -> BloomA). Always
                 // both passes run (even Radius=0, a 1-tap no-op blur) so the bloom branch is a FIXED 3 fullscreen
                 // passes from Src regardless of the Radius knob - the composite shader's fixed vertical-unflip
                 // correction (see BloomCompositeFrag) assumes exactly this count.
-                cl.SetFramebuffer(res.BloomBFB!);
-                cl.SetPipeline(_blurPipe);
-                cl.SetGraphicsResourceSet(0, _blurHFromBloomA!);
-                cl.Draw(3);
+                using (Profiling?.Pass(cl, "post.bloom.horizontal") ?? default)
+                {
+                    cl.SetFramebuffer(res.BloomBFB!);
+                    cl.SetPipeline(_blurPipe);
+                    cl.SetGraphicsResourceSet(0, _blurHFromBloomA!);
+                    cl.Draw(3);
+                }
 
-                cl.SetFramebuffer(res.BloomAFB!);
-                cl.SetPipeline(_blurPipe);
-                cl.SetGraphicsResourceSet(0, _blurVFromBloomB!);
-                cl.Draw(3);
+                using (Profiling?.Pass(cl, "post.bloom.vertical") ?? default)
+                {
+                    cl.SetFramebuffer(res.BloomAFB!);
+                    cl.SetPipeline(_blurPipe);
+                    cl.SetGraphicsResourceSet(0, _blurVFromBloomB!);
+                    cl.Draw(3);
+                }
 
                 bool compFromColor = ReferenceEquals(src, color);
                 bool compFromPingA = ReferenceEquals(src, res.PingA);
@@ -421,10 +436,13 @@ namespace KhaozEngine.Render3D.Rendering
                 // Write to the ping NOT currently holding src (mirrors the FXAA ping-pong), so composite never reads
                 // its own output.
                 bool toPingB = compFromPingA;                 // PingA->PingB, Source/PingB->PingA
-                cl.SetFramebuffer(toPingB ? res.PingBFB : res.PingAFB);
-                cl.SetPipeline(_compositePipe);
-                cl.SetGraphicsResourceSet(0, compositeSet);
-                cl.Draw(3);
+                using (Profiling?.Pass(cl, "post.bloom.composite") ?? default)
+                {
+                    cl.SetFramebuffer(toPingB ? res.PingBFB : res.PingAFB);
+                    cl.SetPipeline(_compositePipe);
+                    cl.SetGraphicsResourceSet(0, compositeSet);
+                    cl.Draw(3);
+                }
                 src = toPingB ? res.PingB : res.PingA;
             }
 
@@ -432,14 +450,15 @@ namespace KhaozEngine.Render3D.Rendering
             // accumulated offset field, so every camera-response pass that follows (bloom, tonemap, quantize, outline,
             // fxaa) sees the warped image. Writes Source -> PingA, then src follows the ping-pong like any other pass.
             // The FinalUbo/EdgeUbo parities already counted this pass in PrepareUniforms.
-            if (distortionRuns)
-            {
-                cl.SetFramebuffer(res.PingAFB);
-                cl.SetPipeline(_applyPipe);
-                cl.SetGraphicsResourceSet(0, fromSource.Apply!);
-                cl.Draw(3);
-                src = res.PingA;
-            }
+            using (Profiling?.Pass(cl, "post.distortion-apply", executed: distortionRuns) ?? default)
+                if (distortionRuns)
+                {
+                    cl.SetFramebuffer(res.PingAFB);
+                    cl.SetPipeline(_applyPipe);
+                    cl.SetGraphicsResourceSet(0, fromSource.Apply!);
+                    cl.Draw(3);
+                    src = res.PingA;
+                }
 
             if (s.Hdr.Enabled)
             {
@@ -450,15 +469,16 @@ namespace KhaozEngine.Render3D.Rendering
                 // image, which every operator leaves in 0 to 1, the display-referred range RCAS works in, so its final
                 // clamp changes nothing. It runs ahead of quantize and outline, so it never sharpens a palette step or
                 // a line.
-                if (bloomRuns) RunBloom();
+                if (bloomRuns) RunBloom(); else SkipPostPass(cl, "post.bloom");
                 RunTonemap();
-                if (sharpenRuns) RunSharpen();
-                if (s.Quantize) RunQuantize();
-                if (outlineInChain) RunOutline();
-                if (runFxaa) RunFxaa();
+                if (sharpenRuns) RunSharpen(); else SkipPostPass(cl, "post.sharpen");
+                if (s.Quantize) RunQuantize(); else SkipPostPass(cl, "post.quantize");
+                if (outlineInChain) RunOutline(); else SkipPostPass(cl, "post.edge");
+                if (runFxaa) RunFxaa(); else SkipPostPass(cl, "post.fxaa");
             }
             else
             {
+                SkipPostPass(cl, "post.tonemap");
                 // Legacy order (byte-identical to the pre-HDR chain): quantize -> outline -> bloom -> fxaa. Pass-order
                 // rationale (unchanged, see BloomSettings/docs):
                 //  - bloom AFTER quantize so the glow composites on top of the (possibly posterized) palette colour
@@ -472,11 +492,11 @@ namespace KhaozEngine.Render3D.Rendering
                 // so it can overshoot 1 slightly. The limiter gives no lobe to a pixel with a tap above 1 in its cross,
                 // and the final clamp cuts that overshoot to 1, as the 8-bit ping it writes would anyway. Every pass
                 // after it then reads an image in 0 to 1, as it does without the resolve.
-                if (sharpenRuns) RunSharpen();
-                if (s.Quantize) RunQuantize();
-                if (outlineInChain) RunOutline();
-                if (bloomRuns) RunBloom();
-                if (runFxaa) RunFxaa();
+                if (sharpenRuns) RunSharpen(); else SkipPostPass(cl, "post.sharpen");
+                if (s.Quantize) RunQuantize(); else SkipPostPass(cl, "post.quantize");
+                if (outlineInChain) RunOutline(); else SkipPostPass(cl, "post.edge");
+                if (bloomRuns) RunBloom(); else SkipPostPass(cl, "post.bloom");
+                if (runFxaa) RunFxaa(); else SkipPostPass(cl, "post.fxaa");
             }
 
             IGpuResourceSet blit = s.Pixelated
@@ -491,15 +511,19 @@ namespace KhaozEngine.Render3D.Rendering
             // ends the current render pass, and the blit re-binds the swapchain below. Never fires for Pixelated, a 1:1-or-
             // upscale blit, a FixedInternal downscale with the opt-in flag off, or the temporal display chain (all
             // single-mip), so those stay byte-identical.
-            if (src.MipLevels > 1) cl.GenerateMipmaps(src);
+            using (Profiling?.Pass(cl, "post.mips", executed: src.MipLevels > 1) ?? default)
+                if (src.MipLevels > 1) cl.GenerateMipmaps(src);
 
-            cl.SetFramebuffer(swapchainFB);
-            // Transparent clear when compositing offscreen, else opaque black. (The fullscreen blit overwrites
-            // every pixel via OverrideBlend, so this mainly documents intent. The alpha is set in the shader.)
-            cl.ClearColorTarget(0, s.TransparentBackground ? Color.Transparent : Color.Black);
-            cl.SetPipeline(_blitPipe);
-            cl.SetGraphicsResourceSet(0, blit);
-            cl.Draw(3);
+            using (Profiling?.Pass(cl, "post.blit", 0) ?? default)
+            {
+                cl.SetFramebuffer(swapchainFB);
+                // Transparent clear when compositing offscreen, else opaque black. (The fullscreen blit overwrites
+                // every pixel via OverrideBlend, so this mainly documents intent. The alpha is set in the shader.)
+                cl.ClearColorTarget(0, s.TransparentBackground ? Color.Transparent : Color.Black);
+                cl.SetPipeline(_blitPipe);
+                cl.SetGraphicsResourceSet(0, blit);
+                cl.Draw(3);
+            }
         }
 
         public void Dispose()

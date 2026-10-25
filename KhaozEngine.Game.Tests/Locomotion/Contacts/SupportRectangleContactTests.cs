@@ -156,7 +156,7 @@ public sealed class SupportRectangleContactTests
                 SupportQueryCounts before = SupportQueryDiagnostics.Snapshot();
                 SupportFootprintEquivalence.AssertMatchesReference(() =>
                     FootSupport.Find(height, normal, scene.World, lease, row.Query), row.Name);
-                int hits = (SupportQueryDiagnostics.Snapshot() - before).RectangleContact;
+                long hits = (SupportQueryDiagnostics.Snapshot() - before).RectangleContact;
                 if (row.Name is "stairs box" or "stairs hull") Assert.True(hits > 0, row.Name);
                 // Footprint members carry each proposal's contact mask, and the result carries both contact
                 // heights, so this compares every kernel-visible contact verdict bit for bit.

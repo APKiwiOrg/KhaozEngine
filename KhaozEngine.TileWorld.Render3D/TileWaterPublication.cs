@@ -99,19 +99,25 @@ internal sealed class TileWaterPublication
         {
             foreach (Member member in group.Members)
             {
-                if (_scene is not null)
-                    member.Outcome = TileWaterTrianglePreparation.Prepare(member.Preparation, member.Key.Region,
+                TileWaterPreparation preparation = member.Preparation;
+                if (preparation.Uncertified && preparation.Planes.Length > 0)
+                    member.Outcome = TileWaterTriangleOutcome.Empty.Refused(new TileWaterOpticsFailure(
+                        member.Key.Region, member.Key.Plane, preparation.Planes[0].SurfaceY,
+                        TileWaterOpticsFailureKind.UncertifiedDisplacement));
+                else if (_scene is not null)
+                    member.Outcome = TileWaterTrianglePreparation.Prepare(preparation, member.Key.Region,
                         member.Key.Plane, group.Table, context);
                 if (member.Outcome.Failure is not null) continue;
                 try
                 {
                     member.Staged = new TileWaterGeneration(member.Preparation, member.Outcome, _scene);
                 }
-                catch (WaterOpticsSurfaceException refused)
+                catch (TileWaterFieldRefusedException refused)
                 {
                     // The backend refused a scalar before allocating. That refuses this member, not the group.
                     member.Outcome = member.Outcome.Refused(new TileWaterOpticsFailure(member.Key.Region,
-                        member.Key.Plane, member.Outcome.Fields[0].Origin.Y, TileWaterTrianglePreparation.Kind(refused.Reason)));
+                        member.Key.Plane, refused.Field.Level, TileWaterTrianglePreparation.Kind(refused.Reason),
+                        Domain: refused.Field.Domain));
                 }
             }
         }

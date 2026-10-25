@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Immutable;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 
@@ -37,6 +38,17 @@ namespace KhaozEngine.Windowing
         internal static void Run(Frame frame, bool render, IGpuDevice device, IGpuCommandList commands,
             Color clearColor, Action<Frame>? onPrepare, Action<Frame> onFrame, FrameCaptureTaps? taps,
             double frameMilliseconds)
+            => Run(frame, render, device, commands, clearColor, onPrepare, onFrame, taps, frameMilliseconds,
+                rendererInitializesSwapchain: false);
+
+        /// <summary>
+        /// The window's explicit renderer-owned initialization policy. When enabled, the record callback must bind
+        /// and initialize the entire swapchain output before any 2D draws or capture taps. Recording, submission,
+        /// suppression and exception handling follow the legacy overloads unchanged.
+        /// </summary>
+        internal static void Run(Frame frame, bool render, IGpuDevice device, IGpuCommandList commands,
+            Color clearColor, Action<Frame>? onPrepare, Action<Frame> onFrame, FrameCaptureTaps? taps,
+            double frameMilliseconds, bool rendererInitializesSwapchain)
         {
             bool capture = taps is { HasWork: true };
             // Prepare. The frame's dt / input / size are already latched onto `frame`, so a callback sees this
@@ -56,9 +68,10 @@ namespace KhaozEngine.Windowing
                 GpuRecordingScope recording = render
                     ? GpuRecording.Open(device, commands, "the window's frame list")
                     : default;
+                Exception? frameError = null;
                 try
                 {
-                    if (render)
+                    if (render && !rendererInitializesSwapchain)
                     {
                         commands.SetFramebuffer(device.SwapchainFramebuffer!);
                         commands.ClearColorTarget(0, clearColor);
@@ -67,7 +80,13 @@ namespace KhaozEngine.Windowing
                     // A tap's copy stays after the game's draws in the same recording and submission.
                     if (render && capture) fence = taps!.Record(frame, commands, frameMilliseconds);
                 }
-                finally { recording.Dispose(); }
+                catch (Exception error) { frameError = error; throw; }
+                finally
+                {
+                    try { recording.Dispose(); }
+                    catch (Exception finalization) when (frameError is not null)
+                    { throw Transport(frameError, finalization, "renderer.frame.finalize"); }
+                }
 
                 if (render)
                 {
@@ -78,11 +97,22 @@ namespace KhaozEngine.Windowing
                 }
                 else frame.Submission.Abandon();
             }
-            catch
+            catch (Exception error)
             {
-                frame.Submission.Abandon();
+                try { frame.Submission.Abandon(); }
+                catch (Exception recovery) { throw Transport(error, recovery, "renderer.frame.abandon"); }
                 throw;
             }
+        }
+
+        static GpuDiagnosticFailureException Transport(Exception original, Exception cleanup, string stage)
+        {
+            var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+            if (original is GpuDiagnosticFailureException first) failures.AddRange(first.Failures);
+            else failures.Add(new("renderer.frame", original));
+            if (cleanup is GpuDiagnosticFailureException later) failures.AddRange(later.Failures);
+            else failures.Add(new(stage, cleanup));
+            return new(failures.ToImmutable());
         }
 
     }

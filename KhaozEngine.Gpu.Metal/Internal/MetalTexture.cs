@@ -33,11 +33,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         readonly MTLTexture _texture;
         readonly MTLBuffer _stagingBuffer;
         readonly IntPtr _stagingContents;
+        readonly IDisposable? _memoryLease;
+        readonly IMetalResourceNative? _native;
 
         bool _disposed;
 
         MetalTexture(IDeviceLiveness liveness, MTLTexture texture, MTLBuffer stagingBuffer,
-            IntPtr stagingContents, in GpuTextureDescription description, in MetalTextureViewPlan plan)
+            IntPtr stagingContents, in GpuTextureDescription description, in MetalTextureViewPlan plan,
+            IMetalResourceNative? native = null, MetalMemoryDiagnostics? memory = null)
         {
             _liveness = liveness;
             _texture = texture;
@@ -52,6 +55,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             Format = description.Format;
             Usage = description.Usage;
             Plan = plan;
+            _native = native;
+            _memoryLease = memory?.TrackTexture(description);
         }
 
         /// <inheritdoc/>
@@ -113,20 +118,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static MetalTexture Create(MTLDevice device, IDeviceLiveness liveness,
-            in GpuTextureDescription description)
+            in GpuTextureDescription description, MetalMemoryDiagnostics? memory = null)
+            => Create(new MetalResourceNative(device), liveness, description, memory);
+
+        internal static MetalTexture Create(IMetalResourceNative native, IDeviceLiveness liveness,
+            in GpuTextureDescription description, MetalMemoryDiagnostics? memory = null)
         {
             MetalTextureViewPlan plan = MetalViewPolicy.ForTexture(
                 description.Usage, description.ArrayLayers, description.SampleCount, description.IsArray);
 
             return plan.Staging
-                ? CreateStaging(device, liveness, description, plan)
-                : CreateDeviceTexture(device, liveness, description, plan);
+                ? CreateStaging(native, liveness, description, plan, memory)
+                : CreateDeviceTexture(native, liveness, description, plan, memory);
         }
 
-        [SupportedOSPlatform("macos")]
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static MetalTexture CreateStaging(MTLDevice device, IDeviceLiveness liveness,
-            in GpuTextureDescription description, in MetalTextureViewPlan plan)
+        static MetalTexture CreateStaging(IMetalResourceNative native, IDeviceLiveness liveness,
+            in GpuTextureDescription description, in MetalTextureViewPlan plan, MetalMemoryDiagnostics? memory)
         {
             var shape = new MetalStagingShape(description.Width, description.Height, description.MipLevels,
                 description.ArrayLayers, description.Format);
@@ -135,7 +142,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // ceiling the incumbent silently wrapped at turned into a named refusal.
             ulong total = MetalStagingLayout.TotalBytes(shape);
 
-            MTLBuffer buffer = device.NewBuffer((nuint)total, MTLResourceOptions.SharedDefaultCache);
+            MTLBuffer buffer = native.NewBuffer((nuint)total);
             if (buffer.IsNull)
             {
                 throw new InvalidOperationException(
@@ -145,72 +152,33 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "shape.");
             }
 
-            IntPtr contents = buffer.Contents();
-            if (contents == IntPtr.Zero)
-            {
-                buffer.Release();
-                throw new InvalidOperationException(
-                    "A Shared MTLBuffer behind a staging texture answered a null -contents pointer, which cannot "
-                    + "happen for the storage mode this backend allocates it with.");
-            }
-
-            return new MetalTexture(liveness, default, buffer, contents, description, plan);
-        }
-
-        [SupportedOSPlatform("macos")]
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static MetalTexture CreateDeviceTexture(MTLDevice device, IDeviceLiveness liveness,
-            in GpuTextureDescription description, in MetalTextureViewPlan plan)
-        {
-            MTLTextureDescriptor descriptor = MTLTextureDescriptor.New();
-            if (descriptor.IsNull)
-            {
-                throw new InvalidOperationException(
-                    "The Objective-C runtime has no MTLTextureDescriptor class, which means the Metal framework "
-                    + "did not load. Nothing about this texture caused it.");
-            }
-
             try
             {
-                descriptor.Configure(
-                    plan.Type,
-                    MetalFormats.ToPixelFormat(description.Format, plan.DepthStencil),
-                    description.Width,
-                    description.Height,
-                    description.MipLevels,
-                    // The DESCRIPTION's layer count, unexpanded. For a cube texture Metal counts CUBES here, and
-                    // reproducing the incumbent meant passing the same number it passed.
-                    description.ArrayLayers,
-                    description.SampleCount,
-                    plan.Usage,
-                    plan.Storage);
-
-                MTLTexture texture = device.NewTexture(descriptor);
-                if (texture.IsNull)
-                {
+                IntPtr contents = native.Contents(buffer);
+                if (contents == IntPtr.Zero)
                     throw new InvalidOperationException(
-                        "The native Metal device refused a texture of " + description.Width + " by "
-                        + description.Height + " in " + description.Format + " with usage " + description.Usage
-                        + " at " + description.SampleCount + " samples. -newTextureWithDescriptor: answers nil "
-                        + "for a descriptor the device cannot satisfy as well as for an allocation failure, and "
-                        + "an out-of-range sample count and a depth format this device lacks are the two shapes "
-                        + "that reach it (Apple silicon has no D24_UNorm_S8_UInt at all).");
-                }
-
-                return new MetalTexture(liveness, texture, default, IntPtr.Zero, description, plan);
+                        "A Shared MTLBuffer behind a staging texture answered a null -contents pointer, which cannot "
+                        + "happen for the storage mode this backend allocates it with.");
+                return new MetalTexture(liveness, default, buffer, contents, description, plan, native, memory);
             }
-            finally
-            {
-                // The descriptor is a request rather than a handle, and the texture does not reference it. The
-                // incumbent releases it in the same place.
-                descriptor.Release();
-            }
+            catch { native.Release(buffer.Handle); throw; }
         }
 
-        /// <summary>
-        /// One subresource's layout in the staging buffer, which is what a <c>Map</c> answers with. Throws on a
-        /// non-staging texture, because there is no CPU-visible memory to describe at all.
-        /// </summary>
+        static MetalTexture CreateDeviceTexture(IMetalResourceNative native, IDeviceLiveness liveness,
+            in GpuTextureDescription description, in MetalTextureViewPlan plan, MetalMemoryDiagnostics? memory)
+        {
+            MTLTexture texture = native.NewTexture(description, plan);
+            if (texture.IsNull)
+                throw new InvalidOperationException("The native Metal device refused a texture of " + description.Width
+                    + " by " + description.Height + " in " + description.Format + " with usage " + description.Usage
+                    + " at " + description.SampleCount + " samples. -newTextureWithDescriptor: answers nil for "
+                    + "a descriptor the device cannot satisfy as well as for an allocation failure.");
+            try { return new MetalTexture(liveness, texture, default, IntPtr.Zero, description, plan, native, memory); }
+            catch { native.Release(texture.Handle); throw; }
+        }
+
+        /// <summary>One subresource's layout in the staging buffer. Refuses non-staging textures,
+        /// which have no software layout to map.</summary>
         internal MetalSubresourceLayout SubresourceLayout(uint mipLevel, uint arrayLayer)
         {
             if (!IsStaging)
@@ -248,8 +216,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (_disposed) return;
             _disposed = true;
+            _memoryLease?.Dispose();
 
             if (_liveness.IsDead) return;
+            if (_native is not null) { _native.Release(IsStaging ? _stagingBuffer.Handle : _texture.Handle); return; }
             if (!KhaozEngineMetal.IsPlatformSupported) return;
 
             ReleaseOnMacOs();

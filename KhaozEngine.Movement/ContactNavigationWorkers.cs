@@ -90,7 +90,7 @@ internal sealed class ContactNavigationWorkers
         if (bands <= 0) return cutoff;
         var schedule = new ContactNavigationSchedule(rows, bands, firstOrdinal, cutoff);
         int count = Math.Min(Count, bands);
-        var records = new WorkerDiagnosticsRecord[count];
+        WorkerDiagnosticsRecord[]? records = _diagnostics.Enabled ? new WorkerDiagnosticsRecord[count] : null;
         var threads = new Thread[count];
         int started = 0;
         ThreadInterruptedException? interrupted = null;
@@ -133,14 +133,14 @@ internal sealed class ContactNavigationWorkers
                     }
                 }
         }
-        WorkerDiagnostics.Merge(records.AsSpan(0, started));
+        if (records is not null) WorkerDiagnostics.Merge(records.AsSpan(0, started));
         if (interrupted is not null) ExceptionDispatchInfo.Capture(interrupted).Throw();
         return cutoff;
     }
 
     void Work(ContactNavigationPhase phase, int worker, ContactNavigationSchedule schedule,
         ContactNavigationCutoff cutoff, Action<ContactNavigationProof, ContactNavigationBand> work,
-        WorkerDiagnosticsRecord[] records)
+        WorkerDiagnosticsRecord[]? records)
     {
         try
         {
@@ -167,7 +167,11 @@ internal sealed class ContactNavigationWorkers
             finally
             {
                 try { reference?.Dispose(); }
-                finally { records[worker] = scope.Exit(); }
+                finally
+                {
+                    if (records is not null) records[worker] = scope.Exit();
+                    else scope.Restore();
+                }
             }
         }
         catch (Exception failure)

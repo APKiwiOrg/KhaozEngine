@@ -1,3 +1,4 @@
+using KhaozEngine.Render3D.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -9,6 +10,8 @@ namespace KhaozEngine.Render3D.Rendering;
 
 internal sealed partial class TargetOutlineRenderer : IDisposable
 {
+    internal RenderPassProfiling? Profiling { get; set; }
+
     const int DrawPayloadBytes = 192;
     const int DrawSlotBytes = 256;
 
@@ -146,31 +149,49 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
         Color color, float widthPixels, float backgroundDepth, bool pixelated, int styleIndex, bool occluded)
     {
         if (_queue.Count == 0) return;
-        PrepareGpuPalette(cl);
-        BindTargets(resources);
-        cl.UpdateBuffer(_drawUbo!, 0, (ReadOnlySpan<byte>)_drawImage);
+        using (Profiling?.Pass(cl, "outline.uploads", styleIndex) ?? default)
+        {
+            PrepareGpuPalette(cl);
+            BindTargets(resources);
+            cl.UpdateBuffer(_drawUbo!, 0, (ReadOnlySpan<byte>)_drawImage);
+        }
 
-        cl.SetFramebuffer(_fullFramebuffer!);
-        cl.ClearColorTarget(0, Color.Transparent);
-        cl.ClearDepthStencil(1f);
-        DrawQueue(cl, full: true);
-        if (resources.Msaa)
-            cl.ResolveTexture(_msFullCoverage!, _fullCoverage!);
-        if (_fullCoverage!.MipLevels > 1) cl.GenerateMipmaps(_fullCoverage);
+        using (Profiling?.Pass(cl, "outline.mask", styleIndex) ?? default)
+        {
+            cl.SetFramebuffer(_fullFramebuffer!);
+            cl.ClearColorTarget(0, Color.Transparent);
+            cl.ClearDepthStencil(1f);
+            DrawQueue(cl, full: true);
+        }
+        using (Profiling?.Pass(cl, "outline.mask-resolve", styleIndex, executed: resources.Msaa) ?? default)
+            if (resources.Msaa) cl.ResolveTexture(_msFullCoverage!, _fullCoverage!);
+        using (Profiling?.Pass(cl, "outline.mask-mips", styleIndex, executed: _fullCoverage!.MipLevels > 1) ?? default)
+            if (_fullCoverage!.MipLevels > 1) cl.GenerateMipmaps(_fullCoverage);
 
         // A border nothing hides reads only the full union, so the scene-depth visible pass is skipped.
         if (occluded)
         {
-            cl.SetFramebuffer(_visibleFramebuffer!);
-            cl.ClearColorTarget(0, Color.Transparent);
-            cl.ClearColorTarget(1, new Color(backgroundDepth, 0f, 0f, 0f));
-            DrawQueue(cl, full: false);
-            if (resources.Msaa)
+            using (Profiling?.Pass(cl, "outline.visible-mask", styleIndex) ?? default)
             {
-                cl.ResolveTexture(_msVisibleCoverage!, _visibleCoverage!);
-                cl.ResolveTexture(_msVisibleDepth!, _visibleDepth!);
+                cl.SetFramebuffer(_visibleFramebuffer!);
+                cl.ClearColorTarget(0, Color.Transparent);
+                cl.ClearColorTarget(1, new Color(backgroundDepth, 0f, 0f, 0f));
+                DrawQueue(cl, full: false);
             }
-            if (_visibleCoverage!.MipLevels > 1) cl.GenerateMipmaps(_visibleCoverage);
+            using (Profiling?.Pass(cl, "outline.visible-resolve", styleIndex, executed: resources.Msaa) ?? default)
+                if (resources.Msaa)
+                {
+                    cl.ResolveTexture(_msVisibleCoverage!, _visibleCoverage!);
+                    cl.ResolveTexture(_msVisibleDepth!, _visibleDepth!);
+                }
+            using (Profiling?.Pass(cl, "outline.visible-mips", styleIndex, executed: _visibleCoverage!.MipLevels > 1) ?? default)
+                if (_visibleCoverage!.MipLevels > 1) cl.GenerateMipmaps(_visibleCoverage);
+        }
+        else
+        {
+            Profiling?.Pass(cl, "outline.visible-mask", styleIndex, executed: false);
+            Profiling?.Pass(cl, "outline.visible-resolve", styleIndex, executed: false);
+            Profiling?.Pass(cl, "outline.visible-mips", styleIndex, executed: false);
         }
 
         var composite = new CompositeUbo
@@ -186,11 +207,14 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
                 occluded ? 0f : 1f),
         };
         EnsureCompositeSlot(styleIndex);
-        cl.UpdateBuffer(_compositeUbos[styleIndex], 0, in composite);
-        cl.SetFramebuffer(target);
-        cl.SetPipeline(_compositePipeline);
-        cl.SetGraphicsResourceSet(0, _compositeSets[styleIndex]);
-        cl.Draw(3);
+        using (Profiling?.Pass(cl, "outline.composite", styleIndex) ?? default)
+        {
+            cl.UpdateBuffer(_compositeUbos[styleIndex], 0, in composite);
+            cl.SetFramebuffer(target);
+            cl.SetPipeline(_compositePipeline);
+            cl.SetGraphicsResourceSet(0, _compositeSets[styleIndex]);
+            cl.Draw(3);
+        }
     }
 
     void DrawQueue(IGpuCommandList cl, bool full)

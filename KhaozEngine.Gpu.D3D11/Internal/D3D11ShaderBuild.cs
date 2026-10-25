@@ -51,7 +51,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, the pair failed to
         /// cross-compile, FXC rejected the emitted HLSL, or the vertex input signature is holed.</exception>
         internal static D3D11CompiledPair Pair(string vertexGlsl, string fragmentGlsl, uint flags,
-            D3D11DxbcCache? cache, string? label = null)
+            D3D11DxbcCache? cache, string? label = null, SpirvCompileCache? memo = null)
         {
             ArgumentNullException.ThrowIfNull(vertexGlsl);
             ArgumentNullException.ThrowIfNull(fragmentGlsl);
@@ -65,7 +65,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (vertexDxbc is null || fragmentDxbc is null)
             {
-                CrossCompiledPair hlsl = SpirvCrossCompile.GlslPairToHlsl(vertexGlsl, fragmentGlsl, tag);
+                CrossCompiledPair hlsl = SpirvCrossCompile.GlslPairToHlsl(vertexGlsl, fragmentGlsl, tag, memo);
                 vertexDxbc ??= CompileAndCache(
                     hlsl.VertexSource, D3D11ShaderStage.Vertex, flags, cache, vertexKey, tag + " [vertex]");
                 fragmentDxbc ??= CompileAndCache(
@@ -106,14 +106,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, failed to
         /// cross-compile, declares no resolvable workgroup size, or FXC rejected the emitted HLSL.</exception>
         internal static D3D11CompiledCompute Compute(string computeGlsl, uint flags, D3D11DxbcCache? cache,
-            string? label = null)
+            string? label = null, SpirvCompileCache? memo = null)
         {
             ArgumentNullException.ThrowIfNull(computeGlsl);
 
             string key = D3D11ShaderKey.For(D3D11ShaderStage.Compute, flags, computeGlsl);
             string tag = label ?? ("d3d11 compute " + D3D11ShaderKey.ShortTag(key));
 
-            byte[] spirv = SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag);
+            byte[] spirv = SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, memo);
             (uint x, uint y, uint z) = SpirvLocalSize.Parse(spirv, tag);
 
             byte[]? dxbc = cache?.TryRead(key);

@@ -59,8 +59,7 @@ public class GpuPublicApiTests
         bool clean = leaks.Count == 0;
         Assert.True(clean,
             $"KhaozEngine.Gpu.D3D11 exposes {forbidden} types on its externally visible surface. Its public " +
-            "surface is one class carrying three methods (Register, ValidateShaderPair, ValidateComputeShader) " +
-            "and one guard property (IsPlatformSupported), on purpose, and every type from the Direct3D interop " +
+            "entry point and optional invocation contracts must expose engine types only. Every Direct3D interop type " +
             "belongs inside a NoInlining body behind KhaozEngineD3D11.IsPlatformSupported:\n" +
             string.Join("\n", leaks));
     }
@@ -171,8 +170,8 @@ public class GpuPublicApiTests
     /// <summary>
     /// The SIZE of the backend's public surface, pinned member by member. The scans above ask what the surface
     /// exposes and say nothing about how much of it there is, so a new public method that happens to leak no
-    /// forbidden type is invisible to every one of them, and the message they print (one class, three methods,
-    /// one guard property) quietly stops being true. Decision P1 rests on that surface staying small: every
+    /// forbidden type is invisible to every one of them. The entry point and separate optional invocation
+    /// contracts are deliberately small. Decision P1 rests on that surface staying small: every
     /// Direct3D type lives inside a <c>NoInlining</c> body behind <see cref="KhaozEngine.Gpu.D3D11.KhaozEngineD3D11.IsPlatformSupported"/>,
     /// and each added member is another place that containment can be got wrong on macOS and Linux.
     /// <para>
@@ -201,13 +200,32 @@ public class GpuPublicApiTests
 
         Assert.Equal(approvedMembers, members);
 
-        // And one exported type, which is the other half of the same claim.
+        // Registration/validation and the separate optional invocation capability, with no native types.
         string[] exported = entryPoint.Assembly.GetExportedTypes()
             .Select(t => t.FullName ?? t.Name)
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(new[] { "KhaozEngine.Gpu.D3D11.KhaozEngineD3D11" }, exported);
+        Assert.Equal(new[]
+        {
+            "KhaozEngine.Gpu.D3D11.D3D11InvocationBlock",
+            "KhaozEngine.Gpu.D3D11.D3D11InvocationReport",
+            "KhaozEngine.Gpu.D3D11.ID3D11InvocationDiagnostics",
+            "KhaozEngine.Gpu.D3D11.KhaozEngineD3D11"
+        }, exported);
+
+        Type capability = typeof(KhaozEngine.Gpu.D3D11.ID3D11InvocationDiagnostics);
+        MethodInfo capture = Assert.Single(capability.GetMethods());
+        Assert.Equal("CaptureInvocations", capture.Name);
+        Assert.Equal(typeof(KhaozEngine.Gpu.D3D11.D3D11InvocationBlock), capture.ReturnType);
+        Assert.Equal(typeof(Action), Assert.Single(capture.GetParameters()).ParameterType);
+        Assert.Equal(new[] { "Dispose", "TryRead" }, typeof(KhaozEngine.Gpu.D3D11.D3D11InvocationBlock)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Select(m => m.Name).OrderBy(n => n, StringComparer.Ordinal));
+        Assert.Empty(typeof(KhaozEngine.Gpu.D3D11.D3D11InvocationBlock).GetConstructors());
+        Assert.Equal(new[] { "Reason", "RecordingMode", "Statistics", "Status" },
+            typeof(KhaozEngine.Gpu.D3D11.D3D11InvocationReport).GetProperties()
+                .Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal));
     }
 
     /// <summary>

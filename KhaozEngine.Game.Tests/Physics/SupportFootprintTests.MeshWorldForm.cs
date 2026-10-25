@@ -64,11 +64,11 @@ public partial class SupportFootprintTests
     public void MeshWorldFormMatchesReferenceOnEveryCostScene()
     {
         using var counters = new WorldFormCounters();
-        int meshBuilds = 0;
+        long meshBuilds = 0;
         foreach (var row in CostRows())
         {
             using var scene = new WorldFormScene(row);
-            scene.Checked($"{row.Name} cold", out int builds);
+            scene.Checked($"{row.Name} cold", out long builds);
             if (row.Name == "flat mesh") meshBuilds += builds;
             scene.Checked($"{row.Name} warm", out _);
             scene.CheckedFootprint($"{row.Name} raw");
@@ -86,7 +86,7 @@ public partial class SupportFootprintTests
         using var scene = new WorldFormScene(CostRows().Single(row => row.Name == "flat mesh"));
         var before = scene.Checked("mesh before", out _);
         scene.World.Rebase(new(0, 0.125f, 0));
-        var after = scene.Checked("mesh moved", out int builds);
+        var after = scene.Checked("mesh moved", out long builds);
         Assert.Equal(2, builds);
         Assert.Equal(before.Height - 0.125f, after.Height);
         scene.Checked("mesh moved warm", out builds);
@@ -249,7 +249,7 @@ public partial class SupportFootprintTests
         InstalledSupportMeshWorldCache cache = MeshForms(scene.World);
         using (SupportReferenceEvaluation.Begin()) scene.Find();
         Assert.Equal(0, cache.TriangleCount);
-        scene.Checked("mesh published", out int builds);
+        scene.Checked("mesh published", out long builds);
         Assert.Equal(2, builds);
         StaticHandle owner = scene.Owners().Single();
         object first = MeshForm(cache, owner, 0);
@@ -350,7 +350,7 @@ public partial class SupportFootprintTests
         Assert.Same(first, MeshForm(cache, owner, 0));
         Assert.Equal(3, SupportQueryDiagnostics.Snapshot().WorldFormBuilds);
         Assert.Equal(3, SupportQueryDiagnostics.Snapshot().MeshTriangleCaptures);
-        scene.Checked("mesh warm after nested", out int builds);
+        scene.Checked("mesh warm after nested", out long builds);
         Assert.Equal(0, builds);
     }
 

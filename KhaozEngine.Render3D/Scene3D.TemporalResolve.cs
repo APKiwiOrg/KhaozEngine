@@ -134,10 +134,15 @@ namespace KhaozEngine.Render3D
                 return (_post, _res);
             }
             if (!_resolveThisRender)
-                return (_laterRenderPost ??= new PixelPostProcess(_gd, _res.PingAFB.Outputs, _targetOutput), _res);
+            {
+                _laterRenderPost ??= new PixelPostProcess(_gd, _res.PingAFB.Outputs, _targetOutput);
+                _laterRenderPost.Profiling = _profiling;
+                return (_laterRenderPost, _res);
+            }
 
             FrameView current = _currentFrameView;
             _temporalResolve ??= new TemporalResolveRenderer(_gd);
+            _temporalResolve.Profiling = _profiling;
             _temporalPost ??= new TemporalPostTargets(_gd);
             // New targets hold nothing. A new display or internal size already reset the history through the frame key,
             // so this catches a replacement the key cannot see, and the resolve never reads new targets as history.
@@ -182,13 +187,16 @@ namespace KhaozEngine.Render3D
         /// </summary>
         void CaptureOpaqueForTemporal(IGpuCommandList cl)
         {
-            if (!_resolveThisRender) return;
+            if (!_resolveThisRender) { SkipProfilePass(cl, "copy.opaque-temporal"); return; }
             DrawBackground(cl);
             // A framebuffer change ends the model pass, so a clear with no draw after it (a Solid background with
             // nothing opaque) lands before the copy. A blit alone leaves a clear-only pass's clear owed.
-            cl.SetFramebuffer(_res.ColorDepthFB);
-            _temporalPost!.CopyOpaque(cl);
-            cl.SetFramebuffer(_res.ModelFB);
+            using (ProfilePass(cl, "copy.opaque-temporal", 0))
+            {
+                cl.SetFramebuffer(_res.ColorDepthFB);
+                _temporalPost!.CopyOpaque(cl);
+                cl.SetFramebuffer(_res.ModelFB);
+            }
         }
 
         /// <summary>
@@ -203,17 +211,18 @@ namespace KhaozEngine.Render3D
         /// </summary>
         void DrawBackground(IGpuCommandList cl)
         {
-            switch (Post.Background)
-            {
-                case BackgroundMode.Sky:
+            using (ProfilePass(cl, "background.sky", executed: Post.Background == BackgroundMode.Sky))
+                if (Post.Background == BackgroundMode.Sky)
+                {
                     _sky.Draw(cl, _res, _currentFrameView.View, _currentFrameView.JitteredProjection, Post.LightDirection, Post.Sky, Post.Atmosphere.Enabled);
                     _frameStats.DrawCalls++;
-                    break;
-                case BackgroundMode.Starfield:
+                }
+            using (ProfilePass(cl, "background.starfield", executed: Post.Background == BackgroundMode.Starfield))
+                if (Post.Background == BackgroundMode.Starfield)
+                {
                     _starfield.Draw(cl, _res, Post.BackgroundColor);
                     _frameStats.DrawCalls++;
-                    break;
-            }
+                }
         }
 
         /// <summary>When this render resolves, after every internal-resolution colour writer and the distortion field and
@@ -221,12 +230,20 @@ namespace KhaozEngine.Render3D
         /// on, the outline pass's one draw runs first on the internal images the resolve reads.</summary>
         void RunTemporalResolve(IGpuCommandList cl)
         {
-            if (!_resolveThisRender) return;
-            if (PixelPostProcess.TemporalOutlineRuns(Post))
+            if (!_resolveThisRender)
             {
-                _post.RunTemporalOutline(cl, _res, _temporalPost!.OpaqueColor, _retired);
-                _frameStats.DrawCalls += PixelPostProcess.TemporalOutlineDrawCalls;
+                SkipProfilePass(cl, "temporal.outline-inputs");
+                SkipProfilePass(cl, "temporal.resolve");
+                SkipProfilePass(cl, "temporal.depth-store");
+                SkipProfilePass(cl, "temporal.visibility-store");
+                return;
             }
+            using (ProfilePass(cl, "temporal.outline-inputs", executed: PixelPostProcess.TemporalOutlineRuns(Post)))
+                if (PixelPostProcess.TemporalOutlineRuns(Post))
+                {
+                    _post.RunTemporalOutline(cl, _res, _temporalPost!.OpaqueColor, _retired);
+                    _frameStats.DrawCalls += PixelPostProcess.TemporalOutlineDrawCalls;
+                }
             _temporalResolve!.Run(cl, TemporalHistory, ResolvedVisibilityFullyLit);
             _frameStats.DrawCalls += TemporalResolveRenderer.DrawCallsPerFrame;
         }
@@ -250,12 +267,16 @@ namespace KhaozEngine.Render3D
 
         /// <summary>From <c>Dispose</c>, after the device drained and the retire queue was disposed, so the history is
         /// released with no queue.</summary>
-        void DisposeTemporalResolve()
+        void DisposeTemporalResolve(Internal.ResourceDisposal disposal)
         {
-            _temporalPost?.Dispose();
-            _temporalResolve?.Dispose();
-            _laterRenderPost?.Dispose();
-            TemporalHistory.ReleaseTargets();
+            bool postReleased = disposal.Release("temporal.post", () => _temporalPost?.Dispose());
+            bool postSafe = postReleased || _temporalPost?.DisposalSafeForDependants == true;
+            if (postReleased) _temporalPost = null;
+            // The resolve's sets borrow history targets. Keep those targets if that owner retains its sets.
+            bool resolveReleased = postSafe && disposal.Release("temporal.resolve", () => _temporalResolve?.Dispose());
+            if (resolveReleased) _temporalResolve = null;
+            if (disposal.Release("temporal.laterPost", () => _laterRenderPost?.Dispose())) _laterRenderPost = null;
+            if (postSafe && resolveReleased) disposal.Release("temporal.history", () => TemporalHistory.ReleaseTargets());
         }
 
         static TemporalViewInput ViewInput(in FrameView view) => new(view.View, view.Projection);

@@ -79,6 +79,7 @@ namespace KhaozEngine.Render3D
                 // earlier frame from holding rows for lights that have stopped being queued.
                 _model.ClearPointShadowUniforms();
                 _pointSlotCache?.ReleaseUnrequested(frame);
+                SkipProfilePass(cl, "shadow.point");
                 return;
             }
 
@@ -91,6 +92,7 @@ namespace KhaozEngine.Render3D
             if (_pointShadowAtlas is null || _pointSlotCache is not { } cache)
             {
                 _model.ClearPointShadowUniforms();
+                SkipProfilePass(cl, "shadow.point");
                 return;
             }
 
@@ -103,7 +105,9 @@ namespace KhaozEngine.Render3D
             AcquirePointShadowSlots(cache, frame);
             ChoosePointShadowRebuilds(cache, settings);
             ScheduleSkinnedPointShadows(cache, settings, frame);
-            int draws = RenderChosenPointShadowRows(cl, cache, frame);
+            int draws;
+            using (ProfilePass(cl, "shadow.point", executed: _pointRebuilds.Count + _selectedPointTransientRequests.Count > 0))
+                draws = RenderChosenPointShadowRows(cl, cache, frame);
             PublishPointShadowUniforms(cache, settings, frame);
             cache.ReleaseUnrequested(frame);
             RecordPointShadowDiagnostics(cache, draws);
@@ -220,10 +224,14 @@ namespace KhaozEngine.Render3D
                     _pointTransientRowsByRequest[requestIndex], r.Position, r.Radius,
                     r.NearRadius, r.ExclusionMin, r.ExclusionMax, requestIndex, PointShadowCasterSet.Skinned);
             }
-            UploadPointShadowFaces(cl);
-            if (UseGpuSkinning && (_selectedPointTransientRequests.Count > 0
-                || Array.Exists(_pointDynamicSkinnedRequests, static selected => selected)))
-                PrepareGpuSkinnedPointCasters(cl);
+            using (ProfileCpu("cpu.shadow.point-upload-packing"))
+            using (ProfilePass(cl, "shadow.point.uploads"))
+            {
+                UploadPointShadowFaces(cl);
+                if (UseGpuSkinning && (_selectedPointTransientRequests.Count > 0
+                    || Array.Exists(_pointDynamicSkinnedRequests, static selected => selected)))
+                    PrepareGpuSkinnedPointCasters(cl);
+            }
             int draws = RenderPointShadowSlots(cl);
             foreach (int index in _pointRebuilds) cache.MarkClean(_pointRequests[index].Slot, frame);
             return draws;

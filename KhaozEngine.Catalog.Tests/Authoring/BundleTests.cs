@@ -330,6 +330,8 @@ public class BundleTests
         // A bundle lands in a repository beside the code it seeds, so two exports of one version have to be
         // the same bytes. Every property is written explicitly, in a fixed order.
         Assert.Equal(first, second);
+        Assert.Contains('\n', first);
+        Assert.DoesNotContain('\r', first);
         Assert.Contains("\"formatVersion\": 1", first, StringComparison.Ordinal);
     }
 

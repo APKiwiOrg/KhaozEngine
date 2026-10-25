@@ -50,6 +50,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal static GpuProviderDevice CreateHeadlessWindows()
             => CreateWindows(IntPtr.Zero, 0u, 0u, syncToVerticalBlank: false);
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        [SupportedOSPlatform("windows")]
+        internal static GpuProviderDevice CreateHeadlessWindows(D3D11HeadlessDiagnosticSettings settings)
+            => CreateWindows(IntPtr.Zero, 0u, 0u, syncToVerticalBlank: false, settings);
+
         // THE CONSTRUCTION ORDER, STEPS 1 AND 2 (issue #497). Everything from the emitter down is the instance
         // constructor below, because those subsystems need one another rather than needing this.
         //
@@ -61,13 +66,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // ordinary release of the references this method is done with.
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
-        static GpuProviderDevice CreateWindows(IntPtr hwnd, uint width, uint height, bool syncToVerticalBlank)
+        static GpuProviderDevice CreateWindows(IntPtr hwnd, uint width, uint height, bool syncToVerticalBlank, D3D11HeadlessDiagnosticSettings? settings = null)
         {
-            uint creationFlags = ResolveCreationFlags();
+            uint creationFlags = settings?.CreationFlags ?? ResolveCreationFlags();
 
             using IDXGIFactory1 factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
             D3D11AdapterChoice choice = D3D11AdapterResolution.ChooseWindows(factory,
-                out IReadOnlyList<D3D11AdapterInfo> adapters, out string? adapterWarning);
+                out IReadOnlyList<D3D11AdapterInfo> adapters, out string? adapterWarning, settings);
             if (adapterWarning != null) log.Warn(adapterWarning);
             log.Info(D3D11AdapterSelection.Describe(choice, adapters));
 
@@ -78,6 +83,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             ID3D11Device? device = null;
             ID3D11DeviceContext? immediate = null;
             ID3D11DeviceContext1? context = null;
+            Exception? primary = null;
+            D3D11GpuDevice? owned = null;
 
             try
             {
@@ -95,7 +102,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                         + "context. There is no second Direct3D 11 path to fall back to on this machine: "
                         + "GpuBackendKind.Direct3D11 named the Veldrid backend and was retired in 18.0.0.");
 
-                bool debugLayerActive = (creationFlags & D3D11DebugLayer.CreateDeviceDebug) != 0;
+                bool debugLayerActive = settings is null ? (creationFlags & D3D11DebugLayer.CreateDeviceDebug) != 0
+                    : (device.CreationFlags & DeviceCreationFlags.Debug) != 0;
                 if (debugLayerActive) log.Info(D3D11DebugLayer.ActiveDescription);
 
                 // The adapter the device ACTUALLY runs on, which is right on every path including the default
@@ -116,26 +124,52 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 GpuThreadingCaps? threadingCaps = D3D11ThreadingProbe.TryQuery(device.NativePointer,
                     out string? threadingProbeFailure);
 
-                D3D11RecordMode recordMode = D3D11RecordModes.FromEnvironment(out string? recordValue);
+                string? recordValue = null;
+                D3D11RecordMode recordMode = settings?.RecordMode ?? D3D11RecordModes.FromEnvironment(out recordValue);
                 if (recordValue != null) log.Warn(D3D11RecordModes.UnrecognizedWarning(recordValue));
 
-                var created = new D3D11GpuDevice(device, context, deviceAdapter, threadingCaps, softwareAdapter,
-                    recordMode, debugLayerActive, hwnd, width, height, syncToVerticalBlank);
+                var created = owned = new D3D11GpuDevice(device, context, deviceAdapter, threadingCaps, softwareAdapter,
+                    recordMode, debugLayerActive, hwnd, width, height, syncToVerticalBlank, settings);
 
                 // The device owns both from here, so the finally must not release them.
                 device = null;
                 context = null;
                 return new GpuProviderDevice(created, threadingCaps, threadingProbeFailure);
             }
+            catch (Exception error) { primary = error; throw; }
             finally
             {
-                requested?.Dispose();
-                deviceAdapter?.Dispose();
-                // ALWAYS released: the versioned context above is a second reference to the same object, and it
-                // is the one the device keeps.
-                immediate?.Dispose();
-                context?.Dispose();
-                device?.Dispose();
+                if (settings is not null)
+                {
+                    var failures = System.Collections.Immutable.ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+                    if (primary is not null) GpuDiagnosticFailureException.Append(failures, "gpu.context.provider", primary);
+                    int prior = failures.Count;
+                    void Release(string stage, Action action)
+                    {
+                        try { action(); }
+                        catch (Exception error) { GpuDiagnosticFailureException.Append(failures, stage, error); }
+                    }
+                    Release("gpu.context.provider.dispose.requested", () => requested?.Dispose());
+                    Release("gpu.context.provider.dispose.adapter", () => deviceAdapter?.Dispose());
+                    Release("gpu.context.provider.dispose.immediate", () => immediate?.Dispose());
+                    Release("gpu.context.provider.dispose.context", () => context?.Dispose());
+                    Release("gpu.context.provider.dispose.device", () => device?.Dispose());
+                    if (failures.Count != prior)
+                    {
+                        if (owned is not null) Release("gpu.context.provider.dispose.unadopted", owned.Dispose);
+                        throw new GpuDiagnosticFailureException(failures.ToImmutable());
+                    }
+                }
+                else
+                {
+                    requested?.Dispose();
+                    deviceAdapter?.Dispose();
+                    // ALWAYS released: the versioned context above is a second reference to the same object, and it
+                    // is the one the device keeps.
+                    immediate?.Dispose();
+                    context?.Dispose();
+                    device?.Dispose();
+                }
             }
         }
 
@@ -171,6 +205,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="recordMode">Which recording driver <c>KE_D3D11_RECORD</c> selected.</param>
         /// <param name="debugLayerActive">Whether the device was created WITH the debug layer, which is the one
         /// thing that decides whether an info-queue pump is built at all.</param>
+        /// <param name="settings">Frozen explicit settings, or null for ordinary environment defaults.</param>
         /// <param name="hwnd">The window to present into, or <see cref="IntPtr.Zero"/> for headless.</param>
         /// <param name="width">The initial backbuffer width, ignored when headless.</param>
         /// <param name="height">The initial backbuffer height, ignored when headless.</param>
@@ -179,7 +214,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         [SupportedOSPlatform("windows")]
         D3D11GpuDevice(ID3D11Device device, ID3D11DeviceContext1 context, IDXGIAdapter adapter,
             GpuThreadingCaps? threadingCaps, bool softwareAdapter, D3D11RecordMode recordMode,
-            bool debugLayerActive, IntPtr hwnd, uint width, uint height, bool syncToVerticalBlank)
+            bool debugLayerActive, IntPtr hwnd, uint width, uint height, bool syncToVerticalBlank, D3D11HeadlessDiagnosticSettings? settings = null)
         {
             ArgumentNullException.ThrowIfNull(device);
             ArgumentNullException.ThrowIfNull(context);
@@ -191,7 +226,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _softwareAdapter = softwareAdapter;
             _syncToVerticalBlank = syncToVerticalBlank;
 
-            var scope = new D3D11ConstructionScope(ReportUnwindFailure);
+            var cleanup = new List<Exception>();
+            var scope = new D3D11ConstructionScope(error =>
+            {
+                if (settings is null) ReportUnwindFailure(error);
+                else cleanup.Add(error);
+            });
             try
             {
                 // The liveness token and the loss latch first: every subsystem below holds one, the other, or both,
@@ -203,7 +243,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 // 3. FENCES. The timeline picks its own mechanism (ID3D11Fence via ID3D11Device5, or the event-query
                 // pool), which is the one place that decision is taken, and the subsystem adds the engine logic on
                 // top of it: the submit lock, the liveness adapter and the KE_D3D11_REAL_DRAIN kill switch.
-                bool realDrain = D3D11RealDrain.FromEnvironment(out string? realDrainValue);
+                string? realDrainValue = null;
+                bool realDrain = settings?.RealDrain ?? D3D11RealDrain.FromEnvironment(out realDrainValue);
                 if (realDrainValue != null) log.Warn(D3D11RealDrain.UnrecognizedWarning(realDrainValue));
                 _fences = scope.Track(new D3D11FenceSubsystem(
                     D3D11FenceTimelines.CreateWindows(device, context), _submitLock, _liveness, realDrain));
@@ -219,7 +260,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
                 // 4. THE RING. One allocator for the device, over the fence subsystem's read half, so a segment is
                 // recycled against GPU COMPLETION rather than against a submit receipt (decision U5).
-                int framesInFlight = D3D11FramesInFlight.FromEnvironment(out string? framesValue);
+                string? framesValue = null;
+                int framesInFlight = settings?.FramesInFlight ?? D3D11FramesInFlight.FromEnvironment(out framesValue);
                 if (framesValue != null) log.Warn(D3D11FramesInFlight.UnrecognizedWarning(framesValue));
                 _rings = new D3D11RingAllocator(framesInFlight, _fences, _submitLock,
                     D3D11RingAllocator.MapScopeFor(recordMode));
@@ -245,6 +287,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 // 7a. CAPABILITIES, read off the live device and the adapter it runs on, and the single source both
                 // GpuDeviceContext.Capabilities and IGpuDevice.Capabilities take on this backend. It is here rather
                 // than after the factory because the factory validates a requested sample count against it.
+                var creation = D3D11CreationGate.For(threadingCaps);
+                var explicitShaderCache = settings is null ? null : D3D11DxbcCache.Open(settings.ShaderCache);
+                _diagnosticConfiguration = settings is null ? null : EffectiveConfiguration(adapter, settings, debugLayerActive, explicitShaderCache?.DirectoryPath, (uint)device.CreationFlags);
+                var diagnosticOptions = settings?.CompilerOptions(debugLayerActive) ?? D3D11DiagnosticOptions.FromEnvironment(recordMode, debugLayerActive);
+                diagnosticOptions = diagnosticOptions with { Effective = _diagnosticConfiguration };
+                _invocations = new D3D11InvocationDiagnostics(diagnosticOptions.Invocations, recordMode,
+                    new D3D11TimestampQueries(device, context), _submitLock, _liveness, _loss, creation);
                 var timestamps = new D3D11TimestampApi(new D3D11TimestampQueries(device, context), _liveness, _loss);
                 Capabilities = D3D11DxgiQueries.ReadCapabilitiesWindows(device, adapter,
                     _fences.SupportsCompletionFences, timestamps);
@@ -252,7 +301,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 // 5. THE FACTORY, with the creation gate the threading probe earned: a driver reporting
                 // DriverConcurrentCreates gets no lock at all, and no answer takes the serialized arm.
                 _factory = new D3D11ResourceFactory(device, context, _liveness, _rings, CreateCommandList,
-                    Capabilities, D3D11CreationGate.For(threadingCaps), _fences.CreateFence, _loss, timestamps, _fences, _submitLock);
+                    Capabilities, creation, _fences.CreateFence, _loss, timestamps, _fences, _submitLock, _memoryDiagnostics, diagnosticOptions, settings, explicitShaderCache);
                 log.Info(_factory.SerializesCreation
                     ? "D3D11 resource creation: SERIALIZED behind one lock, because this driver does not report "
                         + "DriverConcurrentCreates (or the threading probe had no answer)."
@@ -282,7 +331,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 {
                     _swapchain = scope.Track(new D3D11Swapchain(
                         D3D11DxgiSwapchain.CreateWindows(device, context, adapter, hwnd, width, height,
-                            depthFormat: null, _liveness),
+                            depthFormat: null, _liveness, _memoryDiagnostics),
                         _submitLock, width, height, syncToVerticalBlank));
                 }
 
@@ -306,9 +355,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
                 scope.Commit();
             }
-            catch
+            catch (Exception error)
             {
                 scope.Unwind();
+                if (settings is not null)
+                {
+                    var failures = System.Collections.Immutable.ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+                    GpuDiagnosticFailureException.Append(failures, "gpu.context.provider", error);
+                    for (int i = 0; i < cleanup.Count; i++)
+                        GpuDiagnosticFailureException.Append(failures, "gpu.context.provider.dispose.resource." + i, cleanup[i]);
+                    throw new GpuDiagnosticFailureException(failures.ToImmutable());
+                }
                 throw;
             }
         }

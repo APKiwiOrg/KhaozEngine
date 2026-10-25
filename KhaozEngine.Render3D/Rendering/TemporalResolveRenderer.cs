@@ -1,3 +1,4 @@
+using KhaozEngine.Render3D.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -34,6 +35,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed partial class TemporalResolveRenderer : IDisposable
     {
+        internal RenderPassProfiling? Profiling { get; set; }
+
         /// <summary>The draws <see cref="Run"/> records: the fused resolve and the depth store, or the split's two
         /// passes.</summary>
         internal const int DrawCallsPerFrame = 2;
@@ -187,6 +190,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <c>PrepareUniforms</c> is.</summary>
         public void PrepareUniforms(IGpuCommandList cl, in TemporalResolveUniforms resolve, in TemporalDepthStoreUniforms store)
         {
+            using var profile = Profiling?.Pass(cl, "temporal.uniforms") ?? default;
             LastUniforms = resolve;
             cl.UpdateBuffer(_resolveBuffer, 0, in resolve);
             cl.UpdateBuffer(_storeBuffer, 0, in store);
@@ -214,15 +218,20 @@ namespace KhaozEngine.Render3D.Rendering
             LastEntry = Entry;
             if (!RunSplit(cl, history))
             {
-                cl.SetFramebuffer(history.ResolveFramebuffer(history.WriteIndex));
-                cl.SetPipeline(_resolvePrograms!.Select(LastVisibilityDecisionSkipped));
-                cl.SetGraphicsResourceSet(0, set);
-                cl.Draw(3);
-
-                cl.SetFramebuffer(history.PreviousDepthFramebuffer(history.WriteIndex));
-                cl.SetPipeline(_storePipeline!);
-                cl.SetGraphicsResourceSet(0, _storeSet!);
-                cl.Draw(3);
+                using (Profiling?.Pass(cl, "temporal.resolve", 0) ?? default)
+                {
+                    cl.SetFramebuffer(history.ResolveFramebuffer(history.WriteIndex));
+                    cl.SetPipeline(_resolvePrograms!.Select(LastVisibilityDecisionSkipped));
+                    cl.SetGraphicsResourceSet(0, set);
+                    cl.Draw(3);
+                }
+                using (Profiling?.Pass(cl, "temporal.depth-store", 0) ?? default)
+                {
+                    cl.SetFramebuffer(history.PreviousDepthFramebuffer(history.WriteIndex));
+                    cl.SetPipeline(_storePipeline!);
+                    cl.SetGraphicsResourceSet(0, _storeSet!);
+                    cl.Draw(3);
+                }
             }
             StoreVisibility(cl, history);
             RecordFinishProbe(cl);   // an armed temporal count request, over the set this run bound (Finish partial)

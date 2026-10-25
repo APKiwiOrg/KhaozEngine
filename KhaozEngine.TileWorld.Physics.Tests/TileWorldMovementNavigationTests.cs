@@ -303,7 +303,8 @@ public class TileWorldMovementNavigationTests(ITestOutputHelper output)
         public TileWorldColliders Colliders { get; }
         public GroundMoveContext Context { get; }
 
-        public Scene(TileWorldDocument doc, Vector3 origin = default, bool afterRegistration = false)
+        public Scene(TileWorldDocument doc, Vector3 origin = default, bool afterRegistration = false,
+            Func<TileCollider, bool>? include = null)
         {
             TileColliderRegistration? registration = null;
             IPhysicsWorldQueryView? movementQueries = null;
@@ -312,7 +313,7 @@ public class TileWorldMovementNavigationTests(ITestOutputHelper output)
                 Colliders = TileWorldColliders.Build(doc, Catalogs,
                     new TileColliderOptions { WallThickness = 0.1f, BlockedHeight = 3f, WalkSurfaceThickness = 0.1f });
                 if (!afterRegistration && origin != Vector3.Zero) World.Rebase(origin);
-                registration = Colliders.AddTo(World);
+                registration = include is null ? Colliders.AddTo(World) : Colliders.AddTo(World, include);
                 movementQueries = registration.CreateMovementQueryView();
                 if (afterRegistration && origin != Vector3.Zero) World.Rebase(origin);
                 Context = new GroundMoveContext(Colliders.Ground.HeightDelegate, Colliders.Ground.NormalDelegate,

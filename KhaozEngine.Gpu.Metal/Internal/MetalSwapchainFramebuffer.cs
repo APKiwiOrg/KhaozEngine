@@ -24,7 +24,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// fresh number every time <see cref="Adopt"/> publishes a texture.</para>
     ///
     /// <para><b>AND MINTING A FRESH ONE COSTS NOTHING AT ALL, which is worth stating because the row 12 handoff
-    /// weighed it as a cost.</b> An acquire happens only at the present boundary, so two
+    /// weighed it as a cost.</b> The first bind resolves the current frame, so two
     /// <c>SetFramebuffer(swapchainFB)</c> calls inside ONE recording always see the same number and the redundant
     /// rebind is still correctly a no-op. The re-emitted viewport and scissor the handoff worried about would only
     /// arrive across a boundary, which starts a new recording that owes both anyway.</para>
@@ -55,19 +55,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
         static long _nextId = long.MinValue;
 
         readonly MetalAttachment[] _colour = new MetalAttachment[1];
+        readonly Action _resolve;
 
         MetalBoundFramebuffer _bound;
 
         /// <param name="colourFormat">The swapchain's colour format as the seam names it, fixed for the wrapper's
         /// life.</param>
-        /// <param name="attachment">The first acquire's colour attachment.</param>
-        /// <param name="size">The size that attachment was made at.</param>
-        internal MetalSwapchainFramebuffer(GpuPixelFormat colourFormat, MetalAttachment attachment,
-            MetalDrawableSize size)
+        /// <param name="size">The configured drawable size, available before the first acquire.</param>
+        /// <param name="resolve">Resolve the current frame before returning native binding data.</param>
+        internal MetalSwapchainFramebuffer(GpuPixelFormat colourFormat, MetalDrawableSize size, Action resolve)
         {
+            ArgumentNullException.ThrowIfNull(resolve);
+            _resolve = resolve;
             // Sample count 1 and no depth, both pinned by the reproduction. See the type remarks.
             Outputs = new GpuOutputDescription(null, colourFormat).WithSampleCount(1);
-            Adopt(attachment, size);
+            Reset(size);
         }
 
         /// <inheritdoc/>
@@ -80,8 +82,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public uint Height { get; private set; }
 
         /// <summary>
-        /// How many attachments this wrapper has published, starting at 1. Present because stable OBJECT identity
-        /// is exactly what makes an acquire invisible to anything holding this object: a diagnostic or a soak
+        /// How many attachments this wrapper has published, starting at zero before the first bind. Stable
+        /// OBJECT identity makes an acquire invisible to anything holding this object: a diagnostic or a soak
         /// session that legitimately needs to know the drawable moved cannot learn it from the reference, and
         /// comparing sizes misses every acquire that did not resize.
         /// </summary>
@@ -92,16 +94,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal MetalAttachment Attachment => _colour[0];
 
         /// <inheritdoc/>
-        MetalBoundFramebuffer IMetalBoundFramebufferSource.AsBound => _bound;
+        MetalBoundFramebuffer IMetalBoundFramebufferSource.AsBound
+        {
+            get
+            {
+                _resolve();
+                return _bound;
+            }
+        }
 
         /// <inheritdoc/>
-        /// <remarks>True, and it is what the present path asks before deciding whether a frame has anything to
-        /// present.</remarks>
+        /// <remarks>Used by the command list to remember that this recording bound the swapchain.</remarks>
         bool IMetalBoundFramebufferSource.IsSwapchain => true;
 
         /// <summary>
         /// PUBLISH A NEW ATTACHMENT UNDER A NEW <see cref="MetalBoundFramebuffer.Id"/> AND THE SAME OBJECT, which
-        /// is the one mutation this type has. Called on the submit thread at the present boundary: once per
+        /// is called by the ordered frame owner at the first bind, or by a present-only frame: once per
         /// successful acquire with the drawable's texture, and on the nil-drawable path with the device's orphan
         /// target.
         /// </summary>
@@ -131,6 +139,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _bound = new MetalBoundFramebuffer(
                 unchecked((ulong)Interlocked.Increment(ref _nextId)), Width, Height, _colour, default,
                 DepthHasStencil: false);
+        }
+
+        /// <summary>Retire native binding data with no recording in flight. Metadata remains available while
+        /// the next frame is unresolved. Clear the shared array before its texture owner releases anything.</summary>
+        internal void Reset(MetalDrawableSize size)
+        {
+            Width = size.Width;
+            Height = size.Height;
+            _bound = default;
+            _colour[0] = default;
         }
 
         /// <summary>True once disposed. Nothing native is released and the wrapper keeps working: see the type

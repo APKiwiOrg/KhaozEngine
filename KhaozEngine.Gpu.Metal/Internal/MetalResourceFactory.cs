@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Internal;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
@@ -227,7 +228,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         IGpuBuffer CreateBufferOnMacOs(in GpuBufferDescription d)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            return MetalBuffer.Create(_device.Handle, _device.Liveness, d, _device.Rings);
+            return MetalBuffer.Create(_device.Handle, _device.Liveness, d, _device.Rings, _device.Memory);
         }
 
         [SupportedOSPlatform("macos")]
@@ -235,7 +236,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         IGpuTexture CreateTextureOnMacOs(in GpuTextureDescription d)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            return MetalTexture.Create(_device.Handle, _device.Liveness, d);
+            return MetalTexture.Create(_device.Handle, _device.Liveness, d, _device.Memory);
         }
 
         [SupportedOSPlatform("macos")]
@@ -265,12 +266,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         IGpuPipeline CreateGraphicsPipelineOnMacOs(in GpuPipelineDescription d)
-            => MetalGraphicsPipeline.Create(_device.Handle, _device.Liveness, d);
+            => MetalGraphicsPipeline.Create(_device.Handle, _device.Liveness, d, _device.ReadCounterMetadata);
 
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         IGpuComputePipeline CreateComputePipelineOnMacOs(in GpuComputePipelineDescription d)
-            => MetalComputePipeline.Create(_device.Handle, _device.Liveness, d);
+            => MetalComputePipeline.Create(_device.Handle, _device.Liveness, d, _device.ReadCounterMetadata);
 
         // Created on first use rather than in the constructor, so a device that never compiles a shader never
         // builds one, and so the factory's constructor stays free of anything that could throw.
@@ -286,6 +287,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // identically. A lock here would buy one avoided allocation, once, at the cost of putting a lock on the
         // path M-W8 says has none.
         [SupportedOSPlatform("macos")]
+        internal void Configure(MetalHeadlessDiagnosticSettings settings, GpuEffectiveDiagnosticConfiguration effective, MetalMslCache? cache)
+        {
+            if (_shaders is not null) throw new InvalidOperationException("Shader settings were already frozen for this Metal device.");
+            _shaders = new MetalShaderCompiler(_device.Handle, _device.Liveness, _device.IndexTables,
+                cache, new SpirvCompileCache(settings.CompileCache, SpirvCompileCache.DefaultCapacity), effective);
+        }
+
         MetalShaderCompiler Shaders =>
             _shaders ??= new MetalShaderCompiler(_device.Handle, _device.Liveness, _device.IndexTables);
 

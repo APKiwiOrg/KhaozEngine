@@ -109,7 +109,10 @@ namespace KhaozEngine.Render3D
         /// Render one preview frame into the (reused) offscreen target and return the sampleable
         /// <see cref="Texture"/>. Clears the scene's instance queue, invokes <paramref name="drawFrame"/> to queue
         /// the preview instance(s) (typically one <see cref="Scene3D.Draw(MeshHandle,System.Numerics.Matrix4x4)"/>
-        /// with the current rotation), records the scene on its own command list, and submits.
+        /// with the current rotation), prepares the frame at the preview size with
+        /// <see cref="Scene3D.PrepareFrame(int,int)"/>, records the scene on its own command list, and submits.
+        /// Bound water therefore needs no preparation in <paramref name="drawFrame"/>. A callback that already
+        /// called <c>PrepareFrame(Width, Height)</c> stays valid because preparation is latched per frame.
         /// </summary>
         /// <remarks>
         /// Does NOT block the CPU. The preview runs on the same device/queue as the on-screen passes, so a later
@@ -123,7 +126,11 @@ namespace KhaozEngine.Render3D
             Scene.Begin();
             drawFrame?.Invoke(Scene);
             // Producers with GPU work of their own run here, while no list is open (see Scene3D.PrepareFrame).
-            Scene.PrepareFrame();
+            // The preview owns its target size, so bound water targets are prepared at that size. A capture
+            // inside another recording is refused here under the preview's own name, before preparation.
+            if (GpuRecording.OpenOwner(_gd) is { } owner)
+                throw new GpuNestedRecordingException(owner, "Render3DPreview.Capture");
+            Scene.PrepareFrame(Width, Height);
             using (GpuRecording.Open(_gd, _cl, "Render3DPreview.Capture"))
                 Scene.RenderInternal(_cl, Width, Height, _fb);
             _gd.Submit(_cl);

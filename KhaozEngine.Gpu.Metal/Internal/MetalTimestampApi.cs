@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Immutable;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -15,24 +16,71 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             _native = native ?? throw new ArgumentNullException(nameof(native));
             using var pool = ObjCAutoreleasePool.Enter();
-            HasTimestampCounterSet = native.HasTimestampCounterSet;
-            SupportsStageBoundary = native.SupportsSampling(0);
-            SupportsBlitBoundary = native.SupportsSampling(4);
-            if (!HasTimestampCounterSet || !(SupportsStageBoundary || SupportsBlitBoundary)) return;
-            IntPtr probe = native.CreateSampleBuffer(1);
-            SupportsTimestampCounters = probe != IntPtr.Zero;
-            native.Release(probe);
+            try
+            {
+                HasTimestampCounterSet = native.HasTimestampCounterSet;
+                SupportsStageBoundary = native.SupportsSampling(0);
+                SupportsBlitBoundary = native.SupportsSampling(4);
+                if (!HasTimestampCounterSet) { UnavailableReason = "No usable timestamp counter exists in a timestamp counter set."; return; }
+                if (!(SupportsStageBoundary || SupportsBlitBoundary)) { UnavailableReason = "Neither stage nor blit boundary sampling is supported."; return; }
+                IntPtr probe = native.CreateSampleBuffer(1);
+                try
+                {
+                    SupportsTimestampCounters = probe != IntPtr.Zero;
+                    if (!SupportsTimestampCounters) UnavailableReason = (native as IMetalCounterMetadataNative)?.SampleBufferFailureReason
+                        ?? "Metal refused the timestamp sample-buffer probe.";
+                }
+                finally { native.Release(probe); }
+            }
+            catch (Exception e)
+            {
+                SupportsTimestampCounters = false;
+                CapabilityStatus = e is NotSupportedException ? GpuDiagnosticStatus.Unsupported : GpuDiagnosticStatus.Invalid;
+                UnavailableReason = e.Message;
+            }
+            if (SupportsTimestampCounters) CapabilityStatus = GpuDiagnosticStatus.Available;
         }
 
         internal bool HasTimestampCounterSet { get; }
+        internal string? UnavailableReason { get; }
+        internal GpuDiagnosticStatus CapabilityStatus { get; } = GpuDiagnosticStatus.Unsupported;
         public bool SupportsTimestampCounters { get; }
         public bool SupportsStageBoundary { get; }
         public bool SupportsBlitBoundary { get; }
 
+        internal MetalCounterMetadata ReadCounterMetadata()
+        {
+            using var pool = ObjCAutoreleasePool.Enter();
+            return ReadCounterMetadataCore() with
+            {
+                TimestampCapability = new(SupportsTimestampCounters ? new(GpuDiagnosticValueType.Boolean, Boolean: true) : null,
+                    "boolean", "MTLDevice timestamp counter, stage/blit sampling boundary and successful sample-buffer probe, capability only",
+                    CapabilityStatus, UnavailableReason, GpuDiagnosticProvenance.HardwareLimit)
+            };
+        }
+
+        MetalCounterMetadata ReadCounterMetadataCore()
+        {
+            if (_native is not IMetalCounterMetadataNative metadata)
+                return new([], [], GpuDiagnosticStatus.Unsupported, "Native counter enumeration is unavailable.");
+            try
+            {
+                var sets = metadata.ReadCounterSets();
+                var points = ImmutableArray.CreateBuilder<uint>();
+                for (uint point = 0; point <= 4; point++) if (_native.SupportsSampling(point)) points.Add(point);
+                return new(sets, points.ToImmutable(), sets.IsEmpty ? GpuDiagnosticStatus.Unsupported : GpuDiagnosticStatus.Available,
+                    sets.IsEmpty ? "The device advertises no counter sets." : null);
+            }
+            catch (Exception e)
+            {
+                return new([], [], e is NotSupportedException ? GpuDiagnosticStatus.Unsupported : GpuDiagnosticStatus.Invalid, e.Message);
+            }
+        }
+
         public MetalTimestampResources CreatePool(uint capacity, bool stageBoundary)
         {
             using var pool = ObjCAutoreleasePool.Enter();
-            if (!SupportsTimestampCounters) throw new NotSupportedException("This Metal device has no usable timestamp counters.");
+            if (!SupportsTimestampCounters) throw new NotSupportedException("This Metal device has no usable timestamp counters. " + UnavailableReason);
             if (capacity == 0) throw new ArgumentOutOfRangeException(nameof(capacity));
             if (stageBoundary ? !SupportsStageBoundary : !SupportsBlitBoundary)
                 throw new NotSupportedException("This Metal device does not support that sampling boundary.");

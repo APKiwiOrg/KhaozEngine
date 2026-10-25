@@ -141,6 +141,14 @@ last-bin convention, and visits at most 32 candidates in ascending order. Canoni
 select a containing triangle. Barycentric interpolation of its three signed depths produces rest
 depth. Apply `max(0, restDepth + displacedY - referenceY)` only afterward. No scene-colour pass is added.
 
+The TileWorld producer stores rest depth against the exact datum 0. Each vertex holds `q = -y`, an exact
+binary32 negation, and the binding reference Y is 0. `TileGroundMesher.WorldMatrix` has no Y translation, so
+world y is the mesh's binary32 y and depth conversion adds no error. Collinear drawn geometry, such as the
+mid-edge vertex of a sloped corner cut against its uncut neighbour's long edge, stays exactly collinear in the
+field. Subtracting from a water level such as rim minus 0.02 m would round that vertex off the long edge and
+the exact agreement proof would refuse it as two surfaces. The water level stays on the plane and keys field
+sharing per reference level and domain, as well as refusal diagnostics.
+
 Canonicalize encoded vertices exactly. Collinear edge segments, including long/short T junctions,
 share one supporting-line record with lexicographically ordered extreme source endpoints. Exact
 predicate fallbacks during preparation may use BCL BigInteger over binary32 dyadic values. Do not

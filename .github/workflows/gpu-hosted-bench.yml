@@ -40,6 +40,21 @@ on:
         type: choice
         options: [all, windows-d3d11, windows-vulkan, linux-vulkan]
         default: all
+      renderer-perf-unit:
+        description: Exact separately approved renderer unit, empty keeps existing modes
+        required: false
+        default: ''
+        type: string
+      renderer-perf-manifest-sha256:
+        description: SHA-256 of the exact renderer manifest bytes
+        required: false
+        default: ''
+        type: string
+      renderer-perf-workload-sha:
+        description: Measured workload parent of the immutable authorization ref
+        required: false
+        default: ''
+        type: string
       coverage-perf-unit:
         description: Exact separately approved performance unit, empty keeps the filtered bench
         required: false
@@ -69,6 +84,21 @@ jobs:
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
     steps:
+      - name: Checkout trusted renderer admission implementation
+        if: inputs.renderer-perf-unit != '' || inputs.renderer-perf-manifest-sha256 != '' || inputs.renderer-perf-workload-sha != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: renderer-perf-trusted
+          persist-credentials: false
+      - name: Checkout renderer authorization for hosted CPU admission
+        if: inputs.renderer-perf-unit != '' || inputs.renderer-perf-manifest-sha256 != '' || inputs.renderer-perf-workload-sha != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 2
+          path: renderer-perf-requested
+          persist-credentials: false
       - id: pick
         shell: bash
         env:
@@ -77,9 +107,21 @@ jobs:
           COVERAGE_PERF_UNIT: ${{ inputs.coverage-perf-unit }}
           COVERAGE_PERF_MANIFEST_SHA256: ${{ inputs.coverage-perf-manifest-sha256 }}
           COVERAGE_PERF_WORKLOAD_SHA: ${{ inputs.coverage-perf-workload-sha }}
+          RENDERER_PERF_UNIT: ${{ inputs.renderer-perf-unit }}
+          RENDERER_PERF_MANIFEST_SHA256: ${{ inputs.renderer-perf-manifest-sha256 }}
+          RENDERER_PERF_WORKLOAD_SHA: ${{ inputs.renderer-perf-workload-sha }}
+          TESTED_REF: ${{ inputs.ref }}
+          KE_RENDERER_PERF_REPORTS: ${{ runner.temp }}/renderer-admission
           WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
           LC_ALL: C
         run: |
+          if [ -n "$RENDERER_PERF_UNIT$RENDERER_PERF_MANIFEST_SHA256$RENDERER_PERF_WORKLOAD_SHA" ]; then
+            cd "$GITHUB_WORKSPACE/renderer-perf-requested"
+            admission="$GITHUB_WORKSPACE/renderer-perf-trusted/scripts/renderer-perf-workflow.ps1"
+            pwsh -NoProfile -File "$admission" -Mode Authorize
+            pwsh -NoProfile -File "$admission" -Mode Select >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ -n "$COVERAGE_PERF_UNIT" ]; then
             if [ "$WORKFLOW_RUN_ATTEMPT" != '1' ]; then
               echo "::error::coverage performance requires github.run_attempt 1, a re-run cannot reuse an approval"; exit 1
@@ -107,7 +149,7 @@ jobs:
   bench:
     needs: legs
     # Re-running only failed jobs reuses the legs result, so a measurement re-run is refused here, before a runner.
-    if: inputs.coverage-perf-unit == '' || github.run_attempt == 1
+    if: inputs.renderer-perf-unit == '' && inputs.renderer-perf-manifest-sha256 == '' && inputs.renderer-perf-workload-sha == '' && (inputs.coverage-perf-unit == '' || github.run_attempt == 1)
     name: ${{ matrix.leg }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ inputs.coverage-perf-unit != '' && 30 || 60 }}
@@ -363,4 +405,180 @@ jobs:
         with:
           name: gpu-hosted-bench-${{ matrix.leg }}
           path: ${{ runner.temp }}/coverage-perf
+          if-no-files-found: warn
+
+  renderer-bench:
+    needs: legs
+    if: inputs.renderer-perf-unit != '' && github.run_attempt == 1
+    name: renderer / ${{ matrix.leg }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.jobMinutes }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.legs.outputs.matrix) }}
+    env:
+      KE_GPU_TESTS: '1'
+      KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
+      KE_D3D11_ADAPTER: NVIDIA
+      KE_VULKAN_DEVICE: discrete
+      KE_VULKAN_REQUIRED: ${{ matrix.backend == 'vulkan-native' && '1' || '' }}
+      KE_RENDERER_PERF_UNIT: ${{ inputs.renderer-perf-unit }}
+      RENDERER_PERF_UNIT: ${{ inputs.renderer-perf-unit }}
+      RENDERER_PERF_MANIFEST_SHA256: ${{ inputs.renderer-perf-manifest-sha256 }}
+      RENDERER_PERF_WORKLOAD_SHA: ${{ inputs.renderer-perf-workload-sha }}
+      COVERAGE_PERF_UNIT: ${{ inputs.coverage-perf-unit }}
+      COVERAGE_PERF_MANIFEST_SHA256: ${{ inputs.coverage-perf-manifest-sha256 }}
+      COVERAGE_PERF_WORKLOAD_SHA: ${{ inputs.coverage-perf-workload-sha }}
+      TESTED_REF: ${{ inputs.ref }}
+      LEGS: ${{ matrix.leg }}
+      FILTER: ${{ inputs.filter }}
+      WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
+      DOTNET_TieredCompilation: '1'
+      DOTNET_gcServer: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 2
+      - name: Checkout trusted renderer admission implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: renderer-perf-trusted
+          persist-credentials: false
+      - name: Install PowerShell for renderer measurement (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          PWSH_URL: https://github.com/PowerShell/PowerShell/releases/download/v7.6.7/powershell-7.6.7-linux-x64.tar.gz
+          PWSH_SHA256: 6896f9e3a6b0a354bf470835a96da76d2f801cd50dcf047ad7c4563bf93bf431
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/pwsh"
+          archive="$RUNNER_TEMP/pwsh.tar.gz"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$archive" "$PWSH_URL"
+          echo "$PWSH_SHA256  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$dir"
+          chmod +x "$dir/pwsh"
+          "$dir/pwsh" -NoProfile -Command "\$PSVersionTable.PSVersion.ToString()"
+          echo "$dir" >> "$GITHUB_PATH"
+
+      - name: Install PowerShell for renderer measurement (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          PWSH_URL: https://github.com/PowerShell/PowerShell/releases/download/v7.6.7/PowerShell-7.6.7-win-x64.zip
+          PWSH_SHA256: d2f952ebdbf24386cb8923553aa58e41a846db35a6155ea04c58142a4b16dbb7
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $dir = Join-Path $env:RUNNER_TEMP 'pwsh'
+          $archive = Join-Path $env:RUNNER_TEMP 'pwsh.zip'
+          Invoke-WebRequest -Uri $env:PWSH_URL -OutFile $archive -UseBasicParsing
+          $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          if ($actual -ne $env:PWSH_SHA256) { throw "PowerShell archive SHA-256 $actual does not match $env:PWSH_SHA256" }
+          Expand-Archive -Path $archive -DestinationPath $dir -Force
+          & (Join-Path $dir 'pwsh.exe') -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # An explicit BOM-free UTF-8 append, rather than Windows PowerShell 5.1 Out-File, keeps the file byte-exact.
+          [IO.File]::AppendAllText($env:GITHUB_PATH, $dir + [Environment]::NewLine)
+
+
+      - name: Admit renderer authorization on hosted hardware
+        shell: pwsh
+        env:
+          KE_RENDERER_PERF_REPORTS: ${{ runner.temp }}/renderer-perf/${{ matrix.leg }}
+        run: |
+          if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted') { throw 'KhaozEngine is public, hosted runners are required' }
+          "KE_RENDERER_PERF_REPORTS=$env:KE_RENDERER_PERF_REPORTS" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          & (Join-Path $env:GITHUB_WORKSPACE 'renderer-perf-trusted/scripts/renderer-perf-workflow.ps1') -Mode Authorize
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer authorization failed' }
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: GPU, driver model and the GRID driver (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: powershell
+        env:
+          # Microsoft's redistribution for NCasT4_v3 on Windows Server 2022 (vGPU 20.2), licensed for Azure. From
+          # learn.microsoft.com/azure/virtual-machines/windows/n-series-driver-setup.
+          GRID_URL: https://download.microsoft.com/download/0f21fd13-2390-4c79-876a-87ae3dc724c6/596.86_grid_win10_win11_server2022_server2025_dch_64bit_international_azure_swl.exe
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $ProgressPreference = 'SilentlyContinue'
+          Get-CimInstance Win32_VideoController | Format-List Name, DriverVersion, Status
+          & nvidia-smi
+          $model = (& nvidia-smi --query-gpu=driver_model.current --format=csv,noheader) -join ''
+          Write-Host "driver model: $model"
+          if ($model -match 'TCC') {
+            $exe = Join-Path $env:RUNNER_TEMP 'grid.exe'
+            Invoke-WebRequest -Uri $env:GRID_URL -OutFile $exe -UseBasicParsing
+            $p = Start-Process -FilePath $exe -ArgumentList '-s', '-noreboot', '-clean', '-noeula' -Wait -PassThru
+            Write-Host "GRID installer exit code: $($p.ExitCode)"
+            Start-Sleep -Seconds 15
+            & nvidia-smi
+            Write-Host "after the install: $((& nvidia-smi --query-gpu=driver_model.current,driver_model.pending --format=csv,noheader) -join '')"
+            Get-CimInstance Win32_VideoController | Format-List Name, Status
+          }
+
+      - name: GPU, driver and Vulkan devices (Linux)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        shell: bash
+        run: |
+          nvidia-smi || true
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libvulkan1 vulkan-tools
+          ls -la /usr/share/vulkan/icd.d /etc/vulkan/icd.d 2>/dev/null || true
+          vulkaninfo --summary 2>&1 | head -60 || true
+
+      # The runner also carries Mesa's llvmpipe, and a Vulkan device request that cannot be honoured falls back to
+      # it without failing (#1200): late in one run the T4 stopped being chosen and two cost facts ran on llvmpipe.
+      # Loading only the NVIDIA driver turns that into a failure instead of a skipped measurement.
+      - name: Load only the NVIDIA Vulkan driver (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          # One of the two directories is usually absent, and ls then exits 2, which the step's pipefail would
+          # turn into a failure, so the first existing manifest is found with a glob instead.
+          icd=""
+          for f in /usr/share/vulkan/icd.d/nvidia_icd*.json /etc/vulkan/icd.d/nvidia_icd*.json; do
+            if [ -f "$f" ]; then icd="$f"; break; fi
+          done
+          if [ -z "$icd" ]; then echo "::error::no NVIDIA Vulkan ICD manifest on this runner"; exit 1; fi
+          echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          VK_DRIVER_FILES="$icd" VK_ICD_FILENAMES="$icd" vulkaninfo --summary 2>&1 | grep -E "deviceName|deviceType" || true
+
+
+      - name: Build isolated renderer performance project
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force local-feed | Out-Null
+          & dotnet build tools/Renderer.Perf.Tests/Renderer.Perf.Tests.csproj -c Release 2>&1 | Tee-Object -FilePath (Join-Path $env:KE_RENDERER_PERF_REPORTS 'build.log')
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer performance build failed' }
+          $trusted = Join-Path $env:GITHUB_WORKSPACE 'renderer-perf-trusted'
+          New-Item -ItemType Directory -Force (Join-Path $trusted 'local-feed') | Out-Null
+          & dotnet build (Join-Path $trusted 'tools/Renderer.Perf.Verify/Renderer.Perf.Verify.csproj') -c Release 2>&1 | Tee-Object -FilePath (Join-Path $env:KE_RENDERER_PERF_REPORTS 'verifier-build.log')
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted renderer verifier build failed' }
+
+      - name: Measure exactly one authorized renderer unit
+        shell: pwsh
+        run: |
+          $fixedFilter = 'FullyQualifiedName=Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit&Category=RendererPerformance'
+          & dotnet test tools/Renderer.Perf.Tests/Renderer.Perf.Tests.csproj -c Release --no-build --filter $fixedFilter --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=measurement.trx' --results-directory $env:KE_RENDERER_PERF_REPORTS 2>&1 | Tee-Object -FilePath (Join-Path $env:KE_RENDERER_PERF_REPORTS 'measurement.log')
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer measurement failed, retain partial evidence and request fresh approval' }
+          & (Join-Path $env:GITHUB_WORKSPACE 'renderer-perf-trusted/scripts/renderer-perf-workflow.ps1') -Mode Verify
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer final evidence was refused' }
+
+      - name: Upload renderer evidence including partial failures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: renderer-perf-${{ matrix.leg }}
+          path: ${{ runner.temp }}/renderer-perf
           if-no-files-found: warn

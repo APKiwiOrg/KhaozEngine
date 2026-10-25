@@ -209,74 +209,6 @@ namespace KhaozEngine.Render3D
             UploadFoliagePointShadowStreams(cl);
         }
 
-        /// <summary>
-        /// Render every packed light in ONE pass: for each, clear its atlas row and draw every rigid caster whose
-        /// world sphere touches that light's sphere into each of its six face cells. Returns how many caster DRAW
-        /// CALLS were issued in total, which is what the integration half reports as its face draw count.
-        /// <para>
-        /// Records into <paramref name="cl"/> and does not submit. Requires this frame's instances to be grouped
-        /// and uploaded already (the pass reuses that buffer), which is exactly where the key light's depth pass
-        /// sits too, and requires <see cref="UploadPointShadowFaces"/> to have run.
-        /// </para>
-        /// </summary>
-        internal int RenderPointShadowSlots(IGpuCommandList cl)
-        {
-            ArgumentNullException.ThrowIfNull(cl);
-            if (_pointShadows is not { } renderer || _pointShadowAtlas is null
-                || _packedPointSlots.Count == 0) return 0;
-
-            int draws = 0;
-            IGpuBuffer? instances = _model.InstanceBuffer;
-            PointShadowAtlas? activeAtlas = null;
-            foreach (PackedPointShadowSlot packed in _packedPointSlots)
-            {
-                if (!ReferenceEquals(activeAtlas, packed.Atlas))
-                {
-                    if (activeAtlas is not null) renderer.EndPass(cl);
-                    renderer.BeginPass(cl, packed.Atlas);
-                    activeAtlas = packed.Atlas;
-                }
-                renderer.ClearRow(cl, packed.Atlas, packed.Row);
-
-                bool rigidSet = (packed.Casters & PointShadowCasterSet.Rigid) != 0;
-                bool drawRigid = rigidSet && instances is not null;
-                if (drawRigid)
-                    BuildPointCasterSpans(packed.LightPosAbsolute, packed.Radius, packed.NearRadius,
-                        packed.ExclusionMin, packed.ExclusionMax);
-                for (int face = 0; face < PointShadowMath.FaceCount; face++)
-                {
-                    if (drawRigid)
-                    {
-                        ShadowCastKind bound = ShadowCastKind.None;
-                        foreach (ShadowCasterSpan span in _pointCasterSpans)
-                        {
-                            var m = _meshes[span.Index];
-                            if (m is not { } mesh) continue;
-                            if (span.Kind != bound)
-                            {
-                                renderer.BeginFace(cl, packed.Atlas,
-                                    packed.PackedIndex * PointShadowMath.FaceCount + face, face,
-                                    packed.Row, span.Kind);
-                                bound = span.Kind;
-                            }
-                            renderer.DrawCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
-                                instances!, span.Start, span.Count);
-                            draws++;
-                        }
-                    }
-                    // Casting foliage at rest rides the rigid set only, from its own proxy stream.
-                    if (rigidSet)
-                        draws += DrawFoliagePointShadowFace(cl, renderer, packed.Atlas, packed.PackedIndex, face,
-                            packed.Row, packed.LightPosAbsolute, packed.Radius, packed.NearRadius,
-                            packed.ExclusionMin, packed.ExclusionMax);
-                    if ((packed.Casters & PointShadowCasterSet.Skinned) != 0 && packed.RequestIndex >= 0)
-                        draws += DrawPointSkinnedCastersForFace(cl, renderer, packed, face);
-                }
-            }
-            if (activeAtlas is not null) renderer.EndPass(cl);
-            return draws;
-        }
-
         /// <summary>One light packed into this frame's ring: where its six faces sit in the ring, which atlas row
         /// it renders into, and the light itself, which the draw re-culls its casters against.</summary>
         readonly record struct PackedPointShadowSlot(
@@ -365,24 +297,19 @@ namespace KhaozEngine.Render3D
             return outF;
         }
 
-        /// <summary>
-        /// The tail of <see cref="Dispose"/>: the tile-ground materials, then this pass's atlas. There is no
-        /// ordering between the two, they are unrelated resources freed at the same moment.
-        /// <para>
-        /// They share one call because <c>Scene3D.cs</c> is at its file-size baseline and cannot grow a line, and
-        /// two statements on one line there is the worse answer. It sits in this file because this is the partial
-        /// that added the second release.
-        /// </para>
-        /// </summary>
-        void DisposeTileGroundAndPointShadowResources()
+        // Model-owned and external material receivers must all relinquish the shared atlas pair.
+        void DisposePointShadowResources(Internal.ResourceDisposal disposal, bool shadowReceiversReleased)
         {
-            DisposeTileGroundMaterials();
-            DisposePointShadows();
-            DisposeFoliagePointShadows();
+            if (_pointShadowOwnersReleased && shadowReceiversReleased)
+            {
+                if (disposal.Release("pointShadow.transientAtlas", () => _pointShadowTransientAtlas?.Dispose())) _pointShadowTransientAtlas = null;
+                if (disposal.Release("pointShadow.atlas", () => _pointShadowAtlas?.Dispose())) _pointShadowAtlas = null;
+            }
+            DisposeFoliagePointShadows(disposal);
         }
 
         /// <summary>Release the atlas and its pass. Called from
-        /// <see cref="DisposeTileGroundAndPointShadowResources"/> and by
+        /// scene teardown and by
         /// <see cref="CommitPointShadowReplacement"/> when a layout is replaced.</summary>
         void DisposePointShadows()
         {

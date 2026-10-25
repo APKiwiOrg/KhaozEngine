@@ -1,3 +1,4 @@
+using KhaozEngine.Render3D.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -25,6 +26,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed class TransitionRenderer : IDisposable
     {
+        internal RenderPassProfiling? Profiling { get; set; }
+
         struct SolidUbo { public Vector4 ColorAlpha; }   // rgb = fill colour, a = opacity
         struct CrossfadeUbo { public Vector4 Params; }   // .x = frozen-frame opacity (Cover)
 
@@ -142,7 +145,8 @@ namespace KhaozEngine.Render3D.Rendering
                     // CopyResource wants two identical descriptions. Copying the base level is also all the pass
                     // needs, since the frozen frame is only ever sampled 1:1 by the fullscreen crossfade.
                     // The extent is the destination's own, which BindTargets sized to ColorTex's mip 0.
-                    cl.CopyTextureSubresource(res.ColorTex, 0, 0, _frozen!, _frozen!.Width, _frozen.Height);
+                    using (Profiling?.Pass(cl, "copy.transition-snapshot") ?? default)
+                        cl.CopyTextureSubresource(res.ColorTex, 0, 0, _frozen!, _frozen!.Width, _frozen.Height);
                     _frozenValid = true;
                 }
                 else
@@ -150,6 +154,8 @@ namespace KhaozEngine.Render3D.Rendering
                     _frozenValid = false;   // no real previous frame (post-resize / first frame): plain-fade fallback
                 }
             }
+            if (!(frozenActive && !_prevFrozenActive && _haveResolvedFrame))
+                Profiling?.Pass(cl, "copy.transition-snapshot", executed: false);
             _prevFrozenActive = frozenActive;
         }
 
@@ -172,6 +178,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <paramref name="target"/>, mirroring the overlay renderers' between-pass upload.</summary>
         public void Render(IGpuCommandList cl, RenderResources res, IGpuFramebuffer target, IScreenTransition? t)
         {
+            using var profile = Profiling?.Pass(cl, "display.transition", executed: t is { IsActive: true, Cover: > 0f }) ?? default;
             if (t is null || !t.IsActive) return;
             float cover = t.Cover;
             // Cover == 0 is FULLY REVEALED (the live view): nothing to draw, byte-identical to no pass. This is NOT the

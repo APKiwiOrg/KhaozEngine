@@ -120,8 +120,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         MetalGpuDevice(MTLDevice device, MTLCommandQueue queue, GpuCapabilities capabilities,
             DeviceLiveness liveness, MetalDeviceLossLatch loss, MetalTimeline timeline,
             MetalUncommittedBuffers uncommitted, IMetalSetupNative setupNative, int framesInFlight,
-            IMetalStagingSource staging, uint bufferOffsetAlignment, bool supportsBorderColor)
+            IMetalStagingSource staging, uint bufferOffsetAlignment, bool supportsBorderColor, MetalMemoryDiagnostics? memory = null)
         {
+            Memory = memory ?? new();
             _device = device;
             Queue = queue;
             _liveness = liveness;
@@ -130,9 +131,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _uncommitted = uncommitted;
             _commandBuffers = new MetalCommandBufferSource(queue);
             Capabilities = capabilities;
-            _setup = new MetalSetupCommands(setupNative, liveness);
+            _setup = new MetalSetupCommands(new MetalMemorySetupNative(setupNative, Memory), liveness);
             _framesInFlight = framesInFlight;
-            _staging = staging;
+            _staging = new MetalMemoryStagingSource(staging, Memory);
             _renderApi = new MetalRenderApi();
             _computeApi = new MetalComputeApi();
             _bufferOffsetAlignment = bufferOffsetAlignment;
@@ -285,10 +286,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// divide by <c>FramesBegun</c> while it is 0.
         /// </para>
         /// <para>
-        /// <b>THE ACQUIRE COUNT RUNS EXACTLY ONE AHEAD OF <c>FramesBegun</c> ON A WINDOWED DEVICE</b>, and that
-        /// offset is a fact rather than an off-by-one: the first drawable is acquired at CREATION, before any
-        /// frame exists, because M-W4 keeps the incumbent's timing of taking the next frame's drawable at the
-        /// boundary.
+        /// <b>THE ACQUIRE COUNT TRACKS CURRENT-FRAME RESOLUTION.</b> Construction takes no drawable. A normal
+        /// completed frame contributes one acquisition and one present boundary. Between them, a frame that
+        /// has bound its swapchain can already count its acquisition before <c>FramesBegun</c> counts its
+        /// present. No acquisition for a future frame follows that boundary.
         /// </para>
         /// </remarks>
         public GpuDeviceCounters Counters

@@ -98,6 +98,8 @@ public sealed class UpdaterUiTests
         };
 
         string json = JsonSerializer.Serialize(config, UpdatesJsonContext.Default.ApplyUpdateConfig);
+        Assert.Contains('\n', json);
+        Assert.DoesNotContain('\r', json);
         ApplyUpdateConfig? back = JsonSerializer.Deserialize(json, UpdatesJsonContext.Default.ApplyUpdateConfig);
 
         Assert.NotNull(back);

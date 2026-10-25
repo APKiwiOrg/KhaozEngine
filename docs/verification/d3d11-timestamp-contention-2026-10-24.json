@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "issue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1560",
+  "scope": "Test-only D3D11 timestamp contention ownership and cleanup repair.",
+  "implementationCommit": "2ad81d8e58c953ca53ee3dddd72a5f999cccdbc4",
+  "reviewedCommit": "74d21e851af34116f0d8084f89653096b1c03082",
+  "verifiedCommit": "1c7103c7fd5b9561e3307234527da0cd770180be",
+  "integratedMainAncestor": "91910d28f50ef6181457af852cdd2edf416d6f6b",
+  "review": {
+    "verdict": "approved",
+    "reportSha256": "fe686bf87cad22952081622a13fdc324bbd4fdef241d8b8d47db4b49cf169014"
+  },
+  "sourceFiles": [
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/D3D11TimestampTests.cs",
+      "sha256": "38c76804e2f52069b1ffb728a653530eeccc5c2cd29d1b1f96847785b05d0f90",
+      "identicalToImplementation": true
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/D3D11TimestampTests.Contention.cs",
+      "sha256": "86f8fdf4c1f14ca3ae7ffe35cb0bd15560bf424292c77d68ba3868702ea5b7c7",
+      "identicalToImplementation": true
+    }
+  ],
+  "discriminator": {
+    "passed": 1,
+    "purpose": "Distinguish resolver scheduling delay from time inside TryResolve.",
+    "observations": [
+      "An unstarted resolver task can time out before entering TryResolve.",
+      "An owned resolver thread returned Pending while another thread retained the gate.",
+      "Pending left the destination and query, flush and wait counters unchanged.",
+      "The resolver was joined before fixture disposal."
+    ],
+    "trxSha256": "132b6e24d457e3b3ab512f54828e96d1f24f5bceeea83f53fef919ea1bd822db"
+  },
+  "localVerification": {
+    "passed": 31,
+    "failed": 0,
+    "skipped": 0,
+    "groups": {
+      "timestamp": 15,
+      "asyncBuffer": 1,
+      "offlineCapture": 5,
+      "scopedPrime": 10
+    },
+    "nativeFactExcluded": true,
+    "trxSha256": "49a489f23a5995fcca18328dcca03fbc96cbfa6e690dcd1012214cc7012832f0",
+    "commands": [
+      {
+        "command": [
+          "build-slot",
+          "--label",
+          "timestamp-919-tests",
+          "--",
+          "dotnet",
+          "test",
+          "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+          "-c",
+          "Release",
+          "--filter",
+          "((FullyQualifiedName~KhaozEngine.Tests.Gpu.D3D11TimestampTests&FullyQualifiedName!~FeatureLevel10OrAboveGuaranteesNativeTimestampBatch)|FullyQualifiedName=KhaozEngine.Tests.Gpu.GpuAsyncBufferReadTests.PendingAndBusyReadsNeitherTouchMemoryNorDrain|FullyQualifiedName~TileWorldOfflineCaptureTests|FullyQualifiedName~TileWorldBuildQueueScopedPrimeTests)",
+          "--logger",
+          "trx;LogFileName=reconciled-919.trx",
+          "--results-directory",
+          "$EVIDENCE_ROOT/reconciled-919"
+        ],
+        "environment": {
+          "KE_GPU_TESTS": "0"
+        },
+        "exitCode": 0,
+        "logSha256": "171c604b387b2b3a776124529605c283556e8ec96a49c5891db15b406e526498"
+      },
+      {
+        "command": [
+          "build-slot",
+          "--label",
+          "timestamp-919-format",
+          "--",
+          "dotnet",
+          "format",
+          "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj",
+          "--no-restore",
+          "--include",
+          "KhaozEngine.Render.Tests/Gpu/D3D11TimestampTests.cs",
+          "KhaozEngine.Render.Tests/Gpu/D3D11TimestampTests.Contention.cs",
+          "--verify-no-changes",
+          "--verbosity",
+          "minimal"
+        ],
+        "environment": {},
+        "exitCode": 0,
+        "logSha256": "2331a99ae08b7c9204b2709ab71cb476b5bae0e957e9f5ee687ffeb0647e86ea"
+      },
+      {
+        "command": [
+          "sh",
+          "scripts/check-dashes.sh",
+          "--tree"
+        ],
+        "environment": {},
+        "exitCode": 0,
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "sh",
+          "scripts/check-prose.sh",
+          "--tree"
+        ],
+        "environment": {},
+        "exitCode": 0,
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "sh",
+          "scripts/check-file-size.sh",
+          "--tree"
+        ],
+        "environment": {},
+        "exitCode": 0,
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": [
+          "sh",
+          "scripts/check-agent-instructions.sh",
+          "--tree"
+        ],
+        "environment": {},
+        "exitCode": 0,
+        "logSha256": "adb0fc3d2d5c801b8d2dfcbcf555adb0905da5d6bae1a56eea01fd9d2208e0b0"
+      },
+      {
+        "command": [
+          "bash",
+          "scripts/check-doc-versions.sh"
+        ],
+        "environment": {},
+        "exitCode": 0,
+        "logSha256": "85218799ffb641a03aefd0d853d275b85d67d9a70847001107aa0741b200dd2a"
+      },
+      {
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "environment": {},
+        "exitCode": 0,
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "windowsVerification": {
+    "runUrl": "https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40069610996",
+    "jobId": 120800033591,
+    "sourceCommit": "74d21e851af34116f0d8084f89653096b1c03082",
+    "filter": "FullyQualifiedName~D3D11TimestampTests|FullyQualifiedName~ComputeTimestampGpuTests",
+    "selectedSuite": {
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    "backend": "Direct3D11Native",
+    "adapter": "Microsoft Basic Render Driver",
+    "timestampsSupported": true,
+    "tailStatus": "Ready",
+    "periodNanoseconds": 100,
+    "separateFxcStep": {
+      "passed": 31,
+      "skipped": 1,
+      "skipReason": "Opt-in disassembly diagnostic"
+    },
+    "acceptanceSha256": "8d82f89edd8610d2cae10f40fb1b2b87856c974d4617ea27d4c7a12ee9b8af5e"
+  },
+  "limitations": [
+    "The controlled discriminator proves a false-timeout mechanism, not the exact historical hosted scheduler state.",
+    "Production timestamp code, thresholds and test budgets are unchanged.",
+    "Native Windows execution belongs to the stated earlier commit. Relevant timestamp and GPU source files were unchanged by the later main reconciliation.",
+    "This focused verification does not replace full hosted CI and all-backend gates at the final combined v21.13.0 commit.",
+    "No physics timing waiver is granted. Changed physics paths require a fresh eligibility assessment.",
+    "This repair establishes no FPS improvement or completion of the 144 FPS target."
+  ]
+}

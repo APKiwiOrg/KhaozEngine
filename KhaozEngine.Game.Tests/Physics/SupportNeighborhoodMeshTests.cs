@@ -190,7 +190,7 @@ public class SupportNeighborhoodMeshTests
                 Pose pose = Against(random, face, probe, out double gap);
                 SupportQueryDiagnostics.Reset();
                 Query query = scene.Query(scene.World, pose, probe: probe);
-                int candidates = SupportQueryDiagnostics.Snapshot().MeshLeaves;
+                long candidates = SupportQueryDiagnostics.Snapshot().MeshLeaves;
                 Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
                 (OracleVector lower, OracleVector upper) = Segment(pose);
                 SupportNeighborhoodOracle.AssertMatches(query.Elements, faces, lower, upper, probe.Radius, Band);

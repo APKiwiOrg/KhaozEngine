@@ -21,6 +21,9 @@ public enum TileWaterOpticsFailureKind
     /// <summary>Source conversion plus field reconstruction exceeds <c>min(0.0001 metres, TileSize / 1024)</c>,
     /// or a scalar cannot be represented by every backend.</summary>
     UnrepresentableSurface,
+    /// <summary>The effective water look has no certified displacement envelope, such as FFT water. Water is
+    /// withdrawn while terrain still builds and publishes. A certifiable look republishes it.</summary>
+    UncertifiedDisplacement,
 }
 
 /// <summary>A refused field request, with the unavailable region when source data is missing. Domain is the

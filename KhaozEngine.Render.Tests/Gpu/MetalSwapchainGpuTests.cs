@@ -94,9 +94,8 @@ namespace KhaozEngine.Tests.Gpu
         /// before the request, so a recycled framebuffer-only drawable is possible after it. Every frame after the
         /// request, <c>SwapchainCopyable</c> must equal the held texture's own <c>!isFramebufferOnly</c>, it must
         /// become true within one pool cycle, and a copy on the first copyable frame must read back the colour the
-        /// same clear-only recording cleared it to. The copy is submitted with no wait after it, and a later present
-        /// in the loop, when the first copyable frame is not the last, releases the drawable before the wait. The
-        /// row does not force that ordering, so it is no proof of the drawable's lifetime while a copy is in flight.
+        /// same clear-only recording cleared it to. Every recording is submitted and presented with no wait
+        /// afterwards. The final drain follows the copied drawable's release, exercising its retained lifetime.
         /// Releasing the request must make the swapchain uncopyable again.
         /// </summary>
         [GpuFact]
@@ -224,11 +223,12 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.NotNull(device.SwapchainFramebuffer);
                 Assert.Same(boundary.Framebuffer, device.SwapchainFramebuffer);
 
-                // THE THREE FIELDS ARE ZERO BEFORE ANY FRAME AND THE ACQUIRE PAIR IS NOT, because the first
-                // drawable is taken at CREATION. That offset is the fact M-W4's timing produces.
+                // Creation publishes metadata only. No drawable wait precedes the first frame's preparation.
                 GpuDeviceCounters atRest = device.Counters;
                 Assert.Equal(0L, atRest.FramesBegun);
-                Assert.Equal(1L, atRest.AcquireWaitCount);
+                Assert.Equal(0L, atRest.AcquireWaitCount);
+                Assert.Equal(0uL, boundary.Framebuffer.Generation);
+                Assert.False(boundary.HasDrawable);
 
                 for (int i = 0; i < 8; i++) device.Present();
 
@@ -263,8 +263,9 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(device.AcquireTotals.Count, counters.AcquireWaitCount);
                 Assert.Equal(device.AcquireTotals.TotalMs, counters.AcquireWaitMs);
 
-                // AND THE OFFSET IS EXACTLY ONE, which is the whole of M-W4's timing stated as an equation.
-                Assert.Equal(counters.FramesBegun + 1L, counters.AcquireWaitCount);
+                // Present-only frames acquire their current drawable and leave the next frame unresolved.
+                Assert.Equal(counters.FramesBegun, counters.AcquireWaitCount);
+                Assert.False(boundary.HasDrawable);
 
                 // THE PRESENT BUFFER OCCUPIED THE UNCOMMITTED BOUND'S PLUS ONE, which had no occupant before this
                 // row and is what makes section 6.1's bound tight.
@@ -322,10 +323,16 @@ namespace KhaozEngine.Tests.Gpu
 
                 device.SwapchainCopySourceRequested = true;
 
+                // Apply the request at a boundary without acquiring a future frame.
+                device.Present();
+                Assert.False(device.SwapchainCopyable);
+                using IGpuCommandList cl = device.Factory.CreateCommandList();
                 int firstCopyable = -1;
                 for (int frame = 0; frame < cycle; frame++)
                 {
-                    device.Present();
+                    cl.Begin();
+                    cl.SetFramebuffer(swapchain);
+                    cl.ClearColorTarget(0, clear);
                     Assert.True(boundary.HasDrawable, "the headless layer vended no drawable after the request.");
 
                     bool real = !TextureIsFramebufferOnly(boundary.Framebuffer.Attachment.Texture);
@@ -333,19 +340,16 @@ namespace KhaozEngine.Tests.Gpu
                         + $"texture copyable={real}");
                     Assert.Equal(real, device.SwapchainCopyable);
 
-                    if (!device.SwapchainCopyable || firstCopyable >= 0) continue;
-                    firstCopyable = frame;
-
-                    // ONE RECORDING, CLEAR-ONLY: no draw opens the pass, so the copy itself must apply the pending
-                    // clear before its blit, or it reads the drawable as it was before the clear. No wait follows
-                    // the submit. A later loop present may release the drawable first, but only when one is left.
-                    using IGpuCommandList cl = device.Factory.CreateCommandList();
-                    cl.Begin();
-                    cl.SetFramebuffer(swapchain);
-                    cl.ClearColorTarget(0, clear);
-                    device.CopySwapchainColor(cl, staging);
+                    // A clear-only recording must flush its clear before copying this same bound drawable.
+                    if (device.SwapchainCopyable && firstCopyable < 0)
+                    {
+                        firstCopyable = frame;
+                        device.CopySwapchainColor(cl, staging);
+                    }
                     cl.End();
                     device.Submit(cl);
+                    device.Present();
+                    Assert.False(device.SwapchainCopyable);
                 }
 
                 Assert.True(firstCopyable >= 0,
@@ -377,13 +381,23 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.InRange(b, 200 - 2, 200 + 2);
                 Assert.InRange(a, 255 - 2, 255);
 
-                // RELEASED: the next boundary writes framebufferOnly true, the drawable after it is uncopyable.
+                // Releasing the request changes the layer at the boundary. Pooled textures still report
+                // their actual usage, including an old copyable texture recycled after that write.
                 device.SwapchainCopySourceRequested = false;
                 device.Present();
-                device.Present();
-                Assert.Equal(!TextureIsFramebufferOnly(boundary.Framebuffer.Attachment.Texture),
-                    device.SwapchainCopyable);
-                Assert.False(device.SwapchainCopyable);
+                int firstUncopyable = -1;
+                for (int frame = 0; frame < cycle; frame++)
+                {
+                    cl.Begin();
+                    cl.SetFramebuffer(swapchain);
+                    bool real = !TextureIsFramebufferOnly(boundary.Framebuffer.Attachment.Texture);
+                    Assert.Equal(real, device.SwapchainCopyable);
+                    if (!real && firstUncopyable < 0) firstUncopyable = frame;
+                    cl.End();
+                    device.Submit(cl);
+                    device.Present();
+                }
+                Assert.True(firstUncopyable >= 0, "the layer did not vend an uncopyable drawable within one cycle.");
                 Assert.True(layer.FramebufferOnly());
             }
             finally

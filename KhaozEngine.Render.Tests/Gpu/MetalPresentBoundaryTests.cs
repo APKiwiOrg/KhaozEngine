@@ -22,8 +22,8 @@ namespace KhaozEngine.Tests.Gpu
     /// written".</para>
     ///
     /// <para><b>THE ORDERED LOG IS THE INSTRUMENT, and half these rows would pass on a transposition without
-    /// it.</b> Present before apply, drain before the drawable-size write, capture after the present, acquire
-    /// last: each is a relation between two calls, and a per-call counter cannot fail on a wrong order.</para>
+    /// it.</b> Present before apply, drain before the drawable-size write, capture after the present, deferred acquire
+    /// at the next bind: each is a relation between two calls, and a per-call counter cannot fail on a wrong order.</para>
     /// </summary>
     public sealed class MetalPresentBoundaryTests
     {
@@ -35,7 +35,7 @@ namespace KhaozEngine.Tests.Gpu
         /// layer reports no error for it.
         /// </summary>
         [Fact]
-        public void ConstructionConfiguresTheLayerAndThenTakesTheFirstDrawable()
+        public void ConstructionConfiguresTheLayerWithoutTakingADrawable()
         {
             Harness h = Harness.Windowed(scriptDrawables: 1);
 
@@ -47,7 +47,7 @@ namespace KhaozEngine.Tests.Gpu
             // KE_METAL_FRAMES_IN_FLIGHT that was not live until row 15.
             Assert.Equal(FramesInFlight, h.Api.ConfiguredMaximumDrawableCount);
 
-            Assert.Equal(new[] { "configure", "acquire" }, h.Api.Log);
+            Assert.Equal(new[] { "configure" }, h.Api.Log);
         }
 
         /// <summary>
@@ -67,21 +67,21 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE ORDER OF A BOUNDARY, WHICH IS THE WHOLE OF 11.2 AND 11.4 IN ONE ASSERTION: take M-W6's present
-        /// buffer, present the drawable the frame rendered into, service the capture, then acquire the next
-        /// frame's. The capture is between them because a trace brackets whole frames (M-G5), and the acquire is
-        /// last because it BLOCKS and holds no lock (M-W4, M-W8). The buffer is FIRST for the other half of
+        /// buffer, present the drawable the frame rendered into, then service the capture. The next
+        /// frame acquires at its first bind, outside the submit lock (M-W4, M-W8). The buffer is FIRST for the other half of
         /// M-W8: <c>-commandBuffer</c> blocks at the queue's own cap and every commit that could clear it takes
         /// the submit lock, so taking it inside that lock is a deadlock rather than a stall.
         /// </summary>
         [Fact]
-        public void ABoundaryTakesItsBufferThenPresentsThenServicesTheCaptureThenAcquires()
+        public void ABoundaryPresentsTheCurrentFrameThenServicesTheCaptureWithoutAcquiringTheNext()
         {
             Harness h = Harness.Windowed(scriptDrawables: 2);
+            _ = h.Bound;
             h.Api.Log.Clear();
 
             h.Boundary.Present();
 
-            Assert.Equal(new[] { "acquirePresentBuffer", "present", "releaseDrawable", "capture", "acquire" },
+            Assert.Equal(new[] { "acquirePresentBuffer", "present", "releaseDrawable", "capture" },
                 h.Api.Log);
 
             // AND THE PRESENT RODE THE BUFFER THAT ACQUIRE HANDED OUT, which is what says the two halves of the
@@ -132,17 +132,16 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE PRESENTED DRAWABLE IS THE ONE THE FRAME RENDERED INTO, and the next frame binds the next one. A
         /// boundary that presented the drawable it had just acquired would present a frame nothing had drawn into,
-        /// which is a black window rather than an error, and is exactly the failure the acquire-at-the-boundary
-        /// timing (M-W4) exists to avoid.
+        /// which is a black window rather than an error. Acquisition belongs to the current frame.
         /// </summary>
         [Fact]
         public void ThePresentedDrawableIsTheOneTheFrameRenderedInto()
         {
             Harness h = Harness.Windowed(scriptDrawables: 3);
 
-            IntPtr firstTexture = h.Boundary.Framebuffer.Attachment.Texture;
+            IntPtr firstTexture = h.Bound.Colour![0].Texture;
             h.Boundary.Present();
-            IntPtr secondTexture = h.Boundary.Framebuffer.Attachment.Texture;
+            IntPtr secondTexture = h.Bound.Colour![0].Texture;
 
             Assert.Single(h.Api.Presented);
             Assert.NotEqual(firstTexture, secondTexture);
@@ -193,8 +192,9 @@ namespace KhaozEngine.Tests.Gpu
             h.Api.Log.Clear();
 
             h.Boundary.Present();
+            _ = h.Bound;
 
-            // The frame that HAD a drawable was presented, and the acquire for the next one came back nil.
+            // The first frame presented, then the next bind acquired nil.
             Assert.Single(h.Api.Presented);
             Assert.True(h.Boundary.IsOrphanBound);
             Assert.False(h.Boundary.HasDrawable);
@@ -260,12 +260,14 @@ namespace KhaozEngine.Tests.Gpu
             Harness h = Harness.Windowed(scriptDrawables: 1);
             h.Api.ScriptNoDrawable();
             h.Boundary.Present();
+            _ = h.Bound;
 
             Assert.True(h.Orphan.IsLive);
 
             h.Api.ScriptDrawable();
             h.Api.Log.Clear();
             h.Boundary.Present();
+            _ = h.Bound;
 
             Assert.False(h.Boundary.IsOrphanBound);
             Assert.False(h.Orphan.IsLive);
@@ -285,7 +287,7 @@ namespace KhaozEngine.Tests.Gpu
         /// says a backend that blocks the CPU on the acquire reports one per frame, and this is that backend.
         /// </summary>
         [Fact]
-        public void EveryAcquireIsCountedAndRunsOneAheadOfTheFrames()
+        public void EveryPresentedFrameCountsOneAcquireWithoutAnEagerExtra()
         {
             Harness h = Harness.Windowed(scriptDrawables: 4);
 
@@ -293,10 +295,9 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(3L, h.Boundary.FramesBegun);
 
-            // ONE AHEAD, and the offset is a fact rather than an off-by-one: the first drawable is taken at
-            // CREATION, before any frame exists, which is the incumbent's timing that M-W4 keeps.
-            Assert.Equal(4L, h.Boundary.AcquireTotals.Count);
-            Assert.Equal(4, h.Api.AcquireCount);
+            // A present-only frame acquires on demand and leaves the next frame unresolved.
+            Assert.Equal(3L, h.Boundary.AcquireTotals.Count);
+            Assert.Equal(3, h.Api.AcquireCount);
         }
 
         /// <summary>
@@ -363,12 +364,13 @@ namespace KhaozEngine.Tests.Gpu
         {
             Harness h = Harness.Windowed(scriptDrawables: 2);
             h.Api.PresentBufferIsRefused = true;
+            _ = h.Bound;
             h.Api.Log.Clear();
 
             h.Boundary.Present();
 
             Assert.Empty(h.Api.Presented);
-            Assert.Equal(new[] { "acquirePresentBuffer", "releaseDrawable", "capture", "acquire" }, h.Api.Log);
+            Assert.Equal(new[] { "acquirePresentBuffer", "releaseDrawable", "capture" }, h.Api.Log);
 
             // AND NOTHING WAS COUNTED AS HELD, because nothing was handed out to hold.
             Assert.Equal(0, h.Uncommitted.Peak);
@@ -396,8 +398,8 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(new MetalDrawableSize(640u, 480u), h.Api.LastDrawableSize);
             Assert.Equal(1, h.Drains);
-            Assert.Equal(new[] { "acquirePresentBuffer", "present", "releaseDrawable", "drain",
-                "drawableSize=640x480", "capture", "acquire" }, h.Api.Log);
+            Assert.Equal(new[] { "acquire", "acquirePresentBuffer", "present", "releaseDrawable", "drain",
+                "drawableSize=640x480", "capture" }, h.Api.Log);
 
             // AND THE FRAMEBUFFER FOLLOWS IT, under the same object.
             Assert.Equal(640u, h.Boundary.Framebuffer.Width);
@@ -520,6 +522,7 @@ namespace KhaozEngine.Tests.Gpu
             h.Boundary.Present();
             h.Api.ScriptDrawable();
             h.Boundary.Present();
+            _ = h.Bound;
 
             int releasedBefore = h.Api.Released.Count;
             h.Api.Log.Clear();
@@ -555,6 +558,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             Harness h = Harness.Windowed(scriptDrawables: 1);
             h.Orphan.ReleaseIsInert = true;
+            _ = h.Bound;
             h.Api.Log.Clear();
 
             h.Boundary.Dispose();
@@ -614,8 +618,7 @@ namespace KhaozEngine.Tests.Gpu
                     Logger = logger,
                 };
 
-                // BEFORE THE BOUNDARY IS BUILT, because the constructor takes the first drawable and that
-                // acquire is one of the ones M-W8's claim covers.
+                // Watch both first-bind and present-only acquires through the same submit lock.
                 api.LockToWatch = harness.SubmitLock;
 
                 harness.Boundary = new MetalPresentBoundary(api, orphan, uncommitted, new WaitAccumulator(),

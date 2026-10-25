@@ -42,13 +42,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         bool _disposed;
 
-        VulkanInstance(Vk api, Instance handle, uint apiVersion, VulkanValidationMode validation,
+        VulkanInstance(Vk api, Instance handle, uint apiVersion, VulkanInstanceValidation validation,
             VulkanDebugMessenger? messenger)
         {
             Api = api;
             Handle = handle;
             ApiVersion = apiVersion;
-            Validation = validation;
+            Validation = validation.RequestedMode;
+            ValidationConfiguration = validation;
             Messenger = messenger;
         }
 
@@ -63,9 +64,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <c>min(1.3, loader version)</c> and is therefore 1.3 on every machine that got this far.</summary>
         internal uint ApiVersion { get; }
 
-        /// <summary>The validation rung this instance was created on. Fixed for its lifetime, because the layer
-        /// is an instance-creation argument.</summary>
+        /// <summary>The requested validation rung. An unavailable layer is dropped during creation.</summary>
         internal VulkanValidationMode Validation { get; }
+
+        /// <summary>The requested mode, enabled instance layers and enabled validation features, fixed for the
+        /// instance lifetime and shared by native creation and diagnostic identity.</summary>
+        internal VulkanInstanceValidation ValidationConfiguration { get; }
 
         /// <summary>The debug-utils messenger, or null when validation is off or the loader could not supply it.
         /// Object naming and the strict latch both go through it.</summary>
@@ -147,7 +151,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 log.Warn(VulkanValidation.LayerUnavailableWarning(validation));
             }
 
-            Instance handle = Create(vk, apiVersion, extensions, layers, validation);
+            VulkanInstanceValidation configuration = VulkanInstanceValidation.Select(validation, layers);
+            Instance handle = Create(vk, apiVersion, extensions, layers, configuration.EnabledFeatures.AsSpan());
 
             VulkanDebugMessenger? messenger = VulkanValidation.WantsMessenger(validation)
                 && Array.IndexOf(extensions, ExtDebugUtils.ExtensionName) >= 0
@@ -156,14 +161,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (validation != VulkanValidationMode.Off) log.Info(VulkanValidation.ActiveDescription(validation));
 
-            return new VulkanInstance(vk, handle, apiVersion, validation, messenger);
+            return new VulkanInstance(vk, handle, apiVersion, configuration, messenger);
         }
 
         // vkCreateInstance itself, with everything it needs pinned. The unmanaged string arrays are freed on every
         // path including the throwing one: a failed creation that leaked its own argument list would leak once per
         // failed attempt, and the failed-attempt path is the one a fallback retries.
         static Instance Create(Vk vk, uint apiVersion, string[] extensions, string[] layers,
-            VulkanValidationMode validation)
+            ReadOnlySpan<ValidationFeatureEnableEXT> enabledFeatures)
         {
             nint applicationName = SilkMarshal.StringToPtr("KhaozEngine");
             nint extensionNames = SilkMarshal.StringArrayToPtr(extensions);
@@ -179,28 +184,28 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     engineVersion: 1,
                     apiVersion: apiVersion);
 
-                // The sync rung, chained into pNext (V-G3). The default validation layer does NOT run
-                // synchronisation validation, so without this the sync rung would be the plain rung with a
-                // different name, and a session that reported no race would have proved nothing.
-                ValidationFeatureEnableEXT syncValidation =
-                    ValidationFeatureEnableEXT.SynchronizationValidationExt;
-                var validationFeatures = new ValidationFeaturesEXT(
-                    sType: StructureType.ValidationFeaturesExt,
-                    enabledValidationFeatureCount: 1,
-                    pEnabledValidationFeatures: &syncValidation);
+                // The retained feature list is also the native pNext payload. A missing validation layer
+                // leaves it empty, so diagnostics never claim a validation feature that could not run.
+                fixed (ValidationFeatureEnableEXT* values = enabledFeatures)
+                {
+                    var validationFeatures = new ValidationFeaturesEXT(
+                        sType: StructureType.ValidationFeaturesExt,
+                        enabledValidationFeatureCount: (uint)enabledFeatures.Length,
+                        pEnabledValidationFeatures: values);
 
-                var createInfo = new InstanceCreateInfo(
-                    sType: StructureType.InstanceCreateInfo,
-                    pNext: VulkanValidation.WantsSynchronizationValidation(validation) ? &validationFeatures : null,
-                    pApplicationInfo: &applicationInfo,
-                    enabledExtensionCount: (uint)extensions.Length,
-                    ppEnabledExtensionNames: (byte**)extensionNames,
-                    enabledLayerCount: (uint)layers.Length,
-                    ppEnabledLayerNames: (byte**)layerNames);
+                    var createInfo = new InstanceCreateInfo(
+                        sType: StructureType.InstanceCreateInfo,
+                        pNext: enabledFeatures.IsEmpty ? null : &validationFeatures,
+                        pApplicationInfo: &applicationInfo,
+                        enabledExtensionCount: (uint)extensions.Length,
+                        ppEnabledExtensionNames: (byte**)extensionNames,
+                        enabledLayerCount: (uint)layers.Length,
+                        ppEnabledLayerNames: (byte**)layerNames);
 
-                VulkanResultCodes.Require(vk.CreateInstance(in createInfo, null, out Instance instance),
-                    "vkCreateInstance");
-                return instance;
+                    VulkanResultCodes.Require(vk.CreateInstance(in createInfo, null, out Instance instance),
+                        "vkCreateInstance");
+                    return instance;
+                }
             }
             finally
             {

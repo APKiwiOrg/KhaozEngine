@@ -195,7 +195,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             VulkanPipelineCacheFile? pipelineCache, SpirvBytesCache? spirvBytes,
             uint maxDynamicUniformBuffers, int framesInFlight,
             VulkanWindowedParts? windowed, Func<IVulkanTimestampApi>? createTimestampApi = null,
-            VulkanTimestampSupport timestamps = default)
+            VulkanTimestampSupport timestamps = default, SpirvCompileCache? compileCache = null)
         {
             _instance = instance;
             _device = device;
@@ -275,7 +275,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             _factory = new VulkanResourceFactory(_resources, _rings, _setup, _descriptors, _modules, _pipelines,
                 () => CreateCommandList(), () => _timeline.CreateFence(), capabilities,
-                memoryFacts.MinUniformBufferOffsetAlignment, spirvBytes, createTimestampApi, timestamps);
+                memoryFacts.MinUniformBufferOffsetAlignment, spirvBytes, createTimestampApi, timestamps, compileCache);
 
             // THE SHARED PAIR WRAPS ON ALL THREE AXES (section 14), built from VulkanSharedSamplers and NOT from
             // the identically named GpuSamplerDescription statics, which default every axis to CLAMP. Neither

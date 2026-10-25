@@ -31,10 +31,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
         internal static D3D11AdapterChoice ChooseWindows(IDXGIFactory1 factory,
-            out IReadOnlyList<D3D11AdapterInfo> adapters, out string? warning)
+            out IReadOnlyList<D3D11AdapterInfo> adapters, out string? warning, D3D11HeadlessDiagnosticSettings? settings = null)
         {
             adapters = D3D11DxgiQueries.DescribeAdaptersWindows(factory);
-            return D3D11AdapterSelection.Choose(D3D11AdapterSelection.FromEnvironment(), adapters,
+            if (settings?.AdapterKey is { } pinned)
+            {
+                for (int i = 0; i < adapters.Count; i++)
+                {
+                    var result = factory.EnumAdapters1(i, out var adapter);
+                    if (result.Failure || adapter is null) throw new System.InvalidOperationException("A pinned DXGI adapter could not be enumerated.");
+                    using var retained = adapter;
+                    if (D3D11GpuDevice.AdapterKey(adapter) == pinned)
+                        return D3D11AdapterSelection.Choose(D3D11AdapterSelection.Parse(i.ToString(System.Globalization.CultureInfo.InvariantCulture)), adapters, false, out warning);
+                }
+                throw new System.InvalidOperationException("The pinned DXGI adapter LUID is unavailable.");
+            }
+            return D3D11AdapterSelection.Choose(settings?.Adapter ?? D3D11AdapterSelection.FromEnvironment(), adapters,
                 D3D11DxgiQueries.SupportsGpuPreferenceWindows(factory), out warning);
         }
 

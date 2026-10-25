@@ -49,6 +49,8 @@ namespace KhaozEngine.Render3D
         /// (<see cref="DrawTemporalDebugView"/>).</summary>
         void DrawDebugView(IGpuCommandList cl, IGpuFramebuffer target)
         {
+            using var profile = ProfilePass(cl, "display.debug", executed: _frameDebugView == SceneDebugView.MotionVectors
+                || (_resolveThisRender && _frameDebugView != SceneDebugView.None));
             switch (_frameDebugView)
             {
                 case SceneDebugView.MotionVectors:
@@ -80,10 +82,9 @@ namespace KhaozEngine.Render3D
             _motionVectorsView = null;
         }
 
-        void DisposeMotionVectorsView()
+        void DisposeMotionVectorsView(Internal.ResourceDisposal disposal)
         {
-            _motionVectorsView?.Dispose();
-            _motionVectorsView = null;
+            if (disposal.Release("motionView", () => _motionVectorsView?.Dispose())) _motionVectorsView = null;
         }
     }
 }

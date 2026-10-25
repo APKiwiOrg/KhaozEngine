@@ -6,8 +6,10 @@ namespace KhaozEngine.Tests.ServerStatus;
 
 public class ServerStatusReportTests
 {
-    [Fact]
-    public void RoundTrips_AllFields_ThroughJson()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RoundTrips_AllFields_ThroughJson(bool indented)
     {
         var original = new ServerStatusReport
         {
@@ -23,7 +25,10 @@ public class ServerStatusReportTests
             ServerAddress = "4.254.6.139",
         };
 
-        ServerStatusReport? parsed = ServerStatusReport.TryParse(original.ToJson());
+        string json = original.ToJson(indented);
+        if (indented) Assert.Contains('\n', json);
+        Assert.DoesNotContain('\r', json);
+        ServerStatusReport? parsed = ServerStatusReport.TryParse(json);
 
         Assert.NotNull(parsed);
         Assert.Equal(original, parsed);

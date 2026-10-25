@@ -22,6 +22,8 @@ namespace KhaozEngine.Tests.Dungeon
         {
             DungeonConfig config = Config();
             string json = DungeonJson.SaveConfig(config);
+            Assert.Contains('\n', json);
+            Assert.DoesNotContain('\r', json);
             DungeonConfig loaded = DungeonJson.LoadConfig(json);
 
             Assert.Equal(config.CellSizeMeters, loaded.CellSizeMeters);
@@ -71,6 +73,8 @@ namespace KhaozEngine.Tests.Dungeon
         {
             DungeonLayout layout = DungeonGenerator.Generate(Config(), 42UL);
             string json = DungeonJson.SaveLayout(layout);
+            Assert.Contains('\n', json);
+            Assert.DoesNotContain('\r', json);
             DungeonLayout loaded = DungeonJson.LoadLayout(json);
 
             Assert.Equal(layout.LayoutHash(), loaded.LayoutHash());

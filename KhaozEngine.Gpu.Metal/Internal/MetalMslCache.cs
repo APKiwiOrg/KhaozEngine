@@ -63,6 +63,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal const string Subfolder = "metal-msl";
 
         readonly string _directory;
+        internal string DirectoryPath => _directory;
         int _hits;
         int _misses;
         int _writes;
@@ -131,9 +132,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/611">#611</see>). Never an explicitly
         /// configured directory, which has no version segment and therefore no siblings to reason about.
         /// </summary>
-        internal static MetalMslCache? FromEnvironment()
+        internal static MetalMslCache? FromEnvironment() => Open(Environment.GetEnvironmentVariable(EnvVarName));
+        internal static MetalMslCache? Open(string? value)
             => GpuDiskCache.OpenDirectory(
-                Environment.GetEnvironmentVariable(EnvVarName), Subfolder, MetalShaderKey.EngineVersion)
+                value, Subfolder, MetalShaderKey.EngineVersion)
                     is { } directory
                 ? new MetalMslCache(directory)
                 : null;

@@ -23,7 +23,8 @@ public sealed class StackedSupportOptimizationTests(ITestOutputHelper output)
     [Fact]
     public void WholeOptimizedTicksMatchTheReferenceOnEveryOrdinaryRow()
     {
-        int compared = 0, skipped = 0, served = 0;
+        int compared = 0, skipped = 0;
+        long served = 0;
         foreach (SupportCostRow scene in SupportGateCostScenes.Rows().Select(r => (SupportCostRow)r[0]).Where(r => !r.Dense))
             foreach (bool explicitDoor in new[] { false, true })
             {

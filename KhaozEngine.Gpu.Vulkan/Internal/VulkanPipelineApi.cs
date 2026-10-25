@@ -28,7 +28,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// reach the same place: a cold start. Pipeline CREATION is the opposite and throws, because a pipeline that
     /// failed to compile has no fallback and a null handle would surface at the first draw.</para>
     /// </summary>
-    internal sealed unsafe class VulkanPipelineApi : IVulkanPipelineApi
+    internal sealed unsafe class VulkanPipelineApi : IVulkanPipelineApi, IVulkanPipelineDiagnosticsSource
     {
         // Every shipped stage is compiled from GLSL by the engine's own front end, and glslang names the entry
         // point of a GLSL module "main" with no way to ask for another. A UTF-8 literal so no marshalling
@@ -48,8 +48,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="device">The device that owns every pipeline made here and outlives them all.</param>
         /// <param name="loss">The device's loss latch, which every create result is checked against.</param>
         /// <param name="liveness">The device's liveness token, which gates the destroys.</param>
+        /// <param name="diagnostics">Optional compiler-diagnostic device configuration.</param>
         internal VulkanPipelineApi(Vk vk, Device device, VulkanDeviceLossLatch loss,
-            IDeviceLiveness liveness)
+            IDeviceLiveness liveness, VulkanPipelineDiagnostics? diagnostics = null)
         {
             ArgumentNullException.ThrowIfNull(vk);
             ArgumentNullException.ThrowIfNull(loss);
@@ -59,7 +60,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _device = device;
             _loss = loss;
             _liveness = liveness;
+            Diagnostics = diagnostics;
         }
+
+        public VulkanPipelineDiagnostics? Diagnostics { get; }
 
         /// <inheritdoc/>
         public ulong CreateCache(ReadOnlySpan<byte> seed)
@@ -224,6 +228,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
                 var createInfo = new GraphicsPipelineCreateInfo(
                     sType: StructureType.GraphicsPipelineCreateInfo,
+                    flags: Diagnostics?.CaptureFlags ?? 0,
                     pNext: &rendering,
                     stageCount: 2,
                     pStages: stages,
@@ -254,6 +259,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             {
                 var createInfo = new ComputePipelineCreateInfo(
                     sType: StructureType.ComputePipelineCreateInfo,
+                    flags: Diagnostics?.CaptureFlags ?? 0,
                     stage: Stage(ShaderStageFlags.ComputeBit, spec.Module, entry),
                     layout: new PipelineLayout(spec.PipelineLayout));
 

@@ -22,10 +22,10 @@ public partial class SupportFootprintTests
             using var scene = new WorldFormScene(CostRows().Single(row => row.Name == name));
             SupportQueryDiagnostics.Reset();
             SupportSample cold = scene.Find();
-            int coldCertified = SupportQueryDiagnostics.Snapshot().AdmissionCertificates;
+            long coldCertified = SupportQueryDiagnostics.Snapshot().AdmissionCertificates;
             SupportQueryDiagnostics.Reset();
             SupportSample warm = scene.Find();
-            int warmCertified = SupportQueryDiagnostics.Snapshot().AdmissionCertificates;
+            long warmCertified = SupportQueryDiagnostics.Snapshot().AdmissionCertificates;
             Assert.True(warmCertified > 0, $"{name}: no vertical face was admitted by the segment certificate.");
             Assert.Equal(coldCertified, warmCertified);
             Assert.Equal(cold.ToString(), warm.ToString());
@@ -58,7 +58,8 @@ public partial class SupportFootprintTests
         SupportFootprintRequest request = FootSupport.DescribeFootprint(scene.Query);
 
         // Each face once: the risers the bounds and column reject keeps are certified, and nothing else is.
-        int passing = 0, risers = 0, riserExtrema = 0;
+        long passing = 0, riserExtrema = 0;
+        int risers = 0;
         var polygon = new SupportPolygon();
         foreach (StaticHandle owner in scene.Owners())
             foreach (InstalledSupportWorldFace face in scene.Form(owner) is { } form
@@ -89,7 +90,7 @@ public partial class SupportFootprintTests
         SupportQueryCounts reference = SupportQueryDiagnostics.Snapshot();
         Assert.True(warm.PolygonOperands > 0 && warm.PolygonOperands % passing == 0,
             $"{warm.PolygonOperands} operands for {passing} passing faces.");
-        int passes = warm.PolygonOperands / passing;
+        long passes = warm.PolygonOperands / passing;
         Assert.Equal(risers * passes, warm.AdmissionCertificates);
         Assert.Equal(riserExtrema * passes, reference.Extrema - warm.Extrema);
         Assert.Equal(0, reference.AdmissionCertificates);

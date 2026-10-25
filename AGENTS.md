@@ -61,7 +61,7 @@ Create the gitignored local source before restore:
 
 ```sh
 mkdir -p local-feed
-dotnet build KhaozEngine.slnx -c Release
+sh scripts/build-release-tests.sh KhaozEngine.slnx
 dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
 ```
 

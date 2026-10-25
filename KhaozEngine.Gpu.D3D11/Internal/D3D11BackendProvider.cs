@@ -32,9 +32,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// hardware.
     /// </para>
     /// </summary>
-    internal sealed class D3D11BackendProvider : IGpuBackendProvider
+    internal sealed class D3D11BackendProvider : IGpuBackendProvider, IGpuHeadlessDiagnosticProvider
     {
         static readonly ILogger log = Log.For<D3D11BackendProvider>();
+        readonly Func<string, string?> _environment;
+        readonly Func<D3D11HeadlessDiagnosticSettings, GpuProviderDevice>? _headless;
+        internal D3D11BackendProvider(Func<string, string?>? environment = null,
+            Func<D3D11HeadlessDiagnosticSettings, GpuProviderDevice>? headless = null)
+        { _environment = environment ?? Environment.GetEnvironmentVariable; _headless = headless; }
+
 
         /// <inheritdoc/>
         public bool IsSupported()
@@ -86,6 +92,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <inheritdoc/>
+        public IGpuHeadlessDiagnosticSettings ResolveHeadlessSettings(GpuPipelineDiagnosticRequest request)
+            => D3D11HeadlessDiagnosticSettings.Resolve(request, _environment);
+
+        public GpuProviderDevice CreateHeadless(IGpuHeadlessDiagnosticSettings settings)
+        {
+            if (settings is not D3D11HeadlessDiagnosticSettings frozen)
+                throw new ArgumentException("Settings are not owned by this backend.", nameof(settings));
+            if (_headless is not null) return _headless(frozen);
+            if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Direct3D11 requires Windows.");
+            return D3D11GpuDevice.CreateHeadlessWindows(frozen);
+        }
+
         public GpuProviderDevice CreateHeadless()
         {
             if (!KhaozEngineD3D11.IsPlatformSupported) throw NotOnThisPlatform("headless");

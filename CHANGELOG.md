@@ -5,6 +5,56 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.14.0
+
+2026-10-25
+
+- Add optional Scene3D render-pass observation across geometry, shadows, atmosphere, water, effects,
+  temporal resolve, post and display work, with cached skips, exclusive device leaves and fused motion metadata.
+  Disabled observation preserves commands and ordering.
+- Preserve named nested-recording refusals in 2D captures before creating a batch that needs safe teardown.
+- Add optional cold pipeline compiler and resource memory diagnostic contracts, with Vulkan executable
+  statistics and separate payload, committed allocation and unsupported residency evidence.
+- Add opt-in D3D11 cold DXBC reflection and exact pipeline identities, live resource payload and ring-capacity
+  diagnostics, and separate asynchronous invocation blocks. Reflection temporaries remain intermediate-code
+  facts, and unavailable native allocation, residency and budget fields retain their reasons.
+- Add immutable headless diagnostic settings and effective configuration witnesses, with ordered creation
+  and cleanup failures and a shared cold-unit deadline. Production renderer publication remains gated on
+  registered-file accounting and verification.
+- Add Metal cold counter capabilities, compute limits and exact source/pipeline identities, plus owned
+  resource payload, ring/staging capacity and native device allocation diagnostics with unified-memory
+  provenance. Unsupported compiler artifacts, physical registers, spills, occupancy, residency and budget
+  retain their reasons. Ordinary pipelines keep their existing compilation and timestamp configuration.
+
+## 21.13.0
+
+2026-10-24
+
+- Make the tile installation compatibility baselines newline-stable across platforms (Closes #1562).
+- Keep persisted catalog, dungeon, input binding, updater, status and prop manifest JSON newline-stable.
+- Add opt-in directional indirect diffuse with `IrradianceSH`, physical sky irradiance and ground bounce.
+  Preserve uniform ambient lighting by default and light canopy and roof undersides from a ground hemisphere
+  when enabled (Closes #1553).
+- Make D3D11 timestamp contention tests own their resolver thread, check completion before unlocking,
+  and join before disposing fixture resources (#1560).
+- Add filtered `TileWorldColliders.AddTo(world, include)` with compact handles, original `ColliderIndices`
+  and canonical movement provenance. Preserve default/all-true output and the complete collider hash.
+  Persist filtered bake policy identity explicitly through `NavBakeSources`.
+- Expose scoped labelled support-query measurements with checked long counters, joined-worker aggregation,
+  exclusive nested attribution and complete-lifetime proof-reuse retention peaks. Counts are structural
+  diagnostics, separate from timing and process memory.
+- Pin #1352's 0.5 m analytic rise at 30 and 60 Hz through direct and ordinary Contact, including paced
+  settling and step/slope boundary controls. The regression passes without a controller change.
+- Expose blocking offline `TileWorldView.SettleForCapture` and `SettleInteriorCutForCapture` for
+  consumer-owned headless scenes. Settle ground, cover, selected prop layers and HLOD, and the interior cut
+  before drawing, including Decor ground, without windowed apply budgets (#1375).
+- Defer Metal drawable acquisition until the current frame first binds its swapchain, preserving cached
+  framebuffer and capture behavior.
+- Add the default-off `RendererInitializesSwapchain` host option so a full-output renderer can avoid the
+  redundant initial swapchain bind and clear.
+- Filter exact point-shadow hits before sorting and index submitted foliage point casters once per frame,
+  preserving query order, signatures and draw runs.
+
 ## 21.12.2
 
 2026-10-24

@@ -222,6 +222,14 @@ namespace KhaozEngine.Render3D
         public Color LightColor = new(1f, 0.95f, 0.86f, 1f);
         public Color AmbientColor = new(0.16f, 0.19f, 0.30f, 1f);
 
+        /// <summary>D1: Opts into directional indirect diffuse lighting. Uniform preserves the existing
+        /// ambient and fill lighting by default.</summary>
+        public IndirectDiffuseMode IndirectDiffuse = IndirectDiffuseMode.Uniform;
+
+        /// <summary>D3: Frame irradiance for directional indirect diffuse lighting. The enabled atmosphere
+        /// supplies it, otherwise the consumer supplies it. Defaults to zero.</summary>
+        public IrradianceSH AmbientIrradiance;
+
         /// <summary>Direction the fill light travels (will be normalized). Dim cool fill from the other side
         /// so forms don't read flat. Specular comes from the key light only.</summary>
         public Vector3 FillLightDirection = new(0.6f, -0.3f, 0.5f);

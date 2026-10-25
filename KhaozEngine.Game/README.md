@@ -35,6 +35,13 @@ Subclass it and override `OnLoad` / `OnUpdate(dt)` / `OnDraw2D(batch)` / `OnResi
 `Quit()` to close. Construct with `GameAppOptions.For(title, w, h)` (set `DesignWidth/Height`,
 `ScaleMode`, `ClearColor` as needed).
 
+`GameAppOptions.RendererInitializesSwapchain` is an explicit opt-in, default false even for raw or
+default-constructed options. It forwards to `AppWindow` on both the default and a custom `WindowFactory` window.
+When enabled, the host skips its initial output bind and clear. The renderer must initialize the entire output
+in the frame's recording before 2D draws and capture taps on every rendered frame, including empty, loading and
+menu frames. `GameApp3D` does not enable it automatically because subclasses can override `OnRenderWorld`.
+The full-output 3D composition retains its final bind, clear and fullscreen overwrite.
+
 Set `GameAppOptions.PresentMode` (`Vsync` default / `Immediate`), the frame cap, and `GameAppOptions.WindowMode`
 (`Windowed` default) for the initial presentation (present mode since 9.23.0, window mode since 9.24.0). A positive
 `GameAppOptions.FrameCapHz` is an explicit cap that paces the loop to a target Hz with a monotonic-clock limiter

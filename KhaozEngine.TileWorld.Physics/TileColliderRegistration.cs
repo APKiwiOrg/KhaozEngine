@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.ExceptionServices;
 using KhaozEngine.Physics;
 using KhaozEngine.Locomotion;
@@ -7,8 +8,8 @@ using KhaozEngine.Locomotion;
 namespace KhaozEngine.TileWorld.Physics;
 
 /// <summary>
-/// The statics <see cref="TileWorldColliders.AddTo"/> added to one physics world, one per collider and in the same
-/// order. <see cref="Remove"/> takes them all out again, each once. Disposing removes them too, so a registration can
+/// The statics added by <see cref="TileWorldColliders"/> to one physics world, in compact selected collider order.
+/// <see cref="Remove"/> takes them all out again, each once. Disposing removes them too, so a registration can
 /// be scoped with <c>using</c>. A rebuilt world is swapped in by removing the old registration and adding the new
 /// colliders.
 /// </summary>
@@ -35,6 +36,12 @@ public sealed partial class TileColliderRegistration : IDisposable
 
     internal TileColliderRegistration(IPhysicsWorld world, StaticHandle[] handles, StaticHandle[] groundHandles,
         TileColliderProvenance[]? provenance, string? worldId, OrdinaryMovementExtent extent)
+        : this(world, handles, groundHandles, provenance, worldId, extent, Enumerable.Range(0, handles.Length).ToArray())
+    {
+    }
+
+    internal TileColliderRegistration(IPhysicsWorld world, StaticHandle[] handles, StaticHandle[] groundHandles,
+        TileColliderProvenance[]? provenance, string? worldId, OrdinaryMovementExtent extent, int[] colliderIndices)
     {
         _provenance = provenance;
         _worldId = worldId;
@@ -45,11 +52,17 @@ public sealed partial class TileColliderRegistration : IDisposable
         _removed = new bool[handles.Length];
         Handles = Array.AsReadOnly(handles);
         GroundHandles = Array.AsReadOnly(groundHandles);
+        ColliderIndices = Array.AsReadOnly((int[])colliderIndices.Clone());
     }
 
-    /// <summary>The static handles, index for index with <see cref="TileWorldColliders.Colliders"/>. They still list
-    /// the removed statics after <see cref="Remove"/>, and the world no longer knows them.</summary>
+    /// <summary>The static handles in compact installed order. <see cref="ColliderIndices"/> maps each handle to
+    /// its original <see cref="TileWorldColliders.Colliders"/> entry. Without filtering, the indices match directly.
+    /// This read-only snapshot still lists removed statics after <see cref="Remove"/>.</summary>
     public IReadOnlyList<StaticHandle> Handles { get; }
+
+    /// <summary>The original <see cref="TileWorldColliders.Colliders"/> index for each entry in <see cref="Handles"/>,
+    /// strictly increasing and retained as a read-only snapshot after removal.</summary>
+    public IReadOnlyList<int> ColliderIndices { get; }
 
     /// <summary>The registered ground handles in canonical order, retained after removal.</summary>
     public IReadOnlyList<StaticHandle> GroundHandles { get; }

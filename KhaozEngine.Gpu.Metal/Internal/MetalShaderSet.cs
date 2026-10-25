@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu.Internal;
@@ -42,11 +43,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         bool _disposed;
 
         internal MetalShaderSet(IDeviceLiveness liveness, MetalCompiledStage[] stages,
-            MetalShaderIndexTable table)
+            MetalShaderIndexTable table, MetalShaderEvidence[]? evidence = null)
         {
             _liveness = liveness;
             _stages = stages;
             Table = table;
+            Evidence = evidence is null ? [] : ImmutableArray.CreateRange(evidence);
         }
 
         /// <inheritdoc/>
@@ -57,6 +59,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal MetalShaderIndexTable Table { get; }
 
         /// <summary>Every compiled stage, for the pipeline descriptor. Empty after disposal.</summary>
+        internal ImmutableArray<MetalShaderEvidence> Evidence { get; }
+
         internal IReadOnlyList<MetalCompiledStage> Stages => _disposed ? Array.Empty<MetalCompiledStage>() : _stages;
 
         /// <summary>
@@ -135,7 +139,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         bool _disposed;
 
         internal MetalComputeShader(IDeviceLiveness liveness, MetalCompiledStage stage,
-            MetalShaderIndexTable table, uint x, uint y, uint z)
+            MetalShaderIndexTable table, uint x, uint y, uint z, MetalShaderEvidence? evidence = null)
         {
             _liveness = liveness;
             _stage = stage;
@@ -143,6 +147,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             ThreadGroupSizeX = x;
             ThreadGroupSizeY = y;
             ThreadGroupSizeZ = z;
+            Evidence = evidence;
         }
 
         /// <inheritdoc/>
@@ -166,6 +171,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <summary>The kernel function, which is what a compute pipeline is created from.</summary>
         /// <exception cref="InvalidOperationException">This shader is disposed.</exception>
+        internal MetalShaderEvidence? Evidence { get; }
+
         internal MTLFunction Function => _disposed
             ? throw new InvalidOperationException(
                 "This native Metal compute shader is disposed, so its function is released.")

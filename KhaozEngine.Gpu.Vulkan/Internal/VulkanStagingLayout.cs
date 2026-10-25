@@ -138,7 +138,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>Bytes for a whole region. <c>FormatHelpers.GetRegionSize</c>'s uncompressed arm:
         /// <c>width * height * depth * bytesPerTexel</c>.</summary>
         internal static ulong RegionSize(uint width, uint height, uint depth, GpuPixelFormat format)
-            => (ulong)width * height * depth * BytesPerTexel(format);
+            => checked((ulong)width * height * depth * BytesPerTexel(format));
 
         /// <summary>
         /// The dimension of <paramref name="mipLevel"/> given mip 0's. <c>Util.GetDimension</c>: halve once per
@@ -165,7 +165,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         internal static ulong MipOffset(in VulkanStagingShape shape, uint mipLevel)
         {
             ulong offset = 0;
-            for (uint level = 0; level < mipLevel; level++) offset += LevelSize(shape, level);
+            for (uint level = 0; level < mipLevel; level++) offset = checked(offset + LevelSize(shape, level));
 
             return offset;
         }
@@ -198,9 +198,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </para>
         /// </summary>
         internal static ulong TotalBytes(in VulkanStagingShape shape)
+            => Fits(PayloadBytes(shape), shape, "total size");
+
+        /// <summary>Logical texel bytes shared by staging buffers and native images, without a mapping limit.
+        /// Every mip, layer and texel multiplication is checked in 64 bits.</summary>
+        internal static ulong PayloadBytes(in VulkanStagingShape shape)
         {
             RequireShape(shape);
-            return Fits(LayerPitch(shape) * shape.ArrayLayers, shape, "total size");
+            return checked(LayerPitch(shape) * shape.ArrayLayers);
         }
 
         /// <summary>

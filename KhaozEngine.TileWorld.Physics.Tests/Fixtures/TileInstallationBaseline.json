@@ -1,0 +1,195 @@
+{
+  "ColliderHash": "6aa23030d83786938861832e5f220a95614c896da011eb21c14ef31a5e651851",
+  "WorldId": "filtered-installation-baseline",
+  "Rows": [
+    {
+      "ColliderIndex": 0,
+      "Kind": "Ground",
+      "WorldId": "filtered-installation-baseline",
+      "OwnerLocalId": "ground/0/0/0",
+      "FirstFeatureId": 0,
+      "LastFeatureId": 2147483647,
+      "MinimumBits": [
+        2147483649,
+        2147483649,
+        3263168513
+      ],
+      "MaximumBits": [
+        1115684865,
+        1086953882,
+        1
+      ],
+      "Excluded": true
+    },
+    {
+      "ColliderIndex": 1,
+      "Kind": "Wall",
+      "WorldId": "filtered-installation-baseline",
+      "OwnerLocalId": "placed/1",
+      "FirstFeatureId": 0,
+      "LastFeatureId": 2147483647,
+      "MinimumBits": [
+        1084122725,
+        1056964607,
+        3233808385
+      ],
+      "MaximumBits": [
+        1084332443,
+        1078145844,
+        3231711231
+      ],
+      "Excluded": false
+    },
+    {
+      "ColliderIndex": 2,
+      "Kind": "Wall",
+      "WorldId": "filtered-installation-baseline",
+      "OwnerLocalId": "placed/2",
+      "FirstFeatureId": 0,
+      "LastFeatureId": 2147483647,
+      "MinimumBits": [
+        1090519039,
+        1061997769,
+        3233913243
+      ],
+      "MaximumBits": [
+        1091567617,
+        1079404135,
+        3233703525
+      ],
+      "Excluded": false
+    },
+    {
+      "ColliderIndex": 3,
+      "Kind": "Wall",
+      "WorldId": "filtered-installation-baseline",
+      "OwnerLocalId": "placed/2",
+      "FirstFeatureId": 0,
+      "LastFeatureId": 2147483647,
+      "MinimumBits": [
+        1091515186,
+        1062836631,
+        3233808385
+      ],
+      "MaximumBits": [
+        1091620046,
+        1079404135,
+        3231711231
+      ],
+      "Excluded": false
+    },
+    {
+      "ColliderIndex": 4,
+      "Kind": "Blocked",
+      "WorldId": "filtered-installation-baseline",
+      "OwnerLocalId": "blocked/0/2/2",
+      "FirstFeatureId": 0,
+      "LastFeatureId": 2147483647,
+      "MinimumBits": [
+        1073741823,
+        1045220559,
+        3225419777
+      ],
+      "MaximumBits": [
+        1077936129,
+        1079194420,
+        3221225471
+      ],
+      "Excluded": false
+    },
+    {
+      "ColliderIndex": 5,
+      "Kind": "Blocked",
+      "WorldId": "filtered-installation-baseline",
+      "OwnerLocalId": "blocked/0/6/4",
+      "FirstFeatureId": 0,
+      "LastFeatureId": 2147483647,
+      "MinimumBits": [
+        1086324735,
+        1058642329,
+        3231711233
+      ],
+      "MaximumBits": [
+        1088421889,
+        1080872143,
+        3229614079
+      ],
+      "Excluded": false
+    },
+    {
+      "ColliderIndex": 6,
+      "Kind": "Object",
+      "WorldId": "filtered-installation-baseline",
+      "OwnerLocalId": "placed/4",
+      "FirstFeatureId": 0,
+      "LastFeatureId": 2147483647,
+      "MinimumBits": [
+        1077936127,
+        1050253719,
+        3229614081
+      ],
+      "MaximumBits": [
+        1082130433,
+        1075419547,
+        3225419775
+      ],
+      "Excluded": false
+    },
+    {
+      "ColliderIndex": 7,
+      "Kind": "Object",
+      "WorldId": "filtered-installation-baseline",
+      "OwnerLocalId": "placed/3",
+      "FirstFeatureId": 0,
+      "LastFeatureId": 2147483647,
+      "MinimumBits": [
+        1092616191,
+        1065353215,
+        3241148417
+      ],
+      "MaximumBits": [
+        1094713345,
+        1072902965,
+        3240099839
+      ],
+      "Excluded": false
+    },
+    {
+      "ColliderIndex": 8,
+      "Kind": "WalkSurface",
+      "WorldId": "filtered-installation-baseline",
+      "OwnerLocalId": "placed/6",
+      "FirstFeatureId": 0,
+      "LastFeatureId": 2147483647,
+      "MinimumBits": [
+        1100742655,
+        1078984704,
+        3249012737
+      ],
+      "MaximumBits": [
+        1102315521,
+        1079404136,
+        3248488447
+      ],
+      "Excluded": false
+    }
+  ],
+  "ExcludedColliderIndices": [
+    0
+  ],
+  "Extent": {
+    "MinimumBits": [
+      2147483649,
+      2147483649,
+      3263168513
+    ],
+    "MaximumBits": [
+      1115684865,
+      1086953882,
+      1
+    ],
+    "AnalyticMinimumYBits": 2147483649,
+    "AnalyticMaximumYBits": 1086953882
+  },
+  "SemanticDigest": "0F24E2975D194E4F84E97E00A8C33DA9AB59FB20BE18F36780902CAA00A14A1C"
+}

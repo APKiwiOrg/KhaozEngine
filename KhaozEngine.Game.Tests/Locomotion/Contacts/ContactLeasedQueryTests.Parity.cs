@@ -85,7 +85,7 @@ public partial class ContactLeasedQueryTests
         float dt = 1f / hz;
         Vector2 direction = scenario == "step-down" ? -Vector2.UnitX
             : scenario == "wall-retry" ? Vector2.Normalize(new(1, 1)) : Vector2.UnitX;
-        int slides = 0, retries = 0;
+        long slides = 0, retries = 0;
         SupportQueryDiagnostics.Enable(true);
         try
         {

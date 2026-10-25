@@ -27,7 +27,12 @@ public sealed partial class GpuFrameSubmissionTests
             Assert.Same(oldFence, shared);
             Assert.True(old.TryRecord(gpu, source, 0, 16, 100, oldFence!));
             Assert.True(valid.TryRecord(gpu, source, 0, 16, 100, shared!));
-            var failure = Assert.Throws<InvalidOperationException>(() => submission.Abandon());
+            var failure = Assert.Throws<GpuDiagnosticFailureException>(() => submission.Abandon());
+            Assert.Equal(2, failure.Failures.Length);
+            Assert.Same(faulty.DiscardError, failure.Failures[0].Error);
+            Assert.Same(faulty.QueryError, failure.Failures[1].Error);
+            Assert.Equal("renderer.frame.submission.discard.0.0", failure.Failures[0].Stage);
+            Assert.Equal("renderer.frame.submission.pending.0.0", failure.Failures[1].Stage);
             Assert.Equal(0, valid.PendingCount);
             Assert.Equal(1, old.PendingCount);
             faulty.FailQuery = false;
@@ -48,7 +53,7 @@ public sealed partial class GpuFrameSubmissionTests
             Assert.Equal(0, ((SubmissionTestFence)oldFence!).ResetCalls);
             Assert.Equal(0, gpu.WaitCalls); Assert.Equal(0, gpu.FlushCalls);
             Assert.Equal(1, gpu.SubmitCalls);
-            Assert.Equal("discard failure", failure.Message);
+            Assert.Equal("discard failure", failure.Failures[0].Error.Message);
             if (retained)
             {
                 Assert.True(next.TryRead(payload, out ulong tag, out _));
@@ -86,7 +91,9 @@ public sealed partial class GpuFrameSubmissionTests
             Assert.True(old.TryRecord(gpu, source, 0, 16, 100, fence!));
             submission.Submit(gpu);
             ((SubmissionTestFence)fence!).Signaled = true;
-            Assert.Throws<InvalidOperationException>(() => submission.Begin());
+            var query = Assert.Single(Assert.Throws<GpuDiagnosticFailureException>(() => submission.Begin()).Failures);
+            Assert.Same(faulty.QueryError, query.Error);
+            Assert.Equal("renderer.frame.submission.pending.0.0", query.Stage);
             Assert.Equal(1, other.QueryCalls);
             Assert.Equal(0, ((SubmissionTestFence)fence).ResetCalls);
             faulty.FailQuery = false;
@@ -122,12 +129,15 @@ public sealed partial class GpuFrameSubmissionTests
             Assert.True(old.TryRecord(gpu, source, 0, 16, 100, fence!));
             Assert.True(valid.TryRecord(gpu, source, 0, 16, 100, fence!));
             submission.Submit(gpu);
-            var failure = Assert.Throws<InvalidOperationException>(() => submission.Dispose());
+            var failure = Assert.Throws<GpuDiagnosticFailureException>(() => submission.Dispose());
+            Assert.Equal(2, failure.Failures.Length);
+            Assert.Equal("release failure", failure.Failures[0].Error.Message);
+            Assert.Equal("query failure", failure.Failures[1].Error.Message);
             Assert.Equal(0, valid.PendingCount);
             Assert.Equal(1, other.ReleaseCalls);
             Assert.Equal(1, old.PendingCount);
             Assert.All(gpu.Fences, item => Assert.Equal(0, item.DisposeCalls));
-            Assert.Equal("release failure", failure.Message);
+            Assert.Equal("renderer.session.dispose.submission.consumer.0.0", failure.Failures[0].Stage);
             Assert.Throws<ObjectDisposedException>(() => submission.Begin());
             faulty.FailQuery = faulty.FailRelease = false;
             submission.Dispose();
@@ -156,7 +166,10 @@ public sealed partial class GpuFrameSubmissionTests
             Assert.True(submission.TryRetain(faulty, out var oldFence));
             source.Bytes[0] = 0x41;
             Assert.True(old.TryRecord(gpu, source, 0, 16, 100, oldFence!));
-            Assert.Throws<InvalidOperationException>(() => submission.Abandon());
+            var abandoned = Assert.Throws<GpuDiagnosticFailureException>(() => submission.Abandon());
+            Assert.Equal(2, abandoned.Failures.Length);
+            Assert.Same(faulty.DiscardError, abandoned.Failures[0].Error);
+            Assert.Same(faulty.QueryError, abandoned.Failures[1].Error);
             faulty.FailQuery = false;
             submission.Begin();
             Assert.True(submission.TryRetain(next, out var nextFence));
@@ -184,16 +197,18 @@ public sealed partial class GpuFrameSubmissionTests
     {
         internal bool FailDiscard, FailQuery, FailRelease;
         internal int DiscardCalls, QueryCalls, ReleaseCalls;
+        internal readonly Exception DiscardError = new InvalidOperationException("discard failure");
+        internal readonly Exception QueryError = new InvalidOperationException("query failure");
         public bool HasPending(IGpuFence completion)
         {
             QueryCalls++;
-            if (FailQuery) throw new InvalidOperationException("query failure");
+            if (FailQuery) throw QueryError;
             return ring.HasPending(completion);
         }
         public void DiscardUnsubmitted(IGpuFence completion)
         {
             DiscardCalls++;
-            if (FailDiscard) throw new InvalidOperationException("discard failure");
+            if (FailDiscard) throw DiscardError;
             ring.DiscardUnsubmitted(completion);
         }
         public void ReleaseCompleted(IGpuFence completion)

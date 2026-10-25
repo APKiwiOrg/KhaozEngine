@@ -231,7 +231,8 @@ namespace KhaozEngine.Gpu
         //
         // Every throw out of here is a BUG IN THE PROVIDER, never a machine that cannot run the backend, which is
         // why the windowed entry calls this outside its fallback catch. See the comment at that call site.
-        static GpuDeviceContext Adopt(in GpuProviderDevice created, GpuBackendSelection selection)
+        static GpuDeviceContext Adopt(in GpuProviderDevice created, GpuBackendSelection selection,
+            System.Collections.Immutable.ImmutableArray<GpuDiagnosticFailure>.Builder? failures = null)
         {
             if (created.Device is null)
             {
@@ -247,14 +248,19 @@ namespace KhaozEngine.Gpu
                 return new GpuDeviceContext(created.Device, created.ThreadingCaps, created.ThreadingProbeFailure,
                     selection, ownsDevice: true);
             }
-            catch
+            catch (Exception error)
             {
+                if (failures is not null)
+                {
+                    if (error is GpuDiagnosticFailureException transport) failures.AddRange(transport.Failures);
+                    else failures.Add(new("gpu.context.adopt", error));
+                }
                 // Ownership transfers on a SUCCESSFUL construction only. A rejected device has no context to
                 // dispose it and no other reference anywhere, so without this its adapter, swapchain and driver
                 // allocations live until the process exits. Rejecting the device is exactly the case where the
                 // provider is already misbehaving, so it is also the case least likely to have cleaned up after
                 // itself.
-                DisposeRejected(created.Device);
+                DisposeRejected(created.Device, failures);
                 throw;
             }
         }
@@ -264,7 +270,8 @@ namespace KhaozEngine.Gpu
         // may be equally broken, and an exception thrown here would unwind in place of the provider-bug exception
         // the caller has to see. Under the same gate the ordinary teardown uses, because it is the same
         // destruction.
-        static void DisposeRejected(IGpuDevice device)
+        static void DisposeRejected(IGpuDevice device,
+            System.Collections.Immutable.ImmutableArray<GpuDiagnosticFailure>.Builder? failures = null)
         {
             try
             {
@@ -275,6 +282,12 @@ namespace KhaozEngine.Gpu
             }
             catch (Exception ex)
             {
+                if (failures is not null)
+                {
+                    if (ex is GpuDiagnosticFailureException transport) failures.AddRange(transport.Failures);
+                    else failures.Add(new("gpu.context.reject.dispose", ex));
+                    return;
+                }
                 log.Warn($"Disposing the device adoption refused threw {ex.GetType().Name}: {ex.Message}. This is "
                     + "the cleanup, not the fault: the refusal it was disposed for is the exception coming out of "
                     + "device creation, and that is the one to act on.");

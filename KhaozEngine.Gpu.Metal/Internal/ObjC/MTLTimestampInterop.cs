@@ -6,48 +6,70 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 {
     /// <summary>Metal counter selectors and their exact LP64 Objective-C ABI.</summary>
     [SupportedOSPlatform("macos")]
-    internal sealed unsafe partial class MTLTimestampInterop(IntPtr device) : IMetalTimestampNative
+    internal sealed unsafe partial class MTLTimestampInterop(IntPtr device, MetalMemoryDiagnostics? memory = null) : IMetalTimestampNative
     {
         // Exported NSString constant, loaded only on the native path. The framework stays loaded process-wide.
         static class Exports
         {
             internal static readonly IntPtr TimestampName = Marshal.ReadIntPtr(NativeLibrary.GetExport(
                 NativeLibrary.Load(ObjCRuntime.MetalFramework), "MTLCommonCounterSetTimestamp"));
+            internal static readonly IntPtr TimestampCounterName = Marshal.ReadIntPtr(NativeLibrary.GetExport(
+                NativeLibrary.Load(ObjCRuntime.MetalFramework), "MTLCommonCounterTimestamp"));
         }
 
         IntPtr FindCounterSet()
         {
+            if (!MTLDiagnosticInterop.Responds(device, "counterSets")) throw new NotSupportedException("MTLDevice.counterSets is unavailable (macOS 10.15+).");
             var sets = new NSArray(ObjCMsgSend.Send(device, ObjCRuntime.Sel("counterSets")));
+            if (sets.Count() > MetalCounterEnumeration.MaximumSets) throw new InvalidOperationException("Metal counter set enumeration exceeds its fixed bound.");
             for (nuint i = 0, count = sets.Count(); i < count; i++)
             {
                 IntPtr set = sets.ObjectAt(i);
                 IntPtr name = ObjCMsgSend.Send(set, ObjCRuntime.Sel("name"));
-                if (ObjCMsgSend.SendBoolPtr(name, ObjCRuntime.Sel("isEqualToString:"), Exports.TimestampName) != 0)
-                    return set;
+                if (ObjCMsgSend.SendBoolPtr(name, ObjCRuntime.Sel("isEqualToString:"), Exports.TimestampName) == 0) continue;
+                var counters = new NSArray(ObjCMsgSend.Send(set, ObjCRuntime.Sel("counters")));
+                if (counters.Count() > MetalCounterEnumeration.MaximumCountersPerSet) throw new InvalidOperationException("Metal counter enumeration exceeds its fixed bound.");
+                for (nuint c = 0, n = counters.Count(); c < n; c++)
+                {
+                    IntPtr counterName = ObjCMsgSend.Send(counters.ObjectAt(c), ObjCRuntime.Sel("name"));
+                    if (ObjCMsgSend.SendBoolPtr(counterName, ObjCRuntime.Sel("isEqualToString:"), Exports.TimestampCounterName) != 0) return set;
+                }
             }
             return IntPtr.Zero;
         }
 
         public bool HasTimestampCounterSet => FindCounterSet() != IntPtr.Zero;
         public bool SupportsSampling(uint point)
-            => ObjCMsgSend.SendBoolNUInt(device, ObjCRuntime.Sel("supportsCounterSampling:"), point) != 0;
+        {
+            if (!MTLDiagnosticInterop.Responds(device, "supportsCounterSampling:")) throw new NotSupportedException("MTLDevice.supportsCounterSampling: is unavailable (macOS 11+).");
+            return ObjCMsgSend.SendBoolNUInt(device, ObjCRuntime.Sel("supportsCounterSampling:"), point) != 0;
+        }
 
         public IntPtr CreateSampleBuffer(uint capacity)
         {
             IntPtr descriptor = New("MTLCounterSampleBufferDescriptor");
-            if (descriptor == IntPtr.Zero) return IntPtr.Zero;
+            if (descriptor == IntPtr.Zero) { SampleBufferFailureReason = "MTLCounterSampleBufferDescriptor could not be created."; return IntPtr.Zero; }
             try
             {
                 ObjCMsgSend.SendVoidPtr(descriptor, ObjCRuntime.Sel("setCounterSet:"), FindCounterSet());
                 ObjCMsgSend.SendVoidNUInt(descriptor, ObjCRuntime.Sel("setStorageMode:"), 0); // Shared, tracked.
                 ObjCMsgSend.SendVoidNUInt(descriptor, ObjCRuntime.Sel("setSampleCount:"), capacity);
-                return ObjCMsgSend.SendPtrPtrOutPtr(device,
-                    ObjCRuntime.Sel("newCounterSampleBufferWithDescriptor:error:"), descriptor, out _);
+                IntPtr result = ObjCMsgSend.SendPtrPtrOutPtr(device,
+                    ObjCRuntime.Sel("newCounterSampleBufferWithDescriptor:error:"), descriptor, out IntPtr error);
+                SampleBufferFailureReason = result != IntPtr.Zero ? null : error != IntPtr.Zero
+                    ? new NSError(error).LocalizedDescription() : "Metal refused the timestamp sample buffer without NSError.";
+                return result;
             }
             finally { Release(descriptor); }
         }
 
-        public IntPtr CreateBuffer(uint bytes) => new MTLDevice(device).NewBuffer(bytes, 0).Handle;
+        public IntPtr CreateBuffer(uint bytes)
+        {
+            IntPtr buffer = new MTLDevice(device).NewBuffer(bytes, 0).Handle;
+            if (buffer == IntPtr.Zero) return buffer;
+            try { memory?.OwnStaging(buffer, bytes); return buffer; }
+            catch { ObjCRuntime.ObjcRelease(buffer); throw; }
+        }
         public IntPtr Contents(IntPtr buffer) => new MTLBuffer(buffer).Contents();
         public IntPtr CreateEvent() => ObjCMsgSend.Send(device, ObjCRuntime.Sel("newSharedEvent"));
         public IntPtr CreateBlitDescriptor() => New("MTLBlitPassDescriptor");
@@ -62,6 +84,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 
         public void Release(IntPtr handle)
         {
+            memory?.ReleaseStaging(handle);
             if (handle != IntPtr.Zero) ObjCRuntime.ObjcRelease(handle);
         }
 

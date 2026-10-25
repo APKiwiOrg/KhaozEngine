@@ -121,8 +121,9 @@ public sealed class TileWorldViewWaterOpticsTriangleTests
         Assert.True(plane.Optics.IsBound);
         WaterOpticsTriangleField field = scene.TriangleFields[plane.Optics.Field];
         Assert.Equal(field.Size, plane.Optics.Size);
+        // Physical depth as the shader forms it, without the clamp: rest depth plus level minus the datum.
         return field.SampleDepth((x - plane.Optics.Origin.X) / plane.Optics.Size.X,
-            (z - plane.Optics.Origin.Z) / plane.Optics.Size.Y);
+            (z - plane.Optics.Origin.Z) / plane.Optics.Size.Y) + plane.SurfaceY - plane.Optics.Origin.Y;
     }
 
     static double OracleDepth(TileWorldView view, WaterPlane plane, float x, float z, params RegionCoord[] regions) =>
@@ -217,7 +218,7 @@ public sealed class TileWorldViewWaterOpticsTriangleTests
         Assert.Equal(2, scene.TriangleFields.Count);
         foreach (WaterPlane plane in planes)
         {
-            Assert.Equal(plane.SurfaceY, plane.Optics.Origin.Y);
+            Assert.Equal(0f, plane.Optics.Origin.Y);
             Assert.Equal(OracleDepth(view, plane, plane.CenterX, plane.CenterZ, Origin),
                 FieldDepth(scene, plane, plane.CenterX, plane.CenterZ), 4);
         }
@@ -375,35 +376,76 @@ public sealed class TileWorldViewWaterOpticsTriangleTests
     [Fact]
     public void UploadFailureRollsBackWholePublicationGroup()
     {
-        TileWorldDocument doc = Border();
+        // East is the source of a dependent field on each side: Origin's water at its west border, Far's at its east.
+        var far = new RegionCoord(2, 0);
+        TileWorldDocument doc = Doc(Origin, East, far);
+        Fill(doc, TileRenderTestData.Grass, 48, 4, 144, 24);
+        Fill(doc, TileRenderTestData.Water, 62, 12, 64, 15);
+        Fill(doc, TileRenderTestData.Water, 128, 12, 130, 15);
         var scene = new RecordingTileWorldScene { OpticalPadding = 2f };
         using var view = View(scene, doc);
         view.LoadRegion(East);
         view.LoadRegion(Origin);
-        WaterOpticsHandle field = Assert.Single(Water(view, scene)).Optics.Field;
+        view.LoadRegion(far);
+        view.Flush();
+        Assert.Empty(view.WaterOpticsFailures);
+        WaterOpticsHandle[] fields = Water(view, scene).Select(p => p.Optics.Field).OrderBy(h => h.Index).ToArray();
+        Assert.Equal(2, fields.Length);
         TileGroundSurfaceSnapshot east = view.AcceptedGroundSurface(East, 0)!;
-        int meshes = scene.MeshLoads.Count;
+        Assert.Contains(east.Id, view.WaterSourcesOf(Origin, 0));
+        Assert.Contains(east.Id, view.WaterSourcesOf(far, 0));
+        int meshes = scene.MeshLoads.Count, loads = scene.TriangleLoads.Count;
 
-        // A border edit beyond East remeshes East without changing Origin's own inputs.
-        scene.ThrowOnOpticalLoad = scene.TriangleLoads.Count + 1;
-        view.MarkDirty(new TileRect(128, 13, 1, 1), 0);
+        // An edit north of East remeshes East without changing either dependent's own inputs. The first dependent
+        // uploads its replacement and the second dependent's upload throws.
+        var north = new TileRect(96, 64, 1, 1);
+        scene.ThrowOnOpticalLoad = loads + 2;
+        view.MarkDirty(north, 0);
         Assert.Throws<InvalidOperationException>(() => view.Flush());
         Assert.Same(east, view.AcceptedGroundSurface(East, 0));
-        Assert.Equal(field, Assert.Single(Water(view, scene)).Optics.Field);
-        Assert.Equal(field, Assert.Single(scene.TriangleFields).Key);
+        Assert.Equal(fields, Water(view, scene).Select(p => p.Optics.Field).OrderBy(h => h.Index));
+        Assert.Equal(fields, scene.TriangleFields.Keys.OrderBy(h => h.Index));
         Assert.Equal(meshes, scene.MeshLoads.Count);
-        Assert.Empty(scene.OpticalUnloads);
+        // The first dependent's staged replacement was released with the group.
+        Assert.Equal(loads + 1, scene.TriangleLoads.Count);
+        Assert.Equal(new[] { scene.TriangleLoads[^1] }, scene.OpticalUnloads);
 
         scene.ThrowOnOpticalLoad = 0;
-        view.MarkDirty(new TileRect(128, 13, 1, 1), 0);
+        view.MarkDirty(north, 0);
         view.Flush();
         TileGroundSurfaceSnapshot replaced = view.AcceptedGroundSurface(East, 0)!;
         Assert.NotSame(east, replaced);
-        WaterPlane plane = Assert.Single(Water(view, scene));
-        Assert.NotEqual(field, plane.Optics.Field);
-        Assert.Equal(new[] { field }, scene.OpticalUnloads);
+        WaterPlane[] planes = Water(view, scene);
+        Assert.Equal(2, planes.Length);
+        Assert.All(planes, p => Assert.DoesNotContain(p.Optics.Field, fields));
+        Assert.All(fields, f => Assert.Contains(f, scene.OpticalUnloads));
         Assert.Contains(replaced.Id, view.WaterSourcesOf(Origin, 0));
-        Assert.Single(scene.TriangleFields);
+        Assert.Contains(replaced.Id, view.WaterSourcesOf(far, 0));
+        Assert.Equal(2, scene.TriangleFields.Count);
+    }
+
+    [Fact]
+    public void PaddingRefreshUploadsOneFieldAndNoMesh()
+    {
+        var scene = new RecordingTileWorldScene();
+        using var view = View(scene, Interior());
+        view.LoadRegion(Origin);
+        WaterOpticsHandle first = Assert.Single(Water(view, scene)).Optics.Field;
+        int meshes = scene.MeshLoads.Count, loads = scene.TriangleLoads.Count;
+
+        // The wider displacement no longer fits the old certificates, so the field is withdrawn and replaced.
+        scene.OpticalPadding = 1f;
+        view.Flush();
+        Assert.Equal(loads + 1, scene.TriangleLoads.Count);
+        Assert.Equal(meshes, scene.MeshLoads.Count);
+        Assert.Equal(0, view.PendingRebuilds);
+        Assert.Equal(new[] { first }, scene.OpticalUnloads);
+        WaterPlane plane = Assert.Single(Water(view, scene));
+        Assert.NotEqual(first, plane.Optics.Field);
+        Assert.Equal(OracleDepth(view, plane, 11f, -11f, Origin), FieldDepth(scene, plane, 11f, -11f), 4);
+        view.Draw(Focus);
+        Assert.Equal(meshes, scene.MeshLoads.Count);
+        Assert.Equal(loads + 1, scene.TriangleLoads.Count);
     }
 
     [Fact]

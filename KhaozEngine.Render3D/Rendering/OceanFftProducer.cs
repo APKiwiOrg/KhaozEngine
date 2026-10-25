@@ -1,3 +1,4 @@
+using KhaozEngine.Render3D.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -45,6 +46,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed class OceanFftProducer : IDisposable
     {
+        internal RenderPassProfiling? Profiling { get; set; }
+
         /// <summary>Mirrors the <c>Params</c> block in both kernels: five vec4s, 80 bytes, std140-clean.</summary>
         [StructLayout(LayoutKind.Sequential)]
         internal struct OceanUbo
@@ -287,13 +290,15 @@ namespace KhaozEngine.Render3D.Rendering
                     + "Scene3D.PrepareFrame() after queueing the frame's draws and before opening the frame's "
                     + "command list (see IFramePreparer).");
             _prepared = false;
+            using var profile = Profiling?.Pass(sceneList, "ocean", executed: _pending is not null) ?? default;
             if (_pending is not { } frame) return false;
             _pending = null;
 
             // ONE parameter block serves both passes even though they belong to different frames: the row pass is
             // the only stage that reads Timing.x, and the column pass reads only the delta, the choppiness and the
             // foam knobs, all of which are this frame's.
-            WriteUbo(sceneList, frame.Sea, frame.Cascades, frame.RowTime, frame.Delta);
+            using (Profiling?.Pass(sceneList, "ocean.uniforms") ?? default)
+                WriteUbo(sceneList, frame.Sea, frame.Cascades, frame.RowTime, frame.Delta);
 
             // Both dispatches go in the SCENE's list, so the column pass's storage-image writes and the water draw
             // that samples them share one command list. That is the seam's guaranteed compute-to-graphics ordering;
@@ -302,13 +307,19 @@ namespace KhaozEngine.Render3D.Rendering
             // respect to each other and the row pass is recorded first, giving its output the whole rest of the
             // frame to land before the next frame consumes it.
             int read = _pong, write = 1 - _pong;
-            sceneList.SetComputePipeline(_rowPipe!);
-            sceneList.SetComputeResourceSet(0, _rowSets[write]!);
-            sceneList.Dispatch(frame.Groups, (uint)frame.Cascades, 1);
+            using (Profiling?.Pass(sceneList, "ocean.next-row") ?? default)
+            {
+                sceneList.SetComputePipeline(_rowPipe!);
+                sceneList.SetComputeResourceSet(0, _rowSets[write]!);
+                sceneList.Dispatch(frame.Groups, (uint)frame.Cascades, 1);
+            }
 
-            sceneList.SetComputePipeline(_colPipe!);
-            sceneList.SetComputeResourceSet(0, _colSets[read]!);
-            sceneList.Dispatch(frame.Groups, (uint)frame.Cascades, 1);
+            using (Profiling?.Pass(sceneList, "ocean.column") ?? default)
+            {
+                sceneList.SetComputePipeline(_colPipe!);
+                sceneList.SetComputeResourceSet(0, _colSets[read]!);
+                sceneList.Dispatch(frame.Groups, (uint)frame.Cascades, 1);
+            }
             _pong = write;
 
             BuildMipChain(sceneList, frame.Resolution, frame.Cascades);
@@ -338,12 +349,13 @@ namespace KhaozEngine.Render3D.Rendering
         void BuildMipChain(IGpuCommandList sceneList, int resolution, int cascades)
         {
             LastMipCopies = 0;
-            if (_mipMap == null) return;
+            if (_mipMap == null) { Profiling?.Pass(sceneList, "ocean.mips", executed: false); return; }
             uint n = (uint)resolution;
             uint layers = (uint)(2 * cascades);   // exactly the layer count Rebake built both maps with
             for (uint layer = 0; layer < layers; layer++)
-                sceneList.CopyTextureSubresource(_map!, 0, layer, _mipMap, 0, layer, n, n);
-            sceneList.GenerateMipmaps(_mipMap);
+                using (Profiling?.Pass(sceneList, "ocean.mip-copy", (int)layer) ?? default)
+                    sceneList.CopyTextureSubresource(_map!, 0, layer, _mipMap, 0, layer, n, n);
+            using (Profiling?.Pass(sceneList, "ocean.mips") ?? default) sceneList.GenerateMipmaps(_mipMap);
             LastMipCopies = (int)layers;
         }
 
@@ -393,6 +405,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             using IGpuCommandList cl = _gd.Factory.CreateCommandList();
             using (GpuRecording.Open(_gd, cl, "the FFT ocean's priming pass"))
+            using (Profiling?.Pass(cl, "startup.ocean-prime") ?? default)
             {
                 WriteUbo(cl, sea, cascades, timeSeconds, dt);
                 cl.SetComputePipeline(_rowPipe!);

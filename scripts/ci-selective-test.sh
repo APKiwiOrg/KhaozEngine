@@ -42,7 +42,7 @@ fail() {
 run_full() {
   echo "ci-selective-test: FULL ($1)"
   dotnet restore || fail "restore failed"
-  dotnet build -c Release --no-restore || fail "build failed"
+  sh scripts/build-release-tests.sh KhaozEngine.slnx --no-restore || fail "build failed"
   dotnet test -c Release --no-build --filter "$LIVE_SOCKET_FILTER" || fail "test failed"
   # Determinism guard: the FP-scope tests must stay byte-identical under both JIT tiering modes. The
   # DeterministicFp tests live in KhaozEngine.Foundation.Tests, so the pass is scoped to that project
@@ -154,7 +154,7 @@ done < "$TMP/affected_tests.txt"
 
 while IFS= read -r proj; do
   echo "selective build: $proj"
-  dotnet build "$proj" -c Release --no-restore || fail "build failed for $proj"
+  sh scripts/build-release-tests.sh "$proj" --no-restore || fail "build failed for $proj"
 done < "$TMP/affected_tests.txt"
 
 while IFS= read -r proj; do

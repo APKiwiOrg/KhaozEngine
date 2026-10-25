@@ -17,13 +17,13 @@ public class TileWorldNavigationBakeTests
 {
     private const int MaxSampledPairs = 400;
     private static readonly NavAreaFilter DryOnly = new(Dry, Wet);
-    private static readonly NavBakeProfile[] Profiles =
+    internal static readonly NavBakeProfile[] Profiles =
     [
         new("player", Tuning with { CapsuleRadius = 0.3f }, DryOnly),
         new("wide", Tuning with { CapsuleRadius = 0.55f }, DryOnly),
     ];
-    private static readonly Vector3 Origin = new(128f, 4f, 64f);
-    private static readonly PhysicsNavBakeOptions Options = Bounds(128, -64, 7, 12);
+    internal static readonly Vector3 Origin = new(128f, 4f, 64f);
+    internal static readonly PhysicsNavBakeOptions Options = Bounds(128, -64, 7, 12);
 
     // Deck and bed water from the rebased deck fact, the door from the one metre door fact shifted to document row -56,
     // and one no-draw hole whose analytic lattice height is zero but which physics never hits.
@@ -133,7 +133,7 @@ public class TileWorldNavigationBakeTests
         Assert.Equal(NavPathStatus.Complete, Route(loaded, east, west).Status);
     }
 
-    private static TileWorldDocument DeckDoorWorld()
+    internal static TileWorldDocument DeckDoorWorld()
     {
         TileWorldDocument doc = Drawn(128, -64, 7, 12);
         for (int z = -63; z <= -60; z++)

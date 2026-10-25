@@ -31,15 +31,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// object it becomes worth measuring, and the shape to add is one more slot plus one more flag.
     /// </para>
     /// <para>
-    /// WINDOWS-ONLY AT THE TYPE LEVEL, like every other wrapper here, because it holds a
-    /// <see cref="D3D11ComputeShader"/>. That is a reference field, so nothing resolves the Vortice assembly by
-    /// loading this type, and the load-path guard stays satisfied.
+    /// Native shader creation remains Windows-only. This owner also accepts the native-operation seam's
+    /// handles for headless lifetime and diagnostic proofs without loading Vortice.
     /// </para>
     /// </summary>
-    [SupportedOSPlatform("windows")]
     internal sealed class D3D11ComputePipeline : IGpuComputePipeline, ID3D11ComputePipelineState,
-        ID3D11PipelineLayouts
+        ID3D11PipelineLayouts, IGpuPipelineDiagnostics, IGpuPipelineConstructionDiagnostics, IGpuBudgetedPipelineDiagnostics
     {
+        readonly D3D11PipelineDiagnostics _diagnostics;
+
         internal D3D11ComputePipeline(in GpuComputePipelineDescription description)
         {
             if (description.Shader is not D3D11ComputeShader shader)
@@ -53,6 +53,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             Shader = shader;
             ResourceLayouts = D3D11ResourceLayout.RequireAll(description.ResourceLayouts, "compute");
+            _diagnostics = D3D11PipelineIdentity.Compute(shader.DiagnosticEvidence, ResourceLayouts,
+                shader.ThreadGroupSizeX, shader.ThreadGroupSizeY, shader.ThreadGroupSizeZ);
         }
 
         /// <summary>The compiled module this pipeline binds. Owned by the caller, never disposed here.</summary>
@@ -66,10 +68,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal bool IsDisposed { get; private set; }
 
         /// <inheritdoc/>
-        object? ID3D11ComputePipelineState.ComputeShader => Shader.Shader;
+        object? ID3D11ComputePipelineState.ComputeShader => Shader.ShaderHandle;
 
         /// <inheritdoc/>
         D3D11ResourceLayout[] ID3D11PipelineLayouts.ResourceLayouts => ResourceLayouts;
+
+        public GpuPipelineConstructionIdentity ConstructionIdentity => _diagnostics.ConstructionIdentity;
+        public GpuPipelineCompilerReadResult ReadCompilerReport(GpuPipelineCompilerReadRequest request,
+            System.Action<string> checkOperation, System.Threading.CancellationToken cancellation)
+            => _diagnostics.Read(IsDisposed || Shader.IsDisposed || Shader.DeviceIsDead, request, checkOperation, cancellation);
+
+        public GpuPipelineCompilerReport ReadCompilerReport()
+            => _diagnostics.Read(IsDisposed || Shader.IsDisposed || Shader.DeviceIsDead);
 
         public void Dispose() => IsDisposed = true;
     }

@@ -29,16 +29,21 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// access branch states rather than silently mis-viewing.
     /// </para>
     /// </summary>
-    [SupportedOSPlatform("windows")]
     internal sealed class D3D11Texture : IGpuTexture, ID3D11BindableViews, ID3D11MappableResource
     {
         readonly DeviceLiveness _liveness;
+        readonly D3D11ResourceObjects _native;
+        readonly IDisposable? _payload;
 
-        internal D3D11Texture(ID3D11Device device, DeviceLiveness liveness, in GpuTextureDescription description)
+        [SupportedOSPlatform("windows")]
+        internal D3D11Texture(ID3D11Device device, DeviceLiveness liveness, in GpuTextureDescription description,
+            D3D11MemoryDiagnostics? memory = null)
+            : this(liveness, description, t => CreateWindows(device, t), memory) { }
+
+        internal D3D11Texture(DeviceLiveness liveness, in GpuTextureDescription description,
+            Func<D3D11Texture, D3D11ResourceObjects> create, D3D11MemoryDiagnostics? memory)
         {
-            ArgumentNullException.ThrowIfNull(device);
             ArgumentNullException.ThrowIfNull(liveness);
-
             _liveness = liveness;
             Width = description.Width;
             Height = description.Height;
@@ -61,12 +66,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             }
 
             IsDepthTarget = (description.Usage & GpuTextureUsage.DepthStencil) != 0;
-            DeviceTexture = CreateTextureWindows(device, this);
-
-            if (Views.ShaderResource) ShaderResourceView = CreateSrvWindows(device, this);
-            if (Views.RenderTarget) RenderTargetView = CreateRtvWindows(device, this);
-            if (Views.DepthStencil) DepthStencilView = CreateDsvWindows(device, this);
-            if (Views.UnorderedAccess) UnorderedAccessView = CreateUavWindows(device, this);
+            _native = create(this);
+            try { _payload = memory?.TrackTexture(description); }
+            catch { _native.Dispose(); throw; }
         }
 
         /// <inheritdoc/>
@@ -114,22 +116,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// to trip it, and the suite has one. Fields of an interface type are fine, since a reference field needs
         /// no layout resolution. See this package's README.
         /// </summary>
+        [SupportedOSPlatform("windows")]
         internal Format DxgiFormat => D3D11Formats.ToDxgiFormat(Format, IsDepthTarget);
 
         /// <summary>The typeless format the RESOURCE itself is created with. Computed, for the reason on
         /// <see cref="DxgiFormat"/>.</summary>
+        [SupportedOSPlatform("windows")]
         internal Format TypelessFormat => D3D11Formats.ToTypelessFormat(DxgiFormat);
 
         /// <summary>The native texture.</summary>
-        internal ID3D11Texture2D DeviceTexture { get; }
+        internal ID3D11Texture2D DeviceTexture => (ID3D11Texture2D)_native.Resource;
         /// <summary>Full-chain, all-layers shader resource view, or null.</summary>
-        internal ID3D11ShaderResourceView? ShaderResourceView { get; }
+        internal ID3D11ShaderResourceView? ShaderResourceView => (ID3D11ShaderResourceView?)_native.Srv;
         /// <summary>Mip 0, layer 0 render target view, or null.</summary>
-        internal ID3D11RenderTargetView? RenderTargetView { get; }
+        internal ID3D11RenderTargetView? RenderTargetView => (ID3D11RenderTargetView?)_native.Rtv;
         /// <summary>Mip 0, layer 0 depth-stencil view, or null.</summary>
-        internal ID3D11DepthStencilView? DepthStencilView { get; }
+        internal ID3D11DepthStencilView? DepthStencilView => (ID3D11DepthStencilView?)_native.Dsv;
         /// <summary>Mip 0 unordered access view, or null.</summary>
-        internal ID3D11UnorderedAccessView? UnorderedAccessView { get; }
+        internal ID3D11UnorderedAccessView? UnorderedAccessView => (ID3D11UnorderedAccessView?)_native.Uav;
 
         /// <summary>True once disposed, whether or not anything native was released.</summary>
         internal bool IsDisposed { get; private set; }
@@ -141,10 +145,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // register silently holding nothing.
 
         /// <inheritdoc/>
-        object? ID3D11BindableViews.ShaderResourceViewObject => ShaderResourceView;
+        object? ID3D11BindableViews.ShaderResourceViewObject => _native.Srv;
 
         /// <inheritdoc/>
-        object? ID3D11BindableViews.UnorderedAccessViewObject => UnorderedAccessView;
+        object? ID3D11BindableViews.UnorderedAccessViewObject => _native.Uav;
 
         /// <inheritdoc/>
         object? ID3D11BindableViews.SamplerStateObject => null;
@@ -155,7 +159,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // ---- ID3D11MappableResource: what a staging Map needs, answered by the resource ----
 
         /// <inheritdoc/>
-        object ID3D11MappableResource.MapTarget => DeviceTexture;
+        object ID3D11MappableResource.MapTarget => _native.Resource;
 
         /// <inheritdoc/>
         /// <remarks>Staging alone, unlike a buffer. A texture has no DYNAMIC arm on this seam and is never
@@ -166,15 +170,32 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             if (IsDisposed) return;
             IsDisposed = true;
+            _payload?.Dispose();
             if (_liveness.IsDead) return;   // the device already freed every child object
 
-            ShaderResourceView?.Dispose();
-            RenderTargetView?.Dispose();
-            DepthStencilView?.Dispose();
-            UnorderedAccessView?.Dispose();
-            DeviceTexture.Dispose();
+            _native.Dispose();
         }
 
+        [SupportedOSPlatform("windows")]
+        static D3D11ResourceObjects CreateWindows(ID3D11Device device, D3D11Texture owner)
+        {
+            ArgumentNullException.ThrowIfNull(device);
+            var resource = CreateTextureWindows(device, owner);
+            ID3D11ShaderResourceView? srv = null;
+            ID3D11RenderTargetView? rtv = null;
+            ID3D11DepthStencilView? dsv = null;
+            try
+            {
+                srv = owner.Views.ShaderResource ? CreateSrvWindows(device, owner, resource) : null;
+                rtv = owner.Views.RenderTarget ? CreateRtvWindows(device, owner, resource) : null;
+                dsv = owner.Views.DepthStencil ? CreateDsvWindows(device, owner, resource) : null;
+                var uav = owner.Views.UnorderedAccess ? CreateUavWindows(device, owner, resource) : null;
+                return new(resource, srv, uav, rtv, dsv);
+            }
+            catch { dsv?.Dispose(); rtv?.Dispose(); srv?.Dispose(); resource.Dispose(); throw; }
+        }
+
+        [SupportedOSPlatform("windows")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         static ID3D11Texture2D CreateTextureWindows(ID3D11Device device, D3D11Texture t)
         {
@@ -194,6 +215,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             return device.CreateTexture2D(d);
         }
 
+        [SupportedOSPlatform("windows")]
         static ResourceOptionFlags MiscFlagsFor(D3D11Texture t)
         {
             ResourceOptionFlags flags = ResourceOptionFlags.None;
@@ -204,8 +226,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         // The FULL chain and every layer. There is no seam member that asks for a sub-range, so one view is the
         // whole requirement and a per-binding view would be the lazy shape X1 removes.
+        [SupportedOSPlatform("windows")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static ID3D11ShaderResourceView CreateSrvWindows(ID3D11Device device, D3D11Texture t)
+        static ID3D11ShaderResourceView CreateSrvWindows(ID3D11Device device, D3D11Texture t, ID3D11Texture2D resource)
         {
             var d = new ShaderResourceViewDescription { Format = D3D11Formats.ToViewFormat(t.DxgiFormat) };
 
@@ -244,13 +267,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 d.Texture2DArray.ArraySize = (int)t.ArrayLayers;
             }
 
-            return device.CreateShaderResourceView(t.DeviceTexture, d);
+            return device.CreateShaderResourceView(resource, d);
         }
 
         // Mip 0, layer 0. CreateFramebuffer takes bare textures with no mip and no layer parameter, so nothing can
         // ask for another slice.
+        [SupportedOSPlatform("windows")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static ID3D11RenderTargetView CreateRtvWindows(ID3D11Device device, D3D11Texture t)
+        static ID3D11RenderTargetView CreateRtvWindows(ID3D11Device device, D3D11Texture t, ID3D11Texture2D resource)
         {
             var d = new RenderTargetViewDescription { Format = D3D11Formats.ToDxgiFormat(t.Format, false) };
 
@@ -280,11 +304,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 d.Texture2D.MipSlice = 0;
             }
 
-            return device.CreateRenderTargetView(t.DeviceTexture, d);
+            return device.CreateRenderTargetView(resource, d);
         }
 
+        [SupportedOSPlatform("windows")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static ID3D11DepthStencilView CreateDsvWindows(ID3D11Device device, D3D11Texture t)
+        static ID3D11DepthStencilView CreateDsvWindows(ID3D11Device device, D3D11Texture t, ID3D11Texture2D resource)
         {
             var d = new DepthStencilViewDescription { Format = D3D11Formats.ToDepthViewFormat(t.Format) };
 
@@ -314,12 +339,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 d.Texture2D.MipSlice = 0;
             }
 
-            return device.CreateDepthStencilView(t.DeviceTexture, d);
+            return device.CreateDepthStencilView(resource, d);
         }
 
         // Mip 0, every layer. A compute kernel writes the base level and the graphics pass samples the chain.
+        [SupportedOSPlatform("windows")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static ID3D11UnorderedAccessView CreateUavWindows(ID3D11Device device, D3D11Texture t)
+        static ID3D11UnorderedAccessView CreateUavWindows(ID3D11Device device, D3D11Texture t, ID3D11Texture2D resource)
         {
             var d = new UnorderedAccessViewDescription { Format = D3D11Formats.ToViewFormat(t.DxgiFormat) };
 
@@ -336,7 +362,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 d.Texture2DArray.ArraySize = (int)t.ArrayLayers;
             }
 
-            return device.CreateUnorderedAccessView(t.DeviceTexture, d);
+            return device.CreateUnorderedAccessView(resource, d);
         }
     }
 }

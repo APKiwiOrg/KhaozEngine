@@ -7,3 +7,10 @@ KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.json text eol=lf
 KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.jsonl text eol=lf
 KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.txt text eol=lf
 KhaozEngine.Game.Tests/Physics/Fixtures/*.jsonl text eol=lf
+# Renderer control identities hash exact embedded shader bytes on every host.
+KhaozEngine.Render.Tests/Gpu/RendererPerf/controls/*.glsl text eol=lf
+# Renderer approvals bind the same exact UTF-8 bytes on every hosted checkout.
+tools/Renderer.Perf.Tests/authorized/*.json text eol=lf
+# Tile installation compatibility fixtures are compared byte for byte.
+KhaozEngine.TileWorld.Physics.Tests/Fixtures/*.json text eol=lf
+*.navbake binary

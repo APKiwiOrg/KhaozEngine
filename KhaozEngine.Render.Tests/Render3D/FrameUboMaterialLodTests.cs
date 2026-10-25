@@ -39,7 +39,10 @@ namespace KhaozEngine.Tests.Render3D
             model.SetFrameUniforms(cl, Matrix4x4.Identity, Vector3.Zero, s, NoLights);
             byte[] implicitDefault = model.FrameImage.ToArray();
             model.SetFrameUniforms(cl, Matrix4x4.Identity, Vector3.Zero, s, NoLights, default, Vector2.Zero);
-            Assert.True(implicitDefault.AsSpan().SequenceEqual(model.FrameImage));
+            Assert.Equal(1536, model.FrameImage.Length);
+            Assert.True(implicitDefault.AsSpan(0, 1376).SequenceEqual(model.FrameImage[..1376]));
+            Assert.All(implicitDefault[1376..], value => Assert.Equal((byte)0, value));
+            Assert.All(model.FrameImage[1376..].ToArray(), value => Assert.Equal((byte)0, value));
             Assert.Equal(0, BitConverter.ToInt32(implicitDefault, ParamsOffset + 8));
             Assert.Equal(0, BitConverter.ToInt32(implicitDefault, ParamsOffset + 12));
         }

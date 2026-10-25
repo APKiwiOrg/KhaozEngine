@@ -72,16 +72,12 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void UboBytes_EqualsEveryCompatibilityAndClusterTail()
         {
-            // The renderer derives UboBytes = HeaderBytes + 2 * LightArrayBytes + ShadowTailBytes + RenderOriginBytes
-            // and uploads the two point-light arrays, then the shadow tail, then the render origin (see
-            // ModelRenderer.WriteFrameUniformsTo). Assert that composition as an equation of the named constants. If
-            // it drifts, the splat params tail, the light-array uploads, the shadow-tail upload or the render-origin
-            // upload land at the wrong offsets.
+            // Every tail contributes to the single upload without moving the compatibility fields.
             Assert.Equal(
                 ModelRenderer.HeaderBytes + 2 * ModelRenderer.LightArrayBytes + ModelRenderer.ShadowTailBytes
                     + ModelRenderer.RenderOriginBytes + ModelRenderer.PointShadowTailBytes
                     + ModelRenderer.PointShadowTransientTailBytes
-                    + ModelRenderer.ClusterTailBytes + ModelRenderer.InteriorCutBytes,
+                    + ModelRenderer.ClusterTailBytes + ModelRenderer.InteriorCutBytes + IndirectUniforms.TailBytes,
                 ModelRenderer.UboBytes);
             Assert.Equal(ModelRenderer.ShadowTailOffset + ModelRenderer.ShadowTailBytes,
                 ModelRenderer.RenderOriginOffset);
@@ -111,15 +107,16 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void UboBytes_Is1376_WithTheAppendedInteriorTail()
+        public void UboBytes_Is1536_WithTheAppendedIndirectTail()
         {
-            // 176 + 2*256 + 304 + 16 + 288 + 16 + 32 + 32 = 1376. The new tail follows the cluster fields, so
-            // all offsets that existed before clustered lighting remain unchanged.
             Assert.Equal(992u, ModelRenderer.RenderOriginOffset);
             Assert.Equal(1008u, ModelRenderer.PointShadowTailOffset);
             Assert.Equal(1312u, ModelRenderer.ClusterTailOffset);
             Assert.Equal(32u, ModelRenderer.ClusterTailBytes);
-            Assert.Equal(1376u, ModelRenderer.UboBytes);
+            Assert.Equal(1376u, ModelRenderer.InteriorCutWindowOffset + ModelRenderer.InteriorCutBytes);
+            Assert.Equal(1376u, IndirectUniforms.TailOffset);
+            Assert.Equal(160u, IndirectUniforms.TailBytes);
+            Assert.Equal(1536u, ModelRenderer.UboBytes);
         }
 
         [Fact]

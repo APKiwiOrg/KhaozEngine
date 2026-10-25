@@ -525,6 +525,8 @@ namespace KhaozEngine.Tests.Windowing
 
             string json = ActionMapSerializer.Serialize(map);
 
+            Assert.Contains('\n', json);
+            Assert.DoesNotContain('\r', json);
             // Rebuild a fresh map with DIFFERENT (default) bindings, then apply the persisted overrides.
             var reloaded = new ActionMap();
             reloaded.AddAction(InputAction.Button("jump"), InputSource.FromKey(Key.Enter));

@@ -28,6 +28,18 @@ public sealed partial class Scene3D
     public float GetWaterOpticsPadding(WaterLook? look = null) => WaterOpticsCoverage.Padding(
         look?.ResolveInto(_waterOpticsScratch, Post.Water) ?? Post.Water);
 
+    /// <summary>The non-throwing form of <see cref="GetWaterOpticsPadding"/>. Returns false with
+    /// <see cref="WaterOpticsSurfaceFailure.UncertifiedDisplacement"/> and zero padding when the effective look
+    /// has no certified displacement envelope, such as FFT water. <paramref name="reason"/> is meaningful only
+    /// when the method returns false.</summary>
+    public bool TryGetWaterOpticsPadding(WaterLook? look, out float padding, out WaterOpticsSurfaceFailure reason)
+    {
+        bool certified = WaterOpticsCoverage.TryPadding(
+            look?.ResolveInto(_waterOpticsScratch, Post.Water) ?? Post.Water, out padding);
+        reason = certified ? default : WaterOpticsSurfaceFailure.UncertifiedDisplacement;
+        return certified;
+    }
+
     /// <summary>
     /// Queue one stylized water surface for this frame, over <paramref name="plane"/>'s still-water height and XZ footprint,
     /// drawn after the sky + ground decals: a Gerstner swell displacing the surface grid, a domain-warped non-tiling ripple

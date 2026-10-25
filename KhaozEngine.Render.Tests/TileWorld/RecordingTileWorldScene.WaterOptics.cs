@@ -17,6 +17,9 @@ public sealed partial class RecordingTileWorldScene
     public float OpticalPadding { get; set; }
     /// <summary>One-based ordinal across both field kinds whose upload throws, uploading nothing.</summary>
     public int ThrowOnOpticalLoad { get; set; }
+    /// <summary>One-based ordinal, counted like <see cref="ThrowOnOpticalLoad"/>, whose upload the backend refuses
+    /// with <see cref="WaterOpticsSurfaceException"/> before allocating.</summary>
+    public int RefuseSurfaceOnOpticalLoad { get; set; }
     public Action? BeforeOpticalLoad { get; set; }
 
     public WaterOpticsHandle LoadWaterOpticsField(WaterOpticsField field)
@@ -38,8 +41,11 @@ public sealed partial class RecordingTileWorldScene
     WaterOpticsHandle NextOpticalHandle()
     {
         BeforeOpticalLoad?.Invoke();
-        if (OpticalLoads.Count + TriangleLoads.Count + 1 == ThrowOnOpticalLoad)
-            throw new InvalidOperationException("Refused optical upload.");
+        int ordinal = OpticalLoads.Count + TriangleLoads.Count + 1;
+        if (ordinal == ThrowOnOpticalLoad) throw new InvalidOperationException("Refused optical upload.");
+        if (ordinal == RefuseSurfaceOnOpticalLoad)
+            throw new WaterOpticsSurfaceException(WaterOpticsSurfaceFailure.UnrepresentableSurface,
+                "Refused optical scalar.");
         return new WaterOpticsHandle(_opticsOwner, _opticsIndex++, 1);
     }
 
@@ -51,4 +57,13 @@ public sealed partial class RecordingTileWorldScene
     }
 
     public float GetWaterOpticsPadding(WaterLook? look = null) => OpticalPadding;
+
+    /// <summary>Refuses an FFT look like the shipped scene. This fake has no scene default, so only the look counts.</summary>
+    public bool TryGetWaterOpticsPadding(WaterLook? look, out float padding, out WaterOpticsSurfaceFailure reason)
+    {
+        bool certified = look?.WaveSource != WaterWaveSource.FftOcean;
+        padding = certified ? OpticalPadding : 0f;
+        reason = certified ? default : WaterOpticsSurfaceFailure.UncertifiedDisplacement;
+        return certified;
+    }
 }

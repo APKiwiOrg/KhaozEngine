@@ -19,7 +19,14 @@ public sealed partial class TileWorldView
     readonly List<(RegionCoord Region, int Plane)> _waterRefresh = new();
     readonly List<(RegionCoord Region, int Plane)> _waterInvalidations = new();
     float _waterTileSize, _waterPlaneHeight;
-    readonly record struct WaterAttempt(long Revision, float TileSize, float PlaneHeight, float Padding);
+    // The effective displacement, resolved once per flush. A refused look has zero padding and is uncertified.
+    float _waterPadding;
+    bool _waterCertified = true;
+    readonly record struct WaterAttempt(long Revision, float TileSize, float PlaneHeight, float Padding, bool Certified)
+    {
+        // An uncertified latch waits only for a certifiable look. Edits elsewhere do not rebuild its terrain.
+        internal bool IsStale(WaterAttempt current) => Certified ? this != current : current.Certified;
+    }
 
     /// <summary>Bounded refusal diagnostics for resident region-planes. The read-only snapshot changes
     /// only when a preparation refusal changes or is resolved.</summary>
@@ -54,17 +61,31 @@ public sealed partial class TileWorldView
     TileWaterSourceContext WaterSources => new(_doc, _catalogs, _mesher,
         _waterDepthMode == TileWaterDepthMode.AuthoredBed ? _publication.Registry : null);
 
-    WaterAttempt CurrentWaterAttempt(float padding) =>
-        new(_publication.Registry.Revision, _doc.TileSize, _doc.PlaneHeight, padding);
+    WaterAttempt CurrentWaterAttempt() =>
+        new(_publication.Registry.Revision, _doc.TileSize, _doc.PlaneHeight, _waterPadding, _waterCertified);
 
-    float WaterPadding => _opticsScene?.GetWaterOpticsPadding(_options.WaterLook) ?? 0f;
+    // The single authority for displacement. Non-throwing, so an uncertified look never blocks terrain.
+    void ResolveWaterDisplacement()
+    {
+        if (_opticsScene is null)
+        {
+            _waterPadding = 0f;
+            _waterCertified = true;
+            return;
+        }
+        _waterCertified = _opticsScene.TryGetWaterOpticsPadding(_options.WaterLook, out float padding, out _);
+        _waterPadding = _waterCertified ? padding : 0f;
+    }
+
+    bool DisplacementCurrent(TileWaterPreparation water) =>
+        water.Padding == _waterPadding && water.Uncertified != _waterCertified;
 
     // All disk materialization happens here, before terrain capture and body/rim collection. Mesh audits still
     // perform strict corner reads and refuse genuinely absent coverage.
     void EnsureWaterSources(RegionCoord region)
     {
         if (_waterDepthMode != TileWaterDepthMode.AuthoredBed || _doc.Source is not { } source) return;
-        float padding = WaterPadding;
+        float padding = _waterPadding;
         double margin = Math.Ceiling((double)padding / _doc.TileSize) + 1;
         if (!double.IsFinite(margin) || margin < 1 ||
             TileRegion.Size + 1 + 2 * margin > WaterOpticsTriangleField.MaxDimension)
@@ -106,9 +127,10 @@ public sealed partial class TileWorldView
 
     TileWaterPreparation? CaptureWater(RegionCoord region, int plane)
     {
-        float padding = WaterPadding;
+        float padding = _waterPadding;
         var key = (region, plane);
-        WaterAttempt attempt = CurrentWaterAttempt(padding);
+        WaterAttempt attempt = CurrentWaterAttempt();
+        if (!_waterCertified) return CaptureUncertifiedWater(key, attempt);
         if (_waterAttempts.TryGetValue(key, out WaterAttempt refused) && refused == attempt) return null;
         // Latch even a throwing I/O request. Only an announced source/settings change retries it.
         _waterAttempts[key] = attempt;
@@ -120,6 +142,21 @@ public sealed partial class TileWorldView
         TileWaterDependencyRegistry? registry = _waterDepthMode == TileWaterDepthMode.AuthoredBed ? _publication.Registry : null;
         return new TileWaterPreparation(planes,
             new TileWaterSourceStamp(_doc, WaterDependencies(region, plane, planes), registry), padding, _options.WaterLook);
+    }
+
+    // Terrain only. No source materialization and no field. Water bodies latch on the refused state and become
+    // UncertifiedDisplacement refusals when the group commits.
+    TileWaterPreparation CaptureUncertifiedWater((RegionCoord Region, int Plane) key, WaterAttempt attempt)
+    {
+        IReadOnlyList<WaterPlane> collected = TileWaterPlanes.Collect(_doc, _catalogs, key.Region, key.Plane,
+            _options.WaterLook);
+        var planes = new WaterPlane[collected.Count];
+        for (int i = 0; i < planes.Length; i++) planes[i] = collected[i];
+        if (planes.Length > 0) _waterAttempts[key] = attempt;
+        else _waterAttempts.Remove(key);
+        return new TileWaterPreparation(planes, new TileWaterSourceStamp(_doc,
+            WaterDependencies(key.Region, key.Plane, planes), _publication.Registry), 0f, _options.WaterLook,
+            Uncertified: true);
     }
 
     // Body and rim inputs. Bed sources are tracked by surface identity and witness instead. A body touching a
@@ -152,7 +189,7 @@ public sealed partial class TileWorldView
 
     bool WaterInputsCurrent(TileWaterPreparation water) =>
         water.Stamp.IsCurrent(_doc, _waterDepthMode == TileWaterDepthMode.AuthoredBed ? _publication.Registry : null) &&
-        water.Padding == WaterPadding;
+        DisplacementCurrent(water);
 
     bool GroundInputsCurrent(TileGroundSurfaceSnapshot? surface, TileWaterPreparation water) =>
         WaterInputsCurrent(water) && (surface is not null) == GroundSurfaceRequested &&
@@ -264,7 +301,8 @@ public sealed partial class TileWorldView
     // scale changes are preparation inputs. Colour-only changes reuse the existing field bytes.
     void RefreshWaterPreparation()
     {
-        float padding = WaterPadding;
+        ResolveWaterDisplacement();
+        float padding = _waterPadding;
         if (_waterDepthMode == TileWaterDepthMode.AuthoredBed)
         {
             if (_waterTileSize != _doc.TileSize || _waterPlaneHeight != _doc.PlaneHeight)
@@ -276,47 +314,64 @@ public sealed partial class TileWorldView
                     for (int plane = 0; plane < _planes; plane++) Queue(entry.Key, plane);
             }
             InvalidateWaterSources();
+            WaterAttempt current = CurrentWaterAttempt();
             foreach (var entry in _waterAttempts)
-                if (entry.Value != CurrentWaterAttempt(padding)) Queue(entry.Key.Region, entry.Key.Plane);
+                if (entry.Value.IsStale(current)) Queue(entry.Key.Region, entry.Key.Plane);
         }
         _waterRefresh.Clear();
         foreach (var entry in _publication.Resident)
         {
-            if (entry.Value.Padding != padding) _waterRefresh.Add(entry.Key);
+            if (!DisplacementCurrent(entry.Value.Preparation)) _waterRefresh.Add(entry.Key);
             else entry.Value.SetLook(_options.WaterLook);
         }
         foreach (var entry in _publication.Refused)
-            if (entry.Value.Preparation.Padding != padding) _waterRefresh.Add(entry.Key);
+        {
+            if (DisplacementCurrent(entry.Value.Preparation)) continue;
+            // An uncertified refusal republishes with its terrain, through its latched attempt.
+            if (entry.Value.Preparation.Uncertified) Queue(entry.Key.Region, entry.Key.Plane);
+            else _waterRefresh.Add(entry.Key);
+        }
         foreach (var key in _waterRefresh) RefreshWater(key, padding);
     }
 
     // A padding change rebuilds against unchanged accepted sources. A refused wider preparation may keep its old
-    // generation only when that generation's certificates still contain the new displacement.
+    // generation only when that generation's certificates still contain the new displacement. Withdrawn water asks
+    // for a ground rebuild only when no replacement or refusal was committed here.
     void RefreshWater((RegionCoord Region, int Plane) key, float padding)
     {
         _publication.Resident.TryGetValue(key, out TileWaterGeneration? old);
-        if (old is not null && !old.Covers(padding))
+        bool withdrawn = old is not null && (!_waterCertified || !old.Covers(padding));
+        if (withdrawn)
         {
-            WithdrawWater(key.Region, key.Plane);
+            _publication.Withdraw(key);
             old = null;
         }
-        TileWaterPreparation? prepared = CaptureWater(key.Region, key.Plane);
-        if (prepared is null) return;
-        TileWaterPublication.Group group = _publication.Stage(key.Region, key.Plane, changesSource: false, null,
-            prepared, _acceptedSurface, WaterSources);
-        TileWaterPublication.Member member = group.Members[0];
-        member.Staged?.SetLook(_options.WaterLook);
-        _publication.Revalidate(group, WaterInputsCurrent, WaterSources);
-        if (member.Dropped || (member.Outcome.Failure is not null && old is not null))
+        bool committed = false;
+        try
         {
-            _publication.Discard(group);
-            if (member.Outcome.Failure is { } kept) _publication.RecordFailure(key, kept);
-            // Latch the refused preparation. Only an announced source or settings change retries it.
-            _waterAttempts[key] = CurrentWaterAttempt(padding);
-            if (member.Dropped) Queue(key.Region, key.Plane);
-            return;
+            TileWaterPreparation? prepared = CaptureWater(key.Region, key.Plane);
+            if (prepared is null) return;
+            TileWaterPublication.Group group = _publication.Stage(key.Region, key.Plane, changesSource: false, null,
+                prepared, _acceptedSurface, WaterSources);
+            TileWaterPublication.Member member = group.Members[0];
+            member.Staged?.SetLook(_options.WaterLook);
+            _publication.Revalidate(group, WaterInputsCurrent, WaterSources);
+            if (member.Dropped || (member.Outcome.Failure is not null && old is not null))
+            {
+                _publication.Discard(group);
+                if (member.Outcome.Failure is { } kept) _publication.RecordFailure(key, kept);
+                // Latch the refused preparation. Only an announced source or settings change retries it.
+                _waterAttempts[key] = CurrentWaterAttempt();
+                if (member.Dropped) Queue(key.Region, key.Plane);
+                return;
+            }
+            _publication.Commit(group, Queue);
+            committed = true;
         }
-        _publication.Commit(group, Queue);
+        finally
+        {
+            if (withdrawn && !committed && _loaded.ContainsKey(key.Region)) Queue(key.Region, key.Plane);
+        }
     }
 
     void SweepWaterMetadata()

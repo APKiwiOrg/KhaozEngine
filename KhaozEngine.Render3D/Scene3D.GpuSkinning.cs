@@ -53,6 +53,9 @@ namespace KhaozEngine.Render3D
         /// <see cref="PrepareGpuSkinnedFrame"/>).</summary>
         void DrawGpuSkinnedMain(IGpuCommandList cl)
         {
+            SkipProfilePass(cl, "opaque.cpu-skinned");
+            using var pass = ProfilePass(cl, "opaque.gpu-skinned", executed: _gpuSkinnedDraws.Count > 0,
+                fusedMotion: _res.MotionAllocated && _drawnSkinnedInstances > 0);
             if (_gpuSkinnedDraws.Count == 0) return;
 
             bool packedMainSlots = false;

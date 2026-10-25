@@ -35,6 +35,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static GpuProviderDevice CreateHeadless() => CreateWith(host: null, syncToVerticalBlank: false);
 
+        [SupportedOSPlatform("macos")]
+        internal static GpuProviderDevice CreateHeadless(MetalHeadlessDiagnosticSettings settings)
+            => CreateWith(null, false, settings);
+
         /// <summary>
         /// Create a WINDOWED device, with its swapchain over the request's Cocoa window (row 15). The host view is
         /// resolved FIRST, before any device exists, so a window this backend cannot present to costs nothing to
@@ -86,13 +90,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static GpuProviderDevice CreateWith(MetalSwapchainHost? host, bool syncToVerticalBlank)
+        static GpuProviderDevice CreateWith(MetalSwapchainHost? host, bool syncToVerticalBlank, MetalHeadlessDiagnosticSettings? settings = null)
         {
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
 
-            ReportValidation();
+            if (settings is null) ReportValidation();
 
-            MetalSelectedDevice selected = MetalDeviceEnumeration.AcquireSelected();
+            MetalSelectedDevice selected = MetalDeviceEnumeration.AcquireSelected(settings?.Device);
             if (selected.Device.IsNull) throw NoEligibleDevice(selected);
 
             log.Info(selected.LogLine);
@@ -100,7 +104,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             try
             {
-                return Create(selected, host, syncToVerticalBlank);
+                return Create(selected, host, syncToVerticalBlank, settings);
+            }
+            catch (Exception error) when (settings is not null)
+            {
+                throw GpuDiagnosticFailureException.DuringCleanup("gpu.context.provider", error,
+                    ("gpu.context.provider.dispose.selected", selected.Device.Release));
             }
             catch
             {
@@ -115,7 +124,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         static GpuProviderDevice Create(in MetalSelectedDevice selected, MetalSwapchainHost? host,
-            bool syncToVerticalBlank)
+            bool syncToVerticalBlank, MetalHeadlessDiagnosticSettings? settings = null)
         {
             MTLDevice device = selected.Device;
 
@@ -142,7 +151,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // backpressure counter was measured against rather than resting on the tester believing they set
                 // the variable. The uniform ring's segments and each list's staging arena slots are cut to it,
                 // and row 15 reads it for maximumDrawableCount.
-                int framesInFlight = MetalFramesInFlight.FromEnvironment(out string? unrecognizedFrames);
+                string? unrecognizedFrames = null;
+                int framesInFlight = settings?.FramesInFlight ?? MetalFramesInFlight.FromEnvironment(out unrecognizedFrames);
                 if (unrecognizedFrames is not null)
                     log.Warn(MetalFramesInFlight.UnrecognizedWarning(unrecognizedFrames));
                 log.Info(MetalFramesInFlight.ActiveDescription(framesInFlight));
@@ -160,7 +170,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 MetalCompletionHandler.Register(queue.Handle, new MetalCompletionErrorRoute(loss));
                 registered = true;
 
-                var timestamps = new MetalTimestampApi(new MTLTimestampInterop(device.Handle));
+                var memory = new MetalMemoryDiagnostics();
+                var timestamps = new MetalTimestampApi(new MTLTimestampInterop(device.Handle, memory));
                 MetalGpuDevice created = new(device, queue, ReadCapabilities(selected.Facts, device, timestamps), liveness, loss,
                     timeline, new MetalUncommittedBuffers(framesInFlight), new MetalSetupNative(device, queue),
                     framesInFlight, new MetalStagingSource(device),
@@ -171,8 +182,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     // AND THE BORDER-COLOUR ANSWER, from the same snapshot for the same reason: the probe already
                     // asked supportsFamily: for Mac2 to clear the floor, and a sampler cannot ask a device this
                     // question safely (building one to find out IS the abort under MTL_DEBUG_LAYER=1).
-                    MetalSamplerPolicy.DeviceSupportsBorderColor(selected.Facts));
+                    MetalSamplerPolicy.DeviceSupportsBorderColor(selected.Facts), memory);
                 created.TimestampApi = timestamps;
+                if (settings is not null)
+                {
+                    var cache = MetalMslCache.Open(settings.MslCache);
+                    created._diagnosticConfiguration = EffectiveConfiguration(device, settings, cache?.DirectoryPath);
+                    created._factory.Configure(settings, created._diagnosticConfiguration, cache);
+                }
 
                 // THE SHARED SAMPLER PAIR, from MetalSharedSamplers and not from the engine's same-named
                 // GpuSamplerDescription statics. Both are WRAP on all three axes, and reading the engine statics
@@ -183,7 +200,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // device is an MTLDebugDevice rather than the driver's class. Done here because it is the first
                 // moment a real device exists to ask, and skipped entirely on an unvalidated run so an ordinary
                 // session gains no line.
-                ReportDeviceClass(device);
+                if (settings is null) ReportDeviceClass(device);
 
                 // THE SWAPCHAIN LAST (row 15), INSIDE THIS TRY, and the position is the same argument the
                 // timeline's is: it configures the layer and takes the first drawable, so a throw anywhere in it
@@ -197,6 +214,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // off. Metal has no D3D11_FEATURE_DATA_THREADING analogue at all, so there is nothing to ask and
                 // two nulls are the honest answer rather than a gap (4.2's first two rows).
                 return new GpuProviderDevice(created, ThreadingCaps: null, ThreadingProbeFailure: null);
+            }
+            catch (Exception error) when (settings is not null)
+            {
+                throw GpuDiagnosticFailureException.DuringCleanup("gpu.context.provider", error,
+                    ("gpu.context.provider.dispose.completion", () => { if (registered) MetalCompletionHandler.Unregister(queue.Handle); }
+                ),
+                    ("gpu.context.provider.dispose.timeline", () => timeline?.Dispose()),
+                    ("gpu.context.provider.dispose.queue", queue.Release));
             }
             catch
             {

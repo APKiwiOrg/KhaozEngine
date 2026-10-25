@@ -49,8 +49,9 @@ public sealed class TileWorldViewWaterOpticsTests
     {
         Assert.True(plane.Optics.IsBound);
         WaterOpticsTriangleField field = scene.TriangleFields[plane.Optics.Field];
+        // Physical depth as the shader forms it, without the clamp: rest depth plus level minus the datum.
         return field.SampleDepth((x - plane.Optics.Origin.X) / plane.Optics.Size.X,
-            (z - plane.Optics.Origin.Z) / plane.Optics.Size.Y);
+            (z - plane.Optics.Origin.Z) / plane.Optics.Size.Y) + plane.SurfaceY - plane.Optics.Origin.Y;
     }
 
     // The independent mesh-intersection oracle over the accepted actual snapshots.

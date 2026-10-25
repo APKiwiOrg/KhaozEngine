@@ -146,6 +146,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
     vec4 InteriorCutWindow; vec4 InteriorCutHeights;
+    vec4 IndirectParams;
+    vec4 IrradianceSH[9];
 };
 " + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 // The material's own uniforms, written ONCE at load and never re-uploaded. Declared here and NOT in
@@ -298,7 +300,7 @@ void main() {
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
     computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, Ngeo, vWorldPos, specStrength, TILEGROUND_SPEC_EXP, keyShadow, diffuse, specColor);
-    vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
+    vec3 lit = albedo * (indirectDiffuse(Ngeo, vWorldPos) + diffuse) + specColor + vEmissive.rgb;
     lit = atmosphereFog(lit, vWorldPos, false, RenderOrigin.w > 0.5);
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0); // GEOMETRIC normal for the edge pass

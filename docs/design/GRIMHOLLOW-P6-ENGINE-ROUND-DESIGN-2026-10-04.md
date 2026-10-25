@@ -212,6 +212,10 @@ Shape:
   save, the despawn and the slot release run once, in that order.
 - `ShardedWorldServer.IsLingering(int slot)` answers for the game and for admin tools.
 
+P6E-9 requires any newcomer on a lingering slot to end the old body before join admission, even when
+that newcomer is rejected or drops in the same poll. The saved body/held slot cannot leak into a
+recycled session.
+
 ### D6. A reconnect inside the linger
 
 | Option | One body per account | Fight continuity | Persistence safety | New semantics | Total |
@@ -252,6 +256,7 @@ positive metres). `RouteApproachOptions.Stall` is `RouteStallOptions?`, default 
   are returned as today.
 - A window of `N` ticks spans `N` intervals between `N + 1` counted samples. Net horizontal feet displacement under
   `TravelMetres` across the last window latches `Blocked` on that tick (the 16th counted tick for 15).
+  This sample/interval distinction is ruling P6E-6, not an extra delay after the window is full.
 - Latched `Blocked` holds zero input until `InRange`, `Reset` or a change of target shape, range or capsule. The check
   sits after the goal update (`MoveToRange.cs:80`), whose shape change already calls `Reset`, so a shape change
   unlatches on the tick it happens. `InRange` clears the window. A replan, a straightening fallback or target

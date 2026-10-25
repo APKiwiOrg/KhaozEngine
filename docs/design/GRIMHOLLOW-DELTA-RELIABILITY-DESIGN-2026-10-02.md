@@ -403,6 +403,30 @@ secrecy. A stricter revocation requirement would need an owner decision about ca
 a keyframe. Owner-id changes or session replacement require a fresh epoch. Handoffs preserving net id
 and owner keep the same stream. Persist/Migrate-only state never enters retained viewer baselines.
 
+## Implemented stream contract references
+
+These D2 identifiers are scoped to delta reliability, not movement-driver decisions.
+
+| Id | Contract and reason |
+| --- | --- |
+| D2.4 | Session facades normalize a negative transport payload limit to zero/unknown. Unknown selects the explicit reliable fallback rather than a guessed MTU. |
+| D2.5 | Projection publication owns Replicate-channel components only. Persist/Migrate-only and unregistered game-local state survives. |
+| D2.8 | A new replication opt-in without the existing delta switch is a typed configuration error, not silently inert configuration. |
+| D2.9 | Retained payload must hold at least four complete keyframes. A receiver needs a candidate beside up to three pins, so three times the cap could force a repair loop. This minimum protects pins, not every unacknowledged send. |
+| D2.10, D2.14 | One helper derives envelope-adjusted limits. Staging must be complete for the exact projection before publication mutates the live world. Shared derivation prevents client/server drift. |
+| D2.11 | Negotiation's single deadline runs from offer through initial keyframe acknowledgement. Accepting an offer alone cannot leave the initial barrier alive indefinitely. Later repair has its own deadline. |
+| D2.12 | Both host heads use the shared RebuildServerStreams owner. Duplicated per-host stream state machines would drift at repair/restart boundaries. |
+| D2.13 | Half-range SequenceAmbiguous routine datagrams are ignored as stale. The no-ack window/repair handles divergence, rather than treating an unreliable packet as authority to disconnect. |
+| D2.15 | Transport cap is at most 65,558 so cap minus 23 fits ushort. Owner replacement starts a fresh epoch, and a shrinking-limit decision precedes repair so one tick does not spend two epochs. |
+| D2.17 | EndServe skips slots already pending restart. Otherwise simultaneous writer exhaustion can reject/leave a slot twice. |
+| D2.18, D2.20 | Validate format and flags before ignoring a keyframe-flagged routine datagram. Only reliable chunks establish a keyframe, while malformed data still takes its terminal path. |
+| D2.19 | Client recovery cadence receives configured tickSeconds explicitly. Render/poll call count is not replication time. |
+| D2.21 | Fault schedules release stale state/acks in separate polls with state assertions there. Same-poll newer arrivals can hide the regression an oracle is meant to observe. |
+| D2.22 | Provision the largest expected projection times `(effective NoAckSendWindow + 1)`. A superseded candidate is atomically removed with its replacement, so an extra plus-two allowance is not the writer contract. |
+| D2.23 | Dense-view adoption needs packet-fit evidence. Repeated reliable barriers can stop routine remote updates despite correct reconstruction. Do not infer consumer capacity from sparse characterization or silently raise caps. |
+
+Package READMEs own the compiled public API and the remaining failure/lifetime details.
+
 ## API sketches at existing seams
 
 These declarations are proposed additions. They are not compiled signatures or an implementation plan.

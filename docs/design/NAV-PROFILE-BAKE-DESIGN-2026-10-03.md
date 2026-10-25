@@ -347,6 +347,21 @@ as accepting a rejected link, loads. The bake is a build artifact with the same 
 
 ## 5. Public API
 
+### Implementation contract references
+
+The N identifiers below name current bake/approach contracts, not release or execution instructions.
+
+| Id | Contract and reason |
+| --- | --- |
+| N2 | Legacy step and slide probes each reuse one immutable capsule per thread. Public signatures and geometry stay unchanged while repeated shape allocation disappears. |
+| N3 | DirectApproachOptions bounds each progress window to 65,535 ticks. Distances are explicit caller policy, with no default game-specific stall thresholds. |
+| N4 | Both range drivers share RangeShapeKey. A shape/range/tuning reset rule must not drift between routed and direct approaches. |
+| N5 | Load validates and encodes its expectation before reading bytes, including options, surface cap and tuning checks. Caller errors throw, while content refusal remains typed. |
+| N7 | Bound stored candidate counts and identity/payload lengths before allocation or regenerated-link work. A hostile stored count must not manufacture unbounded processing. |
+| N8 | The reader transfers owned decoded column arrays and reuses bounded layer scratch across profiles. Loading does not need another full copy of immutable columns. |
+
+### Public surface
+
 ```csharp
 namespace KhaozEngine.Movement;
 

@@ -717,6 +717,8 @@ Decoded blend weights compare within 0.000001 after source boundary sampling and
 Submitted water meshes cover the source body's cell domains at its source level. Clip payloads cover the
 complete source cells in the source water policy's displacement halo, in the submitted anchor frame.
 Equal XZ area alone cannot certify either domain. Mesh and clip triangulation order may differ.
+Every window receives these payload checks. A window without a policy probe records a real baseline
+frame through residency, then compares that submitted geometry against the same source expectations.
 
 `LegacySceneRecorder.RecordFoliage` independently traces the source sampler for every logical
 generation whose source model reach intersects the declared window and motion padding. Owners proven

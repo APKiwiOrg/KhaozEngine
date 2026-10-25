@@ -21,7 +21,8 @@ internal static partial class ShippedSceneComparison
     internal const double GeometryTolerance = .00001, NormalTolerance = .000001, AngleTolerance = .000001;
     internal static void Compare(ShippedSceneInputs inputs, PrivateOracleReport report,
         Func<SceneOracleObservation, SceneOracleObservation>? observe = null,
-        Func<IMapDrawSink, IMapDrawSink>? decorate = null)
+        Func<IMapDrawSink, IMapDrawSink>? decorate = null,
+        Func<string, MapDrawSet, MapDrawSet>? observePlan = null)
     {
         ShippedSceneSourceChecks.Policy(inputs, report);
         var expected = LegacySceneRecorder.Record(inputs.World, inputs.Catalogs, inputs);
@@ -83,6 +84,17 @@ internal static partial class ShippedSceneComparison
                     ShippedSceneFoliageRoster.Compare(inputs, foliage, new(inventory.Snapshot(), plan.Inventory.Foliage.GenerationKeys, plan.Inventory.Foliage.GeneratedIdentities), report);
                     ShippedSceneSourceChecks.Water(inputs, plan, report);
                     var water = ShippedSceneWaterCoverage.Compare(inputs, plan, report);
+                    // Geometry acceptance covers every window, including those without a frame-policy probe.
+                    if (!manifest.Policy.Probes.Any(p => p.WindowId == window.Id))
+                    {
+                        var baselineRecorder = new MapDrawRecorder(); plan.Register(baselineRecorder);
+                        var origin = ShippedSceneInputs.Point(0, 0, 0);
+                        residency.Record(new(default, origin, KhaozEngine.MapDoc.Interiors.MapRoofMode.AlwaysVisible, 0, 0, origin), baselineRecorder);
+                        var baseline = baselineRecorder.Snapshot(); baseline = observePlan?.Invoke(window.Id, baseline) ?? baseline;
+                        CheckStamp(baseline, plan.Key, report);
+                        ShippedSceneTerrainCoverage.Compare(terrainFaces, baseline, report);
+                        ShippedSceneWaterCoverage.ComparePayloads(inputs, plan, baseline, report);
+                    }
                     foreach (var probe in manifest.Policy.Probes.Where(p => p.WindowId == window.Id))
                     {
                         var recorder = new MapDrawRecorder(); plan.Register(recorder);

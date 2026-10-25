@@ -111,7 +111,8 @@ per-cluster centre-distance coverage uses the complete cell area. Layer outer fa
 `HlodCrossfadeWidth`, including placement fades composed before LOD coverage. Each cell is independent.
 `NativeMapPlacements.PrepareCluster` validates the scene, frozen routes, cell domain, layer inventory, homogeneous roof roles and vertex precision before invoking
 the internal shared CPU builder. That lower builder has no building intent and makes no independent roof promise.
-Standalone cluster construction uses the same admitted merge envelope as batch construction. The caller
+Standalone cluster construction uses the same admitted merge envelope as batch construction. Its
+validation cell releases before merge begins, since the returned build retains independent inputs. The caller
 disposes the returned `NativePropClusterCpuBuild` to release its retained receipt. Batch construction
 transfers that receipt into the batch without a second debit.
 Roof cohorts retain complete neutral membership geometry acquired and admitted before selected decode.
@@ -210,6 +211,8 @@ instance captured by the source. A hash-equal separate load is rejected before s
 `MapRenderPlan.Prepare` composes one acquired window with one routing partition and a shared preparation
 admission. Terrain reads the passed input's selected materials. Placement and foliage batches share its selected
 assets. Preparation succeeds by taking ownership of the input lease. A refusal leaves that lease with its caller.
+Material discovery releases its defensive surface copies before decode. Only the selected material-ID array
+remains admitted through the following preparation stages.
 Register the plan before recording frames, and dispose it when its CPU inventory is no longer required.
 
 `MapRenderTransition.Findings` preserves refusal details. Its optional `Capacity` carries the limit name,
@@ -236,7 +239,8 @@ Idle composition entries and pieces are evicted after the last plan or upload re
 replace its image while retaining an identical mesh. Frames borrow admitted input and never decode again.
 
 `MapRenderAdmission` charges source metadata, encoded closure retention, decoder peaks, prepared plans and the
-renderer-measured upload demand. `MapUploadReservation` is claimed before factories, and claimed credit returns
+renderer-measured upload demand. Settled plans include the unique canonical water allocations retained by their
+batch readers, alongside the plan and scene receipts. `MapUploadReservation` is claimed before factories, and claimed credit returns
 only on the renderer's final `Released` callback. Published and retiring allocations keep their original charge.
 The staging allowance and decoded upload borrow remain held through retirement. `MaxRetiredGpuBytes` never
 adds sharing credit. `MapRenderLifetime` reports the live charged ownership groups and actual transfer bytes.
@@ -329,6 +333,8 @@ lighting and completeness requirement. Explicit focus is a `MapFramePoint`. Omit
 eye. TopDown focus uses `MapCaptureFocus.Resolve` over the declared support domain. No frame consumer
 infers focus from the observer. A refused unresolved focus stays null in the transport result.
 `MapCaptureDependencies.Compute` expands directional and point-light caster coverage from frozen lighting.
+Light discovery releases each probe scene after its final read. Only matched light rows and lookup backing
+remain admitted through dependency expansion and hashing.
 Its witness keeps requested, required and acquired scopes separate. `MapCapturePreparation.Prepare`
 proves dependency and focus admission without a device. Its temporary probe scenes are not resident CPU.
 `NativeMapSnapshot` uses the same residency and

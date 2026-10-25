@@ -20,6 +20,7 @@ internal static class ShippedSceneGuardObservations
     }
     internal static SceneOracleObservation Mutate(SceneOracleObservation value, string variant)
     {
+        if (variant.StartsWith("terrain-", StringComparison.Ordinal)) return ShippedSceneGuardGeometry.Mutate(value, variant);
         var resources = value.DrawSet.Resources.ToList(); var draws = value.DrawSet.Draws.ToList();
         if (variant == "extra-part")
         {

@@ -76,7 +76,7 @@ internal static partial class ShippedSceneComparison
                     var inventory = new MapDrawRecorder(); plan.Register(inventory);
                     completeWindows.Add(window.Id, inventory.Snapshot().Resources.ToDictionary(r => r.Reference.Key, Fingerprint));
                     CompareSource(expected, inputs, plan, report);
-                    var terrain = ShippedSceneSourceChecks.Terrain(inputs, plan, report);
+                    var terrain = ShippedSceneSourceChecks.Terrain(inputs, plan, report, out var terrainFaces);
                     var foliage = LegacySceneRecorder.RecordFoliage(inputs, scene.Scope);
                     ShippedSceneFoliageRoster.Compare(inputs, foliage, new(inventory.Snapshot(), plan.Inventory.Foliage.GenerationKeys, plan.Inventory.Foliage.GeneratedIdentities), report);
                     ShippedSceneSourceChecks.Water(inputs, plan, report);
@@ -90,6 +90,7 @@ internal static partial class ShippedSceneComparison
                         observation = observe?.Invoke(observation) ?? observation;
                         var actual = observation.DrawSet;
                         CheckStamp(actual, plan.Key, report);
+                        ShippedSceneTerrainCoverage.Compare(terrainFaces, actual, report);
                         ShippedSceneFoliageRoster.Compare(inputs, foliage, observation, report);
                         foreach (var placement in expected.Placements.Where(p => inputs.SourcePolicy.AnimatedAssets.Contains(p.ArchetypeId) && ShippedSceneExpectedFrames.InScope(p, scene.Scope)))
                             ShippedSceneSourceChecks.ExplicitPlant(placement, manifest.Placements.Single(p => p.SourceObjectId == placement.Id).NativePlacementId, actual.Resources, inputs, report);

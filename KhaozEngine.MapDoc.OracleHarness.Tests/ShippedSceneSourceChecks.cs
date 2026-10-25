@@ -69,8 +69,10 @@ internal static class ShippedSceneSourceChecks
         Check(report, "scene-policy", System.Text.Json.Nodes.JsonNode.DeepEquals(source, nativeOptions), new { policy = "foliage options" });
     }
 
-    internal static IReadOnlyDictionary<MapRenderKey, MapSubmissionAnchor> Terrain(ShippedSceneInputs inputs, MapRenderPlan plan, PrivateOracleReport report)
+    internal static IReadOnlyDictionary<MapRenderKey, MapSubmissionAnchor> Terrain(ShippedSceneInputs inputs, MapRenderPlan plan, PrivateOracleReport report,
+        out IReadOnlyDictionary<MapFaceKey, SceneTerrainFace> sourceFaces)
     {
+        var expectedFaces = new Dictionary<MapFaceKey, SceneTerrainFace>(); sourceFaces = expectedFaces;
         var recorder = new MapDrawRecorder(); plan.Register(recorder);
         var registrations = recorder.Snapshot().Resources;
         var partsByFace = registrations.Where(r => r.Payload is MapTerrainResource).SelectMany(r =>
@@ -98,6 +100,7 @@ internal static class ShippedSceneSourceChecks
                     Check(report, "scene-terrain", matches.Length == 1 && matches.All(f => Math.Abs(f.Face.Normal.X - normal.X) <= NormalTolerance && Math.Abs(f.Face.Normal.Y - normal.Y) <= NormalTolerance && Math.Abs(f.Face.Normal.Z - normal.Z) <= NormalTolerance), new { region, plane, triangle = i / 3 });
                     foreach (var face in matches)
                     {
+                        expectedFaces.Add(face.Face.Key, ShippedSceneTerrainCoverage.Source(inputs.World, a, b, c, x, z, plane));
                         var parts = partsByFace[face.Face.Key].ToArray();
                         Check(report, "scene-terrain-frame", parts.Length > 0, new { face.Face.Key });
                         foreach (var part in parts) required[part] = face.Anchor;

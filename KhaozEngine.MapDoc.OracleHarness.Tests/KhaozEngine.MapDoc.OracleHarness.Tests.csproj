@@ -22,6 +22,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../KhaozEngine.MapDoc/MapJsonTextOptions.cs" Link="MapJsonTextOptions.cs" />
+    <Compile Include="../KhaozEngine.TileWorld.Render3D/TileOverlayBoundary.cs" Link="TileOverlayBoundary.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Tests/NativeFixtures.cs" Link="NativeFixtures.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Tests/NativeAssetFixtures.cs" Link="NativeAssetFixtures.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Tests/FormatFourFixtures.cs" Link="FormatFourFixtures.cs" />

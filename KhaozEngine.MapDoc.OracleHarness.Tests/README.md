@@ -710,6 +710,9 @@ fail. Independent source canonical faces and water domains establish required ba
 keys and anchors serving only as checked transport correspondences. Native Write output never
 selects the expected frame roster. Every expected terrain, light, water and foliage write is required
 before its complete typed frame values are compared.
+Submitted terrain triangles must cover their independently matched source faces without holes or overlap.
+Their positions and normals bind to the source plane. Decoded material slots and weights bind to source
+underlay, overlay cuts and the released legacy feather boundary, independently of render triangulation order.
 
 `LegacySceneRecorder.RecordFoliage` independently traces the source sampler for every logical
 generation whose source model reach intersects the declared window and motion padding. Owners proven

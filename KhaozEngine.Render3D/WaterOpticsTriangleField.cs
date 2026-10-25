@@ -13,7 +13,10 @@ public readonly record struct WaterOpticsRectangle(Vector2 Minimum, Vector2 Maxi
 /// <summary>An immutable, bounded scalar atlas of a certified single-valued piecewise planar optical bed.</summary>
 public sealed class WaterOpticsTriangleField
 {
+    /// <summary>The largest bin axis and atlas texture axis.</summary>
     public const int MaxDimension = 1024;
+    /// <summary>The most candidate triangles one bin may reference. A denser field refuses as
+    /// <see cref="WaterOpticsSurfaceFailure.CapacityExceeded"/>.</summary>
     public const int MaxTrianglesPerBin = 32;
 
     private readonly float[] _atlas;
@@ -68,15 +71,25 @@ public sealed class WaterOpticsTriangleField
         RetainedBytes = checked(TextureBytes + 16L * _certificates.Length);
     }
 
+    /// <summary>Physical local XZ extent in metres. A binding to this field must use exactly this size.</summary>
     public Vector2 Size { get; }
+    /// <summary>Bin columns across <see cref="Size"/>.X.</summary>
     public int BinColumns { get; }
+    /// <summary>Bin rows across <see cref="Size"/>.Y.</summary>
     public int BinRows { get; }
+    /// <summary>Source triangles retained in the atlas.</summary>
     public int TriangleCount { get; }
+    /// <summary>Distinct supporting edge lines recorded for the exact predicates.</summary>
     public int EdgeLineCount { get; }
+    /// <summary>Triangle references summed over every bin.</summary>
     public int CandidateReferenceCount { get; }
+    /// <summary>The largest candidate count of any bin, at most <see cref="MaxTrianglesPerBin"/>.</summary>
     public int MaximumBinOccupancy { get; }
+    /// <summary>Atlas texture width in R32Float texels.</summary>
     public int TextureWidth { get; }
+    /// <summary>Atlas texture height in R32Float texels.</summary>
     public int TextureHeight { get; }
+    /// <summary>Padded atlas texture bytes, four per texel.</summary>
     public long TextureBytes { get; }
 
     /// <summary>Upward-rounded bound consumed by local mapping, interpolation and shared-boundary depth
@@ -87,6 +100,8 @@ public sealed class WaterOpticsTriangleField
 
     /// <summary>Owned padded float payload plus rectangle payload bytes, excluding object headers.</summary>
     public long RetainedBytes { get; }
+    /// <summary>The local rectangles with complete certified triangle support. A bound plane's displaced
+    /// rectangle must fit one of them.</summary>
     public ReadOnlySpan<WaterOpticsRectangle> CertifiedRectangles => _certificates;
 
     /// <summary>Immutable physical atlas upload view, including zero padding. No array escapes ownership.</summary>

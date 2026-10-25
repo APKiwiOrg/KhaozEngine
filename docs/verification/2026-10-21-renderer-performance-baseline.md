@@ -331,6 +331,42 @@ the runner component. No performance, compiler, payload, deadline or baseline ac
 produced. The approval is consumed and authorizes no retry. Another attempt requires a corrected
 workload, independently reviewed preparation and fresh owner approval.
 
+## Third authorized Linux pilot, attempt 3
+
+The integrated workload and trusted workflow are `3f09d6807630a04043a61f4b615acf1bbcfd0db0`.
+Authorization `a5bbbefabbffcf20b2f0d3909f6176e304c23fe4` has that workload as its sole parent on
+`feature/renderer-pilot-linux-3`. Its exact manifest SHA-256 is
+`ed57a17a58bf7784b81c3de75baa971c0344b69b3a0a7f25959d8b2172ac9a52`.
+
+The third pilot approval was consumed by
+[run 40162752659](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40162752659), attempt 1,
+on 2026-10-25 UTC. Runtime admission passed with the exact approved 13-entry environment map.
+The #1571 correction worked. The isolated SDK check passed, and native admission passed on a
+Tesla T4, vendor `0x10de`, device `0x1eb8`, with 64-bit timestamps and a 1 ns period.
+
+The fixed measurement fact failed after 23.8 seconds with "The measured temporal history is invalid."
+The refusal was at `RendererPerfSceneWorkload.Record`, line 130, through
+`RendererPerfEntrypoint.cs`, line 115. Only conditioning frame 0, sequence 0, was recorded.
+Completed blocks were 0/2 and controls 0/6. The first scene frame deliberately has no valid previous
+history, but the workload required it immediately.
+[Issue #1579](https://github.com/APKiwiOrg/KhaozEngine/issues/1579) tracks this contract mismatch.
+
+Artifact `renderer-perf-linux-vulkan`, ID `12586184458`, is 517,933 compressed bytes.
+GitHub reports archive SHA-256
+`781d51a5aa9823e5477ef38df6244d491f27a6c2e3b6768cc947cbae268e012d`.
+It retains the partial JSON and Markdown report, runtime and native admission, compiler inventory,
+frozen layouts, telemetry, measurement log and TRX beside the preparation inputs and build logs.
+The measurement TRX SHA-256 is
+`105069ebd2bda10770f16be7af9eb555d063d61049ee833b4356041a68a627be`.
+
+GPU job `121077622984` ran from 04:41:07 to 04:45:14 UTC, 247 seconds. The billing API's same-day
+`actions_linux_4_core_gpu` total rose from 4.0 to 9.0 minutes, attributing 5.0 GPU minutes to this
+attempt at USD 0.052 per minute, USD 0.260 net runner charges. This is observed provider usage,
+separate from a duration estimate. Storage, tax and currency conversion are outside the runner
+component. No measured baseline, deadline or performance acceptance was produced. The approval is
+consumed and authorizes no retry. Another attempt requires a corrected workload, independently
+reviewed preparation and fresh owner approval.
+
 ## Outstanding native and preparation gates
 
 Accepted Tasks10/11 and the cold amendment implement optional D3D11, Vulkan and Metal diagnostics.

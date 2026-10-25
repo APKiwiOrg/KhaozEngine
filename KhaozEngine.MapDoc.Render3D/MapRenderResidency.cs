@@ -7,6 +7,7 @@ using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Scene;
+using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.MapDoc.Render3D;
@@ -218,7 +219,9 @@ public sealed partial class MapRenderResidency : IDisposable
                 finally { contextOwner?.Dispose(); }
             }
             token.ThrowIfCancellationRequested();
-            charge.ReduceTo(plans.Sum(p => checked(p.PreparationOwnership!.Bytes + p.Scene.PreparationOwnership!.Bytes)));
+            long canonicalWater = plans.SelectMany(p => p.Inventory.Water.Cells)
+                .Distinct<MapWaterResourceCell>(ReferenceEqualityComparer.Instance).Sum(MapScopedWaterResult.CellInventoryBytes);
+            charge.ReduceTo(checked(canonicalWater + plans.Sum(p => checked(p.PreparationOwnership!.Bytes + p.Scene.PreparationOwnership!.Bytes))));
             return plans.ToArray();
         }
         catch { foreach (var plan in plans) plan.Dispose(); throw; }

@@ -236,7 +236,8 @@ Idle composition entries and pieces are evicted after the last plan or upload re
 replace its image while retaining an identical mesh. Frames borrow admitted input and never decode again.
 
 `MapRenderAdmission` charges source metadata, encoded closure retention, decoder peaks, prepared plans and the
-renderer-measured upload demand. `MapUploadReservation` is claimed before factories, and claimed credit returns
+renderer-measured upload demand. Settled plans include the unique canonical water allocations retained by their
+batch readers, alongside the plan and scene receipts. `MapUploadReservation` is claimed before factories, and claimed credit returns
 only on the renderer's final `Released` callback. Published and retiring allocations keep their original charge.
 The staging allowance and decoded upload borrow remain held through retirement. `MaxRetiredGpuBytes` never
 adds sharing credit. `MapRenderLifetime` reports the live charged ownership groups and actual transfer bytes.

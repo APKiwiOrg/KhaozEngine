@@ -11,6 +11,29 @@ namespace KhaozEngine.Tests.MapDoc.Interiors;
 public sealed class MapMembershipCapacityTests
 {
     [Theory]
+    [InlineData(33049, false)]
+    [InlineData(33050, true)]
+    public void HighCoefficient_ChargesNormalizedOutputAndOneLiveArithmeticWorkspace(long allowance, bool accepted)
+    {
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: allowance));
+        using var product = admission.BeginPreparation();
+        var counts = new MapRoofPreparationCounts();
+        using var build = new MapMembershipBuild(admission, product, counts);
+        if (!accepted)
+        {
+            var refusal = Assert.Throws<MapSceneCapacityException>(() => new MapMembershipAffine(BigInteger.One << 180, 0, 1, 1));
+            Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", 33050, allowance), refusal.Capacity);
+            return;
+        }
+        var affine = new MapMembershipAffine(BigInteger.One << 180, 0, 1, 1);
+        // Four coefficient objects and one affine. Magnitudes contain 23, 1, 1 and 1 bytes.
+        Assert.Equal(282, affine.InventoryBytes);
+        Assert.Equal(282, admission.WorkspaceBytes);
+        Assert.Equal(33050, admission.PeakBytes);
+        Assert.Equal(26, counts.NormalizedCoefficientBytes);
+    }
+
+    [Theory]
     [InlineData(0, 1, true)]
     [InlineData(0, 0.0000001, false)]
     [InlineData(1000000000000000, 1, false)]

@@ -143,11 +143,11 @@ internal sealed class MapMembershipDemandPlan
                         for (long z = Math.Max(closed.MinZ, minZ); z < Math.Min(closed.MaxZExclusive, checked(minZ + patch.Depth)); z++)
                             for (long x = Math.Max(closed.MinX, minX); x < Math.Min(closed.MaxXExclusive, checked(minX + patch.Width)); x++)
                             {
-                            int cell = MapLowerCellClassifier.SlotCell(x, z);
-                            if (!Touches(polygon, MapEffectiveGeometry.CellPolygon(view, key, cell))) continue;
-                            var demand = new MapCellDemand(key, cell);
-                            if (!selected.Contains(demand)) { owner?.Reserve(128); selected.Add(demand); }
-                            Add(demand, 1);
+                                int cell = MapLowerCellClassifier.SlotCell(x, z);
+                                if (!Touches(polygon, MapEffectiveGeometry.CellPolygon(view, key, cell))) continue;
+                                var demand = new MapCellDemand(key, cell);
+                                if (!selected.Contains(demand)) { owner?.Reserve(128); selected.Add(demand); }
+                                Add(demand, 1);
                             }
                     }
                 }

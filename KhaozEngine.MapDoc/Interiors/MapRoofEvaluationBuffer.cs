@@ -18,9 +18,8 @@ public sealed record MapRoofEvaluationBufferResult(MapSceneStatus Status, MapRoo
 public sealed class MapRoofEvaluationBuffer
 {
     internal MapPreparationReservation? PreparationOwnership { get; private set; }
-    public long RetainedBytes => checked(128L + _scratch.InventoryBytes + _intent.InventoryBytes + _sceneInventoryBytes);
+    public long RetainedBytes { get; }
     public MapRoofPreparationCounts Counts { get; private set; } = null!;
-    readonly long _sceneInventoryBytes;
     readonly MapScopedScene _scene;
     readonly MapSpaceMembership _membership;
     readonly MapSpaceMembershipScratch _scratch;
@@ -30,11 +29,11 @@ public sealed class MapRoofEvaluationBuffer
     MapRoofEvaluationBuffer(MapScopedScene scene, MapMembershipPreparation demand, long sceneInventoryBytes, MapMembershipDemandPlan plan)
     {
         _scene = scene;
-        _sceneInventoryBytes = sceneInventoryBytes;
         _membership = new(scene.SurfaceView);
         _scratch = new(scene.SurfaceView, demand, plan);
         _intent = new(scene.CapturedBuildingIntent);
         _observation = new(MapMembershipStatus.Outside, null, default, scene.SurfaceView.ReadWitness);
+        RetainedBytes = checked(128L + _scratch.InventoryBytes + _intent.InventoryBytes + sceneInventoryBytes);
     }
     /// <summary>Admits the complete scoped membership product against a fresh allowance from the scene's limits.
     /// Capacity, precision and input refusals carry no partial buffer. The returned Roofs view is reused by Evaluate.</summary>
@@ -83,7 +82,10 @@ public sealed class MapRoofEvaluationBuffer
             var records = MapSpaceGeometry.Records(scene.SurfaceView).ToArray();
             var plan = new MapMembershipDemandPlan(scene.SurfaceView, records, planning);
             if (!admission.TryReservePreparation(0, counts.SpanFaces + counts.ChartFaces, out var capacity)) return Refused(capacity!) with { Counts = counts };
+            using var publication = admission.Workspace();
+            publication.Reserve(checked(4096L + 64L * records.Length));
             var buffer = new MapRoofEvaluationBuffer(scene, demand, sceneInventoryBytes, plan) { Counts = counts };
+            publication.Dispose();
             planning.Dispose();
             counts.RetainedBytes = buffer.RetainedBytes;
             if (buffer.RetainedBytes > checked(preparation.Bytes + sceneInventoryBytes))

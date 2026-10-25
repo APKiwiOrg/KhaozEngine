@@ -22,6 +22,11 @@ public sealed class MapRoofCoverageTests
         Assert.Equal(small.Demand.Cells, large.Demand.Cells);
         Assert.Equal(small.Demand.Faces, large.Demand.Faces);
         Assert.Equal(small.Buffer.RetainedBytes, large.Buffer.RetainedBytes);
+        // Hand inventory: 16 cell graphs, 32 triangles, four footprint polygons, one 31-node index,
+        // 16 lower rows, one space and ancestry row, the 12,640-byte exact workspace and 533-byte point scratch.
+        Assert.Equal(103157, small.Buffer.RetainedBytes);
+        Assert.Equal(832, small.Buffer.Counts.NormalizedCoefficientBytes);
+        Assert.InRange(small.Peak, 103157, 2 * 103157 + 98304);
         // Masked compilation retains the released patch-sized subdivision workspace.
         Assert.InRange(large.Peak, small.Peak, small.Peak + 61440);
         Assert.Equal(16, large.Buffer.Counts.UniqueTargetSlots);

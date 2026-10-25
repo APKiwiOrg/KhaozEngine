@@ -15,7 +15,10 @@ internal sealed class MapMembershipBuild : IDisposable
     internal static MapMembershipBuild? Current => t_current;
     internal MapMembershipBuild(MapSceneAdmission admission, MapPreparationScope product, MapRoofPreparationCounts counts)
     { _admission = admission; _product = product; Counts = counts; _previous = t_current; t_current = this; }
-    internal static void Inventory(long bytes) => t_current?._product.Reserve(bytes);
+    internal static void Inventory(long bytes)
+    {
+        if (t_current is { } build) build._admission.BeforeGeometry(bytes, build._product.WorkspaceOwner);
+    }
     internal static MapPreparationReservation? Kernel(long bytes = 32768)
     {
         var owner = t_current?._admission.Workspace();

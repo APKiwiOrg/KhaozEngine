@@ -6,7 +6,7 @@ using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Spaces;
 
-/// <summary>Allocation-free before-work sizing of the captured membership product.</summary>
+/// <summary>Allocation-free borrowed-input checks and control inventory before sparse planning.</summary>
 internal readonly record struct MapMembershipPreparation(long Bytes, long Faces, int Cells, int Records,
     int Footprints, int Prisms, int Parts)
 {
@@ -64,9 +64,7 @@ internal readonly record struct MapMembershipPreparation(long Bytes, long Faces,
                     if (!view.TryAcquiredPatch(key, out var patch, out _) || patch is null) continue;
                     var surface = Surface(view, key.SurfaceId);
                     if (surface.Role is not (MapSurfaceRole.SupportFloor or MapSurfaceRole.Ceiling)) continue;
-                    long nextCells = (long)cells + patch.Width * patch.Depth;
-                    if (nextCells > int.MaxValue) return Capacity(out detail);
-                    cells = (int)nextCells;
+                    cells = 1;
                     long patchFaces = 0;
                     for (int z = 0; z < patch.Depth; z++)
                         for (int x = 0; x < patch.Width; x++)

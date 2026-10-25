@@ -146,9 +146,9 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
         entering?.Invoke("payload");
     }
 
-    internal void BeforeGeometry(long bytes)
+    internal void BeforeGeometry(long bytes, MapPreparationReservation? owner = null)
     {
-        ReserveBytes(bytes);
+        if (owner is null) ReserveBytes(bytes); else owner.Reserve(bytes);
         entering?.Invoke("geometry");
     }
 
@@ -176,8 +176,11 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 
     internal void ReserveCompilation(long faces, MapPreparationReservation? workspace = null)
     {
-        if (faces < 0 || faces > limits.MaxPreparedFaces - PreparedFaces) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPreparedFaces), (decimal)PreparedFaces + faces, limits.MaxPreparedFaces);
-        long bytes = checked(faces * 1280);
+        if (faces < 0) throw new ArgumentOutOfRangeException(nameof(faces));
+        decimal demand = (decimal)faces * 1280;
+        if (demand > RemainingPreparedBytes) throw new MapSceneCapacityException(PreparedByteCapacity(demand));
+        long bytes = (long)demand;
+        if (PreparationRefusal(bytes, faces) is { } capacity) throw new MapSceneCapacityException(capacity);
         if (workspace is null) ReserveBytes(bytes); else workspace.Reserve(bytes);
         PreparedFaces = checked(PreparedFaces + faces);
         entering?.Invoke("compile");

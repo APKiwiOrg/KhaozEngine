@@ -111,40 +111,40 @@ internal sealed class MapMembershipPreparedGeometry
         var cells = new List<Cell>();
         var bySurface = new Dictionary<string, List<Cell>>(StringComparer.Ordinal);
         for (int s = 0; s < view.Surfaces.Count; s++) bySurface.Add(view.Surfaces[s].Id, new());
-            for (int p = 0; p < view.Witness.Present.Count; p++)
+        for (int p = 0; p < view.Witness.Present.Count; p++)
+        {
+            var key = view.Witness.Present[p].Key;
+            if (!plan.Patches.TryGetValue(key, out var mask)) continue;
+            if (!view.TryAcquiredPatch(key, out var patch, out _) || patch is null) continue;
+            var surface = MapMembershipPreparation.Surface(view, key.SurfaceId);
+            if (surface.Role is not (MapSurfaceRole.SupportFloor or MapSurfaceRole.Ceiling)) continue;
+            using var patchPreparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+            var validated = new MapValidatedSurfacePatch(surface, patch);
+            Validated.Add(key, validated);
+            var local = MapSurfaceCompiler.Compile(validated, mask, MapSurfaceCompiler.MaxFacesPerPatch);
+            var compiled = MapEffectiveGeometry.TransformPatch(view, local);
+            var localCells = local.Faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key, g => g.OrderBy(f => f.Key).ToArray());
+            var worldCells = ReferenceEquals(local, compiled) ? localCells :
+                compiled.Faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key, g => g.OrderBy(f => f.Key).ToArray());
+            if (MapMembershipBuild.Current is { } build)
             {
-                var key = view.Witness.Present[p].Key;
-                if (!plan.Patches.TryGetValue(key, out var mask)) continue;
-                if (!view.TryAcquiredPatch(key, out var patch, out _) || patch is null) continue;
-                var surface = MapMembershipPreparation.Surface(view, key.SurfaceId);
-                if (surface.Role is not (MapSurfaceRole.SupportFloor or MapSurfaceRole.Ceiling)) continue;
-                using var patchPreparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
-                var validated = new MapValidatedSurfacePatch(surface, patch);
-                Validated.Add(key, validated);
-                var local = MapSurfaceCompiler.Compile(validated, mask, MapSurfaceCompiler.MaxFacesPerPatch);
-                var compiled = MapEffectiveGeometry.TransformPatch(view, local);
-                var localCells = local.Faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key, g => g.OrderBy(f => f.Key).ToArray());
-                var worldCells = ReferenceEquals(local, compiled) ? localCells :
-                    compiled.Faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key, g => g.OrderBy(f => f.Key).ToArray());
-                if (MapMembershipBuild.Current is { } build)
-                {
-                    build.Counts.PeakPatchBytes = Math.Max(build.Counts.PeakPatchBytes, 16L * patch.Width * patch.Depth);
-                    build.Counts.PeakCompilerBytes = Math.Max(build.Counts.PeakCompilerBytes,
-                        checked(16L * patch.Width * patch.Depth + 1280L * local.Faces.Count +
-                            (ReferenceEquals(local, compiled) ? 0 : 3L * local.InventoryBytes)));
-                }
-                for (int z = 0; z < patch.Depth; z++)
-                    for (int x = 0; x < patch.Width; x++)
-                    {
-                        int slot = (z + patch.CellMinZ) * 64 + x + patch.CellMinX;
-                        if (!mask.Contains(slot)) continue;
-                        var cell = new Cell(cells.Count, PatchCount, slot, view, surface, patch, local, compiled,
-                            localCells.GetValueOrDefault(slot) ?? [], worldCells.GetValueOrDefault(slot) ?? []);
-                        cell.FaceSet = FaceSets.Count; FaceSets.Add(cell.Triangles);
-                        cells.Add(cell); bySurface[surface.Id].Add(cell); ByCell.Add(cell.Demand, cell);
-                    }
-                PatchCount++;
+                build.Counts.PeakPatchBytes = Math.Max(build.Counts.PeakPatchBytes, 16L * patch.Width * patch.Depth);
+                build.Counts.PeakCompilerBytes = Math.Max(build.Counts.PeakCompilerBytes,
+                    checked(16L * patch.Width * patch.Depth + 1280L * local.Faces.Count +
+                        (ReferenceEquals(local, compiled) ? 0 : 3L * local.InventoryBytes)));
             }
+            for (int z = 0; z < patch.Depth; z++)
+                for (int x = 0; x < patch.Width; x++)
+                {
+                    int slot = (z + patch.CellMinZ) * 64 + x + patch.CellMinX;
+                    if (!mask.Contains(slot)) continue;
+                    var cell = new Cell(cells.Count, PatchCount, slot, view, surface, patch, local, compiled,
+                        localCells.GetValueOrDefault(slot) ?? [], worldCells.GetValueOrDefault(slot) ?? []);
+                    cell.FaceSet = FaceSets.Count; FaceSets.Add(cell.Triangles);
+                    cells.Add(cell); bySurface[surface.Id].Add(cell); ByCell.Add(cell.Demand, cell);
+                }
+            PatchCount++;
+        }
         Cells = cells.ToArray();
         for (int s = 0; s < view.Surfaces.Count; s++)
             Surfaces.Add(view.Surfaces[s].Id, new(view.Surfaces[s], bySurface[view.Surfaces[s].Id].ToArray()));

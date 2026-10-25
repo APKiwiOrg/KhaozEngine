@@ -59,7 +59,9 @@ public sealed class NativeRoofEvaluationAdmissionTests
         using var active = admission.Enter();
         var scene = MapSceneAcquisition.Run(source, NativePresentationFixtures.Scope, admission).Scene!;
         long sceneBytes = scene.PreparationOwnership!.Bytes;
-        var buffer = MapRoofEvaluationBuffer.Prepare(scene, admission, requireCompletePolicy: true).Buffer!;
+        var prepared = MapRoofEvaluationBuffer.Prepare(scene, admission, requireCompletePolicy: true);
+        Assert.True(prepared.Buffer is not null, prepared.Detail);
+        var buffer = prepared.Buffer!;
         long retained = admission.RetainedBytes;
         scene.PreparationOwnership.Dispose();
         Assert.Equal(retained, admission.RetainedBytes);

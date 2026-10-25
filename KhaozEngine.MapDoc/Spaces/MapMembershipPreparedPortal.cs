@@ -19,6 +19,7 @@ internal sealed class MapMembershipPreparedPortal
         internal readonly MapMembershipPreparedGeometry.Cell[] Demands;
         internal Segment(MapExactPoint a, MapExactPoint b, MapMembershipPreparedGeometry.Cell[]? demands = null, bool height = false)
         {
+            MapMembershipBuild.Inventory(checked(128L + 8L * (demands?.Length ?? 0)));
             _a = new(a.X, a.Z); _b = new(b.X, b.Z); _line = MapMembershipAffine.Edge(_a, _b);
             Demands = demands ?? Array.Empty<MapMembershipPreparedGeometry.Cell>();
             if (height)
@@ -41,6 +42,7 @@ internal sealed class MapMembershipPreparedPortal
     internal MapMembershipPreparedPortal(MapScopedSurfaces view, MapMembershipPreparedGeometry geometry,
         MapCavePortal portal, MapPrismDomain[] prisms)
     {
+        MapMembershipBuild.Inventory(checked(128L + 8L * (portal.Interval.Count - 1)));
         Record = portal;
         Ignored = prisms.Any(p => p.Space.Id == portal.FromSpace.Id || p.Space.Id == portal.ToSpace.Id);
         _interval = new Segment[portal.Interval.Count - 1];
@@ -54,6 +56,8 @@ internal sealed class MapMembershipPreparedPortal
         Segment[] Chain(MapRecordRef reference)
         {
             var chain = MapSpaceGeometry.Record<MapBoundaryChain>(view, reference);
+            MapMembershipBuild.Inventory(checked(8L * (chain.Vertices.Count - 1)));
+            using var resolutionWorkspace = MapMembershipBuild.Kernel(checked(32768L + 256L * chain.Vertices.Count));
             var resolution = MapBoundaryGeometry.ResolveChain(chain, view, key =>
                 new MapBoundarySurface(geometry.Validated[key], MapSlotCellMask.All));
             if (resolution.Status != MapResolveStatus.Resolved) throw new MapDocumentException(resolution.Detail ?? "missing geometry: portal band");

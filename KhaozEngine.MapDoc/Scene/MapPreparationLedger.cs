@@ -7,11 +7,39 @@ namespace KhaozEngine.MapDoc.Scene;
 internal sealed class MapPreparationLedger(long allowance, string limitName)
 {
     Window? _window;
+    PeakObservation? _observation;
     long _external;
     readonly Dictionary<object, MapPreparationReservation> _legacy = new();
     internal long WorkspaceBytes { get; private set; }
     internal long RetainedBytes { get; private set; }
     internal long PeakBytes { get; private set; }
+    internal PeakObservation ObservePeak() => new(this);
+    void Observe()
+    {
+        long live = checked(WorkspaceBytes + RetainedBytes + _external);
+        PeakBytes = Math.Max(PeakBytes, live);
+        for (var observer = _observation; observer is not null; observer = observer.Previous)
+            observer.Bytes = Math.Max(observer.Bytes, live);
+    }
+    internal sealed class PeakObservation : IDisposable
+    {
+        readonly MapPreparationLedger _owner;
+        internal readonly PeakObservation? Previous;
+        internal long Bytes;
+        bool _disposed;
+        internal PeakObservation(MapPreparationLedger owner)
+        {
+            _owner = owner; Previous = owner._observation;
+            Bytes = checked(owner.WorkspaceBytes + owner.RetainedBytes + owner._external);
+            owner._observation = this;
+        }
+        public void Dispose()
+        {
+            if (_disposed) return;
+            if (_owner._observation != this) throw new InvalidOperationException("Peak observations must close in nesting order.");
+            _owner._observation = Previous; _disposed = true;
+        }
+    }
     internal object WindowIdentity => (object?)_window ?? this;
     internal IDisposable? ReferenceWindow(long bytes, object? origin, ICollection<object>? references)
     {
@@ -65,7 +93,7 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
         if (bytes < 0 || bytes > Remaining) throw new MapSceneCapacityException(Capacity(bytes));
         if (retained) RetainedBytes += bytes; else WorkspaceBytes += bytes;
         Adjust(view, bytes);
-        PeakBytes = Math.Max(PeakBytes, WorkspaceBytes + RetainedBytes + _external);
+        Observe();
     }
     internal void Remove(Window? view, long bytes, bool retained)
     {
@@ -135,7 +163,7 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (bytes < 0 || bytes > _owner.Remaining) throw new MapSceneCapacityException(_owner.Capacity(bytes));
             _owner._external += bytes; _external += bytes; Adjust(this, bytes);
-            _owner.PeakBytes = Math.Max(_owner.PeakBytes, _owner.WorkspaceBytes + _owner.RetainedBytes + _owner._external);
+            _owner.Observe();
         }
         public void Dispose()
         {

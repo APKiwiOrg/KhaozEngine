@@ -174,6 +174,7 @@ internal sealed class MapBoundPreparation
             Refusal = "context patches";
             return null;
         }
+        MapPrismValidationWorkspace.ReserveContext(128);
         validated = new(surface, patch, _validationWork);
         // Count every validated bound patch before retaining evidence, including face-free bounds.
         _validated.Add(patch.Key, validated);

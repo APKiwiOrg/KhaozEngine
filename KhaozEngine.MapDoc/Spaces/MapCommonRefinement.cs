@@ -102,8 +102,9 @@ public static class MapCommonRefinement
     internal static MapFootprintPreparation PrepareFootprints(MapScopedSurfaces view, IReadOnlyList<MapSpaceFootprint> footprints,
         MapRefinementLimits limits, MapBoundFaceWork? work, MapWaterWorkMeter? meter = null) => Prepare(view, footprints, f => f.SlotCells, limits, work, meter);
 
-    static MapFootprintPreparation Prepare(MapScopedSurfaces view, IReadOnlyList<MapSpaceFootprint> footprints,
-        Func<MapSpaceFootprint, IEnumerable<int>> cells, MapRefinementLimits limits, MapBoundFaceWork? work, MapWaterWorkMeter? meter = null)
+    internal static MapFootprintPreparation Prepare(MapScopedSurfaces view, IReadOnlyList<MapSpaceFootprint> footprints,
+        Func<MapSpaceFootprint, IEnumerable<int>> cells, MapRefinementLimits limits, MapBoundFaceWork? work, MapWaterWorkMeter? meter = null,
+        Func<MapSpaceFootprint, int, bool>? include = null)
     {
         var outcomes = new Dictionary<(string, int), MapCellRefinement>();
         var preparation = new MapBoundPreparation(view, limits, work, meter);
@@ -130,6 +131,7 @@ public static class MapCommonRefinement
             foreach (MapSpaceFootprint footprint in footprints.OrderBy(f => f.Id, StringComparer.Ordinal))
                 foreach (int cell in cells(footprint).Order())
                 {
+                    using var capacity = MapPrismValidationWorkspace.FootprintCell(view, footprint, cell);
                     MapBoundPreparation.Plan? lower = null, upper = null;
                     MapCellRefinement? failure = null;
                     try
@@ -150,6 +152,7 @@ public static class MapCommonRefinement
                             NotRepresentable(error) ? "overflow: " + error.Message : error.Message);
                     }
                     if (failure is not null) { outcomes[(footprint.Id, cell)] = failure; continue; }
+                    if (include is not null && !include(footprint, cell)) continue;
                     foreach (MapCellDemand demand in lower!.Demands) yield return new(demand, lower.Opening);
                     if (upper is not null)
                         foreach (MapCellDemand demand in upper.Demands) yield return new(demand, upper.Opening);

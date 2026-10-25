@@ -69,7 +69,7 @@ internal sealed class MapBoundFaceContext
         Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeOpeningFaces = null)
     {
         ArgumentNullException.ThrowIfNull(view);
-        using var admitted = view.Scope.SceneAdmission?.Enter();
+        using var admitted = (Scene.MapSceneAdmission.Current ?? view.Scope.SceneAdmission)?.Enter();
         ArgumentNullException.ThrowIfNull(demands);
         preparation?.RequireView(view);
         if (maxPatches < 0 || maxFaces < 0) throw new ArgumentOutOfRangeException(nameof(maxPatches));
@@ -94,6 +94,7 @@ internal sealed class MapBoundFaceContext
                     throw new MapDocumentException($"context demand patch {demand.Patch}: unavailable");
                 MapValidatedSurfacePatch? validatedPatch = preparation.ValidatedPatch(surface, patch);
                 if (validatedPatch is null) { refusal = preparation.Refusal; continue; }
+                MapPrismValidationWorkspace.ReserveContext(1024);
                 entry = new(validatedPatch);
                 pending.Add(demand.Patch, entry);
             }
@@ -149,6 +150,7 @@ internal sealed class MapBoundFaceContext
             MapCompiledPatch local = compiled;
             compiled = MapEffectiveGeometry.TransformPatch(view, compiled);
             if (work is not null) { work.Compiles++; work.CompiledFaces += compiled.Faces.Count; }
+            MapPrismValidationWorkspace.ReserveContext(checked(384L * compiled.Faces.Count));
             var cells = compiled.Faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key,
                 g => (IReadOnlyList<MapBoundFace>)Array.AsReadOnly(g.OrderBy(f => f.Key)
                     .Select(f => new MapBoundFace(f.Key, compiled.ExactTriangle(f))).ToArray()));

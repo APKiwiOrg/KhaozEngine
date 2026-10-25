@@ -34,9 +34,10 @@ internal sealed record TileWaterFieldReport(Vector3 Origin, Vector2 Size, int Bi
 
 /// <summary>A GPU rest-depth query against the drawn-mesh oracle and the case's witness surface. Rest depth is
 /// relative to the binding's Origin Y, the datum 0 for TileWorld fields, so the oracle is datum minus drawn height.
-/// Physical depth is the water surface minus drawn height. Witness is NaN where its surface does not reach.</summary>
+/// Physical depth is the water surface minus drawn height. Witness is NaN where its surface does not reach. Bound is
+/// the sampled field's certified reconstruction bound, including any measured seam discontinuity.</summary>
 internal readonly record struct TileWaterDepthProbe(string Kind, double WorldX, double WorldZ, Vector2 Local, bool Hit,
-    float GpuDepth, double OracleDepth, double WitnessDepth, double PhysicalDepth);
+    float GpuDepth, double OracleDepth, double WitnessDepth, double PhysicalDepth, double Bound);
 
 /// <summary>Colour influence at one projected water-surface point, against the opaque control.</summary>
 internal readonly record struct TileWaterImageProbe(string Name, double WorldX, double WorldZ, Vector2 Pixel,
@@ -70,6 +71,8 @@ internal sealed class TileWaterTopologyCapture
 
     internal IEnumerable<TileWaterDepthProbe> Admitted => Depths.Where(d => d.Kind != "miss");
     internal double MaximumOracleError => Admitted.Where(d => d.Hit).Select(d => Math.Abs(d.GpuDepth - d.OracleDepth))
+        .DefaultIfEmpty(double.NaN).Max();
+    internal double MaximumBoundRatio => Admitted.Where(d => d.Hit).Select(d => Math.Abs(d.GpuDepth - d.OracleDepth) / d.Bound)
         .DefaultIfEmpty(double.NaN).Max();
     internal double MaximumWitnessDeviation => Admitted.Where(d => d.Hit && !double.IsNaN(d.WitnessDepth))
         .Select(d => Math.Abs(d.GpuDepth - d.WitnessDepth)).DefaultIfEmpty(0).Max();
@@ -141,6 +144,7 @@ internal sealed class TileWaterTopologyCapture
             MissProbeHits = Depths.Count(d => d.Kind == "miss" && d.Hit),
             MaximumOracleError,
             MaximumWitnessDeviation,
+            MaximumErrorOverCertifiedBound = MaximumBoundRatio,
             MinimumOracleDepth = Admitted.Select(d => d.OracleDepth).DefaultIfEmpty(double.NaN).Min(),
             MaximumOracleDepth = Admitted.Select(d => d.OracleDepth).DefaultIfEmpty(double.NaN).Max(),
             MinimumPhysicalDepth = Admitted.Select(d => d.PhysicalDepth).DefaultIfEmpty(double.NaN).Min(),

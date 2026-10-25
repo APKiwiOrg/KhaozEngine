@@ -197,7 +197,7 @@ public sealed class TileWorldWaterTopologyScene : IDisposable
                     catch (InvalidOperationException) { }
                 }
                 result.Depths.Add(new(kind, x, z, local, samples[i].Hit, samples[i].Depth, oracle, other,
-                    group.First().SurfaceY - height));
+                    group.First().SurfaceY - height, field.ReconstructionErrorBoundMetres));
             }
         }
         result.Milliseconds["OracleControlAndGpuProbes"] = watch.Elapsed.TotalMilliseconds;

@@ -3,17 +3,18 @@
 Status: Execution amendment selected by the engine orchestrator under the owner's authorization to
 resolve failed optical gates. Implementation and verification remain open. No release is authorized.
 
-Task 5 evidence, local Metal, Release, after the exact datum: the unchanged saddle fact passes with one live
-field and upload. At the 0.08 m probe, authored influence is 0.0722819 against scene-depth control 0.20033678.
-Topology facts cover the other diagonal, absent-overlay forced rotation, all four corner-cut rotations on level
-and on sloping cut edges, diagonal-half overlays with material, a Coarse4 interior with transition fans, a Full
-and Coarse4 region border with neighbouring fields and a 2048 m render-origin reduction. Each matches a binary64
-drawn-mesh oracle within 4.5e-8 m at every admitted GPU probe. Its image matches an independent field built from
-the drawn triangles at 0 RGB. Its negative witness fails both checks. Sloped corner-cut T junctions now publish.
-Feather-overlay subdivisions on a sloping shared edge are still refused as AmbiguousSurface, and their authored
-water disappears. The mesher interpolates subdivision vertices in binary32, so with an ordinary height such as
--0.70 m they sit up to 2.6e-8 m off the uncut neighbour's long edge. Dyadic heights publish. Parent Task 6
-remains open. Its look gate is not accepted until that refusal is resolved and the failing fact passes.
+Task 5 final evidence, local Metal, Release, with the exact datum and certified seam charge: the parent Task 6
+visual gate passes on local Metal. The unchanged saddle fact passes with one live field and upload. At the
+0.08 m probe, authored influence is 0.0722819 against scene-depth control 0.20033678, within the 0.04 allowance.
+All 11 focused GPU facts pass with none skipped. They cover the other diagonal, absent-overlay forced rotation,
+all four corner-cut rotations on level and sloping cut edges, diagonal-half overlays with material, feather
+subdivisions on a sloping -0.70 m edge, a Coarse4 interior with transition fans, a Full and Coarse4 region border
+with neighbouring fields and a 2048 m render-origin reduction. Every admitted GPU probe hits and lies within its
+field's certified bound of a binary64 drawn-mesh oracle. The largest error is 4.5e-8 m, at most 4.7 percent of
+that bound. Every image matches an independent field built from the drawn triangles at 0 RGB, and every negative
+witness fails both checks. The feather field holds 1052 triangles in 32 by 32 bins, with occupancy 30 and a
+certified bound of 9.86e-7 m. Hosted Metal, D3D11 and Vulkan verification, final reconciliation, review and the
+remaining parent gates stay open.
 
 This amends [per-body water optics](WATER-OBJECT-OPTICS-DESIGN-2026-10-24.md) for the failed Task 6
 saddle gate. It supersedes the bilinear-only TileWorld producer and universal four-fetch requirement.

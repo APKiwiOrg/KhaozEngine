@@ -19,8 +19,9 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class TileWorldWaterOpticsTopologyGpuTests(TileWorldWaterTopologyScene fixture, ITestOutputHelper output)
     : IClassFixture<TileWorldWaterTopologyScene>
 {
-    // The TileWorld positional budget, min(0.0001 m, TileSize / 1024), at 1 m tiles.
-    const double DepthTolerance = 0.0001;
+    // The TileWorld single budget, min(0.0001 m, TileSize / 1024), at 1 m tiles. Each field's certified bound must fit
+    // it, and every GPU sample must lie within its own field's certified bound of the drawn-mesh oracle.
+    const double DepthBudget = 0.0001;
     const double WitnessSeparation = 0.05;
     // The saddle's fixed RGB allowance, used unchanged as the equivalence threshold.
     const float EquivalentRgbTolerance = 0.04f;
@@ -134,12 +135,12 @@ public sealed class TileWorldWaterOpticsTopologyGpuTests(TileWorldWaterTopologyS
         output.WriteLine($"{c.Name} on {fixture.Backend} {fixture.DeviceName}: failures {r.DescribeFailures()}, "
             + $"fields {r.LiveFieldDelta}, uploads {r.UploadDelta}, texture bytes {r.LiveTextureByteDelta}, "
             + $"retained CPU bytes {r.LiveRetainedCpuByteDelta}, source bytes {r.SourceBytes.Resident}/{r.SourceBytes.Pending}, "
-            + $"depth probes {r.Depths.Count}, oracle error {r.MaximumOracleError:R}, witness deviation {r.MaximumWitnessDeviation:R}, "
+            + $"depth probes {r.Depths.Count}, oracle error {r.MaximumOracleError:R} ({r.MaximumBoundRatio:F3} of bound), witness deviation {r.MaximumWitnessDeviation:R}, "
             + $"control RGB {r.ControlMaximumRgb:R}, witness RGB {r.WitnessMaximumRgb:R}, "
             + $"deep visible {r.VisibleDeepProbes}/{r.ProjectedDeepProbes}, total {r.Milliseconds.GetValueOrDefault("Total"):F1} ms.");
         foreach (TileWaterFieldReport f in r.Fields)
             output.WriteLine($"  field origin {f.Origin} size {f.Size} bins {f.BinColumns}x{f.BinRows} (base {f.BaseColumns}x{f.BaseRows}, "
-                + $"attempts {f.DerivedPackingAttempts}) triangles {f.Triangles} K {f.MaximumBinOccupancy} texture "
+                + $"attempts {f.DerivedPackingAttempts}) bound {f.ReconstructionErrorBoundMetres:R} triangles {f.Triangles} K {f.MaximumBinOccupancy} texture "
                 + $"{f.TextureWidth}x{f.TextureHeight} {f.TextureBytes} B retained {f.RetainedBytes} B order {f.SourceOrderMatched} {f.SourceOrderError}");
         r.ThrowIfFailed();
         Assert.True(r.Failures.Count == 0, $"{c.Name} was refused: {r.DescribeFailures()}.");
@@ -156,6 +157,8 @@ public sealed class TileWorldWaterOpticsTopologyGpuTests(TileWorldWaterTopologyS
             Assert.True(f.SourceOrderError is null, f.SourceOrderError);
             Assert.Equal(f.Triangles, f.SourceOrderMatched);
             Assert.InRange(f.DerivedPackingAttempts, 1, 11);
+            Assert.True(f.ReconstructionErrorBoundMetres > 0 && f.ReconstructionErrorBoundMetres <= DepthBudget,
+                $"Certified bound {f.ReconstructionErrorBoundMetres:R} m is outside the {DepthBudget} m budget.");
         }
 
         TileWaterDepthProbe[] admitted = r.Admitted.ToArray();
@@ -163,9 +166,10 @@ public sealed class TileWorldWaterOpticsTopologyGpuTests(TileWorldWaterTopologyS
         TileWaterDepthProbe[] missed = admitted.Where(d => !d.Hit).ToArray();
         Assert.True(missed.Length == 0, $"{c.Name}: {missed.Length} admitted points missed, first at "
             + $"({missed.FirstOrDefault().WorldX}, {missed.FirstOrDefault().WorldZ}).");
-        TileWaterDepthProbe worst = admitted.MaxBy(d => Math.Abs(d.GpuDepth - d.OracleDepth));
-        Assert.True(Math.Abs(worst.GpuDepth - worst.OracleDepth) <= DepthTolerance,
-            $"{c.Name} at ({worst.WorldX}, {worst.WorldZ}): GPU depth {worst.GpuDepth:R}, drawn-mesh oracle {worst.OracleDepth:R}.");
+        TileWaterDepthProbe worst = admitted.MaxBy(d => Math.Abs(d.GpuDepth - d.OracleDepth) / d.Bound);
+        Assert.True(Math.Abs(worst.GpuDepth - worst.OracleDepth) <= worst.Bound,
+            $"{c.Name} at ({worst.WorldX}, {worst.WorldZ}): GPU depth {worst.GpuDepth:R}, drawn-mesh oracle "
+            + $"{worst.OracleDepth:R}, certified bound {worst.Bound:R}.");
         Assert.All(r.Depths.Where(d => d.Kind == "miss"), d => Assert.False(d.Hit, "A point outside the field reported a hit."));
         Assert.True(r.MaximumWitnessDeviation > WitnessSeparation,
             $"{c.Name} witness {c.Witness} deviates by only {r.MaximumWitnessDeviation:R} m, so the depth check is vacuous.");

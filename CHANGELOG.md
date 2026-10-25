@@ -27,6 +27,21 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   retain their reasons. Ordinary pipelines keep their existing compilation and timestamp configuration.
 - Keep warmed Metal staging accounting allocation-free when native blocks exceed the retention cap,
   preserving capacity, resource counts and native release behavior (Closes #1566).
+- Add per-body water optics. Immutable `WaterOpticsField` and `WaterOpticsTriangleField` resources load through
+  `Scene3D.LoadWaterOpticsField` or `LoadWaterOpticsTriangles`, release through `UnloadWaterOpticsField`, and bind
+  to a `WaterPlane` with `WaterOpticsBinding`. Bound water needs viewport-aware `Scene3D.PrepareFrame(int, int)`
+  before recording, and `TryGetWaterOpticsPadding` reports the padding a look needs. Unsupported surfaces refuse
+  completely with a typed `WaterOpticsSurfaceFailure`, FFT water without a certified displacement envelope refuses
+  as `UncertifiedDisplacement`, and surface error stays within 0.0001 metres. Device recreation means a new scene
+  plus an explicit reload of retained fields. Unbound planes are unchanged. Partial for
+  https://github.com/APKiwiOrg/KhaozEngine/issues/1300.
+- Add opt-in TileWorld `TileWaterDepthMode.AuthoredBed`, which needs a scene implementing
+  `ITileWorldWaterTriangleOpticsScene`. Fields are built from the actual rendered ground mesh. Refusals report a
+  `TileWaterOpticsFailureKind`, including `UncertifiedDisplacement`, and `WaterOpticsSourceBytes` reports retained
+  source bytes. Water at a region edge needs loaded, accepted neighbour ground. Default views are unchanged.
+- `Render3DPreview` and `Render3DSnapshot` now prepare each frame with their viewport size.
+- Add the `device.water.prepare` renderer perf owner for viewport-path water preparation. Scene target creation
+  on resize and cold frames still has no device owner, filed as https://github.com/APKiwiOrg/KhaozEngine/issues/1569.
 
 ## 21.13.0
 

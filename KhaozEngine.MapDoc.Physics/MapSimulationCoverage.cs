@@ -27,7 +27,8 @@ public sealed class MapSimulationCoverage
         using var ownership = new Acquisition(MapRequiredDomainCoverage.Acquire(_source, domains, minimum));
         var coverage = ownership.Coverage;
         if (!coverage.Witness.CompleteForScope)
-            return new(coverage.Status, coverage.Witness, Array.Empty<MapScopedWorld>(), null);
+            return new(coverage.Status, coverage.Witness, Array.Empty<MapScopedWorld>(), null)
+            { Capacity = coverage.Capacity, Findings = coverage.Findings };
         var witness = coverage.Witness;
         var worlds = new List<MapScopedWorld>();
         foreach (var scene in coverage.Scenes)
@@ -35,7 +36,8 @@ public sealed class MapSimulationCoverage
             var result = MapScopedWorldBuilder.Build(scene, _assets, _options);
             witness = MapRequiredDomainCoverage.Extend(witness, result.Witness);
             if (result.World is null)
-                return new(result.Status, witness with { CompleteForScope = false }, Array.Empty<MapScopedWorld>(), null);
+                return new(result.Status, witness with { CompleteForScope = false }, Array.Empty<MapScopedWorld>(), null)
+                { Capacity = result.Capacity, Findings = result.Findings };
             worlds.Add(result.World);
         }
         ownership.Transferred = true;
@@ -56,6 +58,8 @@ public sealed class MapSimulationLease : IDisposable
     MapSceneCoverageLease? _coverage;
     public MapSceneStatus Status { get; }
     public MapSceneWitness Witness { get; }
+    public MapSceneCapacity? Capacity { get; init; }
+    public IReadOnlyList<string> Findings { get; init; } = Array.Empty<string>();
     public IReadOnlyList<MapScopedWorld> Worlds { get; private set; }
     internal MapSimulationLease(MapSceneStatus status, MapSceneWitness witness, IReadOnlyList<MapScopedWorld> worlds,
         MapSceneCoverageLease? coverage)

@@ -186,6 +186,8 @@ consumers must require before accepting a render plan. Neutral simulation acquis
 
 `MapSceneWitness` distinguishes required, present, known-empty and unavailable resources. A refusal has no usable
 scene, no completeness claim and a finding. Whole-world completeness additionally requires checked source coverage.
+Required-domain and simulation coverage leases preserve the refusal's `Capacity` and `Findings`, including the
+capacity name, aggregate demand and declared allowance when physical preparation refuses.
 `scene.AcquireDependencies(scope)` uses the same immutable source generation and ceilings. It cannot refresh or
 increase the captured query budgets, including all six refinement ceilings. A null refinement policy means the
 default ceilings for this comparison. A manifest replacement is Stale even when the requested payloads still exist.

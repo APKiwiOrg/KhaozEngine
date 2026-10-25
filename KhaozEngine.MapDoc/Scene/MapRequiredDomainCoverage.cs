@@ -38,7 +38,8 @@ public static class MapRequiredDomainCoverage
                 var result = MapSceneAcquisition.Run(source, domain, admission);
                 witnesses.Add(result.Witness);
                 if (result.Scene is null || !result.Witness.CompleteForScope)
-                    return new(result.Status, Combine(source, identity, witnesses, false), Array.Empty<MapScopedScene>());
+                    return new(result.Status, Combine(source, identity, witnesses, false), Array.Empty<MapScopedScene>())
+                    { Capacity = result.Capacity, Findings = result.Findings };
                 scenes.Add(result.Scene);
             }
             return new(MapSceneStatus.CompleteForScope, Combine(source, identity, witnesses, true), scenes.AsReadOnly())
@@ -47,7 +48,8 @@ public static class MapRequiredDomainCoverage
         catch (Exception error) when (MapSceneSource.Classify(error) is not null)
         {
             return new(Enum.Parse<MapSceneStatus>(MapSceneSource.Classify(error)!.Value.ToString()),
-                Combine(source, identity, witnesses, false), Array.Empty<MapScopedScene>());
+                Combine(source, identity, witnesses, false), Array.Empty<MapScopedScene>())
+            { Capacity = MapSceneCapacity.From(error), Findings = [error.Message] };
         }
     }
 
@@ -85,6 +87,8 @@ public sealed class MapSceneCoverageLease : IDisposable
     internal MapPreparationReservation? PreparationOwnership { get; init; }
     public MapSceneStatus Status { get; }
     public MapSceneWitness Witness { get; }
+    public MapSceneCapacity? Capacity { get; init; }
+    public IReadOnlyList<string> Findings { get; init; } = Array.Empty<string>();
     public IReadOnlyList<MapScopedScene> Scenes { get; private set; }
     internal MapSceneCoverageLease(MapSceneStatus status, MapSceneWitness witness, IReadOnlyList<MapScopedScene> scenes)
     { Status = status; Witness = witness; Scenes = scenes; }

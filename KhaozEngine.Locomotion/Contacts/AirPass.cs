@@ -64,11 +64,15 @@ internal static class AirPass
         StepWithMedium(feet, velocity, verticalVelocity, dt, gravity, tuning, settings, tractionSlopeRadians,
             queries, climbBudget, clampXz);
 
+    /// <summary>As <see cref="Step"/>, with <paramref name="medium"/> classifying footing and owner changes and
+    /// <paramref name="verticalDisplacement"/>, when given, replacing the integrated vertical move. A
+    /// <paramref name="buoyant"/> body rides a waterline rather than an arc, so its rising substeps also run the
+    /// support query and land on walkable support above their highest feet.</summary>
     internal static AirStepResult StepWithMedium(Vector3 feet, Vector2 velocity, float verticalVelocity, float dt,
         float gravity, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
         ContactQueryContext queries, double? climbBudget = null,
         Func<float, float, Vector2>? clampXz = null, ContactMediumPolicy? medium = null,
-        float? verticalDisplacement = null)
+        float? verticalDisplacement = null, bool buoyant = false)
     {
         Validate(feet, velocity, verticalVelocity, dt, gravity, tuning, settings, tractionSlopeRadians);
         double budget = climbBudget ?? Budget(tuning, dt);
@@ -133,11 +137,12 @@ internal static class AirPass
             blocked |= flight.Blocked;
             moved = onPlan ? next : moved + flight.Achieved;
             float remainingTime = stepTime * (substeps - i - 1);
-            if (current.Y > 0f)
+            bool rising = current.Y > 0f;
+            if (rising)
             {
                 if (medium?.ChangesOwner(start + moved, current.Y, NoSupport, false) == true)
                     return Handoff(start + moved, NoSupport, AirOutcome.Airborne, remainingTime);
-                continue;
+                if (!buoyant) continue;
             }
 
             Vector3 at = start + moved;
@@ -150,6 +155,12 @@ internal static class AirPass
             SupportSample support = queries.FindSupport(
                 new FootSupportQuery(axis, high, footRadius, tuning.StepHeight, MathF.Max(0f, high - low),
                     cosMaxSlope));
+            // A buoyant body settles on its waterline, so the sign of its vertical speed says nothing about its legs.
+            // Rising, it takes only walkable support that rose above its highest feet, the landing a descending
+            // substep makes there. A bed it rose off seats nothing, and analytic terrain has no shell to stop the legs.
+            if (rising && !(support.Status == SupportStatus.Walkable &&
+                    (double)support.Height - support.HeightError > high))
+                continue;
             var remaining = new Vector2(displacement.X - next.X, displacement.Z - next.Z);
             var horizontal = new Vector2(current.X, current.Z);
             if (support.Status == SupportStatus.Walkable && medium?.AllowsFooting(at, support) == false &&
@@ -196,7 +207,7 @@ internal static class AirPass
                     double above = (double)support.Height - at.Y;
                     if (!(above >= -support.HeightError && above <= tuning.StepHeight)) continue;
                     return new(at, 0f, Achieved(feet, start, moved), remaining, AirOutcome.Landed, support,
-                        0f - current.Y, blocked)
+                        MathF.Max(0f, -current.Y), blocked)
                     {
                         HorizontalVelocity = horizontal,
                         RemainingTime = remainingTime,
@@ -207,7 +218,7 @@ internal static class AirPass
                 }
                 Vector3 push = new(placement.Total.X, 0f, placement.Total.Y);
                 return new(placement.Feet, 0f, Achieved(feet, start, moved + push), remaining, AirOutcome.Landed,
-                    placement.Support, 0f - current.Y, blocked || placement.Pushed)
+                    placement.Support, MathF.Max(0f, -current.Y), blocked || placement.Pushed)
                 {
                     HorizontalVelocity = horizontal,
                     RemainingTime = remainingTime,
@@ -236,7 +247,7 @@ internal static class AirPass
                     ClimbBudget = budget,
                 };
             }
-            if (medium?.ChangesOwner(at, current.Y, NoSupport, false) == true)
+            if (!rising && medium?.ChangesOwner(at, current.Y, NoSupport, false) == true)
                 return Handoff(at, NoSupport, AirOutcome.Airborne, remainingTime);
         }
         return new(start + moved, current.Y, Achieved(feet, start, moved), Vector2.Zero, AirOutcome.Airborne,

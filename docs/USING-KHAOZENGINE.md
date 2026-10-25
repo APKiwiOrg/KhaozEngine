@@ -1410,6 +1410,11 @@ Two styles, both built on Windowing + Render2D. Player-facing text sinks take a 
 `string` (see "Compile-time localization enforcement" below); `Strings.*` in the snippets are `StringId`
 constants.
 
+For caller-owned fixed-pitch horizontal content, use the drawing-free
+[`SnapStrip`](#caller-drawn-horizontal-snap-strip) geometry and motion contract. It complements the immediate
+and retained drawing widgets. `PannableCanvas` owns a pan/zoom camera, and `ScrollablePanel` draws a vertical
+list. Neither is required to draw or drive a snap strip.
+
 **Immediate-mode `GuiSurface`** - the common case for HUDs and simple menus. `Begin(batch?, pointer)` then call
 widgets each frame; `Button(...)` returns `bool` (true the frame it's clicked). Widgets are click-through-safe by
 construction (they hit-test via the `Pointer`).
@@ -1758,6 +1763,50 @@ Each entry in `bodyLines` carries its own `TooltipLine.Scale` (default `1f`), an
 the title row above them, so one shared font can render the whole tooltip's size hierarchy (see "Scaling
 Gui text" above).
 
+Rich lines and a tiled backdrop are opt-in through these exact descriptors:
+
+```csharp
+public readonly record struct TooltipIcon(Texture2D Texture, Vector4 SourceUV, float Size);
+public readonly record struct TooltipBackdrop(Texture2D Texture, float TileSize, Vector4 Tint);
+```
+
+```csharp
+// Localized text and caller-owned textures come from the host's content.
+TooltipLine detail = TooltipLine.Of(localizedText, colour, scale: 0.85f) with
+{
+    Icon = new TooltipIcon(iconTexture, new Vector4(0f, 0f, 1f, 1f), 16f),
+    TitleFont = true,
+    GapBefore = 6f,
+};
+tip.Metrics.IconGap = 8f;
+tip.Backdrop = new TooltipBackdrop(parchmentTexture, 32f, Vector4.One);
+tip.Show(Strings.CopperOre, new[] { detail }, anchor);
+```
+
+`TitleFont` selects the title face for that body line. Its text still uses the line's own `Scale`, while
+`TitleScale` affects only the main title row and its right-aligned value. Icon size, `Metrics.IconGap`
+(default `8f`) and `GapBefore` are design units independent of text scale. Row height is the larger of the
+scaled font line height and icon size, with both vertically centred. Text starts after the icon size plus
+icon gap. Without an icon there is no inset or icon gap. `GapBefore` applies even before the first body
+line. Existing `TitleGap` and between-row `LineSpacing` remain, with no trailing line spacing.
+
+Wrapping subtracts the icon inset from the capped content width before dividing by the line's scale.
+Continuations retain a hanging text inset, chosen font, scale and coloured runs. Only the first visual row
+draws the icon and applies `GapBefore`. A finite cap that leaves no positive text budget after an icon
+inset throws `ArgumentOutOfRangeException` before wrapping. Icon size and backdrop `TileSize` must be
+finite and positive. `GapBefore` and `Metrics.IconGap` must be finite and nonnegative.
+
+The backdrop replaces the flat fill inside the existing one-unit border without changing tooltip bounds.
+`TileSize` is a square size in design units. The whole source texture tiles from the interior's top-left
+in row-major order. Partial edge tiles crop their UVs proportionally rather than stretching. Drawing
+throws `ArgumentOutOfRangeException` before any tile emission if the interior dimensions are nonfinite
+or the complete grid would exceed 4096 tiles. This bounds draw work without truncating coverage. Tiles draw
+first, then the existing border, title row, optional separator and each body's icon before its text.
+The caller owns icon and backdrop texture lifetimes, plus the sampler and scissor state. `Opacity` changes
+only alpha uniformly across all visuals. Coloured runs keep their source colours and receive the fade once.
+Null `Backdrop` and `Icon`, `TitleFont = false` and `GapBefore = 0f` preserve existing tooltip defaults,
+including the three positional `TooltipLine` fields, localized factories and `Text` replacement semantics.
+
 Use `TooltipLine.OfSegments` when one localized body line has differently coloured parts. It resolves
 the `LabelSegment` text when built and retains each colour when the tooltip wraps the line to its width cap.
 For example, an action hint can keep its verb colour while an item name uses its rarity colour:
@@ -2048,7 +2097,8 @@ and `ScrollablePanel` does no drag edge scroll while the pointer is occluded. `P
 `IsPointerIn`, `WorldMapViewCore` builds no hover overlay for an occluded position,
 `GuiSurface.HoverCaptured` is true over an occluded position, `GuiSurface.PointerCaptured` and
 `ScreenStack.PressBeganOverUi` are true for an occluded press origin and `DraggableBottomSheet` refuses an
-occluded press. `PannableCanvas.TryGetTap` misses when the press origin or the release is occluded, and
+occluded press. `SnapStrip` rejects occluded origins and cancels owned contacts when their origin or current
+point becomes occluded. `PannableCanvas.TryGetTap` misses when the press origin or the release is occluded, and
 `PanZoomController` admits no press, touch or gesture at an occluded point and records no tap on an occluded
 release. A consumer's own widgets follow the same gate rule: a `Pointer` hit query or `IsOccluded` first, raw
 `Position` only after it. Out of scope for the stack: saved order or position, cascade placement, docking,
@@ -3262,6 +3312,101 @@ strip.Draw(batch, white);
 // The same rects with no widget in hand, for a window that hit-tests before it builds anything:
 int hovered = TabStrip.TabAt(strip.Bounds, pointer.Position, tabs.Count, strip.Metrics);
 ```
+
+### Caller-drawn horizontal snap strip
+
+`SnapStrip` retains motion and pointer admission for caller-owned, fixed-pitch horizontal items. It does no
+drawing and owns no selection, wheel policy, touch gestures, scrollbar, tooltip or localization. Use the
+same coordinate units for `Bounds`, `SnapStripMetrics`, Pointer and your drawing pass. Defaults are horizontal
+drag slop 8 and snap duration 0.18 seconds. Snapping uses elapsed-time cubic ease-out, and zero duration
+settles immediately. Pointer travel maps one-to-one to the displayed offset without velocity projection.
+
+Configure and centre immediately when opening. Update on every open frame, even when the strip has no hover
+or `receivesInput` is false, so easing and cancellation continue. Pointer must already have been updated once
+with the same immutable input snapshot. Update overlays first, then the strip, then lower pointer consumers.
+`BlocksPointer` defaults to true and reserves after admission. Reservation does not consume taps for your
+items. Committed drags consume through release even if reservation is disabled. Wire caller-owned arrow taps
+to `StepPrevious()` and `StepNext()`, and dim them with the corresponding `CanStep` properties.
+
+```csharp
+var strip = new SnapStrip();
+var metrics = new SnapStripMetrics(40f, 10f); // Anchor defaults to 0.5.
+
+void OpenStrip(Rect bounds, int itemCount, int initialIndex)
+{
+    strip.Configure(bounds, itemCount, metrics);
+    strip.CenterOn(initialIndex, animated: false);
+}
+
+void UpdateStrip(Pointer pointer, InputState input, float dt, bool receivesInput)
+{
+    // Every open frame, after the host updates Pointer, even without hover or input eligibility.
+    strip.Update(pointer, input, dt, receivesInput);
+}
+
+void DrawStrip(SpriteBatch batch, Pointer pointer)
+{
+    // The host owns Begin/End. DrawItem and the arrow/tooltip helpers are caller-owned.
+    batch.SetScissor(strip.Bounds);
+    try
+    {
+        var (first, count) = strip.VisibleRange;
+        for (int i = first; i < first + count; i++)
+            DrawItem(batch, i, strip.ItemBounds(i));
+    }
+    finally
+    {
+        batch.ClearScissor(); // Restore the enclosing clip.
+    }
+    DrawPreviousArrow(batch, opacity: strip.CanStepPrevious ? 1f : 0.35f);
+    DrawNextArrow(batch, opacity: strip.CanStepNext ? 1f : 0.35f);
+    DrawTooltips(batch, strip.HoveredItemIndex(pointer)); // After restoring the strip clip.
+}
+
+void CloseStrip() => strip.CancelInteraction();
+```
+
+Indices are zero-based. `TargetIndex` is the requested logical item throughout easing, or -1 when empty.
+`CenterOn` clamps the requested index. `StepPrevious` and `StepNext` start from that pending target rather
+than the transient `ScrollOffset` and skip indices with the same clamped stop. Their `CanStepPrevious` and
+`CanStepNext` properties describe distinct possible moves, including during animation. Commands end contact
+ownership safely, and an identical animated target request does not restart its ease.
+
+`SnapStripMetrics(ItemWidth, ItemSpacing = 0, Anchor = 0.5f)` requires finite positive width, finite
+nonnegative spacing and a finite `Anchor` in [0,1]. `Anchor` is a fraction of viewport width, placing the
+target item's centre at that fraction before clamping. Pitch is `ItemWidth + ItemSpacing`. There is no
+trailing spacing or endpoint padding. For index `i`, the stop is
+`clamp(i * pitch + ItemWidth / 2 - Anchor * viewportWidth, 0, maxScroll)` after clamping the index. Default
+Anchor 0.5 centres items. With width 40, spacing 10 and viewport 200, targets 0 and 1 both stop at 0 and the
+next distinct stop, index 2, is at 20. Interior moves are 50, but endpoint steps need not be one pitch.
+Width 69, spacing 0, viewport 552 and Anchor 0.4375 instead give whole-pitch stops from 0 to 6348 for 100 items.
+
+Release snaps to the nearest actual clamped stop, with lower-index ties after canonicalizing endpoints.
+Offset 0 means index 0, and maximum scroll means the last index. When maximum scroll is 0, pure geometry
+returns 0 for nonempty content and -1 for empty content. Dragging fitting content retains its logical anchor.
+The final release sample moves the strip before choosing a stop. The new release snap starts advancing on
+the next update, without spending the release frame's full delta time.
+
+`ItemBounds(index)` returns the full rectangle at the displayed offset. `ItemAt(point)` uses half-open item
+and viewport bounds and returns -1 for gaps or outside points. `VisibleRange` is `(First, Count)` and includes
+partially visible items with positive intersection area, so the caller must clip. `HoveredItemIndex(pointer)`
+also respects the last update's input eligibility, focus, capture and current pointer occlusion. The same
+arithmetic is available without a widget through `SnapStripGeometry.ItemBounds`, `IndexAt`, `VisibleRange`,
+`ContentWidth`, `MaxScroll`, `CenterOffset` and `NearestIndex`. `SnapStripMotion` supplies the independent
+motion model when a host needs its own input adapter.
+
+Admission requires a fresh, unconsumed, unblocked, unoccluded press origin. A rejected or cancelled held
+contact cannot restart until physical release. `CancelInteraction()` on close immediately settles an active
+drag at its nearest stop, or an unmoved contact at its pending target, and preserves independent animation.
+Committed gestures remain consumed through release, including after reopening. Input loss, focus loss,
+capture, origin/current-point occlusion, nonfinite pointer positions and coordinate mapping changes cancel
+interaction too. Mapping comparison includes viewport identity and captured scale, offset and dimensions,
+even when numeric strip bounds stay equal.
+
+Identical `Configure` calls are inert. Translating bounds cancels an active contact but preserves idle offset
+and an in-progress ease. Width, count or metrics changes retain and clamp the logical target, settling it
+immediately, including hidden layouts. Negative or nonfinite layout values and invalid derived extents are
+rejected atomically. Constructors start empty with valid `new SnapStripMetrics(1f)` metrics.
 
 ## File-size ratchet (KESIZE analyzer)
 

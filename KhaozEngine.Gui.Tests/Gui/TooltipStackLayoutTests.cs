@@ -75,4 +75,43 @@ public class TooltipStackLayoutTests
 
         Assert.Equal(boxes[0], actual);
     }
+
+    [Fact]
+    public void Rich_tooltip_round_trips_through_stack_anchor()
+    {
+        var font = new FixedFont();
+        Vector2 viewport = new(400, 300);
+        TooltipMetrics metrics = TooltipMetrics.Default;
+        TooltipLine[][] lines =
+        [
+            [new TooltipLine("one two", Vector4.One)
+            {
+                Icon = new(null!, new(0, 0, 1, 1), 16f),
+                GapBefore = 7f,
+            }],
+            [new("a", Vector4.One)],
+        ];
+        var sizes = new Vector2[lines.Length];
+        for (int i = 0; i < lines.Length; i++)
+        {
+            Rect measured = Tooltip.ComputeBounds(font, "", "", font, font, lines[i],
+                Vector2.Zero, viewport, metrics, 100f, 1f, TooltipAnchorMode.Offset);
+            sizes[i] = new Vector2(measured.Width, measured.Height);
+        }
+        Span<Rect> boxes = stackalloc Rect[2];
+
+        Rect group = TooltipStackLayout.Place(sizes, new Vector2(100, 100), viewport, boxes);
+
+        Assert.Equal(new Rect(112, 112, 74, 106), group);
+        Assert.Equal(new Rect(112, 112, 74, 66), boxes[0]);
+        Assert.Equal(new Rect(112, 182, 30, 36), boxes[1]);
+        for (int i = 0; i < lines.Length; i++)
+        {
+            Vector2 anchor = TooltipStackLayout.AnchorFor(boxes[i], metrics);
+            Rect actual = Tooltip.ComputeBounds(font, "", "", font, font, lines[i],
+                anchor, viewport, metrics, 100f, 1f, TooltipAnchorMode.Offset);
+
+            Assert.Equal(boxes[i], actual);
+        }
+    }
 }

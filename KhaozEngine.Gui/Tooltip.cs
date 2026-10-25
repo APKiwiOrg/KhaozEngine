@@ -319,8 +319,9 @@ namespace KhaozEngine.Gui
                 titleRowW += m.TitleRightGap + titleRightFont.Measure(titleRight).X * titleScale;
 
             float contentW = MathF.Max(titleRowW, body.Width);
-            float contentH = body.Height;
+            float contentH = 0f;
             if (hasTitle) contentH += titleFont.LineHeight * titleScale + m.TitleGap;
+            contentH = body.AccumulateHeight(contentH, m.LineSpacing);
 
             float w = contentW + m.PadX * 2f;
             float h = contentH + m.PadY * 2f;
@@ -400,16 +401,17 @@ namespace KhaozEngine.Gui
                         GuiDraw.WithOpacity(SeparatorColor, Opacity));
                 }
             }
+            var cursor = new Vector2(x, y);
             for (int i = 0; i < body.Lines.Count; i++)
             {
-                TooltipVisualLine row = body.Lines[i];
+                TooltipVisualLine row = body.Lines[i].Place(ref cursor, Metrics.LineSpacing);
                 TooltipLine line = row.Line;
                 SpriteFont font = line.TitleFont ? _titleFont : _bodyFont;
                 if (line.Icon is TooltipIcon icon && row.IconBounds is Rect iconBounds)
                     batch.Draw(icon.Texture,
-                        new Vector4(x + iconBounds.X, y + iconBounds.Y, iconBounds.Width, iconBounds.Height),
+                        new Vector4(iconBounds.X, iconBounds.Y, iconBounds.Width, iconBounds.Height),
                         icon.SourceUV, (Color)GuiDraw.WithOpacity(Vector4.One, Opacity));
-                Vector2 textPosition = new(MathF.Floor(x + row.TextPosition.X), MathF.Floor(y + row.TextPosition.Y));
+                Vector2 textPosition = new(MathF.Floor(row.TextPosition.X), MathF.Floor(row.TextPosition.Y));
                 if (line.Runs.IsEmpty)
                     batch.DrawString(font, line.Text, textPosition,
                         (Color)GuiDraw.WithOpacity(line.Color, Opacity), line.Scale);

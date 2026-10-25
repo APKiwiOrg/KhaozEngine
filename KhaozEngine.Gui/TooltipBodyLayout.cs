@@ -6,13 +6,42 @@ using KhaozEngine.Render2D;
 
 namespace KhaozEngine.Gui;
 
-/// <summary>A measured body row with positions relative to the body's top-left corner.</summary>
+/// <summary>A measured body row with positioned text and icon geometry.</summary>
 internal readonly record struct TooltipVisualLine(
-    TooltipLine Line, Vector2 TextPosition, Rect? IconBounds, float Width, float Height);
+    TooltipLine Line, Vector2 TextPosition, Rect? IconBounds, float Width, float Height)
+{
+    internal float TextOffsetY { get; init; }
+
+    // Advance the absolute cursor one row at a time so fractional scales retain their legacy text pixels.
+    internal TooltipVisualLine Place(ref Vector2 cursor, float lineSpacing)
+    {
+        cursor.Y += Line.GapBefore;
+        TooltipVisualLine placed = this with
+        {
+            TextPosition = new Vector2(cursor.X + TextPosition.X, cursor.Y + TextOffsetY),
+            IconBounds = IconBounds is Rect icon
+                ? new Rect(cursor.X, cursor.Y + (Height - icon.Height) * 0.5f, icon.Width, icon.Height)
+                : null,
+        };
+        cursor.Y += Height + lineSpacing;
+        return placed;
+    }
+}
 
 /// <summary>The shared body measurement and placement consumed by tooltip bounds and drawing.</summary>
 internal sealed record TooltipBodyLayout(IReadOnlyList<TooltipVisualLine> Lines, float Width, float Height)
 {
+    // Seed with the main title height. Adding a pre-summed body changes legacy fractional-scale bounds.
+    internal float AccumulateHeight(float height, float lineSpacing)
+    {
+        for (int i = 0; i < Lines.Count; i++)
+        {
+            height += Lines[i].Line.GapBefore;
+            height += Lines[i].Height + lineSpacing;
+        }
+        return Lines.Count > 0 ? height - lineSpacing : height;
+    }
+
     internal static TooltipBodyLayout Build(ITextMeasurer titleFont, ITextMeasurer bodyFont,
         IReadOnlyList<TooltipLine> lines, in TooltipMetrics metrics, float maxContentWidth)
     {
@@ -30,7 +59,7 @@ internal sealed record TooltipBodyLayout(IReadOnlyList<TooltipVisualLine> Lines,
         List<TooltipLine> visual = WrapBody(titleFont, bodyFont, lines, maxContentWidth);
         var rows = new List<TooltipVisualLine>(visual.Count);
         float width = 0f;
-        float height = 0f;
+        var cursor = Vector2.Zero;
         for (int i = 0; i < visual.Count; i++)
         {
             TooltipLine line = visual[i];
@@ -40,19 +69,22 @@ internal sealed record TooltipBodyLayout(IReadOnlyList<TooltipVisualLine> Lines,
             float inset = 0f;
             float textOffsetY = 0f;
             Rect? iconBounds = null;
-            height += line.GapBefore;
             if (line.Icon is TooltipIcon icon)
             {
                 rowHeight = MathF.Max(textHeight, icon.Size);
                 inset = icon.Size + metrics.IconGap;
                 textOffsetY = (rowHeight - textHeight) * 0.5f;
-                iconBounds = new Rect(0f, height + (rowHeight - icon.Size) * 0.5f, icon.Size, icon.Size);
+                iconBounds = new Rect(0f, (rowHeight - icon.Size) * 0.5f, icon.Size, icon.Size);
             }
             float rowWidth = inset + font.Measure(line.Text).X * line.Scale;
-            rows.Add(new TooltipVisualLine(line, new Vector2(inset, height + textOffsetY), iconBounds, rowWidth, rowHeight));
+            var row = new TooltipVisualLine(line, new Vector2(inset, textOffsetY), iconBounds, rowWidth, rowHeight)
+            {
+                TextOffsetY = textOffsetY,
+            };
+            rows.Add(row.Place(ref cursor, metrics.LineSpacing));
             width = MathF.Max(width, rowWidth);
-            height += rowHeight + metrics.LineSpacing;
         }
+        float height = cursor.Y;
         if (rows.Count > 0) height -= metrics.LineSpacing;
         return new TooltipBodyLayout(rows, width, height);
     }

@@ -20,6 +20,39 @@ public sealed class TooltipBodyLayoutTests
     static readonly TooltipMetrics Metrics = TooltipMetrics.Default;
 
     [Fact]
+    public void Fractional_scale_bounds_preserve_title_first_accumulation()
+    {
+        var font = new FixedFont(10f, 20f);
+        var lines = new TooltipLine[6];
+        Array.Fill(lines, new TooltipLine("body", Vector4.One, 0.33f));
+
+        Rect bounds = Tooltip.ComputeBounds(font, "title", font, lines,
+            new(300, 300), new(960, 540), Metrics);
+
+        Assert.Equal(95.59999084472656f, bounds.Height);
+    }
+
+    [Fact]
+    public void Fractional_scale_drawing_preserves_the_fourth_row_pixel()
+    {
+        var font = new FixedFont(10f, 14f);
+        var lines = new TooltipLine[8];
+        Array.Fill(lines, new TooltipLine("body", Vector4.One, 1.1f));
+        Rect bounds = Tooltip.ComputeLayout(font, "", "", font, font, lines,
+            new(300, 300), new(960, 540), Metrics, float.PositiveInfinity,
+            1f, TooltipAnchorMode.Centered, out TooltipBodyLayout body);
+        var cursor = new Vector2(bounds.X + Metrics.PadX, bounds.Y + Metrics.PadY);
+        TooltipVisualLine fourth = default;
+
+        for (int i = 0; i < 4; i++)
+            fourth = body.Lines[i].Place(ref cursor, Metrics.LineSpacing);
+
+        Assert.Equal(160.20001220703125f, bounds.Height);
+        Assert.Equal(192.99996948242188f, fourth.TextPosition.Y);
+        Assert.Equal(192f, MathF.Floor(fourth.TextPosition.Y));
+    }
+
+    [Fact]
     public void Taller_icon_centres_text_and_offsets_its_origin()
     {
         var line = new TooltipLine("ab", Vector4.One) { Icon = new(null!, new(0, 0, 1, 1), 32f) };

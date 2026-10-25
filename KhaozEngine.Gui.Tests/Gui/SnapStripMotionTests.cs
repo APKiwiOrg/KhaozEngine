@@ -352,6 +352,264 @@ public sealed class SnapStripMotionTests
         yield return new object[] { 200f, 2, new SnapStripMetrics(float.MaxValue) };
     }
 
+    [Fact]
+    public void Drag_is_one_to_one_and_reverses_at_clamps()
+    {
+        var motion = Motion();
+        motion.CenterOn(50, false);
+        motion.BeginDrag();
+        Assert.True(motion.IsDragActive);
+        motion.DragBy(-37f);
+        Assert.Equal(2457f, motion.Offset);
+        Assert.Equal(50, motion.TargetIndex);
+        Assert.Equal(2420f, motion.TargetOffset);
+        motion.Advance(0.18f);
+        Assert.Equal(2457f, motion.Offset);
+        Assert.False(motion.IsAnimating);
+        motion.DragBy(100000f);
+        Assert.Equal(0f, motion.Offset);
+        motion.DragBy(-1f);
+        Assert.Equal(1f, motion.Offset);
+        motion.DragBy(-100000f);
+        Assert.Equal(4790f, motion.Offset);
+        motion.DragBy(1f);
+        Assert.Equal(4789f, motion.Offset);
+        motion.EndDrag();
+        Assert.Equal(99, motion.TargetIndex);
+        Assert.Equal(4789f, motion.Offset);
+        motion.Advance(0.18f);
+        Assert.Equal(4790f, motion.Offset);
+        Assert.False(motion.IsDragActive);
+        Assert.False(motion.IsAnimating);
+    }
+
+    [Theory]
+    [InlineData(2445f, 50, 2420f)]
+    [InlineData(2446f, 51, 2470f)]
+    [InlineData(5f, 0, 0f)]
+    [InlineData(10f, 0, 0f)]
+    [InlineData(10.125f, 2, 20f)]
+    [InlineData(4785f, 99, 4790f)]
+    [InlineData(4790f, 99, 4790f)]
+    public void Release_uses_canonical_nearest_stop(float offset, int target, float stop)
+    {
+        var motion = Motion();
+        motion.BeginDrag();
+        motion.DragBy(-offset);
+        motion.EndDrag();
+        Assert.Equal(target, motion.TargetIndex);
+        Assert.Equal(offset, motion.Offset);
+        Assert.Equal(stop, motion.TargetOffset);
+        Assert.False(motion.IsDragActive);
+        motion.Advance(0.18f);
+        Assert.Equal(stop, motion.Offset);
+        Assert.False(motion.IsAnimating);
+    }
+
+    [Fact]
+    public void Release_uses_configured_anchor()
+    {
+        var anchoredMotion = new SnapStripMotion();
+        anchoredMotion.Configure(552f, 100, new(69f, 0f, 0.4375f));
+        anchoredMotion.CenterOn(0, false);
+        anchoredMotion.BeginDrag();
+        anchoredMotion.DragBy(-40f);
+        anchoredMotion.EndDrag();
+        Assert.Equal(4, anchoredMotion.TargetIndex);
+        Assert.Equal(40f, anchoredMotion.Offset);
+        Assert.Equal(69f, anchoredMotion.TargetOffset);
+        anchoredMotion.Advance(0.18f);
+        Assert.Equal(69f, anchoredMotion.Offset);
+    }
+
+    [Fact]
+    public void Tap_resumes_interrupted_target()
+    {
+        var motion = Motion();
+        motion.CenterOn(50);
+        motion.Advance(0.09f);
+        Assert.Equal(2117.5f, motion.Offset);
+        motion.BeginDrag();
+        Assert.False(motion.IsAnimating);
+        motion.Advance(0.18f);
+        motion.DragBy(0f);
+        Assert.Equal(2117.5f, motion.Offset);
+        motion.EndDrag();
+        Assert.Equal(2117.5f, motion.Offset);
+        Assert.Equal(50, motion.TargetIndex);
+        Assert.Equal(2420f, motion.TargetOffset);
+        Assert.False(motion.IsDragActive);
+        Assert.True(motion.IsAnimating);
+        motion.Advance(0.18f);
+        Assert.Equal(2420f, motion.Offset);
+        Assert.False(motion.IsAnimating);
+    }
+
+    [Theory]
+    [InlineData("next", 51, 2470f)]
+    [InlineData("previous", 49, 2370f)]
+    [InlineData("same", 50, 2420f)]
+    [InlineData("center", 60, 2920f)]
+    public void Commands_end_drag_without_reinterpreting_the_pending_index(string command, int target, float stop)
+    {
+        var motion = Motion();
+        motion.CenterOn(50, false);
+        motion.BeginDrag();
+        motion.DragBy(-101f);
+        Assert.Equal(2521f, motion.Offset);
+        if (command == "next") Assert.True(motion.StepNext(false));
+        else if (command == "previous") Assert.True(motion.StepPrevious(false));
+        else motion.CenterOn(target, false);
+        Assert.Equal(target, motion.TargetIndex);
+        Assert.Equal(stop, motion.TargetOffset);
+        Assert.Equal(stop, motion.Offset);
+        Assert.False(motion.IsDragActive);
+        Assert.False(motion.IsAnimating);
+        motion.DragBy(-37f);
+        motion.EndDrag();
+        Assert.Equal(stop, motion.Offset);
+        Assert.Equal(target, motion.TargetIndex);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Identical_animated_command_ends_drag_and_resumes_pending_target(bool moved)
+    {
+        var motion = Motion();
+        motion.CenterOn(50);
+        motion.Advance(0.09f);
+        motion.BeginDrag();
+        if (moved) motion.DragBy(-101f);
+        float offset = moved ? 2218.5f : 2117.5f;
+        motion.CenterOn(50);
+        Assert.Equal(offset, motion.Offset);
+        Assert.Equal(50, motion.TargetIndex);
+        Assert.False(motion.IsDragActive);
+        Assert.True(motion.IsAnimating);
+        motion.Advance(0.18f);
+        Assert.Equal(2420f, motion.Offset);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(0, true)]
+    [InlineData(99, false)]
+    [InlineData(99, true)]
+    public void Failed_step_ends_drag_at_its_original_logical_target(int index, bool animated)
+    {
+        var motion = Motion();
+        motion.CenterOn(index, false);
+        motion.BeginDrag();
+        motion.DragBy(index == 0 ? -37f : 37f);
+        Assert.False(index == 0 ? motion.StepPrevious(animated) : motion.StepNext(animated));
+        Assert.False(motion.IsDragActive);
+        Assert.Equal(index, motion.TargetIndex);
+        Assert.Equal(animated, motion.IsAnimating);
+        if (animated) Assert.Equal(index == 0 ? 37f : 4753f, motion.Offset);
+        motion.Advance(0.18f);
+        Assert.Equal(index == 0 ? 0f : 4790f, motion.Offset);
+    }
+
+    [Fact]
+    public void Cancel_moved_drag_settles_immediately_at_nearest_stop()
+    {
+        var motion = Motion();
+        motion.CenterOn(50, false);
+        motion.BeginDrag();
+        motion.DragBy(-37f);
+        Assert.Equal(2457f, motion.Offset);
+        motion.CancelDrag();
+        Assert.Equal(2470f, motion.Offset);
+        Assert.Equal(2470f, motion.TargetOffset);
+        Assert.Equal(51, motion.TargetIndex);
+        Assert.False(motion.IsDragActive);
+        Assert.False(motion.IsAnimating);
+    }
+
+    [Fact]
+    public void Cancel_unmoved_drag_settles_immediately_at_pending_target()
+    {
+        var motion = Motion();
+        motion.CenterOn(50);
+        motion.Advance(0.09f);
+        motion.BeginDrag();
+        motion.CancelDrag();
+        Assert.Equal(2420f, motion.Offset);
+        Assert.Equal(50, motion.TargetIndex);
+        Assert.False(motion.IsDragActive);
+        Assert.False(motion.IsAnimating);
+    }
+
+    [Fact]
+    public void Drag_operations_without_active_drag_preserve_existing_ease()
+    {
+        var motion = Motion();
+        motion.CenterOn(50);
+        motion.Advance(0.09f);
+        var before = State(motion);
+        motion.DragBy(-37f);
+        motion.EndDrag();
+        motion.CancelDrag();
+        Assert.Equal(before, State(motion));
+        motion.Advance(0.09f);
+        Assert.Equal(2420f, motion.Offset);
+        Assert.False(motion.IsAnimating);
+    }
+
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    public void Nonfinite_drag_delta_is_rejected_without_state_mutation(float delta)
+    {
+        var motion = Motion();
+        motion.CenterOn(50);
+        motion.Advance(0.09f);
+        motion.BeginDrag();
+        var before = State(motion);
+        Assert.Throws<ArgumentOutOfRangeException>(() => motion.DragBy(delta));
+        Assert.Equal(before, State(motion));
+        motion.EndDrag();
+        Assert.Equal(50, motion.TargetIndex);
+        motion.Advance(0.18f);
+        Assert.Equal(2420f, motion.Offset);
+        Assert.Throws<ArgumentOutOfRangeException>(() => motion.DragBy(delta));
+    }
+
+    [Theory]
+    [InlineData(0, -1)]
+    [InlineData(1, 0)]
+    [InlineData(4, 3)]
+    public void Drag_of_fitting_content_preserves_logical_anchor(int itemCount, int target)
+    {
+        var motion = new SnapStripMotion();
+        motion.Configure(200f, itemCount, new(40f, 10f));
+        motion.CenterOn(99, false);
+        motion.BeginDrag();
+        motion.DragBy(-37f);
+        motion.EndDrag();
+        Assert.Equal(target, motion.TargetIndex);
+        Assert.Equal(0f, motion.Offset);
+        Assert.False(motion.IsDragActive);
+        Assert.False(motion.IsAnimating);
+    }
+
+    [Fact]
+    public void Movement_back_to_origin_still_settles_nearest_stop()
+    {
+        var motion = Motion();
+        motion.CenterOn(50);
+        motion.Advance(0.09f);
+        motion.BeginDrag();
+        motion.DragBy(-37f);
+        motion.DragBy(37f);
+        motion.EndDrag();
+        Assert.Equal(2117.5f, motion.Offset);
+        Assert.Equal(44, motion.TargetIndex);
+        Assert.Equal(2120f, motion.TargetOffset);
+    }
+
     static SnapStripMotion Motion(float snapSeconds = 0.18f)
     {
         var motion = new SnapStripMotion(snapSeconds);

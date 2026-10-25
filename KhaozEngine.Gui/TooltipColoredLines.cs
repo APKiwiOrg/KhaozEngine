@@ -40,7 +40,8 @@ internal static class TooltipColoredLines
         var visual = new List<TooltipLine>(wrapped.Count);
         foreach (ColoredTextLine line in wrapped)
         {
-            visual.Add(new TooltipLine(line.Text, source.Color, source.Scale) { Runs = line.Runs });
+            visual.Add(source with { Text = line.Text, Runs = line.Runs });
+            source = source with { Icon = null, GapBefore = 0f };
         }
         return visual;
     }

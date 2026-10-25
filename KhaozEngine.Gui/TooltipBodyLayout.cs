@@ -52,27 +52,31 @@ internal sealed record TooltipBodyLayout(IReadOnlyList<TooltipVisualLine> Lines,
             TooltipLine line = lines[i];
             if (!float.IsFinite(line.GapBefore) || line.GapBefore < 0f)
                 throw new ArgumentOutOfRangeException(nameof(line.GapBefore), "Paragraph gap must be finite and nonnegative.");
-            if (line.Icon is TooltipIcon icon && (!float.IsFinite(icon.Size) || icon.Size <= 0f))
-                throw new ArgumentOutOfRangeException(nameof(icon.Size), "Icon size must be finite and positive.");
+            if (line.Icon is TooltipIcon icon)
+            {
+                if (!float.IsFinite(icon.Size) || icon.Size <= 0f)
+                    throw new ArgumentOutOfRangeException(nameof(icon.Size), "Icon size must be finite and positive.");
+                if (float.IsFinite(maxContentWidth) && maxContentWidth <= icon.Size + metrics.IconGap)
+                    throw new ArgumentOutOfRangeException(nameof(maxContentWidth),
+                        "Content width must leave a positive text budget after the icon inset.");
+            }
         }
 
-        List<TooltipLine> visual = WrapBody(titleFont, bodyFont, lines, maxContentWidth);
+        var visual = WrapBody(titleFont, bodyFont, lines, metrics.IconGap, maxContentWidth);
         var rows = new List<TooltipVisualLine>(visual.Count);
         float width = 0f;
         var cursor = Vector2.Zero;
         for (int i = 0; i < visual.Count; i++)
         {
-            TooltipLine line = visual[i];
+            (TooltipLine line, float inset) = visual[i];
             ITextMeasurer font = line.TitleFont ? titleFont : bodyFont;
             float textHeight = font.LineHeight * line.Scale;
             float rowHeight = textHeight;
-            float inset = 0f;
             float textOffsetY = 0f;
             Rect? iconBounds = null;
             if (line.Icon is TooltipIcon icon)
             {
                 rowHeight = MathF.Max(textHeight, icon.Size);
-                inset = icon.Size + metrics.IconGap;
                 textOffsetY = (rowHeight - textHeight) * 0.5f;
                 iconBounds = new Rect(0f, (rowHeight - icon.Size) * 0.5f, icon.Size, icon.Size);
             }
@@ -89,31 +93,38 @@ internal sealed record TooltipBodyLayout(IReadOnlyList<TooltipVisualLine> Lines,
         return new TooltipBodyLayout(rows, width, height);
     }
 
-    // Preserve the existing unadorned wrapping and nonpositive-scale fallback while moving it into layout.
-    static List<TooltipLine> WrapBody(ITextMeasurer titleFont, ITextMeasurer bodyFont,
-        IReadOnlyList<TooltipLine> lines, float maxContentWidth)
+    // Keep the source inset on every visual row, independently of its first-row-only icon.
+    static List<(TooltipLine Line, float Inset)> WrapBody(ITextMeasurer titleFont, ITextMeasurer bodyFont,
+        IReadOnlyList<TooltipLine> lines, float iconGap, float maxContentWidth)
     {
         bool bounded = maxContentWidth > 0f && !float.IsInfinity(maxContentWidth);
-        var outLines = new List<TooltipLine>(lines.Count);
+        var outLines = new List<(TooltipLine Line, float Inset)>(lines.Count);
         for (int i = 0; i < lines.Count; i++)
         {
             TooltipLine line = lines[i];
             string text = line.Text ?? "";
             if (line.Text is null) line = line with { Text = text };
             ITextMeasurer font = line.TitleFont ? titleFont : bodyFont;
-            float budget = bounded ? maxContentWidth / (line.Scale > 0f ? line.Scale : 1f) : maxContentWidth;
+            float inset = line.Icon is TooltipIcon icon ? icon.Size + iconGap : 0f;
+            float budget = bounded
+                ? (maxContentWidth - inset) / (line.Scale > 0f ? line.Scale : 1f)
+                : maxContentWidth;
             if (!bounded || font.Measure(text).X <= budget)
             {
-                outLines.Add(line);
+                outLines.Add((line, inset));
                 continue;
             }
             if (!line.Runs.IsEmpty)
             {
-                outLines.AddRange(TooltipColoredLines.Wrap(font, line, budget));
+                foreach (TooltipLine wrapped in TooltipColoredLines.Wrap(font, line, budget))
+                    outLines.Add((wrapped, inset));
                 continue;
             }
             foreach (string wrapped in TextLayout.Wrap(font, text, budget, hardBreak: true))
-                outLines.Add(new TooltipLine(wrapped, line.Color, line.Scale));
+            {
+                outLines.Add((line with { Text = wrapped }, inset));
+                line = line with { Icon = null, GapBefore = 0f };
+            }
         }
         return outLines;
     }

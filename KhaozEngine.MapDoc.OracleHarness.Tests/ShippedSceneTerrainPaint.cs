@@ -55,6 +55,13 @@ internal static class ShippedSceneTerrainPaint
         double area = SceneSurfaceTriangle.Cross(t.A, t.B, t.C);
         double b = SceneSurfaceTriangle.Cross(t.A, point, t.C) / area;
         double c = SceneSurfaceTriangle.Cross(t.A, t.B, point) / area, a = 1 - b - c;
+        if (a < 0 || b < 0 || c < 0)
+        {
+            // Tolerant membership can admit points just outside. Keep interpolation inside the closed triangle.
+            a = Math.Max(0, a); b = Math.Max(0, b); c = Math.Max(0, c);
+            double total = a + b + c;
+            a /= total; b /= total; c /= total;
+        }
         float Mix(float av, float bv, float cv) => (float)(a * av + b * bv + c * cv);
         Vector4 Mix4(Vector4 av, Vector4 bv, Vector4 cv) => new(Mix(av.X, bv.X, cv.X), Mix(av.Y, bv.Y, cv.Y),
             Mix(av.Z, bv.Z, cv.Z), Mix(av.W, bv.W, cv.W));

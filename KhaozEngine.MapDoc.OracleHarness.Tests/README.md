@@ -714,8 +714,10 @@ Submitted terrain triangles must cover their independently matched source faces 
 Their positions and normals bind to the source plane. Decoded material slots and weights bind to source
 underlay, overlay cuts and the released legacy feather boundary, independently of render triangulation order.
 Source-selected interior and feather samples use the released legacy mesher's subdivision lattice.
-At those points, the submitted triangle attributes are interpolated before decoding paint. Correct
-boundary vertices alone cannot certify the interior, and removing feather refinement fails acceptance.
+At those points, the submitted triangle attributes are interpolated before decoding paint. When tolerant
+membership admits a point just outside a submitted triangle, negative barycentric coordinates are clamped
+to zero and renormalized before interpolation. Payload weights still require finite values in [0, 1].
+Correct boundary vertices alone cannot certify the interior, and removing feather refinement fails acceptance.
 Decoded blend weights compare within 0.000001 after source boundary sampling and material-ID remapping.
 Submitted water meshes cover the source body's cell domains at its source level. Clip payloads cover the
 complete source cells in the source water policy's displacement halo, in the submitted anchor frame.

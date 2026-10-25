@@ -20,7 +20,7 @@ internal sealed record ShippedMarkerReport(IReadOnlyList<string> Failures, strin
 
 /// <summary>Assertion-free comparison. Its source-derived details belong only in the secure private report.</summary>
 [UnsupportedOSPlatform("windows")]
-internal static class ShippedMarkerComparison
+internal static partial class ShippedMarkerComparison
 {
     internal const double PositionTolerance = 0.00001;
     internal const double YawTolerance = 0.000001;
@@ -31,8 +31,7 @@ internal static class ShippedMarkerComparison
         var evidence = new Evidence();
         // The authoritative server stands bodies on its collider ground and on walk surfaces. The ground sampler reads
         // terrain only, so it is built from a view without objects, which no unrelated archetype can refuse.
-        var ground = TileWorldColliders.Build(ObjectView(inputs.World, null), inputs.Catalogs).Ground;
-        var expected = inputs.SourceMarkers.Select(marker => Expected(inputs, marker, ground)).ToArray();
+        var expected = SourcePoints(inputs);
         var owners = inputs.Supports.Values.Where(s => s.ObjectId is not null).ToDictionary(s => s.Name,
             s => ObjectView(inputs.World, s.ObjectId!.Value), StringComparer.Ordinal);
         foreach (var point in expected)

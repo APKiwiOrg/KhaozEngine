@@ -49,6 +49,7 @@ internal static partial class ShippedSceneComparison
             for (int load = 0; load < 2; load++)
             {
                 var document = inputs.Reload(tiled); var closure = inputs.Assets(document);
+                ShippedSceneMarkers.Head(inputs, document, closure, report);
                 using var documentSource = MapDocumentSource.FromDocument(document);
                 var capture = CaptureSource(documentSource, closure, manifest);
                 Require(capture.Source is not null, "scene source capture refused " + string.Join("\n", capture.Findings));
@@ -73,6 +74,7 @@ internal static partial class ShippedSceneComparison
                     using var residency = new MapRenderResidency(new(source, closure, proof.Proofs!, policy, [windows[window.Id]]) { DecodeLimits = manifest.Limits?.Decode, AssetLimits = manifest.Limits?.Assets }, device, manifest.Limits?.Residency ?? new(MaxPlanBytes: 67108864), scheduler);
                     Complete(residency, scheduler);
                     var plan = residency.AcceptedPlans.Single();
+                    ShippedSceneMarkers.Plan(inputs, plan, report);
                     var inventory = new MapDrawRecorder(); plan.Register(inventory);
                     completeWindows.Add(window.Id, inventory.Snapshot().Resources.ToDictionary(r => r.Reference.Key, Fingerprint));
                     CompareSource(expected, inputs, plan, report);
@@ -311,6 +313,7 @@ internal static partial class ShippedSceneComparison
             if (step.Operation == "Unload") active.Remove(step.WindowId);
             else active[step.WindowId] = ShippedSceneInputs.Scope(inputs.Manifest.Windows.Single(w => w.Id == step.WindowId), inputs.Manifest.Limits?.Queries);
             residency.SetWindows(active.Values.ToArray()); Complete(residency, scheduler);
+            foreach (var plan in residency.AcceptedPlans) ShippedSceneMarkers.Plan(inputs, plan, report);
             var recorder = new MapDrawRecorder(); var point = ShippedSceneInputs.Point(0, 0, 0);
             residency.Record(new(default, point, KhaozEngine.MapDoc.Interiors.MapRoofMode.AlwaysVisible, 0, 0, point), recorder);
             var set = recorder.Snapshot();

@@ -105,6 +105,7 @@ internal static partial class ShippedSceneGuardFixtures
         if (variant == "coincident-valid") world.AddObject("column", 2, 2, 0, 0);
         bool cover = variant == "foliage-valid", waterScene = variant == "water-valid", lightScene = variant.StartsWith("light-", StringComparison.Ordinal);
         if (cover) AddFoliageSource(world);
+        if (variant.StartsWith("marker-", StringComparison.Ordinal)) world.SetMarker("arrival", 1, 1, 0, ["first", "second"]);
         if (variant == "terrain-painted")
         {
             world.SetOverlay(1, 1, 0, 2);
@@ -215,6 +216,7 @@ internal static partial class ShippedSceneGuardFixtures
             }
         }
         if (cover) AddFoliageNative(native, root);
+        if (variant.StartsWith("marker-", StringComparison.Ordinal)) WriteSceneMarkers(root, native, variant);
         File.WriteAllText(Path.Combine(root, "native.json"), MapDocumentFile.SaveText(native)); MapDocumentFile.SaveTiled(native, Path.Combine(root, "native-tiled"));
         var foliage = new GroundCoverRenderOptions { UseGpuBatches = true, FadeMode = GroundCoverFadeMode.HeightScale };
         JsonObject Policy(string assetId) => new()
@@ -312,6 +314,7 @@ internal static partial class ShippedSceneGuardFixtures
                 ShippedFoliageComparison.Settings(l), new TileFoliageSurface(world, sourceCatalog, l).Sample).Count);
             comparison["expectations"]!["foliageSamples"] = count;
         }
+        if (variant.StartsWith("marker-", StringComparison.Ordinal)) comparison["markerManifestPath"] = "scene-marker-comparison.json";
         if (waterScene)
         {
             comparison["materials"]!.AsArray().Add(new JsonObject { ["sourceMaterialId"] = 2, ["nativeResourceId"] = "water-ground" });

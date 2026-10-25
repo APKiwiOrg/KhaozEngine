@@ -808,6 +808,9 @@ Linked building and marker paths retain their existing full comparison objects a
 manifest dependencies. The foliage path retains the full R7 manifest. A participating category requires
 its linked correspondence, an absent category requires null. Retain accepted earlier scaffold format
 policies in those existing readers. The required scene tiled store and any declared monolithic document use current format 9.
+Marker correspondence also binds every effective marker in each actual scene head and every scoped or
+streamed plan to source standing points, roles, tags, bindings and space membership. A correct linked
+marker scaffold cannot stand in for the scene's own marker inventory. Disabled markers remain required.
 
 Load introduces an inactive named window. Unload removes an active window. Recenter introduces the
 new named window while preserving other active memberships, so load A/load B/unload A/recenter C/

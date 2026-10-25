@@ -16,6 +16,79 @@ public sealed class SpriteBatchMaskedGoldenTests
     static readonly Vector4 FullUv = new(0, 0, 1, 1);
 
     [GpuFact]
+    public void UnmaskedBeforeAndAfterMaskedUseIsByteIdentical()
+    {
+        using var gpu = GpuDeviceContext.CreateHeadless();
+        var factory = new SpriteBatchMaskedTestRig.ForwardingFactory(gpu.GpuDevice.Factory, recordCommands: true);
+        using var device = new SpriteBatchMaskedTestRig.RecordingDevice(gpu.GpuDevice, factory);
+        using var core = new Render2DCore(device, SpriteBatchMaskedTestRig.Output, ownsDevice: false);
+        using var source = core.CreateTexture(SourceAtlasPixels(), 8, 4);
+        using var mask = core.CreateTexture([0, 255, 0, 255], 1, 1);
+        using var font = SpriteFont.Build(device, DefaultFont.Bytes, 12);
+        var batch = core.Batch;
+        Assert.Null(SpriteBatchMaskedTestRig.MaskedOwnerFor(batch));
+        byte[] beforeMaskedUse = CaptureUnmaskedParityScene(device, batch, source, font);
+        var referenceDraws = factory.CommandLists.SelectMany(commands => commands.Draws).ToArray();
+        Assert.Equal(3, referenceDraws.Length);
+        Assert.Null(SpriteBatchMaskedTestRig.MaskedOwnerFor(batch));
+
+        // Warm the same batch on a separate target with compatible outputs, between ordinary frames.
+        CaptureParityFrame(device, batch, current =>
+        {
+            current.Begin(SamplerMode.Point);
+            current.DrawMasked(source, new Vector4(0, 0, 64, 64), mask, Color.White);
+            current.End();
+        });
+        Assert.NotNull(SpriteBatchMaskedTestRig.MaskedOwnerFor(batch));
+        int commandListsBeforeFinalFrame = factory.CommandLists.Count;
+        byte[] afterMaskedUse = CaptureUnmaskedParityScene(device, batch, source, font);
+        Assert.Equal(beforeMaskedUse, afterMaskedUse);
+        Assert.Equal(64 * 64 * 4, afterMaskedUse.Length);
+
+        var finalDraws = factory.CommandLists.Skip(commandListsBeforeFinalFrame)
+            .SelectMany(commands => commands.Draws).ToArray();
+        Assert.Equal(referenceDraws.Length, finalDraws.Length);
+        for (int i = 0; i < referenceDraws.Length; i++)
+        {
+            // Pipelines and the VP set belong to the batch, so these also pin reuse of the original batch.
+            Assert.Same(referenceDraws[i].Pipeline, finalDraws[i].Pipeline);
+            Assert.Same(referenceDraws[i].Set0, finalDraws[i].Set0);
+            Assert.Same(referenceDraws[i].Set1, finalDraws[i].Set1);
+            Assert.Equal(referenceDraws[i].DynamicOffset, finalDraws[i].DynamicOffset);
+        }
+    }
+
+    [GpuFact]
+    public void OpaqueMaskMatchesOrdinaryDrawExactly()
+    {
+        using var gpu = GpuDeviceContext.CreateHeadless();
+        var device = gpu.GpuDevice;
+        using var core = new Render2DCore(device, SpriteBatchMaskedTestRig.Output, ownsDevice: false);
+        using var source = core.CreateTexture(SourceAtlasPixels(), 8, 4);
+        using var mask = core.CreateTexture([0, 255, 0, 255], 1, 1);
+        byte[] Capture(bool masked, BlendMode blend) => CaptureParityFrame(device, core.Batch, batch =>
+        {
+            batch.Begin(SamplerMode.Point);
+            batch.BlendMode = blend;
+            var tint = new Color(0.75f, 0.5f, 0.25f, 0.625f);
+            foreach (var rect in new[] { new Vector4(2, 3, 38, 31), new Vector4(24, 16, 32, 40) })
+            {
+                if (masked) batch.DrawMasked(source, rect, FullUv, mask, FullUv, tint, SamplerMode.Point);
+                else batch.Draw(source, rect, FullUv, tint);
+            }
+            batch.End();
+        });
+
+        byte[] ordinaryAlphaBytes = Capture(false, BlendMode.Alpha);
+        byte[] opaqueMaskAlphaBytes = Capture(true, BlendMode.Alpha);
+        byte[] ordinaryAdditiveBytes = Capture(false, BlendMode.Additive);
+        byte[] opaqueMaskAdditiveBytes = Capture(true, BlendMode.Additive);
+        Assert.Equal(ordinaryAlphaBytes, opaqueMaskAlphaBytes);
+        Assert.Equal(ordinaryAdditiveBytes, opaqueMaskAdditiveBytes);
+        Assert.NotEqual(ordinaryAlphaBytes, ordinaryAdditiveBytes);
+    }
+
+    [GpuFact]
     public void SourceAndMaskAtlasRegionsAreIndependent()
     {
         byte[] rgba = Render2DSnapshot.Capture(Width, Height, Color.Transparent, ctx =>
@@ -350,6 +423,31 @@ public sealed class SpriteBatchMaskedGoldenTests
         });
 
         AssertRgba(rgba, 16, 8, 191, 128, 128, 128);
+    }
+
+    static byte[] CaptureUnmaskedParityScene(IGpuDevice device, SpriteBatch batch, Texture2D source, SpriteFont font) =>
+        CaptureParityFrame(device, batch, current =>
+        {
+            current.Begin(SamplerMode.Point);
+            SpriteBatchMaskedTestRig.DrawUnmaskedParityScene(current, source, font);
+            current.End();
+        });
+
+    static byte[] CaptureParityFrame(IGpuDevice device, SpriteBatch batch, Action<SpriteBatch> draw)
+    {
+        using var target = SampledTarget(device.Factory, 64, 64);
+        using var framebuffer = device.Factory.CreateFramebuffer(null, target);
+        using var commands = device.Factory.CreateCommandList();
+        using (GpuRecording.Open(device, commands, "masked sprite ordinary parity"))
+        {
+            commands.SetFramebuffer(framebuffer);
+            commands.ClearColorTarget(0, new Color(0.125f, 0.25f, 0.5f, 0.75f));
+            batch.NewFrame(commands, 64, 64);
+            draw(batch);
+        }
+        device.Submit(commands);
+        device.WaitForIdle();
+        return GpuReadback.ToRgba(device, target, 64, 64);
     }
 
     static Vector4 ReverseRegion(Vector4 uv) => new(uv.Z, uv.W, uv.X, uv.Y);

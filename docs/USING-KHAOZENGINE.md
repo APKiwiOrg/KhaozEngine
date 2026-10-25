@@ -3709,6 +3709,38 @@ batch.DrawString(font, "Hello", new Vector2(100, 60), Color.White);  // a bare p
 batch.End();
 ```
 
+### Alpha-masked sprites
+
+`SpriteBatch.DrawMasked` draws source colour through an independently sampled alpha mask. Both source and
+mask regions are normalized `(u0, v0, u1, v1)` endpoints, not origin and size. Reverse either region to flip
+that input. Each destination can be a `Vector4(x, y, width, height)` or a typed `Rect`. For each destination
+type there are three forms, six overloads in total: explicit regions with flat tint, explicit regions with
+`top` and `bottom` tint, or whole source and mask regions with flat tint.
+
+```csharp
+batch.Begin(Viewport, SamplerMode.Point);
+batch.DrawMasked(source, destination, sourceUv, mask, maskUv, Color.White);
+batch.DrawMasked(source, gradientDestination, sourceUv, mask, maskUv, topTint, bottomTint,
+    SamplerMode.Linear);
+batch.DrawMasked(source, wholeImageDestination, mask, Color.White, SamplerMode.Point);
+batch.End();
+```
+
+The source follows the active `Begin` sampler. The mask defaults to `Linear` independently, including in a
+`Point` source pass. Source and tint are straight alpha. A vertical gradient interpolates RGBA, including
+tint alpha. Only mask alpha contributes coverage. Mask RGB is ignored, and coverage multiplies tinted source
+alpha once before the existing Alpha or Additive blend equation. UVs and tint belong to vertices, so changing
+only those does not split a run. Linear filtering needs padded atlas gutters because clamp addresses the full
+texture, not the selected region.
+
+The caller owns both inputs and must keep them alive through completion of queued GPU work. A completed
+same-device producer target with sampleable usage can be used directly as source or mask without copies or
+readback. Resolve MSAA inputs into sampleable single-sample textures first. Sampling an attachment while
+drawing into it is unsupported feedback. Masked pipelines are lazy. Ordinary draws keep their original
+shaders, two-resource bindings and 384-byte quad uploads. The shared run dispatch and lazy owner add CPU
+bookkeeping, not an extra ordinary texture fetch. See the
+[six API signatures](../KhaozEngine.Render2D/README.md#spritebatchdrawmasked).
+
 ### Fonts: no system font, no hard-coded path
 
 The engine never depends on a system font and you should never hard-code one (e.g. the macOS-only
@@ -3772,11 +3804,11 @@ inside the callback: the command list it is recording into still names them unti
 - Blend mode: `batch.BlendMode = BlendMode.Additive` switches subsequent draws to additive compositing (glows,
   sparks, beams); it can change mid-batch (per quad) and painter's order is preserved across modes. Each `Begin`
   resets it to `BlendMode.Alpha` (the default, source-over).
-- Texture grouping: `batch.GroupByTexture = true` groups queued quads by texture at flush regardless of
-  submission order (fewer draw calls when interleaved same-texture draws would otherwise split into separate
-  runs), trading away painter's order BETWEEN textures (order stays intact WITHIN one texture's group). Off by
-  default and reset by every `Begin`. Only turn it on for a pass whose visual correctness does not depend on
-  cross-texture draw order (e.g. not a scene with overlapping alpha-blended sprites of different textures).
+- Texture grouping: `batch.GroupByTexture = true` groups queued quads by their complete run key at flush.
+  Ordinary keys distinguish source texture and blend. Masked keys distinguish source texture, source sampler,
+  mask texture, mask sampler and blend. Order stays intact within a key, but order between keys is lost, even
+  for two masks of one source. Off by default and reset by every `Begin`. Only enable it when correctness does
+  not depend on order between keys. Each pass has one source sampler, selected by `Begin`.
 - `SpriteBatch.Flush()` submits queued draws without ending the active batch. Flush before enabling texture
   grouping and again before disabling it to isolate one unordered group inside a larger ordered pass. It
   preserves transform, sampler, blend and scissor state. Calling it outside `Begin`/`End` throws.
@@ -17636,7 +17668,8 @@ trap is why a game ended up drawing a second always-on readout beside the engine
 **Frame draw counters (`RenderFrameStats`).** Each render surface keeps an always-on, allocation-free per-frame
 tally in `KhaozEngine.Primitives.RenderFrameStats`: `DrawCalls`, `Instances`, `Triangles` (estimated from the
 indexed-draw sizes), `BufferUpdateBytes` (per-frame streaming), plus the 2D `Quads` / `Flushes` /
-`TextureSwitches`. Read them after the frame's draws and sum with `+`:
+`TextureSwitches`. The latter counts source texture transitions, including the first bind. A mask-only
+switch can add a draw without changing it. Read them after the frame's draws and sum with `+`:
 
 **The upload split (read this before optimising an upload number).** `BufferUpdateBytes` is a TOTAL over four
 unrelated streams, so on its own it cannot tell you which one to go after. Four fields partition it exactly
@@ -24071,15 +24104,19 @@ whichever of those variables its backend reads, one extra sealed batch per extra
 `GpuRetireQueue.ValveDrains` counts the firings and
 `SealedBatchCount` is the batch-level view of the holding, next to `Scene3D.RetiredResourceCount`.
 
-**2D set eviction does not drain either, since 17.37.0.** `SpriteBatch` keeps one resource set per
-`(texture, sampler)` and evicts the ones unused for `600` frames, and that sweep used to take a full
+**2D set eviction does not drain either, since 17.37.0.** `SpriteBatch` keeps ordinary resource sets per
+`(texture, sampler)`, aged by source texture use. Masked sets are cached and aged per
+`(source, source sampler, mask, mask sampler)` tuple, shared across Alpha and Additive. After `600` unused
+frames, a masked tuple loses its set and both grouping keys, so a hot source cannot keep obsolete masks
+alive. The ordinary sweep used to take a full
 `WaitForIdle` on the frame thread every time anything aged out: a guaranteed hitch roughly every ten
 seconds for a game that streams sprites ([#84](https://github.com/APKiwiOrg/KhaozEngine/issues/84)). The
 evicted sets, and the buffers a UBO or vertex-buffer grow replaces, go to a `GpuRetireQueue` now. It is a
 frame-counted one rather than a fenced one, because `SpriteBatch.NewFrame` is called from inside the
 frame's own recording and a fence there would be the nested recording the seam refuses. Nothing about
 `SetEvictAfterFrames` changed: a set becomes eligible on exactly the frame it always did, and only the
-disposal moved behind the queue's deferral. Pixels are unaffected.
+disposal moved behind the queue's deferral. Masked eviction uses the same retirement queue. Eviction never
+owns the input textures or makes early caller disposal safe. Pixels are unaffected.
 
 **`GpuRetireQueue`: the whole mechanism, owned by the seam.** Feed it, advance it once per frame, dispose
 it at teardown. It is what both engine renderers use, and a renderer of your own gets the same behaviour

@@ -61,8 +61,10 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
         throw new InvalidOperationException("Unexpected sprite fragment shader.");
     }
 
-    internal MaskedSpriteBatchResources? MaskedOwner =>
-        (MaskedSpriteBatchResources?)typeof(SpriteBatch).GetField("_maskedResources", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Batch);
+    internal MaskedSpriteBatchResources? MaskedOwner => MaskedOwnerFor(Batch);
+
+    internal static MaskedSpriteBatchResources? MaskedOwnerFor(SpriteBatch batch) =>
+        (MaskedSpriteBatchResources?)typeof(SpriteBatch).GetField("_maskedResources", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(batch);
 
     object Runs => typeof(SpriteBatch).GetField("_runs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Batch)!;
 
@@ -91,12 +93,44 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
         VertexUploads.Clear();
         Draws.Clear();
         Commands.UniformUploads.Clear();
+        Commands.Trace.Clear();
         using var recording = GpuRecording.Open(Device, Commands, "masked sprite test frame");
         Batch.NewFrame(Commands, 64, 64);
         Batch.Begin(sourceSampler);
         Batch.GroupByTexture = group;
         draw?.Invoke(Batch);
         Batch.End();
+    }
+
+    internal OrdinaryTrace CaptureUnmaskedTrace(Texture2D source, SpriteFont font)
+    {
+        Frame(batch => DrawUnmaskedParityScene(batch, source, font), sourceSampler: SamplerMode.Point);
+        string BindingRole(DrawBinding draw)
+        {
+            var set = (FakeResourceSet)draw.Set0!;
+            string texture = ReferenceEquals(set.Resources[0], source.Handle) ? "source" :
+                ReferenceEquals(set.Resources[0], font.Atlas.Handle) ? "font" : "unknown";
+            string sampler = ReferenceEquals(set.Resources[1], Device.PointSampler) ? "point" : "other";
+            string pipeline = ReferenceEquals(draw.Pipeline, Factory.Pipelines[0]) ? "alpha" :
+                ReferenceEquals(draw.Pipeline, Factory.Pipelines[1]) ? "additive" : "other";
+            string vp = ReferenceEquals(draw.Set1, Factory.ResourceSets[0]) ? "vp" : "other";
+            return $"{ShaderName(draw)}:{pipeline}:{texture}:{sampler}:{set.Resources.Length}:{vp}:{draw.DynamicOffset}";
+        }
+        return new(VertexUploads.SelectMany(upload => upload.Data).ToArray(),
+            Commands.UniformUploads.SelectMany(upload => upload.Data).ToArray(),
+            Commands.Trace.Concat(Draws.Select(BindingRole)).ToArray());
+    }
+
+    // Both the headless characterization and live parity frames exercise these ordinary draw paths.
+    internal static void DrawUnmaskedParityScene(SpriteBatch batch, Texture2D source, SpriteFont font)
+    {
+        batch.Draw(source, new Vector4(2, 3, 12, 9), new Color(0.75f, 0.5f, 1f, 0.625f));
+        batch.DrawRounded(source, new Vector4(18, 3, 20, 16), Color.White, cornerRadius: 4);
+        batch.Draw(source, new Vector4(4, 24, 30, 12),
+            new Color(1f, 0.25f, 0f, 0.75f), new Color(0f, 0.5f, 1f, 0.25f));
+        batch.DrawString(font, "AB", new Vector2(3, 43), new Color(0.75f, 1f, 0.5f, 0.75f));
+        batch.BlendMode = BlendMode.Additive;
+        batch.Draw(source, new Vector4(40, 24, 16, 12), new Color(0.25f, 0.5f, 0.75f, 0.5f));
     }
 
     public void Dispose()
@@ -108,6 +142,7 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
 
     internal enum ConstructionFailure { None, Layout, Shader, FirstPipeline, SecondPipeline }
     internal readonly record struct VertexUpload(IGpuBuffer Buffer, uint Offset, byte[] Data);
+    internal readonly record struct OrdinaryTrace(byte[] VertexBytes, byte[] VpBytes, string[] Commands);
     [StructLayout(LayoutKind.Sequential)]
     internal readonly record struct RecordedVertex(Vector2 Pos, Vector2 Uv, Vector4 Color,
         Vector2 Local, Vector4 Shape, Vector2 Mode);
@@ -255,11 +290,13 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
         uint _dynamicOffset, _vertexBufferOffset;
         internal List<DrawBinding> Draws { get; } = new();
         internal List<VertexUpload> UniformUploads { get; } = new();
+        internal List<string> Trace { get; } = new();
         internal int CopyOperations { get; private set; }
-        public void SetPipeline(IGpuPipeline p) { _pipeline = p; _inner.SetPipeline(p); }
+        public void SetPipeline(IGpuPipeline p) { Trace.Add("pipeline"); _pipeline = p; _inner.SetPipeline(p); }
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set) => SetGraphicsResourceSet(slot, set, 0);
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset)
         {
+            Trace.Add($"set:{slot}:{dynamicOffset}");
             if (slot == 0) _set0 = set;
             if (slot == 1) { _set1 = set; _dynamicOffset = dynamicOffset; }
             _inner.SetGraphicsResourceSet(slot, set, dynamicOffset);
@@ -267,11 +304,13 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
         public void SetVertexBuffer(uint slot, IGpuBuffer b) => SetVertexBuffer(slot, b, 0);
         public void SetVertexBuffer(uint slot, IGpuBuffer b, uint offsetBytes)
         {
+            Trace.Add($"vertices:{slot}:{offsetBytes}");
             if (slot == 0) { _vertexBuffer = b; _vertexBufferOffset = offsetBytes; }
             _inner.SetVertexBuffer(slot, b, offsetBytes);
         }
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {
+            Trace.Add($"draw:{vertexCount}:{instanceCount}:{vertexStart}:{instanceStart}");
             Draws.Add(new(_pipeline, _set0, _set1, _dynamicOffset, _vertexBuffer, _vertexBufferOffset,
                 vertexCount, instanceCount, vertexStart, instanceStart));
             _inner.Draw(vertexCount, instanceCount, vertexStart, instanceStart);
@@ -279,23 +318,26 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
         public void Draw(uint vertexCount) => Draw(vertexCount, 1, 0, 0);
         public void Begin()
         {
+            Trace.Add("begin");
             _pipeline = null; _set0 = null; _set1 = null; _vertexBuffer = null;
             _dynamicOffset = 0; _vertexBufferOffset = 0;
             _inner.Begin();
         }
-        public void End() => _inner.End();
+        public void End() { Trace.Add("end"); _inner.End(); }
         public void SetFramebuffer(IGpuFramebuffer fb) => _inner.SetFramebuffer(fb);
         public void ClearColorTarget(uint index, Color rgba) => _inner.ClearColorTarget(index, rgba);
         public void ClearDepthStencil(float depth) => _inner.ClearDepthStencil(depth);
         public void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt) => _inner.SetIndexBuffer(b, fmt);
-        public void SetScissorRect(uint index, uint x, uint y, uint w, uint h) => _inner.SetScissorRect(index, x, y, w, h);
-        public void SetFullScissorRects() => _inner.SetFullScissorRects();
+        public void SetScissorRect(uint index, uint x, uint y, uint w, uint h)
+        { Trace.Add($"scissor:{index}:{x}:{y}:{w}:{h}"); _inner.SetScissorRect(index, x, y, w, h); }
+        public void SetFullScissorRects() { Trace.Add("full scissor"); _inner.SetFullScissorRects(); }
         public void DrawIndexed(uint count, uint instances, uint start, int offset, uint instanceStart) =>
             _inner.DrawIndexed(count, instances, start, offset, instanceStart);
         public void UpdateBuffer<T>(IGpuBuffer b, uint offset, in T data) where T : unmanaged =>
             UpdateBuffer(b, offset, new ReadOnlySpan<T>(in data));
         public void UpdateBuffer<T>(IGpuBuffer b, uint offset, ReadOnlySpan<T> data) where T : unmanaged
         {
+            Trace.Add($"uniform:{offset}:{MemoryMarshal.AsBytes(data).Length}");
             UniformUploads.Add(new(b, offset, MemoryMarshal.AsBytes(data).ToArray()));
             _inner.UpdateBuffer(b, offset, data);
         }

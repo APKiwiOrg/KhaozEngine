@@ -13,6 +13,52 @@ namespace KhaozEngine.Tests.Render2D;
 
 public class SpriteBatchMaskedBatchTests
 {
+    [Fact]
+    public void UnmaskedUploadsAndCommandsMatchCharacterization()
+    {
+        using var rig = Create();
+        using var source = Sprite();
+        using var mask = Sprite();
+        using var font = SpriteFont.Build(rig.Device, DefaultFont.Bytes, 12);
+        Assert.Null(rig.MaskedOwner);
+
+        var legacy = rig.CaptureUnmaskedTrace(source, font);
+        var ordinaryPipelines = rig.Draws.Select(draw => draw.Pipeline).ToArray();
+        var ordinaryBindings = rig.Draws.Select(draw => (draw.Set0, draw.Set1)).ToArray();
+        Assert.Null(rig.MaskedOwner);
+        Assert.Single(rig.Factory.ShaderRequests);
+        Assert.Equal(2, rig.Factory.GraphicsPipelines.Count);
+        Assert.Equal(6, rig.Batch.FrameStats.Quads);
+        Assert.Equal(new uint[] { 18, 12, 6 }, rig.Draws.Select(draw => draw.VertexCount));
+        Assert.Equal(new[] { "Sprite2D:alpha:source:point:2:vp:0", "Sprite2D:alpha:font:point:2:vp:0",
+            "Sprite2D:additive:source:point:2:vp:0" }, legacy.Commands.TakeLast(3));
+
+        rig.Frame(batch => Masked(batch, source, mask));
+        Assert.NotNull(rig.MaskedOwner);
+        var warmed = rig.CaptureUnmaskedTrace(source, font);
+        byte[] legacyVertexBytes = legacy.VertexBytes, warmedVertexBytes = warmed.VertexBytes;
+        byte[] legacyVpBytes = legacy.VpBytes, warmedVpBytes = warmed.VpBytes;
+        string[] legacyCommandTrace = legacy.Commands, warmedCommandTrace = warmed.Commands;
+        Assert.Equal(legacyVertexBytes, warmedVertexBytes);
+        Assert.Equal(legacyVpBytes, warmedVpBytes);
+        Assert.Equal(legacyCommandTrace, warmedCommandTrace);
+        Assert.All(rig.Draws, draw =>
+        {
+            int ordinaryTextureSetResourceCount = Assert.IsType<FakeResourceSet>(draw.Set0).Resources.Length;
+            Assert.Equal(2, ordinaryTextureSetResourceCount);
+        });
+        for (int i = 0; i < rig.Draws.Count; i++)
+        {
+            Assert.Same(ordinaryPipelines[i], rig.Draws[i].Pipeline);
+            Assert.Same(ordinaryBindings[i].Set0, rig.Draws[i].Set0);
+            Assert.Same(ordinaryBindings[i].Set1, rig.Draws[i].Set1);
+        }
+        int ordinaryQuadCount = rig.Batch.FrameStats.Quads;
+        long ordinaryUploadedBytes = rig.Batch.FrameStats.SpriteUploadBytes;
+        Assert.Equal(384L * ordinaryQuadCount, ordinaryUploadedBytes);
+        Assert.Equal(ordinaryUploadedBytes, warmedVertexBytes.LongLength);
+    }
+
     [Theory]
     [InlineData("source")]
     [InlineData("mask")]

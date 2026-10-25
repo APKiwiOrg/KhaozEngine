@@ -70,7 +70,7 @@ public sealed class MapRoofEvaluationBuffer
             var sceneOwner = requireCompletePolicy ? scene.PreparationOwnership : null;
             using var dependency = sceneOwner is null ? null : preparation.WorkspaceOwner.Borrow(sceneOwner);
             long sceneInventoryBytes = sceneOwner?.Bytes ?? 0;
-            if (requireCompletePolicy)
+            if (requireCompletePolicy && demand.Prisms != 0)
             {
                 // The dependency remains charged in this view throughout validation and membership.
                 // A refusal releases only our borrowed attribution, preserving the original receipt.

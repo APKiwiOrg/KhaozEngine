@@ -39,7 +39,7 @@ internal static class ShippedSceneTerrainCoverage
 
     internal static void Compare(IReadOnlyDictionary<MapFaceKey, SceneTerrainFace> expected, MapDrawSet actual, PrivateOracleReport report)
     {
-        var triangles = new Dictionary<MapFaceKey, List<SceneSurfaceTriangle>>();
+        var triangles = new Dictionary<MapFaceKey, List<SceneTerrainPaintTriangle>>();
         foreach (var resource in actual.Resources.Where(r => r.Payload is MapTerrainResource))
         {
             var payload = (MapTerrainResource)resource.Payload;
@@ -61,14 +61,18 @@ internal static class ShippedSceneTerrainCoverage
                 for (int v = 0; v < 3; v++)
                     Check(report, "scene-terrain-paint", Paint(source!, payload, points[v], vertices[v].Color, vertices[v].Uv, vertices[v].Tangent), new { key });
                 if (!triangles.TryGetValue(key, out var rows)) triangles.Add(key, rows = []);
-                rows.Add(triangle);
+                rows.Add(new(triangle, payload, vertices[0], vertices[1], vertices[2]));
             }
         }
         foreach (var pair in expected)
-            Check(report, "scene-terrain-geometry", SceneSurfaceCoverage.Covers([pair.Value.Triangle], triangles.GetValueOrDefault(pair.Key) ?? []), new { pair.Key });
+        {
+            var rows = triangles.GetValueOrDefault(pair.Key) ?? [];
+            Check(report, "scene-terrain-geometry", SceneSurfaceCoverage.Covers([pair.Value.Triangle], rows.Select(t => t.Triangle).ToArray()), new { pair.Key });
+            Check(report, "scene-terrain-paint", ShippedSceneTerrainPaint.Matches(pair.Value, rows), new { pair.Key });
+        }
     }
 
-    static bool Paint(SceneTerrainFace source, MapTerrainResource payload, SceneSurfacePoint p, Vector4 weights, Vector2 uv, Vector4 tangent)
+    internal static bool Paint(SceneTerrainFace source, MapTerrainResource payload, SceneSurfacePoint p, Vector4 weights, Vector2 uv, Vector4 tangent)
     {
         float[] slots = [uv.X, uv.Y, tangent.X, tangent.Y]; float[] values = [weights.X, weights.Y, weights.Z, weights.W];
         var amounts = new Dictionary<ushort, double>();

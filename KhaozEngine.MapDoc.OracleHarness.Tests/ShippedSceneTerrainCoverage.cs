@@ -37,31 +37,36 @@ internal static class ShippedSceneTerrainCoverage
             feather ? new(world, x, z, plane) : null, x, z);
     }
 
-    internal static void Compare(IReadOnlyDictionary<MapFaceKey, SceneTerrainFace> expected, MapDrawSet actual, PrivateOracleReport report)
+    internal static void Compare(IReadOnlyDictionary<MapFaceKey, SceneTerrainFace> expected,
+        IReadOnlyDictionary<MapRenderKey, MapSubmissionAnchor> required, MapDrawSet actual, PrivateOracleReport report)
     {
+        var submissions = actual.Draws.Where(d => d.Resource.Key.Kind == MapRenderKind.Terrain).GroupBy(d => d.Resource.Key)
+            .ToDictionary(g => g.Key, g => g.Count());
+        foreach (var key in required.Keys.Union(submissions.Keys))
+            Check(report, "scene-terrain-frame", submissions.GetValueOrDefault(key) == (required.ContainsKey(key) ? 1 : 0), new { key });
         var triangles = new Dictionary<MapFaceKey, List<SceneTerrainPaintTriangle>>();
         foreach (var resource in actual.Resources.Where(r => r.Payload is MapTerrainResource))
         {
             var payload = (MapTerrainResource)resource.Payload;
-            var draws = actual.Draws.Where(d => d.Resource == resource.Reference).ToArray();
-            if (draws.Length == 0) continue;
-            var draw = draws[0];
             var mesh = payload.Mesh;
-            for (int i = 0; i < mesh.Indices32.Length; i += 3)
+            foreach (var draw in actual.Draws.Where(d => d.Resource == resource.Reference))
             {
-                var key = payload.FaceKeys[i / 3];
-                bool known = expected.TryGetValue(key, out var source);
-                Check(report, "scene-terrain-geometry", known, new { key });
-                if (!known) continue;
-                var vertices = new[] { mesh.Vertices[mesh.Indices32[i]], mesh.Vertices[mesh.Indices32[i + 1]], mesh.Vertices[mesh.Indices32[i + 2]] };
-                var points = vertices.Select(v => SceneSurfacePoint.World(v.Position, draw)).ToArray();
-                var triangle = new SceneSurfaceTriangle(points[0], points[1], points[2]);
-                Check(report, "scene-terrain-geometry", points.All(source!.Triangle.Contains) && triangle.SignedArea * source.Triangle.SignedArea > 0 &&
-                    vertices.All(v => Math.Abs(v.Normal.X - source.Normal.X) <= NormalTolerance && Math.Abs(v.Normal.Y - source.Normal.Y) <= NormalTolerance && Math.Abs(v.Normal.Z - source.Normal.Z) <= NormalTolerance), new { key });
-                for (int v = 0; v < 3; v++)
-                    Check(report, "scene-terrain-paint", Paint(source!, payload, points[v], vertices[v].Color, vertices[v].Uv, vertices[v].Tangent), new { key });
-                if (!triangles.TryGetValue(key, out var rows)) triangles.Add(key, rows = []);
-                rows.Add(new(triangle, payload, vertices[0], vertices[1], vertices[2]));
+                for (int i = 0; i < mesh.Indices32.Length; i += 3)
+                {
+                    var key = payload.FaceKeys[i / 3];
+                    bool known = expected.TryGetValue(key, out var source);
+                    Check(report, "scene-terrain-geometry", known, new { key });
+                    if (!known) continue;
+                    var vertices = new[] { mesh.Vertices[mesh.Indices32[i]], mesh.Vertices[mesh.Indices32[i + 1]], mesh.Vertices[mesh.Indices32[i + 2]] };
+                    var points = vertices.Select(v => SceneSurfacePoint.World(v.Position, draw)).ToArray();
+                    var triangle = new SceneSurfaceTriangle(points[0], points[1], points[2]);
+                    Check(report, "scene-terrain-geometry", points.All(source!.Triangle.Contains) && triangle.SignedArea * source.Triangle.SignedArea > 0 &&
+                        vertices.All(v => Math.Abs(v.Normal.X - source.Normal.X) <= NormalTolerance && Math.Abs(v.Normal.Y - source.Normal.Y) <= NormalTolerance && Math.Abs(v.Normal.Z - source.Normal.Z) <= NormalTolerance), new { key });
+                    for (int v = 0; v < 3; v++)
+                        Check(report, "scene-terrain-paint", Paint(source!, payload, points[v], vertices[v].Color, vertices[v].Uv, vertices[v].Tangent), new { key });
+                    if (!triangles.TryGetValue(key, out var rows)) triangles.Add(key, rows = []);
+                    rows.Add(new(triangle, payload, vertices[0], vertices[1], vertices[2]));
+                }
             }
         }
         foreach (var pair in expected)

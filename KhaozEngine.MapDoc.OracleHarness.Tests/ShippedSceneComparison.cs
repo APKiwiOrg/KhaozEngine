@@ -92,7 +92,7 @@ internal static partial class ShippedSceneComparison
                         residency.Record(new(default, origin, KhaozEngine.MapDoc.Interiors.MapRoofMode.AlwaysVisible, 0, 0, origin), baselineRecorder);
                         var baseline = baselineRecorder.Snapshot(); baseline = observePlan?.Invoke(window.Id, baseline) ?? baseline;
                         CheckStamp(baseline, plan.Key, report);
-                        ShippedSceneTerrainCoverage.Compare(terrainFaces, baseline, report);
+                        ShippedSceneTerrainCoverage.Compare(terrainFaces, terrain, baseline, report);
                         ShippedSceneWaterCoverage.ComparePayloads(inputs, plan, baseline, report);
                     }
                     foreach (var probe in manifest.Policy.Probes.Where(p => p.WindowId == window.Id))
@@ -104,7 +104,7 @@ internal static partial class ShippedSceneComparison
                         observation = observe?.Invoke(observation) ?? observation;
                         var actual = observation.DrawSet;
                         CheckStamp(actual, plan.Key, report);
-                        ShippedSceneTerrainCoverage.Compare(terrainFaces, actual, report);
+                        ShippedSceneTerrainCoverage.Compare(terrainFaces, terrain, actual, report);
                         ShippedSceneWaterCoverage.ComparePayloads(inputs, plan, actual, report);
                         ShippedSceneFoliageRoster.Compare(inputs, foliage, observation, report);
                         foreach (var placement in expected.Placements.Where(p => inputs.SourcePolicy.AnimatedAssets.Contains(p.ArchetypeId) && ShippedSceneExpectedFrames.InScope(p, scene.Scope)))

@@ -722,6 +722,8 @@ complete source cells in the source water policy's displacement halo, in the sub
 Equal XZ area alone cannot certify either domain. Mesh and clip triangulation order may differ.
 Every window receives these payload checks. A window without a policy probe records a real baseline
 frame through residency, then compares that submitted geometry against the same source expectations.
+Terrain submission counts must match the independent source-bound batch roster in every window.
+Every submitted terrain draw is checked, including additional draws of an already registered resource.
 
 `LegacySceneRecorder.RecordFoliage` independently traces the source sampler for every logical
 generation whose source model reach intersects the declared window and motion padding. Owners proven

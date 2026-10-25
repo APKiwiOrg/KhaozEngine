@@ -123,7 +123,7 @@ internal sealed class ExplicitContactModes : ContactMediumPolicy
         }
         AirStepResult step = AirPass.StepWithMedium(feet, continuation.HorizontalVelocity, proposed.Y, time, 0,
             tuning, settings, continuation.TractionGate, continuation.Queries, continuation.Budget,
-            clamp, this, proposed.X - from.Position.Y);
+            clamp, this, proposed.X - from.Position.Y, buoyant: from.Swimming && !launched);
         if (step.RemainingTime > 0)
         {
             status = SurfaceWaterMotion.TryPropose(from, !from.Swimming, press, point,

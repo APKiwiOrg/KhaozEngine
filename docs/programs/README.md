@@ -25,6 +25,11 @@ tracked file names a file inside them. A bare mention of the folder in a rule is
 program milestone is named `<program>-m<N>-<topic>` so a new chat finds it locally by name. Scratch is
 disposable: a plan is needed only while its milestone is in flight.
 
+The staged check treats merge parents as existing content. A dated doc is new only when none of the
+parents has that path. A scratch reference is new only when its exact line is absent from that file
+in every parent. This includes the first parent and all heads of an octopus merge. Whole-tree checks
+still inspect all tracked content.
+
 ## Tracker shape
 
 A tracker has a `#` title and these `##` sections, in this order, and no others. Goal, Milestones and

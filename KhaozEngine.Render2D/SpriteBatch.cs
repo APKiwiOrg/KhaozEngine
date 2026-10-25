@@ -262,6 +262,7 @@ void main() {
             _cl = cl; _vw = viewportW; _vh = viewportH; _flushIndex = 0; _beginIndex = 0; _batchActive = false;
             _frame++; _stats.Reset(); _lastBoundTex = null; _scissorStack.Clear();
             _retire.BeginFrame();   // frees what the GPU has provably finished with, and never stalls doing it
+            EvictMaskedSets();
             EvictStaleSets();
         }
 

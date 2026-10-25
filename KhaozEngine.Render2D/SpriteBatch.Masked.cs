@@ -10,6 +10,10 @@ public sealed partial class SpriteBatch
     readonly GpuOutputDescription _maskedOutput;
     readonly GpuVertexLayoutDescription _maskedVertexLayout;
     MaskedSpriteBatchResources? _maskedResources;
+    Action<object>? _forgetMaskedKey;
+    Action<IGpuResourceSet>? _retireMaskedSet;
+
+    internal int CachedMaskedSetCount => _maskedResources?.CachedSetCount ?? 0;
 
     /// <summary>
     /// Draw a flat tinted sprite through an independent alpha mask. <paramref name="destRect"/> is
@@ -157,6 +161,36 @@ public sealed partial class SpriteBatch
     }
 
     // A failed construction releases its own resources and leaves the ordinary path usable for a retry.
-    private MaskedSpriteBatchResources EnsureMaskedResources() =>
-        _maskedResources ??= new MaskedSpriteBatchResources(_gd, _maskedOutput, _vpLayout, _maskedVertexLayout);
+    private MaskedSpriteBatchResources EnsureMaskedResources()
+    {
+        if (_maskedResources == null)
+        {
+            var owner = new MaskedSpriteBatchResources(_gd, _maskedOutput, _vpLayout, _maskedVertexLayout);
+            _forgetMaskedKey = _runs.ForgetGroup;
+            _retireMaskedSet = _retire.Retire;
+            _maskedResources = owner;
+        }
+        return _maskedResources;
+    }
+
+    private void EvictMaskedSets()
+    {
+        if (_maskedResources is not { } owner) return;
+        _runs.Reset();
+        owner.Evict(_frame, SetEvictAfterFrames, _forgetMaskedKey!, _retireMaskedSet!);
+    }
+
+    // The caller has already passed the GPU drain and retirement barrier.
+    private void DisposeMaskedResources()
+    {
+        if (_maskedResources is not { } owner) return;
+        _runs.Reset();
+        try { owner.Dispose(_forgetMaskedKey); }
+        finally
+        {
+            _maskedResources = null;
+            _forgetMaskedKey = null;
+            _retireMaskedSet = null;
+        }
+    }
 }

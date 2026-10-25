@@ -41,6 +41,14 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
     internal MaskedSpriteBatchResources? MaskedOwner =>
         (MaskedSpriteBatchResources?)typeof(SpriteBatch).GetField("_maskedResources", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Batch);
 
+    object Runs => typeof(SpriteBatch).GetField("_runs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Batch)!;
+
+    internal bool HasGroup(object key) => (bool)Runs.GetType()
+        .GetMethod("HasGroup", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(Runs, new[] { key })!;
+
+    internal IReadOnlyList<object> GroupOrder => (IReadOnlyList<object>)Runs.GetType()
+        .GetField("_groupOrder", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Runs)!;
+
     internal MaskedSpriteBatchResources EnsureMaskedResources()
     {
         try

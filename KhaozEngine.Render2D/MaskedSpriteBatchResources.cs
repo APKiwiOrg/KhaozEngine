@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using KhaozEngine.Gpu;
@@ -15,6 +16,7 @@ internal sealed class MaskedSpriteBatchResources : IDisposable
     readonly IGpuPipeline _alphaPipeline;
     readonly IGpuPipeline _additivePipeline;
     readonly Dictionary<BindingIdentity, BindingEntry> _entries = new();
+    readonly List<BindingIdentity> _evictScratch = new();
     bool _disposed;
 
     internal MaskedSpriteBatchResources(IGpuDevice device, GpuOutputDescription output,
@@ -81,6 +83,7 @@ internal sealed class MaskedSpriteBatchResources : IDisposable
             entry = new BindingEntry(identity, frame);
             _entries.Add(identity, entry);
         }
+        entry.LastUsedFrame = frame;
         return blend == BlendMode.Alpha ? entry.Alpha : entry.Additive;
     }
 
@@ -100,6 +103,28 @@ internal sealed class MaskedSpriteBatchResources : IDisposable
 
     internal IGpuPipeline PipelineFor(BlendMode blend) =>
         blend == BlendMode.Alpha ? _alphaPipeline : _additivePipeline;
+
+    internal void Evict(long frame, int unusedFrames, Action<object> forgetKey, Action<IGpuResourceSet> retireSet)
+    {
+        long cutoff = frame - unusedFrames;
+        foreach (var (identity, entry) in _entries)
+            if (entry.LastUsedFrame <= cutoff) _evictScratch.Add(identity);
+        foreach (var identity in _evictScratch)
+        {
+            var entry = _entries[identity];
+            forgetKey(entry.Alpha);
+            forgetKey(entry.Additive);
+            if (entry.Set is { } set)
+            {
+                retireSet(set);
+                entry.Set = null;
+                CachedSetCount--;
+            }
+            _entries.Remove(identity);
+        }
+        // Identities borrow caller handles too, so eviction scratch must not retain them between frames.
+        _evictScratch.Clear();
+    }
 
     // Entries and their two immutable keys are allocated only when a handle tuple first appears.
     internal sealed class RunKey
@@ -145,23 +170,38 @@ internal sealed class MaskedSpriteBatchResources : IDisposable
     }
 
     /// <inheritdoc />
-    public void Dispose()
+    public void Dispose() => Dispose(null);
+
+    internal void Dispose(Action<object>? forgetKey)
     {
         if (_disposed) return;
         _disposed = true;
-        List<Exception>? failures = null;
-        void Release(IDisposable? resource)
+        var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+        int ordinal = 0;
+        void Release(string kind, IDisposable? resource)
         {
+            int index = ordinal++;
             try { resource?.Dispose(); }
-            catch (Exception error) { (failures ??= new()).Add(error); }
+            catch (Exception error)
+            {
+                if (error is GpuDiagnosticFailureException transport) failures.AddRange(transport.Failures);
+                else failures.Add(new("renderer.session.dispose.ui.masked." + kind + "." + index, error));
+            }
         }
-        foreach (var entry in _entries.Values) Release(entry.Set);
+        foreach (var entry in _entries.Values)
+        {
+            Release("set", entry.Set);
+            entry.Set = null;
+            forgetKey?.Invoke(entry.Alpha);
+            forgetKey?.Invoke(entry.Additive);
+        }
         _entries.Clear();
+        _evictScratch.Clear();
         CachedSetCount = 0;
-        Release(_additivePipeline);
-        Release(_alphaPipeline);
-        Release(_shaders);
-        Release(_layout);
-        if (failures != null) throw new AggregateException(failures);
+        Release("additivePipeline", _additivePipeline);
+        Release("pipeline", _alphaPipeline);
+        Release("shaders", _shaders);
+        Release("layout", _layout);
+        if (failures.Count != 0) throw new GpuDiagnosticFailureException(failures.ToImmutable());
     }
 }

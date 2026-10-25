@@ -291,6 +291,46 @@ measurement and paid execution remain unproved here. The earlier local red full 
 39,612-pass suite and failed paid pilot retain their separate results above. No manual validation is
 needed for this preparation. Root owns main integration, push and the post-main pack.
 
+## Second authorized Linux pilot, attempt 2
+
+The integrated workload and trusted workflow are `4bfce4891646e90abeaaa120acbdfbf08cf8f166`.
+Authorization `c65fdfcc8f7536b7909f99916d1a92b07982c7b3` has that workload as its sole parent and adds
+only `tools/Renderer.Perf.Tests/authorized/pilot-linux.json`. Its exact manifest SHA-256 is
+`0127ae2f62bbab64ae3d9cbf7c688407d60e0dbb0dfba56d94d3ef5973326311`.
+
+The second pilot approval was consumed by
+[run 40152006665](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40152006665), attempt 1,
+on 2026-10-25 UTC. CPU and GPU authorization passed, and the isolated workload and trusted verifier
+Release builds completed. The one fixed measurement fact executed and failed, with zero skips and
+zero measured frames. The #1567 checkout-root correction worked. The entrypoint read the manifest
+and wrote `runtime-admission.json`, then refused at `RendererPerfEntrypoint.cs:47` with
+"Observed runtime, GC, tiering or relevant environment differs from approval."
+This occurred before recipe checks, coldStart or device creation.
+
+Runtime 10.0.13 and workstation GC matched approval. All 11 approved environment entries matched
+exactly, with no missing or mismatched values. The observed map contained two additional keys:
+
+| Key | Approved | Observed |
+| --- | --- | --- |
+| `DOTNET_CLI_TELEMETRY_SESSIONID` | Absent | A per-invocation session GUID was present |
+| `DOTNET_ROOT_X64` | Absent | `/usr/share/dotnet` |
+
+[Issue #1571](https://github.com/APKiwiOrg/KhaozEngine/issues/1571) tracks the measured-environment
+correction. Artifact `renderer-perf-linux-vulkan`, ID `12583271622`, is 9,658 compressed bytes.
+GitHub reports archive SHA-256
+`1d2e1ff49c91aa8cdf83b1f549c79490ad5b0ea5bc14c4bbe0f5294a042763a0`.
+Its seven files are the exact manifest, authorization, both build logs, measurement log/TRX and
+runtime admission. There is no native-admission file or final measurement report. The measurement
+TRX SHA-256 is `65a440c6ba1ce447b7c6c365da7cc9041d4c8f254dc2fd8cb82d734ced9c0337`.
+
+GPU job `121045384655` ran from 01:48:09 to 01:51:21 UTC, 192 seconds. The GitHub billing usage API
+attributed four `actions_linux_4_core_gpu` minutes at USD 0.052 per minute, USD 0.208 net runner
+charges. The repository's same-day GPU SKU was absent before dispatch. This is observed provider
+usage, separate from a duration-based estimate. Storage, tax and currency conversion are outside
+the runner component. No performance, compiler, payload, deadline or baseline acceptance was
+produced. The approval is consumed and authorizes no retry. Another attempt requires a corrected
+workload, independently reviewed preparation and fresh owner approval.
+
 ## Outstanding native and preparation gates
 
 Accepted Tasks10/11 and the cold amendment implement optional D3D11, Vulkan and Metal diagnostics.

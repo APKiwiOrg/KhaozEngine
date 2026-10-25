@@ -54,7 +54,8 @@ public sealed class MapFoliageRenderCache
                     throw new MapRenderAssetRefusal(batch.Status == MapFoliageStatus.CapacityExceeded ? MapRenderAssetStatus.CapacityExceeded :
                         batch.Status == MapFoliageStatus.NotRepresentable ? MapRenderAssetStatus.NotRepresentable : MapRenderAssetStatus.Invalid,
                         "Native foliage generation refused: " + batch.Status);
-                var receipt = preparation?.Complete(batch.Work.RetainedBytes, publishToParent: false);
+                // Samples keep derived values. Their captured context has its own retaining owner.
+                var receipt = preparation?.Complete(batch.Work.RetainedBytes, publishToParent: false, retainDependencies: false);
                 IDisposable? cpu = null;
                 try
                 {

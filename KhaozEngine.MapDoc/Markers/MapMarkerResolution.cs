@@ -98,7 +98,7 @@ internal static class MapMarkerResolution
         IReadOnlyList<string> assetSha256, MapQueryLimits limits)
     {
         MapSupportResult support;
-        try { support = MapResolverV2.SeatSupport(point, binding, surfaces, assetSha256, limits); }
+        try { support = MapResolverV2.SeatSupport(point, binding, surfaces, assetSha256, limits, Scene.MapAcquisitionCaller.Marker); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
             throw new MapDocumentException($"Marker '{id}' support status NotRepresentable: overflow.");

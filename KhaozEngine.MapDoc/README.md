@@ -195,6 +195,13 @@ default ceilings for this comparison. A manifest replacement is Stale even when 
 Source ceilings bound tiles, metadata rows, memberships, scanned bytes and retained metadata before retention.
 Acquisition ceilings separately bound selected resources, patch scopes, prepared faces and peak workspace plus retained inventory.
 The internal admission allowance covers stored reads, resident/generated copies, support queries and paint compilation.
+Native acquisitions retain selected copies and release discarded query facts before the next request. A seat query
+retains its answer and witness after releasing its view and compiled geometry. Resolver construction and final capture
+have separate owners. Final inventory includes each independent patch copy, acquired-facts containers and newly owned
+effective/composed source indexes. Pinned producer indexes stay borrowed. Dependency replacement admits the old and new
+snapshots together, and coverage keeps every distinct snapshot until its lease ends. `MaxPatchScopes` remains cumulative
+logical work even after a query releases its bytes. Internal opt-in diagnostics expose stage byte and receipt high waters
+and caller/repeated-source/key counts without publishing content identifiers. These are modeled bytes, not heap or RSS.
 External surface producers cannot participate in this internal protocol and scene acquisition refuses them before reads.
 Released surface calls without an admission allowance keep their existing behavior and refusal order.
 `MapSceneWork.PayloadReads` counts logical acquisitions, including cache hits. `IndexNodesVisited` counts hierarchy
@@ -1443,14 +1450,17 @@ faces and 67,108,864 prepared bytes before work. Point-query limits remain 256 p
 64 intersections, 32 page reads, 64 record reads and depth 8. Explicit `MapQueryLimits` propagate through
 nested native acquisition, dependency closure and retained foliage, water, cluster and membership scopes.
 
-The prepared-byte allowance bounds live workspace plus unique retained product inventory and applicable
-borrowed-input obligations. It does not count cumulative allocation or measure the CLR heap or RSS.
-Temporary reservations end when their consumer finishes. Returned arrays, captured dependencies, mesh
-copies and reusable frame scratch keep their ownership charge until release. Array growth admits old
-and replacement storage together. Failed reservations change no byte counters. An observed peak is
-separate from current workspace and retained bytes. Reads, source UTF-8 work, faces, scopes and selected
-resources keep their cumulative work or count semantics. Child plan views share this same ledger and
-include reused context and selected decoded input, without duplicating global ownership.
+The prepared-byte allowance bounds live workspace, unique retained inventory and applicable borrowed inputs.
+It models owned storage, not cumulative allocation, CLR heap or RSS. Temporaries end at their last consumer.
+Copied native-set metadata retires after merge. Remapping slack ends after enumeration. Scope hashes run sequentially.
+Geometry copies stay charged through context capture. Returned arrays, scene/view filter backing, dependencies,
+mesh copies and reusable scratch stay charged until release. Growth admits both old and replacement storage.
+Failed policy closure preserves its input and releases intermediates. Failed reservations change no counters.
+Peaks remain separate from current bytes. Reads, UTF-8 work, faces, scopes and resources keep cumulative work/count semantics.
+Child windows attribute reused contexts and decoded inputs with one root charge. View leases survive product retirement and aggregation.
+Generic dependencies borrow direct storage separately from shared contexts, keeping one context attribution per child window.
+Foreign transfers adopt missing shared contexts from admitted destination workspace and retain their identities in its registry.
+All destination storage and window obligations are admitted before the source owner retires. Refusal preserves the source.
 Query capacity results preserve the declared limit, demand and allowance. `IndexNodesVisited` counts rejected siblings.
 Capacity refusals retain a typed `MapSceneCapacity` in the source or scoped result, with `LimitName`,
 `Requested` and `Allowance`. Byte demand is current eligible live inventory plus the attempted reservation.

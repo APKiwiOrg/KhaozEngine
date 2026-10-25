@@ -40,6 +40,10 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
             _owner._observation = Previous; _disposed = true;
         }
     }
+    internal int RetainedReceipts { get; private set; }
+    internal Action? Changed { get; set; }
+    internal void ReceiptChanged(int delta) { RetainedReceipts = checked(RetainedReceipts + delta); Changed?.Invoke(); }
+    internal void Notify() => Changed?.Invoke();
     internal object WindowIdentity => (object?)_window ?? this;
     internal IDisposable? ReferenceWindow(long bytes, object? origin, ICollection<object>? references)
     {
@@ -70,16 +74,16 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
         return binding is null ? new(limitName, (decimal)WorkspaceBytes + RetainedBytes + _external + additional, allowance)
             : binding.Capacity(additional);
     }
-    internal MapPreparationReservation Workspace() => new(this, _window, false);
+    internal MapPreparationReservation Workspace(MapSceneAdmission admission) => new(this, _window, false, admission);
     internal Window OpenWindow(long bytes, string name, long reused)
     {
         if (bytes < 0 || reused < 0) throw new MapSceneCapacityException(name, reused, checked(bytes + reused));
         return new(this, _window, checked(bytes + reused), name, reused);
     }
-    internal void ReserveLegacy(long bytes)
+    internal void ReserveLegacy(long bytes, MapSceneAdmission admission)
     {
         object key = (object?)_window ?? this;
-        if (!_legacy.TryGetValue(key, out var owner)) _legacy.Add(key, owner = new(this, _window, true));
+        if (!_legacy.TryGetValue(key, out var owner)) _legacy.Add(key, owner = new(this, _window, true, admission));
         owner.Reserve(bytes);
     }
     internal void ReleaseLegacy(long bytes)
@@ -139,6 +143,12 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
             owner._window = this;
         }
         internal MapSceneCapacity Capacity(decimal bytes) => new(_name, (decimal)Live + _reused + bytes, _allowance);
+        internal IDisposable ReferenceOnly(long bytes)
+        {
+            var covered = new HashSet<object>(ReferenceEqualityComparer.Instance);
+            if (Parent is not null) covered.Add(Parent);
+            return Reference(bytes, covered);
+        }
         internal IDisposable Reference(long bytes, HashSet<object> covered)
         {
             Window? stop = this;
@@ -164,6 +174,7 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
             if (bytes < 0 || bytes > _owner.Remaining) throw new MapSceneCapacityException(_owner.Capacity(bytes));
             _owner._external += bytes; _external += bytes; Adjust(this, bytes);
             _owner.Observe();
+            _owner.Notify();
         }
         public void Dispose()
         {

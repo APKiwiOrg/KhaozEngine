@@ -19,7 +19,8 @@ public sealed class MapScopedScene
         get
         {
             var inventory = new MapSceneInventory();
-            return checked(512L + inventory.Product(_effective) + inventory.Surfaces(_surfaces) + inventory.View(SurfaceView) +
+            return checked(512L + 4L * Scope.Surfaces.Roles.Count + 8L * (Scope.Surfaces.SpaceIds?.Count ?? 0) +
+                inventory.Product(_effective) + inventory.Surfaces(_surfaces) + inventory.View(SurfaceView) +
                 64L * (Witness.Required.Count + Witness.Present.Count + Witness.KnownEmpty.Count + Witness.Unavailable.Count) +
                 (_foliage?.Layers.Sum(l => MapSceneResourceBounds.FoliageMetadataBytes(l) +
                     l.Chunks.Count * (long)MapFoliageChunk.ByteLength) ?? 0));
@@ -80,6 +81,9 @@ public sealed class MapScopedScene
                 WholeWorldComplete = false
             }, new(0, 0, 0, 0, 0, 0, 0, 0))
             { Findings = Array.AsReadOnly(new[] { "Dependency acquisition cannot widen captured query budgets." }) };
-        return MapSceneAcquisition.Run(_source, scope, MapSceneAdmission.Current);
+        var admission = MapSceneAdmission.Current;
+        using var diagnostics = admission?.AcquisitionDiagnostics?.Enter(MapAcquisitionStage.Dependency, MapAcquisitionCaller.Dependency);
+        admission?.AcquisitionDiagnostics?.Scene(MapAcquisitionCaller.Dependency);
+        return MapSceneAcquisition.Run(_source, scope, admission);
     }
 }

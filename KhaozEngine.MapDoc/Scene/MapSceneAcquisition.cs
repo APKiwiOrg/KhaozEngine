@@ -27,6 +27,7 @@ internal static class MapSceneAcquisition
     {
         var data = source.Data;
         var admission = sharedAdmission ?? new MapSceneAdmission(data.Limits);
+        using var diagnostics = admission.AcquisitionDiagnostics?.Enter(MapAcquisitionStage.Scene);
         using var preparation = admission.BeginPreparation();
         long visits = 0, metadataRows = 0, memberships = 0, retained = 0;
         string digest = "";
@@ -38,6 +39,7 @@ internal static class MapSceneAcquisition
         {
             ArgumentNullException.ThrowIfNull(scope);
             scope.Validate();
+            admission.ReserveBytes(checked(128L + 4L * scope.Surfaces.Roles.Count + 8L * (scope.Surfaces.SpaceIds?.Count ?? 0)));
             scope = scope with
             {
                 Surfaces = scope.Surfaces with
@@ -142,9 +144,12 @@ internal static class MapSceneAcquisition
             var selectedFoliage = required.Where(k => k.Kind == "Foliage").ToArray();
             var foliage = AcquireFoliage(data, selectedFoliage, admission, required, present, empty, unavailable, foliageRequest);
             if (unavailable.Count != 0) throw new MapSceneSourceException(MapSceneStatus.Incomplete, "Required foliage density is unavailable.");
-            admission.ReserveBytes(4096);
+            using var inputDiagnostics = admission.AcquisitionDiagnostics?.Enter(MapAcquisitionStage.NativeInput);
+            using var inputPreparation = admission.BeginPreparation();
+            admission.ReserveBytes(checked(4096L + 128L * owners.Count + 128L * nativeNeeded.Count));
             var input = Merge(data, owners.Select(id => data.Owners[id]).ToArray());
-            var acquiredNative = AcquireNative(data, nativeNeeded, admission, scope.Surfaces.Limits);
+            var (acquiredNative, nativeOwnership) = AcquireNativeOwned(data, nativeNeeded, admission, scope.Surfaces.Limits);
+            int acquiredPatchCount = acquiredNative.Patches.Count;
             foreach (var patch in acquiredNative.Patches) input.Surfaces.Patches.Add(patch.Key, patch.Value);
             foreach (var surface in acquiredNative.Refs.Where(s => s.Role == MapSurfaceRole.PaintOverride))
                 admission.BeforePaintTarget(surface.PaintTargetSurfaceId ?? surface.Id);
@@ -155,13 +160,25 @@ internal static class MapSceneAcquisition
                 .Concat(acquiredNative.AllRecords().Select(r => (Kind: MapPrefabChildKind.Record, Id: r.Id)));
             var rootTransforms = poseKeys.Select(k => data.NativePoseByKey.GetValueOrDefault(k)).OfType<MapStandaloneResourceTransform>();
             input = input with { NativeResourceTransforms = (input.NativeResourceTransforms ?? []).Concat(rootTransforms).DistinctBy(t => (t.Kind, t.OwnerId)).ToArray() };
+            // The input keeps selected patch payloads. The copied native-set metadata has no further consumer.
+            nativeOwnership.Release(MapSceneInventory.SurfaceMetadata(acquiredNative));
+            acquiredNative.Patches.Clear(); acquiredNative.Refs.Clear();
             // Foliage has already acquired its complete native read closure. Resolve those admitted payloads directly,
             // so preparation never re-enters storage or spends one point query's page allowance over the whole closure.
             var product = MapEffectiveResolutionKernel.Resolve(input, data.Assets, foliageRequest is null ? nativeSource : null,
                 queryLimits: scope.Surfaces.Limits);
+            if (product.PreparationOwnership is { } productOwner) inputPreparation.Export(productOwner, preparation);
+            input.Surfaces.Patches.Clear(); input.Surfaces.Refs.Clear();
+            inputPreparation.Dispose();
+            inputDiagnostics?.Dispose();
             var view = product.Acquire(scope.Surfaces with { SceneAdmission = admission });
             Record(view);
-            foreach (var seat in foliageRequest?.Seats ?? []) Record(product.Acquire(seat with { SceneAdmission = admission, Limits = scope.Surfaces.Limits }));
+            foreach (var seat in foliageRequest?.Seats ?? [])
+            {
+                using var seatDiagnostics = admission.AcquisitionDiagnostics?.Enter(MapAcquisitionStage.FoliageSeat, MapAcquisitionCaller.FoliageSeat);
+                using var seatPreparation = admission.BeginPreparation();
+                Record(product.Acquire(seat with { SceneAdmission = admission, Limits = scope.Surfaces.Limits }));
+            }
             void Record(MapScopedSurfaces acquired)
             {
                 foreach (var patch in acquired.Witness.Present)
@@ -191,14 +208,15 @@ internal static class MapSceneAcquisition
             bool whole = scope.Channels == MapSceneChannels.All && scope.Surfaces.MinY is null && scope.Surfaces.MaxY is null &&
                 scope.Surfaces.SpaceIds is null &&
                 Enum.GetValues<MapSurfaceRole>().All(scope.Surfaces.Roles.Contains) && owners.Count == data.Owners.Count &&
-                selectedFoliage.Length == data.FoliageRows.Count && acquiredNative.Patches.Count == data.NativeEntries.Count && scope.DrawBounds.MinX <= data.MinX && scope.DrawBounds.MaxX >= data.MaxX &&
+                selectedFoliage.Length == data.FoliageRows.Count && acquiredPatchCount == data.NativeEntries.Count && scope.DrawBounds.MinX <= data.MinX && scope.DrawBounds.MaxX >= data.MaxX &&
                 scope.DrawBounds.MinZ <= data.MinZ && scope.DrawBounds.MaxZ >= data.MaxZ && physical.MinX.ToDouble() <= data.MinX &&
                 physical.MaxX.ToDouble() >= data.MaxX && physical.MinZ.ToDouble() <= data.MinZ && physical.MaxZ.ToDouble() >= data.MaxZ;
             MapSceneSource.CheckManifest(data.Directory, data.ManifestDigest);
             var witness = Witness(true, whole);
+            using var publication = admission.AcquisitionDiagnostics?.Enter(MapAcquisitionStage.ScenePublication);
             var scene = new MapScopedScene(source, scope, witness, product, view, foliage);
             retained = scene.InventoryBytes;
-            scene.PreparationOwnership = preparation.Complete(retained);
+            scene.PreparationOwnership = preparation.Complete(retained, retainDependencies: true);
             return new(whole ? MapSceneStatus.WholeWorldComplete : MapSceneStatus.CompleteForScope, scene, witness, Work(true));
         }
         catch (Exception error) when (MapSceneSource.Classify(error) is not null)
@@ -227,13 +245,20 @@ internal static class MapSceneAcquisition
     static string RangeId(MapCoveredRange range) => FormattableString.Invariant(
         $"{range.SurfaceId}/{range.Slots.MinX}/{range.Slots.MinZ}/{range.Slots.MaxXExclusive}/{range.Slots.MaxZExclusive}");
 
-    static MapSurfaceSet AcquireNative(MapSceneData data, IReadOnlySet<MapPatchKey> needed, MapSceneAdmission admission, MapQueryLimits queries)
+    internal static MapSurfaceSet AcquireNative(MapSceneData data, IReadOnlySet<MapPatchKey> needed, MapSceneAdmission admission, MapQueryLimits queries)
+        => AcquireNativeOwned(data, needed, admission, queries).Surfaces;
+    static (MapSurfaceSet Surfaces, MapPreparationReservation Ownership) AcquireNativeOwned(MapSceneData data,
+        IReadOnlySet<MapPatchKey> needed, MapSceneAdmission admission, MapQueryLimits queries)
     {
+        using var preparation = admission.BeginPreparation();
+        preparation.Reserve(128);
         var surfaces = new MapSurfaceSet();
         var refs = new HashSet<string>(StringComparer.Ordinal);
         foreach (var key in needed.Order())
         {
             if (surfaces.Patches.ContainsKey(key)) continue;
+            using var diagnostics = admission.AcquisitionDiagnostics?.Enter(MapAcquisitionStage.NativeQuery, MapAcquisitionCaller.NativeKey);
+            using var queryPreparation = admission.BeginPreparation();
             var surface = data.NativeRefs[key.SurfaceId];
             var cells = new MapCellRect(checked(key.SlotX * 64), checked(key.SlotZ * 64), checked((key.SlotX + 1) * 64), checked((key.SlotZ + 1) * 64));
             var rect = MapSurfaceRanges.World(cells, surface.Frame);
@@ -248,10 +273,23 @@ internal static class MapSceneAcquisition
                 view.Witness.Unavailable.Any(u => u.Status == MapPatchStatus.Corrupt) ? MapSceneStatus.Corrupt :
                 view.Witness.Unavailable.Any(u => u.Status == MapPatchStatus.Missing) ? MapSceneStatus.Missing : MapSceneStatus.Incomplete,
                 view.Detail ?? "Unavailable native dependency payload.", view.Capacity);
-            foreach (var descriptor in view.Surfaces) if (refs.Add(descriptor.Id)) surfaces.Refs.Add(descriptor);
-            foreach (var entry in view.Witness.Present) if (!surfaces.Patches.ContainsKey(entry.Key)) surfaces.Patches.Add(entry.Key, view.Patch(entry.Key).Patch!);
+            foreach (var descriptor in view.Surfaces)
+                if (refs.Add(descriptor.Id))
+                {
+                    preparation.Reserve(checked(256L + 8L * (descriptor.IndoorSpan?.DomainTags.Count ?? 0)));
+                    surfaces.Refs.Add(MapAcquiredFacts.CopySurface(descriptor));
+                }
+            foreach (var entry in view.Witness.Present)
+                if (!surfaces.Patches.ContainsKey(entry.Key))
+                {
+                    preparation.Reserve(64);
+                    var patch = view.Patch(entry.Key).Patch!;
+                    if (patch.PreparationOwnership is { } ownership) queryPreparation.Export(ownership, preparation);
+                    surfaces.Patches.Add(entry.Key, patch);
+                }
         }
-        return surfaces;
+        var resultOwnership = preparation.Complete(new MapSceneInventory().Surfaces(surfaces));
+        return (surfaces, resultOwnership);
     }
 
     static MapEffectiveResolutionInput Merge(MapSceneData data, IReadOnlyList<MapSceneOwner> owners)
@@ -329,8 +367,15 @@ internal sealed class MapSceneSurfaceSource : IMapSurfaceAcquisitionSource
 {
     internal IMapSurfaceSource Inner { get; }
     readonly IReadOnlySet<string> _ids;
+    internal MapPreparationReservation? PreparationOwnership { get; }
+    internal long IndexBytes => checked(128L + 32L * ((HashSet<string>)_ids).EnsureCapacity(0) + 8L * Surfaces.Count);
     internal MapSceneSurfaceSource(IMapSurfaceSource inner, IReadOnlySet<string> ids, IReadOnlyList<MapSurfaceRef> descriptors)
-    { Inner = inner; _ids = ids; Surfaces = Array.AsReadOnly(descriptors.ToArray()); }
+    {
+        using var preparation = MapSceneAdmission.Current?.BeginPreparation();
+        MapSceneAdmission.Current?.ReserveBytes(checked(128L + 32L * (4L * ids.Count + 3) + 8L * descriptors.Count));
+        Inner = inner; _ids = ids.ToHashSet(StringComparer.Ordinal); Surfaces = Array.AsReadOnly(descriptors.ToArray());
+        PreparationOwnership = preparation?.Complete(IndexBytes);
+    }
     public string SnapshotId => Inner.SnapshotId;
     public string RootSha256 => Inner.RootSha256;
     public IReadOnlyList<MapSurfaceRef> Surfaces { get; }

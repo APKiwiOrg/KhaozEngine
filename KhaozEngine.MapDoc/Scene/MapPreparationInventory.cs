@@ -18,8 +18,8 @@ internal sealed class MapPreparationInventory : IDisposable
     MapPreparationInventory(Shared shared) => _shared = shared;
     internal static MapPreparationInventory Acquire(MapSceneAdmission admission,
         IEnumerable<(object Identity, long Bytes)> inventory, MapPreparationReservation? workspace = null,
-        MapPreparationReservation? ownership = null) =>
-        Registries.GetValue(admission, static a => new(a)).Acquire(inventory, workspace, ownership);
+        MapPreparationReservation? ownership = null, MapPreparationReservation? windowOwner = null, bool admitWorkspace = false) =>
+        Registries.GetValue(admission, static a => new(a)).Acquire(inventory, workspace, ownership, windowOwner, admitWorkspace);
     internal MapPreparationInventory Retain()
     {
         lock (_shared.Pieces)
@@ -44,12 +44,15 @@ internal sealed class MapPreparationInventory : IDisposable
     {
         readonly object _gate = new();
         readonly Dictionary<object, Entry> _entries = new(ReferenceEqualityComparer.Instance);
-        internal MapPreparationInventory Acquire(IEnumerable<(object Identity, long Bytes)> inventory, MapPreparationReservation? workspace, MapPreparationReservation? ownership)
+        internal MapPreparationInventory Acquire(IEnumerable<(object Identity, long Bytes)> inventory, MapPreparationReservation? workspace,
+            MapPreparationReservation? ownership, MapPreparationReservation? windowOwner, bool admitWorkspace)
         {
             lock (_gate)
             {
                 var parts = inventory.DistinctBy(i => i.Identity, ReferenceEqualityComparer.Instance).ToArray();
                 long newBytes = parts.Where(p => !_entries.ContainsKey(p.Identity)).Sum(p => p.Bytes);
+                // Foreign dependencies adopt their portion of destination workspace, reserving only missing identities.
+                if (admitWorkspace) workspace!.Reserve(newBytes);
                 if (workspace is not null && newBytes > workspace.Bytes)
                     throw new InvalidOperationException("Decoded inventory exceeds its admitted owned reservation.");
                 if (ownership is not null && newBytes != ownership.Bytes)
@@ -57,6 +60,7 @@ internal sealed class MapPreparationInventory : IDisposable
                 var leases = new List<IDisposable>();
                 try
                 {
+                    object window = windowOwner?.WindowIdentity ?? admission.WindowIdentity;
                     foreach (var part in parts)
                     {
                         if (!_entries.TryGetValue(part.Identity, out var entry))
@@ -69,29 +73,63 @@ internal sealed class MapPreparationInventory : IDisposable
                                 using var reserve = admission.Workspace(); reserve.Reserve(part.Bytes);
                                 retained = reserve.Transfer(part.Bytes);
                             }
-                            entry = new(retained, admission.WindowIdentity);
+                            entry = new(retained, window);
                             _entries.Add(part.Identity, entry);
                         }
-                        var window = admission.WindowIdentity;
-                        if (!entry.Views.TryGetValue(window, out var view))
+                        var windows = new List<MapPreparationLedger.Window>();
+                        MapPreparationLedger.Window? binding = null;
+                        for (var current = window as MapPreparationLedger.Window; current is not null; current = current.Parent)
                         {
-                            view = new(window == entry.Origin ? null : admission.ReferenceWindow(entry.Reservation.Bytes, entry.Origin, entry.Views.Keys));
-                            entry.Views.Add(window, view);
+                            if (Covers(current, entry.Origin)) break;
+                            windows.Add(current);
+                            if (!entry.Views.ContainsKey(current) && (binding is null || current.Remaining < binding.Remaining))
+                                binding = current;
                         }
-                        view.Owners++; entry.Owners++;
+                        if (binding is not null && entry.Reservation.Bytes > binding.Remaining)
+                            throw new MapSceneCapacityException(binding.Capacity(entry.Reservation.Bytes));
+                        var covered = new List<(object Key, View Value)>();
+                        try
+                        {
+                            // Each borrowing window has one attribution, shared by every consumer using it.
+                            foreach (var current in windows)
+                            {
+                                if (!entry.Views.TryGetValue(current, out var view))
+                                {
+                                    view = new(current.ReferenceOnly(entry.Reservation.Bytes));
+                                    entry.Views.Add(current, view);
+                                }
+                                view.Owners++;
+                                covered.Add((current, view));
+                            }
+                        }
+                        catch { ReleaseViews(); throw; }
+                        entry.Owners++;
                         leases.Add(new PieceLease(() =>
                         {
                             lock (_gate)
                             {
-                                if (--view.Owners == 0) { view.Reference?.Dispose(); entry.Views.Remove(window); }
+                                ReleaseViews();
                                 if (--entry.Owners == 0) { entry.Reservation.Dispose(); _entries.Remove(part.Identity); }
                             }
                         }));
+                        void ReleaseViews()
+                        {
+                            foreach (var ancestor in covered)
+                                if (--ancestor.Value.Owners == 0)
+                                { ancestor.Value.Reference?.Dispose(); entry.Views.Remove(ancestor.Key); }
+                        }
                     }
                     return new(leases, parts.Sum(p => p.Bytes));
                 }
                 catch { foreach (var lease in leases) lease.Dispose(); throw; }
             }
+        }
+        static bool Covers(object ancestor, object window)
+        {
+            if (ReferenceEquals(ancestor, window)) return true;
+            for (var current = window as MapPreparationLedger.Window; current is not null; current = current.Parent)
+                if (ReferenceEquals(ancestor, current)) return true;
+            return false;
         }
     }
     sealed class Entry(MapPreparationReservation reservation, object origin)

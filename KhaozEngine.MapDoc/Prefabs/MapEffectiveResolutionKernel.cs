@@ -188,9 +188,20 @@ internal static class MapEffectiveResolutionKernel
         IMapSurfaceSource? nativeSource = null, MapPrefabExpansionObserver? observer = null, MapQueryLimits? queryLimits = null)
     {
         queryLimits ??= new();
-        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
-        Scene.MapSceneAdmission.Current?.ReserveBytes(512);
+        var admission = Scene.MapSceneAdmission.Current;
+        var callerPreparation = admission?.PreparationScope;
+        using var preparation = admission?.BeginPreparation();
+        if (nativeSource is Scene.MapSceneSurfaceSource { PreparationOwnership: { } nativeOwner } && callerPreparation is not null)
+            callerPreparation.Export(nativeOwner, preparation!);
+        using var geometryDiagnostics = admission?.AcquisitionDiagnostics?.Enter(Scene.MapAcquisitionStage.ResolverGeometry);
+        using var geometryPreparation = admission?.BeginPreparation();
+        using var enumerationWorkspace = admission?.Workspace();
+        MapEffectiveConstructionPreparation.BeforeEnumerate(authored, assets, enumerationWorkspace);
         var captured = Enumerate(authored, assets, nativeSource, observer);
+        if (enumerationWorkspace is not null)
+            geometryPreparation!.Track(enumerationWorkspace.Transfer(MapEffectiveConstructionPreparation.Tables(captured)));
+        // Remapping has finished. Payload clones stay in the geometry collector until context capture.
+        enumerationWorkspace?.Dispose();
         var children = captured.Children;
         var transforms = captured.Transforms;
         var owners = captured.Owners;
@@ -218,7 +229,7 @@ internal static class MapEffectiveResolutionKernel
         IMapSurfaceSource Source(MapEffectiveContext value) => nativeSource is null ? new MapEffectiveSurfaceSource(value) : new MapComposedSurfaceSource(value, nativeSource);
         var source = Source(context);
         var placements = MapEffectivePlacementPreparation.Resolve(children, assets, transforms, source, queryLimits,
-            standaloneNumbers, owners, out var supports, out var supportRequests);
+            standaloneNumbers, owners, out var supports, out var supportRequests, out var placementOwnership);
         foreach (var support in supports)
         {
             string key = MapEffectiveContext.Key(MapPrefabChildKind.Placement, support.PlacementId);
@@ -229,10 +240,28 @@ internal static class MapEffectiveResolutionKernel
         if (supports.Count != 0)
         {
             var previousContext = context;
+            var previousSource = source;
             context = new(surfaces, transforms, Digest(), Storeys(), localWater);
             source = Source(context);
             previousContext.PreparationOwnership?.Dispose();
+            MapEffectiveProductPreparation.SourceOwnership(previousSource)?.Dispose();
         }
+        if (geometryPreparation is not null)
+        {
+            if (context.PreparationOwnership is { } contextOwner) geometryPreparation.Export(contextOwner, preparation!);
+            if (MapEffectiveProductPreparation.SourceOwnership(source) is { } sourceOwner) geometryPreparation.Export(sourceOwner, preparation!);
+            if (placementOwnership is not null) geometryPreparation.Export(placementOwnership, preparation!);
+        }
+        // The context owns detached geometry now. Later stages consume only the remaining child kinds.
+        children.RemoveAll(child => child is MapPrefabSurfaceChild or MapPrefabRecordChild);
+        surfaces.Patches.Clear(); surfaces.Refs.Clear();
+        var workingTables = geometryPreparation?.Complete(MapEffectiveConstructionPreparation.Tables(captured));
+        geometryPreparation?.Dispose();
+        geometryDiagnostics?.Dispose();
+        using var tablesDiagnostics = admission?.AcquisitionDiagnostics?.Enter(Scene.MapAcquisitionStage.ResolverTables);
+        using var tablesPreparation = admission?.BeginPreparation();
+        admission?.ReserveBytes(checked(1024L + 1024L * children.Count +
+            (authored.BuildingIntent is { } authoredIntent ? 2L * MapBuildingIntentPreparation.Bytes(authoredIntent) : 0)));
         var water = authored.Water?.Clone();
         foreach (var medium in children.OfType<MapPrefabMediumChild>()) (water ??= new()).Media.Add(medium.Value);
         var waterCorners = new Dictionary<string, IReadOnlyList<MapExactPoint>>(StringComparer.Ordinal);
@@ -280,13 +309,25 @@ internal static class MapEffectiveResolutionKernel
             Roofs = roofs.Where(r => r.Scope != MapPrefabReferenceScope.World || !inactivePlacementIds.Contains(r.Id) || livePlacementIds.Contains(r.Id)).ToArray(),
             Storeys = Storeys(),
         };
+        using var captureDiagnostics = admission?.AcquisitionDiagnostics?.Enter(Scene.MapAcquisitionStage.ProductCapture);
         var resources = new MapEffectiveResolutionProduct(context, source, placements, supports, water, intent, lightPoints, waterCorners,
             attachments, markers.Markers, markers.Supports, queryLimits)
         {
             SupportRequests = supportRequests,
             OwnedAttachmentBytes = MapEffectiveProductPreparation.OwnedAttachments(attachments, authored.Prefabs?.Attachments ?? []),
         };
-        resources.PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().Product(resources));
+        if (tablesPreparation is not null)
+        {
+            if (workingTables is not null) tablesPreparation.WorkspaceOwner.Absorb(workingTables);
+            if (placementOwnership is not null) tablesPreparation.WorkspaceOwner.Absorb(placementOwnership);
+            var inventory = new Scene.MapSceneInventory();
+            inventory.Context(context); inventory.Source(source);
+            tablesPreparation.Complete(inventory.Product(resources));
+        }
+        captureDiagnostics?.Dispose();
+        tablesPreparation?.Dispose();
+        tablesDiagnostics?.Dispose();
+        resources.PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().Product(resources), retainDependencies: true);
         return resources;
     }
 
@@ -332,6 +373,7 @@ internal sealed class MapEffectiveResolutionProduct
     internal int LightPointCapacity { get; }
     internal int WaterCornerCapacity { get; }
     internal int SupportRequestCapacity { get; private init; }
+    internal int PaintRegionCapacity { get; }
     internal IReadOnlyList<MapEffectiveLight> EffectiveLights { get; }
     internal IReadOnlyList<MapEffectiveMarker> EffectiveMarkers { get; }
     /// <summary>The support answer of every Support-height marker, disabled ones included, in ordinal marker ID order.
@@ -363,12 +405,7 @@ internal sealed class MapEffectiveResolutionProduct
         Placements = Array.AsReadOnly(placements.ToArray());
         PlacementSupports = Array.AsReadOnly(supports.ToArray());
         _water = water?.Clone();
-        _intent = intent.Clone();
-        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(128L * _intent.RoofLinks.Count + 16L * (_intent.RoofGroups.Count + _intent.Roofs.Count)));
-        _intent = new(_intent.PayloadVersion, _intent.RoofLinks.OrderBy(r => r.Id, StringComparer.Ordinal).Select(link =>
-            link with { AboveY = context.Transform(MapPrefabChildKind.RoofLink, link.Id)?.Height(MapExactValue.FromSingle(link.AboveY)).ToSingle() ?? link.AboveY }).ToArray(),
-            _intent.RoofGroups.OrderBy(g => g.Id, StringComparer.Ordinal).ToArray(), _intent.Lights, _intent.Markers)
-        { Roofs = _intent.Roofs.DistinctBy(r => (r.Kind, r.Id)).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray(), Storeys = _intent.Storeys };
+        _intent = MapEffectiveProductPreparation.CopyIntent(intent, context);
         MapPrefabValidation.RequireEffectiveAnnotations(_intent, placements, context.Surfaces);
         Scene.MapSceneAdmission.Current?.ReserveBytes(checked(128L * lights.Count + 32L * (markers.Count + markerSupports.Count)));
         EffectiveLights = MapEffectiveAnnotations.CaptureLights(_intent, lights);
@@ -379,12 +416,16 @@ internal sealed class MapEffectiveResolutionProduct
         WaterCorners = MapEffectiveProductPreparation.CopyCorners(waterCorners, out int waterCapacity); WaterCornerCapacity = waterCapacity;
         Scene.MapSceneAdmission.Current?.ReserveBytes(checked(8L * attachments.Count));
         Attachments = Array.AsReadOnly(attachments.ToArray());
+        Scene.MapSceneAdmission.Current?.ReserveBytes(checked(128L + 32L * context.Surfaces.Refs.Count));
         var paintTargets = context.Surfaces.Refs.Where(context.IsPartialPaint)
             .Select(s => s.PaintTargetSurfaceId ?? throw new MapDocumentException("PaintOverride requires a target surface."))
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
-        var paintRegions = new Dictionary<string, MapPaintRegionSet>(StringComparer.Ordinal);
+        MapSurfaceSourcePreparation.BeforeDictionary<string, MapPaintRegionSet>(paintTargets.Length);
+        var paintRegions = new Dictionary<string, MapPaintRegionSet>(paintTargets.Length, StringComparer.Ordinal);
         if (paintTargets.Length != 0)
         {
+            var productPreparation = Scene.MapSceneAdmission.Current?.PreparationScope;
+            using var paintPreparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
             var scope = MapScopedSurfaces.CompleteEffective(context, _queryLimits).Scope with
             {
                 DiscoverySurfaces = context.Surfaces.Refs.Where(context.IsPartialPaint).Select(s => s.Id)
@@ -394,9 +435,12 @@ internal sealed class MapEffectiveResolutionProduct
             foreach (string target in paintTargets)
             {
                 Scene.MapSceneAdmission.Current?.BeforePaintTarget(target);
-                paintRegions.Add(target, MapPartialPaintCompiler.Compile(view, target, _queryLimits.Refinement));
+                var regions = MapPartialPaintCompiler.Compile(view, target, _queryLimits.Refinement);
+                if (regions.PreparationOwnership is { } owner) paintPreparation!.Export(owner, productPreparation!);
+                paintRegions.Add(target, regions);
             }
         }
+        PaintRegionCapacity = paintRegions.EnsureCapacity(0);
         PaintRegions = new ReadOnlyDictionary<string, MapPaintRegionSet>(paintRegions);
     }
     internal void RequireView(MapScopedSurfaces view)

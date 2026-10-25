@@ -19,7 +19,9 @@ public sealed class NativeRoofEvaluationAdmissionTests
         var parent = new MapSceneAdmission(new(MaxPreparedBytes: 65536));
         var scene = MapSceneAcquisition.Run(source, NativePresentationFixtures.Scope, parent).Scene!;
         using var receipt = scene.PreparationOwnership!;
-        Assert.Equal(1600, receipt.Bytes);
+        // Scene, context, sources, intent, product, detached set, two role copies, view/digest and witness.
+        const long sceneBytes = 512 + 256 + 384 + 128 + 256 + 128 + 2 * 3 * 4 + 256 + 8 + 64;
+        Assert.Equal(sceneBytes, receipt.Bytes);
         Assert.Equal(MapSceneStatus.CompleteForScope, MapMembershipPreparation.Measure(scene, out var demand, out _));
         Assert.True(demand.Bytes > receipt.Bytes);
         var admission = foreignAttempt ? new MapSceneAdmission(new(MaxPreparedBytes: 65536)) : parent;
@@ -31,11 +33,11 @@ public sealed class NativeRoofEvaluationAdmissionTests
             Assert.Equal(MapSceneStatus.CapacityExceeded, result.Status);
             Assert.Null(result.Buffer);
             Assert.Equal("exact-child", result.Capacity!.LimitName);
-            Assert.Equal(demand.Bytes + 1600, result.Capacity.Requested);
+            Assert.Equal(demand.Bytes + sceneBytes, result.Capacity.Requested);
             Assert.Equal(demand.Bytes, result.Capacity.Allowance);
-            Assert.Equal(1600, receipt.Bytes);
-            Assert.Equal(1600, parent.RetainedBytes);
-            Assert.Equal(foreignAttempt ? 0 : 1600, admission.RetainedBytes);
+            Assert.Equal(sceneBytes, receipt.Bytes);
+            Assert.Equal(sceneBytes, parent.RetainedBytes);
+            Assert.Equal(foreignAttempt ? 0 : sceneBytes, admission.RetainedBytes);
             Assert.Equal(0, admission.WorkspaceBytes);
             Assert.Equal(demand.Bytes, admission.RemainingPreparedBytes);
             using var probe = admission.Workspace();

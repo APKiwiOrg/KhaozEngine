@@ -1446,10 +1446,10 @@ The prepared-byte allowance bounds live workspace plus unique retained product i
 borrowed-input obligations. It does not count cumulative allocation or measure the CLR heap or RSS.
 Temporary reservations end when their consumer finishes. Returned arrays, captured dependencies, mesh
 copies, separate scene/view filter arrays and reusable frame scratch stay charged until release. Array growth admits old
-and replacement storage together. Failed reservations change no byte counters. An observed peak is
-separate from current workspace and retained bytes. Reads, source UTF-8 work, faces, scopes and selected
-resources keep their cumulative work or count semantics. Child plan views share this same ledger and
-include reused context and selected decoded input, without duplicating global ownership.
+and replacement storage together. Failed policy closure preserves its input and releases intermediates.
+Failed reservations change no byte counters. Peaks remain separate from current bytes. Reads, UTF-8 work, faces, scopes and selected
+resources keep cumulative work/count semantics. Child views attribute reused contexts and selected decoded inputs
+without a duplicate root charge. Exported view leases keep contexts alive after product retirement.
 Query capacity results preserve the declared limit, demand and allowance. `IndexNodesVisited` counts rejected siblings.
 Capacity refusals retain a typed `MapSceneCapacity` in the source or scoped result, with `LimitName`,
 `Requested` and `Allowance`. Byte demand is current eligible live inventory plus the attempted reservation.

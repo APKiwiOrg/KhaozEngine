@@ -83,7 +83,7 @@ public static class MapResolverV2
         var query = new MapSupportQuery(view);
         var result = binding.Kind == MapSupportBindingKind.Surface ? query.SampleSurfaceExact(world, binding.SurfaceId!)
             : query.SelectExact(new(MapEffectiveGeometry.Presentation(view, world), null, binding.SpaceId, null, binding.SearchAbove!.Value, binding.SearchBelow!.Value, null), world);
-        preparation?.Complete(96);
+        preparation?.Complete(96, retainDependencies: false);
         return result;
     }
 

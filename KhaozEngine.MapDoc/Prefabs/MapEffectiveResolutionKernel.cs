@@ -322,7 +322,7 @@ internal static class MapEffectiveResolutionKernel
         captureDiagnostics?.Dispose();
         tablesPreparation?.Dispose();
         tablesDiagnostics?.Dispose();
-        resources.PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().Product(resources));
+        resources.PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().Product(resources), retainDependencies: true);
         return resources;
     }
 

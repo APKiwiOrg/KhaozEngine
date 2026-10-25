@@ -214,7 +214,7 @@ internal static class MapSceneAcquisition
             using var publication = admission.AcquisitionDiagnostics?.Enter(MapAcquisitionStage.ScenePublication);
             var scene = new MapScopedScene(source, scope, witness, product, view, foliage);
             retained = scene.InventoryBytes;
-            scene.PreparationOwnership = preparation.Complete(retained);
+            scene.PreparationOwnership = preparation.Complete(retained, retainDependencies: true);
             return new(whole ? MapSceneStatus.WholeWorldComplete : MapSceneStatus.CompleteForScope, scene, witness, Work(true));
         }
         catch (Exception error) when (MapSceneSource.Classify(error) is not null)

@@ -46,6 +46,7 @@ public sealed class MapEffectiveResources
 internal sealed class MapEffectiveContext
 {
     internal Scene.MapPreparationReservation? PreparationOwnership { get; }
+    internal long InventoryBytes { get; }
     internal long IndexBytes { get; }
     readonly IReadOnlyDictionary<string, MapSurfaceRef> _surfaces;
     readonly Dictionary<string, MapEffectiveTransform> _transformValues;
@@ -75,7 +76,14 @@ internal sealed class MapEffectiveContext
         IndexBytes = checked(MapSurfaceSourcePreparation.DictionaryBytes(surfaceIndex) +
             MapSurfaceSourcePreparation.DictionaryBytes(_transformValues) + MapSurfaceSourcePreparation.DictionaryBytes(waterIndex));
         Digest = digest;
-        PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().Context(this));
+        InventoryBytes = new Scene.MapSceneInventory().Context(this);
+        PreparationOwnership = preparation?.Complete(InventoryBytes);
+        PreparationOwnership?.Share(Scene.MapSceneAdmission.Current!, this);
+    }
+    internal void RetainFor(Scene.MapPreparationScope? preparation)
+    {
+        if (preparation is not null && Scene.MapSceneAdmission.Current is { } admission)
+            preparation.WorkspaceOwner.DependOn(admission, this, InventoryBytes);
     }
     internal MapSurfaceRef Surface(string id) => _surfaces.TryGetValue(id, out var surface) ? surface : throw new MapDocumentException($"Missing effective surface '{id}'.");
     internal MapExactXz Xz(string id, MapExactXz local) => Transform(MapPrefabChildKind.Surface, id)?.Xz(local) ?? local;

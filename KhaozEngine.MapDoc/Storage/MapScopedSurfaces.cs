@@ -93,6 +93,7 @@ public sealed class MapScopedSurfaces
         foreach (string asset in assets) MapSurfaceStorageLayout.RequireDigest(asset);
         if (queryPolicyVersion < 1 || buildPolicyVersion < 1) throw new ArgumentOutOfRangeException(nameof(queryPolicyVersion), "invalid acquisition policy version");
         var context = (source as IMapEffectiveSurfaceContext)?.EffectiveContext;
+        context?.RetainFor(preparation);
         var facts = context is null ? MapScopedAcquisition.Run(capable, request, work)
             : MapEffectiveAcquisition.Run(capable, request, work, context);
         if (admission?.AcquisitionDiagnostics is { } counts)
@@ -102,7 +103,7 @@ public sealed class MapScopedSurfaces
         var view = new MapScopedSurfaces(facts, request, assets,
             context is null ? queryPolicyVersion : 2, context is null ? buildPolicyVersion : 2)
         { EffectiveContext = context };
-        view.PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().View(view, includeContext: false));
+        view.PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().View(view));
         return view;
     }
     public static MapScopedSurfaces CompleteView(MapSurfaceSet set)
@@ -143,6 +144,7 @@ public sealed class MapScopedSurfaces
     internal static MapScopedSurfaces CompleteEffective(MapEffectiveContext context, MapQueryLimits? queryLimits = null)
     {
         using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
+        context.RetainFor(preparation);
         var facts = new MapAcquiredFacts();
         foreach (var surface in context.Surfaces.Refs) facts.AddSurface(surface);
         foreach (var entry in context.Surfaces.Patches)
@@ -171,7 +173,7 @@ public sealed class MapScopedSurfaces
         var view = new MapScopedSurfaces(new(MapAcquireStatus.Complete, null, facts, "effective:" + context.Digest, context.Digest, 0, 0), scope, new[] { context.Digest },
             EffectiveQueryPolicyVersion, EffectiveBuildPolicyVersion)
         { EffectiveContext = context, ListsEverySurface = true };
-        view.PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().View(view, includeContext: false));
+        view.PreparationOwnership = preparation?.Complete(new Scene.MapSceneInventory().View(view));
         return view;
     }
     static MapSurfaceScope ResidentScope(MapAcquiredFacts facts)

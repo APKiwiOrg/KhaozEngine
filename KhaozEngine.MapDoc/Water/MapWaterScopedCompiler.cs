@@ -141,7 +141,7 @@ public static class MapWaterScopedCompiler
                         if (drawCells.Contains(cell) && Intersects(canonical, drawBounds, pairs, admission)) output.Add(canonical);
                     }
                     cellPreparation.Complete(allCells.Skip(cellStart)
-                        .Sum(c => 256L + c.Regions.Sum(r => 128L + 144L * r.Triangles.Count)));
+                        .Sum(c => 256L + c.Regions.Sum(r => 128L + 144L * r.Triangles.Count)), retainDependencies: false);
                 }
                 bodyPreparation.Complete(allCells.Skip(bodyStart)
                     .Sum(c => 256L + c.Regions.Sum(r => 128L + 144L * r.Triangles.Count)));

@@ -43,7 +43,7 @@ public static class MapRequiredDomainCoverage
                 scenes.Add(result.Scene);
             }
             return new(MapSceneStatus.CompleteForScope, Combine(source, identity, witnesses, true), scenes.AsReadOnly())
-            { PreparationOwnership = preparation.Complete(checked(128L * requested.Length + scenes.Sum(s => s.InventoryBytes))) };
+            { PreparationOwnership = preparation.Complete(checked(128L * requested.Length + scenes.Sum(s => s.InventoryBytes)), retainDependencies: true) };
         }
         catch (Exception error) when (MapSceneSource.Classify(error) is not null)
         {

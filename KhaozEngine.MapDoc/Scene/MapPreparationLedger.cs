@@ -115,6 +115,12 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
             owner._window = this;
         }
         internal MapSceneCapacity Capacity(decimal bytes) => new(_name, (decimal)Live + _reused + bytes, _allowance);
+        internal IDisposable ReferenceOnly(long bytes)
+        {
+            var covered = new HashSet<object>(ReferenceEqualityComparer.Instance);
+            if (Parent is not null) covered.Add(Parent);
+            return Reference(bytes, covered);
+        }
         internal IDisposable Reference(long bytes, HashSet<object> covered)
         {
             Window? stop = this;

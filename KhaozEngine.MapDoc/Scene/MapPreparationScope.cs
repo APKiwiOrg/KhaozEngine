@@ -37,18 +37,20 @@ internal sealed class MapPreparationScope : IDisposable
         destination.Track(product);
         _products.Remove(product);
     }
-    internal void EnsureCapacity(long bytes, MapPreparationReservation? dependency = null)
+    internal void EnsureCapacity(long bytes, MapPreparationReservation? dependency = null, bool retainDependencies = true)
     {
-        long available = Bytes;
-        foreach (var product in _products) available = checked(available + product.Bytes);
-        if (dependency is not null && !_products.Contains(dependency)) available = checked(available + dependency.Bytes);
+        var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        long available = _workspace.InventoryBytes(seen);
+        foreach (var product in _products) available = checked(available + product.InventoryBytes(seen, retainDependencies));
+        if (dependency is not null && !_products.Contains(dependency)) available = checked(available + dependency.InventoryBytes(seen));
         if (bytes > available) Reserve(bytes - available);
     }
-    internal MapPreparationReservation Complete(long bytes, bool publishToParent = true)
+    internal MapPreparationReservation Complete(long bytes, bool publishToParent = true, bool retainDependencies = true)
     {
         ObjectDisposedException.ThrowIf(_disposed || _completed, this);
-        EnsureCapacity(bytes);
-        foreach (var product in _products) _workspace.Absorb(product);
+        // Shared dependencies follow the returned graph. Value-only consumers explicitly end their input leases.
+        EnsureCapacity(bytes, retainDependencies: retainDependencies);
+        foreach (var product in _products) _workspace.Absorb(product, retainDependencies);
         var result = _workspace.Transfer(bytes);
         if (publishToParent) _previous?.Track(result);
         _completed = true;

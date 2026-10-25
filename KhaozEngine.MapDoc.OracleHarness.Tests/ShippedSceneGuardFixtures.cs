@@ -91,6 +91,8 @@ internal static partial class ShippedSceneGuardFixtures
     }
     static JsonObject Write(string root, string variant)
     {
+        bool wideRaster = variant == "foliage-wide-raster";
+        if (wideRaster) variant = "foliage-valid";
         bool roofHlod = variant.StartsWith("roof-hlod", StringComparison.Ordinal);
         bool roofShadows = variant != "roof-hlod-no-shadows";
         bool exitOverlap = variant == "roof-hlod-exit-overlap";
@@ -104,7 +106,15 @@ internal static partial class ShippedSceneGuardFixtures
         world.AddObject("column", 2, 2, 0, 0);
         if (variant == "coincident-valid") world.AddObject("column", 2, 2, 0, 0);
         bool cover = variant == "foliage-valid", waterScene = variant == "water-valid", lightScene = variant.StartsWith("light-", StringComparison.Ordinal);
-        if (cover) AddFoliageSource(world);
+        bool featherOrigin = variant == "terrain-feather-origin", terrainPainted = featherOrigin || variant == "terrain-painted";
+        if (cover) AddFoliageSource(world, wideRaster ? 33 : 4);
+        if (variant.StartsWith("marker-", StringComparison.Ordinal)) world.SetMarker("arrival", 1, 1, 0, ["first", "second"]);
+        if (terrainPainted)
+        {
+            if (!featherOrigin) world.SetOverlay(1, 1, 0, 2);
+            int feather = featherOrigin ? 0 : 2;
+            world.SetOverlay(feather, feather, 0, 2); world.SetSettings(feather, feather, 0, TileSettings.FeatherOverlay);
+        }
         if (waterScene)
         {
             for (int x = 1; x <= 2; x++) for (int z = 1; z <= 2; z++) world.SetUnderlay(x, z, 0, 2);
@@ -119,6 +129,7 @@ internal static partial class ShippedSceneGuardFixtures
         if (variant == "roof-valid") catalog["archetypes"]![0]!["isRoof"] = true;
         if (cover) catalog["archetypes"]!.AsArray().Add(JsonNode.Parse("""{"id":"reed","name":"Invented reed","meshRef":"assets/base.glb"}"""));
         if (waterScene) catalog["materials"]!.AsArray().Add(JsonNode.Parse("""{"id":2,"name":"Invented water","color":"#ffffff","kind":"Water"}"""));
+        if (terrainPainted) catalog["materials"]!.AsArray().Add(JsonNode.Parse("""{"id":2,"name":"Invented paint","color":"#ffffff"}"""));
         File.WriteAllText(Path.Combine(root, "catalog.json"), catalog.ToJsonString(ShippedScenePolicy.Json));
         File.WriteAllText(Path.Combine(root, "generator/build-scaffold.py"), "# Invented public contract fixture\n");
         File.WriteAllText(Path.Combine(root, "generator/helper.py"), "# Invented public helper\n");
@@ -126,6 +137,7 @@ internal static partial class ShippedSceneGuardFixtures
         var resources = new JsonArray();
         var resourceRows = new List<(string Id, string Path, string Kind)> { ("base", "native-assets/base.glb", "Mesh"), ("far", "native-assets/far.glb", "Lod"), ("paint", "assets/paint.json", "Material") };
         if (waterScene) { resourceRows.Add(("water-ground", "assets/water-ground.json", "Material")); resourceRows.Add(("legacy-water", "assets/legacy-water.json", "Material")); }
+        if (terrainPainted) resourceRows.Add(("paint-overlay", "assets/paint-overlay.json", "Material"));
         foreach (var (id, path, kind) in resourceRows)
         {
             if (id is "base" or "far")
@@ -207,7 +219,8 @@ internal static partial class ShippedSceneGuardFixtures
                 };
             }
         }
-        if (cover) AddFoliageNative(native, root);
+        if (cover) AddFoliageNative(native, root, wideRaster ? 33 : 4);
+        if (variant.StartsWith("marker-", StringComparison.Ordinal)) WriteSceneMarkers(root, native, variant);
         File.WriteAllText(Path.Combine(root, "native.json"), MapDocumentFile.SaveText(native)); MapDocumentFile.SaveTiled(native, Path.Combine(root, "native-tiled"));
         var foliage = new GroundCoverRenderOptions { UseGpuBatches = true, FadeMode = GroundCoverFadeMode.HeightScale };
         JsonObject Policy(string assetId) => new()
@@ -305,6 +318,7 @@ internal static partial class ShippedSceneGuardFixtures
                 ShippedFoliageComparison.Settings(l), new TileFoliageSurface(world, sourceCatalog, l).Sample).Count);
             comparison["expectations"]!["foliageSamples"] = count;
         }
+        if (variant.StartsWith("marker-", StringComparison.Ordinal)) comparison["markerManifestPath"] = "scene-marker-comparison.json";
         if (waterScene)
         {
             comparison["materials"]!.AsArray().Add(new JsonObject { ["sourceMaterialId"] = 2, ["nativeResourceId"] = "water-ground" });
@@ -316,6 +330,7 @@ internal static partial class ShippedSceneGuardFixtures
             comparison["lights"] = new JsonArray(new JsonObject { ["sourceObjectId"] = "1", ["sourceProfileId"] = "bulb", ["nativeLightId"] = "native-placement/bulb/bulb" });
             comparison["expectations"]!["lights"] = 1;
         }
+        if (terrainPainted) comparison["materials"]!.AsArray().Add(new JsonObject { ["sourceMaterialId"] = 2, ["nativeResourceId"] = "paint-overlay" });
         if (variant == "coincident-valid")
         {
             var second = comparison["placements"]![0]!.DeepClone(); second["sourceObjectId"] = "2"; second["nativePlacementId"] = "native-coincident";

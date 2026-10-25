@@ -23,14 +23,15 @@ internal sealed record SceneSourceFoliageGeneration(FoliageLayerBinding Binding,
 
 /// <summary>Scope-local source roster. No native generations, addresses, rows or bounds select expected work.</summary>
 [UnsupportedOSPlatform("windows")]
-internal static class ShippedSceneFoliageRoster
+internal static partial class ShippedSceneFoliageRoster
 {
     internal static IReadOnlyList<SceneSourceFoliageGeneration> Capture(ShippedSceneInputs inputs, MapSceneScope scope)
     {
         var result = new List<SceneSourceFoliageGeneration>();
         if (!scope.Channels.HasFlag(MapSceneChannels.Foliage)) return result;
         var b = scope.DrawBounds;
-        int examined = 0;
+        long examined = 0;
+        int allowance = (inputs.Manifest.Limits?.Scene.Preparation?.FoliageContext ?? new MapFoliageContextLimits()).MaxChunkDescriptors;
         if (b.MinX >= b.MaxX || b.MinZ >= b.MaxZ) return result;
         foreach (var binding in inputs.FoliageBindings)
         {
@@ -40,11 +41,12 @@ internal static class ShippedSceneFoliageRoster
             int x1 = Owner(layer.OriginX, layer.CellSize, MathF.BitDecrement(Outward(b.MaxX + pad, false)));
             int z0 = Owner(layer.OriginZ, layer.CellSize, Outward(b.MinZ - pad, true));
             int z1 = Owner(layer.OriginZ, layer.CellSize, MathF.BitDecrement(Outward(b.MaxZ + pad, false)));
+            (x0, x1) = RasterOwners(layer.OriginX, layer.CellSize, layer.Width, x0, x1);
+            (z0, z1) = RasterOwners(layer.OriginZ, layer.CellSize, layer.Height, z0, z1);
             var surface = new TileFoliageSurface(inputs.World, inputs.Catalogs, layer);
             for (long z = z0; z <= z1; z++)
                 for (long x = x0; x <= x1; x++)
                 {
-                    ShippedFoliageManifest.Require(examined++ < 4096, "source foliage roster exceeds scope allowance");
                     var area = new RectArea(Edge(layer.OriginX, layer.CellSize, x), Edge(layer.OriginZ, layer.CellSize, z),
                         Edge(layer.OriginX, layer.CellSize, x + 1), Edge(layer.OriginZ, layer.CellSize, z + 1));
                     if (area.MinX >= area.MaxX || area.MinZ >= area.MaxZ) continue;
@@ -54,6 +56,7 @@ internal static class ShippedSceneFoliageRoster
                         (area.MinX - layer.OriginX) / layer.CellSize > layer.Width - 1 ||
                         (MathF.BitDecrement(area.MaxZ) - layer.OriginZ) / layer.CellSize < 0 ||
                         (area.MinZ - layer.OriginZ) / layer.CellSize > layer.Height - 1) continue;
+                    if (++examined > allowance) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxChunkDescriptors), examined, allowance);
                     var decisions = ShippedFoliageComparison.Expected(surface, ShippedFoliageComparison.Settings(layer), area, out _);
                     var rows = decisions.Values.Where(r => r.Decision.Instance.HasValue).Select(r => new SceneSourceFoliageRow(
                         new(new(binding.Row.NativeLayerId, binding.Row.SupportSurfaceId, r.Decision.Candidate.X, r.Decision.Candidate.Z), 1,

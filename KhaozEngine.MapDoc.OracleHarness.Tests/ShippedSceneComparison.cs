@@ -21,7 +21,8 @@ internal static partial class ShippedSceneComparison
     internal const double GeometryTolerance = .00001, NormalTolerance = .000001, AngleTolerance = .000001;
     internal static void Compare(ShippedSceneInputs inputs, PrivateOracleReport report,
         Func<SceneOracleObservation, SceneOracleObservation>? observe = null,
-        Func<IMapDrawSink, IMapDrawSink>? decorate = null)
+        Func<IMapDrawSink, IMapDrawSink>? decorate = null,
+        Func<string, MapDrawSet, MapDrawSet>? observePlan = null)
     {
         ShippedSceneSourceChecks.Policy(inputs, report);
         var expected = LegacySceneRecorder.Record(inputs.World, inputs.Catalogs, inputs);
@@ -49,6 +50,7 @@ internal static partial class ShippedSceneComparison
             for (int load = 0; load < 2; load++)
             {
                 var document = inputs.Reload(tiled); var closure = inputs.Assets(document);
+                ShippedSceneMarkers.Head(inputs, document, closure, report);
                 using var documentSource = MapDocumentSource.FromDocument(document);
                 var capture = CaptureSource(documentSource, closure, manifest);
                 Require(capture.Source is not null, "scene source capture refused " + string.Join("\n", capture.Findings));
@@ -73,14 +75,26 @@ internal static partial class ShippedSceneComparison
                     using var residency = new MapRenderResidency(new(source, closure, proof.Proofs!, policy, [windows[window.Id]]) { DecodeLimits = manifest.Limits?.Decode, AssetLimits = manifest.Limits?.Assets }, device, manifest.Limits?.Residency ?? new(MaxPlanBytes: 67108864), scheduler);
                     Complete(residency, scheduler);
                     var plan = residency.AcceptedPlans.Single();
+                    ShippedSceneMarkers.Plan(inputs, plan, report);
                     var inventory = new MapDrawRecorder(); plan.Register(inventory);
                     completeWindows.Add(window.Id, inventory.Snapshot().Resources.ToDictionary(r => r.Reference.Key, Fingerprint));
                     CompareSource(expected, inputs, plan, report);
-                    var terrain = ShippedSceneSourceChecks.Terrain(inputs, plan, report);
+                    var terrain = ShippedSceneSourceChecks.Terrain(inputs, plan, report, out var terrainFaces);
                     var foliage = LegacySceneRecorder.RecordFoliage(inputs, scene.Scope);
                     ShippedSceneFoliageRoster.Compare(inputs, foliage, new(inventory.Snapshot(), plan.Inventory.Foliage.GenerationKeys, plan.Inventory.Foliage.GeneratedIdentities), report);
                     ShippedSceneSourceChecks.Water(inputs, plan, report);
                     var water = ShippedSceneWaterCoverage.Compare(inputs, plan, report);
+                    // Geometry acceptance covers every window, including those without a frame-policy probe.
+                    if (!manifest.Policy.Probes.Any(p => p.WindowId == window.Id))
+                    {
+                        var baselineRecorder = new MapDrawRecorder(); plan.Register(baselineRecorder);
+                        var origin = ShippedSceneInputs.Point(0, 0, 0);
+                        residency.Record(new(default, origin, KhaozEngine.MapDoc.Interiors.MapRoofMode.AlwaysVisible, 0, 0, origin), baselineRecorder);
+                        var baseline = baselineRecorder.Snapshot(); baseline = observePlan?.Invoke(window.Id, baseline) ?? baseline;
+                        CheckStamp(baseline, plan.Key, report);
+                        ShippedSceneTerrainCoverage.Compare(terrainFaces, terrain, baseline, report);
+                        ShippedSceneWaterCoverage.ComparePayloads(inputs, plan, baseline, report);
+                    }
                     foreach (var probe in manifest.Policy.Probes.Where(p => p.WindowId == window.Id))
                     {
                         var recorder = new MapDrawRecorder(); plan.Register(recorder);
@@ -90,6 +104,8 @@ internal static partial class ShippedSceneComparison
                         observation = observe?.Invoke(observation) ?? observation;
                         var actual = observation.DrawSet;
                         CheckStamp(actual, plan.Key, report);
+                        ShippedSceneTerrainCoverage.Compare(terrainFaces, terrain, actual, report);
+                        ShippedSceneWaterCoverage.ComparePayloads(inputs, plan, actual, report);
                         ShippedSceneFoliageRoster.Compare(inputs, foliage, observation, report);
                         foreach (var placement in expected.Placements.Where(p => inputs.SourcePolicy.AnimatedAssets.Contains(p.ArchetypeId) && ShippedSceneExpectedFrames.InScope(p, scene.Scope)))
                             ShippedSceneSourceChecks.ExplicitPlant(placement, manifest.Placements.Single(p => p.SourceObjectId == placement.Id).NativePlacementId, actual.Resources, inputs, report);
@@ -309,6 +325,7 @@ internal static partial class ShippedSceneComparison
             if (step.Operation == "Unload") active.Remove(step.WindowId);
             else active[step.WindowId] = ShippedSceneInputs.Scope(inputs.Manifest.Windows.Single(w => w.Id == step.WindowId), inputs.Manifest.Limits?.Queries);
             residency.SetWindows(active.Values.ToArray()); Complete(residency, scheduler);
+            foreach (var plan in residency.AcceptedPlans) ShippedSceneMarkers.Plan(inputs, plan, report);
             var recorder = new MapDrawRecorder(); var point = ShippedSceneInputs.Point(0, 0, 0);
             residency.Record(new(default, point, KhaozEngine.MapDoc.Interiors.MapRoofMode.AlwaysVisible, 0, 0, point), recorder);
             var set = recorder.Snapshot();

@@ -330,6 +330,8 @@ lighting and completeness requirement. Explicit focus is a `MapFramePoint`. Omit
 eye. TopDown focus uses `MapCaptureFocus.Resolve` over the declared support domain. No frame consumer
 infers focus from the observer. A refused unresolved focus stays null in the transport result.
 `MapCaptureDependencies.Compute` expands directional and point-light caster coverage from frozen lighting.
+Light discovery releases each probe scene after its final read. Only matched light rows and lookup backing
+remain admitted through dependency expansion and hashing.
 Its witness keeps requested, required and acquired scopes separate. `MapCapturePreparation.Prepare`
 proves dependency and focus admission without a device. Its temporary probe scenes are not resident CPU.
 `NativeMapSnapshot` uses the same residency and

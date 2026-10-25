@@ -53,6 +53,8 @@ public static class MapCaptureDependencies
             var lightCandidates = new HashSet<MapSceneResourceKey>();
             var admission = new MapSceneAdmission(request.Source.Data.Limits);
             using var activation = admission.Enter();
+            using var lightInventory = admission.Workspace();
+            long candidateBytes = 0, lightIndexBytes = 0;
             foreach (var volume in domain.ReceiverVolumes)
             {
                 var receiver = Intersect(Box(volume), draw);
@@ -65,13 +67,22 @@ public static class MapCaptureDependencies
                 }
                 foreach (var key in request.Source.Data.Index.Query(r, out _, maxResources, k => k.Kind == "Light"))
                 {
-                    if (!lightCandidates.Add(key)) continue;
-                    if (lightCandidates.Count > 256) throw new MapSceneCapacityException("MaxCaptureLights", lightCandidates.Count, 256);
+                    if (lightCandidates.Contains(key)) continue;
+                    if (lightCandidates.Count == 256) throw new MapSceneCapacityException("MaxCaptureLights", lightCandidates.Count + 1, 256);
+                    MapPreparationCollections.Set(lightCandidates, lightInventory, ref candidateBytes, 40);
+                    lightCandidates.Add(key);
                     var bounds = request.Source.Data.MetadataByKey[key].Bounds;
+                    using var probe = admission.BeginPreparation();
                     var found = MapSceneAcquisition.Run(request.Source, Scope(request.Scope, bounds), admission);
                     if (found.Scene is null) return new(found.Status, request.Scope, scopes.AsReadOnly(), digest) { Capacity = found.Capacity, Findings = found.Findings };
                     foreach (var light in MapEffectiveAnnotations.Lights(found.Scene))
-                        if (Meets(light, r)) lights.TryAdd(light.Id, light);
+                        if (Meets(light, r) && !lights.ContainsKey(light.Id))
+                        {
+                            MapPreparationCollections.Dictionary(lights, lightInventory, ref lightIndexBytes);
+                            using var row = found.Scene.PreparationOwnership!.SplitRetained(128L + (light.ShadowExclusion is null ? 0 : 64));
+                            lightInventory.Absorb(row);
+                            lights.Add(light.Id, light);
+                        }
                 }
             }
             foreach (var light in lights.Values.OrderBy(l => l.Id, StringComparer.Ordinal))

@@ -68,6 +68,7 @@ internal static class TileWaterTrianglePreparation
         WaterOpticsSurfaceFailure.IncompleteCoverage => TileWaterOpticsFailureKind.IncompleteSurfaceCoverage,
         WaterOpticsSurfaceFailure.AmbiguousSurface => TileWaterOpticsFailureKind.AmbiguousSurface,
         WaterOpticsSurfaceFailure.CapacityExceeded => TileWaterOpticsFailureKind.SurfaceCapacityExceeded,
+        WaterOpticsSurfaceFailure.UncertifiedDisplacement => TileWaterOpticsFailureKind.UncertifiedDisplacement,
         _ => TileWaterOpticsFailureKind.UnrepresentableSurface,
     };
 

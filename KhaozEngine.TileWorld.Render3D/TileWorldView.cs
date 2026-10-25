@@ -202,6 +202,7 @@ public sealed partial class TileWorldView : IDisposable
         if (_waterDepthMode == TileWaterDepthMode.AuthoredBed && _opticsScene is null)
             throw new NotSupportedException("Authored bed water requires triangle optical field preparation.");
         _publication = new TileWaterPublication(_opticsScene);
+        ResolveWaterDisplacement();
         _acceptedSurface = AcceptedGroundSurface;
         _waterTileSize = doc.TileSize;
         _waterPlaneHeight = doc.PlaneHeight;

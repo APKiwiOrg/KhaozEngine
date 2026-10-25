@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Tests.Gpu;
@@ -90,26 +91,90 @@ public sealed class TileWorldViewWaterOpticsRefusalTests
         Assert.Equal(published.Optics.Field, Assert.Single(scene.TriangleFields).Key);
     }
 
+    static TileWorldDocument WaterAndGrassOnly(RegionCoord grassOnly)
+    {
+        var doc = new TileWorldDocument { Id = "uncertified", DisplayName = "Uncertified displacement", PlaneCount = 1 };
+        doc.GetOrCreateRegion(Origin);
+        doc.GetOrCreateRegion(grassOnly);
+        Fill(doc, TileRenderTestData.Grass, 4, 4, 24, 24);
+        Fill(doc, TileRenderTestData.Water, 10, 10, 13, 13);
+        Fill(doc, TileRenderTestData.Grass, grassOnly.OriginX + 4, grassOnly.OriginZ + 4, grassOnly.OriginX + 24,
+            grassOnly.OriginZ + 24);
+        return doc;
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void FftLookIsRefusedBeforeAnyFieldUpload(bool explicitLook)
+    public void UncertifiedDisplacementWithdrawsWaterAndKeepsTerrain(bool explicitLook)
     {
         // Real scene padding: FFT water has no certified displacement envelope, through the look or its default.
         using var scene = new Scene3D(new FakeGpuDevice(), new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm));
         WaterLook? look = explicitLook ? new WaterLook { WaveSource = WaterWaveSource.FftOcean, SwellAmplitude = 0f } : null;
         if (!explicitLook) scene.Post.Water.WaveSource = WaterWaveSource.FftOcean;
-        var doc = new TileWorldDocument { Id = "fft-refusal", DisplayName = "FFT refusal", PlaneCount = 1 };
-        doc.GetOrCreateRegion(Origin);
-        Fill(doc, TileRenderTestData.Grass, 4, 4, 24, 24);
-        Fill(doc, TileRenderTestData.Water, 10, 10, 13, 13);
-        using var view = View(new Scene3DTileWorldScene(scene), doc, Authored(look));
+        var grassOnly = new RegionCoord(3, 0);
+        using var view = View(new Scene3DTileWorldScene(scene), WaterAndGrassOnly(grassOnly), Authored(look));
 
-        NotSupportedException refused = Assert.Throws<NotSupportedException>(() => view.LoadRegion(Origin));
-        Assert.Contains("FFT", refused.Message);
-        Assert.Throws<NotSupportedException>(() => view.Flush());
+        view.LoadRegion(Origin);
+        view.LoadRegion(grassOnly);
+        view.Flush();
+        Assert.Equal(2, view.LoadedRegionCount);
+        Assert.NotNull(view.AcceptedGroundSurface(Origin, 0));
+        Assert.NotNull(view.AcceptedGroundSurface(grassOnly, 0));
         Assert.Equal(0L, scene.WaterOpticsStats.UploadCount);
-        Assert.Equal(0, scene.WaterOpticsStats.LiveFields);
+        TileWaterOpticsFailure failure = Assert.Single(view.WaterOpticsFailures);
+        Assert.Equal((Origin, 0, TileWaterOpticsFailureKind.UncertifiedDisplacement),
+            (failure.Region, failure.Plane, failure.Kind));
+        scene.Begin();
+        view.Draw(new Vector3(12f, 0f, -12f));
+        Assert.Equal(0, scene.WaterPlaneCount);
+        Assert.True(scene.QueuedInstancesForTests.Count >= 2);
+
+        // A certifiable look republishes the water against the unchanged terrain.
+        if (explicitLook) look!.WaveSource = WaterWaveSource.Procedural;
+        else scene.Post.Water.WaveSource = WaterWaveSource.Procedural;
+        view.Flush();
         Assert.Empty(view.WaterOpticsFailures);
+        Assert.Equal(1L, scene.WaterOpticsStats.UploadCount);
+        Assert.Equal(1, scene.WaterOpticsStats.LiveFields);
+        scene.Begin();
+        view.Draw(new Vector3(12f, 0f, -12f));
+        Assert.Equal(1, scene.WaterPlaneCount);
+    }
+
+    [Fact]
+    public void BecomingUncertifiedWithdrawsResidentWaterWithoutRebuildingTerrain()
+    {
+        var grassOnly = new RegionCoord(3, 0);
+        var scene = new RecordingTileWorldScene();
+        TileWorldViewOptions options = Authored();
+        using var view = View(scene, WaterAndGrassOnly(grassOnly), options);
+        view.LoadRegion(Origin);
+        view.LoadRegion(grassOnly);
+        WaterOpticsHandle first = Assert.Single(Water(view, scene)).Optics.Field;
+        int meshes = scene.MeshLoads.Count;
+
+        options.WaterLook = new WaterLook { WaveSource = WaterWaveSource.FftOcean };
+        view.Flush();
+        Assert.Empty(Water(view, scene));
+        Assert.Empty(scene.TriangleFields);
+        Assert.Equal(new[] { first }, scene.OpticalUnloads);
+        Assert.Equal(meshes, scene.MeshLoads.Count);
+        TileWaterOpticsFailure failure = Assert.Single(view.WaterOpticsFailures);
+        Assert.Equal((Origin, TileWaterOpticsFailureKind.UncertifiedDisplacement), (failure.Region, failure.Kind));
+        // The refused state is latched. Further flushes and edits elsewhere neither upload nor throw.
+        view.MarkDirty(grassOnly, 0);
+        view.Flush();
+        view.Flush();
+        Assert.Single(scene.TriangleLoads);
+        Assert.Single(view.WaterOpticsFailures);
+        Assert.Equal(meshes + 1, scene.MeshLoads.Count);
+
+        options.WaterLook = new WaterLook { WaveSource = WaterWaveSource.Procedural };
+        view.Flush();
+        Assert.Empty(view.WaterOpticsFailures);
+        WaterPlane plane = Assert.Single(Water(view, scene));
+        Assert.NotEqual(first, plane.Optics.Field);
+        Assert.Equal(2, scene.TriangleLoads.Count);
     }
 }

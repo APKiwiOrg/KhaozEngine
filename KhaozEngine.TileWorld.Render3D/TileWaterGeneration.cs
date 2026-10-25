@@ -7,7 +7,10 @@ namespace KhaozEngine.TileWorld;
 
 // A CPU preparation travels with its ground request, never with the completion-time document. Optical
 // fields are built later, from the completed candidate and accepted mesh snapshots of one publication group.
-internal sealed record TileWaterPreparation(WaterPlane[] Planes, TileWaterSourceStamp Stamp, float Padding, WaterLook? Look);
+// An uncertified preparation was captured under a refused displacement. It publishes terrain only, and its
+// water becomes an UncertifiedDisplacement refusal.
+internal sealed record TileWaterPreparation(WaterPlane[] Planes, TileWaterSourceStamp Stamp, float Padding, WaterLook? Look,
+    bool Uncertified = false);
 
 /// <summary>Document provenance of one preparation. Tracked entries own their registry epochs while the stamp is
 /// referenced by a resident generation, pending request or refusal. Availability identities also detect source

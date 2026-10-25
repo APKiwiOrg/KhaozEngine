@@ -449,6 +449,10 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene, I
     /// <inheritdoc />
     public float GetWaterOpticsPadding(WaterLook? look = null) => _scene.GetWaterOpticsPadding(look);
 
+    /// <inheritdoc />
+    public bool TryGetWaterOpticsPadding(WaterLook? look, out float padding, out WaterOpticsSurfaceFailure reason) =>
+        _scene.TryGetWaterOpticsPadding(look, out padding, out reason);
+
     sealed class ScenePropClusterOwner : ITileWorldPropClusterOwner
     {
         readonly PropClusterRenderer _renderer;

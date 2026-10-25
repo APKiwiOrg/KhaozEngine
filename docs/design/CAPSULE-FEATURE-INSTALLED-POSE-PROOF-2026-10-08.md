@@ -17,7 +17,7 @@ witness and separation bounds concern the two forward affine interpretations des
 ## Frozen source identity
 
 The tested candidate starts at `13b0bfa7783553cfd1790842ec0457a23a5ca850` on `fix/low-lip-resting-proof` in
-`/Users/antonio/KhaozEngine/.worktrees/low-lip-resting-proof`. The following SHA-256 identities freeze
+`.worktrees/low-lip-resting-proof`. The following SHA-256 identities freeze
 its ten production files before whitespace normalization. Final identities and token-equivalence evidence are in the verification record above.
 
 All paths in this table are relative to `KhaozEngine.Physics.Bepu/`.

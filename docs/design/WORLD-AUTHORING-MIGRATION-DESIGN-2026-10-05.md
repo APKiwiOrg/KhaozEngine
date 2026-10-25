@@ -525,7 +525,7 @@ All builds/runs used the serial wrapper. The first build hit macOS /tmp versus /
 Historical reproduction command at the proposal snapshot, retained as evidence only. Its scratch/source paths and old wrapper are not current execution instructions:
 
 ~~~bash
-/tmp/grand-world/slot-retry.sh authoring-design-probe /tmp/grand-world/world-authoring-spike/reproduce.log -- dotnet run --project /private/tmp/grand-world/world-authoring-spike/THROWAWAY.csproj -c Release -- /Users/antonio/Grimhollow/.worktrees/gw-authoring-design/assets/worlds/hollowmere /private/tmp/grand-world/world-authoring-spike/reproduce-output
+/tmp/grand-world/slot-retry.sh authoring-design-probe /tmp/grand-world/world-authoring-spike/reproduce.log -- dotnet run --project /private/tmp/grand-world/world-authoring-spike/THROWAWAY.csproj -c Release -- ~/Grimhollow/.worktrees/gw-authoring-design/assets/worlds/hollowmere /private/tmp/grand-world/world-authoring-spike/reproduce-output
 ~~~
 
 Spike Program.cs SHA-256: 2e0de8010dccea0f9039051b4665e31294d18e360f59063aac21c492c85a7be1.

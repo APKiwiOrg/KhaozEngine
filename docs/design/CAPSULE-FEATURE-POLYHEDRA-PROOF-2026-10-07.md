@@ -258,7 +258,7 @@ verification of the original 14 public-world cases, both domain cases and the 12
 still required. Proposed finite GREEN after source review, once:
 
 ```bash
-dotnet test /Users/antonio/KhaozEngine/.worktrees/low-lip-resting-proof/KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~CapsuleFeaturePolyhedronTests|FullyQualifiedName~CapsuleFeatureLifetimeTests'
+dotnet test .worktrees/low-lip-resting-proof/KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~CapsuleFeaturePolyhedronTests|FullyQualifiedName~CapsuleFeatureLifetimeTests'
 ```
 
 Expected count is 28 facts with no skips. Build/format and broader existing numerical regressions

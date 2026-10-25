@@ -1,7 +1,7 @@
 #!/bin/sh
 # pre-commit: ban em/en-dashes in staged .md/.cs additions (scripts/check-dashes.sh), ban prose
-# semicolons in staged .md additions (scripts/check-prose.sh), and enforce the version<->changelog
-# coupling. Shared via
+# semicolons in staged .md additions (scripts/check-prose.sh), ban personal home paths, and enforce
+# the version<->changelog coupling. Shared via
 # core.hooksPath=.githooks. Bypass with --no-verify.
 fail=0
 
@@ -39,6 +39,13 @@ fi
 # 1d) Scratch stays local. Check staged paths and text before accepting a commit.
 if [ -f scripts/check-scratch.sh ]; then
   if ! sh scripts/check-scratch.sh; then
+    fail=1
+  fi
+fi
+
+# 1e) Personal home paths stay out of tracked text. Check staged additions and indexed exceptions.
+if [ -f scripts/check-home-paths.sh ]; then
+  if ! sh scripts/check-home-paths.sh; then
     fail=1
   fi
 fi

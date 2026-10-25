@@ -87,7 +87,7 @@ jobs:
         # too but do not use the diff, and a missing base just falls the script back to a FULL run.
         with:
           fetch-depth: 0
-      # The four whole-tree convention guards, run unconditionally: every event, both paths, before the
+      # The whole-tree convention guards, run unconditionally: every event, both paths, before the
       # dotnet setup below and outside ci-selective-test.sh's docs-only skip (a docs-only push is exactly
       # when the dash and prose guards matter most). They are seconds-fast text sweeps over tracked files,
       # so there is nothing to gate them on. .githooks/pre-commit covers the cheaper STAGED legs at commit
@@ -102,12 +102,14 @@ jobs:
       # analyzer only sees what the compiler sees, and the selective path builds a slice of the solution:
       # growth in an unaffected project would otherwise reach main uninspected. Mirrors the game repos'
       # "Repo convention checks" step in build-test.yml (issue #554).
-      - name: Repo convention checks (dash ban + prose ratchet + file-size ratchet + instruction budget + scratch check)
+      - name: Repo convention checks (dash ban + prose ratchet + file-size ratchet + instruction budget + scratch check + home paths)
         run: |
           test -f .prose-baseline
           test -f .filesize-baseline
           sh scripts/check-dashes.sh --tree
           sh scripts/check-prose.sh --tree
+          sh scripts/check-home-paths.sh --tree
+          sh scripts/tests/check-home-paths.test.sh
           sh scripts/check-file-size.sh --tree
           sh scripts/check-agent-instructions.sh --tree
           sh scripts/check-scratch.sh --tree

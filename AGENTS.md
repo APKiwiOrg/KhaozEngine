@@ -71,6 +71,7 @@ Also run the checks appropriate to the files changed. Repository governance chan
 ```sh
 sh scripts/check-dashes.sh --tree
 sh scripts/check-prose.sh --tree
+sh scripts/check-home-paths.sh --tree
 sh scripts/check-file-size.sh --tree
 sh scripts/check-agent-instructions.sh --tree
 bash scripts/check-doc-versions.sh

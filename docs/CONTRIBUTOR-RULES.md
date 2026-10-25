@@ -125,6 +125,17 @@ run, or on any lookup doubt, the tag runs the whole manual path and publishes. O
 Convention, instruction budget and doc-version checks run before both paths. See
 [`design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md`](design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md).
 
+The whole-tree convention checks are `scripts/check-dashes.sh`, `scripts/check-prose.sh`,
+`scripts/check-file-size.sh`, `scripts/check-agent-instructions.sh`, `scripts/check-scratch.sh` and
+`scripts/check-home-paths.sh`, each run with `--tree`. The pre-commit hook runs the staged checks.
+The home-path guard checks added staged lines by default and all tracked text with `--tree`, including
+escaped Windows paths and memory project identifiers. Use repo-relative paths, or `~/` for paths
+outside the repo. Generic `runner`, `Shared` and angle-bracket placeholder names pass. Exceptional
+synthetic fixtures are listed by pathspec in `.home-paths-ignore`, one per line with blank lines and
+`#` comments ignored. Keep exceptions narrow. Staged checks read the exception list from the index
+so an unstaged exception cannot hide a path that the commit would ship. Run the guard's tests with
+`sh scripts/tests/check-home-paths.test.sh`.
+
 Never repeat tests in a loop or add CPU load on the dev Mac, which also hosts the org's self-hosted runners.
 Flake hunts and stress proofs run through `.github/workflows/stress-test.yml`, a caller of the org's shared
 workflow in `APKiwiOrg/ci-workflows`, on a GitHub-hosted runner, and only with the owner's explicit

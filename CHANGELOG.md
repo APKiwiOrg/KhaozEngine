@@ -26938,7 +26938,7 @@ Publish hardening for every consumer game, by default. Two changes, both automat
 - No absolute build-box path in shipped DLLs. `Directory.Build.props` now sets `ContinuousIntegrationBuild=true` for
   Release builds (the configuration `dotnet pack` always runs), turning on deterministic builds + the well-known
   source-root pathmap. The source/PDB path embedded in each shipped DLL's PE debug directory is rewritten to
-  `/_/`-style instead of the packer's home path (e.g. `/Users/antonio/KhaozEngine/...`), which was recoverable via
+  `/_/`-style instead of the packer's home path (e.g. `~/KhaozEngine/...`), which was recoverable via
   `strings` even though PDBs themselves ship only in the never-pushed `.snupkg`. Local Debug builds keep real paths
   for step-into. Respects an explicit `ContinuousIntegrationBuild` override.
 

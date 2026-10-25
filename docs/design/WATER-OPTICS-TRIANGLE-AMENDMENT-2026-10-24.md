@@ -17,7 +17,7 @@ that bound. Every image matches an independent field built from the drawn triang
 witness fails both checks. The feather field holds 1052 triangles in 32 by 32 bins, with occupancy 30 and a
 certified bound of 9.86e-7 m.
 
-This amends [per-body water optics](WATER-OBJECT-OPTICS-DESIGN.md) for the failed Task 6
+This amends [per-body water optics](WATER-OBJECT-OPTICS-DESIGN-2026-10-24.md) for the failed Task 6
 saddle gate. It supersedes the bilinear-only TileWorld producer and universal four-fetch requirement.
 Existing `WaterOpticsField` callers retain their bilinear contract. All original immutable ownership,
 strict coverage, pre-record preparation, retirement, legacy compatibility and backend gates still apply.

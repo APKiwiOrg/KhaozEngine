@@ -4,8 +4,8 @@ Status: Open handoff. The native adapter is not implemented. It remains open wor
 [#1300](https://github.com/APKiwiOrg/KhaozEngine/issues/1300) until the native renderer actually prepares and
 submits an optical binding. Compilation-only MapDoc water tests are not native optical acceptance.
 
-Rationale: [per-body water optics](WATER-OBJECT-OPTICS-DESIGN.md) and its
-[triangle-backed amendment](WATER-OPTICS-TRIANGLE-AMENDMENT.md). Consumer use:
+Rationale: [per-body water optics](WATER-OBJECT-OPTICS-DESIGN-2026-10-24.md) and its
+[triangle-backed amendment](WATER-OPTICS-TRIANGLE-AMENDMENT-2026-10-24.md). Consumer use:
 [Render3D reference](../KhaozEngine.Render3D/README.md) and
 [consumer guide](../USING-KHAOZENGINE.md).
 
@@ -96,7 +96,7 @@ field's upward-rounded `ReconstructionErrorBoundMetres`. TileWorld uses `min(0.0
 binding origins to whole metres below 2^23 m. Reduction by the default quantized render origin or any 128 m
 `WorldFrame` anchor is then exact and costs nothing. Its datum 0 makes depth conversion exact as well. The
 certified bound then scales with absolute vertex height rather than depth, about 3.8e-5 m at 300 m in the
-[amendment's altitude measurement](WATER-OPTICS-TRIANGLE-AMENDMENT.md#sampling-edges-and-precision). An
+[amendment's altitude measurement](WATER-OPTICS-TRIANGLE-AMENDMENT-2026-10-24.md#sampling-edges-and-precision). An
 explicit off-grid render origin override is outside that certificate. R8b selects and records its own bound before
 acceptance. It does not receive a second independent allowance.
 

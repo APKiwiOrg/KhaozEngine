@@ -7,11 +7,11 @@ were also approved on 2026-10-24. Engine Tasks 1 through 7 are authorized, with 
 by its Grimhollow coordinator. Release authorization is separate and requires approval of the exact tag.
 Implemented, staged for 21.14.0. Water optics checks passed on hosted Metal, D3D11 and Vulkan (run 40155111807).
 Consumer Task 8 and native R8b remain open under https://github.com/APKiwiOrg/KhaozEngine/issues/1300.
-The native adapter contract is recorded in the [R8b handoff](WATER-OPTICS-R8B-HANDOFF.md).
+The native adapter contract is recorded in the [R8b handoff](WATER-OPTICS-R8B-HANDOFF-2026-10-24.md).
 
 Open work is tracked in https://github.com/APKiwiOrg/KhaozEngine/issues/1300.
 
-Execution amendment: [triangle-backed optical beds](WATER-OPTICS-TRIANGLE-AMENDMENT.md)
+Execution amendment: [triangle-backed optical beds](WATER-OPTICS-TRIANGLE-AMENDMENT-2026-10-24.md)
 supersedes this document's bilinear-only TileWorld reconstruction after the required saddle gate failed.
 The original bilinear resource remains supported. The amendment governs exact mesh-source optics,
 coverage and source-generation publication without changing terrain geometry or bank feathering.

@@ -22,6 +22,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     internal long WorkspaceBytes => _bytes.WorkspaceBytes;
     internal long RetainedBytes => _bytes.RetainedBytes;
     internal long PeakBytes => _bytes.PeakBytes;
+    internal MapPreparationLedger.PeakObservation ObservePeak() => _bytes.ObservePeak();
     internal object WindowIdentity => _bytes.WindowIdentity;
     internal IDisposable? ReferenceWindow(long bytes, object? origin = null, ICollection<object>? references = null)
         => _bytes.ReferenceWindow(bytes, origin, references);

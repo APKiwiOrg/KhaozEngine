@@ -15,15 +15,17 @@ internal sealed class MapPrismValidationWorkspace : IDisposable
     readonly MapPrismValidationWorkspace? _previous;
     readonly MapSceneAdmission _admission;
     readonly MapPreparationScope _scope;
+    readonly MapPreparationLedger.PeakObservation _peak;
     readonly MapRoofPreparationCounts _counts;
     readonly Dictionary<string, MapPreparationReservation> _indexes = new(StringComparer.Ordinal);
     internal static MapSceneAdmission? Admission => t_current?._admission;
     internal MapPrismValidationWorkspace(MapSceneAdmission admission, MapRoofPreparationCounts counts, int records)
     {
         _admission = admission; _counts = counts; _previous = t_current;
+        _peak = admission.ObservePeak();
         _scope = admission.BeginPreparation();
         try { _scope.Reserve(checked(32768L + 256L * records)); }
-        catch { _scope.Dispose(); throw; }
+        catch { _scope.Dispose(); _peak.Dispose(); throw; }
         t_current = this;
     }
     internal static void PartitionIndex(string owner, int count)
@@ -108,6 +110,6 @@ internal sealed class MapPrismValidationWorkspace : IDisposable
         else current._counts.PeakValidationCandidates = Math.Max(current._counts.PeakValidationCandidates, count);
         current.Observe();
     }
-    void Observe() => _counts.ValidationPeakBytes = Math.Max(_counts.ValidationPeakBytes, _admission.WorkspaceBytes + _admission.RetainedBytes);
-    public void Dispose() { Observe(); ReleasePartitionIndexes(); _scope.Dispose(); t_current = _previous; }
+    void Observe() => _counts.ValidationPeakBytes = Math.Max(_counts.ValidationPeakBytes, _peak.Bytes);
+    public void Dispose() { Observe(); ReleasePartitionIndexes(); _scope.Dispose(); _peak.Dispose(); t_current = _previous; }
 }

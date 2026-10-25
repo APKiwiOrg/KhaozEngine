@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -57,9 +58,17 @@ public sealed class MapScopedScene
         ArgumentNullException.ThrowIfNull(scope);
         var prior = Scope.Surfaces.Limits;
         var requested = scope.Surfaces.Limits;
+        var priorRefinement = prior.Refinement ?? new MapRefinementLimits();
+        var requestedRefinement = requested.Refinement ?? new MapRefinementLimits();
         if (requested.MaxCandidatePatches > prior.MaxCandidatePatches || requested.MaxInspectedFaces > prior.MaxInspectedFaces ||
             requested.MaxSupportIntersections > prior.MaxSupportIntersections || requested.MaxPageReads > prior.MaxPageReads ||
-            requested.MaxRecordReads > prior.MaxRecordReads || requested.MaxRecordDepth > prior.MaxRecordDepth)
+            requested.MaxRecordReads > prior.MaxRecordReads || requested.MaxRecordDepth > prior.MaxRecordDepth ||
+            requestedRefinement.MaxSourceFacesPerBound > priorRefinement.MaxSourceFacesPerBound ||
+            requestedRefinement.MaxPairChecks > priorRefinement.MaxPairChecks ||
+            requestedRefinement.MaxRefinementFaces > priorRefinement.MaxRefinementFaces ||
+            requestedRefinement.MaxRefinementVertices > priorRefinement.MaxRefinementVertices ||
+            requestedRefinement.MaxContextPatches > priorRefinement.MaxContextPatches ||
+            requestedRefinement.MaxContextFaces > priorRefinement.MaxContextFaces)
             return new(MapSceneStatus.Invalid, null, Witness with
             {
                 ScopeDigest = scope.Digest,

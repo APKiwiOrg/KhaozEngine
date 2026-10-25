@@ -187,7 +187,8 @@ consumers must require before accepting a render plan. Neutral simulation acquis
 `MapSceneWitness` distinguishes required, present, known-empty and unavailable resources. A refusal has no usable
 scene, no completeness claim and a finding. Whole-world completeness additionally requires checked source coverage.
 `scene.AcquireDependencies(scope)` uses the same immutable source generation and ceilings. It cannot refresh or
-increase the captured query budgets. A manifest replacement is Stale even when the requested payloads still exist.
+increase the captured query budgets, including all six refinement ceilings. A null refinement policy means the
+default ceilings for this comparison. A manifest replacement is Stale even when the requested payloads still exist.
 
 Source ceilings bound tiles, metadata rows, memberships, scanned bytes and retained metadata before retention.
 Acquisition ceilings separately bound selected resources, patch scopes, prepared faces and peak workspace plus retained inventory.

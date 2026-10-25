@@ -151,8 +151,9 @@ clipped endpoint. For each bin the constructor sums the largest jump of every di
 also takes the largest point-only jump. The largest bin total is charged to `ReconstructionErrorBoundMetres`.
 A query and its mapped point share one expanded bin. Moved into the interiors of their triangles, the straight
 segment between them avoids every vertex and crosses each supporting line at most once, so the bin total bounds
-every jump it crosses. Closed predicates and the first ordinal still settle boundary ownership, and the owner is
-then within the bound of every drawn triangle containing the query. A continuous bed is charged nothing. A total
+every jump it crosses. Closed predicates and the first ordinal still settle boundary ownership. For every query
+whose exact local point lies in a certified rectangle, the owner is then within the bound of every drawn triangle
+containing the query. A continuous bed is charged nothing. A total
 above 0.0001 m with sampler error refuses as `AmbiguousSurface`. The mesher, terrain topology and LOD are unchanged.
 
 CPU and shader arithmetic and operation ordering must be explicit and independently tested. Canonical

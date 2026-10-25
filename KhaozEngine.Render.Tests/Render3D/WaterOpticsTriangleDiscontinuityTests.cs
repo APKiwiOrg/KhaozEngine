@@ -151,4 +151,38 @@ public sealed class WaterOpticsTriangleDiscontinuityTests
         var error = Assert.Throws<WaterOpticsSurfaceException>(() => Build(triangles));
         Assert.Equal(WaterOpticsSurfaceFailure.AmbiguousSurface, error.Reason);
     }
+
+    // Unit-wide flat strips side by side in one bin, each at its own constant depth. Flat triangles have exactly
+    // zero interpolation and mapping error, so the seam charge is the whole reconstruction bound.
+    static WaterOpticsTriangleField FlatStrips(params float[] depths)
+    {
+        var triangles = new List<WaterOpticsTriangle>();
+        for (int x = 0; x < depths.Length; x++)
+        {
+            float y = depths[x];
+            triangles.Add(new(new(x, y, 0), new(x + 1, y, 0), new(x + 1, y, 1)));
+            triangles.Add(new(new(x, y, 0), new(x + 1, y, 1), new(x, y, 1)));
+        }
+        var size = new Vector2(depths.Length, 1);
+        return new WaterOpticsTriangleField(size, 1, 1, [.. triangles], [new(Vector2.Zero, size)]);
+    }
+
+    [Fact]
+    public void ContinuousFlatStripsCarryNoBound() =>
+        Assert.Equal(0f, FlatStrips(0.5f, 0.5f, 0.5f).ReconstructionErrorBoundMetres);
+
+    [Fact]
+    public void OneSeamChargesItsExactJump()
+    {
+        float step = MathF.ScaleB(1f, -20);
+        Assert.Equal(step, FlatStrips(0.5f, 0.5f + step).ReconstructionErrorBoundMetres);
+    }
+
+    [Fact]
+    public void TwoSeamsInOneBinChargeTheSumOfTheirJumps()
+    {
+        // Seams of 2^-20 and 2^-21 on two lines. A single maximum would charge only 2^-20.
+        float step = MathF.ScaleB(1f, -20), half = MathF.ScaleB(1f, -21);
+        Assert.Equal(1.5f * step, FlatStrips(0.5f, 0.5f + step, 0.5f + step + half).ReconstructionErrorBoundMetres);
+    }
 }

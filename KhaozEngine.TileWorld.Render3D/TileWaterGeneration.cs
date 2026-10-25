@@ -74,7 +74,11 @@ internal sealed class TileWaterGeneration : IDisposable
         Look = preparation.Look;
         try
         {
-            foreach (TileWaterTriangleBuild field in Fields) _handles.Add(scene!.LoadWaterOpticsTriangles(field.Field));
+            foreach (TileWaterTriangleBuild field in Fields)
+            {
+                try { _handles.Add(scene!.LoadWaterOpticsTriangles(field.Field)); }
+                catch (WaterOpticsSurfaceException refused) { throw new TileWaterFieldRefusedException(field, refused); }
+            }
             for (int i = 0; i < Planes.Length; i++)
             {
                 _planeFields[i] = -1;
@@ -139,4 +143,13 @@ internal sealed class TileWaterGeneration : IDisposable
         foreach (WaterOpticsHandle handle in _handles) _scene!.UnloadWaterOpticsField(handle);
         _handles.Clear();
     }
+}
+
+/// <summary>The backend refused one field's scalars before allocating. Names that field, so the refusal reports
+/// its own reference level and domain.</summary>
+internal sealed class TileWaterFieldRefusedException(TileWaterTriangleBuild field, WaterOpticsSurfaceException refused)
+    : Exception(refused.Message, refused)
+{
+    internal TileWaterTriangleBuild Field { get; } = field;
+    internal WaterOpticsSurfaceFailure Reason { get; } = refused.Reason;
 }

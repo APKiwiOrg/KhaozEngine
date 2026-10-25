@@ -291,32 +291,43 @@ public sealed partial class TileWorldView
     }
 
     // A padding change rebuilds against unchanged accepted sources. A refused wider preparation may keep its old
-    // generation only when that generation's certificates still contain the new displacement.
+    // generation only when that generation's certificates still contain the new displacement. Withdrawn water asks
+    // for a ground rebuild only when no replacement or refusal was committed here.
     void RefreshWater((RegionCoord Region, int Plane) key, float padding)
     {
         _publication.Resident.TryGetValue(key, out TileWaterGeneration? old);
-        if (old is not null && !old.Covers(padding))
+        bool withdrawn = old is not null && !old.Covers(padding);
+        if (withdrawn)
         {
-            WithdrawWater(key.Region, key.Plane);
+            _publication.Withdraw(key);
             old = null;
         }
-        TileWaterPreparation? prepared = CaptureWater(key.Region, key.Plane);
-        if (prepared is null) return;
-        TileWaterPublication.Group group = _publication.Stage(key.Region, key.Plane, changesSource: false, null,
-            prepared, _acceptedSurface, WaterSources);
-        TileWaterPublication.Member member = group.Members[0];
-        member.Staged?.SetLook(_options.WaterLook);
-        _publication.Revalidate(group, WaterInputsCurrent, WaterSources);
-        if (member.Dropped || (member.Outcome.Failure is not null && old is not null))
+        bool committed = false;
+        try
         {
-            _publication.Discard(group);
-            if (member.Outcome.Failure is { } kept) _publication.RecordFailure(key, kept);
-            // Latch the refused preparation. Only an announced source or settings change retries it.
-            _waterAttempts[key] = CurrentWaterAttempt(padding);
-            if (member.Dropped) Queue(key.Region, key.Plane);
-            return;
+            TileWaterPreparation? prepared = CaptureWater(key.Region, key.Plane);
+            if (prepared is null) return;
+            TileWaterPublication.Group group = _publication.Stage(key.Region, key.Plane, changesSource: false, null,
+                prepared, _acceptedSurface, WaterSources);
+            TileWaterPublication.Member member = group.Members[0];
+            member.Staged?.SetLook(_options.WaterLook);
+            _publication.Revalidate(group, WaterInputsCurrent, WaterSources);
+            if (member.Dropped || (member.Outcome.Failure is not null && old is not null))
+            {
+                _publication.Discard(group);
+                if (member.Outcome.Failure is { } kept) _publication.RecordFailure(key, kept);
+                // Latch the refused preparation. Only an announced source or settings change retries it.
+                _waterAttempts[key] = CurrentWaterAttempt(padding);
+                if (member.Dropped) Queue(key.Region, key.Plane);
+                return;
+            }
+            _publication.Commit(group, Queue);
+            committed = true;
         }
-        _publication.Commit(group, Queue);
+        finally
+        {
+            if (withdrawn && !committed && _loaded.ContainsKey(key.Region)) Queue(key.Region, key.Plane);
+        }
     }
 
     void SweepWaterMetadata()

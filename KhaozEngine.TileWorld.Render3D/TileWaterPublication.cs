@@ -107,11 +107,12 @@ internal sealed class TileWaterPublication
                 {
                     member.Staged = new TileWaterGeneration(member.Preparation, member.Outcome, _scene);
                 }
-                catch (WaterOpticsSurfaceException refused)
+                catch (TileWaterFieldRefusedException refused)
                 {
                     // The backend refused a scalar before allocating. That refuses this member, not the group.
                     member.Outcome = member.Outcome.Refused(new TileWaterOpticsFailure(member.Key.Region,
-                        member.Key.Plane, member.Outcome.Fields[0].Origin.Y, TileWaterTrianglePreparation.Kind(refused.Reason)));
+                        member.Key.Plane, refused.Field.Origin.Y, TileWaterTrianglePreparation.Kind(refused.Reason),
+                        Domain: refused.Field.Domain));
                 }
             }
         }

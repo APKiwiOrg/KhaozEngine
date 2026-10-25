@@ -59,8 +59,9 @@ internal static class TileWaterTrianglePreparation
     // Every bin axis doubles per attempt, from one bin per field tile up to the 1024 axis limit.
     internal const int MaxPackingAttempts = 11;
     const double Binary64Slack = 1d / (1L << 50);
-    // Binding origins at or beyond 2^24 m have no exact whole-metre reduction guarantee.
-    internal const double MaxOriginMetres = 16777216d;
+    // Binding origins at or beyond 2^23 m are refused. WorldFrame anchors reach at most 32768 * 128 m = 2^22 m, so
+    // a whole-metre origin minus any anchor stays an integer below 2^24 m, exact in binary32.
+    internal const double MaxOriginMetres = 8388608d;
 
     internal static TileWaterOpticsFailureKind Kind(WaterOpticsSurfaceFailure reason) => reason switch
     {
@@ -226,7 +227,7 @@ internal static class TileWaterTrianglePreparation
                 {
                     support.Add(new TileWaterTriangleOutcome.Support(snapshot, k));
                     TileGroundSurfaceRange range = snapshot.SourceWitness.Ranges[k];
-                    int end = range.FirstIndex + range.IndexCount - range.IndexCount % 3;
+                    int end = TriangleEnd(range);
                     for (int i = range.FirstIndex; i < end; i++)
                     {
                         Vertex v = Transform(positions[(int)indices[i]], m);
@@ -239,8 +240,8 @@ internal static class TileWaterTrianglePreparation
                 }
             }
             if (vertices.Count == 0) return Fail(TileWaterOpticsFailureKind.IncompleteSurfaceCoverage);
-            // Whole-metre binding origin. WorldFrame anchors are integer multiples of 128 m, so an integer origin
-            // below 2^24 m minus any anchor is an integer of magnitude below 2^25, exact in binary32 for every anchor.
+            // Whole-metre binding origin below 2^23 m. Every WorldFrame anchor is an integer multiple of 128 m of
+            // magnitude at most 2^22 m, so origin minus anchor is an integer below 2^24 m, exact in binary32.
             double flooredX = Math.Floor(minX), flooredZ = Math.Floor(minZ);
             if (!(Math.Abs(flooredX) < MaxOriginMetres && Math.Abs(flooredZ) < MaxOriginMetres))
                 return Fail(TileWaterOpticsFailureKind.UnrepresentableSurface);
@@ -278,9 +279,10 @@ internal static class TileWaterTrianglePreparation
             if (triangles.Count == 0 || sizeX <= 0f || sizeZ <= 0f)
                 return Fail(TileWaterOpticsFailureKind.IncompleteSurfaceCoverage);
 
-            // Render-origin reduction is charged zero: the binding origin is a whole metre below 2^24 m and every
-            // WorldFrame anchor is a multiple of 128 m, so origin minus anchor is exact for every anchor. Source
-            // conversion error against that origin costs depth directly and through each triangle's slope.
+            // Render-origin reduction is charged zero only for the default quantized render origin and any other
+            // 128 m WorldFrame anchor, where origin minus anchor is exact. An explicit non-grid Scene3D.RenderOrigin
+            // override rounds the reduced origin like all other submitted geometry and is outside this certificate.
+            // Source conversion error against the origin costs depth directly and through each triangle's slope.
             double conversion = 0;
             foreach ((double depth, double horizontal, double slope) in errors)
                 conversion = Math.Max(conversion, depth + slope * horizontal);
@@ -360,6 +362,13 @@ internal static class TileWaterTrianglePreparation
             return (Math.Abs(gx) + Math.Abs(gz)) * (1 + 1e-9);
         }
     }
+
+    /// <summary>The exclusive index end of a range's whole triangles. A partial triangle is a producer defect and
+    /// is refused, never trimmed.</summary>
+    internal static int TriangleEnd(TileGroundSurfaceRange range) => range.IndexCount % 3 == 0
+        ? range.FirstIndex + range.IndexCount
+        : throw new InvalidOperationException(
+            $"Surface range at index {range.FirstIndex} holds {range.IndexCount} indices, not whole triangles.");
 
     static float Down(double value)
     {

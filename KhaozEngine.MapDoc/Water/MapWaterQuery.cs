@@ -154,7 +154,11 @@ public sealed class MapWaterQuery
             set.Bodies.Add(body);
             // The captured medium participates in the full containment/compile path too.
             set.Media.AddRange(_snapshot.Media);
+            var admission = _view.Scope.SceneAdmission ?? Scene.MapSceneAdmission.Current;
+            using var admitted = admission?.Enter();
+            using var preparation = admission?.BeginPreparation();
             var compiled = MapWaterCompiler.Compile(_view, set).Single();
+            preparation?.Complete(new MapWaterInventory().Body(compiled));
             var status = compiled.Status switch
             {
                 MapWaterCompileStatus.Incomplete => MapWaterStatus.MissingGeometry,

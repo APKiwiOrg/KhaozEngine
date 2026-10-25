@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -36,6 +38,9 @@ internal static class MapWaterBoundReads
     internal static MapWaterBoundRead Read(MapScopedSurfaces view, MapSpaceFootprint footprint, MapBoundRef bound,
         MapExactXz min, MapExactXz max, MapRefinementLimits limits, MapWaterWorkMeter meter, bool upper)
     {
+        var admission = view.Scope.SceneAdmission ?? MapSceneAdmission.Current;
+        using var admitted = admission?.Enter();
+        using var preparation = admission?.BeginPreparation();
         if (bound.Kind == MapBoundKind.OpenTop) throw new ArgumentException("an open top has no faces", nameof(bound));
         MapHorizontalOpening? opening = null;
         if (bound.Kind == MapBoundKind.HorizontalOpening)
@@ -51,6 +56,7 @@ internal static class MapWaterBoundReads
         MapSurfaceRef? surface = view.Surfaces.FirstOrDefault(s => s.Id == surfaceId);
         if (surface is null) return Unread(surfaceId, $"surface '{surfaceId}' is unavailable");
 
+        preparation?.Reserve(128);
         var faces = new List<MapBoundFace>();
         var compatibility = new List<MapLegacyCellTag>();
         var read = new List<MapPatchKey>();
@@ -80,11 +86,15 @@ internal static class MapWaterBoundReads
                     gap ??= $"patch {key}: {status} without payload";
                     continue;
                 }
+                Grow(read, 1, preparation);
                 read.Add(key);
                 long x0 = Math.Max(range.MinX, sx * MapPatchKey.SlotCells), x1 = Math.Min(range.MaxXExclusive, (sx + 1) * MapPatchKey.SlotCells);
                 long z0 = Math.Max(range.MinZ, sz * MapPatchKey.SlotCells), z1 = Math.Min(range.MaxZExclusive, (sz + 1) * MapPatchKey.SlotCells);
                 foreach (Chunk chunk in Chunks(x0, z0, x1, z1, limit, (x, z) => Faces(surface, patch, opening, x, z)))
                 {
+                    // BoundFaces copies value faces out of its local and transformed compiled products.
+                    // Their receipts, and the read/index envelope, end before the next chunk starts.
+                    using var chunkPreparation = admission?.BeginPreparation();
                     if (chunk.Faces < 0) return Failure(MapRefinementStatus.CapacityExceeded, "water bound read: source faces in one cell", surface, read);
                     // A face-free chunk can still carry legacy compatibility coverage, which only a legacy recipe tags.
                     if (chunk.Faces == 0 && bound.Kind != MapBoundKind.LegacyExteriorV1) continue;
@@ -100,13 +110,29 @@ internal static class MapWaterBoundReads
                         continue;
                     }
                     if (set.Status != MapRefinementStatus.Complete) return Failure(set.Status, set.Detail, surface, read);
+                    Grow(faces, set.Faces.Count, preparation);
                     faces.AddRange(set.Faces);
+                    Grow(compatibility, set.Compatibility.Count, preparation);
                     compatibility.AddRange(set.Compatibility);
                     meter.CountFaces(upper, set.Faces.Count);
                 }
             }
+        preparation?.Complete(checked(128L + (long)faces.Capacity * Unsafe.SizeOf<MapBoundFace>() +
+            (long)compatibility.Capacity * Unsafe.SizeOf<MapLegacyCellTag>() + (long)read.Capacity * Unsafe.SizeOf<MapPatchKey>()));
         return new(gap is null ? MapRefinementStatus.Complete : MapRefinementStatus.MissingGeometry, gap, surface.Frame, faces.AsReadOnly(),
             compatibility.AsReadOnly(), read.AsReadOnly(), surface.Id, gap);
+    }
+
+    static void Grow<T>(List<T> values, int additional, MapPreparationScope? preparation)
+    {
+        int count = checked(values.Count + additional);
+        if (count <= values.Capacity) return;
+        int previous = values.Capacity;
+        int capacity = Math.Max(count, checked(Math.Max(4, previous * 2)));
+        long bytes = checked((long)capacity * Unsafe.SizeOf<T>());
+        preparation?.Reserve(bytes);
+        values.Capacity = capacity;
+        preparation?.Release(checked((long)previous * Unsafe.SizeOf<T>()));
     }
 
     /// <summary>The released face count of one lattice cell of the bound: an opening counts only its own cells.</summary>

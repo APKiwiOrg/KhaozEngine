@@ -46,6 +46,7 @@ public static class MapBoundDocumentValidation
     {
         ArgumentNullException.ThrowIfNull(resources);
         ArgumentNullException.ThrowIfNull(assets);
+        using var preparation = Scene.MapSceneAdmission.Current?.BeginPreparation();
         if (resources.Water is not { } water) return;
         RequireWaterMaterials(water, assets);
         foreach (var body in MapWaterCompiler.Compile(resources.CompleteView(), water))

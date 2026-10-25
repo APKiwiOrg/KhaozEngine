@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
@@ -30,6 +31,12 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
     }
 
     internal static SpriteBatchMaskedTestRig Create() => new();
+
+    internal static Texture2D Sprite() => Texture2D.Wrap(new FakeTexture(4, 4, 1, 1,
+        GpuPixelFormat.R8G8B8A8UNorm), 4, 4);
+
+    internal static RecordedVertex[] Vertices(VertexUpload upload) =>
+        MemoryMarshal.Cast<byte, RecordedVertex>(upload.Data).ToArray();
 
     internal MaskedSpriteBatchResources? MaskedOwner =>
         (MaskedSpriteBatchResources?)typeof(SpriteBatch).GetField("_maskedResources", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Batch);
@@ -69,6 +76,9 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
 
     internal enum ConstructionFailure { None, Layout, Shader, FirstPipeline, SecondPipeline }
     internal readonly record struct VertexUpload(IGpuBuffer Buffer, uint Offset, byte[] Data);
+    [StructLayout(LayoutKind.Sequential)]
+    internal readonly record struct RecordedVertex(Vector2 Pos, Vector2 Uv, Vector4 Color,
+        Vector2 Local, Vector4 Shape, Vector2 Mode);
     internal readonly record struct DrawBinding(IGpuPipeline? Pipeline, IGpuResourceSet? Set0,
         IGpuResourceSet? Set1, uint DynamicOffset, IGpuBuffer? VertexBuffer,
         uint VertexBufferOffset, uint VertexCount, uint InstanceCount, uint VertexStart, uint InstanceStart);

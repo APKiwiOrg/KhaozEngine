@@ -14,6 +14,151 @@ public class SpriteBatchMaskedBatchTests
 {
     static FakeTexture Texture() => new(4, 4, 1, 1, GpuPixelFormat.R8G8B8A8UNorm);
 
+    static void Masked(SpriteBatch batch, Texture2D source, Texture2D mask,
+        SamplerMode maskSampler = SamplerMode.Linear) =>
+        batch.DrawMasked(source, new Vector4(10, 20, 30, 40),
+            new Vector4(0.125f, 0.25f, 0.625f, 0.75f), mask,
+            new Vector4(0.3f, 0.4f, 0.7f, 0.9f), Color.White, maskSampler);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ConsecutiveSameBindingCoalesces(bool group)
+    {
+        using var rig = Create();
+        using var source = Sprite();
+        using var mask = Sprite();
+        rig.Frame(batch => { Masked(batch, source, mask); Masked(batch, source, mask); },
+            sourceSampler: SamplerMode.Point, group: group);
+
+        int sameTupleDrawCount = rig.Draws.Count;
+        Assert.Equal(1, sameTupleDrawCount);
+        var draw = Assert.Single(rig.Draws);
+        Assert.Equal(12u, draw.VertexCount);
+        Assert.Equal(0u, draw.VertexStart);
+        Assert.Equal(1u, draw.InstanceCount);
+        Assert.Equal(0u, draw.InstanceStart);
+        Assert.Same(rig.VertexUploads[0].Buffer, draw.VertexBuffer);
+        Assert.Same(rig.Factory.ResourceSets[0], draw.Set1);
+        Assert.Equal(0u, draw.DynamicOffset);
+        Assert.Equal(new IGpuBindableResource[] { source.Handle, rig.Device.PointSampler,
+            mask.Handle, rig.Device.LinearSampler }, Assert.IsType<FakeResourceSet>(draw.Set0).Resources);
+        Assert.Same(rig.MaskedOwner!.PipelineFor(BlendMode.Alpha), draw.Pipeline);
+        Assert.Equal(2, rig.Batch.FrameStats.Quads);
+        Assert.Equal(1, rig.Batch.FrameStats.Flushes);
+        Assert.Equal(768, rig.Batch.FrameStats.SpriteUploadBytes);
+    }
+
+    [Fact]
+    public void DifferentMasksSplitAndPreserveOrder()
+    {
+        using var rig = Create();
+        using var source = Sprite();
+        using var maskA = Sprite();
+        using var maskB = Sprite();
+        rig.Frame(batch =>
+        {
+            Masked(batch, source, maskA);
+            Masked(batch, source, maskB);
+            Masked(batch, source, maskA);
+        });
+
+        int orderedMaskABADrawCount = rig.Draws.Count;
+        int maskOnlyTextureSwitches = rig.Batch.FrameStats.TextureSwitches;
+        Assert.Equal(3, orderedMaskABADrawCount);
+        Assert.Equal(1, maskOnlyTextureSwitches);
+        Assert.Equal(new[] { maskA.Handle, maskB.Handle, maskA.Handle },
+            rig.Draws.Select(draw => Assert.IsType<FakeResourceSet>(draw.Set0).Resources[2]));
+        Assert.Equal(new uint[] { 0, 6, 12 }, rig.Draws.Select(draw => draw.VertexStart));
+        Assert.Equal(new uint[] { 0, 384, 768 }, rig.VertexUploads.Select(upload => upload.Offset));
+        Assert.All(rig.Draws, draw => Assert.Equal(6u, draw.VertexCount));
+        Assert.All(rig.Draws, draw => Assert.Same(rig.VertexUploads[0].Buffer, draw.VertexBuffer));
+        Assert.Same(rig.Draws[0].Set0, rig.Draws[2].Set0);
+        Assert.Equal(3, rig.Batch.FrameStats.DrawCalls);
+        Assert.Equal(1152, rig.Batch.FrameStats.SpriteUploadBytes);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DifferentSourcesSplitEvenWithSameMask(bool group)
+    {
+        using var rig = Create();
+        using var sourceA = Sprite();
+        using var sourceB = Sprite();
+        using var mask = Sprite();
+        rig.Frame(batch => { Masked(batch, sourceA, mask); Masked(batch, sourceB, mask); }, group: group);
+
+        int distinctSourceDrawCount = rig.Draws.Count;
+        int distinctSourceTextureSwitches = rig.Batch.FrameStats.TextureSwitches;
+        Assert.Equal(2, distinctSourceDrawCount);
+        Assert.Equal(2, distinctSourceTextureSwitches);
+        Assert.Equal(new[] { sourceA.Handle, sourceB.Handle },
+            rig.Draws.Select(draw => Assert.IsType<FakeResourceSet>(draw.Set0).Resources[0]));
+    }
+
+    [Fact]
+    public void GroupingRetainsMaskBlendAndSamplerKeys()
+    {
+        using var rig = Create();
+        using var source = Sprite();
+        using var maskA = Sprite();
+        using var maskB = Sprite();
+        rig.Frame(batch =>
+        {
+            Masked(batch, source, maskA);
+            Masked(batch, source, maskB);
+            Masked(batch, source, maskA);
+            batch.BlendMode = BlendMode.Additive;
+            Masked(batch, source, maskA);
+            Masked(batch, source, maskA, SamplerMode.Point);
+        }, group: true);
+
+        Assert.Equal(new uint[] { 12, 6, 6, 6 }, rig.Draws.Select(draw => draw.VertexCount));
+        Assert.Equal(new uint[] { 0, 12, 18, 24 }, rig.Draws.Select(draw => draw.VertexStart));
+        Assert.Equal(new[] { maskA.Handle, maskB.Handle, maskA.Handle, maskA.Handle },
+            rig.Draws.Select(draw => Assert.IsType<FakeResourceSet>(draw.Set0).Resources[2]));
+        Assert.Same(rig.Draws[0].Set0, rig.Draws[2].Set0);
+        Assert.Same(rig.MaskedOwner!.PipelineFor(BlendMode.Alpha), rig.Draws[0].Pipeline);
+        Assert.Same(rig.MaskedOwner.PipelineFor(BlendMode.Additive), rig.Draws[2].Pipeline);
+        Assert.Same(rig.Device.PointSampler, Assert.IsType<FakeResourceSet>(rig.Draws[3].Set0).Resources[3]);
+        Assert.Equal(1, rig.Batch.FrameStats.TextureSwitches);
+        Assert.Equal(1920, rig.Batch.FrameStats.SpriteUploadBytes);
+    }
+
+    [Fact]
+    public void MixedRunsRestoreOrdinaryBindingsAndUseCurrentVpSlot()
+    {
+        using var rig = Create();
+        using var source = Sprite();
+        using var mask = Sprite();
+        rig.Frame(batch =>
+        {
+            batch.Draw(source, new Vector4(10, 20, 30, 40), Color.White);
+            Masked(batch, source, mask);
+            batch.Draw(source, new Vector4(10, 20, 30, 40), Color.White);
+            batch.End();
+            batch.Begin(SamplerMode.Point);
+            Masked(batch, source, mask);
+        });
+
+        Assert.Equal(4, rig.Draws.Count);
+        Assert.Equal(new uint[] { 0, 6, 12, 0 }, rig.Draws.Select(draw => draw.VertexStart));
+        Assert.Equal(new uint[] { 0, 0, 0, 256 }, rig.Draws.Select(draw => draw.DynamicOffset));
+        Assert.All(rig.Draws, draw => Assert.Same(rig.Factory.ResourceSets[0], draw.Set1));
+        Assert.Same(rig.Factory.Pipelines[0], rig.Draws[0].Pipeline);
+        Assert.Same(rig.Factory.Pipelines[0], rig.Draws[2].Pipeline);
+        Assert.Same(rig.Factory.Pipelines[2], rig.Draws[1].Pipeline);
+        Assert.Same(rig.Factory.Pipelines[2], rig.Draws[3].Pipeline);
+        Assert.Same(rig.Draws[0].Set0, rig.Draws[2].Set0);
+        Assert.Equal(2, Assert.IsType<FakeResourceSet>(rig.Draws[2].Set0).Resources.Length);
+        Assert.Equal(rig.VertexUploads[0].Data, rig.VertexUploads[2].Data);
+        Assert.Same(rig.Device.PointSampler, Assert.IsType<FakeResourceSet>(rig.Draws[3].Set0).Resources[1]);
+        Assert.NotSame(rig.Draws[0].VertexBuffer, rig.Draws[3].VertexBuffer);
+        Assert.Equal(1, rig.Batch.FrameStats.TextureSwitches);
+        Assert.Equal(2, rig.Batch.FrameStats.Flushes);
+    }
+
     [Fact]
     public void CanonicalKeysIncludeBothTexturesBothSamplersAndBlend()
     {

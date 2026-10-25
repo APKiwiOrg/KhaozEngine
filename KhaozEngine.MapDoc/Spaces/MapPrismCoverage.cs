@@ -46,6 +46,7 @@ public static class MapPrismCoverage
             if (partition.Status != MapRefinementStatus.Complete) throw MapOccupiedPartitions.Refusal(partition.Status, partition.Detail);
             var raw = partition.Pieces;
             var work = new MapWaterWorkBudget(limits.MaxPairChecks);
+            MapPrismValidationWorkspace.Reserve(checked(512L + 256L * raw.Count));
             var bounds = raw.Select(p => MapWaterPolygons.Bounds.Of(p.Polygon)).ToArray();
             // Exact bounds broad phases. A parent or peer piece whose bounds do not overlap shares no positive area, so
             // skipping it changes no result. Each candidate is charged once, in the released visiting order. One sweep
@@ -56,13 +57,16 @@ public static class MapPrismCoverage
             var near = new Dictionary<(string Prism, int Piece), List<int>>();
             foreach (var group in prisms.GroupBy(p => owners[p.Id], StringComparer.Ordinal))
             {
+                using var groupWorkspace = MapPrismValidationWorkspace.Admission?.BeginPreparation();
                 var parents = bySpace[group.Key].ToArray();
                 var pieces = group.SelectMany(p => Enumerable.Range(0, domains[p.Id].Pieces.Count).Select(i => (Prism: p.Id, Piece: i))).ToArray();
                 foreach (var (left, right) in MapWaterBoundsSweep.Cross(pieces.Select(p => domains[p.Prism].PieceBounds(p.Piece)).ToArray(),
-                    parents.Select(i => bounds[i]).ToArray()))
+                    parents.Select(i => bounds[i]).ToArray(), long.MaxValue, MapPrismValidationWorkspace.Admission)! )
                 {
+                    MapPrismValidationWorkspace.Reserve(64);
                     if (!near.TryGetValue(pieces[left], out var list)) near.Add(pieces[left], list = new());
                     list.Add(parents[right]);
+                    MapPrismValidationWorkspace.Candidates(list.Count);
                 }
             }
             foreach (var prism in prisms)
@@ -73,9 +77,12 @@ public static class MapPrismCoverage
                 for (int i = 0; i < domain.Pieces.Count; i++)
                     foreach (var convex in domain.ConvexParts(i, work))
                     {
+                        using var convexWorkspace = MapPrismValidationWorkspace.Kernel(convex.Count);
                         var polygon = convex;
                         var extent = MapWaterPolygons.Bounds.Of(polygon);
                         var uncovered = new List<IReadOnlyList<MapWideXz>> { polygon };
+                        MapPrismValidationWorkspace.Candidates(uncovered.Count, uncovered: true);
+                        using var fragments = MapPrismValidationWorkspace.Admission?.Workspace();
                         foreach (var parent in (near.GetValueOrDefault((prism.Id, i)) ?? []).Where(p => bounds[p].OverlapsOpen(extent)).Select(p => raw[p]))
                         {
                             work.Charge(1);
@@ -83,32 +90,19 @@ public static class MapPrismCoverage
                             if (!MapOccupiedPartitions.Positive(clip)) continue;
                             if (clip.Any(p => MapWideRational.Min(parent.Top(p) ?? hi, hi).CompareTo(MapWideRational.Max(parent.Bottom(p), lo)) <= 0))
                                 errors.Add($"prism '{prism.Id}': effective separation over parent refinement");
+                            long nextBytes = checked(128L + uncovered.Sum(p => 128L + 256L * parent.Polygon.Count * (p.Count + parent.Polygon.Count)));
+                            fragments?.Reserve(nextBytes);
                             var next = new List<IReadOnlyList<MapWideXz>>();
                             foreach (var remaining in uncovered)
                                 next.AddRange(MapOccupiedPartitions.Difference(remaining, parent.Polygon));
                             uncovered = next;
+                            if (fragments is not null && fragments.Bytes > nextBytes) fragments.Release(fragments.Bytes - nextBytes);
+                            MapPrismValidationWorkspace.Candidates(uncovered.Count, uncovered: true);
                         }
                         if (uncovered.Any(MapOccupiedPartitions.Positive)) errors.Add($"prism '{prism.Id}': outside parent footprint");
                     }
             }
-            // The sweep only compares bounds, in work proportional to the pairs whose bounds overlap or touch, and stays uncharged.
-            var peers = MapWaterBoundsSweep.Pairs(bounds, touching: false, new MapWaterWorkBudget(long.MaxValue)).Order().ToArray();
-            foreach (var (i, j) in peers)
-            {
-                var a = raw[i]; var b = raw[j];
-                if (a.SpaceId == b.SpaceId || MapOccupiedPartitions.Ancestor(view, a.SpaceId, b.SpaceId) || MapOccupiedPartitions.Ancestor(view, b.SpaceId, a.SpaceId)) continue;
-                work.Charge(1);
-                var polygon = MapOccupiedPartitions.Intersect(a.Polygon, b.Polygon);
-                if (!MapOccupiedPartitions.Positive(polygon)) continue;
-                if (a.UpperFaces is not null || a.UpperPlane is not null)
-                    polygon = MapOccupiedPartitions.Clip(polygon, p => MapOccupiedPartitions.Height(a, p, true).Subtract(MapOccupiedPartitions.Height(b, p, false)));
-                if (b.UpperFaces is not null || b.UpperPlane is not null)
-                    polygon = MapOccupiedPartitions.Clip(polygon, p => MapOccupiedPartitions.Height(b, p, true).Subtract(MapOccupiedPartitions.Height(a, p, false)));
-                if (MapOccupiedPartitions.Positive(polygon) &&
-                    polygon.Any(p => a.Top(p) is not { } ta || ta.CompareTo(b.Bottom(p)) > 0) &&
-                    polygon.Any(p => b.Top(p) is not { } tb || tb.CompareTo(a.Bottom(p)) > 0))
-                    errors.Add($"peer occupied overlap: '{a.SpaceId}' with '{b.SpaceId}'");
-            }
+            MapPrismCoveragePeers.Validate(view, raw, bounds, work, errors);
         }
         catch (Exception error) when (error is MapDocumentException or MapExactOverflowException or OverflowException)
         { errors.Add("prism coverage: " + Detail(error)); }

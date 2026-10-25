@@ -16,8 +16,11 @@ internal sealed class MapMembershipDemandPlan
     internal long Faces { get; private set; }
     internal long Associations { get; private set; }
 
-    internal MapMembershipDemandPlan(MapScopedSurfaces view, MapTopologyRecord[] records)
+    internal MapMembershipDemandPlan(MapScopedSurfaces view, MapTopologyRecord[] records, MapPreparationReservation? owner = null)
     {
+        owner?.Reserve(checked(1024L + 128L * records.Length));
+        var categories = new Dictionary<MapCellDemand, byte>();
+        var counts = MapMembershipBuild.Current?.Counts;
         var slots = new Dictionary<MapPatchKey, HashSet<int>>();
         foreach (var footprint in records.OfType<MapSpaceFootprint>())
         {
@@ -31,7 +34,7 @@ internal sealed class MapMembershipDemandPlan
             for (int z = 0; z < patch.Depth; z++)
                 for (int x = 0; x < patch.Width; x++)
                     if ((patch.Cells[z * patch.Width + x].Flags & MapCellFlags.Indoor) != 0)
-                        Add(new(patch.Key, (z + patch.CellMinZ) * 64 + x + patch.CellMinX));
+                        Add(new(patch.Key, (z + patch.CellMinZ) * 64 + x + patch.CellMinX), 2);
         }
         var bounds = new MapSpacePointBounds(view, new(MaxContextPatches: int.MaxValue), null);
         foreach (var portal in records.OfType<MapCavePortal>())
@@ -42,6 +45,7 @@ internal sealed class MapMembershipDemandPlan
         }
         foreach (var entry in slots)
         {
+            owner?.Reserve(640);
             var mask = MapSlotCellMask.Of(entry.Value);
             Patches.Add(entry.Key, mask); Cells = checked(Cells + mask.Count);
             var surface = MapMembershipPreparation.Surface(view, entry.Key.SurfaceId);
@@ -50,22 +54,46 @@ internal sealed class MapMembershipDemandPlan
             {
                 long physical = MapSurfaceCompiler.CountFaces(surface, patch!, slot);
                 int x = slot % 64 - patch!.CellMinX, z = slot / 64 - patch.CellMinZ;
+                if (counts is not null)
+                {
+                    counts.PhysicalFaces += physical;
+                    counts.SpanFaces += surface.IndoorSpan is null ? 0 : 2 * physical;
+                    if (physical == 0) counts.FaceFreeTargetSlots++;
+                    if (MapSurfaceCompiler.Fallback(surface, patch.Cells[z * patch.Width + x]) &&
+                        view.EffectiveContext?.Transform(Prefabs.MapPrefabChildKind.Surface, surface.Id) is not null) counts.ChartFaces += 4;
+                }
                 Faces = checked(Faces + physical * (surface.IndoorSpan is null ? 1 : 3) +
                     (MapSurfaceCompiler.Fallback(surface, patch.Cells[z * patch.Width + x]) ? 4 : 0));
             }
         }
 
+        if (counts is not null)
+        { counts.UniqueTargetSlots = Cells; counts.BoundAssociations = Associations; counts.PlannerBytes = owner?.Bytes ?? 0; }
+
         void Chain(MapRecordRef reference)
         {
             var chain = MapSpaceGeometry.Record<MapBoundaryChain>(view, reference);
-            foreach (var cell in bounds.SourceCells(chain)) Add(cell);
+            foreach (var cell in bounds.SourceCells(chain)) Add(cell, 4);
             // The chain resolver also borrows its declared source patch when endpoints yield no cells.
-            if (chain.SourcePatch is { } key && !slots.ContainsKey(key)) slots.Add(key, new());
+            if (chain.SourcePatch is { } key && !slots.ContainsKey(key)) { owner?.Reserve(512); slots.Add(key, new()); }
         }
-        void Add(MapCellDemand cell)
+        void Add(MapCellDemand cell, byte category)
         {
-            if (!slots.TryGetValue(cell.Patch, out var cells)) slots.Add(cell.Patch, cells = new());
-            cells.Add(cell.SlotCell);
+            byte previous = categories.GetValueOrDefault(cell);
+            if ((previous & category) == 0)
+            {
+                if (previous == 0) owner?.Reserve(128);
+                categories[cell] = (byte)(previous | category);
+                if (counts is not null)
+                {
+                    if (category == 1) counts.FootprintTargetSlots++;
+                    if (category == 2) counts.IndoorTargetSlots++;
+                    if (category == 4) counts.PortalTargetSlots++;
+                }
+            }
+            if (!slots.TryGetValue(cell.Patch, out var cells))
+            { owner?.Reserve(512); slots.Add(cell.Patch, cells = new()); }
+            if (!cells.Contains(cell.SlotCell)) { owner?.Reserve(64); cells.Add(cell.SlotCell); }
         }
         void Select(MapSpaceFootprint footprint, MapBoundRef bound, bool upper)
         {
@@ -78,6 +106,7 @@ internal sealed class MapMembershipDemandPlan
             if (surface?.Role is MapSurfaceRole.SupportFloor or MapSurfaceRole.Ceiling)
                 foreach (int slot in footprint.SlotCells)
                 {
+                    using var discovery = MapMembershipBuild.Kernel();
                     var polygon = MapEffectiveGeometry.CellPolygon(view, footprint.Lattice, slot);
                     var extent = MapEffectiveGeometry.Bounds(polygon);
                     var range = MapEffectiveGeometry.CellRange(view, id!, new(extent.MinX, extent.MinZ), new(extent.MaxX, extent.MaxZ));
@@ -92,9 +121,11 @@ internal sealed class MapMembershipDemandPlan
                             if (lx < 0 || lz < 0 || lx >= patch.Width || lz >= patch.Depth) continue;
                             if (!Touches(polygon, MapEffectiveGeometry.CellPolygon(view, key, cell))) continue;
                             var demand = new MapCellDemand(key, cell);
-                            selected.Add(demand); Add(demand);
+                            if (!selected.Contains(demand)) { owner?.Reserve(128); selected.Add(demand); }
+                            Add(demand, 1);
                         }
                 }
+            owner?.Reserve(checked(128L + 32L * selected.Count));
             Bounds.Add((footprint.Id, upper), selected.OrderBy(d => d.Patch).ThenBy(d => d.SlotCell).ToArray());
             Associations = checked(Associations + selected.Count);
         }

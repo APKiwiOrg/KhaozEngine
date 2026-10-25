@@ -14,6 +14,8 @@ internal sealed class MapMembershipCellIndex
     internal long InventoryBytes => checked(64L + 8L * _cells.Length + 96L * _nodes.Length);
     internal MapMembershipCellIndex(MapMembershipPreparedGeometry.Cell[] cells)
     {
+        MapMembershipBuild.Inventory(checked(64L + 8L * cells.Length + 96L * Math.Max(0, 2 * cells.Length - 1)));
+        using var sorting = MapMembershipBuild.Kernel();
         _cells = cells.ToArray();
         _nodes = new Node[cells.Length == 0 ? 0 : checked(2 * cells.Length - 1)];
         int next = 0;

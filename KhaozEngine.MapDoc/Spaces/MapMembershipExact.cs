@@ -154,6 +154,7 @@ internal sealed class MapMembershipCoefficient
     {
         if (BigInteger.Abs(value).GetBitLength() > MapMembershipInteger.CoefficientBits)
             throw new MapExactOverflowException();
+        MapMembershipBuild.Coefficient(BigInteger.Abs(value).GetByteCount(isUnsigned: true));
         _sign = value.Sign;
         _magnitude = BigInteger.Abs(value).ToByteArray(isUnsigned: true);
         double approximate = (double)value;
@@ -208,6 +209,8 @@ internal sealed class MapMembershipAffine
     internal int Direction { get; }
     internal MapMembershipAffine(BigInteger x, BigInteger z, BigInteger c, BigInteger d)
     {
+        using var arithmetic = MapMembershipBuild.Kernel();
+        MapMembershipBuild.Inventory(64);
         if (d.IsZero) throw new MapDocumentException("invalid prepared plane");
         if (d.Sign < 0) { x = -x; z = -z; c = -c; d = -d; }
         BigInteger gcd = BigInteger.GreatestCommonDivisor(BigInteger.Abs(x), BigInteger.Abs(z));
@@ -228,6 +231,7 @@ internal sealed class MapMembershipAffine
     internal static BigInteger Lcm(BigInteger a, BigInteger b) => a / BigInteger.GreatestCommonDivisor(a, b) * b;
     internal static MapMembershipAffine Edge(MapExactXz a, MapExactXz b)
     {
+        using var arithmetic = MapMembershipBuild.Kernel();
         BigInteger l = Lcm(Lcm(a.X.Denominator, a.Z.Denominator), Lcm(b.X.Denominator, b.Z.Denominator));
         BigInteger ax = a.X.Numerator * (l / a.X.Denominator), az = a.Z.Numerator * (l / a.Z.Denominator);
         BigInteger bx = b.X.Numerator * (l / b.X.Denominator), bz = b.Z.Numerator * (l / b.Z.Denominator);
@@ -236,6 +240,7 @@ internal sealed class MapMembershipAffine
     }
     internal static MapMembershipAffine Plane(MapExactTriangle triangle)
     {
+        using var arithmetic = MapMembershipBuild.Kernel();
         MapExactPoint a = triangle.A, b = triangle.B, c = triangle.C;
         BigInteger l = BigInteger.One;
         foreach (var p in new[] { a, b, c })

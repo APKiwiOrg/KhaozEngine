@@ -22,7 +22,13 @@ public sealed class MapRoofCoverageTests
         Assert.Equal(small.Demand.Cells, large.Demand.Cells);
         Assert.Equal(small.Demand.Faces, large.Demand.Faces);
         Assert.Equal(small.Buffer.RetainedBytes, large.Buffer.RetainedBytes);
-        Assert.Equal(small.Peak, large.Peak);
+        // Masked compilation retains the released patch-sized subdivision workspace.
+        Assert.InRange(large.Peak, small.Peak, small.Peak + 61440);
+        Assert.Equal(16, large.Buffer.Counts.UniqueTargetSlots);
+        Assert.Equal(16, large.Buffer.Counts.BoundAssociations);
+        Assert.Equal(32, large.Buffer.Counts.PhysicalFaces);
+        Assert.Equal(61440, large.Buffer.Counts.PeakPatchBytes - small.Buffer.Counts.PeakPatchBytes);
+        Assert.Equal(small.Buffer.Counts.NormalizedCoefficientBytes, large.Buffer.Counts.NormalizedCoefficientBytes);
         large.Buffer.Evaluate(new(WorldFrame.Origin, new(1.5f, 1, -1.5f)), MapRoofMode.Auto);
         Assert.Equal(MapMembershipStatus.Resolved, large.Buffer.Status);
         Assert.Equal("exterior", large.Buffer.SpaceId);
@@ -60,7 +66,7 @@ public sealed class MapRoofCoverageTests
         Assert.Equal(MapSceneStatus.CompleteForScope, MapMembershipPreparation.Measure(scene, out var demand, out _));
         var admission = new MapSceneAdmission(new());
         var result = MapRoofEvaluationBuffer.Prepare(scene, admission);
-        Assert.NotNull(result.Buffer);
+        Assert.True(result.Buffer is not null, result.Detail);
         return (demand, result.Buffer!, admission.PeakBytes);
     }
 }

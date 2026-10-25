@@ -20,6 +20,8 @@ internal sealed class MapMembershipPolygon
     internal MapExactRect Bounds => new(_minX, _minZ, _maxX, _maxZ);
     internal MapMembershipPolygon(IReadOnlyList<MapExactXz> vertices, bool cell = false)
     {
+        MapMembershipBuild.Inventory(checked(128L + 45L * vertices.Count));
+        using var arithmetic = MapMembershipBuild.Kernel();
         _vertices = vertices.ToArray();
         _cell = cell;
         _edges = new MapMembershipAffine[vertices.Count];
@@ -88,6 +90,7 @@ internal sealed class MapMembershipTriangle
     internal int Direction => _height.Direction;
     internal MapMembershipTriangle(MapExactTriangle triangle)
     {
+        MapMembershipBuild.Inventory(219);
         Triangle = triangle;
         MapExactXz a = new(triangle.A.X, triangle.A.Z), b = new(triangle.B.X, triangle.B.Z), c = new(triangle.C.X, triangle.C.Z);
         _edges = [MapMembershipAffine.Edge(a, b), MapMembershipAffine.Edge(b, c), MapMembershipAffine.Edge(c, a)];

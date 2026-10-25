@@ -27,6 +27,8 @@ internal sealed class MapMembershipPreparedBound
     internal MapMembershipPreparedBound(MapScopedSurfaces view, MapMembershipPreparedGeometry geometry,
         MapSpaceFootprint footprint, MapBoundRef bound, MapMembershipDemandPlan plan)
     {
+        MapMembershipBuild.Inventory(checked(128L + (bound.Kind == MapBoundKind.OpenTop ? 0 : 192L * plan.Bounds[(footprint.Id, bound == footprint.Upper)].Length)));
+        using var planning = MapMembershipBuild.Kernel();
         var bounds = new MapSpacePointBounds(view, new(MaxContextPatches: geometry.PatchCount + 1), null);
         if (bound.Kind == MapBoundKind.OpenTop)
         {
@@ -50,6 +52,7 @@ internal sealed class MapMembershipPreparedBound
         {
             var cell = geometry.ByCell[demand];
             var result = bounds.Plan(footprint, bound, cell.Centre);
+            if (MapMembershipBuild.Current is { } build && result.Status != MapMembershipStatus.Resolved) build.Counts.FailedBoundAssociations++;
             int faces = result.Opening is { } source && geometry.OpeningSets.TryGetValue(source, out var sets) &&
                 sets.TryGetValue(cell.Demand.SlotCell, out int openingFaces) ? openingFaces : cell.FaceSet;
             bool validates = bound == footprint.Lower ? result.Status == MapMembershipStatus.Resolved :
@@ -72,6 +75,7 @@ internal sealed class MapMembershipPreparedFootprint
     readonly MapMembershipPolygon[] _cells;
     internal MapMembershipPreparedFootprint(MapScopedSurfaces view, MapMembershipPreparedGeometry geometry, MapSpaceFootprint record, MapMembershipDemandPlan plan)
     {
+        MapMembershipBuild.Inventory(checked(128L + 8L * record.SlotCells.Count));
         Record = record;
         _cells = new MapMembershipPolygon[record.SlotCells.Count];
         for (int i = 0; i < _cells.Length; i++)

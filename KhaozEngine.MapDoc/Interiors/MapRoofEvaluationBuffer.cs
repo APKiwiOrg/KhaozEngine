@@ -10,6 +10,7 @@ namespace KhaozEngine.MapDoc.Interiors;
 public sealed record MapRoofEvaluationBufferResult(MapSceneStatus Status, MapRoofEvaluationBuffer? Buffer, string? Detail)
 {
     public MapSceneCapacity? Capacity { get; init; }
+    public MapRoofPreparationCounts? Counts { get; init; }
 }
 
 /// <summary>Prepared scoped membership and reusable roof intent. Roofs is a live read-only view.</summary>
@@ -17,6 +18,7 @@ public sealed class MapRoofEvaluationBuffer
 {
     internal MapPreparationReservation? PreparationOwnership { get; private set; }
     public long RetainedBytes => checked(128L + _scratch.InventoryBytes + _intent.InventoryBytes + _sceneInventoryBytes);
+    public MapRoofPreparationCounts Counts { get; private set; } = null!;
     readonly long _sceneInventoryBytes;
     readonly MapScopedScene _scene;
     readonly MapSpaceMembership _membership;
@@ -58,9 +60,13 @@ public sealed class MapRoofEvaluationBuffer
     }
     static MapRoofEvaluationBufferResult PrepareAdmitted(MapScopedScene scene, MapSceneAdmission admission, MapMembershipPreparation demand, bool requireCompletePolicy = false)
     {
+        using var active = admission.Enter();
         using var preparation = admission.BeginPreparation();
+        var counts = new MapRoofPreparationCounts();
+        using var build = new MapMembershipBuild(admission, preparation, counts);
         try
         {
+            preparation.Reserve(demand.Bytes);
             var sceneOwner = requireCompletePolicy ? scene.PreparationOwnership : null;
             using var dependency = sceneOwner is null ? null : preparation.WorkspaceOwner.Borrow(sceneOwner);
             long sceneInventoryBytes = sceneOwner?.Bytes ?? 0;
@@ -68,24 +74,23 @@ public sealed class MapRoofEvaluationBuffer
             {
                 // The dependency remains charged in this view throughout validation and membership.
                 // A refusal releases only our borrowed attribution, preserving the original receipt.
-                using var validation = admission.BeginPreparation();
-                if (!admission.TryReservePreparation(demand.Bytes, 0, out var validationCapacity)) return Refused(validationCapacity!);
-                using var validationPrecharge = MapSceneAdmission.Suspend();
+                using var validation = new MapPrismValidationWorkspace(admission, counts, demand.Records);
                 var errors = MapPrismCoverage.Validate(scene.SurfaceView, scene.Scope.Surfaces.Limits.Refinement ?? new());
                 if (errors.Count != 0) return new(MapSceneStatus.Invalid, null, "Incomplete canonical roof policy. " + string.Join("\n", errors));
             }
+            using var planning = admission.Workspace();
             var records = MapSpaceGeometry.Records(scene.SurfaceView).ToArray();
-            var plan = new MapMembershipDemandPlan(scene.SurfaceView, records);
-            long sparseBytes = checked(demand.Bytes + plan.Faces * (2 * 1280 + 8192) + plan.Cells * 8192L + plan.Associations * 192L);
-            if (!admission.TryReservePreparation(sparseBytes, plan.Faces, out var capacity)) return Refused(capacity!);
-            MapRoofEvaluationBuffer buffer;
-            using (MapSceneAdmission.Suspend()) buffer = new(scene, demand, sceneInventoryBytes, plan);
+            var plan = new MapMembershipDemandPlan(scene.SurfaceView, records, planning);
+            if (!admission.TryReservePreparation(0, counts.SpanFaces + counts.ChartFaces, out var capacity)) return Refused(capacity!);
+            var buffer = new MapRoofEvaluationBuffer(scene, demand, sceneInventoryBytes, plan) { Counts = counts };
+            planning.Dispose();
+            counts.RetainedBytes = buffer.RetainedBytes;
             preparation.EnsureCapacity(buffer.RetainedBytes, sceneOwner);
             dependency?.Absorb();
             buffer.PreparationOwnership = preparation.Complete(buffer.RetainedBytes);
-            return new(scene.Witness.WholeWorldComplete ? MapSceneStatus.WholeWorldComplete : MapSceneStatus.CompleteForScope, buffer, null);
+            return new(scene.Witness.WholeWorldComplete ? MapSceneStatus.WholeWorldComplete : MapSceneStatus.CompleteForScope, buffer, null) { Counts = counts };
         }
-        catch (MapSceneCapacityException error) { return Refused(error.Capacity); }
+        catch (MapSceneCapacityException error) { return Refused(error.Capacity) with { Counts = counts }; }
     }
     static MapRoofEvaluationBufferResult Refused(MapSceneCapacity capacity) => new(MapSceneStatus.CapacityExceeded, null, capacity.Message) { Capacity = capacity };
     static MapRoofEvaluationBufferResult Refused(MapSceneStatus status) => new(status, null, status switch

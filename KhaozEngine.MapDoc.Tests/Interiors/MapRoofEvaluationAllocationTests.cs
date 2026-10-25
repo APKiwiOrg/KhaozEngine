@@ -302,22 +302,22 @@ public sealed class MapRoofEvaluationAllocationTests
             Enum.GetValues<MapSurfaceRole>(), null, new()), new(-32, -32, -32, 32, 32, 32), MapSceneChannels.All);
         var scene = NativeSceneFixtures.Open(native, false).Acquire(scope).Scene!;
         Assert.Equal(MapSceneStatus.CompleteForScope, MapMembershipPreparation.Measure(scene, out var demand, out _));
-        var admission = new MapSceneAdmission(new(MaxPreparedBytes: demand.Bytes, MaxPreparedFaces: (int)demand.Faces));
+        var measured = new MapSceneAdmission(new());
+        var probe = MapRoofEvaluationBuffer.Prepare(scene, measured);
+        Assert.NotNull(probe.Buffer);
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: measured.PeakBytes));
         var prepared = MapRoofEvaluationBuffer.Prepare(scene, admission);
         Assert.NotNull(prepared.Buffer);
         Assert.Equal(prepared.Buffer.RetainedBytes, admission.RetainedBytes);
-        Assert.Equal(demand.Faces, admission.PreparedFaces);
-        Assert.InRange(admission.RetainedBytes, 1, demand.Bytes - 1);
-        MapRoofEvaluationBufferResult? second = null;
+        Assert.Equal(0, admission.WorkspaceBytes);
         var refused = MapRoofEvaluationBuffer.Prepare(scene, admission);
-        Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", (decimal)prepared.Buffer.RetainedBytes + demand.Bytes, demand.Bytes), refused.Capacity);
-        long resultBytes = AllocationMeasurement.Measure("aggregate refusal result", () => second = DiagnosticResult(refused.Capacity!));
-        long bytes = AllocationMeasurement.Measure("aggregate membership admission", () => second = MapRoofEvaluationBuffer.Prepare(scene, admission));
-        Assert.Equal(MapSceneStatus.CapacityExceeded, second!.Status);
-        Assert.Null(second.Buffer);
+        Assert.Equal(MapSceneStatus.CapacityExceeded, refused.Status);
+        Assert.Null(refused.Buffer);
+        Assert.Equal("MaxPreparedBytes", refused.Capacity!.LimitName);
+        Assert.Equal(measured.PeakBytes, refused.Capacity.Allowance);
+        Assert.True(refused.Capacity.Requested > refused.Capacity.Allowance);
         Assert.Equal(prepared.Buffer.RetainedBytes, admission.RetainedBytes);
-        Assert.Equal(demand.Faces, admission.PreparedFaces);
-        Assert.Equal(resultBytes, bytes);
+        Assert.Equal(0, admission.WorkspaceBytes);
     }
 
     [Theory]

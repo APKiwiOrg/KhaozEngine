@@ -1758,6 +1758,48 @@ Each entry in `bodyLines` carries its own `TooltipLine.Scale` (default `1f`), an
 the title row above them, so one shared font can render the whole tooltip's size hierarchy (see "Scaling
 Gui text" above).
 
+Rich lines and a tiled backdrop are opt-in through these exact descriptors:
+
+```csharp
+public readonly record struct TooltipIcon(Texture2D Texture, Vector4 SourceUV, float Size);
+public readonly record struct TooltipBackdrop(Texture2D Texture, float TileSize, Vector4 Tint);
+```
+
+```csharp
+// Localized text and caller-owned textures come from the host's content.
+TooltipLine detail = TooltipLine.Of(localizedText, colour, scale: 0.85f) with
+{
+    Icon = new TooltipIcon(iconTexture, new Vector4(0f, 0f, 1f, 1f), 16f),
+    TitleFont = true,
+    GapBefore = 6f,
+};
+tip.Metrics.IconGap = 8f;
+tip.Backdrop = new TooltipBackdrop(parchmentTexture, 32f, Vector4.One);
+tip.Show(Strings.CopperOre, new[] { detail }, anchor);
+```
+
+`TitleFont` selects the title face for that body line. Its text still uses the line's own `Scale`, while
+`TitleScale` affects only the main title row and its right-aligned value. Icon size, `Metrics.IconGap`
+(default `8f`) and `GapBefore` are design units independent of text scale. Row height is the larger of the
+scaled font line height and icon size, with both vertically centred. Text starts after the icon size plus
+icon gap. Without an icon there is no inset or icon gap. `GapBefore` applies even before the first body
+line. Existing `TitleGap` and between-row `LineSpacing` remain, with no trailing line spacing.
+
+Wrapping subtracts the icon inset from the capped content width before dividing by the line's scale.
+Continuations retain a hanging text inset, chosen font, scale and coloured runs. Only the first visual row
+draws the icon and applies `GapBefore`. A finite cap that leaves no positive text budget after an icon
+inset throws `ArgumentOutOfRangeException` before wrapping. Icon size and backdrop `TileSize` must be
+finite and positive. `GapBefore` and `Metrics.IconGap` must be finite and nonnegative.
+
+The backdrop replaces the flat fill inside the existing one-unit border without changing tooltip bounds.
+`TileSize` is a square size in design units. The whole source texture tiles from the interior's top-left
+in row-major order. Partial edge tiles crop their UVs proportionally rather than stretching. Tiles draw
+first, then the existing border, title row, optional separator and each body's icon before its text.
+The caller owns icon and backdrop texture lifetimes, plus the sampler and scissor state. `Opacity` changes
+only alpha uniformly across all visuals. Coloured runs keep their source colours and receive the fade once.
+Null `Backdrop` and `Icon`, `TitleFont = false` and `GapBefore = 0f` preserve existing tooltip defaults,
+including the three positional `TooltipLine` fields, localized factories and `Text` replacement semantics.
+
 Use `TooltipLine.OfSegments` when one localized body line has differently coloured parts. It resolves
 the `LabelSegment` text when built and retains each colour when the tooltip wraps the line to its width cap.
 For example, an action hint can keep its verb colour while an item name uses its rarity colour:

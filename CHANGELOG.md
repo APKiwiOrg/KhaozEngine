@@ -44,6 +44,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `Render3DPreview` and `Render3DSnapshot` now prepare each frame with their viewport size.
 - Add the `device.water.prepare` renderer perf owner for viewport-path water preparation. Scene target creation
   on resize and cold frames still has no device owner, filed as https://github.com/APKiwiOrg/KhaozEngine/issues/1569.
+- Add opt-in tiled tooltip backdrops, leading icons, title-font body lines and paragraph gaps, with shared
+  icon-aware wrapping and placement that preserves existing tooltip defaults (Closes #1580).
 
 ## 21.13.0
 

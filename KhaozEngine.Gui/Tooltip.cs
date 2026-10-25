@@ -110,7 +110,7 @@ namespace KhaozEngine.Gui
     /// (<see cref="AnchorMode"/> = <see cref="TooltipAnchorMode.Offset"/> + <see cref="TooltipMetrics.AnchorOffsetX"/>).
     /// </para>
     /// </summary>
-    public sealed class Tooltip
+    public sealed partial class Tooltip
     {
         readonly SpriteFont _titleFont, _bodyFont;
 
@@ -173,8 +173,8 @@ namespace KhaozEngine.Gui
         /// Uniform fade multiplied into every colour's alpha at draw time (1 = opaque). Lets a caller fade the whole
         /// bubble in/out with a host transition (a hover tooltip easing in, a panel sliding away under it). Default 1
         /// is a no-op. Mirrors <see cref="Dropdown.Opacity"/>. Every colour the bubble paints goes through it (the
-        /// background, the border, the title row, the optional separator, and each body line), so <c>0</c> draws
-        /// nothing at all rather than leaving one element at full alpha.
+        /// flat or tiled background, the border, the title row, the optional separator, icons and each body
+        /// line), so <c>0</c> is fully transparent rather than leaving one element at full alpha.
         /// </summary>
         public float Opacity = 1f;
 
@@ -362,62 +362,6 @@ namespace KhaozEngine.Gui
             if (MaxWidth > 0f) max = MaxWidth;
             if (MaxWidthFraction > 0f && Viewport.X > 0f) max = MathF.Min(max, MaxWidthFraction * Viewport.X);
             return max;
-        }
-
-        /// <summary>Draw the tooltip if visible. <paramref name="white"/> is a 1x1 white texture.</summary>
-        public void Draw(SpriteBatch batch, Texture2D white)
-        {
-            if (!IsVisible || (_lines.Count == 0 && string.IsNullOrEmpty(_title))) return;
-            if (Viewport == Vector2.Zero)
-                throw new InvalidOperationException(
-                    "Tooltip.Viewport is unset (Vector2.Zero); assign the design viewport size before draw.");
-            float maxWidth = ResolveMaxWidth();
-            Rect b = ComputeLayout(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport,
-                Metrics, maxWidth, TitleScale, AnchorMode, out TooltipBodyLayout body);
-            GuiDraw.Fill(batch, white, b, GuiDraw.WithOpacity(Background, Opacity));
-            GuiDraw.Border(batch, white, b, 1f, GuiDraw.WithOpacity(Border, Opacity));
-
-            float x = b.X + Metrics.PadX;
-            float y = b.Y + Metrics.PadY;
-            if (!string.IsNullOrEmpty(_title))
-            {
-                batch.DrawString(_titleFont, _title, new Vector2(MathF.Floor(x), MathF.Floor(y)),
-                    (Color)GuiDraw.WithOpacity(TitleColor, Opacity), TitleScale);
-                if (!string.IsNullOrEmpty(_titleRight))
-                {
-                    // The right-aligned value draws with the body font but scales WITH the title row (both pass
-                    // TitleScale), or it would draw unscaled and misalign against the scaled row, and its
-                    // right-edge anchor would be computed from the wrong (unscaled) width.
-                    float rw = _bodyFont.Measure(_titleRight).X * TitleScale;
-                    batch.DrawString(_bodyFont, _titleRight,
-                        new Vector2(MathF.Floor(b.Right - Metrics.PadX - rw), MathF.Floor(y)),
-                        (Color)GuiDraw.WithOpacity(TitleRightColor, Opacity), TitleScale);
-                }
-                y += _titleFont.LineHeight * TitleScale + Metrics.TitleGap;
-                if (ShowTitleSeparator)
-                {
-                    float sepY = MathF.Floor(y - Metrics.TitleGap * 0.5f);
-                    GuiDraw.Fill(batch, white, new Rect(b.X + Metrics.PadX, sepY, b.Width - Metrics.PadX * 2f, 1f),
-                        GuiDraw.WithOpacity(SeparatorColor, Opacity));
-                }
-            }
-            var cursor = new Vector2(x, y);
-            for (int i = 0; i < body.Lines.Count; i++)
-            {
-                TooltipVisualLine row = body.Lines[i].Place(ref cursor, Metrics.LineSpacing);
-                TooltipLine line = row.Line;
-                SpriteFont font = line.TitleFont ? _titleFont : _bodyFont;
-                if (line.Icon is TooltipIcon icon && row.IconBounds is Rect iconBounds)
-                    batch.Draw(icon.Texture,
-                        new Vector4(iconBounds.X, iconBounds.Y, iconBounds.Width, iconBounds.Height),
-                        icon.SourceUV, (Color)GuiDraw.WithOpacity(Vector4.One, Opacity));
-                Vector2 textPosition = new(MathF.Floor(row.TextPosition.X), MathF.Floor(row.TextPosition.Y));
-                if (line.Runs.IsEmpty)
-                    batch.DrawString(font, line.Text, textPosition,
-                        (Color)GuiDraw.WithOpacity(line.Color, Opacity), line.Scale);
-                else
-                    batch.DrawStringRuns(font, line.Runs.Span, textPosition, line.Scale, Opacity);
-            }
         }
     }
 }

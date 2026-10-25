@@ -764,7 +764,7 @@ chat.Draw(batch, white);
     key, paste chord, press or wheel allocates nothing, so held modifiers and function keys cost nothing. `Draw`
     clips to the padded area and draws only the visible lines. Colours, caret blink and the focused hover glow
     match `TextInput`. The placeholder is `LocalizedText` via `PlaceholderContent`. There is no selection.
-  - `Tooltip` - auto-sized floating bubble; `ComputeBounds` (flip/clamp) is a pure, testable layout function.
+  - `Tooltip` - auto-sized floating bubble. `ComputeBounds` (flip/clamp) is a pure, testable layout function.
     Opt-in (default off): a two-column title (`Show(title, titleRight, ...)`), a `ShowTitleSeparator` rule under the
     title, a width cap (`MaxWidth` px and/or `MaxWidthFraction` of the viewport) that word-wraps long body lines
     downward instead of overflowing the viewport (hard-breaking a token longer than the cap), and platform-aware
@@ -772,13 +772,50 @@ chat.Draw(batch, white);
     dismissal policy is a runtime value, not a compile-time platform branch. Each `TooltipLine` carries its own
     `Scale` (default `1f`, a third optional positional field), and `Tooltip.TitleScale` (default `1f`) scales the
     title row, so one shared font can render a size hierarchy (e.g. a bright 1.0 title over 0.84/0.42 body lines).
-    A scaled line still wraps within `MaxWidth` (the word-wrap budget divides by the line's own scale).
+    Optional rich body lines add a leading `Icon`, a `TitleFont` face and `GapBefore` paragraph spacing.
+    `TitleFont` chooses the title face but still uses the body's own `Scale`. `TitleScale` affects only the
+    main title row and its right-aligned value. Icons, `Metrics.IconGap` (default `8f`) and `GapBefore`
+    are design units independent of text scale. A row is as tall as its text or icon, whichever is taller,
+    with both vertically centred. No icon means no inset or icon gap. `GapBefore` also applies to the first
+    body line, alongside the existing title gap and between-row line spacing.
+    A scaled line still wraps within `MaxWidth`. The text budget subtracts the icon size and icon gap before
+    dividing by the line's scale. Continuations keep the hanging text inset, font, scale and colours, with
+    the icon and paragraph gap only on the first visual row. A finite cap that leaves no positive text
+    budget after an icon inset throws before wrapping. Icon size must be finite and positive, while
+    `GapBefore` and `Metrics.IconGap` must be finite and nonnegative.
+    The visual descriptors are additive. Existing `TooltipLine` constructors and localized factories keep
+    their signatures:
+
+    ```csharp
+    public readonly record struct TooltipIcon(Texture2D Texture, Vector4 SourceUV, float Size);
+    public readonly record struct TooltipBackdrop(Texture2D Texture, float TileSize, Vector4 Tint);
+    ```
+
+    ```csharp
+    TooltipLine detail = TooltipLine.Of(localizedText, colour) with
+    {
+        Icon = new TooltipIcon(iconTexture, new Vector4(0f, 0f, 1f, 1f), 16f),
+        TitleFont = true,
+        GapBefore = 6f,
+    };
+    tip.Metrics.IconGap = 8f;
+    tip.Backdrop = new TooltipBackdrop(parchmentTexture, 32f, Vector4.One);
+    tip.Show(localizedTitle, new[] { detail }, anchor);
+    ```
+
+    `Backdrop` defaults to null, preserving the flat `Background` fill and existing tooltip defaults.
+    A backdrop replaces that fill inside the existing one-unit border without changing bounds. Its finite
+    positive `TileSize` is in design units. The whole texture tiles from the interior's top-left in row-major
+    order, and partial edge tiles crop their UVs proportionally. The border follows the tiles, then the title,
+    optional separator and each body's icon before its text. The caller owns both icon and backdrop texture
+    lifetimes. Drawing keeps the caller's sampler and scissor state.
     `TooltipLine.OfSegments` resolves `LabelSegment`s into one body line and keeps each segment's colour
     through word wrapping and hard breaks. Its fallback colour applies when a segment has none.
     `TooltipLine.OfMarkup` is the localized one-template alternative. It resolves `MarkupText` through an
     `InlineTextStyles` map and keeps the resulting colours through the same wrapping path.
     `Opacity` (default `1f`) fades the whole bubble for a host transition, and covers every colour it paints
-    (background, border, title row, separator, each body line), so `0` draws nothing.
+    (flat or tiled background, border, title row, separator, icons and each body line), so `0` is fully
+    transparent. RGB and source run colours stay unchanged.
     `AnchorMode` (default `TooltipAnchorMode.Centered`, the bubble straddling the anchor) switches to
     `Offset` for cursor-style placement: the bubble's left edge sits at `anchor.X + Metrics.AnchorOffsetX`,
     so it lands beside a pointer instead of under it (a negative offset places it to the left). The vertical

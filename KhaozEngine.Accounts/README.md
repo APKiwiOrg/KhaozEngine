@@ -4,9 +4,10 @@ The account registry behind sign-in: who has signed in, whether each account is 
 bans filed against them. One store is the single source of truth for accounts AND bans, so the sign-in exchange,
 the connect door, a join check and an admin console all read the same row.
 
-Opt-in, in NO umbrella. It references `KhaozEngine.Netcode` and nothing else, for the `IBanStore` seam its ban
-adapter implements, so a game server or an admin console takes it without the exchange or `Identity`. No SQL, no
-HTTP and no third-party dependency. Durable backends are opt-in sibling packages.
+Opt-in, in NO umbrella. Only hosts that need an account registry take this server-only seam: a game server,
+auth service or admin console adds it explicitly. It references `KhaozEngine.Netcode` and nothing else, for the
+`IBanStore` seam its ban adapter implements, so a host takes it without the exchange or `Identity`. No SQL, no
+HTTP and no third-party dependency. Durable backends are opt-in sibling packages in no umbrella.
 
 ## Public API
 

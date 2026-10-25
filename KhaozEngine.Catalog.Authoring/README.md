@@ -3,7 +3,8 @@
 The authoring half of the content catalog. `KhaozEngine.Catalog` is the READ side every consumer needs,
 including a game client. This package is the WRITE side: the provider seam a database backend implements,
 the one open draft, the edit vocabulary, the field-level audit, the published version record, families and
-their id blocks, and the bundle a catalog is seeded from and exported to.
+their id blocks, and the bundle a catalog is seeded from and exported to. It is carried by the `Server`
+umbrella, and a game client does not need it.
 
 It is pure .NET. There is no SQL here and no third-party dependency, and its only project reference is
 `KhaozEngine.Catalog`. The SQLite and SQL Server backends are opt-in sibling packages that reference this

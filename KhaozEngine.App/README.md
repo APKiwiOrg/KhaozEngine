@@ -1,6 +1,6 @@
 # KhaozEngine.App
 
-Game-agnostic app identity / runtime helpers. Pure BCL, no MonoGame dependency.
+Game-agnostic app identity / runtime helpers. Pure BCL.
 
 `BuildMetadata.Read` reads `AssemblyMetadata` items (emitted by a project's `Directory.Build.props`)
 back at runtime, so a game can surface its own version / build name / bundle id without re-deriving
@@ -67,6 +67,13 @@ var isolated = AppDataPaths.FromDirectory(Path.Combine(Path.GetTempPath(), "my-t
 
 string settingsPath = isolated.SettingsFilePath;
 ```
+
+## ServiceLocator
+
+`ServiceLocator` registers and resolves shared services by interface type and implements `IServiceProvider`.
+`Register<T>` refuses a duplicate, `Replace<T>` adds or replaces a registration, and `Get<T>` throws for a
+missing service. `TryGet<T>` and `GetService(Type)` return null when absent. Registrations and lookups are
+safe under concurrent access.
 
 ## AppInstallStamp
 

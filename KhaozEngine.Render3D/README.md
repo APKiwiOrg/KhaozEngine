@@ -1,6 +1,6 @@
 # KhaozEngine.Render3D
 
-Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `System.Numerics`).
+Stylized 3D rendering through `KhaozEngine.Gpu`, with `System.Numerics` math.
 
 The package carries no ECS edge. Entity rendering (`Transform3D`, `MeshInstance`, `Scene3DBinder.Submit`) lives
 in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only consumer does not pull `Ecs`,
@@ -198,6 +198,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   unchanged), `None` for level 0 only, and `AtlasGrid(columns, rows, minCellTexels = 4)` to stop at the coarsest
   level where a grid cell still holds `minCellTexels` texels on its shorter side, which keeps a bilinear tap from
   reaching into the neighbouring cell. `LevelsFor(width, height)` is the pure arithmetic behind it.
+- Splat terrain materials: `Scene3D.LoadSplatMaterial` uploads exactly five tileable albedo and normal layers
+  with full mip chains and returns a `Scene3D.SplatMaterialHandle`. Bind it with `LoadMesh(mesh, material)`
+  to blend the layers by the mesh's per-vertex splat weights. The scene owns the shared material until
+  `UnloadSplatMaterial` or scene disposal. Load outside frame recording because mip generation uses its own
+  command list. [KhaozEngine.Terrain.Render3D](../KhaozEngine.Terrain.Render3D/README.md) provides the layered
+  material recipes and terrain mesh builder.
 - Tile ground (`Scene3D.LoadTileGroundMaterial` / `TileGroundMaterialHandle` / `LoadMesh(mesh, material)` /
   `UnloadTileGroundMaterial`, `TileGroundLayerImage`, `TileGroundMaterialConfig`, since 17.38.0) - the N-layer
   sibling of the splat terrain pipeline, for a ground surface whose material palette is a CONTENT catalog rather
@@ -296,9 +302,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   blit machinery there too with `PixelPostProcessSettings.MipFilterFixedInternalDownscale` (default `false`), or
   switch to `RenderScale.MatchViewport` outright. FXAA reads only the current base mip of intermediate post
   targets. The final downscale generates and samples their mip chain after FXAA has finished.
-  `.Temporal` renders at a `Post.Temporal.Upscale` preset at or below the window, jitters each frame and resolves a
-  stable full-resolution image from history, with a light contrast adaptive sharpen (`Post.Temporal.Sharpness`) and
-  a material mip bias (`Post.Temporal.MipBiasOffset`). It is single-sample and never combines with MSAA. Moving draws
+  `.Temporal` renders at a `Post.Temporal.Upscale` preset from `Native` through `UltraPerformance` at or below
+  the window, jitters each frame and resolves a stable full-resolution image from history, with a light contrast
+  adaptive sharpen (`Post.Temporal.Sharpness`) and a material mip bias (`Post.Temporal.MipBiasOffset`). It is
+  single-sample and never combines with MSAA. Moving draws
   pass a `MotionKey` through `RigidInstanceDraw` or `SkinnedInstanceDraw`, camera jumps call `Scene3D.CameraCut()`,
   and `Scene3D.DebugView`, `Scene3D.RequestTemporalCounts()` and `LastTemporalDiagnostics` show what the resolve did.
   Lit rigid/skinned, foliage and ground paths export final key-shadow visibility to an R8 attachment. Transparent
@@ -1080,6 +1087,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   field at quarter res instead of half. Zero cost when unused: a frame that queues no distortion sprite allocates
   nothing, runs no extra pass, and is byte-identical to before distortion existed. The turn-key `ParticleLook.Distortion`
   mapping lives in `KhaozEngine.Particles.Render3D`. See `docs/USING-KHAOZENGINE.md`.
+- Glowing beams: `Scene3D.DrawBeam(a, b, width, color, style)` queues a camera-facing additive strip between
+  two world points, with a bright core and soft halo. `BeamStyle.Default with { ... }` adjusts core/glow colours,
+  end taper, pulse and scrolling, driven by `Scene3D.EffectTimeSeconds`. Width is the full world-space width.
+  Beams are depth-tested without writing depth, so nearer geometry occludes them. Submit each frame after
+  `Scene3D.Begin`, which clears the queue. Coincident endpoints or non-positive width draw nothing.
 - Motion trails: `Scene3D.DrawTrail(ReadOnlySpan<TrailSample>, TrailStyle)` (since 10.41.0) queues an immediate-mode
   tapered ribbon traced through an ordered list of recent world-space samples (oldest-first) - weapon swings,
   thruster streaks, projectile tracers. Each `TrailSample` carries a world position, per-sample ribbon half-width,

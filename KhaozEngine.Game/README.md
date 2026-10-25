@@ -1,6 +1,6 @@
-# KhaozEngine.Game (5.x)
+# KhaozEngine.Game
 
-A 2D game-loop facade over the MonoGame-free 5.x stack. `GameApp` is an abstract base that owns the
+A 2D game-loop facade for KhaozEngine. `GameApp` is an abstract base that owns the
 per-frame composition + ordering so a game can't get it wrong:
 
 ```

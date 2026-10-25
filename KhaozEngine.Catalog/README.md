@@ -3,8 +3,8 @@
 Game-agnostic tunable-content catalog, in the `Foundation` umbrella. Content is authored in a database,
 published as immutable content-addressed packs, and loaded into a runtime of arrays indexed by id. This
 package is the half every consumer needs: the registry, the byte formats, the digests, the validator, the
-pack store seam and the read side. Authoring, publish and the SQL providers live in the opt-in
-`KhaozEngine.Catalog.Authoring` and its two provider siblings.
+pack store seam and the read side. Authoring and publish live in `KhaozEngine.Catalog.Authoring`, carried
+by the `Server` umbrella. Its SQLite and SQL Server provider siblings stay opt-in.
 
 **It takes no third-party dependency at all**, and that is load bearing: a game CLIENT needs the read side
 and must never pull a database into its graph. `System.IO.Compression` and `System.Security.Cryptography`

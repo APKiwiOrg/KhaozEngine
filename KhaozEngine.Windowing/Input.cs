@@ -3,7 +3,7 @@ using System.Numerics;
 
 namespace KhaozEngine.Windowing
 {
-    /// <summary>Engine-native keyboard keys (no MonoGame / Veldrid types leak out).</summary>
+    /// <summary>Engine-native keyboard keys.</summary>
     public enum Key
     {
         None = 0,

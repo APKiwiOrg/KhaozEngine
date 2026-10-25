@@ -25,6 +25,8 @@ Provider implementations (OIDC, Discord) and the exchange behind `/auth/exchange
 core package depends on `KhaozEngine.Diagnostics`, `KhaozEngine.Platform` and `KhaozEngine.Serialization`. The
 loopback listener uses only the BCL and does not add an HTTP or ASP.NET package dependency.
 
+The core package is included in `KhaozEngine.Foundation`, and through it in the game and server umbrellas.
+
 ## Usage
 
 ```csharp

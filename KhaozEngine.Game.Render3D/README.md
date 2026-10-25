@@ -1,4 +1,4 @@
-# KhaozEngine.Game.Render3D (5.x)
+# KhaozEngine.Game.Render3D
 
 The 3D integration for `KhaozEngine.Game`, split out so a 2D game pulls **no 3D renderer**. Three pieces:
 
@@ -98,9 +98,9 @@ OUTSIDE the movement step, on something that is not a `CharacterController3D`, s
 
 For ordinary contact movement, set `Controller = MovementControllerKind.Contact`, `FootRadiusFraction` and a
 non-Legacy `Water` policy, then call the full `Update` overload with absolute ground delegates, physics, medium,
-`IMovementWaterField`, `OrdinaryMovementRegistration` and `MovementBoundary`. Physics, registration, boundary and
-certified query capabilities are required. A medium delegate requires a field. The released Update overload keeps
-its defaults and forwards null for the three environment arguments.
+`IMovementWaterField`, a resident `OrdinaryMovementRegistration` and `MovementBoundary`. Physics, registration,
+boundary and certified query capabilities are required. A medium delegate requires a field. The released Update
+overload keeps its defaults and forwards null for the three environment arguments.
 
 The controller validates before changing its carried state and caches one effective binding by tuning equality and
 the reference identities of physics, field, registration, boundary, medium and analytic delegates. Contact Update

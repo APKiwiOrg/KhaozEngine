@@ -1,10 +1,10 @@
 # Using KhaozEngine - the consumer contract
 
 This is the authoritative guide to what KhaozEngine does and **how it must be used** by the games that depend
-on it. The engine is **MonoGame-free**: Silk.NET windowing/input, the engine's own Metal / Direct3D 11 / Vulkan
-backends behind `KhaozEngine.Gpu` for the GPU,
-Silk.NET.OpenAL for audio, `System.Numerics` math throughout. Read the [Hard rules](#hard-rules) first. The rest
-is reference.
+on it. The stack is Silk.NET windowing and input, the engine's own Metal, Direct3D 11 and Vulkan backends
+behind `KhaozEngine.Gpu` for the GPU, Silk.NET.OpenAL for audio, and `System.Numerics` math throughout. Read
+the [Hard rules](#hard-rules) first. The rest is reference. Every package is listed in
+[PACKAGES.md](PACKAGES.md).
 
 This file is large (about 540 KB) and is a reference, not a read-through. Jump via the contents below,
 or grep it: every section is an `##` heading named after the package or feature it covers.
@@ -163,7 +163,7 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
    [Overlapping windows](#overlapping-windows-windowstack-2130).
 6. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
    drawn. `GameApp` does this for you. If you build your own loop, do it yourself.
-7. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
+7. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4` for every vector and matrix. (An RGBA color
    is `KhaozEngine.Primitives.Color`, not a bare `Vector4`. GPU-layout structs still use `Vector4`.) To dim
    or brighten a color for a tint, use `color.ScaleRgb(factor)`: it scales RGB and keeps alpha. `color *
    factor` scales alpha too, which under the 2D batch's straight-alpha blend turns a dim into translucency
@@ -17334,7 +17334,7 @@ Rules:
 
 ## Audio (`KhaozEngine.Audio`)
 
-`AudioSystem` over a cross-platform OpenAL (Silk.NET.OpenAL) backend, no MonoGame. Streaming music (WAV/OGG/MP3,
+`AudioSystem` over a cross-platform OpenAL (Silk.NET.OpenAL) backend. Streaming music (WAV/OGG/MP3,
 one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), SFX one-shots, and 3D positional audio
 (`PlaySfx`/`PlaySfx3D`/`SetListener`, a 16-voice pool, per-channel volume). `LoadContent(directory)` +
 `Update()` per frame.

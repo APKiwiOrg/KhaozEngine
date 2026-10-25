@@ -9,11 +9,11 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
   <!-- Intentionally references ONLY KhaozEngine.Netcode.Abstractions (the zero-dependency contract).
-       It must NOT reference KhaozEngine.Netcode (MonoGame), KhaozEngine.Netcode.LiteNetLib, MonoGame,
-       or LiteNetLib: this project compiling is the proof that a DTO can implement IChannelSplittable<T>
-       with NO MonoGame and NO UDP transport in scope, mirroring SpaceGame.Multiplayer.Contracts
+       It must NOT reference KhaozEngine.Netcode, KhaozEngine.Netcode.LiteNetLib or LiteNetLib.
+       This project compiling proves that a DTO can implement IChannelSplittable<T>
+       with only the contract package in scope, mirroring SpaceGame.Multiplayer.Contracts
        (MessagePack-only, referenced by the ASP.NET leaderboard server). Adding any of those references
-       breaks the build on purpose. -->
+       defeats that structural check. -->
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Netcode.Abstractions/KhaozEngine.Netcode.Abstractions.csproj" />
   </ItemGroup>

@@ -50,4 +50,4 @@ Each property returns a single shared instance. `System.Text.Json` freezes optio
 treat them as read-only. If you need converters or other tweaks, build your own `JsonSerializerOptions`
 and pass it through the relevant API instead.
 
-Pure BCL, no MonoGame dependency.
+Pure BCL.

@@ -6,7 +6,7 @@ namespace KhaozEngine.Primitives
     /// The fakeable design-viewport seam that rendering and layout target: design size, per-axis scale +
     /// letterbox offset, and screen&lt;-&gt;design mapping. <c>DesignViewport</c> (KhaozEngine.Windowing) is the concrete
     /// implementation; the interface lets headless tests and layout code work against a small stub instead of
-    /// a live window. (Custom-stack analogue of the 4.x MonoGame <c>IDesignViewport</c>, on System.Numerics.)
+    /// a live window.
     /// </summary>
     public interface IDesignViewport
     {

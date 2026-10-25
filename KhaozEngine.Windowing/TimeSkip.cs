@@ -32,8 +32,7 @@ namespace KhaozEngine.Windowing
     /// minimum-threshold policy, then invoking the consumer's analytical catch-up callback. Used for
     /// on-demand fast-forward ("skip +2h") and offline catch-up ("away 3h"). Synchronous and instant:
     /// the callback is expected to be analytical (O(events), not O(ticks)), so there is no per-frame
-    /// budget or progress. Sits next to <see cref="GameClock"/>; the MonoGame-free 5.x port of the 4.x
-    /// <c>KhaozEngine.Time.TimeSkip</c> (pure BCL, headless-testable).
+    /// budget or progress. Sits next to <see cref="GameClock"/> and is headless-testable.
     /// </summary>
     public sealed class TimeSkip
     {

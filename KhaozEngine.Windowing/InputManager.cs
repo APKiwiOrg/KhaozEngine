@@ -4,21 +4,18 @@ using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Windowing
 {
-    /// <summary>Menu/player slot (0-based One..Four). The MonoGame-free replacement for XNA's PlayerIndex.</summary>
+    /// <summary>Menu/player slot (0-based One..Four).</summary>
     public enum PlayerIndex { One = 0, Two = 1, Three = 2, Four = 3 }
 
     /// <summary>
-    /// High-level, game-agnostic input for menus and screens, on the MonoGame-free 5.x stack. Poll once
+    /// High-level, game-agnostic input for menus and screens. Poll once
     /// per frame via <see cref="Update"/> with the frame's <see cref="InputState"/> (and optionally the
     /// design <see cref="IDesignViewport"/> so pointer hit-tests land in design space). Composes a
     /// <see cref="Pointer"/> for the press-origin click-through invariant, and adds keyboard/gamepad
     /// menu-navigation, action mapping, scroll-wheel edges, and edge-detected left-stick deflections.
     /// <para>
-    /// This is the 5.x rebuild of the 4.x <c>KhaozEngine.Input.InputManager</c>: XNA <c>Keys</c>/
-    /// <c>Buttons</c>/<c>PlayerIndex</c> map to <see cref="Key"/>/<see cref="GamepadButton"/>/
-    /// <see cref="PlayerIndex"/>, and <c>Rectangle</c> maps to <see cref="Rect"/>. Key/button edges come
-    /// from the snapshot (<see cref="InputState.KeysPressed"/> / <see cref="GamepadState.ButtonsPressed"/>);
-    /// stick deflections are edge-detected here against the previous frame.
+    /// Key/button edges come from the snapshot (<see cref="InputState.KeysPressed"/> /
+    /// <see cref="GamepadState.ButtonsPressed"/>). Stick deflections are edge-detected here against the previous frame.
     /// </para>
     /// </summary>
     public sealed class InputManager

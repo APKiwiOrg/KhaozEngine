@@ -1,6 +1,6 @@
 # KhaozEngine.Platform
 
-Game-agnostic native platform interop. Pure BCL P/Invoke, no MonoGame dependency.
+Game-agnostic native platform interop. Pure BCL P/Invoke.
 
 ## Application icon (macOS Dock)
 

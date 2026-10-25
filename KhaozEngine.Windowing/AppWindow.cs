@@ -580,9 +580,9 @@ namespace KhaozEngine.Windowing
         /// Set the runtime window/taskbar icon from one or more already-decoded RGBA8 images (supply 16/32/48...
         /// and GLFW picks per DPI; a single image is fine). Safe to call any time after construction - the native
         /// handle exists from the ctor on. Passing nothing (or an empty list) is a no-op.
-        /// <para><b>Platform:</b> Windows and Linux/X11 apply it to the title bar + taskbar at runtime (this is the
-        /// regression fix vs MonoGame's embedded Icon.bmp). On macOS GLFW ignores window icons, so this is a
-        /// deliberate no-op (never throws); use <see cref="SetMacDockIcon"/> for the Cocoa Dock icon. The Windows
+        /// <para><b>Platform:</b> Windows and Linux/X11 apply it to the title bar + taskbar at runtime.
+        /// On macOS GLFW ignores window icons, so this is a deliberate no-op (never throws).
+        /// Use <see cref="SetMacDockIcon"/> for the Cocoa Dock icon. The Windows
         /// .exe icon shown when the app is not running is a per-consumer <c>&lt;ApplicationIcon&gt;</c>, independent
         /// of this API.</para>
         /// </summary>

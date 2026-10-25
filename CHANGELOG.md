@@ -1,9 +1,8 @@
 # Changelog
 
 All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion>` in `Directory.Build.props`
-governs the whole MonoGame-free engine (custom stack + graduated foundation packages + the four umbrella
-metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
-GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
+governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
+Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.14.0
 
@@ -52,6 +51,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   (Closes #1576).
 - Add opt-in tiled tooltip backdrops, leading icons, title-font body lines and paragraph gaps, with shared
   icon-aware wrapping and placement that preserves existing tooltip defaults (Closes #1580).
+- Describe every package on its own terms. Package descriptions and READMEs say what each package is rather
+  than what it replaced, and each package README now carries the detail the root catalog used to repeat. The
+  package catalog moved from the root README to `docs/PACKAGES.md`, and the root README is now a short
+  introduction.
 
 ## 21.13.0
 

@@ -1,6 +1,6 @@
 # KhaozEngine.Gui
 
-Immediate-mode + retained UI on the custom MonoGame-free stack.
+Immediate-mode and retained UI for KhaozEngine.
 
 **Localized text:** the player-facing text sinks (the `Label` / `Button` widgets, `GuiSurface.Label` /
 `Button` / `StatChip`, `Tooltip.Show`, `ContextMenu.Open` plus `ContextMenuEntry.Of`, `DropdownOption.Content`,
@@ -1347,12 +1347,15 @@ borderless style stays borderless. Text drawn through the batch in that pass als
 block's ascent baseline, once per `DrawString`, so every glyph of a word stays on one baseline - pair with a
 `DpiFont` from `KhaozEngine.Render2D` for a crisp atlas).
 
+`GuiDraw.BorderSingleCoverage(batch, white, bounds, thickness, color)` draws a border with non-overlapping
+strips, so translucent corners receive the colour once. It uses the same device-pixel snapping as `GuiDraw.Border`.
+The existing `Border` method remains available for callers that need its overlapping corner geometry.
+
 Plain text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout`. Resolved coloured runs use
 `ColoredTextLayout.Wrap`. Both operate over the `ITextMeasurer` seam, so the layout math is headless-testable.
 Clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware, and
-nesting: a clipping widget drawn inside another clipping widget is bounded by both). Ported
-from `KhaozEngine.Screens`/`UI` (game-specific layout coupling dropped). Built on `KhaozEngine.Windowing`
-(Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D). Part of the MonoGame-free engine.
+nesting: a clipping widget drawn inside another clipping widget is bounded by both). Built on
+`KhaozEngine.Windowing` (Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D).
 
 ## Anchored and safe-area layout
 

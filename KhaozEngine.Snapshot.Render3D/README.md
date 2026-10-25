@@ -28,5 +28,5 @@ return SnapshotHost.Main(args, shots =>
 ```
 
 The namespace is `KhaozEngine.Snapshot` either way, so adding the package lights up `Shot3D` on an
-existing runner with no code change beyond the reference. MonoGame-free, deterministic, no window
+existing runner with no code change beyond the reference. Deterministic, no window
 (the capture still needs a GPU device).

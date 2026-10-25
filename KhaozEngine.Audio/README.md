@@ -1,10 +1,13 @@
 # KhaozEngine.Audio
 
-Game-agnostic audio on the custom MonoGame-free stack: streaming music + SFX + 3D positional audio.
+Game-agnostic audio: streaming music, SFX and 3D positional audio.
 
 - `AudioSystem` - track list, volume (master x music), enable/disable, automatic rotation (`PlayMode`),
   `TrackChanged` events; `PlaySfx` / `PlaySfx3D` / `SetListener` / `SfxVolume`. `LoadContent(directory)` then
   `Update()` once per frame.
+- `SetRotationPool(trackNames)` limits random rotation to a subset, such as menu music, while `PlayTrack`
+  can still play any registered track on demand. Null restores all tracks. Names resolve lazily, and a pool
+  with no registered matches falls back to all tracks with a one-time warning.
 - **Main-thread-only, enforced.** An `AudioSystem` belongs to the thread that constructed it (normally the
   thread running the frame loop). Its registries are plain dictionaries and lists with no locking, so every
   mutating entry point (register, load, play, tick, volume and bus setters) checks the calling thread and throws
@@ -51,8 +54,7 @@ Game-agnostic audio on the custom MonoGame-free stack: streaming music + SFX + 3
   buffers, so music resumes mid-track and loaded SFX stay loaded. A failed reopen is logged once and retried.
   Nothing to call: keep calling `Update` every frame, including in a game with no music.
 
-No MonoGame. OpenAL is bundled (openal-soft, Silk.NET.OpenAL.Soft
-.Native) so no system OpenAL is required.
+OpenAL is bundled (openal-soft, `Silk.NET.OpenAL.Soft.Native`) so no system OpenAL is required.
 
 **Linux host natives, packed here as well as in `KhaozEngine.Foundation`
 ([#723](https://github.com/APKiwiOrg/KhaozEngine/issues/723)).** Silk.NET resolves its bindings itself rather

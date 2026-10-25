@@ -1334,7 +1334,7 @@ Guard work the package creates, all mechanical and all precedented:
   absence is worth a comment in the test so a later reader does not add a row for symmetry.
 - `KhaozEngine.slnx` gains the project, which force-adds `KhaozEngine.Tests` to the selective-test set, so the
   architecture guards run on the landing PR.
-- `check-doc-versions.sh` requires a bolded `**KhaozEngine.Gpu.Metal**` catalog row in the root `README.md` and
+- `check-doc-versions.sh` requires a `docs/PACKAGES.md` catalog row linking `KhaozEngine.Gpu.Metal/README.md` and
   a `KhaozEngine.Gpu.Metal/README.md` shipped via `<PackageReadmeFile>`.
 - `GpuPublicApiTests` extends its walk to the new assembly.
 - The no-Veldrid pair in BOTH forms, the csproj read and the IL reference walk. The walk is the load-bearing

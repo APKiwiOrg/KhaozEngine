@@ -8,11 +8,10 @@ namespace KhaozEngine.Render2D
 {
     /// <summary>
     /// Draws 2D primitives (rectangles, lines, circles, rings, gradients, progress bars, convex polygon fills and
-    /// strokes) through a
-    /// <see cref="SpriteBatch"/> using a 1x1 white texture. The MonoGame-free 5.x port of the 4.x
-    /// KhaozEngine.Graphics PrimitiveRenderer: rectangles take a <see cref="Rect"/>, colors are RGBA
-    /// <see cref="Vector4"/> (0..1), points are <see cref="Vector2"/>. Rotated primitives (lines, rings)
-    /// use the rotated-quad <see cref="SpriteBatch"/> overload so fractional thickness renders faithfully.
+    /// strokes) through a <see cref="SpriteBatch"/> using a 1x1 white texture. Rectangles take a
+    /// <see cref="Rect"/>, colors are RGBA <see cref="Color"/> (0..1), and points are <see cref="Vector2"/>.
+    /// Rotated primitives (lines, rings) use the rotated-quad <see cref="SpriteBatch"/> overload so fractional
+    /// thickness renders faithfully.
     /// </summary>
     public sealed class PrimitiveRenderer : IDisposable
     {
@@ -20,7 +19,7 @@ namespace KhaozEngine.Render2D
         public static readonly Vector4 FullUV = new(0f, 0f, 1f, 1f);
 
         // Centered on the line's thickness (left edge, vertical middle) so DrawLine/DrawRing strokes are
-        // centered on their path, matching the 4.x DrawRing line origin.
+        // centered on their path.
         static readonly Vector2 LineOrigin = new(0f, 0.5f);
 
         readonly Texture2D _white;

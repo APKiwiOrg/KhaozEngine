@@ -1,7 +1,11 @@
 # KhaozEngine.WorldStore.Sqlite
 
-SQLite `IWorldStore` backend over `Microsoft.Data.Sqlite`. The embedded, zero-infra dev/test and single-node
-durable store for an authoritative world.
+SQLite checkpoint and mutation-journal backends over `Microsoft.Data.Sqlite` for embedded development, tests and
+single-node hosts. `SqliteWorldStore` implements `IWorldStore`, and `SqliteMutationJournalStore` implements
+`IMutationJournalStore`.
+
+Add this package explicitly when choosing SQLite. It is outside every umbrella, including `KhaozEngine.Server`,
+so other server builds do not inherit a database provider they do not use.
 
 ```csharp
 using KhaozEngine.WorldStore.Sqlite;

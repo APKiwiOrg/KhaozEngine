@@ -5,9 +5,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Windowing
 {
     /// <summary>
-    /// 5.x-native (MonoGame-free) clock: separates real delta from a scaled simulation delta, with
-    /// pause/resume and a time scale, driven by a raw <c>float</c> dt (the value <c>AppWindow.Frame.Dt</c>
-    /// provides). Mirrors the proven 4.x <c>KhaozEngine.Time.GameClock</c> API. Pure, headless.
+    /// Headless clock tests for real and scaled simulation deltas, pause/resume and time scale, driven
+    /// by a raw <c>float</c> dt (the value <c>AppWindow.Frame.Dt</c> provides).
     /// </summary>
     public class GameClockTests
     {

@@ -29,6 +29,17 @@ Game-agnostic 2D collision + broadphase primitives.
 - **`ICircleCollider`** (`Position` + `Radius`) and **`IPreciseCircleCollisionTarget`**
   (`IntersectsCircle`) - implement on your entity type.
 
+## Static-world collision and walkable surfaces
+
+`BoxCollision` resolves circle overlap against axis-aligned boxes, oriented boxes and circles using
+`System.Numerics` vectors. `WorldCollider` represents a placed cylinder or box, and `WorldColliders`
+broad-phases nearby shapes and resolves push-out. Its height-aware overloads let feet above a solid top
+or walkable surface pass without a side collision, while thin blockers remain blocking.
+
+`PropSurface` stores a prop's top-surface height grid and reads or writes its `.surf` binary.
+`WorldSurface` places that grid with a position, scale, yaw and base height. `WorldSurfaces.Query(x, z)`
+returns the highest covering surface or null, so movement can stand on or jump onto a prop without a renderer.
+
 ## Determinism
 
 The float math and iteration order are deterministic and intended for lockstep sims:

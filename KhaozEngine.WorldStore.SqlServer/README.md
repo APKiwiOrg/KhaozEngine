@@ -1,7 +1,11 @@
 # KhaozEngine.WorldStore.SqlServer
 
-SQL Server / Azure SQL `IWorldStore` backend over `Microsoft.Data.SqlClient`. The production durable store for an
-authoritative world; identical `IWorldStore` contract to the SQLite dev/test backend.
+SQL Server and Azure SQL checkpoint and mutation-journal backends over `Microsoft.Data.SqlClient` for production
+authoritative worlds. `SqlServerWorldStore` implements `IWorldStore`, and `SqlServerMutationJournalStore`
+implements `IMutationJournalStore`.
+
+Add this package explicitly when choosing SQL Server or Azure SQL. It is outside every umbrella, including
+`KhaozEngine.Server`, so other server builds do not inherit a database provider they do not use.
 
 ```csharp
 using KhaozEngine.WorldStore.SqlServer;

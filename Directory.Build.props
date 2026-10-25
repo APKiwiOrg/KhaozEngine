@@ -11,17 +11,9 @@
          only standing suppression is 1591 (missing XML doc on public members), set below. -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 
-    <!-- The legacy 4.x MonoGame line is GONE: its six packages (Graphics/Input/Screens/Sprites/Time/UI) were
-         deleted once SpaceGame, the last consumer, migrated off MonoGame. The engine is now
-         entirely MonoGame-free, so there is a single shared version line below. (History: see CHANGELOG.md;
-         the roadmap section that described the pivot is long gone, the pivot shipped.) -->
-    <!-- Shared version for the engine (the WHOLE engine). Every packable package sets
-         <Version>$(KhaozEngineVersion)</Version> in its csproj: the custom render/runtime stack (Gpu,
-         Windowing, Render2D, Render3D, Gui, Audio, Particles, Game) plus the graduated MonoGame-free
-         foundation (Ecs/Serialization/Content/Diagnostics/App/Locomotion/Objectives/Persistence/Platform/
-         Updates/Collision/Physics/Physics.Bepu/Netcode/Netcode.Abstractions/Netcode.LiteNetLib/WorldStore/WorldStore.Sqlite/
-         WorldStore.SqlServer/NetWorld). Bump here to release them together; this is the version the
-         doc-version guard checks. -->
+    <!-- The one shared version for the whole engine. Every packable package sets
+         <Version>$(KhaozEngineVersion)</Version> in its csproj, so bumping it here releases them all
+         together. This is the version the doc-version guard checks. -->
     <KhaozEngineVersion>21.14.0</KhaozEngineVersion>
     <Authors>APKiwi</Authors>
     <Company>Khaoz</Company>

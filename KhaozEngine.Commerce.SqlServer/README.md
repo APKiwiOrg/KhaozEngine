@@ -46,7 +46,8 @@ time. The first construction after that upgrade therefore needs `ALTER` rights o
 serialize the guarded column adds under the same schema lock without changing legacy rows or key collations.
 
 Opt-in: pulls `Microsoft.Data.SqlClient` without touching the dependency-free `KhaozEngine.Commerce` core. Not
-bundled in the `Server` umbrella.
+bundled in any umbrella, including `Server`. Add it explicitly when choosing SQL Server or Azure SQL for durable
+wallet storage.
 
 ## Key columns are case sensitive by collation
 

@@ -1,7 +1,8 @@
 # KhaozEngine
 
-KhaozEngine is the shared MonoGame-free 2D and 3D engine used by the APKiwiOrg games. The root
-[`README.md`](README.md) is the authoritative package and umbrella catalog.
+KhaozEngine is the shared 2D and 3D engine used by the APKiwiOrg games. The root
+[`README.md`](README.md) is the front door for a newcomer. [`docs/PACKAGES.md`](docs/PACKAGES.md) is the
+authoritative package and umbrella catalog, and each package's own README is its detailed page.
 [`docs/USING-KHAOZENGINE.md`](docs/USING-KHAOZENGINE.md) is the consumer contract.
 
 This is the canonical tool-neutral instruction entry point. `CLAUDE.md` imports it and Codex reads it
@@ -129,7 +130,7 @@ merging into or pushing `main`, and wait while a release holds the lock.
 
 Each fact has one source:
 
-- Packages and umbrella membership: root `README.md`.
+- Packages and umbrella membership: `docs/PACKAGES.md`, one line per package linking its README.
 - Public API use: `docs/USING-KHAOZENGINE.md` and each package README.
 - Dependency edges: `docs/DEPENDENCY-SEAMS.md`.
 - Release history: `CHANGELOG.md`.

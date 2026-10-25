@@ -1,0 +1,128 @@
+{
+  "schema": "khaozengine.renderer-perf-unit/1",
+  "unitId": "pilot-linux",
+  "preset": "pilot",
+  "workloadSha": "3f09d6807630a04043a61f4b615acf1bbcfd0db0",
+  "baselineMainSha": "3f09d6807630a04043a61f4b615acf1bbcfd0db0",
+  "recipes": [
+    {
+      "sceneId": "S3",
+      "version": "crowd/1",
+      "profile": "renderer-full-native-1080/1",
+      "recipeSha256": "dd702040fa4f868a9377cbf09c4eb7ff0fc57d54adb856fac2fec3b4af180f0b",
+      "settingsSha256": "fa254848b4d8b245d5fdb16e6e7617d00f2c0e6ea22336f123ae2da0434cb2a2",
+      "shaderSha256": "d2b5b4573b988b21febe34dc1e263b7d73ecf308d2afc47dc8690a5dc6f80a88",
+      "geometrySha256": "90732a30384a0e9554ea017ce81a2c403c3b4a421f90035fe4a4b82b786df6e9",
+      "assetSha256": "99dc87de2047b8b4e06ed9a4aa8ace50f66267abc3ec134bc5acfdd7341eaa9b"
+    }
+  ],
+  "blocks": [
+    {
+      "sceneId": "S3",
+      "layout": "total-only",
+      "iteration": 0,
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "sceneId": "S3",
+      "layout": "per-pass",
+      "iteration": 0,
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    }
+  ],
+  "controls": [
+    {
+      "id": 1,
+      "version": "1",
+      "workSha256": "8ee116407cc935ea7ee1274b3153e95f161dec828ab5cabaac07149f06349e0f",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 4,
+      "version": "1",
+      "workSha256": "d58660c9e1b986b4b5ed5b978bec4542fd762c24425cde4195120399c9653a61",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 5,
+      "version": "1",
+      "workSha256": "0d4897cffa0ef344422c9a49c31bac191ec1a2c6723b9766e6c8d67d8661d931",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 7,
+      "version": "1",
+      "workSha256": "d563a6e8b22aac01e418b03e58c5fbf3a5515c34de71804a4e05e7404667551a",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 9,
+      "version": "1",
+      "workSha256": "de7287001199ce06c8f06862092343c1a5cf378c7a48049edbfc6844100f28f1",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    },
+    {
+      "id": 11,
+      "version": "1",
+      "workSha256": "01adcb0b72aee7e82393c646ceb003ab9f390ae50416d6e94973d4285e33f097",
+      "warmupFrames": 32,
+      "measuredFrames": 64
+    }
+  ],
+  "conditioningFrames": 300,
+  "batchSize": 3,
+  "maximumScopeOccurrences": 255,
+  "runtime": {
+    "configuration": "Release",
+    "runtimeVersion": "10.0.13",
+    "environment": {
+      "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+      "DOTNET_HOST_PATH": "/home/runner/work/_temp/renderer-dotnet/dotnet",
+      "DOTNET_ROOT": "/home/runner/work/_temp/renderer-dotnet",
+      "DOTNET_ROOT_X64": "/home/runner/work/_temp/renderer-dotnet",
+      "DOTNET_TieredCompilation": "1",
+      "DOTNET_gcServer": "0",
+      "KE_D3D11_ADAPTER": "NVIDIA",
+      "KE_GPU_TESTS": "1",
+      "KE_GRAPHICS_BACKEND": "vulkan-native",
+      "KE_VULKAN_DEVICE": "discrete",
+      "KE_VULKAN_REQUIRED": "1",
+      "VK_DRIVER_FILES": "/usr/share/vulkan/icd.d/nvidia_icd.json",
+      "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/nvidia_icd.json"
+    },
+    "gcMode": "workstation",
+    "tieredCompilation": true
+  },
+  "execution": {
+    "backend": "vulkan",
+    "adapterPolicy": "nvidia-t4-hardware",
+    "runner": "gpu-t4-linux",
+    "workflow": "gpu-hosted-bench.yml",
+    "leg": "linux-vulkan",
+    "completionPolicy": "retained-fence-batch-3/1"
+  },
+  "limits": {
+    "unitSeconds": 600,
+    "frameMilliseconds": 10000,
+    "jobMinutes": 12
+  },
+  "budget": {
+    "maximumBilledMinutes": 12,
+    "ratePerMinute": 0.052,
+    "currency": "USD",
+    "maximumCostUsd": 0.624
+  },
+  "approval": {
+    "reference": "T3 thread f6c16dd2-ab68-482e-bf6c-335ec5ad4582 owner answered Approve one attempt (Recommended) to the Pilot 3 paid GPU question on 2026-10-25 for proposal 7e228c8c0173a3cdda49cc5a139c9b7038bd01adbaa35e9cbea7a43f2fe89927. One pilot only.",
+    "purpose": "Validate the fixed renderer pilot accounting, native identities and compiler correspondence, controls, clocks, marker perturbation, bounded publication and actual billed cost.",
+    "campaignReference": "T3 thread f6c16dd2-ab68-482e-bf6c-335ec5ad4582 owner answered Approve one attempt (Recommended) to the Pilot 3 paid GPU question on 2026-10-25 for proposal 7e228c8c0173a3cdda49cc5a139c9b7038bd01adbaa35e9cbea7a43f2fe89927. One pilot only.",
+    "campaignMaximumUsd": 7.24
+  }
+}

@@ -157,23 +157,21 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `GetOrLoad*` uploads again. There is no refcount and nothing evicts on its own. Calling the plain `Unload*` on a
   cached handle directly leaves the key pointing at a freed handle, so pair the two.
   `Scene3D.SharedAssetCount` is the diagnostic.
-- `Scene3D.PrepareFrame()` - the frame's pre-recording phase. Call it once per frame, after the frame's
-  `Draw*` calls and BEFORE opening the command list the scene is recorded into. Subsystems whose per-frame GPU work
-  cannot go in the frame's list (the FFT ocean's priming dispatch, which needs a submit + device wait of its own)
-  run there instead: opening a second command list while the frame's is recording resets the device's immediate
-  context on Direct3D11 and corrupts the frame (issue #423). `Render3DSurface.Render`,
-  `Render3DPreview.Capture` and `Render3DSnapshot.Capture` all call it for you, so every consumer of the surface
-  gets the phase rather than only `GameApp3D`, and since the record entry point is internal those are the only
-  ways a scene is rendered: for legacy content nothing outside the engine is left having to call it, and a
-  by-hand call is an early no-op. Recording consumes the prepared frame, so a scene records once per `Begin` and a second viewport means a
-  second `Begin`. Costs nothing on a frame that queues no water. `PrepareFrame(width, height)` is the
-  viewport-aware form. It also fixes the frame's render targets and prepares bound optical water. The
-  no-argument form throws when bound water is queued. `GameApp3D` prepares with its frame size, and
-  `Render3DPreview.Capture` and the `Render3DSnapshot` captures, which call `Begin` themselves, prepare with
-  their own target size. A draw callback that also calls `PrepareFrame` with that size is a latched no-op.
-  `Render3DSurface.Render` records inside the frame's open list, so its own call is the no-argument safety net
-  described next, and bound water must already be prepared at the frame's size. A custom host calls
-  `PrepareFrame(width, height)` after queueing and before recording. On a WINDOWED host, `Render3DSurface.Render`'s own
+- `Scene3D.PrepareFrame(width, height)` and `Scene3D.PrepareFrame()` - the frame's pre-recording phase. Call it
+  once per frame, after the frame's `Draw*` calls and BEFORE opening the command list the scene is recorded into.
+  Subsystems whose per-frame GPU work cannot go in the frame's list (the FFT ocean's priming dispatch, which needs
+  a submit + device wait of its own) run there instead: opening a second command list while the frame's is
+  recording resets the device's immediate context on Direct3D11 and corrupts the frame (issue #423). The
+  viewport-aware `PrepareFrame(width, height)` also fixes the frame's render targets and prepares bound optical
+  water. The no-argument form is the legacy form and throws when bound water is queued. `GameApp3D` prepares with
+  its frame size. `Render3DPreview.Capture` and the `Render3DSnapshot` captures call `Begin` themselves and
+  prepare with their own target size, so bound water needs no preparation in their draw callback, and a callback
+  that also calls `PrepareFrame` with that size is a latched no-op. Since the record entry point is internal,
+  those hosts and `Render3DSurface.Render` are the only ways a scene is rendered. A custom host calls
+  `PrepareFrame(width, height)` after queueing and before recording. Recording consumes the prepared frame, so a
+  scene records once per `Begin` and a second viewport means a second `Begin`. Costs nothing on a frame that
+  queues no water. `Render3DSurface.Render` records inside the frame's open list and calls the no-argument form,
+  so bound water must already be prepared at the frame's size. On a WINDOWED host, `Render3DSurface.Render`'s own
   call is a safety net rather than the effective one - the frame's list is already open by then - so queue and
   prepare the scene in `AppWindow.Run`'s `onPrepare` callback instead (`GameApp3D` does, in `OnPrepareWorld`, see
   issue #429). A host that does neither no longer gets a silently corrupt frame on one backend: every scene path
@@ -874,17 +872,23 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     and a bin holds at most `MaxTrianglesPerBin` (32) candidates. The shader selects the containing triangle with
     exact integer predicates and interpolates its three depths. Refusals throw `WaterOpticsSurfaceException`,
     an `ArgumentException` whose `Reason` is `IncompleteCoverage`, `AmbiguousSurface`, `CapacityExceeded` or
-    `UnrepresentableSurface`. Map the typed reason rather than the message. `TrySampleDepth` returns false
+    `UnrepresentableSurface`. The appended `UncertifiedDisplacement` reason is reported by the padding preflight
+    below, not by the constructor. Map the typed reason rather than the message. `TrySampleDepth` returns false
     outside every certificate and `SampleDepth` throws there. No sample value means missing data. Upload also
     refuses nonzero subnormal atlas scalars and non-normal inverse extents as `UnrepresentableSurface` before
     allocating a texture. `ReconstructionErrorBoundMetres` is the field's upward-rounded reconstruction bound,
     which a producer counts with its own source and render-origin conversion error inside its single budget.
   - **Binding and coverage**: `WaterOpticsBinding(handle, origin, size)` uses the plane's absolute frame. Origin
-    XZ is the field minimum and origin Y is the fixed reference surface. A triangle binding requires the field's
+    XZ is the field minimum. Origin Y is the reference the rest depths are measured from, the still-water surface
+    or any datum the producer subtracts exactly. TileWorld binds datum 0 and stores `-y`. A triangle binding
+    requires the field's
     exact `Size`. `DrawWater` refuses a bound plane whose rectangle, widened by the effective procedural swell
     displacement, leaves the field or, for triangles, does not fit one certificate. `Scene3D.GetWaterOpticsPadding`
-    reports that displacement for producer preflight. Bound FFT water throws `NotSupportedException`, because FFT
-    has no certified displacement envelope. A stale, foreign or released handle throws. No bound fragment falls
+    reports that displacement for producer preflight and throws `NotSupportedException` for FFT water, because FFT
+    has no certified displacement envelope. `Scene3D.TryGetWaterOpticsPadding(look, out padding, out reason)` is
+    the non-throwing form. It returns false with zero padding and `UncertifiedDisplacement` for such a look, and
+    `reason` is meaningful only when it returns false. Bound FFT water throws `NotSupportedException` at
+    `DrawWater`. A stale, foreign or released handle throws. No bound fragment falls
     back to scene depth, zero or deep water. With an active render origin the scene subtracts the frame origin
     from the binding origin as it does from the plane centre, so texture mapping never carries large absolute
     world coordinates and rebasing changes the mapping, not the samples.

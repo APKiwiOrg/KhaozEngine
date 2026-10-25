@@ -97,23 +97,22 @@ flowchart LR
 2. `Scene3D` accumulates draws as instances keyed by `MeshHandle` (geometry was uploaded once via `LoadMesh`);
    `SpriteBatch` packs quads into per-frame ring-buffered vertex buffers (rotated so a frame's write never races
    the GPU still reading an earlier, in-flight frame's copy). Nothing here references a graphics API.
-3. Before anything is recorded, `Scene3D.PrepareFrame()` runs the frame's pre-recording phase: the subsystems
-   whose per-frame GPU work needs a command list of their OWN (the FFT ocean's priming dispatch, which is a
-   compute read-after-write and so needs a submit plus a device wait) do it here, where no frame list is open.
-   `Render3DSurface.Render`, `Render3DPreview.Capture` and every `Render3DSnapshot` capture entry point call it.
-   `CaptureWithBackend` returns the backend from that same render alongside the pixels. `CaptureSequence`
-   retains one scene and target, renders warm-up without readback, then delivers each frame's pixels and
-   backend synchronously. On a windowed
-   host the effective call is the one `GameApp3D` makes in the loop's prepare phase, and the surface's is then a
-   no-op (issue #429). Opening a second command list while the frame's is recording is refused by the seam's
-   open-recording register on every backend, which is why the phase exists and why it stayed when the backend
-   that used to corrupt the frame instead of refusing was deleted (issues #423 and #690).
-   `PrepareFrame(width, height)` is the viewport-aware form. It also fixes the frame's render targets and builds
-   the resource sets for bound optical water. The legacy no-argument form throws when bound water is queued.
-   `GameApp3D` passes the frame size, and `Render3DPreview.Capture` and the `Render3DSnapshot` captures prepare
-   with their own target size, so a draw callback that also prepares at that size is a latched no-op.
-   `Render3DSurface.Render` keeps the no-argument safety net, so bound water must already be prepared at the
-   frame's size. A custom host calls `PrepareFrame(width, height)` after queueing and before recording.
+3. Before anything is recorded, `Scene3D.PrepareFrame(width, height)` runs the frame's pre-recording phase: the
+   subsystems whose per-frame GPU work needs a command list of their OWN (the FFT ocean's priming dispatch, which
+   is a compute read-after-write and so needs a submit plus a device wait) do it here, where no frame list is
+   open. The viewport-aware form also fixes the frame's render targets and builds the resource sets for bound
+   optical water. The legacy no-argument `PrepareFrame()` throws when bound water is queued. `GameApp3D` prepares
+   with its frame size in the loop's prepare phase. `Render3DPreview.Capture` and every `Render3DSnapshot`
+   capture entry point call `Begin` themselves and prepare with their own target size, so a draw callback needs
+   no preparation and one that also prepares at that size is a latched no-op. `CaptureWithBackend` returns the
+   backend from that same render alongside the pixels. `CaptureSequence` retains one scene and target, renders
+   warm-up without readback, then delivers each frame's pixels and backend synchronously. `Render3DSurface.Render`
+   records inside the frame's open list and keeps a no-argument safety net, which is a no-op after `GameApp3D`'s
+   call (issue #429), so bound water must already be prepared at the frame's size. A custom host calls
+   `PrepareFrame(width, height)` after queueing and before recording. Opening a second command list while the
+   frame's is recording is refused by the seam's open-recording register on every backend, which is why the
+   phase exists and why it stayed when the backend that used to corrupt the frame instead of refusing was
+   deleted (issues #423 and #690).
 4. At frame end, `Render3DSurface` / `Render2DSurface` flush through `ModelRenderer` / the sprite shader, which
    record commands on `GpuDeviceContext` - the opaque seam (device, buffers, pipelines, command list).
 5. `GpuBackendSelector` picked the backend at startup (`KE_GRAPHICS_BACKEND` override, then the game's stored

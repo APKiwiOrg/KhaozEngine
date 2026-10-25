@@ -3971,7 +3971,8 @@ scene.DrawBillboard(pos, size, color, BillboardBlend.Additive);
 scene.DebugCircle(center, up, radius, color);                        // immediate-mode debug overlay
 ```
 
-- `Scene3D`: `LoadMesh`/`LoadTexture`/`UnloadMesh`/`UnloadTexture`, `Begin()`, `PrepareFrame()` (below),
+- `Scene3D`: `LoadMesh`/`LoadTexture`/`UnloadMesh`/`UnloadTexture`, `Begin()`, `PrepareFrame(width, height)` and the
+  legacy `PrepareFrame()` (below),
   `Draw(handle, transform[, tint[, material]])` or `Draw(in RigidInstanceDraw)` with every knob (see "Draw
   descriptors and motion keys" below),
   billboards, a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`), and depth-tested debug wire volumes
@@ -4004,19 +4005,16 @@ scene.UnloadSharedTexture("art/hull.png");     // false when nothing was cached 
   leaves the key pointing at a freed handle, so pair the two. Keys are ordinal and case-sensitive, each family has
   its own key space, and a loader that throws caches nothing so the next call retries. `SharedAssetCount` is the
   diagnostic: a number that climbs across run restarts is a consumer still re-keying its assets.
-- **`PrepareFrame()`, the frame's pre-recording phase.** Runs once per frame, after every `Draw*`
-  call for that frame and **before the command list the scene renders into is opened**. Every host the engine
-  ships calls it for you - `Render3DSurface.Render` (so `GameApp3D` and any surface you build yourself are both
-  covered), `Render3DPreview.Capture`, `Render3DSnapshot.Capture` - so a game needs no change. Every way of
-  rendering a `Scene3D` goes through one of those (the record entry point itself is internal), so no
-  consumer-reachable path is left having to call it for legacy content, and calling it by hand is then only an
-  early no-op. **`PrepareFrame(width, height)` is the viewport-aware form.** It also fixes the frame's render
-  targets and prepares bound optical water (see **Independent optical bed** under Water). The no-argument form is
-  the legacy form and throws when bound water is queued. `GameApp3D` prepares with its frame size.
+- **`PrepareFrame(width, height)`, the frame's pre-recording phase.** Runs once per frame, after every `Draw*`
+  call for that frame and **before the command list the scene renders into is opened**. The viewport-aware form
+  also fixes the frame's render targets and prepares bound optical water (see **Independent optical bed** under
+  Water). The no-argument `PrepareFrame()` is the legacy form and throws when bound water is queued. Every host
+  the engine ships prepares for you, so a game needs no change. `GameApp3D` prepares with its frame size.
   `Render3DPreview.Capture` and the `Render3DSnapshot` captures call `Begin` themselves and prepare with their own
-  target size, so a draw callback that also calls `PrepareFrame` with that size is a latched no-op.
-  `Render3DSurface.Render` records inside the frame's open list, so its call is the no-argument safety net and
-  bound water must already be prepared at the frame's size. A custom host calls `PrepareFrame(width, height)`
+  target size, so a draw callback needs no preparation, and one that also calls `PrepareFrame` with that size is a
+  latched no-op. `Render3DSurface.Render` records inside the frame's open list, so its call is the no-argument
+  safety net and bound water must already be prepared at the frame's size. The record entry point itself is
+  internal, so those are the only ways a `Scene3D` is rendered. A custom host calls `PrepareFrame(width, height)`
   after queueing and before recording. The order it enforces, the same order those hosts follow, is:
 
 ```csharp
@@ -5650,7 +5648,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       total budget.
 
     Load once and bind the handle each frame. The binding's origin XZ is the field minimum in the plane's absolute
-    frame, and its origin Y is the fixed reference surface. A triangle binding uses the field's exact `Size`.
+    frame, and its origin Y is the reference the rest depths are measured from, the still-water surface or any
+    datum the producer subtracts exactly. TileWorld binds datum 0 and stores rest depth `-y`. A triangle binding
+    uses the field's exact `Size`.
     ```csharp
     // Load once. Signed depths in metres below the reference surface Y = 9.7.
     WaterOpticsHandle bed = scene.LoadWaterOpticsField(
@@ -5665,11 +5665,13 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     ```
     `DrawWater` refuses a bound plane whose rectangle, widened by the effective procedural swell displacement, leaves
     the field or, for a triangle field, does not fit one certificate. `scene.GetWaterOpticsPadding(look)` returns
-    that displacement for preflight. Bound FFT water throws `NotSupportedException` because FFT has no certified
-    displacement envelope. A stale, foreign or released handle throws. No opted-in pixel falls back to scene depth,
+    that displacement for preflight and throws `NotSupportedException` for FFT. The non-throwing
+    `scene.TryGetWaterOpticsPadding(look, out float padding, out WaterOpticsSurfaceFailure reason)` returns false
+    with zero padding and `UncertifiedDisplacement` instead, and `reason` is meaningful only on false. Bound FFT
+    water throws `NotSupportedException` at `DrawWater` because FFT has no certified displacement envelope. A stale, foreign or released handle throws. No opted-in pixel falls back to scene depth,
     zero or deep water. With an active render origin the scene subtracts the frame origin from the binding origin
-    in the same way as it does from the plane, so rebasing changes the mapping, never the samples, and no large absolute
-    coordinate reaches texture arithmetic.
+    in the same way as it does from the plane, so rebasing changes the mapping, never the samples, and no large
+    absolute coordinate reaches texture arithmetic.
 
     Bound water requires `scene.PrepareFrame(width, height)` after queueing and before recording. The no-argument
     form throws for it. Changes to prepared inputs, the viewport or the render targets after preparation throw at
@@ -5679,8 +5681,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     another or recreated scene are invalid, so explicitly reload retained fields into the new scene.
 
     TileWorld opts in per view with `TileWorldViewOptions.WaterDepthMode = TileWaterDepthMode.AuthoredBed` and
-    builds triangle fields from its actual ground meshes. Its strict refusals, content requirements and
-    `WaterOpticsSourceBytes` diagnostic are in the
+    builds triangle fields from its actual ground meshes. Its scene must implement
+    `ITileWorldWaterTriangleOpticsScene.TryGetWaterOpticsPadding`, which has no default body. An uncertified look
+    such as FFT does not throw there. It withdraws the opted-in water, records one `UncertifiedDisplacement`
+    diagnostic per region-plane with water, keeps terrain building, and republishes the water once the look is
+    certifiable. Any refusal withdraws the whole region-plane request, at every water level. Its other refusals,
+    content requirements and `WaterOpticsSourceBytes` diagnostic are in the
     [TileWorld package reference](../KhaozEngine.TileWorld.Render3D/README.md#authored-optical-beds).
   - **Settings** (`Post.Water`, scene-wide look, lives alongside `Post.Sky` for the same reason - both are
     scene-appearance bags reached off `Post`). Grouped by what they do:

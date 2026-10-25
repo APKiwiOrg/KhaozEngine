@@ -14,6 +14,8 @@ namespace KhaozEngine.Render3D
         /// <paramref name="setup"/> runs once (load meshes via <see cref="Scene3D.LoadMesh(KhaozEngine.Render3D.GltfMesh)"/>, configure
         /// camera/post); <paramref name="drawFrame"/> runs each frame after <see cref="Scene3D.Begin"/> to
         /// queue instances via <see cref="Scene3D.Draw(KhaozEngine.Render3D.MeshHandle, System.Numerics.Matrix4x4)"/>.
+        /// Each frame is prepared at the capture size with <see cref="Scene3D.PrepareFrame(int,int)"/> after
+        /// <paramref name="drawFrame"/>, so bound optical water needs no preparation in the callback.
         /// </summary>
         public static byte[] Capture(int width, int height, Action<Scene3D> setup, Action<Scene3D> drawFrame, int frames = 1,
             ShadowSettings? shadows = null)
@@ -36,7 +38,9 @@ namespace KhaozEngine.Render3D
         /// <summary>Render one continuous offscreen sequence, reusing its device, scene and render target.
         /// <paramref name="setup"/> runs once. After <see cref="Scene3D.Begin"/>, <paramref name="drawFrame"/>
         /// receives the scene and zero-based frame index. After rendering, <paramref name="onFrame"/> receives
-        /// that same index and an independent RGBA8 capture, synchronously on the calling thread.</summary>
+        /// that same index and an independent RGBA8 capture, synchronously on the calling thread. Each frame is
+        /// prepared at the capture size with <see cref="Scene3D.PrepareFrame(int,int)"/> after
+        /// <paramref name="drawFrame"/>, so bound optical water needs no preparation in the callback.</summary>
         /// <param name="width">Image width in pixels, at least 1.</param>
         /// <param name="height">Image height in pixels, at least 1.</param>
         /// <param name="setup">Loads meshes and configures the scene once before any frame.</param>

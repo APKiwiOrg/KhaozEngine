@@ -296,15 +296,20 @@ construction, before any upload.
   `TileWaterOpticsFailureKind` is `MissingHeightData` for a strict height-read fallback, `FieldTooLarge` for an
   oversized or unaddressable domain, `MissingSurfaceData` for an absent, mismatched or stale source snapshot,
   `IncompleteSurfaceCoverage`, `AmbiguousSurface`, `SurfaceCapacityExceeded` when every packing exceeds 32
-  candidates per bin or the 1024 by 1024 atlas, and `UnrepresentableSurface` when the error budget or a
-  backend-safe scalar cannot be met.
+  candidates per bin or the 1024 by 1024 atlas, `UnrepresentableSurface` when the error budget or a backend-safe
+  scalar cannot be met, and `UncertifiedDisplacement` when the effective look has no certified displacement
+  envelope.
 - **Content must supply a bed.** A certificate reaches past its water tiles, so the ground around opted-in water
   must emit triangles there. Water beside empty or `NoDraw` cells, or beside an unloaded neighbour region, is
   refused with `IncompleteSurfaceCoverage`, `MissingSurfaceData` or `MissingHeightData`, and zero underlay emits
   no bed. Author a real bank around every opted-in body and keep its neighbours resident.
-- **Looks.** The effective look must be procedural. `TileWaterLooks.River` qualifies. An FFT look has no certified
-  displacement envelope, so the scene's padding preflight throws `NotSupportedException`. A colour-only look
-  change reuses the uploaded optical bytes.
+- **Looks.** Opted-in water needs a look with a certified displacement envelope. `TileWaterLooks.River` qualifies.
+  The view resolves the look once per flush through `ITileWorldWaterTriangleOpticsScene.TryGetWaterOpticsPadding`,
+  which `Scene3DTileWorldScene` forwards to `Scene3D.TryGetWaterOpticsPadding`. The interface member has no
+  default body, and its `reason` is meaningful only when it returns false. An uncertified look, such as FFT water,
+  withdraws the `AuthoredBed` water and records one `UncertifiedDisplacement` diagnostic per region-plane with
+  water. Terrain keeps building and publishing, and nothing throws. When the look becomes certifiable again the
+  water is prepared and republished. A colour-only look change reuses the uploaded optical bytes.
 - **Publication.** A source replacement rebuilds every dependent field against one candidate surface table,
   uploads them all, validates again and swaps the mesh and the fields together. An upload failure rolls the whole
   group back. No frame pairs a new mesh with an old field. Unrelated fields keep their handles.

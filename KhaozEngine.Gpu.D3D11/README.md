@@ -1014,7 +1014,8 @@ Concurrent requests for the same program and cache directory share an active com
 writes. Completed flights are removed and subsequent requests use the existing disk cache. Disabling the
 cache also disables this sharing. Disposing a pending shader abandons only managed CPU work, whose failures
 are captured even if nobody joins it. No worker creates native objects, and first use after shader disposal
-or device loss refuses before native creation.
+or device loss refuses before native creation. A pipeline disposed during its first shader join also refuses
+before native shader creation or binding. The compute shader remains caller-owned.
 
 **The cross-compile options are pinned, and the emitted HLSL is hashed.** `HlslCrossCompilePin` states the exact
 option set every HLSL emission in the engine runs under, with the citation from the Veldrid fork behind it, and a

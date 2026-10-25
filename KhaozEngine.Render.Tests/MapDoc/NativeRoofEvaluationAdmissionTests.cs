@@ -20,7 +20,8 @@ public sealed class NativeRoofEvaluationAdmissionTests
         var scene = MapSceneAcquisition.Run(source, NativePresentationFixtures.Scope, parent).Scene!;
         using var receipt = scene.PreparationOwnership!;
         // Scene, context, sources, intent, product, detached set, two role copies, view/digest and witness.
-        const long sceneBytes = 512 + 256 + 384 + 128 + 256 + 128 + 2 * 3 * 4 + 256 + 8 + 64;
+        const long contextBytes = 128 + 128;
+        const long sceneBytes = 512 + contextBytes + 384 + 128 + 256 + 128 + 2 * 3 * 4 + 256 + 8 + 64;
         Assert.Equal(sceneBytes, receipt.Bytes);
         Assert.Equal(MapSceneStatus.CompleteForScope, MapMembershipPreparation.Measure(scene, out var demand, out _));
         Assert.True(demand.Bytes > receipt.Bytes);
@@ -33,7 +34,8 @@ public sealed class NativeRoofEvaluationAdmissionTests
             Assert.Equal(MapSceneStatus.CapacityExceeded, result.Status);
             Assert.Null(result.Buffer);
             Assert.Equal("exact-child", result.Capacity!.LimitName);
-            Assert.Equal(demand.Bytes + sceneBytes, result.Capacity.Requested);
+            // Direct storage is admitted first. This window refuses before the shared context is attempted.
+            Assert.Equal(demand.Bytes + sceneBytes - contextBytes, result.Capacity.Requested);
             Assert.Equal(demand.Bytes, result.Capacity.Allowance);
             Assert.Equal(sceneBytes, receipt.Bytes);
             Assert.Equal(sceneBytes, parent.RetainedBytes);

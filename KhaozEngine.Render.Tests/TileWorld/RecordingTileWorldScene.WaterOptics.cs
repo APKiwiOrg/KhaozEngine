@@ -46,12 +46,16 @@ public sealed partial class RecordingTileWorldScene
         OpticalUnloads.Add(handle);
     }
 
+    /// <summary>The reason an FFT look is refused. The shipped scene reports
+    /// <see cref="WaterOpticsSurfaceFailure.UncertifiedDisplacement"/>.</summary>
+    public WaterOpticsSurfaceFailure PaddingRefusal { get; set; } = WaterOpticsSurfaceFailure.UncertifiedDisplacement;
+
     /// <summary>Refuses an FFT look like the shipped scene. This fake has no scene default, so only the look counts.</summary>
     public bool TryGetWaterOpticsPadding(WaterLook? look, out float padding, out WaterOpticsSurfaceFailure reason)
     {
         bool certified = look?.WaveSource != WaterWaveSource.FftOcean;
         padding = certified ? OpticalPadding : 0f;
-        reason = certified ? default : WaterOpticsSurfaceFailure.UncertifiedDisplacement;
+        reason = certified ? default : PaddingRefusal;
         return certified;
     }
 }

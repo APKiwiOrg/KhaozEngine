@@ -30,13 +30,10 @@ public sealed partial class TileWorldView
         {
             for (int plane = 0; plane < _planes; plane++)
             {
-                TileWaterPreparation? preparation = CaptureWater(region, plane);
-                if (preparation is not null)
-                {
-                    TileGroundCpuBuild ground = BuildGroundCpu(region, plane);
-                    groups[plane] = StageGround(region, plane, ground, preparation);
-                    if (groups[plane] is null) Queue(region, plane);
-                }
+                TileWaterPreparation preparation = CaptureWater(region, plane);
+                TileGroundCpuBuild ground = BuildGroundCpu(region, plane);
+                groups[plane] = StageGround(region, plane, ground, preparation);
+                if (groups[plane] is null) Queue(region, plane);
                 if (props is null)
                     snapshots[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
             }

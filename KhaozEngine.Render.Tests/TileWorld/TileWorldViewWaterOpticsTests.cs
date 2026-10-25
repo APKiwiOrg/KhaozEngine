@@ -414,15 +414,18 @@ public sealed class TileWorldViewWaterOpticsTests
         System.IO.File.Delete(file);
         var scene = new RecordingTileWorldScene();
         using var view = View(scene, source.Document);
-        var error = Assert.Throws<TileWorldException>(() => view.LoadRegion(Origin));
-        Assert.IsType<System.IO.FileNotFoundException>(error.InnerException);
+        // An optics-only source failure is memoised and never costs terrain. Origin's own water does not read it.
+        view.LoadRegion(Origin);
         Assert.Equal(1, view.WaterSourceRefusalCount);
+        Assert.Empty(view.WaterOpticsFailures);
+        WaterOpticsHandle origin = Assert.Single(scene.TriangleFields).Key;
         // This request shares the same unavailable source. It must refuse, without reopening the file.
         view.LoadRegion(east);
         TileWaterOpticsFailure failure = Assert.Single(view.WaterOpticsFailures);
         Assert.Equal(TileWaterOpticsFailureKind.MissingSurfaceData, failure.Kind);
         Assert.Equal(missing, failure.MissingRegion);
-        Assert.Empty(scene.TriangleFields);
+        Assert.Equal(origin, Assert.Single(scene.TriangleFields).Key);
+        Assert.False(source.IsLoaded(missing));
         view.Flush();
         System.IO.File.WriteAllBytes(file, bytes);
         view.MarkRegionStreamed(missing);

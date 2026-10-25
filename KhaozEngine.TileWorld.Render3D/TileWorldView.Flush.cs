@@ -79,8 +79,7 @@ public sealed partial class TileWorldView
                 // Build BEFORE freeing. A mesher that throws must leave the old handle live and drawable rather
                 // than a freed one in the slot, which would be a use-after-free on the next frame.
                 InvalidateGround(region, handles, plane);
-                TileWaterPreparation? water = CaptureWater(region, plane);
-                if (water is null) continue;
+                TileWaterPreparation water = CaptureWater(region, plane);
                 TileGroundCpuBuild rebuilt = BuildGroundCpu(region, plane);
                 if (!PublishGround(region, plane, handles, rebuilt, water)) continue;
                 handles.Props[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());

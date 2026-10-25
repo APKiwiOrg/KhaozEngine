@@ -68,8 +68,7 @@ public sealed partial class TileWorldView
     void RequestGroundPlane(RegionCoord region, RegionHandles handles, int plane, TileGroundLod lod,
                             TileWorldDocument snapshot, TileWorldCatalogs materials)
     {
-        TileWaterPreparation? water = CaptureWater(region, plane);
-        if (water is null) return;
+        TileWaterPreparation water = CaptureWater(region, plane);
         long generation = NextProfileGeneration();
         if (lod == TileGroundLod.Full)
         {

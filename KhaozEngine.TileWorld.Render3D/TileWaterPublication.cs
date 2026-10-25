@@ -26,6 +26,8 @@ internal sealed class TileWaterPublication
     internal Dictionary<(RegionCoord Region, int Plane), TileWaterRefusal> Refused { get; } = new();
     internal TileWaterDependencyRegistry Registry { get; } = new();
     internal IReadOnlyList<TileWaterOpticsFailure> Failures => _failureSnapshot;
+    internal TileWaterOpticsFailure? FailureOf((RegionCoord Region, int Plane) key) =>
+        _failures.TryGetValue(key, out TileWaterOpticsFailure failure) ? failure : null;
     internal int FailureCount => _failures.Count;
     internal bool SweepDue { get; set; }
 
@@ -100,10 +102,9 @@ internal sealed class TileWaterPublication
             foreach (Member member in group.Members)
             {
                 TileWaterPreparation preparation = member.Preparation;
-                if (preparation.Uncertified && preparation.Planes.Length > 0)
-                    member.Outcome = TileWaterTriangleOutcome.Empty.Refused(new TileWaterOpticsFailure(
-                        member.Key.Region, member.Key.Plane, preparation.Planes[0].SurfaceY,
-                        TileWaterOpticsFailureKind.UncertifiedDisplacement));
+                // Uncertified and latched preparations publish terrain only. Their water is the carried refusal.
+                if (preparation.Refusal is { } refusal && preparation.Planes.Length > 0)
+                    member.Outcome = TileWaterTriangleOutcome.Empty.Refused(refusal);
                 else if (_scene is not null)
                     member.Outcome = TileWaterTrianglePreparation.Prepare(preparation, member.Key.Region,
                         member.Key.Plane, group.Table, context);

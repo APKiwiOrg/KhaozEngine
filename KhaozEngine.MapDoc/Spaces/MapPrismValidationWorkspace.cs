@@ -16,6 +16,7 @@ internal sealed class MapPrismValidationWorkspace : IDisposable
     readonly MapSceneAdmission _admission;
     readonly MapPreparationScope _scope;
     readonly MapRoofPreparationCounts _counts;
+    readonly Dictionary<string, MapPreparationReservation> _indexes = new(StringComparer.Ordinal);
     internal static MapSceneAdmission? Admission => t_current?._admission;
     internal MapPrismValidationWorkspace(MapSceneAdmission admission, MapRoofPreparationCounts counts, int records)
     {
@@ -24,6 +25,25 @@ internal sealed class MapPrismValidationWorkspace : IDisposable
         try { _scope.Reserve(checked(32768L + 256L * records)); }
         catch { _scope.Dispose(); throw; }
         t_current = this;
+    }
+    internal static void PartitionIndex(string owner, int count)
+    {
+        if (t_current is not { } current) return;
+        InvalidateIndex(owner);
+        var reservation = current._admission.Workspace();
+        try { reservation.Reserve(checked(512L + 512L * count)); current._indexes.Add(owner, reservation); }
+        catch { reservation.Dispose(); throw; }
+        current.Observe();
+    }
+    internal static void InvalidateIndex(string owner)
+    {
+        if (t_current is { } current && current._indexes.Remove(owner, out var reservation)) reservation.Dispose();
+    }
+    internal static void ReleasePartitionIndexes()
+    {
+        if (t_current is not { } current) return;
+        foreach (var reservation in current._indexes.Values) reservation.Dispose();
+        current._indexes.Clear();
     }
     internal static void Reserve(long bytes)
     {
@@ -60,9 +80,23 @@ internal sealed class MapPrismValidationWorkspace : IDisposable
         }
         catch { owner?.Dispose(); throw; }
     }
-    internal static void RawPiece(int vertices)
+    internal static MapPreparationReservation? RawCandidate(int vertices)
     {
-        Reserve(checked(1024L + 256L * vertices));
+        var owner = t_current?._admission.Workspace();
+        try { owner?.Reserve(checked(1024L + 256L * vertices)); }
+        catch { owner?.Dispose(); throw; }
+        return owner;
+    }
+    internal static void PublishRaw(MapPreparationReservation? candidate, int vertices)
+    {
+        if (candidate is null || t_current is not { } current) return;
+        long bytes = checked(1024L + 256L * vertices);
+        if (candidate.Bytes < bytes) candidate.Reserve(bytes - candidate.Bytes);
+        candidate.MoveWorkspaceTo(current._scope.WorkspaceOwner, bytes);
+        current.Observe();
+    }
+    internal static void AddedRawPiece(int vertices)
+    {
         if (t_current is not { } current) return;
         current._counts.ValidationRawPieces++;
         current._counts.ValidationVertices += vertices;
@@ -75,5 +109,5 @@ internal sealed class MapPrismValidationWorkspace : IDisposable
         current.Observe();
     }
     void Observe() => _counts.ValidationPeakBytes = Math.Max(_counts.ValidationPeakBytes, _admission.WorkspaceBytes + _admission.RetainedBytes);
-    public void Dispose() { Observe(); _scope.Dispose(); t_current = _previous; }
+    public void Dispose() { Observe(); ReleasePartitionIndexes(); _scope.Dispose(); t_current = _previous; }
 }

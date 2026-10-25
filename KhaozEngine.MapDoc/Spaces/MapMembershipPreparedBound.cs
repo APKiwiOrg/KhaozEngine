@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Collections.Generic;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -20,15 +19,18 @@ internal readonly record struct MapMembershipBoundPlan(MapSpacePointBounds.Bound
 /// <summary>Released bound planning frozen per acquired cell, with only exact owner lookup at query time.</summary>
 internal sealed class MapMembershipPreparedBound
 {
-    internal long InventoryBytes => checked(128L + 192L * _plans.Count);
+    internal long InventoryBytes => checked(128L + 192L * _plans.Length);
     readonly MapMembershipPreparedGeometry.Surface? _surface;
-    readonly Dictionary<int, MapMembershipBoundPlan> _plans = new();
+    readonly MapMembershipBoundPlan[] _plans;
+    readonly int[] _ids;
     readonly MapMembershipBoundPlan _absent;
     internal MapMembershipPreparedBound(MapScopedSurfaces view, MapMembershipPreparedGeometry geometry,
         MapSpaceFootprint footprint, MapBoundRef bound, MapMembershipDemandPlan plan)
     {
         MapMembershipBuild.Inventory(checked(128L + (bound.Kind == MapBoundKind.OpenTop ? 0 : 192L * plan.Bounds[(footprint.Id, bound == footprint.Upper)].Length)));
         using var planning = MapMembershipBuild.Kernel();
+        int count = bound.Kind == MapBoundKind.OpenTop ? 0 : plan.Bounds[(footprint.Id, bound == footprint.Upper)].Length;
+        _plans = new MapMembershipBoundPlan[count]; _ids = new int[count];
         var bounds = new MapSpacePointBounds(view, new(MaxContextPatches: geometry.PatchCount + 1), null);
         if (bound.Kind == MapBoundKind.OpenTop)
         {
@@ -48,6 +50,7 @@ internal sealed class MapMembershipPreparedBound
                 _absent = new(new(MapMembershipStatus.Invalid, null, null, null, "legacy recipe: upper"), null, -1);
             return;
         }
+        int index = 0;
         foreach (var demand in plan.Bounds[(footprint.Id, bound == footprint.Upper)])
         {
             var cell = geometry.ByCell[demand];
@@ -57,13 +60,15 @@ internal sealed class MapMembershipPreparedBound
                 sets.TryGetValue(cell.Demand.SlotCell, out int openingFaces) ? openingFaces : cell.FaceSet;
             bool validates = bound == footprint.Lower ? result.Status == MapMembershipStatus.Resolved :
                 result.Status != MapMembershipStatus.Invalid && bound.Kind is MapBoundKind.Ceiling or MapBoundKind.HorizontalOpening;
-            _plans.Add(cell.Id, new(result, cell, faces, validates));
+            _ids[index] = cell.Id; _plans[index++] = new(result, cell, faces, validates);
         }
+        Array.Sort(_ids, _plans);
     }
     internal MapMembershipBoundPlan Plan(MapExactXz point, MapMembershipExact exact)
     {
         var cell = _surface?.Find(point, exact);
-        return cell is not null && _plans.TryGetValue(cell.Id, out var plan) ? plan : _absent;
+        int index = cell is null ? -1 : Array.BinarySearch(_ids, cell.Id);
+        return index < 0 ? _absent : _plans[index];
     }
 }
 

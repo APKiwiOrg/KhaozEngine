@@ -35,7 +35,10 @@ internal static class MapPrismCoveragePeers
                 if (MapOccupiedPartitions.Positive(polygon) &&
                     System.Linq.Enumerable.Any(polygon, p => a.Top(p) is not { } ta || ta.CompareTo(b.Bottom(p)) > 0) &&
                     System.Linq.Enumerable.Any(polygon, p => b.Top(p) is not { } tb || tb.CompareTo(a.Bottom(p)) > 0))
+                {
+                    MapPrismValidationWorkspace.Reserve(checked(128L + 2L * (a.SpaceId.Length + b.SpaceId.Length + 32)));
                     errors.Add($"peer occupied overlap: '{a.SpaceId}' with '{b.SpaceId}'");
+                }
             }
         }
     }

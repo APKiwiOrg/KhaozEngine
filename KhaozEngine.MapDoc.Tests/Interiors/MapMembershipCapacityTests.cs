@@ -2,12 +2,25 @@ using System.Numerics;
 using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Prefabs;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc.Interiors;
 
 public sealed class MapMembershipCapacityTests
 {
+    [Theory]
+    [InlineData(0, 1, true)]
+    [InlineData(0, 0.0000001, false)]
+    [InlineData(1000000000000000, 1, false)]
+    public void TransformedDiscovery_RefusesAnUncertifiedInverseRange(double translation, double scale, bool certified)
+    {
+        var transform = new MapResourceTransform(new(translation, 0, 0, .4, scale));
+        if (certified) MapMembershipDemandPlan.CertifyRange(MapLatticeFrame.ImportedMetreCentimetre, transform);
+        else Assert.Throws<MapExactOverflowException>(() => MapMembershipDemandPlan.CertifyRange(MapLatticeFrame.ImportedMetreCentimetre, transform));
+    }
+
     [Theory]
     [InlineData(49, false)]
     [InlineData(50, true)]

@@ -67,6 +67,7 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
         _portals = records.OfType<MapCavePortal>().Select(p => new MapMembershipPreparedPortal(view, _geometry, p, Prisms)).ToArray();
         _prisms = Prisms.Select(p =>
         {
+            using var domainWorkspace = MapMembershipBuild.Kernel(checked(32768L + 1024L * MapPrismGeometry.Cost(p)));
             MapPrismCoverage.RequireStorey(view, p);
             var s = _spaces[p.Space.Id];
             if (s.Kind != MapSpaceKind.Room || s.Parent != p.Parent) throw new MapDocumentException("missing geometry: prism parent mismatch");

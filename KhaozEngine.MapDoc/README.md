@@ -667,6 +667,10 @@ portals and parents never widen a link. Any eligible link may conceal its roof. 
 keeps Auto roofs visible. Always modes enumerate the inventory. Roof preparation refusals expose the
 failed byte or face reservation in `Capacity`, including the active plan window and its declared allowance. `MapRoofEvaluationBuffer.Prepare(scene)` returns a
 typed result. Its admitted `Buffer.Evaluate(observer, mode)` reuses exact membership scratch and a live `Roofs` list.
+Preparation selects the union of cells touched by footprint bounds, flagged indoor spans and portal sources.
+It shares masked patch geometry and stores bound associations only for that coverage. Cold validation still checks
+unrelated acquired cells. Planner, validation and compiler workspace have separate lifetimes under the same byte
+allowance. `Counts` exposes only slot, face, association, coefficient and validation counts and byte totals.
 
 The four intent flags have separate consumers. Hidden roofs have `ColourVisible = false`, `CastShadows = true`,
 `CameraBoomBlocks = false` and `SkyPickingBlocks = true`. Visible roofs set all four true. This policy never

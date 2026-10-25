@@ -217,7 +217,8 @@ internal static class MapOccupiedPartitions
                     throw new MapDocumentException("missing geometry: canonical occupied bounds");
                 foreach (var face in refined.Faces)
                 {
-                    MapPrismValidationWorkspace.RawPiece(face.Polygon.Count);
+                    using var candidate = MapPrismValidationWorkspace.RawCandidate(face.Polygon.Count);
+                    MapPrismValidationWorkspace.PublishRaw(candidate, face.Polygon.Count);
                     var lo = Boundary(view, footprint.Lower.SurfaceId ?? footprint.Lower.Opening!.Id, "canonical-floor");
                     var hi = Boundary(view, footprint.Upper.SurfaceId ?? footprint.Upper.Opening?.Id ?? "open-top",
                         upper is null ? "open-top" : "canonical-ceiling");
@@ -305,13 +306,17 @@ internal static class MapOccupiedPartitions
                 throw new MapDocumentException("capacity exceeded: occupied pieces");
             vertices[target] = count;
             target.Add(piece);
-            if (ReferenceEquals(target, raw)) parentIndexes.Remove(piece.SpaceId);
+            if (ReferenceEquals(target, raw))
+            {
+                MapPrismValidationWorkspace.AddedRawPiece(piece.Polygon.Count);
+                if (parentIndexes.Remove(piece.SpaceId)) MapPrismValidationWorkspace.InvalidateIndex(piece.SpaceId);
+            }
         }
         // The owner's pieces in raw order with their bounds and index, rebuilt only after raw gains a piece of that owner.
         (MapOccupiedPiece[] Parents, MapWaterPolygons.Bounds[] Bounds, MapBoundsIndex Index) ParentIndex(string owner)
         {
             if (parentIndexes.TryGetValue(owner, out var cached)) return cached;
-            MapPrismValidationWorkspace.Reserve(checked(512L + 512L * raw.Count(p => p.SpaceId == owner)));
+            MapPrismValidationWorkspace.PartitionIndex(owner, raw.Count(p => p.SpaceId == owner));
             var parents = raw.Where(p => p.SpaceId == owner).ToArray();
             var bounds = parents.Select(p => MapWaterPolygons.Bounds.Of(p.Polygon)).ToArray();
             return parentIndexes[owner] = (parents, bounds, new MapBoundsIndex(bounds));
@@ -333,6 +338,7 @@ internal static class MapOccupiedPartitions
             // Every convex part is prepared before the first parent, as released. The owner's cached exact bounds index
             // then gives, in the released parent, piece and part order, only the parts whose bounds overlap a parent.
             // The others share no positive area. Each visited pair is charged once.
+            using var roomPreparation = MapPrismValidationWorkspace.Admission?.BeginPreparation();
             using var roomWorkspace = MapPrismValidationWorkspace.Kernel(MapPrismGeometry.Cost(prism), parents.Length);
             var parts = parents.Length == 0 ? [] : Enumerable.Range(0, domain.Pieces.Count)
                 .Select(i => domain.ConvexParts(i, work).Select(c => (Polygon: c, Bounds: MapWaterPolygons.Bounds.Of(c))).ToArray()).ToArray();
@@ -359,14 +365,18 @@ internal static class MapOccupiedPartitions
                                 if (open && parentHigh) continue;
                                 var clipped = open ? bottom : Clip(bottom, p => parentHigh ? W(upper).Subtract(Height(parent, p, true)) : Height(parent, p, true).Subtract(W(upper)));
                                 if (!Positive(clipped) || !open && !parentHigh && clipped.All(p => Height(parent, p, true).CompareTo(W(upper)) == 0)) continue;
-                                MapPrismValidationWorkspace.RawPiece(clipped.Count);
+                                using var candidate = MapPrismValidationWorkspace.RawCandidate(clipped.Count);
                                 var piece = Make(MapSpaceGeometry.Owner(view, space), parentLow ? parent.LowerBoundary : lo, parentHigh ? parent.UpperBoundary : hi,
                                     clipped, parentLow ? parent.LowerFaces : [], parentHigh ? parent.UpperFaces : null,
                                     parentLow ? parent.LowerPlane : lower, parentHigh ? parent.UpperPlane : upper,
                                     Extend(parent.Path, prism.Parent.Id, parent.LowerBoundary, parent.UpperBoundary)) with
                                 { AuthoredParent = prism.Parent };
                                 clipped = Clip(clipped, p => Height(piece, p, true).Subtract(Height(piece, p, false)));
-                                if (Positive(clipped) && clipped.Any(p => Height(piece, p, true).CompareTo(Height(piece, p, false)) > 0)) Add(raw, piece with { Polygon = clipped });
+                                if (Positive(clipped) && clipped.Any(p => Height(piece, p, true).CompareTo(Height(piece, p, false)) > 0))
+                                {
+                                    MapPrismValidationWorkspace.PublishRaw(candidate, clipped.Count);
+                                    Add(raw, piece with { Polygon = clipped });
+                                }
                             }
                         }
                     }

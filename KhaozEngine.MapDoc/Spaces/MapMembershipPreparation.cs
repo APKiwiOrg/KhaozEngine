@@ -82,19 +82,14 @@ internal readonly record struct MapMembershipPreparation(long Bytes, long Faces,
                                 (MapSurfaceCompiler.Fallback(surface, patch.Cells[z * patch.Width + x]) ? 4 : 0));
                         }
                 }
-            // Each exact triangle has three edge affines and one plane. The degree-30 coefficient bound
-            // needs at most 241 bytes per magnitude. 8192 includes their objects and BigInteger preparation
-            // intermediates, in addition to both canonical face copies' established 1280-byte allowances.
-            // Cell and bound-plan allowances include temporary released planners and their transformed charts.
-            // Per descriptor, 512 bytes cover the retained Surface and dictionary capacity, temporary grouping
-            // dictionary and List storage, cell-array headers and the surface's reusable Demand slot.
-            Int128 bytes = checked(4096 + MapMembershipExact.StorageBytes + faces * (2 * 1280 + 8192) + cells * 8192L +
-                (Int128)view.Surfaces.Count * 512 +
-                polygonVertices * 4096L + chainVertices * 16384L + identityBytes +
+            // Only the borrowed-input header is known before admitting sparse discovery. Geometry,
+            // associations and temporary phase capacities are reserved by their construction owners.
+            Int128 bytes = checked(4096 + MapMembershipExact.StorageBytes +
+                (Int128)view.Surfaces.Count * 512 + identityBytes +
                 (Int128)view.Witness.Records.Count * view.Witness.Records.Count * 16 +
-                (Int128)footprints * cells * 2 * 16384 + MapMembershipPointScratch.Bytes(parts, prisms) + IntentBytes(scene.CapturedBuildingIntent));
+                MapMembershipPointScratch.Bytes(parts, prisms) + IntentBytes(scene.CapturedBuildingIntent));
             if (bytes > long.MaxValue || faces > long.MaxValue) return Capacity(out detail);
-            demand = new((long)bytes, (long)faces, cells, view.Witness.Records.Count, footprints, prisms, parts);
+            demand = new((long)bytes, 0, cells == 0 ? 0 : 1, view.Witness.Records.Count, footprints, prisms, parts);
             return MapSceneStatus.CompleteForScope;
         }
     }

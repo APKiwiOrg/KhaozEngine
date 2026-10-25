@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Collections.Generic;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -19,17 +20,16 @@ internal readonly record struct MapMembershipBoundPlan(MapSpacePointBounds.Bound
 /// <summary>Released bound planning frozen per acquired cell, with only exact owner lookup at query time.</summary>
 internal sealed class MapMembershipPreparedBound
 {
-    internal long InventoryBytes => checked(128L + 192L * _plans.Length);
+    internal long InventoryBytes => checked(128L + 192L * _plans.Count);
     readonly MapMembershipPreparedGeometry.Surface? _surface;
-    readonly MapMembershipBoundPlan[] _plans;
+    readonly Dictionary<int, MapMembershipBoundPlan> _plans = new();
     readonly MapMembershipBoundPlan _absent;
     internal MapMembershipPreparedBound(MapScopedSurfaces view, MapMembershipPreparedGeometry geometry,
-        MapSpaceFootprint footprint, MapBoundRef bound)
+        MapSpaceFootprint footprint, MapBoundRef bound, MapMembershipDemandPlan plan)
     {
         var bounds = new MapSpacePointBounds(view, new(MaxContextPatches: geometry.PatchCount + 1), null);
         if (bound.Kind == MapBoundKind.OpenTop)
         {
-            _plans = Array.Empty<MapMembershipBoundPlan>();
             _absent = new(new(MapMembershipStatus.Resolved, null, null, null, null), null, -1);
             return;
         }
@@ -37,7 +37,6 @@ internal sealed class MapMembershipPreparedBound
         if (bound.Opening is { } reference && view.TryRecord(reference, out var record, out _, borrow: true) && record is MapHorizontalOpening opening)
             id = opening.Patch.SurfaceId;
         if (id is not null) geometry.Surfaces.TryGetValue(id, out _surface);
-        _plans = new MapMembershipBoundPlan[geometry.Cells.Length];
         _absent = new(new(MapMembershipStatus.MissingGeometry, null, null, null, "missing bound at exact XZ"), null, -1);
         if (_surface is null)
         {
@@ -47,21 +46,21 @@ internal sealed class MapMembershipPreparedBound
                 _absent = new(new(MapMembershipStatus.Invalid, null, null, null, "legacy recipe: upper"), null, -1);
             return;
         }
-        for (int i = 0; i < _surface.Cells.Length; i++)
+        foreach (var demand in plan.Bounds[(footprint.Id, bound == footprint.Upper)])
         {
-            var cell = _surface.Cells[i];
+            var cell = geometry.ByCell[demand];
             var result = bounds.Plan(footprint, bound, cell.Centre);
             int faces = result.Opening is { } source && geometry.OpeningSets.TryGetValue(source, out var sets) &&
                 sets.TryGetValue(cell.Demand.SlotCell, out int openingFaces) ? openingFaces : cell.FaceSet;
             bool validates = bound == footprint.Lower ? result.Status == MapMembershipStatus.Resolved :
                 result.Status != MapMembershipStatus.Invalid && bound.Kind is MapBoundKind.Ceiling or MapBoundKind.HorizontalOpening;
-            _plans[cell.Id] = new(result, cell, faces, validates);
+            _plans.Add(cell.Id, new(result, cell, faces, validates));
         }
     }
     internal MapMembershipBoundPlan Plan(MapExactXz point, MapMembershipExact exact)
     {
         var cell = _surface?.Find(point, exact);
-        return cell is null ? _absent : _plans[cell.Id];
+        return cell is not null && _plans.TryGetValue(cell.Id, out var plan) ? plan : _absent;
     }
 }
 
@@ -71,13 +70,13 @@ internal sealed class MapMembershipPreparedFootprint
     internal readonly MapSpaceFootprint Record;
     internal readonly MapMembershipPreparedBound Lower, Upper;
     readonly MapMembershipPolygon[] _cells;
-    internal MapMembershipPreparedFootprint(MapScopedSurfaces view, MapMembershipPreparedGeometry geometry, MapSpaceFootprint record)
+    internal MapMembershipPreparedFootprint(MapScopedSurfaces view, MapMembershipPreparedGeometry geometry, MapSpaceFootprint record, MapMembershipDemandPlan plan)
     {
         Record = record;
         _cells = new MapMembershipPolygon[record.SlotCells.Count];
         for (int i = 0; i < _cells.Length; i++)
             _cells[i] = new(MapEffectiveGeometry.CellPolygon(view, record.Lattice, record.SlotCells[i]), cell: true);
-        Lower = new(view, geometry, record, record.Lower); Upper = new(view, geometry, record, record.Upper);
+        Lower = new(view, geometry, record, record.Lower, plan); Upper = new(view, geometry, record, record.Upper, plan);
     }
     internal bool Contains(MapExactXz point, MapMembershipExact exact)
     {

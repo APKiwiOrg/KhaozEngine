@@ -82,13 +82,15 @@ internal sealed class MapMembershipPreparedGeometry
             exact.NotRepresentable = true; return null;
         }
     }
-    internal sealed record Surface(MapSurfaceRef Reference, Cell[] Cells)
+    internal sealed class Surface
     {
-        internal Cell? Find(MapExactXz point, MapMembershipExact exact)
-        {
-            for (int i = 0; i < Cells.Length; i++) if (Cells[i].Polygon.Contains(point, exact)) return Cells[i];
-            return null;
-        }
+        internal readonly MapSurfaceRef Reference;
+        internal readonly Cell[] Cells;
+        readonly MapMembershipCellIndex _index;
+        internal long InventoryBytes => checked(128L + 8L * Cells.Length + _index.InventoryBytes);
+        internal Surface(MapSurfaceRef reference, Cell[] cells)
+        { Reference = reference; Cells = cells; _index = new(cells); }
+        internal Cell? Find(MapExactXz point, MapMembershipExact exact) => _index.Find(point, exact);
     }
     internal long InventoryBytes
     {
@@ -96,7 +98,7 @@ internal sealed class MapMembershipPreparedGeometry
         {
             var cellSets = Cells.Select(c => c.Triangles).ToHashSet();
             return checked(512L + Cells.Sum(c => 8L + c.InventoryBytes) +
-                Surfaces.Values.Sum(s => 128L + 8L * s.Cells.Length) + 64L * (ByCell.Count + Validated.Count) +
+                Surfaces.Values.Sum(s => s.InventoryBytes) + 64L * (ByCell.Count + Validated.Count) +
                 8L * FaceSets.Count + FaceSets.Where(f => !cellSets.Contains(f)).Sum(f => f.Sum(t => 8L + t.InventoryBytes)) +
                 OpeningSets.Values.Sum(s => 96L + 64L * s.Count));
         }
@@ -109,26 +111,27 @@ internal sealed class MapMembershipPreparedGeometry
     internal readonly List<MapMembershipTriangle[]> FaceSets = new();
     internal readonly Dictionary<MapRecordRef, Dictionary<int, int>> OpeningSets = new();
 
-    internal MapMembershipPreparedGeometry(MapScopedSurfaces view, MapTopologyRecord[] records, bool needed)
+    internal MapMembershipPreparedGeometry(MapScopedSurfaces view, MapTopologyRecord[] records, MapMembershipDemandPlan plan)
     {
         var cells = new List<Cell>();
         var bySurface = new Dictionary<string, List<Cell>>(StringComparer.Ordinal);
         for (int s = 0; s < view.Surfaces.Count; s++) bySurface.Add(view.Surfaces[s].Id, new());
-        if (needed)
             for (int p = 0; p < view.Witness.Present.Count; p++)
             {
                 var key = view.Witness.Present[p].Key;
+                if (!plan.Patches.TryGetValue(key, out var mask)) continue;
                 if (!view.TryAcquiredPatch(key, out var patch, out _) || patch is null) continue;
                 var surface = MapMembershipPreparation.Surface(view, key.SurfaceId);
                 if (surface.Role is not (MapSurfaceRole.SupportFloor or MapSurfaceRole.Ceiling)) continue;
                 var validated = new MapValidatedSurfacePatch(surface, patch);
                 Validated.Add(key, validated);
-                var local = MapSurfaceCompiler.Compile(validated, MapSlotCellMask.All, MapSurfaceCompiler.MaxFacesPerPatch);
+                var local = MapSurfaceCompiler.Compile(validated, mask, MapSurfaceCompiler.MaxFacesPerPatch);
                 var compiled = MapEffectiveGeometry.TransformPatch(view, local);
                 for (int z = 0; z < patch.Depth; z++)
                     for (int x = 0; x < patch.Width; x++)
                     {
                         int slot = (z + patch.CellMinZ) * 64 + x + patch.CellMinX;
+                        if (!mask.Contains(slot)) continue;
                         var cell = new Cell(cells.Count, PatchCount, slot, view, surface, patch, local, compiled);
                         cell.FaceSet = FaceSets.Count; FaceSets.Add(cell.Triangles);
                         cells.Add(cell); bySurface[surface.Id].Add(cell); ByCell.Add(cell.Demand, cell);

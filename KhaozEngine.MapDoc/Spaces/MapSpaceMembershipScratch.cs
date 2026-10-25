@@ -21,7 +21,7 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
         _footprints.Sum(f => 8L + f.InventoryBytes) + _portals.Sum(p => 8L + p.InventoryBytes) +
         192L * _spaces.Count + _ancestors.Values.Sum(a => 96L + 8L * a.Length) +
         _prisms.Sum(p => 128L + p.Rings.Sum(r => 8L + r.InventoryBytes)) + 32L * _active.Length + 16L * _demands.Length +
-        _validated.Length + _physical.Length + _opening.Length + 8L * _patchFaces.Length +
+        8L * (_validated.Length + _physical.Length + _opening.Length) + 8L * _patchFaces.Length +
         MapMembershipPointScratch.Bytes(_scratch.Raw.Length, _scratch.Prisms.Length));
     readonly MapScopedSurfaces _view;
     readonly MapMembershipPreparedGeometry _geometry;
@@ -33,7 +33,8 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
     readonly Prism[] _prisms;
     readonly Active[] _active;
     readonly Demand[] _demands;
-    readonly bool[] _validated, _physical, _opening;
+    readonly long[] _validated, _physical, _opening;
+    long _generation;
     readonly long[] _patchFaces;
     readonly MapMembershipPointScratch _scratch;
     readonly MapMembershipExact _exact = new();
@@ -46,7 +47,7 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
     string? _space;
     MapExactPoint _world;
 
-    internal MapSpaceMembershipScratch(MapScopedSurfaces view, MapMembershipPreparation demand)
+    internal MapSpaceMembershipScratch(MapScopedSurfaces view, MapMembershipPreparation demand, MapMembershipDemandPlan? plan = null)
     {
         _view = view;
         var records = MapSpaceGeometry.Records(view).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
@@ -60,9 +61,9 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
             _roomFailure = "room occupancy requires its prism, not a second lattice domain";
         else if (_spaces.Values.Any(s => s.Kind == MapSpaceKind.Room && s.AliasOf is null && Prisms.Count(p => p.Space.Id == s.Id) != 1))
             _roomFailure = "room requires one acquired prism";
-        bool geometry = roots.Length != 0 || Prisms.Length != 0 || records.OfType<MapCavePortal>().Any() || view.Surfaces.Any(s => s.IndoorSpan is not null);
-        _geometry = new(view, records, geometry);
-        _footprints = roots.Select(f => new MapMembershipPreparedFootprint(view, _geometry, f)).ToArray();
+        plan ??= new(view, records);
+        _geometry = new(view, records, plan);
+        _footprints = roots.Select(f => new MapMembershipPreparedFootprint(view, _geometry, f, plan)).ToArray();
         _portals = records.OfType<MapCavePortal>().Select(p => new MapMembershipPreparedPortal(view, _geometry, p, Prisms)).ToArray();
         _prisms = Prisms.Select(p =>
         {
@@ -76,8 +77,8 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
         }).ToArray();
         _active = new Active[_footprints.Length];
         _demands = new Demand[checked(2 * _footprints.Length + 16 * _portals.Length + view.Surfaces.Count)];
-        _validated = new bool[_geometry.PatchCount]; _physical = new bool[_geometry.Cells.Length];
-        _opening = new bool[_geometry.FaceSets.Count]; _patchFaces = new long[_geometry.PatchCount];
+        _validated = new long[_geometry.PatchCount]; _physical = new long[_geometry.Cells.Length];
+        _opening = new long[_geometry.FaceSets.Count]; _patchFaces = new long[_geometry.PatchCount];
         _scratch = new(demand.Parts, Prisms.Length);
     }
     public MapPrismDomain[] Prisms { get; }
@@ -111,7 +112,10 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
             if (Prisms.Length > scope.Limits.MaxRecordReads || _prismVertices > scope.Limits.MaxInspectedFaces)
                 return Result(MapMembershipStatus.CapacityExceeded);
             if (Prisms.Length != 0 && _view.Status == MapAcquireStatus.Incomplete) return Result(MapMembershipStatus.MissingGeometry);
-            Array.Clear(_validated); Array.Clear(_physical); Array.Clear(_opening); Array.Clear(_patchFaces);
+            if (++_generation == long.MaxValue)
+            {
+                Array.Clear(_validated); Array.Clear(_physical); Array.Clear(_opening); _generation = 1;
+            }
             Array.Clear(_active, 0, _activeCount); Array.Clear(_demands, 0, _demandCount);
             _activeCount = 0; _demandCount = 0; _validatedCount = 0;
             for (int i = 0; i < _footprints.Length; i++)
@@ -151,13 +155,13 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
             {
                 var demand = _demands[i]; var cell = demand.Cell;
                 if (!ValidatePatch(cell.PatchIndex)) return Result(_status);
-                if (!_physical[cell.Id])
+                if (_physical[cell.Id] != _generation)
                 {
-                    _physical[cell.Id] = true; faces += cell.PhysicalFaces;
+                    _physical[cell.Id] = _generation; faces += cell.PhysicalFaces;
                     _patchFaces[cell.PatchIndex] += cell.PhysicalFaces;
                 }
-                if (demand.Opening >= 0 && !_opening[demand.Opening])
-                { _opening[demand.Opening] = true; faces += _geometry.FaceSets[demand.Opening].Length; }
+                if (demand.Opening >= 0 && _opening[demand.Opening] != _generation)
+                { _opening[demand.Opening] = _generation; faces += _geometry.FaceSets[demand.Opening].Length; }
                 if (faces > remaining || _patchFaces[cell.PatchIndex] > MapSurfaceCompiler.MaxFacesPerPatch)
                     return Result(MapMembershipStatus.CapacityExceeded);
             }
@@ -202,10 +206,10 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
     }
     bool ValidatePatch(int index)
     {
-        if (_validated[index]) return true;
+        if (_validated[index] == _generation) return true;
         if (_validatedCount >= _view.Scope.Limits.MaxCandidatePatches)
         { _status = MapMembershipStatus.CapacityExceeded; return false; }
-        _validated[index] = true; _validatedCount++; return true;
+        _validated[index] = _generation; _patchFaces[index] = 0; _validatedCount++; return true;
     }
     bool ValidatePlan(MapMembershipBoundPlan plan)
     {

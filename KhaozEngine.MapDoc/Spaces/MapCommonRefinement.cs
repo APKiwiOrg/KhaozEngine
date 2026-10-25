@@ -102,11 +102,12 @@ public static class MapCommonRefinement
     internal static MapFootprintPreparation PrepareFootprints(MapScopedSurfaces view, IReadOnlyList<MapSpaceFootprint> footprints,
         MapRefinementLimits limits, MapBoundFaceWork? work, MapWaterWorkMeter? meter = null) => Prepare(view, footprints, f => f.SlotCells, limits, work, meter);
 
-    static MapFootprintPreparation Prepare(MapScopedSurfaces view, IReadOnlyList<MapSpaceFootprint> footprints,
-        Func<MapSpaceFootprint, IEnumerable<int>> cells, MapRefinementLimits limits, MapBoundFaceWork? work, MapWaterWorkMeter? meter = null)
+    internal static MapFootprintPreparation Prepare(MapScopedSurfaces view, IReadOnlyList<MapSpaceFootprint> footprints,
+        Func<MapSpaceFootprint, IEnumerable<int>> cells, MapRefinementLimits limits, MapBoundFaceWork? work, MapWaterWorkMeter? meter = null,
+        MapBoundPreparation? preparation = null)
     {
         var outcomes = new Dictionary<(string, int), MapCellRefinement>();
-        var preparation = new MapBoundPreparation(view, limits, work, meter);
+        preparation ??= new MapBoundPreparation(view, limits, work, meter);
         MapBoundFaceContext? context;
         string? refusal;
         try

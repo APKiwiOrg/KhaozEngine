@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc.Spaces;
@@ -16,6 +17,7 @@ internal sealed class MapMembershipPolygon
     readonly int[] _turns;
     readonly bool _cell;
     readonly MapExactValue _minX, _maxX, _minZ, _maxZ;
+    internal MapExactRect Bounds => new(_minX, _minZ, _maxX, _maxZ);
     internal MapMembershipPolygon(IReadOnlyList<MapExactXz> vertices, bool cell = false)
     {
         _vertices = vertices.ToArray();

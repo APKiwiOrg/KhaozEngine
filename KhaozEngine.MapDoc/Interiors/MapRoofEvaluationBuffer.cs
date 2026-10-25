@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
 
@@ -23,12 +24,12 @@ public sealed class MapRoofEvaluationBuffer
     readonly MapRoofIntentRows _intent;
     MapMembershipObservation _observation;
 
-    MapRoofEvaluationBuffer(MapScopedScene scene, MapMembershipPreparation demand, long sceneInventoryBytes)
+    MapRoofEvaluationBuffer(MapScopedScene scene, MapMembershipPreparation demand, long sceneInventoryBytes, MapMembershipDemandPlan plan)
     {
         _scene = scene;
         _sceneInventoryBytes = sceneInventoryBytes;
         _membership = new(scene.SurfaceView);
-        _scratch = new(scene.SurfaceView, demand);
+        _scratch = new(scene.SurfaceView, demand, plan);
         _intent = new(scene.CapturedBuildingIntent);
         _observation = new(MapMembershipStatus.Outside, null, default, scene.SurfaceView.ReadWitness);
     }
@@ -73,9 +74,12 @@ public sealed class MapRoofEvaluationBuffer
                 var errors = MapPrismCoverage.Validate(scene.SurfaceView, scene.Scope.Surfaces.Limits.Refinement ?? new());
                 if (errors.Count != 0) return new(MapSceneStatus.Invalid, null, "Incomplete canonical roof policy. " + string.Join("\n", errors));
             }
-            if (!admission.TryReservePreparation(demand.Bytes, demand.Faces, out var capacity)) return Refused(capacity!);
+            var records = MapSpaceGeometry.Records(scene.SurfaceView).ToArray();
+            var plan = new MapMembershipDemandPlan(scene.SurfaceView, records);
+            long sparseBytes = checked(demand.Bytes + plan.Faces * (2 * 1280 + 8192) + plan.Cells * 8192L + plan.Associations * 192L);
+            if (!admission.TryReservePreparation(sparseBytes, plan.Faces, out var capacity)) return Refused(capacity!);
             MapRoofEvaluationBuffer buffer;
-            using (MapSceneAdmission.Suspend()) buffer = new(scene, demand, sceneInventoryBytes);
+            using (MapSceneAdmission.Suspend()) buffer = new(scene, demand, sceneInventoryBytes, plan);
             preparation.EnsureCapacity(buffer.RetainedBytes, sceneOwner);
             dependency?.Absorb();
             buffer.PreparationOwnership = preparation.Complete(buffer.RetainedBytes);

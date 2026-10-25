@@ -187,7 +187,7 @@ internal static class MapOccupiedPartitions
         if (domains.Length > view.Scope.Limits.MaxRecordReads || domains.Sum(MapPrismGeometry.Cost) > limits.MaxRefinementVertices)
             throw new MapDocumentException("capacity exceeded: prism records or vertices");
         var footprints = records.OfType<MapSpaceFootprint>().ToArray();
-        var prepared = MapCommonRefinement.PrepareFootprints(view, footprints, limits, null, meter);
+        var prepared = MapFootprintCoveragePreparation.Prepare(view, footprints, min, max, limits, meter);
         if (prepared.Context is not { } context) throw new MapDocumentException("capacity exceeded: " + prepared.Refusal);
         var raw = new List<MapOccupiedPiece>();
         var parentIndexes = new Dictionary<string, (MapOccupiedPiece[] Parents, MapWaterPolygons.Bounds[] Bounds, MapBoundsIndex Index)>(StringComparer.Ordinal);

@@ -288,39 +288,39 @@ namespace KhaozEngine.Gui
             ITextMeasurer titleRightFont, ITextMeasurer bodyFont,
             IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m, float maxWidth,
             float titleScale = 1f, TooltipAnchorMode anchorMode = TooltipAnchorMode.Centered) =>
-            ComputeBounds(titleFont, title, titleRight, titleRightFont, bodyFont, lines, anchor, viewport, m,
+            ComputeLayout(titleFont, title, titleRight, titleRightFont, bodyFont, lines, anchor, viewport, m,
                 maxWidth, titleScale, anchorMode, out _);
 
-        /// <summary>
-        /// The one layout pass behind both the public overloads above and <see cref="Draw"/>: the bubble bounds,
-        /// plus the word-wrapped body lines those bounds were measured from, handed back through
-        /// <paramref name="visual"/>. <see cref="Draw"/> has to walk exactly the lines the bounds were measured
-        /// from, and used to call the wrap a second time with the identical font, lines and width cap to get them,
-        /// so every visible tooltip wrapped its body twice per frame and threw the first result away. Internal
-        /// rather than public: the wrapped list is layout scratch, not a contract for a consumer to hold.
-        /// </summary>
+        /// <summary>Compatibility projection of the shared layout's wrapped rows into text lines.</summary>
         internal static Rect ComputeBounds(ITextMeasurer titleFont, string title, string titleRight,
             ITextMeasurer titleRightFont, ITextMeasurer bodyFont,
             IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m, float maxWidth,
             float titleScale, TooltipAnchorMode anchorMode, out List<TooltipLine> visual)
         {
+            Rect bounds = ComputeLayout(titleFont, title, titleRight, titleRightFont, bodyFont, lines,
+                anchor, viewport, m, maxWidth, titleScale, anchorMode, out TooltipBodyLayout body);
+            visual = new List<TooltipLine>(body.Lines.Count);
+            for (int i = 0; i < body.Lines.Count; i++) visual.Add(body.Lines[i].Line);
+            return bounds;
+        }
+
+        /// <summary>The single layout pass for bubble bounds and the body rows drawn inside them.</summary>
+        internal static Rect ComputeLayout(ITextMeasurer titleFont, string title, string titleRight,
+            ITextMeasurer titleRightFont, ITextMeasurer bodyFont,
+            IReadOnlyList<TooltipLine> lines, Vector2 anchor, Vector2 viewport, TooltipMetrics m, float maxWidth,
+            float titleScale, TooltipAnchorMode anchorMode, out TooltipBodyLayout body)
+        {
             bool bounded = maxWidth > 0f && !float.IsInfinity(maxWidth);
-            visual = WrapBody(bodyFont, lines, ContentWidthCap(maxWidth, m));
+            body = TooltipBodyLayout.Build(titleFont, bodyFont, lines, m, ContentWidthCap(maxWidth, m));
 
             bool hasTitle = !string.IsNullOrEmpty(title);
             float titleRowW = hasTitle ? titleFont.Measure(title).X * titleScale : 0f;
             if (!string.IsNullOrEmpty(titleRight))
                 titleRowW += m.TitleRightGap + titleRightFont.Measure(titleRight).X * titleScale;
 
-            float contentW = titleRowW;
-            for (int i = 0; i < visual.Count; i++)
-                contentW = MathF.Max(contentW, bodyFont.Measure(visual[i].Text).X * visual[i].Scale);
-
-            float contentH = 0f;
+            float contentW = MathF.Max(titleRowW, body.Width);
+            float contentH = body.Height;
             if (hasTitle) contentH += titleFont.LineHeight * titleScale + m.TitleGap;
-            for (int i = 0; i < visual.Count; i++)
-                contentH += bodyFont.LineHeight * visual[i].Scale + m.LineSpacing;
-            if (visual.Count > 0) contentH -= m.LineSpacing;   // no trailing gap
 
             float w = contentW + m.PadX * 2f;
             float h = contentH + m.PadY * 2f;
@@ -353,41 +353,6 @@ namespace KhaozEngine.Gui
         static float ContentWidthCap(float maxWidth, TooltipMetrics m) =>
             (maxWidth > 0f && !float.IsInfinity(maxWidth)) ? MathF.Max(0f, maxWidth - m.PadX * 2f) : float.PositiveInfinity;
 
-        /// <summary>
-        /// The body lines as they lay out: each source line is kept verbatim when it fits (or when unbounded),
-        /// or word-wrapped (spaces, hard-breaking an over-long token) into several lines that each inherit the
-        /// source colour and <see cref="TooltipLine.Scale"/> when it exceeds <paramref name="maxContentWidth"/>.
-        /// A line drawn at <see cref="TooltipLine.Scale"/> <c>s</c> occupies <c>Measure * s</c> design pixels, so
-        /// it wraps at the font-space budget <c>maxContentWidth / s</c> (guarded against <c>s &lt;= 0</c>, which
-        /// falls back to <c>1f</c>) so the drawn line actually stays within the cap. Shared by <c>ComputeBounds</c>
-        /// and <see cref="Draw"/> so the measured height matches what is drawn.
-        /// </summary>
-        static List<TooltipLine> WrapBody(ITextMeasurer bodyFont, IReadOnlyList<TooltipLine> lines, float maxContentWidth)
-        {
-            bool bounded = maxContentWidth > 0f && !float.IsInfinity(maxContentWidth);
-            var outLines = new List<TooltipLine>(lines.Count);
-            for (int i = 0; i < lines.Count; i++)
-            {
-                TooltipLine line = lines[i];
-                string text = line.Text ?? "";
-                if (line.Text is null) line = line with { Text = text };
-                float budget = bounded ? maxContentWidth / (line.Scale > 0f ? line.Scale : 1f) : maxContentWidth;
-                if (!bounded || bodyFont.Measure(text).X <= budget)
-                {
-                    outLines.Add(line);
-                    continue;
-                }
-                if (!line.Runs.IsEmpty)
-                {
-                    outLines.AddRange(TooltipColoredLines.Wrap(bodyFont, line, budget));
-                    continue;
-                }
-                foreach (string wrapped in TextLayout.Wrap(bodyFont, text, budget, hardBreak: true))
-                    outLines.Add(new TooltipLine(wrapped, line.Color, line.Scale));
-            }
-            return outLines;
-        }
-
         /// <summary>The effective bubble-width cap (design px) from <see cref="MaxWidth"/> / <see cref="MaxWidthFraction"/>;
         /// <see cref="float.PositiveInfinity"/> when neither is set. The smaller of the two positive caps wins.</summary>
         float ResolveMaxWidth()
@@ -406,8 +371,8 @@ namespace KhaozEngine.Gui
                 throw new InvalidOperationException(
                     "Tooltip.Viewport is unset (Vector2.Zero); assign the design viewport size before draw.");
             float maxWidth = ResolveMaxWidth();
-            Rect b = ComputeBounds(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport,
-                Metrics, maxWidth, TitleScale, AnchorMode, out List<TooltipLine> visual);
+            Rect b = ComputeLayout(_titleFont, _title, _titleRight, _bodyFont, _bodyFont, _lines, _anchor, Viewport,
+                Metrics, maxWidth, TitleScale, AnchorMode, out TooltipBodyLayout body);
             GuiDraw.Fill(batch, white, b, GuiDraw.WithOpacity(Background, Opacity));
             GuiDraw.Border(batch, white, b, 1f, GuiDraw.WithOpacity(Border, Opacity));
 
@@ -435,15 +400,21 @@ namespace KhaozEngine.Gui
                         GuiDraw.WithOpacity(SeparatorColor, Opacity));
                 }
             }
-            for (int i = 0; i < visual.Count; i++)
+            for (int i = 0; i < body.Lines.Count; i++)
             {
-                if (visual[i].Runs.IsEmpty)
-                    batch.DrawString(_bodyFont, visual[i].Text, new Vector2(MathF.Floor(x), MathF.Floor(y)),
-                        (Color)GuiDraw.WithOpacity(visual[i].Color, Opacity), visual[i].Scale);
+                TooltipVisualLine row = body.Lines[i];
+                TooltipLine line = row.Line;
+                SpriteFont font = line.TitleFont ? _titleFont : _bodyFont;
+                if (line.Icon is TooltipIcon icon && row.IconBounds is Rect iconBounds)
+                    batch.Draw(icon.Texture,
+                        new Vector4(x + iconBounds.X, y + iconBounds.Y, iconBounds.Width, iconBounds.Height),
+                        icon.SourceUV, (Color)GuiDraw.WithOpacity(Vector4.One, Opacity));
+                Vector2 textPosition = new(MathF.Floor(x + row.TextPosition.X), MathF.Floor(y + row.TextPosition.Y));
+                if (line.Runs.IsEmpty)
+                    batch.DrawString(font, line.Text, textPosition,
+                        (Color)GuiDraw.WithOpacity(line.Color, Opacity), line.Scale);
                 else
-                    batch.DrawStringRuns(_bodyFont, visual[i].Runs.Span,
-                        new Vector2(MathF.Floor(x), MathF.Floor(y)), visual[i].Scale, Opacity);
-                y += _bodyFont.LineHeight * visual[i].Scale + Metrics.LineSpacing;
+                    batch.DrawStringRuns(font, line.Runs.Span, textPosition, line.Scale, Opacity);
             }
         }
     }

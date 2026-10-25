@@ -1442,14 +1442,14 @@ faces and 67,108,864 prepared bytes before work. Point-query limits remain 256 p
 64 intersections, 32 page reads, 64 record reads and depth 8. Explicit `MapQueryLimits` propagate through
 nested native acquisition, dependency closure and retained foliage, water, cluster and membership scopes.
 
-The prepared-byte allowance bounds live workspace plus unique retained product inventory and applicable
-borrowed-input obligations. It does not count cumulative allocation or measure the CLR heap or RSS.
-Temporary reservations end when their consumer finishes. Returned arrays, captured dependencies, mesh
-copies, separate scene/view filter arrays and reusable frame scratch stay charged until release. Array growth admits old
-and replacement storage together. Failed policy closure preserves its input and releases intermediates.
-Failed reservations change no byte counters. Peaks remain separate from current bytes. Reads, UTF-8 work, faces, scopes and selected
-resources keep cumulative work/count semantics. Child views attribute reused contexts and selected decoded inputs
-without a duplicate root charge. Exported view leases keep contexts alive after product retirement.
+The prepared-byte allowance bounds live workspace, unique retained inventory and applicable borrowed inputs.
+It models owned storage, not cumulative allocation, CLR heap or RSS. Temporaries end at their last consumer.
+Copied native-set metadata retires after merge. Remapping slack ends after enumeration. Scope hashes run sequentially.
+Geometry copies stay charged through context capture. Returned arrays, scene/view filter backing, dependencies,
+mesh copies and reusable scratch stay charged until release. Growth admits both old and replacement storage.
+Failed policy closure preserves its input and releases intermediates. Failed reservations change no counters.
+Peaks remain separate from current bytes. Reads, UTF-8 work, faces, scopes and resources keep cumulative work/count semantics.
+Child windows attribute reused contexts and decoded inputs with one root charge. View leases survive product retirement and aggregation.
 Query capacity results preserve the declared limit, demand and allowance. `IndexNodesVisited` counts rejected siblings.
 Capacity refusals retain a typed `MapSceneCapacity` in the source or scoped result, with `LimitName`,
 `Requested` and `Allowance`. Byte demand is current eligible live inventory plus the attempted reservation.

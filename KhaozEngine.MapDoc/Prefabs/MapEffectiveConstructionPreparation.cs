@@ -8,7 +8,7 @@ namespace KhaozEngine.MapDoc.Prefabs;
 /// <summary>Admits resolver table construction separately from installed and captured patch storage.</summary>
 internal static class MapEffectiveConstructionPreparation
 {
-    internal static void BeforeEnumerate(MapEffectiveResolutionInput input, MapAssetClosure assets)
+    internal static void BeforeEnumerate(MapEffectiveResolutionInput input, MapAssetClosure assets, MapPreparationReservation? workspace)
     {
         long rows = input.Placements.Count + (input.NativeResourceTransforms?.Count ?? 0) +
             (input.BuildingIntent is { } intent ? intent.RoofLinks.Count + intent.RoofGroups.Count + intent.Roofs.Count +
@@ -24,7 +24,7 @@ internal static class MapEffectiveConstructionPreparation
             (input.Prefabs?.Attachments.Sum(a => 1L + a.Children.Count) ?? 0));
         // Remapping owns several dictionaries, reference rows and replacement arrays per expanded child.
         // Patch and nested payload copies have their separate before-copy admission.
-        MapSceneAdmission.Current?.ReserveBytes(checked(4096L + 4096L * rows));
+        workspace?.Reserve(checked(4096L + 4096L * rows));
         long Support(MapPlacement placement)
         {
             var asset = assets.GetAsset(placement.AssetId!);

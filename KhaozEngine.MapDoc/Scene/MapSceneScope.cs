@@ -30,12 +30,19 @@ public sealed record MapSceneScope(MapSurfaceScope Surfaces, MapBox3 DrawBounds,
         DrawBounds.MinZ - MotionPaddingMetres, DrawBounds.MaxX + MotionPaddingMetres, double.PositiveInfinity,
         DrawBounds.MaxZ + MotionPaddingMetres);
 
-    public string Digest => MapCanonical.HashHex(w =>
+    public string Digest
     {
-        Validate();
-        w.WriteStartArray(); w.WriteStringValue("kemap/scene-scope/1"); w.WriteStringValue(Surfaces.Digest);
-        foreach (double value in new[] { DrawBounds.MinX, DrawBounds.MinY, DrawBounds.MinZ, DrawBounds.MaxX,
-            DrawBounds.MaxY, DrawBounds.MaxZ, MotionPaddingMetres }) w.WriteNumberValue(BitConverter.DoubleToInt64Bits(value));
-        w.WriteNumberValue((int)Channels); w.WriteEndArray();
-    });
+        get
+        {
+            Validate();
+            string surfaces = Surfaces.Digest;
+            return MapCanonical.HashHex(w =>
+            {
+                w.WriteStartArray(); w.WriteStringValue("kemap/scene-scope/1"); w.WriteStringValue(surfaces);
+                foreach (double value in new[] { DrawBounds.MinX, DrawBounds.MinY, DrawBounds.MinZ, DrawBounds.MaxX,
+                    DrawBounds.MaxY, DrawBounds.MaxZ, MotionPaddingMetres }) w.WriteNumberValue(BitConverter.DoubleToInt64Bits(value));
+                w.WriteNumberValue((int)Channels); w.WriteEndArray();
+            });
+        }
+    }
 }

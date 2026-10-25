@@ -12,6 +12,30 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 
 public sealed class MapAcquisitionOwnershipTests
 {
+    [Fact]
+    public void NativeInput_RetiresCopiedMetadataBeforeResolvingAndKeepsItsPatch()
+    {
+        using var fixture = NativeSceneFixtures.Create("empty");
+        var patch = PrefabFixtures.Patch("floor", 8, 8, 0);
+        fixture.Document.Surfaces.Refs.Add(PrefabFixtures.Surface("floor", MapSurfaceRole.SupportFloor));
+        fixture.Document.Surfaces.Patches.Add(patch.Key, patch);
+        var source = NativeSceneFixtures.Open(fixture, false);
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 2_000_000));
+        var diagnostics = admission.ObserveAcquisition();
+        long retained = -1;
+        diagnostics.Boundary = boundary =>
+        {
+            if (boundary.Stage == MapAcquisitionStage.ResolverGeometry && boundary.Entering)
+                retained = boundary.RetainedBytes;
+        };
+        var scene = MapSceneAcquisition.Run(source, MapSceneScopeTests.Window(), admission).Scene!;
+        // Patch backing plus the native subset row, three hash slots and one descriptor reference.
+        Assert.Equal(81 * 4 + 64 * 8 + 8 + 128 + 3 * 32 + 8, retained);
+        Assert.Single(scene.SurfaceView.Witness.Present);
+        scene.PreparationOwnership!.Dispose();
+        Assert.Equal(0, admission.RetainedBytes);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

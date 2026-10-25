@@ -11,11 +11,13 @@ namespace KhaozEngine.MapDoc.Scene;
 internal sealed class MapSceneInventory
 {
     readonly HashSet<object> _seen = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+    internal static long SurfaceMetadata(MapSurfaceSet surfaces) => checked(128L +
+        surfaces.Refs.Sum(s => 128L + 8L * (s.IndoorSpan?.DomainTags.Count ?? 0)) +
+        8L * surfaces.Refs.Capacity + 64L * surfaces.Patches.Count);
     internal long Surfaces(MapSurfaceSet surfaces)
     {
         if (!_seen.Add(surfaces)) return 0;
-        long bytes = checked(128L + surfaces.Refs.Sum(s => 128L + 8L * (s.IndoorSpan?.DomainTags.Count ?? 0)) +
-            8L * surfaces.Refs.Capacity + 64L * surfaces.Patches.Count);
+        long bytes = SurfaceMetadata(surfaces);
         foreach (var patch in surfaces.Patches.Values)
             if (_seen.Add(patch)) bytes = checked(bytes + MapSceneAdmission.PatchBytes(patch));
         return bytes;

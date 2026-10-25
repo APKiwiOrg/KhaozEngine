@@ -18,9 +18,11 @@ public sealed class NativeCaptureProbeOwnershipTests
     {
         const int count = 24;
         const long allowance = 32_768;
-        // Each one-light scene owns 512 + 1144 + 128 + 256 + 128 bytes.
+        // Empty scene: scene/context/sources/intent/product/set/view, separate roles and witness.
+        const long emptySceneBytes = 512 + 256 + 384 + 128 + 256 + 128 + (256 + 3 * 4 + 8) + 3 * 4 + 64;
+        // One light adds intent backing/row, an effective row, three point-index slots and witness growth.
+        const long sceneBytes = emptySceneBytes + (8 + 128) + 128 + 3 * (8 + 48 + 24) + 64;
         // A probe fits 16 KiB. Live rows and both 37-slot indexes fit another 8 KiB.
-        const long sceneBytes = 2168;
         Assert.True(count * sceneBytes > allowance);
         Assert.True(16_384 + count * 128 + 2 * 37 * 40 < allowance);
         using var fixture = NativeSceneFixtures.Create("empty");
@@ -33,6 +35,7 @@ public sealed class NativeCaptureProbeOwnershipTests
         { Channels = MapSceneChannels.Annotations, MotionPaddingMetres = 0 };
         var state = f.StateWithLimits(new(MaxPreparedBytes: allowance), scope);
         var admission = new MapSceneAdmission(new(MaxPreparedBytes: allowance));
+        var diagnostics = admission.ObserveAcquisition();
         using (admission.Enter())
         {
             var bounds = state.Source.Data.Metadata.Single(m => m.Key.Id == "probe-0").Bounds;
@@ -40,7 +43,8 @@ public sealed class NativeCaptureProbeOwnershipTests
             Assert.NotNull(probe.Scene);
             using var receipt = probe.Scene.PreparationOwnership!;
             Assert.Equal(sceneBytes, receipt.Bytes);
-            Assert.InRange(admission.PeakBytes, sceneBytes, 16_384);
+            Assert.True(admission.PeakBytes >= sceneBytes && admission.PeakBytes <= 16_384,
+                $"peak={admission.PeakBytes} | " + string.Join(" | ", diagnostics.Stages.Select(s => $"{s.Key} retained={s.Value.RetainedHighWater} workspace={s.Value.WorkspaceHighWater}")));
         }
         Assert.Equal(0, admission.RetainedBytes);
         var template = CaptureDependencyFixtures.Request();

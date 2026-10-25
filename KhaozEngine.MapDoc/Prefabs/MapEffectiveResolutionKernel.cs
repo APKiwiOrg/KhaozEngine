@@ -195,8 +195,13 @@ internal static class MapEffectiveResolutionKernel
             callerPreparation.Export(nativeOwner, preparation!);
         using var geometryDiagnostics = admission?.AcquisitionDiagnostics?.Enter(Scene.MapAcquisitionStage.ResolverGeometry);
         using var geometryPreparation = admission?.BeginPreparation();
-        MapEffectiveConstructionPreparation.BeforeEnumerate(authored, assets);
+        using var enumerationWorkspace = admission?.Workspace();
+        MapEffectiveConstructionPreparation.BeforeEnumerate(authored, assets, enumerationWorkspace);
         var captured = Enumerate(authored, assets, nativeSource, observer);
+        if (enumerationWorkspace is not null)
+            geometryPreparation!.Track(enumerationWorkspace.Transfer(MapEffectiveConstructionPreparation.Tables(captured)));
+        // Remapping has finished. Payload clones stay in the geometry collector until context capture.
+        enumerationWorkspace?.Dispose();
         var children = captured.Children;
         var transforms = captured.Transforms;
         var owners = captured.Owners;

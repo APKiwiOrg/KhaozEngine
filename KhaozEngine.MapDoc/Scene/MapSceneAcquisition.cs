@@ -148,7 +148,7 @@ internal static class MapSceneAcquisition
             using var inputPreparation = admission.BeginPreparation();
             admission.ReserveBytes(checked(4096L + 128L * owners.Count + 128L * nativeNeeded.Count));
             var input = Merge(data, owners.Select(id => data.Owners[id]).ToArray());
-            var acquiredNative = AcquireNative(data, nativeNeeded, admission, scope.Surfaces.Limits);
+            var (acquiredNative, nativeOwnership) = AcquireNativeOwned(data, nativeNeeded, admission, scope.Surfaces.Limits);
             int acquiredPatchCount = acquiredNative.Patches.Count;
             foreach (var patch in acquiredNative.Patches) input.Surfaces.Patches.Add(patch.Key, patch.Value);
             foreach (var surface in acquiredNative.Refs.Where(s => s.Role == MapSurfaceRole.PaintOverride))
@@ -160,13 +160,15 @@ internal static class MapSceneAcquisition
                 .Concat(acquiredNative.AllRecords().Select(r => (Kind: MapPrefabChildKind.Record, Id: r.Id)));
             var rootTransforms = poseKeys.Select(k => data.NativePoseByKey.GetValueOrDefault(k)).OfType<MapStandaloneResourceTransform>();
             input = input with { NativeResourceTransforms = (input.NativeResourceTransforms ?? []).Concat(rootTransforms).DistinctBy(t => (t.Kind, t.OwnerId)).ToArray() };
+            // The input keeps selected patch payloads. The copied native-set metadata has no further consumer.
+            nativeOwnership.Release(MapSceneInventory.SurfaceMetadata(acquiredNative));
+            acquiredNative.Patches.Clear(); acquiredNative.Refs.Clear();
             // Foliage has already acquired its complete native read closure. Resolve those admitted payloads directly,
             // so preparation never re-enters storage or spends one point query's page allowance over the whole closure.
             var product = MapEffectiveResolutionKernel.Resolve(input, data.Assets, foliageRequest is null ? nativeSource : null,
                 queryLimits: scope.Surfaces.Limits);
             if (product.PreparationOwnership is { } productOwner) inputPreparation.Export(productOwner, preparation);
             input.Surfaces.Patches.Clear(); input.Surfaces.Refs.Clear();
-            acquiredNative.Patches.Clear(); acquiredNative.Refs.Clear();
             inputPreparation.Dispose();
             inputDiagnostics?.Dispose();
             var view = product.Acquire(scope.Surfaces with { SceneAdmission = admission });
@@ -244,6 +246,9 @@ internal static class MapSceneAcquisition
         $"{range.SurfaceId}/{range.Slots.MinX}/{range.Slots.MinZ}/{range.Slots.MaxXExclusive}/{range.Slots.MaxZExclusive}");
 
     internal static MapSurfaceSet AcquireNative(MapSceneData data, IReadOnlySet<MapPatchKey> needed, MapSceneAdmission admission, MapQueryLimits queries)
+        => AcquireNativeOwned(data, needed, admission, queries).Surfaces;
+    static (MapSurfaceSet Surfaces, MapPreparationReservation Ownership) AcquireNativeOwned(MapSceneData data,
+        IReadOnlySet<MapPatchKey> needed, MapSceneAdmission admission, MapQueryLimits queries)
     {
         using var preparation = admission.BeginPreparation();
         preparation.Reserve(128);
@@ -283,8 +288,8 @@ internal static class MapSceneAcquisition
                     surfaces.Patches.Add(entry.Key, patch);
                 }
         }
-        preparation.Complete(new MapSceneInventory().Surfaces(surfaces));
-        return surfaces;
+        var resultOwnership = preparation.Complete(new MapSceneInventory().Surfaces(surfaces));
+        return (surfaces, resultOwnership);
     }
 
     static MapEffectiveResolutionInput Merge(MapSceneData data, IReadOnlyList<MapSceneOwner> owners)

@@ -54,4 +54,15 @@ public sealed class MapSceneScopeTests
         Assert.Equal(digest, scene.Witness.ScopeDigest);
     }
 
+    [Fact]
+    public void ScopeDigest_ReleasesTheSurfaceHashBufferBeforeHashingTheScene()
+    {
+        var scope = Window();
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 8192));
+        using var active = admission.Enter();
+        Assert.Equal(64, scope.Digest.Length);
+        Assert.Equal(0, admission.WorkspaceBytes);
+        Assert.Equal(0, admission.RetainedBytes);
+    }
+
 }

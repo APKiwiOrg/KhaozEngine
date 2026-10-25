@@ -185,4 +185,28 @@ public sealed class WaterOpticsTriangleDiscontinuityTests
         float step = MathF.ScaleB(1f, -20), half = MathF.ScaleB(1f, -21);
         Assert.Equal(1.5f * step, FlatStrips(0.5f, 0.5f + step, 0.5f + step + half).ReconstructionErrorBoundMetres);
     }
+
+    [Fact]
+    public void SlopedSeamChargesItsLargerEndpointJump()
+    {
+        // The unit square split along its anti-diagonal, so the shared segment from (1, 0) to (0, 1) is the only
+        // contact. The upper triangle lies on y = 0.5 + 2^-21 (1 + z), which meets the diagonal 2^-21 above the
+        // flat 0.5 lower triangle at (1, 0) and 2^-20 above it at (0, 1). The midpoint jump is only 1.5 * 2^-21.
+        float half = MathF.ScaleB(1f, -21), step = MathF.ScaleB(1f, -20);
+        float low = 0.5f + half, high = 0.5f + step;
+        var upper = new WaterOpticsTriangle(new(1, low, 0), new(1, high, 1), new(0, high, 1));
+        float seam = Square(new(new(0, 0.5f, 0), new(1, 0.5f, 0), new(0, 0.5f, 1)), upper);
+        // Closing the seam puts the lower triangle on the upper plane. It adds no slope and less arithmetic than
+        // the upper triangle, so both fields carry the same arithmetic and mapping maxima.
+        float closed = Square(new(new(0, low, 0), new(1, low, 0), new(0, high, 1)), upper);
+        Assert.True(closed > 0f, "The sloped triangle carries arithmetic and mapping error.");
+        // The closed bound is the least binary32 at or above its total, so its predecessor lies strictly below.
+        // Binary32 bounds of this size subtract exactly in binary64.
+        double charged = (double)seam - MathF.BitDecrement(closed);
+        Assert.True(charged > step, $"Seam bound {seam:R} over closed bound {closed:R} charges {charged:R}, below {step:R}.");
+    }
+
+    static float Square(WaterOpticsTriangle lower, WaterOpticsTriangle upper) =>
+        new WaterOpticsTriangleField(Vector2.One, 1, 1, [lower, upper], [new(Vector2.Zero, Vector2.One)])
+            .ReconstructionErrorBoundMetres;
 }

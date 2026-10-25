@@ -24,7 +24,7 @@ public sealed class TileWaterOpticsDatumTests
 
     // Two by two water tiles around one deep shared corner with a corner cut on every tile, one per rotation. Three
     // cuts meet the deep corner, so their mid-edge points sit on sloping edges shared with an uncut neighbour.
-    static TileWorldDocument SlopedCornerCuts()
+    internal static TileWorldDocument SlopedCornerCuts()
     {
         var doc = new TileWorldDocument { Id = "sloped-corner-cuts", DisplayName = "Sloped corner cuts", PlaneCount = 1 };
         for (int z = -1; z <= 1; z++)

@@ -216,8 +216,23 @@ public sealed class TileWorldViewWaterOpticsTriangleTests
         Assert.NotEqual(planes[0].SurfaceY, planes[1].SurfaceY);
         Assert.NotEqual(planes[0].Optics.Field, planes[1].Optics.Field);
         Assert.Equal(2, scene.TriangleFields.Count);
+        // The datum makes rest depth level-independent, so the level key is the only witness of which field a
+        // plane binds. Build each level's field from the same accepted surface and match it by Level.
+        TileWaterTriangleOutcome expected = TileWaterTrianglePreparation.Prepare(new TileWaterPreparation(
+                TileWaterPlanes.Collect(doc, TileRenderTestData.Catalogs, Origin, 0).ToArray(),
+                new TileWaterSourceStamp(doc, [], null), 0f, null), Origin, 0, r => view.AcceptedGroundSurface(r, 0),
+            new TileWaterSourceContext(doc, TileRenderTestData.Catalogs, new TileGroundMesherOptions(), null));
+        Assert.Null(expected.Failure);
+        Assert.Equal(2, expected.Fields.Length);
         foreach (WaterPlane plane in planes)
         {
+            TileWaterTriangleBuild own = Assert.Single(expected.Fields, b => b.Level == plane.SurfaceY);
+            TileWaterTriangleBuild other = Assert.Single(expected.Fields, b => b.Level != plane.SurfaceY);
+            WaterOpticsTriangleField bound = scene.TriangleFields[plane.Optics.Field];
+            Assert.Equal(own.Origin, plane.Optics.Origin);
+            Assert.NotEqual(other.Origin, plane.Optics.Origin);
+            Assert.Equal(own.Field.Size, bound.Size);
+            Assert.Equal(own.Field.CertifiedRectangles.ToArray(), bound.CertifiedRectangles.ToArray());
             Assert.Equal(0f, plane.Optics.Origin.Y);
             Assert.Equal(OracleDepth(view, plane, plane.CenterX, plane.CenterZ, Origin),
                 FieldDepth(scene, plane, plane.CenterX, plane.CenterZ), 4);

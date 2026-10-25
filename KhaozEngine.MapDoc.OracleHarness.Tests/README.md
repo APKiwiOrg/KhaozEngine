@@ -713,6 +713,9 @@ before its complete typed frame values are compared.
 Submitted terrain triangles must cover their independently matched source faces without holes or overlap.
 Their positions and normals bind to the source plane. Decoded material slots and weights bind to source
 underlay, overlay cuts and the released legacy feather boundary, independently of render triangulation order.
+Submitted water meshes cover the source body's cell domains at its source level. Clip payloads cover the
+complete source cells in the source water policy's displacement halo, in the submitted anchor frame.
+Equal XZ area alone cannot certify either domain. Mesh and clip triangulation order may differ.
 
 `LegacySceneRecorder.RecordFoliage` independently traces the source sampler for every logical
 generation whose source model reach intersects the declared window and motion padding. Owners proven

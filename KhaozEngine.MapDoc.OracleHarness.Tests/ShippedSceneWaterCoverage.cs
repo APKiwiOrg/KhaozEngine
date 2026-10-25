@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.MapDocOracle;
 
 /// <summary>Independent submitted area from original water-plane domains. Scene-depth occlusion does not trim those inputs.</summary>
 [UnsupportedOSPlatform("windows")]
-internal static class ShippedSceneWaterCoverage
+internal static partial class ShippedSceneWaterCoverage
 {
     readonly record struct Point(double X, double Y, double Z);
     readonly record struct Cell(int TileX, int TileZ, long X, long Z);

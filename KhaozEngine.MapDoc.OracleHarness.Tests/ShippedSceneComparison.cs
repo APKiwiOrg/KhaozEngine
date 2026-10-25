@@ -91,6 +91,7 @@ internal static partial class ShippedSceneComparison
                         var actual = observation.DrawSet;
                         CheckStamp(actual, plan.Key, report);
                         ShippedSceneTerrainCoverage.Compare(terrainFaces, actual, report);
+                        ShippedSceneWaterCoverage.ComparePayloads(inputs, plan, actual, report);
                         ShippedSceneFoliageRoster.Compare(inputs, foliage, observation, report);
                         foreach (var placement in expected.Placements.Where(p => inputs.SourcePolicy.AnimatedAssets.Contains(p.ArchetypeId) && ShippedSceneExpectedFrames.InScope(p, scene.Scope)))
                             ShippedSceneSourceChecks.ExplicitPlant(placement, manifest.Placements.Single(p => p.SourceObjectId == placement.Id).NativePlacementId, actual.Resources, inputs, report);

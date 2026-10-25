@@ -36,6 +36,35 @@ The opt-in rich-text adapters take `MarkupText`, built only from a `StringId`. I
 Non-localizable names, numbers and input labels enter as `MarkupText.Of` arguments, which are formatted and
 markup-escaped before insertion into the trusted catalog template.
 
+## Horizontal snap strips
+
+`SnapStrip` is the drawing-free choice for fixed-pitch horizontal content. It supplies clamped anchored
+stops, elapsed-time easing, one-to-one pointer drag and nearest-stop release snapping. The caller owns
+items, drawing, clipping, selection, localized text, arrows, wheel policy and tooltips. Use `PannableCanvas`
+for a camera with pan and zoom, and `ScrollablePanel` for a drawn vertical list.
+
+Call `Configure(bounds, itemCount, metrics)` and `CenterOn(index, animated: false)` on open. Call
+`Update(pointer, input, dtSeconds, receivesInput)` on every open frame, even without hover or input
+eligibility, after updating Pointer once and before lower pointer consumers. Existing easing continues
+without input. Draw only `VisibleRange` inside a caller-owned scissor, then restore the clip before drawing
+tooltips. Dim arrows using `CanStepPrevious` and `CanStepNext`, and wire their actions to `StepPrevious`
+and `StepNext`. See the [complete caller example](../docs/USING-KHAOZENGINE.md#caller-drawn-horizontal-snap-strip).
+
+`SnapStripMetrics(ItemWidth, ItemSpacing = 0, Anchor = 0.5f)` uses the same units as Pointer and drawing.
+Pitch is width plus spacing, with no trailing gap or endpoint padding. `Anchor` is the finite fraction of
+viewport width where the target item's centre sits, in [0,1]. Indices are zero-based, and `TargetIndex`
+retains the requested logical item during easing (-1 when empty). Steps skip duplicate clamped stops.
+Interior steps are one pitch, but endpoint steps can be shorter. Drag release chooses the nearest actual
+stop, with lower-index ties, canonical index 0 at offset 0 and the last index at maximum scroll. Fitting
+content preserves its logical anchor. Defaults are horizontal slop 8 and snap duration 0.18 seconds.
+
+`CancelInteraction()` on close settles an active drag immediately and leaves independent easing intact.
+Input loss, focus loss, capture, origin/current-point occlusion, nonfinite pointer positions and coordinate
+mapping changes also cancel. Stale held contacts cannot restart before release, and committed drags stay
+consumed through release. Public commands end contact ownership. Identical `Configure` calls are inert.
+Translation cancels a drag but preserves idle offset and easing. Width, count or metrics changes settle the
+clamped logical target immediately. Invalid configuration leaves all state intact.
+
 ## Pan, zoom and draggable sheets
 
 `PannableCanvas.Update(InputManager, dtSeconds, hasKeyboardFocus, isBlocked)` consumes the full-frame
@@ -726,6 +755,13 @@ chat.Draw(batch, white);
     // The same rects with no widget in hand:
     int hovered = TabStrip.TabAt(strip.Bounds, pointer.Position, tabs.Count, strip.Metrics);
     ```
+  - `SnapStripGeometry` + `SnapStripMetrics` - pure fixed-pitch horizontal geometry. `ContentWidth`,
+    `MaxScroll`, `CenterOffset` and `NearestIndex` provide anchored stops. `ItemBounds` returns full item
+    rectangles, `IndexAt` uses half-open viewport and item bounds (-1 outside or in gaps), and `VisibleRange`
+    returns `(First, Count)` including partially visible items. `SnapStrip.ItemBounds`, `ItemAt`, `VisibleRange`,
+    `ContentWidth` and `MaxScroll` use these same statics at the displayed offset. `HoveredItemIndex(pointer)`
+    also checks the last update's input eligibility and current hover occlusion. `SnapStripMotion` exposes
+    the same drawing-free motion model for callers with their own input adapter.
   - **Keyboard/gamepad control (opt-in, additive)** on `Toggle`/`Slider`/`Dropdown`: each has an
     `Update(InputManager, bool focused, PlayerIndex? = null)` overload that layers `InputManager` menu actions on
     top of the pointer path (only when `focused`), mirroring `FocusNavigator`. So a settings row is fully
@@ -895,7 +931,7 @@ chat.Draw(batch, white);
     - `WindowUpdate` carries `Pointer`, `Input`, `Dt`, `ReceivesInput` and `IsFront` to one window's update.
     - `SlotGrid`, `GuiDragContext.OfferTargetIn`, `TreeView`, `ScrollablePanel` drag edge scroll,
       `PropertyGrid`, `GuiSurface.HoverCaptured` and `PointerCaptured`, `ScreenStack.PressBeganOverUi`,
-      `PannableCanvas.TryGetTap` and `DraggableBottomSheet` honour occlusion.
+      `PannableCanvas.TryGetTap`, `DraggableBottomSheet` and `SnapStrip` honour occlusion.
   - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer. `Update` reserves
     the whole `ScrimRect` (the full viewport the scrim dims) through `Pointer.BlockRegion`, not just the panel,
     so a click on the dimmed area cannot reach the UI underneath. That only matters when the popup is driven
@@ -918,6 +954,10 @@ chat.Draw(batch, white);
     footer callback is safe to mutate the list mid-fire (for example closing the dialog from inside the very
     action it just ran). An empty `FooterButtons` list leaves the classic dismiss/primary footer completely
     unchanged, so every existing consumer stays byte-identical.
+  - `SnapStrip` - caller-drawn horizontal fixed-pitch strip, with anchored snapping and no built-in wheel
+    policy. Its `BlocksPointer` defaults to true and reserves after admission. Reservation leaves taps
+    available to caller-owned items. Committed drags consume even with reservation disabled. Update every
+    open frame, clip the returned partial visible items, and draw tooltips after restoring the clip.
   - `ScrollablePanel` - wheel/drag scrolling fixed-height list. Set `DragScrollingEnabled = false` when row
     content owns pointer dragging and the wheel must remain available. It defaults to true. Rows are drawn
     between `BeginClip`/`EndClip` (scissor), and hit-tested with `TappedItemIndex`. Opt-in overlay chrome (all default to no-ops, so existing callers are

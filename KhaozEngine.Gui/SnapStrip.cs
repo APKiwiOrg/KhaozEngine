@@ -6,8 +6,9 @@ using KhaozEngine.Windowing;
 namespace KhaozEngine.Gui;
 
 /// <summary>A drawing-free horizontal strip with anchored snapping and single-pointer drag admission.</summary>
-/// <remarks>Update before lower pointer consumers. Layout and item geometry use Pointer coordinates.
-/// The caller owns drawing, selection and wheel policy.</remarks>
+/// <remarks>Update every open frame before lower pointer consumers, even without input eligibility.
+/// Layout and item geometry use Pointer coordinates. The caller owns drawing, clipping, selection and wheel
+/// policy. Draw only the visible range inside the caller's clip, then restore it before drawing tooltips.</remarks>
 public sealed class SnapStrip
 {
     readonly SnapStripMotion _motion;
@@ -67,17 +68,22 @@ public sealed class SnapStrip
     /// <param name="bounds">The finite viewport with nonnegative dimensions.</param>
     /// <param name="itemCount">The nonnegative number of items.</param>
     /// <param name="metrics">The valid item dimensions and anchor, even for empty content.</param>
-    /// <remarks>Changed layouts cancel contact ownership and settle the target immediately.
-    /// Identical layouts preserve interaction and animation. Invalid layouts change nothing.</remarks>
+    /// <remarks>Width, count or metrics changes cancel contact ownership and settle the logical target immediately.
+    /// Other bounds changes cancel contact ownership, preserving independent animation.
+    /// Identical layouts preserve interaction and animation. Invalid layouts change nothing.
+    /// Cancelled held contacts cannot restart, and committed gestures remain consumed through release.</remarks>
     /// <exception cref="ArgumentOutOfRangeException">The layout is invalid or its derived extent is nonfinite.</exception>
     public void Configure(in Rect bounds, int itemCount, in SnapStripMetrics metrics)
     {
         _ = SnapStripGeometry.VisibleRange(bounds, ScrollOffset, itemCount, metrics);
         if (Bounds == bounds && ItemCount == itemCount && Metrics == metrics) return;
-        _motion.Configure(bounds.Width, itemCount, metrics);
-        _motion.CenterOn(TargetIndex, false);
+        if (Bounds.Width != bounds.Width || ItemCount != itemCount || Metrics != metrics)
+        {
+            _motion.Configure(bounds.Width, itemCount, metrics);
+            _drag.Reset();
+        }
+        else CancelInteraction();
         Bounds = bounds;
-        _drag.Reset();
     }
 
     /// <summary>Targets an item at the viewport anchor and cancels contact ownership.</summary>
@@ -117,7 +123,9 @@ public sealed class SnapStrip
     /// origin. Rejected contacts stay rejected until physical release. Admitted contacts pause easing.
     /// A committed drag remains owned outside the viewport and consumes through release. Final release
     /// travel precedes snapping, which starts advancing on the next update. Motion advances without input.
-    /// Focus loss, pointer capture and mapping changes cancel interaction until the held contact releases.</remarks>
+    /// Input loss, focus loss, pointer capture, origin/current-point occlusion, nonfinite positions and mapping
+    /// changes cancel interaction until the held contact releases. Unrelated reservations do not cancel an
+    /// owned drag. An independent animation continues during cancellation.</remarks>
     /// <exception cref="ArgumentNullException">Pointer or input is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Elapsed seconds are negative or nonfinite.</exception>
     public void Update(Pointer pointer, InputState input, float dtSeconds, bool receivesInput = true)
@@ -135,7 +143,9 @@ public sealed class SnapStrip
         _hoverEnabled = receivesInput && input.WindowFocused && !input.PointerCaptured
             && ValidMapping(_coordinates) && Finite(pointer.Position);
 
-        if (!_hoverEnabled || mappingChanged)
+        bool contactOccluded = _drag.IsActive
+            && (pointer.IsOccluded(pointer.PressOrigin) || pointer.IsOccluded(pointer.Position));
+        if (!_hoverEnabled || mappingChanged || contactOccluded)
         {
             CancelInteraction();
             _sequence |= held || sameFrameTap;

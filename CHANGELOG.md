@@ -48,6 +48,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   settles on its waterline from below or rises with a wave now takes walkable footing that rises above its feet,
   rather than swimming into the bed until a terrain wall holds it (Closes #1572).
 
+- Add `SnapStrip` for caller-drawn fixed-pitch horizontal content, with clamped centring, eased distinct-stop
+  stepping, one-to-one pointer drag and nearest-stop release snapping, pure hit testing and visible ranges
+  (Closes #1576).
+
 ## 21.13.0
 
 2026-10-24

@@ -59,7 +59,7 @@ internal sealed partial class ModelRenderer
     IGpuTexture _pointShadowTransientDefault = null!;
     IGpuTexture _pointShadowTransientTexture = null!;
 
-    // The requested pair whose set rebuild failed. Repeating that pair avoids another WaitForIdle each frame.
+    // The requested pair whose set rebuild failed. Repeating that pair avoids another allocation attempt each frame.
     // A changed pair gets a real attempt. ForgetPointShadowBindFailure clears the latch when either failed
     // candidate texture is discarded by the scene.
     IGpuTexture? _pointShadowBindFailureBase;
@@ -184,7 +184,7 @@ internal sealed partial class ModelRenderer
     /// old. The atlas is allocated lazily, so this fires at most once per allocation rather than per frame.
     /// <para>
     /// A failure is latched against the requested pair, so a caller that asks for the same atlases on every
-    /// frame pays the transaction (and the <c>WaitForIdle</c> inside it) once rather than once a frame forever.
+    /// frame pays the allocation attempt once rather than once a frame forever.
     /// Any other pair, including a 1x1 default selected by null, gets a real attempt. A caller freeing either
     /// failed candidate clears the latch through <see cref="ForgetPointShadowBindFailure"/>.
     /// </para>
@@ -213,7 +213,6 @@ internal sealed partial class ModelRenderer
         var replacementBindings = new Dictionary<IGpuResourceSet, ShadowSamplingBinding>(ReferenceEqualityComparer.Instance);
         try
         {
-            _gd.WaitForIdle();
             AddReplacement(_defaultSet, _shadowMap.ShadowTexture, wantedBase, wantedTransient,
                 _pointLightBuffer, replacements, replacementBindings);
             AddReplacement(_skinnedDefaultFragSet, _shadowMap.ShadowTexture, wantedBase, wantedTransient,
@@ -231,7 +230,7 @@ internal sealed partial class ModelRenderer
             return PointShadowBindResult.Failed;
         }
 
-        CommitShadowSamplingSets(replacements, replacementBindings, commitMaterialSets);
+        CommitShadowSamplingSets(replacements, replacementBindings, commitMaterialSets, _retired);
         _pointShadowTexture = wantedBase;
         _pointShadowTransientTexture = wantedTransient;
         _pointShadowBindFailureBase = null;

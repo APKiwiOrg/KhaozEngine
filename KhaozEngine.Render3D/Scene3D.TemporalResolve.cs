@@ -152,7 +152,7 @@ namespace KhaozEngine.Render3D
                 TemporalHistory.Invalidate(TemporalResetReason.Resize);
                 _lastTemporalDiagnostics = _lastTemporalDiagnostics.WithHistoryReset(TemporalHistory.LastReset);
             }
-            _temporalPost.Ensure(_res, TemporalHistory, displayWidth, displayHeight, Post.Bloom.Enabled);
+            _temporalPost.Ensure(_res, TemporalHistory, displayWidth, displayHeight, Post.Bloom.Enabled, _retired);
 
             TemporalHistory.BeginResolve(current.FrameIndex);
             IGpuTexture motion = _res.MotionTex ?? throw new InvalidOperationException(
@@ -250,7 +250,7 @@ namespace KhaozEngine.Render3D
 
         // A frame without the resolve holds none of its targets. The history targets, the resolve's sets that name them,
         // the outline pass ahead of the resolve and the later renders' post chain go to the retire queue, since the last
-        // frame's commands may still read them. The display targets drain and free.
+        // frame's commands may still read them. The display targets use that queue too.
         // Kept until the scene is disposed, because they are small and would only be rebuilt the next time the resolve
         // runs: the resolve's pipelines, uniform buffers and sampler (both entry points'), the debug-view pass, the
         // count probe's textures and the post chain's sharpen pass.
@@ -259,7 +259,7 @@ namespace KhaozEngine.Render3D
             _temporalResolve?.ReleaseSets(_retired);
             TemporalHistory.ReleaseTargets(_retired);
             _post.ReleaseTemporalOutline(_retired);
-            _temporalPost?.Release();
+            _temporalPost?.Release(_retired);
             if (_laterRenderPost is null) return;
             _retired.Retire(_laterRenderPost);
             _laterRenderPost = null;

@@ -60,14 +60,14 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Rebuild the pipeline for a new model-MRT output description (MSAA changes).</summary>
-        public void SetOutputs(GpuOutputDescription modelOutputs)
+        public void SetOutputs(GpuOutputDescription modelOutputs, GpuRetireQueue? retired = null)
         {
-            _pipeline.Dispose();
+            if (!ShadowVisibilityTargets.HasVisibility(modelOutputs)) _visibilityShaders.Release(retired);
+            ResourceRetirement.Free(_pipeline, retired);
             _pipeline = BuildPipeline(_gd.Factory, modelOutputs);
             if (MotionMath.IsTemporal(modelOutputs)) return;
-            // Scene3D idles the device before it changes the model target's attachments, so no list in flight still
-            // reads the temporal program the old pipeline used.
-            _motionShaders?.Dispose();
+            // The old pipeline and its temporal program share the completion boundary.
+            ResourceRetirement.Free(_motionShaders, retired);
             _motionShaders = null;
         }
 

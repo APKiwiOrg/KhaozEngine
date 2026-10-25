@@ -115,10 +115,7 @@ namespace KhaozEngine.Render3D
         /// every receiver is bound to the new texture, because this is the moment the old one stops existing.</summary>
         internal void CommitPointShadowReplacement(PointShadowReplacement replacement)
         {
-            // An outgoing atlas may still be under a queued frame's reads, so drain before freeing it. A first
-            // allocation has nothing to free and pays no stall.
-            if (_pointShadowAtlas is not null) _gd.WaitForIdle();
-            DisposePointShadows();
+            RetirePointShadows();
             _pointShadowAtlas = replacement.Atlas;
             _pointShadowTransientAtlas = replacement.TransientAtlas;
             _pointShadows = replacement.Renderer;
@@ -308,14 +305,10 @@ namespace KhaozEngine.Render3D
             DisposeFoliagePointShadows(disposal);
         }
 
-        /// <summary>Release the atlas and its pass. Called from
-        /// scene teardown and by
-        /// <see cref="CommitPointShadowReplacement"/> when a layout is replaced.</summary>
-        void DisposePointShadows()
+        /// <summary>Keep the outgoing pass and atlases until submitted readers complete.</summary>
+        void RetirePointShadows()
         {
-            _pointShadows?.Dispose();
-            _pointShadowTransientAtlas?.Dispose();
-            _pointShadowAtlas?.Dispose();
+            _retired.Retire(_pointShadows, _pointShadowTransientAtlas, _pointShadowAtlas);
             _pointShadows = null;
             _pointShadowTransientAtlas = null;
             _pointShadowAtlas = null;

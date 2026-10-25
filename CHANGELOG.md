@@ -6,8 +6,13 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.14.0
 
-2026-10-25
+2026-10-26
 
+- Retire replaced cascade and point-shadow atlases, receiver sets, MRT targets and pipelines, post bindings
+  and temporal display targets behind GPU completion without a device idle wait in the scene frame.
+  Cached depth bindings for decals, particles, distortion and water follow the same queue.
+  Scene frame retirement can share the host completion fence without adding a submission. First temporal
+  target allocation still requires no drain.
 - Add optional Scene3D render-pass observation across geometry, shadows, atmosphere, water, effects,
   temporal resolve, post and display work, with cached skips, exclusive device leaves and fused motion metadata.
   Disabled observation preserves commands and ordering.

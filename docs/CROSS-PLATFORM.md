@@ -307,6 +307,14 @@ frame 1 at driver index 0 and may report active temporal `FirstFrame` history. L
 frames require valid history. Fresh measured blocks render their counted negative warm-up indices
 before index 0. Temporal recipes still require valid history on every measured frame.
 
+Every conditioning, warm-up and measured frame requires zero logical `WaitForIdleCalls`, exactly one
+logical production submission and no device loss. Conditioning and negative warm-up indices permit
+cold resource creation, retained in raw counters. Measured frames require zero logical resource creations.
+Shadow and MRT replacement uses deferred completion retirement. The scene shares the host frame's
+completion fence, without an extra retirement submission or hidden rendered priming frame. The batch
+completion drain and validation readback stay outside frame brackets. Headless proofs do not establish
+native acceptance or authorize another pilot.
+
 The existing driver owns every conditioned, warm and measured frame, three-frame completion,
 readback, drift check and publication deadline. Publication elapsed time and estimated cost include
 work-model generation, sidecar serialization and hashing inside the publication clock interval,
@@ -653,7 +661,7 @@ dropped about 63 minutes of runner time from a full dispatch.
   CI Mesa version, 25.2.8) surfaced four real engine defects, all fixed: concurrent device creation racing the
   Vulkan loader's dispatch setup (fixed by serializing device create/dispose process-wide in
   `KhaozEngine.Gpu.GpuDeviceContext`), mid-life GPU resource disposal racing queued async work (fixed by
-  draining the device via `IGpuDevice.WaitForIdle` before every mid-life disposal, the drain rule is documented
+  deferring destruction behind completion fences, or draining with `IGpuDevice.WaitForIdle` when no queue exists, as documented
   in `docs/USING-KHAOZENGINE.md`), and a teardown-order pair where a resource wrapper outliving its device
   drained or destroyed against the destroyed device (fixed by a shared liveness latch). The full PARALLEL suite
   on lavapipe still exhibits residual driver-side instability with delayed-corruption symptoms (a CoreCLR

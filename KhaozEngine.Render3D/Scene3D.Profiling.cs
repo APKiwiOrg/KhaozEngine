@@ -31,14 +31,6 @@ public sealed partial class Scene3D
     /// A successful render with a callback failure throws after recording. An original render exception wins.</summary>
     public Exception? PassObserverFailure => _profiling?.Failure;
 
-    /// <summary>Start a frame: apply pending scene changes, latch <see cref="RenderOrigin"/>, take the next frame index, and clear the per-frame draw queues.</summary>
-    public void Begin()
-    {
-        _profiling?.Reset();
-        using var phase = ProfileCpu("device.scene.begin");
-        BeginCore();
-    }
-
     internal void RenderInternal(IGpuCommandList cl, int viewportW, int viewportH, IGpuFramebuffer target)
     {
         RenderCore(cl, viewportW, viewportH, target);

@@ -243,6 +243,7 @@ public sealed class AtmosphereRendererTests
                 rigid = replace(rigid);
                 skinned = replace(skinned);
             }, () => { }));
+            for (int i = 0; i < GpuRetireQueue.DefaultFrameDelay; i++) retired.BeginFrame();
             AssertSuffixes();
 
             void AssertSuffixes(bool retainedSkinnedSet = false)

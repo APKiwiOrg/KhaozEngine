@@ -15,11 +15,12 @@ namespace KhaozEngine.Tests.Render3D;
 /// exactly while temporal rendering is active, and creates none of it otherwise.</summary>
 public sealed class MotionTargetWiringTests
 {
-    static RecordingGpuCommandList Frame(MotionTestScene harness, Action<Scene3D> queue)
+    static RecordingGpuCommandList Frame(MotionTestScene harness, Action<Scene3D> queue, Action? beforeRecord = null)
     {
         harness.Scene.Begin();
         queue(harness.Scene);
         harness.Scene.PrepareFrame();
+        beforeRecord?.Invoke();
         var cl = new RecordingGpuCommandList(new NullGpuCommandList()) { CapturePayloads = true };
         harness.Scene.RenderInternal(cl, MotionTestScene.Width, MotionTestScene.Height, harness.Target);
         return cl;
@@ -56,8 +57,11 @@ public sealed class MotionTargetWiringTests
 
         harness.Scene.ForceTemporalForTests = false;
         Frame(harness, Queue).Dispose();
-        Assert.True(motion.Disposed);
+        Assert.False(motion.Disposed);
         Assert.Null(harness.Scene.MotionResourcesForTests);
+        Assert.Throws<InvalidOperationException>(() => harness.Scene.ReadMotionTargetForTests());
+        for (int i = 0; i < GpuRetireQueue.DefaultFrameDelay; i++) harness.Scene.Begin();
+        Assert.True(motion.Disposed);
     }
 
     [Fact]
@@ -213,11 +217,11 @@ public sealed class MotionTargetWiringTests
 
         int built = factory.GraphicsPipelines.Count, idles = harness.Device.WaitForIdleCalls;
         harness.Scene.ForceTemporalForTests = true;
-        Frame(harness, Queue).Dispose();
+        Frame(harness, Queue, () => idles = harness.Device.WaitForIdleCalls).Dispose();
         FakeGraphicsPipelineRequest[] on = ModelTargetPipelines(factory, built);
         Assert.Equal(size, (harness.Scene.CurrentFrameView.Width, harness.Scene.CurrentFrameView.Height));
         Assert.Equal(1, harness.Scene.ModelSampleCountForTests);
-        Assert.True(harness.Device.WaitForIdleCalls > idles, "the toggle recreated the model target without idling the device");
+        Assert.Equal(idles, harness.Device.WaitForIdleCalls);
         Assert.All(on, p => MotionTargetPrograms.AssertLayout(p, outputs));
         string[] programs =
         {
@@ -232,10 +236,10 @@ public sealed class MotionTargetWiringTests
         built = factory.GraphicsPipelines.Count;
         idles = harness.Device.WaitForIdleCalls;
         harness.Scene.ForceTemporalForTests = false;
-        Frame(harness, Queue).Dispose();
+        Frame(harness, Queue, () => idles = harness.Device.WaitForIdleCalls).Dispose();
         FakeGraphicsPipelineRequest[] off = ModelTargetPipelines(factory, built);
         Assert.Equal(size, (harness.Scene.CurrentFrameView.Width, harness.Scene.CurrentFrameView.Height));
-        Assert.True(harness.Device.WaitForIdleCalls > idles, "the toggle recreated the model target without idling the device");
+        Assert.Equal(idles, harness.Device.WaitForIdleCalls);
         Assert.NotEmpty(off);
         Assert.All(off, p => MotionTargetPrograms.AssertLayout(p, 3));
         Assert.Contains(off, p => p.VertexGlsl == ShaderSources.ModelVert && p.FragmentGlsl == ShaderSources.ModelFrag);
@@ -267,7 +271,7 @@ public sealed class MotionTargetWiringTests
         harness.Scene.ForceTemporalForTests = false;
         Frame(harness, Queue).Dispose();
         Assert.False(harness.Scene.TransparentMotionShadersHeldForTests);
-        // The overlay pass hands its program to the scene's retire queue, which frees it a few frames on.
+        // Every outgoing program follows its pipeline through the scene's retire queue.
         for (int i = 0; i <= GpuRetireQueue.DefaultFrameDelay; i++) Frame(harness, Queue).Dispose();
         Assert.All(programs, p => Assert.True(p.Disposed));
     }

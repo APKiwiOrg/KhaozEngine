@@ -40,7 +40,7 @@ namespace KhaozEngine.Gpu.Internal
     /// pipeline stall it replaces.</para>
     ///
     /// <para><b>Not thread-safe</b>, and it does not need to be: it is driven from
-    /// <see cref="GpuRetireQueue.BeginFrame"/> and nothing else, which is the frame thread by that type's own
+    /// <see cref="GpuRetireQueue.BeginFrame()"/> and nothing else, which is the frame thread by that type's own
     /// contract.</para></summary>
     internal sealed class GpuRetireBarrier : IRetireBarrier
     {

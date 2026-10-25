@@ -436,6 +436,12 @@ What it owns today:
   teardown. It replaces the hand-rolled retire list each renderer used to carry
   ([#80](https://github.com/APKiwiOrg/KhaozEngine/issues/80)), so a new renderer gets the safe behaviour by
   construction rather than by remembering to copy another one.
+  - `BeginFrame(frame.Submission)` shares a `GpuFrameSubmission` completion fence in the prepare phase, without
+    an extra submission. The host and queue use the same device. The host submits before the next boundary and
+    outlives the queue, or completes its own teardown first. Abandonment unseals the tail without freeing earlier
+    readers. A failed submit retains its batch until completion or a successful host teardown drain. The queue
+    never resets or disposes borrowed fences. If no host completion slot is available, the call refuses without
+    submitting or freeing the unsealed tail. Devices without completion fences keep the ordinary fallback.
   - **Two factories, and the choice is about WHERE your frame boundary is.** `Create(device)` is the default:
     fence-polled ripeness where the device can signal on GPU completion, the frame count plus one `WaitForIdle`
     where it cannot. Minting the fence opens a command list of its own, so it must be advanced from a point with

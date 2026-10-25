@@ -27,6 +27,7 @@ namespace KhaozEngine.Render3D.Internal
     internal sealed partial class RenderResources : IDisposable, IPostChainTargets
     {
         readonly IGpuDevice _gd;
+        readonly GpuRetireQueue? _retired;
 
         public int Width { get; private set; }
         public int Height { get; private set; }
@@ -129,9 +130,9 @@ namespace KhaozEngine.Render3D.Internal
         // The divisor (2 = Full, 4 = Reduced) the current DistortTex was built for, so a quality change reallocates.
         int _distortDivisor;
 
-        public RenderResources(IGpuDevice gd, int w, int h, bool hdrColor, bool visibility = false)
+        public RenderResources(IGpuDevice gd, int w, int h, bool hdrColor, bool visibility = false, GpuRetireQueue? retired = null)
         {
-            _gd = gd;
+            _gd = gd; _retired = retired;
             Create(w, h, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: hdrColor, motion: false, pings: true, visibility: ShadowVisibilityTargets.Requested(visibility, gd));
         }
 
@@ -153,13 +154,13 @@ namespace KhaozEngine.Render3D.Internal
                 EnsurePings(pings);
                 return;
             }
-            DisposeTargets();
+            DisposeTargets(_retired);
             Create(w, h, mipped, sampleCount, bloomEnabled, hdrColor, motion, pings, visibility);
         }
 
         /// <summary>Add or drop the ping pair alone, at the current size, mip mode and colour format, keeping every other
         /// target. Adding creates without releasing anything, so a render later in a frame can add the pair while an
-        /// earlier render's commands still read the other targets. Dropping drains the device first. A change bumps
+        /// earlier render's commands still read the other targets. Dropping retires the pair when a queue is supplied, otherwise drains first. A change bumps
         /// <see cref="Generation"/>.</summary>
         public void EnsurePings(bool wanted)
         {
@@ -167,15 +168,15 @@ namespace KhaozEngine.Render3D.Internal
             if (wanted) CreatePings();
             else
             {
-                _gd.WaitForIdle();
-                DisposePings();
+                if (_retired is null) _gd.WaitForIdle();
+                DisposePings(_retired);
             }
             Generation++;
         }
 
         /// <summary>Add or drop the half-resolution bloom pair alone, at the current size and colour format, keeping every
         /// other target, as <see cref="EnsurePings"/> does for the ping pair. <see cref="Resize"/> instead recreates
-        /// everything on a bloom change, which drains and frees targets an earlier render's recorded commands may still
+        /// everything on a bloom change, which replaces targets an earlier render's recorded commands may still
         /// read, so a render later in a frame adds the pair through this. A change bumps <see cref="Generation"/>.</summary>
         public void EnsureBloom(bool wanted)
         {
@@ -183,8 +184,8 @@ namespace KhaozEngine.Render3D.Internal
             if (wanted) CreateBloom();
             else
             {
-                _gd.WaitForIdle();
-                DisposeBloom();
+                if (_retired is null) _gd.WaitForIdle();
+                DisposeBloom(_retired);
             }
             Generation++;
         }
@@ -269,9 +270,9 @@ namespace KhaozEngine.Render3D.Internal
             BloomAllocated = true;
         }
 
-        void DisposeBloom()
+        void DisposeBloom(GpuRetireQueue? retired)
         {
-            BloomAFB?.Dispose(); BloomBFB?.Dispose(); BloomA?.Dispose(); BloomB?.Dispose();
+            ResourceRetirement.Free(BloomAFB, retired); ResourceRetirement.Free(BloomBFB, retired); ResourceRetirement.Free(BloomA, retired); ResourceRetirement.Free(BloomB, retired);
             BloomAFB = BloomBFB = null; BloomA = BloomB = null;
             BloomWidth = 0; BloomHeight = 0;
             BloomAllocated = false;
@@ -291,9 +292,9 @@ namespace KhaozEngine.Render3D.Internal
             PingsAllocated = true;
         }
 
-        void DisposePings()
+        void DisposePings(GpuRetireQueue? retired)
         {
-            PingAFB?.Dispose(); PingBFB?.Dispose(); PingA?.Dispose(); PingB?.Dispose();
+            ResourceRetirement.Free(PingAFB, retired); ResourceRetirement.Free(PingBFB, retired); ResourceRetirement.Free(PingA, retired); ResourceRetirement.Free(PingB, retired);
             PingAFB = PingBFB = null!;
             PingA = PingB = null!;
             PingsAllocated = false;
@@ -357,7 +358,7 @@ namespace KhaozEngine.Render3D.Internal
             {
                 int dw = Math.Max(1, Width / divisor), dh = Math.Max(1, Height / divisor);
                 if (DistortAllocated && dw == DistortWidth && dh == DistortHeight && divisor == _distortDivisor) return;
-                DisposeDistortion();
+                DisposeDistortion(_retired);
                 DistortWidth = dw; DistortHeight = dh; _distortDivisor = divisor;
                 DistortTex = Tex((uint)dw, (uint)dh, GpuPixelFormat.R16G16Float, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled);
                 DistortFB = _gd.Factory.CreateFramebuffer(null, DistortTex);
@@ -367,39 +368,39 @@ namespace KhaozEngine.Render3D.Internal
             else
             {
                 if (!DistortAllocated) return;
-                DisposeDistortion();
+                DisposeDistortion(_retired);
                 Generation++;
             }
         }
 
-        // These methods run MID-LIFE on a resize or divisor change, when the previous frame's queued rendering
-        // may still reference the old targets (Mesa lavapipe executes submissions on its own thread and
-        // segfaults on destroyed resources), so each drains the device once before destroying anything.
+        // Mid-life replacement retires the old graph. Standalone owners without a queue drain before freeing it.
 
         // Free the distortion target and reset its bookkeeping. Called by EnsureDistortion (on a free / size or
         // divisor change) and by DisposeTargets (a resize disposes it, the next frame's EnsureDistortion re-lazies).
-        void DisposeDistortion()
+        void DisposeDistortion(GpuRetireQueue? retired)
         {
-            if (DistortFB != null || DistortTex != null) _gd.WaitForIdle();
-            DistortFB?.Dispose(); DistortTex?.Dispose();
+            if (retired is null && (DistortFB != null || DistortTex != null)) _gd.WaitForIdle();
+            ResourceRetirement.Free(DistortFB, retired); ResourceRetirement.Free(DistortTex, retired);
             DistortFB = null; DistortTex = null;
             DistortWidth = 0; DistortHeight = 0; _distortDivisor = 0;
             DistortAllocated = false;
         }
 
-        void DisposeTargets()
+        void DisposeTargets(GpuRetireQueue? retired)
         {
-            if (ModelFB != null) _gd.WaitForIdle();   // drain only when targets exist to dispose
-            DisposeDistortion();
-            ModelFB?.Dispose(); ColorDepthFB?.Dispose();
-            ColorTex?.Dispose(); NormalTex?.Dispose(); DepthColorTex?.Dispose(); DepthStencil?.Dispose();
-            MsColor?.Dispose(); MsNormal?.Dispose(); MsDepthColor?.Dispose();
+            if (retired is null && (ModelFB != null || ColorTex != null)) _gd.WaitForIdle();   // includes partial allocation
+            DisposeDistortion(retired);
+            ResourceRetirement.Free(ModelFB, retired); ResourceRetirement.Free(ColorDepthFB, retired);
+            ResourceRetirement.Free(ColorTex, retired); ResourceRetirement.Free(NormalTex, retired); ResourceRetirement.Free(DepthColorTex, retired); ResourceRetirement.Free(DepthStencil, retired);
+            ResourceRetirement.Free(MsColor, retired); ResourceRetirement.Free(MsNormal, retired); ResourceRetirement.Free(MsDepthColor, retired);
             MsColor = MsNormal = MsDepthColor = null;
-            MotionTex?.Dispose();
+            ResourceRetirement.Free(MotionTex, retired);
             MotionTex = null;
-            DisposeVisibility();
-            DisposePings();
-            DisposeBloom();
+            DisposeVisibility(retired);
+            DisposePings(retired);
+            DisposeBloom(retired);
+            ModelFB = ColorDepthFB = null!;
+            ColorTex = NormalTex = DepthColorTex = DepthStencil = null!;
         }
 
         // IPostChainTargets: the internal-resolution chain, whose one source is the lit colour. Width, Height,
@@ -423,6 +424,6 @@ namespace KhaozEngine.Render3D.Internal
             "The internal targets hold no ping pair while the temporal resolve runs the post chain over its display "
             + "targets. Request the pair through RenderResources.EnsurePings before binding these targets to the chain.");
 
-        public void Dispose() => DisposeTargets();
+        public void Dispose() => DisposeTargets(null);
     }
 }

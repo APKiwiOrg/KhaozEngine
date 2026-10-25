@@ -158,8 +158,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// for MSAA - a pipeline's sample count must match its framebuffer). Layout/shaders/buffers are kept.</summary>
         public void SetOutputs(GpuOutputDescription colorOutput)
         {
-            _alphaPipe.Dispose(); _additivePipe.Dispose();
-            _voidAlphaPipe.Dispose(); _voidAdditivePipe.Dispose();
+            _retired.Retire(_alphaPipe); _retired.Retire(_additivePipe);
+            _retired.Retire(_voidAlphaPipe); _retired.Retire(_voidAdditivePipe);
             BuildPipelines(_gd.Factory, colorOutput);
         }
 
@@ -222,7 +222,7 @@ namespace KhaozEngine.Render3D.Rendering
             // Rebuild only when the targets change (the frame UBO handle is fixed for the renderer's life, so the set
             // does not churn on instance-buffer regrowth the way the old dynamic-offset set did).
             if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
-            _set?.Dispose();
+            _retired.Retire(_set);
             _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _atmosphere.AppendResources(res.DepthColorTex,
                 _gd.PointSampler, new GpuBufferRange(_frameUbo, 0, FramePayloadBytes), res.NormalTex)));
             _bound = res; _boundGen = res.Generation;

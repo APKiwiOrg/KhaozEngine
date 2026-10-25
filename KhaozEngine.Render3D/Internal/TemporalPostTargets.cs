@@ -13,11 +13,8 @@ namespace KhaozEngine.Render3D.Internal
     /// internal offset field, both from <see cref="RenderResources"/>, at normalised coordinates.</para>
     /// <para>Created on the first frame the resolve runs and released on the first frame it does not, so a scene that
     /// never selects temporal anti-aliasing allocates nothing here.</para>
-    /// <para><b>THE DRAINS ARE A FENCE.</b> <see cref="Ensure"/> and <see cref="Release"/> wait for the device before
-    /// freeing a texture. The scene calls both at the start of a render, before anything that reads these textures is
-    /// recorded in the current list, so waiting for the frames already submitted is all that freeing them needs. It is the
-    /// same fence <c>Scene3D.EnsureSize</c> and <c>RenderResources</c> use when they replace targets, and it costs
-    /// nothing on a steady frame, which replaces nothing.</para>
+    /// <para>Scene replacements use its completion queue. Standalone owners without a queue drain before freeing
+    /// allocated targets. First allocation and unchanged targets require neither a drain nor retirement.</para>
     /// </summary>
     internal sealed class TemporalPostTargets : IPostChainTargets, IDisposable
     {
@@ -66,10 +63,9 @@ namespace KhaozEngine.Render3D.Internal
         public IGpuTexture OpaqueColor => _opaque ?? throw NotAllocated();
 
         /// <summary>Size the display targets for <paramref name="displayWidth"/> by <paramref name="displayHeight"/> and the
-        /// opaque copy for <paramref name="res"/>, in its colour format, keeping whatever already matches. Drains the device
-        /// before replacing a texture the last frame may still read, which is a sufficient fence because nothing in the
-        /// current list has read it yet.</summary>
-        public void Ensure(RenderResources res, TemporalHistory history, int displayWidth, int displayHeight, bool bloomEnabled)
+        /// opaque copy for <paramref name="res"/>, in its colour format, keeping whatever already matches. Retires
+        /// outgoing textures through the supplied queue, or drains before replacing them without a queue.</summary>
+        public void Ensure(RenderResources res, TemporalHistory history, int displayWidth, int displayHeight, bool bloomEnabled, GpuRetireQueue? retired = null)
         {
             int w = Math.Max(1, displayWidth), h = Math.Max(1, displayHeight);
             GpuPixelFormat format = res.HdrColor ? GpuPixelFormat.R16G16B16A16Float : GpuPixelFormat.R8G8B8A8UNorm;
@@ -77,9 +73,11 @@ namespace KhaozEngine.Render3D.Internal
                 || bloomEnabled != BloomAllocated;
             bool opaque = _opaque is null || _opaque.Width != (uint)res.Width || _opaque.Height != (uint)res.Height
                 || _opaque.Format != format;
-            if (display || opaque) _gd.WaitForIdle();
-            if (display) CreateDisplay(w, h, format, bloomEnabled);
-            if (opaque) CreateOpaque((uint)res.Width, (uint)res.Height, format);
+            bool allocated = _pingA is not null || _pingB is not null || _bloomA is not null || _bloomB is not null
+                || _opaque is not null;
+            if ((display || opaque) && allocated && retired is null) _gd.WaitForIdle();
+            if (display) CreateDisplay(w, h, format, bloomEnabled, retired);
+            if (opaque) CreateOpaque((uint)res.Width, (uint)res.Height, format, retired);
             bool upstream = !ReferenceEquals(res, _res) || !ReferenceEquals(history, _history)
                 || res.Generation != _resGeneration || history.TargetGeneration != _historyGeneration;
             if (display || opaque || upstream) _generation++;
@@ -104,17 +102,17 @@ namespace KhaozEngine.Render3D.Internal
             cl.CopyTextureSubresource(res.ColorTex, 0, 0, opaque, (uint)res.Width, (uint)res.Height);
         }
 
-        /// <summary>Free every target. Drains the device first, the same fence as <see cref="Ensure"/>. Safe to call when
-        /// nothing is allocated.</summary>
-        public void Release()
+        /// <summary>Release every target through the supplied queue, or drain before freeing without a queue. Safe to call
+        /// when nothing is allocated.</summary>
+        public void Release(GpuRetireQueue? retired = null)
         {
             DisposalSafeForDependants = false;
             if (_pingA is null && _opaque is null) { DisposalSafeForDependants = true; return; }
-            _gd.WaitForIdle();
+            if (retired is null) _gd.WaitForIdle();
             DisposalSafeForDependants = true;
             var disposal = new ResourceDisposal();
-            DisposeDisplay(disposal);
-            if (disposal.Release("temporal.post.opaque", () => _opaque?.Dispose())) _opaque = null;
+            if (retired is null) DisposeDisplay(disposal); else RetireDisplay(retired);
+            if (disposal.Release("temporal.post.opaque", () => ResourceRetirement.Free(_opaque, retired))) _opaque = null;
             _res = null;
             _history = null;
             _resGeneration = _historyGeneration = int.MinValue;
@@ -129,9 +127,9 @@ namespace KhaozEngine.Render3D.Internal
             finally { _disposalCompleted = DisposalSafeForDependants; }
         }
 
-        void CreateDisplay(int w, int h, GpuPixelFormat format, bool bloomEnabled)
+        void CreateDisplay(int w, int h, GpuPixelFormat format, bool bloomEnabled, GpuRetireQueue? retired)
         {
-            DisposeDisplay();
+            if (retired is null) DisposeDisplay(); else RetireDisplay(retired);
             IGpuResourceFactory f = _gd.Factory;
             const GpuTextureUsage usage = GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled;
             _pingA = f.CreateTexture(GpuTextureDescription.Texture2D((uint)w, (uint)h, format, usage));
@@ -154,11 +152,22 @@ namespace KhaozEngine.Render3D.Internal
             _colorFormat = format;
         }
 
-        void CreateOpaque(uint w, uint h, GpuPixelFormat format)
+        void CreateOpaque(uint w, uint h, GpuPixelFormat format, GpuRetireQueue? retired)
         {
-            _opaque?.Dispose();
+            ResourceRetirement.Free(_opaque, retired);
             _opaque = _gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(w, h, format,
                 GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+        }
+
+        void RetireDisplay(GpuRetireQueue retired)
+        {
+            retired.Retire(_pingAFB, _pingBFB, _bloomAFB);
+            retired.Retire(_bloomBFB, _pingA, _pingB);
+            retired.Retire(_bloomA); retired.Retire(_bloomB);
+            _pingAFB = _pingBFB = _bloomAFB = _bloomBFB = null;
+            _pingA = _pingB = _bloomA = _bloomB = null;
+            Width = Height = BloomWidth = BloomHeight = 0;
+            BloomAllocated = false;
         }
 
         void DisposeDisplay()

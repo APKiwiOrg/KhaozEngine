@@ -125,7 +125,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   to 0 shortly after a burst. The same scene queue owns geometrically replaced buffers and resource sets from the
   model, shadow, decal, particle, distortion, water and overlay renderers. Those renderers keep no private retired
   lists, so a grow survives until the same fence or frame boundary and teardown drains the queue once before GPU
-  resources are destroyed.
+  resources are destroyed. Cascade and point-shadow replacement, MRT attachments and their pipelines, post
+  bindings and temporal display targets use that queue too. This includes cached depth bindings for decals,
+  particles, distortion and water. `BeginFrame(frame.Submission)` shares the host
+  completion fence in its prepare phase, avoiding the standalone `Begin()` queue's extra submission.
 - `Scene3D.LoadSurfaceMaps` uploads each present glTF material map transactionally. A later upload failure
   retires the maps already created. `UnloadSurfaceMaps(in maps)` releases each distinct valid map handle
   through the same deferred queue. Unload the meshes that reference a map bundle first. All-absent bundles
@@ -401,15 +404,15 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `Scene3D.RequestShadowMapDetail(ShadowMapDetail)` for the standard Low, Default, and High profiles, or
   `Scene3D.RequestShadowMapLayout(resolution, cascadeCount)` for a custom layout. Requests validate immediately and
   the latest request wins when several arrive before the next `Scene3D.Begin()`. That frame boundary applies the
-  request before any command list begins. An unchanged layout allocates nothing. A changed layout pays one GPU idle
-  wait, builds the replacement atlas and every receiver binding as one transaction, then swaps them together. If the
+  request before any command list begins. An unchanged layout allocates nothing. A changed layout builds the
+  replacement atlas and every receiver binding as one transaction, then swaps them together without a device drain. If the
   device rejects the replacement, the scene logs one error for that request and keeps the old drawable layout.
   Requests change only the atlas layout. The current shadow mode and the other live shadow settings stay unchanged.
   Direct writes to either committed property still throw. The explicit request methods are the only live resize path.
   Requests follow the rest of `Scene3D` and originate on the scene thread. No cross-thread mutation lock is added.
   A request after disposal throws `ObjectDisposedException`. Disposal clears an unapplied request and frees only
-  the current resource graph, while a successful swap disposes the old atlas and receiver sets after the idle
-  boundary that made them safe.
+  the current resource graph and queued retirements. A successful swap retires the old atlas and receiver sets
+  until the GPU completes the frames that may still read them.
   `ShadowStrength`, and
   the acne biases `ShadowNormalOffset` (default `2.5` texels, the extent-aware normal-offset bias, scaled PER CASCADE
   so far cascades do not acne and near ones do not detach) plus the tiny residual depth biases

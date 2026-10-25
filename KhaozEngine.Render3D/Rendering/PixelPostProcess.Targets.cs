@@ -18,7 +18,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>The nine sets that read the chain SOURCE, for one source slot. The internal chain builds one of these
         /// over ColorTex, the temporal display chain one per history target. The ping-reading sets below do not depend on
         /// the slot.</summary>
-        sealed class SourceSets
+        sealed class SourceSets : IDisposable
         {
             public IGpuResourceSet Palette = null!, Edge = null!, Tone = null!, BlitPoint = null!, BlitLinear = null!, Fxaa = null!;
             public IGpuResourceSet? Bright, Composite, Apply;
@@ -48,7 +48,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// between the internal targets and the temporal display targets.</summary>
         /// <exception cref="ArgumentException"><paramref name="res"/> reports fewer than one or more than
         /// <see cref="MaxSourceSlots"/> source slots. The chain stays bound to its previous targets.</exception>
-        public void BindTargets(IPostChainTargets res)
+        public void BindTargets(IPostChainTargets res, GpuRetireQueue? retired = null)
         {
             // Refused before anything is disposed or rebuilt, so the bound targets and their sets stay usable.
             int slots = res.SourceSlotCount;
@@ -58,12 +58,12 @@ namespace KhaozEngine.Render3D.Rendering
                     nameof(res));
             // Rebuild the ping-output pipelines first if the ping colour format flipped (HDR float16 <-> legacy UNorm),
             // independent of the resource-set guard below (a pure format toggle keeps the same size/bloom state).
-            RebuildPingPipelinesIfFormatChanged(res);
+            RebuildPingPipelinesIfFormatChanged(res, retired);
             // Generation-based guard: any recreate of the targets bumps it, including same-size recreates (MSAA
             // sample-count / bloom / HDR toggles), so the sets can never outlive the textures they reference.
             if (ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
-            DisposeSets();
-            _sharpen?.ReleaseSets();   // its cached sets reference the targets being replaced
+            DisposeSets(retired);
+            _sharpen?.ReleaseSets(retired);   // its cached sets reference the targets being replaced
             var f = _gd.Factory;
             var samp = _gd.PointSampler;
             var lin = _gd.LinearSampler;
@@ -143,15 +143,14 @@ namespace KhaozEngine.Render3D.Rendering
         // Rebuild every ping-output pipeline when the ping colour format flips (HDR float16 <-> legacy UNorm). A
         // pipeline bakes its target's colour format, so all seven ping writers must be recreated. The shaders,
         // layouts, and buffers are format-agnostic and survive. The blit pipeline targets the swapchain (format-fixed)
-        // and is untouched. The caller idles the GPU before a format change (Scene3D.EnsureSize), so no pipeline is in
-        // flight here.
-        void RebuildPingPipelinesIfFormatChanged(IPostChainTargets res)
+        // and is untouched. Outgoing pipelines follow the targets into the completion queue.
+        void RebuildPingPipelinesIfFormatChanged(IPostChainTargets res, GpuRetireQueue? retired)
         {
             var pingOut = res.PingAFB.Outputs;
             if (SamePingFormat(pingOut, _pingOutput)) return;
             var f = _gd.Factory;
-            _palPipe.Dispose(); _edgePipe.Dispose(); _fxaaPipe.Dispose(); _tonePipe.Dispose();
-            _brightPipe.Dispose(); _blurPipe.Dispose(); _compositePipe.Dispose(); _applyPipe.Dispose();
+            ResourceRetirement.Free(_palPipe, retired); ResourceRetirement.Free(_edgePipe, retired); ResourceRetirement.Free(_fxaaPipe, retired); ResourceRetirement.Free(_tonePipe, retired);
+            ResourceRetirement.Free(_brightPipe, retired); ResourceRetirement.Free(_blurPipe, retired); ResourceRetirement.Free(_compositePipe, retired); ResourceRetirement.Free(_applyPipe, retired);
             _palPipe = FullscreenPipeline(f, _palFrag, _palLayout, pingOut);
             _edgePipe = FullscreenPipeline(f, _edgeFrag, _edgeLayout, pingOut);
             _fxaaPipe = FullscreenPipeline(f, _fxaaFrag, _fxaaLayout, pingOut);
@@ -160,26 +159,26 @@ namespace KhaozEngine.Render3D.Rendering
             _blurPipe = FullscreenPipeline(f, _blurFrag, _blurLayout, pingOut);
             _compositePipe = FullscreenPipeline(f, _compositeFrag, _compositeLayout, pingOut);
             _applyPipe = FullscreenPipeline(f, _applyFrag, _applyLayout, pingOut);
-            _sharpen?.Rebuild(pingOut);
+            _sharpen?.Rebuild(pingOut, retired);
             _pingOutput = pingOut;
         }
 
-        void DisposeSets()
+        void DisposeSets(GpuRetireQueue? retired = null)
         {
             for (int i = 0; i < MaxSourceSlots; i++)
             {
-                _fromSource[i]?.Dispose();
+                ResourceRetirement.Free(_fromSource[i], retired);
                 _fromSource[i] = null;
             }
-            _paletteFromPingA?.Dispose(); _paletteFromPingB?.Dispose();
-            _edgeFromPingA?.Dispose(); _edgeFromPingB?.Dispose();
-            _toneFromPingA?.Dispose(); _toneFromPingB?.Dispose();
-            _blitPingAP?.Dispose(); _blitPingBP?.Dispose();
-            _blitPingAL?.Dispose(); _blitPingBL?.Dispose();
-            _fxaaFromPingA?.Dispose(); _fxaaFromPingB?.Dispose();
-            _brightFromPingA?.Dispose(); _brightFromPingB?.Dispose();
-            _blurHFromBloomA?.Dispose(); _blurVFromBloomB?.Dispose();
-            _compositePingABloomA?.Dispose(); _compositePingBBloomA?.Dispose();
+            ResourceRetirement.Free(_paletteFromPingA, retired); ResourceRetirement.Free(_paletteFromPingB, retired);
+            ResourceRetirement.Free(_edgeFromPingA, retired); ResourceRetirement.Free(_edgeFromPingB, retired);
+            ResourceRetirement.Free(_toneFromPingA, retired); ResourceRetirement.Free(_toneFromPingB, retired);
+            ResourceRetirement.Free(_blitPingAP, retired); ResourceRetirement.Free(_blitPingBP, retired);
+            ResourceRetirement.Free(_blitPingAL, retired); ResourceRetirement.Free(_blitPingBL, retired);
+            ResourceRetirement.Free(_fxaaFromPingA, retired); ResourceRetirement.Free(_fxaaFromPingB, retired);
+            ResourceRetirement.Free(_brightFromPingA, retired); ResourceRetirement.Free(_brightFromPingB, retired);
+            ResourceRetirement.Free(_blurHFromBloomA, retired); ResourceRetirement.Free(_blurVFromBloomB, retired);
+            ResourceRetirement.Free(_compositePingABloomA, retired); ResourceRetirement.Free(_compositePingBBloomA, retired);
             _brightFromPingA = _brightFromPingB = null;
             _blurHFromBloomA = _blurVFromBloomB = null;
             _compositePingABloomA = _compositePingBBloomA = null;

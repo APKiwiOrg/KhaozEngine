@@ -4,6 +4,20 @@ set -eu
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 task_tmp=$(mktemp -d)
 trap 'rm -rf "$task_tmp"' EXIT
+# Supply a fresh checkout without inheriting the caller's build outputs or losing local edits.
+# Copy before installing command stubs so Git reads the invoking checkout's tracked file list.
+python3 - "$root" "$task_tmp/source" <<'PY'
+import pathlib, shutil, subprocess, sys
+
+source, sandbox = map(pathlib.Path, sys.argv[1:])
+tracked = subprocess.check_output(['git', 'ls-files', '-z'], cwd=source).decode().split('\0')
+for relative in tracked:
+    if relative.startswith(('scripts/', '.github/workflows/')) or relative.endswith(('.slnx', '.csproj')):
+        destination = sandbox / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source / relative, destination)
+PY
+root="$task_tmp/source"
 mkdir -p "$task_tmp/bin"
 export PREREQUISITE_COMMANDS="$task_tmp/commands"
 cat > "$task_tmp/bin/dotnet" <<'STUB'
@@ -96,6 +110,18 @@ sync_build=$(awk '/^  gpu-vulkan-sync:/ {found=1} found && /- run: .*build/ {sub
 bash -e -c "$sync_build"
 check_verifier_after_target KhaozEngine.slnx
 printf 'native sync setup builds its verifier after the solution\n'
+
+# The production guard must still reject Debug outputs inside the disposable checkout.
+mkdir -p "$root/bin/Debug"
+: > "$PREREQUISITE_COMMANDS"
+if sh scripts/gpu-shard-build.sh KhaozEngine.slnx > "$task_tmp/debug-output" 2>&1; then
+  echo 'native shard accepted Debug output' >&2
+  exit 1
+fi
+grep -q 'A Release shard produced Debug output' "$task_tmp/debug-output"
+check_verifier_after_target "$root/KhaozEngine.slnx" ' -p:ShouldUnsetParentConfigurationAndPlatform=false'
+rmdir "$root/bin/Debug" "$root/bin"
+printf 'native shard refuses Debug output inside the disposable checkout\n'
 
 # A canonical basename outside this checkout must still inspect its actual solution roots.
 mkdir -p "$task_tmp/canonical basename"

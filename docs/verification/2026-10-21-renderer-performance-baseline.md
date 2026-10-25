@@ -271,6 +271,14 @@ wrapper's documented fresh-CI condition. Its script, workflow, solution and proj
 against this candidate. No real build or test is performed by that command-stub fixture. The original
 refusal remains a separate result, not a green worktree-fixture claim.
 
+Task15g R-1 now makes the fixture supply its own disposable source layout from tracked working-tree
+scripts, workflows, solutions and projects before installing command stubs. Contributors can run it
+in an existing checkout. Its once-only corrected worktree run exits 0 with all 17 route/status messages,
+including the new real-wrapper refusal of a sandbox Debug directory. The worktree retains the same
+171 Debug directory paths before and after. The production guard and every existing route assertion
+are unchanged. Evidence is retained under `/tmp/khaozengine-renderer-corrections-integration/fix-r1`.
+Native Windows aliases remain explicitly unexecuted on macOS.
+
 Raw native-workflow actionlint exits 1 on both current main and this candidate. Both retain the same
 three findings at the same locations, two unknown ubuntu-26.04 labels and existing SC2012. The corrected
 comparison exits 0 without suppressing either raw result. Its first comparison attempt used a greedy

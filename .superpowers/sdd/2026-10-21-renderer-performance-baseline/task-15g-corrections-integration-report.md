@@ -140,6 +140,13 @@ All three format checks exit 0 without changes. Whole-tree dash, prose, file-siz
 
 The first setup-fixture command in this long-lived worktree exits 1 at the native shard Debug-output guard. The witness contains 171 Debug directories and 42 files, with directory dates predating this task. The wrapper explicitly targets a fresh CI checkout. No Debug output is removed or moved and no source guard is weakened. The exact fixture is then run once in a bounded fresh source copy under scratch, with script/workflow/solution/project bytes hashed against this candidate, and exits 0. `fresh-setup-source-identity.json`, `fresh-setup-result.json` and both full logs preserve the exact environment difference. This establishes the fresh-CI fixture result and does not relabel the original worktree refusal green. This is the #1565 setup owner and its documented fresh-checkout boundary, not a new native execution claim. The stub fixture performs no real dotnet build, test, determinism or native workload. Native Windows aliases explicitly remain unexecuted.
 
+R-1 follow-up preserves that refusal as history. The fixture now supplies its own disposable source
+layout from tracked working-tree inputs, so contributors run it directly in an existing checkout.
+The corrected worktree run exits 0 with 17 route/status messages, including a real-wrapper sandbox
+Debug-output refusal. The same 171 worktree Debug directory paths remain before and after. The
+production guard is unchanged. Command logs and hashes are retained under
+`/tmp/khaozengine-renderer-corrections-integration/fix-r1`. Native Windows aliases remain unexecuted.
+
 Raw actionlint exits 1 for both main and this candidate. Three diagnostics match exactly in message and source location, unknown ubuntu-26.04 labels at 478:14 and 1800:14, and existing SC2012 at 928:9. No suppression or baseline growth is introduced. The first comparison script greedily parsed SC2012 embedded coordinates as the header location and exited 1. That audit failure and original parser remain. The corrected .yml-anchored parser verifies the unchanged raw logs and exits 0. Neither raw actionlint command is reported green or rerun.
 
 The earlier local full-suite result remains 39,602 Passed, 1,530 NotExecuted and ten Failed. Its affected corrections and the later hosted 39,612-pass result remain separate historical evidence. This task supplies a new once-only common result for the merged correction source. It does not overwrite or waive either history.

@@ -210,6 +210,8 @@ instance captured by the source. A hash-equal separate load is rejected before s
 `MapRenderPlan.Prepare` composes one acquired window with one routing partition and a shared preparation
 admission. Terrain reads the passed input's selected materials. Placement and foliage batches share its selected
 assets. Preparation succeeds by taking ownership of the input lease. A refusal leaves that lease with its caller.
+Material discovery releases its defensive surface copies before decode. Only the selected material-ID array
+remains admitted through the following preparation stages.
 Register the plan before recording frames, and dispose it when its CPU inventory is no longer required.
 
 `MapRenderTransition.Findings` preserves refusal details. Its optional `Capacity` carries the limit name,

@@ -115,6 +115,7 @@ public sealed class MapRenderPlan : IDisposable
     internal static string[] SelectedMaterials(MapScopedScene scene, MapRenderPolicy policy)
     {
         if (!scene.Scope.Channels.HasFlag(MapSceneChannels.Terrain)) return [];
+        using var preparation = MapSceneAdmission.Current?.BeginPreparation();
         var surfaces = scene.Surfaces;
         var referenced = surfaces.Patches.Values.SelectMany(p => p.Cells).SelectMany(c => new[] { c.Underlay, c.Overlay })
             .Where(id => id != 0).Distinct().ToHashSet();
@@ -122,7 +123,10 @@ public sealed class MapRenderPlan : IDisposable
         // Paint resources are acquired through the same canonical surface closure.
         foreach (var region in scene.PaintRegions.Values.SelectMany(p => p.Regions))
         { referenced.Add(region.Material.Underlay); referenced.Add(region.Material.Overlay); }
-        return policy.TerrainMaterials.Where(p => referenced.Contains(p.Key)).Select(p => p.Value).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        preparation?.Reserve(checked(IntPtr.Size * (long)policy.TerrainMaterials.Count));
+        var selected = policy.TerrainMaterials.Where(p => referenced.Contains(p.Key)).Select(p => p.Value).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        preparation?.Complete(checked(IntPtr.Size * (long)selected.Length));
+        return selected;
     }
     public void Register(IMapDrawSink sink)
     { ObjectDisposedException.ThrowIf(_disposed, this); ArgumentNullException.ThrowIfNull(sink); foreach (var resource in _resources) sink.Register(resource); }

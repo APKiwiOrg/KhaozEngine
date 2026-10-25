@@ -193,6 +193,8 @@ void main() {
                 new GpuVertexElement("Local", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Shape", GpuVertexElementFormat.Float4),
                 new GpuVertexElement("Mode", GpuVertexElementFormat.Float2));
+            _maskedOutput = output;
+            _maskedVertexLayout = vl;
             GpuPipelineDescription Describe(GpuBlendAttachment blend) => new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,

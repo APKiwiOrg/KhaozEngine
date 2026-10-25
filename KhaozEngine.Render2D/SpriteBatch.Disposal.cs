@@ -39,6 +39,7 @@ public sealed partial class SpriteBatch
         foreach (List<IGpuBuffer> buffers in _vbRing)
             foreach (var buffer in buffers) Release("vertex", () => buffer?.Dispose());
         foreach (var set in _sets.Values) Release("set", set.Dispose);
+        if (_maskedResources is { } masked) Release("masked", masked.Dispose);
         Release("viewSet", _vpSet.Dispose);
         Release("viewUniform", _vpUbo.Dispose);
         Release("viewLayout", _vpLayout.Dispose);

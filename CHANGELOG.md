@@ -25,6 +25,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   resource payload, ring/staging capacity and native device allocation diagnostics with unified-memory
   provenance. Unsupported compiler artifacts, physical registers, spills, occupancy, residency and budget
   retain their reasons. Ordinary pipelines keep their existing compilation and timestamp configuration.
+- Keep warmed Metal staging accounting allocation-free when native blocks exceed the retention cap,
+  preserving capacity, resource counts and native release behavior (Closes #1566).
 
 ## 21.13.0
 

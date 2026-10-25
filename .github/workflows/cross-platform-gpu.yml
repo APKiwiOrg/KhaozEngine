@@ -909,7 +909,7 @@ jobs:
           if [ -n "$SHARD" ]; then
             sh scripts/gpu-shard-build.sh "$BUILD_TARGET"
           else
-            dotnet build "$BUILD_TARGET" -c Release --no-restore
+            sh scripts/build-release-tests.sh "$BUILD_TARGET" --no-restore
           fi
         shell: bash
         env:
@@ -1884,7 +1884,7 @@ jobs:
       # No NuGet cache on Linux: restoring it measured slower than restoring from nuget.org (see the matrix job).
       - run: dotnet restore
 
-      - run: dotnet build -c Release --no-restore
+      - run: sh scripts/build-release-tests.sh KhaozEngine.slnx --no-restore
 
       # The same lavapipe install and the same ICD lookup as the matrix job, for the same reasons.
       - name: Install software Vulkan (lavapipe)

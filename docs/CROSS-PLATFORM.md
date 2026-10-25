@@ -282,7 +282,11 @@ adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
 
 The outside-solution `tools/Renderer.Perf.Tests` project exposes one fixed fact,
 `Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit`, category `RendererPerformance`.
-The workflow explicitly passes `KE_RENDERER_PERF_UNIT` and `KE_RENDERER_PERF_REPORTS`. Manifest,
+The workflow explicitly passes `KE_RENDERER_PERF_UNIT` and `KE_RENDERER_PERF_REPORTS`. The entrypoint
+requires an absolute `GITHUB_WORKSPACE` matching the Git top level. Manifest reads and authorization
+Git commands use that checkout regardless of the VSTest host's working directory. Source-file recipe
+paths must belong to the same checkout before startup. It never changes process working directory or
+searches another checkout for missing inputs. Manifest,
 runtime, recipe, shader source and current control hashes are validated before native creation.
 Shader identity hashes fully composed literal and generated readonly shader strings, including motion,
 temporal and water variants, generated visibility exports, backend-selected checked and certified temporal
@@ -410,6 +414,9 @@ Unsharded paths still restore and build `KhaozEngine.slnx`. Build selection leav
 coverage guards unchanged. Reduced solutions explicitly preserve Release on their project references with
 `ShouldUnsetParentConfigurationAndPlatform=false`. Otherwise MSBuild resets unlisted references to their
 default configuration, which is Debug. A build guard rejects any Debug output on the fresh CI checkout.
+Native matrix and sync builds use `scripts/build-release-tests.sh`, including reduced shard solutions.
+When the selected roots include this checkout's `Render.Tests`, setup also builds its outside-solution
+renderer verifier before process tests run with `--no-build`. Shards without `Render.Tests` keep their build slice.
 The Windows-only NuGet cache still excludes every KhaozEngine extraction. The
 [measurement record](verification/2026-10-18-gpu-shard-build-cost-1472.md) compares scoped builds with per-OS
 output sharing.

@@ -128,7 +128,8 @@ Offline and workflow verification must repeat against received files. Verified s
 Ordinary local Release test setup runs `sh scripts/build-release-tests.sh KhaozEngine.slnx`, or passes
 `KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj` for the affected assembly. This builds its
 outside-solution process prerequisite before `dotnet test -c Release --no-build`. Full and selective
-ordinary CI use this same build owner. Process tests refuse a missing executable.
+ordinary CI and the native GPU matrix use this same build owner, including native shard solutions
+that select Render.Tests. Process tests refuse a missing executable.
 
 The outside-solution `tools/Renderer.Perf.Verify` console takes exactly directory and report filename.
 It performs no backend registration, device creation or measurement. Exit zero means directory

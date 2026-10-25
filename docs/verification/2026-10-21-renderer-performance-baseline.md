@@ -1,8 +1,9 @@
 # Renderer baseline implementation verification
 
-This record covers current-main reconciliation and headless implementation correctness only.
-It records no native baseline, hardware duration, artifact size, clock stability, floor, spend,
-promotion, release or consumer acceptance. The [living evidence contract](../RENDERER-PERFORMANCE.md)
+This record covers Task15b reconciliation, the subsequent correction batch, headless implementation
+correctness and the first authorized pilot's early failure. It records no valid native baseline,
+hardware performance, clock stability, floor, promotion, release or consumer acceptance. The failed attempt's evidence size and
+observed runner charge are recorded below. The [living evidence contract](../RENDERER-PERFORMANCE.md)
 and [hosted admission contract](../CROSS-PLATFORM.md#paid-hosted-renderer-performance-mode) own those rules.
 
 ## Source and dependency boundary
@@ -110,6 +111,9 @@ readback remain later gates.
 
 ## Reproducible local verification
 
+This section retains Task15b's original local result. The later hosted run and correction-batch
+verification are separate evidence below.
+
 Run from the reconciled worktree root. The shared setup builds the outside-solution verifier required
 by ordinary process tests. The measurement project is built separately and its fact is never executed.
 The full ordinary suite removes both opt-in variables and retains per-assembly TRX in scratch.
@@ -170,6 +174,123 @@ suppressed and neither raw run is called green. The separate renderer workflow c
 
 Task15a's 39,108 passes are historical and are not current reconciliation evidence.
 
+## First authorized Linux pilot, attempt 1
+
+The integrated workload and trusted workflow are `d092cc35e487ac5d684d09a44920ca3cd2a201f0`.
+Authorization `a58e0d4153030f02c4af68cbfc9ea7aece5e1939` has that workload as its sole parent and adds
+only `tools/Renderer.Perf.Tests/authorized/pilot-linux.json`. Its exact manifest SHA-256 is
+`0c1bd0a14eaa3c58959f10c8073e5f7bb998cf3434e8776c666661393541aada`.
+
+The owner approved one Linux Vulkan T4 attempt with the fixed 1,260-frame, nine-operation pilot,
+600-second unit limit, 12-minute job limit and USD 0.624 GPU runner component cap. The attempt was
+consumed by [run 40133376096](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40133376096),
+created on 2026-10-24 UTC. It was not retried. CPU and GPU authorization passed, and both Release
+builds completed with zero warnings and errors. The one fixed measurement fact executed and failed,
+with zero skipped facts and zero measured frames.
+
+`RendererPerfEntrypoint.Run` read the manifest relative to the process working directory. VSTest
+started its host in `tools/Renderer.Perf.Tests/bin/Release/net10.0`, causing the lookup to repeat
+`tools/Renderer.Perf.Tests/authorized/pilot-linux.json` below that directory. The resulting
+`DirectoryNotFoundException` occurred at line 27, before runtime admission, coldStart, source-work
+validation or the entrypoint's device creation. The authorized manifest exists at the checkout root,
+and the retained artifact matches its dispatched hash. [Issue #1567](https://github.com/APKiwiOrg/KhaozEngine/issues/1567)
+tracks validated checkout-root resolution and an actual-entrypoint regression from a nested directory.
+Copying another manifest into the output directory or changing the process-wide working directory is
+not the intended correction.
+
+Artifact `renderer-perf-linux-vulkan`, ID `12575394993`, is 9,562 compressed bytes. GitHub reports
+archive SHA-256 `e008d07d5c787966ef05f276f998d3bc0cdb336719e6064e8abfbe69d092217f`.
+Its six files are the exact manifest, authorization, both build logs and measurement log/TRX.
+There is no runtime-admission file or final measurement report. The testhost banner confirms
+.NET 10.0.13 but establishes no complete runtime environment or native correspondence.
+The measurement TRX SHA-256 is `26762567e3dae766ae4d5979a69463c81fa2d6326e49bf683b296c0511d12fe7`.
+
+The paid job ran from 21:16:51 to 21:20:23 UTC, 212 seconds. The GitHub billing usage API reported
+four `actions_linux_4_core_gpu` minutes at USD 0.052 per minute, USD 0.208 net runner charges.
+The repository's same-day GPU SKU was absent before the attempt, and the workflow history contains
+only this GPU run on that date. This is observed provider usage, separate from a duration-based
+estimate. Storage, tax and currency conversion are outside the runner component. The attempt produced
+no performance, compiler, payload, deadline or baseline acceptance. Another attempt requires a corrected
+workload, independently reviewed preparation and fresh owner approval.
+
+The automatic main CI run [40101482323](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40101482323)
+passed 39,612 tests with zero failures and 1,530 skips across 41 normal assembly summaries. Its two
+six-case Foundation determinism checks are separate. This hosted result does not rewrite the earlier
+local failed run. The Metal push job in [40101482316](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40101482316)
+failed 52 process cases from a missing verifier build prerequisite, tracked by
+[#1565](https://github.com/APKiwiOrg/KhaozEngine/issues/1565), and one managed staging allocation
+case, tracked by [#1566](https://github.com/APKiwiOrg/KhaozEngine/issues/1566). The latter has a
+Metal-specific lease owner absent from Vulkan. Both have accepted source corrections in the batch
+below and remain open until integration. They are separate from this pilot's entrypoint failure.
+No native gate is waived.
+
+## Correction batch preparation
+
+The correction candidate retains failed-pilot proof `62cf4b977b5bb72590130438a8bfcc34acf23afb`
+and merges these exact independently accepted tips in order, without conflicts:
+
+| Correction | Accepted tip | Preserved contract |
+| --- | --- | --- |
+| Native CI prerequisite, #1565 | `36103e6165e6c174fcbcb7c49db396cd47eebed6` | Native matrix, sync and reduced shards share Release setup. Canonical selection uses actual file identity, other solutions inspect resolved roots, unrelated shards retain their slice, and Release propagates through shard references |
+| Metal staging accounting, #1566 | `1a7ad6e685cec763f2a09a35b40c3657d326a0cb` | Warmed accounting stores capacity inline by native handle. Resource leases, native retention limits, release order and device-lifetime policy remain unchanged |
+| Entrypoint checkout root, #1567 | `287a26ad86209ef7834beff79961e26ff5646bea` | The explicit absolute checkout owns manifest reads, authorization Git facts and source-file recipes. Runtime equality and every authorization/native gate remain required |
+
+The three ordered merge commits are `e50cb197b7227fb94908f4706664eb6bd60f9c8b`,
+`36b003b257f47d4c029e1e1243ceaea159adfa51` and
+`68b08598bc379c37ca0bcf4b147ef2976598af64`. Accepted code, scripts and workflow files match their tips byte for byte.
+Main and fetched origin/main remain `d092cc35e487ac5d684d09a44920ca3cd2a201f0` at preparation.
+Version 21.14.0 remains staged above latest tag v21.13.0, so the package-bearing Metal fix rides it.
+No version bump, released-history rewrite or active equipment, DQ, filtered or consumer lane is added.
+Authorization commit `a58e0d4153030f02c4af68cbfc9ea7aece5e1939` is not a merge ancestor.
+Its manifest and workload d092 remain untouched. The consumed pilot grants no retry authority.
+
+The single correction-batch ordinary full selection exits 0 across 41 assembly TRX files, with
+39,630 Passed, zero Failed and 1,530 NotExecuted result elements. Render.Tests has 12,220 Passed,
+zero Failed and 1,113 NotExecuted. The run explicitly unsets `KE_GPU_TESTS` and `KE_RENDERER_PERF_UNIT`,
+uses `Category!=LiveSocket` and never includes the outside-solution performance fact. All eight new
+Metal cases and ten new actual-entrypoint cases pass in that full run. The accepted 71-case Metal
+selection and 49 existing related entrypoint cases also pass there without skips. No focused unit
+selection or unchanged full-suite rerun is used to replace the result.
+
+Shared Release setup builds both the solution and outside verifier with zero warnings and errors.
+The isolated measurement project also builds with zero warnings and errors, without executing its
+fact. Per-assembly TRX, every named outcome and skip, the actual full log, original command vectors,
+source and binary identities, compact full-fixture proofs and log hashes are retained under
+`/tmp/khaozengine-renderer-corrections-integration`. Full-fixture raw payloads are removed only after
+their checked counts, sizes and file hashes are retained. Formatting and guard outcomes are recorded
+with the candidate in the Task15g integration report.
+
+Full-solution and both isolated-project format checks exit 0 without changes. Whole-tree dash, prose,
+file-size, contributor-instruction and doc-version guards pass, as do shell syntax, Shellcheck and
+whitespace checks. No baseline growth, exemption or suppression is added.
+
+The setup fixture first exits 1 in this long-lived worktree because the native shard guard finds
+171 existing Debug directories, including paths dated before this task. Their 42 files and directories
+remain untouched. The identical fixture then exits 0 in a fresh bounded source copy, matching the
+wrapper's documented fresh-CI condition. Its script, workflow, solution and project inputs are hashed
+against this candidate. No real build or test is performed by that command-stub fixture. The original
+refusal remains a separate result, not a green worktree-fixture claim.
+
+Task15g R-1 now makes the fixture supply its own disposable source layout from tracked working-tree
+scripts, workflows, solutions and projects before installing command stubs. Contributors can run it
+in an existing checkout. Its once-only corrected worktree run exits 0 with all 17 route/status messages,
+including the new real-wrapper refusal of a sandbox Debug directory. The worktree retains the same
+171 Debug directory paths before and after. The production guard and every existing route assertion
+are unchanged. Evidence is retained under `/tmp/khaozengine-renderer-corrections-integration/fix-r1`.
+Native Windows aliases remain explicitly unexecuted on macOS.
+
+Raw native-workflow actionlint exits 1 on both current main and this candidate. Both retain the same
+three findings at the same locations, two unknown ubuntu-26.04 labels and existing SC2012. The corrected
+comparison exits 0 without suppressing either raw result. Its first comparison attempt used a greedy
+location parser that consumed SC2012's embedded coordinates and failed. That failed audit and the
+corrected parser are both retained. No workflow run is dispatched.
+
+This is preparation for root's independent evidence audit and fresh integration review. Native
+Windows file identity, native Metal allocation behavior, real runtime admission, compiler retention,
+measurement and paid execution remain unproved here. The earlier local red full suite, later hosted
+39,612-pass suite and failed paid pilot retain their separate results above. No manual validation is
+needed for this preparation. Root owns main integration, push and the post-main pack.
+
 ## Outstanding native and preparation gates
 
 Accepted Tasks10/11 and the cold amendment implement optional D3D11, Vulkan and Metal diagnostics.
@@ -188,10 +309,10 @@ occupancy remain unsupported where unavailable. Process observations cannot repl
 primary-backend correspondence, compiler payload admission and cold-stage cost still need the native
 gates below. No synthetic fixture closes the original consumer or armour acceptance.
 
-Root must independently review the reconciled dependency diff and source identities, then integrate and
-push accepted implementation before preparing precise pilot inputs. Each pilot needs its own approval
-and sole-manifest authorization commit with exact workload/workflow/manifest/shader hashes and runtime
-identity. This record supplies no executable manifest or workflow dispatch authorization.
+The reconciled source was independently reviewed, integrated and pushed before the first pilot.
+Corrections still require review and verification before preparing another exact workload. Each pilot
+needs its own approval and sole-manifest authorization commit with exact
+workload/workflow/manifest/shader hashes and runtime identity. This record grants no further dispatch.
 
 Later native evidence must verify selected T4 vendor/device/driver, all five scenes and required rows,
 actual counts, valid outer timestamps and End tails, completion pacing, clock telemetry, perturbation,
@@ -201,7 +322,7 @@ recovery on the native sink. Actual billed minutes and full-unit budgets come fr
 synthetic fixtures. Full units need fresh approval after independent pilot review.
 
 The existing [partial-write accounting gap #1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547)
-remains open. #1546 closes only after main integration. #1530 remains separate D1 portable-math work.
+remains open. #1546 closed after main integration. #1530 remains separate D1 portable-math work.
 Sidecar preparation is accounted, but a failed measurement's partial write can occur after
 its accounting snapshot. Headless success does not close or waive this limit. No optimization, consumer
 adoption, private content, Windows Vulkan expansion, release or other active lane is part of this proof.

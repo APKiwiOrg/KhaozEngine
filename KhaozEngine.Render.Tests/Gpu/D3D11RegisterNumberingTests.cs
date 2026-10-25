@@ -59,6 +59,7 @@ namespace KhaozEngine.Tests.Gpu
         public static readonly (string Site, GpuResourceLayoutElement[] Elements, string Expected)[] Declared =
         {
             ("SpriteBatch._layout", new[] { T("Tex"), S("Samp") }, "t0 s0"),
+            ("SpriteBatch.maskedTexture", new[] { T("Tex"), S("Samp"), T("Mask"), S("MaskSamp") }, "t0 s0 t1 s1"),
             ("SpriteBatch._vpLayout", new[] { U("Vp", dynamic: true) }, "b0"),
 
             ("BeamRenderer._layout", new[] { U("U") }, "b0"),
@@ -309,6 +310,15 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal("t0 s0", Absolute(sprite, 0));
             Assert.Equal("b0", Absolute(sprite, 1));
+
+            using var maskedTexture = new D3D11ResourceLayout(
+                VulkanDescriptorLimitTests.ShippedLayouts["SpriteBatch.maskedTexture"]);
+            using var maskedVp = new D3D11ResourceLayout(
+                VulkanDescriptorLimitTests.ShippedLayouts["SpriteBatch.vp"]);
+            D3D11ResourceLayout[] masked = { maskedTexture, maskedVp };
+
+            Assert.Equal("t0 s0 t1 s1", Absolute(masked, 0));
+            Assert.Equal("b0", Absolute(masked, 1));
 
             // The skinned model pass: the shared frame block and the per-draw header at set 0, the material
             // textures and samplers at set 1, the shared per-caster bone palette at set 2 since #407. Three sets,

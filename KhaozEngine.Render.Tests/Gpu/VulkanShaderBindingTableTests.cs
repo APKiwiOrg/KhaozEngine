@@ -50,6 +50,7 @@ namespace KhaozEngine.Tests.Gpu
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["Sprite2D"] = "SpriteBatch",
+                ["Sprite2DMasked"] = "SpriteBatch masked",
                 ["GpuScaledCopy"] = "GpuScaledCopy",
 
                 ["Model"] = "ModelRenderer",
@@ -331,7 +332,7 @@ namespace KhaozEngine.Tests.Gpu
                 .ToHashSet(StringComparer.Ordinal);
 
             // Ten certified FullyLit variants cover resolve, debug/count and both split sizes at both precisions.
-            Assert.Equal(123, catalog.Length);
+            Assert.Equal(124, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

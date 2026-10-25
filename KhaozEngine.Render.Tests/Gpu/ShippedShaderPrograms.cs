@@ -25,7 +25,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 123 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 124 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -49,11 +49,12 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
-        /// <summary>Every distinct shipped vertex and fragment pair, 88 of them.</summary>
+        /// <summary>Every distinct shipped vertex and fragment pair, 89 of them.</summary>
         static IEnumerable<ShippedGraphicsProgram> BaseGraphicsPrograms()
         {
             // Render2D.
             yield return new("Sprite2D", SpriteBatch.VertSrc, SpriteBatch.FragSrc);
+            yield return new("Sprite2DMasked", SpriteBatch.VertSrc, MaskedSpriteShader.FragmentSource);
 
             // Gpu, the frame capture downscale.
             yield return new("GpuScaledCopy", GpuScaledCopy.VertexSource, GpuScaledCopy.FragmentSource);

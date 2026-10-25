@@ -48,6 +48,36 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Visible_range_excludes_rounded_right_edges_touching_the_viewport_left()
+        {
+            var metrics = new SnapStripMetrics(0.1f, 0.2f);
+            var bounds = new Rect(100f, 200f, 10f, 80f);
+            var item = SnapStripGeometry.ItemBounds(bounds, 2, 0.7f, 100, metrics);
+            Assert.Equal(bounds.X, item.Right);
+            Assert.Equal((3, 33), SnapStripGeometry.VisibleRange(bounds, 0.7f, 100, metrics));
+        }
+
+        [Fact]
+        public void Visible_range_excludes_rounded_left_edges_touching_the_viewport_right()
+        {
+            var metrics = new SnapStripMetrics(0.1f, 0.2f);
+            var bounds = new Rect(100f, 200f, 10.1f, 80f);
+            var item = SnapStripGeometry.ItemBounds(bounds, 36, 0.7000001f, 100, metrics);
+            Assert.Equal(bounds.Right, item.X);
+            Assert.Equal((3, 33), SnapStripGeometry.VisibleRange(bounds, 0.7000001f, 100, metrics));
+        }
+
+        [Theory]
+        [InlineData(0.69999f, 2, 34)]
+        [InlineData(0.70001f, 3, 34)]
+        public void Visible_range_keeps_positive_overlaps_near_rounded_edges(float offset, int first, int count)
+        {
+            var metrics = new SnapStripMetrics(0.1f, 0.2f);
+            var bounds = new Rect(100f, 200f, 10.1f, 80f);
+            Assert.Equal((first, count), SnapStripGeometry.VisibleRange(bounds, offset, 100, metrics));
+        }
+
+        [Fact]
         public void Nearest_stop_uses_actual_distance_and_canonical_ends()
         {
             var m = new SnapStripMetrics(40f, 10f);

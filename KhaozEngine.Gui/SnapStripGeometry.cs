@@ -155,12 +155,45 @@ namespace KhaozEngine.Gui
             float pitch = ValidateLayout(bounds, scrollOffset, itemCount, metrics);
             if (itemCount == 0 || bounds.Width == 0f || bounds.Height == 0f) return (0, 0);
 
-            // Strict inequalities exclude items whose right or left edge only touches the viewport.
-            double first = Math.Floor(((double)scrollOffset - metrics.ItemWidth) / pitch) + 1d;
-            double end = Math.Ceiling(((double)scrollOffset + bounds.Width) / pitch);
-            int firstIndex = (int)Math.Clamp(first, 0d, itemCount);
-            int endIndex = (int)Math.Clamp(end, 0d, itemCount);
+            // Invert both float roundings: placement rounds the left edge, then Rect.Right
+            // rounds its sum with the item width. A real-valued intersection can be edge contact.
+            double rightThreshold = FloatLowerBoundary(MathF.BitIncrement(bounds.X));
+            float firstLeft = (float)(rightThreshold - metrics.ItemWidth);
+            if (firstLeft + metrics.ItemWidth <= bounds.X)
+                firstLeft = MathF.BitIncrement(firstLeft);
+            else
+            {
+                float previousLeft = MathF.BitDecrement(firstLeft);
+                if (previousLeft + metrics.ItemWidth > bounds.X) firstLeft = previousLeft;
+            }
+
+            int firstIndex = FirstPlacedIndex(bounds, firstLeft, scrollOffset, itemCount, metrics, pitch);
+            int endIndex = FirstPlacedIndex(bounds, bounds.Right, scrollOffset, itemCount, metrics, pitch);
             return endIndex > firstIndex ? (firstIndex, endIndex - firstIndex) : (0, 0);
+        }
+
+        static int FirstPlacedIndex(in Rect bounds, float left, float scrollOffset, int itemCount,
+            in SnapStripMetrics metrics, float pitch)
+        {
+            double position = (FloatLowerBoundary(left) - bounds.X + scrollOffset) / pitch;
+            int index = (int)Math.Clamp(Math.Floor(position), 0d, itemCount);
+            // The midpoint can round either way on a tie. Resolve it with actual placement,
+            // including when several item positions round to the same float edge.
+            if (index > 0 && ItemBounds(bounds, index - 1, scrollOffset, itemCount, metrics).X >= left)
+                index--;
+            if (index < itemCount && ItemBounds(bounds, index, scrollOffset, itemCount, metrics).X < left)
+                index++;
+            return index;
+        }
+
+        static double FloatLowerBoundary(float value)
+        {
+            if (float.IsPositiveInfinity(value))
+                return (double)float.MaxValue + ((double)float.MaxValue - MathF.BitDecrement(float.MaxValue)) / 2d;
+            float previous = MathF.BitDecrement(value);
+            if (float.IsNegativeInfinity(previous))
+                return (double)value - ((double)MathF.BitIncrement(value) - value) / 2d;
+            return ((double)previous + value) / 2d;
         }
 
         static int CanonicalIndex(int index, float offset, float maxScroll, int itemCount)

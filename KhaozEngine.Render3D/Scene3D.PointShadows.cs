@@ -68,6 +68,8 @@ namespace KhaozEngine.Render3D
         /// <summary>Budget and render the prepared requests, then publish the receiver slot table.</summary>
         void PreparePointShadows(IGpuCommandList cl)
         {
+            long probeStart = ShadowProbeTimestamp();
+            if (_shadowProbeActive) _shadowProbeCounts.PointAtlasAvailable = _pointShadowAtlas is not null && _pointSlotCache is not null;
             PointShadowedLights = 0;
             int frame = ++_pointShadowFrame;
             BeginFoliagePointShadowFrame();
@@ -79,6 +81,7 @@ namespace KhaozEngine.Render3D
                 // earlier frame from holding rows for lights that have stopped being queued.
                 _model.ClearPointShadowUniforms();
                 _pointSlotCache?.ReleaseUnrequested(frame);
+                _shadowProbeTicks.PointPreparation = ShadowProbeElapsed(probeStart, _shadowProbeTicks.PointPreparation);
                 return;
             }
 
@@ -91,6 +94,7 @@ namespace KhaozEngine.Render3D
             if (_pointShadowAtlas is null || _pointSlotCache is not { } cache)
             {
                 _model.ClearPointShadowUniforms();
+                _shadowProbeTicks.PointPreparation = ShadowProbeElapsed(probeStart, _shadowProbeTicks.PointPreparation);
                 return;
             }
 
@@ -101,12 +105,22 @@ namespace KhaozEngine.Render3D
             // signature and every row the pass draws below asks this one index rather than walking every instance.
             EnsurePointCasterIndex();
             AcquirePointShadowSlots(cache, frame);
+            long selectionStart = ShadowProbeTimestamp();
             ChoosePointShadowRebuilds(cache, settings);
             ScheduleSkinnedPointShadows(cache, settings, frame);
+            if (_shadowProbeActive)
+            {
+                _shadowProbeCounts.SelectedTransientRows = _selectedPointTransientRequests.Count;
+                _shadowProbeCounts.TransientDemand = _pointTransientDemandThisFrame;
+            }
+            _shadowProbeTicks.RowSelection = ShadowProbeElapsed(selectionStart, _shadowProbeTicks.RowSelection);
             int draws = RenderChosenPointShadowRows(cl, cache, frame);
+            long receiverStart = ShadowProbeTimestamp();
             PublishPointShadowUniforms(cache, settings, frame);
             cache.ReleaseUnrequested(frame);
             RecordPointShadowDiagnostics(cache, draws);
+            _shadowProbeTicks.ReceiverPublication = ShadowProbeElapsed(receiverStart, _shadowProbeTicks.ReceiverPublication);
+            _shadowProbeTicks.PointPreparation = ShadowProbeElapsed(probeStart, _shadowProbeTicks.PointPreparation);
         }
 
         /// <summary>
@@ -127,12 +141,18 @@ namespace KhaozEngine.Render3D
             // the rows back BEFORE phase one is what stops a light that inherited an expired light's queue index
             // from re-seating itself onto that light's map, and it puts the row back in front of the static lights
             // for the frames the dynamic budget cannot reach it.
+            long lookupStart = ShadowProbeTimestamp();
             cache.ReleaseDynamicRows();
 
             for (int i = 0; i < _pointRequests.Count; i++)
             {
                 PointShadowRequest request = _pointRequests[i];
                 request.Slot = cache.TryTouch(request.Key, request.Mode, frame);
+                if (_shadowProbeActive)
+                {
+                    _shadowProbeCounts.TouchAttempts++;
+                    if (request.Slot >= 0) _shadowProbeCounts.TouchHits++;
+                }
                 _pointRequests[i] = request;
             }
 
@@ -141,20 +161,34 @@ namespace KhaozEngine.Render3D
                 PointShadowRequest request = _pointRequests[i];
                 if (request.Slot >= 0) continue;
                 request.Slot = cache.Acquire(request.Key, request.Mode, frame);
+                if (_shadowProbeActive)
+                {
+                    _shadowProbeCounts.AcquireAttempts++;
+                    if (request.Slot >= 0) _shadowProbeCounts.AcquireSuccesses++;
+                    else _shadowProbeCounts.AcquireRefusals++;
+                }
                 _pointRequests[i] = request;
             }
 
+            _shadowProbeTicks.SlotLookup = ShadowProbeElapsed(lookupStart, _shadowProbeTicks.SlotLookup);
+            long signaturesStart = ShadowProbeTimestamp();
             for (int i = 0; i < _pointRequests.Count; i++)
             {
                 PointShadowRequest request = _pointRequests[i];
                 if (request.Slot < 0 || request.Mode != LightShadowMode.Static) continue;
+                if (_shadowProbeActive) _shadowProbeCounts.Signatures++;
                 long signature = PointCasterSignature(request.Position, request.Radius, request.NearRadius,
                     request.ExclusionMin, request.ExclusionMax);
                 // A changed signature can only ADD dirt. A freshly acquired row is already dirty, so a stale
                 // signature left behind by the row's previous owner cannot accidentally report it clean.
-                if (_pointCasterSignatures[request.Slot] != signature) cache.MarkDirty(request.Slot);
+                if (_pointCasterSignatures[request.Slot] != signature)
+                {
+                    cache.MarkDirty(request.Slot);
+                    if (_shadowProbeActive) _shadowProbeCounts.SignatureMismatches++;
+                }
                 _pointCasterSignatures[request.Slot] = signature;
             }
+            _shadowProbeTicks.StaticSignatures = ShadowProbeElapsed(signaturesStart, _shadowProbeTicks.StaticSignatures);
         }
 
         /// <summary>Pick this frame's render list into <see cref="_pointRebuilds"/>: the dirty static rows, stalest
@@ -192,15 +226,25 @@ namespace KhaozEngine.Render3D
                 _pointRebuilds.Add(i);
                 dynamicsTaken++;
             }
+            if (_shadowProbeActive)
+            {
+                _shadowProbeCounts.SelectedStaticRows = _pointRebuilds.Count - dynamicsTaken;
+                _shadowProbeCounts.SelectedDynamicRows = dynamicsTaken;
+            }
         }
 
         /// <summary>Record the pass for everything <see cref="ChoosePointShadowRebuilds"/> picked and mark those
         /// rows clean. Returns the caster draw calls issued, which is what the diagnostics report.</summary>
         int RenderChosenPointShadowRows(IGpuCommandList cl, PointShadowSlots cache, int frame)
         {
+            long preparationStart = ShadowProbeTimestamp();
             int rowCount = _pointRebuilds.Count + _selectedPointTransientRequests.Count;
             BeginPointShadowFrame(rowCount);
-            if (rowCount == 0) return 0;
+            if (rowCount == 0)
+            {
+                _shadowProbeTicks.RowPreparation = ShadowProbeElapsed(preparationStart, _shadowProbeTicks.RowPreparation);
+                return 0;
+            }
 
             for (int packed = 0; packed < _pointRebuilds.Count; packed++)
             {
@@ -224,7 +268,11 @@ namespace KhaozEngine.Render3D
             if (UseGpuSkinning && (_selectedPointTransientRequests.Count > 0
                 || Array.Exists(_pointDynamicSkinnedRequests, static selected => selected)))
                 PrepareGpuSkinnedPointCasters(cl);
+            if (_shadowProbeActive) _shadowProbeCounts.PackedRows = _packedPointSlots.Count;
+            _shadowProbeTicks.RowPreparation = ShadowProbeElapsed(preparationStart, _shadowProbeTicks.RowPreparation);
+            long recordingStart = ShadowProbeTimestamp();
             int draws = RenderPointShadowSlots(cl);
+            _shadowProbeTicks.RowRecording = ShadowProbeElapsed(recordingStart, _shadowProbeTicks.RowRecording);
             foreach (int index in _pointRebuilds) cache.MarkClean(_pointRequests[index].Slot, frame);
             return draws;
         }
@@ -275,6 +323,17 @@ namespace KhaozEngine.Render3D
             int statics = 0, dynamics = 0;
             foreach (int index in _pointRebuilds)
                 if (_pointRequests[index].Mode == LightShadowMode.Static) statics++; else dynamics++;
+            if (_shadowProbeActive)
+            {
+                _shadowProbeCounts.PointSlotsInUse = cache.InUse;
+                _shadowProbeCounts.PointShadowedLights = PointShadowedLights;
+                _shadowProbeCounts.CompletedStaticRebuilds = statics;
+                _shadowProbeCounts.CompletedDynamicRenders = dynamics;
+                _shadowProbeCounts.PointFaceDrawCalls = draws;
+                _shadowProbeCounts.PointFoliageFaceDrawCalls = FoliagePointShadowDrawCalls;
+                _shadowProbeCounts.PointDynamicSkinnedFaceDrawCalls = _pointDynamicSkinnedDrawCallsThisFrame;
+                _shadowProbeCounts.PointTransientSkinnedFaceDrawCalls = _pointStaticTransientSkinnedDrawCallsThisFrame;
+            }
             _lastShadowPassDiagnostics = _lastShadowPassDiagnostics with
             {
                 PointShadowedLights = PointShadowedLights,
@@ -336,7 +395,8 @@ namespace KhaozEngine.Render3D
             // for this light, in ascending slot order, which is the order the walk over every run visited them in.
             // Read by reference: an InstanceData is 128 bytes and this runs once per touching caster per static
             // request per frame.
-            QueryPointCasters(lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);
+            QueryPointCasters(lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax, ShadowStageQueryPurpose.Signature);
+            long foldStart = ShadowProbeTimestamp();
             Span<ModelRenderer.InstanceData> instances = CollectionsMarshal.AsSpan(_instanceData);
             foreach (int slot in _pointCasterHits)
             {
@@ -346,6 +406,7 @@ namespace KhaozEngine.Render3D
                 MixPointSignature(ref hash, SignatureWord(PointDissolveWord(data), (uint)PointCasterKind(slot)));
                 MixPointSignature(ref hash, data.Model);
             }
+            _shadowProbeTicks.RigidSignatureFold = ShadowProbeElapsed(foldStart, _shadowProbeTicks.RigidSignatureFold);
             // Casting foliage joins at its rest pose (Scene3D.FoliagePointShadows.cs), so its motion never
             // dirties a row.
             MixFoliagePointSignature(ref hash, lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);

@@ -48,6 +48,7 @@ public sealed partial class Scene3D
     void EnsurePointCasterIndex()
     {
         if (_pointCasterIndexFrame == _pointShadowFrame) return;
+        long probeStart = ShadowProbeTimestamp();
         _pointCasterIndexFrame = _pointShadowFrame;
 
         // Read by reference: an InstanceData is 128 bytes and only its matrix is wanted here.
@@ -70,15 +71,25 @@ public sealed partial class Scene3D
             }
         }
         _pointCasterIndex.Seal();
+        if (_shadowProbeActive)
+        {
+            _shadowProbeCounts.RigidIndexBuilt = true;
+            _shadowProbeCounts.RigidIndexPopulation = _pointCasterIndex.Count;
+            _shadowProbeCounts.RigidOversizePopulation = _pointCasterIndex.OversizeCount;
+        }
+        _shadowProbeTicks.RigidIndexBuild = ShadowProbeElapsed(probeStart, _shadowProbeTicks.RigidIndexBuild);
     }
 
     /// <summary>Fill <see cref="_pointCasterHits"/> with the casters that touch one light, ascending by slot,
     /// building the index first when this frame has not.</summary>
     void QueryPointCasters(Vector3 lightPosAbsolute, float radius, float nearRadius,
-        Vector3 exclusionMin, Vector3 exclusionMax)
+        Vector3 exclusionMin, Vector3 exclusionMax, ShadowStageQueryPurpose purpose = ShadowStageQueryPurpose.RowRecording)
     {
         EnsurePointCasterIndex();
+        int beforeTests = _pointCasterIndex.TouchTests, beforeSort = _pointCasterIndex.SortInputs;
+        long probeStart = ShadowProbeTimestamp();
         _pointCasterIndex.Query(lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax, _pointCasterHits);
+        RecordShadowProbeRigidQuery(purpose, beforeTests, beforeSort, probeStart);
     }
 
     /// <summary>A slot's cast kind, with the unclassified default the grouping has always implied.</summary>

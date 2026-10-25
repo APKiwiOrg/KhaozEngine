@@ -10,6 +10,7 @@ internal sealed class FrameOutputDevice(IGpuDevice inner, PostChainRig.Output ou
     internal int Submits, Presents;
     internal PostChainRig.Output Output { get; set; } = output;
     internal Action<IGpuCommandList>? BeforeSubmit;
+    internal Action? BeforePresent;
     public GpuBackendKind Backend => inner.Backend;
     public GpuCapabilities Capabilities => inner.Capabilities;
     public IGpuResourceFactory Factory => inner.Factory;
@@ -36,6 +37,6 @@ internal sealed class FrameOutputDevice(IGpuDevice inner, PostChainRig.Output ou
     public void Unmap(IGpuTexture texture) => inner.Unmap(texture);
     public void Unmap(IGpuBuffer buffer) => inner.Unmap(buffer);
     public void ResizeSwapchain(uint width, uint height) => throw new NotSupportedException();
-    public void Present() => Presents++;
+    public void Present() { BeforePresent?.Invoke(); Presents++; }
     public void Dispose() { }
 }

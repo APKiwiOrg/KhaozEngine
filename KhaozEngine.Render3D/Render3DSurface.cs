@@ -37,7 +37,11 @@ namespace KhaozEngine.Render3D
         public bool PreparePhaseSplitEnabled => _prepareSubmission is not null;
 
         /// <summary>Submit the private scene prefix after queue preparation and before the frame recording opens.</summary>
-        public void PrepareRender(Frame frame) => _prepareSubmission?.Prepare(frame);
+        public void PrepareRender(Frame frame)
+        {
+            try { _prepareSubmission?.Prepare(frame); }
+            catch { Scene.CancelShadowStageProbe(); throw; }
+        }
 
         /// <summary>Record the queued 3D scene into this frame's command list, ending on the window framebuffer.
         /// Runs <see cref="Scene3D.PrepareFrame"/> first, so a consumer building a surface directly gets the frame's
@@ -63,14 +67,23 @@ namespace KhaozEngine.Render3D
         /// refuses before a list is begun, so the host sees the same exception naming the same fix wherever it runs.
         /// </para></summary>
         public void Render(Frame frame)
+            => RecordSceneOutput(Scene, frame, _prepareSubmission, _window.GpuDevice.SwapchainFramebuffer!);
+
+        // Shared by the real surface and headless lifetime/native fixtures.
+        internal static void RecordSceneOutput(Scene3D scene, Frame frame, PreparePhaseSceneSubmission? prepared,
+            Gpu.IGpuFramebuffer target)
         {
-            if (_prepareSubmission is not null)
-                _prepareSubmission.Render(frame, _window.GpuDevice.SwapchainFramebuffer!);
-            else
+            try
             {
-                Scene.PrepareFrame();
-                Scene.RenderInternal(frame.Commands, frame.Width, frame.Height, _window.GpuDevice.SwapchainFramebuffer!);
+                if (prepared is not null) prepared.Render(frame, target);
+                else
+                {
+                    scene.PrepareFrame();
+                    scene.RenderInternal(frame.Commands, frame.Width, frame.Height, target);
+                }
+                scene.PublishShadowStageProbe(frame);
             }
+            catch { scene.CancelShadowStageProbe(); throw; }
         }
 
         public void Dispose()

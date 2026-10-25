@@ -30,6 +30,7 @@ public sealed partial class Scene3D
         catch
         {
             CancelPreparedOutput();
+            CancelShadowStageProbe();
             throw;
         }
     }

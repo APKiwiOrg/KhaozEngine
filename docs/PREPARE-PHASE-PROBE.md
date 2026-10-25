@@ -31,7 +31,7 @@ already exists. After the client is foreground at a settled view, create `<resul
 a background command. It excludes trigger I/O, samples ten seconds or 4096 intervals, then publishes
 once without overwriting an existing result. It does no synchronous readback or sampling-profiler work.
 
-Schema 2 records actual cumulative `preparePhaseSubmissionCount` and `preparePhaseCompositeCount`
+Schema 3 records actual cumulative `preparePhaseSubmissionCount` and `preparePhaseCompositeCount`
 at every boundary. `preparePhaseSplitActive` becomes true only after a successful prefix submission.
 `allPreparePhaseSubmissionsPaired` requires one prefix and composite per measured interval in enabled
 mode and no such work in disabled mode. Mode changes invalidate the stable-window result. A prefix
@@ -47,3 +47,6 @@ Private runtime replacements are Windowing, Render3D and Game.Render3D. Audit th
 assembly references, and verify every other client file against the frozen pristine client. Do not
 copy freshly rebuilt unrelated engine DLLs. Debug views, resizing and capture require native proof
 before this archive is handed to the owner for a comparison.
+
+The private buffered shadow-stage extension is documented in
+[`verification/mac-frame-shadow-stage-probe.md`](verification/mac-frame-shadow-stage-probe.md).

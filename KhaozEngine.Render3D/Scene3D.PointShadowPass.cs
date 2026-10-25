@@ -262,6 +262,7 @@ namespace KhaozEngine.Render3D
                             renderer.DrawCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
                                 instances!, span.Start, span.Count);
                             draws++;
+                            if (_shadowProbeActive) _shadowProbeCounts.PointRigidIssuedInstances += span.Count;
                         }
                     }
                     // Casting foliage at rest rides the rigid set only, from its own proxy stream.

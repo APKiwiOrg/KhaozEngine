@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
+using KhaozEngine.Windowing;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 
@@ -57,9 +58,10 @@ public sealed partial class Scene3D
 
     /// <summary>Translate the submitted casting prefixes into per-batch layout ranges, once per point-shadow frame.
     /// A batch submitted more than once keeps the union of its prefixes, so no proxy is drawn twice.</summary>
-    void EnsureFoliagePointShadowFrame()
+    void EnsureFoliagePointShadowFrame(ShadowStageFoliageBuildOrigin origin = ShadowStageFoliageBuildOrigin.RowPreparation)
     {
         if (_foliagePointFrame == _pointShadowFrame) return;
+        long probeStart = ShadowProbeTimestamp();
         _foliagePointFrame = _pointShadowFrame;
         _foliagePointFaceLight = -1;
         _foliagePointSources.Clear();
@@ -81,6 +83,7 @@ public sealed partial class Scene3D
         if (_foliagePointPending.Count == 0)
         {
             _foliagePointIndex.Seal();
+            RecordShadowProbeFoliageBuild(origin, probeStart);
             return;
         }
         _foliagePointPending.Sort(static (a, b) =>
@@ -114,8 +117,10 @@ public sealed partial class Scene3D
         {
             FoliagePointSource source = _foliagePointSources[sourceOrdinal];
             _foliagePointIndex.Add(sourceOrdinal, source.Stream, FoliagePointRanges(source));
+            if (_shadowProbeActive) _shadowProbeCounts.FoliageStreamProxies += source.Stream.Casters.Length;
         }
         _foliagePointIndex.Seal();
+        RecordShadowProbeFoliageBuild(origin, probeStart);
     }
 
     FoliagePointShadowStream FoliagePointStreamFor(FoliageBatch batch)
@@ -145,8 +150,12 @@ public sealed partial class Scene3D
     void MixFoliagePointSignature(ref ulong hash, Vector3 lightPosition, float radius, float nearRadius,
         Vector3 exclusionMin, Vector3 exclusionMax)
     {
-        EnsureFoliagePointShadowFrame();
+        EnsureFoliagePointShadowFrame(ShadowStageFoliageBuildOrigin.Signature);
+        int beforeTests = _foliagePointIndex.TouchTests, beforeSort = _foliagePointIndex.SortInputs;
+        long queryStart = ShadowProbeTimestamp();
         _foliagePointIndex.Query(lightPosition, radius, nearRadius, exclusionMin, exclusionMax, _foliagePointHits);
+        RecordShadowProbeFoliageQuery(ShadowStageQueryPurpose.Signature, beforeTests, beforeSort, queryStart);
+        long foldStart = ShadowProbeTimestamp();
         foreach (FoliagePointCasterRef reference in _foliagePointHits)
         {
             FoliagePointSource source = _foliagePointSources[reference.SourceOrdinal];
@@ -154,6 +163,7 @@ public sealed partial class Scene3D
             MixPointSignature(ref hash, SignatureWord((uint)caster.Mesh.Index, (uint)caster.Mesh.Generation));
             MixPointSignature(ref hash, caster.Transform);
         }
+        _shadowProbeTicks.FoliageSignatureFold = ShadowProbeElapsed(foldStart, _shadowProbeTicks.FoliageSignatureFold);
     }
 
     /// <summary>Draw the rest-pose proxies touching one light into one of its face cells through the rigid caster
@@ -164,10 +174,13 @@ public sealed partial class Scene3D
     {
         if (face == 0 || packedIndex != _foliagePointFaceLight)
         {
-            EnsureFoliagePointShadowFrame();
+            EnsureFoliagePointShadowFrame(ShadowStageFoliageBuildOrigin.RowRecording);
             _foliagePointFaceLight = packedIndex;
             _foliagePointFaceRuns.Clear();
+            int beforeTests = _foliagePointIndex.TouchTests, beforeSort = _foliagePointIndex.SortInputs;
+            long queryStart = ShadowProbeTimestamp();
             _foliagePointIndex.Query(lightPosition, radius, nearRadius, exclusionMin, exclusionMax, _foliagePointHits);
+            RecordShadowProbeFoliageQuery(ShadowStageQueryPurpose.RowRecording, beforeTests, beforeSort, queryStart);
             int lastSource = -1;
             foreach (FoliagePointCasterRef reference in _foliagePointHits)
             {
@@ -203,6 +216,7 @@ public sealed partial class Scene3D
             renderer.DrawCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, faceRun.Buffer,
                 faceRun.Run.Start, faceRun.Run.Count);
             draws++;
+            if (_shadowProbeActive) _shadowProbeCounts.PointFoliageIssuedInstances += faceRun.Run.Count;
         }
         FoliagePointShadowDrawCalls += draws;
         return draws;

@@ -156,7 +156,7 @@ public sealed class FrameViewConsumerSweepTests
         new("Scene3D.PreparedOutput.cs", "_billboards.Draw(", 2, @"\bdisplayVp\b", DisplayForbidden, "legacy overlay billboards after post"),
         new("Scene3D.cs", "ExtractCameraDepth(", 1, Snapshot + @"\.Projection\b", CpuForbidden,
             "the edge pass depth convention"),
-        new("Scene3D.cs", "FrustumCornersWorld(", 1, Snapshot + @"\.AbsoluteViewProjection\b", CpuForbidden,
+        new("Scene3D.CascadeSetup.cs", "FrustumCornersWorld(", 1, Snapshot + @"\.AbsoluteViewProjection\b", CpuForbidden,
             "the cascade fit"),
         new("Scene3D.cs", "FrustumCulling ? FrustumPlanes.Extract(", 1, @"\babsVp\b", CpuForbidden,
             "the camera frustum every CPU cull reads"),

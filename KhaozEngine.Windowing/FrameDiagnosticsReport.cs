@@ -8,23 +8,24 @@ internal readonly record struct FrameDiagnosticsBoundary(long Timestamp, FrameDi
 
 internal readonly record struct FrameDiagnosticsSample(long StartTimestamp, long EndTimestamp,
     double MonotonicIntervalSeconds, double LoopDeltaSeconds, FrameDiagnosticsWindowState CompletedFrameWindow,
-    FrameDiagnosticsWindowState BoundaryWindow, GpuDeviceCounters Counters);
+    FrameDiagnosticsWindowState BoundaryWindow, GpuDeviceCounters Counters, ShadowStageProbeRow ShadowStage = default);
 
 internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, string AppAssembly,
     string EngineAssembly, long StopwatchFrequency, double DurationSeconds, int SampleCount, string StopReason,
     FrameDiagnosticsBoundary Baseline, FrameDiagnosticsBoundary End, FrameDiagnosticsSample[] Samples,
-    FrameDiagnosticsSummary Summary)
+    FrameDiagnosticsSummary Summary, FrameDiagnosticsShadowSummary ShadowStages)
 {
     internal static FrameDiagnosticsReport Create(long frequency, FrameDiagnosticsBoundary baseline,
-        FrameDiagnosticsBoundary end, FrameDiagnosticsSample[] buffer, int count, string reason)
+        FrameDiagnosticsBoundary end, FrameDiagnosticsSample[] buffer, int count, string reason, ShadowStageProbeMode mode = ShadowStageProbeMode.Off)
     {
         var samples = new FrameDiagnosticsSample[count];
         Array.Copy(buffer, samples, count);
         var engine = typeof(FrameDiagnosticsRecorder).Assembly;
-        return new FrameDiagnosticsReport(2, Environment.ProcessId,
+        return new FrameDiagnosticsReport(3, Environment.ProcessId,
             Assembly.GetEntryAssembly()?.FullName ?? "unknown", engine.FullName + " MVID=" + engine.ManifestModule.ModuleVersionId,
             frequency, (end.Timestamp - baseline.Timestamp) / (double)frequency, count, reason, baseline, end, samples,
-            FrameDiagnosticsSummary.Create(baseline, end, samples, reason == "capacity", count == buffer.Length));
+            FrameDiagnosticsSummary.Create(baseline, end, samples, reason == "capacity", count == buffer.Length),
+            FrameDiagnosticsShadowSummary.Create(samples, mode));
     }
 }
 

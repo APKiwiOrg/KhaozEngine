@@ -11,7 +11,7 @@ internal readonly record struct FrameDiagnosticsWindowState(bool Focused, bool M
     int Width, int Height, int EffectiveBaseCapHz, bool Vsync, bool RendererInitializesSwapchain = false,
     bool PreparePhaseSplitActive = false, long PreparePhaseSubmissionCount = 0, long PreparePhaseCompositeCount = 0);
 
-internal sealed class FrameDiagnosticsRecorder : IDisposable
+internal sealed partial class FrameDiagnosticsRecorder : IDisposable
 {
     enum Phase { Waiting, Armed, Sampling, Stopped }
 
@@ -25,11 +25,13 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
     FrameDiagnosticsBoundary _previous;
     int _count;
 
-    internal FrameDiagnosticsRecorder(string path, long frequency, int capacity = 4096)
+    internal FrameDiagnosticsRecorder(string path, long frequency, int capacity = 4096, ShadowStageProbeMode mode = ShadowStageProbeMode.Off)
     {
         if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("An absolute result path is required.", nameof(path));
         if (frequency <= 0) throw new ArgumentOutOfRangeException(nameof(frequency));
         if (capacity < 1 || capacity > 4096) throw new ArgumentOutOfRangeException(nameof(capacity));
+        if (mode is < ShadowStageProbeMode.Off or > ShadowStageProbeMode.Timings) throw new ArgumentOutOfRangeException(nameof(mode));
+        _shadowMode = mode;
         _path = Path.GetFullPath(path);
         if (File.Exists(_path) || Directory.Exists(_path)) throw new IOException("Result already exists.");
         if (!Directory.Exists(Path.GetDirectoryName(_path))) throw new DirectoryNotFoundException("Result directory must exist.");
@@ -43,11 +45,12 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         try
         {
             string? path = Environment.GetEnvironmentVariable("KE_FRAME_DIAGNOSTICS_PATH");
-            return string.IsNullOrEmpty(path) ? null : new FrameDiagnosticsRecorder(path, Stopwatch.Frequency);
+            string? mode = Environment.GetEnvironmentVariable("KE_SHADOW_STAGE_MODE");
+            return FromSettings(path, mode);
         }
         catch (Exception error)
         {
-            Log("KE frame diagnostics failed to initialize (" + error.GetType().Name + "). No result will be published.");
+            Log("KE frame diagnostics failed to initialize (" + error.GetType().Name + ": " + error.Message + "). No result will be published.");
             return null;
         }
     }
@@ -58,6 +61,10 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
     // Called before the next frame does any work. Counters include the entire PREVIOUS callback,
     // including prepare, update, render, UI, capture, submit and present. No SnapshotTool is involved.
     internal void Observe(double dt, long timestamp, FrameDiagnosticsWindowState window, GpuDeviceCounters counters)
+        => Observe(dt, timestamp, window, counters, default);
+
+    internal void Observe(double dt, long timestamp, FrameDiagnosticsWindowState window, GpuDeviceCounters counters,
+        in ShadowStageCallbackResult completed)
     {
         if (_phase == Phase.Stopped) return;
         if (_phase == Phase.Waiting)
@@ -71,6 +78,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         {
             // Trigger I/O was on the previous callback. Its partial interval and dt are discarded.
             _baseline = _previous = boundary;
+            _shadowSequence = 1;
             _phase = Phase.Sampling;
             return;
         }
@@ -81,7 +89,9 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
             return;
         }
         _samples[_count++] = new FrameDiagnosticsSample(_previous.Timestamp, timestamp,
-            (timestamp - _previous.Timestamp) / (double)_frequency, dt, _previous.Window, window, counters);
+            (timestamp - _previous.Timestamp) / (double)_frequency, dt, _previous.Window, window, counters,
+            ShadowRow(completed, _previous.Window.RenderSuppressed));
+        _shadowSequence++;
         _previous = boundary;
         bool durationReached = (timestamp - _baseline.Timestamp) / (double)_frequency >= 10;
         if (!durationReached && _count < _samples.Length) return;
@@ -113,7 +123,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         string? temporary = null;
         try
         {
-            var report = FrameDiagnosticsReport.Create(_frequency, _baseline, _previous, _samples, _count, reason);
+            var report = FrameDiagnosticsReport.Create(_frequency, _baseline, _previous, _samples, _count, reason, _shadowMode);
             temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {

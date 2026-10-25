@@ -1,5 +1,8 @@
 using System;
 using System.Numerics;
+using System.Linq;
+using System.Collections.Generic;
+using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -19,6 +22,24 @@ public sealed class PreparePhaseSplitFixture : IDisposable
     FrameOutputDevice? _device;
     Scene3D? _scene;
     MeshHandle _mesh;
+    FoliageBatch? _probeFoliage;
+    internal ShadowStageProbeSnapshot?[] ProbeSnapshots { get; private set; } = [];
+    internal string[][] ProbeDrawOrder { get; private set; } = [];
+
+    internal string ValidationProof
+    {
+        get
+        {
+            EnsureScene();
+            if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException();
+            var native = Assert.IsType<MetalGpuDevice>(_gpu!.GpuDevice);
+            var arming = MetalValidationReader.Current();
+            string deviceClass = native.Handle.ClassName();
+            Assert.True(arming.DebugLayerArmed);
+            Assert.False(MetalValidation.DisagreesWithArming(arming.DebugLayerArmed, arming.ShaderValidationArmed, deviceClass));
+            return $"Backend={native.Backend}, device={native.Capabilities.DeviceName}, class={deviceClass}, API validation armed={arming.DebugLayerArmed}, shader validation armed={arming.ShaderValidationArmed}.";
+        }
+    }
 
     internal GpuBackendKind Backend { get { EnsureScene(); return _device!.Backend; } }
 
@@ -34,6 +55,7 @@ public sealed class PreparePhaseSplitFixture : IDisposable
 
     public void Dispose()
     {
+        _probeFoliage?.Dispose();
         _scene?.Dispose();
         _output?.Dispose();
         _device?.Dispose();
@@ -42,7 +64,8 @@ public sealed class PreparePhaseSplitFixture : IDisposable
 
     internal byte[][] Render(bool split, bool transparent, bool temporal, bool geometry, bool hdr,
         SceneDebugView debugView = SceneDebugView.None, bool resize = false, ScreenTransitionStyle? transitionStyle = null,
-        BillboardBlend? atmosphereBillboards = null)
+        BillboardBlend? atmosphereBillboards = null, ShadowStageProbeMode probeMode = ShadowStageProbeMode.Off,
+        bool pointShadows = false)
     {
         EnsureScene();
         IGpuDevice gpu = _gpu!.GpuDevice;
@@ -71,8 +94,18 @@ public sealed class PreparePhaseSplitFixture : IDisposable
             _ => null,
         };
         MeshHandle mesh = _mesh;
+        ProbeSnapshots = new ShadowStageProbeSnapshot?[Frames];
+        ProbeDrawOrder = new string[Frames][];
+        Guid epoch = Guid.NewGuid();
+        if (pointShadows)
+        {
+            scene.Post.Quality.Shadows.PointShadows.FaceResolution = 64;
+            _probeFoliage ??= scene.CreateFoliageBatch([
+                new(mesh, Matrix4x4.Identity, .1f, new FoliageMotionProfile(.3f, .15f, .4f, .035f), true)]);
+        }
         using var prepared = new PreparePhaseSceneSubmission(device, scene);
-        using IGpuCommandList commands = gpu.Factory.CreateCommandList();
+        using var commands = new RecordingGpuCommandList(gpu.Factory.CreateCommandList())
+        { CommandTrace = new List<RecordingGpuCommandList.Command>() };
         using var taps = new FrameCaptureTaps(device, device);
         using var capture = new RetainedCapture(device, Frames);
         taps.Add(capture);
@@ -95,8 +128,12 @@ public sealed class PreparePhaseSplitFixture : IDisposable
                 }
                 retained[i] = gpu.Factory.CreateTexture(GpuTextureDescription.Texture2D((uint)frame.Width, (uint)frame.Height,
                     GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+                commands.Clear();
+                commands.CommandTrace!.Clear();
+                frame.BeginShadowStageCallback(new ShadowStageProbeRequest(epoch, i + 1, probeMode));
                 RendererFramePolicy.Run(frame, true, device, commands, Color.Black, _ =>
                 {
+                    scene.ConfigureShadowStageProbe(frame.ShadowStageRequest);
                     scene.Begin();
                     scene.EffectTimeSeconds = index / 60f;
                     if (index == 2) transition?.Begin();
@@ -115,14 +152,20 @@ public sealed class PreparePhaseSplitFixture : IDisposable
                         scene.DrawMeshOutline(mesh, world, new Color(0.2f, 1f, 0.2f, 1f), 2);
                         scene.DebugLine(new Vector3(-0.8f, 0, 0), new Vector3(0.8f, 0, 0), Color.White);
                     }
+                    if (pointShadows) QueueProbePoint(scene);
                     scene.PrepareFrame();
                     if (split) prepared.Prepare(frame);
                 }, _ =>
                 {
-                    if (split) prepared.Render(frame, device.SwapchainFramebuffer);
-                    else scene.RenderInternal(commands, frame.Width, frame.Height, device.SwapchainFramebuffer);
+                    Render3DSurface.RecordSceneOutput(scene, frame, split ? prepared : null, device.SwapchainFramebuffer);
                     commands.CopyTexture(device.Output.Texture, retained[index]);
                 }, taps, true);
+                frame.CompleteShadowStageCallback();
+                var completed = frame.CompletedShadowStageCallback;
+                Assert.True(completed.Completed);
+                Assert.Equal(probeMode == ShadowStageProbeMode.Off ? 0 : 1, completed.ProducerCount);
+                ProbeSnapshots[i] = completed.Snapshot;
+                ProbeDrawOrder[i] = commands.CommandTrace.Select(c => $"{c.Kind}/{c.Slot}/{c.Value}").ToArray();
             }
             // Read only after all eight frames. Per-frame drains would conceal ring-wrap lifetime bugs.
             device.WaitForIdle();
@@ -150,6 +193,12 @@ public sealed class PreparePhaseSplitFixture : IDisposable
             device.BeforeSubmit = null;
             resizedOutput?.Dispose();
         }
+    }
+
+    void QueueProbePoint(Scene3D scene)
+    {
+        scene.DrawFoliage(_probeFoliage!, Vector3.Zero, new FoliageRenderSettings { DrawRadius = 100, DistantDensity = 1 });
+        scene.AddLight(new Vector3(0, 2, 0), Color.White, 6, 1, LightShadow.Dynamic);
     }
 
     sealed class RetainedCapture(IGpuDevice device, int frames) : IFrameCaptureTap, IDisposable

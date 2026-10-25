@@ -80,7 +80,7 @@ namespace KhaozEngine.Game
             DiagnosticsHud? hud = Diagnostics;
             if (DesiredEnableTiming(hud) is { } enableTiming) _surface3D.Scene.EnableTiming = enableTiming;
 
-            PrepareScene(_surface3D.Scene, _drawWorld);
+            PrepareProbedScene(_surface3D.Scene, _drawWorld, frame);
             _surface3D.PrepareRender(frame);
         }
 
@@ -95,6 +95,13 @@ namespace KhaozEngine.Game
         /// real window.
         /// </para>
         /// </summary>
+        internal static void PrepareProbedScene(Scene3D scene, Action<Scene3D> drawWorld, Frame frame)
+        {
+            scene.ConfigureShadowStageProbe(frame.ShadowStageRequest);
+            try { PrepareScene(scene, drawWorld); }
+            catch { scene.CancelShadowStageProbe(); throw; }
+        }
+
         internal static void PrepareScene(Scene3D scene, Action<Scene3D> drawWorld)
         {
             scene.Begin();

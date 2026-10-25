@@ -114,7 +114,8 @@ internal sealed record ShippedSceneManifest(SceneGenerator Generator, string? Na
         return new(new(generatorPath, helpers), NullablePath(json, "nativeDocumentPath"), Path(json, "nativeTiledManifestPath"),
             NullablePath(json, "buildingManifestPath"), NullablePath(json, "markerManifestPath"), NullablePath(json, "foliageManifestPath"),
             assetSelections, materials, placements, lights, roofs, water, foliage, windows, sequence, new(Path(policy, "sourcePolicyPath"), Path(policy, "nativePolicyPath"), probes),
-            new(Count("terrainFaces"), Count("placements"), Count("parts"), Count("lods"), Count("lights"), Count("roofs"), Count("waterRegions"), Count("foliageSamples"), Count("windows"), Count("sequenceSteps"))) { Limits = profile };
+            new(Count("terrainFaces"), Count("placements"), Count("parts"), Count("lods"), Count("lights"), Count("roofs"), Count("waterRegions"), Count("foliageSamples"), Count("windows"), Count("sequenceSteps")))
+        { Limits = profile };
     }
 
     static SceneWindow Window(JsonElement r)

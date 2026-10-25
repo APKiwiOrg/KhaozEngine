@@ -91,6 +91,8 @@ internal static partial class ShippedSceneGuardFixtures
     }
     static JsonObject Write(string root, string variant)
     {
+        bool wideRaster = variant == "foliage-wide-raster";
+        if (wideRaster) variant = "foliage-valid";
         bool roofHlod = variant.StartsWith("roof-hlod", StringComparison.Ordinal);
         bool roofShadows = variant != "roof-hlod-no-shadows";
         bool exitOverlap = variant == "roof-hlod-exit-overlap";
@@ -104,7 +106,7 @@ internal static partial class ShippedSceneGuardFixtures
         world.AddObject("column", 2, 2, 0, 0);
         if (variant == "coincident-valid") world.AddObject("column", 2, 2, 0, 0);
         bool cover = variant == "foliage-valid", waterScene = variant == "water-valid", lightScene = variant.StartsWith("light-", StringComparison.Ordinal);
-        if (cover) AddFoliageSource(world);
+        if (cover) AddFoliageSource(world, wideRaster ? 33 : 4);
         if (variant.StartsWith("marker-", StringComparison.Ordinal)) world.SetMarker("arrival", 1, 1, 0, ["first", "second"]);
         if (variant == "terrain-painted")
         {
@@ -215,7 +217,7 @@ internal static partial class ShippedSceneGuardFixtures
                 };
             }
         }
-        if (cover) AddFoliageNative(native, root);
+        if (cover) AddFoliageNative(native, root, wideRaster ? 33 : 4);
         if (variant.StartsWith("marker-", StringComparison.Ordinal)) WriteSceneMarkers(root, native, variant);
         File.WriteAllText(Path.Combine(root, "native.json"), MapDocumentFile.SaveText(native)); MapDocumentFile.SaveTiled(native, Path.Combine(root, "native-tiled"));
         var foliage = new GroundCoverRenderOptions { UseGpuBatches = true, FadeMode = GroundCoverFadeMode.HeightScale };

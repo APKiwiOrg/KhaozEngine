@@ -18,9 +18,14 @@ internal static partial class ShippedSceneWaterCoverage
         var settings = inputs.SourcePolicy.Water.ResolveInto(new WaterSettings(), new WaterSettings());
         double halo = .001 + WaterSurfaceDisplacement.MaximumHorizontal(new()
         {
-            WaveSource = settings.WaveSource, SwellAmplitude = settings.SwellAmplitude, SwellWavelength = settings.SwellWavelength,
-            SwellSteepness = settings.SwellSteepness, SwellDirectionDegrees = settings.SwellDirectionDegrees,
-            SwellSpreadDegrees = settings.SwellSpreadDegrees, SwellSpeed = settings.SwellSpeed, SwellSeed = settings.SwellSeed
+            WaveSource = settings.WaveSource,
+            SwellAmplitude = settings.SwellAmplitude,
+            SwellWavelength = settings.SwellWavelength,
+            SwellSteepness = settings.SwellSteepness,
+            SwellDirectionDegrees = settings.SwellDirectionDegrees,
+            SwellSpreadDegrees = settings.SwellSpreadDegrees,
+            SwellSpeed = settings.SwellSpeed,
+            SwellSeed = settings.SwellSeed
         });
         foreach (var mapping in inputs.Manifest.Water)
         {

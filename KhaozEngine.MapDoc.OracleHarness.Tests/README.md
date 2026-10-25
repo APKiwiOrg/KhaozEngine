@@ -713,6 +713,7 @@ before its complete typed frame values are compared.
 Submitted terrain triangles must cover their independently matched source faces without holes or overlap.
 Their positions and normals bind to the source plane. Decoded material slots and weights bind to source
 underlay, overlay cuts and the released legacy feather boundary, independently of render triangulation order.
+Decoded blend weights compare within 0.000001 after source boundary sampling and material-ID remapping.
 Submitted water meshes cover the source body's cell domains at its source level. Clip payloads cover the
 complete source cells in the source water policy's displacement halo, in the submitted anchor frame.
 Equal XZ area alone cannot certify either domain. Mesh and clip triangulation order may differ.
@@ -721,8 +722,12 @@ Equal XZ area alone cannot certify either domain. Mesh and clip triangulation or
 generation whose source model reach intersects the declared window and motion padding. Owners proven
 outside the legacy sampler's closed raster domain are excluded before generation. Empty generations
 inside that domain are retained regardless of density or eligibility. Selection uses only source
-layer settings and attested source model extents. Generation multisets, complete sample key multisets
-and per-generation row counts are checked in both directions. Source matrices, ranks, model bindings
+layer settings and attested source model extents.
+The source raster ownership interval is derived before enumeration using the legacy sampler's closed
+binary32 domain. Only in-raster owners charge the attested `foliageContext.maxChunkDescriptors` allowance
+(the released default when omitted). Empty in-raster owners still charge that allowance and stay required.
+Generation multisets, complete sample key multisets and per-generation row counts are checked in both
+directions. Source matrices, ranks, model bindings
 and padded bounds are checked against observed payloads. Both explicit plants and generated models compare every original part's
 albedo, normal, roughness and alpha cutoff. Hidden roof expectations retain Shadow, Sky and Physical
 while removing Colour, Selection and Camera. Camera and sky flags are checked independently.
@@ -853,7 +858,7 @@ point and are compared as actual anchor-local submission inputs. Scope probes wi
 Midpoint probes must retain complementary 0/1 LOD phases, never two opaque overlapping tiers.
 
 Geometry/translation tolerance is 0.00001 m, normal component and rotation-angle tolerance are
-0.000001. Other scalar bits remain exact. Streaming duplicates require identical payloads. Compare
+0.000001. Other frame scalar bits remain exact. Streaming duplicates require identical payloads. Compare
 canonical terrain/material/paint coverage independently of render-only triangulation order, every
 placement part/LOD/pose, selected/HLOD identities, full light owner/descriptors, four roof channels,
 water body/space/free regions/area/level with closed regions excluded, and foliage keys/matrices/ranks/

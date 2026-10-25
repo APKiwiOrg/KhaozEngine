@@ -123,15 +123,16 @@ internal sealed class MapMembershipPreparedGeometry
             Validated.Add(key, validated);
             var local = MapSurfaceCompiler.Compile(validated, mask, MapSurfaceCompiler.MaxFacesPerPatch);
             var compiled = MapEffectiveGeometry.TransformPatch(view, local);
-            var localCells = local.Faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key, g => g.OrderBy(f => f.Key).ToArray());
-            var worldCells = ReferenceEquals(local, compiled) ? localCells :
-                compiled.Faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key, g => g.OrderBy(f => f.Key).ToArray());
+            using var faceGroups = new MapMembershipFaceGroups(local, compiled, mask.Count);
+            var localCells = faceGroups.Local;
+            var worldCells = faceGroups.World;
             if (MapMembershipBuild.Current is { } build)
             {
                 build.Counts.PeakPatchBytes = Math.Max(build.Counts.PeakPatchBytes, 16L * patch.Width * patch.Depth);
                 build.Counts.PeakCompilerBytes = Math.Max(build.Counts.PeakCompilerBytes,
-                    checked(16L * patch.Width * patch.Depth + 1280L * local.Faces.Count +
-                        (ReferenceEquals(local, compiled) ? 0 : 3L * local.InventoryBytes)));
+                    Math.Max(checked(16L * patch.Width * patch.Depth + 1280L * local.Faces.Count +
+                        (ReferenceEquals(local, compiled) ? 0 : 3L * local.InventoryBytes)),
+                        checked(local.InventoryBytes + (ReferenceEquals(local, compiled) ? 0 : compiled.InventoryBytes) + faceGroups.WorkspaceBytes)));
             }
             for (int z = 0; z < patch.Depth; z++)
                 for (int x = 0; x < patch.Width; x++)

@@ -21,9 +21,10 @@ internal sealed class MapMembershipBuild : IDisposable
     }
     internal static MapPreparationReservation? Kernel(long bytes = 32768)
     {
-        var owner = t_current?._admission.Workspace();
-        owner?.Reserve(bytes);
-        return owner;
+        if (t_current is not { } build) return null;
+        var owner = build._admission.Workspace();
+        try { build._admission.BeforeGeometry(bytes, owner); return owner; }
+        catch { owner.Dispose(); throw; }
     }
     internal static void Coefficient(int bytes)
     {

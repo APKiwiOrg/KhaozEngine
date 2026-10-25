@@ -53,6 +53,7 @@ internal sealed class MapPrismValidationWorkspace : IDisposable
         current._scope.Reserve(bytes);
         current.Observe();
     }
+    internal static void ReserveContext(long bytes) => t_current?._admission.ReserveBytes(bytes);
     internal static MapPreparationReservation? Kernel(long vertices, long rows = 0)
     {
         var owner = t_current?._admission.Workspace();

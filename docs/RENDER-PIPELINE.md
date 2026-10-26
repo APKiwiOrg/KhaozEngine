@@ -215,7 +215,8 @@ opted-out frames skip building and upload. A zero count skips shader buffer read
 unreachable and the old dry frame unchanged.
 
 Set 0 appends `WaterVolumes` at binding 15 for rigid, foliage and CPU-skinned receivers, 7 for GPU-skinned,
-and 6 for splat and tile ground. The shared lighting block is read by all six base fragments
+and 6 for splat and tile ground. Appending preserves existing binding numbers.
+The shared lighting block is read by all six base fragments
 (`ModelFrag`, `ModelDissolveFrag`, `SkinnedModelFrag`, `SkinnedModelDissolveFrag`, `SplatFrag`, `TileGroundFrag`),
 including their motion and key-visibility variants. The `sampleKeyShadow(...)` call statements remain unchanged
 because generated key-visibility exports splice immediately after them. A binding joins a layout with its first
@@ -229,7 +230,8 @@ For a submerged receiver `P` at depth `h`, Snell refraction uses the still-water
 `n = 1.333`. With refracted travel direction `t`, the path is `L = h / cos(theta_water) = h / -t.y`, and entry
 `E = P - t * L`. Refraction models the receiver's own body only. Its entry uses the infinite still-water plane,
 without wave-displaced normals, and may lie beyond the rectangle where a bank can shadow it. The entry chooses
-its own cascade with `P`'s geometric normal offset and slope bias. Key diffuse and specular multiply by
+its own cascade with `P`'s geometric normal offset and slope bias. Refraction reduces the in-water part of a
+floater's bed-shadow displacement from `h * tan(theta_air)` to `h * tan(theta_water)`. Key diffuse and specular multiply by
 `exp(-AbsorptionPerMetre * L)`, including with shadows disabled. Ambient, indirect, fill, point lights, emissive
 and fog retain their values. The water pass's existing vertical-depth tint already darkens the view of deep
 beds, so attenuating ambient too would double-darken them. Key-only attenuation lowers shadow contrast with
@@ -237,15 +239,19 @@ depth against unchanged ambient.
 
 The opaque atlas retains the sun-facing near face of outward CCW meshes with orientation-preserving transforms
 on every backend, with clockwise fronts culled. The glTF loader preserves triangle order. A straddling floater's
-above-water face already shadows the entry lookup. Fully submerged rocks and cave roofs instead need a march
+above-water face already shadows the entry lookup. Reversed winding can retain the opposite face instead,
+which the same depth bands also test. Fully submerged rocks and cave roofs instead need a march
 from `E` to `P`: four jittered depth slices, one point-depth comparison per slice before cascade blending.
+A single lookup at `P` would follow the dry direction through the whole depth and restore the dry shadow offset.
 Each texel reconstructs its stored caster's height on its own snapped light ray, counting it only below the
 surface and in the slice's height band. Non-horizontal slices share world-height boundaries so widened rays
 cannot open gaps through a roof. Reconstruction divides by the orthographic basis rows' squared lengths,
-which stay nonzero at every light elevation. A separate light-depth comparison excludes casters past horizontal
-endpoints. The last slice ends on the receiver's geometric plane with its normal offset and depth bias.
-Its signed comparison divides by neither elevation nor plane slope, so the march stays finite at horizontal
-light and tilted receivers avoid self-shadow. Shared per-pixel interleaved-gradient-noise jitter moves internal
+which stay nonzero at every light elevation. Internal height-band endpoints are inclusive so horizontal rays
+can occlude. A separate light-depth comparison excludes casters past horizontal endpoints.
+The last slice ends on the receiver's geometric plane with its normal offset and depth bias.
+For a ray parallel to that plane, the light-depth endpoint test still applies. The signed comparison divides
+by neither elevation nor plane slope, so the march stays finite at horizontal light and tilted receivers avoid
+self-shadow. Shared per-pixel interleaved-gradient-noise jitter moves internal
 boundaries by up to half a slice, without gaps. The final end stays on the biased receiver and the widest end
 band is at most `1.5 * h / 4` deep. TAA resolves the jitter.
 
@@ -260,8 +266,12 @@ The entry kernel uses exactly 16 point comparisons at every radius before cascad
 the dry bilinear 3x3 filter's weighted 4x4 footprint, using
 `radiusTexels = min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)` in each selected cascade. Over the first
 texel of widening, tap positions and weights morph into a centred, stratified equal-weight disc pattern.
-Noise-driven rotation and positional jitter grow from zero. Taps clamp within their cascade's atlas column,
-compare stored point depths first and weight afterward. Added displacement follows the horizontal entry plane
+This keeps all 16 comparisons useful. Rotating the dry filter instead leaves nine effective taps whose
+phase-dependent variance can expose an otherwise shadowed hull edge.
+The fully widened pattern stays inside its nominal radius rather than stretching the folded dry fringe beyond it.
+Noise-driven rotation and positional jitter grow from zero. TAA jitters the receiver against this screen-fixed
+pattern. Taps clamp within their cascade's atlas column, compare stored point depths first and weight afterward.
+Added displacement follows the horizontal entry plane
 at the actual snapped, clamped texel relative to its original dry tap, so widening cannot move outer comparisons
 above shallow casters. This is one kernel family. Blending separate dry and disc results would double the cost
 over shallow water, where most submerged pixels are. The four march rays spread with the same radius, converted

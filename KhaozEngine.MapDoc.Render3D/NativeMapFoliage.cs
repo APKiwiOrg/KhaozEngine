@@ -93,11 +93,13 @@ public static class NativeMapFoliage
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
         using var activation = admission.Enter();
         using var preparation = admission.BeginPreparation();
+        List<MapFoliageColumnOwner.Reader>? columnSources = null;
+        bool transferred = false;
         try
         {
             admission.ReserveBytes(checked(512L + 128L * samples.Count + 128L * scene.Placements.Count));
             var groups = new List<MapNativeFoliageGroup>();
-            var identities = new List<MapFoliageSampleKey>();
+            columnSources = new List<MapFoliageColumnOwner.Reader>();
             var generations = new List<MapFoliageGenerationKey>();
             var explicitIds = new List<string>();
             var owners = new HashSet<string>(scene.Placements.Select(p => p.PlacementId), StringComparer.Ordinal);
@@ -107,19 +109,23 @@ public static class NativeMapFoliage
                 using var handoffPreparation = admission.BeginPreparation();
                 if (source.Status != MapFoliageStatus.Complete || !keys.Add(new(source.LayerId, source.Chunk)))
                     throw new MapDocumentException("Native foliage needs unique complete generated batches.");
-                admission.ReserveBytes(checked(512L + 4 * source.Work.RetainedBytes + 512L * source.Samples.Count));
+                admission.ReserveBytes(512);
                 generations.Add(new(source.LayerId, source.Chunk, source.DependencyDigest));
                 string owner = FormattableString.Invariant($"{source.LayerId}/{source.Chunk.X}/{source.Chunk.Z}");
                 if (!owners.Add(owner)) throw new MapDocumentException("Generated foliage owner conflicts with a placement or generated batch.");
                 var handoff = MapFoliageRenderHandoff.Create(source, policy.Extents.Values.ToArray());
                 if (handoff.Status != MapFoliageStatus.Complete) throw new MapDocumentException("Native foliage has no complete model extent handoff.");
-                identities.AddRange(source.Samples.Select(s => s.Key));
                 if (handoff.Bounds is not { } bounds)
-                { handoffPreparation.Complete(checked(8L + 64L * source.Samples.Count)); continue; }
-                var cover = new GroundCoverBatch(source.Samples.Select(s => new GroundCoverInstance(s.AssetId, s.Position, s.Transform, s.ThinningRank)).ToArray());
-                var group = Group(owner, cover, bounds, policy);
+                { handoffPreparation.Complete(8); continue; }
+                var compact = MapFoliageInstanceImport.Create(source, admission.ReserveBytes, admission.ReleaseUnusedBytes);
+                long view = checked(104L + 64L + MapFoliageInventory.Array((compact.Count + 127) / 128, 16) + 256L + 192L * compact.Columns.ModelCount);
+                admission.ReserveBytes(view);
+                var columns = new MapFoliageColumnOwner(compact);
+                var reader = columns.Retain(); columns.Release(); columnSources.Add(reader);
+                var cover = new GroundCoverBatch(reader);
+                var group = Group(owner, cover, bounds, policy, instances: reader);
                 groups.Add(group);
-                handoffPreparation.Complete(checked(264L + 64L * source.Samples.Count + 240L * cover.Count + 128L * group.Models.Length));
+                handoffPreparation.Complete(checked(8L + compact.Work.RetainedBytes + view));
             }
             foreach (var placement in scene.Placements)
             {
@@ -133,7 +139,7 @@ public static class NativeMapFoliage
                 var cover = new GroundCoverBatch(new[] { new GroundCoverInstance(placement.AssetId, transform.Translation, transform, 0) });
                 var bounds = ExplicitBounds(policy.Extents[placement.AssetId], transform, anchor);
                 groups.Add(Group(placement.PlacementId, cover, bounds, policy, explicitlyPlaced: true, anchorOverride: anchor));
-                placementPreparation.Complete(checked(264L + 240L * cover.Count + 128L * groups[^1].Models.Length));
+                placementPreparation.Complete(checked(264L + 240L * cover.Count + 128L * groups[^1].Models.Count));
             }
             var parts = new List<MapNativeFoliagePart>();
             foreach (string id in groups.SelectMany(g => g.Cover.Select(i => i.ModelId)).Distinct(StringComparer.Ordinal))
@@ -157,23 +163,33 @@ public static class NativeMapFoliage
                     copyPreparation.Complete(checked(256L + bytes));
                 }
             }
-            admission.ReserveBytes(checked(512L + 16L * (groups.Count + parts.Count + identities.Count + explicitIds.Count + generations.Count)));
-            var result = new MapNativeFoliageBatch(scene.Witness, routing, policy, groups, parts, identities, explicitIds, generations, 0);
+            admission.ReserveBytes(checked(512L + 16L * (groups.Count + parts.Count + columnSources.Count + explicitIds.Count + generations.Count)));
+            var result = new MapNativeFoliageBatch(scene.Witness, routing, policy, groups, parts, columnSources, explicitIds, generations, 0);
             result.Own(preparation.Complete(result.RetainedBytes));
+            transferred = true;
             return result;
         }
         catch (MapSceneCapacityException error) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, error.Message, error); }
+        finally { if (!transferred && columnSources is not null) foreach (var source in columnSources) source.Dispose(); }
     }
 
-    static MapNativeFoliageGroup Group(string owner, GroundCoverBatch cover, MapBox3 bounds, NativeFoliagePolicy policy, bool explicitlyPlaced = false, MapSubmissionAnchor? anchorOverride = null)
+    static MapNativeFoliageGroup Group(string owner, GroundCoverBatch cover, MapBox3 bounds, NativeFoliagePolicy policy,
+        bool explicitlyPlaced = false, MapSubmissionAnchor? anchorOverride = null, MapFoliageColumnOwner.Reader? instances = null)
     {
-        var models = new List<string>(); var indices = new int[cover.Count];
-        var lookup = new Dictionary<string, int>(StringComparer.Ordinal);
-        for (int i = 0; i < cover.Count; i++)
+        IReadOnlyList<string> models;
+        int[]? indices = null;
+        if (instances is not null) models = new MapFoliageColumnOwner.ModelIds(instances);
+        else
         {
-            if (!lookup.TryGetValue(cover[i].ModelId, out int index))
-            { index = models.Count; lookup.Add(cover[i].ModelId, index); models.Add(cover[i].ModelId); }
-            indices[i] = index;
+            var selected = new List<string>(); indices = new int[cover.Count];
+            var lookup = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (int i = 0; i < cover.Count; i++)
+            {
+                if (!lookup.TryGetValue(cover[i].ModelId, out int index))
+                { index = selected.Count; lookup.Add(cover[i].ModelId, index); selected.Add(cover[i].ModelId); }
+                indices[i] = index;
+            }
+            models = selected.ToArray();
         }
         if (explicitlyPlaced != anchorOverride.HasValue) throw new MapDocumentException("Explicit foliage requires its precise submission anchor.");
         var anchor = anchorOverride ?? new MapSubmissionAnchor(checked((long)Math.Floor(cover.Min(i => (double)i.Transform.M41))),
@@ -190,11 +206,11 @@ public static class NativeMapFoliage
                 foreach (float value in new[] { m.M11, m.M12, m.M13, m.M14, m.M21, m.M22, m.M23, m.M24,
                     m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44, cover[i].ThinningRank })
                     w.WriteNumberValue(BitConverter.SingleToInt32Bits(value));
-                w.WriteNumberValue(indices[i]);
+                w.WriteNumberValue(instances is not null ? instances.Columns.ModelIndex(i) : indices![i]);
             }
             w.WriteEndArray();
         });
-        return new(owner, anchor, bounds, cover, models.ToArray(), indices, explicitlyPlaced, models.Any(id => policy.Models[id].CastShadows), digest);
+        return new(owner, anchor, bounds, cover, models, indices, explicitlyPlaced, models.Any(id => policy.Models[id].CastShadows), digest, instances);
     }
     // Use the submitted local matrix for cosmetic bounds, adding the integer anchor only in binary64.
     static MapBox3 ExplicitBounds(MapFoliageModelExtent extent, Matrix4x4 local, MapSubmissionAnchor anchor)

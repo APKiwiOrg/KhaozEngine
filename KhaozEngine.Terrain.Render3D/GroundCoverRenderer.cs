@@ -154,7 +154,7 @@ public static partial class GroundCoverRenderer
                 i = batch.SkipOutside(i, focus, radius2);
                 if (i == cover.Count) break;
             }
-            GroundCoverInstance instance = batch is null ? cover[i] : batch.Items[i];
+            GroundCoverInstance instance = batch is null ? cover[i] : batch[i];
             if (instance.ThinningRank < 0f || instance.ThinningRank >= options.QualityDensity) continue;
             float dx = instance.Position.X - focus.X;
             float dz = instance.Position.Z - focus.Z;

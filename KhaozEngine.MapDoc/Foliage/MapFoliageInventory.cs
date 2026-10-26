@@ -6,8 +6,8 @@ namespace KhaozEngine.MapDoc.Foliage;
 /// <summary>Separate retained full samples, compact columns and simultaneous construction storage.</summary>
 internal static class MapFoliageInventory
 {
-    internal const long InstanceControl = 56, InstanceBatchControl = 104, WorkControl = 80;
-    internal const long BuilderControl = 104, ColumnBudgetControl = 40, OrdinalControl = 48;
+    internal const long InstanceControl = 56, InstanceBatchControl = 112, WorkControl = 80;
+    internal const long BuilderControl = 104, ColumnBudgetControl = 56, OrdinalControl = 48;
     internal const long FrozenControls = InstanceControl + InstanceBatchControl + WorkControl;
     internal const long ConstructionControls = BuilderControl + ColumnBudgetControl + 2 * OrdinalControl;
     internal static long FullSamples(IReadOnlyList<MapFoliageSampleBatch> batches)
@@ -39,6 +39,21 @@ internal static class MapFoliageInventory
 
     internal static long Text(string text) => Align(checked(22L + 2L * text.Length));
     static long Align(long bytes) => checked(bytes + 7) & ~7L;
+
+    internal static long InstanceMetadata(string layer, MapFoliagePolicy? policy, string digest, ReadOnlySpan<string> models,
+        ReadOnlySpan<string?> supports, ReadOnlySpan<MapFoliageSampleKey> keys, int capacity)
+    {
+        var seen = new HashSet<object>(capacity, ReferenceEqualityComparer.Instance);
+        long bytes = 0;
+        void String(string? value) { if (value is not null && seen.Add(value)) bytes = checked(bytes + Text(value)); }
+        void Policy(MapFoliagePolicy? value)
+        { if (value is not null && seen.Add(value)) { bytes = checked(bytes + 32); String(value.Id); } }
+        String(layer); Policy(policy); String(digest);
+        foreach (var id in models) String(id);
+        foreach (var id in supports) String(id);
+        foreach (var key in keys) { String(key.Address.LayerId); String(key.Address.SupportOwnerId); Policy(key.Policy); }
+        return bytes;
+    }
 
     sealed class FullGraph
     {

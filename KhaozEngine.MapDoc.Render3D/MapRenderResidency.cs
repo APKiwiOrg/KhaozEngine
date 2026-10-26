@@ -312,7 +312,7 @@ public sealed partial class MapRenderResidency : IDisposable
             _recording.Reset(sink, _acceptedReferences);
             var plans = _accepted?.Plans;
             if (plans is null) return;
-            foreach (var plan in plans) plan.Register(_recording);
+            foreach (var plan in plans) plan.RegisterResident(_recording);
             foreach (var plan in plans) plan.Record(frame, _recording);
         }
     }

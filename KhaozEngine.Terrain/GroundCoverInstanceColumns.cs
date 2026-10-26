@@ -5,6 +5,13 @@ using System.Numerics;
 
 namespace KhaozEngine.Terrain;
 
+/// <summary>A synchronous borrow through a live owner. Views retain this owner, never its raw arrays.</summary>
+internal interface IGroundCoverInstanceSource
+{
+    int Count { get; }
+    GroundCoverInstanceColumns Columns { get; }
+}
+
 /// <summary>Immutable original instance columns. Public buffer boundaries are detached snapshots.</summary>
 public sealed class GroundCoverInstanceColumns
 {

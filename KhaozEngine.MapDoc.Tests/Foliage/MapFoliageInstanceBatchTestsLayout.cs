@@ -16,9 +16,9 @@ public sealed class MapFoliageInstanceBatchTestsLayout
         (Type Type, long Bytes)[] layouts =
         [
             (typeof(GroundCoverInstanceColumns), 56),
-            (typeof(MapFoliageInstanceBatch), 104),
+            (typeof(MapFoliageInstanceBatch), 112),
             (typeof(MapFoliageWork), 80),
-            (typeof(MapFoliageColumnBudget), 40),
+            (typeof(MapFoliageColumnBudget), 56),
             (typeof(MapFoliageOrdinalTable), 48),
             (typeof(MapFoliageInstanceBuilder), 104),
         ];

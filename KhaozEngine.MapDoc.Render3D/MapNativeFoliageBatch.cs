@@ -13,43 +13,67 @@ namespace KhaozEngine.MapDoc.Render3D;
 
 internal sealed record MapNativeFoliagePart(MapRenderKey Key, MapBox3 Bounds, MapRigidResource Payload, string Digest);
 internal sealed record MapNativeFoliageGroup(string OwnerId, MapSubmissionAnchor Anchor, MapBox3 Bounds,
-    GroundCoverBatch Cover, string[] Models, int[] Indices, bool Explicit, bool CastsShadows, string Digest);
+    GroundCoverBatch Cover, IReadOnlyList<string> Models, int[]? ExplicitIndices, bool Explicit, bool CastsShadows, string Digest,
+    MapFoliageColumnOwner.Reader? Instances = null)
+{
+    internal ReadOnlyMemory<int> Indices => Instances is { } source ? source.Columns.BorrowModelIndices : ExplicitIndices!;
+}
 
 /// <summary>Exact CPU foliage inventory and typed registrations. Prepared GPU publication belongs to the renderer.</summary>
 public sealed class MapNativeFoliageBatch : IDisposable
 {
     readonly MapSceneWitness _witness;
     readonly NativeFoliagePolicy _policy;
-    readonly MapNativeFoliageGroup[] _groups;
-    readonly MapNativeFoliagePart[] _parts;
+    MapNativeFoliageGroup[] _groups;
+    MapNativeFoliagePart[] _parts;
+    MapFoliageColumnOwner.Reader[] _sources;
+    readonly int _identityCount;
     MapPreparedInputLease? _input;
     MapResourceStamp? _stamp;
     MapPreparedResource[]? _registrations;
     bool _disposed;
     public MapPlacementRouting Routing { get; }
-    public IReadOnlyList<MapFoliageSampleKey> GeneratedIdentities { get; }
+    public IReadOnlyList<MapFoliageSampleKey> GeneratedIdentities
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var keys = new MapFoliageSampleKey[_identityCount]; int at = 0;
+            foreach (var source in _sources)
+                for (int i = 0; i < source.Count; i++) keys[at++] = source.Batch.Key(i);
+            return Array.AsReadOnly(keys);
+        }
+    }
     public IReadOnlyList<string> ExplicitIds { get; }
     public IReadOnlyList<MapFoliageGenerationKey> GenerationKeys { get; }
-    public IReadOnlyList<GroundCoverBatch> CoverBatches { get; }
+    public IReadOnlyList<GroundCoverBatch> CoverBatches
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return Array.AsReadOnly(_groups.Select(g => new GroundCoverBatch(g.Cover.ToArray())).ToArray());
+        }
+    }
     public MapBox3? Bounds { get; }
     public string RenderDigest { get; }
     internal MapPreparationReservation? PreparationOwnership { get; private set; }
     internal void Own(MapPreparationReservation ownership)
     { PreparationOwnership = ownership; PreparationChargeBytes = ownership.Bytes; }
     public long PreparationChargeBytes { get; private set; }
-    public long RetainedBytes => checked(512L + 64L * GeneratedIdentities.Count + 8L * (ExplicitIds.Count + GenerationKeys.Count) +
-        _parts.Sum(p => 256L + MapNativeInventory.Mesh(p.Payload.BorrowMesh, p.Payload.BorrowMaps)) +
-        _groups.Sum(g => 256L + 240L * g.Cover.Count + 128L * g.Models.Length));
+    public long RetainedBytes { get; }
     public long InputRetainedBytes => _input?.RetainedBytes ?? 0;
     internal void AttachInput(MapPreparedInputLease input) => _input = input;
     internal MapNativeFoliageBatch(MapSceneWitness witness, MapPlacementRouting routing, NativeFoliagePolicy policy,
         IReadOnlyList<MapNativeFoliageGroup> groups, IReadOnlyList<MapNativeFoliagePart> parts,
-        IReadOnlyList<MapFoliageSampleKey> identities, IReadOnlyList<string> explicitIds,
+        IReadOnlyList<MapFoliageColumnOwner.Reader> sources, IReadOnlyList<string> explicitIds,
         IReadOnlyList<MapFoliageGenerationKey> generations, long charge)
     {
         _witness = witness; Routing = routing; _policy = policy; _groups = groups.ToArray(); _parts = parts.ToArray();
-        GeneratedIdentities = Array.AsReadOnly(identities.ToArray()); ExplicitIds = Array.AsReadOnly(explicitIds.ToArray());
-        GenerationKeys = Array.AsReadOnly(generations.ToArray()); CoverBatches = Array.AsReadOnly(_groups.Select(g => g.Cover).ToArray());
+        _sources = sources.ToArray(); _identityCount = _sources.Sum(s => s.Count);
+        ExplicitIds = Array.AsReadOnly(explicitIds.ToArray()); GenerationKeys = Array.AsReadOnly(generations.ToArray());
+        RetainedBytes = checked(512L + 8L * (ExplicitIds.Count + GenerationKeys.Count) + _sources.Sum(s => s.PlanBytes + 104L) +
+            _parts.Sum(p => 256L + MapNativeInventory.Mesh(p.Payload.BorrowMesh, p.Payload.BorrowMaps)) +
+            _groups.Sum(g => 256L + (g.Instances is null ? 240L * g.Cover.Count + 128L * g.Models.Count : g.Cover.RetainedViewBytes + 192L * g.Models.Count)));
         PreparationChargeBytes = charge;
         foreach (var group in groups) Bounds = Bounds?.Union(group.Bounds) ?? group.Bounds;
         RenderDigest = MapPlacementDigest.Hash(w =>
@@ -71,7 +95,9 @@ public sealed class MapNativeFoliageBatch : IDisposable
             w.WriteStringValue(stamp.PolicyDigest); w.WriteNumberValue(stamp.Generation); w.WriteEndArray();
         });
     }
-    public void Register(MapResourceStamp stamp, IMapDrawSink sink)
+    public void Register(MapResourceStamp stamp, IMapDrawSink sink) => Register(stamp, sink, true);
+    internal void RegisterResident(MapResourceStamp stamp, IMapDrawSink sink) => Register(stamp, sink, false);
+    void Register(MapResourceStamp stamp, IMapDrawSink sink, bool detached)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(stamp); ArgumentNullException.ThrowIfNull(sink);
@@ -93,10 +119,16 @@ public sealed class MapNativeFoliageBatch : IDisposable
             {
                 var models = group.Models.Select(id => new MapFoliageModelBinding(id, references[id],
                     _policy.Models[id].Motion, _policy.Models[id].CastShadows)).ToArray();
-                var transforms = group.Cover.Select(i => i.Transform).ToArray();
-                var ranks = group.Cover.Select(i => i.ThinningRank).ToArray();
-                var payload = group.Explicit ? MapFoliageResource.FromAnchorLocal(group.Anchor, transforms, ranks, group.Indices, models)
-                    : new MapFoliageResource(group.Anchor, transforms, ranks, group.Indices, models);
+                MapFoliageResource payload;
+                if (group.Instances is { } source) payload = MapFoliageResource.FromResident(group.Anchor, source, models);
+                else
+                {
+                    var transforms = group.Cover.Select(i => i.Transform).ToArray();
+                    var ranks = group.Cover.Select(i => i.ThinningRank).ToArray();
+                    payload = group.Explicit ? MapFoliageResource.FromAnchorLocal(group.Anchor, transforms, ranks, group.Indices, models)
+                        : new MapFoliageResource(group.Anchor, transforms, ranks, group.Indices, models);
+                    payload.MarkResident();
+                }
                 var key = new MapRenderKey(MapRenderKind.Foliage, group.OwnerId, "instances", 0);
                 string digest = MapPlacementDigest.Hash(w =>
                 {
@@ -116,7 +148,8 @@ public sealed class MapNativeFoliageBatch : IDisposable
             }
             _registrations = resources.ToArray(); _stamp = stamp;
         }
-        foreach (var resource in _registrations) sink.Register(resource);
+        foreach (var resource in _registrations) sink.Register(detached && resource.Payload is MapFoliageResource foliage
+            ? resource with { Payload = foliage.Detached() } : resource);
     }
     public void Record(MapFrameState frame, IMapDrawSink sink)
     {
@@ -150,5 +183,16 @@ public sealed class MapNativeFoliageBatch : IDisposable
                 MapExactValue.FromSingle(interactor.Position.Y), MapExactValue.FromSingle(interactor.Position.Z)), anchor)
         };
     }
-    public void Dispose() { if (_disposed) return; _disposed = true; _input?.Dispose(); PreparationOwnership?.Dispose(); }
+    public void Dispose()
+    {
+        if (_disposed) return; _disposed = true;
+        if (_registrations is not null)
+            foreach (var resource in _registrations)
+                if (resource.Payload is MapFoliageResource foliage) foliage.ReleaseResident();
+        foreach (var group in _groups) group.Cover.ReleaseResident();
+        _registrations = null; _groups = []; _parts = [];
+        foreach (var source in _sources) source.Dispose();
+        _sources = []; var input = _input; _input = null; input?.Dispose();
+        PreparationOwnership?.Dispose(); PreparationOwnership = null;
+    }
 }

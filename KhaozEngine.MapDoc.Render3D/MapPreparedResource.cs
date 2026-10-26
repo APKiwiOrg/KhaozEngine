@@ -70,22 +70,24 @@ public sealed class MapFoliageModelBinding
 /// <summary>World rows retain generated matrix bits. AnchorLocal rows are already reduced and must not be reduced again.</summary>
 public enum MapFoliageTransformSpace { World, AnchorLocal }
 
-public sealed class MapFoliageResource : MapResourcePayload
+public sealed partial class MapFoliageResource : MapResourcePayload
 {
-    readonly Matrix4x4[] _transforms;
-    readonly float[] _ranks;
-    readonly int[] _indices;
+    Matrix4x4[]? _transforms;
+    float[]? _ranks;
+    int[]? _indices;
     public MapSubmissionAnchor Anchor { get; }
     public MapFoliageTransformSpace TransformSpace { get; }
     public ReadOnlyMemory<Matrix4x4> WorldTransforms => RequireSpace(MapFoliageTransformSpace.World).ToArray();
     public ReadOnlyMemory<Matrix4x4> AnchorLocalTransforms => RequireSpace(MapFoliageTransformSpace.AnchorLocal).ToArray();
-    public ReadOnlyMemory<float> Ranks => _ranks.ToArray();
-    public ReadOnlyMemory<int> ModelIndices => _indices.ToArray();
-    public IReadOnlyList<MapFoliageModelBinding> Models { get; }
+    public ReadOnlyMemory<float> Ranks => BorrowRanks.ToArray();
+    public ReadOnlyMemory<int> ModelIndices => BorrowModelIndices.ToArray();
+    public IReadOnlyList<MapFoliageModelBinding> Models { get; private set; }
     internal ReadOnlyMemory<Matrix4x4> BorrowWorldTransforms => RequireSpace(MapFoliageTransformSpace.World);
     internal ReadOnlyMemory<Matrix4x4> BorrowAnchorLocalTransforms => RequireSpace(MapFoliageTransformSpace.AnchorLocal);
-    internal ReadOnlyMemory<float> BorrowRanks => _ranks;
-    internal ReadOnlyMemory<int> BorrowModelIndices => _indices;
+    internal ReadOnlyMemory<float> BorrowRanks
+    { get { RequireLive(); return _source is { } source ? source.Columns.BorrowRanks : _ranks!; } }
+    internal ReadOnlyMemory<int> BorrowModelIndices
+    { get { RequireLive(); return _source is { } source ? source.Columns.BorrowModelIndices : _indices!; } }
 
     public MapFoliageResource(MapSubmissionAnchor anchor, ReadOnlyMemory<Matrix4x4> worldTransforms,
         ReadOnlyMemory<float> ranks, ReadOnlyMemory<int> modelIndices, IReadOnlyList<MapFoliageModelBinding> models)
@@ -96,8 +98,12 @@ public sealed class MapFoliageResource : MapResourcePayload
         ReadOnlyMemory<float> ranks, ReadOnlyMemory<int> modelIndices, IReadOnlyList<MapFoliageModelBinding> models) =>
         new(anchor, localTransforms, ranks, modelIndices, models, MapFoliageTransformSpace.AnchorLocal);
 
-    ReadOnlyMemory<Matrix4x4> RequireSpace(MapFoliageTransformSpace expected) => TransformSpace == expected ? _transforms :
-        throw new InvalidOperationException("Read foliage transforms in their declared coordinate space.");
+    ReadOnlyMemory<Matrix4x4> RequireSpace(MapFoliageTransformSpace expected)
+    {
+        RequireLive();
+        if (TransformSpace != expected) throw new InvalidOperationException("Read foliage transforms in their declared coordinate space.");
+        return _source is { } source ? source.Columns.BorrowTransforms : _transforms!;
+    }
 
     MapFoliageResource(MapSubmissionAnchor anchor, ReadOnlyMemory<Matrix4x4> transforms,
         ReadOnlyMemory<float> ranks, ReadOnlyMemory<int> modelIndices, IReadOnlyList<MapFoliageModelBinding> models, MapFoliageTransformSpace space)
@@ -105,10 +111,7 @@ public sealed class MapFoliageResource : MapResourcePayload
         ArgumentNullException.ThrowIfNull(models);
         Anchor = anchor; TransformSpace = space; _transforms = transforms.ToArray(); _ranks = ranks.ToArray(); _indices = modelIndices.ToArray();
         Models = Array.AsReadOnly(models.ToArray());
-        if (_transforms.Length != _ranks.Length || _indices.Length != _ranks.Length || Models.Any(m => m is null) ||
-            Models.Select(m => m.ModelId).Distinct(StringComparer.Ordinal).Count() != Models.Count ||
-            _indices.Any(i => i < 0 || i >= Models.Count) || _ranks.Any(r => !float.IsFinite(r) || r < 0 || r > 1))
-            throw new ArgumentException("Foliage rows require equal lengths, finite ranks and valid model bindings.");
+        ValidateRows();
     }
 }
 

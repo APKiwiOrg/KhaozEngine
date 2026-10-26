@@ -7,8 +7,9 @@ namespace KhaozEngine.MapDoc.Foliage;
 internal sealed class MapFoliageInstanceBatch
 {
     readonly GroundCoverInstanceColumns? _columns;
-    readonly int[] _x, _z, _supportIndices;
-    readonly string?[] _supports;
+    readonly int[]? _x, _z, _supportIndices;
+    readonly string?[]? _supports;
+    readonly MapFoliageSampleKey[]? _fullKeys;
     readonly MapFoliagePolicy? _policy;
     internal string LayerId { get; }
     internal MapFoliageChunkKey Chunk { get; }
@@ -20,19 +21,20 @@ internal sealed class MapFoliageInstanceBatch
     internal GroundCoverInstanceColumns Columns => _columns ?? throw new InvalidOperationException("No complete compact product.");
     internal MapFoliagePolicy Policy => _policy ?? throw new InvalidOperationException("No complete compact product.");
     internal ReadOnlySpan<string?> SupportIds => _supports;
-    internal MapFoliageSampleKey Key(int index) => new(new(LayerId, _supports[_supportIndices[index]], _x[index], _z[index]), DistributionVersion, Policy);
+    internal MapFoliageSampleKey Key(int index) => _fullKeys is not null ? _fullKeys[index] :
+        new(new(LayerId, _supports![_supportIndices![index]], _x![index], _z![index]), DistributionVersion, Policy);
 
     internal MapFoliageInstanceBatch(string layerId, MapFoliageChunkKey chunk, MapFoliageStatus status, MapFoliageWork work)
     {
         LayerId = layerId; Chunk = chunk; Status = status; Work = work; DependencyDigest = "";
         _x = []; _z = []; _supportIndices = []; _supports = [];
     }
-    internal MapFoliageInstanceBatch(string layerId, MapFoliageChunkKey chunk, string digest, MapFoliagePolicy policy,
-        GroundCoverInstanceColumns columns, int[] x, int[] z, int[] supportIndices, string?[] supports, MapFoliageWork work,
-        int distributionVersion = 1)
+    internal MapFoliageInstanceBatch(string layerId, MapFoliageChunkKey chunk, string digest, MapFoliagePolicy? policy,
+        GroundCoverInstanceColumns columns, int[]? x, int[]? z, int[]? supportIndices, string?[]? supports, MapFoliageWork work,
+        int distributionVersion = 1, MapFoliageSampleKey[]? fullKeys = null)
     {
         LayerId = layerId; Chunk = chunk; Status = MapFoliageStatus.Complete; DependencyDigest = digest;
         _policy = policy; _columns = columns; _x = x; _z = z; _supportIndices = supportIndices; _supports = supports;
-        Work = work; DistributionVersion = distributionVersion;
+        Work = work; DistributionVersion = distributionVersion; _fullKeys = fullKeys;
     }
 }

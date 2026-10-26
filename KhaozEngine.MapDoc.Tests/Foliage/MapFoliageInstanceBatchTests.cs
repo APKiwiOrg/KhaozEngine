@@ -154,8 +154,8 @@ public sealed class MapFoliageInstanceBatchTests
         Assert.Equal(new[] { "first", "second", "first" }, Enumerable.Range(0, 3).Select(i => batch.Key(i).Address.SupportOwnerId));
         Assert.Equal(new[] { 2, 3, 3, 3, 3 }, Arrays(batch.Columns));
         Assert.Equal(new[] { 2, 3, 3, 3 }, Arrays(batch));
-        // Seven row arrays plus two tables 560, frozen controls 240, policy and distinct retained text 296.
-        Assert.Equal(1096, batch.Work.RetainedBytes);
+        // Seven row arrays plus two tables 560, frozen controls 248, policy and distinct retained text 296.
+        Assert.Equal(1104, batch.Work.RetainedBytes);
         Assert.Throws<InvalidOperationException>(() => builder.TryPrepare("first", "A"));
         Assert.Throws<InvalidOperationException>(() => builder.Freeze("again", work));
         builder.Dispose();

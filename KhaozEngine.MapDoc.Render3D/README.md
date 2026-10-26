@@ -31,13 +31,24 @@ Emissive/occlusion textures and nonempty material extensions refuse before model
 returned maps cannot represent them. Compatibility glTF and flattened native loading keep their
 released lenient behavior.
 
-`MapPreparedResource` carries copied immutable registration payloads. `MapDrawRecord` carries explicit
+Public `MapPreparedResource` registrations carry detached immutable payloads. Internal plans and recordings
+borrow generated foliage columns through live owners instead of copying per-row transforms, ranks or identities.
+Public cover and identity snapshots remain detached and usable after batch disposal. Nonuniform imported sample
+keys retain a complete charged key array, including each original policy and distribution version.
+`MapDrawRecord` carries explicit
 anchor-local transform and focus, channels and exactly one typed frame. `MapDrawRecorder` records these
 without a device. Frozen water and foliage policies capture the caller's mutable objects. Foliage model
 profiles and casting resolve into registration. Per-frame draw options exclude those stable values.
 Each foliage instance owner hashes only its own rows and resolved model bindings. Overlapping windows share
 one upload and submission for a complete generated chunk or explicit plant. Window stamps and batch witnesses
 remain alias provenance, so changing another group does not replace unchanged instance owners.
+
+Generated cover views retain range bounds over 128 rows and project their original instance values. Registration
+binds immutable render policy separately from those columns. Full diagnostic samples and explicit plants retain
+their public behavior. The latter keep precise anchor-local matrices and bypass generated density thinning.
+Upload measurement borrows rows synchronously. After the full upload reservation is granted, `BeginUpload`
+detaches transform, rank and model-index inputs. Renderer snapshots keep their existing F1 settlement and retirement
+ownership independently of preparation columns.
 
 `NativeMapTerrain.Prepare(scene, input, materialIds)` consumes the scene's acquired canonical faces and
 effective paint regions. `MapTerrainRenderBatch.Register` registers typed `MapTerrainResource` payloads.

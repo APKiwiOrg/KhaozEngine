@@ -15,7 +15,7 @@ namespace KhaozEngine.MapDoc.Render3D;
 /// <summary>A complete immutable window inventory. Successful preparation takes the caller's selected input lease.</summary>
 public sealed class MapRenderPlan : IDisposable
 {
-    readonly MapPreparedResource[] _resources;
+    MapPreparedResource[] _resources;
     readonly MapDrawRecord[] _lights;
     MapRenderContextLease? _contextOwner;
     bool _disposed;
@@ -80,7 +80,7 @@ public sealed class MapRenderPlan : IDisposable
             {
                 admission.ReserveBytes(checked(128L * scene.EffectiveLights.Count));
                 var recorder = new MapDrawRecorder();
-                terrain.Register(stamp, recorder); placements.Register(stamp, recorder); water.Register(stamp, recorder); foliage.Register(stamp, recorder);
+                terrain.Register(stamp, recorder); placements.Register(stamp, recorder); water.Register(stamp, recorder); foliage.RegisterResident(stamp, recorder);
                 var point = new MapFramePoint(WorldFrame.Origin, default);
                 NativeMapLights.Record(scene, new(WorldFrame.Origin, point, MapRoofMode.AlwaysVisible, 0, 0, point), recorder, stamp);
                 var snapshot = recorder.Snapshot();
@@ -129,6 +129,12 @@ public sealed class MapRenderPlan : IDisposable
         return selected;
     }
     public void Register(IMapDrawSink sink)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this); ArgumentNullException.ThrowIfNull(sink);
+        foreach (var resource in _resources) sink.Register(resource.Payload is MapFoliageResource foliage
+            ? resource with { Payload = foliage.Detached() } : resource);
+    }
+    internal void RegisterResident(IMapDrawSink sink)
     { ObjectDisposedException.ThrowIf(_disposed, this); ArgumentNullException.ThrowIfNull(sink); foreach (var resource in _resources) sink.Register(resource); }
     public void Update(MapFrameState frame)
     { ObjectDisposedException.ThrowIf(_disposed, this); RoofEvaluation.Evaluate(frame.Observer, frame.RoofMode); Inventory.Placements.UpdateRoofs(frame); }
@@ -142,5 +148,5 @@ public sealed class MapRenderPlan : IDisposable
         foreach (var light in _lights) sink.Write(light with { LocalFocus = MapRenderTransform.FocusLocal(frame.Focus, light.Anchor) });
     }
     public void Dispose()
-    { if (_disposed) return; _disposed = true; Inventory.Foliage.Dispose(); Inventory.Placements.Dispose(); Inventory.Terrain.Dispose(); Input.Dispose(); _contextOwner?.Dispose(); if (_contextOwner is null) MapFoliageRenderCache.For(FoliageContext).Clear(); Inventory.Water.Dispose(); PreparationOwnership?.Dispose(); Scene.PreparationOwnership?.Dispose(); }
+    { if (_disposed) return; _disposed = true; Inventory.Foliage.Dispose(); _resources = []; Inventory.Placements.Dispose(); Inventory.Terrain.Dispose(); Input.Dispose(); _contextOwner?.Dispose(); if (_contextOwner is null) MapFoliageRenderCache.For(FoliageContext).Clear(); Inventory.Water.Dispose(); PreparationOwnership?.Dispose(); Scene.PreparationOwnership?.Dispose(); }
 }

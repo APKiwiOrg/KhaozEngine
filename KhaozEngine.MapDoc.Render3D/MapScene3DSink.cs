@@ -34,8 +34,18 @@ public sealed partial class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMa
     }
     public IMapRenderUpload BeginUpload(MapPreparedResource resource, ISceneUploadReservation reservation)
     {
-        var data = Input(resource);
+        var data = UploadInput(resource);
         return new Upload(this, resource, _scene.PrepareResourceUpload(data, reservation));
+    }
+    internal SceneUploadDescription UploadInput(MapPreparedResource resource)
+    {
+        var input = Input(resource);
+        // Measurement borrows synchronously. BeginUpload has its full reservation before detaching these inputs.
+        return input.Foliage is { } foliage ? input with
+        {
+            Foliage = foliage with
+            { Transforms = foliage.Transforms.ToArray(), Ranks = foliage.Ranks.ToArray(), ModelIndices = foliage.ModelIndices.ToArray() }
+        } : input;
     }
     SceneUploadDescription Input(MapPreparedResource resource)
     {

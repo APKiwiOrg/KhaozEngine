@@ -129,8 +129,8 @@ public static partial class TileGroundMesher
     {
         ushort firstSurface = 0;
         GroundMaterialKind? firstKind = null;
-        for (int dz = 0; dz < 4; dz++)
-            for (int dx = 0; dx < 4; dx++)
+        for (int dz = 0; dz < Coarse4CellSize; dz++)
+            for (int dx = 0; dx < Coarse4CellSize; dx++)
             {
                 int x = worldX + dx;
                 int z = worldZ + dz;

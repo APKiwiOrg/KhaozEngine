@@ -41,8 +41,9 @@ public static class TileWaterPlanes
 
     /// <summary>Every water plane one region-plane contributes, in a deterministic order: bodies in discovery
     /// order from the region's south-west corner, and each body's rectangles in the order the row scan opens
-    /// them. Each volume floor is the rectangle's lowest resolved bed corner with a small downward rounding
-    /// margin, capped at the surface when the rectangle has no submerged bed.</summary>
+    /// them. Each volume floor uses the lowest resolved bed corner in the rectangle's footprint snapped outward
+    /// to the coarsest ground cell grid, with a small downward rounding margin. The floor is capped at the
+    /// surface when that footprint has no submerged bed.</summary>
     /// <param name="doc">The world the tiles and corner heights are read from.</param>
     /// <param name="catalogs">The catalogs the underlay ids are resolved against.</param>
     /// <param name="region">The region whose 64x64 tiles are scanned. Bodies are clipped to it.</param>
@@ -66,8 +67,8 @@ public static class TileWaterPlanes
             foreach (TileRect world in body.Rects)
             {
                 rects.Add(world);
-                // A flat or dry rectangle can sit wholly above the body's rim-minus-drop surface.
-                float floorY = MathF.Min(body.SurfaceY, LowestBedCorner(doc, world, plane) - FloorMarginMetres);
+                // The snapped footprint can sit wholly above the body's rim-minus-drop surface.
+                float floorY = MathF.Min(body.SurfaceY, LowestBedCorner(doc, world, region, plane) - FloorMarginMetres);
                 planes.Add(ToPlane(world, body.SurfaceY, doc.TileSize, look, floorY));
             }
 
@@ -94,11 +95,18 @@ public static class TileWaterPlanes
             tiles.Height * tileSize * 0.5f,
             look, floorY: floorY);
 
-    static float LowestBedCorner(TileWorldDocument doc, TileRect tiles, int plane)
+    static float LowestBedCorner(TileWorldDocument doc, TileRect tiles, RegionCoord region, int plane)
     {
+        // Coarse4 transition fans can cross a water rectangle's edges. Include every intersecting coarse cell
+        // on the mesher's region-local grid, even while Full detail is resident. Body rects are region-clipped.
+        const int cellSize = TileGroundMesher.CoarsestCellSize;
+        int minX = region.OriginX + (tiles.X - region.OriginX) / cellSize * cellSize;
+        int minZ = region.OriginZ + (tiles.Z - region.OriginZ) / cellSize * cellSize;
+        int maxX = region.OriginX + (tiles.X1 - region.OriginX + cellSize - 1) / cellSize * cellSize;
+        int maxZ = region.OriginZ + (tiles.Z1 - region.OriginZ + cellSize - 1) / cellSize * cellSize;
         float lowest = float.PositiveInfinity;
-        for (int z = tiles.Z; z <= tiles.Z1; z++)
-            for (int x = tiles.X; x <= tiles.X1; x++)
+        for (int z = minZ; z <= maxZ; z++)
+            for (int x = minX; x <= maxX; x++)
                 lowest = MathF.Min(lowest, doc.CornerHeight(x, z, plane));
         return lowest;
     }

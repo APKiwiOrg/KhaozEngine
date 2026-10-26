@@ -459,8 +459,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   depth. Its radius is `min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)` in each lookup cascade.
   Over the first texel of widening, positions and weights morph into a centred, stratified equal-weight pattern.
   Noise-driven rotation and positional jitter grow from zero, preserving the exact dry kernel at zero.
-  Added tap displacement follows the horizontal entry plane's depth, relative to each original dry
-  tap, so widening does not move the comparison ray above shallow casters. The four march rays spread with
+  Added tap displacement follows the horizontal entry plane, comparing stored height relative to each original
+  biased dry tap. Squared basis lengths keep this signed comparison finite near horizontal light without a
+  reciprocal of light elevation. Equal heights retain the ordinary depth comparison. The four march rays spread with
   the same radius and keep one comparison per slice.
   - The fit also quantizes the LIGHT's rotation, not just its focus translation: `ShadowLightHoldTexels` (default
   `1`) and `ShadowLightHoldCasterHeight` (default `12`) hold the direction the cascades were last fitted from until

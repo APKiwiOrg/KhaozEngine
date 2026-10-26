@@ -209,9 +209,13 @@ at wider radii. That variance can expose an otherwise shadowed hull edge. The fu
 inside the nominal radius rather than magnifying the folded dry fringe beyond it.
 All taps clamp inside their cascade's atlas column and compare stored point depths before weighting. Added
 displacement follows the analytic horizontal entry plane, evaluated at the actual snapped and clamped texel.
-Only the displacement from the original dry tap adjusts comparison depth, preserving its original bias and
-zero-widening result. Without that plane correction, outer rays can pass above a shallow caster and erase its
-shadow. This single kernel family keeps the cost at 16 comparisons even in shallow water. Blending a separate
+Stored caster height is compared with the original biased dry tap's height, using the inverse orthographic
+basis's Y coefficients. Their denominators are squared basis lengths, with no reciprocal of light elevation.
+This avoids an unbounded depth gradient near horizontal light. Exactly horizontal rays use the downward-light
+height limit, and equal heights retain the ordinary depth comparison, including when a tiny height coefficient
+underflows. The original bias and zero-widening result are preserved. Without this entry-plane comparison,
+outer rays can pass above a shallow caster and erase its shadow. This single kernel family keeps the cost at
+16 comparisons even in shallow water. Blending a separate
 disc result with the dry filter would double that cost where most submerged pixels are. The march retains
 one comparison per slice, with offsets that grow
 from its centre ray using the same radius. Submerged fragments pay one kernel plus the four slice comparisons,

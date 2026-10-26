@@ -88,9 +88,10 @@ public sealed partial class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMa
         _accepted.Clear(); _accepted.UnionWith(references);
         foreach (var reference in _references.Keys.Where(r => !_accepted.Contains(r)).ToArray()) _references.Remove(reference);
     }
-    public void Register(MapPreparedResource resource)
+    public void Register(MapPreparedResource resource) => RegisterReference(resource.Reference);
+    internal void RegisterReference(MapResourceReference reference)
     {
-        if (!_references.ContainsKey(resource.Reference)) throw new InvalidOperationException("Native draw registration has no published resource.");
+        if (!_references.ContainsKey(reference)) throw new InvalidOperationException("Native draw registration has no published resource.");
     }
     public void Write(in MapDrawRecord draw)
     {

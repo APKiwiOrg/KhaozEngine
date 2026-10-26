@@ -34,6 +34,8 @@ released lenient behavior.
 Public `MapPreparedResource` registrations, including `MapRenderResidency.Record` sink registrations, carry
 detached immutable payloads. Internal plan recordings borrow generated foliage columns through live owners
 instead of copying per-row transforms, ranks or identities.
+The built-in `MapScene3DSink` frame path validates published references internally without receiving payloads
+or allocating snapshots. Caller-owned public sinks receive detached foliage.
 Public cover and identity snapshots remain detached and usable after batch disposal. Nonuniform imported sample
 keys retain a complete charged key array, including each original policy and distribution version.
 `MapDrawRecord` carries explicit

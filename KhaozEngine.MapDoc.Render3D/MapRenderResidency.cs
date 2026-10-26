@@ -490,7 +490,8 @@ public sealed partial class MapRenderResidency : IDisposable
             if (!_owners.TryGetValue(resource.Reference, out var owner)) throw new InvalidOperationException("Only accepted resources can be recorded.");
             if (!_canonical.TryGetValue(owner.Identity, out var reference))
             { reference = resource.Reference; _canonical.Add(owner.Identity, reference); }
-            _sink.Register(resource.Payload is MapFoliageResource foliage ? resource with { Payload = foliage.Detached() } : resource);
+            if (_sink is MapScene3DSink native) native.RegisterReference(resource.Reference);
+            else _sink.Register(resource.Payload is MapFoliageResource foliage ? resource with { Payload = foliage.Detached() } : resource);
             _aliases.Add(resource.Reference, reference);
         }
         public void Write(in MapDrawRecord draw)

@@ -38,6 +38,7 @@ public sealed class RendererPerfBaselinePublisherTests : IClassFixture<RendererP
             Assert.Contains("within-job only", text);
             Assert.Contains("| S0 | gpu.frame | 768/768 | 100 ns |", text);
             Assert.Contains("| S4 | gpu.frame | 768/768 | 100 ns |", text);
+            Assert.Contains("| S3 | gpu.unattributed | 768/768 | 60 ns |", text);
             Assert.Contains("gpu.pass.opaque.0", text);
             Assert.Contains("control:12", text);
             Assert.Contains("Largest measured excesses", text);
@@ -57,6 +58,12 @@ public sealed class RendererPerfBaselinePublisherTests : IClassFixture<RendererP
                 expected = expected.Replace("@SIDECAR_" + path + "@", digest, StringComparison.Ordinal);
             }
             Assert.Equal(Encoding.UTF8.GetBytes(expected), bytes);
+
+            var summary = RendererPerfAnalysis.ReadDirectory(leg.Directory, leg.ReportName);
+            var s3 = summary.Combined.Single(row => row.SceneId == "S3" && row.Layout == RendererPerfLayout.PerPass);
+            var unattributed = s3.Metrics["gpu.unattributed"];
+            Assert.Equal(768, unattributed.Count);
+            Assert.Equal(60, unattributed.Mean.Value);
         }
         Assert.Contains("Actual billed minutes 17.", File.ReadAllText(Path.Combine(request.OutputDirectory, paths[0])));
         Assert.Contains("Actual billed minutes 23.", File.ReadAllText(Path.Combine(request.OutputDirectory, paths[1])));
@@ -120,6 +127,7 @@ public sealed class RendererPerfBaselinePublisherTests : IClassFixture<RendererP
         var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true };
         start.ArgumentList.Add(RendererPerfCompilerPublicationTests.Verifier());
         start.ArgumentList.Add("publish");
+        start.ArgumentList.Add("--request");
         start.ArgumentList.Add(requestPath);
         start.Environment.Remove("KE_GPU_TESTS");
         start.Environment.Remove("KE_RENDERER_PERF_UNIT");
@@ -131,6 +139,37 @@ public sealed class RendererPerfBaselinePublisherTests : IClassFixture<RendererP
         Assert.True(process.ExitCode == 0, output);
         Assert.Contains("no GPU providers registered", output);
         Assert.Equal(3, Directory.GetFiles(request.OutputDirectory).Length);
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task Command_verifies_received_directory_named_publish_without_writing_summaries()
+    {
+        var request = _fixture.Request();
+        var source = request.Legs[0];
+        string received = Path.Combine(_fixture.Root, "publish");
+        Directory.CreateDirectory(received);
+        foreach (string path in Directory.GetFiles(source.Directory))
+            File.Copy(path, Path.Combine(received, Path.GetFileName(path)));
+        string[] summaries = Directory.GetFiles(received, "*.md").Order(StringComparer.Ordinal).ToArray();
+        var start = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = _fixture.Root,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        start.ArgumentList.Add(RendererPerfCompilerPublicationTests.Verifier());
+        start.ArgumentList.Add("publish");
+        start.ArgumentList.Add(source.ReportName);
+        start.Environment.Remove("KE_GPU_TESTS");
+        start.Environment.Remove("KE_RENDERER_PERF_UNIT");
+        using var process = Process.Start(start)!;
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        string output = await stdout + await stderr;
+        Assert.True(process.ExitCode == 0, output);
+        Assert.Contains("Verified renderer artifacts", output);
+        Assert.Equal(summaries, Directory.GetFiles(received, "*.md").Order(StringComparer.Ordinal));
     }
 
     [Theory]

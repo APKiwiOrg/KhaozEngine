@@ -440,7 +440,7 @@ Build the offline verifier through the Release setup above, then publish a recei
 one command. This reads files only, registers no GPU provider and starts no measurement:
 
 ```sh
-dotnet tools/Renderer.Perf.Verify/bin/Release/net10.0/Renderer.Perf.Verify.dll publish request.json
+dotnet tools/Renderer.Perf.Verify/bin/Release/net10.0/Renderer.Perf.Verify.dll publish --request request.json
 ```
 
 The request schema is `khaozengine.renderer-baseline-request/1`. JSON is capped at 1 MiB and depth

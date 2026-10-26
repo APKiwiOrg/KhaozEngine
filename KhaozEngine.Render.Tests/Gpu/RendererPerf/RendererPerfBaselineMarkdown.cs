@@ -59,7 +59,8 @@ internal static class RendererPerfBaselineMarkdown
         Header(text);
         foreach (var row in summary.Combined.Where(r => r.Layout == RendererPerfLayout.PerPass).OrderBy(r => r.SceneId, StringComparer.Ordinal))
             foreach (var metric in row.Metrics.Where(p => p.Key == "gpu.frame" || p.Key.StartsWith("gpu.pass.", StringComparison.Ordinal)
-                || p.Key.StartsWith("gpu.exclusive.", StringComparison.Ordinal) || p.Key.StartsWith("gap.", StringComparison.Ordinal)).OrderBy(p => p.Key, StringComparer.Ordinal))
+                || p.Key.StartsWith("gpu.exclusive.", StringComparison.Ordinal) || p.Key == "gpu.unattributed"
+                || p.Key.StartsWith("gap.", StringComparison.Ordinal)).OrderBy(p => p.Key, StringComparer.Ordinal))
                 Distribution(text, row.SceneId, metric.Key, metric.Value);
         text.Append("\nModel assessments retain support states, dominant resources, uncertainty and missing evidence.\n\n")
             .Append("| Scene | Model | Status | Dominant resources | Range provenance and limitations | Missing evidence |\n| --- | --- | --- | --- | --- | --- |\n");

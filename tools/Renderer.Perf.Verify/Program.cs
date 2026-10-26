@@ -2,21 +2,22 @@ using System;
 using KhaozEngine.Tests.Gpu.RendererPerf;
 using KhaozEngine.Gpu;
 
-if (args.Length != 2)
+bool publish = args.Length == 3 && args[0] == "publish" && args[1] == "--request";
+if (!publish && args.Length != 2)
 {
-    Console.Error.WriteLine("Expected evidence directory and report filename, or publish and request filename.");
+    Console.Error.WriteLine("Expected evidence directory and report filename, or publish --request and request filename.");
     return 2;
 }
 try
 {
     RequireNoProviders();
-    if (args[0] == "publish")
+    if (publish)
     {
-        _ = RendererPerfBaselinePublisher.PublishFile(args[1]);
+        _ = RendererPerfBaselinePublisher.PublishFile(args[2]);
     }
     else _ = RendererPerfArtifactVerification.Verify(args[0], args[1]);
     RequireNoProviders();
-    Console.WriteLine(args[0] == "publish" ? "Published immutable baseline files with no GPU providers registered."
+    Console.WriteLine(publish ? "Published immutable baseline files with no GPU providers registered."
         : "Verified renderer artifacts with no GPU providers registered.");
     return 0;
 }

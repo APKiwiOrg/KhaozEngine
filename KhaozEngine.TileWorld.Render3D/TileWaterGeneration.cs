@@ -112,7 +112,8 @@ internal sealed class TileWaterGeneration : IDisposable
         for (int i = 0; i < Planes.Length; i++)
         {
             WaterPlane p = Planes[i];
-            Planes[i] = new WaterPlane(p.CenterX, p.SurfaceY, p.CenterZ, p.HalfExtentX, p.HalfExtentZ, look, p.Optics);
+            Planes[i] = new WaterPlane(p.CenterX, p.SurfaceY, p.CenterZ, p.HalfExtentX, p.HalfExtentZ, look, p.Optics,
+                p.FloorY);
         }
         Look = look;
     }

@@ -28,7 +28,7 @@ public static partial class ShippedShaderPrograms
             if (!lit && !preserve) continue;
             yield return new(program.Name + "Visibility", program.VertexGlsl,
                 ShadowVisibilityTargets.Fragment(program.FragmentGlsl,
-                    program.Name.Contains("Motion", StringComparison.Ordinal), preserve));
+                    program.Name.Contains("Motion", StringComparison.Ordinal), preserve), program.WaterVolumeBinding);
         }
         yield return new("SilhouetteVisibility", ShaderSources.SilhouetteVert,
             ShadowVisibilityTargets.Fragment(ShaderSources.SilhouetteFrag, false, preserve: true));

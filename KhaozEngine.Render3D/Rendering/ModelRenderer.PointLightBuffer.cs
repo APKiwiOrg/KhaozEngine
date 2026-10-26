@@ -112,14 +112,14 @@ internal sealed partial class ModelRenderer
                     replacements, replacementBindings);
 
             splatFrameSet = _gd.Factory.CreateResourceSet(
-                new GpuResourceSetDescription(_splatFrameLayout, _atmosphere.AppendResources(_ubo, buffer, _pointLightClusterBuffer)));
+                new GpuResourceSetDescription(_splatFrameLayout, AppendWaterVolumeResources(_atmosphere.AppendResources(_ubo, buffer, _pointLightClusterBuffer))));
             tileGroundFrameSet = _gd.Factory.CreateResourceSet(
-                new GpuResourceSetDescription(_tileGroundFrameLayout, _atmosphere.AppendResources(_ubo, buffer, _pointLightClusterBuffer)));
+                new GpuResourceSetDescription(_tileGroundFrameLayout, AppendWaterVolumeResources(_atmosphere.AppendResources(_ubo, buffer, _pointLightClusterBuffer))));
             if (_skinnedMainSet is not null)
             {
                 skinnedMainSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
-                    _skinnedMainLayout, _atmosphere.AppendResources(_ubo, buffer, _pointLightClusterBuffer,
-                    new GpuBufferRange(_skinnedMainUbo!, 0, SkinnedMainSlotBytes))));
+                    _skinnedMainLayout, AppendWaterVolumeResources(_atmosphere.AppendResources(_ubo, buffer, _pointLightClusterBuffer,
+                    new GpuBufferRange(_skinnedMainUbo!, 0, SkinnedMainSlotBytes)))));
             }
         }
         catch

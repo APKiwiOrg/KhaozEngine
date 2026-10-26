@@ -125,7 +125,7 @@ public sealed class FrameViewConsumerSweepTests
     {
         new("Scene3D.cs", "_model.SetFrameUniforms(", 1, @"\bvp\b", RasterForbidden,
             "the frame block the model, splat, tile ground, foliage and skinned pipelines rasterise with"),
-        new("Scene3D.cs", "BuildAndUploadPointLightClusters(", 1, @"\bvp\b", RasterForbidden,
+        new("Scene3D.cs", "BuildAndUploadLightingClusters(", 1, @"\bvp\b", RasterForbidden,
             "the cluster grid a lit fragment indexes through the frame block's jittered ViewProj"),
         new("Scene3D.cs", "_decalRenderer.Draw(", 2, @"\bvp\b", RasterForbidden, "blob shadows and ground decals"),
         new("Scene3D.cs", "DrawOverlayMeshes(", 1, @"\bvp\b", RasterForbidden, "overlay meshes in the model target"),
@@ -164,7 +164,7 @@ public sealed class FrameViewConsumerSweepTests
         new("Scene3D.FoliageShadows.cs", "_foliageShadowRenderer.UploadCascades(", 1,
             Snapshot + @"\.ViewProjection\b", CpuForbidden,
             "camera depth for cascade foliage wind fade, independent of the light projection"),
-        new("Scene3D.PointLightClusters.cs", "_model.BuildAndUploadPointLightClusters(", 1,
+        new("Scene3D.PointLightClusters.cs", "_model.BuildAndUploadLightingClusters(", 1,
             @"^(?=.*\brasterViewProjection\b)(?=.*" + Snapshot + @"\.Projection\b)",
             @"\bdisplayVp\b|ActiveCamera\.(?:View|Projection)\b",
             "the cluster grid on the raster matrix, its projection kind from the unjittered one"),

@@ -115,6 +115,14 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public Color AbsorptionPerMetre = new(0.55f, 0.24f, 0.14f, 0f);
 
+        /// <summary>Enable refracted, absorbed key sunlight for receivers inside water volumes. Default
+        /// <c>false</c>. Each plane may override this through <see cref="WaterLook.UnderwaterSunlight"/>.</summary>
+        public bool UnderwaterSunlight;
+
+        /// <summary>Extra key-shadow penumbra radius in metres per metre of in-water light path. Must be finite
+        /// and non-negative. Default <c>0.03</c>. Used when <see cref="UnderwaterSunlight"/> is enabled.</summary>
+        public float UnderwaterPenumbraPerMetre = 0.03f;
+
         /// <summary>World-space depth below the surface over which <see cref="ShallowColor"/> blends into
         /// <see cref="DeepColor"/> in the LEGACY two-stop path. Only consulted when
         /// <see cref="AbsorptionPerMetre"/> is all-zero. Independent of <see cref="ShoreFadeDistance"/> (which is

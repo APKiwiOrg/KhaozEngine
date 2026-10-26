@@ -239,6 +239,11 @@ contributes, one per rectangle of each body `TileWaterBodies.Collect` returns, i
   the rim it shares with its bank, minus `SurfaceDropMetres` (2 cm). So a bed dug 70 cm down does not move the
   surface, and the bank sits 2 cm proud of it and stays dry. A river that DESCENDS is authored as separate bodies
   with a drop between them, the way OSRS does it, because one component is one height.
+- **Volume floor on every emitted plane.** `TileWaterPlanes.Collect` sets `WaterPlane.FloorY` from the lowest
+  resolved bed corner under each rectangle, after expanding the rectangle outward to the 4-tile `Coarse4` grid,
+  then subtracting the `FloorMarginMetres` rounding margin (`0.0001 m`). It caps the result at the body's surface
+  when the snapped footprint has no submerged bed. This conservative slab is derived from the document rather than
+  the rendered mesh LOD, so the floor stays stable across LOD changes and per-plane look changes.
 - **Disjoint rectangles, not one box.** Each component's tile mask is cut into maximal axis-aligned rectangles
   (row runs merged upward while their span is identical), one `WaterPlane` each. Rectangles rather than one plane
   per TILE because the pass draws a fixed 97 by 97 grid per plane whatever it covers, so a straight 3-wide river

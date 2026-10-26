@@ -36,10 +36,10 @@ layout(std430, set=0, binding=2) readonly buffer PointLightClusterBuffer {
         //      which are declared identically in both fragments' `U` block, and takes the lit normal N, the world
         //      position, and the two spec params; it returns the diffuse and specular accumulation via out params.
         //      The caller keeps the final `lit = albedo*(Ambient+diffuse)+specColor+emissive` line because albedo /
-        //      ambient / emissive are derived differently per pass. The statement text and float op order here are
-        //      copied byte-for-byte from the old duplicated blocks (only vWorldPos was renamed to the `worldPos`
-        //      parameter), so behaviour is bit-identical on every backend.
-        public const string LightingCommonGlsl = @"
+        //      ambient / emissive are derived differently per pass. Dry fragments retain the existing accumulation
+        //      with unit water transmittance. Underwater fragments attenuate only the key colour before adding fill
+        //      and point lights, leaving the callers' ambient and emissive terms alone.
+        public const string LightingCommonGlsl = ClusterForFragmentGlsl + UnderwaterKeyGlsl + @"
 vec3 indirectDiffuse(vec3 N, vec3 worldPos) {
     if (IndirectParams.x < 0.5) return Ambient.rgb;
     float x = N.x, y = N.y, z = N.z;
@@ -86,10 +86,13 @@ bool projectCascade(int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margi
     // just outside a cascade's depth range and still claim it (issue #394).
     return !(uv.x < margin || uv.x > 1.0 - margin || uv.y < margin || uv.y > 1.0 - margin || z < 0.0 || z > 1.0);
 }
-" + CascadeShadowFilterGlsl + @"
+" + CascadeShadowFilterGlsl + UnderwaterShadowKernelGlsl + UnderwaterSubmergedOcclusionGlsl + @"
 float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, vec3 Ngeo, float ndl) {
+    fragmentUnderwaterKey = underwaterKeyForFragment(worldPos);
+    vec3 shadowPos = fragmentUnderwaterKey.entry;
     float strength = ShadowParams.y;
     if (strength <= 0.0) return 1.0;                    // shadow atlas inactive this frame => fully lit
+    float submergedLit = underwaterSubmergedOcclusion(fragmentUnderwaterKey, worldPos, Ngeo, ndl);
     int count = int(ShadowParams.x + 0.5);
     float texelStep = ShadowParams2.x;                  // 1/perCascadeResolution (a PCF step in cascade-local UV)
     float slopeSin = sqrt(max(0.0, 1.0 - ndl * ndl));   // grazing factor: largest where acne is worst
@@ -97,18 +100,21 @@ float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, 
     float bias = ShadowParams.z + ShadowParams.w * slope;
     float margin = texelStep * 2.0;
 
-    // Select the tightest cascade containing the fragment (slice cascades ordered near to far => lowest
-    // index wins). A fragment past its slice border falls outward to the next cascade's coverage.
+    // Select the tightest cascade containing the lookup point: the dry receiver or the refracted surface entry.
+    // Slice cascades are ordered near to far, so a point past its slice border falls outward to the next coverage.
     int sel = -1; vec2 selUv = vec2(0.0); float selZ = 0.0;
     for (int i = 0; i < 4; i++) {
         if (i >= count) break;
         vec2 uv; float z;
-        if (!projectCascade(i, worldPos, Ngeo, slopeSin, margin, uv, z)) continue;
+        if (!projectCascade(i, shadowPos, Ngeo, slopeSin, margin, uv, z)) continue;
         sel = i; selUv = uv; selZ = z; break;
     }
-    if (sel < 0) return 1.0;                            // beyond every cascade => lit (coverage edge)
+    if (sel < 0) return mix(1.0, submergedLit, strength); // the entry may be outside coverage while a slice is inside
 
-    float lit = pcfCascade(shadowAtlas, shadowSamp, sel, count, selUv, selZ - bias, texelStep);
+    float lit = fragmentUnderwaterKey.submerged
+        ? filterKeyShadowWidened(selUv, selZ - bias, sel,
+            underwaterKernelRadius(fragmentUnderwaterKey, sel), gl_FragCoord.xy)
+        : pcfCascade(shadowAtlas, shadowSamp, sel, count, selUv, selZ - bias, texelStep);
     float edge = min(min(selUv.x, 1.0 - selUv.x), min(selUv.y, 1.0 - selUv.y));
 
     if (sel == count - 1) {
@@ -116,6 +122,9 @@ float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, 
         // fade, sitting at ShadowMaxDistance - ShadowParams2.y documents that distance for downstream effects).
         float border = ShadowParams2.z;
         float fade = smoothstep(0.0, border, edge);
+        // The march has its own receiver coverage fade. The entry's border cannot erase a covered caster.
+        if (fragmentUnderwaterKey.submerged)
+            return mix(1.0, mix(1.0, lit, fade) * submergedLit, strength);
         return mix(1.0, mix(1.0, lit, strength), fade);
     }
 
@@ -126,13 +135,16 @@ float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, 
     float blend = ShadowParams2.w;
     if (blend > 0.0 && edge < blend) {
         vec2 uv2; float z2;
-        if (projectCascade(sel + 1, worldPos, Ngeo, slopeSin, margin, uv2, z2)) {
-            float lit2 = pcfCascade(shadowAtlas, shadowSamp, sel + 1, count, uv2, z2 - bias, texelStep);
+        if (projectCascade(sel + 1, shadowPos, Ngeo, slopeSin, margin, uv2, z2)) {
+            float lit2 = fragmentUnderwaterKey.submerged
+                ? filterKeyShadowWidened(uv2, z2 - bias, sel + 1,
+                    underwaterKernelRadius(fragmentUnderwaterKey, sel + 1), gl_FragCoord.xy)
+                : pcfCascade(shadowAtlas, shadowSamp, sel + 1, count, uv2, z2 - bias, texelStep);
             lit = mix(lit2, lit, smoothstep(0.0, blend, edge));   // at the border (edge 0) fully the next cascade
         }
     }
     // strength 1 removes the key light fully in shadow, below 1 leaves a partial key term, and the fade/blend paths above ease the result toward fully lit.
-    return mix(1.0, lit, strength);
+    return mix(1.0, lit * submergedLit, strength);
 }
 
 // ---- Point-light shadows (issue #1002) ----------------------------------------------------------------
@@ -408,50 +420,6 @@ float samplePointShadowCombined(texture2D baseAtlas, texture2D transientAtlas, s
     return samplePointShadowSoftCombined(baseAtlas, transientAtlas, samp, toL, dist, radius, ndlRaw, params, worldPos);
 }
 
-// The point atlases and sampler are parameters for the same reason sampleKeyShadow's are: their set/binding differ per
-// fragment and GLSL cannot reference a fragment's own bindings from a shared function.
-//
-// THE CLUSTER IMAGE (PointLightClusterBuilder, issue #1112) is one uvec4 buffer in two regions. The first 864 uvec4
-// hold one header uint per cluster, four to an element: the low 8 bits are the cluster's light count, 255 meaning it
-// overflowed and stores nothing, and the high 24 bits are where its first index sits in the index region. The index
-// region follows at uvec4 864, four indices to an element, each cluster's run contiguous and in ascending submitted
-// order, so a clustered fragment sums the same lights in the same order the full list would.
-bool pointLightClusterForFragment(vec3 worldPos, out uint clusterIndex) {
-    clusterIndex = 0u;
-    if (ClusterDepth.w < -0.5) return false;
-
-    vec4 clip = ViewProj * vec4(worldPos, 1.0);
-    if (any(isnan(clip)) || any(isinf(clip)) || clip.w <= 0.0) return false;
-    vec2 ndc = clip.xy / clip.w;
-    if (any(isnan(ndc)) || any(isinf(ndc))) return false;
-    const float ndcEpsilon = 1e-5;
-    if (ndc.x < -1.0 - ndcEpsilon || ndc.x > 1.0 + ndcEpsilon ||
-        ndc.y < -1.0 - ndcEpsilon || ndc.y > 1.0 + ndcEpsilon) return false;
-
-    float depth = dot(worldPos - CameraPos.xyz, ClusterCamera.xyz);
-    if (isnan(depth) || isinf(depth)) return false;
-    float depthEpsilon = 1e-4 * max(1.0, max(abs(ClusterDepth.x), abs(ClusterDepth.y)));
-    if (depth < ClusterDepth.x - depthEpsilon || depth > ClusterDepth.y + depthEpsilon) return false;
-    float clampedDepth = clamp(depth, ClusterDepth.x, ClusterDepth.y);
-
-    float zNorm;
-    if (ClusterDepth.w > 0.5) {
-        if (ClusterDepth.x <= 0.0 || ClusterDepth.z <= 0.0) return false;
-        zNorm = log(max(clampedDepth, ClusterDepth.x) / ClusterDepth.x) / ClusterDepth.z;
-    } else {
-        float span = ClusterDepth.y - ClusterDepth.x;
-        if (span <= 0.0) return false;
-        zNorm = (clampedDepth - ClusterDepth.x) / span;
-    }
-    if (isnan(zNorm) || isinf(zNorm)) return false;
-
-    int tileX = clamp(int(floor((ndc.x * 0.5 + 0.5) * 16.0)), 0, 15);
-    int tileY = clamp(int(floor((ndc.y * 0.5 + 0.5) * 9.0)), 0, 8);
-    int tileZ = clamp(int(floor(clamp(zNorm, 0.0, 1.0) * 24.0)), 0, 23);
-    clusterIndex = uint((tileZ * 9 + tileY) * 16 + tileX);
-    return true;
-}
-
 void computeLighting(texture2D pointAtlas, texture2D pointTransientAtlas, sampler pointSamp,
                      vec3 N, vec3 worldPos, float specStrength, float specExp, float keyShadow,
                      out vec3 diffuse, out vec3 specColor) {
@@ -459,13 +427,14 @@ void computeLighting(texture2D pointAtlas, texture2D pointTransientAtlas, sample
     float ndlFill = max(dot(N, -normalize(FillDir.xyz)), 0.0);
     float bands = Params.x;
     if (bands >= 1.0) { ndlKey = floor(ndlKey*bands+0.5)/bands; ndlFill = floor(ndlFill*bands+0.5)/bands; }
-    // Shadow multiplies ONLY the key light's diffuse (fill + ambient + point lights are untouched), so a shadow
-    // reads as shade rather than blackness. keyShadow == 1 (no shadow map) is bit-identical to the pre-shadow term.
-    diffuse = LightColor.rgb*(ndlKey*keyShadow) + FillColor.rgb*ndlFill;
+    // Visibility and water transmittance affect key diffuse and specular only. Dry transmittance is exactly one,
+    // preserving the existing accumulation. Fill, indirect, point lights, emissive and fog keep their values.
+    vec3 keyColor = LightColor.rgb * fragmentUnderwaterKey.transmittance;
+    diffuse = keyColor*(ndlKey*keyShadow) + FillColor.rgb*ndlFill;
     vec3 V = normalize(CameraPos.xyz - worldPos);
     vec3 H = normalize(-normalize(LightDir.xyz) + V);
     float spec = pow(max(dot(N,H),0.0), specExp) * specStrength * step(0.0001, ndlKey) * keyShadow;
-    specColor = LightColor.rgb*spec;
+    specColor = keyColor*spec;
     // Dynamic point/effect lights (muzzle flashes, explosions, thrusters): accumulate diffuse (+ cheap
     // specular) with a windowed distance attenuation, on top of the key+fill term and back-face gated by
     // max(dot(N,L),0). Params.y is the complete submitted count; zero leaves diffuse/specColor untouched,
@@ -473,8 +442,11 @@ void computeLighting(texture2D pointAtlas, texture2D pointTransientAtlas, sample
     int npl = int(Params.y);
     if (npl <= 0) return;
 
-    uint clusterIndex;
-    bool fullPointLightFallback = !pointLightClusterForFragment(worldPos, clusterIndex);
+    // Reuse the water query when present. Point-light headers pack count in the low byte and index offset above it.
+    // Their index region follows 864 uvec4 headers, independently of the water image's fixed cluster slots.
+    uint clusterIndex = underwaterClusterIndex;
+    bool fullPointLightFallback = ClusterCamera.w > 0.0
+        ? !underwaterClusterValid : !clusterForFragment(worldPos, clusterIndex);
     uint clusterCount = 0u;
     uint clusterOffset = 0u;
     if (!fullPointLightFallback) {

@@ -86,12 +86,14 @@ public sealed class PointLightBufferTests
 
         FakeBuffer oldBuffer = Assert.IsType<FakeBuffer>(renderer.PointLightBuffer);
         FakeBuffer clusterBuffer = Assert.IsType<FakeBuffer>(renderer.PointLightClusterBuffer);
+        FakeBuffer waterBuffer = Assert.Single(factory.Buffers, b => b.SizeInBytes == 652800);
         Assert.Equal(940032u, clusterBuffer.SizeInBytes);
         FakeResourceSet[] captured = factory.ResourceSets
             .Where(set => !set.Disposed && set.Resources.Contains(oldBuffer))
             .ToArray();
         Assert.Equal(5, captured.Length);
         Assert.All(captured, set => Assert.Contains(clusterBuffer, set.Resources));
+        Assert.All(captured, set => Assert.Contains(waterBuffer, set.Resources));
 
         renderer.EnsurePointLightCapacity(17, [material], replace => material = replace(material));
 
@@ -105,7 +107,11 @@ public sealed class PointLightBufferTests
         Assert.Contains(grown, Assert.IsType<FakeResourceSet>(material).Resources);
         Assert.Same(clusterBuffer, renderer.PointLightClusterBuffer);
         Assert.All(factory.ResourceSets.Where(set => !set.Disposed && set.Resources.Contains(grown)),
-            set => Assert.Contains(clusterBuffer, set.Resources));
+            set =>
+            {
+                Assert.Contains(clusterBuffer, set.Resources);
+                Assert.Contains(waterBuffer, set.Resources);
+            });
 
         int buffers = factory.Buffers.Count;
         int sets = factory.ResourceSets.Count;

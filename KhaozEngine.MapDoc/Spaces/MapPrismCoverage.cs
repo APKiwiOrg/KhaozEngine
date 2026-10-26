@@ -32,8 +32,8 @@ public static class MapPrismCoverage
                 _ = MapSpaceGeometry.Ancestors(view, space);
                 RequireStorey(view, prism);
                 if (prisms.Count(p => p.Space.Id == prism.Space.Id) != 1) throw new MapDocumentException("room requires one prism");
-                MapPrismValidationWorkspace.Reserve(checked(4096L + 256L * MapPrismGeometry.Cost(prism)));
-                using var domainWorkspace = MapPrismValidationWorkspace.Kernel(MapPrismGeometry.Cost(prism));
+                MapPrismValidationWorkspace.Reserve(MapPrismPreparationCapacity.DomainBytes(prism));
+                using var domainWorkspace = MapPrismValidationWorkspace.DomainKernel(view, prism);
                 domains.Add(prism.Id, MapPrismGeometry.Compile(view, prism));
             }
             catch (Exception error) when (error is MapDocumentException or MapExactOverflowException or OverflowException)
@@ -63,16 +63,20 @@ public static class MapPrismCoverage
                 var domain = domains[prism.Id];
                 var heights = MapPrismGeometry.Heights(view, prism);
                 var lo = MapWideRational.From(heights.Lower); var hi = MapWideRational.From(heights.Upper);
+                using (var partPlanning = MapPrismValidationWorkspace.Kernel(MapPrismPreparationCapacity.LargestPiece(prism)))
+                    MapPrismValidationWorkspace.Reserve(MapPrismPreparationCapacity.ConvexPartsBytes(domain));
                 for (int i = 0; i < domain.Pieces.Count; i++)
-                    foreach (var convex in domain.ConvexParts(i, work))
+                {
+                    IReadOnlyList<IReadOnlyList<MapWideXz>> convexParts;
+                    using (var triangulation = MapPrismValidationWorkspace.Kernel(MapPrismPreparationCapacity.LargestPiece(prism)))
+                        convexParts = domain.ConvexParts(i, work);
+                    foreach (var convex in convexParts)
                     {
                         using var convexPreparation = MapPrismValidationWorkspace.Admission?.BeginPreparation();
                         using var convexWorkspace = MapPrismValidationWorkspace.Kernel(convex.Count);
                         var polygon = convex;
                         var extent = MapWaterPolygons.Bounds.Of(polygon);
-                        var uncovered = new List<IReadOnlyList<MapWideXz>> { polygon };
-                        MapPrismValidationWorkspace.Candidates(uncovered.Count, uncovered: true);
-                        using var fragments = MapPrismValidationWorkspace.Admission?.Workspace();
+                        using var fragments = new MapPrismUncoveredFragments(polygon);
                         foreach (var parent in parentIndexes.Candidates(owners[prism.Id], extent).Select(p => raw[p]))
                         {
                             work.Charge(1);
@@ -83,21 +87,15 @@ public static class MapPrismCoverage
                                 MapPrismValidationWorkspace.Reserve(checked(128L + 2L * (prism.Id.Length + 64)));
                                 errors.Add($"prism '{prism.Id}': effective separation over parent refinement");
                             }
-                            long nextBytes = checked(128L + uncovered.Sum(p => 128L + 256L * parent.Polygon.Count * (p.Count + parent.Polygon.Count)));
-                            fragments?.Reserve(nextBytes);
-                            var next = new List<IReadOnlyList<MapWideXz>>();
-                            foreach (var remaining in uncovered)
-                                next.AddRange(MapOccupiedPartitions.Difference(remaining, parent.Polygon));
-                            uncovered = next;
-                            if (fragments is not null && fragments.Bytes > nextBytes) fragments.Release(fragments.Bytes - nextBytes);
-                            MapPrismValidationWorkspace.Candidates(uncovered.Count, uncovered: true);
+                            fragments.Subtract(parent.Polygon);
                         }
-                        if (uncovered.Any(MapOccupiedPartitions.Positive))
+                        if (fragments.Polygons.Any(MapOccupiedPartitions.Positive))
                         {
                             MapPrismValidationWorkspace.Reserve(checked(128L + 2L * (prism.Id.Length + 48)));
                             errors.Add($"prism '{prism.Id}': outside parent footprint");
                         }
                     }
+                }
             }
             parentIndexes.Dispose();
             MapPrismCoveragePeers.Validate(view, raw, bounds, work, errors);

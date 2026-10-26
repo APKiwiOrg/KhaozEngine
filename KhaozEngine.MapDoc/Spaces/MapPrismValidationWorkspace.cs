@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Interiors;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -61,6 +62,18 @@ internal sealed class MapPrismValidationWorkspace : IDisposable
         catch { owner?.Dispose(); throw; }
         t_current?.Observe();
         return owner;
+    }
+    internal static MapPreparationReservation? DomainKernel(MapScopedSurfaces view, MapPrismDomain prism)
+    {
+        var owner = Kernel(MapPrismPreparationCapacity.LargestPiece(prism));
+        try
+        {
+            // Transformation holds the local domain and encoded source rings while compiling the world domain.
+            if (view.EffectiveContext?.Transform(MapPrefabChildKind.Record, prism.Id) is not null)
+                owner?.Reserve(checked(2 * MapPrismPreparationCapacity.DomainBytes(prism)));
+            return owner;
+        }
+        catch { owner?.Dispose(); throw; }
     }
     internal static MapPreparationReservation? FootprintCell(MapScopedSurfaces view, MapSpaceFootprint footprint, int cell)
     {

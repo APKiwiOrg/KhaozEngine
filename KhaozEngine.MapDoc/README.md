@@ -696,6 +696,10 @@ an earlier historical ledger peak. Planner, compiler and validation output count
 Patch face grouping admits both local and transformed copies plus the active grouping's growth and sort workspace
 before allocation, retaining that owner through the final cell. Validation releases its compiled root context after
 the raw pieces have copied their bound faces. Room candidates retain one sorted piece row per parent consumer.
+Prism compilation admits domain outputs separately from arithmetic sized to its largest input piece. A room's
+second compiled domain and convex descriptors remain charged until room construction ends. Clipping workspace
+covers only its active parent and convex piece. Uncovered replacements admit old and new storage together,
+then settle to the surviving polygons after replacement. Refusal preserves the earlier fragment generation.
 `ValidationPeakBytes` records every successful ledger reservation during validation, including external obligations.
 
 The four intent flags have separate consumers. Hidden roofs have `ColourVisible = false`, `CastShadows = true`,

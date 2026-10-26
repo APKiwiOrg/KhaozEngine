@@ -334,17 +334,24 @@ internal static class MapOccupiedPartitions
             string parentOwner = MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Parent));
             if (space.Kind != MapSpaceKind.Room || space.Parent != prism.Parent) throw new MapDocumentException("missing geometry: prism parent mismatch");
             foreach (var parent in prisms.Where(p => MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, p.Space)) == parentOwner)) Room(parent, depth + 1);
-            var domain = MapPrismGeometry.Compile(view, prism);
+            using var roomPreparation = MapPrismValidationWorkspace.Admission?.BeginPreparation();
+            MapPrismValidationWorkspace.ReserveContext(MapPrismPreparationCapacity.DomainBytes(prism));
+            MapWaterDomain domain;
+            using (var compilerWorkspace = MapPrismValidationWorkspace.DomainKernel(view, prism))
+                domain = MapPrismGeometry.Compile(view, prism);
             var (lower, upper) = MapPrismGeometry.Heights(view, prism);
             var lo = Boundary(view, prism.Id, "prism-lower"); var hi = Boundary(view, prism.Id, "prism-upper");
             var (parents, parentBounds) = ParentIndex(parentOwner);
             // Every convex part is prepared before the first parent, as released. A piece-bounds index
             // then gives, in the released parent, piece and part order, only the pieces whose bounds overlap a parent.
             // The others share no positive area. Each visited pair is charged once.
-            using var roomPreparation = MapPrismValidationWorkspace.Admission?.BeginPreparation();
-            using var roomWorkspace = MapPrismValidationWorkspace.Kernel(MapPrismGeometry.Cost(prism), parents.Length);
-            var parts = parents.Length == 0 ? [] : Enumerable.Range(0, domain.Pieces.Count)
-                .Select(i => domain.ConvexParts(i, work).Select(c => (Polygon: c, Bounds: MapWaterPolygons.Bounds.Of(c))).ToArray()).ToArray();
+            (IReadOnlyList<MapWideXz> Polygon, MapWaterPolygons.Bounds Bounds)[][] parts;
+            using (var partsWorkspace = MapPrismValidationWorkspace.Kernel(MapPrismPreparationCapacity.LargestPiece(prism), parents.Length))
+            {
+                if (parents.Length != 0) MapPrismValidationWorkspace.ReserveContext(MapPrismPreparationCapacity.ConvexPartsBytes(domain));
+                parts = parents.Length == 0 ? [] : Enumerable.Range(0, domain.Pieces.Count)
+                    .Select(i => domain.ConvexParts(i, work).Select(c => (Polygon: c, Bounds: MapWaterPolygons.Bounds.Of(c))).ToArray()).ToArray();
+            }
             using var near = new MapPrismRoomCandidates(domain, parentBounds);
             for (int k = 0; k < parents.Length; k++)
                 foreach (int i in near.Pieces(k))
@@ -352,6 +359,7 @@ internal static class MapOccupiedPartitions
                     {
                         if (!parentBounds[k].OverlapsOpen(extent)) continue;
                         var parent = parents[k];
+                        using var clippingWorkspace = MapPrismValidationWorkspace.Kernel(checked(parent.Polygon.Count + convex.Count + 4L));
                         work.Charge(1);
                         var polygon = Intersect(parent.Polygon, convex);
                         if (!Positive(polygon)) continue;

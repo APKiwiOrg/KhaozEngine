@@ -12,7 +12,7 @@ public enum UnderwaterSunlightGeometry { FlatBed, ThinSlab, StraddlingHull, Subm
 
 public readonly record struct UnderwaterSunlightCase(UnderwaterSunlightGeometry Geometry = UnderwaterSunlightGeometry.FlatBed,
     float Depth = 1f, bool Enabled = true, bool Orthographic = false, float ShadowStrength = 1f,
-    bool Caster = true, bool Absorption = true, bool Water = true, float SlabBottom = 0.05f)
+    bool Caster = true, bool Absorption = true, bool Water = true, float SlabBottom = 0.05f, bool AmbientOnly = false)
 {
     public UnderwaterSunlightCase() : this(UnderwaterSunlightGeometry.FlatBed) { }
     public float BedY => Geometry == UnderwaterSunlightGeometry.Cave ? -3f
@@ -93,10 +93,10 @@ public sealed class UnderwaterSunlightScenes : IDisposable
         scene.Post.BackgroundColor = new Color(0.1f, 0.05f, 0.15f, 1f);
         scene.Post.Outline = false;
         scene.Post.LightDirection = new Vector3(0f, -0.57357645f, 0.81915204f);
-        scene.Post.LightColor = Color.White;
+        scene.Post.LightColor = settings.AmbientOnly ? Color.Black : Color.White;
         scene.Post.FillLightColor = Color.Black;
-        scene.Post.AmbientColor = settings.Geometry == UnderwaterSunlightGeometry.Cave
-            ? new Color(0.03f, 0.03f, 0.03f, 1f) : Color.Black;
+        scene.Post.AmbientColor = settings.AmbientOnly ? new Color(0.4f, 0.3f, 0.2f, 1f)
+            : settings.Geometry == UnderwaterSunlightGeometry.Cave ? new Color(0.03f, 0.03f, 0.03f, 1f) : Color.Black;
         scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
         scene.Post.Quality.Shadows.ShadowStrength = settings.ShadowStrength;
         scene.Post.Quality.Shadows.ShadowNearDistance = 20f;
@@ -172,6 +172,9 @@ public sealed class UnderwaterSunlightScenes : IDisposable
             out _, out float radius);
         return 2f * radius / 2048f;
     }
+
+    public static float KernelRadiusTexels(float depth, float texelWorld) =>
+        MathF.Min(8f, 1f + depth * PathPerMetre * PenumbraPerMetre / texelWorld);
 
     void Ensure()
     {
@@ -264,18 +267,55 @@ public sealed class UnderwaterSunlightImage
         return Sample(world) / denominator;
     }
 
-    public float ShadowRatio(UnderwaterSunlightImage lit, int x, int y)
+    public float ShadowContrast(int x, int y)
     {
-        float control = lit.LitBedBrightness;
-        float transmission = LitBedBrightness / control;
-        Assert.True(control > 0.02f && transmission > 0.02f,
-            $"Unlit bed control, brightness {control}, lit-bed on/off {transmission}.");
-        return (Brightness(Pixel(x, y)) / control) / transmission;
+        Assert.True(LitBedBrightness > 0.02f, $"Unlit bed reference, brightness {LitBedBrightness}.");
+        return Brightness(Pixel(x, y)) / LitBedBrightness;
     }
 
     float LitBedBrightness => _litBedBrightness ??= Brightness(Sample(new Vector3(-2f, Settings.BedY, 1f)));
 
-    public (float Offset, float Weight) ShadowCentroid(UnderwaterSunlightImage lit, float minZ = 0.25f)
+    /// <summary>Both frames are checked at exclusive shadow patches. Ref is shadowed only with refraction,
+    /// dry only without it. Each extremum covers every pixel, rather than averaging away a hole.</summary>
+    public (int RefCount, int DryCount, float OnRefMax, float OffRefMin, float OnDryMin, float OffDryMax,
+        float RefOnOffMax, float MinimumChange) ShadowSwitch(UnderwaterSunlightImage off,
+        float refMinZ, float refMaxZ, float dryMinZ, float dryMaxZ)
+    {
+        int refCount = 0, dryCount = 0;
+        float onRefMax = 0f, offRefMin = float.PositiveInfinity, onDryMin = float.PositiveInfinity,
+            offDryMax = 0f, refOnOffMax = 0f, minimumChange = float.PositiveInfinity;
+        for (int y = 2; y < Size - 2; y++)
+            for (int x = 2; x < Size - 2; x++)
+            {
+                Vector3 p = BedPoint(x, y);
+                if (MathF.Abs(p.X) > 0.2f) continue;
+                bool refracted = p.Z >= refMinZ && p.Z <= refMaxZ;
+                bool dry = p.Z >= dryMinZ && p.Z <= dryMaxZ;
+                if (!refracted && !dry) continue;
+                float onContrast = ShadowContrast(x, y), offContrast = off.ShadowContrast(x, y);
+                if (refracted)
+                {
+                    onRefMax = MathF.Max(onRefMax, onContrast);
+                    offRefMin = MathF.Min(offRefMin, offContrast);
+                    float denominator = Brightness(off.Pixel(x, y));
+                    Assert.True(denominator > 0.02f, $"The off receiver must be lit at ({x}, {y}), got {denominator}.");
+                    refOnOffMax = MathF.Max(refOnOffMax, Brightness(Pixel(x, y)) / denominator);
+                    minimumChange = MathF.Min(minimumChange, offContrast - onContrast);
+                    refCount++;
+                }
+                if (dry)
+                {
+                    onDryMin = MathF.Min(onDryMin, onContrast);
+                    offDryMax = MathF.Max(offDryMax, offContrast);
+                    minimumChange = MathF.Min(minimumChange, onContrast - offContrast);
+                    dryCount++;
+                }
+            }
+        Assert.True(refCount > 30 && dryCount > 30, $"Exclusive shadow patches are too small, ref {refCount}, dry {dryCount}.");
+        return (refCount, dryCount, onRefMax, offRefMin, onDryMin, offDryMax, refOnOffMax, minimumChange);
+    }
+
+    public (float Offset, float Weight) ShadowCentroid(float minZ = 0.25f)
     {
         float sum = 0f, weighted = 0f;
         for (int y = 2; y < Size - 2; y++)
@@ -283,7 +323,7 @@ public sealed class UnderwaterSunlightImage
             {
                 Vector3 p = BedPoint(x, y);
                 if (MathF.Abs(p.X) > 0.3f || p.Z < minZ || p.Z > 4.2f) continue;
-                float deficit = 1f - ShadowRatio(lit, x, y);
+                float deficit = 1f - ShadowContrast(x, y);
                 if (deficit < 0.05f) continue;
                 sum += deficit;
                 weighted += p.Z * deficit;
@@ -292,7 +332,7 @@ public sealed class UnderwaterSunlightImage
         return (weighted / sum, sum);
     }
 
-    public (float Maximum, int Count) HullInteriorRatio(UnderwaterSunlightImage lit)
+    public (float Maximum, int Count) HullInteriorRatio()
     {
         // Common footprint of the upper and lower hull faces, then erode by two screen pixels.
         float minZ = 0.15f * UnderwaterSunlightScenes.AirTangent + UnderwaterSunlightScenes.WaterTangent - 0.4f;
@@ -306,14 +346,14 @@ public sealed class UnderwaterSunlightImage
         for (int y = y0; y <= y1; y++)
             for (int x = x0; x <= x1; x++)
             {
-                max = MathF.Max(max, ShadowRatio(lit, x, y));
+                max = MathF.Max(max, ShadowContrast(x, y));
                 count++;
             }
         Assert.True(count > 100, $"Hull footprint is empty or too small ({count} pixels).");
         return (max, count);
     }
 
-    public float EdgeWidth10To90(UnderwaterSunlightImage lit, float z)
+    public float EdgeWidth10To90(float z)
     {
         Vector2 a = Project(new Vector3(0.3f, Settings.BedY, z));
         Vector2 b = Project(new Vector3(1.5f, Settings.BedY, z));
@@ -323,7 +363,7 @@ public sealed class UnderwaterSunlightImage
         for (int x = (int)MathF.Ceiling(a.X); x <= (int)b.X; x++)
         {
             float ratio = 0f;
-            for (int dy = -2; dy <= 2; dy++) ratio += ShadowRatio(lit, x, row + dy) / 5f;
+            for (int dy = -2; dy <= 2; dy++) ratio += ShadowContrast(x, row + dy) / 5f;
             float worldX = BedPoint(x, row).X;
             minimum = MathF.Min(minimum, ratio);
             maximum = MathF.Max(maximum, ratio);

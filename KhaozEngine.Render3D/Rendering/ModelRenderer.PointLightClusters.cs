@@ -46,16 +46,11 @@ internal sealed partial class ModelRenderer
     internal void BuildAndUploadPointLightClusters(IGpuCommandList cl, ReadOnlySpan<PointLightData> lights,
         Matrix4x4 viewProjection, Vector3 eyeRender, Vector3 forward, Matrix4x4 projection,
         Vector3 renderOrigin)
+        => BuildAndUploadLightingClusters(cl, lights, ReadOnlySpan<WaterVolumeRecord>.Empty, viewProjection,
+            eyeRender, forward, projection, renderOrigin);
+
+    void BuildAndUploadPointLightClusters(IGpuCommandList cl, ReadOnlySpan<PointLightData> lights, Vector3 renderOrigin)
     {
-        if (lights.IsEmpty)
-        {
-            _clusterDepth = new Vector4(0f, 0f, 0f, -1f);
-            _clusterCamera = Vector4.Zero;
-            _frameImageDirty = true;
-            return;
-        }
-        Matrix4x4 correctedViewProjection = GpuClip.Correct(viewProjection, _gd.Capabilities);
-        _clusterFrameGrid.TryPrepare(correctedViewProjection, eyeRender, forward, projection, renderOrigin);
         _pointLightClusters.Build(lights, _clusterFrameGrid, renderOrigin);
         // Preserve the light path's full-list fallback if an exact cluster plane is degenerate.
         bool validLightClusters = _pointLightClusters.Depth.W >= 0f;
@@ -64,6 +59,5 @@ internal sealed partial class ModelRenderer
         // Only the used prefix, the headers plus this frame's indices, rather than the whole 940,032-byte image.
         cl.UpdateBuffer<uint>(_pointLightClusterBuffer, 0,
             new ReadOnlySpan<uint>(_pointLightClusters.Image, 0, _pointLightClusters.UsedUIntCount));
-        _frameImageDirty = true;
     }
 }

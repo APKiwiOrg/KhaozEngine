@@ -5780,6 +5780,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     of the bed can still count as submerged. Only its key path changes, and the bed above it already shadows that path,
     so it stays dark. `DrawWater` refuses a non-finite floor or one above `SurfaceY`. Render-origin rebasing carries
     it with the plane, and stacked bodies resolve to the nearest surface above a receiver.
+  - **Underwater volume uploads** expose `scene.WaterVolumeClusters` for the resolved opt-in records and
+    cluster references. The current infrastructure uploads records without changing shading. See the
+    [Render3D water reference](../KhaozEngine.Render3D/README.md) for the opt-in and empty-frame contract.
   - **Per-plane look** (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
     identical**): a trailing optional constructor parameter, so every call site written before this existed still
     compiles and still packs from the caller's own `Post.Water` object unchanged. Every field on `WaterLook`

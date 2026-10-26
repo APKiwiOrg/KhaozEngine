@@ -40,6 +40,10 @@ floater sun shadows and adopts authored beds once the engine work ships.
 - WO-D7: Public fixtures are synthetic. No Grimhollow image, model or source enters this repository.
 - WO-D8: The release carrying M2 is sent to the Grimhollow coordinator with its tag and adoption notes.
   Grimhollow keeps floaters without a sun shadow until then.
+- WO-D9: Allocate and upload water records before integrating receiver shading, but append the lit layout
+  bindings and declare the GLSL buffer only when shading first reads it. The optimizer removes an unread
+  declaration, which otherwise shifts Direct3D11 material registers out of agreement with the C# layouts.
+  Do not change the engine-wide shaderc preserve-bindings option for this staging step.
 
 ## Open questions and owner gates
 

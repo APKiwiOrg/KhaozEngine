@@ -111,19 +111,23 @@ must do the same, recorded in the R8b handoff.
   layout documented on `WaterVolumeClusterBuilder`. Submission order is preserved.
 - Records are binned into the existing view-space cluster grid (16 x 9 x 24 froxels, the same jittered raster
   view-projection, render-relative eye and log depth slices as point lights), so a fragment computes ONE cluster
-  index for both point lights and water. A record enters a cluster when its box (rectangle by floor to surface)
+  index for both point lights and water. A water-only frame prepares this grid even with no point lights.
+  Point-light shading still exits on its own count. A record enters a cluster when its box (rectangle by floor to surface)
   intersects the froxel, using a conservative range then an exact plane test, mirroring
   `PointLightClusterRanges` and `PointLightClusterBuilder`. Share the froxel geometry, not the per-primitive test
   (spheres versus boxes).
 - One storage buffer, appended to set 0 of every lit receiver layout (rigid, skinned, splat, tile ground, and
   through rigid, foliage and CPU-skinned), holds per-cluster headers and index lists, then records. Appending
-  avoids renumbering existing bindings.
+  avoids renumbering existing bindings. Allocation and upload are implemented first. Layout bindings and GLSL
+  declarations join the first shading reads, because shader optimization removes an unread buffer and would
+  leave Direct3D11 material registers inconsistent with the appended C# layouts. Shaderc preserve-bindings
+  remains unchanged.
 - Caps: 4096 records, 32 indices per cluster. A cluster that overflows is flagged and its fragments scan the full
   record list, which stays correct and only costs more.
-- Off switch: a per-frame water-volume count in the frame uniforms. Zero skips the whole path as a uniform branch
+- Off switch: the per-frame water-volume count in `ClusterCamera.w`. Zero skips the whole path as a uniform branch
   without reading the buffer, so stale records from an earlier frame are unreachable. Empty frames skip building
   and uploading. Point lights work the same way: their skipped uploads leave old buffer contents, and shading
-  exits on the separate light count (`ModelRenderer.PointLightClusters.cs:48`, `ShaderSources.Lighting.cs:473`).
+  exits on the separate light count (`ModelRenderer.WaterVolumes.cs`, `ShaderSources.Lighting.cs`).
   `UboLayoutTests.cs` is at its size cap, so the new field's layout pins go in a new test type.
 - Fragment query: for the fragment's cluster, test each listed record: XZ inside the rectangle (exact, inclusive
   on min, exclusive on max to match rectangle tiling), `floorY <= y < surfaceY`. Pick the record with the lowest
@@ -177,10 +181,13 @@ one uniform branch.
 
 #### Backends
 
-- D3D11: one more structured SRV per lit pipeline (117 to 121 slots remain). Metal: one more buffer index, within
-  the 22 positions of headroom. Vulkan: fragment storage buffers go from two to three. The spec guarantees four
-  per stage, but `VulkanDeviceFacts` and `GpuCapabilities` do not record the limit today. Add the fact and a
-  startup guard with a clear refusal, plus a descriptor-limit test.
+- D3D11: receiver shading adds one structured SRV per lit pipeline (117 to 121 slots remain). Metal adds one
+  buffer index, within the 22 positions of headroom. Vulkan fragment storage buffers will go from two to three.
+  The spec guarantees four
+  per stage. `VulkanDeviceFacts` records `maxPerStageDescriptorStorageBuffers`, passed through
+  `GpuCapabilities.MaxFragmentStorageBuffers`. Lit renderer creation refuses reports below three before
+  creating its resources or pipelines, naming the Vulkan limit. This guard reserves the receiver shading layout's
+  future requirement. The current lit layouts still use two fragment storage buffers.
 - The cross-compiled shader corpus (`ShippedShaderPrograms`) and register-numbering pins update deliberately.
 
 #### Placement (KESIZE)

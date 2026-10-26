@@ -250,6 +250,7 @@ namespace KhaozEngine.Tests.Gpu
             HasCoherentHostVisibleMemoryType: true,
             MaxDescriptorSetUniformBuffersDynamic: VulkanDeviceRequirements.RequiredDynamicUniformBuffers,
             HasGraphicsQueueFamily: true,
-            GraphicsFamilyPresents: true);
+            GraphicsFamilyPresents: true,
+            MaxPerStageDescriptorStorageBuffers: 4);
     }
 }

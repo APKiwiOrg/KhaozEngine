@@ -234,7 +234,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution,
             int shadowCascadeCount, GpuRetireQueue retired)
-            : this(gd, modelOutputs, shadowMapResolution, shadowCascadeCount, retired, new AtmosphereBindings(gd))
+            : this(gd, modelOutputs, shadowMapResolution, shadowCascadeCount, retired, CreateLitAtmosphere(gd))
         {
             _ownsAtmosphere = true;
         }
@@ -242,6 +242,7 @@ namespace KhaozEngine.Render3D.Rendering
         public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution,
             int shadowCascadeCount, GpuRetireQueue retired, AtmosphereBindings atmosphere)
         {
+            RequireFragmentStorageBuffers(gd.Capabilities);
             _gd = gd;
             InteriorResources = new InteriorCutResources(gd);
             _interiorTexture = InteriorResources.Texture;
@@ -261,6 +262,7 @@ namespace KhaozEngine.Render3D.Rendering
             _ubo = factory.CreateBuffer(new GpuBufferDescription(UboBytes, GpuBufferUsage.UniformBuffer)); // header + 2 vec4[16] point-light arrays + shadow tail
             CreatePointLightBuffer(factory);
             CreatePointLightClusters(factory);
+            CreateWaterVolumes(factory);
 
             _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(AppendInteriorCutLayout(AtmosphereBindings.AppendLayout(
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
@@ -633,6 +635,7 @@ namespace KhaozEngine.Render3D.Rendering
             _skinnedMainUbo?.Dispose(); _skinnedMainSet?.Dispose();
             _bonePalette.Dispose();   // after _shadowMap, which binds the same set
             _pointLightClusterBuffer.Dispose();
+            _waterVolumeBuffer.Dispose();
             _pointLightBuffer.Dispose();
             _ubo.Dispose();
             _instanceBuffer?.Dispose();

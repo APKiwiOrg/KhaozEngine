@@ -124,12 +124,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="maxColorAttachments">The device's colour attachment limit
         /// (<see cref="ColorAttachmentLimit"/>).</param>
         /// <param name="timestamps">The selected queue's valid bits and the device's timestamp period.</param>
+        /// <param name="maxFragmentStorageBuffers">The selected device's per-stage storage buffer limit.</param>
         internal static GpuCapabilities Assemble(
             string? deviceName,
             bool samplerAnisotropy,
             bool supportsShadowMaps,
             GpuSampleCounts supportedMsaaSampleCounts,
-            int maxColorAttachments, VulkanTimestampSupport timestamps = default)
+            int maxColorAttachments, VulkanTimestampSupport timestamps = default, int maxFragmentStorageBuffers = 4)
             => GpuCapabilities.FromSupportedMsaaSampleCounts(
                 clipSpaceYInverted: ClipSpaceYInverted,
                 depthRangeZeroToOne: DepthRangeZeroToOne,
@@ -142,6 +143,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 supportsCompletionFences: SupportsCompletionFences) with
             {
                 MaxColorAttachments = maxColorAttachments,
+                MaxFragmentStorageBuffers = maxFragmentStorageBuffers,
                 SupportsTimestamps = timestamps.IsSupported,
             };
     }

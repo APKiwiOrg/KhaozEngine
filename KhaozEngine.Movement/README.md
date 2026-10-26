@@ -273,6 +273,10 @@ Arrival uses a 1 mm proof tolerance. This is a bounded proof tolerance, not a ga
 Contact profiles keep raw axis surfaces as layer, area and candidate-link identity. Each surface gets a certified
 resting anchor within its own band, from raw feet minus `GroundedEpsilon` through raw feet plus `StepHeight`,
 below the next raw surface and inside captured headroom. Both raw and resting footprints must pass the area policy.
+Contact footprint checks keep captured surface reach and area restrictions, while placement and swept-shell proofs
+decide physical clearance. Headroom above a neighbouring captured floor beneath a low tread does not describe the
+body's clearance on that tread. The candidate's own captured headroom and raw surface ownership band still apply.
+Legacy footprints retain their captured headroom checks.
 The placement admission predicate requires an `Advanced`, grounded result with footing within the shared 3D 1 mm
 sphere. Its displacement guards are pinned by pure predicate tests. A Hold must stay within that sphere, and every
 directed edge and Stair proof must return grounded `Advanced` outcomes through the same wet binding. DryOnly omits

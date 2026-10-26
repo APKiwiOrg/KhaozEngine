@@ -4,6 +4,14 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.14.1
+
+2026-10-26
+
+- Keep Contact ground navigation connected beside climbable slab risers. Captured ground below a tread no longer
+  rejects the neighbouring resting anchor for its low headroom. Contact placement and swept-shell proofs still
+  enforce clearance, and raw layer, area, roof and climb limits remain enforced (Closes #1573).
+
 ## 21.14.0
 
 2026-10-26

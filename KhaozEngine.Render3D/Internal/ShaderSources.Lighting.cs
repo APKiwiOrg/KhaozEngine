@@ -86,7 +86,7 @@ bool projectCascade(int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margi
     // just outside a cascade's depth range and still claim it (issue #394).
     return !(uv.x < margin || uv.x > 1.0 - margin || uv.y < margin || uv.y > 1.0 - margin || z < 0.0 || z > 1.0);
 }
-" + CascadeShadowFilterGlsl + UnderwaterSubmergedOcclusionGlsl + @"
+" + CascadeShadowFilterGlsl + UnderwaterShadowKernelGlsl + UnderwaterSubmergedOcclusionGlsl + @"
 float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, vec3 Ngeo, float ndl) {
     fragmentUnderwaterKey = underwaterKeyForFragment(worldPos);
     vec3 shadowPos = fragmentUnderwaterKey.entry;
@@ -111,7 +111,10 @@ float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, 
     }
     if (sel < 0) return mix(1.0, submergedLit, strength); // the entry may be outside coverage while a slice is inside
 
-    float lit = pcfCascade(shadowAtlas, shadowSamp, sel, count, selUv, selZ - bias, texelStep);
+    float lit = fragmentUnderwaterKey.submerged
+        ? filterKeyShadowWidened(selUv, selZ - bias, sel,
+            underwaterKernelRadius(fragmentUnderwaterKey, sel), gl_FragCoord.xy)
+        : pcfCascade(shadowAtlas, shadowSamp, sel, count, selUv, selZ - bias, texelStep);
     float edge = min(min(selUv.x, 1.0 - selUv.x), min(selUv.y, 1.0 - selUv.y));
 
     if (sel == count - 1) {
@@ -133,7 +136,10 @@ float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, 
     if (blend > 0.0 && edge < blend) {
         vec2 uv2; float z2;
         if (projectCascade(sel + 1, shadowPos, Ngeo, slopeSin, margin, uv2, z2)) {
-            float lit2 = pcfCascade(shadowAtlas, shadowSamp, sel + 1, count, uv2, z2 - bias, texelStep);
+            float lit2 = fragmentUnderwaterKey.submerged
+                ? filterKeyShadowWidened(uv2, z2 - bias, sel + 1,
+                    underwaterKernelRadius(fragmentUnderwaterKey, sel + 1), gl_FragCoord.xy)
+                : pcfCascade(shadowAtlas, shadowSamp, sel + 1, count, uv2, z2 - bias, texelStep);
             lit = mix(lit2, lit, smoothstep(0.0, blend, edge));   // at the border (edge 0) fully the next cascade
         }
     }

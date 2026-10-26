@@ -5905,8 +5905,13 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       with orientation-preserving transforms, so a straddling box's above-water face already shadows the entry
       lookup. One retained caster per atlas texel can hide another submerged caster. Within a slice the ray
       follows the dry direction, with displacement error bounded by that slice's vertical depth span times
-      `tan(theta_air) - tan(theta_water)`, plus atlas quantization and receiver bias. Depth-dependent penumbra
-      widening remains pending.
+      `tan(theta_air) - tan(theta_water)`, plus atlas quantization and receiver bias. The shadow kernel widens
+      with the full in-water path `L`, using `min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)` in each
+      selected cascade. It spreads the dry bilinear filter's weighted 4x4 footprint at a fixed 16 point
+      comparisons, including shallow water. Tap positions and weights morph into a centred, stratified
+      equal-weight pattern over the first texel of widening. Noise-driven rotation and positional jitter grow
+      from zero with widening. Zero widening uses the exact dry kernel. The four march rays spread with the
+      same radius while retaining one comparison per slice.
     - *Reflection*: `SkyReflectionStrength` (0 = the flat `HorizonColor`, 1 = the sky along the reflected ray) and
       `SkyReflectionSunStrength` (how much of the sky's disc + halo the reflection carries).
     - *Swell*: `SwellAmplitude` (0 = flat plane), `SwellWavelength`, `SwellDirectionDegrees`, `SwellSpreadDegrees`,

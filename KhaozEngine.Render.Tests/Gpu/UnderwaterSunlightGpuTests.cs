@@ -190,6 +190,22 @@ public sealed class UnderwaterSunlightGpuTests(UnderwaterSunlightScenes scenes, 
     }
 
     [GpuFact]
+    public void PenumbraStopsWideningAtEightTexels()
+    {
+        var settings = new UnderwaterSunlightCase(UnderwaterSunlightGeometry.ThinSlab,
+            Depth: 2f, Absorption: false, PenumbraPerMetre: 0f);
+        UnderwaterSunlightImage baseline = scenes.Capture(settings);
+        UnderwaterSunlightImage capped = scenes.Capture(settings with { PenumbraPerMetre = 0.3f });
+        UnderwaterSunlightImage beyond = scenes.Capture(settings with { PenumbraPerMetre = 30f });
+        float z = baseline.ShadowCentroid().Offset;
+        float dryWidth = baseline.EdgeWidth10To90(z), cappedWidth = capped.EdgeWidth10To90(z);
+        output.WriteLine($"zero-widening edge={dryWidth:F6} m, capped edge={cappedWidth:F6} m, capped/beyond differing visibility bytes={capped.Visibility.Zip(beyond.Visibility).Count(p => p.First != p.Second)}");
+        Assert.True(cappedWidth > dryWidth * 2f,
+            $"The capped kernel must actually widen. Zero-widening edge {dryWidth:F6} m, capped {cappedWidth:F6} m.");
+        Assert.Equal(capped.Visibility, beyond.Visibility);
+    }
+
+    [GpuFact]
     public void ShallowKernelMatchesTheShore()
     {
         AssertShallowKernel(0.001f, oneCodeLimit: true);

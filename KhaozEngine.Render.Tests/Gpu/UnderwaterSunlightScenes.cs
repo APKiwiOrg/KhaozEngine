@@ -13,7 +13,8 @@ public enum UnderwaterSunlightGeometry { FlatBed, ThinSlab, StraddlingHull, Subm
 public readonly record struct UnderwaterSunlightCase(UnderwaterSunlightGeometry Geometry = UnderwaterSunlightGeometry.FlatBed,
     float Depth = 1f, bool Enabled = true, bool Orthographic = false, float ShadowStrength = 1f,
     bool Caster = true, bool Absorption = true, bool Water = true, float SlabBottom = 0.05f, bool AmbientOnly = false,
-    bool SpecularOnly = false, float SpecularStrength = 0.8f, bool BedCastsShadows = false)
+    bool SpecularOnly = false, float SpecularStrength = 0.8f, bool BedCastsShadows = false,
+    float PenumbraPerMetre = UnderwaterSunlightScenes.PenumbraPerMetre)
 {
     public UnderwaterSunlightCase() : this(UnderwaterSunlightGeometry.FlatBed) { }
     public float BedY => Geometry == UnderwaterSunlightGeometry.Cave ? -3f
@@ -124,7 +125,7 @@ public sealed class UnderwaterSunlightScenes : IDisposable
         scene.Post.Water = new WaterSettings
         {
             UnderwaterSunlight = settings.Enabled,
-            UnderwaterPenumbraPerMetre = PenumbraPerMetre,
+            UnderwaterPenumbraPerMetre = settings.PenumbraPerMetre,
             AbsorptionPerMetre = settings.Absorption ? new Color(0.6f, 0.3f, 0.15f, 0f) : Color.Transparent,
             Opacity = 0f, GlintStrength = 0f, FoamStrength = 0f,
             SwellAmplitude = 0f, SwellSteepness = 0f, NormalStrength = 0f,

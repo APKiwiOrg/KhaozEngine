@@ -448,8 +448,14 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   that winding, so the entry lookup already shadows a straddling box's above-water face. The march supplies
   the fully submerged rock and cave-roof shadows. The atlas retains one caster per texel, so a nearer caster
   can hide a submerged one. Within each slice, shadow displacement error is bounded by its vertical depth
-  span times `tan(theta_air) - tan(theta_water)`, apart from atlas quantization and receiver bias. Penumbra
-  widening remains pending.
+  span times `tan(theta_air) - tan(theta_water)`, apart from atlas quantization and receiver bias. The entry
+  kernel spreads the dry bilinear 3x3 filter's weighted 4x4 footprint, retaining 16 point comparisons at every
+  depth. Its radius is `min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)` in each lookup cascade.
+  Over the first texel of widening, positions and weights morph into a centred, stratified equal-weight pattern.
+  Noise-driven rotation and positional jitter grow from zero, preserving the exact dry kernel at zero.
+  Added tap displacement follows the horizontal entry plane's depth, relative to each original dry
+  tap, so widening does not move the comparison ray above shallow casters. The four march rays spread with
+  the same radius and keep one comparison per slice.
   - The fit also quantizes the LIGHT's rotation, not just its focus translation: `ShadowLightHoldTexels` (default
   `1`) and `ShadowLightHoldCasterHeight` (default `12`) hold the direction the cascades were last fitted from until
   the sun has turned far enough to drag a worst-case caster's shadow by that many shadow texels, so a stationary

@@ -8,7 +8,8 @@ using KhaozEngine.Catalog.Authoring;
 namespace KhaozEngine.Tests.Catalog.Upgrade;
 
 /// <summary>Owns every started Catalog runner until it has joined, including exceptional exits.</summary>
-internal sealed class CatalogRunnerLifetime(TimeProvider? clock = null, Action<Exception>? abort = null)
+internal sealed class CatalogRunnerLifetime(TimeProvider? clock = null, Action<Exception>? abort = null,
+    TimeProvider? safetyClock = null)
 {
     readonly CancellationTokenSource _lifetime = new();
     readonly List<Task<ContentUpgradeReport>> _runs = [];
@@ -31,7 +32,7 @@ internal sealed class CatalogRunnerLifetime(TimeProvider? clock = null, Action<E
         {
             try
             {
-                var watch = new CatalogPhaseWatch(clock ?? TimeProvider.System, Diagnostic);
+                var watch = new CatalogPhaseWatch(clock ?? TimeProvider.System, Diagnostic, safetyClock);
                 owned.TrySetResult(await watch.RunAsync(() => run(Token)));
             }
             catch (Exception failure)

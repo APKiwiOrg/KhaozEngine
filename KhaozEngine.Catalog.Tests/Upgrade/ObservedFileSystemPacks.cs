@@ -14,6 +14,7 @@ internal sealed class ObservedFileSystemPacks(FileSystemPackStore inner)
 {
     public Action? BeforeRead { get; set; }
     public Func<CancellationToken, Task>? BeforeEnumeration { get; set; }
+    public Exception? WriteFailure { get; private set; }
     public OperationCanceledException? EnumerationCancellation { get; private set; }
     public int Enumerations { get; private set; }
     public int Deletions { get; private set; }
@@ -28,8 +29,18 @@ internal sealed class ObservedFileSystemPacks(FileSystemPackStore inner)
             return inner.GetAsync(hash, cancellationToken);
         });
 
-    public Task PutAsync(string hash, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken = default)
-        => CatalogPhaseWatch.ObserveAsync("filesystem pack write", () => inner.PutAsync(hash, bytes, cancellationToken));
+    public async Task PutAsync(string hash, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await CatalogPhaseWatch.ObserveAsync("filesystem pack write", () => inner.PutAsync(hash, bytes, cancellationToken));
+        }
+        catch (Exception failure)
+        {
+            WriteFailure = failure;
+            throw;
+        }
+    }
 
     public async IAsyncEnumerable<string> ListAsync(int versionNumber,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)

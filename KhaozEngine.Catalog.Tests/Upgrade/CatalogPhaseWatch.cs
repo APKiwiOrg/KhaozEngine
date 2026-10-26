@@ -5,11 +5,17 @@ using System.Threading.Tasks;
 namespace KhaozEngine.Tests.Catalog.Upgrade;
 
 /// <summary>An inactivity diagnostic, independent of the token used by real catalog and pack IO.</summary>
-internal sealed class CatalogPhaseWatch(TimeProvider clock, TaskCompletionSource<Exception> diagnostic)
+internal sealed class CatalogPhaseWatch(TimeProvider clock, TaskCompletionSource<Exception> diagnostic,
+    TimeProvider? safetyClock = null)
 {
     static readonly AsyncLocal<CatalogPhaseWatch?> Ambient = new();
     static readonly TimeSpan Budget = TimeSpan.FromSeconds(20);
     readonly object _sync = new();
+    readonly TimeProvider _clock = clock;
+    // A controlled clock can be held before its first scripted advance. Keep real safety independent.
+    readonly TimeProvider? _safetyClock = ReferenceEquals(clock, TimeProvider.System)
+        ? null : safetyClock ?? TimeProvider.System;
+    ITimer? _safetyTimer;
     ITimer? _timer;
     int _generation;
     bool _stopped;
@@ -36,6 +42,7 @@ internal sealed class CatalogPhaseWatch(TimeProvider clock, TaskCompletionSource
                 _stopped = true;
                 _generation++;
                 _timer?.Dispose();
+                _safetyTimer?.Dispose();
             }
 
             Ambient.Value = previous;
@@ -99,17 +106,22 @@ internal sealed class CatalogPhaseWatch(TimeProvider clock, TaskCompletionSource
             _phase = phase ?? _phase;
             string name = _phase;
             _timer?.Dispose();
+            _safetyTimer?.Dispose();
             int generation = ++_generation;
-            _timer = clock.CreateTimer(_ =>
+            void Expire(bool safety)
             {
                 lock (_sync)
                 {
                     if (!_stopped && _generation == generation)
                     {
-                        diagnostic.TrySetResult(new TimeoutException("Catalog phase stalled: " + name));
+                        string prefix = safety ? "Catalog safety phase stalled: " : "Catalog phase stalled: ";
+                        diagnostic.TrySetResult(new TimeoutException(prefix + name));
                     }
                 }
-            }, null, Budget, Timeout.InfiniteTimeSpan);
+            }
+
+            _timer = _clock.CreateTimer(_ => Expire(false), null, Budget, Timeout.InfiniteTimeSpan);
+            _safetyTimer = _safetyClock?.CreateTimer(_ => Expire(true), null, Budget, Timeout.InfiniteTimeSpan);
         }
 
         // Notify after releasing this watch's lock. A refresh does not propagate, so mutual gate

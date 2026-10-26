@@ -17,11 +17,11 @@ internal sealed class UpgradePublishScenario
     public InterleavedUpgradePublishStore Next { get; }
 
     public UpgradePublishScenario(IContentAuthoringStore inner, ContentTypeRegistry registry,
-        bool sweepFails = false, TimeProvider? clock = null)
+        bool sweepFails = false, TimeProvider? clock = null, TimeProvider? safetyClock = null)
     {
         _registry = registry;
         _set = UpgradeLifetimeCatalog.SetFor(registry);
-        Owner = new CatalogRunnerLifetime(clock, Sequence.Fail);
+        Owner = new CatalogRunnerLifetime(clock, Sequence.Fail, safetyClock);
         Sequence.Lifetime = Owner.Token;
         // Older reads initial/preflight/frozen plus recovery or the already-recorded second preflight.
         // Next reads only initial/preflight/frozen. No scripted rival remains after those observations.

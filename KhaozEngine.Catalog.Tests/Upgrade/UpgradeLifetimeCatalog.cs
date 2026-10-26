@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -10,19 +11,41 @@ namespace KhaozEngine.Tests.Catalog.Upgrade;
 /// <summary>The real older catalog and the two definitions used by the lifetime scenarios.</summary>
 internal static class UpgradeLifetimeCatalog
 {
-    public static async Task<ContentAuthoringStoreLease> CreateAsync(
+    public static Task<ContentAuthoringStoreLease> CreateAsync(
         TemporaryCatalogDatabase files, ContentTypeRegistry registry, bool sqlite, IPackStore? packs = null)
     {
         packs ??= new ObservedFileSystemPacks(files.Pack());
         IContentAuthoringStore store = sqlite
             ? new SqliteContentAuthoringStore(files.ConnectionString, registry, packs)
             : new InMemoryContentAuthoringStore(registry, packs);
-        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
-        await store.ApplyEditsAsync(
-            [ContentEdit.Add(UpgradeFixtures.Thing, new ContentKey("old_row"), PublishFixtures.Fields(11))],
-            UpgradeFixtures.Actor, UpgradeFixtures.Operator, "seed the older catalog");
-        await store.PublishAsync(PublishFixtures.Request(0));
-        return new ContentAuthoringStoreLease(store);
+        return CreateAsync(store);
+    }
+
+    public static async Task<ContentAuthoringStoreLease> CreateAsync(IContentAuthoringStore store)
+    {
+        var lease = new ContentAuthoringStoreLease(store);
+        try
+        {
+            await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+            await store.ApplyEditsAsync(
+                [ContentEdit.Add(UpgradeFixtures.Thing, new ContentKey("old_row"), PublishFixtures.Fields(11))],
+                UpgradeFixtures.Actor, UpgradeFixtures.Operator, "seed the older catalog");
+            await store.PublishAsync(PublishFixtures.Request(0));
+            return lease;
+        }
+        catch (Exception primary)
+        {
+            try
+            {
+                lease.Dispose();
+            }
+            catch (Exception cleanup)
+            {
+                throw new AggregateException("Catalog setup and cleanup both failed", primary, cleanup);
+            }
+
+            throw;
+        }
     }
 
     public static ContentUpgradeSet SetFor(ContentTypeRegistry registry)

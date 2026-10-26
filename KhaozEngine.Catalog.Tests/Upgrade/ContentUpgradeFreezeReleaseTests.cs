@@ -146,12 +146,13 @@ public sealed class ContentUpgradeFreezeReleaseTests
 
     /// <summary>A two-definition script with finite observations and an independent phase diagnostic.</summary>
     internal static Task<ContentUpgradeReport> RunAsync(IContentAuthoringStore store, ContentTypeRegistry registry,
-        int draftBound = 5, int[]? freezeBases = null, CancellationToken exercise = default)
+        int draftBound = 5, int[]? freezeBases = null, CancellationToken exercise = default,
+        CatalogRunnerLifetime? owner = null)
     {
         // One initial draft read, then preflight and frozen proof for each of two definitions gives five.
         // A committed freeze fault adds its recovery, discard proof, progress read and repeated preflight.
         var script = new ScriptedUpgradeStore(store, draftBound, freezeBases ?? [1, 2]);
-        var lifetime = new CatalogRunnerLifetime();
+        CatalogRunnerLifetime lifetime = owner ?? new CatalogRunnerLifetime();
         return lifetime.ExecuteAsync(async () =>
         {
             Task<ContentUpgradeReport> run = lifetime.Start(async token =>

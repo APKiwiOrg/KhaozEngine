@@ -13,6 +13,7 @@ using KhaozEngine.NetWorld;
 using KhaozEngine.Server.Admin;
 using KhaozEngine.Tests.Catalog;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.ServerAdminEndpoint;
 
@@ -23,6 +24,9 @@ namespace KhaozEngine.Tests.ServerAdminEndpoint;
 /// </summary>
 public class AdminActionHttpTests
 {
+    private readonly ITestOutputHelper output;
+
+    public AdminActionHttpTests(ITestOutputHelper output) => this.output = output;
 
     private sealed class NullAdminControllable : IAdminControllable
     {
@@ -39,9 +43,18 @@ public class AdminActionHttpTests
         public required HttpClient Client { get; init; }
         public required HttpClientHandler Handler { get; init; }
         public required string BaseUrl { get; init; }
+        public AdminTlsProbe? Probe { get; init; }
 
         public async ValueTask DisposeAsync()
         {
+            if (Probe is { } probe)
+            {
+                await probe.CleanupAsync("server.stop", () => Http.StopAsync());
+                await probe.CleanupAsync("server.dispose", () => Http.DisposeAsync().AsTask());
+                await probe.CleanupAsync("client.dispose", () => { Client.Dispose(); return Task.CompletedTask; });
+                await probe.CleanupAsync("handler.dispose", () => { Handler.Dispose(); return Task.CompletedTask; });
+                return;
+            }
             await Http.StopAsync();
             await Http.DisposeAsync();
             Client.Dispose();
@@ -53,7 +66,7 @@ public class AdminActionHttpTests
     // turns a wrong-listener-on-our-port into a three minute red instead of a quick one (#720).
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
 
-    private static async Task<Harness> StartAsync(ServerAdmin admin, bool withBearer = true)
+    private static async Task<Harness> StartAsync(ServerAdmin admin, bool withBearer = true, AdminTlsProbe? probe = null)
     {
         // Port 0: Kestrel takes an OS-assigned port and reports it back, so there is no probe-release-rebind window
         // in which another listener on the host can take the port between the pick and the bind (#720). BoundPort is
@@ -62,16 +75,28 @@ public class AdminActionHttpTests
         {
             Port = 0,
             BearerToken = "secret",
-            Certificate = AdminTlsCertificate.CreateSelfSigned("localhost"),
+            Certificate = probe is null ? AdminTlsCertificate.CreateSelfSigned("localhost")
+                : probe.Step("certificate.create", () => AdminTlsCertificate.CreateSelfSigned("localhost")),
         };
-        var http = new AdminHttpServer(admin, opts);
-        await http.StartAsync();
+        var http = probe is null ? new AdminHttpServer(admin, opts)
+            : probe.Step("server.construct", () => new AdminHttpServer(admin, opts, probe.Hooks));
+        if (probe is null) await http.StartAsync();
+        else
+        {
+            try { await probe.StartAsync(http); }
+            catch
+            {
+                await probe.CleanupAsync("server.dispose", () => http.DisposeAsync().AsTask());
+                throw;
+            }
+        }
 
         var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
         var hc = new HttpClient(handler) { Timeout = RequestTimeout };
         if (withBearer) hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
         return new Harness
         {
+            Probe = probe,
             Http = http,
             Client = hc,
             Handler = handler,
@@ -305,12 +330,31 @@ public class AdminActionHttpTests
     [InlineData("catalog-versions", false)]
     public async Task Get_OnTheCatalogActions_Is405ForTheElevenThatWrite(string action, bool mutating)
     {
-        using var catalog = new CatalogActionHarness();
-        await using Harness h = await StartAsync(catalog.Admin);
+        if (action != "catalog-sweep")
+        {
+            using var catalog = new CatalogActionHarness();
+            await using Harness h = await StartAsync(catalog.Admin);
+            HttpResponseMessage got = await h.Client.GetAsync(h.BaseUrl + "/actions/" + action);
+            Assert.Equal(mutating, got.StatusCode == HttpStatusCode.MethodNotAllowed);
+            return;
+        }
 
-        HttpResponseMessage got = await h.Client.GetAsync(h.BaseUrl + "/actions/" + action);
-
-        Assert.Equal(mutating, got.StatusCode == HttpStatusCode.MethodNotAllowed);
+        var probe = new AdminTlsProbe("catalog-sweep", line => output.WriteLine(line));
+        CatalogActionHarness? ownedCatalog = null;
+        Harness? ownedHarness = null;
+        await probe.RunAsync(async () =>
+        {
+            ownedCatalog = new CatalogActionHarness();
+            ownedHarness = await StartAsync(ownedCatalog.Admin, probe: probe);
+            HttpResponseMessage got = await probe.RequestAsync("catalog-get",
+                () => ownedHarness.Client.GetAsync(ownedHarness.BaseUrl + "/actions/" + action));
+            Assert.Equal(mutating, got.StatusCode == HttpStatusCode.MethodNotAllowed);
+        }, async () =>
+        {
+            if (ownedHarness is not null) await ownedHarness.DisposeAsync();
+            if (ownedCatalog is not null)
+                await probe.CleanupAsync("catalog.dispose", () => { ownedCatalog.Dispose(); return Task.CompletedTask; });
+        });
     }
 
     /// <summary>

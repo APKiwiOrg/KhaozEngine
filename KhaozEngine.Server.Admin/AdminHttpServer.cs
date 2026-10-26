@@ -35,7 +35,9 @@ public sealed class AdminHttpServer : IAsyncDisposable
     private readonly WebApplication app;
     private int boundPort;
 
-    public AdminHttpServer(ServerAdmin admin, AdminEndpointOptions options)
+    public AdminHttpServer(ServerAdmin admin, AdminEndpointOptions options) : this(admin, options, null) { }
+
+    internal AdminHttpServer(ServerAdmin admin, AdminEndpointOptions options, AdminHttpServerDiagnosticHooks? diagnostics)
     {
         ArgumentNullException.ThrowIfNull(admin);
         ArgumentNullException.ThrowIfNull(options);
@@ -44,6 +46,7 @@ public sealed class AdminHttpServer : IAsyncDisposable
 
         WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
+        diagnostics?.Logging(builder.Logging);
         // System.Text.Json drops fields by default, so a Vector3 (X/Y/Z are fields) in a response DTO serializes as
         // an empty {}. Register a scoped converter so OnlinePlayer.Position carries its components; scoped to this
         // endpoint's JSON options (not a blanket IncludeFields, which would change every other type's serialization).
@@ -54,9 +57,18 @@ public sealed class AdminHttpServer : IAsyncDisposable
             // completes before the bearer check ever runs, so connection count and header/idle timeouts are the only
             // pre-auth cost this endpoint can be made to pay.
             options.ApplyLimits(k.Limits);
-            k.Listen(options.BindAddress, options.Port, listen => listen.UseHttps(options.Certificate.Certificate));
+            k.Listen(options.BindAddress, options.Port, listen =>
+            {
+                if (diagnostics is null) listen.UseHttps(options.Certificate.Certificate);
+                else
+                {
+                    diagnostics.Listener(listen);
+                    listen.UseHttps(options.Certificate.Certificate, diagnostics.Https);
+                }
+            });
         });
         app = builder.Build();
+        diagnostics?.Application(app);
 
         byte[] expected = Encoding.UTF8.GetBytes("Bearer " + options.BearerToken);
         app.Use(async (ctx, next) =>

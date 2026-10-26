@@ -14,6 +14,7 @@ using KhaozEngine.Server.Admin;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.ServerAdminEndpoint;
 
@@ -24,6 +25,9 @@ namespace KhaozEngine.Tests.ServerAdminEndpoint;
 /// </summary>
 public class TileWorldServerAdminEndpointTests
 {
+    private readonly ITestOutputHelper output;
+
+    public TileWorldServerAdminEndpointTests(ITestOutputHelper output) => this.output = output;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
 
     /// <summary>A tile server and one client that joined with a token, pumped on the test thread.</summary>
@@ -146,45 +150,59 @@ public class TileWorldServerAdminEndpointTests
     [Fact]
     public async Task The_https_endpoint_serves_a_tile_world_server()
     {
-        using var rig = new TileRig("acct-http");
-        var admin = new ServerAdmin(rig.Server);
-        var opts = new AdminEndpointOptions
+        var probe = new AdminTlsProbe("tile-world", line => output.WriteLine(line));
+        TileRig? rig = null;
+        AdminHttpServer? http = null;
+        HttpClientHandler? handler = null;
+        HttpClient? hc = null;
+        await probe.RunAsync(async () =>
         {
-            Port = 0,
-            BearerToken = "secret",
-            Certificate = AdminTlsCertificate.CreateSelfSigned("localhost"),
-        };
-        await using var http = new AdminHttpServer(admin, opts);
-        await http.StartAsync();
-        using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
-        using var hc = new HttpClient(handler) { Timeout = RequestTimeout };
-        hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
-        string baseUrl = $"https://127.0.0.1:{http.BoundPort}/admin";
+            rig = new TileRig("acct-http");
+            var admin = new ServerAdmin(rig.Server);
+            var opts = new AdminEndpointOptions
+            {
+                Port = 0,
+                BearerToken = "secret",
+                Certificate = probe.Step("certificate.create", () => AdminTlsCertificate.CreateSelfSigned("localhost")),
+            };
+            http = probe.Step("server.construct", () => new AdminHttpServer(admin, opts, probe.Hooks));
+            await probe.StartAsync(http);
+            handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
+            hc = new HttpClient(handler) { Timeout = RequestTimeout };
+            hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
+            string baseUrl = $"https://127.0.0.1:{http.BoundPort}/admin";
 
-        string listed = await hc.GetStringAsync(baseUrl + "/online");
-        Assert.Contains("acct-http", listed, StringComparison.Ordinal);
+            string listed = await probe.RequestAsync("online", () => hc.GetStringAsync(baseUrl + "/online"));
+            Assert.Contains("acct-http", listed, StringComparison.Ordinal);
 
-        // A broadcast the tile wire cannot carry is the operator naming the wrong thing: a 400 with the reason.
-        using (var empty = new StringContent("{\"Text\":\"\"}", Encoding.UTF8, "application/json"))
+            // A broadcast the tile wire cannot carry is the operator naming the wrong thing: a 400 with the reason.
+            using (var empty = new StringContent("{\"Text\":\"\"}", Encoding.UTF8, "application/json"))
+            {
+                HttpResponseMessage refused = await probe.RequestAsync("broadcast-empty", () => hc.PostAsync(baseUrl + "/broadcast", empty));
+                Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+                Assert.Contains("reason token", await refused.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+            }
+            using (var token = new StringContent("{\"Text\":\"game:hi\"}", Encoding.UTF8, "application/json"))
+                Assert.Equal(HttpStatusCode.Accepted, (await probe.RequestAsync("broadcast-token", () => hc.PostAsync(baseUrl + "/broadcast", token))).StatusCode);
+
+            Vector3 target = new TilePresenter(1f, TileWorldDocument.DefaultPlaneHeight).PoseAt(new TileCoord(9, 12, 0)).Position;
+            string teleport = string.Format(CultureInfo.InvariantCulture,
+                "{{\"Account\":\"acct-http\",\"X\":{0},\"Y\":{1},\"Z\":{2}}}", target.X, target.Y, target.Z);
+            using (var move = new StringContent(teleport, Encoding.UTF8, "application/json"))
+                Assert.Equal(HttpStatusCode.Accepted, (await probe.RequestAsync("teleport", () => hc.PostAsync(baseUrl + "/teleport", move))).StatusCode);
+
+            rig.Frames(12);
+            Assert.Equal(new[] { "game:hi" }, rig.Notices);
+            Assert.True(rig.Server.TryGetPlayerState(0, out TileMoveState moved));
+            Assert.Equal(new TileCoord(9, 12, 0), moved.Tile);
+
+            await probe.StepAsync("server.stop", () => http.StopAsync());
+        }, async () =>
         {
-            HttpResponseMessage refused = await hc.PostAsync(baseUrl + "/broadcast", empty);
-            Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
-            Assert.Contains("reason token", await refused.Content.ReadAsStringAsync(), StringComparison.Ordinal);
-        }
-        using (var token = new StringContent("{\"Text\":\"game:hi\"}", Encoding.UTF8, "application/json"))
-            Assert.Equal(HttpStatusCode.Accepted, (await hc.PostAsync(baseUrl + "/broadcast", token)).StatusCode);
-
-        Vector3 target = new TilePresenter(1f, TileWorldDocument.DefaultPlaneHeight).PoseAt(new TileCoord(9, 12, 0)).Position;
-        string teleport = string.Format(CultureInfo.InvariantCulture,
-            "{{\"Account\":\"acct-http\",\"X\":{0},\"Y\":{1},\"Z\":{2}}}", target.X, target.Y, target.Z);
-        using (var move = new StringContent(teleport, Encoding.UTF8, "application/json"))
-            Assert.Equal(HttpStatusCode.Accepted, (await hc.PostAsync(baseUrl + "/teleport", move)).StatusCode);
-
-        rig.Frames(12);
-        Assert.Equal(new[] { "game:hi" }, rig.Notices);
-        Assert.True(rig.Server.TryGetPlayerState(0, out TileMoveState moved));
-        Assert.Equal(new TileCoord(9, 12, 0), moved.Tile);
-
-        await http.StopAsync();
+            if (hc is not null) await probe.CleanupAsync("client.dispose", () => { hc.Dispose(); return Task.CompletedTask; });
+            if (handler is not null) await probe.CleanupAsync("handler.dispose", () => { handler.Dispose(); return Task.CompletedTask; });
+            if (http is not null) await probe.CleanupAsync("server.dispose", () => http.DisposeAsync().AsTask());
+            if (rig is not null) await probe.CleanupAsync("rig.dispose", () => { rig.Dispose(); return Task.CompletedTask; });
+        });
     }
 }

@@ -591,8 +591,9 @@ public sealed class TileWorldViewWaterOpticsTriangleTests
         var refused = new RegionCoord(2, 0);
         TileWorldDocument doc = Interior();
         doc.GetOrCreateRegion(refused);
-        Fill(doc, TileRenderTestData.Grass, 176, 4, 192, 24);
-        Fill(doc, TileRenderTestData.Water, 190, 12, 192, 15);
+        doc.UnloadedRegionHashes.Add(new RegionCoord(2, -1), "known-unloaded");
+        Fill(doc, TileRenderTestData.Grass, 176, 0, 192, 24);
+        Fill(doc, TileRenderTestData.Water, 190, 0, 192, 3);
         var scene = new RecordingTileWorldScene();
         using var view = View(scene, doc);
         view.LoadRegion(Origin);

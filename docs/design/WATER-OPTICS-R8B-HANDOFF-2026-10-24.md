@@ -50,6 +50,12 @@ bodies at the same XZ and different levels get independent fields, bindings and 
 source triangles in emitted order without clipping, welding or moving vertices. The field refuses holes inside a
 certificate and disagreeing overlaps rather than resolving them by order.
 
+TileWorld treats a region absent from the manifest as a defined world edge. Its producer adds synthetic bed
+triangles only beyond that edge, continuing actual consumed ground with clamped edge profiles and a continuous
+corner fill. It leaves source triangles and water rectangles intact. Empty edge ground supplies nothing to
+continue. A known-unloaded region, or a present region without a current snapshot, still refuses strictly.
+Absent-region availability is a dependency, so a later manifest entry invalidates the continuation.
+
 ## What a prepared owner carries after anchor reduction
 
 Each prepared bounded-water owner carries five things together, and publishes or retires them as one unit.

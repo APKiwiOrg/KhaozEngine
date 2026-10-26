@@ -4,6 +4,15 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.15.0
+
+2026-10-26
+
+- Add six `SupportQueryCapture` counters for outer NPC Hold and Step invocations and authoritative
+  `PlayerMovementSystem` per-entity Steps, each split by Legacy and Contact controller. Idle and rejected
+  selected player Steps count once. Direct player simulators and nested held-result fallbacks add no
+  outer invocations (#1598).
+
 ## 21.14.0
 
 2026-10-26

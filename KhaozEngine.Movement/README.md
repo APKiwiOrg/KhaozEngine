@@ -451,11 +451,17 @@ the CPU-time analysis and the updated Hollowmere extrapolation. Both are local s
 
 ### Labelled support-query capture
 
-The public `KhaozEngine.Physics.SupportQueryCapture.Begin(label)` enables structural measurement for a
-synchronous Contact build. Wrap `GroundNavigationBake.Create` or `BuildProfile` and the complete source/reuse
+The public `KhaozEngine.Physics.SupportQueryCapture.Begin(label)` enables structural measurement for
+synchronous movement and Contact builds. Wrap `GroundNavigationBake.Create` or `BuildProfile` and the complete source/reuse
 lifetime in the scope. `Snapshot()` returns immutable cumulative `SupportQueryMeasurement` evidence, and
 `Combine` reduces disjoint results. The [Physics example and scope contract](../KhaozEngine.Physics/README.md#support-query-measurement)
 show two body labels, exception restoration, exclusive nesting and thread/async restrictions.
+
+`NpcLegacyHolds`, `NpcContactHolds`, `NpcLegacySteps` and `NpcContactSteps` count the named
+`NpcGroundMovement` entry point, using its requested tuning's controller. A host can retain a destination
+while calling Hold, and Step counts even when steering requests no travel. Direct context steps do not
+add these outer invocations. Authoritative player-system Steps have separate counters. The
+[Physics contract](../KhaozEngine.Physics/README.md#support-query-measurement) defines all six populations.
 
 Parallel phases retain the build's captured label, including when caller labels later nest. Every started
 worker joins and contributes once in worker-index order before return or failure propagation. Unstarted workers

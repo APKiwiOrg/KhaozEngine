@@ -8960,7 +8960,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.15.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9398,7 +9398,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.15.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10197,7 +10197,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.15.0" />
 ```
 
 ```csharp
@@ -10582,6 +10582,14 @@ balance through the boundary. Labels are nonblank, preserved exactly and compare
 exclusive to the innermost label and completed children enter the parent once. Snapshots are detached,
 cumulative and immutable. Sample only the active top scope, or its frozen final result on the creating thread.
 Never carry a scope across `await`, `Task.Run` or a thread handoff. Results may be read on any thread.
+
+The six outer invocation counters separate NPC Hold and Step calls from authoritative
+`PlayerMovementSystem` per-entity Steps, each split by Legacy or Contact controller. NPC attribution uses
+requested tuning, never destinations or steering state. Player Steps include idle commands and rejected
+selected Steps, exclude skipped entities, and count only this authoritative system. Players have no outer
+Hold entry point here. The nested `HoldExplicit` fallback and direct `PlayerMoveSimulator` consumers such as
+client prediction add no outer invocations. The [counter contract](../KhaozEngine.Physics/README.md#support-query-measurement)
+names each identity and describes disabled recording.
 
 `SupportQueryMeasurement.Combine` adds disjoint completed measurements, coalescing repeated labels. It does
 not deduplicate parent/child overlap or repeated cumulative snapshots. Independent consumer threads need
@@ -18385,7 +18393,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.15.0" />
 ```
 
 ```csharp
@@ -18421,7 +18429,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.15.0" />
 ```
 
 ```csharp
@@ -18665,7 +18673,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.15.0" />
 ```
 
 ```csharp
@@ -23050,7 +23058,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.14.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.15.0" />
 </ItemGroup>
 ```
 

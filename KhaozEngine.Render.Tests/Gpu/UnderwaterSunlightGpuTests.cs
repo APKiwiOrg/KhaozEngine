@@ -171,6 +171,34 @@ public sealed class UnderwaterSunlightGpuTests(UnderwaterSunlightScenes scenes, 
     }
 
     [GpuFact]
+    public void SubmergedSlopedReceiverDoesNotShadowItself()
+    {
+        // y = -1 + x. Compare the same widened receiver with and without its own shadow draw.
+        var settings = new UnderwaterSunlightCase(UnderwaterSunlightGeometry.SlopedBed,
+            Caster: false, BedCastsShadows: true, Absorption: false);
+        UnderwaterSunlightImage casting = scenes.Capture(settings);
+        UnderwaterSunlightImage control = scenes.Capture(settings with { BedCastsShadows = false });
+        int count = 0, colorDifferences = 0, visibilityDifferences = 0, minimumControl = 255;
+        for (int y = 2; y < UnderwaterSunlightScenes.Size - 2; y++)
+            for (int x = 2; x < UnderwaterSunlightScenes.Size - 2; x++)
+            {
+                Vector3 p = casting.BedPoint(x, y);
+                if (MathF.Abs(p.X) > 0.6f || MathF.Abs(p.Z) > 0.6f) continue;
+                int i = y * UnderwaterSunlightScenes.Size + x;
+                minimumControl = Math.Min(minimumControl, control.Visibility[i]);
+                if (casting.Visibility[i] != control.Visibility[i]) visibilityDifferences++;
+                for (int channel = 0; channel < 4; channel++)
+                    if (casting.Rgba[i * 4 + channel] != control.Rgba[i * 4 + channel]) colorDifferences++;
+                count++;
+            }
+        output.WriteLine($"sloped self-casting bed pixels={count}, differing color bytes={colorDifferences}, visibility bytes={visibilityDifferences}, minimum open visibility={minimumControl}/255");
+        Assert.True(count > 1000, $"The submerged slope probe is too small, got {count} pixels.");
+        Assert.Equal(255, minimumControl);
+        Assert.Equal(0, visibilityDifferences);
+        Assert.Equal(0, colorDifferences);
+    }
+
+    [GpuFact]
     public void HorizontalKeyShadowsASubmergedVerticalReceiver()
     {
         var settings = new UnderwaterSunlightCase(UnderwaterSunlightGeometry.HorizontalReceiver, Absorption: false);
@@ -213,6 +241,22 @@ public sealed class UnderwaterSunlightGpuTests(UnderwaterSunlightScenes scenes, 
         output.WriteLine($"10-90 widths shallow={shallow:F6} m, deep={deep:F6} m, ratio={ratio:F6}, predicted={predicted:F6} +/-25%, texel={texel:F6} m");
         Assert.True(deep > shallow && MathF.Abs(ratio - predicted) <= predicted * 0.25f,
             $"Penumbra width ratio {ratio:F6}, expected {predicted:F6} +/-25%. Shallow {shallow:F6} m, deep {deep:F6} m.");
+    }
+
+    [GpuFact]
+    public void PenumbraStopsWideningAtEightTexels()
+    {
+        var settings = new UnderwaterSunlightCase(UnderwaterSunlightGeometry.ThinSlab,
+            Depth: 2f, Absorption: false, PenumbraPerMetre: 0f);
+        UnderwaterSunlightImage baseline = scenes.Capture(settings);
+        UnderwaterSunlightImage capped = scenes.Capture(settings with { PenumbraPerMetre = 0.3f });
+        UnderwaterSunlightImage beyond = scenes.Capture(settings with { PenumbraPerMetre = 30f });
+        float z = baseline.ShadowCentroid().Offset;
+        float dryWidth = baseline.EdgeWidth10To90(z), cappedWidth = capped.EdgeWidth10To90(z);
+        output.WriteLine($"zero-widening edge={dryWidth:F6} m, capped edge={cappedWidth:F6} m, capped/beyond differing visibility bytes={capped.Visibility.Zip(beyond.Visibility).Count(p => p.First != p.Second)}");
+        Assert.True(cappedWidth > dryWidth * 2f,
+            $"The capped kernel must actually widen. Zero-widening edge {dryWidth:F6} m, capped {cappedWidth:F6} m.");
+        Assert.Equal(capped.Visibility, beyond.Visibility);
     }
 
     [GpuFact]

@@ -143,8 +143,8 @@ All of this lives in the shared lighting block, so the six call sites (`ModelFra
 variants inherit it. The `keyShadow = sampleKeyShadow(...)` call statements stay textually unchanged because the
 key-visibility export splices after that exact statement.
 
-The volume query, refracted entry lookup, submerged-caster march and key diffuse/specular attenuation are
-implemented. The depth-widened kernel below remains pending.
+The volume query, refracted entry lookup, submerged-caster march, depth-widened kernel and key diffuse/specular
+attenuation are implemented.
 
 1. Query the water volume for the fragment. Not submerged means today's path, bit for bit.
 2. Submerged at depth `h`: compute the refracted in-water direction, `L = h / cos(theta_water)`, and `E` on the
@@ -154,15 +154,20 @@ implemented. The depth-widened kernel below remains pending.
    lookup does. That keeps step 7's continuity exact.
 4. Submerged occlusion: march the refracted segment from `E` to `P` in four depth slices. At each slice end,
    one comparison reconstructs the stored caster's world height on the texel-snapped light ray. It counts only
-   casters below `surfaceY` and inside the slice's height band, anchored at that tap's endpoint height. The
+   casters below `surfaceY` and inside the slice's height band. Non-horizontal rays use shared world-height
+   boundaries, so different widened tap offsets cannot open gaps through a roof. The
    inverse height coefficients are each orthographic basis row's Y component divided by its squared length.
    Those denominators remain nonzero at every light elevation, including exactly horizontal. The height-band
    endpoint is inclusive so a horizontal ray can occlude, and a separate light-depth comparison excludes
-   casters beyond the endpoint. The last slice stops short of `P` by the receiver's existing bias so the bed
-   does not shadow itself. All ends use the receiver's geometric normal
+   casters beyond the endpoint. The final endpoint is the receiver's geometric plane evaluated on each offset
+   tap's ray, retaining the normal offset and existing light-depth bias. A signed plane comparison multiplies
+   by the plane's light-depth slope, with no division by light elevation or plane slope. A parallel plane keeps
+   the light-depth endpoint test. This excludes the receiver's own upslope samples as well as a flat bed.
+   All ends use the receiver's geometric normal
    offset. Internal boundaries share a per-pixel interleaved-gradient-noise offset of up to half a slice, leaving
-   no band gaps. The final end stays at the biased receiver. TAA can resolve the jitter. Radius widening is
-   deferred to the kernel step below.
+   no band gaps. The final end stays at the biased receiver. TAA can resolve the jitter. The four slice rays
+   spread with the same widened radius, converted separately for each selected cascade. Their offsets vanish
+   at zero widening. Surface and slice depths are evaluated on the actual offset, snapped texel's light ray.
    - Caster-face evidence: the opaque pipeline culls clockwise fronts. Outward CCW box triangles and ordinary
      glTF triangles with orientation-preserving transforms retain their sun-facing near side. The loader
      preserves triangle order. Metal atlas readback reconstructs the straddling box's stored top at `y = 0.15`,
@@ -191,13 +196,28 @@ implemented. The depth-widened kernel below remains pending.
    march length goes to 0 so its term goes to 1, and the kernel goes to the dry kernel. The waterline has no seam.
    A test pins this.
 
-Kernel: today's bilinear 3x3 comparison kernel (16 fetches) has fixed one-texel spacing. The widened kernel keeps
-16 comparison taps on a rotated disc whose radius follows goal 4, with per-pixel rotation from interleaved
-gradient noise and TAA jitter, and blends from the bilinear kernel to the disc over its first texel so shallow
-water matches the shore. Radius capped at 8 texels of the receiver's cascade. Submerged fragments pay one kernel
-plus the march's few comparisons, roughly 1.25 times today's key-shadow cost. In a frame with opted-in water,
-other lit fragments pay a cluster list walk of usually zero to two records. A frame without opted-in water pays
-one uniform branch.
+Kernel: the bilinear 3x3 comparison kernel folds into a weighted 4x4 footprint, using 16 point depth comparisons.
+The underwater kernel starts with those taps and tent weights, then spreads the same 16 comparisons using
+`radiusTexels = min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)`, using each lookup cascade's matrix to
+convert world metres to texels. Per-pixel rotation and positional jitter use interleaved gradient noise, with
+amplitudes growing from zero over the first texel of widening. TAA jitters the receiver against this screen-fixed
+pattern. At zero widening, taps and weights are exactly the dry bilinear kernel. Over the first texel of
+widening, tap positions and weights morph into a centred, equal-weight pattern from a concentric square-to-disc
+mapping of a 4x4 cell grid. This interpolates one set of taps, never two filtered results. The stratified pattern
+uses all 16 comparisons, avoiding the phase-dependent variance of rotating the dry filter's nine effective taps
+at wider radii. That variance can expose an otherwise shadowed hull edge. The fully widened pattern stays
+inside the nominal radius rather than magnifying the folded dry fringe beyond it.
+All taps clamp inside their cascade's atlas column and compare stored point depths before weighting. Added
+displacement follows the analytic horizontal entry plane, evaluated at the actual snapped and clamped texel.
+Only the displacement from the original dry tap adjusts comparison depth, preserving its original bias and
+zero-widening result. Without that plane correction, outer rays can pass above a shallow caster and erase its
+shadow. This single kernel family keeps the cost at 16 comparisons even in shallow water. Blending a separate
+disc result with the dry filter would double that cost where most submerged pixels are. The march retains
+one comparison per slice, with offsets that grow
+from its centre ray using the same radius. Submerged fragments pay one kernel plus the four slice comparisons,
+roughly 1.25 times today's comparison count before cascade blending. In a frame with opted-in water, other lit
+fragments pay a cluster list walk of usually zero to two records. A frame without opted-in water pays one
+uniform branch.
 
 #### Backends
 
@@ -230,7 +250,7 @@ GPU (`[GpuFact]`, pixel invariants first, committed grids only where a grid adds
   matches `h tan(theta_water)` within a tolerance and is clearly below `h tan(theta_air)`, and the shadow has no
   hole under the hull.
 - Lit-bed brightness ratio under depth versus the same bed dry matches the path transmittance.
-- Penumbra width increases with depth.
+- Penumbra width increases with depth and stops widening at eight texels. Near-zero depths match the dry kernel.
 - Sloped bank across the waterline: no step in brightness at the line.
 - Cave under a lake stays dark. A fully submerged rock casts a bed shadow.
 - A frame with no opted-in water is byte-identical to the current output on an existing golden scene.
@@ -251,5 +271,5 @@ rationale and its gotchas sit next to the behaviour they explain.
 
 Exact record and header packing, the cluster-range math reuse boundary, the analytic surface-depth derivation,
 the march slice count and spacing (four uniform slices is the starting point, tuned against the floater and
-submerged-rock fixtures), the disc pattern and noise, the cascade choice details at `E`, TileWorld's floor margin,
+submerged-rock fixtures), the fixed-budget kernel pattern and noise, the cascade choice details at `E`, TileWorld's floor margin,
 test fixture geometry and tolerances, and how the work splits into tasks.

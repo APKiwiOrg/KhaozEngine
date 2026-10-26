@@ -194,14 +194,23 @@ bias. Key diffuse and specular attenuate along the refracted path using the body
 with orthographic cameras and disabled shadows. Zero records skip buffer reads. Four jittered depth slices along
 the refracted segment reconstruct stored caster heights below the surface and within each slice's height band.
 The orthographic matrix's squared basis lengths keep reconstruction finite through exactly horizontal key light,
-and a separate light-depth comparison excludes casters beyond the endpoint. The final slice uses the receiver's
-normal offset and depth bias to avoid self-shadow. Slice lookups blend cascades,
+and a separate light-depth comparison excludes casters beyond horizontal endpoints. Non-horizontal slices
+share world-height boundaries, so widened rays cannot open gaps through a roof. The final slice tests the
+receiver's geometric plane on each displaced ray with its normal offset and existing depth bias. This signed
+comparison avoids division by light elevation or plane slope and excludes upslope self-shadow. Slice lookups blend cascades,
 with the outer coverage fade applied once at the real receiver so virtual points near the atlas border do not
 brighten cave floors. The opaque atlas stores the sun-facing near side for outward CCW meshes under
 orientation-preserving transforms, including glTF geometry whose winding the loader preserves. A straddling box's
 above-water face therefore shadows the entry lookup already. Fully submerged rocks and cave roofs need the march.
-One retained caster per atlas texel can hide a submerged caster behind another one. Depth-widened kernels remain
-pending. This path does not depend on either authored water-depth source above.
+One retained caster per atlas texel can hide a submerged caster behind another one. The entry kernel widens the
+dry filter's weighted 4x4 footprint at a fixed 16 point comparisons, morphing positions and weights into a
+centred, stratified equal-weight pattern over the first texel of widening. Its radius is
+`min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)`, converted separately for each cascade. Rotation and
+positional jitter grow from zero with widening, so zero widening uses the exact dry kernel. Added entry-tap
+displacement adjusts comparison depth along the horizontal water plane, relative to the original dry tap, so
+outer rays cannot pass above shallow casters. The four slice rays spread with the same radius without adding
+comparisons, evaluating depth bands on each offset texel's light ray.
+This path does not depend on either authored water-depth source above.
 
 ## Where to look in the code
 

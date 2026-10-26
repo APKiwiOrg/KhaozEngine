@@ -12,8 +12,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Native foliage batches share immutable instance columns across cache and render views. After batch disposal,
   `MapNativeFoliageBatch.GeneratedIdentities` and `CoverBatches` throw `ObjectDisposedException`. Capture detached
   snapshots before requesting an accepted-plan replacement. Public snapshots and foliage payloads from public
-  `Register` remain usable, without keeping a per-row identity copy in the disposed batch. Residency frame
-  recording supplies borrowed payloads whose lifetime ends with the accepted plan.
+  `Register` and residency frame recording remain usable, without keeping a per-row identity copy in the
+  disposed batch. Cache-index and metadata growth after invalidation admit their allocations in the current
+  preparation's root and binding window, preserving earlier ownership on refusal.
 
 - Add optional Scene3D render-pass observation across geometry, shadows, atmosphere, water, effects,
   temporal resolve, post and display work, with cached skips, exclusive device leaves and fused motion metadata.

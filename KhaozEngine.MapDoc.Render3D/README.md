@@ -280,6 +280,9 @@ Cache, accepted plan and pending replacement readers share the same column owner
 ownership only. Last release detaches the backing payload before returning its receipt and CPU lease.
 Strings and generation policies have a separate metadata owner counted by object identity. It retains no context,
 support geometry or decoded assets. Context charge wrappers clear their context references when capture ownership ends.
+Cache-index and metadata growth reserve through the current preparation's root and binding window. Earlier
+retained slices keep their original receipts until release. Refusal returns only the new reservation before
+allocation, and capacity settlement releases the newest slices first.
 Accepted-plan replacement and window unload dispose the old `MapNativeFoliageBatch`. Its `GeneratedIdentities`
 and `CoverBatches` getters, `Register` and `Record` throw `ObjectDisposedException` after disposal. Capture detached
 public snapshots before requesting replacement. Those snapshots and foliage payloads from public `Register` survive disposal,
@@ -302,7 +305,8 @@ exceed the allowance. A sparse layer never keeps a full candidate-lattice reserv
 addresses are unchanged.
 
 The foliage inventory proof independently counts actual array lengths, index capacities, object identities and
-pinned 64-bit controls. It covers empty, tiny, dense, sparse, maximal-table and replacement cases. Root and binding
+pinned 64-bit controls. It covers empty, tiny, dense, sparse, maximal-table and replacement cases, including
+index and metadata growth after invalidation while earlier readers remain live. Root and binding
 window interval peaks stay within twice the simultaneous domain inventory plus a fixed 4096-byte kernel allowance
 for ledger and callback machinery. That allowance never scales with rows. Old builder/index arrays and frozen
 columns coexist during freeze. Old and pending cover views count their shared column store once. Renderer-owned

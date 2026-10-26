@@ -202,14 +202,14 @@ public sealed partial class NativeMapFoliageTests
         Assert.Same(ColumnSource(before.Cover)!.Columns, ColumnSource(after.Cover)!.Columns);
         Assert.Equal(Bits(before.Cover.Select(i => i.Transform).ToArray()), Bits(after.Cover.Select(i => i.Transform).ToArray()));
     }
-    static long CacheDomainCensus(MapFoliageRenderCache cache)
+    static long CacheDomainCensus(MapFoliageRenderCache cache, IEnumerable<MapFoliageColumnOwner>? held = null)
     {
         var owners = (Dictionary<MapFoliageCacheKey, MapFoliageColumnOwner>)typeof(MapFoliageRenderCache)
             .GetField("_owners", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cache)!;
         // Cache/gate/inventory/CPU-list/dictionary controls and their actual index capacity.
         long bytes = 248 + 48 + 36L * owners.EnsureCapacity(0);
         var metadata = new HashSet<object>(ReferenceEqualityComparer.Instance);
-        foreach (var owner in owners.Values)
+        foreach (var owner in owners.Values.Concat(held ?? []).Distinct())
         {
             var batch = Assert.Single(NativeFoliageInventoryTightnessTests.Fields(owner).OfType<MapFoliageInstanceBatch>());
             var refs = Assert.Single(NativeFoliageInventoryTightnessTests.Fields(owner).OfType<object[]>());

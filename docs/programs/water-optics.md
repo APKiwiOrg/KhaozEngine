@@ -14,6 +14,7 @@ floater sun shadows and adopts authored beds once the engine work ships.
   [Render3D](../../KhaozEngine.Render3D/README.md), [consumer contract](../USING-KHAOZENGINE.md).
 - Design rationale: [per-body water optics](../design/WATER-OBJECT-OPTICS-DESIGN-2026-10-24.md),
   [native handoff](../design/WATER-OPTICS-R8B-HANDOFF-2026-10-24.md).
+- Approved design of unbuilt milestones: [water-optics-design.md](water-optics-design.md)
 - Consumer adoption: https://github.com/APKiwiOrg/Grimhollow/issues/644
 
 ## Milestones
@@ -21,7 +22,7 @@ floater sun shadows and adopts authored beds once the engine work ships.
 | Milestone | Status | Issue | Owner gate |
 | --- | --- | --- | --- |
 | M1 Authored beds at the world manifest edge | landed, ships in the 21.14.0 re-release | https://github.com/APKiwiOrg/KhaozEngine/issues/1586 | Owner approves the exact release tag |
-| M2 Underwater sunlight for submerged receivers | design drafted, awaiting owner approval | https://github.com/APKiwiOrg/KhaozEngine/issues/1588 | Owner approves the design, then the execution choice |
+| M2 Underwater sunlight for submerged receivers | design approved, plan next | https://github.com/APKiwiOrg/KhaozEngine/issues/1588 | Owner chooses how the plan executes |
 | M3 Underwater caustics | after M2, design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1588 | Owner reviews its design |
 | M4 Native R8b optical adapter | waiting on the R8a native renderer | https://github.com/APKiwiOrg/KhaozEngine/issues/1300 | None beyond the normal GPU gate |
 | Adoption Grimhollow floater shadows and authored beds | waiting on M1 and M2 releases | https://github.com/APKiwiOrg/Grimhollow/issues/644 | Grimhollow owner |
@@ -45,11 +46,10 @@ floater sun shadows and adopts authored beds once the engine work ships.
 ## Open questions and owner gates
 
 - The owner approves the exact 21.14.0 tag in the re-release chat.
-- The owner approves the M2 design, then chooses how its plan executes.
+- The owner chooses how the M2 plan executes.
 - M4 starts only when the R8a native renderer prepares and submits bounded water on main.
 
 ## Next step
 
-Get owner approval of the M2 design, move its unbuilt parts into `docs/programs/water-optics-design.md`, then
-write the M2 implementation plan for the owner's execution choice. Send the Grimhollow coordinator the 21.14.0
-tag and adoption notes once that release is published.
+Write the M2 implementation plan from the approved design and bring it to the owner for the execution choice.
+Send the Grimhollow coordinator the 21.14.0 tag and adoption notes once that release is published.

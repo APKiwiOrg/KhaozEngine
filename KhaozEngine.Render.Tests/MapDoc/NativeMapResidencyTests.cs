@@ -50,7 +50,7 @@ public sealed class NativeMapResidencyTests
     }
 
     [Fact]
-    public void DenseFoliage_NarrowedAdmissionRefusesBeforeGenerationOrRetention()
+    public void DenseFoliage_NarrowedAdmissionRefusesAtGrowthBeforeRetention()
     {
         using var f = ResidencyFixture.Foliage(.125f);
         var state = f.FoliageState();
@@ -70,7 +70,7 @@ public sealed class NativeMapResidencyTests
         using var active = admission.Enter();
         var error = Record.Exception(() => NativeMapFoliage.Prepare(scene, context, input, state.Policy.Foliage, routing));
         Assert.NotNull(error);
-        Assert.Equal(0, cache.GenerationCalls); Assert.Equal(0, cache.Count);
+        Assert.Equal(1, cache.GenerationCalls); Assert.Equal(0, cache.Count);
         Assert.InRange(admission.RetainedBytes, 0, 131_072);
     }
 

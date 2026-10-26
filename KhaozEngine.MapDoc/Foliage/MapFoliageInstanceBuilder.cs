@@ -25,7 +25,7 @@ internal sealed class MapFoliageInstanceBuilder : IDisposable
     {
         _layerId = layerId; _policy = policy; _chunk = chunk;
         _maxRows = Math.Min(limits.MaxSamples, limits.MaxQuerySamples);
-        _budget = new(limits.MaxQueryRetainedBytes);
+        _budget = new(limits.MaxQueryRetainedBytes, limits.AllocateInstances, limits.ReleaseInstances);
         _budget.Take(MapFoliageInventory.ConstructionControls);
         _models = new(_budget); _supports = new(_budget);
         _metadata = checked(32 + MapFoliageInventory.Text(layerId) +

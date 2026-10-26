@@ -71,7 +71,7 @@ public sealed class MapNativeFoliageBatch : IDisposable
         _witness = witness; Routing = routing; _policy = policy; _groups = groups.ToArray(); _parts = parts.ToArray();
         _sources = sources.ToArray(); _identityCount = _sources.Sum(s => s.Count);
         ExplicitIds = Array.AsReadOnly(explicitIds.ToArray()); GenerationKeys = Array.AsReadOnly(generations.ToArray());
-        RetainedBytes = checked(512L + 8L * (ExplicitIds.Count + GenerationKeys.Count) + _sources.Sum(s => s.PlanBytes + 104L) +
+        RetainedBytes = checked(512L + 8L * (ExplicitIds.Count + GenerationKeys.Count) + _sources.Sum(s => s.PlanBytes + 24L) +
             _parts.Sum(p => 256L + MapNativeInventory.Mesh(p.Payload.BorrowMesh, p.Payload.BorrowMaps)) +
             _groups.Sum(g => 256L + (g.Instances is null ? 240L * g.Cover.Count + 128L * g.Models.Count : g.Cover.RetainedViewBytes + 192L * g.Models.Count)));
         PreparationChargeBytes = charge;

@@ -9,9 +9,6 @@ namespace KhaozEngine.Tests.MapDoc;
 [Collection("NativeDeviceLifecycle")]
 public sealed class NativeMapFoliagePolicyTests
 {
-    const long DefaultRetention = 67_108_864;
-    const long DeclaredRetention = 134_217_728;
-
     [Fact]
     public void Distribution_PreservesEveryDeclaredAllowanceAboveItsDefault()
     {
@@ -25,29 +22,28 @@ public sealed class NativeMapFoliagePolicyTests
     }
 
     [Theory]
-    [InlineData(null)]
+    [InlineData(67108864L)]
     [InlineData(134217728L)]
-    public void Cache_UsesDeclaredAggregateRetentionBeforeGeneration(long? allowance)
+    public void Cache_RefusesTheFirstAllocationWithoutPricingTheWholeCandidateLattice(long allowance)
     {
         using var fixture = ResidencyFixture.Foliage(.09f);
         var state = fixture.FoliageState();
         var context = MapFoliageGenerationContext.CaptureWindow(state.Source, state.Windows[0]).Context!;
         var layer = Assert.Single(((IMapFoliageInputs)context).Foliage!.Layers);
-        var limits = allowance is { } declared ? new MapFoliageLimits(MaxQueryRetainedBytes: declared) : new();
-        long demand = MapFoliageGenerationAdmission.RetentionDemand(context, layer, new(0, 0), new(MaxQueryRetainedBytes: DeclaredRetention));
-        Assert.InRange(demand, DefaultRetention + 1, DeclaredRetention);
         var admission = new MapSceneAdmission(new(MaxPreparedBytes: 0));
         var cache = MapFoliageRenderCache.For(context);
-        var error = Assert.Throws<MapSceneCapacityException>(() => cache.Get(layer.Id, new(0, 0), limits, admission, null));
-        Assert.Equal(allowance is null ? new("MaxQueryRetainedBytes", demand, DefaultRetention)
-            : new MapSceneCapacity("MaxPreparedBytes", demand, 0), error.Capacity);
+        var error = Assert.Throws<MapSceneCapacityException>(() => cache.Get(layer.Id, default,
+            new(MaxQueryRetainedBytes: allowance), admission, null));
+        Assert.Equal("MaxPreparedBytes", error.Capacity.LimitName);
+        Assert.Equal(0, error.Capacity.Allowance);
+        Assert.InRange(error.Capacity.Requested, 1, 4096);
         Assert.Equal(0, cache.GenerationCalls);
         Assert.Equal(0, cache.Count);
         Assert.Equal(0, admission.RetainedBytes);
     }
 
     [Fact]
-    public void Cache_AdmitsTheOffRasterBatchHeaderAgainstTheDeclaredAllowance()
+    public void Cache_RefusesItsMinimumHeaderBeforeOffRasterGeneration()
     {
         using var fixture = ResidencyFixture.Foliage(4);
         var state = fixture.FoliageState();
@@ -58,30 +54,28 @@ public sealed class NativeMapFoliagePolicyTests
         var admission = new MapSceneAdmission(new());
         var error = Assert.Throws<MapSceneCapacityException>(() => cache.Get(layer.Id, outside,
             new(MaxQueryRetainedBytes: 255), admission, null));
-        Assert.Equal(new MapSceneCapacity("MaxQueryRetainedBytes", 256, 255), error.Capacity);
+        Assert.Equal("MaxQueryRetainedBytes", error.Capacity.LimitName);
+        Assert.Equal(255, error.Capacity.Allowance);
+        Assert.True(error.Capacity.Requested > 255);
         Assert.Equal(0, cache.GenerationCalls);
         Assert.Equal(0, admission.RetainedBytes);
     }
 
     [Fact]
-    public void Cache_ReportsTotalDemandAndDeclaredAllowanceAfterRetainingABatch()
+    public void Cache_DoesNotReserveAnotherCandidateEnvelopeAfterAnEmptyBatch()
     {
         using var fixture = ResidencyFixture.Foliage(.09f);
         var state = fixture.FoliageState();
         var context = MapFoliageGenerationContext.CaptureWindow(state.Source, state.Windows[0]).Context!;
         var layer = Assert.Single(((IMapFoliageInputs)context).Foliage!.Layers);
-        long demand = MapFoliageGenerationAdmission.RetentionDemand(context, layer, new(0, 0), new(MaxQueryRetainedBytes: DeclaredRetention));
-        long ceiling = demand + 128;
-        Assert.True(ceiling > DefaultRetention);
-        var limits = new MapFoliageLimits(MaxQueryRetainedBytes: ceiling);
         var cache = MapFoliageRenderCache.For(context);
         var outside = context.ChunksFor(layer.Id).First(c => MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, c)));
-        var batch = cache.Get(layer.Id, outside, limits);
-        Assert.Equal(256, batch.Work.RetainedBytes);
-        var error = Assert.Throws<MapSceneCapacityException>(() => cache.Get(layer.Id, new(0, 0), limits,
-            new(new(MaxPreparedBytes: 0)), null));
-        Assert.Equal(new MapSceneCapacity("MaxQueryRetainedBytes", demand + batch.Work.RetainedBytes, ceiling), error.Capacity);
+        _ = cache.Get(layer.Id, outside, new());
+        var error = Assert.Throws<MapSceneCapacityException>(() => cache.Get(layer.Id, default, new(), new(new(MaxPreparedBytes: 0)), null));
+        Assert.Equal("MaxPreparedBytes", error.Capacity.LimitName);
+        Assert.InRange(error.Capacity.Requested, 1, 4096);
         Assert.Equal(1, cache.GenerationCalls);
         Assert.Equal(1, cache.Count);
+        cache.Clear();
     }
 }

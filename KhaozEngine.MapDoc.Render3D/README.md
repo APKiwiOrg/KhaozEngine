@@ -273,9 +273,13 @@ Original tighter decoder limits and their diagnostic identity remain binding. Di
 without blocking the scheduler. A running worker retains its readers and CPU reservation until unwind.
 
 A captured foliage context has a retained preparation lease. Policy-only replacements share that lease, including
-its density and effective dependency product. Cached generation retention is admitted before generation enters,
-then attached to individual cache entries. Invalidation drops the cache owner, and the last sample reader
-releases its receipt and CPU lease. Settled CPU bytes are the unique retained source, input, context, sample,
+its density and effective dependency product. The native cache retains compact immutable instance columns,
+not full diagnostic samples. Builder pages, ordinal indexes and freeze overlap are admitted before allocation.
+Cache, accepted plan and pending replacement readers share the same column owner. Invalidation drops cache
+ownership only. Last release detaches the backing payload before returning its receipt and CPU lease.
+Strings and generation policies have a separate metadata owner counted by object identity. It retains no context,
+support geometry or decoded assets. Context charge wrappers clear their context references when capture ownership ends.
+Settled CPU bytes are the unique retained source, input, context, column, metadata,
 plan, recording and upload inventory. In-flight CPU additionally includes queue reservations and staging.
 At publication, zero recording references or demand below half the retained capacity replaces both dictionaries
 and the draw set with storage sized to current demand. Credit returns after the old backing arrays are no
@@ -285,9 +289,11 @@ Preparation peaks and cumulative allocation are not retained-size authorities. G
 identity and handle only. They do not retain obsolete CPU registrations,
 including while waiting in the bounded disposal queue.
 
-Each window narrows the shared allowance before acquisition and preparation. Foliage generation derives its
-support limits and complete candidate-envelope retention bound from that remaining allowance. A dense envelope
-that cannot fit refuses before generation or cache retention. Query limits and generated addresses are unchanged.
+Each window narrows the shared allowance before acquisition and preparation. Foliage generation derives support
+limits and staged column admission from that remaining allowance. Count ceilings are checked before scanning.
+Capacity can refuse at the first control, accepted-row growth, ordinal growth or freeze allocation that would
+exceed the allowance. A sparse layer never keeps a full candidate-lattice reservation. Query limits and generated
+addresses are unchanged.
 
 ## Roof channels and presentation picks
 

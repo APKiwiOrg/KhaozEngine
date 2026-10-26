@@ -1,6 +1,8 @@
 using System;
+using System.Linq;
 using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.MapDoc.Scene;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Tests.MapDoc.Scene;
@@ -49,6 +51,38 @@ public sealed class MapMembershipRepresentationCountsTests
         Assert.Equal(1, Count(counts, "Polygons"));
         Assert.Equal(5, Count(counts, "PolygonCorners"));
         Assert.Equal(20, Count(counts, "Coefficients"));
+    }
+
+    [Theory]
+    [InlineData(false, 6, 4, 0)]
+    [InlineData(true, 4, 0, 4)]
+    public void OptionalFamilies_AreEnumeratedRatherThanAssumed(bool legacy, long triangles, long spans, long charts)
+    {
+        using var native = MapMembershipIntervalFixtures.Create(legacy ? "face-free" : "plain");
+        var set = native.Document.Surfaces;
+        var patch = set.Patches.Values.Single();
+        if (legacy)
+            native.Document.NativeResourceTransforms = [new(MapPrefabChildKind.Surface, "floor",
+                new(.25, 0, .25, 0, 1), new string('a', 64))];
+        else
+        {
+            set.Refs[0] = set.Refs[0] with { IndoorSpan = new("span", new("world", patch.Key), 0, 300, []) };
+            patch.Cells[0] = patch.Cells[0] with { Flags = MapCellFlags.Indoor };
+        }
+        set.Refs[0] = set.Refs[0] with { SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(set.Refs[0],
+            set.Patches.Select(p => System.Collections.Generic.KeyValuePair.Create(p.Key, MapSurfaceSemantics.PatchDigest(p.Value)))) };
+        var scene = NativeSceneFixtures.Open(native, false).Acquire(MapMembershipIntervalTests.Scope()).Scene!;
+        var result = MapRoofEvaluationBuffer.Prepare(scene, new MapSceneAdmission(new()));
+        Assert.NotNull(result.Buffer);
+        try
+        {
+            Assert.Equal(triangles, result.Counts!.Triangles);
+            Assert.Equal(spans, result.Counts.SpanTriangles);
+            Assert.Equal(charts, result.Counts.LegacyTriangles);
+            Assert.Equal(8, result.Counts.PolygonCorners);
+            Assert.Equal(4 * (8 + 4 * triangles), result.Counts.Coefficients);
+        }
+        finally { result.Buffer.PreparationOwnership!.Dispose(); }
     }
 
     // Reflection lets the regression fail on the missing diagnostic contract before production changes.

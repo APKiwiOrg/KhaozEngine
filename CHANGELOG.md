@@ -4,6 +4,23 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.16.0
+
+2026-10-27
+
+- Keep Contact ground navigation connected beside climbable slab risers. Captured ground below a tread no longer
+  rejects the neighbouring resting anchor for its low headroom. Contact placement and swept-shell proofs still
+  enforce clearance, and raw layer, area, roof and climb limits remain enforced (Closes #1573).
+- Reconstruct canonical selection automatically when a Contact movement tick receives a carried state on
+  an unready null-hint query lease. Reacquiring per tick no longer stalls the second tick or discards buffered
+  jumps. Carried selections from another world are refused before reconstruction or producer queries.
+  Direct selected-space queries remain guarded, and real reconstruction failures keep their refusal outcomes
+  (Closes #1578).
+- Add six `SupportQueryCapture` counters for outer NPC Hold and Step invocations and authoritative
+  `PlayerMovementSystem` per-entity Steps, each split by Legacy and Contact controller. Idle and rejected
+  selected player Steps count once. Direct player simulators and nested held-result fallbacks add no
+  outer invocations (#1598).
+
 ## 21.15.0
 
 2026-10-27

@@ -963,9 +963,8 @@ columns. Capture any comparison data before requesting replacement, for example
 `var identities = plan.Inventory.Foliage.GeneratedIdentities.ToArray();`. Public identity and cover snapshots,
 and foliage payloads emitted by public `Register`, are detached and remain usable after disposal. Retaining the
 disposed batch does not retain a per-row identity copy or keep its resident columns alive.
-`MapRenderResidency.Record` registers borrowed resident payloads for current-frame use. `MapDrawRecorder.Snapshot`
-does not detach those payloads. To retain a draw inventory, call each live plan's public `Register` on the recorder
-before recording the frame, so its foliage registrations use detached snapshots.
+`MapRenderResidency.Record` detaches foliage at the public sink boundary. A normal recording followed by
+`MapDrawRecorder.Snapshot` remains usable after replacement or unload, without pre-registering the plans.
 
 ### Compatibility support and paint
 

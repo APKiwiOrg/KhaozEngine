@@ -122,7 +122,6 @@ public sealed class NativeMapGoldenScene : IDisposable
     internal static MapDrawSet SnapshotInventory(MapRenderResidency residency, MapFrameState frame)
     {
         var recorder = new MapDrawRecorder();
-        foreach (var plan in residency.AcceptedPlans) plan.Register(recorder);
         residency.Record(frame, recorder);
         return recorder.Snapshot();
     }

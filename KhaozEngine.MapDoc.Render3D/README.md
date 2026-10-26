@@ -31,8 +31,9 @@ Emissive/occlusion textures and nonempty material extensions refuse before model
 returned maps cannot represent them. Compatibility glTF and flattened native loading keep their
 released lenient behavior.
 
-Public `MapPreparedResource` registrations carry detached immutable payloads. Internal plans and recordings
-borrow generated foliage columns through live owners instead of copying per-row transforms, ranks or identities.
+Public `MapPreparedResource` registrations, including `MapRenderResidency.Record` sink registrations, carry
+detached immutable payloads. Internal plan recordings borrow generated foliage columns through live owners
+instead of copying per-row transforms, ranks or identities.
 Public cover and identity snapshots remain detached and usable after batch disposal. Nonuniform imported sample
 keys retain a complete charged key array, including each original policy and distribution version.
 `MapDrawRecord` carries explicit

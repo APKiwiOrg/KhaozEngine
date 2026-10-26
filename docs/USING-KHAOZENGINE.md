@@ -11467,8 +11467,8 @@ Its `MapNativeFoliageBatch.GeneratedIdentities` and `CoverBatches` getters then 
 as do `Register` and `Record`. Before requesting replacement, capture comparison data with
 `var identities = plan.Inventory.Foliage.GeneratedIdentities.ToArray();`. Public identity and cover snapshots
 and foliage payloads emitted by public `Register` are detached and survive disposal. `MapRenderResidency.Record`
-supplies borrowed payloads. To retain a draw inventory, register each live plan publicly on the recorder before
-recording the frame. Keeping the old batch reference does not extend its resident data lifetime or retain a
+also detaches foliage at the public sink boundary, so its ordinary `MapDrawRecorder.Snapshot` survives
+replacement or unload. Keeping the old batch reference does not extend its resident data lifetime or retain a
 per-row identity copy.
 
 The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) is the living reference

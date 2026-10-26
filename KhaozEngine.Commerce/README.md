@@ -1,6 +1,11 @@
 # KhaozEngine.Commerce
 
-Server-authoritative currency wallet: atomic idempotent ledger with materialized balance, source-agnostic entitlement pipeline, and server-clock periodic grants.
+Server-authoritative currency wallet: atomic idempotent ledger with materialized balance, source-agnostic
+entitlement pipeline, and server-clock periodic grants.
+
+This package is in no umbrella. A game or server that needs a wallet adds it explicitly. The durable
+`KhaozEngine.Commerce.Sqlite` and `KhaozEngine.Commerce.SqlServer` backends are also opt-in siblings, carried
+by no umbrella, including `Server`.
 
 ## Overview
 

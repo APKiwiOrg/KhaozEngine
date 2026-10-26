@@ -79,9 +79,10 @@ classification is unclear. The detailed rationale lives in
 
 ## Dependencies and package structure
 
-The authoritative package and umbrella catalog is the root [`README.md`](../README.md). The full
-dependency edges are its `Depends on` column and each umbrella csproj. Do not maintain another package
-list here.
+The authoritative package and umbrella catalog is [`PACKAGES.md`](PACKAGES.md), one row per package
+linking that package's own README. Its `Depends on` column is curated, so the exact edges are each
+csproj's `ProjectReference` set and each umbrella csproj. A new package adds its row there, in the area
+it belongs to. Do not maintain another package list here or in the root README.
 
 The render stack starts at `Primitives`, then `Gpu`, `Windowing`, `Render2D` or `Render3D`, then `Gui`
 and game packages. GPU-free Foundation packages sit beside it. The server stack starts at
@@ -238,7 +239,8 @@ covers a test that is new or whose code changed in the release.
 
 Each fact has one canonical source:
 
-- Package inventory, umbrella membership and package summaries: root `README.md`.
+- Package inventory, umbrella membership and one-line package summaries: `docs/PACKAGES.md`.
+- What the engine is, for a newcomer: root `README.md`, which links out rather than restating package detail.
 - Consumer use and public API examples: `docs/USING-KHAOZENGINE.md`.
 - Dependency edges and backend seams: `docs/DEPENDENCY-SEAMS.md`.
 - Per-package quick reference: that package's own `README.md`, shipped inside its nupkg.

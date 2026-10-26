@@ -55,16 +55,15 @@ public class ChannelSplitContractAbstractionsDecouplingTests
     }
 
     [Fact]
-    public void Contract_LivesInAbstractionsAssembly_WithNoMonoGameOrTransportReference()
+    public void Contract_LivesInAbstractionsAssembly_WithoutNetcodeOrTransportReference()
     {
         // The contract's declaring assembly is KhaozEngine.Netcode.Abstractions (not .Netcode),
-        // and its referenced-assembly closure names no MonoGame and no UDP transport. This is the
+        // and its direct assembly references name neither KhaozEngine.Netcode nor a UDP transport. This is the
         // runtime mirror of the build-time guarantee (this project omits those references entirely).
         var contractAssembly = typeof(IChannelSplittable<>).Assembly;
         Assert.Equal("KhaozEngine.Netcode.Abstractions", contractAssembly.GetName().Name);
 
         var referenced = contractAssembly.GetReferencedAssemblies().Select(a => a.Name).ToArray();
-        Assert.DoesNotContain("MonoGame.Framework", referenced);
         Assert.DoesNotContain("LiteNetLib", referenced);
         Assert.DoesNotContain("KhaozEngine.Netcode", referenced);
         Assert.DoesNotContain("KhaozEngine.Netcode.LiteNetLib", referenced);

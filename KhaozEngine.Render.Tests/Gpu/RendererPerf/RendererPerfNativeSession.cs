@@ -127,9 +127,10 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
             {
                 if (_recorder.ReadCounter(_next, RendererPerfCounter.Submissions) != 1)
                     _recorder.Fail("An unexpected production submission occurred, including preparation.");
+                bool conditioning = _block.SceneId.StartsWith("conditioning:", StringComparison.Ordinal);
                 if (_recorder.ReadCounter(_next, RendererPerfCounter.WaitForIdleCalls) != 0)
                     _recorder.Fail("An unexpected production wait occurred.");
-                if (frameIndex >= 0 && !_block.SceneId.StartsWith("conditioning:", StringComparison.Ordinal) && _recorder.ReadCounter(_next, RendererPerfCounter.ResourceCreations) != 0)
+                if (frameIndex >= 0 && !conditioning && _recorder.ReadCounter(_next, RendererPerfCounter.ResourceCreations) != 0)
                     _recorder.Fail("Hot resource growth occurred in a steady frame.");
             }
             catch (Exception error) { RendererPerfFailures.Add(ref failures, "renderer.frame.finalize", error); }
@@ -161,7 +162,7 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         _recorder.UseSubmission(frame.Submission);
         _recorder.BeginCpuPhase("prepare");
         ImmutableArray<GpuDiagnosticFailure>.Builder? failures = null;
-        try { _work.Prepare(_frameIndex); }
+        try { _work.Prepare(_frameIndex, frame.Submission); }
         catch (Exception error) { RendererPerfFailures.Add(ref failures, "renderer.frame", error); }
         try { _recorder.EndCpuPhase("prepare"); }
         catch (Exception error) { RendererPerfFailures.Add(ref failures, "renderer.frame.finalize", error); }

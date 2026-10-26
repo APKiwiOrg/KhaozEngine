@@ -1,10 +1,10 @@
 # Using KhaozEngine - the consumer contract
 
 This is the authoritative guide to what KhaozEngine does and **how it must be used** by the games that depend
-on it. The engine is **MonoGame-free**: Silk.NET windowing/input, the engine's own Metal / Direct3D 11 / Vulkan
-backends behind `KhaozEngine.Gpu` for the GPU,
-Silk.NET.OpenAL for audio, `System.Numerics` math throughout. Read the [Hard rules](#hard-rules) first. The rest
-is reference.
+on it. The stack is Silk.NET windowing and input, the engine's own Metal, Direct3D 11 and Vulkan backends
+behind `KhaozEngine.Gpu` for the GPU, Silk.NET.OpenAL for audio, and `System.Numerics` math throughout. Read
+the [Hard rules](#hard-rules) first. The rest is reference. Every package is listed in
+[PACKAGES.md](PACKAGES.md).
 
 This file is large (about 540 KB) and is a reference, not a read-through. Jump via the contents below,
 or grep it: every section is an `##` heading named after the package or feature it covers.
@@ -163,7 +163,7 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
    [Overlapping windows](#overlapping-windows-windowstack-2130).
 6. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
    drawn. `GameApp` does this for you. If you build your own loop, do it yourself.
-7. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
+7. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4` for every vector and matrix. (An RGBA color
    is `KhaozEngine.Primitives.Color`, not a bare `Vector4`. GPU-layout structs still use `Vector4`.) To dim
    or brighten a color for a tint, use `color.ScaleRgb(factor)`: it scales RGB and keeps alpha. `color *
    factor` scales alpha too, which under the 2D batch's straight-alpha blend turns a dim into translucency
@@ -4994,9 +4994,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
 
       Both calls validate before queueing. If several valid requests arrive before the next frame, only the latest
       layout is kept. `Scene3D.Begin()` applies it before any command list begins. An unchanged layout is a no-op. A
-      changed layout waits for submitted GPU work once at that frame boundary, builds a complete atlas and replacement
-      bindings for rigid, skinned, splat, and tile-ground receivers, then swaps the graph as one transaction. This is
-      a rare settings-change hitch, not work added to ordinary frames. If allocation or binding creation fails, the
+      changed layout builds a complete atlas and replacement bindings for rigid, skinned, splat, and tile-ground
+      receivers, then swaps the graph as one transaction. The old graph and receiver sets enter the scene retirement
+      queue without a device drain. If allocation or binding creation fails, the
       current atlas and committed property values remain active. The scene logs one error for that failed request and
       remains drawable. A request changes only the atlas layout. The current shadow mode, strength, bias, distance,
       blend, and filtering settings stay unchanged. Issue requests on the scene thread, like every other `Scene3D`
@@ -12915,7 +12915,9 @@ them. An overlay in a water material gets no surface (a fraction of a tile has n
 still lands on the bed, which is what an editor click wants.
 
 By default this water reads scene depth. `TileWorldViewOptions.WaterDepthMode = TileWaterDepthMode.AuthoredBed`
-binds each body to its actual rendered bed instead, with the strict contract in the
+binds each body to its actual rendered bed instead. Beyond the world manifest only, its certified bed continues
+the clamped ground at the edge. A known-unloaded neighbour still refuses, and empty edge ground supplies no bed
+to continue. The strict contract is in the
 [TileWorld authored optical beds reference](../KhaozEngine.TileWorld.Render3D/README.md#authored-optical-beds).
 
 For a player-facing ground click, use the view's visible-surface picker instead:
@@ -17366,7 +17368,7 @@ Rules:
 
 ## Audio (`KhaozEngine.Audio`)
 
-`AudioSystem` over a cross-platform OpenAL (Silk.NET.OpenAL) backend, no MonoGame. Streaming music (WAV/OGG/MP3,
+`AudioSystem` over a cross-platform OpenAL (Silk.NET.OpenAL) backend. Streaming music (WAV/OGG/MP3,
 one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), SFX one-shots, and 3D positional audio
 (`PlaySfx`/`PlaySfx3D`/`SetListener`, a 16-voice pool, per-channel volume). `LoadContent(directory)` +
 `Update()` per frame.
@@ -24010,7 +24012,8 @@ Disposing a GPU resource (texture, buffer, resource set) while queued GPU work m
 is a use-after-free. Most hardware drivers absorb it silently, but Mesa lavapipe's async queue-submit
 thread crashes on it, which is how the engine found this class of bug. Any MID-LIFE disposal (an
 unload, a resize, a cache eviction: anything that is not part of full device teardown already guarded
-by a drain) must call `IGpuDevice.WaitForIdle()` first, then dispose:
+by a drain) must defer destruction through `GpuRetireQueue`, or call `IGpuDevice.WaitForIdle()` first
+when no completion queue is available, then dispose:
 
 ```csharp
 IGpuTexture old = _texture;
@@ -24026,8 +24029,11 @@ is disposed, `WaitForIdle` is a safe no-op AND disposing any resource the device
 no-op (device destruction already freed all child objects), so a wrapper that outlives its device at
 teardown can neither drain nor destroy against a dead device. The incumbent's deferred-disposal path was
 evaluated as a non-stalling alternative and rejected: under Mesa's threaded queue its disposal flush
-could lose a wakeup and hang the process, so the engine drains instead. The engine's own renderers follow this rule for resize-driven render target replacement
-(`RenderResources`, `Render3DPreview.Resize`), which has no frame boundary left to reach. A custom
+could lose a wakeup and hang the process. The engine's completion queue avoids that incumbent path.
+`Scene3D` now retires replaced cascade and point-shadow atlases, receiver sets, MRT attachments, dependent
+pipelines and post targets through its queue. Cached depth bindings for decals, particles, distortion and
+water retire with those targets. Standalone `RenderResources` and `Render3DPreview.Resize`
+keep the drain when no frame completion queue is supplied. A custom
 renderer or content-streaming system built directly on `KhaozEngine.Gpu` should follow the same rule for
 anything it frees outside of full teardown, or hand the resource to a `GpuRetireQueue` (below) and never
 drain at all.
@@ -24137,6 +24143,28 @@ void Unload(MyThing thing)
 
 public void Dispose() => _retire.Dispose();   // one drain, then the tail
 ```
+
+A host that already owns `GpuFrameSubmission` can call `queue.BeginFrame(frame.Submission)` in its
+prepare callback instead. `Scene3D.BeginFrame(frame.Submission)` applies that policy to the scene queue
+while doing the ordinary scene begin work. The queue borrows the host fence and never resets or disposes
+it. It frees a batch only after completion. An abandoned recording unseals its retirement tail without
+freeing anything, because abandonment proves nothing about earlier submitted readers. A failed submit
+keeps the batch quarantined until completion or a successful host teardown drain. The host must submit
+before the next boundary and outlive the queue, or complete its own teardown before the scene is disposed.
+If no host completion slot is available, the call refuses without a new submission or an unsafe free. Devices without
+completion fences retain the existing drain fallback.
+
+Retirement increases peak memory by the pending outgoing graphs. After each boundary the existing queue
+cap limits sealed batches to `MaxSealedBatches` (normally eight), plus the current unsealed burst. For one
+replacement of a resource family per frame, this is at most nine outgoing generations plus the live one.
+Multiply each family's maximum graph bytes by nine for its extra queue-owned storage bound. Multiple replacements
+within one frame count as that frame's burst, which the host must bound. Logical cascade texture payload is
+`9 * cascadeCount * resolution^2` bytes per graph before native allocation alignment. Point atlases use
+`54 * faceResolution^2 * rows` bytes, for each base or transient graph. MRT storage follows dimensions,
+sample count, formats and optional attachments. Pipelines and descriptor sets add backend-specific storage. This bounds queue-owned logical resources,
+not total native VRAM, which also includes backend retirement and allocation alignment.
+The existing safety valve still drains if the CPU exceeds the cap. A host sharing three completion slots
+and completing each three-frame batch stays below it, without relaxing the frame guards.
 
 `Create` mints its fence by opening a command list of its own, so it must be built and advanced where
 NOTHING is recording on the device: the frame's PREPARE phase, not its record phase. Called from inside

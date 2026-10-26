@@ -7,7 +7,7 @@ using KhaozEngine.Primitives;
 namespace KhaozEngine.Tests.Windowing
 {
     /// <summary>
-    /// Headless tests for the MonoGame-free menu-navigation input layer
+    /// Headless tests for the menu-navigation input layer
     /// (<see cref="InputManager"/>): keyboard/gamepad/scroll menu actions, per-player resolution,
     /// edge-detected stick deflections, and pointer delegation with the press-origin invariant.
     /// </summary>

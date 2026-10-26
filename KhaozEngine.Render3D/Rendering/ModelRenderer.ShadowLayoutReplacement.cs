@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using KhaozEngine.Gpu;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering;
 
@@ -21,7 +22,6 @@ internal sealed partial class ModelRenderer
         var replacementBindings = new Dictionary<IGpuResourceSet, ShadowSamplingBinding>(ReferenceEqualityComparer.Instance);
         try
         {
-            _gd.WaitForIdle();
             graph = _shadowMap.BuildReplacement(resolution, cascadeCount);
             AddReplacement(_defaultSet, graph.ShadowTexture, _pointShadowTexture, replacements, replacementBindings);
             AddReplacement(_skinnedDefaultFragSet, graph.ShadowTexture, _pointShadowTexture, replacements, replacementBindings);
@@ -38,16 +38,16 @@ internal sealed partial class ModelRenderer
         ShadowMapRenderer.ShadowLayoutReplacement oldGraph = _shadowMap.CommitReplacement(graph);
         settings.CommitAtlasReplacement(graph.Resolution, graph.CascadeCount);
         invalidateShadowDepth();
-        CommitShadowSamplingSets(replacements, replacementBindings, commitMaterialSets);
-        oldGraph.Dispose();
+        CommitShadowSamplingSets(replacements, replacementBindings, commitMaterialSets, _retired);
+        _retired.Retire(oldGraph);
         return true;
     }
 
-    // Swap every rebuilt set in, re-key the rebuild descriptions onto the new sets, and free the old ones. Shared
-    // by the atlas, point-light buffer and interior texture replacements, which preserve the other bindings.
+    // Swap every rebuilt set in and re-key its description. Shadow replacements supply the completion queue.
+    // Point-light buffer and interior texture transactions keep their explicit drain and immediate release.
     void CommitShadowSamplingSets(Dictionary<IGpuResourceSet, IGpuResourceSet> replacements,
         Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings,
-        Action<Func<IGpuResourceSet, IGpuResourceSet>> commitMaterialSets)
+        Action<Func<IGpuResourceSet, IGpuResourceSet>> commitMaterialSets, GpuRetireQueue? retired = null)
     {
         IGpuResourceSet oldDefaultSet = _defaultSet;
         IGpuResourceSet oldSkinnedDefaultFragSet = _skinnedDefaultFragSet;
@@ -60,7 +60,7 @@ internal sealed partial class ModelRenderer
         {
             _shadowSamplingBindings.Remove(oldSet);
             _shadowSamplingBindings.Add(newSet, replacementBindings[newSet]);
-            oldSet.Dispose();
+            ResourceRetirement.Free(oldSet, retired);
         }
     }
 

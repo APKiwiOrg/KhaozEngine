@@ -99,7 +99,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>(Re)create the frozen capture texture + crossfade resource set to match the render target size.
         /// Call on construction and whenever the targets resize (alongside <c>PixelPostProcess.BindTargets</c>).</summary>
-        public void BindTargets(RenderResources res)
+        public void BindTargets(RenderResources res, GpuRetireQueue? retired = null)
         {
             // Match the frozen capture's colour format to ColorTex so the BeginFrame subresource copy is
             // format-matched (float16 in HDR mode, UNorm in legacy). The crossfade pipeline samples _frozen and
@@ -107,8 +107,8 @@ namespace KhaozEngine.Render3D.Rendering
             // is baked). The mip count deliberately does NOT follow ColorTex: see the _frozen field.
             var colorFmt = res.HdrColor ? GpuPixelFormat.R16G16B16A16Float : GpuPixelFormat.R8G8B8A8UNorm;
             if (_frozen != null && _w == res.Width && _h == res.Height && _frozenFmt == colorFmt) return;
-            _crossSet?.Dispose();
-            _frozen?.Dispose();
+            ResourceRetirement.Free(_crossSet, retired);
+            ResourceRetirement.Free(_frozen, retired);
             _w = res.Width;
             _h = res.Height;
             _frozenFmt = colorFmt;

@@ -31,9 +31,11 @@ internal sealed class ModelVisibilityShaders : IDisposable
         return true;
     }
 
-    public void Dispose()
+    public void Dispose() => Release(null);
+
+    internal void Release(GpuRetireQueue? retired)
     {
-        foreach (IGpuShaderSet shaders in _sets.Values) shaders.Dispose();
+        foreach (IGpuShaderSet shaders in _sets.Values) ResourceRetirement.Free(shaders, retired);
         _sets.Clear();
     }
 }

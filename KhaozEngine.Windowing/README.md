@@ -1,11 +1,13 @@
 # KhaozEngine.Windowing
 
-Windowing + input foundation for the custom MonoGame-free stack.
+Windowing and input foundation for KhaozEngine.
 
 - `AppWindow` - owns the Silk.NET (GLFW) window, the GPU device + swapchain (via `KhaozEngine.Gpu`), and the
   frame loop. By default `Run(onFrame)` clears and presents around your callback. Each `Frame` gives `Dt`, an engine-native
   `InputState`, framebuffer size, and the GPU command list to draw into. `AppWindow.Scaled(...)` fits a
   design-sized window to the display.
+- `AppWindow` wires a GLFW-backed text provider into `KhaozEngine.Platform.Clipboard` and unregisters it
+  before window teardown. The clipboard seam remains usable without a windowing dependency.
 - `GpuBackends` (18.0.0) - the one call that puts a graphics backend in the process, and the reason a repinned
   game needs no startup line of its own. `KhaozEngine.Gpu` builds no device since 18.0.0 and cannot reference a
   backend package without a dependency cycle, so something above that seam has to close it, and this package is
@@ -190,7 +192,7 @@ Windowing + input foundation for the custom MonoGame-free stack.
     them, which is a DIFFERENT fact from counting and finding zero. Feed a telemetry recording with
     `GpuTelemetryChannels.AppendTo(row, window.Counters)`, which appends nothing at all in the absent case.
 - `InputState` - per-frame keyboard + mouse + gamepad + touch snapshot (`IsDown`/`WasPressed` for
-  `Key`/`MouseButton`, mouse position/delta/scroll, `Gamepad(i)`). Immutable; no MonoGame. `WasRepeated(Key)` /
+  `Key`/`MouseButton`, mouse position/delta/scroll, `Gamepad(i)`). Immutable. `WasRepeated(Key)` /
   `WasTyped(Key)` surface OS key auto-repeat (`AppWindow` fills it from GLFW's `REPEAT` action; `WasPressed` stays
   press-edge only) so text fields hold-to-repeat. `TextInput` carries the ordered Unicode text committed by the
   OS this frame. `TextInputAvailable` remains true on an empty GLFW text frame, so dead keys do not type through
@@ -489,8 +491,8 @@ window coordinate). `AppWindow.LogicalWidth`/`LogicalHeight` report the same log
 GLFW on each read, so read them on the window thread (the thread that runs the frame loop). Bake
 point-space UI fonts at `frame.DpiScale` and snap UI geometry to whole multiples of it.
 
-The 5.x renderers (`Render2D`, `Render3D`) build on this. Silk.NET windowing ships GLFW natives bundled per-RID,
-so there is no SDL2/brew step. Touch is mobile-deferred (no 5.x mobile-windowing head yet).
+The renderers (`Render2D`, `Render3D`) build on this. Silk.NET windowing ships GLFW natives bundled per-RID,
+so there is no SDL2/brew step. A mobile-windowing head is not available yet.
 
 **Linux host natives, packed here as well as in `KhaozEngine.Foundation`
 ([#723](https://github.com/APKiwiOrg/KhaozEngine/issues/723)).** Silk.NET resolves its bindings itself rather

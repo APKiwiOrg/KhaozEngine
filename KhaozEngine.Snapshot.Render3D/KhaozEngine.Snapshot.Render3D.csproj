@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Snapshot.Render3D</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>The 3D arm of the KhaozEngine snapshot harness: a Shot3D extension on SnapshotRunner that wraps Render3DSnapshot.Capture (setup + drawFrame) with the same encode -> write -> log path as the 2D shots. Kept in a separate package so a 2D-only game (KhaozEngine.Snapshot) never drags in Render3D; add this only when a tool needs 3D shots. MonoGame-free, deterministic, no-window.</Description>
+    <Description>The 3D arm of the KhaozEngine snapshot harness: a Shot3D extension on SnapshotRunner that wraps Render3DSnapshot.Capture (setup + drawFrame) with the same encode -> write -> log path as the 2D shots. Kept in a separate package so a 2D-only game (KhaozEngine.Snapshot) never drags in Render3D; add this only when a tool needs 3D shots. Deterministic, no-window.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Snapshot/KhaozEngine.Snapshot.csproj" />

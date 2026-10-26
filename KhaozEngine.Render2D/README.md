@@ -8,7 +8,7 @@ forward for existing effects code.
 to close a local `GroupByTexture` region before restoring strict painter order for later draws. Empty and repeated
 flushes are safe. Calling it before `Begin` or after `End` throws `InvalidOperationException`.
 
-2D rendering on the custom MonoGame-free foundation (engine-owned `KhaozEngine.Gpu` abstraction, `System.Numerics`).
+2D rendering through the engine-owned `KhaozEngine.Gpu` abstraction, with `System.Numerics` math.
 
 - `SpriteBatch` - batched textured quads, alpha blend + tint, submission-ordered runs (consecutive draws with
   the same binding and blend key coalesce into one draw call, and different keys split runs so painter's order
@@ -110,8 +110,7 @@ flushes are safe. Calling it before `Begin` or after `End` throws `InvalidOperat
 
 The GPU backend stays behind `KhaozEngine.Gpu`; this package has no direct graphics-backend reference (deps:
 `KhaozEngine.Gpu` + `KhaozEngine.Windowing` + StbTrueTypeSharp/StbImageSharp). Windowing/input come from
-`KhaozEngine.Windowing` (`AppWindow`, Silk.NET windowing, GLFW natives bundled per-RID - no SDL2/brew). Part of
-the MonoGame-free engine.
+`KhaozEngine.Windowing` (`AppWindow`, Silk.NET windowing, GLFW natives bundled per-RID - no SDL2/brew).
 
 ## `TextHelper` - pixel-snapped UI text
 

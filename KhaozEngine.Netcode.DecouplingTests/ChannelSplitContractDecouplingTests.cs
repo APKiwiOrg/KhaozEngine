@@ -6,7 +6,7 @@ namespace KhaozEngine.Netcode.DecouplingTests;
 
 /// <summary>
 /// Proves the channel-split contract is transport-free AND still bound through KhaozEngine.Netcode.
-/// Since 4.9.0 the contract physically lives in KhaozEngine.Netcode.Abstractions and KhaozEngine.Netcode
+/// The contract physically lives in KhaozEngine.Netcode.Abstractions and KhaozEngine.Netcode
 /// type-forwards it; this project references ONLY KhaozEngine.Netcode (no LiteNetLib), so its compiling
 /// and passing is the guarantee that existing consumers referencing KhaozEngine.Netcode keep binding
 /// <see cref="IChannelSplittable{TSelf}"/> with no source change. The sibling
@@ -63,9 +63,8 @@ public class ChannelSplitContractDecouplingTests
         Assert.Equal("KhaozEngine.Netcode.Abstractions", typeof(IChannelSplittable<>).Assembly.GetName().Name);
         Assert.Equal("KhaozEngine.Netcode.Abstractions", typeof(NetChannelReliability).Assembly.GetName().Name);
 
-        // And the contract's declaring assembly drags in no MonoGame / UDP transport.
+        // The contract's declaring assembly has no UDP transport reference.
         var referenced = typeof(IChannelSplittable<>).Assembly.GetReferencedAssemblies().Select(a => a.Name).ToArray();
-        Assert.DoesNotContain("MonoGame.Framework", referenced);
         Assert.DoesNotContain("LiteNetLib", referenced);
     }
 }

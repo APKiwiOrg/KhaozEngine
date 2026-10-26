@@ -11,7 +11,8 @@ and [KhaozEngine.Locomotion](../KhaozEngine.Locomotion), for the contact shell. 
 backend and no TileWorld, so the caller picks the `IPhysicsWorld` (add
 [KhaozEngine.Physics.Bepu](../KhaozEngine.Physics.Bepu) explicitly for the shipped one).
 
-The package is opt-in and in no umbrella. Add it explicitly.
+The package is opt-in and in no umbrella. Loading, rendering or editing a native map needs no physics.
+Add it explicitly when a game needs colliders under its MapDoc world, together with its chosen backend.
 
 ## Ownership boundary
 

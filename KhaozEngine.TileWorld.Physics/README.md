@@ -7,7 +7,8 @@ Turns an authored [KhaozEngine.TileWorld](../KhaozEngine.TileWorld) world into s
 It references exactly those three packages. It carries no renderer and no physics backend, so the caller picks the
 `IPhysicsWorld` (add [KhaozEngine.Physics.Bepu](../KhaozEngine.Physics.Bepu) explicitly for the shipped one).
 
-The package is opt-in and in no umbrella. Add it explicitly.
+The package is opt-in and in no umbrella. A tile world needs no physics to walk, render or serve.
+Add it explicitly when a game needs physics under its tile world, together with its chosen backend.
 
 ## Use
 

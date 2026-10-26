@@ -9,12 +9,12 @@ to check each claim here against the code. Where a claim names a package or file
 to audit it.
 
 This doc states the posture and the tradeoffs. It does not restate the update-channel internals
-(see [UPDATER.md](UPDATER.md)) or the engine layering (see [README.md](../README.md) and
+(see [UPDATER.md](UPDATER.md)) or the engine layering (see [PACKAGES.md](PACKAGES.md) and
 [INDEX.md](INDEX.md)).
 
 ## Posture summary
 
-KhaozEngine is MonoGame-free, targets `net10.0`, and is overwhelmingly **managed, memory-safe** code.
+KhaozEngine targets `net10.0` and is overwhelmingly **managed, memory-safe** code.
 That memory-safety is the foundational mitigation: the bulk of the engine (rendering submission,
 ECS, content, persistence, netcode logic, particles, gameplay glue) cannot be made to corrupt memory
 by hostile input the way a C/C++ stack can. Whole classes of attack (stack/heap overflow, use-after-free

@@ -16,6 +16,7 @@ public sealed class GpuFrameSubmission : IDisposable
     int participantCount, current = -1;
     bool recording, disposed, teardown;
     internal bool TeardownCompleted => disposed;
+    internal IGpuDevice Device => device;
 
     /// <summary>Preallocate fixed frame fences and consumer/participant storage on the owning host thread.
     /// Devices without completion fences retain participant submission but cannot retain consumers.</summary>

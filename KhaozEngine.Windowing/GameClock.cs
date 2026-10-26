@@ -3,13 +3,12 @@ using System;
 namespace KhaozEngine.Windowing
 {
     /// <summary>
-    /// 5.x-native (MonoGame-free) game clock: separates real delta time from a scaled simulation delta. Set
+    /// Game clock: separates real delta time from a scaled simulation delta. Set
     /// <see cref="TimeScale"/> for slow-mo (&lt;1), normal (1), or fast-forward (&gt;1), and
     /// <see cref="Pause"/>/<see cref="Resume"/> to freeze the sim while real time keeps running (UI,
     /// transitions). Pause is orthogonal to <see cref="TimeScale"/>: resuming restores the intended speed.
-    /// Drive it once per frame from the raw frame delta (<c>AppWindow.Frame.Dt</c>). The custom-stack analogue
-    /// of the 4.x <c>KhaozEngine.Time.GameClock</c>, taking a <c>float</c> dt instead of a MonoGame
-    /// <c>GameTime</c>; <see cref="Paused"/>/<see cref="Resumed"/> fire on transitions.
+    /// Drive it once per frame from the raw <c>float</c> frame delta (<c>AppWindow.Frame.Dt</c>).
+    /// <see cref="Paused"/>/<see cref="Resumed"/> fire on transitions.
     /// <para>Each <see cref="Update"/> also samples a UTC wall clock and reports the gap to the previous
     /// frame as <see cref="RealWallGapSeconds"/> (with <see cref="LastRealTimestamp"/>). Unlike the frame
     /// <c>dt</c> (a QueryPerformanceCounter-backed value that does not reliably advance across OS

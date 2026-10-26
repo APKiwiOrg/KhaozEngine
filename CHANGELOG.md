@@ -1,14 +1,18 @@
 # Changelog
 
 All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion>` in `Directory.Build.props`
-governs the whole MonoGame-free engine (custom stack + graduated foundation packages + the four umbrella
-metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
-GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
+governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
+Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.14.0
 
-2026-10-25
+2026-10-26
 
+- Retire replaced cascade and point-shadow atlases, receiver sets, MRT targets and pipelines, post bindings
+  and temporal display targets behind GPU completion without a device idle wait in the scene frame.
+  Cached depth bindings for decals, particles, distortion and water follow the same queue.
+  Scene frame retirement can share the host completion fence without adding a submission. First temporal
+  target allocation still requires no drain.
 - Add optional Scene3D render-pass observation across geometry, shadows, atmosphere, water, effects,
   temporal resolve, post and display work, with cached skips, exclusive device leaves and fused motion metadata.
   Disabled observation preserves commands and ordering.
@@ -39,8 +43,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `ITileWorldWaterTriangleOpticsScene` (`LoadWaterOpticsTriangles`, `UnloadWaterOpticsField` and
   `TryGetWaterOpticsPadding`). Fields are built from the actual rendered ground mesh. Refusals report a
   `TileWaterOpticsFailureKind`, including `UncertifiedDisplacement`, and `WaterOpticsSourceBytes` reports retained
-  source bytes. Water at a region edge needs loaded, accepted neighbour ground, and a neighbour that fails to load
+  source bytes. Water shared with a known neighbour needs loaded, accepted neighbour ground, and a neighbour that fails to load
   refuses the water without costing terrain. Default views are unchanged and still collect water lazily at draw.
+- Fixed authored optical beds at world manifest edges by continuing the consumed ground beyond the boundary.
+  Known-unloaded neighbours and missing edge ground still refuse, and a newly known region invalidates the
+  continuation (Closes #1586).
 - `Render3DPreview` and `Render3DSnapshot` now prepare each frame with their viewport size.
 - Add the `device.water.prepare` renderer perf owner for viewport-path water preparation. Scene target creation
   on resize and cold frames still has no device owner, filed as https://github.com/APKiwiOrg/KhaozEngine/issues/1569.
@@ -55,6 +62,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Add `SpriteBatch.DrawMasked` for alpha-shaped sprites with independent source and mask regions,
   tint, vertical gradients and mask-aware batching. Preserve ordinary sprite shaders and support
   sampleable render targets without copies (Closes #1577).
+- Describe every package on its own terms. Package descriptions and READMEs say what each package is rather
+  than what it replaced, and each package README now carries the detail the root catalog used to repeat. The
+  package catalog moved from the root README to `docs/PACKAGES.md`, and the root README is now a short
+  introduction.
 
 ## 21.13.0
 

@@ -47,8 +47,8 @@ namespace KhaozEngine.Primitives
             Math.Clamp(R * factor, 0f, 1f), Math.Clamp(G * factor, 0f, 1f), Math.Clamp(B * factor, 0f, 1f), A);
 
         /// <summary>Scale all four channels (including alpha) by <paramref name="s"/>. Unclamped; matches
-        /// <see cref="Vector4"/> <c>* float</c> and legacy MonoGame <c>Color * float</c>. To dim the visible
-        /// color without changing opacity under straight-alpha blending, use <see cref="ScaleRgb(float)"/>.</summary>
+        /// <see cref="Vector4"/> <c>* float</c>. To dim the visible color without changing opacity under
+        /// straight-alpha blending, use <see cref="ScaleRgb(float)"/>.</summary>
         public static Color operator *(Color c, float s) => new(c.R * s, c.G * s, c.B * s, c.A * s);
 
         /// <summary>Scalar multiply (symmetric with <see cref="op_Multiply(Color,float)"/>).</summary>

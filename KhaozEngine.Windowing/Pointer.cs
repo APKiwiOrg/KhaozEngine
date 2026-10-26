@@ -8,8 +8,6 @@ namespace KhaozEngine.Windowing
     /// Bounds-aware pointer over the mouse, with the press-origin click-through invariant. Feed it the
     /// frame's <see cref="InputState"/> via <see cref="Update(KhaozEngine.Windowing.InputState)"/>; then hit-test with the bounds helpers
     /// (<see cref="IsTapIn"/>, <see cref="IsPressingIn"/>, ...) rather than raw position + button checks.
-    /// Ported from the MonoGame <c>InputManager</c> core (desktop/mouse; touch/gamepad are follow-ups; pinch/swipe
-    /// gestures live in <c>PinchRecognizer</c>/<c>GestureRecognizer</c>).
     /// <para>A tap whose press and release both land inside ONE frame still registers, as a release with the
     /// press-origin at the cursor, provided the snapshot's <see cref="InputState.MousePressed"/> carries the
     /// press edge. A producer that leaves that set empty is read exactly as before, so the only thing it loses

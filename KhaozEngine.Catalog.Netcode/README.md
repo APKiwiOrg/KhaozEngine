@@ -4,6 +4,8 @@ The CONTENT layer of the connect door. A server serves exactly one published con
 that holds another one is refused at the door with a token that carries both sides, so the client knows what
 to fetch before it tries again.
 
+It is carried by the `Server` umbrella. A client that uses the content handshake adds this package explicitly.
+
 It is its own small package rather than a type inside `KhaozEngine.Catalog` because `Catalog` is a
 `Foundation` package and `Foundation` cannot reference a `Server`-side one. Its two project references are
 `KhaozEngine.Catalog`, for the version identity and the one definition of a content address, and

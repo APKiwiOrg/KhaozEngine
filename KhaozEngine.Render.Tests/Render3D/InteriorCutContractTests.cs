@@ -237,6 +237,7 @@ public sealed class InteriorCutContractTests
 
             // Replacing either shadow atlas must preserve the cut handle, and vice versa.
             Assert.True(scene.ReplaceShadowLayout(32, 2));
+            for (int i = 0; i < GpuRetireQueue.DefaultFrameDelay; i++) scene.Begin();
             AllBind(resized);
             var compatibility = Live().Select(set => set.Resources[..14]).ToArray();
             scene.InteriorCut = null;

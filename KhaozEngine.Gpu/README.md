@@ -1,8 +1,9 @@
 # KhaozEngine.Gpu
 
-The GPU backend seam for the custom MonoGame-free stack: the graphics APIs contained behind an engine-owned
-layer. Since 18.0.0 this package builds NO device of its own, and the engine's three backend packages are the
-only implementations.
+GPU backend selection, device and command interfaces, resource retirement, compute dispatch and shader
+validation for engine renderers. Devices come from the `KhaozEngine.Gpu.Metal`, `KhaozEngine.Gpu.D3D11` and
+`KhaozEngine.Gpu.Vulkan` backend packages. The `Game2D` and `Game3D` umbrellas carry this package and all three
+backends.
 
 **"The incumbent" below always means the Veldrid backend deleted in 18.0.0**, whichever of its three graphics
 APIs the sentence is about. It is cited in the past tense, because what it did is what several members here
@@ -173,8 +174,8 @@ What it owns today:
     report the software-adapter flag is a different fact from one that reports false, and a capture that cannot
     tell those apart cannot say whether its performance numbers are comparable with another capture's.
   - The `IGpuDevice` member is DEFAULT-IMPLEMENTED, so it was appended without breaking any implementer, and the
-    default is the honest one: no answers. The Metal and Vulkan backends take it, which is correct rather than a
-    gap, since neither API answers either question. The native Direct3D 11 backend is what fills it.
+    default is the honest one: no answers. All three native backends fill both fields. Metal reports
+    `SoftwareAdapter = false`, and each backend exposes its own live device-loss latch through `DeviceLossReason`.
 - **`GpuDeviceCounters`** (17.32.0, `AcquireWaitCount` / `AcquireWaitMs` added 17.34.0) - the soak counters a
   device keeps about itself, cumulative since creation and read LIVE, on `IGpuDevice.Counters`,
   `GpuDeviceContext.Counters` and `AppWindow.Counters`. `FramesBegun`, `DrainCount` / `DrainMs`,
@@ -324,10 +325,10 @@ What it owns today:
   `vkGetDeviceQueue` aborts on Mesa lavapipe under full test-suite parallelism), and creation/disposal are rare
   enough that the serialization costs nothing measurable. Callers see no API change, it only affects the
   interleaving of concurrent create/dispose calls across threads.
-- **`IGpuDevice.SyncToVerticalBlank`** (settable, since 9.24.0) - flip vsync on a live windowed device: it
-  reconfigures the main swapchain in place (no recreate, no leaked swapchain, size + depth preserved; on Metal it
-  reaches `CAMetalLayer.displaySyncEnabled`). A no-op mirrored value on a headless device, which has no
-  swapchain to reconfigure. `AppWindow.PresentMode` routes through it for runtime present-mode switching.
+- **`IGpuDevice.SyncToVerticalBlank`** - flip vsync on a live windowed device. Vulkan queues swapchain recreation
+  at the next present boundary. Metal applies `CAMetalLayer.displaySyncEnabled` at that boundary after a drain.
+  Direct3D 11 uses the requested sync interval at present. A headless device stores the requested value and has
+  no swapchain to change. `AppWindow.PresentMode` routes through it for runtime present-mode switching.
 - **Completion fences** - `IGpuResourceFactory.CreateFence()` makes an unsignaled `IGpuFence`,
   `IGpuDevice.Submit(cl, fence)` signals it once the GPU has finished that submission, and `IGpuFence.Signaled`
   polls it without blocking (`Reset()` returns it for reuse). There is no blocking wait on the seam: the point of a
@@ -435,6 +436,12 @@ What it owns today:
   teardown. It replaces the hand-rolled retire list each renderer used to carry
   ([#80](https://github.com/APKiwiOrg/KhaozEngine/issues/80)), so a new renderer gets the safe behaviour by
   construction rather than by remembering to copy another one.
+  - `BeginFrame(frame.Submission)` shares a `GpuFrameSubmission` completion fence in the prepare phase, without
+    an extra submission. The host and queue use the same device. The host submits before the next boundary and
+    outlives the queue, or completes its own teardown first. Abandonment unseals the tail without freeing earlier
+    readers. A failed submit retains its batch until completion or a successful host teardown drain. The queue
+    never resets or disposes borrowed fences. If no host completion slot is available, the call refuses without
+    submitting or freeing the unsealed tail. Devices without completion fences keep the ordinary fallback.
   - **Two factories, and the choice is about WHERE your frame boundary is.** `Create(device)` is the default:
     fence-polled ripeness where the device can signal on GPU completion, the frame count plus one `WaitForIdle`
     where it cannot. Minting the fence opens a command list of its own, so it must be advanced from a point with

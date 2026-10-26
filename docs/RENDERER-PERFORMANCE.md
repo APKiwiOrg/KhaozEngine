@@ -31,6 +31,18 @@ scene block starts fresh at driver index -64 for the pilot or -192 for a full un
 frames establish history before measured index 0. Periodic recipe inputs wrap negative indices modulo
 256, while the scene frame index and effect clock keep advancing through the block.
 
+Every frame, including conditioning and the first warm-up frame of a fresh block, requires exactly one
+logical production submission, zero logical `WaitForIdleCalls` and no device loss. Conditioning and
+negative warm-up indices permit cold resource creation. Measured frames require zero logical resource
+creations. Cold creation remains visible in raw counters and outside measured distributions. Native setup
+submissions, completion backpressure and native allocations remain separate backend diagnostics.
+The one batch completion drain and final validation readback occur outside frame brackets.
+
+Cascade layouts, point-shadow demand and MRT changes retire outgoing graphs through the scene queue.
+The workload starts each scene with `Scene3D.BeginFrame(frame.Submission)`, sharing the host completion
+fence instead of adding the standalone retirement queue's empty submission. No hidden rendered priming
+frame is added. These headless lifetime proofs do not establish native acceptance or authorize a pilot.
+
 The outer GPU pair precedes the host clear and follows native command-list End finalization.
 `TotalOnly` brackets the frame with two queries. `PerPass` adds frozen parent/child scopes and
 reserved skip slots. Detailed markers may change synchronization or encoder boundaries. Its frame

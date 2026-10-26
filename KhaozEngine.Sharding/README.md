@@ -21,7 +21,9 @@ process.
   every live cell at one shared fixed rate. `EnsureCell(coord)` gets or creates a cell by coordinate, and the
   `CellCreated` event fires each time a coordinate is instantiated (from `CellFor`, `SpawnAt`, a handoff
   destination, or `EnsureCell`), including a recreate after `RemoveCell` - the load hook a per-cell persistence
-  layer subscribes to.
+  layer subscribes to. `SyncGhosts` mirrors border-overlap entities into neighbouring cells as read-only ghosts
+  over `ICellLink`. `ProcessHandoffs` transfers authority exactly once when an entity crosses a cell boundary.
+  `SnapshotForClient` serves a bound client's area of interest from its home cell and rebinds it on crossing.
 
 **Island frames (since the floating-origin major).** A frame is a property of a SPACE, and a physics world IS a
 space, so a cell owns both or neither. Built with `frameAnchoring: true`, `ShardHost` gives each cell the frame
@@ -171,14 +173,17 @@ clients homed in it, keyed to the serve epoch) instead of scanning the whole cel
 one reused `SnapshotScratch` stream. The wire is byte-identical to the full-scan path. Only the per-call
 `O(worldPop)` scan and stream allocation are removed.
 
+**Choose the cell scheduler.** `ShardHost` accepts an optional `IJobScheduler` and exposes it through `Scheduler`.
+The default `SingleThreadedJobScheduler` runs cells inline. Pass `ThreadPoolJobScheduler` to fan independent cell
+steps across worker threads.
+
 **The per-cell fan-out runs in the canonical FP environment.** `Tick` wraps each cell's step in a
 `DeterministicFpScope`, because `DeterministicFp` pins the floating-point control register per THREAD and a
 scheduler fanning cells across the thread pool runs them on arbitrary workers whose register is whatever the pool
 last left it at. `ThreadPoolJobScheduler` installs the same scope around its own worker bodies, so a consumer's own
 `For()` call site is covered too, and entering twice is harmless.
 
-Phase 3A of the seamless-shard topology: the in-process container. No cross-cell crossing or ghosting yet
-(that's 3B/3C). Deterministic and headless - no sockets, no window, no GPU. Depends on `KhaozEngine.Ecs`,
+Deterministic and headless, with in-process authority handoff and border ghosting. Depends on `KhaozEngine.Ecs`,
 `KhaozEngine.Simulation`, `KhaozEngine.Physics` (the seam a cell's own world is typed as) and
 `KhaozEngine.Replication`.
 

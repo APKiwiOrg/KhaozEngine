@@ -13,8 +13,14 @@ public sealed class RendererPerfRehearsalExecutionTests
         return report with
         {
             Manifest = RendererPerfRehearsalManifestTests.Parse(RendererPerfRehearsalManifestTests.ManifestJson()),
-            Identity = report.Identity with { SoftwareAdapter = true, VendorId = 0x10005, DeviceId = 0,
-                Adapter = "llvmpipe", Driver = "Mesa driver" },
+            Identity = report.Identity with
+            {
+                SoftwareAdapter = true,
+                VendorId = 0x10005,
+                DeviceId = 0,
+                Adapter = "llvmpipe",
+                Driver = "Mesa driver"
+            },
             Assessment = report.Assessment with { ValidForPromotion = false, Reasons = [RendererPerfRehearsalPolicy.Reason] }
         };
     }
@@ -50,8 +56,11 @@ public sealed class RendererPerfRehearsalExecutionTests
     public void Strict_reader_cannot_promote_a_rehearsal_even_with_forged_hardware_identity()
     {
         var report = Report();
-        var forged = report with { Identity = RendererPerfProtocolTests.CompleteReport().Identity,
-            Assessment = report.Assessment with { ValidForPromotion = true, Reasons = [] } };
+        var forged = report with
+        {
+            Identity = RendererPerfProtocolTests.CompleteReport().Identity,
+            Assessment = report.Assessment with { ValidForPromotion = true, Reasons = [] }
+        };
         Assert.Throws<RendererPerfProtocolException>(() => RendererPerfReportJson.Serialize(forged));
     }
 

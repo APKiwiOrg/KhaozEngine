@@ -100,9 +100,11 @@ internal sealed class RendererPerfSceneWorkload : IRendererPerfNativeWork
         _cold = true;
     }
 
-    public void Prepare(int frameIndex)
+    public void Prepare(int frameIndex) => Prepare(frameIndex, null);
+
+    public void Prepare(int frameIndex, GpuFrameSubmission? submission)
     {
-        Scene.Begin();
+        if (submission is null) Scene.Begin(); else Scene.BeginFrame(submission);
         _recipe.Queue(Scene, frameIndex);
         Scene.PrepareFrame();
     }

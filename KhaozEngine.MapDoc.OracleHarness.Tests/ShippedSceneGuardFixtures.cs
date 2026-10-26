@@ -393,7 +393,18 @@ internal sealed class SceneOracleDevice : IMapRenderDevice
     internal Dictionary<MapRenderHandle, MapPreparedResource> Live { get; } = new();
     public SceneUploadDemand MeasureUpload(MapPreparedResource resource) => new(resource.PayloadDigest, 128, 16, 128, 128, 32);
     public IMapRenderUpload BeginUpload(MapPreparedResource resource, ISceneUploadReservation reservation)
-    { reservation.Claim(MeasureUpload(resource)); return new Upload(this, resource, reservation); }
+    {
+        reservation.Claim(MeasureUpload(resource));
+        // Upload owns its rows after the admitted borrow ends, just as the real render device does.
+        if (resource.Payload is MapFoliageResource foliage)
+            resource = resource with
+            {
+                Payload = foliage.TransformSpace == MapFoliageTransformSpace.World
+                ? new MapFoliageResource(foliage.Anchor, foliage.WorldTransforms, foliage.Ranks, foliage.ModelIndices, foliage.Models)
+                : MapFoliageResource.FromAnchorLocal(foliage.Anchor, foliage.AnchorLocalTransforms, foliage.Ranks, foliage.ModelIndices, foliage.Models)
+            };
+        return new Upload(this, resource, reservation);
+    }
     public void Release(MapRenderHandle handle)
     {
         if (!Live.Remove(handle)) throw new InvalidOperationException("retired scene handle");

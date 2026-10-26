@@ -53,11 +53,11 @@ namespace KhaozEngine.Tests.Gpu
                 shapes.Add((name, harness.Set(name)));
             }
 
-            // Main adds certified temporal resolve and accumulation layouts.
+            // Masked SpriteBatch adds one layout. Main adds certified temporal resolve and accumulation layouts.
             // R8a bounded water and prepared foliage colour, motion, opaque cascade, cutout cascade
             // and point shadow add BoundedWater, SceneAnchor and the empty opaque material gap.
             // T8-R1 includes that gap in this independent literal completeness pin.
-            Assert.Equal(70, shapes.Count);
+            Assert.Equal(71, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

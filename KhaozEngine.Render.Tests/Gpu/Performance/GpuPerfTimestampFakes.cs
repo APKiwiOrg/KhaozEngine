@@ -65,11 +65,13 @@ internal sealed class GpuPerfTimestampTestPool(uint capacity) : IGpuTimestampPoo
 internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFactory
 {
     readonly FakeGpuDevice _inner = new();
+    internal FakeGpuResourceFactory Resources => (FakeGpuResourceFactory)_inner.Factory;
     internal readonly List<GpuPerfTimestampTestPool> Pools = [];
     internal readonly List<SubmissionTestFence> Fences = [];
     internal readonly IGpuFence[] SubmittedFences = new IGpuFence[8];
     internal int Submissions, Waits, CompletionCount;
     internal bool FailSubmit;
+    internal Action<IGpuFence>? OnSubmittedFence { get; set; }
     internal Func<uint, IGpuTimestampPool>? PoolFactory { get; set; }
     internal GpuCapabilities Features { get; set; } = new(false, true, supportsCompletionFences: true) { SupportsTimestamps = true };
     internal bool Software { get; set; }
@@ -89,6 +91,7 @@ internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFacto
         Trace?.Invoke("submit");
         Submissions++; CompletionCount = completions.Length;
         completions.CopyTo(SubmittedFences);
+        foreach (IGpuFence completion in completions) OnSubmittedFence?.Invoke(completion);
         if (commands is GpuPerfTimestampTestCommands { Pool: { } pool }) pool.SubmittedFence = completions[0];
         if (FailSubmit) throw new InvalidOperationException("submit failure");
     }

@@ -50,6 +50,7 @@ namespace KhaozEngine.Tests.Gpu
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["Sprite2D"] = "SpriteBatch",
+                ["Sprite2DMasked"] = "SpriteBatch masked",
                 ["GpuScaledCopy"] = "GpuScaledCopy",
 
                 ["Model"] = "ModelRenderer",
@@ -340,9 +341,9 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            // Main's visibility, fully lit and triangle optics variants plus R8a bounded water and five prepared
+            // Masked Sprite2D, main's visibility, fully lit and triangle optics variants plus R8a bounded water and five prepared
             // foliage programs, including the two prepared colour and motion visibility variants.
-            Assert.Equal(131, catalog.Length);
+            Assert.Equal(132, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

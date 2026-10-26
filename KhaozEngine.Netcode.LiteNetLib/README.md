@@ -5,9 +5,9 @@ unreliable Sequenced channel and reliable events on a ReliableOrdered channel, s
 packet never head-of-line-blocks position updates.
 
 The split contract itself - `IChannelSplittable<T>` and the `NetChannelReliability` enum - lives in
-the transport-free **`KhaozEngine.Netcode`** package, so your batch DTO can implement it without
-referencing LiteNetLib. This package adds `ChannelSplitter`, which maps to LiteNetLib's
-`DeliveryMethod` and drives the send.
+the zero-dependency **`KhaozEngine.Netcode.Abstractions`** package and is type-forwarded from
+`KhaozEngine.Netcode`. A transport-agnostic DTO can reference Abstractions alone. This package adds
+`ChannelSplitter`, which maps to LiteNetLib's `DeliveryMethod` and drives the send.
 
 ```csharp
 using KhaozEngine.Netcode;              // IChannelSplittable<T>, NetChannelReliability

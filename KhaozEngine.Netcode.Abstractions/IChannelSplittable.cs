@@ -15,9 +15,9 @@ public enum NetChannelReliability
 /// </summary>
 /// <remarks>
 /// Transport-free and dependency-free: this contract names no transport type and lives in the
-/// zero-dependency <c>KhaozEngine.Netcode.Abstractions</c> package (BCL only, no MonoGame, no
-/// LiteNetLib), so a batch DTO in a MonoGame-free, transport-agnostic project (e.g. one shared with a
-/// web server) can implement it referencing only that package. The namespace stays
+/// zero-dependency <c>KhaozEngine.Netcode.Abstractions</c> package (BCL only), so a batch DTO in a
+/// transport-agnostic project (e.g. one shared with a web server) can implement it referencing only
+/// that package. The namespace stays
 /// <c>KhaozEngine.Netcode</c> and the type is forwarded from <c>KhaozEngine.Netcode</c>, so consumers
 /// referencing that package keep binding it unchanged. The LiteNetLib delivery-method mapping lives in
 /// <c>KhaozEngine.Netcode.LiteNetLib.ChannelSplitter</c>.

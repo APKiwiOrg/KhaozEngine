@@ -261,9 +261,9 @@ companions on every host in the layer, so re-check any existing companion config
 `HostKinds` before upgrading. A populated `HostKinds` list is unaffected: it still filters by exact
 ordinal match against `PropPlacement.Id`.
 
-Depends on `KhaozEngine.Primitives` and `KhaozEngine.Collision`. No render dependency, and that includes
-the streamer: `TerrainStreamer`/`IChunkSink`/`ChunkBuildScheduler` are GPU-free and server-usable as they
-stand. Add [KhaozEngine.Terrain.Render3D](../KhaozEngine.Terrain.Render3D) only for `Scene3DChunkSink`
+Depends on `KhaozEngine.Primitives`, `KhaozEngine.Collision` and `KhaozEngine.Diagnostics`.
+`TerrainStreamer`/`IChunkSink`/`ChunkBuildScheduler` are GPU-free and server-usable without a renderer.
+Add [KhaozEngine.Terrain.Render3D](../KhaozEngine.Terrain.Render3D) only for `Scene3DChunkSink`
 (the GPU sink) and the chunk mesh builder. In the `Foundation` umbrella metapackage.
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).

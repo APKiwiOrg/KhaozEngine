@@ -130,6 +130,26 @@ public partial class ExplicitCharacterMovementTests
     }
 
     [Fact]
+    public void ABuoyantRiseLeavesTheDeepBedItStartsOn()
+    {
+        // Rising swim substeps query support, but only a bed above their highest feet can seat them. The feet start
+        // on the bed, 1.1 m below the waterline rest, so a seat there would hold the body and clear its rise.
+        using var scene = new Scene(wet: true, floor: true, floorY: -1, waterDepth: 2);
+        var state = Swimmer(scene, -1 + 0.75f);
+        for (int tick = 0; tick < 30; tick++)
+        {
+            var result = ExplicitCharacterMovement.Step(state, MoveCommand.Idle, 1f / 30, Tuning, Policy, scene.Lease);
+            Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
+            Assert.True(result.State.State.Swimming);
+            Assert.False(result.State.State.Grounded);
+            Assert.Equal(WaterExcursionState.Surface, result.State.State.WaterExcursion);
+            Assert.True(result.State.State.Position.Y > state.State.Position.Y, $"tick {tick}");
+            Assert.True(result.State.State.VerticalVelocity > 0, $"tick {tick}");
+            state = result.State;
+        }
+    }
+
+    [Fact]
     public void SupportedShallowWaterEndsTheExcursion()
     {
         using var scene = new Scene(wet: true, floor: true, floorY: 0.7f, waterDepth: 0.3f);

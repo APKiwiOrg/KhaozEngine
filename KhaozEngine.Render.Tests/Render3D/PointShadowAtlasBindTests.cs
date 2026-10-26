@@ -13,8 +13,8 @@ namespace KhaozEngine.Tests.Render3D;
 /// <para>
 /// A failed rebuild leaves the previously bound atlas in place, which is the safe half. The dangerous half is
 /// that it also leaves the renderer wanting the atlas it just failed on, so a host calling this every frame
-/// re-enters the whole transaction, <c>WaitForIdle</c> included, on every frame from then on. A full GPU stall
-/// once a frame forever, with nothing on screen saying so, is the failure these tests exist for: the latch turns
+/// re-enters the allocation transaction on every frame from then on, with nothing on screen saying so.
+/// The latch turns
 /// it into one attempt, and the separate <c>Failed</c> answer is what lets the caller see it at all.
 /// </para>
 /// </summary>
@@ -73,7 +73,7 @@ public sealed class PointShadowAtlasBindTests
     }
 
     [Fact]
-    public void ANewAtlasRebuildsEveryTrackedSetAndFreesTheOldOnes()
+    public void ANewAtlasRebuildsEveryTrackedSetAndRetainsTheOldOnes()
     {
         using var rig = new BindRig();
         int setsBefore = rig.SetCount;
@@ -82,10 +82,10 @@ public sealed class PointShadowAtlasBindTests
 
         Assert.Equal(PointShadowBindResult.Rebound, rig.Bind(rig.Atlas));
 
-        Assert.Equal(waits + 1, rig.Device.WaitForIdleCalls);
-        // The two default sets plus the one live material set, rebuilt and their originals freed.
+        Assert.Equal(waits, rig.Device.WaitForIdleCalls);
+        // The two default sets plus the one live material set, rebuilt and their originals retired.
         Assert.Equal(3, rig.SetCount - setsBefore);
-        Assert.Equal(3, rig.DisposedSetCount - disposedBefore);
+        Assert.Equal(0, rig.DisposedSetCount - disposedBefore);
         Assert.Equal(PointShadowBindResult.Unchanged, rig.Bind(rig.Atlas));
     }
 
@@ -99,8 +99,8 @@ public sealed class PointShadowAtlasBindTests
 
         Assert.Equal(PointShadowBindResult.Failed, rig.Bind(rig.Atlas));
 
-        // It got as far as the stall and one allocation, and freed the one replacement it had built.
-        Assert.Equal(waits + 1, rig.Device.WaitForIdleCalls);
+        // It got as far as one allocation, and freed the one replacement it had built.
+        Assert.Equal(waits, rig.Device.WaitForIdleCalls);
         Assert.Equal(1, rig.DisposedSetCount - disposedBefore);
         // The 1x1 default is still what every receiver carries, so asking for it again moves nothing.
         Assert.Equal(PointShadowBindResult.Unchanged, rig.Bind(null));
@@ -177,7 +177,7 @@ public sealed class PointShadowAtlasBindTests
 
         // Nothing is being held against this handle any more, so the transaction is entered for real.
         Assert.Equal(PointShadowBindResult.Rebound, rig.Bind(rig.Atlas));
-        Assert.Equal(waits + 1, rig.Device.WaitForIdleCalls);
+        Assert.Equal(waits, rig.Device.WaitForIdleCalls);
     }
 
     /// <summary>A renderer over the fake device with one live material set beside its two default ones, plus the

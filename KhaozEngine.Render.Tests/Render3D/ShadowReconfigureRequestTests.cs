@@ -12,7 +12,8 @@ public sealed class ShadowReconfigureRequestTests
     public void Latest_request_wins_at_the_next_frame_boundary()
     {
         using RequestRig rig = new();
-        int replacements = rig.ReplacementCount;
+        int waits = rig.WaitCount;
+        int textures = rig.TextureCreates;
 
         rig.Scene.RequestShadowMapDetail(ShadowMapDetail.Low);
         rig.Scene.RequestShadowMapDetail(ShadowMapDetail.High);
@@ -21,7 +22,8 @@ public sealed class ShadowReconfigureRequestTests
         rig.BeginFrame();
         Assert.Equal(3072, rig.Settings.ShadowMapResolution);
         Assert.Equal(3, rig.Settings.ShadowCascadeCount);
-        Assert.Equal(replacements + 1, rig.ReplacementCount);
+        Assert.Equal(waits, rig.WaitCount);
+        Assert.Equal(textures + 2, rig.TextureCreates);
     }
 
     [Fact]
@@ -47,7 +49,7 @@ public sealed class ShadowReconfigureRequestTests
         int pipelines = rig.PipelineCreates;
         int disposedTextures = rig.DisposedTextureCount;
         int disposedSets = rig.DisposedResourceSetCount;
-        int replacements = rig.ReplacementCount;
+        int waits = rig.WaitCount;
 
         rig.Scene.RequestShadowMapLayout(2048, 3);
         rig.BeginFrame();
@@ -57,7 +59,7 @@ public sealed class ShadowReconfigureRequestTests
         Assert.Equal(pipelines, rig.PipelineCreates);
         Assert.Equal(disposedTextures, rig.DisposedTextureCount);
         Assert.Equal(disposedSets, rig.DisposedResourceSetCount);
-        Assert.Equal(replacements, rig.ReplacementCount);
+        Assert.Equal(waits, rig.WaitCount);
     }
 
     [Fact]
@@ -76,7 +78,7 @@ public sealed class ShadowReconfigureRequestTests
         Assert.Contains("2048", error, StringComparison.Ordinal);
         int textures = rig.TextureCreates;
         int sets = rig.ResourceSetCreates;
-        int replacements = rig.ReplacementCount;
+        int waits = rig.WaitCount;
 
         rig.BeginFrame();
 
@@ -84,7 +86,7 @@ public sealed class ShadowReconfigureRequestTests
         Assert.Equal(3, rig.Settings.ShadowCascadeCount);
         Assert.Equal(textures, rig.TextureCreates);
         Assert.Equal(sets, rig.ResourceSetCreates);
-        Assert.Equal(replacements, rig.ReplacementCount);
+        Assert.Equal(waits, rig.WaitCount);
         Assert.Single(rig.Logger.Errors);
 
         rig.Scene.RequestShadowMapLayout(2048, 3);
@@ -163,7 +165,7 @@ public sealed class ShadowReconfigureRequestTests
         internal Scene3D Scene { get; }
         internal ShadowSettings Settings { get; }
         internal RecordingLogger Logger { get; }
-        internal int ReplacementCount => _device.WaitForIdleCalls;
+        internal int WaitCount => _device.WaitForIdleCalls;
         internal int TextureCreates => _device.CountingFactory.TextureCreates;
         internal int ResourceSetCreates => _device.CountingFactory.ResourceSetCreates;
         internal int PipelineCreates => _device.CountingFactory.PipelineCreates;

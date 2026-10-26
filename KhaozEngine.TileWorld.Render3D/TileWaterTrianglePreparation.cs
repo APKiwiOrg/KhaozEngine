@@ -67,6 +67,9 @@ internal static class TileWaterTrianglePreparation
     // a whole-metre origin minus any anchor stays an integer below 2^24 m, exact in binary32.
     internal const double MaxOriginMetres = 8388608d;
 
+    // YSlack is zero when the transform's Y row is the identity, as TileGroundMesher.WorldMatrix is.
+    internal readonly record struct Vertex(double X, double Y, double Z, double Slack, double YSlack);
+
     internal static TileWaterOpticsFailureKind Kind(WaterOpticsSurfaceFailure reason) => reason switch
     {
         WaterOpticsSurfaceFailure.IncompleteCoverage => TileWaterOpticsFailureKind.IncompleteSurfaceCoverage,
@@ -103,11 +106,12 @@ internal static class TileWaterTrianglePreparation
             Stamp(inspected, context));
     }
 
-    /// <summary>The second validation before a swap. Every consumed range must still belong to the table's current
-    /// snapshot and match live source data.</summary>
+    /// <summary>The second validation before a swap. Availability decisions must still hold, and every consumed
+    /// range must still belong to the table's current snapshot and match live source data.</summary>
     internal static bool SourcesCurrent(TileWaterTriangleOutcome outcome,
         Func<RegionCoord, TileGroundSurfaceSnapshot?> sources, in TileWaterSourceContext context)
     {
+        if (outcome.Availability?.IsCurrent(context.Document, context.Registry) == false) return false;
         foreach (TileWaterTriangleOutcome.Support consumed in outcome.Supporting)
             if (!ReferenceEquals(sources(consumed.Snapshot.Id.Region), consumed.Snapshot) ||
                 !consumed.Snapshot.SourceWitness.IsRangeCurrent(consumed.Range, context.Document, context.Catalogs,
@@ -134,8 +138,6 @@ internal static class TileWaterTrianglePreparation
         List<TileWaterTriangleOutcome.Support> support, List<TileWaterOpticsDependency> inspected)
     {
         readonly record struct Bounds(double MinX, double MinZ, double MaxX, double MaxZ);
-        // YSlack is zero when the transform's Y row is the identity, as TileGroundMesher.WorldMatrix is.
-        readonly record struct Vertex(double X, double Y, double Z, double Slack, double YSlack);
 
         TileRect _domain;
         internal TileWaterTriangleBuild? Result { get; private set; }
@@ -177,6 +179,7 @@ internal static class TileWaterTrianglePreparation
                 (int)(domainZ1 - domainZ0) + 1);
 
             var selected = new List<(TileGroundSurfaceSnapshot Snapshot, List<int> Ranges)>();
+            var absentRegions = new List<RegionCoord>();
             RegionCoord? missingSurface = null;
             RegionCoord min = RegionCoord.Of((int)domainX0, (int)domainZ0);
             RegionCoord max = RegionCoord.Of((int)domainX1, (int)domainZ1);
@@ -187,7 +190,14 @@ internal static class TileWaterTrianglePreparation
                     if (!Touches(source.OriginX, source.OriginZ, (long)source.OriginX + TileRegion.Size,
                         (long)source.OriginZ + TileRegion.Size, tiles)) continue;
                     keys.Add((source, plane));
-                    TileGroundSurfaceSnapshot? snapshot = sources(source);
+                    inspected.Add(new TileWaterOpticsDependency(source, null));
+                    byte availability = TileGroundHeightWitness.Availability(document, source);
+                    if (availability == 0)
+                    {
+                        absentRegions.Add(source);
+                        continue;
+                    }
+                    TileGroundSurfaceSnapshot? snapshot = availability == 2 ? sources(source) : null;
                     if (snapshot is null || snapshot.Id.Region != source || snapshot.Id.Plane != plane ||
                         snapshot.TileSize != tileSize)
                     {
@@ -222,10 +232,12 @@ internal static class TileWaterTrianglePreparation
             if (missingSurface is { } absent) return Fail(TileWaterOpticsFailureKind.MissingSurfaceData, absent);
 
             var vertices = new List<Vertex>();
+            var continuation = new TileWaterManifestContinuation(document, _domain, absentRegions);
             double minX = double.PositiveInfinity, minZ = double.PositiveInfinity;
             foreach ((TileGroundSurfaceSnapshot snapshot, List<int> ranges) in selected)
             {
                 ids.Add(snapshot.Id);
+                int firstVertex = vertices.Count;
                 Matrix4x4 m = snapshot.WorldTransform;
                 ReadOnlySpan<Vector3> positions = snapshot.Payload.Positions;
                 ReadOnlySpan<uint> indices = snapshot.Payload.Indices;
@@ -244,6 +256,14 @@ internal static class TileWaterTrianglePreparation
                         vertices.Add(v);
                     }
                 }
+                continuation.Add(snapshot, vertices, firstVertex);
+            }
+            int sourceVertices = vertices.Count;
+            continuation.Append(vertices);
+            for (int i = sourceVertices; i < vertices.Count; i++)
+            {
+                minX = Math.Min(minX, vertices[i].X);
+                minZ = Math.Min(minZ, vertices[i].Z);
             }
             if (vertices.Count == 0) return Fail(TileWaterOpticsFailureKind.IncompleteSurfaceCoverage);
             // Whole-metre binding origin below 2^23 m. Every WorldFrame anchor is an integer multiple of 128 m of

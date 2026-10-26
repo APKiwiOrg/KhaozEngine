@@ -38,6 +38,14 @@ namespace KhaozEngine.Tests.Gpu
             using var sprites = new SpriteBatch(device, framebuffer.Outputs);
             using var model = new ModelRenderer(device, framebuffer.Outputs, 64, 1);
             using IGpuCommandList commands = factory.CreateCommandList();
+            using var sprite = Texture2D.Wrap(factory.CreateTexture(GpuTextureDescription.Texture2D(
+                1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled)), 1, 1);
+            // Masked pipelines are lazy, so capture them by recording a real masked draw.
+            sprites.NewFrame(commands, 64, 64);
+            sprites.Begin();
+            sprites.DrawMasked(sprite, new Vector4(0, 0, 1, 1), new Vector4(0, 0, 1, 1),
+                sprite, new Vector4(0, 0, 1, 1), Color.White);
+            sprites.End();
             model.UploadFoliageUniforms(commands, [default]);
             CaptureClipmapPipeline(device, framebuffer.Outputs, commands);
             CaptureBoundedWaterPipeline(scene);

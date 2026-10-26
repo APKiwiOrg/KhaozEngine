@@ -44,7 +44,8 @@ public sealed class NativeResourceRebindingTests
             Assert.True(resourceSets.Length > original.Length);
             Assert.All(resourceSets.Except(original), set => Assert.Equal(0, set.DisposeCount));
             Assert.All(original, set => Assert.InRange(set.DisposeCount, 0, 1));
-            Assert.Equal(2, original.Count(set => set.DisposeCount == 1));
+            // Shadow replacement retains old bindings behind completion. Point growth releases its old sets directly.
+            Assert.Equal(replacement == "shadow-atlas" ? 0 : 2, original.Count(set => set.DisposeCount == 1));
 
             if (!leaveLive)
             {

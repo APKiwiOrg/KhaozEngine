@@ -204,6 +204,7 @@ public sealed class TileWorldViewWaterOpticsTests
         view.LoadRegion(Origin);
         Assert.Contains(Water(view, scene), p => p.CenterX < 1f && p.Optics.IsBound);
         doc.RemoveRegion(west);
+        doc.UnloadedRegionHashes.Add(west, "known-unloaded");
         view.UnloadRegion(west);
         view.MarkRegionStreamed(west);
         view.Flush();
@@ -305,6 +306,7 @@ public sealed class TileWorldViewWaterOpticsTests
         var doc = World();
         var absent = new RegionCoord(-1, 0);
         doc.RemoveRegion(absent);
+        doc.UnloadedRegionHashes.Add(absent, "known-unloaded");
         for (int z = 6; z < 18; z++)
             for (int x = 0; x < 6; x++) doc.SetUnderlay(x, z, 0, TileRenderTestData.Grass);
         doc.SetUnderlay(0, 11, 0, TileRenderTestData.Water);
@@ -322,6 +324,7 @@ public sealed class TileWorldViewWaterOpticsTests
         Assert.Same(failures, view.WaterOpticsFailures);
         Assert.Equal(loads, scene.TriangleLoads.Count);
         Assert.Equal(meshes, scene.MeshLoads.Count);
+        doc.UnloadedRegionHashes.Remove(absent);
         doc.GetOrCreateRegion(absent);
         for (int z = 6; z < 18; z++)
             for (int x = -8; x < 0; x++) doc.SetUnderlay(x, z, 0, TileRenderTestData.Grass);

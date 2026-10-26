@@ -121,7 +121,7 @@ internal sealed partial class ModelRenderer
     {
         _foliageOutputs = outputs;
         if (_foliagePipeline is null) return;
-        _foliagePipeline.Dispose();
+        _retired.Retire(_foliagePipeline);
         _foliagePipeline = null;
         EnsureFoliagePipeline();
     }

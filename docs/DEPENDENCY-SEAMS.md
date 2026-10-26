@@ -2337,7 +2337,7 @@ To swap or add a backend for a seam that already has the separate-package split:
    it.
 4. Headless test against the contract; for backends with a real device, gate device tests as the existing
    ones are.
-5. Run the full doc sweep (this table, the package catalog in `../README.md` and `../AGENTS.md`) so the
+5. Run the full doc sweep (this table, the package catalog in `PACKAGES.md` and `../AGENTS.md`) so the
    new package is listed everywhere it should be.
 
 ## Where to look in the code

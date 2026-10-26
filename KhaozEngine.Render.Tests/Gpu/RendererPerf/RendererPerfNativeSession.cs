@@ -33,9 +33,10 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         RendererPerfBlock block, RendererPerfPassDefinition[] passes, RendererPerfClock clock,
         Func<IGpuDevice, IRenderPassObserver, IRendererPerfNativeWork> createWork,
         Func<ImmutableDictionary<string, RendererPerfMetric>>? telemetry = null,
-        RendererPerfConstructionCapture? capture = null, int operationOrdinal = 0)
+        RendererPerfConstructionCapture? capture = null, int operationOrdinal = 0,
+        RendererPerfExecutionClass executionClass = RendererPerfExecutionClass.Performance)
     {
-        RendererPerfAdmission.Device(device, info);
+        RendererPerfAdmission.Device(device, info, executionClass);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(clock.Frequency);
         long coldStart = info.Startup?.Wall.StartTicks ?? clock.Now();
         _native = device; _info = info; _block = block; _clock = clock; _telemetry = telemetry;
@@ -51,7 +52,8 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         capture?.BeginOperation(operationOrdinal);
         try
         {
-            _ring = ring = new(device, count, markerCount, (id, result) => _results[id] = result);
+            _ring = ring = new(device, count, markerCount, (id, result) => _results[id] = result,
+                allowSoftware: executionClass == RendererPerfExecutionClass.Rehearsal);
             _recorder = new(count, block.Layout, passes, clock.Now, clock.Frequency, _ring);
             _observer = new(_recorder, block.Layout, passes);
             _device = capture is null ? RendererPerfDevice.Wrap(device, _recorder) : RendererPerfDevice.Wrap(device, _recorder, capture);
@@ -127,9 +129,10 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
             {
                 if (_recorder.ReadCounter(_next, RendererPerfCounter.Submissions) != 1)
                     _recorder.Fail("An unexpected production submission occurred, including preparation.");
+                bool conditioning = _block.SceneId.StartsWith("conditioning:", StringComparison.Ordinal);
                 if (_recorder.ReadCounter(_next, RendererPerfCounter.WaitForIdleCalls) != 0)
                     _recorder.Fail("An unexpected production wait occurred.");
-                if (frameIndex >= 0 && !_block.SceneId.StartsWith("conditioning:", StringComparison.Ordinal) && _recorder.ReadCounter(_next, RendererPerfCounter.ResourceCreations) != 0)
+                if (frameIndex >= 0 && !conditioning && _recorder.ReadCounter(_next, RendererPerfCounter.ResourceCreations) != 0)
                     _recorder.Fail("Hot resource growth occurred in a steady frame.");
             }
             catch (Exception error) { RendererPerfFailures.Add(ref failures, "renderer.frame.finalize", error); }
@@ -161,7 +164,7 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         _recorder.UseSubmission(frame.Submission);
         _recorder.BeginCpuPhase("prepare");
         ImmutableArray<GpuDiagnosticFailure>.Builder? failures = null;
-        try { _work.Prepare(_frameIndex); }
+        try { _work.Prepare(_frameIndex, frame.Submission); }
         catch (Exception error) { RendererPerfFailures.Add(ref failures, "renderer.frame", error); }
         try { _recorder.EndCpuPhase("prepare"); }
         catch (Exception error) { RendererPerfFailures.Add(ref failures, "renderer.frame.finalize", error); }

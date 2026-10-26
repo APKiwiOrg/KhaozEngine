@@ -66,6 +66,7 @@ namespace KhaozEngine.Tests.Gpu
                 // Render2D/SpriteBatch.cs:190 and :194. The UBO is at SET 1, which is why "set 0 first" is false
                 // in shipped code and why the pipeline grouping below is the load-bearing half of this table.
                 ["SpriteBatch.texture"] = L(T("Tex"), S("Samp")),
+                ["SpriteBatch.maskedTexture"] = L(T("Tex"), S("Samp"), T("Mask"), S("MaskSamp")),
                 ["SpriteBatch.vp"] = L(U("Vp", V, dynamic: true)),
 
                 // Gpu/GpuScaledCopy.cs, the frame capture downscale. Fragment-stage, no uniform buffer.
@@ -249,6 +250,7 @@ namespace KhaozEngine.Tests.Gpu
         [
             // Render2D/SpriteBatch.cs:214, both the alpha and the additive pipeline through one Describe(blend).
             ("SpriteBatch", ["SpriteBatch.texture", "SpriteBatch.vp"]),
+            ("SpriteBatch masked", ["SpriteBatch.maskedTexture", "SpriteBatch.vp"]),
 
             // Gpu/GpuScaledCopy.cs, the frame capture downscale.
             ("GpuScaledCopy", ["GpuScaledCopy"]),
@@ -351,12 +353,12 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            // Main adds certified temporal resolve and accumulation layouts and four pipeline shapes.
+            // Masked SpriteBatch adds one layout and pipeline. Main adds certified temporal resolve and accumulation layouts and four pipeline shapes.
             // R8a adds bounded water and prepared foliage colour, motion, opaque cascade, cutout cascade
             // and point shadow, with BoundedWater, SceneAnchor and the empty opaque material gap.
             // T8-R1 keeps completeness independent of the catalogs themselves.
-            Assert.Equal(70, ShippedLayouts.Count);
-            Assert.Equal(80, ShippedPipelines.Count);
+            Assert.Equal(71, ShippedLayouts.Count);
+            Assert.Equal(81, ShippedPipelines.Count);
             Assert.Equal(ShippedPipelines.Count,
                 ShippedPipelines.Select(p => p.Pipeline).Distinct(StringComparer.Ordinal).Count());
             Assert.Equal(ShippedLayouts.Keys.Order(StringComparer.Ordinal),

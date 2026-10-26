@@ -131,9 +131,11 @@ The context implements `IDisposable`. A supplied `MovementQueries` view remains 
 construction creates one selected view and releases it on disposal. It never disposes the physics source.
 `legacyOnlyContactRefusal` lets a producer record a restriction when constructing the context, before tuning is
 known. Every later contact use throws `NotSupportedException` with that message. Resolver-1 MapDoc contexts set
-`Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.` No production friend access is
-required. Movement depends on Locomotion, Navigation and Physics, with no renderer dependency. The local input
-controller lives in `KhaozEngine.Game.Render3D` and selects the same binding through its own Update overload.
+`Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.` Here `G1b` names the native
+MapDoc contact adapter. No production friend access is required. Movement depends on Locomotion, Navigation and
+Physics, with no renderer dependency. The input-driven `CharacterController3D` lives in
+`KhaozEngine.Game.Render3D` and selects the same binding through its own Update overload. Dispose the context
+or controller to release its engine-created view. Caller-supplied views and physics sources remain borrowed.
 
 ## Bounded static physics capture
 

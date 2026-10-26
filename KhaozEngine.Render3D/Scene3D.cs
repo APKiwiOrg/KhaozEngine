@@ -53,7 +53,7 @@ namespace KhaozEngine.Render3D
         // allocation despite reading instance state (_slots, _meshes) a static delegate cannot see (issue #374).
         // The method group capture happens once for this Scene3D's lifetime, see AlphaCutoffFor near ApplyAlphaCutoffs.
         readonly Func<MeshHandle, float> _alphaCutoffLookup;
-        readonly GpuRetireQueue _retired;   // mesh buffers freed mid-life, destroyed behind one drain per frame
+        readonly GpuRetireQueue _retired;   // mid-life replacements, freed behind completion fences
         // Loaded albedo textures, indexed by TextureHandle.Index. Shared across meshes; disposed in Dispose.
         readonly List<IGpuTexture?> _textures = new();   // a slot is nulled by UnloadTexture (handle stays stable, not recycled)
         // Per-texture billboard resource sets, parallel to _textures (ListIndex), created lazily the first time a
@@ -394,7 +394,7 @@ namespace KhaozEngine.Render3D
             // Construction seam (#27): surface/preview/snapshot callers seed atlas resolution and cascade count here.
             // Material sets retain its handles. CommitAtlas makes later construction-time edits throw.
             if (initialShadows != null) Post.Quality.Shadows = initialShadows;
-            _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight, Post.Hdr.Enabled);
+            _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight, Post.Hdr.Enabled, retired: _retired);
             _atmosphere = new AtmosphereRenderer(gd);
             ShadowSettings shadow0 = Post.Quality.Shadows;
             _model = new ModelRenderer(gd, _res.ModelFB.Outputs,
@@ -736,42 +736,6 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Skinned draws queued this frame. Internal: lets tests assert Begin clears the queue.</summary>
         internal int SkinnedInstanceCount => _skinnedInstances.Items.Count;
-
-        /// <summary>Start a frame: apply pending scene changes, latch <see cref="RenderOrigin"/>, take the next frame index, and clear the per-frame draw queues.</summary>
-        void BeginCore()
-        {
-            ApplyPendingShadowLayout();
-            ApplyPendingPointShadowLayout();
-            _retired.BeginFrame();   // frees mid-life mesh buffers whose retirement fence has signaled (no stall)
-            LatchRenderOrigin();
-            BeginFrameView();   // one frame index per Begin (Scene3D.FrameView.cs)
-            BeginRigidInstances();
-            BeginFoliageFrame();
-            _skinnedInstances.Begin();
-            _boneMatrices.Clear();
-            BeginMotionFrame();                // swap or forget per-key motion history (Scene3D.MotionKeys.cs)
-            _lights.Clear();
-            _lineVerts.Clear();
-            _depthLineVerts.Clear();
-            _fillVerts.Clear();
-            _decals.Clear();
-            _shadowBlobs.Clear();
-            ClearWaterQueues();
-            _overlayMeshDraws.Clear();
-            _silhouetteDraws.Clear();
-            BeginMeshOutlineFrame();
-            _billboardAlphaItems.Clear();
-            _billboardAlpha.Clear();
-            _billboardAdditive.Clear();
-            _particleSprites.Clear();
-            _particleSorted.Clear();
-            _distortionSprites.Clear();
-            _texBillboardItems.Clear();
-            _beamItems.Clear();
-            _trailItems.Clear();
-            _trailSamples.Clear();
-            _billboardBasisValid = false; _framePrepared = false;   // per-frame latches (see PrepareFrame)
-        }
 
         // ---- Dynamic point/effect lights (muzzle flashes, explosions, thrusters, key projectiles). ----
 
@@ -1401,7 +1365,7 @@ namespace KhaozEngine.Render3D
             bool distortionActive = _distortionSprites.Count > 0;
             _res.EnsureDistortion(distortionActive, DistortionQuality == DistortionQuality.Full ? 2 : 4);
             var (postChain, postTargets) = PrepareTemporalResolve(cl, viewportW, viewportH);   // _post over _res unless the frame resolves
-            postChain.BindTargets(postTargets);
+            postChain.BindTargets(postTargets, _retired);
             // The edge pass's depth convention (perspective or ortho, near and far), from the unjittered projection.
             var camDepth = Internal.OutlineMath.ExtractCameraDepth(_currentFrameView.Projection);
             postChain.PrepareUniforms(cl, postTargets, Post, camDepth, runFxaa, distortionActive);

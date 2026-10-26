@@ -1,7 +1,7 @@
 # KhaozEngine.Particles
 
-Pure, deterministic, headless-testable particle simulation for the MonoGame-free 5.x stack
-(`System.Numerics` + BCL only, no graphics API, no project refs).
+Pure, deterministic, headless-testable particle simulation using `System.Numerics` and
+`KhaozEngine.Primitives`, with no graphics API dependency.
 
 - `ParticleSystem` - capacity-bounded pool. `Emit` a burst, `Update(dt)` to age/integrate/interpolate/recycle.
   Dead particles are swap-removed so `Active` is a contiguous `ReadOnlySpan<Particle>` of the live prefix.
@@ -147,4 +147,4 @@ renderCamera.Rotation = camera.Rotation + shake.Angle;
 ```
 
 Render-agnostic by design: this package never references a renderer. The game iterates `system.Active` and
-draws each particle (e.g. a Render3D camera-facing billboard). Part of the MonoGame-free engine.
+draws each particle (e.g. a Render3D camera-facing billboard).

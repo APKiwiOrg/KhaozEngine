@@ -120,7 +120,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// multisampled for MSAA). Layout/shaders/buffers are kept.</summary>
         public void SetOutputs(GpuOutputDescription colorOutput)
         {
-            _pipeline.Dispose();
+            _retired.Retire(_pipeline);
             _pipeline = Pipe(_gd.Factory, colorOutput);
         }
 
@@ -161,14 +161,13 @@ namespace KhaozEngine.Render3D.Rendering
         void EnsureBound(RenderResources res)
         {
             if (ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
-            ClearSets(null);   // a target rebind is not a frame boundary, so this one still drains
+            ClearSets(_retired);   // queued draws retain their previous depth binding through completion
             _bound = res; _boundGen = res.Generation;
         }
 
         // Drop the set cache, freeing the sets through <paramref name="retire"/> when the caller has a retire queue
         // and behind a device drain when it does not. A cached set may still be referenced by queued draws, which is
-        // why one of the two is mandatory: the target rebind and teardown paths have no frame boundary left to reach
-        // and take the drain, the mid-life unload path takes the queue.
+        // why one of the two is mandatory. Rebinding and mid-life unload use the queue, teardown takes the drain.
         void ClearSets(GpuRetireQueue? retire)
         {
             if (_sets.Count == 0) return;

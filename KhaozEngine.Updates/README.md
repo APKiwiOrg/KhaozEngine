@@ -4,7 +4,7 @@ Game-agnostic delta auto-update pipeline. Only files that changed between the in
 latest published build are downloaded, staged, and applied by an external shim while the game is
 stopped. Determinism-neutral: it never touches simulation or RNG, so no hash concern.
 
-Pure .NET (+ `KhaozEngine.Diagnostics`, `KhaozEngine.Platform`, `KhaozEngine.Primitives`), no MonoGame dependency.
+Pure .NET (+ `KhaozEngine.Diagnostics`, `KhaozEngine.Platform`, `KhaozEngine.Primitives`).
 
 ## Signing (required)
 

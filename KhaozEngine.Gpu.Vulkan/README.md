@@ -22,9 +22,8 @@ reasoning is what makes the code readable. Nothing selects it any more.
 > `KE_VULKAN_VALIDATION` wired. Since [#515](https://github.com/APKiwiOrg/KhaozEngine/issues/515) that device
 > also owns its ONE timeline semaphore, a real `IGpuFence` over it, the deferred-disposal retire list, and a
 > `WaitForIdle` that is a counted `vkWaitSemaphores` rather than a device-wide wait. Since
-> [#516](https://github.com/APKiwiOrg/KhaozEngine/issues/516) it owns its block suballocator too, complete and
-> with nothing yet allocating out of it, because the first resource is
-> [#519](https://github.com/APKiwiOrg/KhaozEngine/issues/519). And since
+> [#516](https://github.com/APKiwiOrg/KhaozEngine/issues/516) it owns the block suballocator used by its buffers
+> and textures. And since
 > [#517](https://github.com/APKiwiOrg/KhaozEngine/issues/517) it hands out real command lists with their own
 > per-slot `VkCommandPool`s, and `Submit` is one `vkQueueSubmit` on the queue. Since
 > [#518](https://github.com/APKiwiOrg/KhaozEngine/issues/518) it also owns the UNIFORM RING and the per-list
@@ -349,9 +348,9 @@ block a submit on another, and it names a value, which is what gives a drain a n
 GPU already caught up is not counted, because the seam's own counter documents that it should not be.
 
 **Disposal is DEFERRED behind the timeline.** Disposing a resource records the device's current timeline value
-and holds the native destroy until the counter passes it. Today that list drains only at device teardown, the
-frame-boundary drain arrives with row 17's `Present` path, which is the only thing that can call it. That makes
-"mid-life resource disposal racing queued async work" structurally impossible on this backend rather than merely
+and holds the native destroy until the counter passes it. `Present` collects completed retirements on both
+windowed and headless devices, and teardown releases the remaining entries after waiting for the device. That
+makes "mid-life resource disposal racing queued async work" structurally impossible on this backend rather than merely
 conventionally avoided. The engine's own `WaitForIdle` calls stay where they are, because they are the seam's
 contract.
 
@@ -461,8 +460,9 @@ allocator keeps are what measurement gate MV6 is settled on, and they are delibe
 
 **Every `UniformBuffer`-usage buffer is ONE `VkBuffer` of `stride * FramesInFlight`**, in host-visible coherent
 persistently mapped memory, where `stride = align(size, max(256, minUniformBufferOffsetAlignment))` and
-`FramesInFlight` is 3. The `IGpuBuffer` identity never changes and the per-frame base is applied at BIND, as the
-dynamic uniform descriptor's `pDynamicOffsets` entry, which is what keeps a resource set's pinned
+`FramesInFlight` defaults to 3 and is configurable through `KE_VULKAN_FRAMES_IN_FLIGHT`. The `IGpuBuffer`
+identity never changes and the per-frame base is applied at BIND through the dynamic uniform descriptor's
+`pDynamicOffsets` entry, which is what keeps a resource set's pinned
 `GpuBufferRange` valid across all 68 sites that build one at load time.
 
 **A record-time `UpdateBuffer` on a uniform buffer is a `memcpy` and NOTHING else**: no staging buffer, no
@@ -1500,8 +1500,6 @@ it as `SYNC-HAZARD-WRITE-AFTER-READ` at `vkQueueSubmit`, 138 instances across th
 precisely the shape a golden on lavapipe passes anyway because a software rasterizer orders the same command
 stream correctly regardless.
 
-## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION`, `KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_VULKAN_PIPELINE_CACHE`
-
 ## The swapchain: reproduced where a human can see it, changed where the specification forces it
 
 `GpuDeviceContext.CreateForWindow` builds a real windowed device: one platform surface chosen from
@@ -1625,7 +1623,24 @@ with no display server. Widened from a strict key match in 17.40.0
 ([#543](https://github.com/APKiwiOrg/KhaozEngine/issues/543)), which had refused the very ordering this
 paragraph prescribes.
 
-## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION`, `KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_VULKAN_ACQUIRE`
+## Environment controls
+
+**`KE_VULKAN_DEVICE` selects a physical device.** Use `llvmpipe`, `discrete`, `integrated`, `cpu`, a zero-based
+enumeration index or a case-insensitive substring of the device name. Unset chooses the first device that meets
+the backend's requirements. A request that cannot be honoured warns with the enumeration and uses the first
+eligible device instead. An explicit index never bypasses the capability requirements.
+
+**`KE_VULKAN_VALIDATION` selects a validation level.** Unset or `0` disables validation. `1` enables
+`VK_LAYER_KHRONOS_validation` and a debug-utils messenger. `strict` adds an error latch that throws at the next
+controlled engine point. `sync` adds synchronization validation and reports hazards without that latch. Values
+are case-insensitive and trimmed. `false`, `no` and `off` also disable validation, while `true`, `yes` and `on`
+enable the `1` level. An unrecognized value warns and leaves validation off. A missing validation layer warns
+and allows creation without it. Install `vulkan-validationlayers` on Linux or the Vulkan SDK elsewhere.
+
+**`KE_VULKAN_FRAMES_IN_FLIGHT` sets pipeline depth from 2 through 16, default 3.** It sizes each command list's
+command-pool ring and each uniform buffer's segments. An invalid non-blank value warns and retains 3. More
+frames use more memory and can increase latency. The acquire semaphore ring uses
+`max(FramesInFlight, imageCount) + 1` entries.
 
 **`KE_VULKAN_VALIDATION`'s messages go to YOUR logging, so a session with neither an async-flow scope nor a process manager selected sees none.** The pump writes through the ambient
 `Log` facade in `KhaozEngine.Diagnostics`, and that facade discards messages when neither an async-flow scope nor

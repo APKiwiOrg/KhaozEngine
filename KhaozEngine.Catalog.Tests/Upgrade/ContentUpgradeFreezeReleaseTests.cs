@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
-using KhaozEngine.Catalog.Sqlite;
 using KhaozEngine.Tests.Catalog.Publish;
 using KhaozEngine.Tests.Catalog.Sqlite;
 using Xunit;
@@ -29,9 +28,6 @@ namespace KhaozEngine.Tests.Catalog.Upgrade;
 /// </summary>
 public sealed class ContentUpgradeFreezeReleaseTests
 {
-    /// <summary>The deadline a run is given, well under the stand-off budget, so a stall fails fast.</summary>
-    static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
-
     /// <summary>An edit no definition plans, which is what an operator's own write into the draft looks like.</summary>
     static ContentEdit OperatorEdit
         => ContentEdit.Add(UpgradeFixtures.Thing, new ContentKey("operator_row"), PublishFixtures.Fields(77));
@@ -49,13 +45,12 @@ public sealed class ContentUpgradeFreezeReleaseTests
     {
         using var files = new TemporaryCatalogDatabase();
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
-        using ContentAuthoringStoreLease lease = await OlderCatalogAsync(files, registry, sqlite);
-        using var cancel = new CancellationTokenSource(Deadline);
+        using ContentAuthoringStoreLease lease = await UpgradeLifetimeCatalog.CreateAsync(files, registry, sqlite);
+        using var cancel = new CancellationTokenSource();
         var store = new CancelsTheReadBackStore(lease.Store, cancel);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            async () => await ContentUpgradeRunner.RunAsync(
-                store, registry, SetFor(registry), UpgradeFixtures.Apply(), cancel.Token));
+            async () => await RunAsync(store, registry, freezeBases: [1], exercise: cancel.Token));
 
         Assert.True(store.Cancelled, "the read back never ran, so the interleaving was not exercised.");
         ContentDraft? draft = await lease.Store.GetOpenDraftAsync();
@@ -83,10 +78,10 @@ public sealed class ContentUpgradeFreezeReleaseTests
     {
         using var files = new TemporaryCatalogDatabase();
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
-        using ContentAuthoringStoreLease lease = await OlderCatalogAsync(files, registry, sqlite);
+        using ContentAuthoringStoreLease lease = await UpgradeLifetimeCatalog.CreateAsync(files, registry, sqlite);
         var store = new FreezeCommitsThenFailsStore(lease.Store);
 
-        ContentUpgradeReport report = await RunAsync(store, registry);
+        ContentUpgradeReport report = await RunAsync(store, registry, draftBound: 9, freezeBases: [1, 1, 2]);
 
         Assert.True(store.Faulted, "the freeze never faulted, so the interleaving was not exercised.");
         Assert.NotNull(store.DraftAfterTheFault);
@@ -112,7 +107,7 @@ public sealed class ContentUpgradeFreezeReleaseTests
     {
         using var files = new TemporaryCatalogDatabase();
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
-        using ContentAuthoringStoreLease lease = await OlderCatalogAsync(files, registry, sqlite);
+        using ContentAuthoringStoreLease lease = await UpgradeLifetimeCatalog.CreateAsync(files, registry, sqlite);
         var store = new TheReadBackFaultsStore(lease.Store);
 
         InvalidOperationException escaped = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -137,7 +132,7 @@ public sealed class ContentUpgradeFreezeReleaseTests
     {
         using var files = new TemporaryCatalogDatabase();
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
-        using ContentAuthoringStoreLease lease = await OlderCatalogAsync(files, registry, sqlite);
+        using ContentAuthoringStoreLease lease = await UpgradeLifetimeCatalog.CreateAsync(files, registry, sqlite);
         var store = new CountsFreezeReleasesStore(lease.Store);
 
         ContentUpgradeReport report = await RunAsync(store, registry);
@@ -149,56 +144,29 @@ public sealed class ContentUpgradeFreezeReleaseTests
         Assert.Equal(3, (await lease.Store.ListVersionsAsync()).Count);
     }
 
-    /// <summary>One apply run under a hard deadline, so a stall fails fast instead of spending the budget.</summary>
-    /// <param name="store">The store under test.</param>
-    /// <param name="registry">This build's registry.</param>
-    static async Task<ContentUpgradeReport> RunAsync(IContentAuthoringStore store, ContentTypeRegistry registry)
+    /// <summary>A two-definition script with finite observations and an independent phase diagnostic.</summary>
+    internal static Task<ContentUpgradeReport> RunAsync(IContentAuthoringStore store, ContentTypeRegistry registry,
+        int draftBound = 5, int[]? freezeBases = null, CancellationToken exercise = default,
+        CatalogRunnerLifetime? owner = null)
     {
-        using var deadline = new CancellationTokenSource(Deadline);
-        return await ContentUpgradeRunner.RunAsync(
-            store, registry, SetFor(registry), UpgradeFixtures.Apply(), deadline.Token);
+        // One initial draft read, then preflight and frozen proof for each of two definitions gives five.
+        // A committed freeze fault adds its recovery, discard proof, progress read and repeated preflight.
+        var script = new ScriptedUpgradeStore(store, draftBound, freezeBases ?? [1, 2]);
+        CatalogRunnerLifetime lifetime = owner ?? new CatalogRunnerLifetime();
+        return lifetime.ExecuteAsync(async () =>
+        {
+            Task<ContentUpgradeReport> run = lifetime.Start(async token =>
+            {
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, exercise);
+                return await ContentUpgradeRunner.RunAsync(
+                    script, registry, UpgradeLifetimeCatalog.SetFor(registry), UpgradeFixtures.Apply(), linked.Token);
+            });
+            ContentUpgradeReport report = await lifetime.AwaitAsync(run);
+            Assert.Equal(draftBound, script.DraftReads);
+            return report;
+        });
     }
 
-    /// <summary>An OLDER catalog at version 1, in memory or on a real SQLite file.</summary>
-    /// <param name="files">The temporary database and pack root.</param>
-    /// <param name="registry">This build's registry.</param>
-    /// <param name="sqlite">Whether the catalog is a real SQLite file.</param>
-    static async Task<ContentAuthoringStoreLease> OlderCatalogAsync(
-        TemporaryCatalogDatabase files,
-        ContentTypeRegistry registry,
-        bool sqlite)
-    {
-        IContentAuthoringStore store = sqlite
-            ? new SqliteContentAuthoringStore(files.ConnectionString, registry, files.Pack())
-            : new InMemoryContentAuthoringStore(registry, files.Pack());
-        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
-        await store.ApplyEditsAsync(
-            [ContentEdit.Add(UpgradeFixtures.Thing, new ContentKey("old_row"), PublishFixtures.Fields(11))],
-            UpgradeFixtures.Actor,
-            UpgradeFixtures.Operator,
-            "seed the older catalog");
-        await store.PublishAsync(PublishFixtures.Request(0));
-        return new ContentAuthoringStoreLease(store);
-    }
-
-    /// <summary>The two definitions this build ships, over a registry, with their committed target bundle.</summary>
-    /// <param name="registry">The registry the bundle declares its types from.</param>
-    static ContentUpgradeSet SetFor(ContentTypeRegistry registry)
-    {
-        ContentBundle target = UpgradeFixtures.Target(
-            registry,
-            UpgradeFixtures.Row(UpgradeFixtures.Thing, 1, "old_row", 11),
-            UpgradeFixtures.Row(UpgradeFixtures.Other, 1, "new_row", 22),
-            UpgradeFixtures.Row(UpgradeFixtures.Other, 2, "second_new_row", 33));
-        return new ContentUpgradeSet(
-            UpgradeFixtures.Adds(
-                UpgradeHarness.FirstId, 1, target, UpgradeFixtures.Identity(UpgradeFixtures.Other, "new_row")),
-            UpgradeFixtures.Adds(
-                UpgradeHarness.SecondId,
-                2,
-                target,
-                UpgradeFixtures.Identity(UpgradeFixtures.Other, "second_new_row")));
-    }
 }
 
 /// <summary>
@@ -211,7 +179,7 @@ internal abstract class ForwardingUpgradeStore(IContentAuthoringStore inner)
     : ForwardingContentAuthoringStore(inner), IContentUpgradeLedger
 {
     /// <inheritdoc />
-    public Task<IReadOnlyList<ContentUpgradeRecord>> ListUpgradesAsync(
+    public virtual Task<IReadOnlyList<ContentUpgradeRecord>> ListUpgradesAsync(
         CancellationToken cancellationToken = default)
         => Ledger.ListUpgradesAsync(cancellationToken);
 

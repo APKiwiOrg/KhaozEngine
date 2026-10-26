@@ -91,10 +91,11 @@ public sealed class MotionVectorsViewTests
         harness.Scene.DebugView = SceneDebugView.None;
         Frame();
         Assert.False(harness.Scene.MotionVectorsViewBuiltForTests);
-        Assert.Equal(!temporalStaysOn, motion.Disposed);
+        Assert.False(motion.Disposed);
         // The view goes to the scene's retire queue, because the last frame's commands may still read it.
         for (int i = 0; i <= GpuRetireQueue.DefaultFrameDelay; i++) Frame();
         Assert.All(viewSets, s => Assert.True(s.Disposed));
+        Assert.Equal(!temporalStaysOn, motion.Disposed);
     }
 
     /// <summary>The view's background test is <see cref="MotionMath.IsBackground"/>, the rule the resolve uses too: the

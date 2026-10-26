@@ -1,6 +1,6 @@
 # KhaozEngine.Gui
 
-Immediate-mode + retained UI on the custom MonoGame-free stack.
+Immediate-mode and retained UI for KhaozEngine.
 
 **Localized text:** the player-facing text sinks (the `Label` / `Button` widgets, `GuiSurface.Label` /
 `Button` / `StatChip`, `Tooltip.Show`, `ContextMenu.Open` plus `ContextMenuEntry.Of`, `DropdownOption.Content`,
@@ -35,6 +35,35 @@ inherit scopes. See [the ambient scope contract](../docs/USING-KHAOZENGINE.md#as
 The opt-in rich-text adapters take `MarkupText`, built only from a `StringId`. It has no raw root factory.
 Non-localizable names, numbers and input labels enter as `MarkupText.Of` arguments, which are formatted and
 markup-escaped before insertion into the trusted catalog template.
+
+## Horizontal snap strips
+
+`SnapStrip` is the drawing-free choice for fixed-pitch horizontal content. It supplies clamped anchored
+stops, elapsed-time easing, one-to-one pointer drag and nearest-stop release snapping. The caller owns
+items, drawing, clipping, selection, localized text, arrows, wheel policy and tooltips. Use `PannableCanvas`
+for a camera with pan and zoom, and `ScrollablePanel` for a drawn vertical list.
+
+Call `Configure(bounds, itemCount, metrics)` and `CenterOn(index, animated: false)` on open. Call
+`Update(pointer, input, dtSeconds, receivesInput)` on every open frame, even without hover or input
+eligibility, after updating Pointer once and before lower pointer consumers. Existing easing continues
+without input. Draw only `VisibleRange` inside a caller-owned scissor, then restore the clip before drawing
+tooltips. Dim arrows using `CanStepPrevious` and `CanStepNext`, and wire their actions to `StepPrevious`
+and `StepNext`. See the [complete caller example](../docs/USING-KHAOZENGINE.md#caller-drawn-horizontal-snap-strip).
+
+`SnapStripMetrics(ItemWidth, ItemSpacing = 0, Anchor = 0.5f)` uses the same units as Pointer and drawing.
+Pitch is width plus spacing, with no trailing gap or endpoint padding. `Anchor` is the finite fraction of
+viewport width where the target item's centre sits, in [0,1]. Indices are zero-based, and `TargetIndex`
+retains the requested logical item during easing (-1 when empty). Steps skip duplicate clamped stops.
+Interior steps are one pitch, but endpoint steps can be shorter. Drag release chooses the nearest actual
+stop, with lower-index ties, canonical index 0 at offset 0 and the last index at maximum scroll. Fitting
+content preserves its logical anchor. Defaults are horizontal slop 8 and snap duration 0.18 seconds.
+
+`CancelInteraction()` on close settles an active drag immediately and leaves independent easing intact.
+Input loss, focus loss, capture, origin/current-point occlusion, nonfinite pointer positions and coordinate
+mapping changes also cancel. Stale held contacts cannot restart before release, and committed drags stay
+consumed through release. Public commands end contact ownership. Identical `Configure` calls are inert.
+Translation cancels a drag but preserves idle offset and easing. Width, count or metrics changes settle the
+clamped logical target immediately. Invalid configuration leaves all state intact.
 
 ## Pan, zoom and draggable sheets
 
@@ -726,6 +755,13 @@ chat.Draw(batch, white);
     // The same rects with no widget in hand:
     int hovered = TabStrip.TabAt(strip.Bounds, pointer.Position, tabs.Count, strip.Metrics);
     ```
+  - `SnapStripGeometry` + `SnapStripMetrics` - pure fixed-pitch horizontal geometry. `ContentWidth`,
+    `MaxScroll`, `CenterOffset` and `NearestIndex` provide anchored stops. `ItemBounds` returns full item
+    rectangles, `IndexAt` uses half-open viewport and item bounds (-1 outside or in gaps), and `VisibleRange`
+    returns `(First, Count)` including partially visible items. `SnapStrip.ItemBounds`, `ItemAt`, `VisibleRange`,
+    `ContentWidth` and `MaxScroll` use these same statics at the displayed offset. `HoveredItemIndex(pointer)`
+    also checks the last update's input eligibility and current hover occlusion. `SnapStripMotion` exposes
+    the same drawing-free motion model for callers with their own input adapter.
   - **Keyboard/gamepad control (opt-in, additive)** on `Toggle`/`Slider`/`Dropdown`: each has an
     `Update(InputManager, bool focused, PlayerIndex? = null)` overload that layers `InputManager` menu actions on
     top of the pointer path (only when `focused`), mirroring `FocusNavigator`. So a settings row is fully
@@ -764,7 +800,7 @@ chat.Draw(batch, white);
     key, paste chord, press or wheel allocates nothing, so held modifiers and function keys cost nothing. `Draw`
     clips to the padded area and draws only the visible lines. Colours, caret blink and the focused hover glow
     match `TextInput`. The placeholder is `LocalizedText` via `PlaceholderContent`. There is no selection.
-  - `Tooltip` - auto-sized floating bubble; `ComputeBounds` (flip/clamp) is a pure, testable layout function.
+  - `Tooltip` - auto-sized floating bubble. `ComputeBounds` (flip/clamp) is a pure, testable layout function.
     Opt-in (default off): a two-column title (`Show(title, titleRight, ...)`), a `ShowTitleSeparator` rule under the
     title, a width cap (`MaxWidth` px and/or `MaxWidthFraction` of the viewport) that word-wraps long body lines
     downward instead of overflowing the viewport (hard-breaking a token longer than the cap), and platform-aware
@@ -772,13 +808,52 @@ chat.Draw(batch, white);
     dismissal policy is a runtime value, not a compile-time platform branch. Each `TooltipLine` carries its own
     `Scale` (default `1f`, a third optional positional field), and `Tooltip.TitleScale` (default `1f`) scales the
     title row, so one shared font can render a size hierarchy (e.g. a bright 1.0 title over 0.84/0.42 body lines).
-    A scaled line still wraps within `MaxWidth` (the word-wrap budget divides by the line's own scale).
+    Optional rich body lines add a leading `Icon`, a `TitleFont` face and `GapBefore` paragraph spacing.
+    `TitleFont` chooses the title face but still uses the body's own `Scale`. `TitleScale` affects only the
+    main title row and its right-aligned value. Icons, `Metrics.IconGap` (default `8f`) and `GapBefore`
+    are design units independent of text scale. A row is as tall as its text or icon, whichever is taller,
+    with both vertically centred. No icon means no inset or icon gap. `GapBefore` also applies to the first
+    body line, alongside the existing title gap and between-row line spacing.
+    A scaled line still wraps within `MaxWidth`. The text budget subtracts the icon size and icon gap before
+    dividing by the line's scale. Continuations keep the hanging text inset, font, scale and colours, with
+    the icon and paragraph gap only on the first visual row. A finite cap that leaves no positive text
+    budget after an icon inset throws before wrapping. Icon size must be finite and positive, while
+    `GapBefore` and `Metrics.IconGap` must be finite and nonnegative.
+    The visual descriptors are additive. Existing `TooltipLine` constructors and localized factories keep
+    their signatures:
+
+    ```csharp
+    public readonly record struct TooltipIcon(Texture2D Texture, Vector4 SourceUV, float Size);
+    public readonly record struct TooltipBackdrop(Texture2D Texture, float TileSize, Vector4 Tint);
+    ```
+
+    ```csharp
+    TooltipLine detail = TooltipLine.Of(localizedText, colour) with
+    {
+        Icon = new TooltipIcon(iconTexture, new Vector4(0f, 0f, 1f, 1f), 16f),
+        TitleFont = true,
+        GapBefore = 6f,
+    };
+    tip.Metrics.IconGap = 8f;
+    tip.Backdrop = new TooltipBackdrop(parchmentTexture, 32f, Vector4.One);
+    tip.Show(localizedTitle, new[] { detail }, anchor);
+    ```
+
+    `Backdrop` defaults to null, preserving the flat `Background` fill and existing tooltip defaults.
+    A backdrop replaces that fill inside the existing one-unit border without changing bounds. Its finite
+    positive `TileSize` is in design units. The whole texture tiles from the interior's top-left in row-major
+    order, and partial edge tiles crop their UVs proportionally. Drawing throws `ArgumentOutOfRangeException`
+    before any tile emission if the interior dimensions are nonfinite or the complete grid would exceed
+    4096 tiles. This bounds draw work without truncating coverage. The border follows the tiles, then the title,
+    optional separator and each body's icon before its text. The caller owns both icon and backdrop texture
+    lifetimes. Drawing keeps the caller's sampler and scissor state.
     `TooltipLine.OfSegments` resolves `LabelSegment`s into one body line and keeps each segment's colour
     through word wrapping and hard breaks. Its fallback colour applies when a segment has none.
     `TooltipLine.OfMarkup` is the localized one-template alternative. It resolves `MarkupText` through an
     `InlineTextStyles` map and keeps the resulting colours through the same wrapping path.
     `Opacity` (default `1f`) fades the whole bubble for a host transition, and covers every colour it paints
-    (background, border, title row, separator, each body line), so `0` draws nothing.
+    (flat or tiled background, border, title row, separator, icons and each body line), so `0` is fully
+    transparent. RGB and source run colours stay unchanged.
     `AnchorMode` (default `TooltipAnchorMode.Centered`, the bubble straddling the anchor) switches to
     `Offset` for cursor-style placement: the bubble's left edge sits at `anchor.X + Metrics.AnchorOffsetX`,
     so it lands beside a pointer instead of under it (a negative offset places it to the left). The vertical
@@ -895,7 +970,7 @@ chat.Draw(batch, white);
     - `WindowUpdate` carries `Pointer`, `Input`, `Dt`, `ReceivesInput` and `IsFront` to one window's update.
     - `SlotGrid`, `GuiDragContext.OfferTargetIn`, `TreeView`, `ScrollablePanel` drag edge scroll,
       `PropertyGrid`, `GuiSurface.HoverCaptured` and `PointerCaptured`, `ScreenStack.PressBeganOverUi`,
-      `PannableCanvas.TryGetTap` and `DraggableBottomSheet` honour occlusion.
+      `PannableCanvas.TryGetTap`, `DraggableBottomSheet` and `SnapStrip` honour occlusion.
   - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer. `Update` reserves
     the whole `ScrimRect` (the full viewport the scrim dims) through `Pointer.BlockRegion`, not just the panel,
     so a click on the dimmed area cannot reach the UI underneath. That only matters when the popup is driven
@@ -918,6 +993,10 @@ chat.Draw(batch, white);
     footer callback is safe to mutate the list mid-fire (for example closing the dialog from inside the very
     action it just ran). An empty `FooterButtons` list leaves the classic dismiss/primary footer completely
     unchanged, so every existing consumer stays byte-identical.
+  - `SnapStrip` - caller-drawn horizontal fixed-pitch strip, with anchored snapping and no built-in wheel
+    policy. Its `BlocksPointer` defaults to true and reserves after admission. Reservation leaves taps
+    available to caller-owned items. Committed drags consume even with reservation disabled. Update every
+    open frame, clip the returned partial visible items, and draw tooltips after restoring the clip.
   - `ScrollablePanel` - wheel/drag scrolling fixed-height list. Set `DragScrollingEnabled = false` when row
     content owns pointer dragging and the wheel must remain available. It defaults to true. Rows are drawn
     between `BeginClip`/`EndClip` (scissor), and hit-tested with `TappedItemIndex`. Opt-in overlay chrome (all default to no-ops, so existing callers are
@@ -1268,12 +1347,15 @@ borderless style stays borderless. Text drawn through the batch in that pass als
 block's ascent baseline, once per `DrawString`, so every glyph of a word stays on one baseline - pair with a
 `DpiFont` from `KhaozEngine.Render2D` for a crisp atlas).
 
+`GuiDraw.BorderSingleCoverage(batch, white, bounds, thickness, color)` draws a border with non-overlapping
+strips, so translucent corners receive the colour once. It uses the same device-pixel snapping as `GuiDraw.Border`.
+The existing `Border` method remains available for callers that need its overlapping corner geometry.
+
 Plain text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout`. Resolved coloured runs use
 `ColoredTextLayout.Wrap`. Both operate over the `ITextMeasurer` seam, so the layout math is headless-testable.
 Clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware, and
-nesting: a clipping widget drawn inside another clipping widget is bounded by both). Ported
-from `KhaozEngine.Screens`/`UI` (game-specific layout coupling dropped). Built on `KhaozEngine.Windowing`
-(Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D). Part of the MonoGame-free engine.
+nesting: a clipping widget drawn inside another clipping widget is bounded by both). Built on
+`KhaozEngine.Windowing` (Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D).
 
 ## Anchored and safe-area layout
 

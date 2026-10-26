@@ -9,7 +9,7 @@
 # corpus.veldrid-spirv.txt sibling are that comparison, taken in two processes.
 #
 # Rebuild: KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
-# Rows: 1088
+# Rows: 1096
 AtmosphereMultiScattering.fragment.hlsl 34864b3f97ad3f79b19eb98448bafe39c4eac61e24aad497e3297f5a35589548 18121
 AtmosphereMultiScattering.fragment.msl d938a869745f054ed6ac9d4571fbeadd01130d6f98d18f6052bffc83be5e3184 17554
 AtmosphereMultiScattering.fragment.spirv 1d5958cb8914edf4831bcfce3c4a00621f879c6c7dd505ee7884d093927a8a05 13736
@@ -730,6 +730,14 @@ Sprite2D.layout.msl 0892650122acccdde8d5109773aedd27682d569969187e1d7d1a85a4c12f
 Sprite2D.vertex.hlsl aa8584f74042e1824c20789054e0e1a562621cf2d05dc2f29aee660b48d4a538 1368
 Sprite2D.vertex.msl df11126b46ea14d2d08cb534d1656de316000ad489807cd337c8fe4fa6c21518 864
 Sprite2D.vertex.spirv e86bfadb312c72a30677d9fd88144ab8771dde4b35dc6fd6a43c42bcaa9f5dd2 1396
+Sprite2DMasked.fragment.hlsl 121d8ad10bdbc30c4b71a4d29bdedf16bef0d9f0d4f0bf3f5b16fc88a60d5630 769
+Sprite2DMasked.fragment.msl bfce7fd04d4745c67c7b9b501ae25d1f7bf7ca2cc7896137a1f453fedd6900c7 593
+Sprite2DMasked.fragment.spirv 24585a9da67261fd6f1c501ba02166346cb25b686cd2708f550ef60097053deb 976
+Sprite2DMasked.layout.hlsl 1e5d7062ba233e79e3d24dcab1764ea2c605e4a9bef203a05e9b80c622c66a12 11 in[<unnamed>:Float2,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float2]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:V]
+Sprite2DMasked.layout.msl 1e5d7062ba233e79e3d24dcab1764ea2c605e4a9bef203a05e9b80c622c66a12 11 in[<unnamed>:Float2,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float2]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:V]
+Sprite2DMasked.vertex.hlsl aa8584f74042e1824c20789054e0e1a562621cf2d05dc2f29aee660b48d4a538 1368
+Sprite2DMasked.vertex.msl df11126b46ea14d2d08cb534d1656de316000ad489807cd337c8fe4fa6c21518 864
+Sprite2DMasked.vertex.spirv e86bfadb312c72a30677d9fd88144ab8771dde4b35dc6fd6a43c42bcaa9f5dd2 1396
 Starfield.fragment.hlsl d93bf86509a81e51df0165a8678545a5fd0a4d8e6f83f70f56b9550c0e6e8d57 996
 Starfield.fragment.msl f12d7a70592c25f80b487334ee952086ea8d1c261c4e9262c5e50fa414730f39 746
 Starfield.fragment.spirv f0141c88047130a381420a7357efa64520016ca79ca9838a9ba2ca3ec109f734 1392

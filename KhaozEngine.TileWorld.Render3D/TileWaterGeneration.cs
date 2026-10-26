@@ -17,7 +17,8 @@ internal sealed record TileWaterPreparation(WaterPlane[] Planes, TileWaterSource
 /// changes made between stream notification and preparation.</summary>
 internal sealed class TileWaterSourceStamp
 {
-    internal readonly record struct Entry(TileWaterOpticsDependency Dependency, long Epoch, TileRegion? Region);
+    internal readonly record struct Entry(TileWaterOpticsDependency Dependency, long Epoch, TileRegion? Region,
+        byte Availability);
     readonly Entry[] _entries;
     readonly float _tileSize, _planeHeight;
 
@@ -30,7 +31,8 @@ internal sealed class TileWaterSourceStamp
         var entries = new List<Entry>();
         if (registry is not null)
             foreach (TileWaterOpticsDependency dependency in dependencies)
-                entries.Add(new Entry(dependency, registry.Acquire(dependency), document.GetRegion(dependency.Region)));
+                entries.Add(new Entry(dependency, registry.Acquire(dependency), document.GetRegion(dependency.Region),
+                    TileGroundHeightWitness.Availability(document, dependency.Region)));
         _entries = entries.ToArray();
     }
 
@@ -41,7 +43,9 @@ internal sealed class TileWaterSourceStamp
         if (_tileSize != document.TileSize || _planeHeight != document.PlaneHeight) return false;
         foreach (Entry entry in _entries)
             if (registry is null || !registry.IsCurrent(entry.Dependency, entry.Epoch) ||
-                (entry.Dependency.Plane is null && !ReferenceEquals(entry.Region, document.GetRegion(entry.Dependency.Region))))
+                (entry.Dependency.Plane is null &&
+                    (entry.Availability != TileGroundHeightWitness.Availability(document, entry.Dependency.Region) ||
+                     !ReferenceEquals(entry.Region, document.GetRegion(entry.Dependency.Region)))))
                 return false;
         return true;
     }

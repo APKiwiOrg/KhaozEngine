@@ -3,9 +3,8 @@
 Offline asset-prep tool. Turns a PixelLab character export (zip or unzipped dir) plus an
 animation name into one grid sheet PNG (8 rows in S, SE, E, NE, N, NW, W, SW order x N frame
 columns, uniform cell size). Dormant one-off tool today: no current KhaozEngine game consumes its
-output, and the engine has no directional-sprite loader for it (`KhaozEngine.Sprites.PixelLabSpriteLoader`
-and the rest of `KhaozEngine.Sprites` were deleted in the MonoGame purge, commit `df097d84`). A
-consuming game loads the PNG itself and slices the grid until one adopts this tool's output.
+output, and the engine has no directional-sprite loader for it. A consuming game loads the PNG itself
+and slices the grid.
 Not a runtime package (IsPackable=false): it is never NuGet-packed and never published.
 
 PNG load and save go through the engine's own `KhaozEngine.Imaging` (`PngReader`, `PngWriter`), so the
@@ -30,8 +29,8 @@ PixelLab exports are 8-bit RGBA. The output sheet is an 8-bit RGBA PNG.
 ## What it does
 
 - **Row order:** PixelLab dir names map to rows by name, in the canonical S, SE, E, NE, N, NW, W, SW
-  order (see `DirectionRows`). Asserted directly by a test; there is no live enum to pin against any
-  more, `KhaozEngine.Sprites.Direction8` was deleted in the MonoGame purge.
+  order (see `DirectionRows`), which is the only definition of that order and is asserted directly by a
+  test.
 - **Uniform cells:** cell = max frame width/height; smaller frames are padded, none clipped.
 - **Feet on the ground:** each frame's opaque bbox bottom is aligned to a baseline near the cell
   bottom, so the planted foot lands at a consistent row-relative position for whatever foot-anchor

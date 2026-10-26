@@ -20,7 +20,7 @@ namespace KhaozEngine.Tests.BugReports.Client;
 /// sections, recording toggle and shutdown order. The window half needs a <see cref="GameApp"/> and is proved live.
 /// </summary>
 [Collection("AmbientLocalization")]
-public sealed class BugReportServiceTests : BugReportFlowHarness
+public sealed partial class BugReportServiceTests : BugReportFlowHarness
 {
     readonly FakeCaptureHost _host = new();
     readonly List<IGameOverlay> _removed = new();
@@ -315,37 +315,6 @@ public sealed class BugReportServiceTests : BugReportFlowHarness
 
         Assert.Empty(_removed);
         Assert.Equal("discord:42", Assert.Single(_sink.Submissions).Subject);
-    }
-
-    [Fact]
-    public async Task Dispose_with_a_pending_screenshot_keeps_the_report()
-    {
-        var shot = new TaskCompletionSource<ReportImage>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _capture.Screenshot = () => shot.Task;
-        var sink = new BlockingSink();
-        string pending = Path.Combine(_root, "pending");
-        var queue = new BugReportOfflineQueue(pending, _time);
-        BugReportService service = await SignedInService(sink, queue);
-        Run(service, Frame(pressed: [Key.F10]));
-        for (int frame = 0; frame < 3; frame++) Run(service, Frame(held: [Key.F10]));
-        Assert.True(service.IsOpen);
-        Run(service, Frame(text: "Fell through"));
-        Run(service, Frame(pressed: [Key.Enter], held: [Key.LeftControl]));
-        Task send = service.Flow.PendingWork!;
-        await WaitForTimers(2);
-        Assert.Equal(0, queue.Count);
-
-        var clock = System.Diagnostics.Stopwatch.StartNew();
-        service.Dispose();
-        clock.Stop();
-
-        Assert.True(clock.Elapsed < BugReportService.ShutdownBuildWait, clock.Elapsed.ToString());
-        Assert.Equal(1, queue.Count);
-        string zip = Assert.Single(Directory.GetFiles(pending, "*.zip"));
-        string[] names = EntryNames(new BugReportSubmission(Path.GetFileNameWithoutExtension(zip), null, File.ReadAllBytes(zip)));
-        Assert.DoesNotContain(names, name => name.StartsWith("screenshot", StringComparison.Ordinal));
-        shot.TrySetException(new ObjectDisposedException("recorder"));
-        await send.WaitAsync(TimeSpan.FromSeconds(30));
     }
 
     [Fact]

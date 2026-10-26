@@ -25,6 +25,7 @@ internal static class RendererPerfUnit
         RendererPerfReport? report = null;
         RendererPerfCompilerInventory? inventory = null;
         RendererPerfUnitFailure? early = null;
+        bool certified = false;
         long start = budget.ColdStart;
         try
         {
@@ -155,7 +156,7 @@ internal static class RendererPerfUnit
             try
             {
                 var final = publication.Publish(report, inventory, budget);
-                report = final.Report; failures.AddRange(final.Failures);
+                report = final.Report; failures.AddRange(final.Failures); certified = final.Certified;
                 // Publish owns terminal enforcement through publication.return and its bounded
                 // disk correction. No separate failure-producing check may outlive that owner.
             }
@@ -184,7 +185,7 @@ internal static class RendererPerfUnit
             }
             catch (Exception error) { RendererPerfFailures.Add(failures, "renderer.publication.early.write", error); }
         }
-        return new(report, inventory, early, failures.ToImmutable());
+        return new(report, inventory, early, failures.ToImmutable()) { Certified = certified && failures.Count == 0 };
     }
     internal static RendererPerfUnitOutcome RefuseBeforeCreation(RendererPerfAuthorization authorization,
         RendererPerfUnitBudget budget, string stage, Exception error, IRendererPerfUnitPublication publication)

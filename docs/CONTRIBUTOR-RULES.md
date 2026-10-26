@@ -79,9 +79,10 @@ classification is unclear. The detailed rationale lives in
 
 ## Dependencies and package structure
 
-The authoritative package and umbrella catalog is the root [`README.md`](../README.md). The full
-dependency edges are its `Depends on` column and each umbrella csproj. Do not maintain another package
-list here.
+The authoritative package and umbrella catalog is [`PACKAGES.md`](PACKAGES.md), one row per package
+linking that package's own README. Its `Depends on` column is curated, so the exact edges are each
+csproj's `ProjectReference` set and each umbrella csproj. A new package adds its row there, in the area
+it belongs to. Do not maintain another package list here or in the root README.
 
 The render stack starts at `Primitives`, then `Gpu`, `Windowing`, `Render2D` or `Render3D`, then `Gui`
 and game packages. GPU-free Foundation packages sit beside it. The server stack starts at
@@ -111,6 +112,15 @@ produce this test prerequisite. Other selected test assemblies keep their origin
 Canonical solution and project selection uses this checkout's actual file identity. Every other
 solution inspects its resolved project roots, including a foreign solution with the canonical basename.
 Unrelated roots never acquire the renderer verifier prerequisite.
+
+Renderer workflow contract tests parse checkout text through `RendererPerfWorkflowText`, which accepts
+LF and CRLF before extracting jobs or embedded commands. Exact-byte inputs keep their LF rules in
+`.gitattributes`, including renderer control shaders and authorized manifests. Fixture directories use
+`RendererPerfFixtureDirectory` to clear read-only regular files such as Git objects and remove directory
+links nonrecursively. Cleanup never follows reparse points or changes their targets' attributes.
+Windows selector fixtures resolve the console Bash from the same Git installation's `--exec-path`,
+avoiding the System32 WSL launcher. Entrypoint fixtures store canonical host paths before changing the
+working directory, so exact identity assertions retain their meaning with Git-style separators.
 
 Warnings are errors in every configuration. Fix warnings at the source. Do not add a blanket
 suppression or disable `TreatWarningsAsErrors`. The standing XML documentation suppression is the
@@ -229,7 +239,8 @@ covers a test that is new or whose code changed in the release.
 
 Each fact has one canonical source:
 
-- Package inventory, umbrella membership and package summaries: root `README.md`.
+- Package inventory, umbrella membership and one-line package summaries: `docs/PACKAGES.md`.
+- What the engine is, for a newcomer: root `README.md`, which links out rather than restating package detail.
 - Consumer use and public API examples: `docs/USING-KHAOZENGINE.md`.
 - Dependency edges and backend seams: `docs/DEPENDENCY-SEAMS.md`.
 - Per-package quick reference: that package's own `README.md`, shipped inside its nupkg.

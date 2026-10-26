@@ -5,6 +5,15 @@ The KhaozEngine zone/map document format: one JSON file per zone capturing what 
 runtime builders that hand games back the exact objects they already consume. Human-diffable,
 git-committed in the game repo. GPU-free.
 
+## Consuming the document model
+
+Native format-9 documents and GPU-free prefab, interior and foliage preparation arrive through
+`KhaozEngine.Foundation`, including its `Game2D`, `Game3D` and `Server` consumers. Add
+`KhaozEngine.MapDoc.Physics` and a physics backend such as `KhaozEngine.Physics.Bepu` explicitly when
+colliders are needed. `KhaozEngine.MapEditor` and the `ke-mapedit` tool stay outside every umbrella.
+See the [consumer contract](../docs/USING-KHAOZENGINE.md#free-buildings-and-effective-resources) and the
+[native foliage consumer contract](#native-foliage-consumer-contract) for preparation and runtime boundaries.
+
 ## Bound native validation
 
 `MapBoundDocumentValidation.Validate(document, assets, registry)` checks a complete native document
@@ -554,8 +563,9 @@ var placements = MapRuntime.BuildPlacements(doc, field);
 `MapRuntime` also has `BuildTerrainConfig` (the raw `TerrainConfig`, if you want to build the field
 yourself), `BuildScatterConfigs` (every scatter layer, keyed by name), `BuildCompanionConfig`, and
 `BuildRegions` (the authored regions, below).
-Placement Y is ground-snapped against the built field whenever the document leaves it null, so every head
-that loads the same document agrees on where an unpositioned placement sits. An exclusion or override
+`BuildPlacements` returns `PropPlacement` values. Placement Y is ground-snapped against the built field
+whenever the document leaves it null, so every head that loads the same document agrees on where an
+unpositioned placement sits. An exclusion or override
 applies to a scatter layer when its `layers` list is null (every layer) or names that layer, and
 `ScatterConfig.ClearingRadius` is always zeroed for document-built layers, since documents author
 clearings as exclusion shapes instead of the legacy single disc.

@@ -77,8 +77,8 @@ namespace KhaozEngine.Primitives
         /// forces one). 0 for a 3D surface.</summary>
         public int Flushes;
 
-        /// <summary>2D only: texture bind changes across the frame's draws (a run of same-texture quads coalesces to
-        /// one, so this is the count of distinct-texture transitions, &lt;= <see cref="DrawCalls"/>). 0 for a 3D surface.</summary>
+        /// <summary>2D only: source texture transitions across the frame's draws, including the first bind.
+        /// A mask-only switch does not change this count. Always &lt;= <see cref="DrawCalls"/>. 0 for a 3D surface.</summary>
         public int TextureSwitches;
 
         /// <summary>Clear every counter to 0 (as if freshly constructed). Called by a producing surface at frame start.</summary>

@@ -28,7 +28,7 @@ makes the code readable. Nothing selects it any more.
 >
 > It is also still reachable by naming it anywhere: `KE_GRAPHICS_BACKEND=direct3d11-native`, or an
 > explicit `GpuBackendKind.Direct3D11Native`. The `direct3d11-native` CI leg exists now and is blocking: it
-> verifies the 36 `direct3d11` goldens on a pinned WARP adapter and runs the WARP parity `[GpuFact]` on
+> verifies the `direct3d11-native` goldens on a pinned WARP adapter and runs the WARP parity `[GpuFact]` on
 > its full-suite triggers. Its first recorded evidence, and the five rollout gates that decide the default flip,
 > are https://github.com/APKiwiOrg/KhaozEngine/issues/460, where gate M1 is still open. What was checked before that leg existed still holds
 > and is the whole of the device-free story: this compiles under CA1416, the construction and teardown ORDER are
@@ -1375,7 +1375,8 @@ are stated in the contract above rather than promised.
 
 ## Design
 
-`docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md` in the engine repo, section 3 (package and layering),
+[D3D11 native backend design](../docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md),
+section 3 (package and layering),
 section 4.1 (getting the assembly loaded), section 5.1 (the stream and the emitter), section 5.3 (emission),
 section 2.1 (the recording model), section 2.3 (nested `Begin` during coexistence), section 9.4 (the implicit
 viewport), section 7 (resources, views and state objects), section 8 (the shader path) with 8.1 (register

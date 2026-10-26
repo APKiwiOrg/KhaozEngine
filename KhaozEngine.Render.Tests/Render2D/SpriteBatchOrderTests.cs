@@ -184,6 +184,43 @@ namespace KhaozEngine.Tests.Render2D
         }
 
         [Fact]
+        public void ForgetGroupReleasesDictionaryAndOrderReferencesAfterReset()
+        {
+            var b = new QuadRunBuilder<int>();
+            b.Add(TexA, 1);
+            b.Add(TexB, 2);
+            var keys = b.GroupKeysInFirstSeenOrder();
+            b.Reset();
+
+            b.ForgetGroup(TexA);
+
+            Assert.False(b.HasGroup(TexA));
+            Assert.True(b.HasGroup(TexB));
+            Assert.Equal(new[] { TexB }, keys);
+            Assert.Throws<KeyNotFoundException>(() => b.RunIndicesForGroup(TexA));
+            b.ForgetGroup(TexA);
+            Assert.Equal(new[] { TexB }, keys);
+            b.Add(TexB, 3);
+            Assert.Equal(new[] { TexB }, b.GroupKeysInFirstSeenOrder());
+            Assert.Equal(new[] { 3 }, ItemsOf(b, 0));
+        }
+
+        [Fact]
+        public void ForgetGroupRejectsPendingRangesWithoutChangingGroups()
+        {
+            var b = new QuadRunBuilder<int>();
+            b.Add(TexA, 1);
+            var keys = b.GroupKeysInFirstSeenOrder();
+
+            Assert.Throws<InvalidOperationException>(() => b.ForgetGroup(TexA));
+
+            Assert.True(b.HasGroup(TexA));
+            Assert.Equal(new[] { TexA }, keys);
+            Assert.Equal(new[] { 0 }, b.RunIndicesForGroup(TexA));
+            Assert.Equal(new[] { 1 }, ItemsOf(b, 0));
+        }
+
+        [Fact]
         public void PublicFlushScopesGroupingAndLeavesBatchOpen()
         {
             using var h = new BatchHarness();

@@ -346,9 +346,10 @@ namespace KhaozEngine.Render3D.Rendering
         /// materials survive the rebuild.</summary>
         public void SetOutputs(GpuOutputDescription modelOutputs)
         {
-            _pipeline.Dispose(); _splatPipeline.Dispose(); _dissolvePipeline.Dispose(); _tileGroundPipeline.Dispose();
-            _skinnedPipeline.Dispose(); _skinnedDissolvePipeline.Dispose();
-            _cpuSkinnedMotionPipeline?.Dispose(); _cpuSkinnedMotionPipeline = null;
+            if (!ShadowVisibilityTargets.HasVisibility(modelOutputs)) _visibilityShaders.Release(_retired);
+            _retired.Retire(_pipeline); _retired.Retire(_splatPipeline); _retired.Retire(_dissolvePipeline); _retired.Retire(_tileGroundPipeline);
+            _retired.Retire(_skinnedPipeline); _retired.Retire(_skinnedDissolvePipeline);
+            _retired.Retire(_cpuSkinnedMotionPipeline); _cpuSkinnedMotionPipeline = null;
             BuildPipelines(_gd.Factory, modelOutputs);
         }
 

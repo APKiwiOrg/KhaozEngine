@@ -13,6 +13,27 @@ namespace KhaozEngine.Tests.MapDoc;
 
 public sealed class NativeResourceUploadWaterTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FrameBoundary_ClearsPublishedWaterForStandaloneAndSharedSubmission(bool shared)
+    {
+        using var host = new NativeUploadTestScene();
+        using var submission = shared ? new GpuFrameSubmission(host.Device) : null;
+        var handle = NativeResourceUploadTests.Publish(host.Scene, NativeWaterUploadProof.Input());
+        host.Scene.Begin();
+        host.Scene.DrawWater(NativeWaterUploadProof.Surface(new SceneResourceAccess(host.Scene).MeshOf(handle)));
+        Assert.Equal(1, host.Scene.BoundedWaterCount);
+
+        if (submission is null) host.Scene.Begin();
+        else { submission.Begin(); host.Scene.BeginFrame(submission); }
+
+        Assert.Equal(0, host.Scene.BoundedWaterCount);
+        host.Scene.DrawWater(NativeWaterUploadProof.Surface(new SceneResourceAccess(host.Scene).MeshOf(handle)));
+        Assert.Equal(1, host.Scene.BoundedWaterCount);
+        host.Scene.ReleaseResource(handle);
+    }
+
     [Fact]
     public void PublishedWater_QueuedLookAndBoundDomainMatchSubmittedValues()
     {

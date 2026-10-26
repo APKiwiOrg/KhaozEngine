@@ -196,7 +196,7 @@ namespace KhaozEngine.Render3D
                 return;
             }
 
-            _pointShadowTransientAtlas?.Dispose();
+            _retired.Retire(_pointShadowTransientAtlas);
             _pointShadowTransientAtlas = candidate;
             PublishResolvedPointShadows(true, false, null);
         }
@@ -328,7 +328,7 @@ namespace KhaozEngine.Render3D
                 return;
             }
 
-            DisposePointShadows();
+            RetirePointShadows();
             DropPointShadowSlotCache();
             _model.ClearPointShadowUniforms();
             PublishResolvedPointShadows(false, false, null);

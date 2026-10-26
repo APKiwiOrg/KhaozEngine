@@ -1,12 +1,11 @@
 # KhaozEngine.Game3D
 
-Umbrella metapackage for a desktop 3D game on the MonoGame-free KhaozEngine stack. Contains no
-code, it is a curated dependency group and a strict superset of `KhaozEngine.Game2D`: one
-`<PackageReference>` gives the full 2D + 3D + game-loop stack.
+Start a desktop 3D game with one package reference for the 3D renderer, scene integration and the complete
+`KhaozEngine.Game2D` runtime. This code-free metapackage includes the 2D drawing and UI a 3D game also needs.
 
 Format-9 MapDoc and GPU-free prefab/interior preparation arrive through `Foundation`. Add `MapDoc.Physics`
 and a physics backend explicitly for headless native builds. Add `MapDoc.Render3D` explicitly for the native view, snapshots and composite residency.
-It belongs to no umbrella. The editor and ke-mapedit are separate authoring tools.
+It belongs to no umbrella. The editor and `ke-mapedit` are separate authoring tools.
 The [native view and snapshot contract](../KhaozEngine.MapDoc.Render3D/README.md#native-view-and-snapshot-contract)
 owns host policy, capture diagnostics and the separate CPU/backend proof boundaries.
 
@@ -14,9 +13,10 @@ Pulls in:
 
 - `KhaozEngine.Game2D` - everything in the 2D bundle: Windowing, Render2D, Gui, Audio,
   Particles, Telegraphs, the `Game` loop/scene framework, the three engine-owned graphics backends
-  (`KhaozEngine.Gpu.Metal`, `KhaozEngine.Gpu.D3D11`, `KhaozEngine.Gpu.Vulkan`, carried since
-  18.0.0), and the GPU-free `Foundation` (which also ships the buildTransitive game-head build
-  defaults).
+  (`KhaozEngine.Gpu.Metal`, `KhaozEngine.Gpu.D3D11`, `KhaozEngine.Gpu.Vulkan`), and the GPU-free
+  `Foundation` (which also ships the buildTransitive game-head build defaults). It also carries
+  `KhaozEngine.Localization.Analyzers`, including the `StringId` generator, and the
+  `KhaozEngine.CodeHealth.Analyzers` file-size ratchet. Both apply in the consumer's build.
 - `KhaozEngine.Render3D` - the stylized 3D renderer: `Scene3D`, glTF + procedural meshes,
   materials/lighting, skinning, billboards, ground decals.
 - `KhaozEngine.Attachments.Render3D` - rigid part definitions bound to the body's posed skeleton,
@@ -30,7 +30,8 @@ Pulls in:
   paint animated danger zones flat on the ground via the depth-sampling decal pass.
 - `KhaozEngine.Terrain.Render3D` - chunked-LOD terrain meshing over the analytic `Terrain`
   field, plus the `TerrainStreamer` client world-streaming layer and PBR splat materials.
-- `KhaozEngine.TileWorld.Render3D` - the 3D draw layer over the `TileWorld` authored-map model.
+- `KhaozEngine.TileWorld.Render3D` - tile-world ground meshing, textured ground materials, props, water planes,
+  region streaming and snapshot capture over the `TileWorld` authored-map model.
 - `KhaozEngine.Particles.Render3D` - the 3D draw layer for the deterministic particle sim.
 - `KhaozEngine.Physics` - the dependency-free physics seam (already in Foundation, referenced
   here so the seam is explicit for 3D character/world collision wiring).
@@ -38,11 +39,9 @@ Pulls in:
   `PrivateAssets="none"` so its analyzer assembly and `buildTransitive` baseline discovery props both flow
   through the packed umbrella and run in the consuming project's build.
 
-No graphics backend is opt-in any more: the three above ride in through `Game2D`, so a repinned game
-drops any `KhaozEngineMetal.Register()` / `KhaozEngineD3D11.Register()` / `KhaozEngineVulkan.Register()`
-line of its own. `AppWindow` and both snapshot hosts make the one call
-(`GpuBackends.RegisterResolvedIfUnregistered`), which seats the backend the process resolves to plus
-this platform's own as the fallback target.
+The three graphics backends arrive through `Game2D`. `AppWindow` and both snapshot hosts call
+`GpuBackends.RegisterResolvedIfUnregistered`, which registers the resolved backend and this platform's fallback.
+A game needs no backend package reference or registration call of its own.
 
 ```xml
 <PackageReference Include="KhaozEngine.Game3D" Version="x.y.z" />
@@ -53,7 +52,8 @@ README).
 
 Deliberately NOT included:
 
-- No networking. Add `KhaozEngine.Netcode.LiteNetLib` for multiplayer, and see
-  `KhaozEngine.NetWorld` for the authoritative client glue.
+- Multiplayer transport. Add `KhaozEngine.Netcode.LiteNetLib` for multiplayer, and see
+  `KhaozEngine.NetWorld` for the authoritative client glue. Transport-free Netcode primitives already arrive
+  through `Game2D`.
 - No physics backend. The BepuPhysics backend (`KhaozEngine.Physics.Bepu`) is an opt-in sibling
   you add explicitly, same pattern as the `WorldStore.Sqlite`/`.SqlServer` backends.

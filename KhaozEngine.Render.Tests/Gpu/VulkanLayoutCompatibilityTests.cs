@@ -45,9 +45,9 @@ namespace KhaozEngine.Tests.Gpu
             using var harness = new VulkanBindHarness();
             IReadOnlyList<(string Name, string[] Slots, VulkanBoundPipeline Bound)> pipelines = Build(harness);
 
-            // Main's four certified temporal shapes plus R8a bounded water and prepared foliage
+            // Masked SpriteBatch, main's four certified temporal shapes plus R8a bounded water and prepared foliage
             // colour, motion, opaque cascade, cutout cascade and point shadow. T8-R1 is a literal pin.
-            Assert.Equal(80, pipelines.Count);
+            Assert.Equal(81, pipelines.Count);
 
             int pairs = 0;
             var seen = new HashSet<int>();
@@ -72,9 +72,9 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
 
-            // All 80 x 80 pairs cover main's certified temporal shapes and R8a bounded water and
+            // All 81 x 81 pairs cover masked SpriteBatch, main's certified temporal shapes and R8a bounded water and
             // prepared foliage colour, motion, opaque cascade, cutout cascade and point shadow.
-            Assert.Equal(6_400, pairs);
+            Assert.Equal(6_561, pairs);
 
             // AND THE GUARD IS NOT VACUOUS. A walk over pairs that were all incompatible would pass an
             // always-answer-zero implementation, so the shipped table has to actually contain compatible pairs.

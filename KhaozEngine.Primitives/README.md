@@ -122,8 +122,9 @@ automatically, so this is transparent to every other package.
   anchors to (`WorldServerConfig.FrameAnchoring`).
 - `IDesignViewport` - the fakeable design-viewport seam (design size, scale + letterbox offset,
   screen to design mapping, and the `DesignBounds`/`ContentBounds`/`WindowBounds` rects) that rendering,
-  layout, and headless tests target. Moved here from Windowing in 9.0.0, which carries the concrete
-  `DesignViewport`. `WindowBounds` (10.38.0) is the whole window mapped into design space - `DesignBounds`
+  layout, and headless tests target. `SnapsToDevicePixels` defaults to false and lets point-space UI viewports
+  request whole-device-pixel geometry snapping. Windowing carries the concrete `DesignViewport`.
+  `WindowBounds` (10.38.0) is the whole window mapped into design space - `DesignBounds`
   plus the letterbox bars - so a full-window fill covers the bars; it is a default-interface-member derived
   from the scale + offset and reduces to `DesignBounds` when unletterboxed.
 - `ObjectPool<T>` / `IPoolable` / `PoolRental<T>` - fixed-capacity free-list pool (absorbed from the

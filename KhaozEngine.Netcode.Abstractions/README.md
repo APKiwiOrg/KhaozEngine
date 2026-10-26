@@ -1,8 +1,7 @@
 # KhaozEngine.Netcode.Abstractions
 
-Zero-dependency channel-split contract for KhaozEngine netcode. BCL only: no MonoGame, no LiteNetLib,
-no UDP transport. Reference this package (and nothing else) when a batch DTO lives in a MonoGame-free,
-transport-agnostic project, e.g. a contracts assembly shared with a web/leaderboard server.
+Zero-dependency channel-split contract for KhaozEngine netcode. BCL only. Reference this package when a batch
+DTO lives in a transport-agnostic project, such as a contracts assembly shared with a web or leaderboard server.
 
 ## What's here
 

@@ -1,7 +1,8 @@
 # KhaozEngine.WorldMap
 
-GPU-free contracts, rasterization and feature anchors for stylized world maps from any authored world. The package references only
-`KhaozEngine.Primitives`. It is opt-in and outside every umbrella, so consumers add it explicitly.
+GPU-free contracts, deterministic rasterization and feature anchors for stylized world maps from any authored
+world. The package references only `KhaozEngine.Primitives`. It is opt-in and outside every umbrella, so consumers
+add it explicitly.
 
 ## Map space
 

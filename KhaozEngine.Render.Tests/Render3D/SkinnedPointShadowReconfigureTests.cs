@@ -94,7 +94,7 @@ public sealed class SkinnedPointShadowReconfigureTests
         rig.Scene.Begin();
 
         Assert.Equal(3, rig.Scene.PointShadowTransientRows);
-        Assert.True(old.Disposed);
+        Assert.False(old.Disposed);
         Assert.Same(rig.Scene.PointShadowTransientTexture, rig.Scene.BoundPointShadowTransientTexture);
     }
 
@@ -207,7 +207,7 @@ public sealed class SkinnedPointShadowReconfigureTests
 
         rig.Scene.Begin();
 
-        Assert.True(transient.Disposed);
+        Assert.False(transient.Disposed);
         Assert.Equal(0, rig.Scene.ResolvedPointShadows.TotalAtlasBytes);
         Assert.Same(defaultTransient, rig.Scene.BoundPointShadowTransientTexture);
         Assert.False(rig.Scene.ResolvedPointShadows.Enabled);
@@ -277,7 +277,7 @@ public sealed class SkinnedPointShadowReconfigureTests
             rig.Scene.ResolvedPointShadows.TotalAtlasBytes);
         Assert.True(rig.Scene.ResolvedPointShadows.Degraded);
         Assert.Same(transientDefault, rig.Scene.BoundPointShadowTransientTexture);
-        Assert.True(oldTransient.Disposed);
+        Assert.False(oldTransient.Disposed);
         Assert.NotSame(transientDefault, oldTransient);
     }
 

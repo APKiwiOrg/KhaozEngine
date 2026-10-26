@@ -16,9 +16,9 @@ internal sealed record RendererPerfNativeFacts(uint Vendor, uint Device, string 
 // Cold, test-only inspection of the selected native device. No backend API or package changes.
 internal static class RendererPerfNativeIdentity
 {
-    internal static RendererPerfNativeFacts Read(IGpuDevice device)
+    internal static RendererPerfNativeFacts Read(IGpuDevice device, RendererPerfExecutionClass executionClass = RendererPerfExecutionClass.Performance)
     {
-        RendererPerfManifest.Require(device.Diagnostics.SoftwareAdapter == false && device.Capabilities.SupportsTimestamps
+        RendererPerfManifest.Require(device.Diagnostics.SoftwareAdapter == (executionClass == RendererPerfExecutionClass.Rehearsal) && device.Capabilities.SupportsTimestamps
             && device.Capabilities.SupportsCompletionFences, "Admission", "Native hardware, timestamps and completion fences are required.");
         RendererPerfNativeFacts facts;
         if (device is VulkanGpuDevice vulkan)
@@ -37,7 +37,9 @@ internal static class RendererPerfNativeIdentity
         else if (OperatingSystem.IsWindows() && device is D3D11GpuDevice d3d)
             facts = ReadD3D(d3d);
         else throw new RendererPerfProtocolException("Admission", "Only the approved native T4 backends can enter this workload.");
-        RendererPerfManifest.Require(facts.Vendor == 0x10de && facts.Device == 0x1eb8 && facts.TimestampBits is >= 1 and <= 64
+        RendererPerfManifest.Require(RendererPerfAdapterPolicy.Matches(executionClass, device.Diagnostics.SoftwareAdapter,
+            device.Backend == GpuBackendKind.VulkanNative ? "vulkan" : "d3d11", facts.Vendor, facts.Device)
+            && facts.TimestampBits is >= 1 and <= 64
             && double.IsFinite(facts.TimestampPeriodNs) && facts.TimestampPeriodNs > 0,
             "Admission", "Actual native vendor/device IDs or timestamp calibration do not identify the approved T4.");
         return facts;

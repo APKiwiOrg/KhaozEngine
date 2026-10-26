@@ -1,10 +1,10 @@
 # Using KhaozEngine - the consumer contract
 
 This is the authoritative guide to what KhaozEngine does and **how it must be used** by the games that depend
-on it. The engine is **MonoGame-free**: Silk.NET windowing/input, the engine's own Metal / Direct3D 11 / Vulkan
-backends behind `KhaozEngine.Gpu` for the GPU,
-Silk.NET.OpenAL for audio, `System.Numerics` math throughout. Read the [Hard rules](#hard-rules) first. The rest
-is reference.
+on it. The stack is Silk.NET windowing and input, the engine's own Metal, Direct3D 11 and Vulkan backends
+behind `KhaozEngine.Gpu` for the GPU, Silk.NET.OpenAL for audio, and `System.Numerics` math throughout. Read
+the [Hard rules](#hard-rules) first. The rest is reference. Every package is listed in
+[PACKAGES.md](PACKAGES.md).
 
 This file is large (about 540 KB) and is a reference, not a read-through. Jump via the contents below,
 or grep it: every section is an `##` heading named after the package or feature it covers.
@@ -163,7 +163,7 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
    [Overlapping windows](#overlapping-windows-windowstack-2130).
 6. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
    drawn. `GameApp` does this for you. If you build your own loop, do it yourself.
-7. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
+7. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4` for every vector and matrix. (An RGBA color
    is `KhaozEngine.Primitives.Color`, not a bare `Vector4`. GPU-layout structs still use `Vector4`.) To dim
    or brighten a color for a tint, use `color.ScaleRgb(factor)`: it scales RGB and keeps alpha. `color *
    factor` scales alpha too, which under the 2D batch's straight-alpha blend turns a dim into translucency
@@ -1410,6 +1410,11 @@ Two styles, both built on Windowing + Render2D. Player-facing text sinks take a 
 `string` (see "Compile-time localization enforcement" below); `Strings.*` in the snippets are `StringId`
 constants.
 
+For caller-owned fixed-pitch horizontal content, use the drawing-free
+[`SnapStrip`](#caller-drawn-horizontal-snap-strip) geometry and motion contract. It complements the immediate
+and retained drawing widgets. `PannableCanvas` owns a pan/zoom camera, and `ScrollablePanel` draws a vertical
+list. Neither is required to draw or drive a snap strip.
+
 **Immediate-mode `GuiSurface`** - the common case for HUDs and simple menus. `Begin(batch?, pointer)` then call
 widgets each frame; `Button(...)` returns `bool` (true the frame it's clicked). Widgets are click-through-safe by
 construction (they hit-test via the `Pointer`).
@@ -1758,6 +1763,50 @@ Each entry in `bodyLines` carries its own `TooltipLine.Scale` (default `1f`), an
 the title row above them, so one shared font can render the whole tooltip's size hierarchy (see "Scaling
 Gui text" above).
 
+Rich lines and a tiled backdrop are opt-in through these exact descriptors:
+
+```csharp
+public readonly record struct TooltipIcon(Texture2D Texture, Vector4 SourceUV, float Size);
+public readonly record struct TooltipBackdrop(Texture2D Texture, float TileSize, Vector4 Tint);
+```
+
+```csharp
+// Localized text and caller-owned textures come from the host's content.
+TooltipLine detail = TooltipLine.Of(localizedText, colour, scale: 0.85f) with
+{
+    Icon = new TooltipIcon(iconTexture, new Vector4(0f, 0f, 1f, 1f), 16f),
+    TitleFont = true,
+    GapBefore = 6f,
+};
+tip.Metrics.IconGap = 8f;
+tip.Backdrop = new TooltipBackdrop(parchmentTexture, 32f, Vector4.One);
+tip.Show(Strings.CopperOre, new[] { detail }, anchor);
+```
+
+`TitleFont` selects the title face for that body line. Its text still uses the line's own `Scale`, while
+`TitleScale` affects only the main title row and its right-aligned value. Icon size, `Metrics.IconGap`
+(default `8f`) and `GapBefore` are design units independent of text scale. Row height is the larger of the
+scaled font line height and icon size, with both vertically centred. Text starts after the icon size plus
+icon gap. Without an icon there is no inset or icon gap. `GapBefore` applies even before the first body
+line. Existing `TitleGap` and between-row `LineSpacing` remain, with no trailing line spacing.
+
+Wrapping subtracts the icon inset from the capped content width before dividing by the line's scale.
+Continuations retain a hanging text inset, chosen font, scale and coloured runs. Only the first visual row
+draws the icon and applies `GapBefore`. A finite cap that leaves no positive text budget after an icon
+inset throws `ArgumentOutOfRangeException` before wrapping. Icon size and backdrop `TileSize` must be
+finite and positive. `GapBefore` and `Metrics.IconGap` must be finite and nonnegative.
+
+The backdrop replaces the flat fill inside the existing one-unit border without changing tooltip bounds.
+`TileSize` is a square size in design units. The whole source texture tiles from the interior's top-left
+in row-major order. Partial edge tiles crop their UVs proportionally rather than stretching. Drawing
+throws `ArgumentOutOfRangeException` before any tile emission if the interior dimensions are nonfinite
+or the complete grid would exceed 4096 tiles. This bounds draw work without truncating coverage. Tiles draw
+first, then the existing border, title row, optional separator and each body's icon before its text.
+The caller owns icon and backdrop texture lifetimes, plus the sampler and scissor state. `Opacity` changes
+only alpha uniformly across all visuals. Coloured runs keep their source colours and receive the fade once.
+Null `Backdrop` and `Icon`, `TitleFont = false` and `GapBefore = 0f` preserve existing tooltip defaults,
+including the three positional `TooltipLine` fields, localized factories and `Text` replacement semantics.
+
 Use `TooltipLine.OfSegments` when one localized body line has differently coloured parts. It resolves
 the `LabelSegment` text when built and retains each colour when the tooltip wraps the line to its width cap.
 For example, an action hint can keep its verb colour while an item name uses its rarity colour:
@@ -2048,7 +2097,8 @@ and `ScrollablePanel` does no drag edge scroll while the pointer is occluded. `P
 `IsPointerIn`, `WorldMapViewCore` builds no hover overlay for an occluded position,
 `GuiSurface.HoverCaptured` is true over an occluded position, `GuiSurface.PointerCaptured` and
 `ScreenStack.PressBeganOverUi` are true for an occluded press origin and `DraggableBottomSheet` refuses an
-occluded press. `PannableCanvas.TryGetTap` misses when the press origin or the release is occluded, and
+occluded press. `SnapStrip` rejects occluded origins and cancels owned contacts when their origin or current
+point becomes occluded. `PannableCanvas.TryGetTap` misses when the press origin or the release is occluded, and
 `PanZoomController` admits no press, touch or gesture at an occluded point and records no tap on an occluded
 release. A consumer's own widgets follow the same gate rule: a `Pointer` hit query or `IsOccluded` first, raw
 `Position` only after it. Out of scope for the stack: saved order or position, cascade placement, docking,
@@ -3263,6 +3313,101 @@ strip.Draw(batch, white);
 int hovered = TabStrip.TabAt(strip.Bounds, pointer.Position, tabs.Count, strip.Metrics);
 ```
 
+### Caller-drawn horizontal snap strip
+
+`SnapStrip` retains motion and pointer admission for caller-owned, fixed-pitch horizontal items. It does no
+drawing and owns no selection, wheel policy, touch gestures, scrollbar, tooltip or localization. Use the
+same coordinate units for `Bounds`, `SnapStripMetrics`, Pointer and your drawing pass. Defaults are horizontal
+drag slop 8 and snap duration 0.18 seconds. Snapping uses elapsed-time cubic ease-out, and zero duration
+settles immediately. Pointer travel maps one-to-one to the displayed offset without velocity projection.
+
+Configure and centre immediately when opening. Update on every open frame, even when the strip has no hover
+or `receivesInput` is false, so easing and cancellation continue. Pointer must already have been updated once
+with the same immutable input snapshot. Update overlays first, then the strip, then lower pointer consumers.
+`BlocksPointer` defaults to true and reserves after admission. Reservation does not consume taps for your
+items. Committed drags consume through release even if reservation is disabled. Wire caller-owned arrow taps
+to `StepPrevious()` and `StepNext()`, and dim them with the corresponding `CanStep` properties.
+
+```csharp
+var strip = new SnapStrip();
+var metrics = new SnapStripMetrics(40f, 10f); // Anchor defaults to 0.5.
+
+void OpenStrip(Rect bounds, int itemCount, int initialIndex)
+{
+    strip.Configure(bounds, itemCount, metrics);
+    strip.CenterOn(initialIndex, animated: false);
+}
+
+void UpdateStrip(Pointer pointer, InputState input, float dt, bool receivesInput)
+{
+    // Every open frame, after the host updates Pointer, even without hover or input eligibility.
+    strip.Update(pointer, input, dt, receivesInput);
+}
+
+void DrawStrip(SpriteBatch batch, Pointer pointer)
+{
+    // The host owns Begin/End. DrawItem and the arrow/tooltip helpers are caller-owned.
+    batch.SetScissor(strip.Bounds);
+    try
+    {
+        var (first, count) = strip.VisibleRange;
+        for (int i = first; i < first + count; i++)
+            DrawItem(batch, i, strip.ItemBounds(i));
+    }
+    finally
+    {
+        batch.ClearScissor(); // Restore the enclosing clip.
+    }
+    DrawPreviousArrow(batch, opacity: strip.CanStepPrevious ? 1f : 0.35f);
+    DrawNextArrow(batch, opacity: strip.CanStepNext ? 1f : 0.35f);
+    DrawTooltips(batch, strip.HoveredItemIndex(pointer)); // After restoring the strip clip.
+}
+
+void CloseStrip() => strip.CancelInteraction();
+```
+
+Indices are zero-based. `TargetIndex` is the requested logical item throughout easing, or -1 when empty.
+`CenterOn` clamps the requested index. `StepPrevious` and `StepNext` start from that pending target rather
+than the transient `ScrollOffset` and skip indices with the same clamped stop. Their `CanStepPrevious` and
+`CanStepNext` properties describe distinct possible moves, including during animation. Commands end contact
+ownership safely, and an identical animated target request does not restart its ease.
+
+`SnapStripMetrics(ItemWidth, ItemSpacing = 0, Anchor = 0.5f)` requires finite positive width, finite
+nonnegative spacing and a finite `Anchor` in [0,1]. `Anchor` is a fraction of viewport width, placing the
+target item's centre at that fraction before clamping. Pitch is `ItemWidth + ItemSpacing`. There is no
+trailing spacing or endpoint padding. For index `i`, the stop is
+`clamp(i * pitch + ItemWidth / 2 - Anchor * viewportWidth, 0, maxScroll)` after clamping the index. Default
+Anchor 0.5 centres items. With width 40, spacing 10 and viewport 200, targets 0 and 1 both stop at 0 and the
+next distinct stop, index 2, is at 20. Interior moves are 50, but endpoint steps need not be one pitch.
+Width 69, spacing 0, viewport 552 and Anchor 0.4375 instead give whole-pitch stops from 0 to 6348 for 100 items.
+
+Release snaps to the nearest actual clamped stop, with lower-index ties after canonicalizing endpoints.
+Offset 0 means index 0, and maximum scroll means the last index. When maximum scroll is 0, pure geometry
+returns 0 for nonempty content and -1 for empty content. Dragging fitting content retains its logical anchor.
+The final release sample moves the strip before choosing a stop. The new release snap starts advancing on
+the next update, without spending the release frame's full delta time.
+
+`ItemBounds(index)` returns the full rectangle at the displayed offset. `ItemAt(point)` uses half-open item
+and viewport bounds and returns -1 for gaps or outside points. `VisibleRange` is `(First, Count)` and includes
+partially visible items with positive intersection area, so the caller must clip. `HoveredItemIndex(pointer)`
+also respects the last update's input eligibility, focus, capture and current pointer occlusion. The same
+arithmetic is available without a widget through `SnapStripGeometry.ItemBounds`, `IndexAt`, `VisibleRange`,
+`ContentWidth`, `MaxScroll`, `CenterOffset` and `NearestIndex`. `SnapStripMotion` supplies the independent
+motion model when a host needs its own input adapter.
+
+Admission requires a fresh, unconsumed, unblocked, unoccluded press origin. A rejected or cancelled held
+contact cannot restart until physical release. `CancelInteraction()` on close immediately settles an active
+drag at its nearest stop, or an unmoved contact at its pending target, and preserves independent animation.
+Committed gestures remain consumed through release, including after reopening. Input loss, focus loss,
+capture, origin/current-point occlusion, nonfinite pointer positions and coordinate mapping changes cancel
+interaction too. Mapping comparison includes viewport identity and captured scale, offset and dimensions,
+even when numeric strip bounds stay equal.
+
+Identical `Configure` calls are inert. Translating bounds cancels an active contact but preserves idle offset
+and an in-progress ease. Width, count or metrics changes retain and clamp the logical target, settling it
+immediately, including hidden layouts. Negative or nonfinite layout values and invalid derived extents are
+rejected atomically. Constructors start empty with valid `new SnapStripMetrics(1f)` metrics.
+
 ## File-size ratchet (KESIZE analyzer)
 
 Every umbrella carries `KhaozEngine.CodeHealth.Analyzers`, the compile-time twin of
@@ -3564,6 +3709,38 @@ batch.DrawString(font, "Hello", new Vector2(100, 60), Color.White);  // a bare p
 batch.End();
 ```
 
+### Alpha-masked sprites
+
+`SpriteBatch.DrawMasked` draws source colour through an independently sampled alpha mask. Both source and
+mask regions are normalized `(u0, v0, u1, v1)` endpoints, not origin and size. Reverse either region to flip
+that input. Each destination can be a `Vector4(x, y, width, height)` or a typed `Rect`. For each destination
+type there are three forms, six overloads in total: explicit regions with flat tint, explicit regions with
+`top` and `bottom` tint, or whole source and mask regions with flat tint.
+
+```csharp
+batch.Begin(Viewport, SamplerMode.Point);
+batch.DrawMasked(source, destination, sourceUv, mask, maskUv, Color.White);
+batch.DrawMasked(source, gradientDestination, sourceUv, mask, maskUv, topTint, bottomTint,
+    SamplerMode.Linear);
+batch.DrawMasked(source, wholeImageDestination, mask, Color.White, SamplerMode.Point);
+batch.End();
+```
+
+The source follows the active `Begin` sampler. The mask defaults to `Linear` independently, including in a
+`Point` source pass. Source and tint are straight alpha. A vertical gradient interpolates RGBA, including
+tint alpha. Only mask alpha contributes coverage. Mask RGB is ignored, and coverage multiplies tinted source
+alpha once before the existing Alpha or Additive blend equation. UVs and tint belong to vertices, so changing
+only those does not split a run. Linear filtering needs padded atlas gutters because clamp addresses the full
+texture, not the selected region.
+
+The caller owns both inputs and must keep them alive through completion of queued GPU work. A completed
+same-device producer target with sampleable usage can be used directly as source or mask without copies or
+readback. Resolve MSAA inputs into sampleable single-sample textures first. Sampling an attachment while
+drawing into it is unsupported feedback. Masked pipelines are lazy. Ordinary draws keep their original
+shaders, two-resource bindings and 384-byte quad uploads. The shared run dispatch and lazy owner add CPU
+bookkeeping, not an extra ordinary texture fetch. See the
+[six API signatures](../KhaozEngine.Render2D/README.md#spritebatchdrawmasked).
+
 ### Fonts: no system font, no hard-coded path
 
 The engine never depends on a system font and you should never hard-code one (e.g. the macOS-only
@@ -3627,11 +3804,11 @@ inside the callback: the command list it is recording into still names them unti
 - Blend mode: `batch.BlendMode = BlendMode.Additive` switches subsequent draws to additive compositing (glows,
   sparks, beams); it can change mid-batch (per quad) and painter's order is preserved across modes. Each `Begin`
   resets it to `BlendMode.Alpha` (the default, source-over).
-- Texture grouping: `batch.GroupByTexture = true` groups queued quads by texture at flush regardless of
-  submission order (fewer draw calls when interleaved same-texture draws would otherwise split into separate
-  runs), trading away painter's order BETWEEN textures (order stays intact WITHIN one texture's group). Off by
-  default and reset by every `Begin`. Only turn it on for a pass whose visual correctness does not depend on
-  cross-texture draw order (e.g. not a scene with overlapping alpha-blended sprites of different textures).
+- Texture grouping: `batch.GroupByTexture = true` groups queued quads by their complete run key at flush.
+  Ordinary keys distinguish source texture and blend. Masked keys distinguish source texture, source sampler,
+  mask texture, mask sampler and blend. Order stays intact within a key, but order between keys is lost, even
+  for two masks of one source. Off by default and reset by every `Begin`. Only enable it when correctness does
+  not depend on order between keys. Each pass has one source sampler, selected by `Begin`.
 - `SpriteBatch.Flush()` submits queued draws without ending the active batch. Flush before enabling texture
   grouping and again before disabling it to isolate one unordered group inside a larger ordered pass. It
   preserves transform, sampler, blend and scissor state. Calling it outside `Begin`/`End` throws.
@@ -4859,9 +5036,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
 
       Both calls validate before queueing. If several valid requests arrive before the next frame, only the latest
       layout is kept. `Scene3D.Begin()` applies it before any command list begins. An unchanged layout is a no-op. A
-      changed layout waits for submitted GPU work once at that frame boundary, builds a complete atlas and replacement
-      bindings for rigid, skinned, splat, and tile-ground receivers, then swaps the graph as one transaction. This is
-      a rare settings-change hitch, not work added to ordinary frames. If allocation or binding creation fails, the
+      changed layout builds a complete atlas and replacement bindings for rigid, skinned, splat, and tile-ground
+      receivers, then swaps the graph as one transaction. The old graph and receiver sets enter the scene retirement
+      queue without a device drain. If allocation or binding creation fails, the
       current atlas and committed property values remain active. The scene logs one error for that failed request and
       remains drawable. A request changes only the atlas layout. The current shadow mode, strength, bias, distance,
       blend, and filtering settings stay unchanged. Issue requests on the scene thread, like every other `Scene3D`
@@ -12812,7 +12989,9 @@ them. An overlay in a water material gets no surface (a fraction of a tile has n
 still lands on the bed, which is what an editor click wants.
 
 By default this water reads scene depth. `TileWorldViewOptions.WaterDepthMode = TileWaterDepthMode.AuthoredBed`
-binds each body to its actual rendered bed instead, with the strict contract in the
+binds each body to its actual rendered bed instead. Beyond the world manifest only, its certified bed continues
+the clamped ground at the edge. A known-unloaded neighbour still refuses, and empty edge ground supplies no bed
+to continue. The strict contract is in the
 [TileWorld authored optical beds reference](../KhaozEngine.TileWorld.Render3D/README.md#authored-optical-beds).
 
 For a player-facing ground click, use the view's visible-surface picker instead:
@@ -17263,7 +17442,7 @@ Rules:
 
 ## Audio (`KhaozEngine.Audio`)
 
-`AudioSystem` over a cross-platform OpenAL (Silk.NET.OpenAL) backend, no MonoGame. Streaming music (WAV/OGG/MP3,
+`AudioSystem` over a cross-platform OpenAL (Silk.NET.OpenAL) backend. Streaming music (WAV/OGG/MP3,
 one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), SFX one-shots, and 3D positional audio
 (`PlaySfx`/`PlaySfx3D`/`SetListener`, a 16-voice pool, per-channel volume). `LoadContent(directory)` +
 `Update()` per frame.
@@ -17565,7 +17744,8 @@ trap is why a game ended up drawing a second always-on readout beside the engine
 **Frame draw counters (`RenderFrameStats`).** Each render surface keeps an always-on, allocation-free per-frame
 tally in `KhaozEngine.Primitives.RenderFrameStats`: `DrawCalls`, `Instances`, `Triangles` (estimated from the
 indexed-draw sizes), `BufferUpdateBytes` (per-frame streaming), plus the 2D `Quads` / `Flushes` /
-`TextureSwitches`. Read them after the frame's draws and sum with `+`:
+`TextureSwitches`. The latter counts source texture transitions, including the first bind. A mask-only
+switch can add a draw without changing it. Read them after the frame's draws and sum with `+`:
 
 **The upload split (read this before optimising an upload number).** `BufferUpdateBytes` is a TOTAL over four
 unrelated streams, so on its own it cannot tell you which one to go after. Four fields partition it exactly
@@ -23906,7 +24086,8 @@ Disposing a GPU resource (texture, buffer, resource set) while queued GPU work m
 is a use-after-free. Most hardware drivers absorb it silently, but Mesa lavapipe's async queue-submit
 thread crashes on it, which is how the engine found this class of bug. Any MID-LIFE disposal (an
 unload, a resize, a cache eviction: anything that is not part of full device teardown already guarded
-by a drain) must call `IGpuDevice.WaitForIdle()` first, then dispose:
+by a drain) must defer destruction through `GpuRetireQueue`, or call `IGpuDevice.WaitForIdle()` first
+when no completion queue is available, then dispose:
 
 ```csharp
 IGpuTexture old = _texture;
@@ -23922,8 +24103,11 @@ is disposed, `WaitForIdle` is a safe no-op AND disposing any resource the device
 no-op (device destruction already freed all child objects), so a wrapper that outlives its device at
 teardown can neither drain nor destroy against a dead device. The incumbent's deferred-disposal path was
 evaluated as a non-stalling alternative and rejected: under Mesa's threaded queue its disposal flush
-could lose a wakeup and hang the process, so the engine drains instead. The engine's own renderers follow this rule for resize-driven render target replacement
-(`RenderResources`, `Render3DPreview.Resize`), which has no frame boundary left to reach. A custom
+could lose a wakeup and hang the process. The engine's completion queue avoids that incumbent path.
+`Scene3D` now retires replaced cascade and point-shadow atlases, receiver sets, MRT attachments, dependent
+pipelines and post targets through its queue. Cached depth bindings for decals, particles, distortion and
+water retire with those targets. Standalone `RenderResources` and `Render3DPreview.Resize`
+keep the drain when no frame completion queue is supplied. A custom
 renderer or content-streaming system built directly on `KhaozEngine.Gpu` should follow the same rule for
 anything it frees outside of full teardown, or hand the resource to a `GpuRetireQueue` (below) and never
 drain at all.
@@ -24000,15 +24184,19 @@ whichever of those variables its backend reads, one extra sealed batch per extra
 `GpuRetireQueue.ValveDrains` counts the firings and
 `SealedBatchCount` is the batch-level view of the holding, next to `Scene3D.RetiredResourceCount`.
 
-**2D set eviction does not drain either, since 17.37.0.** `SpriteBatch` keeps one resource set per
-`(texture, sampler)` and evicts the ones unused for `600` frames, and that sweep used to take a full
+**2D set eviction does not drain either, since 17.37.0.** `SpriteBatch` keeps ordinary resource sets per
+`(texture, sampler)`, aged by source texture use. Masked sets are cached and aged per
+`(source, source sampler, mask, mask sampler)` tuple, shared across Alpha and Additive. After `600` unused
+frames, a masked tuple loses its set and both grouping keys, so a hot source cannot keep obsolete masks
+alive. The ordinary sweep used to take a full
 `WaitForIdle` on the frame thread every time anything aged out: a guaranteed hitch roughly every ten
 seconds for a game that streams sprites ([#84](https://github.com/APKiwiOrg/KhaozEngine/issues/84)). The
 evicted sets, and the buffers a UBO or vertex-buffer grow replaces, go to a `GpuRetireQueue` now. It is a
 frame-counted one rather than a fenced one, because `SpriteBatch.NewFrame` is called from inside the
 frame's own recording and a fence there would be the nested recording the seam refuses. Nothing about
 `SetEvictAfterFrames` changed: a set becomes eligible on exactly the frame it always did, and only the
-disposal moved behind the queue's deferral. Pixels are unaffected.
+disposal moved behind the queue's deferral. Masked eviction uses the same retirement queue. Eviction never
+owns the input textures or makes early caller disposal safe. Pixels are unaffected.
 
 **`GpuRetireQueue`: the whole mechanism, owned by the seam.** Feed it, advance it once per frame, dispose
 it at teardown. It is what both engine renderers use, and a renderer of your own gets the same behaviour
@@ -24029,6 +24217,28 @@ void Unload(MyThing thing)
 
 public void Dispose() => _retire.Dispose();   // one drain, then the tail
 ```
+
+A host that already owns `GpuFrameSubmission` can call `queue.BeginFrame(frame.Submission)` in its
+prepare callback instead. `Scene3D.BeginFrame(frame.Submission)` applies that policy to the scene queue
+while doing the ordinary scene begin work. The queue borrows the host fence and never resets or disposes
+it. It frees a batch only after completion. An abandoned recording unseals its retirement tail without
+freeing anything, because abandonment proves nothing about earlier submitted readers. A failed submit
+keeps the batch quarantined until completion or a successful host teardown drain. The host must submit
+before the next boundary and outlive the queue, or complete its own teardown before the scene is disposed.
+If no host completion slot is available, the call refuses without a new submission or an unsafe free. Devices without
+completion fences retain the existing drain fallback.
+
+Retirement increases peak memory by the pending outgoing graphs. After each boundary the existing queue
+cap limits sealed batches to `MaxSealedBatches` (normally eight), plus the current unsealed burst. For one
+replacement of a resource family per frame, this is at most nine outgoing generations plus the live one.
+Multiply each family's maximum graph bytes by nine for its extra queue-owned storage bound. Multiple replacements
+within one frame count as that frame's burst, which the host must bound. Logical cascade texture payload is
+`9 * cascadeCount * resolution^2` bytes per graph before native allocation alignment. Point atlases use
+`54 * faceResolution^2 * rows` bytes, for each base or transient graph. MRT storage follows dimensions,
+sample count, formats and optional attachments. Pipelines and descriptor sets add backend-specific storage. This bounds queue-owned logical resources,
+not total native VRAM, which also includes backend retirement and allocation alignment.
+The existing safety valve still drains if the CPU exceeds the cap. A host sharing three completion slots
+and completing each three-frame batch stays below it, without relaxing the frame guards.
 
 `Create` mints its fence by opening a command list of its own, so it must be built and advanced where
 NOTHING is recording on the device: the frame's PREPARE phase, not its record phase. Called from inside

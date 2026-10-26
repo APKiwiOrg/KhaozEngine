@@ -67,11 +67,11 @@ namespace KhaozEngine.Render3D.Rendering
             });
         }
 
-        /// <summary>Rebuild the pipeline for a new ping colour format (the HDR toggle). The caller has idled the
-        /// GPU.</summary>
-        public void Rebuild(GpuOutputDescription output)
+        /// <summary>Rebuild the pipeline for a new ping colour format (the HDR toggle). Outgoing pipelines follow the supplied
+        /// completion queue.</summary>
+        public void Rebuild(GpuOutputDescription output, GpuRetireQueue? retired = null)
         {
-            _pipeline.Dispose();
+            ResourceRetirement.Free(_pipeline, retired);
             _pipeline = BuildPipeline(output);
         }
 
@@ -106,11 +106,9 @@ namespace KhaozEngine.Render3D.Rendering
         internal IReadOnlyCollection<IGpuTexture> CachedSources => _sets.Keys;
 
         /// <summary>Dispose every cached set. Call when the textures they reference are rebuilt.</summary>
-        public void ReleaseSets()
+        public void ReleaseSets(GpuRetireQueue? retired = null)
         {
-            // At once: a set owns no native object on Metal or Direct3D 11, and Vulkan defers its descriptor free
-            // through the device's retire list, so a frame in flight keeps what it bound. The chain has no queue here.
-            foreach (IGpuResourceSet set in _sets.Values) set.Dispose();
+            foreach (IGpuResourceSet set in _sets.Values) ResourceRetirement.Free(set, retired);
             _sets.Clear();
         }
 

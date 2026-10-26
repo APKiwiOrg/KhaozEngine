@@ -1,13 +1,12 @@
 # KhaozEngine.Server
 
-Umbrella metapackage for a headless / server-side build on the KhaozEngine stack. Contains no
-code, it is a curated dependency group: one `<PackageReference>` gives an authoritative sim
-server or tool the GPU-free foundation plus the full netcode and MMO server stack. Pulls in NO
-graphics, windowing, audio, or GPU, so the server stays lean.
+Build a headless authoritative simulation server or server tool with one package reference. This code-free
+metapackage bundles `KhaozEngine.Foundation`, networking, replication, persistence and world hosting without
+graphics, windowing or audio.
 
-Format-7 MapDoc and GPU-free prefab/interior preparation arrive through `Foundation`. Add `MapDoc.Physics`
+Format-9 MapDoc and GPU-free prefab/interior preparation arrive through `Foundation`. Add `MapDoc.Physics`
 and a physics backend explicitly to build and install the same effective native resources as a client.
-The editor and ke-mapedit remain separate authoring tools, and native movement adoption keeps its G1b gates.
+The editor and `ke-mapedit` remain separate authoring tools.
 
 Pulls in:
 
@@ -43,8 +42,7 @@ Pulls in:
 - `KhaozEngine.Sharding` - the cell-grid world topology (`ShardHost`, ghosting, handoff).
 - `KhaozEngine.NetWorld` - the authoritative movement server + client glue + `WorldPersistence`.
 - `KhaozEngine.TileWorld.Netcode` - the tile movement stack (`TileWorldServer` / `TileWorldClient`,
-  `TileMoveSimulator`, `TileWorldPersistence`), a SIBLING of `NetWorld` rather than a dependent, so a
-  tile server carries none of the float locomotion stack and a float server carries none of this. Also
+  `TileMoveSimulator`, `TileWorldPersistence`), a sibling of `NetWorld` over the same generic server layers. Also
   server-owned actors (`TileActorHost`, `ITileActorBehaviour`) and tick-based melee combat
   (`ITileCombatRules`), both of which ride the same stepper and the same reach rule as a player's walk.
 - `KhaozEngine.Physics` - the dependency-free physics seam (backend opt-in, see below).

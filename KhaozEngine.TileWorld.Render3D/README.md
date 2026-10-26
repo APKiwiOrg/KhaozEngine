@@ -294,13 +294,19 @@ return withdraws the water, as an FFT look does.
   `Scene3D.RenderOrigin` override rounds the reduced origin like all other submitted geometry and is outside the
   certificate. Only regions whose triangles support a certificate participate. Packing doubles the bin axes from
   one bin per tile up to 1024 and never drops, downsamples or merges triangles. A domain spans at most 1024 tiles
-  on each axis.
+  on each axis. A region absent from the world manifest is a defined edge. Outside that edge only, synthetic
+  triangles continue the consumed in-world ground with clamped edge profiles and a continuous corner fill.
+  A shared exterior grid includes every consumed boundary breakpoint. Straight edges extrude perpendicularly,
+  convex corners keep their vertex height, and concave corners share vertices instead of overlapping strips.
+  Source triangles and drawable water rectangles are unchanged. Absent regions remain availability dependencies,
+  so making one known or loaded invalidates the continuation and rebuilds against its real ground.
 - **Strict refusal, no fallback.** Opted-in water never falls back to scene depth, zero or deep water. A refusal
   withdraws the whole region-plane request, the water at every level, and keeps its terrain. It is reported in
   `TileWorldView.WaterOpticsFailures` as a `TileWaterOpticsFailure` with its region, plane, the water level in
   `ReferenceSurfaceY`, `Kind`, blocking `MissingRegion`, tile `Domain` and the last attempted bin axes.
   `TileWaterOpticsFailureKind` is `MissingHeightData` for a strict height-read fallback, `FieldTooLarge` for an
-  oversized or unaddressable domain, `MissingSurfaceData` for an absent, mismatched or stale source snapshot,
+  oversized or unaddressable domain, `MissingSurfaceData` for a missing, mismatched or stale source snapshot in
+  a region present in the manifest,
   `IncompleteSurfaceCoverage`, `AmbiguousSurface`, `SurfaceCapacityExceeded` when every packing exceeds 32
   candidates per bin or the 1024 by 1024 atlas, `UnrepresentableSurface` when the error budget or a backend-safe
   scalar cannot be met, and `UncertifiedDisplacement` when the effective look has no certified displacement
@@ -312,13 +318,13 @@ return withdraws the water, as an FFT look does.
   its sources, settings or displacement change. The latch suppresses only the field. Ground still rebuilds, so a
   residency promotion such as Coarse4 to Full lands, and the rebuilt region-plane keeps the latched refusal
   instead of the old water.
-- **Content must supply a bed.** A certificate reaches past its water tiles, so the ground around opted-in water
-  must emit triangles there. Water beside empty or `NoDraw` cells, or beside an unloaded neighbour region, is
-  refused with `IncompleteSurfaceCoverage`, `MissingSurfaceData` or `MissingHeightData`, and zero underlay emits
-  no bed. Author a real bank around every opted-in body and keep its neighbours resident. At the edge of the
-  loaded area a region-plane whose water touches an unloaded neighbour is withdrawn, at every water level, until
-  the neighbour loads. Keep the resident ring wider than the draw distance so visible water never sits on that
-  edge.
+- **Content must supply a bed.** A certificate reaches past its water tiles, so its in-world ground must emit
+  triangles throughout that coverage and reach any manifest edge it crosses. Empty or `NoDraw` edge tiles and
+  zero underlay supply no bed to continue and still refuse as `IncompleteSurfaceCoverage`. The clamped
+  continuation exists only beyond the manifest and is part of the certified field, never a fallback inside the
+  world. A known-unloaded neighbour still refuses as `MissingSurfaceData` or `MissingHeightData`, at every water
+  level, until its current ground is available. Keep known neighbours resident, with a resident ring wider than
+  the draw distance so visible water never sits on a streaming edge.
 - **Looks.** Opted-in water needs a look with a certified displacement envelope. `TileWaterLooks.River` qualifies.
   The view resolves the look once per flush through `ITileWorldWaterTriangleOpticsScene.TryGetWaterOpticsPadding`,
   which `Scene3DTileWorldScene` forwards to `Scene3D.TryGetWaterOpticsPadding`. The interface member has no
@@ -813,8 +819,8 @@ collision, navigation, simulation, replication or hashes.
   validates captured inputs against live state. Default `SceneDepth` builds create no optical payload or audit,
   and retain no accepted optical source. Their detached requests carry the same fixed choice as synchronous
   builds. The depth mode is captured at construction. Changing it requires disposing and recreating the view.
-  An opted-in null mesh has a known-empty snapshot. An absent snapshot means unavailable or unprepared ground,
-  and must never be substituted with a manufactured empty source. Audit ranges use widened exclusive edges and
+  An opted-in null mesh has a known-empty snapshot. In a region present in the manifest, a missing snapshot is
+  unavailable or unprepared ground, never a manufactured empty source. Audit ranges use widened exclusive edges and
   retain the complete required footprint. Any portion outside signed tile coordinates makes that range optically
   unrepresentable, while valid interior ranges and legacy mesh construction remain usable. Check representability
   before interpreting missing-region diagnostics, then check availability separately from currentness.

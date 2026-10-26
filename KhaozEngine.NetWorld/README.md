@@ -404,6 +404,18 @@ the multi-cell variant (overworld sub-project 6b).
 Both server drains use `KhaozEngine.Simulation.Hosting.DrainController` for their deterministic tick-driven grace. The
 public `KhaozEngine.NetWorld.DrainController` remains as a source-compatible forwarding facade for existing code.
 
+## Server input hardening
+
+Both server configs expose `AntiCheat`, an `AntiCheatConfig` whose rate and correction checks are disabled by
+default. `MaxMessagesPerSecond` sets a per-connection inbound budget and `MessageBurst` its burst allowance.
+Over-budget messages are dropped and reported through `OnSuspiciousActivity`. `DisconnectOnRateLimit` also
+disconnects the connection when enabled.
+
+`MaxCorrectionDistance` and `CorrectionStreak` enable a signal for repeated authoritative movement corrections.
+Malformed move packets, including non-finite axes or yaw, are always rejected. `OnSuspiciousActivity` identifies
+the slot and reason for malformed packets, floods and correction anomalies. The game owns logging, kick and ban
+policy, with `Disconnect(slot)` as the kick seam.
+
 ## Game messages (since 9.27.0)
 
 A generic, game-defined message channel alongside the movement protocol, so a game (attack, interaction, pick-up,
@@ -1356,7 +1368,7 @@ per entity. All four pieces are additive and default to today's behaviour.
   movement and after every client has been served, and is where post-step state is OBSERVED (the landing impact,
   below). A write made there reaches clients on the next tick's snapshot, so authoring state that must ship in the
   same frame stays `OnBeforeTick`'s job.
-- **Read.** **`WorldClient.TryGetComponent<T>(int netId, out T)`** reads a replicated component off the entity with
+- **Read.** **`WorldClient.TryGetComponent<T>(long netId, out T)`** reads a replicated component off the entity with
   that net id (the `EntityRenderState.Id` value). Use it to read a server-assigned discriminator (NPC kind, HP,
   faction) and pick a model. Returns `false` against an older server that never sends `T` (no handshake, no
   disconnect). `MmoServerSample` demonstrates the whole seam with a `Creature` kind component.

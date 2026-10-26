@@ -3,8 +3,9 @@
 The OSRS-style tile world: a discrete grid of 64x64 tile regions with stacked planes, a global tile-corner
 height lattice, ground and overlay materials, tile-anchored objects and named markers, saved as a hash-checked
 directory. GPU-free and render-free, so client, server, editor and authoring tool read one document through one
-path. A sibling of `KhaozEngine.MapDoc`, not an extension of it. Design rationale:
-`docs/design/TILE-WORLD-DESIGN-2026-08-15.md` in the engine repo.
+path. In the `Foundation` umbrella, also carried by `Game2D`, `Game3D` and `Server`.
+A sibling of `KhaozEngine.MapDoc`, not an extension of it. See the
+[tile-world design](../docs/design/TILE-WORLD-DESIGN-2026-08-15.md).
 
 ## Coordinates and rotation
 

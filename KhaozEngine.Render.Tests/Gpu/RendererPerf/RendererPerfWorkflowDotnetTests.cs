@@ -1,8 +1,6 @@
 using System;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -66,7 +64,7 @@ public sealed class RendererPerfWorkflowDotnetTests
                   echo "DOTNET_ROOT_X64=$dir"
                   echo "DOTNET_HOST_PATH=$dir/dotnet"
                 } >> "$GITHUB_ENV"
-                """, run, StringComparison.Ordinal);
+                """.ReplaceLineEndings("\n"), run, StringComparison.Ordinal);
         }
         else
         {
@@ -134,9 +132,5 @@ public sealed class RendererPerfWorkflowDotnetTests
         .Select(line => line.Trim().Split(':', 2))
         .SingleOrDefault(pair => pair.Length == 2 && pair[0] == name)?[1].Trim().Trim('\'', '"');
 
-    static string RendererJob([CallerFilePath] string source = "")
-    {
-        string repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../.."));
-        return File.ReadAllText(Path.Combine(repo, ".github/workflows/gpu-hosted-bench.yml")).Split("  renderer-bench:\n", 2)[1];
-    }
+    static string RendererJob() => RendererPerfWorkflowText.Read().Job("renderer-bench");
 }

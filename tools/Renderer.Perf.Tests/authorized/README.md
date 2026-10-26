@@ -18,11 +18,11 @@ recipe source paths must belong to that checkout before startup. No working-dire
 output-directory manifest copy or alternate-checkout search is used.
 The workflow checks the authorization diff and exact bytes before selecting a hosted runner and
 again on that runner. The entrypoint independently validates the strict manifest and runtime before
-native creation. Performance presets require hosted NVIDIA T4 hardware. The `rehearsal` preset requires
-standard hosted Linux Vulkan lavapipe, retains the pilot schedule and can never promote as performance
-evidence. Both require usable timestamps, complete compiler evidence and certified publication.
-Partial artifacts survive failures. The [renderer reference](../../../docs/RENDERER-PERFORMANCE.md#software-correctness-rehearsal)
-owns the rehearsal policy and its separate approval, limits and correctness verdict.
+native creation. Performance presets require hosted NVIDIA T4 hardware. The
+[renderer reference](../../../docs/RENDERER-PERFORMANCE.md#software-correctness-rehearsal)
+owns the supported software rehearsal legs and schedules, separate approvals, limits and correctness
+verdict. Every execution class requires usable timestamps, complete compiler evidence and certified
+publication. Partial artifacts survive failures.
 
 The shader identity hashes an ordered map of exact literal and generated readonly Render3D and
 SpriteBatch GLSL source strings, specialized outdoors FFT kernels and control shader sources.

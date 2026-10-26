@@ -83,7 +83,7 @@ public sealed class RendererPerfProtocolTests
             case "bad-hash": json["workloadSha"] = "not-a-sha"; break;
             case "budget": json["budget"]!["maximumCostUsd"] = 7.24; break;
             case "approval": json["approval"]!["reference"] = " "; break;
-            case "campaign-cap": json["approval"]!["campaignMaximumUsd"] = 7.25; break;
+            case "campaign-cap": json["approval"]!["campaignMaximumUsd"] = 10.01; break;
             case "block-order": ((JsonArray)json["blocks"]!).ReverseInPlace(); break;
             case "control-order": ((JsonArray)json["controls"]!).ReverseInPlace(); break;
             case "count": json["blocks"]![0]!["measuredFrames"] = 129; break;
@@ -132,6 +132,15 @@ public sealed class RendererPerfProtocolTests
         if (code == "Json") Assert.NotNull(error.InnerException);
         Assert.Equal(0, factoryCalls);
         Assert.Equal(0, clockCalls);
+    }
+
+    [Fact]
+    public void Accepts_the_owner_campaign_envelope_of_ten_dollars()
+    {
+        JsonObject json = ManifestJson();
+        json["approval"]!["campaignMaximumUsd"] = 10;
+        RendererPerfManifest manifest = RendererPerfManifest.Parse(Encoding.UTF8.GetBytes(json.ToJsonString()));
+        Assert.Equal(10m, manifest.Approval.CampaignMaximumUsd);
     }
 
     [Fact]

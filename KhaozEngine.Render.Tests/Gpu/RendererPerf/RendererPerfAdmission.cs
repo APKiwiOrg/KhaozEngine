@@ -51,7 +51,7 @@ internal static class RendererPerfAdmission
         Require(info.Enabled && info.CompletionFences && device.Capabilities.SupportsTimestamps
             && device.Capabilities.SupportsCompletionFences
             && device.Diagnostics.SoftwareAdapter == (executionClass == RendererPerfExecutionClass.Rehearsal)
-            && !device.Diagnostics.IsDeviceLost, "The native device cannot supply hardware timestamp proof.");
+            && !device.Diagnostics.IsDeviceLost, "The native device cannot supply the required timestamp and completion proof.");
         string backend = device.Backend switch
         {
             GpuBackendKind.VulkanNative => "vulkan",
@@ -62,7 +62,7 @@ internal static class RendererPerfAdmission
         Require(info.Identity.Backend == backend && info.Identity.Adapter == device.Capabilities.DeviceName
             && RendererPerfAdapterPolicy.Matches(executionClass, info.Identity.SoftwareAdapter, backend, info.Identity.VendorId, info.Identity.DeviceId)
             && info.Identity.TimestampSupported && info.Identity.SoftwareAdapter == device.Diagnostics.SoftwareAdapter,
-            "Native device facts disagree with the independently inspected T4 identity.");
+            "Native device facts disagree with the independently inspected adapter identity.");
     }
 
     static void Require(bool condition, string reason)

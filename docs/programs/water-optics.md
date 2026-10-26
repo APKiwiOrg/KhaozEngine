@@ -27,6 +27,11 @@ floater sun shadows and adopts authored beds once the engine work ships.
 | M4 Native R8b optical adapter | waiting on the R8a native renderer | https://github.com/APKiwiOrg/KhaozEngine/issues/1300 | None beyond the normal GPU gate |
 | Adoption Grimhollow floater shadows and authored beds | waiting on the M2 release | https://github.com/APKiwiOrg/Grimhollow/issues/644 | Grimhollow owner |
 
+M2 now collects and uploads render-relative water volume records to a scene-owned buffer. Water-only
+frames prepare the shared camera grid, opted-out frames clear the uniform count without uploading, and
+renderer creation checks the future fragment storage buffer requirement. Receiver bindings, shader declarations
+and shading reads will land together. The cross-backend GPU proof remains in progress.
+
 ## Decisions in force
 
 - WO-D4: Underwater sunlight refracts the sun at the still-water surface for submerged receivers (Snell,
@@ -40,6 +45,10 @@ floater sun shadows and adopts authored beds once the engine work ships.
 - WO-D7: Public fixtures are synthetic. No Grimhollow image, model or source enters this repository.
 - WO-D8: The release carrying M2 is sent to the Grimhollow coordinator with its tag and adoption notes.
   Grimhollow keeps floaters without a sun shadow until then.
+- WO-D9: Allocate and upload water records before integrating receiver shading, but append the lit layout
+  bindings and declare the GLSL buffer only when shading first reads it. The optimizer removes an unread
+  declaration, which otherwise shifts Direct3D11 material registers out of agreement with the C# layouts.
+  Do not change the engine-wide shaderc preserve-bindings option for this staging step.
 
 ## Open questions and owner gates
 

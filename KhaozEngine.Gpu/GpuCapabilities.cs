@@ -106,6 +106,16 @@ namespace KhaozEngine.Gpu
             init => _maxColorAttachments = value;
         }
 
+        readonly int? _maxFragmentStorageBuffers;
+        /// <summary>Read-only or writable storage buffers available to a fragment stage. Defaults to Vulkan's
+        /// guaranteed minimum of four for older capability producers. Explicit reports, including zero, are
+        /// preserved so a renderer can refuse an unsupported layout before creating pipelines.</summary>
+        public int MaxFragmentStorageBuffers
+        {
+            get => _maxFragmentStorageBuffers ?? 4;
+            init => _maxFragmentStorageBuffers = value;
+        }
+
         public GpuCapabilities(bool clipSpaceYInverted, bool depthRangeZeroToOne,
             string deviceName = "", bool samplerAnisotropy = false, bool samplerLodBias = false,
             int maxMsaaSampleCount = 1, bool supportsShadowMaps = true, bool supportsCompute = false,

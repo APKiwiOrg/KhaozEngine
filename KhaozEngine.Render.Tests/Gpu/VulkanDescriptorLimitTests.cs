@@ -54,6 +54,18 @@ namespace KhaozEngine.Tests.Gpu
 
         static GpuResourceLayoutDescription L(params GpuResourceLayoutElement[] elements) => new(elements);
 
+        [Theory]
+        [InlineData(0)]
+        [InlineData(2)]
+        [InlineData(3)]
+        [InlineData(16)]
+        public void FragmentStorageCapabilityPreservesTheReportedLimit(int reported)
+        {
+            GpuCapabilities caps = VulkanCapabilityRead.Assemble("device", false, true, GpuSampleCounts.One, 4,
+                maxFragmentStorageBuffers: reported);
+            Assert.Equal(reported, caps.MaxFragmentStorageBuffers);
+        }
+
         /// <summary>
         /// EVERY SHIPPED <c>CreateResourceLayout</c> SITE, transcribed with its own source line. All but one are in
         /// <c>KhaozEngine.Render2D</c> and <c>KhaozEngine.Render3D</c>, because every other renderer draws through

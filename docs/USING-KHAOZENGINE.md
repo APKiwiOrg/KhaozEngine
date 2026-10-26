@@ -5773,6 +5773,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     halfExtentX, halfExtentZ))` once per body of water each frame (several lakes/ponds queue one `WaterPlane` each).
     No call this frame means the water pass never runs - existing scenes stay byte-stable, matching the `Sky`/`Bloom`
     opt-in convention. Cleared every `Begin()` like the decal/shadow-blob queues.
+  - **Underwater volume uploads** expose `scene.WaterVolumeClusters` for the resolved opt-in records and
+    cluster references. The current infrastructure uploads records without changing shading. See the
+    [Render3D water reference](../KhaozEngine.Render3D/README.md) for the opt-in and empty-frame contract.
   - **Per-plane look** (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
     identical**): a trailing optional constructor parameter, so every call site written before this existed still
     compiles and still packs from the caller's own `Post.Water` object unchanged. Every field on `WaterLook`

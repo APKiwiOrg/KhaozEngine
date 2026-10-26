@@ -27,10 +27,10 @@ namespace KhaozEngine.Tests.Gpu
         readonly FakeGpuResourceFactory _factory;
 
         internal FakeGpuDevice(GpuBackendKind backend = GpuBackendKind.Vulkan, bool supportsShadowMaps = true,
-            int maxColorAttachments = 8, int maxMsaaSampleCount = 1)
+            int maxColorAttachments = 8, int maxMsaaSampleCount = 1, GpuCapabilities? capabilityOverride = null)
         {
             Backend = backend;
-            Capabilities = new GpuCapabilities(
+            Capabilities = capabilityOverride ?? new GpuCapabilities(
                 clipSpaceYInverted: false, depthRangeZeroToOne: true, deviceName: "FakeGpuDevice",
                 samplerAnisotropy: false, samplerLodBias: false, maxMsaaSampleCount: maxMsaaSampleCount,
                 supportsShadowMaps: supportsShadowMaps, supportsCompute: false, supportsCompletionFences: false)
@@ -173,7 +173,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (ThrowOnBufferCreate == Buffers.Count + 1)
                 throw new InvalidOperationException("planned buffer creation failure");
-            var b = new FakeBuffer(d.SizeInBytes);
+            var b = new FakeBuffer(d.SizeInBytes, d.StructureByteStride, d.Usage);
             Buffers.Add(b);
             return b;
         }
@@ -268,8 +268,15 @@ namespace KhaozEngine.Tests.Gpu
 
     internal sealed class FakeBuffer : IGpuBuffer
     {
-        internal FakeBuffer(uint sizeInBytes) => SizeInBytes = sizeInBytes;
+        internal FakeBuffer(uint sizeInBytes, uint structureByteStride = 0, GpuBufferUsage usage = default)
+        {
+            SizeInBytes = sizeInBytes;
+            StructureByteStride = structureByteStride;
+            Usage = usage;
+        }
         public uint SizeInBytes { get; }
+        internal uint StructureByteStride { get; }
+        internal GpuBufferUsage Usage { get; }
 
         /// <summary>Whether the owner freed this handle, the same one thing <see cref="FakeTexture"/> records and
         /// for the same reason: it is what pins the frame a retired buffer is actually destroyed on.</summary>

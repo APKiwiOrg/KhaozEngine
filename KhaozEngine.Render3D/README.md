@@ -926,6 +926,14 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     producer explicitly loads its retained CPU fields into the new scene.
   See [consumer use](../docs/USING-KHAOZENGINE.md) for a worked binding and
   [TileWorld](../KhaozEngine.TileWorld.Render3D/README.md) for the triangle producer.
+- Underwater volume uploads (`scene.WaterVolumeClusters`). Queued planes whose resolved
+  `WaterSettings.UnderwaterSunlight` is true contribute render-relative records, including their optional
+  `WaterPlane.FloorY`, resolved absorption and penumbra. The scene default is false and `WaterLook` can override
+  it per plane. Diagnostics expose `RecordCount`, `DroppedRecords`, `ReferenceCount` and `OverflowedClusters`.
+  Water-only frames prepare the same camera grid as point lights. Empty and opted-out frames set the count
+  in `ClusterCamera.w` to zero and skip water uploads, so retained buffer contents cannot be read next frame.
+  These uploads prepare a scene-owned buffer for the underwater lighting path. Receiver bindings and shader
+  declarations will be added together with the first shading reads. Existing lit layouts are unchanged.
 - Per-plane water look (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
   identical**): a trailing optional constructor parameter on `WaterPlane`, so every call site written before this
   existed still compiles and still packs from the caller's own `WaterSettings` object unchanged. Every field on

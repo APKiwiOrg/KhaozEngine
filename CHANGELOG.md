@@ -12,6 +12,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   limit. Direct3D 11 intersects the adapter-dependent resource guarantee with the full raw-view limit.
   Renderer controls refuse incompatible whole-buffer bindings before constructing control resources.
 - Certify the complete six-record renderer control shader corpus, including both graphics pairs.
+- Resume automation accepts after `Interrupted` while the listener is running, and treat disposal as quiet
+  shutdown. Deterministic loopback tests cover terminal accept faults and established-client lifetimes separately.
 
 ## 21.14.0
 

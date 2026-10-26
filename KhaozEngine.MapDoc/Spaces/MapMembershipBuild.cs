@@ -13,8 +13,11 @@ internal sealed class MapMembershipBuild : IDisposable
     readonly MapPreparationScope _product;
     internal readonly MapRoofPreparationCounts Counts;
     internal static MapMembershipBuild? Current => t_current;
-    internal MapMembershipBuild(MapSceneAdmission admission, MapPreparationScope product, MapRoofPreparationCounts counts)
-    { _admission = admission; _product = product; Counts = counts; _previous = t_current; t_current = this; }
+    internal MapSceneAdmission Admission => _admission;
+    internal MapPreparationReservation Product => _product.WorkspaceOwner;
+    internal MapScopedScene? Scene { get; }
+    internal MapMembershipBuild(MapSceneAdmission admission, MapPreparationScope product, MapRoofPreparationCounts counts, MapScopedScene? scene = null)
+    { _admission = admission; _product = product; Counts = counts; _previous = t_current; Scene = scene ?? _previous?.Scene; t_current = this; }
     internal static void Inventory(long bytes)
     {
         if (t_current is { } build) build._admission.BeforeGeometry(bytes, build._product.WorkspaceOwner);

@@ -151,6 +151,10 @@ internal sealed partial class MapPreparationLedger(long allowance, string limitN
         {
             Window? stop = this;
             while (stop is not null && !covered.Contains(stop)) stop = stop.Parent;
+            return ReferenceUntil(bytes, stop);
+        }
+        internal IDisposable ReferenceUntil(long bytes, Window? stop)
+        {
             Window? binding = null;
             for (var view = this; view != stop; view = view!.Parent)
                 if (binding is null || view!.Remaining < binding.Remaining) binding = view;

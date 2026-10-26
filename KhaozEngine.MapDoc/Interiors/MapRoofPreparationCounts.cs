@@ -42,6 +42,11 @@ public sealed class MapRoofPreparationCounts
     public long CoefficientPoolCapacity { get; internal set; }
     public long SideTableRows { get; internal set; }
     public long SideTableBytes { get; internal set; }
+    public long FootprintCacheHits { get; internal set; }
+    public long FrozenBoundRows { get; internal set; }
+    public long FrozenBoundCapacityBytes { get; internal set; }
+    public long SharedCapacityBytes { get; internal set; }
+    public long PrivateCapacityBytes { get; internal set; }
     public long FaceKeyRows { get; internal set; }
     public long GeometryArenaPages { get; internal set; }
     public long GeometryArenaCapacityBytes { get; internal set; }

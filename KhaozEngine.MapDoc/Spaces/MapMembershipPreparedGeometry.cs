@@ -105,11 +105,12 @@ internal sealed class MapMembershipPreparedGeometry
         { Reference = reference; Cells = cells; _index = new(arena, cells); }
         internal Cell? Find(MapExactXz point, MapMembershipExact exact) => _index.Find(point, exact);
     }
-    internal long InventoryBytes => checked(768L + (_arenaOwner?.InventoryBytes ?? 0) +
+    internal long InventoryBytes => checked(768L + Bounds.InventoryBytes + (_arenaOwner?.InventoryBytes ?? 0) +
         Surfaces.Values.Sum(s => s.InventoryBytes) + 128L * (ByCell.PatchCount + Validated.Count) +
         FaceSets.InventoryBytes + OpeningSets.Values.Sum(s => 96L + 64L * s.Count));
     readonly MapMembershipGeometryArena? _arenaOwner;
     internal readonly MapMembershipCellRange Cells;
+    internal readonly MapMembershipFrozenBoundStore Bounds;
     internal readonly Dictionary<string, Surface> Surfaces = new(StringComparer.Ordinal);
     internal readonly MapMembershipCellLookup ByCell;
     internal readonly Dictionary<MapPatchKey, MapValidatedSurfacePatch> Validated;
@@ -124,6 +125,7 @@ internal sealed class MapMembershipPreparedGeometry
         _arenaOwner = building.Owns ? arena : null;
         MapMembershipBuild.Inventory(checked(768L + 256L * plan.Patches.Count));
         ByCell = new(arena, plan.Patches.Count); FaceSets = new(arena);
+        Bounds = MapMembershipFrozenBoundStore.Create(this);
         Validated = new(plan.Patches.Count);
         using var collections = MapMembershipBuild.Kernel(checked(1024L + 32L * plan.Cells + 96L * view.Surfaces.Count));
         var bySurface = new Dictionary<string, List<int>>(StringComparer.Ordinal);

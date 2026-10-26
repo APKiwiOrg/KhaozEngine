@@ -300,28 +300,26 @@ public sealed class MapRoofEvaluationAllocationTests
     [Fact]
     public void Prepare_SharedAdmissionChargesAggregateBeforeCreatingAnotherBuffer()
     {
-        var fixture = PrefabFixtures.LinkedBuildings();
-        using var native = new NativeSceneFixture(fixture.Document, fixture.Assets);
-        var scope = new MapSceneScope(new(WorldFrame.Origin, new(-32, -32), new(32, 32), null, null,
-            Enum.GetValues<MapSurfaceRole>(), null, new()), new(-32, -32, -32, 32, 32, 32), MapSceneChannels.All);
-        var scene = NativeSceneFixtures.Open(native, false).Acquire(scope).Scene!;
-        Assert.Equal(MapSceneStatus.CompleteForScope, MapMembershipPreparation.Measure(scene, out var demand, out _));
-        var measured = new MapSceneAdmission(new());
-        var probe = MapRoofEvaluationBuffer.Prepare(scene, measured);
-        Assert.NotNull(probe.Buffer);
-        var admission = new MapSceneAdmission(new(MaxPreparedBytes: measured.PeakBytes));
+        using var native = MapMembershipIntervalFixtures.Create("plain");
+        var scene = NativeSceneFixtures.Open(native, false).Acquire(MapMembershipIntervalTests.Scope()).Scene!;
+        // The hand-enumerated plain construction fits 200000 bytes. Another buffer overlaps its live owners.
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 200000));
         var prepared = MapRoofEvaluationBuffer.Prepare(scene, admission);
         Assert.NotNull(prepared.Buffer);
-        Assert.Equal(prepared.Buffer.RetainedBytes, admission.RetainedBytes);
+        using var owner = prepared.Buffer.PreparationOwnership!;
+        Assert.Equal(MapMembershipCompactInventory.Retained, prepared.Buffer.RetainedBytes);
+        Assert.Equal(MapMembershipCompactInventory.Root, admission.RetainedBytes);
         Assert.Equal(0, admission.WorkspaceBytes);
         var refused = MapRoofEvaluationBuffer.Prepare(scene, admission);
         Assert.Equal(MapSceneStatus.CapacityExceeded, refused.Status);
         Assert.Null(refused.Buffer);
         Assert.Equal("MaxPreparedBytes", refused.Capacity!.LimitName);
-        Assert.Equal(measured.PeakBytes, refused.Capacity.Allowance);
+        Assert.Equal(200000, refused.Capacity.Allowance);
         Assert.True(refused.Capacity.Requested > refused.Capacity.Allowance);
-        Assert.Equal(prepared.Buffer.RetainedBytes, admission.RetainedBytes);
+        Assert.Equal(MapMembershipCompactInventory.Root, admission.RetainedBytes);
         Assert.Equal(0, admission.WorkspaceBytes);
+        owner.Dispose();
+        Assert.Equal(0, admission.RetainedBytes);
     }
 
     [Theory]

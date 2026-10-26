@@ -112,11 +112,11 @@ public sealed class MapMembershipGeometryArenaTests
         try
         {
             // Arena 112, eleven column owners of 48, coefficient store 32 and its two owners of 48.
-            // Six geometry pages, five side-table pages and one token page each have a 32-byte directory.
+            // Private cells own twelve pages. The separately leased footprint owns four pages.
             // Capacities are 64 polygon/cell rows, 128 vertex/corner/face rows and 32 triangle/side rows.
             Assert.Equal(32, Unsafe.SizeOf<MapPatchKey?>());
-            Assert.Equal(12, Count("GeometryArenaPages"));
-            Assert.Equal(30240, Count("GeometryArenaCapacityBytes"));
+            Assert.Equal(16, Count("GeometryArenaPages"));
+            Assert.Equal(30240 + 14432, Count("GeometryArenaCapacityBytes"));
             Assert.Equal(2, Count("FaceKeyRows"));
         }
         finally { result.Buffer.PreparationOwnership!.Dispose(); }

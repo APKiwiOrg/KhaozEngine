@@ -16,23 +16,20 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
 {
     readonly record struct Active(MapMembershipPreparedFootprint Footprint, MapMembershipBoundPlan Lower, MapMembershipBoundPlan Upper);
     readonly record struct Demand(MapMembershipPreparedGeometry.Cell Cell, int Opening);
-    readonly record struct Prism(MapSpaceDoc Space, string Owner, string Parent, MapMembershipPolygonRange Rings,
-        MapExactValue Lower, MapExactValue Upper);
-    internal long InventoryBytes => checked(512L + _geometry.InventoryBytes + MapMembershipExact.StorageBytes + (_arenaOwner?.InventoryBytes ?? 0) +
-        _footprints.Sum(f => 8L + f.InventoryBytes) + _portals.Sum(p => 8L + p.InventoryBytes) +
-        192L * _spaces.Count + _ancestors.Values.Sum(a => 96L + 8L * a.Length) +
-        _prisms.Length * 128L + (long)Unsafe.SizeOf<Active>() * _active.Length + (long)Unsafe.SizeOf<Demand>() * _demands.Length +
+    internal long InventoryBytes => checked(256L + _prepared.InventoryBytes + MapMembershipExact.StorageBytes +
+        (long)Unsafe.SizeOf<Active>() * _active.Length + (long)Unsafe.SizeOf<Demand>() * _demands.Length +
         8L * (_validated.Length + _physical.Length + _opening.Length) + 8L * _patchFaces.Length +
         MapMembershipPointScratch.Bytes(_scratch.Raw.Length, _scratch.Prisms.Length));
-    readonly MapMembershipGeometryArena? _arenaOwner;
-    readonly MapScopedSurfaces _view;
-    readonly MapMembershipPreparedGeometry _geometry;
-    readonly MapMembershipPreparedFootprint[] _footprints;
-    readonly MapMembershipPreparedPortal[] _portals;
-    readonly Dictionary<string, MapSpaceDoc> _spaces;
-    readonly Dictionary<string, string> _owners;
-    readonly Dictionary<string, MapSpaceDoc[]> _ancestors;
-    readonly Prism[] _prisms;
+    internal long SharedBytes => _prepared.SharedBytes;
+    readonly MapMembershipPreparedView _prepared;
+    MapScopedSurfaces _view => _prepared.View;
+    MapMembershipPreparedGeometry _geometry => _prepared.Geometry;
+    MapMembershipPreparedFootprint[] _footprints => _prepared.Footprints;
+    MapMembershipPreparedPortal[] _portals => _prepared.Portals;
+    Dictionary<string, MapSpaceDoc> _spaces => _prepared.Spaces;
+    Dictionary<string, string> _owners => _prepared.Owners;
+    Dictionary<string, MapSpaceDoc[]> _ancestors => _prepared.Ancestors;
+    MapMembershipPreparedView.Prism[] _prisms => _prepared.Pieces;
     readonly Active[] _active;
     readonly Demand[] _demands;
     readonly long[] _validated, _physical, _opening;
@@ -40,8 +37,8 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
     readonly long[] _patchFaces;
     readonly MapMembershipPointScratch _scratch;
     readonly MapMembershipExact _exact = new();
-    readonly long _prismVertices;
-    readonly string? _roomFailure;
+    long _prismVertices => _prepared.PrismVertices;
+    string? _roomFailure => _prepared.RoomFailure;
     MapExactXz _point;
     MapExactValue _y;
     int _activeCount, _demandCount, _validatedCount;
@@ -51,44 +48,14 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
 
     internal MapSpaceMembershipScratch(MapScopedSurfaces view, MapMembershipPreparation demand, MapMembershipDemandPlan? plan = null)
     {
-        using var building = MapMembershipArenaBuilder.Begin();
-        _arenaOwner = building.Owns ? building.Arena : null;
-        _view = view;
-        var records = MapSpaceGeometry.Records(view).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
-        Prisms = records.OfType<MapPrismDomain>().ToArray();
-        _spaces = records.OfType<MapSpaceDoc>().ToDictionary(s => s.Id, StringComparer.Ordinal);
-        _owners = _spaces.ToDictionary(p => p.Key, p => MapSpaceGeometry.Owner(view, p.Value), StringComparer.Ordinal);
-        _ancestors = _spaces.ToDictionary(p => p.Key, p => MapSpaceGeometry.Ancestors(view, p.Value).ToArray(), StringComparer.Ordinal);
-        _prismVertices = Prisms.Sum(MapPrismGeometry.Cost);
-        var roots = records.OfType<MapSpaceFootprint>().ToArray();
-        if (roots.Any(f => _spaces.TryGetValue(f.Space.Id, out var s) && s.Kind == MapSpaceKind.Room))
-            _roomFailure = "room occupancy requires its prism, not a second lattice domain";
-        else if (_spaces.Values.Any(s => s.Kind == MapSpaceKind.Room && s.AliasOf is null && Prisms.Count(p => p.Space.Id == s.Id) != 1))
-            _roomFailure = "room requires one acquired prism";
-        plan ??= new(view, records);
-        _geometry = new(view, records, plan);
-        _footprints = roots.Select(f => new MapMembershipPreparedFootprint(view, _geometry, f, plan)).ToArray();
-        _portals = records.OfType<MapCavePortal>().Select(p => new MapMembershipPreparedPortal(view, _geometry, p, Prisms)).ToArray();
-        _prisms = Prisms.Select(p =>
-        {
-            using var domainWorkspace = MapMembershipBuild.Kernel(checked(32768L + 1024L * MapPrismGeometry.Cost(p)));
-            MapPrismCoverage.RequireStorey(view, p);
-            var s = _spaces[p.Space.Id];
-            if (s.Kind != MapSpaceKind.Room || s.Parent != p.Parent) throw new MapDocumentException("missing geometry: prism parent mismatch");
-            var domain = MapPrismGeometry.Prepare(view, p);
-            var heights = MapPrismGeometry.Heights(view, p);
-            int first = building.Arena.Polygons.Count;
-            foreach (var piece in domain.Pieces) _ = new MapMembershipPolygon(piece.Ring);
-            return new Prism(_spaces[_owners[s.Id]], _owners[s.Id], _owners[p.Parent.Id],
-                new(building.Arena, first, domain.Pieces.Count), heights.Lower, heights.Upper);
-        }).ToArray();
+        _prepared = new(view, plan);
         _active = new Active[_footprints.Length];
         _demands = new Demand[checked(2 * _footprints.Length + 16 * _portals.Length + view.Surfaces.Count)];
         _validated = new long[_geometry.PatchCount]; _physical = new long[_geometry.Cells.Length];
         _opening = new long[_geometry.FaceSets.Count]; _patchFaces = new long[_geometry.PatchCount];
         _scratch = new(demand.Parts, Prisms.Length);
     }
-    public MapPrismDomain[] Prisms { get; }
+    public MapPrismDomain[] Prisms => _prepared.Prisms;
     public int CandidateCount => _activeCount;
     public int PortalCount => _portals.Length;
     public int MaxDepth => _view.Scope.Limits.MaxRecordDepth;

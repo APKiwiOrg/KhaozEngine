@@ -14,6 +14,17 @@ internal sealed class MapPreparationInventory : IDisposable
     readonly Shared _shared;
     bool _disposed;
     internal long Bytes => _shared.Bytes;
+    internal static MapPreparationInventory Own(long bytes, params IDisposable?[] pieces)
+    {
+        var owned = new List<IDisposable>(pieces.Length);
+        foreach (var piece in pieces) if (piece is not null) owned.Add(piece);
+        return new(owned, bytes);
+    }
+    // A frozen arena has one fixed set of identities. Its registry dies with that arena's last lease,
+    // keeping directory high-water storage out of the long-lived source inventory registry.
+    internal static MapPreparationInventory AcquireIsolated(MapSceneAdmission admission,
+        IEnumerable<(object Identity, long Bytes)> inventory, MapPreparationReservation workspace) =>
+        new Registry(admission).Acquire(inventory, workspace, null, workspace, false);
     MapPreparationInventory(List<IDisposable> pieces, long bytes) => _shared = new(pieces) { Bytes = bytes };
     MapPreparationInventory(Shared shared) => _shared = shared;
     internal static MapPreparationInventory Acquire(MapSceneAdmission admission,

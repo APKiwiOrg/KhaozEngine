@@ -5764,15 +5764,22 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   ripple normal on top, a camera-distance detail fade, per-channel Beer-Lambert depth grading of the body colour, a
   fresnel blend toward the reflected sky, a GGX sun glint with distance/footprint roughness widening,
   procedural whitecap and shoreline foam, and a depth-driven shore fade at the waterline.
-  **No refraction, no screen-space reflections, no caustics, no submerged view** - the reflection is the
+  **No view-ray refraction, no screen-space reflections, no caustics, no submerged view** - the reflection is the
   sky only (the legacy gradient or the enabled atmosphere's sky-view LUT, with a CPU mirror through
   `AtmosphereModel`). Feed the returning camera-aware `SunCycle.Apply` horizon to `Post.Water.HorizonColor`.
   Issue #54 records probes/SSR as not planned at the current bar. This is a stylized LDR surface, not a
-  physically accurate one.
+  physically accurate one. Underwater sunlight is separately opt-in per water body. How submerged receivers are lit
+  is described under key shadows.
   - **Request** (per-frame, WHERE to draw): call `scene.DrawWater(new WaterPlane(centerX, surfaceY, centerZ,
     halfExtentX, halfExtentZ))` once per body of water each frame (several lakes/ponds queue one `WaterPlane` each).
     No call this frame means the water pass never runs - existing scenes stay byte-stable, matching the `Sky`/`Bloom`
     opt-in convention. Cleared every `Begin()` like the decal/shadow-blob queues.
+  - **Water volume** (`WaterPlane.FloorY`, default `null` = unbounded below): pass the optional trailing constructor
+    argument when the body has a lowest world Y under the plane rectangle. Receivers below it are outside the body.
+    The floor is a conservative slab, not exact local containment, so a dry space inside the slab under a higher part
+    of the bed can still count as submerged. Only its key path changes, and the bed above it already shadows that path,
+    so it stays dark. `DrawWater` refuses a non-finite floor or one above `SurfaceY`. Render-origin rebasing carries
+    it with the plane, and stacked bodies resolve to the nearest surface above a receiver.
   - **Per-plane look** (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
     identical**): a trailing optional constructor parameter, so every call site written before this existed still
     compiles and still packs from the caller's own `Post.Water` object unchanged. Every field on `WaterLook`
@@ -5788,9 +5795,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         SurfStrength = 0f,
     }));
     ```
-    **37 fields are overridable**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
-    (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars,
-    `ShoreFadeDistance`, and the
+    **Overridable fields**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
+    (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`UnderwaterSunlight`/`UnderwaterPenumbraPerMetre`/
+    `ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars, `ShoreFadeDistance`, and the
     two depth-response strengths `ShoalingStrength`/`SurfStrength`. **What stays scene-wide, and cannot be put on
     a look at all**: `SeaState` (one FFT bake - calling the producer twice a frame with two sea states does not
     make two oceans, it makes the one producer rebake on every call for both states and corrupts the persistent
@@ -5879,8 +5886,14 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     [TileWorld package reference](../KhaozEngine.TileWorld.Render3D/README.md#authored-optical-beds).
   - **Settings** (`Post.Water`, scene-wide look, lives alongside `Post.Sky` for the same reason - both are
     scene-appearance bags reached off `Post`). Grouped by what they do:
-    - *Body colour*: `DeepColor`/`ShallowColor`, graded by `AbsorptionPerMetre` (per-channel 1/metre coefficients;
-      all-zero falls back to the legacy two-stop blend over `ShallowDepth`), plus `Opacity`.
+    - *Body colour*: `DeepColor`/`ShallowColor`, graded by `AbsorptionPerMetre` (per-channel 1/metre coefficients,
+      all-zero falls back to the legacy two-stop blend over `ShallowDepth`), plus `Opacity`. The resolved absorption
+      also drives underwater sunlight, where all-zero absorption means no attenuation.
+    - *Underwater sunlight*: `UnderwaterSunlight` (scene default `false`) and
+      `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
+      The penumbra value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or
+      unbound. The water refractive index is the fixed constant `1.333`, not a setting. A frame with no opted-in water
+      renders exactly as before.
     - *Reflection*: `SkyReflectionStrength` (0 = the flat `HorizonColor`, 1 = the sky along the reflected ray) and
       `SkyReflectionSunStrength` (how much of the sky's disc + halo the reflection carries).
     - *Swell*: `SwellAmplitude` (0 = flat plane), `SwellWavelength`, `SwellDirectionDegrees`, `SwellSpreadDegrees`,

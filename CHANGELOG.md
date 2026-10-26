@@ -9,6 +9,14 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-27
 
+- Store roof membership geometry in compact ledger-owned arena columns. Exact coefficients are 16-byte tokens with
+  pooled large magnitudes, and polygons, triangles, cells and bound rows are packed columns. Footprint products are
+  shared across a window's buffers under a full identity key and charged once per borrowing window. Query results,
+  first-match rank and failures are unchanged. `MapRoofPreparationCounts` adds representation row and capacity counts.
+- Settle native scene upload reservations to the inventoried surviving resources once transient inputs are released,
+  and release GPU staging after the device signals transfer completion. Admission still reserves the full upload peak
+  before work. Residency recording maps shrink when their references fall to zero or below half capacity, so an empty
+  residency returns to its source-only baseline.
 - Native foliage batches share immutable instance columns across cache and render views. After batch disposal,
   `MapNativeFoliageBatch.GeneratedIdentities` and `CoverBatches` throw `ObjectDisposedException`. Capture detached
   snapshots before requesting an accepted-plan replacement. Public snapshots and foliage payloads from public

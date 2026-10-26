@@ -406,6 +406,8 @@ internal sealed class NativeUploadReservation(SceneUploadDemand demand) : IScene
         ReservedBytes = value.OwnedGpuBytes + value.PeakStagingGpuBytes + value.PeakCpuBytes;
     }
     public void Published(SceneResourceHandle handle) => Assert.True(handle.Value > 0);
+    public void TransferCompleted() => ReservedBytes -= Demand.PeakStagingGpuBytes;
+    public void InputsReleased(long retainedCpuBytes) => ReservedBytes -= Demand.PeakCpuBytes - retainedCpuBytes;
     public void Retiring() { }
     public void Released() { ReleaseCount++; ReservedBytes = 0; }
     public void Dispose() => DisposeCount++;

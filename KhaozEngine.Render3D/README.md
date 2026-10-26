@@ -1630,14 +1630,21 @@ Detached inputs compute their digest when constructed. `PrepareResourceUpload(da
 that digest and the complete demand, then calls `ISceneUploadReservation.Claim` before preparing or allocating.
 `Advance(bytes)` copies at most that allowance through bounded buffers and texture rows/mips. A budget smaller
 than the next aligned element makes no progress. Native mip staging samples source texel centres bilinearly.
-`Ready` includes completion of the final GPU fence. Publication refuses until ready and succeeds once.
+`Ready` includes completion of the final GPU fence. Observing completion disposes the transfer-only fence and
+command list, then calls `ISceneUploadReservation.TransferCompleted` to return GPU staging credit. Devices
+without completion fences use the existing idle wait. Publication refuses until ready and succeeds once.
+After publication releases detached inputs and all transfer-row backing storage, `InputsReleased` settles CPU
+to an independent inventory of surviving owner metadata, GPU wrappers and foliage arrays. The ownership list
+is compacted before returning credit. Preparation inputs, welding, mip workspace and CPU transfer staging do
+not remain in that inventory. The original complete peak is still reserved before any preparation or factory.
 
 `SceneResourceAccess(scene)` resolves published mesh handles through `MeshOf` and submits rigid descriptors
 through `DrawResourceAnchored`. It replaces only the mesh. Water uses the same published mesh and its retained
 original domain. `SceneGroundMaterialData` binds terrain through the shared tile-ground material and mesh path.
 An empty light registration owns no mesh bytes and never resolves as a mesh. Unready, released, foreign-scene
 and non-mesh handles refuse. A mesh returned by `MeshOf` is borrowed, so release it through `ReleaseResource`.
-Cancellation and release retain the aggregate lease until actual destruction behind the scene's retire queue.
+Cancellation before publication retains its unsettled reservation until actual destruction behind the scene's
+retire queue. Published resources retain only their surviving CPU and GPU ownership until destruction.
 Scene disposal also cancels pending uploads and releases published resources.
 Shared material rebinding transfers disposal ownership to the replacement set. Released native terrain
 material slots are reused by later uploads, while legacy material handles retain stable indices.

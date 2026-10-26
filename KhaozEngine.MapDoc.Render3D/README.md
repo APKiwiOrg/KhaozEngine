@@ -240,9 +240,12 @@ replace its image while retaining an identical mesh. Frames borrow admitted inpu
 
 `MapRenderAdmission` charges source metadata, encoded closure retention, decoder peaks, prepared plans and the
 renderer-measured upload demand. Settled plans include the unique canonical water allocations retained by their
-batch readers, alongside the plan and scene receipts. `MapUploadReservation` is claimed before factories, and claimed credit returns
-only on the renderer's final `Released` callback. Published and retiring allocations keep their original charge.
-The staging allowance and decoded upload borrow remain held through retirement. `MaxRetiredGpuBytes` never
+batch readers, alongside the plan and scene receipts. `MapUploadReservation` is claimed before factories with
+the unchanged complete CPU and GPU peak. GPU staging credit returns only after transfer completion on the
+device. After publication drops detached inputs and transfer storage, CPU settles to the renderer's independent
+retained inventory. Final `Released` returns only the remaining CPU and owned GPU payload, once. Cancellation
+before publication returns all unsettled credit at destruction. The decoded upload borrow remains held through
+retirement. `MaxRetiredGpuBytes` never
 adds sharing credit. `MapRenderLifetime` reports the live charged ownership groups and actual transfer bytes.
 
 A queue entry is one atomic composite replacement. Its windows share one live preparation ledger,

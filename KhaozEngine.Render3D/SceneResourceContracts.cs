@@ -5,15 +5,20 @@ namespace KhaozEngine.Render3D;
 
 public readonly record struct RenderAnchor(long X, long Y, long Z);
 public readonly record struct SceneResourceHandle(long Value);
+/// <summary>Complete before-work envelope. GPU payload survives publication, staging is transient, and CPU
+/// partitions at input release using an independent inventory of the surviving objects.</summary>
 public sealed record SceneUploadDemand(string InputDigest, long OwnedGpuBytes, long PeakStagingGpuBytes,
     long PeakCpuBytes, long MaxRetiredGpuBytes, long TransferBytes);
 
-/// <summary>Claim precedes every allocation factory. Retirement holds its charge until Released confirms destruction.</summary>
+/// <summary>Claim precedes every allocation factory. Transient credit settles only after its ownership ends.
+/// Retirement holds the retained remainder until Released confirms destruction.</summary>
 public interface ISceneUploadReservation : IDisposable
 {
     SceneUploadDemand Demand { get; }
     void Claim(SceneUploadDemand demand);
+    void TransferCompleted();
     void Published(SceneResourceHandle handle);
+    void InputsReleased(long retainedCpuBytes);
     void Retiring();
     void Released();
 }

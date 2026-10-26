@@ -14,7 +14,7 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
     RendererPerfRuntimePolicy Runtime, RendererPerfExecutionPolicy Execution, RendererPerfLimits Limits,
     RendererPerfBudget Budget, RendererPerfApproval Approval)
 {
-    internal RendererPerfExecutionClass ExecutionClass => Preset == "rehearsal" ? RendererPerfExecutionClass.Rehearsal : RendererPerfExecutionClass.Performance;
+    internal RendererPerfExecutionClass ExecutionClass => Preset is "rehearsal" or "rehearsal-full" ? RendererPerfExecutionClass.Rehearsal : RendererPerfExecutionClass.Performance;
 
     internal int TotalFrameCount => checked(ConditioningFrames + Blocks.Sum(b => checked(b.WarmupFrames + b.MeasuredFrames))
         + Controls.Sum(c => checked(c.WarmupFrames + c.MeasuredFrames)));
@@ -69,8 +69,9 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
             && manifest.UnitId[0] != '-', "Identity", "Unit ID must be a safe lowercase filename token.");
         Hash(manifest.WorkloadSha, 40);
         Hash(manifest.BaselineMainSha, 40);
-        Require(manifest.Preset is "pilot" or "full" or "rehearsal", "Preset", "Unknown renderer preset.");
-        bool pilot = manifest.Preset != "full";
+        Require(manifest.Preset is "pilot" or "full" or "rehearsal" or "rehearsal-full", "Preset", "Unknown renderer preset.");
+        bool pilot = manifest.ExecutionClass == RendererPerfExecutionClass.Rehearsal
+            ? RendererPerfRehearsalPolicy.Class(manifest).Schedule == RendererPerfRehearsalSchedule.Pilot : manifest.Preset == "pilot";
         RendererPerfExecutionPolicy execution = manifest.Execution;
         Require(execution.Leg is "linux-vulkan" or "windows-d3d11" or "windows-vulkan", "Preset", "Unsupported hosted leg.");
         Require(!pilot || execution.Leg != "windows-vulkan", "Preset", "Windows Vulkan has no initial pilot preset.");

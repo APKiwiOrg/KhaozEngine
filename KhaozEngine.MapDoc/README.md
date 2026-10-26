@@ -681,6 +681,9 @@ Preparation selects the union of cells touched by footprint bounds, flagged indo
 It shares masked patch geometry and stores bound associations only for that coverage. Cold validation still checks
 unrelated acquired cells. Planner, validation and compiler workspace have separate lifetimes under the same byte
 allowance. `Counts` exposes only numerical construction and capacity evidence, including on header or later refusal.
+Borrowed-input preflight stays allocation free and runs before the interval when the header fits. An input or
+precision refusal there returns only its typed result. A header refusal takes precedence and includes interval
+evidence without creating product workspace or throwing a capacity exception.
 `HeaderBytes` covers borrowed-input controls. `CompleteAggregatePredictionAvailable` is false. Each owner admits
 its next justified capacity before allocation or growth, with old storage charged until its replacement is ready.
 `Membership`, `Header`, `Validation`, `Planner`, `Construction` and `Publication` report interval observations.

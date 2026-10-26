@@ -11,6 +11,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 - Expose membership preparation interval diagnostics for root and window admission, including stage requests,
   successful peaks and refusals. Label the borrowed-input header separately from complete aggregate predictions.
+  Preserve allocation-free input preflight and avoid product workspace on a header refusal.
 - Size prism validation arithmetic to active pieces, admit room domain copies before construction and settle
   uncovered polygon replacement capacity after its last overlap.
 

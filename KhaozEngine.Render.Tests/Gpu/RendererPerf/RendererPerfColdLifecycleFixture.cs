@@ -26,8 +26,9 @@ internal sealed class RendererPerfColdLifecycleFixture : IDisposable
     internal Func<IGpuDevice, RendererPerfBlock, IRenderPassObserver, IRendererPerfNativeWork>? WorkFactory;
     internal Func<IGpuDevice, RendererPerfRunIdentity>? Identify;
     internal Action<RendererPerfNativeSession>? SessionCreated;
-    internal RendererPerfColdLifecycleFixture()
+    internal RendererPerfColdLifecycleFixture(RendererPerfReport? template = null)
     {
+        if (template is not null) Template = template;
         Diagnostic.Configuration = RendererPerfConstructionFixture.Diagnostic;
         Diagnostic.CompilerApi = new ExecutableApi();
         Production.Trace = op => Event("production." + op);
@@ -54,7 +55,7 @@ internal sealed class RendererPerfColdLifecycleFixture : IDisposable
                 var info = new RendererPerfSessionInfo(Template.Identity, true, true, null, ImmutableDictionary<string, RendererPerfMetric>.Empty);
                 var session = new RendererPerfNativeSession(device, info, block, [], unitClock,
                     (wrapped, observer) => WorkFactory?.Invoke(wrapped, block, observer) ?? new Work(this, wrapped, block),
-                    capture: capture, operationOrdinal: ordinal);
+                    capture: capture, operationOrdinal: ordinal, executionClass: manifest.ExecutionClass);
                 SessionCreated?.Invoke(session);
                 return session;
             }, publication ?? Publication);

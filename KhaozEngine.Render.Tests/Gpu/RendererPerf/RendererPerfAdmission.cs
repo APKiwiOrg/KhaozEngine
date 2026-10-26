@@ -19,10 +19,10 @@ internal static class RendererPerfAdmission
         RendererPerfManifest.Hash(identity.HarnessSha256, 64);
         Require(identity.AuthorizationSha != identity.WorkloadSha && !string.IsNullOrWhiteSpace(identity.RunId),
             "An independent first-attempt authorization identity is required.");
-        Require(identity.SoftwareAdapter == false && identity.VendorId == 0x10de && identity.DeviceId == 0x1eb8
+        Require(RendererPerfAdapterPolicy.Matches(manifest.ExecutionClass, identity.SoftwareAdapter, identity.Backend, identity.VendorId, identity.DeviceId)
             && identity.TimestampSupported && identity.TimestampValidBits is >= 1 and <= 64
             && identity.TimestampPeriodNs is > 0 && double.IsFinite(identity.TimestampPeriodNs.Value),
-            "Native T4 hardware with usable timestamps is required.");
+            "The execution class requires its actual adapter identity and usable timestamps.");
         Require(identity.Backend == manifest.Execution.Backend && identity.CompletionPolicy == manifest.Execution.CompletionPolicy
             && identity.Runtime == runtime.RuntimeVersion && identity.GcMode == runtime.GcMode
             && identity.TieredCompilation == runtime.TieredCompilation && identity.Environment.Count == runtime.Environment.Count
@@ -45,10 +45,12 @@ internal static class RendererPerfAdmission
             "The actual session adapter, driver or runtime changed.");
     }
 
-    internal static void Device(IGpuDevice device, RendererPerfSessionInfo info)
+    internal static void Device(IGpuDevice device, RendererPerfSessionInfo info,
+        RendererPerfExecutionClass executionClass = RendererPerfExecutionClass.Performance)
     {
         Require(info.Enabled && info.CompletionFences && device.Capabilities.SupportsTimestamps
-            && device.Capabilities.SupportsCompletionFences && device.Diagnostics.SoftwareAdapter == false
+            && device.Capabilities.SupportsCompletionFences
+            && device.Diagnostics.SoftwareAdapter == (executionClass == RendererPerfExecutionClass.Rehearsal)
             && !device.Diagnostics.IsDeviceLost, "The native device cannot supply hardware timestamp proof.");
         string backend = device.Backend switch
         {
@@ -58,8 +60,8 @@ internal static class RendererPerfAdmission
             _ => "unsupported"
         };
         Require(info.Identity.Backend == backend && info.Identity.Adapter == device.Capabilities.DeviceName
-            && info.Identity.VendorId == 0x10de && info.Identity.DeviceId == 0x1eb8
-            && info.Identity.TimestampSupported && info.Identity.SoftwareAdapter == false,
+            && RendererPerfAdapterPolicy.Matches(executionClass, info.Identity.SoftwareAdapter, backend, info.Identity.VendorId, info.Identity.DeviceId)
+            && info.Identity.TimestampSupported && info.Identity.SoftwareAdapter == device.Diagnostics.SoftwareAdapter,
             "Native device facts disagree with the independently inspected T4 identity.");
     }
 

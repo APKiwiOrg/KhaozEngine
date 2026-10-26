@@ -179,9 +179,9 @@ public sealed class RendererPerfDriverTests
     internal sealed class DriverRig
     {
         internal readonly RendererPerfReport Template;
-        internal DriverRig(bool full = false)
+        internal DriverRig(bool full = false, RendererPerfReport? template = null)
         {
-            Template = RendererPerfProtocolTests.CompleteReport();
+            Template = template ?? RendererPerfProtocolTests.CompleteReport();
             if (full) Template = Template with
             {
                 Manifest = RendererPerfManifest.Parse(Encoding.UTF8.GetBytes(

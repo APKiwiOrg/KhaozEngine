@@ -32,12 +32,18 @@ internal sealed record RendererPerfCompilerEvidence(RendererPerfCollectionState 
 internal sealed record RendererPerfExecutionResult(RendererPerfReport? Report, ImmutableArray<GpuDiagnosticFailure> Failures);
 internal sealed record RendererPerfColdResult(RendererPerfCompilerInventory Inventory, RendererPerfCompilerEvidence Compiler,
     ImmutableArray<GpuPipelineCompilerReport> Pipelines, ImmutableArray<GpuDiagnosticFailure> Failures);
-internal sealed record RendererPerfPublicationResult(RendererPerfReport Report, ImmutableArray<GpuDiagnosticFailure> Failures);
+internal sealed record RendererPerfPublicationResult(RendererPerfReport Report, ImmutableArray<GpuDiagnosticFailure> Failures)
+{
+    internal bool Certified { get; init; }
+}
 internal sealed record RendererPerfFailurePublicationResult(RendererPerfUnitFailure Evidence, bool Written,
     ImmutableArray<GpuDiagnosticFailure> Failures);
 internal sealed record RendererPerfCollectionPreparation(bool Ready, ImmutableArray<GpuDiagnosticFailure> Failures);
 internal sealed record RendererPerfUnitOutcome(RendererPerfReport? Report, RendererPerfCompilerInventory? Inventory,
-    RendererPerfUnitFailure? EarlyFailure, ImmutableArray<GpuDiagnosticFailure> Failures);
+    RendererPerfUnitFailure? EarlyFailure, ImmutableArray<GpuDiagnosticFailure> Failures)
+{
+    internal bool Certified { get; init; }
+}
 internal sealed record RendererPerfUnitFailure(string Schema, RendererPerfAuthorization Authorization,
     ImmutableDictionary<string, string> KnownFacts, long ColdStart, long EndTicks, long Frequency,
     string OriginalFailure, ImmutableArray<string> Errors, ImmutableArray<RendererPerfCpuSpan> Stages,

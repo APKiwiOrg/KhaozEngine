@@ -75,7 +75,8 @@ internal static class RendererPerfCompilerCorrespondence
         {
             Require((uint)o.OperationOrdinal < (uint)i.Operations.Length && o.CreationOrdinal >= 0 && Enum.IsDefined(o.Kind)
                 && roles.Add((o.OperationOrdinal, o.Kind, o.CreationOrdinal)) && o.BindCount >= 0
-                && Enum.IsDefined(o.Stage) && (o.Stage == RendererPerfConstructionStage.Cold ? o.FrameIndex is null
+                && Enum.IsDefined(o.Stage) && (o.Stage == RendererPerfConstructionStage.Cold
+                    ? o.FrameIndex is null || o.OperationOrdinal == 0 && o.FrameIndex >= 0 && i.Operations[0] == "conditioning:S3/TotalOnly/0"
                     : o.FrameIndex is { } f && (o.Stage == RendererPerfConstructionStage.Warmup) == (f < 0)), "Occurrence role or frame membership is invalid.");
             Require(o.Stage != RendererPerfConstructionStage.Measured, "Measured first pipeline creation refuses steady-state promotion.");
             Require(outputs.Contains(o.Id) && (uint)o.RecipeId < (uint)i.Recipes.Length, "Occurrence has no successful factory association.");

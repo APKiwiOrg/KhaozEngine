@@ -18,6 +18,11 @@ comparison, and source equality alone cannot merge recipes. Every occurrence ret
 unique-recipe index. Changed source/artifact bytes are informative only after each run proves its own
 production/replay correspondence and equal logical membership, layouts, code generation and settings.
 
+Conditioning occurrences retain the `Cold` stage and their counted nonnegative frame indices. Only
+the conditioning operation permits indexed cold occurrences. Cold setup outside a frame has no
+frame index. Negative warm-up occurrences retain `Warmup`. Session resource guards, construction
+capture and strict correspondence apply the same frame classes.
+
 Measured first creation remains charged to its raw frame and refuses steady-state promotion. There
 is no observer-cost subtraction, hidden capacity growth or move into warm-up. Bind membership uses
 preallocated state, not a compiler report read. Capacity exhaustion freezes incomplete capture while

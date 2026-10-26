@@ -101,8 +101,10 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_next == _results.Length || _next - _consumed >= 3 || frameIndex != _next - _block.WarmupFrames)
             throw new InvalidOperationException("The fixed frame count, sequence or three-frame pacing was violated.");
+        bool conditioning = _block.SceneId.StartsWith("conditioning:", StringComparison.Ordinal);
         if (_capture?.Failure is { } captureFailure) throw new InvalidOperationException(captureFailure);
-        _capture?.EnterFrame(frameIndex < 0 ? RendererPerfConstructionStage.Warmup : RendererPerfConstructionStage.Measured, frameIndex);
+        _capture?.EnterFrame(conditioning ? RendererPerfConstructionStage.Cold
+            : frameIndex < 0 ? RendererPerfConstructionStage.Warmup : RendererPerfConstructionStage.Measured, frameIndex);
         try
         {
             _frameIndex = frameIndex;
@@ -129,7 +131,6 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
             {
                 if (_recorder.ReadCounter(_next, RendererPerfCounter.Submissions) != 1)
                     _recorder.Fail("An unexpected production submission occurred, including preparation.");
-                bool conditioning = _block.SceneId.StartsWith("conditioning:", StringComparison.Ordinal);
                 if (_recorder.ReadCounter(_next, RendererPerfCounter.WaitForIdleCalls) != 0)
                     _recorder.Fail("An unexpected production wait occurred.");
                 if (frameIndex >= 0 && !conditioning && _recorder.ReadCounter(_next, RendererPerfCounter.ResourceCreations) != 0)

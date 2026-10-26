@@ -310,6 +310,9 @@ before index 0. Temporal recipes still require valid history on every measured f
 Every conditioning, warm-up and measured frame requires zero logical `WaitForIdleCalls`, exactly one
 logical production submission and no device loss. Conditioning and negative warm-up indices permit
 cold resource creation, retained in raw counters. Measured frames require zero logical resource creations.
+Construction capture retains conditioning creations as `Cold` with their nonnegative counted frame
+indices. Only the conditioning operation permits these indexed cold occurrences. Setup outside a
+frame has no index, negative indices are `Warmup`, and measured pipeline creation still refuses.
 Shadow and MRT replacement uses deferred completion retirement. The scene shares the host frame's
 completion fence, without an extra retirement submission or hidden rendered priming frame. The batch
 completion drain and validation readback stay outside frame brackets. Headless proofs do not establish

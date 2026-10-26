@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu;
+using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 using KhaozEngine.Tests.Gpu;
@@ -59,6 +60,31 @@ public sealed class WaterVolumeLayoutTests
         using var device = new FakeGpuDevice(capabilityOverride: new GpuCapabilities(false, true)
             { MaxFragmentStorageBuffers = 3 });
         using ModelRenderer renderer = NewRenderer(device);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void SceneRefusesInsufficientStorageBeforeCreatingAnyGpuResources(int reported)
+    {
+        using var device = new FakeGpuDevice(capabilityOverride: new GpuCapabilities(false, true)
+            { MaxFragmentStorageBuffers = reported });
+        NotSupportedException error = Assert.Throws<NotSupportedException>(() =>
+            new Scene3D(device, new(null, GpuPixelFormat.R8G8B8A8UNorm)));
+        Assert.Contains("maxPerStageDescriptorStorageBuffers", error.Message, StringComparison.Ordinal);
+        var factory = (FakeGpuResourceFactory)device.Factory;
+        Assert.Empty(factory.Buffers);
+        Assert.Empty(factory.Textures);
+        Assert.Empty(factory.Framebuffers);
+        Assert.Empty(factory.ResourceSets);
+        Assert.Empty(factory.ShaderRequests);
+        Assert.Empty(factory.ShaderSets);
+        Assert.Empty(factory.GraphicsPipelines);
+        Assert.Empty(factory.Pipelines);
+        Assert.Empty(factory.CommandLists);
+        Assert.Equal(0, factory.SamplerCreateCount);
+        Assert.Equal(0, factory.ResourceLayoutCreateCount);
     }
 
     [Fact]

@@ -134,6 +134,8 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every graphics pipeline request with the GLSL source carried by its real shader-set handle.</summary>
         internal List<FakeGraphicsPipelineRequest> GraphicsPipelines { get; } = new();
+        internal int SamplerCreateCount { get; private set; }
+        internal int ResourceLayoutCreateCount { get; private set; }
 
         /// <summary>How many of <see cref="ResourceSets"/> have been disposed.</summary>
         internal int DisposedResourceSetCount
@@ -205,8 +207,16 @@ namespace KhaozEngine.Tests.Gpu
             return framebuffer;
         }
 
-        public IGpuSampler CreateSampler(in GpuSamplerDescription d) => new FakeSampler();
-        public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => new FakeResourceLayout();
+        public IGpuSampler CreateSampler(in GpuSamplerDescription d)
+        {
+            SamplerCreateCount++;
+            return new FakeSampler();
+        }
+        public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
+        {
+            ResourceLayoutCreateCount++;
+            return new FakeResourceLayout();
+        }
         public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d)
         {
             if (ThrowOnResourceSetCreate == ResourceSets.Count + 1)

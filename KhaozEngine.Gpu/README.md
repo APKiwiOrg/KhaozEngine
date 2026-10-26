@@ -267,8 +267,8 @@ What it owns today:
   `ShadowMode.ShadowMap` tier in Render3D), and `SupportsCompletionFences` (see **Completion fences** below).
   `MaxFragmentStorageBuffers` reports the per-stage storage buffer limit, with Vulkan reading
   `maxPerStageDescriptorStorageBuffers`, Direct3D11 reporting 128 SRV slots and Metal reporting 31 buffer slots.
-  Older capability producers default to four. Explicit reports below three make the Render3D lit renderer
-  throw `NotSupportedException` before pipeline creation, naming `maxPerStageDescriptorStorageBuffers`.
+  Older capability producers default to four. Explicit reports below three make Render3D scene and standalone
+  lit renderer construction throw `NotSupportedException` before GPU allocation, naming `maxPerStageDescriptorStorageBuffers`.
   Read off the live device.
 - **MSAA plumbing** - `GpuTextureDescription.SampleCount` (and `IGpuTexture.SampleCount`) make a multisampled render
   target; `GpuOutputDescription.SampleCount` / `WithSampleCount` carry the count so a pipeline matches its

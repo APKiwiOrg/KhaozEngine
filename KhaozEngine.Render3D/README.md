@@ -943,7 +943,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `WaterSettings.UnderwaterSunlight` is true contribute render-relative records, including their optional
   `WaterPlane.FloorY`, resolved absorption and penumbra. The scene default is false and `WaterLook` can override
   it per plane. Diagnostics expose `RecordCount`, `DroppedRecords`, `ReferenceCount` and `OverflowedClusters`.
-  Water-only frames prepare the same camera grid as point lights. Empty and opted-out frames set the count
+  Water-only frames prepare the same camera grid as point lights. A failed light assignment keeps that grid
+  valid for water, with full-list fallback headers for the lights. Empty and opted-out frames set the count
   in `ClusterCamera.w` to zero and skip water uploads, so retained buffer contents cannot be read next frame.
   These uploads prepare a scene-owned buffer for the underwater lighting path. Receiver bindings and shader
   declarations will be added together with the first shading reads. Existing lit layouts are unchanged.

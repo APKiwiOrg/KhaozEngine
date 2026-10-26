@@ -242,8 +242,7 @@ namespace KhaozEngine.Render3D.Rendering
         public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution,
             int shadowCascadeCount, GpuRetireQueue retired, AtmosphereBindings atmosphere)
         {
-            RequireFragmentStorageBuffers(gd.Capabilities);
-            _gd = gd;
+            _gd = LitReceiverRequirements.RequireSupportedDevice(gd);
             InteriorResources = new InteriorCutResources(gd);
             _interiorTexture = InteriorResources.Texture;
             _atmosphere = atmosphere;

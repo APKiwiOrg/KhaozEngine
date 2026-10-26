@@ -210,6 +210,6 @@ public sealed class RendererPerfWorkflowContractTests
             return (process.ExitCode, stdout.GetAwaiter().GetResult() + stderr.GetAwaiter().GetResult());
         }
         static string Script([CallerFilePath] string source = "") => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../../scripts/renderer-perf-workflow.ps1"));
-        public void Dispose() => System.IO.Directory.Delete(Directory, recursive: true);
+        public void Dispose() => RendererPerfFixtureDirectory.Delete(Directory);
     }
 }

@@ -101,7 +101,7 @@ internal sealed class RendererPerfCompilerPublicationFixture : IDisposable
     public void Dispose()
     {
         Cancellation.Dispose(); Diagnostic.Dispose();
-        if (_ownsDirectory && System.IO.Directory.Exists(Directory)) System.IO.Directory.Delete(Directory, true);
+        if (_ownsDirectory && System.IO.Directory.Exists(Directory)) RendererPerfFixtureDirectory.Delete(Directory);
     }
     internal sealed unsafe class ScalarsApi : IVulkanPipelineExecutableApi
     {

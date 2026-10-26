@@ -113,6 +113,15 @@ Canonical solution and project selection uses this checkout's actual file identi
 solution inspects its resolved project roots, including a foreign solution with the canonical basename.
 Unrelated roots never acquire the renderer verifier prerequisite.
 
+Renderer workflow contract tests parse checkout text through `RendererPerfWorkflowText`, which accepts
+LF and CRLF before extracting jobs or embedded commands. Exact-byte inputs keep their LF rules in
+`.gitattributes`, including renderer control shaders and authorized manifests. Fixture directories use
+`RendererPerfFixtureDirectory` to clear read-only regular files such as Git objects and remove directory
+links nonrecursively. Cleanup never follows reparse points or changes their targets' attributes.
+Windows selector fixtures resolve the console Bash from the same Git installation's `--exec-path`,
+avoiding the System32 WSL launcher. Entrypoint fixtures store canonical host paths before changing the
+working directory, so exact identity assertions retain their meaning with Git-style separators.
+
 Warnings are errors in every configuration. Fix warnings at the source. Do not add a blanket
 suppression or disable `TreatWarningsAsErrors`. The standing XML documentation suppression is the
 narrow exception.

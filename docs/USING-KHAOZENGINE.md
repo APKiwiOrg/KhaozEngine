@@ -5898,8 +5898,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       The penumbra value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or
       unbound. The water refractive index is the fixed constant `1.333`, not a setting. A frame with no opted-in water
       renders exactly as before. Four jittered depth slices between the refracted surface entry and receiver
-      preserve shadows from submerged rocks and beds above dry caves. A stored caster must be below the surface
-      on the fetched texel's light ray and inside the current slice's depth band. The receiver's normal offset
+      preserve shadows from submerged rocks and beds above dry caves. The fetched texel's stored caster height
+      must be below the surface and inside the current slice's height band. Reconstruction uses the cascade
+      basis rows without dividing by light elevation, so exactly horizontal rays stay finite. A separate
+      light-depth comparison rejects casters beyond the slice endpoint. The receiver's normal offset
       and final depth bias exclude self-shadow. The outer coverage fade is evaluated at the receiver, rather
       than at the virtual slice points. The atlas stores the near side for ordinary outward CCW opaque meshes
       with orientation-preserving transforms, so a straddling box's above-water face already shadows the entry

@@ -146,14 +146,14 @@ public sealed class RendererPerfWorkflowContractTests
             File.WriteAllText(ManifestPath, Manifest.ToJsonString());
             Environment["RENDERER_PERF_MANIFEST_SHA256"] = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(ManifestPath)));
         }
-        internal void WriteEvidence(string counters = "1/1/1/0/0")
+        internal void WriteEvidence(string counters = "1/1/1/0/0", RendererPerfReport? source = null)
         {
             string[] counts = counters.Split('/');
             File.WriteAllText(Path.Combine(Reports, "measurement.trx"), $"""
                 <TestRun><ResultSummary><Counters total="{counts[0]}" executed="{counts[1]}" passed="{counts[2]}" failed="{counts[3]}" notExecuted="{counts[4]}" /></ResultSummary>
                 <Results><UnitTestResult outcome="Passed" testName="Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit" /></Results></TestRun>
                 """);
-            var report = RendererPerfAnalysisFixture.Report();
+            var report = source ?? RendererPerfAnalysisFixture.Report();
             report = report with
             {
                 Manifest = RendererPerfManifest.Parse(System.Text.Encoding.UTF8.GetBytes(Manifest.ToJsonString())),

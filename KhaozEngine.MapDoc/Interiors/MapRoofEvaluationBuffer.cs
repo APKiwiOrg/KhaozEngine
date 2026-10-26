@@ -117,7 +117,8 @@ public sealed class MapRoofEvaluationBuffer
         MapSceneStatus.NotRepresentable => "Membership exact precision cannot be prepared.",
         MapSceneStatus.CapacityExceeded => "Membership preparation exceeds the scene allowance.",
         _ => "Invalid acquired membership geometry.",
-    }) { Counts = counts };
+    })
+    { Counts = counts };
     public MapMembershipStatus Status => _observation.Status;
     public string? SpaceId => _observation.SpaceId;
     public IReadOnlyList<MapRoofIntent> Roofs => _intent.Roofs;

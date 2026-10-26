@@ -266,6 +266,10 @@ its density and effective dependency product. Cached generation retention is adm
 then attached to individual cache entries. Invalidation drops the cache owner, and the last sample reader
 releases its receipt and CPU lease. Settled CPU bytes are the unique retained source, input, context, sample,
 plan, recording and upload inventory. In-flight CPU additionally includes queue reservations and staging.
+At publication, zero recording references or demand below half the retained capacity replaces both dictionaries
+and the draw set with storage sized to current demand. Credit returns after the old backing arrays are no
+longer reachable. Exactly half retains capacity for reuse. An empty accepted set returns to source-only CPU
+after device retirement releases its last upload and decoded-input readers. Disposal also drops recording storage.
 Preparation peaks and cumulative allocation are not retained-size authorities. GPU handle owners retain
 identity and handle only. They do not retain obsolete CPU registrations,
 including while waiting in the bounded disposal queue.

@@ -290,11 +290,13 @@ public sealed partial class MapRenderResidency : IDisposable
     }
     void PrepareRecording(int references)
     {
-        if (references <= _recordingCapacity) return;
-        // The old maps coexist with their replacements during growth. Reserve before allocating any buckets.
-        using var charge = _admission.ReserveCpu(checked(512L + references * 512L));
+        if (references == _recordingCapacity ||
+            (references < _recordingCapacity && references != 0 && references * 2L >= _recordingCapacity)) return;
+        // Both backing stores coexist during replacement. Reserve before allocating, then drop the old maps
+        // before returning their credit, including when an empty publication releases the high-water capacity.
+        using var charge = _admission.ReserveCpu(references == 0 ? 0 : checked(512L + references * 512L));
         _recording.Prepare(references);
-        _recordingCharge?.Dispose(); _recordingCharge = charge.Retain(); _recordingCapacity = references;
+        _recordingCharge?.Dispose(); _recordingCharge = references == 0 ? null : charge.Retain(); _recordingCapacity = references;
     }
     public bool TryGetHandle(MapResourceReference resource, out MapRenderHandle handle)
     {
@@ -398,7 +400,7 @@ public sealed partial class MapRenderResidency : IDisposable
             foreach (var owner in _owners.Values) _retired.Enqueue(owner); _owners.Clear(); _acceptedReferences.Clear();
             while (_retired.TryDequeue(out var owner)) Device.Release(owner.Handle);
             _accepted?.Dispose(); _accepted = null;
-            _recording.Clear(); _recordingCharge?.Dispose(); _recordingCharge = null;
+            _recording.Clear(); _recordingCharge?.Dispose(); _recordingCharge = null; _recordingCapacity = 0;
             if (_cancelled.Count == 0) AssetCache.Dispose(); else AssetCache.TryTrim();
             foreach (var lease in _metadataCharges.Values.Concat(_proofCharges.Values).Concat(_encodedCharges.Values)) lease.Dispose();
             _metadataCharges.Clear(); _proofCharges.Clear(); _encodedCharges.Clear();
@@ -469,14 +471,19 @@ public sealed partial class MapRenderResidency : IDisposable
         IMapDrawSink _sink = null!;
         Dictionary<MapResourceReference, Owner> _owners = null!;
         internal void Prepare(int count)
-        { _canonical.EnsureCapacity(count); _drawn.EnsureCapacity(count); _aliases.EnsureCapacity(count); }
-        internal void Clear()
-        { _canonical.Clear(); _drawn.Clear(); _aliases.Clear(); _sink = null!; _owners = null!; }
+        {
+            var canonical = new Dictionary<Identity, MapResourceReference>(count);
+            var drawn = new HashSet<MapResourceReference>(count);
+            var aliases = new Dictionary<MapResourceReference, MapResourceReference>(count);
+            _canonical = canonical; _drawn = drawn; _aliases = aliases;
+            _sink = null!; _owners = null!;
+        }
+        internal void Clear() => Prepare(0);
         internal void Reset(IMapDrawSink sink, Dictionary<MapResourceReference, Owner> owners)
         { _sink = sink; _owners = owners; _canonical.Clear(); _drawn.Clear(); _aliases.Clear(); }
-        readonly Dictionary<Identity, MapResourceReference> _canonical = new();
-        readonly HashSet<MapResourceReference> _drawn = new();
-        readonly Dictionary<MapResourceReference, MapResourceReference> _aliases = new();
+        Dictionary<Identity, MapResourceReference> _canonical = new();
+        HashSet<MapResourceReference> _drawn = new();
+        Dictionary<MapResourceReference, MapResourceReference> _aliases = new();
         public void Register(MapPreparedResource resource)
         {
             if (_aliases.ContainsKey(resource.Reference)) return;

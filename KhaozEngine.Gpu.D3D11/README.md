@@ -1149,6 +1149,15 @@ The depth format is the TYPELESS sibling on purpose: the incumbent's depth-flagg
 `R32G8X24_Typeless` in its own `D3D11Formats.ToDxgiFormat` before it queried, so both backends asked the driver
 about the same DXGI format and the parity assertion was satisfiable by construction.
 
+`MaxStorageBufferRangeBytes` additionally retains the admitted size of a full raw storage-buffer view.
+The selected device's feature level and adapter's `DedicatedVideoMemory` determine the resource guarantee
+`min(max(128 MiB, dedicated bytes / 4), 2048 MiB)` at feature level 11 or higher. The backend binds storage
+through four-byte raw views, so the 2^27-element buffer limit also caps a binding at 512 MiB.
+The capability is the smaller bound. Zero means the required native facts are unavailable.
+Shared system memory does not count as dedicated VRAM. A zero-dedicated-memory WARP adapter admits
+128 MiB, even if a particular runtime might allow a larger allocation. This is a compatibility guarantee,
+not a current memory budget. See [Direct3D 11 resource limits](https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-resources-limits).
+
 `MaxMsaaSampleCount` was the member the parity assertion existed for, and that assertion went away with the
 incumbent in 18.0.0. A different answer changes what `AntiAliasing.ResolveFor` picks, which changes the field
 look and the golden output, and it would neither throw nor log.

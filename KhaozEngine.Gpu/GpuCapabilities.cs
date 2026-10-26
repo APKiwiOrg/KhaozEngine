@@ -69,6 +69,12 @@ namespace KhaozEngine.Gpu
         /// <c>CreateComputeShaderFromSpirv</c> / <c>CreateComputePipeline</c> throw on a device without it.</summary>
         public bool SupportsCompute { get; }
 
+        /// <summary>Maximum admitted whole storage-buffer binding in bytes, or zero when unknown.
+        /// Vulkan retains the selected physical device's storage descriptor range. Direct3D 11 intersects
+        /// the adapter-dependent resource guarantee and full raw-view limit. This is not an available-memory
+        /// or allocation-success guarantee.</summary>
+        public uint MaxStorageBufferRangeBytes { get; init; }
+
         /// <summary>True if the device implements fixed timestamp pools and non-blocking resolution of usable
         /// elapsed ticks. Defaults to false. Unsupported pool creation throws <see cref="System.NotSupportedException"/>,
         /// so a caller omits GPU timing rather than estimating it.</summary>

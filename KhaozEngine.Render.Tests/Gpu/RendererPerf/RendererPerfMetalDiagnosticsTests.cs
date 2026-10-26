@@ -96,7 +96,7 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
         var identity = RendererPerfProtocolTests.CompleteReport().Identity;
         var refusal = Assert.Throws<RendererPerfProtocolException>(() => RendererPerfAdmission.Device(device,
             new(identity, true, true, null, System.Collections.Immutable.ImmutableDictionary<string, RendererPerfMetric>.Empty)));
-        Assert.Contains("hardware timestamp proof", refusal.Message);
+        Assert.Contains("required timestamp and completion proof", refusal.Message);
         Assert.Empty(device.Pools);
     }
 

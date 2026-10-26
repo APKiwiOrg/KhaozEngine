@@ -19423,6 +19423,13 @@ different answer would silently change what `AntiAliasing.ResolveFor` picks and 
 like. `DeviceName` is the DXGI adapter description exactly as the incumbent reports it, character for character,
 including any whitespace the vendor padded it with.
 
+`GpuCapabilities.MaxStorageBufferRangeBytes` additionally exposes the admitted whole storage-buffer
+binding size, or zero when unknown. Vulkan copies the selected physical device's `maxStorageBufferRange`.
+Direct3D 11 uses the smaller of its selected adapter's resource-size guarantee and the full raw-view
+limit. A WARP adapter with no dedicated VRAM admits 128 MiB. The backend's four-byte raw views cap
+larger adapters at 512 MiB per binding. Check the requested binding against this capability before
+constructing a fixed workload. It does not promise that current memory allocations will succeed.
+
 **One capability behaves differently on purpose: an out-of-range MSAA request THROWS.** Creating a texture whose
 `GpuTextureDescription.SampleCount` is above `GpuCapabilities.MaxMsaaSampleCount` raises an `ArgumentException`
 on that backend instead of quietly producing a texture that is not multisampled. Clamp through

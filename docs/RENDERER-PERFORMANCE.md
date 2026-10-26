@@ -45,6 +45,19 @@ indices. Cold setup outside frame brackets has no frame index. Only the conditio
 have counted `Cold` occurrences. Negative indices remain `Warmup`, and creation at measured indices
 still refuses execution and compiler correspondence.
 
+Unit startup admits every manifest control before the first scene session. Each control also admits
+its whole storage-buffer bindings before creating control resources or recording a frame.
+`GpuCapabilities.MaxStorageBufferRangeBytes` retains the selected Vulkan physical device's
+`maxStorageBufferRange`. Direct3D 11 uses the smaller of its feature-level resource-size guarantee
+from the selected adapter's dedicated video memory and its full raw-view limit. An unknown range
+refuses compute controls. A compatibility refusal names the control, required bytes and admitted
+device bytes. The buffers, schedule and complete output checks never shrink to fit a device.
+Control 7 fixes a 128 MiB input and 128 MiB output on every leg, local size 256 and 1024 by 128 groups.
+This uses the portable 134,217,728-byte storage range advertised by lavapipe and guaranteed by
+Direct3D 11 for WARP. Each frame transforms all 33,554,432 words. Final validation checks every output
+word once after completion. The large stream remains four times control 8's 32 MiB buffers. Its bandwidth numerator
+is 256 MiB of reads plus writes per frame. A device below 128 MiB still refuses before the first session.
+
 Cascade layouts, point-shadow demand and MRT changes retire outgoing graphs through the scene queue.
 The workload starts each scene with `Scene3D.BeginFrame(frame.Submission)`, sharing the host completion
 fence instead of adding the standalone retirement queue's empty submission. No hidden rendered priming
@@ -177,7 +190,12 @@ chunks no larger than 65,536 bytes. It checks safe relative paths, aliases, link
 nonempty lengths, SHA-256, strict schema, execution identity, decoded counts and all construction,
 read and result associations. Expected files come from producer registration, never enumeration. The existing fixed-cadence host telemetry producer also registers its exact JSONL output, without another sampler call.
 `RendererPerfAnalysis.ReadDirectory` calls this same verifier. Only verification constructs the
-immutable verified artifact. It retains actual handle identities and no-follow directory-entry
+immutable verified artifact. The control corpus contains exactly `chain.comp`, `stream.comp`,
+`fma.comp`, `dependent.comp`, `fullscreen` and `depth-read`. Compute local sizes are 1, 256, 64
+and 64. Both graphics pairs use zero. Every record retains its four shader hashes, positive store
+count and nonnegative instruction counts.
+
+The verified artifact retains actual handle identities and no-follow directory-entry
 identities, refuses hard-link aliases, and rechecks all retained files and parent directories at the
 final certification boundary. macOS arm64/x64 uses fstat/fstatat and no-follow openat. Linux x64
 uses statx and no-follow openat. Windows uses disk-file IDs and reparse-point handles. Unavailable

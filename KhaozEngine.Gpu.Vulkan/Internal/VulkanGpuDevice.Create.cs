@@ -422,7 +422,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 supportedMsaaSampleCounts: read.SupportedMsaaSampleCounts,
                 maxColorAttachments: (int)Math.Min(read.MaxColorAttachments, int.MaxValue),
                 timestamps: new VulkanTimestampSupport(read.TimestampValidBits, read.TimestampPeriodNanoseconds),
-                maxFragmentStorageBuffers: (int)Math.Min(read.Facts.MaxPerStageDescriptorStorageBuffers, int.MaxValue));
+                maxFragmentStorageBuffers: (int)Math.Min(read.Facts.MaxPerStageDescriptorStorageBuffers, int.MaxValue),
+                maxStorageBufferRangeBytes: read.MaxStorageBufferRangeBytes);
 
         static PhysicalDevice[] EnumeratePhysicalDevices(Vk vk, Instance instance)
         {

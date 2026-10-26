@@ -108,7 +108,7 @@ internal sealed class PostTraceDevice : IGpuDevice
     public GpuBackendKind Backend => Native.Backend;
     public GpuCapabilities Capabilities { get; } = new(false, true, "post trace", maxMsaaSampleCount: 4,
         supportsCompute: true, supportsShadowMaps: true)
-    { MaxColorAttachments = 8 };
+    { MaxColorAttachments = 8, MaxStorageBufferRangeBytes = 536870912 };
     public IGpuResourceFactory Factory => _factory;
     public IGpuFramebuffer? SwapchainFramebuffer => null;
     public IGpuSampler PointSampler => Native.PointSampler;

@@ -35,6 +35,7 @@ public readonly struct MovementQueryLeaseId : IEquatable<MovementQueryLeaseId>
 /// <remarks>A fresh lease may be acquired each tick. Each null-hint lease requires its own successful
 /// <see cref="RebuildSelection"/> before direct selected-space queries. Movement ticks reconstruct automatically
 /// when selection is missing or a null-hint lease is unready, including when the input carries a selection.
+/// A carried selection from another world is refused before reconstruction or producer queries.
 /// Ready held leases and known-hint leases retain their selected-state path. A lease may serve several ticks,
 /// but prevents physical writes until disposal.</remarks>
 public sealed partial class MovementQueryLease : IDisposable

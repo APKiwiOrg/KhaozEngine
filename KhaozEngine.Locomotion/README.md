@@ -56,6 +56,7 @@ before acquisition, acquire with `TryAcquire`, then use the binding's tick, plac
 Fresh per-tick acquisition is supported. Pass the previous accepted `FramedMovementState` unchanged to
 `Step` or `StepTowards` on the new lease. Tick entry validates its frame and carried selection, then
 reconstructs canonical selection if the null-hint lease is unready and uses that returned selection.
+Carried selections from another world return `EnvironmentInvalid` before reconstruction or producer queries.
 Real reconstruction failures still refuse the tick. Already-ready held leases and known-hint leases
 keep their selected-state path without another reconstruction.
 Direct selected-space queries still require a successful `RebuildSelection` on each fresh null-hint lease,

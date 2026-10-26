@@ -76,6 +76,8 @@ public partial class OrdinaryContactLeaseLifetimeTests
 
     [Theory]
     [InlineData("identity", MovementStepOutcome.EnvironmentInvalid)]
+    [InlineData("world", MovementStepOutcome.EnvironmentInvalid)]
+    [InlineData("world-support", MovementStepOutcome.EnvironmentInvalid)]
     [InlineData("hint", MovementStepOutcome.EnvironmentInvalid)]
     [InlineData("airborne-support", MovementStepOutcome.EnvironmentInvalid)]
     [InlineData("frame", MovementStepOutcome.FrameMismatch)]
@@ -85,13 +87,23 @@ public partial class OrdinaryContactLeaseLifetimeTests
         FramedMovementState basis = scene.State(fault == "hint" ? new("world", "other") : SelectionScene.Room);
         MovementSelection selection = basis.Selection!.Value;
         if (fault == "identity") selection = new(selection.Space, null, new("closure", 1, "wrong"));
+        if (fault == "world") selection = new(new("other-world", "room"), null, selection.Identity);
+        if (fault == "world-support")
+            selection = new(new("other-world", "room"), new("other-world", "floor"), selection.Identity);
         if (fault == "airborne-support") selection = new(selection.Space, new("world", "floor"), selection.Identity);
+        MoveState state = basis.State;
+        if (fault == "world-support") state.Grounded = true;
         MovementFrameDescriptor frame = fault == "frame"
             ? new(basis.Frame.Frame, basis.Frame.PhysicsOrigin, basis.Frame.Epoch + 1) : basis.Frame;
-        MovementStepResult result = scene.Tick(new(basis.State, frame, selection));
+        MovementStepResult result = scene.Tick(new(state, frame, selection));
         Assert.Equal(expected, result.Outcome);
         Assert.Equal(basis.State.Position, result.State.State.Position);
         Assert.Equal(0, scene.Environment.RebuildCalls);
+        Assert.Equal(0, scene.Environment.SampleCalls);
+        Assert.Equal(0, scene.Environment.CoverageCalls);
+        Assert.Equal(0, scene.Environment.SupportCalls);
+        Assert.Equal(0, scene.Environment.AnalyticGroundCalls);
+        Assert.Equal(0, scene.Environment.ContactSupportCalls);
     }
 
     sealed class SelectionScene : IDisposable

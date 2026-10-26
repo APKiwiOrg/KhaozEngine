@@ -46,6 +46,7 @@ internal static partial class ContactController
             if (state.Selection is { } selected)
             {
                 if (selected.Identity != queries.Identity ||
+                    !string.Equals(selected.Space.WorldId, queries.Witness.Scope.WorldId, StringComparison.Ordinal) ||
                     queries.Witness.Scope.CurrentSpace is { } hint && hint != selected.Space ||
                     !state.State.Grounded && selected.Support.HasValue)
                     return HoldLeased(state, MovementStepOutcome.EnvironmentInvalid);

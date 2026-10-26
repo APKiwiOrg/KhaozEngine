@@ -9161,7 +9161,10 @@ Legacy proofs use dry medium. Contact proofs retain their ordinary water policy.
 one. Defaults are `1 / 30` seconds and 64 total core calls, with a 1 mm arrival proof tolerance that is not a gameplay epsilon.
 
 The profile checks the whole circular footprint and each surface's area tags. It uses raw radius-zero grid
-checks after the physical capsule proof, so the radius is not eroded twice. Grounded extraction respects
+checks after the physical capsule proof, so the radius is not eroded twice. Contact footprints keep surface reach
+and area restrictions but leave clearance to placement and swept-shell proofs. A neighbouring captured floor beneath
+a climbable slab does not reject the resting pose for that floor's low headroom. The candidate's own headroom and
+raw surface ownership band still apply. Legacy footprints retain captured headroom checks. Grounded extraction respects
 `MaxLayerCells` before dense arrays, emits only `NavLinkKind.Stair` links and never creates `Hop` links.
 `Space.Links` contains candidate Stair topology. Accepted links are a separate guarded graph used by
 `Planner` and `AllowsSegment`. The planner requires the exact profile radius and returns unsmoothed cell-centre

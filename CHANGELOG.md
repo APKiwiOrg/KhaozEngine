@@ -12,6 +12,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   limit. Direct3D 11 intersects the adapter-dependent resource guarantee with the full raw-view limit.
   Renderer controls refuse incompatible whole-buffer bindings before constructing control resources.
 - Certify the complete six-record renderer control shader corpus, including both graphics pairs.
+- Keep Contact ground navigation connected beside climbable slab risers. Captured ground below a tread no longer
+  rejects the neighbouring resting anchor for its low headroom. Contact placement and swept-shell proofs still
+  enforce clearance, and raw layer, area, roof and climb limits remain enforced (Closes #1573).
 
 ## 21.14.0
 

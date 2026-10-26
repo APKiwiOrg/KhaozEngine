@@ -9,8 +9,10 @@ retains the design rationale. This document records no measured baseline or perf
 
 `tools/Renderer.Perf.Tests` is outside the solution. Its one opt-in performance fact is not an ordinary
 headless test. Every native measurement or load run needs separate owner approval naming the workload,
-leg, frame counts, duration and spending cap. Implementation approval never authorizes a dispatch,
-pilot, retry, profiler capture or follow-up measurement. Software Vulkan and WARP can establish
+leg, frame counts, duration and spending cap. A paid manifest's campaign cap is at most USD 10, the owner's
+envelope for every paid pilot and full unit including attempts already billed, and each unit's own cost cap must
+fit inside it. Implementation approval never authorizes a dispatch, pilot, retry, profiler capture or follow-up
+measurement. Software Vulkan and WARP can establish
 correctness only. They cannot establish a hardware floor or a T4 result.
 
 The public deterministic recipes cover empty, village, outdoors, crowd and effects/UI scenes. They

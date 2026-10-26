@@ -91,7 +91,7 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
             Require(manifest.Budget == new RendererPerfBudget(minutes, rate, "USD", minutes * rate), "Preset", "Billed minutes, rate, currency or cost cap differs from the preset.");
             Require(Text(manifest.Approval.Reference) && Text(manifest.Approval.Purpose) && Text(manifest.Approval.CampaignReference)
                 && manifest.Approval.CampaignMaximumUsd >= manifest.Budget.MaximumCostUsd
-                && manifest.Approval.CampaignMaximumUsd <= 7.24m, "Approval", "Exact owner approval and campaign references with a sufficient cap of at most USD 7.24 are required. A manifest does not grant consent.");
+                && manifest.Approval.CampaignMaximumUsd <= 10m, "Approval", "Exact owner approval and campaign references with a sufficient cap of at most USD 10 are required. A manifest does not grant consent.");
         }
         RendererPerfRuntimePolicy runtime = manifest.Runtime;
         Require(runtime.Configuration == "Release" && Version.TryParse(runtime.RuntimeVersion, out Version? version)

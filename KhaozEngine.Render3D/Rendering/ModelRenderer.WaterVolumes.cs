@@ -23,6 +23,12 @@ internal sealed partial class ModelRenderer
             GpuBufferUsage.StructuredBufferReadOnly, 16));
     }
 
+    static GpuResourceLayoutElement[] AppendWaterVolumeLayout(params GpuResourceLayoutElement[] existing) =>
+        [.. existing, new("WaterVolumes", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment)];
+
+    IGpuBindableResource[] AppendWaterVolumeResources(params IGpuBindableResource[] existing) =>
+        [.. existing, _waterVolumeBuffer];
+
     internal void BuildAndUploadLightingClusters(IGpuCommandList cl, ReadOnlySpan<PointLightData> lights,
         ReadOnlySpan<WaterVolumeRecord> waterRecords, Matrix4x4 viewProjection, Vector3 eyeRender,
         Vector3 forward, Matrix4x4 projection, Vector3 renderOrigin)

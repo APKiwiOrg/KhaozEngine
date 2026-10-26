@@ -101,8 +101,8 @@ internal sealed partial class ModelRenderer
         _skinnedMainUbo = _gd.Factory.CreateBuffer(
             new GpuBufferDescription(_skinnedMainSlots * SkinnedMainSlotBytes, GpuBufferUsage.UniformBuffer));
         _skinnedMainSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
-            _skinnedMainLayout, _atmosphere.AppendResources(_ubo, _pointLightBuffer, _pointLightClusterBuffer,
-            new GpuBufferRange(_skinnedMainUbo, 0, SkinnedMainSlotBytes))));
+            _skinnedMainLayout, AppendWaterVolumeResources(_atmosphere.AppendResources(_ubo, _pointLightBuffer, _pointLightClusterBuffer,
+            new GpuBufferRange(_skinnedMainUbo, 0, SkinnedMainSlotBytes)))));
     }
 
     /// <summary>Pack one skinned draw's per-draw slot: the two-matrix header alone (<c>Model</c> for world

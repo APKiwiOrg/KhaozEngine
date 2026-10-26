@@ -12,7 +12,8 @@ public enum UnderwaterSunlightGeometry { FlatBed, ThinSlab, StraddlingHull, Subm
 
 public readonly record struct UnderwaterSunlightCase(UnderwaterSunlightGeometry Geometry = UnderwaterSunlightGeometry.FlatBed,
     float Depth = 1f, bool Enabled = true, bool Orthographic = false, float ShadowStrength = 1f,
-    bool Caster = true, bool Absorption = true, bool Water = true, float SlabBottom = 0.05f, bool AmbientOnly = false)
+    bool Caster = true, bool Absorption = true, bool Water = true, float SlabBottom = 0.05f, bool AmbientOnly = false,
+    bool SpecularOnly = false, float SpecularStrength = 0.8f)
 {
     public UnderwaterSunlightCase() : this(UnderwaterSunlightGeometry.FlatBed) { }
     public float BedY => Geometry == UnderwaterSunlightGeometry.Cave ? -3f
@@ -117,12 +118,14 @@ public sealed class UnderwaterSunlightScenes : IDisposable
 
     void Draw(Scene3D scene, UnderwaterSunlightCase settings)
     {
+        Color bedColor = settings.SpecularOnly ? Color.Black : BedColor;
+        Material bedMaterial = settings.SpecularOnly ? Material.Shiny(settings.SpecularStrength, 1f) : Material.None;
         if (settings.Geometry == UnderwaterSunlightGeometry.Bank)
             scene.Draw(_plane, Matrix4x4.CreateScale(12f, 1f, 12f)
-                * Matrix4x4.CreateRotationX(-MathF.Atan(0.25f)), BedColor, Material.None, castsShadows: false);
+                * Matrix4x4.CreateRotationX(-MathF.Atan(0.25f)), bedColor, bedMaterial, castsShadows: false);
         else
             scene.Draw(_plane, Matrix4x4.CreateScale(12f, 1f, 12f)
-                * Matrix4x4.CreateTranslation(0f, settings.BedY, 0f), BedColor, Material.None, castsShadows: false);
+                * Matrix4x4.CreateTranslation(0f, settings.BedY, 0f), bedColor, bedMaterial, castsShadows: false);
 
         if (settings.Caster)
         {

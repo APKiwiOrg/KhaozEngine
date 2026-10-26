@@ -8,8 +8,7 @@ internal static class LitReceiverRequirements
 {
     internal static IGpuDevice RequireSupportedDevice(IGpuDevice device)
     {
-        // Reserve the count lit pipelines will need when receiver shading first reads and binds water volumes.
-        // The current layouts still have only the point-light record and cluster buffers.
+        // Point-light records, point-light clusters and water volumes are all read by lit fragments.
         const int required = 3;
         int available = device.Capabilities.MaxFragmentStorageBuffers;
         if (available < required)

@@ -186,6 +186,14 @@ and bound FFT water is refused until FFT has a certified displacement envelope. 
 plane, so geometry above the surface occludes it. The FFT shoaling and surf bathymetry is a separate scene-wide
 input. API detail lives in the [Render3D package reference](../KhaozEngine.Render3D/README.md).
 
+Underwater key lighting runs in the opaque receivers, using each plane's resolved `UnderwaterSunlight` opt-in.
+Before the opaque pass, render-relative water slabs are binned into the shared point-light camera grid and uploaded
+as one storage buffer appended to every lit receiver's set 0. Each fragment selects its containing slab, refracts
+the sun at the still surface with index `1.333`, and samples key shadows at that entry point with the receiver's own
+bias. Key diffuse and specular attenuate along the refracted path using the body's absorption. The query also works
+with orthographic cameras and disabled shadows. Zero records skip buffer reads. The submerged-caster march and
+depth-widened kernel remain pending. This path does not depend on either authored water-depth source above.
+
 ## Where to look in the code
 
 | Box | Type / file |
@@ -193,6 +201,7 @@ input. API detail lives in the [Render3D package reference](../KhaozEngine.Rende
 | Frame loop + window + swapchain | `KhaozEngine.Windowing/AppWindow.cs` (`Run`, `GpuDeviceContext.CreateForWindow`, `Present`) |
 | 3D submission API | `KhaozEngine.Render3D/Scene3D.cs` (`LoadMesh`, `Begin`, `Draw`) + `Render3DSurface.cs` |
 | Water optical beds | `KhaozEngine.Render3D/Scene3D.WaterOptics.cs`, `WaterOpticsField.cs`, `WaterOpticsTriangleField.cs`, `Internal/ShaderSources.WaterOptics.cs` |
+| Underwater key lighting | `KhaozEngine.Render3D/Scene3D.WaterVolumes.cs`, `Rendering/ModelRenderer.WaterVolumes.cs`, `Internal/WaterVolumeClusterBuilder.cs`, `Internal/ShaderSources.Underwater.cs` |
 | 3D instanced draws + post | `KhaozEngine.Render3D/Rendering/` (`ModelRenderer`), `PixelPostProcessSettings.cs` |
 | Terrain splat pipeline | `KhaozEngine.Render3D/Internal/ShaderSources.cs` (`SplatFrag`), `Scene3D.cs` (`LoadSplatMaterial`), `KhaozEngine.Terrain.Render3D/TerrainScene3D.cs` (`LoadTerrainMaterial`) |
 | 2D batching | `KhaozEngine.Render2D/SpriteBatch.cs` + `Render2DSurface.cs` |

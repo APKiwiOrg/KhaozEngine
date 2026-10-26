@@ -5777,11 +5777,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   - **Water volume** (`WaterPlane.FloorY`, default `null` = unbounded below): pass the optional trailing constructor
     argument when the body has a lowest world Y under the plane rectangle. Receivers below it are outside the body.
     The floor is a conservative slab, not exact local containment, so a dry space inside the slab under a higher part
-    of the bed can still count as submerged. Only its key path changes, and the bed above it already shadows that path,
-    so it stays dark. `DrawWater` refuses a non-finite floor or one above `SurfaceY`. Render-origin rebasing carries
-    it with the plane, and stacked bodies resolve to the nearest surface above a receiver.
+    of the bed can still count as submerged. Submerged-caster occlusion is pending, so this intermediate path can
+    light a cave inside that slab through its bed. `DrawWater` refuses a non-finite floor or one above `SurfaceY`.
+    Render-origin rebasing carries it with the plane, and stacked bodies resolve to the nearest surface above a receiver.
   - **Underwater volume uploads** expose `scene.WaterVolumeClusters` for the resolved opt-in records and
-    cluster references. The current infrastructure uploads records without changing shading. See the
+    cluster references. Every lit receiver reads the records to refract key-shadow lookup to the surface entry
+    and attenuate key diffuse and specular along the in-water path. See the
     [Render3D water reference](../KhaozEngine.Render3D/README.md) for the opt-in and empty-frame contract.
   - **Per-plane look** (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
     identical**): a trailing optional constructor parameter, so every call site written before this existed still

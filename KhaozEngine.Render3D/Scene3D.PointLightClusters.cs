@@ -12,8 +12,8 @@ public sealed partial class Scene3D
 
     /// <summary>
     /// Build the cluster grid against the RASTER view-projection, jitter included. A lit fragment finds its cluster by
-    /// projecting its world position through the frame block's ViewProj (<c>pointLightClusterForFragment</c> in
-    /// ShaderSources.Lighting.cs), which is the jittered matrix, so a grid built on the unjittered one would hand a
+    /// projecting its world position through the frame block's ViewProj (<c>clusterForFragment</c> in
+    /// ShaderSources.Underwater.cs), which is the jittered matrix, so a grid built on the unjittered one would hand a
     /// fragment within half a pixel of a tile edge the neighbouring tile's lights. The projection only tells the
     /// builder perspective from orthographic, which jitter never changes, so it stays the unjittered one.
     /// </summary>

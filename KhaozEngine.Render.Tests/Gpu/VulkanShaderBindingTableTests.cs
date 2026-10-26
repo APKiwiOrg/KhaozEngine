@@ -242,6 +242,9 @@ namespace KhaozEngine.Tests.Gpu
                 ];
                 if (prefix == 11)
                     atmosphere = [.. atmosphere, new(0, 14, GpuResourceKind.TextureReadOnly, "InteriorCut")];
+                int waterBinding = prefix == 11 ? 15 : prefix + 3;
+                atmosphere = [.. atmosphere,
+                    new(0, waterBinding, GpuResourceKind.StructuredBufferReadOnly, "WaterVolumeBuffer")];
                 Assert.Equal(atmosphere, Parse(program.FragmentGlsl)
                     .Where(d => d.Set == 0 && d.Binding >= prefix).OrderBy(d => d.Binding).ToArray());
             }

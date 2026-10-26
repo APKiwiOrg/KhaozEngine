@@ -96,12 +96,12 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/ModelRenderer.cs:225, :270 and :273
                 ["Model"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F), T("Albedo"),
                     T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
-                    T("PointShadowMap"), T("PointShadowTransientMap")), T("InteriorCut")]),
+                    T("PointShadowMap"), T("PointShadowTransientMap")), T("InteriorCut"), Ro("WaterVolumes", F)]),
                 ["Foliage"] = L(U("Foliage", V, dynamic: true)),
                 // The shared frame block, fragment-only point lights and per-draw vertex block in binding order.
                 // The two uniform buffers retain their relative order from #604.
-                ["Model.skinnedMain"] = L(AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F),
-                    U("VBlock", V, dynamic: true))),
+                ["Model.skinnedMain"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F),
+                    U("VBlock", V, dynamic: true)), Ro("WaterVolumes", F)]),
                 ["Model.skinnedFrag"] = L(T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
                 // Render3D/Rendering/SkinnedBonePalette.cs:54. The one shipped layout used by TWO pipelines at
@@ -115,13 +115,13 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/ModelRenderer.Splat.cs:41 and :48. TWO sets since #604: the shared frame
                 // block, then everything the material owns. One of the two ground pipelines that put a uniform
                 // buffer in BOTH of their sets, and one of the three that spend two uniform buffers in total.
-                ["Model.splatFrame"] = L(AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F))),
+                ["Model.splatFrame"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F)), Ro("WaterVolumes", F)]),
                 ["Model.splatMaterial"] = L(U("SplatParams", F), T("AlbedoArray"), T("NormalArray"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
                 // Render3D/Rendering/ModelRenderer.TileGround.cs:47 and :55. The same two-set split since #727,
                 // which unfolded the last combined frame+params buffer in the tree. Albedo only, so one array
                 // where the splat material layout has two, and the shadow map stays last.
-                ["Model.tileGroundFrame"] = L(AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F))),
+                ["Model.tileGroundFrame"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F)), Ro("WaterVolumes", F)]),
                 ["Model.tileGroundMaterial"] = L(U("TileGroundParams", F), T("AlbedoArray"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
                 // Render3D/Rendering/ModelMotionResources.cs, the rigid temporal variant's set 1: the motion block and
@@ -371,6 +371,19 @@ namespace KhaozEngine.Tests.Gpu
                     + "one on this backend (decision V-D4), so this is the pipeline's uniform buffer count rather "
                     + "than its declared-dynamic count, and a pipeline over the floor cannot be created on a "
                     + "minimum-spec device at all.");
+            }
+        }
+
+        [Fact]
+        public void EveryLitPipelineUsesThreeFragmentStorageBuffers()
+        {
+            var lit = ShippedPipelines.Where(p => p.Pipeline.StartsWith("ModelRenderer", StringComparison.Ordinal)).ToArray();
+            Assert.NotEmpty(lit);
+            foreach (var pipeline in lit)
+            {
+                int count = pipeline.Slots.Sum(slot => ShippedLayouts[slot].Elements.Count(e =>
+                    e.Kind == GpuResourceKind.StructuredBufferReadOnly && (e.Stages & F) != 0));
+                Assert.True(count == 3, $"{pipeline.Pipeline} must bind point lights, point-light clusters and water, got {count}.");
             }
         }
 

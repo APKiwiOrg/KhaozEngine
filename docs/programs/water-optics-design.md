@@ -120,9 +120,10 @@ must do the same, recorded in the R8b handoff.
   (spheres versus boxes).
 - One storage buffer, appended to set 0 of every lit receiver layout (rigid, skinned, splat, tile ground, and
   through rigid, foliage and CPU-skinned), holds per-cluster headers and index lists, then records. Appending
-  avoids renumbering existing bindings. Allocation and upload are implemented first. Layout bindings and GLSL
-  declarations join the first shading reads, because shader optimization removes an unread buffer and would
-  leave Direct3D11 material registers inconsistent with the appended C# layouts. Shaderc preserve-bindings
+  avoids renumbering existing bindings. Allocation, upload, bindings and the first shading reader are implemented.
+  Set 0 appends binding 15 for rigid, foliage and CPU-skinned receivers, 7 for GPU-skinned, and 6 for splat and
+  tile ground. Declarations landed with their reader because shader optimization removes an unread buffer and
+  would leave Direct3D11 material registers inconsistent with the appended C# layouts. Shaderc preserve-bindings
   remains unchanged.
 - Caps: 4096 records, 32 indices per cluster. A cluster that overflows is flagged and its fragments scan the full
   record list, which stays correct and only costs more.
@@ -141,6 +142,10 @@ All of this lives in the shared lighting block, so the six call sites (`ModelFra
 `SkinnedModelFrag`, `SkinnedModelDissolveFrag`, `SplatFrag`, `TileGroundFrag`) and their motion and visibility
 variants inherit it. The `keyShadow = sampleKeyShadow(...)` call statements stay textually unchanged because the
 key-visibility export splices after that exact statement.
+
+The volume query, refracted entry lookup and key diffuse/specular attenuation are implemented. The
+submerged-caster march and depth-widened kernel below remain pending. Submerged geometry is not yet tested
+along the refracted segment, and a cave under a bed inside the slab can receive key light.
 
 1. Query the water volume for the fragment. Not submerged means today's path, bit for bit.
 2. Submerged at depth `h`: compute the refracted in-water direction, `L = h / cos(theta_water)`, and `E` on the
@@ -184,12 +189,12 @@ one uniform branch.
 #### Backends
 
 - D3D11: receiver shading adds one structured SRV per lit pipeline (117 to 121 slots remain). Metal adds one
-  buffer index, within the 22 positions of headroom. Vulkan fragment storage buffers will go from two to three.
+  buffer index, within the 22 positions of headroom. Vulkan lit fragments use three storage buffers.
   The spec guarantees four
   per stage. `VulkanDeviceFacts` records `maxPerStageDescriptorStorageBuffers`, passed through
   `GpuCapabilities.MaxFragmentStorageBuffers`. Scene and standalone lit renderer creation refuse reports below
-  three before GPU allocation, naming the Vulkan limit. This guard reserves the receiver shading layout's
-  future requirement. The current lit layouts still use two fragment storage buffers.
+  three before GPU allocation, naming the Vulkan limit. These are the point-light records, point-light
+  clusters and water volumes.
 - The cross-compiled shader corpus (`ShippedShaderPrograms`) and register-numbering pins update deliberately.
 
 #### Placement (KESIZE)

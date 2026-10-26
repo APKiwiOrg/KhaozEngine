@@ -44,12 +44,12 @@ namespace KhaozEngine.Render3D.Rendering
         /// exist) and only the pipeline is rebuilt when the MRT changes.</summary>
         void CreateTileGroundResources(IGpuResourceFactory factory)
         {
-            _tileGroundFrameLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(AtmosphereBindings.AppendLayout(
+            _tileGroundFrameLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(AppendWaterVolumeLayout(AtmosphereBindings.AppendLayout(
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("PointLights", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("PointLightClusters", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment))));
+                new GpuResourceLayoutElement("PointLightClusters", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment)))));
             _tileGroundFrameSet = factory.CreateResourceSet(new GpuResourceSetDescription(
-                _tileGroundFrameLayout, _atmosphere.AppendResources(_ubo, _pointLightBuffer, _pointLightClusterBuffer)));
+                _tileGroundFrameLayout, AppendWaterVolumeResources(_atmosphere.AppendResources(_ubo, _pointLightBuffer, _pointLightClusterBuffer))));
 
             // The textures are declared in the order the fragment samples them, with the SHADOW MAP LAST. That was
             // a Metal requirement under the incumbent's numbering and is now the engine's own convention: the

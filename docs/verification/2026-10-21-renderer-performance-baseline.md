@@ -491,6 +491,36 @@ admission, manifest, authorization, build logs, measurement log and TRX. The mea
 runner, USD 0. The approval is consumed and authorizes no retry. Another run needs a corrected map and
 fresh owner approval.
 
+## Free lavapipe rehearsal, attempt 2
+
+The workload and trusted workflow are `57a7123c97b155f7e08bd424cd45ff38ebab2c6c`. Authorization
+`62d6d346ea4ec394b96145d3b8c7da34380822b8` has that workload as its sole parent on
+`feature/renderer-rehearsal-linux-2`. Its unit is `rehearsal-linux` with the `rehearsal` preset, and its
+exact manifest SHA-256 is `d2f14c8994f9cf194d7c41204a0c4fb0ae2fd7cb195476a254f377ff4dfa5f43`.
+
+The second rehearsal approval was consumed by
+[run 40291069760](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40291069760), attempt 1,
+on 2026-10-26 UTC. Runtime admission passed with the exact approved 15-entry environment map.
+Native admission passed on software `llvmpipe (LLVM 20.1.2, 256 bits)`, with 64 timestamp bits and a
+1 ns period, on image `Linux/ubuntu24/20261023.334.3`.
+
+The fixed measurement fact failed after 26.19 seconds with "First pipeline creation occurred during a
+measured frame." `RendererPerfConstructionCapture` sets the failure at line 91 and exposes it at
+line 30, then `RendererPerfVerdict.RequireSuccess` surfaces it at line 19. The partial report retains
+only conditioning frame 0, sequence 0, with about 4.77 seconds CPU and 5.96 seconds GPU. Completed
+blocks were 0/2 and controls 0/6. Publication state is `failed`.
+
+Artifact `renderer-perf-linux-vulkan`, ID `12635448735`, is 519,054 compressed bytes. GitHub reports
+archive SHA-256 `c59f457da8d3d2055596607effab6971a2e89c9c73f274bc798019f3837ccdbc`. It retains the
+partial JSON and Markdown report, compiler inventory, frozen layouts, runtime and native admission,
+telemetry, measurement log and TRX beside the preparation inputs and build logs. The measurement TRX
+SHA-256 is `33d3fc0c909f0186197d534322cae04b66b4432e3b30e6c408276dfd5f23f6a8`.
+
+Job `121466145236` ran from 08:16:30 to 08:20:56 UTC, 266 seconds, on a free standard runner,
+USD 0. No measured baseline or performance acceptance was produced. The approval is consumed and
+authorizes no retry. Another run needs a corrected workload, independently reviewed preparation and
+fresh owner approval.
+
 ## Outstanding native and preparation gates
 
 Accepted Tasks10/11 and the cold amendment implement optional D3D11, Vulkan and Metal diagnostics.

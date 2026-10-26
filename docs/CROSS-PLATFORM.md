@@ -390,7 +390,9 @@ looks up `/lvp_icd[^/]*\.json$` in `dpkg -L mesa-vulkan-drivers`, failing if abs
 `VK_DRIVER_FILES` and `VK_ICD_FILENAMES` point at that discovered file. `KE_VULKAN_DEVICE=llvmpipe`
 and `KE_VULKAN_REQUIRED=1` select the software backend. The D3D adapter variable is empty. Validation
 layers remain off. The approved runtime map includes these actual effective values and the isolated
-.NET host/root values. Any image or ICD path drift requires corrected approval rather than ignoring
+.NET host/root values. The standard image also exports `DOTNET_MULTILEVEL_LOOKUP=0`, `DOTNET_NOLOGO=1`
+and `DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1`, which the T4 partner image does not, so the rehearsal map
+declares them as image facts. Any image or ICD path drift requires corrected approval rather than ignoring
 environment entries.
 
 The trusted `VerifyRehearsal` mode requires one passed test with zero skips, completed publication,

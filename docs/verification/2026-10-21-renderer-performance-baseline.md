@@ -465,6 +465,32 @@ Main's water optics variants retain their transactional pipeline replacement and
 This correction provides headless correctness evidence only. It supplies no native baseline, timing
 acceptance or permission for another attempt. The consumed fourth approval remains consumed.
 
+## Free lavapipe rehearsal, attempt 1
+
+The workload and trusted workflow are `b90fe761078d8b35252f7715be771d91c476a4f7`. Authorization
+`b3dc5eaf0695f10cdcde2d92945b79b7ff3f3658` has that workload as its sole parent on
+`feature/renderer-rehearsal-linux`. Its unit is `rehearsal-linux` with the `rehearsal` preset, and its
+exact manifest SHA-256 is `8353c86137469cabe6f203f13c5c45ba70b275a654270ced66d4c5f9afcf5b39`.
+
+The first rehearsal approval was consumed by
+[run 40287175383](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40287175383), attempt 1,
+on 2026-10-26 UTC, after main `ci` on the workload was green. Trusted selection placed it on
+`ubuntu-24.04` with Mesa lavapipe and a 120-minute cap. The isolated SDK and runtime check passed with
+runtime 10.0.13 and workstation GC.
+
+The fixed measurement fact refused after 0.23 seconds with "Observed runtime, GC, tiering or relevant
+environment differs from approval." at `RendererPerfEntrypoint.cs`, line 47, before any device was
+created. The standard image exports `DOTNET_MULTILEVEL_LOOKUP=0`, `DOTNET_NOLOGO=1` and
+`DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1`, which the approved map did not declare. Every declared entry
+matched. No frame was recorded.
+
+Artifact `renderer-perf-linux-vulkan`, ID `12635107441`, is 9,203 compressed bytes. GitHub reports
+archive SHA-256 `c2f2d5331a33739f950937bcb13d49bba7259fd7a4915cc0bcce08b926e92efa`. It retains runtime
+admission, manifest, authorization, build logs, measurement log and TRX. The measurement TRX SHA-256 is
+`1f9375d39d971ffd76a315c79c644521208618e0cb1fbbc49708a3bd7f5113b6`. Job `121453626477` ran from 07:40:24 to 07:50:19 UTC on a free standard
+runner, USD 0. The approval is consumed and authorizes no retry. Another run needs a corrected map and
+fresh owner approval.
+
 ## Outstanding native and preparation gates
 
 Accepted Tasks10/11 and the cold amendment implement optional D3D11, Vulkan and Metal diagnostics.

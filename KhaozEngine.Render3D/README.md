@@ -828,13 +828,20 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     `GlintExponent`.
   - **Depth grading** (`AbsorptionPerMetre` over `DeepColor`/`ShallowColor`): per-channel Beer-Lambert
     transmittance, so the ramp bends through green-teal rather than running straight between two colours. All-zero
-    coefficients restore the two-stop smoothstep over `ShallowDepth`.
+    coefficients restore the two-stop smoothstep over `ShallowDepth`. The same resolved coefficients drive underwater
+    sunlight, where all-zero absorption means no attenuation.
   - **Foam** (`FoamColor`/`FoamStrength`/`FoamCrestCoverage`/`FoamShoreWidth`/`FoamPatternScale`): procedural, no
     texture assets. Whitecaps from the determinant of the swell's horizontal Jacobian (steepness-normalized, so
     coverage means the same at any steepness) and a shoreline band from the plane's depth source, both broken up by
     a scrolling pattern thresholded into graphic lobes. The fold eases toward 73% of itself as the pixel footprint
     on the still-water plane grows, which keeps distant whitecap coverage where the old per-vertex fold left it
     rather than whitening the horizon to the near field's density.
+
+  Underwater sunlight is separately opt-in per water body through `UnderwaterSunlight` (scene default `false`) and
+  `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
+  The value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or unbound.
+  A frame with no opted-in water renders exactly as before. The water refractive index is the fixed constant `1.333`,
+  not a setting. How submerged receivers are lit is described under key shadows.
 
   On top of that the ripple normal field is a generated SLOPE SPECTRUM (14.26.0): `RippleComponents` cosines with
   golden-angle headings (no two parallel, no dominant ribbon direction) laddering by `RippleLacunarity` over about
@@ -846,7 +853,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   the swell's shading contrast fades on the same measure. `DetailFadeDistance`/`DistantDetailScale` remain as an
   artistic extra layered on top. Plus the
   depth-driven shore fade (`ShoreFadeDistance`) and `Opacity`.
-  **No refraction, no screen-space reflections, no caustics, no submerged view** (all out of scope) - a stylized
+  **No view-ray refraction, no screen-space reflections, no caustics, no submerged view** (all out of scope) - a stylized
   LDR surface. Drawn after the sky + ground decals, before the MRT resolve, one draw per plane, with depth test ON
   (`Less`, so geometry above the surface occludes it) but depth WRITE OFF (so the resolved normal/linear-depth the
   outline pass reads is untouched - matching the ground-decal/beam/textured-billboard depth-interleave convention).
@@ -862,6 +869,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   variance transfer) and `GerstnerWaves` (the swell, whose offset the vertex stage mirrors and whose normal and
   fold the fragment stage mirrors), all internal, headless-tested and mirroring the GLSL `WaterVert`/`WaterFrag`
   exactly.
+- Water volume (`WaterPlane.FloorY`, default `null` = unbounded below): set the optional trailing constructor
+  argument to the lowest world Y of the body's volume under the plane rectangle. Receivers below that floor are
+  outside the body. This is a conservative slab rather than exact local containment, so a dry space inside the slab
+  under a higher part of the bed can still count as submerged. Only its key path changes, and the bed above it already
+  shadows that path, so it stays dark. `DrawWater` refuses a non-finite floor or one above `SurfaceY`. Render-origin
+  rebasing carries the floor with the plane, and stacked bodies resolve to the nearest surface above a receiver.
 - Per-body optical beds (`WaterPlane.Optics`, a `WaterOpticsBinding`, default unbound, or
   `WaterPlane.WithOptics`). A bound plane drives depth grading, ordinary shore foam and `ShoreFadeDistance` from
   its own signed bed depth, `max(0, restDepth + displacedY - referenceY)`, rather than from the first opaque
@@ -931,9 +944,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   existed still compiles and still packs from the caller's own `WaterSettings` object unchanged. Every field on
   `WaterLook` mirrors a `WaterSettings` field and is itself nullable - `null` inherits the scene, a value overrides
   it for that plane alone, leaving every other queued plane on the scene's look, which is what lets a calm inland
-  lake and a rough FFT sea share a frame. 37 fields are overridable: `WaveSource`, the swell group, the ripple/
-  detail group, body colour, foam, the four `Glint*` scalars, `ShoreFadeDistance` and the two depth-response strengths `ShoalingStrength`/
-  `SurfStrength`. Scene-wide and NOT on a look at all: `SeaState` (one FFT bake - two sea states a frame does not
+  lake and a rough FFT sea share a frame. 39 fields are overridable: `WaveSource`, the swell group, the ripple/
+  detail group, body colour including `AbsorptionPerMetre`, `UnderwaterSunlight` and
+  `UnderwaterPenumbraPerMetre`, foam, the four `Glint*` scalars, `ShoreFadeDistance` and the two depth-response
+  strengths `ShoalingStrength`/`SurfStrength`. Scene-wide and NOT on a look at all: `SeaState` (one FFT bake - two sea states a frame does not
   make two oceans, it makes the one producer rebake on every call for both and corrupts the persistent foam
   accumulator), `Bathymetry` (one depth texture), the grid group (`GridMode` and the `Clipmap*` knobs, which pick
   the pass's pipeline and vertex layout before the draw loop starts), reflection weights (read the one sky),

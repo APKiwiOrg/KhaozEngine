@@ -13,13 +13,14 @@ internal sealed class RendererPerfVerifiedArtifact
     internal RendererPerfCompilerInventory Inventory { get; }
     internal RendererPerfSidecarCounts Counts { get; }
     internal long CombinedBytes { get; }
+    internal string ReportSha256 { get; }
     RendererPerfVerifiedArtifact(RendererPerfReport report, RendererPerfCompilerInventory inventory,
-        RendererPerfSidecarCounts counts, long combinedBytes)
-    { Report = report; Inventory = inventory; Counts = counts; CombinedBytes = combinedBytes; }
+        RendererPerfSidecarCounts counts, long combinedBytes, string reportSha256)
+    { Report = report; Inventory = inventory; Counts = counts; CombinedBytes = combinedBytes; ReportSha256 = reportSha256; }
     internal static RendererPerfVerifiedArtifact Verify(string directory, string reportName, RendererPerfUnitBudget? budget, IRendererPerfArtifactIdentity? identity)
     {
         var data = RendererPerfArtifactVerification.Read(directory, reportName, budget, identity);
-        return new(data.Report, data.Inventory, data.Counts, data.CombinedBytes);
+        return new(data.Report, data.Inventory, data.Counts, data.CombinedBytes, data.ReportSha256);
     }
 }
 
@@ -27,14 +28,14 @@ internal sealed class RendererPerfVerifiedArtifact
 internal static class RendererPerfArtifactVerification
 {
     internal sealed record Data(RendererPerfReport Report, RendererPerfCompilerInventory Inventory,
-        RendererPerfSidecarCounts Counts, long CombinedBytes);
+        RendererPerfSidecarCounts Counts, long CombinedBytes, string ReportSha256);
     internal static RendererPerfVerifiedArtifact Verify(string directory, string reportName, RendererPerfUnitBudget? budget = null, IRendererPerfArtifactIdentity? identity = null)
         => RendererPerfVerifiedArtifact.Verify(directory, reportName, budget, identity);
     internal static Data Read(string directory, string reportName, RendererPerfUnitBudget? budget, IRendererPerfArtifactIdentity? identity)
     {
         budget?.Check("renderer.verify.before");
         using var reader = new DirectoryReader(directory, budget, identity ?? RendererPerfArtifactIdentity.Platform);
-        var (root, rootLength, _) = reader.Read(reportName, RendererPerfReportJson.MaximumBytes);
+        var (root, rootLength, rootSha256) = reader.Read(reportName, RendererPerfReportJson.MaximumBytes);
         budget?.Check("renderer.verify.root.decode.before");
         var report = RendererPerfReportJson.Parse(root);
         budget?.Check("renderer.verify.root.decode.after");
@@ -78,7 +79,7 @@ internal static class RendererPerfArtifactVerification
         RendererPerfPublicationAccount.Verify(report, inventory, inventoryBytes);
         budget?.Check("renderer.verify.complete");
         var data = new Data(report, inventory, new(inventory.FactoryEvents.Length, inventory.Occurrences.Length, inventory.Recipes.Length,
-            report.Pipelines.Length, report.Pipelines.Sum(p => p.Executables.Length), report.Pipelines.Sum(p => p.Executables.Sum(e => e.Statistics.Length))), combined);
+            report.Pipelines.Length, report.Pipelines.Sum(p => p.Executables.Length), report.Pipelines.Sum(p => p.Executables.Sum(e => e.Statistics.Length))), combined, rootSha256);
         reader.ValidateAll();
         return data;
     }

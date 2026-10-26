@@ -233,7 +233,8 @@ outside-solution process prerequisite before `dotnet test -c Release --no-build`
 ordinary CI and the native GPU matrix use this same build owner, including native shard solutions
 that select Render.Tests. Process tests refuse a missing executable.
 
-The outside-solution `tools/Renderer.Perf.Verify` console takes exactly directory and report filename.
+The directory-verification mode of the outside-solution `tools/Renderer.Perf.Verify` console takes
+exactly directory and report filename. Its `publish` mode is described under Publishing a baseline.
 It performs no backend registration, device creation or measurement. Exit zero means directory
 verification succeeded. The trusted workflow invokes its built DLL after independent execution
 identity checks, then verifies received files again rather than accepting parsed JSON alone.
@@ -431,3 +432,67 @@ compact invariant-culture output. JSON and the retained inputs remain the reprod
 Summary Markdown revalidates the retained raw report and references before computing eligibility,
 reasons and distributions. Cached success cannot override failed raw evidence at publication.
 A changed recipe, driver or protocol starts a new baseline series with the prior result retained.
+
+
+## Publishing a baseline
+
+Build the offline verifier through the Release setup above, then publish a received full pair with
+one command. This reads files only, registers no GPU provider and starts no measurement:
+
+```sh
+dotnet tools/Renderer.Perf.Verify/bin/Release/net10.0/Renderer.Perf.Verify.dll publish request.json
+```
+
+The request schema is `khaozengine.renderer-baseline-request/1`. JSON is capped at 1 MiB and depth
+32. Duplicate or unknown fields, missing required values, null array entries and nonfinite numbers
+refuse. It requires `outputDirectory` and
+exactly two `legs`, one `linux-vulkan` and one `windows-d3d11`. Each leg supplies `leg`, `directory`,
+`reportName`, `runUrl`, integer `billedMinutes`, `manifestSha256`, `workloadSha`, `workflowSha` and
+`harnessSha256`. The hashes name the expected approved evidence, independently of the received report.
+The run URL must name that report's first attempt in `APKiwiOrg/KhaozEngine`, including
+`/actions/runs/<runId>/attempts/1`. `reportName` is the unit ID plus `.json`.
+Paths in a request file resolve relative to that file. Billing is an explicit operator-supplied
+actual, never inferred from elapsed time or estimated cost. It must be positive and within the
+approved billed-minute cap. The publisher records the supplied minutes without claiming to query
+GitHub billing.
+
+An optional `references` object per leg uses the exact `scene/pass/occurrence` keys and
+`RendererPerfReferenceRates` fields described under Work models and reference gaps. Omit it when no
+matched evidence exists. Each rate object supplies all eight constructor fields, using null for unavailable numeric inputs.
+The summary retains all supplied reference rates and their sources.
+
+The command calls the real registered-file directory verifier for both legs before creating output.
+It then reruns analysis and admission. Rehearsals, pilots, failed promotion, partial or incomplete
+publication, missing or changed sidecars, foreign hashes, mismatched native/compiler backends and
+unmatched run links refuse. Both legs must share workload and baseline source identities. Each leg retains its independently
+pinned workflow and harness identity.
+They remain separate series and acquire no cross-backend regression deltas. Refusals have typed
+codes printed by the console. Verification failures retain their original exception as the cause.
+The codes are `Request`, `EvidenceInvalid`, `Rehearsal`, `NotFull`, `Identity`, `Promotion`, `Billing`,
+`Pair`, `Exists` and `Write`.
+
+The output format is `khaozengine.renderer-baseline/1`. Each leg writes
+`<leg>-<unitId>.md`, and the pair writes `index-<linuxUnitId>-<windowsUnitId>.md`. The summary records
+its immutable run and attempt, verified report digest, manifest, workflow, source and harness hashes,
+runtime and native identity, full declared configuration and compiler configurations. It lists
+combined total-only scene distributions, each iteration's mean, detailed pass and gap assessments,
+controls and instrumentation perturbation. ModelIncomplete, Unsupported, Invalid and NotExecuted
+remain visible with their reasons. Only available excess distributions enter the largest-excess
+ranking. Investigation suggestions are leads, not established causes. If none is available, the
+summary says so and requests matched reference evidence.
+
+Three iterations establish within-job repeatability only. The summary retains that limit, the
+partial-write accounting proof limit in [#1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547),
+and the separate boundaries for optimization, consumer fit, Windows Vulkan and release. Successful
+publication does not close any of those boundaries.
+
+Output is UTF-8 without a BOM, with LF line endings, invariant numbers, ordinal ordering and sorted
+JSON object keys. No publication time or input/output directory path enters the summary. Reversing
+the request's leg or reference-key ordering produces the same bytes. Every output uses exclusive
+creation. An existing summary or pair index refuses before writes, even for identical inputs.
+Keep earlier files and publish new units under new names. An I/O failure can leave partial output,
+which remains evidence of that failed publication rather than permission to overwrite it.
+
+Store reviewed summaries under `docs/performance/renderer/` with the original received artifacts
+retained in their workflow run. The publisher does not commit files or dispatch follow-up work.
+No measured baseline is checked in until an eligible full pair exists.

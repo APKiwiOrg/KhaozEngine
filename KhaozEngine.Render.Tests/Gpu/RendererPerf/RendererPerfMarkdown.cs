@@ -88,10 +88,10 @@ internal static class RendererPerfMarkdown
         return text.ToString();
     }
 
-    static void Header(StringBuilder text) => text.Append("\n| Row | Metric | Available/expected | Mean | Median | p95 | p99 | Min | Max | Population SD | First64 | Last64 |\n")
+    internal static void Header(StringBuilder text) => text.Append("\n| Row | Metric | Available/expected | Mean | Median | p95 | p99 | Min | Max | Population SD | First64 | Last64 |\n")
         .Append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
 
-    static void Distribution(StringBuilder text, string row, string name, RendererPerfDistribution value)
+    internal static void Distribution(StringBuilder text, string row, string name, RendererPerfDistribution value)
     {
         text.Append("| ").Append(Cell(row)).Append(" | ").Append(Cell(name)).Append(" | ").Append(value.Count).Append('/').Append(value.ExpectedCount);
         foreach (var metric in new[] { value.Mean, value.Median, value.P95, value.P99, value.Minimum, value.Maximum,
@@ -138,9 +138,9 @@ internal static class RendererPerfMarkdown
         }) + " " + metric.Unit + ", " + metric.Provenance + ", " + metric.Source)
         : Cell(metric.Status + ": " + metric.Reason + ", " + metric.Source);
     static string Number(double? value) => value?.ToString("R", CultureInfo.InvariantCulture) ?? "unavailable";
-    static string Metric(RendererPerfMetric value) => Cell(value.Value is { } number
+    internal static string Metric(RendererPerfMetric value) => Cell(value.Value is { } number
         ? Number(number) + " " + value.Unit : value.Status + ": " + value.Reason);
-    static string Cell(string text) => text.Replace("&", "&amp;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal)
+    internal static string Cell(string text) => text.Replace("&", "&amp;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal)
         .Replace(">", "&gt;", StringComparison.Ordinal).Replace("|", "&#124;", StringComparison.Ordinal)
         .Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal);
 }

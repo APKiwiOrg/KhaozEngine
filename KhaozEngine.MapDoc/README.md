@@ -950,6 +950,12 @@ construction copies the material reference array. Native column inventory separa
 and two ordinal reference tables from batch controls and metadata. Construction inventory additionally includes
 the still-live builder page during freeze, rather than folding that overlap into the settled per-row price.
 
+The internal compact generation product retains original matrix, position and thinning-rank columns, lattice X/Z,
+and 32-bit support/model indexes. IDs receive ordinals on their first accepted occurrence. It shares the full
+generator's candidate scan, support and clearance evaluator, decomposition check and dependency digest. Full
+`Generate`, `Query` and observer APIs continue to expose complete diagnostic samples. A one-shot builder admits
+accepted-row, ordinal-index growth and frozen-array overlap before allocating them, then releases its workspace.
+
 ### Compatibility support and paint
 
 Payload 1 supports `legacy-tile/1` with explicit boundary/material metadata, resolver identity (1, 2) and

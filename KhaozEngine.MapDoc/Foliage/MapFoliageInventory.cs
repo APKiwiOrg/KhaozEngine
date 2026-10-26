@@ -6,6 +6,10 @@ namespace KhaozEngine.MapDoc.Foliage;
 /// <summary>Separate retained full samples, compact columns and simultaneous construction storage.</summary>
 internal static class MapFoliageInventory
 {
+    internal const long InstanceControl = 56, InstanceBatchControl = 104, WorkControl = 80;
+    internal const long BuilderControl = 104, ColumnBudgetControl = 40, OrdinalControl = 48;
+    internal const long FrozenControls = InstanceControl + InstanceBatchControl + WorkControl;
+    internal const long ConstructionControls = BuilderControl + ColumnBudgetControl + 2 * OrdinalControl;
     internal static long FullSamples(IReadOnlyList<MapFoliageSampleBatch> batches)
     {
         ArgumentNullException.ThrowIfNull(batches);

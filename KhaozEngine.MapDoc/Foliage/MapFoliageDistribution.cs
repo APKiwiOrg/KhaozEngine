@@ -9,7 +9,7 @@ namespace KhaozEngine.MapDoc.Foliage;
 
 /// <summary>Chunk-owned generation over immutable captured inputs. No expanded instance list precedes retention.
 /// Query shares one sample and byte budget across its entire half-open request, including off-raster chunks.</summary>
-public static class MapFoliageDistribution
+public static partial class MapFoliageDistribution
 {
     public static MapFoliageSampleBatch Generate(MapFoliageGenerationContext context, string layerId, MapFoliageChunkKey chunk,
         MapFoliageLimits? limits = null, Action<MapFoliageDecision>? observe = null)
@@ -102,17 +102,11 @@ public static class MapFoliageDistribution
         bool offRaster = KnownOffRaster(layer, Rectangle(layer, chunk));
         var evaluation = new Evaluation(context, layer, limits, meter);
         var samples = new List<MapFoliageSample>();
-        for (long z = range.MinZ; z <= range.MaxZ; z++)
-            for (long x = range.MinX; x <= range.MaxX; x++)
-            {
-                MapFoliageDecision row = evaluation.Decide((int)x, (int)z, area, charge =>
-                {
-                    if (meter.Samples - previousSamples >= limits.MaxSamples || !budget.TryRetain(charge)) return false;
-                    return true;
-                });
-                observe?.Invoke(row);
-                if (row.Sample is { } sample) samples.Add(sample);
-            }
+        Scan(evaluation, range, area, charge => meter.Samples - previousSamples < limits.MaxSamples && budget.TryRetain(charge), row =>
+        {
+            observe?.Invoke(row);
+            if (row.Sample is { } sample) samples.Add(sample);
+        });
         // An empty batch binds its exact prepared dependencies. A known off-raster chunk prepared nothing, so it binds
         // only the raster facts that make it off-raster.
         System.Diagnostics.Debug.Assert(!offRaster || meter.PrepareScopes == initial.PrepareScopes);
@@ -197,7 +191,8 @@ public static class MapFoliageDistribution
         readonly Queue<MapFoliageChunkKey> _order = new();
         sealed record Prepared(MapPreparedFoliageClearance Clearance, long Charge);
 
-        internal MapFoliageDecision Decide(int x, int z, RectArea? clip, Func<long, bool> admitSample)
+        internal MapFoliageDecision Decide(int x, int z, RectArea? clip, Func<long, bool> admitSample,
+            MapFoliageInstanceBuilder? instances = null)
         {
             meter.Candidates++;
             MapFoliageSurfacePoint? point = null;
@@ -228,13 +223,16 @@ public static class MapFoliageDistribution
             if (distribution.Instance is { } instance)
             {
                 MapResolvedAsset model = context.Assets.GetAsset(instance.ModelId);
-                long charge = MapFoliageRetentionBudget.ChargeSample(layer.Id, point!.SupportOwnerId!, model.Id, layer.Policy.Id, model.MaterialResourceIds);
-                if (!admitSample(charge)) throw Refuse(MapFoliageStatus.CapacityExceeded, "retained samples or bytes");
+                long charge = instances is null ? MapFoliageRetentionBudget.ChargeSample(layer.Id, point!.SupportOwnerId!, model.Id, layer.Policy.Id, model.MaterialResourceIds) : 0;
+                if (!admitSample(charge) || instances is not null && !instances.TryPrepare(point!.SupportOwnerId, model.Id))
+                    throw Refuse(MapFoliageStatus.CapacityExceeded, "retained samples or bytes");
                 if (!Matrix4x4.Decompose(instance.Transform, out _, out Quaternion rotation, out _))
                     throw Refuse(MapFoliageStatus.NotRepresentable, "candidate matrix decomposition");
                 meter.Samples++;
-                sample = new(new(address, 1, layer.Policy), point.OccupiedSpaceId, point.Face, model.Id, model.MaterialResourceIds,
-                    point.VisibleMaterial, instance.Position, Quaternion.Normalize(rotation), distribution.Scale, instance.Transform, instance.ThinningRank, true);
+                if (instances is null)
+                    sample = new(new(address, 1, layer.Policy), point!.OccupiedSpaceId, point.Face, model.Id, model.MaterialResourceIds,
+                        point.VisibleMaterial, instance.Position, Quaternion.Normalize(rotation), distribution.Scale, instance.Transform, instance.ThinningRank, true);
+                else instances.AppendPrepared(x, z, instance);
             }
             else if (distribution.Kind == GroundCoverDecisionKind.DensityRejected) reason = MapFoliageReason.DensityRejected;
             return new(address, point?.OccupiedSpaceId, reason, distribution, sample) { Surface = point };

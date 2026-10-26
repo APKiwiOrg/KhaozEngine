@@ -186,9 +186,10 @@ public static class NativeMapPlacements
             var preparedInventory = scene.Placements.Where(p => routing.Entries[p.PlacementId] != MapPlacementRoute.Cluster)
                 .Concat(cells.Cells.SelectMany(cell => cell.Members)).ToArray();
             var result = new MapPlacementRenderBatch(preparedInventory, MapEffectiveAnnotations.Markers(scene), ordinary, roofLayers, parts, routing, clusters, 0, cells);
-            preparation.EnsureCapacity(result.RetainedBytes, cells.PreparationOwnership);
+            long retainedBytes = preparation.DeduplicateSharedProducts(result.RetainedBytes, result.SharedMembershipBytes, cells.PreparationOwnership);
+            preparation.EnsureCapacity(retainedBytes, cells.PreparationOwnership);
             cellDependency?.Absorb();
-            result.Own(preparation.Complete(result.RetainedBytes));
+            result.Own(preparation.Complete(retainedBytes));
             return result;
 
             PropLayer Shared(IReadOnlyList<NativePropInstance> rows, MapPlacementLayer? layer)

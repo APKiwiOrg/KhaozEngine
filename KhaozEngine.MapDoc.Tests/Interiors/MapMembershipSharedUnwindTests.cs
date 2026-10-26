@@ -40,8 +40,8 @@ public sealed class MapMembershipSharedUnwindTests
             Assert.Null(refused.Buffer);
             Assert.Equal(MapSceneStatus.CapacityExceeded, refused.Status);
             // Header 26197, plan 2080, publication 4224, private columns 30240, controls 1024,
-            // bound owners 320, index 196, footprint 128, consumer 512 and window lease 512.
-            const long beforeReference = 26197 + 2080 + 4224 + 30240 + 1024 + 320 + 196 + 128 + 512 + 512;
+            // bound owners 320, index 196, surface cell IDs 4, footprint 128, consumer 512 and window lease 512.
+            const long beforeReference = 26197 + 2080 + 4224 + 30240 + 1024 + 320 + 196 + 4 + 128 + 512 + 512;
             long requested = beforeReference + MapMembershipArenaInventoryModel.FootprintRoot(256);
             Assert.Equal(new MapSceneCapacity("BorrowWindow", requested, 170000), refused.Capacity);
             Assert.Equal(requested, refused.Counts!.Membership.BindingWindow!.RefusedBytes);

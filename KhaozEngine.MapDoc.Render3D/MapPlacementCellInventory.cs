@@ -41,9 +41,11 @@ internal sealed class MapPlacementCellInventory : IDisposable
             .Distinct().OrderBy(k => k.LayerId, StringComparer.Ordinal).ThenBy(k => k.X).ThenBy(k => k.Z).ToArray();
         var cells = new Dictionary<PropClusterKey, Cell>();
         foreach (var key in keys) cells.Add(key, Acquire(scene, routing, key));
+        long retained = checked(128L + 64L * cells.Count + cells.Values.Sum(c => c.RetainedBytes));
+        long shared = cells.Values.Sum(c => c.RoofEvaluation?.Counts.SharedCapacityBytes ?? 0);
         return new(cells)
         {
-            PreparationOwnership = preparation.Complete(checked(128L + 64L * cells.Count + cells.Values.Sum(c => c.RetainedBytes)))
+            PreparationOwnership = preparation.Complete(preparation.DeduplicateSharedProducts(retained, shared))
         };
     }
 

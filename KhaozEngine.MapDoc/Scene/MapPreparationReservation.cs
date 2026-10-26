@@ -15,7 +15,9 @@ internal sealed class MapPreparationReservation : IDisposable
     bool _disposed;
     long _bytes;
     MapPreparationDependencies? _dependencies;
+    internal long OwnedBytes => _bytes;
     internal long Bytes => checked(_bytes + (_dependencies?.Bytes ?? 0));
+    internal long SharedProductBytes(HashSet<object>? seen = null) => _dependencies?.SharedProductBytes(seen) ?? 0;
     internal object WindowIdentity => (object?)_window ?? _ledger;
     internal long DependOnProduct(IMapPreparationSharedProduct product) => (_dependencies ??= new()).AddProduct(this, product);
     internal IDisposable? ReferenceProductWindow(long bytes, object origin)

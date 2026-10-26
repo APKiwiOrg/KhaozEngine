@@ -38,6 +38,7 @@ public sealed partial class MapPlacementRenderBatch : IDisposable
     internal void Own(MapPreparationReservation ownership)
     { PreparationOwnership = ownership; PreparationChargeBytes = ownership.Bytes; }
     public long PreparationChargeBytes { get; private set; }
+    internal long SharedMembershipBytes => _roofCohorts.Sum(c => c?.Evaluation.Counts.SharedCapacityBytes ?? 0);
     public long RetainedBytes
     {
         get

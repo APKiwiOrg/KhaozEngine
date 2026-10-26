@@ -46,7 +46,8 @@ internal static class MapMembershipFullPolicyInventory
         const long frozenBounds = MapMembershipCompactInventory.FrozenBounds;
         const long footprintView = 128 + 512 + 2 * (128 + 8);
         const long shared = MapMembershipCompactInventory.Shared, cache = 256;
-        const long completeOutputs = arena + geometryControls + indexes + frozenBounds + footprintView + shared + cache;
+        const long surfaceCellIds = 2 * 4, stamps = 8 * (2 * 2 + 2 + 2);
+        const long completeOutputs = arena + geometryControls + indexes + surfaceCellIds + frozenBounds + footprintView + shared + cache;
         return new Boundary[]
         {
             new("Header", "header and borrowed scene", h),
@@ -77,7 +78,7 @@ internal static class MapMembershipFullPolicyInventory
             new("Construction", "private columns, shared page receipts, private bounds, prism domain and three arithmetic kernels",
                 construction + completeOutputs + 32768 + 1024 * 4 + 3 * arithmetic),
             new("Publication", "surviving planner/publication workspace and frozen shared/private capacities",
-                construction + completeOutputs),
+                construction + completeOutputs + stamps),
         };
     }
 

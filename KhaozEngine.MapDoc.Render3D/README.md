@@ -137,6 +137,9 @@ Dependency attribution and construction peaks are admitted while earlier scene a
 intact. Refusal releases borrowed attribution, and successful output completion consumes those receipts.
 CPU meshes, detached outline and colour copies, evaluation dependencies and frame lookup capacities
 transfer into the batch's unique retained receipt.
+Reachable roof inventories can include the same shared footprint pages. Cell, batch and plan receipts count
+their actual shared membership dependencies once. Batch `RetainedBytes` keeps the reachable total, while
+`PreparationChargeBytes` reports the deduplicated receipt.
 Incomplete full-room coverage refuses preparation. Individual resources remain resident for mixed visibility fallback. Individuals remain active until `AcceptCluster` receives the exact
 prepared build and the externally published mesh. It retains metadata only and never uploads or frees that handle.
 An empty welded proxy cannot be accepted, so individuals remain active. Placement registration bounds are

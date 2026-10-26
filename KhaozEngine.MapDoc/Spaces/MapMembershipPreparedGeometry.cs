@@ -169,7 +169,11 @@ internal sealed class MapMembershipPreparedGeometry
         }
         Cells = new(arena, 0, arena.Cells.Count);
         for (int s = 0; s < view.Surfaces.Count; s++)
-            Surfaces.Add(view.Surfaces[s].Id, new(view.Surfaces[s], bySurface[view.Surfaces[s].Id].ToArray(), arena));
+        {
+            var cells = bySurface[view.Surfaces[s].Id];
+            MapMembershipBuild.Inventory(checked(4L * cells.Count));
+            Surfaces.Add(view.Surfaces[s].Id, new(view.Surfaces[s], cells.ToArray(), arena));
+        }
         foreach (var opening in records.OfType<MapHorizontalOpening>())
         {
             var reference = view.Witness.Records.Single(r => r.Id == opening.Id);

@@ -5795,7 +5795,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         SurfStrength = 0f,
     }));
     ```
-    **39 fields are overridable**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
+    **Overridable fields**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
     (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`UnderwaterSunlight`/`UnderwaterPenumbraPerMetre`/
     `ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars, `ShoreFadeDistance`, and the
     two depth-response strengths `ShoalingStrength`/`SurfStrength`. **What stays scene-wide, and cannot be put on

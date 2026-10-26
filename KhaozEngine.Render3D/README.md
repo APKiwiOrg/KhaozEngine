@@ -944,7 +944,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   existed still compiles and still packs from the caller's own `WaterSettings` object unchanged. Every field on
   `WaterLook` mirrors a `WaterSettings` field and is itself nullable - `null` inherits the scene, a value overrides
   it for that plane alone, leaving every other queued plane on the scene's look, which is what lets a calm inland
-  lake and a rough FFT sea share a frame. 39 fields are overridable: `WaveSource`, the swell group, the ripple/
+  lake and a rough FFT sea share a frame. The overridable fields are `WaveSource`, the swell group, the ripple/
   detail group, body colour including `AbsorptionPerMetre`, `UnderwaterSunlight` and
   `UnderwaterPenumbraPerMetre`, foam, the four `Glint*` scalars, `ShoreFadeDistance` and the two depth-response
   strengths `ShoalingStrength`/`SurfStrength`. Scene-wide and NOT on a look at all: `SeaState` (one FFT bake - two sea states a frame does not

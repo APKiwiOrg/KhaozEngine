@@ -64,11 +64,13 @@ namespace KhaozEngine.Windowing
                 // register, so any engine API that opens a list of its own from inside onFrame refuses by name instead
                 // of resetting this recording's device state (#424). A frame that renders nothing holds the default
                 // not-recording scope, claims nothing, and leaves the prepare-phase freedom intact.
+                var waitTicket = render ? frame.BeginRecordingWaitObservation(RecordingWaitRole.Main, device, commands) : default;
                 GpuRecordingScope recording = render
                     ? GpuRecording.Open(device, commands, "the window's frame list")
                     : default;
                 try
                 {
+                    if (render) frame.CompleteRecordingWaitObservation(waitTicket);
                     if (render && !rendererInitializesSwapchain)
                     {
                         commands.SetFramebuffer(device.SwapchainFramebuffer!);

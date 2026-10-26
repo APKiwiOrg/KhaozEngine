@@ -4,28 +4,30 @@ using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Windowing;
 
-internal readonly record struct FrameDiagnosticsBoundary(long Timestamp, FrameDiagnosticsWindowState Window, GpuDeviceCounters Counters);
+internal readonly record struct FrameDiagnosticsBoundary(long Timestamp, FrameDiagnosticsWindowState Window, GpuDeviceCounters Counters, RecordingWaitBoundary RecordingWait = default);
 
 internal readonly record struct FrameDiagnosticsSample(long StartTimestamp, long EndTimestamp,
     double MonotonicIntervalSeconds, double LoopDeltaSeconds, FrameDiagnosticsWindowState CompletedFrameWindow,
-    FrameDiagnosticsWindowState BoundaryWindow, GpuDeviceCounters Counters, ShadowStageProbeRow ShadowStage = default);
+    FrameDiagnosticsWindowState BoundaryWindow, GpuDeviceCounters Counters, ShadowStageProbeRow ShadowStage = default, RecordingWaitProbeRow RecordingWait = default);
 
 internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, string AppAssembly,
     string EngineAssembly, long StopwatchFrequency, double DurationSeconds, int SampleCount, string StopReason,
     FrameDiagnosticsBoundary Baseline, FrameDiagnosticsBoundary End, FrameDiagnosticsSample[] Samples,
-    FrameDiagnosticsSummary Summary, FrameDiagnosticsShadowSummary ShadowStages)
+    FrameDiagnosticsSummary Summary, FrameDiagnosticsShadowSummary ShadowStages, FrameDiagnosticsRingWaitSummary RecordingWaits,
+    FrameDiagnosticsCodeIdentity AppCodeIdentity, FrameDiagnosticsCodeIdentity EngineCodeIdentity)
 {
     internal static FrameDiagnosticsReport Create(long frequency, FrameDiagnosticsBoundary baseline,
-        FrameDiagnosticsBoundary end, FrameDiagnosticsSample[] buffer, int count, string reason, ShadowStageProbeMode mode = ShadowStageProbeMode.Off)
+        FrameDiagnosticsBoundary end, FrameDiagnosticsSample[] buffer, int count, string reason, ShadowStageProbeMode mode = ShadowStageProbeMode.Off, bool ringWaitProbe = false)
     {
         var samples = new FrameDiagnosticsSample[count];
         Array.Copy(buffer, samples, count);
         var engine = typeof(FrameDiagnosticsRecorder).Assembly;
-        return new FrameDiagnosticsReport(3, Environment.ProcessId,
+        return new FrameDiagnosticsReport(4, Environment.ProcessId,
             Assembly.GetEntryAssembly()?.FullName ?? "unknown", engine.FullName + " MVID=" + engine.ManifestModule.ModuleVersionId,
             frequency, (end.Timestamp - baseline.Timestamp) / (double)frequency, count, reason, baseline, end, samples,
             FrameDiagnosticsSummary.Create(baseline, end, samples, reason == "capacity", count == buffer.Length),
-            FrameDiagnosticsShadowSummary.Create(samples, mode));
+            FrameDiagnosticsShadowSummary.Create(samples, mode), FrameDiagnosticsRingWaitSummary.Create(samples, ringWaitProbe),
+            FrameDiagnosticsCodeIdentity.Read(Assembly.GetEntryAssembly()), FrameDiagnosticsCodeIdentity.Read(engine));
     }
 }
 
@@ -100,4 +102,11 @@ internal sealed record FrameDiagnosticsCounterDelta(long FramesBegun, long Drain
         (end.BackpressureStallCount - start.BackpressureStallCount) / (double)count,
         (end.BackpressureStallMs - start.BackpressureStallMs) / count,
         (end.AcquireWaitCount - start.AcquireWaitCount) / (double)count, (end.AcquireWaitMs - start.AcquireWaitMs) / count);
+}
+
+internal sealed record FrameDiagnosticsCodeIdentity(string Name, Guid Mvid, string? InformationalVersion)
+{
+    internal static FrameDiagnosticsCodeIdentity Read(Assembly? assembly) => new(assembly?.GetName().Name ?? "unknown",
+        assembly?.ManifestModule.ModuleVersionId ?? Guid.Empty,
+        assembly?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion);
 }

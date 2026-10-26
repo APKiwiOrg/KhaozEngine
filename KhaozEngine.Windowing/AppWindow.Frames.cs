@@ -73,8 +73,10 @@ namespace KhaozEngine.Windowing
                         _window.FramebufferSize.X, _window.FramebufferSize.Y, _effectiveBaseCapHz, _presentMode == PresentMode.Vsync,
                         RendererInitializesSwapchain, _frame.PreparePhaseSplitActive,
                         _frame.PreparePhaseSubmissionCount, _frame.PreparePhaseCompositeCount),
-                    _device.Counters, _frame.CompletedShadowStageCallback);
+                    _device.Counters, _frame.CompletedShadowStageCallback, _frame.CompletedRecordingWaitCallback,
+                    diagnostics.ReadRecordingWaitBoundary(_device as Gpu.IGpuRingWaitSource));
                 _frame.BeginShadowStageCallback(diagnostics?.NextShadowStageRequest ?? default);
+                _frame.BeginRecordingWaitCallback(diagnostics?.NextRecordingWaitRequest ?? default);
                 float fdt = (float)Math.Min(dt, 0.1);
                 // Capture first, so the snapshot reports what GLFW was told this frame. See AppWindow.PointerCapture.cs.
                 ApplyPointerCapture();
@@ -113,6 +115,7 @@ namespace KhaozEngine.Windowing
 
                 if (_maxFrames > 0 && ++_frameCount >= _maxFrames) _window.Close();
                 _frame.CompleteShadowStageCallback();
+                _frame.CompleteRecordingWaitCallback();
             };
             _window.Run();
         }

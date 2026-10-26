@@ -138,8 +138,8 @@ namespace KhaozEngine.Tests.Gpu
             Inner.UpdateBuffer(b, offsetBytes, data);
         }
 
-        public void Begin() => Inner.Begin();
-        public void End() => Inner.End();
+        public void Begin() { BeforeProbeBegin?.Invoke(); Inner.Begin(); AfterProbeBegin?.Invoke(); }
+        public void End() { Inner.End(); AfterProbeEnd?.Invoke(); }
         public void SetFramebuffer(IGpuFramebuffer fb)
         {
             BoundFramebuffers.Add(fb);

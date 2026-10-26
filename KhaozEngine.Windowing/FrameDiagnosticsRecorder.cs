@@ -25,12 +25,15 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
     FrameDiagnosticsBoundary _previous;
     int _count;
 
-    internal FrameDiagnosticsRecorder(string path, long frequency, int capacity = 4096, ShadowStageProbeMode mode = ShadowStageProbeMode.Off)
+    internal FrameDiagnosticsRecorder(string path, long frequency, int capacity = 4096, ShadowStageProbeMode mode = ShadowStageProbeMode.Off, bool ringWaitProbe = false)
     {
         if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("An absolute result path is required.", nameof(path));
         if (frequency <= 0) throw new ArgumentOutOfRangeException(nameof(frequency));
         if (capacity < 1 || capacity > 4096) throw new ArgumentOutOfRangeException(nameof(capacity));
         if (mode is < ShadowStageProbeMode.Off or > ShadowStageProbeMode.Timings) throw new ArgumentOutOfRangeException(nameof(mode));
+        if (ringWaitProbe && mode == ShadowStageProbeMode.Off)
+            throw new ArgumentException("KE_RING_WAIT_PROBE requires counts or timings shadow mode.", nameof(ringWaitProbe));
+        _ringWaitProbe = ringWaitProbe;
         _shadowMode = mode;
         _path = Path.GetFullPath(path);
         if (File.Exists(_path) || Directory.Exists(_path)) throw new IOException("Result already exists.");
@@ -46,7 +49,7 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
         {
             string? path = Environment.GetEnvironmentVariable("KE_FRAME_DIAGNOSTICS_PATH");
             string? mode = Environment.GetEnvironmentVariable("KE_SHADOW_STAGE_MODE");
-            return FromSettings(path, mode);
+            return FromSettings(path, mode, Environment.GetEnvironmentVariable("KE_RING_WAIT_PROBE"));
         }
         catch (Exception error)
         {
@@ -64,7 +67,8 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
         => Observe(dt, timestamp, window, counters, default);
 
     internal void Observe(double dt, long timestamp, FrameDiagnosticsWindowState window, GpuDeviceCounters counters,
-        in ShadowStageCallbackResult completed)
+        in ShadowStageCallbackResult completed, in RecordingWaitCallbackResult recordingWait = default,
+        in RecordingWaitBoundary ringBoundary = default)
     {
         if (_phase == Phase.Stopped) return;
         if (_phase == Phase.Waiting)
@@ -73,7 +77,7 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
             return;
         }
 
-        var boundary = new FrameDiagnosticsBoundary(timestamp, window, counters);
+        var boundary = new FrameDiagnosticsBoundary(timestamp, window, counters, ringBoundary);
         if (_phase == Phase.Armed)
         {
             // Trigger I/O was on the previous callback. Its partial interval and dt are discarded.
@@ -90,7 +94,7 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
         }
         _samples[_count++] = new FrameDiagnosticsSample(_previous.Timestamp, timestamp,
             (timestamp - _previous.Timestamp) / (double)_frequency, dt, _previous.Window, window, counters,
-            ShadowRow(completed, _previous.Window.RenderSuppressed));
+            ShadowRow(completed, _previous.Window.RenderSuppressed), RecordingWaitRow(recordingWait, boundary));
         _shadowSequence++;
         _previous = boundary;
         bool durationReached = (timestamp - _baseline.Timestamp) / (double)_frequency >= 10;
@@ -123,7 +127,7 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
         string? temporary = null;
         try
         {
-            var report = FrameDiagnosticsReport.Create(_frequency, _baseline, _previous, _samples, _count, reason, _shadowMode);
+            var report = FrameDiagnosticsReport.Create(_frequency, _baseline, _previous, _samples, _count, reason, _shadowMode, _ringWaitProbe);
             temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {

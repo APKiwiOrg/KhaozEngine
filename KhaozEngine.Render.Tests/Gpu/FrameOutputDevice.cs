@@ -5,7 +5,7 @@ namespace KhaozEngine.Tests.Gpu;
 
 // A real headless device with a texture standing in for the window's output. Only present and the
 // platform swapchain copy are substituted. All rendering, submission and capture copies reach the GPU.
-internal sealed class FrameOutputDevice(IGpuDevice inner, PostChainRig.Output output) : IGpuDevice, IGpuSwapchainCapture
+internal sealed partial class FrameOutputDevice(IGpuDevice inner, PostChainRig.Output output) : IGpuDevice, IGpuSwapchainCapture
 {
     internal int Submits, Presents;
     internal PostChainRig.Output Output { get; set; } = output;

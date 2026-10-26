@@ -24,6 +24,8 @@ public sealed class PreparePhaseSplitFixture : IDisposable
     MeshHandle _mesh;
     FoliageBatch? _probeFoliage;
     internal ShadowStageProbeSnapshot?[] ProbeSnapshots { get; private set; } = [];
+    internal RecordingWaitCallbackResult[] WaitCallbacks { get; private set; } = [];
+    internal RecordingWaitBoundary[] WaitBoundaries { get; private set; } = [];
     internal string[][] ProbeDrawOrder { get; private set; } = [];
 
     internal string ValidationProof
@@ -65,7 +67,7 @@ public sealed class PreparePhaseSplitFixture : IDisposable
     internal byte[][] Render(bool split, bool transparent, bool temporal, bool geometry, bool hdr,
         SceneDebugView debugView = SceneDebugView.None, bool resize = false, ScreenTransitionStyle? transitionStyle = null,
         BillboardBlend? atmosphereBillboards = null, ShadowStageProbeMode probeMode = ShadowStageProbeMode.Off,
-        bool pointShadows = false)
+        bool pointShadows = false, bool ringWaitProbe = false)
     {
         EnsureScene();
         IGpuDevice gpu = _gpu!.GpuDevice;
@@ -95,6 +97,8 @@ public sealed class PreparePhaseSplitFixture : IDisposable
         };
         MeshHandle mesh = _mesh;
         ProbeSnapshots = new ShadowStageProbeSnapshot?[Frames];
+        WaitCallbacks = new RecordingWaitCallbackResult[Frames];
+        WaitBoundaries = new RecordingWaitBoundary[Frames + 1];
         ProbeDrawOrder = new string[Frames][];
         Guid epoch = Guid.NewGuid();
         if (pointShadows)
@@ -131,8 +135,11 @@ public sealed class PreparePhaseSplitFixture : IDisposable
                 commands.Clear();
                 commands.CommandTrace!.Clear();
                 frame.BeginShadowStageCallback(new ShadowStageProbeRequest(epoch, i + 1, probeMode));
+                frame.BeginRecordingWaitCallback(new(epoch, i + 1, ringWaitProbe, probeMode));
+                if (ringWaitProbe) WaitBoundaries[i] = ReadWaitBoundary(device);
                 RendererFramePolicy.Run(frame, true, device, commands, Color.Black, _ =>
                 {
+                    frame.DeclareRecordingWaitPrefix(split);
                     scene.ConfigureShadowStageProbe(frame.ShadowStageRequest);
                     scene.Begin();
                     scene.EffectTimeSeconds = index / 60f;
@@ -161,6 +168,9 @@ public sealed class PreparePhaseSplitFixture : IDisposable
                     commands.CopyTexture(device.Output.Texture, retained[index]);
                 }, taps, true);
                 frame.CompleteShadowStageCallback();
+                frame.CompleteRecordingWaitCallback();
+                WaitCallbacks[i] = frame.CompletedRecordingWaitCallback;
+                if (ringWaitProbe) WaitBoundaries[i + 1] = ReadWaitBoundary(device);
                 var completed = frame.CompletedShadowStageCallback;
                 Assert.True(completed.Completed);
                 Assert.Equal(probeMode == ShadowStageProbeMode.Off ? 0 : 1, completed.ProducerCount);
@@ -193,6 +203,14 @@ public sealed class PreparePhaseSplitFixture : IDisposable
             device.BeforeSubmit = null;
             resizedOutput?.Dispose();
         }
+    }
+
+    static RecordingWaitBoundary ReadWaitBoundary(IGpuRingWaitSource source)
+    {
+        var status = source.TryReadRingWaitTotals(out var totals);
+        return new(status == GpuRingWaitSnapshotStatus.Available ? RecordingWaitBoundaryStatus.Available
+            : status == GpuRingWaitSnapshotStatus.Contended ? RecordingWaitBoundaryStatus.Contended
+            : RecordingWaitBoundaryStatus.Unavailable, status == GpuRingWaitSnapshotStatus.Available ? totals : null);
     }
 
     void QueueProbePoint(Scene3D scene)

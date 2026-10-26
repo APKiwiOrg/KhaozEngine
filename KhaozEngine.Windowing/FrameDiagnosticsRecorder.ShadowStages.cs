@@ -21,16 +21,17 @@ internal sealed partial class FrameDiagnosticsRecorder
         _ => throw new ArgumentException("KE_SHADOW_STAGE_MODE must be off, counts or timings."),
     };
 
-    internal static FrameDiagnosticsRecorder? FromSettings(string? path, string? value)
+    internal static FrameDiagnosticsRecorder? FromSettings(string? path, string? value, string? ringWait = null)
     {
         var mode = ParseShadowStageMode(value);
+        bool enabled = ParseRecordingWaitProbe(ringWait);
         if (string.IsNullOrEmpty(path))
         {
             if (mode != ShadowStageProbeMode.Off)
                 throw new ArgumentException("KE_SHADOW_STAGE_MODE requires a usable KE_FRAME_DIAGNOSTICS_PATH recorder.");
             return null;
         }
-        return new FrameDiagnosticsRecorder(path, System.Diagnostics.Stopwatch.Frequency, mode: mode);
+        return new FrameDiagnosticsRecorder(path, System.Diagnostics.Stopwatch.Frequency, mode: mode, ringWaitProbe: enabled);
     }
 
     ShadowStageProbeRow ShadowRow(in ShadowStageCallbackResult completed, bool suppressed)

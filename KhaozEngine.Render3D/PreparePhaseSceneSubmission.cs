@@ -40,8 +40,12 @@ internal sealed class PreparePhaseSceneSubmission : IDisposable
         if (frame.RenderSuppressed) { _scene.CancelPreparedOutput(); return; }
         try
         {
+            var waitTicket = frame.BeginRecordingWaitObservation(RecordingWaitRole.Prefix, _device, _commands);
             using (GpuRecording.Open(_device, _commands, "the private prepare-phase scene prefix"))
+            {
+                frame.CompleteRecordingWaitObservation(waitTicket);
                 _token = _scene.PrepareOutput(_commands, frame.Width, frame.Height);
+            }
             _device.Submit(_commands);
             frame.RecordPreparePhaseSubmission();
             _preparedFrame = frame;

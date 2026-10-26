@@ -39,6 +39,7 @@ namespace KhaozEngine.Render3D
         /// <summary>Submit the private scene prefix after queue preparation and before the frame recording opens.</summary>
         public void PrepareRender(Frame frame)
         {
+            frame.DeclareRecordingWaitPrefix(_prepareSubmission is not null && !frame.RenderSuppressed);
             try { _prepareSubmission?.Prepare(frame); }
             catch { Scene.CancelShadowStageProbe(); throw; }
         }

@@ -466,9 +466,13 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)` in each lookup cascade.
   Over the first texel of widening, positions and weights morph into a centred, stratified equal-weight pattern.
   Noise-driven rotation and positional jitter grow from zero, preserving the exact dry kernel at zero.
-  Added tap displacement follows the horizontal entry plane's depth, relative to each original dry
-  tap, so widening does not move the comparison ray above shallow casters. The four march rays spread with
-  the same radius and keep one comparison per slice. This is one kernel family. Blending separate dry and
+  Entry taps compare the stored caster's height with the original biased dry tap's height on the horizontal
+  entry plane, at the actual snapped and clamped texel. The inverse orthographic basis's Y coefficients use
+  squared basis lengths as denominators, with no reciprocal of light elevation or unbounded depth gradient
+  near horizontal light. Exactly horizontal rays use the downward-light height limit. Equal heights keep the
+  ordinary depth comparison, including when a tiny height coefficient underflows. The original bias and
+  zero-widening result are preserved, and outer rays cannot pass above shallow casters. The four march rays
+  spread with the same radius and keep one comparison per slice. This is one kernel family. Blending separate dry and
   disc kernels would double the cost in shallow water, where most submerged pixels are.
   Submerged fragments add four slice comparisons to that
   entry kernel. Native timing remains a separate measurement.

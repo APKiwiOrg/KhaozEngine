@@ -183,9 +183,8 @@ float filterKeyShadowWidened(vec2 uv, float depth, int cascade, float radiusTexe
     vec3 rowX = vec3(m[0].x, m[1].x, m[2].x);
     vec3 rowY = vec3(m[0].y, m[1].y, m[2].y);
     vec3 rowZ = vec3(m[0].z, m[1].z, m[2].z);
-    float zPerY = rowZ.y == 0.0 ? 0.0 : dot(rowZ, rowZ) / rowZ.y;
-    vec2 depthPerUv = -vec2(rowX.y / dot(rowX, rowX), rowY.y / dot(rowY, rowY))
-        * vec2(2.0, -2.0) * zPerY;
+    vec3 worldYPerClip = vec3(rowX.y / dot(rowX, rowX), rowY.y / dot(rowY, rowY),
+                             rowZ.y / dot(rowZ, rowZ));
     float lit = 0.0;
     for (int y = 0; y < 4; y++) {
         for (int x = 0; x < 4; x++) {
@@ -195,14 +194,18 @@ float filterKeyShadowWidened(vec2 uv, float depth, int cascade, float radiusTexe
             luv = clamp(luv, vec2(stepSize * 0.5), vec2(1.0 - stepSize * 0.5));
             vec2 dryUv = (base + vec2(float(x), float(y)) - vec2(0.5)) * stepSize;
             dryUv = clamp(dryUv, vec2(stepSize * 0.5), vec2(1.0 - stepSize * 0.5));
-            // Widen along the horizontal entry plane. A constant comparison depth would move the outer
-            // rays above shallow casters. Correct only displacement from the dry tap, retaining its bias
-            // and exact comparison at zero widening. Evaluate the actual snapped and clamped texel ray.
-            float tapDepth = depth + dot(depthPerUv, luv - dryUv);
             vec2 atlasUv = vec2((float(cascade) + luv.x) / float(count), luv.y);
             float stored = textureLod(sampler2D(ShadowMap, ShadowSamp), atlasUv, 0.0).r;
+            // Compare heights relative to the original biased dry tap. The inverse orthographic basis
+            // stays finite at horizontal light, unlike solving for the entry plane's light-space depth.
+            // At equal height, including underflow of a tiny depth-axis coefficient, keep the ordinary
+            // depth comparison. Otherwise the downward-light limit also defines exactly horizontal rays.
+            float heightDifference = dot(worldYPerClip,
+                vec3((luv - dryUv) * vec2(2.0, -2.0), stored - depth));
+            bool tapLit = heightDifference == 0.0 ? depth <= stored
+                : rowZ.y > 0.0 ? heightDifference > 0.0 : heightDifference < 0.0;
             float weight = mix(wx[x] * wy[y] / 9.0, 1.0 / 16.0, widening);
-            lit += (stored >= 1.0 || tapDepth <= stored ? 1.0 : 0.0) * weight;
+            lit += (stored >= 1.0 || tapLit ? 1.0 : 0.0) * weight;
         }
     }
     return lit;

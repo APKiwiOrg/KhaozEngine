@@ -4998,8 +4998,13 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       the dry bilinear kernel at zero widening. In each selected cascade the radius is
       `min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)`. Positions and weights morph into a centred,
       stratified equal-weight pattern over the first texel of widening, with noise-driven rotation and jitter
-      growing from zero. Added displacement adjusts comparison depth along the horizontal entry plane,
-      relative to each original dry tap, so outer rays cannot pass above shallow casters. A separate dry/disc
+      growing from zero. Entry taps compare the stored caster's height with the original biased dry tap's
+      height on the horizontal entry plane at the actual snapped and clamped texel. The inverse orthographic
+      basis's Y coefficients use squared basis lengths as denominators, without a reciprocal of light
+      elevation or an unbounded depth gradient near horizontal light. Exactly horizontal rays use the
+      downward-light height limit. Equal heights keep the ordinary depth comparison, including when a tiny
+      height coefficient underflows. This preserves the original bias and zero-widening result and prevents
+      outer rays from passing above shallow casters. A separate dry/disc
       blend would double the comparisons over shallow water, where most submerged pixels are. The march
       spreads its four rays with the same radius and keeps one comparison per slice. As depth tends to zero,
       entry, bias, transmittance and kernel meet the dry path. Non-positive shadow strength still exports key

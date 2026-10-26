@@ -271,10 +271,14 @@ phase-dependent variance can expose an otherwise shadowed hull edge.
 The fully widened pattern stays inside its nominal radius rather than stretching the folded dry fringe beyond it.
 Noise-driven rotation and positional jitter grow from zero. TAA jitters the receiver against this screen-fixed
 pattern. Taps clamp within their cascade's atlas column, compare stored point depths first and weight afterward.
-Added displacement follows the horizontal entry plane
-at the actual snapped, clamped texel relative to its original dry tap, so widening cannot move outer comparisons
-above shallow casters. This is one kernel family. Blending separate dry and disc results would double the cost
-over shallow water, where most submerged pixels are. The four march rays spread with the same radius, converted
+Entry taps compare the stored caster's height with the original biased dry tap's height on the horizontal
+entry plane, evaluated at the actual snapped and clamped texel. The inverse orthographic basis's Y coefficients
+have squared basis lengths as denominators, with no reciprocal of light elevation. This avoids an unbounded
+depth gradient near horizontal light. Exactly horizontal rays use the downward-light height limit. Equal
+heights keep the ordinary depth comparison, including when a tiny height coefficient underflows. The original
+bias and zero-widening result are preserved. Without this entry-plane comparison, outer rays can pass above
+shallow casters and erase their shadows. This is one kernel family. Blending separate dry and disc results
+would double the cost over shallow water, where most submerged pixels are. The four march rays spread with the same radius, converted
 per cascade, and keep one comparison per slice. Submerged fragments therefore pay one kernel plus four slice
 comparisons before cascade blending. This comparison count is not a native timing result.
 

@@ -14,7 +14,6 @@ floater sun shadows and adopts authored beds once the engine work ships.
   [Render3D](../../KhaozEngine.Render3D/README.md), [consumer contract](../USING-KHAOZENGINE.md).
 - Design rationale: [per-body water optics](../design/WATER-OBJECT-OPTICS-DESIGN-2026-10-24.md),
   [native handoff](../design/WATER-OPTICS-R8B-HANDOFF-2026-10-24.md).
-- Approved design of unbuilt milestones: [water-optics-design.md](water-optics-design.md)
 - Consumer adoption: https://github.com/APKiwiOrg/Grimhollow/issues/644
 
 ## Milestones

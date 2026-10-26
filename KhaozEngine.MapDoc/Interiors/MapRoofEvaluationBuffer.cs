@@ -42,11 +42,7 @@ public sealed class MapRoofEvaluationBuffer
         ArgumentNullException.ThrowIfNull(scene);
         var status = MapMembershipPreparation.Measure(scene, out var demand, out string? detail);
         if (status != MapSceneStatus.CompleteForScope) return new(status, null, detail);
-        var limits = scene.Source.Data.Limits;
-        if (demand.Bytes > limits.MaxPreparedBytes) return Refused(new MapSceneCapacity(nameof(MapSceneLimits.MaxPreparedBytes), demand.Bytes, limits.MaxPreparedBytes));
-        if (demand.Faces > limits.MaxPreparedFaces) return Refused(new MapSceneCapacity(nameof(MapSceneLimits.MaxPreparedFaces), demand.Faces, limits.MaxPreparedFaces));
-        status = MapMembershipPreflight.Check(scene, demand);
-        return status == MapSceneStatus.CompleteForScope ? PrepareAdmitted(scene, new MapSceneAdmission(limits), demand) : Refused(status);
+        return PrepareAdmitted(scene, new MapSceneAdmission(scene.Source.Data.Limits), demand);
     }
     internal static MapRoofEvaluationBufferResult Prepare(MapScopedScene scene, MapSceneAdmission admission, bool requireCompletePolicy = false)
     {
@@ -54,37 +50,45 @@ public sealed class MapRoofEvaluationBuffer
         ArgumentNullException.ThrowIfNull(admission);
         var status = MapMembershipPreparation.Measure(scene, out var demand, out string? detail);
         if (status != MapSceneStatus.CompleteForScope) return new(status, null, detail);
-        if (admission.PreparationRefusal(demand.Bytes, demand.Faces) is { } capacity) return Refused(capacity);
-        status = MapMembershipPreflight.Check(scene, demand);
-        return status == MapSceneStatus.CompleteForScope ? PrepareAdmitted(scene, admission, demand, requireCompletePolicy) : Refused(status);
+        return PrepareAdmitted(scene, admission, demand, requireCompletePolicy);
     }
     static MapRoofEvaluationBufferResult PrepareAdmitted(MapScopedScene scene, MapSceneAdmission admission, MapMembershipPreparation demand, bool requireCompletePolicy = false)
     {
         using var active = admission.Enter();
+        var counts = new MapRoofPreparationCounts { HeaderBytes = demand.Bytes };
+        using var interval = new MapMembershipPreparationInterval(admission, counts);
         using var preparation = admission.BeginPreparation();
-        var counts = new MapRoofPreparationCounts();
         using var build = new MapMembershipBuild(admission, preparation, counts);
         try
         {
+            interval.Stage(counts.Header);
             preparation.Reserve(demand.Bytes);
+            if (admission.PreparationRefusal(0, demand.Faces) is { } headerCapacity) return Refused(headerCapacity) with { Counts = counts };
+            var status = MapMembershipPreflight.Check(scene, demand);
+            if (status != MapSceneStatus.CompleteForScope) return Refused(status) with { Counts = counts };
             var sceneOwner = requireCompletePolicy ? scene.PreparationOwnership : null;
             using var dependency = sceneOwner is null ? null : preparation.WorkspaceOwner.Borrow(sceneOwner);
             long sceneInventoryBytes = sceneOwner?.Bytes ?? 0;
             if (requireCompletePolicy && demand.Prisms != 0)
             {
+                interval.Stage(counts.Validation);
                 // The dependency remains charged in this view throughout validation and membership.
                 // A refusal releases only our borrowed attribution, preserving the original receipt.
                 using var validation = new MapPrismValidationWorkspace(admission, counts, demand.Records);
                 var errors = MapPrismCoverage.Validate(scene.SurfaceView, scene.Scope.Surfaces.Limits.Refinement ?? new());
                 if (errors.Count != 0) return new(MapSceneStatus.Invalid, null, "Incomplete canonical roof policy. " + string.Join("\n", errors)) { Counts = counts };
             }
+            interval.Stage(counts.Planner);
             using var planning = admission.Workspace();
             var records = MapSpaceGeometry.Records(scene.SurfaceView).ToArray();
             var plan = new MapMembershipDemandPlan(scene.SurfaceView, records, planning);
             if (!admission.TryReservePreparation(0, counts.SpanFaces + counts.ChartFaces, out var capacity)) return Refused(capacity!) with { Counts = counts };
+            interval.Stage(counts.Publication);
             using var publication = admission.Workspace();
             publication.Reserve(checked(4096L + 64L * records.Length));
+            interval.Stage(counts.Construction);
             var buffer = new MapRoofEvaluationBuffer(scene, demand, sceneInventoryBytes, plan) { Counts = counts };
+            interval.Stage(counts.Publication);
             publication.Dispose();
             planning.Dispose();
             counts.RetainedBytes = buffer.RetainedBytes;

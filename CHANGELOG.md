@@ -7,7 +7,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.14.0
 
-2026-10-25
+2026-10-26
+
+- Expose membership preparation interval diagnostics for root and window admission, including stage requests,
+  successful peaks and refusals. Label the borrowed-input header separately from complete aggregate predictions.
 
 - Add optional Scene3D render-pass observation across geometry, shadows, atmosphere, water, effects,
   temporal resolve, post and display work, with cached skips, exclusive device leaves and fused motion metadata.

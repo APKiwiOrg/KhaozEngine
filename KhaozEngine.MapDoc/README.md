@@ -680,7 +680,19 @@ typed result. Its admitted `Buffer.Evaluate(observer, mode)` reuses exact member
 Preparation selects the union of cells touched by footprint bounds, flagged indoor spans and portal sources.
 It shares masked patch geometry and stores bound associations only for that coverage. Cold validation still checks
 unrelated acquired cells. Planner, validation and compiler workspace have separate lifetimes under the same byte
-allowance. `Counts` exposes only slot, face, association, coefficient and validation counts and byte totals.
+allowance. `Counts` exposes only numerical construction and capacity evidence, including on header or later refusal.
+`HeaderBytes` covers borrowed-input controls. `CompleteAggregatePredictionAvailable` is false. Each owner admits
+its next justified capacity before allocation or growth, with old storage charged until its replacement is ready.
+`Membership`, `Header`, `Validation`, `Planner`, `Construction` and `Publication` report interval observations.
+They start before their reservations, and membership ends after publication or unwind. These observed peaks
+describe admitted work and are not before-work aggregate predictions or additional reservations.
+Each stage reports `Root` and `Windows`. Root totals include already live workspace, retained products and external
+obligations. Window totals include that window's reused and referenced obligations, preserving shared attribution.
+`BindingWindow` is the observed window with the least headroom at its largest requested or admitted total.
+`BaselineBytes` records the live starting obligation. `RequestedBytes` is the largest pre-reservation total,
+`AdmittedPeakBytes` excludes rejected increments, and `RefusedBytes` separately records the largest refused total.
+`LargestIncrementBytes` records the largest numerical next-batch envelope. None of these interval values inherits
+an earlier historical ledger peak. Planner, compiler and validation output counts describe the actual built outputs.
 Patch face grouping admits both local and transformed copies plus the active grouping's growth and sort workspace
 before allocation, retaining that owner through the final cell. Validation releases its compiled root context after
 the raw pieces have copied their bound faces. Room candidates retain one sorted piece row per parent consumer.

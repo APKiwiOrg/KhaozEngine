@@ -11538,6 +11538,8 @@ Its optional `Capacity` identifies a refused byte or face reservation, its deman
 and leaves unlinked shelters visible. Hidden roofs cast shadows and block sky picking without changing statics.
 Membership preparation follows actual footprint, indoor and portal coverage. Stage workspace is released at last use.
 Its optional `Counts` diagnostics contain counts and byte totals without geometry or source identities.
+They distinguish the borrowed-input header from root and window interval evidence for every preparation stage,
+including refused requests. Admission is staged, and no complete aggregate prediction is advertised.
 The optional MapDoc.Render3D package consumes roof drawing and presentation query channels.
 R8b retains cut-aware sky/camera policy. Live door state waits for [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363).
 Native controller walking and layered routes remain gated by G1b and #438. Physical doorway clearance

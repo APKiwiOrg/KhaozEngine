@@ -112,7 +112,9 @@ must do the same, recorded in the R8b handoff.
 - Records are binned into the existing view-space cluster grid (16 x 9 x 24 froxels, the same jittered raster
   view-projection, render-relative eye and log depth slices as point lights), so a fragment computes ONE cluster
   index for both point lights and water. A water-only frame prepares this grid even with no point lights.
-  Point-light shading still exits on its own count. A record enters a cluster when its box (rectangle by floor to surface)
+  A failed light assignment marks all light headers for full-list fallback without invalidating a mixed frame's
+  shared water grid. Point-light-only frames retain their legacy uniform bytes. Point-light shading still exits
+  on its own count. A record enters a cluster when its box (rectangle by floor to surface)
   intersects the froxel, using a conservative range then an exact plane test, mirroring
   `PointLightClusterRanges` and `PointLightClusterBuilder`. Share the froxel geometry, not the per-primitive test
   (spheres versus boxes).
@@ -185,8 +187,8 @@ one uniform branch.
   buffer index, within the 22 positions of headroom. Vulkan fragment storage buffers will go from two to three.
   The spec guarantees four
   per stage. `VulkanDeviceFacts` records `maxPerStageDescriptorStorageBuffers`, passed through
-  `GpuCapabilities.MaxFragmentStorageBuffers`. Lit renderer creation refuses reports below three before
-  creating its resources or pipelines, naming the Vulkan limit. This guard reserves the receiver shading layout's
+  `GpuCapabilities.MaxFragmentStorageBuffers`. Scene and standalone lit renderer creation refuse reports below
+  three before GPU allocation, naming the Vulkan limit. This guard reserves the receiver shading layout's
   future requirement. The current lit layouts still use two fragment storage buffers.
 - The cross-compiled shader corpus (`ShippedShaderPrograms`) and register-numbering pins update deliberately.
 

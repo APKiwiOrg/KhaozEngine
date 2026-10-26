@@ -32,6 +32,9 @@ frames prepare the shared camera grid, opted-out frames clear the uniform count 
 renderer creation checks the future fragment storage buffer requirement. Receiver bindings, shader declarations
 and shading reads will land together. The cross-backend GPU proof remains in progress.
 
+Shared water-grid uniforms survive point-light assignment fallback. Scene and standalone renderer construction
+share a capability preflight that refuses unsupported devices before GPU allocation.
+
 ## Decisions in force
 
 - WO-D4: Underwater sunlight refracts the sun at the still-water surface for submerged receivers (Snell,

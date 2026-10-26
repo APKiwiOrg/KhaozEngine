@@ -382,7 +382,7 @@ namespace KhaozEngine.Render3D
         public const int MaxPointLights = ModelRenderer.MaxPointLights;
         internal Scene3D(IGpuDevice gd, GpuOutputDescription targetOutput, ShadowSettings? initialShadows = null, KhaozEngine.Diagnostics.ILogger? shadowReconfigureLogger = null, bool requestLitVisibility = false)
         {
-            _gd = gd; _requestLitVisibility = requestLitVisibility;
+            _gd = LitReceiverRequirements.RequireSupportedDevice(gd); _requestLitVisibility = requestLitVisibility;
             // Bound once, here, to a method group: the delegate object is allocated exactly once for this Scene3D's
             // lifetime rather than once per frame (see the field doc comment above and AlphaCutoffFor below).
             _alphaCutoffLookup = AlphaCutoffFor;

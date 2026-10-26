@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 using KhaozEngine.Tests.Gpu;
 using Xunit;
@@ -151,6 +152,52 @@ public sealed class WaterVolumeUploadTests
         Assert.Equal(0, h.Scene.PointLightClusters.SubmittedLightCount);
         Assert.Equal(0f, MemoryMarshal.Read<ModelRenderer.FrameUbo>(h.UploadedFrame).Params.Y);
         Assert.True(h.Scene.WaterVolumeClusters.ReferenceCount > 0);
+    }
+
+    [Fact]
+    public void LightAssignmentFailurePreservesTheValidWaterGrid()
+    {
+        using var h = new Host();
+        Matrix4x4 projection = Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 2f, 1f, 1e-5f, 256f);
+        ModelRenderer.PointLightData[] lights =
+            [new() { PosRadius = new Vector4(0f, 0f, -1f, 2f), ColorIntensity = Vector4.One }];
+        WaterVolumeRecord[] water = [new(-2f, -2f, 2f, 0f, 0f, -2f, Vector3.One, 0.03f)];
+        var grid = new ClusterFrameGrid();
+        Assert.True(grid.TryPrepare(projection, Vector3.Zero, -Vector3.UnitZ, projection, Vector3.Zero));
+
+        h.Renderer.BuildAndUploadLightingClusters(h.Commands, lights, water, projection, Vector3.Zero,
+            -Vector3.UnitZ, projection, Vector3.Zero);
+        h.Renderer.SetFrameUniforms(h.Commands, projection, Vector3.Zero, h.Scene.Post, lights);
+
+        Assert.Equal(1, h.Renderer.WaterVolumeDiagnostics.RecordCount);
+        Assert.True(h.Renderer.WaterVolumeDiagnostics.ReferenceCount > 0);
+        h.Upload();
+        Assert.Equal(grid.Depth, MemoryMarshal.Read<Vector4>(h.UploadedFrame.AsSpan(1312)));
+        Assert.Equal(new Vector4(0f, 0f, -1f, 1f), MemoryMarshal.Read<Vector4>(h.UploadedFrame.AsSpan(1328)));
+        Assert.Equal(1f, MemoryMarshal.Read<ModelRenderer.FrameUbo>(h.UploadedFrame).Params.Y);
+        Assert.True(h.Renderer.PointLightClusterDiagnostics(lights.Length).UsesFullFallback);
+        RecordingGpuCommandList.Upload lightUpload = Assert.Single(h.Commands.Uploads,
+            u => ReferenceEquals(u.Buffer, h.Renderer.PointLightClusterBuffer));
+        uint[] headers = MemoryMarshal.Cast<byte, uint>(lightUpload.Data!.AsSpan()).ToArray();
+        Assert.Equal(3456, headers.Length);
+        Assert.All(headers, header => Assert.Equal(255u, header));
+    }
+
+    [Fact]
+    public void LightAssignmentFailureWithoutWaterKeepsTheLegacyFrameBytes()
+    {
+        using var h = new Host();
+        Matrix4x4 projection = Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 2f, 1f, 1e-5f, 256f);
+        ModelRenderer.PointLightData[] lights =
+            [new() { PosRadius = new Vector4(0f, 0f, -1f, 2f), ColorIntensity = Vector4.One }];
+
+        h.Renderer.BuildAndUploadPointLightClusters(h.Commands, lights, projection, Vector3.Zero,
+            -Vector3.UnitZ, projection, Vector3.Zero);
+        h.Renderer.SetFrameUniforms(h.Commands, projection, Vector3.Zero, h.Scene.Post, lights);
+
+        Vector4[] expected = [new(0f, 0f, 0f, -1f), Vector4.Zero];
+        Assert.Equal(MemoryMarshal.AsBytes(expected.AsSpan()).ToArray(), h.UploadedFrame.AsSpan(1312, 32).ToArray());
+        Assert.DoesNotContain(h.Commands.Uploads, u => ReferenceEquals(u.Buffer, h.Buffer));
     }
 
     [Fact]

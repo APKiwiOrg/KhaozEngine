@@ -12,21 +12,8 @@ internal sealed partial class ModelRenderer
     IGpuBuffer _waterVolumeBuffer = null!;
     internal WaterVolumeClusterDiagnostics WaterVolumeDiagnostics { get; private set; }
 
-    static void RequireFragmentStorageBuffers(GpuCapabilities capabilities)
-    {
-        // Reserve the count lit pipelines will need when receiver shading first reads and binds water volumes.
-        // The current layouts still have only the point-light record and cluster buffers.
-        const int required = 3;
-        if (capabilities.MaxFragmentStorageBuffers < required)
-            throw new NotSupportedException($"Lit receivers require maxPerStageDescriptorStorageBuffers >= {required}, "
-                + $"but the device reports {capabilities.MaxFragmentStorageBuffers}.");
-    }
-
     static AtmosphereBindings CreateLitAtmosphere(IGpuDevice device)
-    {
-        RequireFragmentStorageBuffers(device.Capabilities);
-        return new AtmosphereBindings(device);
-    }
+        => new(LitReceiverRequirements.RequireSupportedDevice(device));
 
     void CreateWaterVolumes(IGpuResourceFactory factory)
     {
@@ -52,7 +39,17 @@ internal sealed partial class ModelRenderer
         _clusterDepth = _clusterFrameGrid.Depth;
         _clusterCamera = _clusterFrameGrid.CameraForward;
         if (!lights.IsEmpty) BuildAndUploadPointLightClusters(cl, lights, renderOrigin);
-        if (waterRecords.IsEmpty) return;
+        if (waterRecords.IsEmpty)
+        {
+            // Preserve the legacy light-only bytes, including an invalid assignment's full-list sentinel.
+            // Mixed frames retain the prepared camera grid. Failed light assignments already flag every header.
+            if (!lights.IsEmpty)
+            {
+                _clusterDepth = _pointLightClusters.Depth;
+                _clusterCamera = _pointLightClusters.CameraForward;
+            }
+            return;
+        }
 
         _waterVolumeClusters.Build(waterRecords, _clusterFrameGrid);
         WaterVolumeDiagnostics = new(_waterVolumeClusters.RecordCount, _waterVolumeClusters.DroppedRecords,

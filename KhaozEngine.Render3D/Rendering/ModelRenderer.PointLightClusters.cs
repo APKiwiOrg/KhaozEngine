@@ -52,10 +52,6 @@ internal sealed partial class ModelRenderer
     void BuildAndUploadPointLightClusters(IGpuCommandList cl, ReadOnlySpan<PointLightData> lights, Vector3 renderOrigin)
     {
         _pointLightClusters.Build(lights, _clusterFrameGrid, renderOrigin);
-        // Preserve the light path's full-list fallback if an exact cluster plane is degenerate.
-        bool validLightClusters = _pointLightClusters.Depth.W >= 0f;
-        _clusterDepth = validLightClusters ? _clusterFrameGrid.Depth : _pointLightClusters.Depth;
-        _clusterCamera = validLightClusters ? _clusterFrameGrid.CameraForward : _pointLightClusters.CameraForward;
         // Only the used prefix, the headers plus this frame's indices, rather than the whole 940,032-byte image.
         cl.UpdateBuffer<uint>(_pointLightClusterBuffer, 0,
             new ReadOnlySpan<uint>(_pointLightClusters.Image, 0, _pointLightClusters.UsedUIntCount));

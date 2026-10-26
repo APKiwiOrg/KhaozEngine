@@ -142,7 +142,7 @@ void main() {
 
         /// <summary>One fullscreen draw of <paramref name="fragment"/> over an R32F source through the receivers'
         /// clamp and point sampler, read back as RGBA8 from a <paramref name="width"/> x 1 target.</summary>
-        static byte[] Render(IGpuDevice dev, string fragment, float[] texels, int texWidth, int texHeight,
+        internal static byte[] Render(IGpuDevice dev, string fragment, float[] texels, int texWidth, int texHeight,
             Vector4[]? items, int width)
         {
             IGpuResourceFactory f = dev.Factory;

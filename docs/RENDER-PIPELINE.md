@@ -207,8 +207,10 @@ dry filter's weighted 4x4 footprint at a fixed 16 point comparisons, morphing po
 centred, stratified equal-weight pattern over the first texel of widening. Its radius is
 `min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)`, converted separately for each cascade. Rotation and
 positional jitter grow from zero with widening, so zero widening uses the exact dry kernel. Added entry-tap
-displacement adjusts comparison depth along the horizontal water plane, relative to the original dry tap, so
-outer rays cannot pass above shallow casters. The four slice rays spread with the same radius without adding
+displacement compares stored height along the horizontal water plane, relative to the original biased dry tap.
+Squared basis lengths avoid a reciprocal of light elevation, keeping the comparison finite even near horizontal
+light. Equal heights retain the ordinary depth comparison. Outer rays cannot pass above shallow casters.
+The four slice rays spread with the same radius without adding
 comparisons, evaluating depth bands on each offset texel's light ray.
 This path does not depend on either authored water-depth source above.
 

@@ -5915,7 +5915,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       selected cascade. It spreads the dry bilinear filter's weighted 4x4 footprint at a fixed 16 point
       comparisons, including shallow water. Tap positions and weights morph into a centred, stratified
       equal-weight pattern over the first texel of widening. Noise-driven rotation and positional jitter grow
-      from zero with widening. Zero widening uses the exact dry kernel. The four march rays spread with the
+      from zero with widening. Zero widening uses the exact dry kernel. Entry taps compare stored height against
+      the original biased dry tap, using squared basis lengths without a reciprocal of light elevation. This
+      stays finite near horizontal light, with an ordinary depth comparison when heights are equal.
+      The four march rays spread with the
       same radius while retaining one comparison per slice.
     - *Reflection*: `SkyReflectionStrength` (0 = the flat `HorizonColor`, 1 = the sky along the reflected ray) and
       `SkyReflectionSunStrength` (how much of the sky's disc + halo the reflection carries).

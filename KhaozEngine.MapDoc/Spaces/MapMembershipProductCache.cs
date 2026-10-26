@@ -139,16 +139,19 @@ internal sealed class MapMembershipProductCache
                 try
                 {
                     reference = _attribution.Acquire(Root.Bytes, destination.WindowIdentity);
-                    control = workspace.Transfer(512);
+                    var groupControl = control = workspace.Transfer(512);
                     pages = Root.Retain();
-                    var inventory = MapPreparationInventory.Own(checked(Root.Bytes + 512), pages, control, reference);
+                    var inventory = MapPreparationInventory.Own(checked(Root.Bytes + 512),
+                        seen => checked(Root.RootInventoryBytes(seen) + groupControl.RootInventoryBytes(seen) +
+                            cache._control.RootInventoryBytes(seen)), pages, control, reference);
                     group = new(destination.WindowIdentity, inventory) { Next = _groups };
                     _groups = group;
                 }
                 catch { pages?.Dispose(); control?.Dispose(); reference?.Dispose(); throw; }
             }
             checked { group.Consumers++; }
-            return MapPreparationInventory.Own(group.Inventory.Bytes, new Consumer(this, group, group.Inventory.Retain()));
+            return MapPreparationInventory.Own(group.Inventory.Bytes, group.Inventory.RootInventoryBytes,
+                new Consumer(this, group, group.Inventory.Retain()));
         }
         void Release(Group group)
         {

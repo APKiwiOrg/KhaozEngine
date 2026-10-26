@@ -146,8 +146,8 @@ public sealed class MapMembershipNestedWindowTests
             {
                 var refused = MapRoofEvaluationBuffer.Prepare(scene, admission);
                 Assert.Null(refused.Buffer);
-                // Header, planning, publication, private columns, controls, bounds, index and consumer leases.
-                const long beforeReference = 26197 + 2080 + 4224 + 30240 + 1024 + 320 + 196 + 128 + 512 + 512;
+                // Header, planning, publication, private columns, controls, bounds, index, cell ID and consumer leases.
+                const long beforeReference = 26197 + 2080 + 4224 + 30240 + 1024 + 320 + 196 + 4 + 128 + 512 + 512;
                 Assert.Equal(new MapSceneCapacity("C", beforeReference + footprint, 170000), refused.Capacity);
                 var parentCounts = Assert.Single(refused.Counts!.Membership.Windows, w => w.WindowOrdinal == p.Ordinal);
                 Assert.Equal(Obligation(1, footprint) + beforeReference, parentCounts.RefusedBytes);

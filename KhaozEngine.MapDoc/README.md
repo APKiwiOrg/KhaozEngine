@@ -705,6 +705,8 @@ The final footprint lease releases its page receipts, window attribution and cac
 `RetainedBytes` describes a buffer's reachable obligation, including borrowed scene inventory. `SharedCapacityBytes`
 reports footprint leases and `PrivateCapacityBytes` reports private products and query scratch. Root accounting deduplicates
 physical page identities and includes cache controls, so buffer totals must not be summed as root inventory.
+Publication checks private storage against its direct preparation and shared storage against its live product leases.
+Selected-cell stamp arrays and per-surface cell IDs are admitted after their counts are known, before allocation.
 A borrowing window carries a footprint's full obligation once across all buffers in that window and its descendants.
 Nested and sibling borrowers share each ancestor's attribution. Each window releases it only after its last
 borrowing consumer retires, independently of retirement order. Refusal and cancellation preserve earlier leases.

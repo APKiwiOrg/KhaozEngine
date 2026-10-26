@@ -94,6 +94,7 @@ public sealed class MapRenderPlan : IDisposable
             long retained = checked(1024L + terrain.RetainedBytes + placements.RetainedBytes + water.RetainedBytes + foliage.RetainedBytes +
                 geometry.RetainedBytes + roofs.RetainedBytes + 128L * roofIndices.Count + 128L * resources.Length + MapRecordingAdmission.DrawBytes * result._lights.Length +
                 (captured is null ? context.InventoryBytes : 0));
+            retained = preparation.DeduplicateSharedProducts(retained, checked(placements.SharedMembershipBytes + roofs.Counts.SharedCapacityBytes));
             result.PreparationOwnership = preparation.Complete(retained - water.CanonicalPreparationBytes); result.PreparationBytes = retained;
             return result;
         }

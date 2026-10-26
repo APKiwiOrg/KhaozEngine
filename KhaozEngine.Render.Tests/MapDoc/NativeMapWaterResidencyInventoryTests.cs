@@ -30,11 +30,11 @@ public sealed class NativeMapWaterResidencyInventoryTests
         long canonical = cells.Sum(c => 256L + c.Regions.Sum(r => 128L + 144L * r.Triangles.Count));
         long source = state.Source.Data.CaptureWork.RetainedBytes + state.Extents.MetadataBytes +
             state.Closure.CapturedResources.Sum(r => (long)r.ByteLength);
-        long receipts = plans.Sum(p => p.PreparationOwnership!.Bytes + p.Scene.PreparationOwnership!.Bytes +
-            p.FoliageContext.PreparationOwnership!.Bytes);
+        // The fixture has one 2x2 footprint shared by all windows, including a cache and distinct window controls.
+        long preparation = NativeMembershipResidencyInventory.Preparation(plans, cells: 4);
         long uploads = 100L * device.Live.Count;
         long recording = 512L + 512L * plans.Sum(p => p.Resources.Count);
-        Assert.Equal(source + residency.AssetCache.RetainedBytes + receipts + canonical + uploads + recording,
+        Assert.Equal(source + 512 + preparation + canonical + uploads + recording,
             residency.Lifetime.CpuBytes);
         residency.Dispose(); residency.Dispose();
         Assert.Equal(0, residency.Lifetime.CpuBytes);

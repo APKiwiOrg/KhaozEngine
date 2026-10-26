@@ -45,6 +45,17 @@ internal sealed class MapPreparationScope : IDisposable
         if (dependency is not null && !_products.Contains(dependency)) available = checked(available + dependency.InventoryBytes(seen));
         if (bytes > available) Reserve(bytes - available);
     }
+    internal long DeduplicateSharedProducts(long reachableBytes, long sharedReachableBytes, MapPreparationReservation? dependency = null)
+    {
+        var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        long shared = _workspace.SharedProductBytes(seen);
+        foreach (var product in _products) shared = checked(shared + product.SharedProductBytes(seen));
+        if (dependency is not null && !_products.Contains(dependency))
+            shared = checked(shared + dependency.SharedProductBytes(seen));
+        if (shared > sharedReachableBytes || sharedReachableBytes > reachableBytes || sharedReachableBytes > 0 && shared == 0)
+            throw new InvalidOperationException("Shared product inventory does not match its retained dependencies.");
+        return checked(reachableBytes - sharedReachableBytes + shared);
+    }
     internal MapPreparationReservation Complete(long bytes, bool publishToParent = true, bool retainDependencies = true)
     {
         ObjectDisposedException.ThrowIf(_disposed || _completed, this);

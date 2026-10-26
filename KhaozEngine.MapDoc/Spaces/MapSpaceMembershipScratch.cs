@@ -51,6 +51,8 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
         _prepared = new(view, plan);
         _active = new Active[_footprints.Length];
         _demands = new Demand[checked(2 * _footprints.Length + 16 * _portals.Length + view.Surfaces.Count)];
+        // Selected cell and face-set counts are known only after preparation, not in the input header.
+        MapMembershipBuild.Inventory(checked(8L * (2L * _geometry.PatchCount + _geometry.Cells.Length + _geometry.FaceSets.Count)));
         _validated = new long[_geometry.PatchCount]; _physical = new long[_geometry.Cells.Length];
         _opening = new long[_geometry.FaceSets.Count]; _patchFaces = new long[_geometry.PatchCount];
         _scratch = new(demand.Parts, Prisms.Length);

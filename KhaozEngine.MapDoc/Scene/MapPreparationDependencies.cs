@@ -10,6 +10,14 @@ internal sealed class MapPreparationDependencies : IDisposable
     sealed record Piece(long Bytes, MapPreparationInventory Lease);
     readonly Dictionary<object, Piece> _pieces = new(ReferenceEqualityComparer.Instance);
     internal long Bytes => _pieces.Values.Sum(p => p.Bytes);
+    internal long SharedProductBytes(HashSet<object>? seen)
+    {
+        long bytes = 0;
+        foreach (var piece in _pieces)
+            if (piece.Key is IMapPreparationSharedProduct && (seen is null || seen.Add(piece.Key)))
+                bytes = checked(bytes + piece.Value.Lease.Bytes);
+        return bytes;
+    }
     internal long AddProduct(MapPreparationReservation destination, IMapPreparationSharedProduct product)
     {
         product = product.For(destination.Admission);
@@ -28,6 +36,7 @@ internal sealed class MapPreparationDependencies : IDisposable
         _pieces.Add(identity, new(bytes, lease));
     }
     internal long UniqueBytes(HashSet<object> seen) => _pieces.Where(p => seen.Add(p.Key)).Sum(p => p.Value.Bytes);
+    internal long RootInventoryBytes(HashSet<object> seen) => _pieces.Values.Sum(p => p.Lease.RootInventoryBytes(seen));
     internal MapPreparationDependencies Rebind(MapPreparationReservation destination, MapPreparationReservation? workspace = null)
     {
         var result = new MapPreparationDependencies();

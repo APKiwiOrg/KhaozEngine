@@ -103,7 +103,8 @@ public sealed class MapRoofEvaluationBuffer
             counts.RetainedBytes = buffer.RetainedBytes;
             counts.SharedCapacityBytes = buffer._scratch.SharedBytes;
             counts.PrivateCapacityBytes = checked(buffer.RetainedBytes - sceneInventoryBytes - counts.SharedCapacityBytes);
-            if (buffer.RetainedBytes > checked(preparation.Bytes + sceneInventoryBytes))
+            if (counts.PrivateCapacityBytes > preparation.WorkspaceOwner.OwnedBytes ||
+                counts.SharedCapacityBytes != preparation.WorkspaceOwner.SharedProductBytes())
                 throw new InvalidOperationException("Membership inventory was not admitted before construction.");
             dependency?.Absorb();
             buffer.PreparationOwnership = preparation.Complete(buffer.RetainedBytes);

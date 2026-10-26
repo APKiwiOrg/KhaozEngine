@@ -171,6 +171,32 @@ public sealed class UnderwaterSunlightGpuTests(UnderwaterSunlightScenes scenes, 
     }
 
     [GpuFact]
+    public void HorizontalKeyShadowsASubmergedVerticalReceiver()
+    {
+        var settings = new UnderwaterSunlightCase(UnderwaterSunlightGeometry.HorizontalReceiver, Absorption: false);
+        UnderwaterSunlightImage shadow = scenes.Capture(settings);
+        float[] shadowHdr = scenes.ReadOpaqueHdrColor();
+        UnderwaterSunlightImage open = scenes.Capture(settings with { Caster = false });
+        float[] openHdr = scenes.ReadOpaqueHdrColor();
+        int nonFinite = shadowHdr.Count(value => !float.IsFinite(value)) + openHdr.Count(value => !float.IsFinite(value));
+        output.WriteLine($"horizontal light HDR colour values={shadowHdr.Length + openHdr.Length}, non-finite={nonFinite}");
+        Assert.Equal(0, nonFinite);
+        Vector3 probe = new(0f, -1f, 0f);
+        float dark = UnderwaterSunlightImage.Brightness(shadow.Sample(probe));
+        float lit = UnderwaterSunlightImage.Brightness(open.Sample(probe));
+        Vector2 pixel = shadow.Project(probe);
+        int index = (int)pixel.Y * UnderwaterSunlightScenes.Size + (int)pixel.X;
+        output.WriteLine($"horizontal light wall brightness shadow={dark:F6}, open={lit:F6}, visibility={shadow.Visibility[index]}/255");
+        Assert.True(lit > 0.3f, $"The open vertical receiver must face the horizontal key, got {lit}.");
+        Assert.True(dark <= lit * 0.35f, $"The submerged caster must shadow the wall, got {dark / lit} of its open brightness.");
+        Assert.True(shadow.Visibility[index] <= 89 && open.Visibility[index] == 255,
+            "Key visibility must report the restored caster shadow and the fully lit open control.");
+        Vector3 clearProbe = new(-1.3f, -1f, 0f);
+        Assert.True(UnderwaterSunlightImage.Brightness(shadow.Sample(clearProbe)) > 0.3f,
+            "The same receiver outside the caster footprint must remain lit.");
+    }
+
+    [GpuFact]
     public void PenumbraWidensWithDepth()
     {
         var settings = new UnderwaterSunlightCase(UnderwaterSunlightGeometry.ThinSlab, Depth: 0.5f, Absorption: false);

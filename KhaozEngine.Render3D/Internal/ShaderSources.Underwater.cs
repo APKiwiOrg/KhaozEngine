@@ -124,8 +124,8 @@ UnderwaterKey underwaterKeyForFragment(vec3 renderPos) {
 
     // Spliced after projectCascade. The six lit fragments all declare ShadowMap and ShadowSamp before this block.
     internal const string UnderwaterSubmergedOcclusionGlsl = @"
-// One POINT depth, never a filtered depth. The horizontal water plane is evaluated on the fetched texel's
-// light ray, not the unsnapped lookup ray. ShadowMat is orthographic with orthogonal, scaled basis rows.
+// One POINT depth, never a filtered depth. Reconstruct the stored caster's height on the fetched texel's
+// light ray. ShadowMat is orthographic with orthogonal, scaled basis rows, including at horizontal light.
 float underwaterSliceAtCascade(int cascade, int count, vec3 endPos, vec3 Ngeo, float slopeSin,
                               float surfaceY, float startDepth, float endDepth, float endBias,
                               vec2 uv, float z) {
@@ -142,13 +142,15 @@ float underwaterSliceAtCascade(int cascade, int count, vec3 endPos, vec3 Ngeo, f
     vec2 worldYPerClipXY = vec2(rowX.y / dot(rowX, rowX), rowY.y / dot(rowY, rowY));
     vec2 snapClip = (tapUv - uv) * vec2(2.0, -2.0);
     float normalY = Ngeo.y * ShadowNormalOffsets[cascade] * slopeSin;
-    float rayY = endPos.y + normalY + dot(worldYPerClipXY, snapClip);
+    float tapEndY = endPos.y + normalY + dot(worldYPerClipXY, snapClip);
     // Use the atlas's fitted axis. ShadowLightHold can keep it fixed while LightDir moves between fits.
-    float zPerY = dot(rowZ, rowZ) / rowZ.y;
-    float surfaceZ = z + (surfaceY - rayY) * zPerY;
-    float startZ = surfaceZ - (startDepth - normalY) * zPerY;
-    float endZ = surfaceZ - (endDepth - normalY) * zPerY - endBias;
-    bool occluded = stored < 1.0 && stored > surfaceZ && stored >= startZ && stored < endZ;
+    float worldYPerClipZ = rowZ.y / dot(rowZ, rowZ);
+    float storedY = tapEndY + (stored - z) * worldYPerClipZ;
+    float startY = tapEndY + (endDepth - startDepth);
+    // At horizontal light every depth on this ray has the same height. Include that height, and test
+    // light-space depth separately so casters beyond the endpoint and receiver self-depth still cannot occlude.
+    bool occluded = stored < 1.0 && stored < z - endBias && storedY < surfaceY
+        && storedY >= tapEndY && storedY <= startY;
     return occluded ? 0.0 : 1.0;
 }
 

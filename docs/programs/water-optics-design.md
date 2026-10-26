@@ -153,10 +153,13 @@ implemented. The depth-widened kernel below remains pending.
    using the receiver's own normal offset and slope bias (from `P`'s geometric normal and `ndl`) exactly as the dry
    lookup does. That keeps step 7's continuity exact.
 4. Submerged occlusion: march the refracted segment from `E` to `P` in four depth slices. At each slice end,
-   one comparison counts the stored caster depth as occluding only when it
-   lies below the water surface along that tap's light ray AND within that slice's depth band. The surface depth
-   at a tap is analytic, from the cascade matrix and the plane `y = surfaceY`. The last slice stops short of `P` by
-   the receiver's existing bias so the bed does not shadow itself. All ends use the receiver's geometric normal
+   one comparison reconstructs the stored caster's world height on the texel-snapped light ray. It counts only
+   casters below `surfaceY` and inside the slice's height band, anchored at that tap's endpoint height. The
+   inverse height coefficients are each orthographic basis row's Y component divided by its squared length.
+   Those denominators remain nonzero at every light elevation, including exactly horizontal. The height-band
+   endpoint is inclusive so a horizontal ray can occlude, and a separate light-depth comparison excludes
+   casters beyond the endpoint. The last slice stops short of `P` by the receiver's existing bias so the bed
+   does not shadow itself. All ends use the receiver's geometric normal
    offset. Internal boundaries share a per-pixel interleaved-gradient-noise offset of up to half a slice, leaving
    no band gaps. The final end stays at the biased receiver. TAA can resolve the jitter. Radius widening is
    deferred to the kernel step below.

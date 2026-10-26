@@ -22,11 +22,12 @@ public sealed class MapRoofCoverageTests
         Assert.Equal(small.Demand.Cells, large.Demand.Cells);
         Assert.Equal(small.Demand.Faces, large.Demand.Faces);
         Assert.Equal(small.Buffer.RetainedBytes, large.Buffer.RetainedBytes);
-        // Hand inventory: 16 cell graphs, 32 triangles, four footprint polygons, one 31-node index,
-        // 16 lower rows, one space and ancestry row, the 12,640-byte exact workspace and 533-byte point scratch.
-        Assert.Equal(103157, small.Buffer.RetainedBytes);
+        // Independent page layouts include 16 cells, 32 triangles, four shared footprint polygons,
+        // a 31-node index, private frozen rows, receipts, exact registers and point scratch.
+        const long retained = MapMembershipCompactInventory.CoverageRetained;
+        Assert.Equal(retained, small.Buffer.RetainedBytes);
         Assert.Equal(832, small.Buffer.Counts.NormalizedCoefficientBytes);
-        Assert.InRange(small.Peak, 103157, 2 * 103157 + 98304);
+        Assert.InRange(small.Peak, retained, 2 * retained + 98304);
         // Masked compilation retains the released patch-sized subdivision workspace.
         Assert.InRange(large.Peak, small.Peak, small.Peak + 61440);
         Assert.Equal(16, large.Buffer.Counts.UniqueTargetSlots);
@@ -39,6 +40,8 @@ public sealed class MapRoofCoverageTests
         Assert.Equal("exterior", large.Buffer.SpaceId);
         large.Buffer.Evaluate(new(WorldFrame.Origin, new(12, 1, -12)), MapRoofMode.Auto);
         Assert.Equal(MapMembershipStatus.Outside, large.Buffer.Status);
+        small.Buffer.PreparationOwnership!.Dispose();
+        large.Buffer.PreparationOwnership!.Dispose();
     }
 
     [Fact]

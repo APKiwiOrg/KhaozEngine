@@ -17,10 +17,10 @@ public sealed class MapSharedDependencyHandoffTests
     const long ExactBytes = 12640;
     static long PointBytes => 256 + 2L * Unsafe.SizeOf<MapMembershipPart>() + 4 + 1;
     static long MembershipDemand => 4096 + ExactBytes + PointBytes;
-    // Empty construction overlaps its 1024-byte planner, 4096-byte publication
-    // workspace, 512-byte geometry product and 1024-byte collection kernel.
-    const long ConstructionWorkspace = 1024 + 4096 + 512 + 1024;
-    static long BufferBytes => SceneBytes + 128 + 128 + 512 + 512 + ExactBytes + PointBytes;
+    // Empty construction overlaps planner/publication, 768 arena bytes, 768 geometry controls,
+    // 320 frozen-bound owners and the 1024-byte collection kernel.
+    const long ConstructionWorkspace = 1024 + 4096 + 768 + 768 + 320 + 1024;
+    static long BufferBytes => SceneBytes + 128 + 128 + 256 + 256 + 768 + 768 + 320 + 64 + ExactBytes + PointBytes;
 
     [Theory]
     [InlineData(false)]

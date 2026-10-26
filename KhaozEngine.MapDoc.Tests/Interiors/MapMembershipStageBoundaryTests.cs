@@ -16,7 +16,7 @@ public sealed class MapMembershipStageBoundaryTests
     [InlineData("plan-growth", 3584, 2304, 1)]
     [InlineData("plan-freeze", 4224, 640, 1)]
     [InlineData("compiler", 2576, 16, 2)]
-    [InlineData("arithmetic", 99652, 49, 16)]
+    [InlineData("arithmetic", 107560, 32768, 9)]
     [InlineData("raw-transfer", 34816, 256, 1)]
     [InlineData("candidate-row", 50688, 16, 32)]
     public void IndependentBoundary_AdmitsExactCapacityAndRefusesOneByteBeforeAllocation(
@@ -53,7 +53,7 @@ public sealed class MapMembershipStageBoundaryTests
                 Assert.Equal(50 + requested, counts.Membership.BindingWindow!.RefusedBytes);
             }
             else Assert.Null(error);
-            int expectedEntries = exact ? entries : factory is "arithmetic" or "candidate-row" ? entries - 1 : 0;
+            int expectedEntries = exact ? entries : factory == "arithmetic" ? 4 : factory == "candidate-row" ? entries - 1 : 0;
             Assert.Equal(expectedEntries, entered);
             if (exact)
             {
@@ -99,7 +99,7 @@ public sealed class MapMembershipStageBoundaryTests
         {
             MapExactXz[] square = [new(new(0, 1), new(0, 1)), new(new(1, 1), new(0, 1)),
                 new(new(1, 1), new(1, 1)), new(new(0, 1), new(1, 1))];
-            // Polygon base 308, four 260-byte affine outputs and three nested 32768-byte kernels.
+            // Before its polygon descriptor, the arena holds 9256 column bytes and three nested 32768-byte kernels.
             return (admission, counts) => { _ = new MapMembershipPolygon(square); };
         }
         if (factory == "raw-transfer")

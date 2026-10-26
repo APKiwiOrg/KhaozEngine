@@ -38,12 +38,14 @@ public sealed class MapMembershipUnwindDiagnosticsTests
     {
         using var native = NativeSceneFixtures.Create("empty");
         var scene = NativeSceneFixtures.Open(native, false).Acquire(MapMembershipIntervalTests.Scope()).Scene!;
-        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 1000000));
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: 10000000));
         var prior = MapRoofEvaluationBuffer.Prepare(scene, admission).Buffer!;
-        long priorBytes = prior.RetainedBytes, borrowedBytes = scene.PreparationOwnership!.Bytes;
+        const long priorBytes = MapMembershipCompactInventory.EmptyRetained, borrowedBytes = 1000000;
+        Assert.Equal(priorBytes, prior.RetainedBytes);
+        scene.PreparationOwnership!.Reserve(borrowedBytes - scene.PreparationOwnership.Bytes);
         admission.AllocationAdmitted = increment =>
         {
-            if (increment == 512) throw new OperationCanceledException();
+            if (increment == 768) throw new OperationCanceledException();
         };
         Assert.Throws<OperationCanceledException>(() => MapRoofEvaluationBuffer.Prepare(scene, admission, true));
         Assert.Equal(0, admission.WorkspaceBytes);

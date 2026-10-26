@@ -39,6 +39,22 @@ public sealed class MapMembershipRepresentationCountsTests
     }
 
     [Fact]
+    public void PortalHeightTriangles_AndIndependentChainAffinesAreCounted()
+    {
+        using var native = MapMembershipIntervalFixtures.Create("portal");
+        var scene = NativeSceneFixtures.Open(native, false).Acquire(MapMembershipIntervalTests.Scope()).Scene!;
+        var result = MapRoofEvaluationBuffer.Prepare(scene, new MapSceneAdmission(new()));
+        Assert.NotNull(result.Buffer);
+        try
+        {
+            Assert.Equal(1, Count(result.Counts!, "PortalTriangles"));
+            Assert.Equal(3, result.Counts!.Triangles);
+            Assert.Equal(88, result.Counts.Coefficients);
+        }
+        finally { result.Buffer.PreparationOwnership!.Dispose(); }
+    }
+
+    [Fact]
     public void GeneralRing_CountsFiveCornersWithoutAQuadDefault()
     {
         var counts = new MapRoofPreparationCounts();
@@ -69,8 +85,11 @@ public sealed class MapMembershipRepresentationCountsTests
             set.Refs[0] = set.Refs[0] with { IndoorSpan = new("span", new("world", patch.Key), 0, 300, []) };
             patch.Cells[0] = patch.Cells[0] with { Flags = MapCellFlags.Indoor };
         }
-        set.Refs[0] = set.Refs[0] with { SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(set.Refs[0],
-            set.Patches.Select(p => System.Collections.Generic.KeyValuePair.Create(p.Key, MapSurfaceSemantics.PatchDigest(p.Value)))) };
+        set.Refs[0] = set.Refs[0] with
+        {
+            SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(set.Refs[0],
+            set.Patches.Select(p => System.Collections.Generic.KeyValuePair.Create(p.Key, MapSurfaceSemantics.PatchDigest(p.Value))))
+        };
         var scene = NativeSceneFixtures.Open(native, false).Acquire(MapMembershipIntervalTests.Scope()).Scene!;
         var result = MapRoofEvaluationBuffer.Prepare(scene, new MapSceneAdmission(new()));
         Assert.NotNull(result.Buffer);

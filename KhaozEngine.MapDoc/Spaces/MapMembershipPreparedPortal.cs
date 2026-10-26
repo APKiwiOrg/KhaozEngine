@@ -30,6 +30,7 @@ internal sealed class MapMembershipPreparedPortal
                 var third = a.X != b.X ? new MapExactPoint(a.X, a.Y, a.Z == default ? new(1, 1) : default)
                     : new MapExactPoint(a.X == default ? new(1, 1) : default, a.Y, a.Z);
                 _height = new(new(a, b, third));
+                if (MapMembershipBuild.Current is { } build) build.Counts.PortalTriangles++;
             }
         }
         internal bool Contains(MapExactXz point, MapMembershipExact exact) => _a != _b &&

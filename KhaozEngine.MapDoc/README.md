@@ -678,9 +678,26 @@ keeps Auto roofs visible. Always modes enumerate the inventory. Roof preparation
 failed byte or face reservation in `Capacity`, including the active plan window and its declared allowance. `MapRoofEvaluationBuffer.Prepare(scene)` returns a
 typed result. Its admitted `Buffer.Evaluate(observer, mode)` reuses exact membership scratch and a live `Roofs` list.
 Preparation selects the union of cells touched by footprint bounds, flagged indoor spans and portal sources.
-It shares masked patch geometry and stores bound associations only for that coverage. Cold validation still checks
+Within a buffer, selected cells are compiled once from the union mask, with bound associations only for that coverage.
+Cells required by indoor spans or portals keep eager exact geometry even outside every footprint. Cold validation still checks
 unrelated acquired cells. Planner, validation and compiler workspace have separate lifetimes under the same byte
 allowance. `Counts` exposes only numerical construction and capacity evidence, including on header or later refusal.
+Exact polygons, triangles, face keys and cells live in frozen column pages. Sixteen-byte coefficient tokens cover the
+entire signed Int64 range inline. Larger canonical unsigned magnitudes use ledger-owned pages, with the same
+1,925-bit ceiling and construction-time normalization. Queries retain exact boundary ownership, acquired-cell first-match
+rank and precision refusals. They allocate no geometry and make no admission calls.
+Matching footprint geometry can share physical pages within an admission attempt. Its full key includes source and
+generation, closure, record and lattice versions, effective instance path, exact pose, lattice, ordered slots and
+compilation policy. Equal counts never establish identity. Selected cell products and 32-byte frozen bound rows remain
+private to their view. Bound status, failure detail, compatibility and opening side tables are fully inventoried.
+Each buffer owns its mutable stamps, active rows and fixed-limb registers. Retiring one buffer preserves every other lease.
+The final footprint lease releases its page receipts, window attribution and cache entry together.
+`RetainedBytes` describes a buffer's reachable obligation, including borrowed scene inventory. `SharedCapacityBytes`
+reports footprint leases and `PrivateCapacityBytes` reports private products and query scratch. Root accounting deduplicates
+physical page identities and includes cache controls, so buffer totals must not be summed as root inventory.
+A borrowing window carries a footprint's full obligation once, regardless of how many buffers use it there.
+`GeometryArenaPages`, `GeometryArenaCapacityBytes`, `FrozenBoundRows`, `FrozenBoundCapacityBytes`, coefficient pool
+capacities and side-table counts expose actual layouts, including array headers, directories and unused page capacity.
 Borrowed-input preflight stays allocation free and runs before the interval when the header fits. An input or
 precision refusal there returns only its typed result. A header refusal takes precedence and includes interval
 evidence without creating product workspace or throwing a capacity exception.

@@ -16,10 +16,12 @@ internal static class MapMembershipIntervalFixtures
         var set = fixture.Document.Surfaces;
         bool mixed = shape == "mixed", closed = mixed || shape is "opening" or "prism" or "fragmented" or "clipped";
         var floorRef = MixedResolutionFixtures.Surface("floor", mixed ? 2 : 1, MapSurfaceRole.SupportFloor);
+        if (shape == "pooled") floorRef = floorRef with
+        { Frame = new(new(1, 1), new(1, 1), MapRowDirection.PositiveZ, MapHeightDatum.WorldY0) };
         if (shape == "face-free") floorRef = floorRef with
         { Frame = MapLatticeFrame.ImportedMetreCentimetre, PresencePolicy = MapPresencePolicy.LegacyTileWorld };
-        var floor = MixedResolutionFixtures.Patch(new("floor", 0, 0), 1, 1,
-            (x, z) => shape == "long" ? x * 1000000 + z * 1999999 : shape == "clipped" ? x * 400 : 0);
+        var floor = MixedResolutionFixtures.Patch(new("floor", shape == "pooled" ? 100000000 : 0, 0), 1, 1,
+            (x, z) => shape == "pooled" ? x == 0 ? 0 : int.MaxValue : shape == "long" ? x * 1000000 + z * 1999999 : shape == "clipped" ? x * 400 : 0);
         floor.Cells[0] = floor.Cells[0] with
         { Topology = MapCellTopology.ForceSwNe, Underlay = shape == "face-free" ? (ushort)0 : (ushort)1 };
         set.Refs.Add(floorRef); set.Patches.Add(floor.Key, floor);

@@ -50,11 +50,20 @@ public sealed class MapMembershipProductSharingTests
         Assert.Equal(Create(a), Create(b));
         b[changed] = changed switch
         {
-            0 => new object(), 1 => "another-closure", 2 => "another-generation", 3 => "another-record",
-            4 => "another-record-version", 5 => "another-lattice-version", 6 => new MapPatchKey("floor", 1, 0),
+            0 => new object(),
+            1 => "another-closure",
+            2 => "another-generation",
+            3 => "another-record",
+            4 => "another-record-version",
+            5 => "another-lattice-version",
+            6 => new MapPatchKey("floor", 1, 0),
             7 => new MapLatticeFrame(new(2, 1), new(1, 100), MapRowDirection.NegativeZ, MapHeightDatum.WorldY0),
-            8 => "another-instance/floor", 9 => new MapEffectiveTransform(.25, 0, 0, 0, 1),
-            10 => new[] { 1 }, 11 => 2, 12 => 1924, _ => throw new ArgumentOutOfRangeException(nameof(changed))
+            8 => "another-instance/floor",
+            9 => new MapEffectiveTransform(.25, 0, 0, 0, 1),
+            10 => new[] { 1 },
+            11 => 2,
+            12 => 1924,
+            _ => throw new ArgumentOutOfRangeException(nameof(changed))
         };
         Assert.NotEqual(Create(a), Create(b));
     }

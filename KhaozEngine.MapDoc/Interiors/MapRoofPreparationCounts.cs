@@ -36,6 +36,7 @@ public sealed class MapRoofPreparationCounts
     public long SpanTriangles { get; internal set; }
     public long LegacyTriangles { get; internal set; }
     public long OpeningTriangles { get; internal set; }
+    public long PortalTriangles { get; internal set; }
     public long UniqueCellProducts { get; internal set; }
     public long UniqueFootprintPolygons { get; internal set; }
     public long CoefficientPoolPages { get; internal set; }

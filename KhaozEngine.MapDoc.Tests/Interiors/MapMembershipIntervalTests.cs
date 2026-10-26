@@ -42,7 +42,7 @@ public sealed class MapMembershipIntervalTests
     [InlineData("Header", 0)]
     [InlineData("Planner", 1024)]
     [InlineData("Publication", 5120)]
-    [InlineData("Construction", 6656)]
+    [InlineData("Construction", 8000)]
     public void EmptyMembership_AdmitsEachStageAtItsIndependentThreshold(string stage, long extra)
     {
         using var native = NativeSceneFixtures.Create("empty");

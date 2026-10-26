@@ -116,7 +116,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // Not asked, and not askable without a surface. The windowed clause is evaluated at swapchain
                 // creation (https://github.com/APKiwiOrg/KhaozEngine/issues/527) against the same requirement
                 // method with the flag set.
-                GraphicsFamilyPresents: false);
+                GraphicsFamilyPresents: false,
+                MaxPerStageDescriptorStorageBuffers: properties.Limits.MaxPerStageDescriptorStorageBuffers);
 
             return new VulkanPhysicalDeviceRead(
                 facts,

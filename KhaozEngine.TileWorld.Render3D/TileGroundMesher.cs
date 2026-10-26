@@ -62,6 +62,12 @@ public sealed class TileGroundMesherOptions
 /// the same material at the same weight from every tile and every region that touches it.</summary>
 public static partial class TileGroundMesher
 {
+    const int Coarse4CellSize = 4;
+
+    // Coarse4 is the coarsest supported ground grid, including its transition fans. Water bounds use this
+    // maximum regardless of the resident LOD, so a detail promotion cannot change a water volume's floor.
+    internal const int CoarsestCellSize = Coarse4CellSize;
+
     [Flags]
     enum Coarse4Transition
     {
@@ -143,12 +149,12 @@ public static partial class TileGroundMesher
 
     static void AddCoarse4(MeshAccumulator mesh, in TileMeshContext context)
     {
-        const int cellSize = 4;
+        const int cellSize = Coarse4CellSize;
         for (int lz = 0; lz < TileRegion.Size; lz += cellSize)
             for (int lx = 0; lx < TileRegion.Size; lx += cellSize)
             {
                 context.Audit?.Begin(new TileRect(context.OriginX + lx, context.OriginZ + lz, cellSize, cellSize),
-                    mesh.IndexCount, 4);
+                    mesh.IndexCount, cellSize);
                 Coarse4CellInfo cell = ClassifyCoarse4Cell(
                     context, context.OriginX + lx, context.OriginZ + lz);
                 if (cell.Compatible)
@@ -172,15 +178,16 @@ public static partial class TileGroundMesher
 
     static Coarse4Transition Transitions(in TileMeshContext c, int lx, int lz, ushort surface)
     {
+        const int cellSize = Coarse4CellSize;
         int x = c.OriginX + lx;
         int z = c.OriginZ + lz;
         Coarse4Transition result = Coarse4Transition.None;
-        if (lz == 0 || NeedsTransition(c, x, z - 4, surface)) result |= Coarse4Transition.South;
-        if (lx + 4 == TileRegion.Size || NeedsTransition(c, x + 4, z, surface))
+        if (lz == 0 || NeedsTransition(c, x, z - cellSize, surface)) result |= Coarse4Transition.South;
+        if (lx + cellSize == TileRegion.Size || NeedsTransition(c, x + cellSize, z, surface))
             result |= Coarse4Transition.East;
-        if (lz + 4 == TileRegion.Size || NeedsTransition(c, x, z + 4, surface))
+        if (lz + cellSize == TileRegion.Size || NeedsTransition(c, x, z + cellSize, surface))
             result |= Coarse4Transition.North;
-        if (lx == 0 || NeedsTransition(c, x - 4, z, surface)) result |= Coarse4Transition.West;
+        if (lx == 0 || NeedsTransition(c, x - cellSize, z, surface)) result |= Coarse4Transition.West;
         return result;
     }
 

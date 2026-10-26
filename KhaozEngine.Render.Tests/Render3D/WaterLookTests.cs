@@ -13,17 +13,17 @@ namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
     /// The per-plane water look: what a <see cref="WaterLook"/> may override, what it inherits, and what it is
-    /// structurally unable to touch. All headless - the whole feature is a different set of numbers written into a
-    /// UBO slot that was being written anyway, so none of it needs a device.
+    /// structurally unable to touch. All headless - values resolve into
+    /// settings and the water UBO, so none of it needs a device.
     /// </summary>
     public sealed class WaterLookTests
     {
         // ---- The overridable set -----------------------------------------------------------------------------
 
-        /// <summary>One overridable field: how a look sets it, and where its value lands in the packed slot.
+        /// <summary>One overridable field: how a look sets it, and its resolved or packed value.
         /// Adding a field to <see cref="WaterLook"/> is one row here, and
         /// <see cref="Every_overridable_field_is_covered_by_the_table"/> fails until it is added.</summary>
-        sealed record LookField(string Name, Action<WaterLook> Set, Func<WaterRenderer.WaterUbo, float> Read);
+        sealed record LookField(string Name, Action<WaterLook> Set, Func<WaterSettings, WaterRenderer.WaterUbo, float> Read);
 
         // Every value differs from the WaterSettings default, so "the slot moved" is unambiguous. WaveSource is
         // deliberately absent: it does not reach PackUbo at all (the shader reads the ocean maps' own live flag),
@@ -31,54 +31,56 @@ namespace KhaozEngine.Tests.Render3D
         static readonly LookField[] Table =
         {
             // Body colour.
-            new(nameof(WaterLook.DeepColor), l => l.DeepColor = new Color(0.7f, 0.11f, 0.02f, 0.5f), u => u.DeepColor.X),
-            new(nameof(WaterLook.ShallowColor), l => l.ShallowColor = new Color(0.02f, 0.11f, 0.7f, 0.5f), u => u.ShallowColor.Y),
-            new(nameof(WaterLook.AbsorptionPerMetre), l => l.AbsorptionPerMetre = new Color(0.03f, 0.05f, 0.07f, 0f), u => u.Absorption.X),
-            new(nameof(WaterLook.ShallowDepth), l => l.ShallowDepth = 7.5f, u => u.DetailParams.W),
-            new(nameof(WaterLook.Opacity), l => l.Opacity = 0.42f, u => u.ShoreGlint.W),
+            new(nameof(WaterLook.DeepColor), l => l.DeepColor = new Color(0.7f, 0.11f, 0.02f, 0.5f), (_, u) => u.DeepColor.X),
+            new(nameof(WaterLook.ShallowColor), l => l.ShallowColor = new Color(0.02f, 0.11f, 0.7f, 0.5f), (_, u) => u.ShallowColor.Y),
+            new(nameof(WaterLook.AbsorptionPerMetre), l => l.AbsorptionPerMetre = new Color(0.03f, 0.05f, 0.07f, 0f), (_, u) => u.Absorption.X),
+            new(nameof(WaterLook.UnderwaterSunlight), l => l.UnderwaterSunlight = true, (s, _) => s.UnderwaterSunlight ? 1f : 0f),
+            new(nameof(WaterLook.UnderwaterPenumbraPerMetre), l => l.UnderwaterPenumbraPerMetre = 0.09f, (s, _) => s.UnderwaterPenumbraPerMetre),
+            new(nameof(WaterLook.ShallowDepth), l => l.ShallowDepth = 7.5f, (_, u) => u.DetailParams.W),
+            new(nameof(WaterLook.Opacity), l => l.Opacity = 0.42f, (_, u) => u.ShoreGlint.W),
 
             // Swell.
-            new(nameof(WaterLook.SwellAmplitude), l => l.SwellAmplitude = 0.04f, u => u.SwellParams.X),
-            new(nameof(WaterLook.SwellWavelength), l => l.SwellWavelength = 6f, u => u.SwellParams.Y),
-            new(nameof(WaterLook.SwellDirectionDegrees), l => l.SwellDirectionDegrees = 90f, u => u.SwellParams.Z),
-            new(nameof(WaterLook.SwellSpreadDegrees), l => l.SwellSpreadDegrees = 10f, u => u.SwellParams.W),
-            new(nameof(WaterLook.SwellSteepness), l => l.SwellSteepness = 0.15f, u => u.SwellShape.X),
-            new(nameof(WaterLook.SwellSpeed), l => l.SwellSpeed = 0.2f, u => u.SwellShape.Y),
-            new(nameof(WaterLook.SwellComponents), l => l.SwellComponents = 2, u => u.SwellShape.Z),
-            new(nameof(WaterLook.SwellSeed), l => l.SwellSeed = 3.5f, u => u.SwellShape.W),
+            new(nameof(WaterLook.SwellAmplitude), l => l.SwellAmplitude = 0.04f, (_, u) => u.SwellParams.X),
+            new(nameof(WaterLook.SwellWavelength), l => l.SwellWavelength = 6f, (_, u) => u.SwellParams.Y),
+            new(nameof(WaterLook.SwellDirectionDegrees), l => l.SwellDirectionDegrees = 90f, (_, u) => u.SwellParams.Z),
+            new(nameof(WaterLook.SwellSpreadDegrees), l => l.SwellSpreadDegrees = 10f, (_, u) => u.SwellParams.W),
+            new(nameof(WaterLook.SwellSteepness), l => l.SwellSteepness = 0.15f, (_, u) => u.SwellShape.X),
+            new(nameof(WaterLook.SwellSpeed), l => l.SwellSpeed = 0.2f, (_, u) => u.SwellShape.Y),
+            new(nameof(WaterLook.SwellComponents), l => l.SwellComponents = 2, (_, u) => u.SwellShape.Z),
+            new(nameof(WaterLook.SwellSeed), l => l.SwellSeed = 3.5f, (_, u) => u.SwellShape.W),
 
             // Depth response. The FIELD stays scene-wide, only how hard this body reacts to it is per plane.
-            new(nameof(WaterLook.ShoalingStrength), l => l.ShoalingStrength = 0.25f, u => u.BathyParams.Y),
-            new(nameof(WaterLook.SurfStrength), l => l.SurfStrength = 0f, u => u.SurfParams.X),
+            new(nameof(WaterLook.ShoalingStrength), l => l.ShoalingStrength = 0.25f, (_, u) => u.BathyParams.Y),
+            new(nameof(WaterLook.SurfStrength), l => l.SurfStrength = 0f, (_, u) => u.SurfParams.X),
 
             // Ripple and detail.
-            new(nameof(WaterLook.WaveScale), l => l.WaveScale = 0.9f, u => u.WaveParams.X),
-            new(nameof(WaterLook.WaveSpeed), l => l.WaveSpeed = 0.08f, u => u.WaveParams.Y),
-            new(nameof(WaterLook.NormalStrength), l => l.NormalStrength = 0.05f, u => u.WaveParams.Z),
-            new(nameof(WaterLook.WaveWarpStrength), l => l.WaveWarpStrength = 0.1f, u => u.DetailParams.X),
-            new(nameof(WaterLook.RippleComponents), l => l.RippleComponents = 3, u => u.RippleSpectrum.X),
-            new(nameof(WaterLook.RippleLacunarity), l => l.RippleLacunarity = 1.9f, u => u.RippleSpectrum.Y),
-            new(nameof(WaterLook.RippleGain), l => l.RippleGain = 0.4f, u => u.RippleSpectrum.Z),
-            new(nameof(WaterLook.RippleSeed), l => l.RippleSeed = 7.25f, u => u.RippleSpectrum.W),
-            new(nameof(WaterLook.VarianceToRoughness), l => l.VarianceToRoughness = 0.3f, u => u.FootprintParams.Y),
-            new(nameof(WaterLook.DetailFadeDistance), l => l.DetailFadeDistance = 18f, u => u.DetailParams.Y),
-            new(nameof(WaterLook.DistantDetailScale), l => l.DistantDetailScale = 0.6f, u => u.DetailParams.Z),
+            new(nameof(WaterLook.WaveScale), l => l.WaveScale = 0.9f, (_, u) => u.WaveParams.X),
+            new(nameof(WaterLook.WaveSpeed), l => l.WaveSpeed = 0.08f, (_, u) => u.WaveParams.Y),
+            new(nameof(WaterLook.NormalStrength), l => l.NormalStrength = 0.05f, (_, u) => u.WaveParams.Z),
+            new(nameof(WaterLook.WaveWarpStrength), l => l.WaveWarpStrength = 0.1f, (_, u) => u.DetailParams.X),
+            new(nameof(WaterLook.RippleComponents), l => l.RippleComponents = 3, (_, u) => u.RippleSpectrum.X),
+            new(nameof(WaterLook.RippleLacunarity), l => l.RippleLacunarity = 1.9f, (_, u) => u.RippleSpectrum.Y),
+            new(nameof(WaterLook.RippleGain), l => l.RippleGain = 0.4f, (_, u) => u.RippleSpectrum.Z),
+            new(nameof(WaterLook.RippleSeed), l => l.RippleSeed = 7.25f, (_, u) => u.RippleSpectrum.W),
+            new(nameof(WaterLook.VarianceToRoughness), l => l.VarianceToRoughness = 0.3f, (_, u) => u.FootprintParams.Y),
+            new(nameof(WaterLook.DetailFadeDistance), l => l.DetailFadeDistance = 18f, (_, u) => u.DetailParams.Y),
+            new(nameof(WaterLook.DistantDetailScale), l => l.DistantDetailScale = 0.6f, (_, u) => u.DetailParams.Z),
 
             // Sun response. The light direction and colour still belong to the scene.
-            new(nameof(WaterLook.GlintStrength), l => l.GlintStrength = 0.11f, u => u.ShoreGlint.Y),
-            new(nameof(WaterLook.GlintRoughness), l => l.GlintRoughness = 0.11f, u => u.ReflectGlint.Z),
-            new(nameof(WaterLook.GlintDistantRoughness), l => l.GlintDistantRoughness = 0.71f, u => u.ReflectGlint.W),
-            new(nameof(WaterLook.GlintExponent), l => l.GlintExponent = 13f, u => u.ShoreGlint.Z),
+            new(nameof(WaterLook.GlintStrength), l => l.GlintStrength = 0.11f, (_, u) => u.ShoreGlint.Y),
+            new(nameof(WaterLook.GlintRoughness), l => l.GlintRoughness = 0.11f, (_, u) => u.ReflectGlint.Z),
+            new(nameof(WaterLook.GlintDistantRoughness), l => l.GlintDistantRoughness = 0.71f, (_, u) => u.ReflectGlint.W),
+            new(nameof(WaterLook.GlintExponent), l => l.GlintExponent = 13f, (_, u) => u.ShoreGlint.Z),
 
             // Foam.
-            new(nameof(WaterLook.FoamColor), l => l.FoamColor = new Color(0.2f, 0.3f, 0.4f, 0.5f), u => u.FoamColor.X),
-            new(nameof(WaterLook.FoamStrength), l => l.FoamStrength = 0f, u => u.FoamParams.X),
-            new(nameof(WaterLook.FoamCrestCoverage), l => l.FoamCrestCoverage = 0.05f, u => u.FoamParams.Y),
-            new(nameof(WaterLook.FoamShoreWidth), l => l.FoamShoreWidth = 0.35f, u => u.FoamParams.Z),
-            new(nameof(WaterLook.FoamPatternScale), l => l.FoamPatternScale = 0.7f, u => u.FoamParams.W),
+            new(nameof(WaterLook.FoamColor), l => l.FoamColor = new Color(0.2f, 0.3f, 0.4f, 0.5f), (_, u) => u.FoamColor.X),
+            new(nameof(WaterLook.FoamStrength), l => l.FoamStrength = 0f, (_, u) => u.FoamParams.X),
+            new(nameof(WaterLook.FoamCrestCoverage), l => l.FoamCrestCoverage = 0.05f, (_, u) => u.FoamParams.Y),
+            new(nameof(WaterLook.FoamShoreWidth), l => l.FoamShoreWidth = 0.35f, (_, u) => u.FoamParams.Z),
+            new(nameof(WaterLook.FoamPatternScale), l => l.FoamPatternScale = 0.7f, (_, u) => u.FoamParams.W),
 
             // Shore.
-            new(nameof(WaterLook.ShoreFadeDistance), l => l.ShoreFadeDistance = 0.15f, u => u.ShoreGlint.X),
+            new(nameof(WaterLook.ShoreFadeDistance), l => l.ShoreFadeDistance = 0.15f, (_, u) => u.ShoreGlint.X),
         };
 
         public static TheoryData<string> OverridableFields
@@ -99,12 +101,13 @@ namespace KhaozEngine.Tests.Render3D
             var scene = new WaterSettings();
             WaterRenderer.WaterUbo scenePack = Pack(scene);
 
-            // Set ONLY this field: its slot must move off the scene's value.
+            // Set ONLY this field: its resolved or packed value must move off the scene's value.
             var only = new WaterLook();
             field.Set(only);
-            WaterRenderer.WaterUbo overridden = Pack(only.ResolveInto(new WaterSettings(), scene));
-            Assert.True(MathF.Abs(field.Read(overridden) - field.Read(scenePack)) > 1e-6f,
-                $"WaterLook.{name} was set but the packed slot did not move: the resolver drops it, so the knob " +
+            WaterSettings onlyResolved = only.ResolveInto(new WaterSettings(), scene);
+            WaterRenderer.WaterUbo overridden = Pack(onlyResolved);
+            Assert.True(MathF.Abs(field.Read(onlyResolved, overridden) - field.Read(scene, scenePack)) > 1e-6f,
+                $"WaterLook.{name} was set but the resolved value did not move: the resolver drops it, so the knob " +
                 "is silently not overridable.");
 
             // Set every OTHER field: this one must still read the scene's value. Catches a resolver that writes
@@ -112,16 +115,17 @@ namespace KhaozEngine.Tests.Render3D
             var everythingElse = new WaterLook();
             foreach (LookField other in Table)
                 if (other.Name != name) other.Set(everythingElse);
-            WaterRenderer.WaterUbo inherited = Pack(everythingElse.ResolveInto(new WaterSettings(), scene));
-            Assert.Equal(field.Read(scenePack), field.Read(inherited), 6);
+            WaterSettings othersResolved = everythingElse.ResolveInto(new WaterSettings(), scene);
+            WaterRenderer.WaterUbo inherited = Pack(othersResolved);
+            Assert.Equal(field.Read(scene, scenePack), field.Read(othersResolved, inherited), 6);
         }
 
         [Fact]
         public void Every_overridable_field_is_covered_by_the_table()
         {
             HashSet<string> declared = LookFieldNames();
-            Assert.True(declared.Count == 37,
-                $"WaterLook declares {declared.Count} fields, not the 37 the design specifies. Either the cut " +
+            Assert.True(declared.Count == 39,
+                $"WaterLook declares {declared.Count} fields, not the 39 the design specifies. Either the cut " +
                 "moved (update the design doc) or a field landed here by accident.");
 
             HashSet<string> covered = Table.Select(f => f.Name).ToHashSet();

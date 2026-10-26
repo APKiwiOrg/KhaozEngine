@@ -189,6 +189,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 supportsCompletionFences)
             {
                 MaxColorAttachments = SimultaneousRenderTargets,
+                MaxFragmentStorageBuffers = 128,
                 SupportsTimestamps = supportsTimestamps,
                 MaxStorageBufferRangeBytes = bufferLimits.StorageRangeBytes,
             };

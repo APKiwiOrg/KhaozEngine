@@ -183,10 +183,12 @@ the scene default.
 
 ## Later extension: per-plane sun response (#372)
 
-The original 33-field cut kept glint scene-wide as a scope choice. The look now has 37 fields after
-adding `GlintStrength`, `GlintRoughness`, `GlintDistantRoughness` and `GlintExponent`. The sun direction
-and colour remain scene-wide. Only the existing per-plane uniform scalars change, with no resource
-or pipeline changes. Reflection weights remain outside the look.
+The original 33-field cut kept glint scene-wide as a scope choice. The look now has 39 fields after
+adding `GlintStrength`, `GlintRoughness`, `GlintDistantRoughness` and `GlintExponent`, plus the
+`UnderwaterSunlight` and `UnderwaterPenumbraPerMetre` overrides from https://github.com/APKiwiOrg/KhaozEngine/issues/1588. The sun direction
+and colour remain scene-wide. Glint changes only the existing per-plane uniform scalars. Underwater sunlight
+also reads the shared clustered-water storage buffer in every lit receiver. Reflection weights remain outside
+the look.
 
 `OceanPresets.ApplyToLook(kind, WaterLook)` can therefore apply the complete existing weather bundle. It
 leaves `WaveSource` unchanged so a preset never silently switches a plane between FFT and procedural

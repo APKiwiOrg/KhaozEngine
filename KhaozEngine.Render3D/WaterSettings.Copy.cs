@@ -31,6 +31,8 @@ namespace KhaozEngine.Render3D
             DeepColor = source.DeepColor;
             ShallowColor = source.ShallowColor;
             AbsorptionPerMetre = source.AbsorptionPerMetre;
+            UnderwaterSunlight = source.UnderwaterSunlight;
+            UnderwaterPenumbraPerMetre = source.UnderwaterPenumbraPerMetre;
             ShallowDepth = source.ShallowDepth;
             Opacity = source.Opacity;
 

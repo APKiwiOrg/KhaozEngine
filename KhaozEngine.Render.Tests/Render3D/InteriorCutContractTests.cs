@@ -72,8 +72,9 @@ public sealed class InteriorCutContractTests
         Assert.Equal(1536u, ModelRenderer.UboBytes);
         var reflected = SpirvCrossCompile.GlslPairToHlsl(ShaderSources.ModelVert, ShaderSources.ModelFrag);
         var elements = Assert.Single(reflected.Reflection.ResourceLayouts).Elements;
-        Assert.Equal(15, elements.Length);
+        Assert.Equal(16, elements.Length);
         Assert.Equal(GpuResourceKind.TextureReadOnly, elements[14].Kind);
+        Assert.Equal(GpuResourceKind.StructuredBufferReadOnly, elements[15].Kind);
         Assert.Contains("binding=14) uniform texture2D InteriorCut", ShaderSources.ModelFrag);
         foreach (var (_, source) in MotionUboLayoutTests.FrameBlockSources)
         {
@@ -183,7 +184,7 @@ public sealed class InteriorCutContractTests
                 scene.RenderInternal(commands, 16, 16, target);
                 commands.End();
             }
-            FakeResourceSet[] Live() => factory.ResourceSets.Where(s => !s.Disposed && s.Resources.Length == 15).ToArray();
+            FakeResourceSet[] Live() => factory.ResourceSets.Where(s => !s.Disposed && s.Resources.Length == 16).ToArray();
             void AllBind(IGpuTexture texture)
             {
                 Assert.True(Live().Length >= 2);

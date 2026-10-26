@@ -4,26 +4,27 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.14.1
+## 21.15.0
 
 2026-10-27
 
+- Add opt-in underwater sunlight through `WaterSettings.UnderwaterSunlight` and
+  `UnderwaterPenumbraPerMetre`, with nullable per-body `WaterLook` overrides. Every lit receiver refracts
+  key-shadow lookup at the still-water surface, attenuates key diffuse and specular along the in-water path,
+  preserves submerged-caster shadows and widens the penumbra with a fixed comparison budget. Frames without
+  opted-in water are unchanged. Ambient, fill, point lights, emissive and fog retain their values (Closes #1588).
+- Add optional `WaterPlane.FloorY` to bound each body's submerged volume. TileWorld emits conservative floors
+  from the lowest consumed bed corners, including coarse LOD support, so bodies stacked at different heights
+  do not light receivers below their floors.
+- Add `GpuCapabilities.MaxFragmentStorageBuffers`. Scene and standalone lit renderer creation refuse reports
+  below three before GPU allocation, naming `maxPerStageDescriptorStorageBuffers`.
+- Append optional `float? floorY = null` to the public `WaterPlane` constructor and `TileWaterPlanes.ToPlane`.
+  Ordinary source calls still compile, but the binary signatures change. Rebuild consumers and update delegate
+  bindings that require the previous parameter lists.
 - Retain selected-device storage-buffer ranges in GPU capabilities. Vulkan reports its native descriptor
   limit. Direct3D 11 intersects the adapter-dependent resource guarantee with the full raw-view limit.
   Renderer controls refuse incompatible whole-buffer bindings before constructing control resources.
 - Certify the complete six-record renderer control shader corpus, including both graphics pairs.
-- Keep Contact ground navigation connected beside climbable slab risers. Captured ground below a tread no longer
-  rejects the neighbouring resting anchor for its low headroom. Contact placement and swept-shell proofs still
-  enforce clearance, and raw layer, area, roof and climb limits remain enforced (Closes #1573).
-- Reconstruct canonical selection automatically when a Contact movement tick receives a carried state on
-  an unready null-hint query lease. Reacquiring per tick no longer stalls the second tick or discards buffered
-  jumps. Carried selections from another world are refused before reconstruction or producer queries.
-  Direct selected-space queries remain guarded, and real reconstruction failures keep their refusal outcomes
-  (Closes #1578).
-- Add six `SupportQueryCapture` counters for outer NPC Hold and Step invocations and authoritative
-  `PlayerMovementSystem` per-entity Steps, each split by Legacy and Contact controller. Idle and rejected
-  selected player Steps count once. Direct player simulators and nested held-result fallbacks add no
-  outer invocations (#1598).
 
 ## 21.14.0
 

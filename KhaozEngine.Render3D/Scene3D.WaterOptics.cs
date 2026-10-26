@@ -54,10 +54,16 @@ public sealed partial class Scene3D
     {
         if (_framePrepared)
             throw new InvalidOperationException("Queue water before Scene3D.PrepareFrame().");
+        if (plane.FloorY is float floor && (!float.IsFinite(floor) || !(floor <= plane.SurfaceY)))
+            throw new ArgumentException("FloorY must be finite and at most SurfaceY.", nameof(plane.FloorY));
+        WaterSettings settings = plane.Look?.ResolveInto(_waterOpticsScratch, Post.Water) ?? Post.Water;
+        if (!float.IsFinite(settings.UnderwaterPenumbraPerMetre) || settings.UnderwaterPenumbraPerMetre < 0f)
+            throw new ArgumentException("UnderwaterPenumbraPerMetre must be finite and non-negative.",
+                nameof(WaterSettings.UnderwaterPenumbraPerMetre));
         if (plane.Optics.IsBound)
         {
             var payload = _water.Optics.Resolve(plane.Optics.Field).Payload;
-            WaterOpticsCoverage.Validate(plane, plane.Look?.ResolveInto(_waterOpticsScratch, Post.Water) ?? Post.Water, payload);
+            WaterOpticsCoverage.Validate(plane, settings, payload);
         }
         _waterPlanes.Add(plane);
     }

@@ -37,6 +37,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="GraphicsFamilyPresents">Whether that graphics family can present to the target surface. Read
     /// only where a surface exists, which the probe has no way to build (see
     /// <see cref="VulkanDeviceRequirements.MissingRequirement"/>'s <c>presentationRequired</c> parameter).</param>
+    /// <param name="MaxPerStageDescriptorStorageBuffers">The fragment-stage storage buffer limit reported by
+    /// <c>VkPhysicalDeviceLimits.maxPerStageDescriptorStorageBuffers</c>.</param>
     internal readonly record struct VulkanDeviceFacts(
         string DeviceName,
         uint ApiVersion,
@@ -46,5 +48,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         bool HasCoherentHostVisibleMemoryType,
         uint MaxDescriptorSetUniformBuffersDynamic,
         bool HasGraphicsQueueFamily,
-        bool GraphicsFamilyPresents);
+        bool GraphicsFamilyPresents,
+        uint MaxPerStageDescriptorStorageBuffers);
 }

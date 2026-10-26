@@ -56,6 +56,13 @@ corner fill. It leaves source triangles and water rectangles intact. Empty edge 
 continue. A known-unloaded region, or a present region without a current snapshot, still refuses strictly.
 Absent-region availability is a dependency, so a later manifest entry invalidates the continuation.
 
+Native bounded-water adapters must set `WaterPlane.FloorY` on every emitted rectangle using the same conservative
+volume rule as TileWorld. Resolve the lowest bed corner under the rectangle after snapping its footprint outward to
+the 4-tile `Coarse4` grid, subtract the named rounding margin, and cap the result at `SurfaceY` when the footprint
+has no submerged bed. `FloorY` is a slab floor, not exact local containment, so it must remain stable across LOD and
+look changes. A finite floor at or below `SurfaceY` is carried with the plane through render-origin rebasing. A
+native producer that omits it leaves the body unbounded below and cannot describe the bounded-water contract.
+
 ## What a prepared owner carries after anchor reduction
 
 Each prepared bounded-water owner carries five things together, and publishes or retires them as one unit.

@@ -265,10 +265,15 @@ What it owns today:
   `SupportedMsaaSampleCounts` (the full shared set across the engine's MRT formats, including sparse masks) and
   `MaxMsaaSampleCount` (its largest member, kept for compatibility), `SupportsShadowMaps` (whether the device can render + sample an R32_Float depth target, gating the
   `ShadowMode.ShadowMap` tier in Render3D), and `SupportsCompletionFences` (see **Completion fences** below).
-  Read off the live device. `MaxStorageBufferRangeBytes` is the maximum admitted whole storage
+  `MaxFragmentStorageBuffers` reports the per-stage storage buffer limit, with Vulkan reading
+  `maxPerStageDescriptorStorageBuffers`, Direct3D11 reporting 128 SRV slots and Metal reporting 31 buffer slots.
+  Older capability producers default to four. Explicit reports below three make Render3D scene and standalone
+  lit renderer construction throw `NotSupportedException` before GPU allocation, naming `maxPerStageDescriptorStorageBuffers`.
+  `MaxStorageBufferRangeBytes` is the maximum admitted whole storage
   binding in bytes, or zero when unknown. Vulkan retains `maxStorageBufferRange` from the selected
   physical device. Direct3D 11 folds its adapter-dependent resource guarantee with the full raw-view
   limit. This is a per-binding compatibility bound, not an available-memory or allocation-success guarantee.
+  Read off the live device.
 - **MSAA plumbing** - `GpuTextureDescription.SampleCount` (and `IGpuTexture.SampleCount`) make a multisampled render
   target; `GpuOutputDescription.SampleCount` / `WithSampleCount` carry the count so a pipeline matches its
   framebuffer (read a live multisampled framebuffer's count off `IGpuFramebuffer.Outputs`); and

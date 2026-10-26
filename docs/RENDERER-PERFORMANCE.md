@@ -38,6 +38,11 @@ creations. Cold creation remains visible in raw counters and outside measured di
 submissions, completion backpressure and native allocations remain separate backend diagnostics.
 The one batch completion drain and final validation readback occur outside frame brackets.
 
+Construction capture records conditioning pipelines as `Cold` with their counted nonnegative frame
+indices. Cold setup outside frame brackets has no frame index. Only the conditioning operation may
+have counted `Cold` occurrences. Negative indices remain `Warmup`, and creation at measured indices
+still refuses execution and compiler correspondence.
+
 Cascade layouts, point-shadow demand and MRT changes retire outgoing graphs through the scene queue.
 The workload starts each scene with `Scene3D.BeginFrame(frame.Submission)`, sharing the host completion
 fence instead of adding the standalone retirement queue's empty submission. No hidden rendered priming

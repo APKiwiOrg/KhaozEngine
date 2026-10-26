@@ -58,7 +58,8 @@ internal sealed partial class RendererPerfConstructionCapture
     internal void EnterFrame(RendererPerfConstructionStage stage, int frameIndex)
     {
         Open();
-        if (_operation < 0 || _frame.HasValue || stage == RendererPerfConstructionStage.Cold || !Enum.IsDefined(stage)
+        if (_operation < 0 || _frame.HasValue || !Enum.IsDefined(stage)
+            || stage == RendererPerfConstructionStage.Cold && _operation != 0
             || (stage == RendererPerfConstructionStage.Warmup) != (frameIndex < 0))
             throw new InvalidOperationException("Invalid construction frame boundary.");
         _stage = stage; _frame = frameIndex;

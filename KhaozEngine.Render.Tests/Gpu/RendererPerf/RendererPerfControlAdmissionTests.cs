@@ -24,7 +24,7 @@ public sealed class RendererPerfControlAdmissionTests
             RendererPerfControls.Create(device, new(7, "1", facts.WorkSha256, 32, 64)));
 
         Assert.Contains("Control 7", error.Message, StringComparison.Ordinal);
-        Assert.Contains("268435456", error.Message, StringComparison.Ordinal);
+        Assert.Contains("134217728", error.Message, StringComparison.Ordinal);
         Assert.Contains("device limit 0 bytes", error.Message, StringComparison.Ordinal);
         Assert.Equal(0, device.TextureAttempts);
         Assert.Equal(0, device.Submissions);
@@ -37,7 +37,7 @@ public sealed class RendererPerfControlAdmissionTests
     [InlineData(4, 4u)]
     [InlineData(5, 4u)]
     [InlineData(6, 4u)]
-    [InlineData(7, 268435456u)]
+    [InlineData(7, 134217728u)]
     [InlineData(8, 33554432u)]
     [InlineData(9, 2097152u)]
     [InlineData(10, 262144u)]
@@ -69,10 +69,11 @@ public sealed class RendererPerfControlAdmissionTests
     }
 
     [Theory]
-    [InlineData("lavapipe", false)]
-    [InlineData("WARP", false)]
+    [InlineData("lavapipe", true)]
+    [InlineData("WARP", true)]
     [InlineData("T4", true)]
     [InlineData("vulkan-256-mib", true)]
+    [InlineData("vulkan-below-128-mib", false)]
     public void Control_seven_uses_the_selected_native_capability(string target, bool compatible)
     {
         using var device = new RendererPerfConstructionFixture();
@@ -86,6 +87,8 @@ public sealed class RendererPerfControlAdmissionTests
                 maxStorageBufferRangeBytes: 134217728),
             "vulkan-256-mib" => VulkanCapabilityRead.Assemble(target, false, true, GpuSampleCounts.One, 4,
                 maxStorageBufferRangeBytes: 268435456),
+            "vulkan-below-128-mib" => VulkanCapabilityRead.Assemble(target, false, true, GpuSampleCounts.One, 4,
+                maxStorageBufferRangeBytes: 134217727),
             "WARP" => D3D11CapabilityRead.Assemble(target, 1, true, true, bufferLimits: new(0xb000, 0)),
             "T4" => D3D11CapabilityRead.Assemble(target, 1, true, true, bufferLimits: new(0xb000, 17179869184)),
             _ => throw new ArgumentOutOfRangeException(nameof(target))
@@ -124,7 +127,7 @@ public sealed class RendererPerfControlAdmissionTests
     public void Incompatible_control_refuses_the_unit_before_the_first_scene_session()
     {
         using var rig = new RendererPerfColdLifecycleFixture();
-        rig.Production.Features = rig.Production.Features with { MaxStorageBufferRangeBytes = 134217728 };
+        rig.Production.Features = rig.Production.Features with { MaxStorageBufferRangeBytes = 134217727 };
         rig.SessionCreated = _ => throw new InvalidOperationException("Storage compatibility must precede the first scene session.");
 
         var outcome = rig.Run();
@@ -134,7 +137,8 @@ public sealed class RendererPerfControlAdmissionTests
         Assert.Equal(0, rig.Production.TextureAttempts);
         Assert.Contains(outcome.Failures, failure => failure.Error is RendererPerfProtocolException
             && failure.Error.Message.Contains("Control 7", StringComparison.Ordinal)
-            && failure.Error.Message.Contains("134217728", StringComparison.Ordinal));
+            && failure.Error.Message.Contains("requires 134217728 bytes", StringComparison.Ordinal)
+            && failure.Error.Message.Contains("device limit 134217727 bytes", StringComparison.Ordinal));
         Assert.NotNull(outcome.EarlyFailure);
     }
 }

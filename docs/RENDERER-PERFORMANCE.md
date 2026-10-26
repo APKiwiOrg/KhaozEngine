@@ -52,7 +52,11 @@ its whole storage-buffer bindings before creating control resources or recording
 from the selected adapter's dedicated video memory and its full raw-view limit. An unknown range
 refuses compute controls. A compatibility refusal names the control, required bytes and admitted
 device bytes. The buffers, schedule and complete output checks never shrink to fit a device.
-Control 7 requires 268,435,456 bytes for each binding. A 134,217,728-byte range cannot run it.
+Control 7 fixes a 128 MiB input and 128 MiB output on every leg, local size 256 and 1024 by 128 groups.
+This uses the portable 134,217,728-byte storage range advertised by lavapipe and guaranteed by
+Direct3D 11 for WARP. Each frame transforms all 33,554,432 words. Final validation checks every output
+word once after completion. The large stream remains four times control 8's 32 MiB buffers. Its bandwidth numerator
+is 256 MiB of reads plus writes per frame. A device below 128 MiB still refuses before the first session.
 
 Cascade layouts, point-shadow demand and MRT changes retire outgoing graphs through the scene queue.
 The workload starts each scene with `Scene3D.BeginFrame(frame.Submission)`, sharing the host completion

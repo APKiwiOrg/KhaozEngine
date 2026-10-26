@@ -50,7 +50,7 @@ public sealed class RendererPerfFloorEvidenceTests
         var report = new RendererPerfControlReport(new(7, "1", definition.WorkSha256, 64, 128), new string('a', 64),
             [.. Enumerable.Repeat(frame, 64)], [.. Enumerable.Repeat(frame, 128)],
             ImmutableDictionary<string, RendererPerfMetric>.Empty.Add("control.outputValidated", new(1, "count", "all outputs checked", RendererPerfMetricStatus.Available, null)));
-        Assert.Equal(536870912000, RendererPerfControls.AchievedRates(report)["bandwidth.bytesPerSecond"].Value);
+        Assert.Equal(268435456000, RendererPerfControls.AchievedRates(report)["bandwidth.bytesPerSecond"].Value);
         Assert.Throws<InvalidOperationException>(() => RendererPerfControls.AchievedRates(report with { StateSha256 = "" }));
         Assert.Throws<InvalidOperationException>(() => RendererPerfControls.AchievedRates(report with { Measured = report.Measured.RemoveAt(0) }));
     }

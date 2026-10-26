@@ -16,7 +16,7 @@ public sealed class RendererPerfControlTests
         Assert.Equal(36, controls[5].Dispatches);
         Assert.Equal(35, controls[4].SerialEdges);
         Assert.Equal(0, controls[5].SerialEdges);
-        Assert.Equal(536870912, controls[6].ReadBytes + controls[6].WriteBytes);
+        Assert.Equal(268435456, controls[6].ReadBytes + controls[6].WriteBytes);
         Assert.Equal(67108864, controls[7].ReadBytes + controls[7].WriteBytes);
         Assert.Equal(67108864, controls[8].Operations);
         Assert.Equal("dependent-divide-root", controls[9].InstructionClass);

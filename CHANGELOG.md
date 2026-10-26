@@ -6,7 +6,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.14.1
 
-2026-10-26
+2026-10-27
 
 - Retain selected-device storage-buffer ranges in GPU capabilities. Vulkan reports its native descriptor
   limit. Direct3D 11 intersects the adapter-dependent resource guarantee with the full raw-view limit.

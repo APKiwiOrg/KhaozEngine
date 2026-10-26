@@ -37,6 +37,9 @@ namespace KhaozEngine.Render3D
         public float CenterZ { get; }
         /// <summary>World Y (height) of the flat water surface.</summary>
         public float SurfaceY { get; }
+        /// <summary>Lowest world Y of this body's water volume, in metres. Default <c>null</c> is unbounded below.
+        /// When set, must be finite and at most <see cref="SurfaceY"/>. Receivers below it are outside the body.</summary>
+        public float? FloorY { get; }
         /// <summary>Half-width along X (world units); the plane spans [CenterX-HalfExtentX, CenterX+HalfExtentX].</summary>
         public float HalfExtentX { get; }
         /// <summary>Half-width along Z (world units); the plane spans [CenterZ-HalfExtentZ, CenterZ+HalfExtentZ].</summary>
@@ -53,12 +56,15 @@ namespace KhaozEngine.Render3D
         /// <summary>Build a water plane request. <paramref name="halfExtentZ"/> defaults to
         /// <paramref name="halfExtentX"/> (a square footprint) when omitted/negative. <paramref name="look"/>
         /// defaults to <c>null</c>, i.e. the scene-wide look, so every call site written before per-plane looks
-        /// existed means exactly what it always did. <paramref name="optics"/> defaults to legacy scene depth.</summary>
+        /// existed means exactly what it always did. <paramref name="optics"/> defaults to legacy scene depth.
+        /// <paramref name="floorY"/> is the volume's lowest world Y in metres, or <c>null</c> (the default) for
+        /// unbounded depth. When set, it must be finite and at most <paramref name="surfaceY"/>.</summary>
         public WaterPlane(float centerX, float surfaceY, float centerZ, float halfExtentX, float halfExtentZ = -1f,
-            WaterLook? look = null, WaterOpticsBinding optics = default)
+            WaterLook? look = null, WaterOpticsBinding optics = default, float? floorY = null)
         {
             CenterX = centerX;
             SurfaceY = surfaceY;
+            FloorY = floorY;
             CenterZ = centerZ;
             HalfExtentX = halfExtentX;
             HalfExtentZ = halfExtentZ >= 0f ? halfExtentZ : halfExtentX;
@@ -66,8 +72,8 @@ namespace KhaozEngine.Render3D
             Optics = optics;
         }
 
-        /// <summary>Replace only the optical binding, preserving this plane's geometry and look.</summary>
+        /// <summary>Replace only the optical binding, preserving this plane's geometry, volume floor and look.</summary>
         public WaterPlane WithOptics(WaterOpticsBinding optics) =>
-            new(CenterX, SurfaceY, CenterZ, HalfExtentX, HalfExtentZ, Look, optics);
+            new(CenterX, SurfaceY, CenterZ, HalfExtentX, HalfExtentZ, Look, optics, FloorY);
     }
 }

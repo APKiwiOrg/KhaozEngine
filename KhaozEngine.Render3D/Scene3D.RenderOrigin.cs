@@ -270,8 +270,9 @@ namespace KhaozEngine.Render3D
                 WaterOpticsBinding optics = p.Optics;
                 if (optics.IsBound)
                     optics = new WaterOpticsBinding(optics.Field, optics.Origin - _frameOrigin, optics.Size);
+                float? floorY = p.FloorY.HasValue ? (float)((double)p.FloorY.Value - _frameOrigin.Y) : null;
                 _waterPlanesRelative.Add(new WaterPlane(p.CenterX - _frameOrigin.X, p.SurfaceY - _frameOrigin.Y,
-                    p.CenterZ - _frameOrigin.Z, p.HalfExtentX, p.HalfExtentZ, p.Look, optics));
+                    p.CenterZ - _frameOrigin.Z, p.HalfExtentX, p.HalfExtentZ, p.Look, optics, floorY));
             }
             return CollectionsMarshal.AsSpan(_waterPlanesRelative);
         }

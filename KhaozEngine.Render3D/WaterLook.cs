@@ -70,6 +70,15 @@ namespace KhaozEngine.Render3D
         /// look CAN turn absorption off for one body by overriding it with a zeroed colour.</summary>
         public Color? AbsorptionPerMetre;
 
+        /// <summary>Overrides <see cref="WaterSettings.UnderwaterSunlight"/> for this plane. Default <c>null</c>
+        /// inherits the scene's opt-in, which defaults to <c>false</c>.</summary>
+        public bool? UnderwaterSunlight;
+
+        /// <summary>Overrides <see cref="WaterSettings.UnderwaterPenumbraPerMetre"/> in metres of extra
+        /// key-shadow penumbra radius per metre of in-water light path. Must be finite and non-negative when set.
+        /// Default <c>null</c> inherits the scene's value, which defaults to <c>0.03</c>.</summary>
+        public float? UnderwaterPenumbraPerMetre;
+
         /// <summary>Overrides <see cref="WaterSettings.ShallowDepth"/> for this plane. <c>null</c> inherits. A pond
         /// that is two metres deep everywhere wants a much shorter blend than an ocean shelf.</summary>
         public float? ShallowDepth;
@@ -260,6 +269,8 @@ namespace KhaozEngine.Render3D
             if (DeepColor.HasValue) scratch.DeepColor = DeepColor.Value;
             if (ShallowColor.HasValue) scratch.ShallowColor = ShallowColor.Value;
             if (AbsorptionPerMetre.HasValue) scratch.AbsorptionPerMetre = AbsorptionPerMetre.Value;
+            if (UnderwaterSunlight.HasValue) scratch.UnderwaterSunlight = UnderwaterSunlight.Value;
+            if (UnderwaterPenumbraPerMetre.HasValue) scratch.UnderwaterPenumbraPerMetre = UnderwaterPenumbraPerMetre.Value;
             if (ShallowDepth.HasValue) scratch.ShallowDepth = ShallowDepth.Value;
             if (Opacity.HasValue) scratch.Opacity = Opacity.Value;
 

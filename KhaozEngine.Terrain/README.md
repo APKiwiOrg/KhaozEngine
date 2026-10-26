@@ -235,6 +235,15 @@ if (TerrainRaycast.Raycast(field, ray.Origin, dir, 200f, out Vector3 hit))
 Both arrays default empty (no behaviour change) and must be the same set on every `Generate` call over the
 same world for tiling invariance to hold, exactly like every other input `PropScatter` reads.
 
+## Immutable ground-cover columns
+
+`GroundCoverInstanceColumns` keeps original transforms, positions, thinning ranks and 32-bit model indexes in
+separate immutable arrays. Positions are stored independently of transform translations. Model IDs retain
+their supplied ordinal order. Public construction copies every input buffer and public buffer getters return
+detached snapshots. Array lengths and model bindings must agree, with finite thinning ranks from zero through one.
+Native one-shot producers can transfer exact-size frozen arrays internally without creating expanded instance rows.
+No buffer is pooled. Ordinary `GroundCoverBatch` construction in Terrain.Render3D retains its copying contract.
+
 ## Companion foliage
 
 `PropScatter.GenerateCompanions(field, hosts, config)` rings each matching host placement (a tree, say)

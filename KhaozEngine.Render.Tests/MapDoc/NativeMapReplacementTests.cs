@@ -150,8 +150,9 @@ public sealed class NativeMapReplacementTests
         var scheduler = new ResidencyScheduler(); var device = new ResidencyDevice();
         using var residency = new MapRenderResidency(state, device, null, scheduler);
         ResidencyFixture.Complete(residency, scheduler);
-        var before = residency.AcceptedPlans.Single().Inventory.Foliage;
-        Assert.NotEmpty(before.GeneratedIdentities);
+        var before = residency.AcceptedPlans.Single().Inventory.Foliage.GeneratedIdentities.ToArray();
+        var generationKeys = residency.AcceptedPlans.Single().Inventory.Foliage.GenerationKeys.ToArray();
+        Assert.NotEmpty(before);
         var cache = MapFoliageRenderCache.For(residency.AcceptedPlans.Single().FoliageContext);
         long generated = cache.GenerationCalls;
         var options = new GroundCoverRenderOptions
@@ -164,15 +165,15 @@ public sealed class NativeMapReplacementTests
         var newPolicy = new NativeFoliagePolicy(MapFrozenFoliageOptions.Capture(options), policy.Extents);
         residency.RequestReplacement(state with { Policy = ResidencyFixture.Policy(200, newPolicy) });
         scheduler.RunAll();
-        Assert.Equal(before.GeneratedIdentities, residency.AcceptedPlans.Single().Inventory.Foliage.GeneratedIdentities);
+        Assert.Equal(before, residency.AcceptedPlans.Single().Inventory.Foliage.GeneratedIdentities);
         ResidencyFixture.Complete(residency, scheduler);
         Assert.Equal(generated, cache.GenerationCalls);
-        Assert.Equal(before.GenerationKeys, residency.AcceptedPlans.Single().Inventory.Foliage.GenerationKeys);
+        Assert.Equal(generationKeys, residency.AcceptedPlans.Single().Inventory.Foliage.GenerationKeys);
         residency.Invalidate(state, new(null, null, [], [], [], [], MapNativeInvalidation.Foliage)
         { FoliageLayers = [new("cover", null, null)] });
         ResidencyFixture.Complete(residency, scheduler);
         Assert.True(cache.GenerationCalls > generated);
-        Assert.Equal(before.GeneratedIdentities, residency.AcceptedPlans.Single().Inventory.Foliage.GeneratedIdentities);
+        Assert.Equal(before, residency.AcceptedPlans.Single().Inventory.Foliage.GeneratedIdentities);
     }
 
     [Fact]
@@ -211,6 +212,7 @@ public sealed class NativeMapReplacementTests
         using var residency = new MapRenderResidency(State(false), device, null, scheduler);
         ResidencyFixture.Complete(residency, scheduler);
         var before = ResidencyFixture.Draw(residency);
+        var transforms = FoliageResource(before).AnchorLocalTransforms.ToArray();
         var witness = residency.Update().Transition.AcceptedWitness;
         var transition = residency.RequestReplacement(State(true));
         Assert.NotEqual(witness, transition.PendingWitness);
@@ -220,7 +222,7 @@ public sealed class NativeMapReplacementTests
         ResidencyFixture.Complete(residency, scheduler);
         var changed = FoliageResource(ResidencyFixture.Draw(residency));
         Assert.Equal(FoliageMotionProfile.Blade, changed.Models[0].Motion); Assert.False(changed.Models[0].CastShadows);
-        Assert.Equal(FoliageResource(before).AnchorLocalTransforms.ToArray(), changed.AnchorLocalTransforms.ToArray());
+        Assert.Equal(transforms, changed.AnchorLocalTransforms.ToArray());
         f.Document.Placements[0].AssetId = "B";
         residency.RequestReplacement(State(true));
         Assert.Equal("A", FoliageResource(ResidencyFixture.Draw(residency)).Models[0].ModelId);

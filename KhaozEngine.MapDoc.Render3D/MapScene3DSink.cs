@@ -34,8 +34,18 @@ public sealed partial class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMa
     }
     public IMapRenderUpload BeginUpload(MapPreparedResource resource, ISceneUploadReservation reservation)
     {
-        var data = Input(resource);
+        var data = UploadInput(resource);
         return new Upload(this, resource, _scene.PrepareResourceUpload(data, reservation));
+    }
+    internal SceneUploadDescription UploadInput(MapPreparedResource resource)
+    {
+        var input = Input(resource);
+        // Measurement borrows synchronously. BeginUpload has its full reservation before detaching these inputs.
+        return input.Foliage is { } foliage ? input with
+        {
+            Foliage = foliage with
+            { Transforms = foliage.Transforms.ToArray(), Ranks = foliage.Ranks.ToArray(), ModelIndices = foliage.ModelIndices.ToArray() }
+        } : input;
     }
     SceneUploadDescription Input(MapPreparedResource resource)
     {
@@ -78,9 +88,10 @@ public sealed partial class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMa
         _accepted.Clear(); _accepted.UnionWith(references);
         foreach (var reference in _references.Keys.Where(r => !_accepted.Contains(r)).ToArray()) _references.Remove(reference);
     }
-    public void Register(MapPreparedResource resource)
+    public void Register(MapPreparedResource resource) => RegisterReference(resource.Reference);
+    internal void RegisterReference(MapResourceReference reference)
     {
-        if (!_references.ContainsKey(resource.Reference)) throw new InvalidOperationException("Native draw registration has no published resource.");
+        if (!_references.ContainsKey(reference)) throw new InvalidOperationException("Native draw registration has no published resource.");
     }
     public void Write(in MapDrawRecord draw)
     {

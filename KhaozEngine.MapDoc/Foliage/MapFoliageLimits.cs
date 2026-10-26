@@ -21,6 +21,8 @@ public sealed record MapFoliageLimits(int MaxCandidates = 4_000_000, int MaxSamp
     // Reconciliation admits actual preparation allocations before emission. Ordinary chunk preparation owns no
     // aggregate cache, and leaves this callback unset.
     internal Action<long>? ChargePreparation { get; init; }
+    internal Action<long>? AllocateInstances { get; init; }
+    internal Action<long>? ReleaseInstances { get; init; }
 }
 
 /// <summary>Charged foliage work. Byte charges are explicit conservative accounting, never a measured allocation.</summary>

@@ -7,14 +7,19 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.14.0
 
-2026-10-26
+2026-10-27
 
+- Native foliage batches share immutable instance columns across cache and render views. After batch disposal,
+  `MapNativeFoliageBatch.GeneratedIdentities` and `CoverBatches` throw `ObjectDisposedException`. Capture detached
+  snapshots before requesting an accepted-plan replacement. Public snapshots and foliage payloads from public
+  `Register` and residency frame recording remain usable, without keeping a per-row identity copy in the
+  disposed batch. Cache-index and metadata growth after invalidation admit their allocations in the current
+  preparation's root and binding window, preserving earlier ownership on refusal.
 - Expose membership preparation interval diagnostics for root and window admission, including stage requests,
   successful peaks and refusals. Label the borrowed-input header separately from complete aggregate predictions.
   Preserve allocation-free input preflight and avoid product workspace on a header refusal.
 - Size prism validation arithmetic to active pieces, admit room domain copies before construction and settle
   uncovered polygon replacement capacity after its last overlap.
-
 - Add optional Scene3D render-pass observation across geometry, shadows, atmosphere, water, effects,
   temporal resolve, post and display work, with cached skips, exclusive device leaves and fused motion metadata.
   Disabled observation preserves commands and ordering.

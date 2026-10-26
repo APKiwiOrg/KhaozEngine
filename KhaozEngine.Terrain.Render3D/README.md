@@ -236,6 +236,8 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   resolved once per batch submission. Live mesh handles are refreshed every submission, including missing
   or replaced models, with no warmed per-frame allocation. Tile-world views build these batches once when
   foliage changes, with no scene or camera work during generation.
+  Internal generated views borrow immutable instance columns through a live owner and retain only range bounds
+  and controls. Public construction still copies its input. Public native cover snapshots use that copying path.
 - **Retained GPU cover** - set `GroundCoverRenderOptions.UseGpuBatches = true` on an immutable
   `GroundCoverBatch`, with `FadeMode = HeightScale`. Casting is supported on this retained path.
   Transforms upload once, patch selection stays on the CPU, and the GPU handles exact rooted fading,

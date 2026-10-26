@@ -31,13 +31,27 @@ Emissive/occlusion textures and nonempty material extensions refuse before model
 returned maps cannot represent them. Compatibility glTF and flattened native loading keep their
 released lenient behavior.
 
-`MapPreparedResource` carries copied immutable registration payloads. `MapDrawRecord` carries explicit
+Public `MapPreparedResource` registrations, including `MapRenderResidency.Record` sink registrations, carry
+detached immutable payloads. Internal plan recordings borrow generated foliage columns through live owners
+instead of copying per-row transforms, ranks or identities.
+The built-in `MapScene3DSink` frame path validates published references internally without receiving payloads
+or allocating snapshots. Caller-owned public sinks receive detached foliage.
+Public cover and identity snapshots remain detached and usable after batch disposal. Nonuniform imported sample
+keys retain a complete charged key array, including each original policy and distribution version.
+`MapDrawRecord` carries explicit
 anchor-local transform and focus, channels and exactly one typed frame. `MapDrawRecorder` records these
 without a device. Frozen water and foliage policies capture the caller's mutable objects. Foliage model
 profiles and casting resolve into registration. Per-frame draw options exclude those stable values.
 Each foliage instance owner hashes only its own rows and resolved model bindings. Overlapping windows share
 one upload and submission for a complete generated chunk or explicit plant. Window stamps and batch witnesses
 remain alias provenance, so changing another group does not replace unchanged instance owners.
+
+Generated cover views retain range bounds over 128 rows and project their original instance values. Registration
+binds immutable render policy separately from those columns. Full diagnostic samples and explicit plants retain
+their public behavior. The latter keep precise anchor-local matrices and bypass generated density thinning.
+Upload measurement borrows rows synchronously. After the full upload reservation is granted, `BeginUpload`
+detaches transform, rank and model-index inputs. Renderer snapshots keep their existing F1 settlement and retirement
+ownership independently of preparation columns.
 
 `NativeMapTerrain.Prepare(scene, input, materialIds)` consumes the scene's acquired canonical faces and
 effective paint regions. `MapTerrainRenderBatch.Register` registers typed `MapTerrainResource` payloads.
@@ -262,9 +276,21 @@ Original tighter decoder limits and their diagnostic identity remain binding. Di
 without blocking the scheduler. A running worker retains its readers and CPU reservation until unwind.
 
 A captured foliage context has a retained preparation lease. Policy-only replacements share that lease, including
-its density and effective dependency product. Cached generation retention is admitted before generation enters,
-then attached to individual cache entries. Invalidation drops the cache owner, and the last sample reader
-releases its receipt and CPU lease. Settled CPU bytes are the unique retained source, input, context, sample,
+its density and effective dependency product. The native cache retains compact immutable instance columns,
+not full diagnostic samples. Builder pages, ordinal indexes and freeze overlap are admitted before allocation.
+Cache, accepted plan and pending replacement readers share the same column owner. Invalidation drops cache
+ownership only. Last release detaches the backing payload before returning its receipt and CPU lease.
+Strings and generation policies have a separate metadata owner counted by object identity. It retains no context,
+support geometry or decoded assets. Context charge wrappers clear their context references when capture ownership ends.
+Cache-index and metadata growth reserve through the current preparation's root and binding window. Earlier
+retained slices keep their original receipts until release. Refusal returns only the new reservation before
+allocation, and capacity settlement releases the newest slices first.
+Accepted-plan replacement and window unload dispose the old `MapNativeFoliageBatch`. Its `GeneratedIdentities`
+and `CoverBatches` getters, `Register` and `Record` throw `ObjectDisposedException` after disposal. Capture detached
+public snapshots before requesting replacement. Those snapshots and foliage payloads from public `Register` survive disposal,
+while retaining the batch shell keeps no per-row identity copy. See the
+[foliage lifetime contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract).
+Settled CPU bytes are the unique retained source, input, context, column, metadata,
 plan, recording and upload inventory. In-flight CPU additionally includes queue reservations and staging.
 At publication, zero recording references or demand below half the retained capacity replaces both dictionaries
 and the draw set with storage sized to current demand. Credit returns after the old backing arrays are no
@@ -274,9 +300,19 @@ Preparation peaks and cumulative allocation are not retained-size authorities. G
 identity and handle only. They do not retain obsolete CPU registrations,
 including while waiting in the bounded disposal queue.
 
-Each window narrows the shared allowance before acquisition and preparation. Foliage generation derives its
-support limits and complete candidate-envelope retention bound from that remaining allowance. A dense envelope
-that cannot fit refuses before generation or cache retention. Query limits and generated addresses are unchanged.
+Each window narrows the shared allowance before acquisition and preparation. Foliage generation derives support
+limits and staged column admission from that remaining allowance. Count ceilings are checked before scanning.
+Capacity can refuse at the first control, accepted-row growth, ordinal growth or freeze allocation that would
+exceed the allowance. A sparse layer never keeps a full candidate-lattice reservation. Query limits and generated
+addresses are unchanged.
+
+The foliage inventory proof independently counts actual array lengths, index capacities, object identities and
+pinned 64-bit controls. It covers empty, tiny, dense, sparse, maximal-table and replacement cases, including
+index and metadata growth after invalidation while earlier readers remain live. Root and binding
+window interval peaks stay within twice the simultaneous domain inventory plus a fixed 4096-byte kernel allowance
+for ledger and callback machinery. That allowance never scales with rows. Old builder/index arrays and frozen
+columns coexist during freeze. Old and pending cover views count their shared column store once. Renderer-owned
+F1 temporal and point-shadow snapshots remain charged after source columns are collected and until retirement.
 
 ## Roof channels and presentation picks
 

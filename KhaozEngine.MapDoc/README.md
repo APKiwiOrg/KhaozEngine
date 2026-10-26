@@ -963,6 +963,28 @@ at 262,144 and retained bytes at 67,108,864 before retention. `MapFoliageDiffere
 conservative accounting, not measured allocation. Generate, Query and Compare observer rows remain provisional until
 the enclosing result is Complete. A refusal discards all usable output and issues no differential token.
 
+Retained foliage inventory counts shared objects by reference identity. Full diagnostic samples include their
+sample objects, reference arrays, material wrappers, policy and UTF-16 strings once per owned graph. Public sample
+construction copies the material reference array. Native column inventory separates seven aligned instance arrays
+and two ordinal reference tables from batch controls and metadata. Construction inventory additionally includes
+the still-live builder page during freeze, rather than folding that overlap into the settled per-row price.
+
+The internal compact generation product retains original matrix, position and thinning-rank columns, lattice X/Z,
+and 32-bit support/model indexes. IDs receive ordinals on their first accepted occurrence. It shares the full
+generator's candidate scan, support and clearance evaluator, decomposition check and dependency digest. Full
+`Generate`, `Query` and observer APIs continue to expose complete diagnostic samples. A one-shot builder admits
+accepted-row, ordinal-index growth and frozen-array overlap before allocating them, then releases its workspace.
+
+`MapNativeFoliageBatch` owns resident foliage data for its prepared render plan. Residency disposes the old plan
+when a replacement is accepted or its window unloads. After batch disposal, `GeneratedIdentities`, `CoverBatches`,
+`Register` and `Record` throw `ObjectDisposedException`, even if another plan or the cache still owns the same
+columns. Capture any comparison data before requesting replacement, for example
+`var identities = plan.Inventory.Foliage.GeneratedIdentities.ToArray();`. Public identity and cover snapshots,
+and foliage payloads emitted by public `Register`, are detached and remain usable after disposal. Retaining the
+disposed batch does not retain a per-row identity copy or keep its resident columns alive.
+`MapRenderResidency.Record` detaches foliage at the public sink boundary. A normal recording followed by
+`MapDrawRecorder.Snapshot` remains usable after replacement or unload, without pre-registering the plans.
+
 ### Compatibility support and paint
 
 Payload 1 supports `legacy-tile/1` with explicit boundary/material metadata, resolver identity (1, 2) and

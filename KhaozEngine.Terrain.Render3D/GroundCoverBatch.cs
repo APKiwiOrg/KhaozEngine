@@ -10,14 +10,18 @@ namespace KhaozEngine.Terrain;
 public sealed class GroundCoverBatch : IReadOnlyList<GroundCoverInstance>
 {
     const int RangeSize = 128;
-    readonly GroundCoverInstance[] _items;
-    readonly Vector4[] _bounds;
-    readonly int[] _modelIndices;
-    readonly string[] _modelIds;
+    readonly GroundCoverInstance[]? _items;
+    Vector4[] _bounds;
+    readonly int[]? _modelIndices;
+    readonly string[]? _modelIds;
+    IGroundCoverInstanceSource? _source;
+    readonly int _count;
+    bool _released;
 
     public GroundCoverBatch(IReadOnlyList<GroundCoverInstance> source)
     {
         ArgumentNullException.ThrowIfNull(source);
+        _count = source.Count;
         _items = new GroundCoverInstance[source.Count];
         _bounds = new Vector4[(source.Count + RangeSize - 1) / RangeSize];
         _modelIndices = new int[source.Count];
@@ -50,20 +54,43 @@ public sealed class GroundCoverBatch : IReadOnlyList<GroundCoverInstance>
         _modelIds = modelIds.ToArray();
     }
 
-    public int Count => _items.Length;
-    public GroundCoverInstance this[int index] => _items[index];
-    public IEnumerator<GroundCoverInstance> GetEnumerator() => ((IEnumerable<GroundCoverInstance>)_items).GetEnumerator();
-    IEnumerator IEnumerable.GetEnumerator() => _items.GetEnumerator();
+    internal GroundCoverBatch(IGroundCoverInstanceSource source)
+    {
+        _source = source; _count = source.Count;
+        _bounds = new Vector4[_count / RangeSize + (_count % RangeSize == 0 ? 0 : 1)];
+        for (int range = 0; range < _bounds.Length; range++)
+        {
+            var bounds = new Vector4(float.PositiveInfinity, float.PositiveInfinity, float.NegativeInfinity, float.NegativeInfinity);
+            int end = Math.Min(_count, checked((range + 1) * RangeSize));
+            for (int i = range * RangeSize; i < end; i++)
+            {
+                var point = source.Columns[i].Position;
+                bounds.X = MathF.Min(bounds.X, point.X); bounds.Y = MathF.Min(bounds.Y, point.Z);
+                bounds.Z = MathF.Max(bounds.Z, point.X); bounds.W = MathF.Max(bounds.W, point.Z);
+            }
+            _bounds[range] = bounds;
+        }
+    }
+    internal long RetainedViewBytes => checked(64L + 24L + 16L * _bounds.Length);
+    internal void ReleaseResident()
+    { if (_source is null) return; _source = null; _bounds = []; _released = true; }
 
-    internal ReadOnlySpan<GroundCoverInstance> Items => _items;
-    internal int ModelCount => _modelIds.Length;
-    internal int ModelIndex(int instanceIndex) => _modelIndices[instanceIndex];
-    internal string ModelId(int modelIndex) => _modelIds[modelIndex];
+    public int Count => _count;
+    public GroundCoverInstance this[int index]
+    {
+        get { ObjectDisposedException.ThrowIf(_released, this); return _source is { } source ? source.Columns[index] : _items![index]; }
+    }
+    public IEnumerator<GroundCoverInstance> GetEnumerator() { for (int i = 0; i < Count; i++) yield return this[i]; }
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    internal int ModelCount => _source?.Columns.ModelCount ?? _modelIds!.Length;
+    internal int ModelIndex(int instanceIndex) => _source is { } source ? source.Columns.ModelIndex(instanceIndex) : _modelIndices![instanceIndex];
+    internal string ModelId(int modelIndex) => _source is { } source ? source.Columns.ModelId(modelIndex) : _modelIds![modelIndex];
 
     internal int SkipOutside(int index, Vector3 focus, float radiusSquared)
     {
         if (index % RangeSize != 0) return index;
-        while (index < _items.Length)
+        while (index < _count)
         {
             Vector4 bounds = _bounds[index / RangeSize];
             float dx = MathF.Max(0f, MathF.Max(bounds.X - focus.X, focus.X - bounds.Z));
@@ -71,6 +98,6 @@ public sealed class GroundCoverBatch : IReadOnlyList<GroundCoverInstance>
             if (dx * dx + dz * dz <= radiusSquared) break;
             index += RangeSize;
         }
-        return Math.Min(index, _items.Length);
+        return Math.Min(index, _count);
     }
 }

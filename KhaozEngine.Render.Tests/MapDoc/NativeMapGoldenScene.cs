@@ -98,8 +98,7 @@ public sealed class NativeMapGoldenScene : IDisposable
         Assert.Equal(uploads, residency.Lifetime.UploadBytes); Assert.Equal(created, residency.Lifetime.Created);
         Assert.Equal(0, Scene.LastFoliageStats.InstanceUploadBytes);
         byte[] rgba = GpuReadback.ToRgba(_gpu.GpuDevice, _target!, Width, Height);
-        var recorder = new MapDrawRecorder(); residency.Record(frame, recorder);
-        var inventory = recorder.Snapshot();
+        var inventory = SnapshotInventory(residency, frame);
         int actualLights = Scene.PointLightClusters.SubmittedLightCount;
         Assert.Equal(Scene.LightCount, actualLights);
         if (variant == "origin" && !omitFarLight)
@@ -119,6 +118,12 @@ public sealed class NativeMapGoldenScene : IDisposable
             Frames = frames
         };
         return new(rgba, Width, Height, _gpu.GpuDevice.Backend);
+    }
+    internal static MapDrawSet SnapshotInventory(MapRenderResidency residency, MapFrameState frame)
+    {
+        var recorder = new MapDrawRecorder();
+        residency.Record(frame, recorder);
+        return recorder.Snapshot();
     }
     void Configure(MapSnapshotFraming framing, string variant, bool farOrigin)
     {

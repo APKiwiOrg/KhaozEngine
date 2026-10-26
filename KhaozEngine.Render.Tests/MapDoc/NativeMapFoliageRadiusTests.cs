@@ -64,6 +64,7 @@ public sealed class NativeMapFoliageRadiusTests
         using var residency = new MapRenderResidency(state, new ResidencyDevice(), null, scheduler);
         ResidencyFixture.Complete(residency, scheduler);
         var original = residency.AcceptedPlans.Single();
+        var generatedIdentities = original.Inventory.Foliage.GeneratedIdentities.ToArray();
         var cache = MapFoliageRenderCache.For(original.FoliageContext);
         long generated = cache.GenerationCalls;
         var before = ResidencyFixture.Draw(residency).Draws.ToArray();
@@ -79,7 +80,7 @@ public sealed class NativeMapFoliageRadiusTests
         Assert.Equal(policy.Digest, residency.CurrentTransition.AcceptedWitness!.PolicyDigest);
         Assert.Same(original.FoliageContext, current.FoliageContext);
         Assert.Equal(generated, cache.GenerationCalls);
-        Assert.Equal(original.Inventory.Foliage.GeneratedIdentities, current.Inventory.Foliage.GeneratedIdentities);
+        Assert.Equal(generatedIdentities, current.Inventory.Foliage.GeneratedIdentities);
         var draws = ResidencyFixture.Draw(residency).Draws;
         Assert.Equal(changeCover ? 20 : 40, Assert.Single(draws, d => d.Resource.Key.OwnerId == "plant").Foliage!.Value.Options.DrawRadius);
         Assert.All(draws.Where(d => d.Resource.Key.OwnerId != "plant"), d => Assert.Equal(changeCover ? 8 : 4, d.Foliage!.Value.Options.DrawRadius));

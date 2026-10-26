@@ -557,7 +557,7 @@ jobs:
           if ($core.Count -ne 1 -or $core[0] -cnotmatch '^Microsoft\.NETCore\.App 10\.0\.13 \[') { throw "Expected exactly Microsoft.NETCore.App 10.0.13, observed: $($runtimes -join ', ')" }
 
       - name: GPU, driver model and the GRID driver (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.executionClass != 'rehearsal'
         continue-on-error: true
         shell: powershell
         env:

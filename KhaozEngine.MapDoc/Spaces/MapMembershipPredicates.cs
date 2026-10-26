@@ -10,7 +10,8 @@ namespace KhaozEngine.MapDoc.Spaces;
 /// <summary>Immutable exact edges, with the released cell or OA7 polygon boundary convention.</summary>
 internal sealed class MapMembershipPolygon
 {
-    internal long InventoryBytes => checked(128L + 45L * _vertices.Length + _edges.Sum(e => e.InventoryBytes));
+    internal long InventoryBytes => checked(128L + 53L * _vertices.Length + (_coefficientOwner?.InventoryBytes ?? 0));
+    readonly MapMembershipCoefficientStore? _coefficientOwner;
     readonly MapExactXz[] _vertices;
     readonly MapMembershipAffine[] _edges;
     readonly bool[] _owns;
@@ -20,7 +21,9 @@ internal sealed class MapMembershipPolygon
     internal MapExactRect Bounds => new(_minX, _minZ, _maxX, _maxZ);
     internal MapMembershipPolygon(IReadOnlyList<MapExactXz> vertices, bool cell = false)
     {
-        MapMembershipBuild.Inventory(checked(128L + 45L * vertices.Count));
+        using var encoding = MapMembershipCoefficientStore.Begin();
+        _coefficientOwner = encoding.Owns ? encoding.Store : null;
+        MapMembershipBuild.Inventory(checked(128L + 53L * vertices.Count));
         if (MapMembershipBuild.Current is { } build)
         { build.Counts.Polygons++; build.Counts.PolygonCorners += vertices.Count; }
         using var arithmetic = MapMembershipBuild.Kernel();
@@ -83,7 +86,8 @@ internal sealed class MapMembershipPolygon
 /// <summary>A compiled triangle whose filter and fixed-limb fallback agree with released wide predicates.</summary>
 internal sealed class MapMembershipTriangle
 {
-    internal long InventoryBytes => checked(192L + 27L + _height.InventoryBytes + _edges.Sum(e => e.InventoryBytes));
+    internal long InventoryBytes => checked(251L + (_coefficientOwner?.InventoryBytes ?? 0));
+    readonly MapMembershipCoefficientStore? _coefficientOwner;
     readonly MapMembershipAffine[] _edges;
     readonly bool[] _owns;
     readonly int _orientation;
@@ -92,7 +96,9 @@ internal sealed class MapMembershipTriangle
     internal int Direction => _height.Direction;
     internal MapMembershipTriangle(MapExactTriangle triangle)
     {
-        MapMembershipBuild.Inventory(219);
+        using var encoding = MapMembershipCoefficientStore.Begin();
+        _coefficientOwner = encoding.Owns ? encoding.Store : null;
+        MapMembershipBuild.Inventory(251);
         if (MapMembershipBuild.Current is { } build) build.Counts.Triangles++;
         Triangle = triangle;
         MapExactXz a = new(triangle.A.X, triangle.A.Z), b = new(triangle.B.X, triangle.B.Z), c = new(triangle.C.X, triangle.C.Z);

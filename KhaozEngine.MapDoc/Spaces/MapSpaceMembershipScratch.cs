@@ -17,12 +17,13 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
     readonly record struct Demand(MapMembershipPreparedGeometry.Cell Cell, int Opening);
     readonly record struct Prism(MapSpaceDoc Space, string Owner, string Parent, MapMembershipPolygon[] Rings,
         MapExactValue Lower, MapExactValue Upper);
-    internal long InventoryBytes => checked(512L + _geometry.InventoryBytes + MapMembershipExact.StorageBytes +
+    internal long InventoryBytes => checked(512L + _geometry.InventoryBytes + MapMembershipExact.StorageBytes + (_coefficientOwner?.InventoryBytes ?? 0) +
         _footprints.Sum(f => 8L + f.InventoryBytes) + _portals.Sum(p => 8L + p.InventoryBytes) +
         192L * _spaces.Count + _ancestors.Values.Sum(a => 96L + 8L * a.Length) +
         _prisms.Sum(p => 128L + p.Rings.Sum(r => 8L + r.InventoryBytes)) + 32L * _active.Length + 16L * _demands.Length +
         8L * (_validated.Length + _physical.Length + _opening.Length) + 8L * _patchFaces.Length +
         MapMembershipPointScratch.Bytes(_scratch.Raw.Length, _scratch.Prisms.Length));
+    readonly MapMembershipCoefficientStore? _coefficientOwner;
     readonly MapScopedSurfaces _view;
     readonly MapMembershipPreparedGeometry _geometry;
     readonly MapMembershipPreparedFootprint[] _footprints;
@@ -49,6 +50,8 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
 
     internal MapSpaceMembershipScratch(MapScopedSurfaces view, MapMembershipPreparation demand, MapMembershipDemandPlan? plan = null)
     {
+        using var encoding = MapMembershipCoefficientStore.Begin();
+        _coefficientOwner = encoding.Owns ? encoding.Store : null;
         _view = view;
         var records = MapSpaceGeometry.Records(view).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
         Prisms = records.OfType<MapPrismDomain>().ToArray();
@@ -81,6 +84,7 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
         _validated = new long[_geometry.PatchCount]; _physical = new long[_geometry.Cells.Length];
         _opening = new long[_geometry.FaceSets.Count]; _patchFaces = new long[_geometry.PatchCount];
         _scratch = new(demand.Parts, Prisms.Length);
+        if (encoding.Owns) encoding.Store.Freeze();
     }
     public MapPrismDomain[] Prisms { get; }
     public int CandidateCount => _activeCount;

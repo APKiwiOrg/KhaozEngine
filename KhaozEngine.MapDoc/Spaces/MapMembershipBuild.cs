@@ -19,6 +19,10 @@ internal sealed class MapMembershipBuild : IDisposable
     {
         if (t_current is { } build) build._admission.BeforeGeometry(bytes, build._product.WorkspaceOwner);
     }
+    internal static void ReleaseInventory(long bytes)
+    {
+        if (t_current is { } build && bytes != 0) build._product.WorkspaceOwner.Release(bytes);
+    }
     internal static MapPreparationReservation? Kernel(long bytes = 32768)
     {
         if (t_current is not { } build) return null;
@@ -28,7 +32,6 @@ internal sealed class MapMembershipBuild : IDisposable
     }
     internal static void Coefficient(int bytes)
     {
-        Inventory(checked(48L + bytes));
         if (t_current is { } build)
         { build.Counts.Coefficients++; build.Counts.NormalizedCoefficientBytes += bytes; }
     }

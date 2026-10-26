@@ -12,14 +12,17 @@ internal sealed class MapMembershipPreparedPortal
     internal long InventoryBytes => checked(128L + _interval.Concat(_bottom).Concat(_top).Sum(s => 8L + s.InventoryBytes));
     internal sealed class Segment
     {
-        internal long InventoryBytes => checked(128L + 8L * Demands.Length + _line.InventoryBytes + (_height?.InventoryBytes ?? 0));
+        internal long InventoryBytes => checked(136L + 8L * Demands.Length + (_coefficientOwner?.InventoryBytes ?? 0) + (_height?.InventoryBytes ?? 0));
+        readonly MapMembershipCoefficientStore? _coefficientOwner;
         readonly MapExactXz _a, _b;
         readonly MapMembershipAffine _line;
         readonly MapMembershipTriangle? _height;
         internal readonly MapMembershipPreparedGeometry.Cell[] Demands;
         internal Segment(MapExactPoint a, MapExactPoint b, MapMembershipPreparedGeometry.Cell[]? demands = null, bool height = false)
         {
-            MapMembershipBuild.Inventory(checked(128L + 8L * (demands?.Length ?? 0)));
+            using var encoding = MapMembershipCoefficientStore.Begin();
+            _coefficientOwner = encoding.Owns ? encoding.Store : null;
+            MapMembershipBuild.Inventory(checked(136L + 8L * (demands?.Length ?? 0)));
             _a = new(a.X, a.Z); _b = new(b.X, b.Z); _line = MapMembershipAffine.Edge(_a, _b);
             Demands = demands ?? Array.Empty<MapMembershipPreparedGeometry.Cell>();
             if (height)

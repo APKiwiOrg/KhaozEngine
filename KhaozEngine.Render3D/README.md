@@ -447,7 +447,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   only below the water surface and inside that slice's height band. Reconstruction divides by the squared
   lengths of the cascade basis rows, so horizontal and near-horizontal light rays remain finite. A separate
   light-space depth comparison rejects casters beyond horizontal slice ends. Other slices share fixed
-  world-height boundaries, preventing widened rays from opening gaps through a roof. The final limit is the
+  unbiased world-height boundaries along `E` to `P`. Normal offsets vary with cascade texel size, so applying
+  them to internal boundaries can leave a gap through a thin roof at a far-to-near cascade transition.
+  Normal offsets and widening affect each tap's reconstruction only. The final limit is the
   receiver's geometric plane on each offset ray, retaining the normal offset and depth bias. Its signed
   comparison needs no division by light elevation or plane slope, so tilted receivers also avoid self-shadow.
   The outer coverage fade applies at the real receiver,

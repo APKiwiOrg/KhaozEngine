@@ -4985,7 +4985,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       A straddling floater's above-water face therefore shadows the entry lookup. Four jittered depth slices
       from `E` to `P` find fully submerged rocks and cave roofs. Each fetched texel reconstructs the stored
       caster's height on its own light ray, counting only heights below the surface and within the slice band.
-      Shared world-height boundaries avoid gaps between widened rays. The final slice ends on the receiver's
+      Non-horizontal slices share unbiased world-height boundaries along `E` to `P`. Cascade-specific normal
+      offsets and widening affect only tap reconstruction, keeping thin roofs covered across far-to-near
+      cascade transitions. The final slice ends on the receiver's
       geometric plane with its normal offset and depth bias, avoiding upslope self-shadow. Reconstruction
       divides by squared cascade basis lengths, and the signed final-plane test divides by neither light
       elevation nor plane slope, keeping the march finite even at horizontal light. Slice lookups blend

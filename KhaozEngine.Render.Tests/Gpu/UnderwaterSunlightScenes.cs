@@ -8,13 +8,14 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
 
-public enum UnderwaterSunlightGeometry { FlatBed, ThinSlab, StraddlingHull, SubmergedRock, Cave, Bank, AboveWater, HorizontalReceiver, SlopedBed }
+public enum UnderwaterSunlightGeometry { FlatBed, ThinSlab, StraddlingHull, SubmergedRock, Cave, Bank, AboveWater, HorizontalReceiver, SlopedBed, CascadeRoof, PenumbraSlab }
 
 public readonly record struct UnderwaterSunlightCase(UnderwaterSunlightGeometry Geometry = UnderwaterSunlightGeometry.FlatBed,
     float Depth = 1f, bool Enabled = true, bool Orthographic = false, float ShadowStrength = 1f,
     bool Caster = true, bool Absorption = true, bool Water = true, float SlabBottom = 0.05f, bool AmbientOnly = false,
     bool SpecularOnly = false, float SpecularStrength = 0.8f, bool BedCastsShadows = false,
-    float PenumbraPerMetre = UnderwaterSunlightScenes.PenumbraPerMetre)
+    float PenumbraPerMetre = UnderwaterSunlightScenes.PenumbraPerMetre, float SunElevationDegrees = 35f,
+    float CascadeBlend = 0.15f)
 {
     public UnderwaterSunlightCase() : this(UnderwaterSunlightGeometry.FlatBed) { }
     public float BedY => Geometry == UnderwaterSunlightGeometry.Cave ? -3f
@@ -38,6 +39,11 @@ public sealed class UnderwaterSunlightScenes : IDisposable
     IGpuFramebuffer? _target;
     IGpuCommandList? _commands;
     MeshHandle _plane, _box;
+    readonly int _cascadeCount;
+
+    public UnderwaterSunlightScenes() : this(1) { }
+    internal UnderwaterSunlightScenes(int cascadeCount) => _cascadeCount = cascadeCount;
+    internal Matrix4x4[] CascadeMatrices => _scene!.CascadeFitAbsoluteForTests.ToArray();
 
     internal float[] ReadOpaqueHdrColor()
     {
@@ -89,6 +95,12 @@ public sealed class UnderwaterSunlightScenes : IDisposable
 
     static IIsoCamera3D Camera(UnderwaterSunlightCase settings)
     {
+        if (settings.Geometry == UnderwaterSunlightGeometry.CascadeRoof)
+            return new FlyCamera3D
+            {
+                Position = new Vector3(0f, -2.1f, -2f), Yaw = 0f, Pitch = -0.45f, FieldOfView = 0.7f,
+                AspectRatio = 1f, NearPlane = 0.1f, FarPlane = 40f
+            };
         if (settings.Geometry == UnderwaterSunlightGeometry.HorizontalReceiver)
             return new FlyCamera3D
             {
@@ -124,8 +136,9 @@ public sealed class UnderwaterSunlightScenes : IDisposable
         scene.Post.Background = BackgroundMode.Solid;
         scene.Post.BackgroundColor = new Color(0.1f, 0.05f, 0.15f, 1f);
         scene.Post.Outline = false;
+        float elevation = settings.SunElevationDegrees * MathF.PI / 180f;
         scene.Post.LightDirection = settings.Geometry == UnderwaterSunlightGeometry.HorizontalReceiver
-            ? Vector3.UnitZ : new Vector3(0f, -0.57357645f, 0.81915204f);
+            ? Vector3.UnitZ : new Vector3(0f, -MathF.Sin(elevation), MathF.Cos(elevation));
         scene.Post.LightColor = settings.AmbientOnly ? Color.Black : Color.White;
         scene.Post.FillLightColor = Color.Black;
         scene.Post.AmbientColor = settings.AmbientOnly ? new Color(0.4f, 0.3f, 0.2f, 1f)
@@ -135,6 +148,13 @@ public sealed class UnderwaterSunlightScenes : IDisposable
         scene.Post.Quality.Shadows.ShadowNearDistance = 20f;
         // Fixed small biases keep the slab's 5 cm air clearance measurable. Receivers do not cast.
         scene.Post.Quality.Shadows.ShadowNormalOffset = 0.5f;
+        scene.Post.Quality.Shadows.ShadowCascadeBlend = settings.CascadeBlend;
+        if (settings.Geometry == UnderwaterSunlightGeometry.CascadeRoof)
+        {
+            scene.Post.Quality.Shadows.ShadowNearDistance = 2f;
+            scene.Post.Quality.Shadows.ShadowMaxDistance = 32f;
+            scene.Post.Quality.Shadows.ShadowNormalOffset = 2.5f;
+        }
         scene.Post.Quality.Shadows.ShadowConstantBias = 0.00005f;
         scene.Post.Quality.Shadows.ShadowSlopeBias = 0.00005f;
         scene.Post.Water = new WaterSettings
@@ -175,6 +195,12 @@ public sealed class UnderwaterSunlightScenes : IDisposable
                 case UnderwaterSunlightGeometry.ThinSlab:
                     Box(scene, new Vector3(1.8f, 0.02f, 0.4f), new Vector3(0f, settings.SlabBottom + 0.01f, 0f));
                     break;
+                case UnderwaterSunlightGeometry.PenumbraSlab:
+                    // Isolate the transverse shadow edge. A long shadow-only slab provides a full umbra
+                    // even at grazing sunlight, without hiding the bed from the top-down camera.
+                    scene.DrawShadowOnly(_box, Matrix4x4.CreateScale(1.8f, 0.02f, 4f)
+                        * Matrix4x4.CreateTranslation(0f, settings.SlabBottom + 0.01f, 0f));
+                    break;
                 case UnderwaterSunlightGeometry.StraddlingHull:
                     Box(scene, new Vector3(1.8f, 0.3f, 0.8f), Vector3.Zero);
                     break;
@@ -193,6 +219,9 @@ public sealed class UnderwaterSunlightScenes : IDisposable
                     Box(scene, new Vector3(6f, 1.5f, 0.2f), new Vector3(0f, -2.25f, -3f));
                     Box(scene, new Vector3(6f, 1.5f, 0.2f), new Vector3(0f, -2.25f, 3f));
                     break;
+                case UnderwaterSunlightGeometry.CascadeRoof:
+                    Box(scene, new Vector3(12f, 0.001f, 12f), new Vector3(0f, settings.SlabBottom - 0.0005f, 0f));
+                    break;
                 case UnderwaterSunlightGeometry.AboveWater:
                     Box(scene, Vector3.One * 0.5f, new Vector3(0f, 0.75f, 0f));
                     break;
@@ -200,7 +229,7 @@ public sealed class UnderwaterSunlightScenes : IDisposable
         }
         if (settings.Water)
             scene.DrawWater(new WaterPlane(0f, 0f, 0f, 6f,
-                floorY: settings.Geometry is UnderwaterSunlightGeometry.Cave or UnderwaterSunlightGeometry.SlopedBed
+                floorY: settings.Geometry is UnderwaterSunlightGeometry.Cave or UnderwaterSunlightGeometry.SlopedBed or UnderwaterSunlightGeometry.CascadeRoof
                     ? null : MathF.Min(-0.1f, settings.BedY - 0.1f)));
     }
 
@@ -222,8 +251,13 @@ public sealed class UnderwaterSunlightScenes : IDisposable
         return 2f * radius / 2048f;
     }
 
-    public static float KernelRadiusTexels(float depth, float texelWorld) =>
-        MathF.Min(8f, 1f + depth * PathPerMetre * PenumbraPerMetre / texelWorld);
+    public static float KernelRadiusTexels(float depth, float texelWorld, float elevationDegrees = 35f,
+        float penumbraPerMetre = PenumbraPerMetre)
+    {
+        float sine = MathF.Cos(elevationDegrees * MathF.PI / 180f) / 1.333f;
+        float path = depth / MathF.Sqrt(1f - sine * sine);
+        return MathF.Min(8f, 1f + path * penumbraPerMetre / texelWorld);
+    }
 
     void Ensure()
     {
@@ -235,7 +269,7 @@ public sealed class UnderwaterSunlightScenes : IDisposable
         _target = device.Factory.CreateFramebuffer(null, _color);
         _commands = device.Factory.CreateCommandList();
         _scene = new Scene3D(device, _target.Outputs,
-            new ShadowSettings { ShadowCascadeCount = 1, ShadowMapResolution = 2048 }, requestLitVisibility: true);
+            new ShadowSettings { ShadowCascadeCount = _cascadeCount, ShadowMapResolution = 2048 }, requestLitVisibility: true);
         _plane = _scene.LoadMesh(MeshPrimitives.Plane());
         _box = _scene.LoadMesh(MeshPrimitives.Box());
     }
@@ -405,7 +439,7 @@ public sealed class UnderwaterSunlightImage
         return (max, count);
     }
 
-    public float EdgeWidth10To90(float z)
+    public float EdgeWidth10To90(float z, bool keyVisibility = false)
     {
         Vector2 a = Project(new Vector3(0.3f, Settings.BedY, z));
         Vector2 b = Project(new Vector3(1.5f, Settings.BedY, z));
@@ -415,7 +449,8 @@ public sealed class UnderwaterSunlightImage
         for (int x = (int)MathF.Ceiling(a.X); x <= (int)b.X; x++)
         {
             float ratio = 0f;
-            for (int dy = -2; dy <= 2; dy++) ratio += ShadowContrast(x, row + dy) / 5f;
+            for (int dy = -2; dy <= 2; dy++)
+                ratio += (keyVisibility ? Visibility[(row + dy) * Size + x] / 255f : ShadowContrast(x, row + dy)) / 5f;
             float worldX = BedPoint(x, row).X;
             minimum = MathF.Min(minimum, ratio);
             maximum = MathF.Max(maximum, ratio);

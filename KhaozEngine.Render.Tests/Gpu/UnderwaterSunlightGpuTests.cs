@@ -239,7 +239,7 @@ public sealed class UnderwaterSunlightGpuTests(UnderwaterSunlightScenes scenes, 
         float predicted = UnderwaterSunlightScenes.KernelRadiusTexels(2.0f, texel)
             / UnderwaterSunlightScenes.KernelRadiusTexels(0.5f, texel), ratio = deep / shallow;
         output.WriteLine($"10-90 widths shallow={shallow:F6} m, deep={deep:F6} m, ratio={ratio:F6}, predicted={predicted:F6} +/-25%, texel={texel:F6} m");
-        Assert.True(deep > shallow && MathF.Abs(ratio - predicted) <= predicted * 0.25f,
+        Assert.True(deep > shallow && UnderwaterSunlightAcceptance.AcceptsPenumbraRatio(ratio, predicted),
             $"Penumbra width ratio {ratio:F6}, expected {predicted:F6} +/-25%. Shallow {shallow:F6} m, deep {deep:F6} m.");
     }
 
@@ -376,6 +376,10 @@ internal static class UnderwaterSunlightAcceptance
     internal const float RayAllowance = 0.04f;
     internal const float AttenuationDepth = 2f;
     internal const float RatioAllowance = 0.01f;
+    internal const float PenumbraRatioAllowance = 0.25f;
+
+    internal static bool AcceptsPenumbraRatio(float actual, float predicted) =>
+        MathF.Abs(actual - predicted) <= predicted * PenumbraRatioAllowance;
 
     internal static bool AcceptsRay(float waterDisplacement) =>
         MathF.Abs(waterDisplacement - UnderwaterSunlightScenes.WaterTangent) <= RayAllowance;

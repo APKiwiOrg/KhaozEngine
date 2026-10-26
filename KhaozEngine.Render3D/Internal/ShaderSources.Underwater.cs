@@ -248,10 +248,11 @@ float underwaterSliceAtCascade(int cascade, int count, vec3 endPos, vec3 Ngeo, f
     float tapEndY = endY + tapDisplacement.y;
     // Use the atlas's fitted axis. ShadowLightHold can keep it fixed while LightDir moves between fits.
     float storedY = tapEndY + (stored - z) * worldPerClipZ.y;
-    // Adjacent slices share world-height boundaries, even though their widened rays differ. Shifting
-    // every band with its tap would open gaps through a roof. Horizontal rays have constant height.
-    float bandEndY = worldPerClipZ.y == 0.0 ? tapEndY : endY;
-    float startY = bandEndY + (endDepth - startDepth);
+    // Internal bands use the unbiased E -> P heights. Cascade-specific normal offsets and widened
+    // rays belong only to the reconstruction above: shifting bands with either can leave roof-sized
+    // gaps at a far-to-near cascade transition. Horizontal rays have constant height on each tap.
+    float bandEndY = worldPerClipZ.y == 0.0 ? tapEndY : surfaceY - endDepth;
+    float startY = worldPerClipZ.y == 0.0 ? tapEndY + (endDepth - startDepth) : surfaceY - startDepth;
     bool beforeEnd;
     if (finalSlice) {
         // Evaluate the receiver's normal-offset geometric plane directly on this displaced ray instead

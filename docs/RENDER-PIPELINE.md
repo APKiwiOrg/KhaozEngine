@@ -244,8 +244,10 @@ which the same depth bands also test. Fully submerged rocks and cave roofs inste
 from `E` to `P`: four jittered depth slices, one point-depth comparison per slice before cascade blending.
 A single lookup at `P` would follow the dry direction through the whole depth and restore the dry shadow offset.
 Each texel reconstructs its stored caster's height on its own snapped light ray, counting it only below the
-surface and in the slice's height band. Non-horizontal slices share world-height boundaries so widened rays
-cannot open gaps through a roof. Reconstruction divides by the orthographic basis rows' squared lengths,
+surface and in the slice's height band. Non-horizontal slices share unbiased heights `surfaceY - fraction * h`
+along `E` to `P`. Both cascade-specific normal offsets and widened rays affect only each tap's reconstruction,
+because shifting internal boundaries with either can open gaps through a thin roof at a far-to-near cascade
+transition. Reconstruction divides by the orthographic basis rows' squared lengths,
 which stay nonzero at every light elevation. Internal height-band endpoints are inclusive so horizontal rays
 can occlude. A separate light-depth comparison excludes casters past horizontal endpoints.
 The last slice ends on the receiver's geometric plane with its normal offset and depth bias.

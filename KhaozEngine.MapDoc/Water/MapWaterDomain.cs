@@ -52,6 +52,7 @@ public sealed class MapWaterDomain
     public IReadOnlyList<MapWaterPiece> Pieces { get; }
     /// <summary>The exact bounds of one piece, which also bound every one of its convex parts.</summary>
     internal MapWaterPolygons.Bounds PieceBounds(int piece) => _bounds[piece];
+    internal bool PieceIsConvex(int piece) => MapWaterPolygons.IsConvex(_rings[piece]);
     public MapExactXz Min { get; }
     public MapExactXz Max { get; }
 
@@ -196,7 +197,7 @@ public sealed class MapWaterDomain
     internal IReadOnlyList<IReadOnlyList<MapWideXz>> ConvexParts(int piece, MapWaterWorkBudget budget)
     {
         if (_convexParts[piece] is { } cached) return cached;
-        IReadOnlyList<IReadOnlyList<MapWideXz>> parts = MapWaterPolygons.IsConvex(_rings[piece])
+        IReadOnlyList<IReadOnlyList<MapWideXz>> parts = PieceIsConvex(piece)
             ? new IReadOnlyList<MapWideXz>[] { _rings[piece] }
             : MapWaterPolygons.Triangulate(_rings[piece], budget)
                 ?? throw new MapDocumentException($"{_names[piece]} cannot be triangulated");

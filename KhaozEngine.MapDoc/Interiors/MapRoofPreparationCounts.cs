@@ -1,8 +1,19 @@
+using KhaozEngine.MapDoc.Scene;
+
 namespace KhaozEngine.MapDoc.Interiors;
 
 /// <summary>Count-only construction evidence. Contains no source identities, geometry or policy payloads.</summary>
 public sealed class MapRoofPreparationCounts
 {
+    /// <summary>Borrowed-input controls only. Later owners admit their own stage capacities.</summary>
+    public long HeaderBytes { get; internal set; }
+    public bool CompleteAggregatePredictionAvailable => false;
+    public MapPreparationStageCounts Membership { get; } = new();
+    public MapPreparationStageCounts Header { get; } = new();
+    public MapPreparationStageCounts Validation { get; } = new();
+    public MapPreparationStageCounts Planner { get; } = new();
+    public MapPreparationStageCounts Construction { get; } = new();
+    public MapPreparationStageCounts Publication { get; } = new();
     public long UniqueTargetSlots { get; internal set; }
     public long FootprintTargetSlots { get; internal set; }
     public long IndoorTargetSlots { get; internal set; }

@@ -86,7 +86,8 @@ internal sealed class MapPreparationInventory : IDisposable
                                 binding = current;
                         }
                         if (binding is not null && entry.Reservation.Bytes > binding.Remaining)
-                            throw new MapSceneCapacityException(binding.Capacity(entry.Reservation.Bytes));
+                            throw new MapSceneCapacityException(binding.RefuseReference(entry.Reservation.Bytes,
+                                windows[0], windows[^1].Parent, entry.Views.Keys));
                         var covered = new List<(object Key, View Value)>();
                         try
                         {

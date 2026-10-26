@@ -221,7 +221,7 @@ public sealed class MapRoofEvaluationAllocationTests
     }
 
     [Fact]
-    public void Prepare_AdmissionRefusalAllocatesOnlyItsTypedResult()
+    public void Prepare_AdmissionRefusalAllocatesOnlyItsTypedResultAndIntervalDiagnostics()
     {
         var fixture = PrefabFixtures.LinkedBuildings();
         using var native = new NativeSceneFixture(fixture.Document, fixture.Assets);
@@ -232,11 +232,15 @@ public sealed class MapRoofEvaluationAllocationTests
         var warm = MapRoofEvaluationBuffer.Prepare(scene, admission).Capacity!;
         MapRoofEvaluationBufferResult? result = null;
         long resultBytes = AllocationMeasurement.Measure("typed preparation result", () =>
-            result = DiagnosticResult(warm));
+            result = DiagnosticResult(admission, warm));
         long refusalBytes = AllocationMeasurement.Measure("refused membership preparation", () =>
             result = MapRoofEvaluationBuffer.Prepare(scene, admission));
         Assert.Equal(MapSceneStatus.CapacityExceeded, result!.Status);
         Assert.Null(result.Buffer);
+        Assert.NotNull(result.Counts);
+        Assert.Equal(warm.Requested, result.Counts.Header.Root.RefusedBytes);
+        Assert.Equal(0, result.Counts.Header.Root.AdmittedPeakBytes);
+        Assert.False(result.Counts.Construction.Root.Observed);
         Assert.Equal(resultBytes, refusalBytes);
         Assert.Equal(0, admission.RetainedBytes);
         Assert.Throws<ArgumentNullException>(() => MapRoofEvaluationBuffer.Prepare(null!));
@@ -284,7 +288,7 @@ public sealed class MapRoofEvaluationAllocationTests
         MapRoofEvaluationBufferResult? result = null;
         Assert.Equal("MaxPreparedBytes", prepared.Capacity!.LimitName);
         Assert.Equal(allowance, prepared.Capacity.Allowance);
-        long resultBytes = AllocationMeasurement.Measure("surface admission result", () => result = DiagnosticResult(prepared.Capacity));
+        long resultBytes = AllocationMeasurement.Measure("surface admission result", () => result = DiagnosticResult(admission, prepared.Capacity));
         long refusedBytes = AllocationMeasurement.Measure("surface inventory refusal before construction", () =>
             result = MapRoofEvaluationBuffer.Prepare(scene, admission));
         Assert.Equal(expected, result!.Status);
@@ -348,10 +352,15 @@ public sealed class MapRoofEvaluationAllocationTests
         Assert.Null(result.Buffer);
         Assert.Equal(resultBytes, refusedBytes);
     }
-    static MapRoofEvaluationBufferResult DiagnosticResult(MapSceneCapacity expected)
+    static MapRoofEvaluationBufferResult DiagnosticResult(MapSceneAdmission admission, MapSceneCapacity expected)
     {
+        // Count-only evidence and its observers are intrinsic to the refusal result. Product scopes,
+        // geometry, copied inputs and a thrown exception are not needed for a header refusal.
+        var counts = new MapRoofPreparationCounts();
+        using var interval = new MapMembershipPreparationInterval(admission, counts);
+        interval.Stage(counts.Header);
         var capacity = new MapSceneCapacity(expected.LimitName, expected.Requested, expected.Allowance);
-        return new(MapSceneStatus.CapacityExceeded, null, capacity.Message) { Capacity = capacity };
+        return new(MapSceneStatus.CapacityExceeded, null, capacity.Message) { Capacity = capacity, Counts = counts };
     }
 
 }

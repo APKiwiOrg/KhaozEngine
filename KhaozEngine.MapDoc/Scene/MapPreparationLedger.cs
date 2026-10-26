@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace KhaozEngine.MapDoc.Scene;
 
 /// <summary>Before-work admission of live modeled capacity, independent of garbage collection.</summary>
-internal sealed class MapPreparationLedger(long allowance, string limitName)
+internal sealed partial class MapPreparationLedger(long allowance, string limitName)
 {
     Window? _window;
     PeakObservation? _observation;
@@ -13,32 +13,13 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
     internal long WorkspaceBytes { get; private set; }
     internal long RetainedBytes { get; private set; }
     internal long PeakBytes { get; private set; }
-    internal PeakObservation ObservePeak() => new(this);
+    internal long Allowance => allowance;
     void Observe()
     {
         long live = checked(WorkspaceBytes + RetainedBytes + _external);
         PeakBytes = Math.Max(PeakBytes, live);
         for (var observer = _observation; observer is not null; observer = observer.Previous)
-            observer.Bytes = Math.Max(observer.Bytes, live);
-    }
-    internal sealed class PeakObservation : IDisposable
-    {
-        readonly MapPreparationLedger _owner;
-        internal readonly PeakObservation? Previous;
-        internal long Bytes;
-        bool _disposed;
-        internal PeakObservation(MapPreparationLedger owner)
-        {
-            _owner = owner; Previous = owner._observation;
-            Bytes = checked(owner.WorkspaceBytes + owner.RetainedBytes + owner._external);
-            owner._observation = this;
-        }
-        public void Dispose()
-        {
-            if (_disposed) return;
-            if (_owner._observation != this) throw new InvalidOperationException("Peak observations must close in nesting order.");
-            _owner._observation = Previous; _disposed = true;
-        }
+            observer.Sample(live);
     }
     internal int RetainedReceipts { get; private set; }
     internal Action? Changed { get; set; }
@@ -94,10 +75,14 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
     }
     internal void Add(Window? view, long bytes, bool retained)
     {
-        if (bytes < 0 || bytes > Remaining) throw new MapSceneCapacityException(Capacity(bytes));
+        bool refused = bytes < 0 || bytes > Remaining;
+        Request(bytes, bytes, view, null, refused);
+        if (refused) throw new MapSceneCapacityException(Capacity(bytes));
         if (retained) RetainedBytes += bytes; else WorkspaceBytes += bytes;
         Adjust(view, bytes);
         Observe();
+        try { if (bytes > 0) AllocationAdmitted?.Invoke(bytes); }
+        catch { Remove(view, bytes, retained); throw; }
     }
     internal void Remove(Window? view, long bytes, bool retained)
     {
@@ -110,19 +95,22 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
     { RetainedBytes -= bytes; WorkspaceBytes += bytes; }
     internal void Reattribute(Window? source, Window? destination, long bytes)
     {
-        Window? binding = null;
+        Window? binding = null, stop = null;
         for (var view = destination; view is not null; view = view.Parent)
         {
             bool covered = false;
             for (var previous = source; previous is not null; previous = previous.Parent)
                 if (previous == view) { covered = true; break; }
-            if (!covered && (binding is null || view.Remaining < binding.Remaining)) binding = view;
+            if (covered) { stop = view; break; }
+            if (binding is null || view.Remaining < binding.Remaining) binding = view;
         }
-        if (binding is not null && bytes > binding.Remaining)
-            throw new MapSceneCapacityException(binding.Capacity(bytes));
+        bool refused = binding is not null && bytes > binding.Remaining;
+        Request(0, bytes, destination, stop, refused);
+        if (refused) throw new MapSceneCapacityException(binding!.Capacity(bytes));
         // Common ancestors already include this inventory. Only its attribution changes, not root demand.
         Adjust(source, -bytes);
         Adjust(destination, bytes);
+        Observe();
     }
     static void Adjust(Window? view, long bytes)
     { for (; view is not null; view = view.Parent) view.Live = checked(view.Live + bytes); }
@@ -136,13 +124,23 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
         bool _disposed;
         internal Window? Parent { get; }
         internal long Live;
+        internal long Ordinal { get; }
+        internal long Allowance => _allowance;
+        internal long Reused => _reused;
+        internal long Total => checked(_reused + Live);
         internal long Remaining => _allowance - _reused - Live;
         internal Window(MapPreparationLedger owner, Window? parent, long allowance, string name, long reused)
         {
             _owner = owner; Parent = parent; _allowance = allowance; _name = name; _reused = reused;
+            Ordinal = ++owner._nextWindow;
             owner._window = this;
         }
         internal MapSceneCapacity Capacity(decimal bytes) => new(_name, (decimal)Live + _reused + bytes, _allowance);
+        internal MapSceneCapacity RefuseReference(long bytes, Window start, Window? stop, ICollection<object> covered)
+        {
+            _owner.Request(0, bytes, start, stop, true, covered);
+            return Capacity(bytes);
+        }
         internal IDisposable ReferenceOnly(long bytes)
         {
             var covered = new HashSet<object>(ReferenceEqualityComparer.Instance);
@@ -156,9 +154,11 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
             Window? binding = null;
             for (var view = this; view != stop; view = view!.Parent)
                 if (binding is null || view!.Remaining < binding.Remaining) binding = view;
-            if (bytes < 0 || binding is not null && bytes > binding.Remaining)
-                throw new MapSceneCapacityException((binding ?? this).Capacity(bytes));
+            bool refused = bytes < 0 || binding is not null && bytes > binding.Remaining;
+            _owner.Request(0, bytes, this, stop, refused);
+            if (refused) throw new MapSceneCapacityException((binding ?? this).Capacity(bytes));
             AdjustReference(this, stop, bytes);
+            _owner.Observe();
             return new ReferenceLease(this, stop, bytes);
         }
         static void AdjustReference(Window start, Window? stop, long bytes)
@@ -171,7 +171,9 @@ internal sealed class MapPreparationLedger(long allowance, string limitName)
         internal void ChargeExternal(long bytes)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (bytes < 0 || bytes > _owner.Remaining) throw new MapSceneCapacityException(_owner.Capacity(bytes));
+            bool refused = bytes < 0 || bytes > _owner.Remaining;
+            _owner.Request(bytes, bytes, this, null, refused);
+            if (refused) throw new MapSceneCapacityException(_owner.Capacity(bytes));
             _owner._external += bytes; _external += bytes; Adjust(this, bytes);
             _owner.Observe();
             _owner.Notify();

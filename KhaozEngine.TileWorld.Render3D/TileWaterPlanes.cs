@@ -23,6 +23,9 @@ namespace KhaozEngine.TileWorld;
 /// <see cref="TileWaterBodies"/>. This type turns its bodies into plane requests.</para></summary>
 public static class TileWaterPlanes
 {
+    // One tenth of a millimetre guards binary32 rounding of centimetre bed heights, without adding visible depth.
+    const float FloorMarginMetres = 0.0001f;
+
     /// <summary>How far under the body's rim the surface sits, in metres. Forwards to
     /// <see cref="TileWaterBodies.SurfaceDropMetres"/>, which owns it.</summary>
     public const float SurfaceDropMetres = TileWaterBodies.SurfaceDropMetres;
@@ -38,7 +41,8 @@ public static class TileWaterPlanes
 
     /// <summary>Every water plane one region-plane contributes, in a deterministic order: bodies in discovery
     /// order from the region's south-west corner, and each body's rectangles in the order the row scan opens
-    /// them.</summary>
+    /// them. Each volume floor is the rectangle's lowest resolved bed corner with a small downward rounding
+    /// margin, capped at the surface when the rectangle has no submerged bed.</summary>
     /// <param name="doc">The world the tiles and corner heights are read from.</param>
     /// <param name="catalogs">The catalogs the underlay ids are resolved against.</param>
     /// <param name="region">The region whose 64x64 tiles are scanned. Bodies are clipped to it.</param>
@@ -62,7 +66,9 @@ public static class TileWaterPlanes
             foreach (TileRect world in body.Rects)
             {
                 rects.Add(world);
-                planes.Add(ToPlane(world, body.SurfaceY, doc.TileSize, look));
+                // A flat or dry rectangle can sit wholly above the body's rim-minus-drop surface.
+                float floorY = MathF.Min(body.SurfaceY, LowestBedCorner(doc, world, plane) - FloorMarginMetres);
+                planes.Add(ToPlane(world, body.SurfaceY, doc.TileSize, look, floorY));
             }
 
         RequireDisjoint(rects, region, plane);
@@ -76,14 +82,26 @@ public static class TileWaterPlanes
     /// <param name="surfaceY">The still-water height in metres.</param>
     /// <param name="tileSize">Metres per tile, from the document.</param>
     /// <param name="look">The per-plane look, or null for the scene's own.</param>
+    /// <param name="floorY">The volume's lowest world Y in metres, or null for unbounded depth. When set, it must
+    /// be finite and at most <paramref name="surfaceY"/>.</param>
     /// <returns>The plane request.</returns>
-    public static WaterPlane ToPlane(TileRect tiles, float surfaceY, float tileSize, WaterLook? look = null) =>
+    public static WaterPlane ToPlane(TileRect tiles, float surfaceY, float tileSize, WaterLook? look = null,
+        float? floorY = null) =>
         new(TileWorldSpace.WorldX(tiles.X + tiles.Width * 0.5f, tileSize),
             surfaceY,
             TileWorldSpace.WorldZ(tiles.Z + tiles.Height * 0.5f, tileSize),
             tiles.Width * tileSize * 0.5f,
             tiles.Height * tileSize * 0.5f,
-            look);
+            look, floorY: floorY);
+
+    static float LowestBedCorner(TileWorldDocument doc, TileRect tiles, int plane)
+    {
+        float lowest = float.PositiveInfinity;
+        for (int z = tiles.Z; z <= tiles.Z1; z++)
+            for (int x = tiles.X; x <= tiles.X1; x++)
+                lowest = MathF.Min(lowest, doc.CornerHeight(x, z, plane));
+        return lowest;
+    }
 
     /// <summary>Forwards to <see cref="TileWaterBodies.Components"/>, which owns the body search.</summary>
     /// <param name="mask">Cells indexed <c>[x, z]</c>, true where the cell belongs to a body.</param>

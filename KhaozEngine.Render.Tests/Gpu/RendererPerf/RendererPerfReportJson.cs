@@ -37,6 +37,7 @@ internal static class RendererPerfReportJson
     {
         Require(report.Schema == "khaozengine.renderer-perf-report/2", "Schema", "Expected renderer-perf-report/2.");
         RendererPerfManifest.Validate(report.Manifest);
+        if (report.Manifest.ExecutionClass == RendererPerfExecutionClass.Rehearsal) RendererPerfRehearsalPolicy.ValidateReport(report);
         RendererPerfRunIdentity identity = report.Identity;
         foreach (string sha in new[] { identity.WorkloadSha, identity.BaselineMainSha, identity.AuthorizationSha, identity.WorkflowSha }) Hash(sha, 40);
         Hash(identity.ManifestSha256, 64);
@@ -120,7 +121,7 @@ internal static class RendererPerfReportJson
         }
     }
 
-    static bool Promotable(RendererPerfFrameSample frame) => frame.Errors.IsEmpty
+    internal static bool Promotable(RendererPerfFrameSample frame) => frame.Errors.IsEmpty
         && frame.GpuFrame.Status == RendererPerfMetricStatus.Available && frame.GpuElapsedTicks > 0
         && frame.Passes.All(p => p.DeviceOnly
             ? p.Duration.Status is RendererPerfMetricStatus.Unsupported or RendererPerfMetricStatus.NotExecuted

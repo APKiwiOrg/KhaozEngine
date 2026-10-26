@@ -33,9 +33,10 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         RendererPerfBlock block, RendererPerfPassDefinition[] passes, RendererPerfClock clock,
         Func<IGpuDevice, IRenderPassObserver, IRendererPerfNativeWork> createWork,
         Func<ImmutableDictionary<string, RendererPerfMetric>>? telemetry = null,
-        RendererPerfConstructionCapture? capture = null, int operationOrdinal = 0)
+        RendererPerfConstructionCapture? capture = null, int operationOrdinal = 0,
+        RendererPerfExecutionClass executionClass = RendererPerfExecutionClass.Performance)
     {
-        RendererPerfAdmission.Device(device, info);
+        RendererPerfAdmission.Device(device, info, executionClass);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(clock.Frequency);
         long coldStart = info.Startup?.Wall.StartTicks ?? clock.Now();
         _native = device; _info = info; _block = block; _clock = clock; _telemetry = telemetry;
@@ -51,7 +52,8 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         capture?.BeginOperation(operationOrdinal);
         try
         {
-            _ring = ring = new(device, count, markerCount, (id, result) => _results[id] = result);
+            _ring = ring = new(device, count, markerCount, (id, result) => _results[id] = result,
+                allowSoftware: executionClass == RendererPerfExecutionClass.Rehearsal);
             _recorder = new(count, block.Layout, passes, clock.Now, clock.Frequency, _ring);
             _observer = new(_recorder, block.Layout, passes);
             _device = capture is null ? RendererPerfDevice.Wrap(device, _recorder) : RendererPerfDevice.Wrap(device, _recorder, capture);

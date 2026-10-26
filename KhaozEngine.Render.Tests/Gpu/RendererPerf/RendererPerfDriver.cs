@@ -44,7 +44,8 @@ internal static class RendererPerfDriver
         readonly Dictionary<string, RendererPerfRecipeReport> _recipes = new(StringComparer.Ordinal);
         readonly List<RendererPerfBatchReport> _batches = [];
         readonly List<RendererPerfStartupReport> _startup = [];
-        readonly List<string> _reasons = [], _errors = [];
+        readonly List<string> _reasons = manifest.ExecutionClass == RendererPerfExecutionClass.Rehearsal ? [RendererPerfRehearsalPolicy.Reason] : [];
+        readonly List<string> _errors = [];
         readonly RendererPerfMemoryEvidence _memory = new();
         readonly ImmutableArray<GpuDiagnosticFailure>.Builder _failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
         ImmutableArray<RendererPerfFrameSample> _conditioning = [];
@@ -80,7 +81,14 @@ internal static class RendererPerfDriver
                     _controls.Add(new(control, state, warm, measured, info?.Telemetry ?? ImmutableDictionary<string, RendererPerfMetric>.Empty));
                 });
             }
-            RendererPerfDriverAssessment.Drift(_blocks, _reasons);
+            var metrics = RendererPerfDriverAssessment.WindowMetrics(_blocks, _conditioning);
+            if (manifest.ExecutionClass == RendererPerfExecutionClass.Rehearsal)
+            {
+                var drift = new List<string>();
+                RendererPerfDriverAssessment.Drift(_blocks, drift);
+                metrics = metrics.Add("rehearsal.clockOrWorkDrift.blocks", Value(drift.Count, "count", "diagnostic five-percent drift rule"));
+            }
+            else RendererPerfDriverAssessment.Drift(_blocks, _reasons);
             if (_failure is null && manifest.Recipes.Any(r => !_recipes.ContainsKey(r.SceneId))) Record("renderer.execute", new InvalidOperationException("Recipe construction evidence is incomplete."));
             if (_failure is not null) _reasons.Add(_failure);
             var elapsed = Value(_started ? (clock.Now() - _start) * 1000d / clock.Frequency : 0, "ms", "unit monotonic clock");
@@ -88,9 +96,9 @@ internal static class RendererPerfDriver
             var report = new RendererPerfReport("khaozengine.renderer-perf-report/2", manifest, identity,
                 [.. manifest.Recipes.Where(r => _recipes.ContainsKey(r.SceneId)).Select(r => _recipes[r.SceneId])],
                 [.. _blocks], _memory.Report(),
-                [], [.. _controls], new(budget is not null && _failure is null && _reasons.Count == 0,
+                [], [.. _controls], new(manifest.ExecutionClass == RendererPerfExecutionClass.Performance && budget is not null && _failure is null && _reasons.Count == 0,
                     budget is null ? [.. _reasons.Distinct(), RendererPerfCompilerEvidence.Pending.Reason!] : [.. _reasons.Distinct()],
-                    RendererPerfDriverAssessment.WindowMetrics(_blocks, _conditioning), []),
+                    metrics, []),
                 new(_failure is null ? RendererPerfPublicationState.Completed : RendererPerfPublicationState.Failed, false, false,
                     _failure, [.. _errors], elapsed, unknownCost,
                     Value(elapsed.Value!.Value / 60000d * (double)manifest.Budget.RatePerMinute, "USD", "elapsed running time estimate, excludes external setup and teardown")), [])

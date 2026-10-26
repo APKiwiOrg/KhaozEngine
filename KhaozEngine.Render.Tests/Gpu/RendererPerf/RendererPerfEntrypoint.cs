@@ -112,15 +112,13 @@ internal static class RendererPerfEntrypoint
             (device, capture) => (approved, block, unitClock) => CreateSession(device, capture, approved, block, unitClock), publication!);
         RendererPerfReport report = outcome.Report ?? throw new InvalidOperationException(outcome.EarlyFailure?.OriginalFailure
             ?? "No trustworthy native run identity or partial report was produced.");
-        Require(report.Publication.State == RendererPerfPublicationState.Completed && report.Publication.ReturnedByRun
-            && report.Publication.FinalUnitPublished && report.Assessment.ValidForPromotion,
-            report.Publication.OriginalFailure ?? string.Join("\n", report.Assessment.Reasons));
+        RendererPerfVerdict.RequireSuccess(outcome);
         // The typed writer verifies files before sampling completion. Its stamp changes only the
         // two reserved accounting slots. Received workflow and offline directories are verified again.
 
         RendererPerfRunIdentity IdentifyProduction(IGpuDevice device)
         {
-            var facts = RendererPerfNativeIdentity.Read(device);
+            var facts = RendererPerfNativeIdentity.Read(device, manifest.ExecutionClass);
             string backend = device.Backend == GpuBackendKind.VulkanNative ? "vulkan" : "d3d11";
             identity = new RendererPerfRunIdentity(unit, authorization.ManifestSha256, manifest.WorkloadSha,
                 manifest.BaselineMainSha, head, Env("GITHUB_WORKFLOW_SHA"), Env("GITHUB_RUN_ID"), 1, Environment.ProcessId,
@@ -154,13 +152,13 @@ internal static class RendererPerfEntrypoint
                 var control = approved.Controls.Single(c => c.Id == id);
                 return new RendererPerfNativeSession(device, info, block, [], unitClock,
                     (wrapped, _) => RendererPerfControls.Create(wrapped, control), telemetry.Read,
-                    capture, operationOrdinal++);
+                    capture, operationOrdinal++, approved.ExecutionClass);
             }
             string scene = conditioning ? "S3" : block.SceneId;
             var recipe = approved.Recipes.Single(r => r.SceneId == scene);
             return new RendererPerfNativeSession(device, info, block, layouts[scene], unitClock,
                 (wrapped, observer) => new RendererPerfSceneWorkload(wrapped, observer, recipe), telemetry.Read,
-                capture, operationOrdinal++);
+                capture, operationOrdinal++, approved.ExecutionClass);
         }
         void Write<T>(string name, T value)
         {

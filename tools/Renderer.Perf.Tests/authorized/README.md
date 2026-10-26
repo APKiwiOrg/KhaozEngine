@@ -1,6 +1,6 @@
 # Renderer performance authorization
 
-This directory ships no executable authorization. Implementation approval grants no paid run.
+This directory ships no executable authorization. Implementation approval grants no native run, including a free rehearsal.
 
 After the owner approves one exact unit, commit its UTF-8 manifest as
 `<unit>.json` in an authorization commit B whose only parent is workload A. B adds only that file.
@@ -16,10 +16,13 @@ The entrypoint validates the absolute `GITHUB_WORKSPACE` as the Git top level an
 manifest and authorization Git facts there, including from a nested VSTest host directory. Frozen
 recipe source paths must belong to that checkout before startup. No working-directory change,
 output-directory manifest copy or alternate-checkout search is used.
-The workflow checks the authorization diff and exact bytes before renting a GPU runner and again
-on that runner. The entrypoint independently validates the strict manifest and runtime before
-native creation. Hosted NVIDIA T4 hardware, usable timestamps and a completed matching report are
-required. Partial artifacts survive failures.
+The workflow checks the authorization diff and exact bytes before selecting a hosted runner and
+again on that runner. The entrypoint independently validates the strict manifest and runtime before
+native creation. Performance presets require hosted NVIDIA T4 hardware. The `rehearsal` preset requires
+standard hosted Linux Vulkan lavapipe, retains the pilot schedule and can never promote as performance
+evidence. Both require usable timestamps, complete compiler evidence and certified publication.
+Partial artifacts survive failures. The [renderer reference](../../../docs/RENDERER-PERFORMANCE.md#software-correctness-rehearsal)
+owns the rehearsal policy and its separate approval, limits and correctness verdict.
 
 The shader identity hashes an ordered map of exact literal and generated readonly Render3D and
 SpriteBatch GLSL source strings, specialized outdoors FFT kernels and control shader sources.

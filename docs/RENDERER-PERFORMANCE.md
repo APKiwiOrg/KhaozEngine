@@ -59,6 +59,44 @@ Both warmed all-feature traces and cold MSAA/blob retirement traces are required
 The [integration verification record](verification/2026-10-21-renderer-performance-baseline.md) separates
 those proofs from outstanding native acceptance and diagnostic collection work.
 
+## Software correctness rehearsal
+
+The `rehearsal` preset in `khaozengine.renderer-perf-unit/1` selects an explicit correctness execution
+class. It uses the production entrypoint, driver, concrete native session, S3 scene, controls,
+compiler replay, publication and directory certification. Its frozen pilot schedule is unchanged:
+300 conditioning frames, TotalOnly and PerPass at 64 warm-up plus 128 measured frames, and controls
+1/4/5/7/9/11 at 32 plus 64. All 1,260 frames, three-frame completion, timestamp lifecycle, temporal
+history and frame guards remain required. There is no hidden priming frame or semantic scene image
+oracle. Existing control output checks still run.
+
+This class binds Linux Vulkan, `ubuntu-24.04`, `mesa-lavapipe-software` and the same workflow and
+completion policy. Actual Vulkan CPU-class or Mesa llvmpipe software identity is required. Hardware
+refuses rehearsal admission, while performance presets keep requiring non-software NVIDIA T4 identity.
+The shared timestamp ring still refuses software by default. Only the rehearsal session explicitly
+opts in, and missing timestamp or completion capability still refuses execution.
+
+Rehearsal has separate fixed limits of 5,400 seconds per unit, 60,000 milliseconds per frame and
+120 minutes per job. Its maximum billed minutes is 120, with rate and maximum USD cost both zero.
+Owner and campaign approval references remain required, with a zero-cost campaign instead of the
+paid campaign cap. These initial limits do not establish tighter fit or paid deadline acceptance.
+The first approved hosted run can inform a separately reviewed tighter policy.
+
+Success requires completed returned final publication, zero failures, every frame guard passed,
+Complete compiler collection and successful directory certification. Its assessment is non-promotable
+from creation, with fixed reason `SoftwareRehearsalNotPerformanceEvidence`. That must be its only
+promotion reason on success. Five-percent clock/work drift is retained in window metrics and the
+`rehearsal.clockOrWorkDrift.blocks` diagnostic count. It does not fail this correctness verdict.
+The strict reader refuses any attempt to promote a rehearsal, and offline analysis and comparison
+cannot use it as eligible performance evidence. The paid success verdict stays unchanged.
+
+Authorization uses the same workload A, single-manifest authorization B, immutable ref, byte hash,
+first-attempt rule and exact declared runtime/environment map described in
+[CROSS-PLATFORM.md](CROSS-PLATFORM.md#free-software-renderer-rehearsal). A proposal or implementation
+is not permission to run. A successful rehearsal proves that this shared Linux unit completed on that
+host. It cannot certify a future T4 image, NVIDIA driver/compiler behavior, physical synchronization,
+clocks, paid budgets, unchanged paid deadlines, Windows or D3D11. It never establishes a hardware floor,
+reference rate or performance comparison.
+
 ## Cold backend evidence
 
 Vulkan, D3D11 and Metal implement the optional pipeline/compiler and resource-memory contracts. The

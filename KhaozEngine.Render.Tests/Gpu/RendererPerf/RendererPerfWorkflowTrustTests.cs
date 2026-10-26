@@ -32,11 +32,7 @@ public sealed class RendererPerfWorkflowTrustTests
         }
     }
 
-    static string RendererJob([CallerFilePath] string source = "")
-    {
-        string repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../.."));
-        return File.ReadAllText(Path.Combine(repo, ".github/workflows/gpu-hosted-bench.yml")).Split("  renderer-bench:\n", 2)[1];
-    }
+    static string RendererJob() => RendererPerfWorkflowText.Read().Job("renderer-bench");
 
     static string? Setting(string block, string name) => block.Split('\n')
         .Select(line => line.Trim().Split(':', 2))
@@ -95,8 +91,7 @@ public sealed class RendererPerfWorkflowTrustTests
         internal AdmissionWorkspace([CallerFilePath] string source = "")
         {
             string repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../.."));
-            string workflow = File.ReadAllText(Path.Combine(repo, ".github/workflows/gpu-hosted-bench.yml"));
-            string legs = workflow.Split("  legs:\n", 2)[1].Split("\n  bench:", 2)[0];
+            string legs = RendererPerfWorkflowText.Read().Job("legs").Split("\n  bench:", 2)[0];
             string requested = _root;
             foreach (string step in legs.Split("      - ").Where(s => s.Contains("uses: actions/checkout@", StringComparison.Ordinal)))
             {
@@ -116,11 +111,16 @@ public sealed class RendererPerfWorkflowTrustTests
             string run = legs.Split("        run: |\n", 2)[1];
             _selector = string.Join('\n', run.TrimEnd().Split('\n').Select(s => s.Length >= 10 ? s[10..] : s));
         }
-        internal (int Code, string Output) Select() => Fixture.Execute("bash", ["-e", "-o", "pipefail", "-c", _selector]);
+        internal (int Code, string Output) Select()
+        {
+            string shell = OperatingSystem.IsWindows()
+                ? RendererPerfWorkflowShell.WindowsBash(Fixture.Git("--exec-path").Trim()) : "bash";
+            return Fixture.Execute(shell, ["-e", "-o", "pipefail", "-c", _selector]);
+        }
         public void Dispose()
         {
             Fixture.Dispose();
-            if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
+            if (Directory.Exists(_root)) RendererPerfFixtureDirectory.Delete(_root);
         }
     }
 }

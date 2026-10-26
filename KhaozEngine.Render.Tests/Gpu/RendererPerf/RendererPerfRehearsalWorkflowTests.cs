@@ -1,7 +1,5 @@
 using System;
-using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
 using Xunit;
 
@@ -92,8 +90,7 @@ public sealed class RendererPerfRehearsalWorkflowTests
     [Fact]
     public void Workflow_bootstrap_and_verification_are_class_isolated()
     {
-        string root = Root();
-        string job = File.ReadAllText(Path.Combine(root, ".github/workflows/gpu-hosted-bench.yml")).Split("  renderer-bench:\n", 2)[1];
+        string job = RendererPerfWorkflowText.Read().Job("renderer-bench");
         string Step(string name) => job.Split("      - ").Single(s => s.StartsWith("name: " + name + "\n", StringComparison.Ordinal));
         string lava = Step("Install renderer rehearsal lavapipe");
         Assert.Contains("matrix.executionClass == 'rehearsal'", lava, StringComparison.Ordinal);
@@ -106,5 +103,4 @@ public sealed class RendererPerfRehearsalWorkflowTests
         Assert.Contains("-Mode VerifyRehearsal", job, StringComparison.Ordinal);
         Assert.Contains("if: always()", Step("Upload renderer evidence including partial failures"), StringComparison.Ordinal);
     }
-    static string Root([CallerFilePath] string source = "") => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../.."));
 }

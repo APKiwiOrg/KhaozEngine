@@ -150,7 +150,7 @@ internal sealed partial class RendererPerfPublicationWriter : IRendererPerfUnitP
             // This is Unit's terminal enforcement. It must share the final correction/recovery
             // owner because the successful stamp already exists on disk at this boundary.
             budget.Check("renderer.publication.return");
-            return new(report, []);
+            return new(report, []) { Certified = true };
         }
         catch (Exception error)
         {

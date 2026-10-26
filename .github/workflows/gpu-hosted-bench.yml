@@ -1,4 +1,5 @@
-# gpu-hosted-bench: runs a filtered slice of KhaozEngine.Render.Tests on GitHub-hosted NVIDIA T4 runners, to see
+# gpu-hosted-bench runs hardware benches on hosted NVIDIA T4 runners and the correctness-only renderer rehearsal
+# on standard Ubuntu lavapipe. The filtered hardware slice of KhaozEngine.Render.Tests shows
 # how the engine behaves and what it costs on real desktop hardware: Windows Direct3D 11, Windows Vulkan and Linux
 # Vulkan. The Windows and Linux legs of cross-platform-gpu.yml run on software rasterizers (WARP and lavapipe), so
 # they prove output and never speed.
@@ -13,7 +14,7 @@
 # first eligible device, and the Linux runner also carries llvmpipe. Vulkan is pinned by type (discrete) instead.
 # An unmet pin still falls back on both APIs, which on a machine without a graphics driver is the Microsoft Basic
 # Render Driver or llvmpipe, so every leg first runs the device report and fails unless it names the NVIDIA GPU.
-# Nothing is timed on a software rasterizer.
+# Software rehearsal durations are diagnostic only and never performance evidence.
 #
 # THE WINDOWS IMAGE SHIPS THE T4 IN TCC, the driver model that offers compute only (first probe, run 36380480461:
 # datacenter driver 471.11, Direct3D 11 on the Basic Render Driver, no Vulkan device). Direct3D and Vulkan need
@@ -419,8 +420,8 @@ jobs:
     env:
       KE_GPU_TESTS: '1'
       KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
-      KE_D3D11_ADAPTER: NVIDIA
-      KE_VULKAN_DEVICE: discrete
+      KE_D3D11_ADAPTER: ${{ matrix.d3dAdapter }}
+      KE_VULKAN_DEVICE: ${{ matrix.vulkanDevice }}
       KE_VULKAN_REQUIRED: ${{ matrix.backend == 'vulkan-native' && '1' || '' }}
       KE_RENDERER_PERF_UNIT: ${{ inputs.renderer-perf-unit }}
       RENDERER_PERF_UNIT: ${{ inputs.renderer-perf-unit }}
@@ -582,7 +583,7 @@ jobs:
           }
 
       - name: GPU, driver and Vulkan devices (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.executionClass != 'rehearsal'
         continue-on-error: true
         shell: bash
         run: |
@@ -592,11 +593,27 @@ jobs:
           ls -la /usr/share/vulkan/icd.d /etc/vulkan/icd.d 2>/dev/null || true
           vulkaninfo --summary 2>&1 | head -60 || true
 
+      - name: Install renderer rehearsal lavapipe
+        if: runner.os == 'Linux' && matrix.executionClass == 'rehearsal'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mesa-vulkan-drivers vulkan-tools libvulkan1
+          dpkg -L mesa-vulkan-drivers | grep -Ei 'icd|lvp|\.so' || true
+          icd=$(dpkg -L mesa-vulkan-drivers | grep -E '/lvp_icd[^/]*\.json$' | head -1)
+          if [ -z "$icd" ] || [ ! -f "$icd" ]; then
+            echo "::error::lavapipe ICD manifest not found in the mesa-vulkan-drivers file list"
+            exit 1
+          fi
+          echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+
       # The runner also carries Mesa's llvmpipe, and a Vulkan device request that cannot be honoured falls back to
       # it without failing (#1200): late in one run the T4 stopped being chosen and two cost facts ran on llvmpipe.
       # Loading only the NVIDIA driver turns that into a failure instead of a skipped measurement.
       - name: Load only the NVIDIA Vulkan driver (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.executionClass != 'rehearsal'
         shell: bash
         run: |
           # One of the two directories is usually absent, and ls then exits 2, which the step's pipefail would
@@ -628,8 +645,20 @@ jobs:
           $fixedFilter = 'FullyQualifiedName=Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit&Category=RendererPerformance'
           & dotnet test tools/Renderer.Perf.Tests/Renderer.Perf.Tests.csproj -c Release --no-build --filter $fixedFilter --logger 'console;verbosity=detailed' --logger 'trx;LogFileName=measurement.trx' --results-directory $env:KE_RENDERER_PERF_REPORTS 2>&1 | Tee-Object -FilePath (Join-Path $env:KE_RENDERER_PERF_REPORTS 'measurement.log')
           if ($LASTEXITCODE -ne 0) { throw 'Renderer measurement failed, retain partial evidence and request fresh approval' }
+
+      - name: Verify paid renderer performance evidence
+        if: matrix.executionClass == 'performance'
+        shell: pwsh
+        run: |
           & (Join-Path $env:GITHUB_WORKSPACE 'renderer-perf-trusted/scripts/renderer-perf-workflow.ps1') -Mode Verify
           if ($LASTEXITCODE -ne 0) { throw 'Renderer final evidence was refused' }
+
+      - name: Verify renderer rehearsal correctness
+        if: matrix.executionClass == 'rehearsal'
+        shell: pwsh
+        run: |
+          & (Join-Path $env:GITHUB_WORKSPACE 'renderer-perf-trusted/scripts/renderer-perf-workflow.ps1') -Mode VerifyRehearsal
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer rehearsal correctness evidence was refused' }
 
       - name: Upload renderer evidence including partial failures
         if: always()

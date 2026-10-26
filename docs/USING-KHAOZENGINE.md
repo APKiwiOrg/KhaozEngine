@@ -4969,6 +4969,46 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to `Blob`** (never a crash), reporting
     `ShadowResolution.Degraded`/`Reason`. Validate a menu choice with `Shadows.ResolveFor(AppWindow.Capabilities)` and
     read `.Effective` for the tier that will actually run - the same `ResolveFor`-clamps-a-request pattern as AA.
+    - **Underwater key light.** Every lit receiver inside an opted-in water volume selects the lowest surface
+      above it, keeping submission order on ties. Rectangle minima and `FloorY` are inclusive, rectangle maxima
+      and the surface are exclusive. For receiver `P` at depth `h`, Snell refraction at the still surface uses
+      the constant index `1.333`. With in-water travel direction `t`, the path is
+      `L = h / cos(theta_water) = h / -t.y` and the surface entry is `E = P - t * L`.
+      The entry selects its own cascade, with `P`'s geometric normal offset and slope bias.
+      Key diffuse and specular receive the body's `exp(-AbsorptionPerMetre * L)` even with shadows disabled.
+      Ambient, indirect, fill, point lights, emissive and fog keep their values. The water pass already tints
+      deep beds darker, so attenuating ambient too would double-darken them. Key-only attenuation reduces
+      shadow contrast with depth against unchanged ambient.
+
+      Ordinary outward CCW opaque meshes with orientation-preserving transforms retain their sun-facing near
+      face in the atlas on every backend, with clockwise fronts culled. The glTF loader preserves that winding.
+      A straddling floater's above-water face therefore shadows the entry lookup. Four jittered depth slices
+      from `E` to `P` find fully submerged rocks and cave roofs. Each fetched texel reconstructs the stored
+      caster's height on its own light ray, counting only heights below the surface and within the slice band.
+      Shared world-height boundaries avoid gaps between widened rays. The final slice ends on the receiver's
+      geometric plane with its normal offset and depth bias, avoiding upslope self-shadow. Reconstruction
+      divides by squared cascade basis lengths, and the signed final-plane test divides by neither light
+      elevation nor plane slope, keeping the march finite even at horizontal light. Slice lookups blend
+      cascades, with the outer fade applied once at the real receiver so a roof near the atlas border cannot
+      brighten a covered cave floor. The within-slice displacement error is bounded by its vertical span times
+      `tan(theta_air) - tan(theta_water)`, apart from atlas quantization and bias. One caster per atlas texel
+      means a nearer above-water caster can hide a submerged caster in the same light texel from the march.
+
+      The entry kernel uses exactly 16 point comparisons at every radius before cascade blending, matching
+      the dry bilinear kernel at zero widening. In each selected cascade the radius is
+      `min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)`. Positions and weights morph into a centred,
+      stratified equal-weight pattern over the first texel of widening, with noise-driven rotation and jitter
+      growing from zero. Entry taps compare the stored caster's height with the original biased dry tap's
+      height on the horizontal entry plane at the actual snapped and clamped texel. The inverse orthographic
+      basis's Y coefficients use squared basis lengths as denominators, without a reciprocal of light
+      elevation or an unbounded depth gradient near horizontal light. Exactly horizontal rays use the
+      downward-light height limit. Equal heights keep the ordinary depth comparison, including when a tiny
+      height coefficient underflows. This preserves the original bias and zero-widening result and prevents
+      outer rays from passing above shallow casters. A separate dry/disc
+      blend would double the comparisons over shallow water, where most submerged pixels are. The march
+      spreads its four rays with the same radius and keeps one comparison per slice. As depth tends to zero,
+      entry, bias, transmittance and kernel meet the dry path. Non-positive shadow strength still exports key
+      visibility of exactly one.
     - **Cascade knobs** (on `ShadowSettings`): `ShadowCascadeCount` (default `3`, clamped `1..4` by `ResolvedCascadeCount`)
       cascades, each fitted to its own camera-frustum slice. Cascade 0 stays `ShadowNearDistance` tight for crisp near
       shadows (so `ShadowCascadeCount == 1` is the pre-cascade single map plus the edge fade). The rest grow to
@@ -5781,11 +5821,20 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     space, preserving a dry cave's darkness. `DrawWater` refuses a non-finite floor or one above `SurfaceY`.
     Render-origin rebasing carries it with the plane, and stacked bodies resolve to the nearest surface above a receiver.
   - **Underwater volume uploads** expose `scene.WaterVolumeClusters` for the resolved opt-in records and
-    cluster references. Every lit receiver reads the records to refract key-shadow lookup to the surface entry
-    and attenuate key diffuse and specular along the in-water path. See the
-    [Render3D water reference](../KhaozEngine.Render3D/README.md) for the opt-in and empty-frame contract.
+    cluster references. The `16 x 9 x 24` point-light camera grid holds at most 4096 water records per frame,
+    48 bytes each (three `uvec4`), with 32 indices per cluster. Overflowed clusters scan all retained records.
+    Water-only frames prepare the grid, and a failed point-light assignment leaves its water uniforms intact.
+    `ClusterCamera.w` carries the independent record count. Zero skips the entire water query without a buffer
+    read or upload, so a frame with no opted-in water renders exactly as before. Every lit program reads
+    `WaterVolumes` at appended set 0 binding 15 for rigid, foliage and CPU-skinned, 7 for GPU-skinned, or 6 for
+    splat and tile ground. A layout gains a binding with its first shader reader because optimization removes
+    unread declarations and shifts Direct3D11 registers. Shaderc preserve-bindings stays unchanged.
+    Scene and standalone lit renderer construction require `GpuCapabilities.MaxFragmentStorageBuffers >= 3`
+    before GPU allocation, including when water is disabled. Lower reports throw `NotSupportedException`
+    naming `maxPerStageDescriptorStorageBuffers`. See the
+    [Render3D water reference](../KhaozEngine.Render3D/README.md) for packing, caps and diagnostics.
   - **Per-plane look** (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
-    identical**): a trailing optional constructor parameter, so every call site written before this existed still
+    identical**): the optional `look` constructor parameter, so every ordinary call written before this existed still
     compiles and still packs from the caller's own `Post.Water` object unchanged. Every field on `WaterLook`
     mirrors a `WaterSettings` field and is itself nullable, `null` inherits the scene and a value overrides it for
     this plane alone, leaving every other queued plane on the scene's look. That is what lets a calm inland lake
@@ -5797,7 +5846,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         SwellAmplitude = 0.04f,
         FoamStrength = 0f,
         SurfStrength = 0f,
-    }));
+        UnderwaterSunlight = true,
+    }, floorY: 0f));
     ```
     **Overridable fields**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
     (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`UnderwaterSunlight`/`UnderwaterPenumbraPerMetre`/
@@ -5897,29 +5947,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
       The penumbra value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or
       unbound. The water refractive index is the fixed constant `1.333`, not a setting. A frame with no opted-in water
-      renders exactly as before. Four jittered depth slices between the refracted surface entry and receiver
-      preserve shadows from submerged rocks and beds above dry caves. The fetched texel's stored caster height
-      must be below the surface and inside the current slice's height band. Reconstruction uses the cascade
-      basis rows without dividing by light elevation, so exactly horizontal rays stay finite. A separate
-      light-depth comparison rejects casters beyond horizontal slice endpoints. Other slices share fixed
-      world-height boundaries so widened rays cannot open gaps through a roof. The final limit follows the
-      receiver's geometric plane on each displaced ray, retaining its normal offset and depth bias. A signed
-      plane comparison avoids division by light elevation or plane slope and excludes upslope self-shadow.
-      The outer coverage fade is evaluated at the receiver, rather
-      than at the virtual slice points. The atlas stores the near side for ordinary outward CCW opaque meshes
-      with orientation-preserving transforms, so a straddling box's above-water face already shadows the entry
-      lookup. One retained caster per atlas texel can hide another submerged caster. Within a slice the ray
-      follows the dry direction, with displacement error bounded by that slice's vertical depth span times
-      `tan(theta_air) - tan(theta_water)`, plus atlas quantization and receiver bias. The shadow kernel widens
-      with the full in-water path `L`, using `min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)` in each
-      selected cascade. It spreads the dry bilinear filter's weighted 4x4 footprint at a fixed 16 point
-      comparisons, including shallow water. Tap positions and weights morph into a centred, stratified
-      equal-weight pattern over the first texel of widening. Noise-driven rotation and positional jitter grow
-      from zero with widening. Zero widening uses the exact dry kernel. Entry taps compare stored height against
-      the original biased dry tap, using squared basis lengths without a reciprocal of light elevation. This
-      stays finite near horizontal light, with an ordinary depth comparison when heights are equal.
-      The four march rays spread with the
-      same radius while retaining one comparison per slice.
+      renders exactly as before. The receiver's own body supplies the light path, using its still-water plane
+      even for FFT waves. The entry can lie beyond the rectangle, where a bank can shadow it. The surface pass
+      keeps its existing depth tint. See **Underwater key light** under shadows for the march, widening and
+      single-caster atlas limit. The nullable `WaterLook` fields inherit these settings per plane.
     - *Reflection*: `SkyReflectionStrength` (0 = the flat `HorizonColor`, 1 = the sky along the reflected ray) and
       `SkyReflectionSunStrength` (how much of the sky's disc + halo the reflection carries).
     - *Swell*: `SwellAmplitude` (0 = flat plane), `SwellWavelength`, `SwellDirectionDegrees`, `SwellSpreadDegrees`,
@@ -8999,7 +9030,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.15.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9437,7 +9468,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.15.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10236,7 +10267,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.15.0" />
 ```
 
 ```csharp
@@ -18424,7 +18455,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.15.0" />
 ```
 
 ```csharp
@@ -18460,7 +18491,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.15.0" />
 ```
 
 ```csharp
@@ -18704,7 +18735,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.15.0" />
 ```
 
 ```csharp
@@ -23089,7 +23120,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.14.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.15.0" />
 </ItemGroup>
 ```
 

@@ -186,33 +186,107 @@ and bound FFT water is refused until FFT has a certified displacement envelope. 
 plane, so geometry above the surface occludes it. The FFT shoaling and surf bathymetry is a separate scene-wide
 input. API detail lives in the [Render3D package reference](../KhaozEngine.Render3D/README.md).
 
-Underwater key lighting runs in the opaque receivers, using each plane's resolved `UnderwaterSunlight` opt-in.
-Before the opaque pass, render-relative water slabs are binned into the shared point-light camera grid and uploaded
-as one storage buffer appended to every lit receiver's set 0. Each fragment selects its containing slab, refracts
-the sun at the still surface with index `1.333`, and samples key shadows at that entry point with the receiver's own
-bias. Key diffuse and specular attenuate along the refracted path using the body's absorption. The query also works
-with orthographic cameras and disabled shadows. Zero records skip buffer reads. Four jittered depth slices along
-the refracted segment reconstruct stored caster heights below the surface and within each slice's height band.
-The orthographic matrix's squared basis lengths keep reconstruction finite through exactly horizontal key light,
-and a separate light-depth comparison excludes casters beyond horizontal endpoints. Non-horizontal slices
-share world-height boundaries, so widened rays cannot open gaps through a roof. The final slice tests the
-receiver's geometric plane on each displaced ray with its normal offset and existing depth bias. This signed
-comparison avoids division by light elevation or plane slope and excludes upslope self-shadow. Slice lookups blend cascades,
-with the outer coverage fade applied once at the real receiver so virtual points near the atlas border do not
-brighten cave floors. The opaque atlas stores the sun-facing near side for outward CCW meshes under
-orientation-preserving transforms, including glTF geometry whose winding the loader preserves. A straddling box's
-above-water face therefore shadows the entry lookup already. Fully submerged rocks and cave roofs need the march.
-One retained caster per atlas texel can hide a submerged caster behind another one. The entry kernel widens the
-dry filter's weighted 4x4 footprint at a fixed 16 point comparisons, morphing positions and weights into a
-centred, stratified equal-weight pattern over the first texel of widening. Its radius is
-`min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)`, converted separately for each cascade. Rotation and
-positional jitter grow from zero with widening, so zero widening uses the exact dry kernel. Added entry-tap
-displacement compares stored height along the horizontal water plane, relative to the original biased dry tap.
-Squared basis lengths avoid a reciprocal of light elevation, keeping the comparison finite even near horizontal
-light. Equal heights retain the ordinary depth comparison. Outer rays cannot pass above shallow casters.
-The four slice rays spread with the same radius without adding
-comparisons, evaluating depth bands on each offset texel's light ray.
-This path does not depend on either authored water-depth source above.
+## Underwater lit receivers
+
+Underwater key lighting runs in every lit opaque receiver, independently of the water pass's depth sources.
+`WaterSettings.UnderwaterSunlight` defaults to false, with nullable `WaterLook` overrides for each procedural
+or FFT plane, bound or unbound. The query uses a render-relative slab bounded by the rectangle, still surface
+and optional `WaterPlane.FloorY`, with an unbounded floor when null. Rectangle minima and the floor are
+inclusive, maxima and the surface exclusive. Overlapping slabs choose the lowest surface above the receiver,
+keeping submission order on ties. A slab can conservatively include dry space beneath a locally higher bed.
+Only the key path changes there, and the bed's shadow keeps a cave dark. Exact local containment would need a
+bed-field read in every lit receiver.
+
+Before the opaque pass, water slabs are binned into the shared `16 x 9 x 24` point-light camera grid. This keeps
+rectangle edges and stacked bodies exact without a finite map radius. A top-down level map would quantize edges
+and collapse stacked surfaces. Relighting inside the water pass would require a separate sun term the forward
+renderer does not retain, fail in fully dry-shadowed pixels and miss receivers seen from below or the side.
+The shared froxel geometry supports both boxes and point-light spheres, with separate primitive tests. Each
+fragment computes one cluster index for water and point lights, including orthographic cameras. Water-only
+frames prepare the grid. Failed point-light assignment flags light headers for full-list fallback without
+changing the camera-grid uniforms water reads. Point-light-only frames preserve their legacy uniform bytes.
+
+One storage buffer holds 3456 uint headers, 32 fixed uint index slots per cluster, then up to 4096 records in
+submission order. Each record is 48 bytes (three `uvec4`), holding rectangle min/max XZ, surface/floor Y,
+absorption RGB and penumbra per metre, all positions render-relative. Excess records are dropped from the tail.
+A cluster overflow scans all retained records, preserving correctness at greater query cost. Only the used
+buffer prefix uploads. `ClusterCamera.w` carries the record count independently of point lights. Empty and
+opted-out frames skip building and upload. A zero count skips shader buffer reads, leaving stale contents
+unreachable and the old dry frame unchanged.
+
+Set 0 appends `WaterVolumes` at binding 15 for rigid, foliage and CPU-skinned receivers, 7 for GPU-skinned,
+and 6 for splat and tile ground. Appending preserves existing binding numbers.
+The shared lighting block is read by all six base fragments
+(`ModelFrag`, `ModelDissolveFrag`, `SkinnedModelFrag`, `SkinnedModelDissolveFrag`, `SplatFrag`, `TileGroundFrag`),
+including their motion and key-visibility variants. The `sampleKeyShadow(...)` call statements remain unchanged
+because generated key-visibility exports splice immediately after them. A binding joins a layout with its first
+shader reader. The optimizer removes unread declarations and would shift Direct3D11 material registers away
+from C# layouts. Shaderc preserve-bindings stays unchanged. Scene and standalone lit renderer construction
+require `GpuCapabilities.MaxFragmentStorageBuffers >= 3` before GPU allocation, even without opted-in water.
+Lower reports throw `NotSupportedException` naming Vulkan's `maxPerStageDescriptorStorageBuffers`. The three
+buffers are point-light records, point-light clusters and water volumes.
+
+For a submerged receiver `P` at depth `h`, Snell refraction uses the still-water surface and constant index
+`n = 1.333`. With refracted travel direction `t`, the path is `L = h / cos(theta_water) = h / -t.y`, and entry
+`E = P - t * L`. Refraction models the receiver's own body only. Its entry uses the infinite still-water plane,
+without wave-displaced normals, and may lie beyond the rectangle where a bank can shadow it. The entry chooses
+its own cascade with `P`'s geometric normal offset and slope bias. Refraction reduces the in-water part of a
+floater's bed-shadow displacement from `h * tan(theta_air)` to `h * tan(theta_water)`. Key diffuse and specular multiply by
+`exp(-AbsorptionPerMetre * L)`, including with shadows disabled. Ambient, indirect, fill, point lights, emissive
+and fog retain their values. The water pass's existing vertical-depth tint already darkens the view of deep
+beds, so attenuating ambient too would double-darken them. Key-only attenuation lowers shadow contrast with
+depth against unchanged ambient.
+
+The opaque atlas retains the sun-facing near face of outward CCW meshes with orientation-preserving transforms
+on every backend, with clockwise fronts culled. The glTF loader preserves triangle order. A straddling floater's
+above-water face already shadows the entry lookup. Reversed winding can retain the opposite face instead,
+which the same depth bands also test. Fully submerged rocks and cave roofs instead need a march
+from `E` to `P`: four jittered depth slices, one point-depth comparison per slice before cascade blending.
+A single lookup at `P` would follow the dry direction through the whole depth and restore the dry shadow offset.
+Each texel reconstructs its stored caster's height on its own snapped light ray, counting it only below the
+surface and in the slice's height band. Non-horizontal slices share world-height boundaries so widened rays
+cannot open gaps through a roof. Reconstruction divides by the orthographic basis rows' squared lengths,
+which stay nonzero at every light elevation. Internal height-band endpoints are inclusive so horizontal rays
+can occlude. A separate light-depth comparison excludes casters past horizontal endpoints.
+The last slice ends on the receiver's geometric plane with its normal offset and depth bias.
+For a ray parallel to that plane, the light-depth endpoint test still applies. The signed comparison divides
+by neither elevation nor plane slope, so the march stays finite at horizontal light and tilted receivers avoid
+self-shadow. Shared per-pixel interleaved-gradient-noise jitter moves internal
+boundaries by up to half a slice, without gaps. The final end stays on the biased receiver and the widest end
+band is at most `1.5 * h / 4` deep. TAA resolves the jitter.
+
+Slices select and blend their own cascades. The outer coverage fade applies once at the real receiver,
+preventing virtual points near the atlas border from brightening a covered cave floor. The entry coverage fade
+applies only to the above-surface term. Within a slice, displacement error is bounded by its vertical depth
+span times `tan(theta_air) - tan(theta_water)`, apart from atlas quantization and receiver bias. The atlas stores
+one caster per texel. A submerged caster behind a nearer above-water caster in the same light texel is hidden
+from the march, and resolving that needs depth layers.
+
+The entry kernel uses exactly 16 point comparisons at every radius before cascade blending. It starts with
+the dry bilinear 3x3 filter's weighted 4x4 footprint, using
+`radiusTexels = min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)` in each selected cascade. Over the first
+texel of widening, tap positions and weights morph into a centred, stratified equal-weight disc pattern.
+This keeps all 16 comparisons useful. Rotating the dry filter instead leaves nine effective taps whose
+phase-dependent variance can expose an otherwise shadowed hull edge.
+The fully widened pattern stays inside its nominal radius rather than stretching the folded dry fringe beyond it.
+Noise-driven rotation and positional jitter grow from zero. TAA jitters the receiver against this screen-fixed
+pattern. Taps clamp within their cascade's atlas column, compare stored point depths first and weight afterward.
+Entry taps compare the stored caster's height with the original biased dry tap's height on the horizontal
+entry plane, evaluated at the actual snapped and clamped texel. The inverse orthographic basis's Y coefficients
+have squared basis lengths as denominators, with no reciprocal of light elevation. This avoids an unbounded
+depth gradient near horizontal light. Exactly horizontal rays use the downward-light height limit. Equal
+heights keep the ordinary depth comparison, including when a tiny height coefficient underflows. The original
+bias and zero-widening result are preserved. Without this entry-plane comparison, outer rays can pass above
+shallow casters and erase their shadows. This is one kernel family. Blending separate dry and disc results
+would double the cost over shallow water, where most submerged pixels are. The four march rays spread with the same radius, converted
+per cascade, and keep one comparison per slice. Submerged fragments therefore pay one kernel plus four slice
+comparisons before cascade blending. This comparison count is not a native timing result.
+
+As `h` tends to zero, `E` tends to `P` with the same bias, transmittance tends to one, the march tends to fully
+lit and the kernel matches the dry filter exactly. The waterline has no shading seam. Entry visibility and
+submerged visibility multiply before the existing strength, fade and blend policy. The scalar R8 key-visibility
+export remains valid, including exactly one for non-positive strength. Caustics, view-ray refraction,
+underwater view fog and light shafts are separate effects. This path does not change the water surface pass.
 
 ## Where to look in the code
 

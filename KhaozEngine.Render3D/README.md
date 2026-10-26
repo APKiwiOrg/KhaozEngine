@@ -435,9 +435,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   once, then selects the lowest surface above it, keeping submission order on ties. Rectangle minima and
   `FloorY` are inclusive, rectangle maxima and the surface are exclusive. The key-shadow lookup moves to the
   refracted surface entry with the receiver's normal offset and slope bias and selects cascades there.
-  With refractive index `1.333`, depth `h`, and refracted travel direction `t`, the in-water path is
-  `L = h / -t.y`. Only key diffuse and specular receive `exp(-AbsorptionPerMetre * L)`. Ambient, indirect,
-  fill, point lights, emissive and fog keep their values. Attenuation also applies with shadows disabled, while
+  For receiver `P` at depth `h`, Snell refraction at the still-water surface uses the constant index `1.333`.
+  With refracted travel direction `t`, the path is `L = h / cos(theta_water) = h / -t.y` and the entry is
+  `E = P - t * L`. Only key diffuse and specular receive `exp(-AbsorptionPerMetre * L)`. Ambient, indirect,
+  fill, point lights, emissive and fog keep their values. The water pass's vertical-depth tint already darkens
+  the view of deep beds. Attenuating ambient too would double-darken them, while reducing only the key light
+  lets shadow contrast fade against the unchanged ambient. Attenuation also applies with shadows disabled, while
   exported key visibility remains exactly one for non-positive shadow strength. Empty water counts skip
   buffer reads, and depth zero meets the dry result. Four jittered depth slices along the refracted segment
   also test submerged casters. Each fetched atlas texel reconstructs its stored caster's height and counts it
@@ -449,20 +452,30 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   comparison needs no division by light elevation or plane slope, so tilted receivers also avoid self-shadow.
   The outer coverage fade applies at the real receiver,
   so virtual slice points near the atlas border do not brighten a covered cave floor. For outward CCW opaque
-  meshes with orientation-preserving
-  transforms, the clockwise-front culling pipeline stores the sun-facing near side. The glTF loader preserves
-  that winding, so the entry lookup already shadows a straddling box's above-water face. The march supplies
-  the fully submerged rock and cave-roof shadows. The atlas retains one caster per texel, so a nearer caster
-  can hide a submerged one. Within each slice, shadow displacement error is bounded by its vertical depth
-  span times `tan(theta_air) - tan(theta_water)`, apart from atlas quantization and receiver bias. The entry
-  kernel spreads the dry bilinear 3x3 filter's weighted 4x4 footprint, retaining 16 point comparisons at every
-  depth. Its radius is `min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)` in each lookup cascade.
+  meshes with orientation-preserving transforms, the clockwise-front culling pipeline stores the sun-facing
+  near side. The glTF loader preserves that winding, so the entry lookup already shadows a straddling box's
+  above-water face. The march supplies
+  the fully submerged rock and cave-roof shadows on every backend. The atlas retains one caster per texel,
+  so a submerged caster behind a nearer above-water caster in the same light texel is invisible to the march.
+  Resolving that needs depth layers. Within each slice, shadow displacement error is bounded by its vertical
+  depth span times `tan(theta_air) - tan(theta_water)`, apart from atlas quantization and receiver bias.
+  The shared per-pixel jitter moves internal boundaries by up to half a slice, without gaps. The widest end
+  band is at most `1.5 * h / 4` deep and the final end stays on the biased receiver. TAA resolves the jitter.
+  The entry kernel spreads the dry bilinear 3x3 filter's weighted 4x4 footprint, retaining 16 point comparisons
+  at every radius before cascade blending. Its radius is
+  `min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)` in each lookup cascade.
   Over the first texel of widening, positions and weights morph into a centred, stratified equal-weight pattern.
   Noise-driven rotation and positional jitter grow from zero, preserving the exact dry kernel at zero.
-  Added tap displacement follows the horizontal entry plane, comparing stored height relative to each original
-  biased dry tap. Squared basis lengths keep this signed comparison finite near horizontal light without a
-  reciprocal of light elevation. Equal heights retain the ordinary depth comparison. The four march rays spread with
-  the same radius and keep one comparison per slice.
+  Entry taps compare the stored caster's height with the original biased dry tap's height on the horizontal
+  entry plane, at the actual snapped and clamped texel. The inverse orthographic basis's Y coefficients use
+  squared basis lengths as denominators, with no reciprocal of light elevation or unbounded depth gradient
+  near horizontal light. Exactly horizontal rays use the downward-light height limit. Equal heights keep the
+  ordinary depth comparison, including when a tiny height coefficient underflows. The original bias and
+  zero-widening result are preserved, and outer rays cannot pass above shallow casters. The four march rays
+  spread with the same radius and keep one comparison per slice. This is one kernel family. Blending separate dry and
+  disc kernels would double the cost in shallow water, where most submerged pixels are.
+  Submerged fragments add four slice comparisons to that
+  entry kernel. Native timing remains a separate measurement.
   - The fit also quantizes the LIGHT's rotation, not just its focus translation: `ShadowLightHoldTexels` (default
   `1`) and `ShadowLightHoldCasterHeight` (default `12`) hold the direction the cascades were last fitted from until
   the sun has turned far enough to drag a worst-case caster's shadow by that many shadow texels, so a stationary
@@ -871,9 +884,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
 
   Underwater sunlight is separately opt-in per water body through `UnderwaterSunlight` (scene default `false`) and
   `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
-  The value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or unbound.
+  The value must be finite and non-negative. The penumbra rate is an art control for sun size and surface-slope
+  scatter. It is available on any plane, procedural or FFT, bound or unbound.
   A frame with no opted-in water renders exactly as before. The water refractive index is the fixed constant `1.333`,
-  not a setting. How submerged receivers are lit is described under key shadows.
+  not a setting. Refraction uses the body's still-water plane, without wave-displaced normals, and models only
+  that body's light path. The surface entry can lie beyond the rectangle, where the bank can shadow it.
+  How submerged receivers are lit is described under key shadows.
 
   On top of that the ripple normal field is a generated SLOPE SPECTRUM (14.26.0): `RippleComponents` cosines with
   golden-angle headings (no two parallel, no dominant ribbon direction) laddering by `RippleLacunarity` over about
@@ -975,14 +991,26 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `WaterSettings.UnderwaterSunlight` is true contribute render-relative records, including their optional
   `WaterPlane.FloorY`, resolved absorption and penumbra. The scene default is false and `WaterLook` can override
   it per plane. Diagnostics expose `RecordCount`, `DroppedRecords`, `ReferenceCount` and `OverflowedClusters`.
+  Each record is 48 bytes, packed as three `uvec4`: `(minX, minZ, maxX, maxZ)`,
+  `(surfaceY, floorY, absorptionR, absorptionG)` and `(absorptionB, penumbraPerMetre, 0, 0)`.
+  All positions are render-relative. A null floor encodes `float.MinValue`. A frame retains at most 4096
+  records in submission order and drops the
+  tail. Each of the `16 x 9 x 24` clusters holds 32 indices. An overflow header makes its fragments scan all
+  retained records, preserving containment at increased query cost. Headers and indices precede the records,
+  and only the used prefix is uploaded.
   Water-only frames prepare the same camera grid as point lights. A failed light assignment keeps that grid
   valid for water, with full-list fallback headers for the lights. Empty and opted-out frames set the count
   in `ClusterCamera.w` to zero and skip water uploads, so retained buffer contents cannot be read next frame.
   Every lit receiver reads that scene-owned buffer in shared key shading. Set 0 appends binding 15 for rigid,
   foliage and CPU-skinned receivers, 7 for GPU-skinned, and 6 for splat and tile ground. Lit fragments require
   three storage buffers, checked at renderer creation against `GpuCapabilities.MaxFragmentStorageBuffers`.
+  Scene and standalone lit renderer construction throw `NotSupportedException` before GPU allocation for
+  reports below three, naming Vulkan's `maxPerStageDescriptorStorageBuffers`. The buffers are point-light
+  records, point-light clusters and water volumes. A buffer joins a layout with its first shader reader:
+  optimization removes unread declarations and would shift Direct3D11 material registers away from the C#
+  layouts. Shaderc preserve-bindings stays unchanged.
 - Per-plane water look (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
-  identical**): a trailing optional constructor parameter on `WaterPlane`, so every call site written before this
+  identical**): the optional `look` constructor parameter on `WaterPlane`, so every ordinary call written before this
   existed still compiles and still packs from the caller's own `WaterSettings` object unchanged. Every field on
   `WaterLook` mirrors a `WaterSettings` field and is itself nullable - `null` inherits the scene, a value overrides
   it for that plane alone, leaving every other queued plane on the scene's look, which is what lets a calm inland

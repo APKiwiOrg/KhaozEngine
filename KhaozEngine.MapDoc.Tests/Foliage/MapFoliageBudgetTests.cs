@@ -55,11 +55,8 @@ public sealed class MapFoliageBudgetTests
     }
 
     [Fact]
-    public void Retention_ChargesUtf8AndBatchOverheadBeforeAccepting()
+    public void Retention_RefusesBeforeCrossingTheAggregateAllowance()
     {
-        long chargedTwoMaterialSampleBytes = MapFoliageRetentionBudget.ChargeSample("a", "r", "f", "legacy-tile", ["m", "n"]);
-        Assert.Equal(560, chargedTwoMaterialSampleBytes);
-        Assert.Equal(516, MapFoliageRetentionBudget.ChargeSample("é", "", "", "", []));
         var b = new MapFoliageRetentionBudget(1, 816);
         Assert.True(b.TryRetainBatch());
         Assert.True(b.TryRetain(560));

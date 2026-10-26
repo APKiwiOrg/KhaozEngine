@@ -944,6 +944,12 @@ at 262,144 and retained bytes at 67,108,864 before retention. `MapFoliageDiffere
 conservative accounting, not measured allocation. Generate, Query and Compare observer rows remain provisional until
 the enclosing result is Complete. A refusal discards all usable output and issues no differential token.
 
+Retained foliage inventory counts shared objects by reference identity. Full diagnostic samples include their
+sample objects, reference arrays, material wrappers, policy and UTF-16 strings once per owned graph. Public sample
+construction copies the material reference array. Native column inventory separates seven aligned instance arrays
+and two ordinal reference tables from batch controls and metadata. Construction inventory additionally includes
+the still-live builder page during freeze, rather than folding that overlap into the settled per-row price.
+
 ### Compatibility support and paint
 
 Payload 1 supports `legacy-tile/1` with explicit boundary/material metadata, resolver identity (1, 2) and

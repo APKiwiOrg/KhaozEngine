@@ -69,7 +69,9 @@ public sealed class RendererPerfRehearsalExecutionTests
     {
         using var fixture = new RendererPerfColdLifecycleFixture(Report() with { Identity = Report().Identity with { TimestampPeriodNs = 2.5 } });
         fixture.Production.Software = true;
-        fixture.Production.Features = new(false, true, "llvmpipe", supportsCompute: true, supportsCompletionFences: true) { SupportsTimestamps = true };
+        // This inert device exercises the schedule, not the real lavapipe storage-buffer limit.
+        fixture.Production.Features = new(false, true, "llvmpipe", supportsCompute: true, supportsCompletionFences: true)
+        { SupportsTimestamps = true, MaxStorageBufferRangeBytes = 536870912 };
         var outcome = fixture.Run();
         Assert.Empty(outcome.Failures);
         Assert.Equal(1260, fixture.Frames);

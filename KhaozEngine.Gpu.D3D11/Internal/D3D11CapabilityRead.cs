@@ -173,8 +173,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// the capability and the fence path being able to disagree.
         /// </param>
         /// <param name="supportsTimestamps">Both native timestamp query kinds were created successfully.</param>
+        /// <param name="bufferLimits">The selected device feature level and adapter memory facts.</param>
         internal static GpuCapabilities Assemble(string adapterName, int maxMsaaSampleCount,
-            bool supportsShadowMaps, bool supportsCompletionFences, bool supportsTimestamps = false)
+            bool supportsShadowMaps, bool supportsCompletionFences, bool supportsTimestamps = false,
+            D3D11BufferLimits bufferLimits = default)
             => new(
                 ClipSpaceYInverted,
                 DepthRangeZeroToOne,
@@ -188,6 +190,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             {
                 MaxColorAttachments = SimultaneousRenderTargets,
                 SupportsTimestamps = supportsTimestamps,
+                MaxStorageBufferRangeBytes = bufferLimits.StorageRangeBytes,
             };
 
         /// <summary>

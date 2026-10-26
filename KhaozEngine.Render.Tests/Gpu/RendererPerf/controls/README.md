@@ -11,6 +11,13 @@ completion. Shader compilation, seed uploads and readbacks are outside frame bra
 production host clear and End tail remain in each raw outer duration. Attachment initialization is
 also retained. Neither cost is silently subtracted to manufacture a shader-only time.
 
+Before allocating control resources, the workload checks each whole storage binding against
+`GpuCapabilities.MaxStorageBufferRangeBytes`. A missing or insufficient limit refuses with the control
+ID, required bytes and device limit. Control 7 needs 256 MiB per buffer, control 8 needs 32 MiB,
+control 9 needs a 256 KiB input and 2 MiB output, and control 10 needs 256 KiB per buffer.
+Controls 4 through 6 bind individual 4-byte buffers, even when 36 outputs are allocated.
+The other controls have no storage-buffer bindings. No buffer or readback is reduced to fit.
+
 | Control | Fixed work | Retention evidence |
 | --- | --- | --- |
 | 1 | Empty production frame, RGBA8 display target | Full cleared image |

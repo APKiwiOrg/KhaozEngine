@@ -86,7 +86,7 @@ internal static class MapFoliageInventory
                 if (face.Patch is { } patch) String(patch.SurfaceId);
             }
             var materials = sample.MaterialResourceIds;
-            if (Add(materials, checked((materials is string[] ? 0 : 24) + ReferenceArray(materials.Count))))
+            if (Add(materials, checked((materials is string[]? 0 : 24) + ReferenceArray(materials.Count))))
                 foreach (string material in materials) String(material);
         }
     }

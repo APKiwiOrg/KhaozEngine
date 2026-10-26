@@ -28,7 +28,8 @@ internal sealed class MapFoliageColumnOwner
         lock (_gate)
         {
             if (_batch is null) throw new ObjectDisposedException(nameof(MapFoliageColumnOwner));
-            checked { _owners++; } return new(this);
+            checked { _owners++; }
+            return new(this);
         }
     }
     internal void Release()

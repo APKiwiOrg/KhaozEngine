@@ -63,7 +63,8 @@ public sealed class MapFoliageRenderCache
                 var bounded = limits with
                 {
                     MaxQueryRetainedBytes = Math.Min(limits.MaxQueryRetainedBytes, Math.Max(0, allowance - RetainedBytes)),
-                    AllocateInstances = Take, ReleaseInstances = Give,
+                    AllocateInstances = Take,
+                    ReleaseInstances = Give,
                 };
                 _generationCalls++;
                 var batch = MapFoliageDistribution.GenerateInstances(_context, layer, chunk, bounded);

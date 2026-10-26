@@ -10,7 +10,7 @@ internal sealed record RendererPerfControlFacts(int Id, string Name, int Dispatc
     long WriteBytes, long Operations, string InstructionClass, int Draws, string WorkSha256, int WarmupFrames = 64, int MeasuredFrames = 128)
 {
     internal uint GroupsX => Id is 7 or 8 or 9 or 10 ? 1024u : 1u;
-    internal uint GroupsY => Id == 7 ? 256u : Id == 8 ? 32u : 1u;
+    internal uint GroupsY => Id == 7 ? 128u : Id == 8 ? 32u : 1u;
     internal uint LocalX => Id is 7 or 8 ? 256u : Id is 9 or 10 ? 64u : 1u;
 }
 
@@ -25,7 +25,7 @@ internal static class RendererPerfControls
     internal static readonly ImmutableArray<GpuPixelFormat> MrtFormats = [GpuPixelFormat.R16G16B16A16Float,
         GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R32Float, GpuPixelFormat.R16G16Float];
     static readonly string[] Names = ["empty-frame", "empty-main-mrt", "empty-depth-only", "observable-dispatch",
-        "dependent-dispatch-36", "independent-dispatch-36", "storage-256-mib", "storage-32-mib",
+        "dependent-dispatch-36", "independent-dispatch-36", "storage-128-mib", "storage-32-mib",
         "fp32-independent-fma", "dependent-divide-root", "fullscreen-write", "fullscreen-blend-depth-8"];
     internal static RendererPerfControlFacts Definition(int id) => Definition(id, id is 9 or 10 ? ArithmeticSeeds : []);
     internal static RendererPerfControlFacts Definition(int id, ReadOnlySpan<float> arithmeticSeeds)
@@ -33,7 +33,7 @@ internal static class RendererPerfControls
         if (id < 1 || id > 12) throw new ArgumentOutOfRangeException(nameof(id));
         if (id is 9 or 10 && arithmeticSeeds.Length != ArithmeticInvocations)
             throw new ArgumentException("The work identity requires every uploaded arithmetic seed.", nameof(arithmeticSeeds));
-        long storage = id == 7 ? 256L * 1024 * 1024 : id == 8 ? 32L * 1024 * 1024 : 0;
+        long storage = id == 7 ? 128L * 1024 * 1024 : id == 8 ? 32L * 1024 * 1024 : 0;
         int dispatches = id is 5 or 6 ? 36 : id is >= 4 and <= 10 ? 1 : 0;
         long reads = storage != 0 ? storage : id is >= 4 and <= 6 ? dispatches * 4
             : id is 9 or 10 ? ArithmeticInvocations * 4 : id == 12 ? (long)Width * Height * 8 * 12 : 0;
@@ -89,7 +89,7 @@ internal static class RendererPerfControls
     }
     internal static string ValidateWords(int id, ReadOnlySpan<uint> words)
     {
-        int count = id is 5 or 6 ? 36 : id == 4 ? 1 : id == 7 ? 256 * 1024 * 1024 / 4 : id == 8 ? 32 * 1024 * 1024 / 4 : 0;
+        int count = id is 5 or 6 ? 36 : id == 4 ? 1 : id == 7 ? 128 * 1024 * 1024 / 4 : id == 8 ? 32 * 1024 * 1024 / 4 : 0;
         if (count == 0 || words.Length != count) throw new InvalidOperationException("The control output length differs from retained work.");
         for (int i = 0; i < words.Length; i++)
         {

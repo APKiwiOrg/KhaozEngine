@@ -265,7 +265,10 @@ What it owns today:
   `SupportedMsaaSampleCounts` (the full shared set across the engine's MRT formats, including sparse masks) and
   `MaxMsaaSampleCount` (its largest member, kept for compatibility), `SupportsShadowMaps` (whether the device can render + sample an R32_Float depth target, gating the
   `ShadowMode.ShadowMap` tier in Render3D), and `SupportsCompletionFences` (see **Completion fences** below).
-  Read off the live device.
+  Read off the live device. `MaxStorageBufferRangeBytes` is the maximum admitted whole storage
+  binding in bytes, or zero when unknown. Vulkan retains `maxStorageBufferRange` from the selected
+  physical device. Direct3D 11 folds its adapter-dependent resource guarantee with the full raw-view
+  limit. This is a per-binding compatibility bound, not an available-memory or allocation-success guarantee.
 - **MSAA plumbing** - `GpuTextureDescription.SampleCount` (and `IGpuTexture.SampleCount`) make a multisampled render
   target; `GpuOutputDescription.SampleCount` / `WithSampleCount` carry the count so a pipeline matches its
   framebuffer (read a live multisampled framebuffer's count off `IGpuFramebuffer.Outputs`); and

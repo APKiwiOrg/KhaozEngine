@@ -56,6 +56,9 @@ internal static class RendererPerfUnit
                     throw new InvalidOperationException("Timed actual configuration enabled prohibited diagnostics or differs from its request.");
                 budget.Check("renderer.production.identify.before");
                 var identity = identifyProduction(production.GpuDevice);
+                foreach (var control in manifest.Controls)
+                    RendererPerfControlBuffers.For(RendererPerfControls.Definition(control.Id))
+                        .Admit(production.GpuDevice.Capabilities, control.Id);
                 RendererPerfSessionFactory? sessions = null;
                 // Execute checks the original budget before the first native session. Factory setup failures keep a partial report.
                 var execution = RendererPerfDriver.Execute(manifest, identity, (approved, block, clock) =>

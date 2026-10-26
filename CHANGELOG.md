@@ -4,6 +4,15 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.14.1
+
+2026-10-27
+
+- Retain selected-device storage-buffer ranges in GPU capabilities. Vulkan reports its native descriptor
+  limit. Direct3D 11 intersects the adapter-dependent resource guarantee with the full raw-view limit.
+  Renderer controls refuse incompatible whole-buffer bindings before constructing control resources.
+- Certify the complete six-record renderer control shader corpus, including both graphics pairs.
+
 ## 21.14.0
 
 2026-10-26

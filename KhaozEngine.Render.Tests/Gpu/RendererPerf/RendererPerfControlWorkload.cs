@@ -13,6 +13,7 @@ internal sealed class RendererPerfControlWorkload : IRendererPerfNativeWork
     readonly IGpuDevice _device;
     readonly RendererPerfControl _control;
     readonly RendererPerfControlFacts _facts;
+    readonly RendererPerfControlBuffers _buffers;
     readonly List<(string Kind, IDisposable Resource)> _owned = [];
     readonly List<IGpuBuffer> _outputs = [];
     readonly List<IGpuResourceSet> _sets = [];
@@ -28,6 +29,8 @@ internal sealed class RendererPerfControlWorkload : IRendererPerfNativeWork
     internal RendererPerfControlWorkload(IGpuDevice device, RendererPerfControl control, RendererPerfControlFacts facts)
     {
         _device = device; _control = control; _facts = facts;
+        _buffers = RendererPerfControlBuffers.For(facts);
+        _buffers.Admit(device.Capabilities, control.Id);
         try
         {
             _host = Own(device.Factory.CreateTexture(GpuTextureDescription.Texture2D(RendererPerfControls.Width,
@@ -65,7 +68,6 @@ internal sealed class RendererPerfControlWorkload : IRendererPerfNativeWork
 
     void CreateCompute()
     {
-        if (!_device.Capabilities.SupportsCompute) throw new NotSupportedException("The authorized control requires compute.");
         var f = _device.Factory;
         string source = RendererPerfControlShaders.Source(RendererPerfControlShaders.ComputeName(_control.Id));
         var shader = Own(f.CreateComputeShaderFromSpirv(source));
@@ -73,13 +75,10 @@ internal sealed class RendererPerfControlWorkload : IRendererPerfNativeWork
             new GpuResourceLayoutElement("Input", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Compute),
             new GpuResourceLayoutElement("Output", GpuResourceKind.StructuredBufferReadWrite, GpuShaderStages.Compute))));
         _compute = Own(f.CreateComputePipeline(new(shader, layout)));
-        uint inputBytes = _control.Id is 7 or 8 ? (uint)_facts.ReadBytes : _control.Id is 9 or 10 ? RendererPerfControls.ArithmeticInvocations * 4u : 4u;
-        _input = Own(f.CreateBuffer(new(inputBytes, GpuBufferUsage.StructuredBufferReadOnly, 4)));
-        int outputs = _control.Id is 5 or 6 ? 36 : 1;
-        for (int i = 0; i < outputs; i++)
+        _input = Own(f.CreateBuffer(new(_buffers.InputBytes, GpuBufferUsage.StructuredBufferReadOnly, 4)));
+        for (int i = 0; i < _buffers.OutputCount; i++)
         {
-            uint bytes = _control.Id is 7 or 8 or 9 or 10 ? (uint)_facts.WriteBytes : 4u;
-            var output = Own(f.CreateBuffer(new(bytes, GpuBufferUsage.StructuredBufferReadWrite, 4)));
+            var output = Own(f.CreateBuffer(new(_buffers.OutputBytes, GpuBufferUsage.StructuredBufferReadWrite, 4)));
             IGpuBuffer input = _control.Id == 5 && i != 0 ? _outputs[i - 1] : _input;
             _sets.Add(Own(f.CreateResourceSet(new(layout, input, output))));
             _outputs.Add(output);

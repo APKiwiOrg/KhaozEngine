@@ -8,18 +8,8 @@ using KhaozEngine.Catalog.Authoring;
 
 namespace KhaozEngine.Tests.Catalog.Upgrade;
 
-/// <summary>Finite gates for the commit, next freeze, old cleanup and next report.</summary>
-internal sealed class UpgradePublishSequence
-{
-    public TaskCompletionSource FirstCommitted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public TaskCompletionSource SecondFrozen { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public TaskCompletionSource FirstReleased { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public TaskCompletionSource SecondFinished { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public ContentDraft? DraftAfterOlderPublish { get; set; }
-}
-
 /// <summary>A real publish pipeline with gates only around its first sweep and the next complete freeze.</summary>
-internal sealed class InterleavedUpgradePublishStore : ForwardingUpgradeStore, IContentTextAuthoringStore, IContentDraftFreezeStore
+internal sealed class InterleavedUpgradePublishStore : ScriptedUpgradeStore, IContentTextAuthoringStore, IContentDraftFreezeStore
 {
     readonly UpgradePublishSequence _sequence;
     readonly bool _older;
@@ -27,24 +17,37 @@ internal sealed class InterleavedUpgradePublishStore : ForwardingUpgradeStore, I
     readonly ContentPublishCommit _commit;
     bool _firstSweep;
 
+    public bool SweepFailureInjected { get; private set; }
+
     public InterleavedUpgradePublishStore(
         IContentAuthoringStore inner,
         ContentTypeRegistry registry,
         UpgradePublishSequence sequence,
         bool older,
-        bool sweepFails) : base(inner)
+        bool sweepFails) : base(inner, older ? 4 : 3, older ? 1 : 2)
     {
         _sequence = sequence;
         _older = older;
         _sweepFails = sweepFails;
-        _commit = new ContentPublishCommit(this, inner.PackStore!, new ContentPublisher(this, (IContentIdPersistence)inner, registry));
+        _commit = new ContentPublishCommit(this, inner.PackStore!, new ContentPublisher(this, (IContentIdPersistence)inner, registry,
+            onStep: step => CatalogPhaseWatch.Enter("publish " + step)));
     }
 
     IContentTextAuthoringStore Text => (IContentTextAuthoringStore)Inner;
 
     /// <inheritdoc />
-    public Task ClearDraftFreezeAsync(int expectedBaseVersion, CancellationToken cancellationToken = default)
-        => ((IContentDraftFreezeStore)Inner).ClearDraftFreezeAsync(expectedBaseVersion, cancellationToken);
+    public override Task<ContentDraft?> GetOpenDraftAsync(CancellationToken cancellationToken = default)
+    {
+        // A failed scenario snapshot is evidence failure, even when the runner normally recovers from
+        // its exception type. Stop recovery reads before they can obscure it with an observation guard.
+        _sequence.ThrowIfFailed();
+        return base.GetOpenDraftAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public override Task ClearDraftFreezeAsync(int expectedBaseVersion, CancellationToken cancellationToken = default)
+        => CatalogPhaseWatch.ObserveAsync("release scoped publish freeze",
+            () => ((IContentDraftFreezeStore)Inner).ClearDraftFreezeAsync(expectedBaseVersion, cancellationToken));
 
     /// <inheritdoc />
     public override async Task<ContentPublishResult> PublishAsync(
@@ -52,19 +55,28 @@ internal sealed class InterleavedUpgradePublishStore : ForwardingUpgradeStore, I
     {
         bool first = _older && request.Upgrade?.Id == UpgradeHarness.FirstId;
         _firstSweep = first;
+        Exception? publishFailure = null;
         try
         {
             return await _commit.PublishAsync(request, cancellationToken);
+        }
+        catch (Exception failure)
+        {
+            publishFailure = failure;
+            throw;
         }
         finally
         {
             if (first)
             {
-                _sequence.DraftAfterOlderPublish = await Inner.GetOpenDraftAsync(cancellationToken);
-                _sequence.FirstReleased.TrySetResult();
-                // Hold this runner before it starts the second definition. The next runner's report owns
-                // the next transition, so neither scheduling nor a polling delay chooses the outcome.
-                await _sequence.SecondFinished.Task.WaitAsync(cancellationToken);
+                try
+                {
+                    await _sequence.CaptureAndReleaseAsync(Inner, publishFailure);
+                }
+                catch (Exception cleanup) when (publishFailure is not null && !ReferenceEquals(cleanup, publishFailure))
+                {
+                    throw new AggregateException("Publish and cleanup both failed", publishFailure, cleanup);
+                }
             }
         }
     }
@@ -75,10 +87,10 @@ internal sealed class InterleavedUpgradePublishStore : ForwardingUpgradeStore, I
         if (_firstSweep)
         {
             _firstSweep = false;
-            _sequence.FirstCommitted.TrySetResult();
-            await _sequence.SecondFrozen.Task.WaitAsync(cancellationToken);
+            await _sequence.WaitForNextFreezeAsync();
             if (_sweepFails)
             {
+                SweepFailureInjected = true;
                 throw new IOException("the first publish's sweep failed after its commit");
             }
         }
@@ -89,11 +101,11 @@ internal sealed class InterleavedUpgradePublishStore : ForwardingUpgradeStore, I
     /// <inheritdoc />
     public async Task<ContentTextPublishSnapshot> FreezeChangesAsync(int expectedBaseVersion, CancellationToken cancellationToken = default)
     {
-        ContentTextPublishSnapshot snapshot = await Text.FreezeChangesAsync(expectedBaseVersion, cancellationToken);
+        ContentTextPublishSnapshot snapshot = await CatalogPhaseWatch.ObserveAsync("complete publish freeze",
+            () => Text.FreezeChangesAsync(expectedBaseVersion, cancellationToken));
         if (!_older && expectedBaseVersion == 2)
         {
-            _sequence.SecondFrozen.TrySetResult();
-            await _sequence.FirstReleased.Task.WaitAsync(cancellationToken);
+            await _sequence.WaitForOldCleanupAsync();
         }
 
         return snapshot;
@@ -106,12 +118,12 @@ internal sealed class InterleavedUpgradePublishStore : ForwardingUpgradeStore, I
 
     /// <inheritdoc />
     public Task<ContentVersionTextSnapshot> ReadTextSnapshotAsync(int versionNumber, CancellationToken cancellationToken = default)
-        => Text.ReadTextSnapshotAsync(versionNumber, cancellationToken);
+        => CatalogPhaseWatch.ObserveAsync("read baseline text", () => Text.ReadTextSnapshotAsync(versionNumber, cancellationToken));
 
     /// <inheritdoc />
     public Task<ContentVersionRecord> CommitTextPublishAsync(
         ContentTextPublishPlan plan, ContentPublishRequest request, IPackVersionPointerStore? pointers, CancellationToken cancellationToken = default)
-        => Text.CommitTextPublishAsync(plan, request, pointers, cancellationToken);
+        => CatalogPhaseWatch.ObserveAsync("commit text publish", () => Text.CommitTextPublishAsync(plan, request, pointers, cancellationToken));
 
     /// <inheritdoc />
     public Task<bool> TryDiscardChangesAsync(ContentDraft expected, string actor, string operatorId, CancellationToken cancellationToken = default)

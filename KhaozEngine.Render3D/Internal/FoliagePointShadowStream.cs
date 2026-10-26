@@ -44,6 +44,7 @@ internal sealed class FoliagePointShadowStream : IDisposable
 
     /// <summary>Every proxy, ascending by slot and by source index.</summary>
     internal ReadOnlySpan<FoliagePointShadowCaster> Casters => _casters;
+    internal int LocalTransformCount => _localTransforms?.Length ?? 0;
 
     /// <summary>Collect the casting instances of a batch layout. An instance whose mesh has no bounds (a stale
     /// handle) is left out, as the patch layout leaves it out.</summary>

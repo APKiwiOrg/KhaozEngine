@@ -240,9 +240,12 @@ replace its image while retaining an identical mesh. Frames borrow admitted inpu
 
 `MapRenderAdmission` charges source metadata, encoded closure retention, decoder peaks, prepared plans and the
 renderer-measured upload demand. Settled plans include the unique canonical water allocations retained by their
-batch readers, alongside the plan and scene receipts. `MapUploadReservation` is claimed before factories, and claimed credit returns
-only on the renderer's final `Released` callback. Published and retiring allocations keep their original charge.
-The staging allowance and decoded upload borrow remain held through retirement. `MaxRetiredGpuBytes` never
+batch readers, alongside the plan and scene receipts. `MapUploadReservation` is claimed before factories with
+the unchanged complete CPU and GPU peak. GPU staging credit returns only after transfer completion on the
+device. After publication drops detached inputs and transfer storage, CPU settles to the renderer's independent
+retained inventory. Final `Released` returns only the remaining CPU and owned GPU payload, once. Cancellation
+before publication returns all unsettled credit at destruction. The decoded upload borrow remains held through
+retirement. `MaxRetiredGpuBytes` never
 adds sharing credit. `MapRenderLifetime` reports the live charged ownership groups and actual transfer bytes.
 
 A queue entry is one atomic composite replacement. Its windows share one live preparation ledger,
@@ -263,6 +266,10 @@ its density and effective dependency product. Cached generation retention is adm
 then attached to individual cache entries. Invalidation drops the cache owner, and the last sample reader
 releases its receipt and CPU lease. Settled CPU bytes are the unique retained source, input, context, sample,
 plan, recording and upload inventory. In-flight CPU additionally includes queue reservations and staging.
+At publication, zero recording references or demand below half the retained capacity replaces both dictionaries
+and the draw set with storage sized to current demand. Credit returns after the old backing arrays are no
+longer reachable. Exactly half retains capacity for reuse. An empty accepted set returns to source-only CPU
+after device retirement releases its last upload and decoded-input readers. Disposal also drops recording storage.
 Preparation peaks and cumulative allocation are not retained-size authorities. GPU handle owners retain
 identity and handle only. They do not retain obsolete CPU registrations,
 including while waiting in the bounded disposal queue.

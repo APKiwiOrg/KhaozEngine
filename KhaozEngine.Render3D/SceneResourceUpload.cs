@@ -8,7 +8,7 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Render3D;
 
 /// <summary>One admitted upload. Publication transfers ownership to the scene. Cancellation retires behind its
-/// completion barrier and releases the aggregate lease only after destruction.</summary>
+/// completion barrier and releases its remaining lease only after destruction.</summary>
 public sealed class SceneResourceUpload : IDisposable
 {
     readonly Scene3D _scene;
@@ -23,7 +23,7 @@ public sealed class SceneResourceUpload : IDisposable
     IGpuFence? _completion;
     IGpuCommandList? _barrier;
     int _nextTransfer;
-    bool _submitted, _published, _disposed, _retiring;
+    bool _submitted, _published, _disposed, _retiring, _transferSettled;
     internal MeshHandle PublishedMesh { get; private set; }
     internal FoliageBatch? PublishedFoliage { get; private set; }
     public SceneUploadDemand Demand { get; }
@@ -104,7 +104,21 @@ public sealed class SceneResourceUpload : IDisposable
     }
 
     /// <summary>True only when every copy completed, including the final GPU completion fence.</summary>
-    public bool Ready => !_disposed && _submitted && (_completion is null || _completion.Signaled);
+    public bool Ready
+    {
+        get
+        {
+            if (_disposed || !_submitted || _completion is { Signaled: false }) return false;
+            if (!_transferSettled)
+            {
+                // Completion machinery is transfer workspace too. Some backends retain command arrays here.
+                if (_barrier is not null) { _barrier.Dispose(); _owned.Remove(_barrier); _barrier = null; }
+                if (_completion is not null) { _completion.Dispose(); _owned.Remove(_completion); _completion = null; }
+                _reservation.TransferCompleted(); _transferSettled = true;
+            }
+            return true;
+        }
+    }
 
     /// <summary>Copy at most allowance bytes. Texture writes progress within bounded rows and every mip.
     /// An allowance too small for one RGBA texel makes no progress. Admission is independent of this budget.</summary>
@@ -157,8 +171,10 @@ public sealed class SceneResourceUpload : IDisposable
             if (PreparedFoliage is { } prepared) PublishedFoliage = _scene.PublishPreparedFoliage(prepared, _foliage, _anchor!, _owned);
             handle = _scene.PublishResource(this);
             _reservation.Published(handle);
+            ReleaseInputs();
+            _owned.Capacity = _owned.Count;
+            _reservation.InputsReleased(SceneResourceCpuInventory.Measure(_owned, PublishedMesh.Generation > 0, PreparedFoliage));
             _published = true;
-            _transfers.Clear(); _data = null;
             return handle;
         }
         catch
@@ -183,8 +199,12 @@ public sealed class SceneResourceUpload : IDisposable
         _scene.DetachUploadedResource(PublishedMesh, PublishedFoliage);
         PublishedFoliage = null; PreparedFoliage = null;
         _scene.RetireUpload(this, new Retirement(_owned, _reservation));
-        _transfers.Clear(); _data = null;
+        ReleaseInputs();
+        _vertices = _normals = _indices = _clip = _foliage = _groundParams = _anchor = null;
+        _albedo = _normal = _roughness = _groundAlbedo = null;
+        _completion = null; _barrier = null;
     }
+    void ReleaseInputs() { _transfers.Clear(); _transfers.Capacity = 0; _data = null; }
     internal void RebindMaterialSets(Func<IGpuResourceSet, IGpuResourceSet> replacementFor)
     {
         for (int i = 0; i < _owned.Count; i++)
@@ -198,7 +218,7 @@ public sealed class SceneResourceUpload : IDisposable
             if (_disposed) return;
             _disposed = true;
             try { for (int i = owned.Count - 1; i >= 0; i--) owned[i].Dispose(); }
-            finally { owned.Clear(); reservation.Released(); reservation.Dispose(); }
+            finally { owned.Clear(); owned.Capacity = 0; reservation.Released(); reservation.Dispose(); }
         }
     }
     sealed class Transfer

@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Locomotion;
+using KhaozEngine.Physics;
 
 namespace KhaozEngine.Movement;
 
@@ -12,6 +13,8 @@ public static class NpcGroundMovement
         in MoveTuning tuning, GroundMoveContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
+        SupportQueryDiagnostics.Record(tuning.Controller == MovementControllerKind.Contact
+            ? SupportQueryCounter.NpcContactSteps : SupportQueryCounter.NpcLegacySteps);
         Vector2 direction = steering.Status == RangeMoveStatus.Following
             ? steering.WorldDirection : Vector2.Zero;
         return context.Step(body, direction, run, dt, tuning);
@@ -21,6 +24,8 @@ public static class NpcGroundMovement
     public static MoveState Hold(in MoveState body, float dt, in MoveTuning tuning, GroundMoveContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
+        SupportQueryDiagnostics.Record(tuning.Controller == MovementControllerKind.Contact
+            ? SupportQueryCounter.NpcContactHolds : SupportQueryCounter.NpcLegacyHolds);
         return context.Step(body, Vector2.Zero, false, dt, tuning);
     }
 }

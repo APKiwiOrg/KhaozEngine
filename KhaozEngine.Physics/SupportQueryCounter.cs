@@ -1,6 +1,6 @@
 namespace KhaozEngine.Physics;
 
-/// <summary>Support-query work recorded by an opt-in capture. New counters append stable numeric identities.</summary>
+/// <summary>Support-query and outer movement work recorded by an opt-in capture. New counters append stable numeric identities.</summary>
 public enum SupportQueryCounter
 {
     Find = 0,
@@ -63,4 +63,18 @@ public enum SupportQueryCounter
     FootprintReuseBudgetSkips = 39,
     EdgeSteps = 40,
     InitialHoldReuseHits = 41,
+    /// <summary>Calls to NpcGroundMovement.Hold with requested Legacy tuning, after the context null guard.</summary>
+    NpcLegacyHolds = 42,
+    /// <summary>Calls to NpcGroundMovement.Hold with requested Contact tuning, after the context null guard.</summary>
+    NpcContactHolds = 43,
+    /// <summary>Calls to NpcGroundMovement.Step with requested Legacy tuning, including steering that requests no travel.</summary>
+    NpcLegacySteps = 44,
+    /// <summary>Calls to NpcGroundMovement.Step with requested Contact tuning, including steering that requests no travel.</summary>
+    NpcContactSteps = 45,
+    /// <summary>Authoritative PlayerMovementSystem per-entity Steps with Legacy tuning, including idle and rejected Steps.
+    /// Direct PlayerMoveSimulator consumers, including prediction, do not count.</summary>
+    PlayerLegacySteps = 46,
+    /// <summary>Authoritative PlayerMovementSystem per-entity Steps with Contact tuning, including idle and rejected Steps.
+    /// Direct PlayerMoveSimulator consumers, including prediction, do not count.</summary>
+    PlayerContactSteps = 47,
 }

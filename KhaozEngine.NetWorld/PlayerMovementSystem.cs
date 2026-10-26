@@ -183,6 +183,8 @@ public sealed partial class PlayerMovementSystem : ISystem, IDisposable
                 FrameAnchor = new(cellFrame.Anchor.X, cellFrame.Anchor.Z)
             };
             using PlayerMoveReadScope? read = explicitSimulator?.BeginExplicitRead(basis);
+            SupportQueryDiagnostics.Record(tuning.Controller == MovementControllerKind.Contact
+                ? SupportQueryCounter.PlayerContactSteps : SupportQueryCounter.PlayerLegacySteps);
             state = explicitSimulator is null
                 ? CharacterMovement.Step(state, move.Command, dt, ground, tuning, normal, physics, clampXz, fluid)
                 : explicitSimulator.Step(basis, move.Command, dt).Move;

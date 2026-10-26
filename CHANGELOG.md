@@ -20,6 +20,10 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   jumps. Carried selections from another world are refused before reconstruction or producer queries.
   Direct selected-space queries remain guarded, and real reconstruction failures keep their refusal outcomes
   (Closes #1578).
+- Add six `SupportQueryCapture` counters for outer NPC Hold and Step invocations and authoritative
+  `PlayerMovementSystem` per-entity Steps, each split by Legacy and Contact controller. Idle and rejected
+  selected player Steps count once. Direct player simulators and nested held-result fallbacks add no
+  outer invocations (#1598).
 
 ## 21.14.0
 

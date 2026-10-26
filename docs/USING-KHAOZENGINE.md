@@ -10586,6 +10586,14 @@ exclusive to the innermost label and completed children enter the parent once. S
 cumulative and immutable. Sample only the active top scope, or its frozen final result on the creating thread.
 Never carry a scope across `await`, `Task.Run` or a thread handoff. Results may be read on any thread.
 
+The six outer invocation counters separate NPC Hold and Step calls from authoritative
+`PlayerMovementSystem` per-entity Steps, each split by Legacy or Contact controller. NPC attribution uses
+requested tuning, never destinations or steering state. Player Steps include idle commands and rejected
+selected Steps, exclude skipped entities, and count only this authoritative system. Players have no outer
+Hold entry point here. The nested `HoldExplicit` fallback and direct `PlayerMoveSimulator` consumers such as
+client prediction add no outer invocations. The [counter contract](../KhaozEngine.Physics/README.md#support-query-measurement)
+names each identity and describes disabled recording.
+
 `SupportQueryMeasurement.Combine` adds disjoint completed measurements, coalescing repeated labels. It does
 not deduplicate parent/child overlap or repeated cumulative snapshots. Independent consumer threads need
 their own scopes and an explicit join. The [two-body example](../KhaozEngine.Physics/README.md#support-query-measurement)

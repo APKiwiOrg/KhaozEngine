@@ -3,13 +3,14 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D;
 
 /// <summary>Inventory of surviving upload ownership, independent of preparation and transfer peak sizing.</summary>
 internal static class SceneResourceCpuInventory
 {
-    const long OwnerMetadataBytes = 1024, GpuObjectMetadataBytes = 256, MeshMetadataBytes = 256, FoliageMetadataBytes = 768;
+    const long OwnerMetadataBytes = 1024, GpuObjectMetadataBytes = 256, MeshMetadataBytes = 256, FoliageMetadataBytes = 512;
 
     internal static long Measure(List<IDisposable> owned, bool mesh, ScenePreparedFoliage? foliage)
     {
@@ -19,8 +20,9 @@ internal static class SceneResourceCpuInventory
         if (foliage is null) return cpu;
         var layout = foliage.Layout!;
         var points = foliage.PointStream!;
-        // Product/read-only wrappers, layout, point stream and published batch metadata. Shared arrays count once.
-        return checked(cpu + FoliageMetadataBytes +
+        // Product/read-only wrappers, layout, point stream and batch control metadata, excluding its embedded
+        // MotionCurrent and MotionPrevious uniform snapshots. Shared arrays count once.
+        return checked(cpu + FoliageMetadataBytes + 2L * Unsafe.SizeOf<ModelRenderer.FoliageUniforms>() +
             ArrayBytes<int>(foliage.BorrowExpandedSourceRows.Length) +
             ArrayBytes<byte>(foliage.BorrowPackedInstances.Length) +
             ArrayBytes<SceneFoliageExpandedPart>(foliage.ExpandedParts.Count) +

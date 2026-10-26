@@ -13,7 +13,7 @@ public enum UnderwaterSunlightGeometry { FlatBed, ThinSlab, StraddlingHull, Subm
 public readonly record struct UnderwaterSunlightCase(UnderwaterSunlightGeometry Geometry = UnderwaterSunlightGeometry.FlatBed,
     float Depth = 1f, bool Enabled = true, bool Orthographic = false, float ShadowStrength = 1f,
     bool Caster = true, bool Absorption = true, bool Water = true, float SlabBottom = 0.05f, bool AmbientOnly = false,
-    bool SpecularOnly = false, float SpecularStrength = 0.8f)
+    bool SpecularOnly = false, float SpecularStrength = 0.8f, bool BedCastsShadows = false)
 {
     public UnderwaterSunlightCase() : this(UnderwaterSunlightGeometry.FlatBed) { }
     public float BedY => Geometry == UnderwaterSunlightGeometry.Cave ? -3f
@@ -37,6 +37,22 @@ public sealed class UnderwaterSunlightScenes : IDisposable
     IGpuFramebuffer? _target;
     IGpuCommandList? _commands;
     MeshHandle _plane, _box;
+
+    internal Vector3 CaptureCasterFace(GltfMesh mesh)
+    {
+        Ensure();
+        _box = _scene!.LoadMesh(mesh);
+        Capture(new UnderwaterSunlightCase(UnderwaterSunlightGeometry.StraddlingHull));
+        Matrix4x4 matrix = _scene.CascadeFitAbsoluteForTests[0];
+        Vector4 clip = Vector4.Transform(new Vector4(0f, 0f, 0f, 1f), matrix);
+        float[] atlas = _scene.DebugReadShadowMap(out int width, out int height);
+        int x = (int)((clip.X / clip.W * 0.5f + 0.5f) * width);
+        int y = (int)((0.5f - clip.Y / clip.W * 0.5f) * height);
+        Assert.True(Matrix4x4.Invert(matrix, out Matrix4x4 inverse));
+        Vector4 stored = Vector4.Transform(new Vector4((x + 0.5f) / width * 2f - 1f,
+            1f - (y + 0.5f) / height * 2f, atlas[y * width + x], 1f), inverse);
+        return new Vector3(stored.X, stored.Y, stored.Z) / stored.W;
+    }
 
     public UnderwaterSunlightImage Capture(UnderwaterSunlightCase settings)
     {
@@ -125,7 +141,8 @@ public sealed class UnderwaterSunlightScenes : IDisposable
                 * Matrix4x4.CreateRotationX(-MathF.Atan(0.25f)), bedColor, bedMaterial, castsShadows: false);
         else
             scene.Draw(_plane, Matrix4x4.CreateScale(12f, 1f, 12f)
-                * Matrix4x4.CreateTranslation(0f, settings.BedY, 0f), bedColor, bedMaterial, castsShadows: false);
+                * Matrix4x4.CreateTranslation(0f, settings.BedY, 0f), bedColor, bedMaterial,
+                castsShadows: settings.BedCastsShadows);
 
         if (settings.Caster)
         {

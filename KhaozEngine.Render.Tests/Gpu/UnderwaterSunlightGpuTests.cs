@@ -160,6 +160,17 @@ public sealed class UnderwaterSunlightGpuTests(UnderwaterSunlightScenes scenes, 
     }
 
     [GpuFact]
+    public void SubmergedReceiverDoesNotShadowItself()
+    {
+        var settings = new UnderwaterSunlightCase(Caster: false, BedCastsShadows: true);
+        UnderwaterSunlightImage casting = scenes.Capture(settings);
+        UnderwaterSunlightImage control = scenes.Capture(settings with { BedCastsShadows = false });
+        output.WriteLine($"self-casting bed differing color bytes={casting.Rgba.Zip(control.Rgba).Count(p => p.First != p.Second)}, visibility bytes={casting.Visibility.Zip(control.Visibility).Count(p => p.First != p.Second)}");
+        Assert.Equal(control.Rgba, casting.Rgba);
+        Assert.Equal(control.Visibility, casting.Visibility);
+    }
+
+    [GpuFact]
     public void PenumbraWidensWithDepth()
     {
         var settings = new UnderwaterSunlightCase(UnderwaterSunlightGeometry.ThinSlab, Depth: 0.5f, Absorption: false);

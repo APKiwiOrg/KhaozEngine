@@ -191,8 +191,15 @@ Before the opaque pass, render-relative water slabs are binned into the shared p
 as one storage buffer appended to every lit receiver's set 0. Each fragment selects its containing slab, refracts
 the sun at the still surface with index `1.333`, and samples key shadows at that entry point with the receiver's own
 bias. Key diffuse and specular attenuate along the refracted path using the body's absorption. The query also works
-with orthographic cameras and disabled shadows. Zero records skip buffer reads. The submerged-caster march and
-depth-widened kernel remain pending. This path does not depend on either authored water-depth source above.
+with orthographic cameras and disabled shadows. Zero records skip buffer reads. Four jittered depth slices along
+the refracted segment test stored caster depths below the analytic surface and within each slice's band. The
+final slice uses the receiver's normal offset and depth bias to avoid self-shadow. Slice lookups blend cascades,
+with the outer coverage fade applied once at the real receiver so virtual points near the atlas border do not
+brighten cave floors. The opaque atlas stores the sun-facing near side for outward CCW meshes under
+orientation-preserving transforms, including glTF geometry whose winding the loader preserves. A straddling box's
+above-water face therefore shadows the entry lookup already. Fully submerged rocks and cave roofs need the march.
+One retained caster per atlas texel can hide a submerged caster behind another one. Depth-widened kernels remain
+pending. This path does not depend on either authored water-depth source above.
 
 ## Where to look in the code
 

@@ -439,8 +439,17 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `L = h / -t.y`. Only key diffuse and specular receive `exp(-AbsorptionPerMetre * L)`. Ambient, indirect,
   fill, point lights, emissive and fog keep their values. Attenuation also applies with shadows disabled, while
   exported key visibility remains exactly one for non-positive shadow strength. Empty water counts skip
-  buffer reads, and depth zero meets the dry result. Submerged-caster marching and penumbra widening remain
-  pending, so a submerged rock or a bed above a cave does not yet occlude this entry lookup.
+  buffer reads, and depth zero meets the dry result. Four jittered depth slices along the refracted segment
+  also test submerged casters. Each fetched atlas texel counts only a stored depth below its analytic water
+  surface and inside that slice's band. The last slice uses the receiver's normal offset and depth bias to
+  avoid self-shadow. The outer coverage fade applies at the real receiver, so virtual slice points near the
+  atlas border do not brighten a covered cave floor. For outward CCW opaque meshes with orientation-preserving
+  transforms, the clockwise-front culling pipeline stores the sun-facing near side. The glTF loader preserves
+  that winding, so the entry lookup already shadows a straddling box's above-water face. The march supplies
+  the fully submerged rock and cave-roof shadows. The atlas retains one caster per texel, so a nearer caster
+  can hide a submerged one. Within each slice, shadow displacement error is bounded by its vertical depth
+  span times `tan(theta_air) - tan(theta_water)`, apart from atlas quantization and receiver bias. Penumbra
+  widening remains pending.
   - The fit also quantizes the LIGHT's rotation, not just its focus translation: `ShadowLightHoldTexels` (default
   `1`) and `ShadowLightHoldCasterHeight` (default `12`) hold the direction the cascades were last fitted from until
   the sun has turned far enough to drag a worst-case caster's shadow by that many shadow texels, so a stationary

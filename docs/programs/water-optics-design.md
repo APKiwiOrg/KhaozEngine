@@ -57,7 +57,7 @@ from rather than rebuild.
 - Multi-body light paths. The light path is modelled through the receiver's own body only, with its entry point on
   that body's infinite surface plane. An entry point that lands on dry land beside a narrow pool sits under the
   bank's surface, so the bank's stored face shadows it, which is physically right.
-- New shadow-map data. The atlas stays one layer of caster far sides.
+- New shadow-map data. The atlas stays one stored caster depth per texel.
 - Wave-displaced refraction. The entry point uses the still-water level. Swell displacement is far smaller than
   today's unrefracted error.
 - Changing the water pass. Its vertical-depth tint and alpha grade stay as they are.
@@ -143,9 +143,8 @@ All of this lives in the shared lighting block, so the six call sites (`ModelFra
 variants inherit it. The `keyShadow = sampleKeyShadow(...)` call statements stay textually unchanged because the
 key-visibility export splices after that exact statement.
 
-The volume query, refracted entry lookup and key diffuse/specular attenuation are implemented. The
-submerged-caster march and depth-widened kernel below remain pending. Submerged geometry is not yet tested
-along the refracted segment, and a cave under a bed inside the slab can receive key light.
+The volume query, refracted entry lookup, submerged-caster march and key diffuse/specular attenuation are
+implemented. The depth-widened kernel below remains pending.
 
 1. Query the water volume for the fragment. Not submerged means today's path, bit for bit.
 2. Submerged at depth `h`: compute the refracted in-water direction, `L = h / cos(theta_water)`, and `E` on the
@@ -153,20 +152,31 @@ along the refracted segment, and a cave under a bed inside the slab can receive 
 3. Above-surface occlusion: the key-shadow lookup at `E` with `E`'s own cascade and the depth-widened kernel,
    using the receiver's own normal offset and slope bias (from `P`'s geometric normal and `ndl`) exactly as the dry
    lookup does. That keeps step 7's continuity exact.
-4. Submerged occlusion: march the refracted segment from `E` to `P` in a fixed number of depth slices (four as a
-   starting point). At each slice end, one comparison counts the stored caster depth as occluding only when it
+4. Submerged occlusion: march the refracted segment from `E` to `P` in four depth slices. At each slice end,
+   one comparison counts the stored caster depth as occluding only when it
    lies below the water surface along that tap's light ray AND within that slice's depth band. The surface depth
    at a tap is analytic, from the cascade matrix and the plane `y = surfaceY`. The last slice stops short of `P` by
-   the receiver's existing bias so the bed does not shadow itself. Slice ends are jittered per pixel and resolved
-   by TAA, and offset by the widened radius so submerged shadows soften too.
-   - Why a march and not one lookup at `P`: the atlas stores each caster's far side (front faces are culled,
-     `ShadowMapRenderer.cs:346`). A floater's far side is its hull bottom, under the surface, so the lookup at `E`
-     under the hull reads lit. The first slice holds that hull bottom and restores the shadow at the refracted
-     position. A single lookup at `P` would follow the dry direction for the whole depth and put it back at the
-     dry offset.
-   - Error: within a slice, a caster's shadow follows the dry direction, so the error is bounded by slice length
-     times `tan(theta_air) - tan(theta_water)`.
-   - Limitation: the atlas keeps one caster per texel, the nearest far side. A submerged caster in the same light
+   the receiver's existing bias so the bed does not shadow itself. All ends use the receiver's geometric normal
+   offset. Internal boundaries share a per-pixel interleaved-gradient-noise offset of up to half a slice, leaving
+   no band gaps. The final end stays at the biased receiver. TAA can resolve the jitter. Radius widening is
+   deferred to the kernel step below.
+   - Caster-face evidence: the opaque pipeline culls clockwise fronts. Outward CCW box triangles and ordinary
+     glTF triangles with orientation-preserving transforms retain their sun-facing near side. The loader
+     preserves triangle order. Metal atlas readback reconstructs the straddling box's stored top at `y = 0.15`,
+     for both the procedural box and its opaque glTF round trip. The shadow renderer's far-side comment does not
+     describe this case. All live backends report `ClipSpaceYInverted = false`, so `GpuClip.Correct` is identity.
+     Vulkan's negative-height viewport and direct front-face mapping preserve the shared convention.
+   - Why a march and not one lookup at `P`: the straddling box's above-water face already shadows `E`, but a
+     wholly submerged rock or cave roof lies behind that lookup. The march finds those stored depths along the
+     refracted segment. A single lookup at `P` would follow the dry direction for the whole depth and restore
+     the dry offset. Opposite caster winding can retain a far side instead, which the same depth bands also test.
+   - Coverage: each slice selects and blends its own cascades. The outer coverage fade applies once at the real
+     receiver, rather than at each virtual slice point. Otherwise a roof near the atlas border can brighten a
+     covered cave floor. The entry lookup's own coverage fade applies only to its above-surface term.
+   - Error: within a slice, a caster's shadow follows the dry direction. Apart from atlas quantization and
+     receiver bias, displacement error is bounded by that slice's vertical depth span times
+     `tan(theta_air) - tan(theta_water)`. Jitter makes the widest end band at most `1.5 * h / 4` deep.
+   - Limitation: the atlas keeps one caster per texel, the nearest retained face. A submerged caster in the same light
      texel column as a nearer above-water caster is hidden from the march. Solving that needs depth layers, which
      this milestone does not add.
 5. `keyShadow` is the product of 3 and 4, then the existing strength, fade and cascade blending. It stays a

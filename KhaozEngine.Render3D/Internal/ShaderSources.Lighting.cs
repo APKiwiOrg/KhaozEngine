@@ -86,12 +86,13 @@ bool projectCascade(int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margi
     // just outside a cascade's depth range and still claim it (issue #394).
     return !(uv.x < margin || uv.x > 1.0 - margin || uv.y < margin || uv.y > 1.0 - margin || z < 0.0 || z > 1.0);
 }
-" + CascadeShadowFilterGlsl + @"
+" + CascadeShadowFilterGlsl + UnderwaterSubmergedOcclusionGlsl + @"
 float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, vec3 Ngeo, float ndl) {
     fragmentUnderwaterKey = underwaterKeyForFragment(worldPos);
     vec3 shadowPos = fragmentUnderwaterKey.entry;
     float strength = ShadowParams.y;
     if (strength <= 0.0) return 1.0;                    // shadow atlas inactive this frame => fully lit
+    float submergedLit = underwaterSubmergedOcclusion(fragmentUnderwaterKey, worldPos, Ngeo, ndl);
     int count = int(ShadowParams.x + 0.5);
     float texelStep = ShadowParams2.x;                  // 1/perCascadeResolution (a PCF step in cascade-local UV)
     float slopeSin = sqrt(max(0.0, 1.0 - ndl * ndl));   // grazing factor: largest where acne is worst
@@ -108,7 +109,7 @@ float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, 
         if (!projectCascade(i, shadowPos, Ngeo, slopeSin, margin, uv, z)) continue;
         sel = i; selUv = uv; selZ = z; break;
     }
-    if (sel < 0) return 1.0;                            // beyond every cascade => lit (coverage edge)
+    if (sel < 0) return mix(1.0, submergedLit, strength); // the entry may be outside coverage while a slice is inside
 
     float lit = pcfCascade(shadowAtlas, shadowSamp, sel, count, selUv, selZ - bias, texelStep);
     float edge = min(min(selUv.x, 1.0 - selUv.x), min(selUv.y, 1.0 - selUv.y));
@@ -118,6 +119,9 @@ float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, 
         // fade, sitting at ShadowMaxDistance - ShadowParams2.y documents that distance for downstream effects).
         float border = ShadowParams2.z;
         float fade = smoothstep(0.0, border, edge);
+        // The march has its own receiver coverage fade. The entry's border cannot erase a covered caster.
+        if (fragmentUnderwaterKey.submerged)
+            return mix(1.0, mix(1.0, lit, fade) * submergedLit, strength);
         return mix(1.0, mix(1.0, lit, strength), fade);
     }
 
@@ -134,7 +138,7 @@ float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, 
         }
     }
     // strength 1 removes the key light fully in shadow, below 1 leaves a partial key term, and the fade/blend paths above ease the result toward fully lit.
-    return mix(1.0, lit, strength);
+    return mix(1.0, lit * submergedLit, strength);
 }
 
 // ---- Point-light shadows (issue #1002) ----------------------------------------------------------------

@@ -5777,8 +5777,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   - **Water volume** (`WaterPlane.FloorY`, default `null` = unbounded below): pass the optional trailing constructor
     argument when the body has a lowest world Y under the plane rectangle. Receivers below it are outside the body.
     The floor is a conservative slab, not exact local containment, so a dry space inside the slab under a higher part
-    of the bed can still count as submerged. Submerged-caster occlusion is pending, so this intermediate path can
-    light a cave inside that slab through its bed. `DrawWater` refuses a non-finite floor or one above `SurfaceY`.
+    of the bed can still count as submerged. The submerged-caster march keeps the bed's key shadow over that
+    space, preserving a dry cave's darkness. `DrawWater` refuses a non-finite floor or one above `SurfaceY`.
     Render-origin rebasing carries it with the plane, and stacked bodies resolve to the nearest surface above a receiver.
   - **Underwater volume uploads** expose `scene.WaterVolumeClusters` for the resolved opt-in records and
     cluster references. Every lit receiver reads the records to refract key-shadow lookup to the surface entry
@@ -5897,7 +5897,16 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
       The penumbra value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or
       unbound. The water refractive index is the fixed constant `1.333`, not a setting. A frame with no opted-in water
-      renders exactly as before.
+      renders exactly as before. Four jittered depth slices between the refracted surface entry and receiver
+      preserve shadows from submerged rocks and beds above dry caves. A stored caster must be below the surface
+      on the fetched texel's light ray and inside the current slice's depth band. The receiver's normal offset
+      and final depth bias exclude self-shadow. The outer coverage fade is evaluated at the receiver, rather
+      than at the virtual slice points. The atlas stores the near side for ordinary outward CCW opaque meshes
+      with orientation-preserving transforms, so a straddling box's above-water face already shadows the entry
+      lookup. One retained caster per atlas texel can hide another submerged caster. Within a slice the ray
+      follows the dry direction, with displacement error bounded by that slice's vertical depth span times
+      `tan(theta_air) - tan(theta_water)`, plus atlas quantization and receiver bias. Depth-dependent penumbra
+      widening remains pending.
     - *Reflection*: `SkyReflectionStrength` (0 = the flat `HorizonColor`, 1 = the sky along the reflected ray) and
       `SkyReflectionSunStrength` (how much of the sky's disc + halo the reflection carries).
     - *Swell*: `SwellAmplitude` (0 = flat plane), `SwellWavelength`, `SwellDirectionDegrees`, `SwellSpreadDegrees`,

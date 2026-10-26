@@ -1,6 +1,6 @@
 namespace KhaozEngine.Render3D.Internal;
 
-/// <summary>Shared clustered water containment, refracted key entry and path transmittance for lit receivers.</summary>
+/// <summary>Clustered water containment, refracted key shadows and path transmittance for lit receivers.</summary>
 internal static partial class ShaderSources
 {
     internal const string WaterVolumesAt15Glsl = @"
@@ -119,6 +119,91 @@ UnderwaterKey underwaterKeyForFragment(vec3 renderPos) {
     result.entry.y = surfaceY;
     result.transmittance = exp(-absorption * result.pathLength);
     return result;
+}
+";
+
+    // Spliced after projectCascade. The six lit fragments all declare ShadowMap and ShadowSamp before this block.
+    internal const string UnderwaterSubmergedOcclusionGlsl = @"
+// One POINT depth, never a filtered depth. The horizontal water plane is evaluated on the fetched texel's
+// light ray, not the unsnapped lookup ray. ShadowMat is orthographic with orthogonal, scaled basis rows.
+float underwaterSliceAtCascade(int cascade, int count, vec3 endPos, vec3 Ngeo, float slopeSin,
+                              float surfaceY, float startDepth, float endDepth, float endBias,
+                              vec2 uv, float z) {
+    float stepSize = ShadowParams2.x;
+    vec2 tapUv = (floor(uv / stepSize) + vec2(0.5)) * stepSize;
+    tapUv = clamp(tapUv, vec2(stepSize * 0.5), vec2(1.0 - stepSize * 0.5));
+    vec2 atlasUv = vec2((float(cascade) + tapUv.x) / float(count), tapUv.y);
+    float stored = textureLod(sampler2D(ShadowMap, ShadowSamp), atlasUv, 0.0).r;
+
+    mat4 m = ShadowMat[cascade];
+    vec3 rowX = vec3(m[0].x, m[1].x, m[2].x);
+    vec3 rowY = vec3(m[0].y, m[1].y, m[2].y);
+    vec3 rowZ = vec3(m[0].z, m[1].z, m[2].z);
+    vec2 worldYPerClipXY = vec2(rowX.y / dot(rowX, rowX), rowY.y / dot(rowY, rowY));
+    vec2 snapClip = (tapUv - uv) * vec2(2.0, -2.0);
+    float normalY = Ngeo.y * ShadowNormalOffsets[cascade] * slopeSin;
+    float rayY = endPos.y + normalY + dot(worldYPerClipXY, snapClip);
+    // Use the atlas's fitted axis. ShadowLightHold can keep it fixed while LightDir moves between fits.
+    float zPerY = dot(rowZ, rowZ) / rowZ.y;
+    float surfaceZ = z + (surfaceY - rayY) * zPerY;
+    float startZ = surfaceZ - (startDepth - normalY) * zPerY;
+    float endZ = surfaceZ - (endDepth - normalY) * zPerY - endBias;
+    bool occluded = stored < 1.0 && stored > surfaceZ && stored >= startZ && stored < endZ;
+    return occluded ? 0.0 : 1.0;
+}
+
+float underwaterSubmergedOcclusion(UnderwaterKey key, vec3 renderPos, vec3 Ngeo, float ndl) {
+    if (!key.submerged || key.depth <= 0.0) return 1.0;
+    int count = int(ShadowParams.x + 0.5);
+    float margin = ShadowParams2.x * 2.0;
+    float slopeSin = sqrt(max(0.0, 1.0 - ndl * ndl));
+    float receiverBias = ShadowParams.z + ShadowParams.w * clamp(1.0 - ndl, 0.0, 1.0);
+    // Shared boundaries leave no gaps between jittered bands. The last end remains at the biased receiver.
+    const int sliceCount = 4;
+    float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5;
+    float start = 0.0;
+    float visibility = 1.0;
+    for (int slice = 0; slice < sliceCount; slice++) {
+        bool last = slice == sliceCount - 1;
+        float end = last ? 1.0 : (float(slice + 1) + jitter) / float(sliceCount);
+        vec3 endPos = mix(key.entry, renderPos, end);
+        float endBias = last ? receiverBias : 0.0;
+        int selected = -1;
+        vec2 uv = vec2(0.0); float z = 0.0;
+        for (int cascade = 0; cascade < 4; cascade++) {
+            if (cascade >= count) break;
+            if (!projectCascade(cascade, endPos, Ngeo, slopeSin, margin, uv, z)) continue;
+            selected = cascade;
+            break;
+        }
+        if (selected >= 0) {
+            float lit = underwaterSliceAtCascade(selected, count, endPos, Ngeo, slopeSin, key.entry.y,
+                start * key.depth, end * key.depth, endBias, uv, z);
+            float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+            if (selected < count - 1 && ShadowParams2.w > 0.0 && edge < ShadowParams2.w) {
+                vec2 uv2; float z2;
+                if (projectCascade(selected + 1, endPos, Ngeo, slopeSin, margin, uv2, z2)) {
+                    float lit2 = underwaterSliceAtCascade(selected + 1, count, endPos, Ngeo, slopeSin,
+                        key.entry.y, start * key.depth, end * key.depth, endBias, uv2, z2);
+                    lit = mix(lit2, lit, smoothstep(0.0, ShadowParams2.w, edge));
+                }
+            }
+            visibility *= lit;
+        }
+        start = end;
+    }
+    // Coverage fades belong to the real receiver. Fading each virtual slice would leak key light into a cave
+    // whose roof is near the map border even though its floor is safely covered. Blend slice cascades above,
+    // then apply the ordinary outer coverage fade once, at P, before sampleKeyShadow applies strength.
+    for (int cascade = 0; cascade < 4; cascade++) {
+        if (cascade >= count) break;
+        vec2 uv; float z;
+        if (!projectCascade(cascade, renderPos, Ngeo, slopeSin, margin, uv, z)) continue;
+        if (cascade < count - 1) return visibility;
+        float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+        return mix(1.0, visibility, smoothstep(0.0, ShadowParams2.z, edge));
+    }
+    return 1.0;
 }
 ";
 }

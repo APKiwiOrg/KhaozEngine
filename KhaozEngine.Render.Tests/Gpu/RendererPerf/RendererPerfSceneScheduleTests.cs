@@ -36,7 +36,7 @@ public sealed class RendererPerfSceneScheduleTests(ITestOutputHelper output)
         fixture.Production.Software = true;
         fixture.Production.Features = new(false, true, "llvmpipe", supportsCompute: true,
             supportsShadowMaps: true, supportsCompletionFences: true)
-        { SupportsTimestamps = true, MaxColorAttachments = 8 };
+        { SupportsTimestamps = true, MaxColorAttachments = 8, MaxStorageBufferRangeBytes = 134217728 };
         fixture.Production.Configuration = fixture.Production.Configuration with { PipelineStatisticsSupported = false };
         fixture.Diagnostic.Configuration = fixture.Production.Configuration with { Requested = new(true, false) };
         var passes = RendererPerfFrozenLayout.Create(identity);

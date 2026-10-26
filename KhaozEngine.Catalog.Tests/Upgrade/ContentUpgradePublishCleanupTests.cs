@@ -1,10 +1,7 @@
-using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
-using KhaozEngine.Catalog.Sqlite;
 using KhaozEngine.Tests.Catalog.Publish;
 using KhaozEngine.Tests.Catalog.Sqlite;
 using Xunit;
@@ -26,43 +23,23 @@ public sealed class ContentUpgradePublishCleanupTests
     {
         using var files = new TemporaryCatalogDatabase();
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
-        IContentAuthoringStore inner = sqlite
-            ? new SqliteContentAuthoringStore(files.ConnectionString, registry, files.Pack())
-            : new InMemoryContentAuthoringStore(registry, files.Pack());
-        using var lease = new ContentAuthoringStoreLease(inner);
-        await inner.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
-        await inner.ApplyEditsAsync(
-            [ContentEdit.Add(UpgradeFixtures.Thing, new ContentKey("old_row"), PublishFixtures.Fields(11))],
-            UpgradeFixtures.Actor, UpgradeFixtures.Operator, "seed the older catalog");
-        await inner.PublishAsync(PublishFixtures.Request(0));
-
-        ContentBundle target = UpgradeFixtures.Target(
-            registry,
-            UpgradeFixtures.Row(UpgradeFixtures.Thing, 1, "old_row", 11),
-            UpgradeFixtures.Row(UpgradeFixtures.Other, 1, "new_row", 22),
-            UpgradeFixtures.Row(UpgradeFixtures.Other, 2, "second_new_row", 33));
-        var set = new ContentUpgradeSet(
-            UpgradeFixtures.Adds(UpgradeHarness.FirstId, 1, target, UpgradeFixtures.Identity(UpgradeFixtures.Other, "new_row")),
-            UpgradeFixtures.Adds(UpgradeHarness.SecondId, 2, target, UpgradeFixtures.Identity(UpgradeFixtures.Other, "second_new_row")));
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        var sequence = new UpgradePublishSequence();
-        var older = new InterleavedUpgradePublishStore(inner, registry, sequence, older: true, sweepFails);
-        var next = new InterleavedUpgradePublishStore(inner, registry, sequence, older: false, sweepFails: false);
-
-        Task<ContentUpgradeReport> olderRun = ContentUpgradeRunner.RunAsync(
-            older, registry, set, UpgradeFixtures.Apply(), deadline.Token);
-        await sequence.FirstCommitted.Task.WaitAsync(deadline.Token);
-        ContentUpgradeReport nextReport;
-        try
-        {
-            nextReport = await ContentUpgradeRunner.RunAsync(next, registry, set, UpgradeFixtures.Apply(), deadline.Token);
-        }
-        finally
-        {
-            sequence.SecondFinished.TrySetResult();
-        }
-
-        ContentUpgradeReport olderReport = await olderRun;
+        var packs = new ObservedFileSystemPacks(files.Pack());
+        using ContentAuthoringStoreLease lease = await UpgradeLifetimeCatalog.CreateAsync(files, registry, sqlite, packs);
+        IContentAuthoringStore inner = lease.Store;
+        // A real orphan makes prune coverage observable, rather than merely counting a sweep callback.
+        KeyValuePair<string, string>[] orphan = [new("test.orphan", "unused")];
+        string orphanHash = ContentTextChunkCodec.Hash("en", orphan);
+        await packs.PutAsync(orphanHash, ContentTextChunkCodec.Encode("en", orphan));
+        var scenario = new UpgradePublishScenario(inner, registry, sweepFails);
+        (ContentUpgradeReport olderReport, ContentUpgradeReport nextReport) = await scenario.RunAsync();
+        UpgradePublishSequence sequence = scenario.Sequence;
+        Assert.Equal(sweepFails, scenario.Older.SweepFailureInjected);
+        Assert.Equal(4, sequence.Phase);
+        Assert.Equal(4, scenario.Older.DraftReads);
+        Assert.Equal(3, scenario.Next.DraftReads);
+        Assert.False(await packs.ExistsAsync(orphanHash));
+        Assert.True(packs.Deletions > 0);
+        Assert.Equal(sweepFails ? 2 : 3, packs.Enumerations);
         Assert.True(nextReport.Success, string.Join(" | ", nextReport.Lines));
         Assert.True(olderReport.Success, string.Join(" | ", olderReport.Lines));
         Assert.NotNull(sequence.DraftAfterOlderPublish);

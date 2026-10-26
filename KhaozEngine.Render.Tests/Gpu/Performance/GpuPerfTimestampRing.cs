@@ -24,7 +24,8 @@ internal sealed class GpuPerfTimestampRing : IGpuFrameCompletionConsumer, IGpuFr
     internal string? Failure { get; private set; }
     internal double? FirstReadyPeriod { get; private set; }
 
-    internal GpuPerfTimestampRing(IGpuDevice device, int sampleCapacity, uint markerCount, Action<int, GpuPerfTimestampResult> publish)
+    internal GpuPerfTimestampRing(IGpuDevice device, int sampleCapacity, uint markerCount, Action<int, GpuPerfTimestampResult> publish,
+        bool allowSoftware = false)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(publish);
@@ -32,7 +33,7 @@ internal sealed class GpuPerfTimestampRing : IGpuFrameCompletionConsumer, IGpuFr
         if (markerCount < 2 || markerCount > MaximumMarkerCount)
             throw new ArgumentOutOfRangeException(nameof(markerCount));
         if (!device.Capabilities.SupportsTimestamps || !device.Capabilities.SupportsCompletionFences
-            || device.Diagnostics.SoftwareAdapter == true)
+            || !allowSoftware && device.Diagnostics.SoftwareAdapter == true)
             throw new NotSupportedException("GPU proof requires hardware timestamps and completion fences.");
         _publish = publish;
         _markerCount = markerCount;

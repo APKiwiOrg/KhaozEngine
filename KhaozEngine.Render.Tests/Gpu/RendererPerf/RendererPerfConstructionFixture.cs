@@ -23,10 +23,11 @@ internal sealed partial class RendererPerfConstructionFixture : IGpuDevice, IGpu
     internal IGpuComputePipeline? LastComputeBind;
     internal Action<string>? Trace;
     internal GpuCapabilities Features = new(false, true, "NVIDIA T4", supportsCompute: true, supportsCompletionFences: true) { SupportsTimestamps = true };
+    internal bool Software;
     internal int Submissions => _inner.Submissions;
     internal int Waits => _inner.Waits;
     internal RendererPerfConstructionFixture() { _inner.Features = Features; _inner.Trace = op => Trace?.Invoke(op); }
-    public GpuDeviceDiagnostics Diagnostics { get { ColdAction?.Invoke("diagnostics"); return new(softwareAdapter: false); } }
+    public GpuDeviceDiagnostics Diagnostics { get { ColdAction?.Invoke("diagnostics"); return new(softwareAdapter: Software); } }
     public IGpuResourceFactory Factory => this;
     public GpuBackendKind Backend => ActualBackend;
     public GpuCapabilities Capabilities => Features;

@@ -78,6 +78,13 @@ each subsequent query. Known-hint leases preserve the existing selected-space en
 Reset occurs after the lease's thread-entry check and before any frame/scope precondition or
 producer call. Wrong-thread use remains rejected without entering the owned reconstruction attempt.
 
+This readiness is per lease, including sequential per-tick acquisition in the ordinary environment.
+A carried selection is data rather than evidence that a fresh null-hint lease has reconstructed it.
+The movement tick reconstructs automatically only when its input selection is null. Otherwise the
+caller first rebuilds under the new lease and uses the returned selection. Skipping that step refuses
+selected-space queries and returns `EnvironmentUnresolved` from the tick. Reusing a still-live lease
+retains readiness, but is unnecessary when each fresh lease follows the reconstruction contract.
+
 ## Reconstruction and verification
 
 `MovementQueryLease.RebuildSelection(in FramedMovementState state, out MovementSelection selection)`

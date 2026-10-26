@@ -53,6 +53,14 @@ The served query domain includes exterior footprint, signal look-ahead and verti
 independently of commands or replay length.
 `CreateOrdinaryScope(frame)` returns the same cold scope for that frame. Capture the ordinary boundary
 before acquisition, acquire with `TryAcquire`, then use the binding's tick, placement or continuation doors.
+Fresh per-tick acquisition is supported. Each ordinary scope has a null current-space hint, so each new
+lease needs its own successful `RebuildSelection` before selected-space queries. A carried
+`FramedMovementState.Selection` from the previous tick does not authorize the new lease. Either call
+`RebuildSelection(state, out selection)` on that lease and use the returned selection, or pass
+`new FramedMovementState(state.State, state.Frame, null)` to the tick for automatic reconstruction.
+Passing a carried selection without reconstruction returns `EnvironmentUnresolved`, even when lease
+acquisition, registration authentication and environment pinning all succeeded. Holding one lease across
+ticks retains readiness, but also excludes physical writes until disposal.
 Ground residency holes return Unresolved when a query needs them. Support enumeration always refuses.
 
 `IMovementWaterField` supplies point and complete capsule-path water evidence for a body in physics-local

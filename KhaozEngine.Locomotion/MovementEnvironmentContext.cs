@@ -30,6 +30,9 @@ public sealed class MovementEnvironmentContext
     }
 
     /// <summary>Enter outside other physics leases. Success retains both gates until the returned lease is disposed.</summary>
+    /// <remarks>Sequential per-tick acquisition is supported. Every fresh null-hint lease starts without
+    /// reconstruction readiness. Rebuild selection on that lease, or pass a state with null Selection to the
+    /// movement tick for automatic reconstruction. A carried selection alone cannot authorize a new lease.</remarks>
     public MovementAvailability TryAcquire(in MovementQueryScope scope, out MovementQueryLease? lease)
     {
         using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.AcquisitionBody);

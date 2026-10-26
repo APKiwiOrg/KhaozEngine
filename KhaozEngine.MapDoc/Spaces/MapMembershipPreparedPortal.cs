@@ -12,14 +12,17 @@ internal sealed class MapMembershipPreparedPortal
     internal long InventoryBytes => checked(128L + _interval.Concat(_bottom).Concat(_top).Sum(s => 8L + s.InventoryBytes));
     internal sealed class Segment
     {
-        internal long InventoryBytes => checked(128L + 8L * Demands.Length + _line.InventoryBytes + (_height?.InventoryBytes ?? 0));
+        internal long InventoryBytes => checked(160L + 16L * Demands.Length + (_arenaOwner?.InventoryBytes ?? 0));
+        readonly MapMembershipGeometryArena? _arenaOwner;
         readonly MapExactXz _a, _b;
         readonly MapMembershipAffine _line;
         readonly MapMembershipTriangle? _height;
         internal readonly MapMembershipPreparedGeometry.Cell[] Demands;
         internal Segment(MapExactPoint a, MapExactPoint b, MapMembershipPreparedGeometry.Cell[]? demands = null, bool height = false)
         {
-            MapMembershipBuild.Inventory(checked(128L + 8L * (demands?.Length ?? 0)));
+            using var building = MapMembershipArenaBuilder.Begin();
+            _arenaOwner = building.Owns ? building.Arena : null;
+            MapMembershipBuild.Inventory(checked(160L + 16L * (demands?.Length ?? 0)));
             _a = new(a.X, a.Z); _b = new(b.X, b.Z); _line = MapMembershipAffine.Edge(_a, _b);
             Demands = demands ?? Array.Empty<MapMembershipPreparedGeometry.Cell>();
             if (height)
@@ -27,13 +30,14 @@ internal sealed class MapMembershipPreparedPortal
                 var third = a.X != b.X ? new MapExactPoint(a.X, a.Y, a.Z == default ? new(1, 1) : default)
                     : new MapExactPoint(a.X == default ? new(1, 1) : default, a.Y, a.Z);
                 _height = new(new(a, b, third));
+                if (MapMembershipBuild.Current is { } build) build.Counts.PortalTriangles++;
             }
         }
         internal bool Contains(MapExactXz point, MapMembershipExact exact) => _a != _b &&
             exact.Sign(_line, point) == 0 && MapMembershipPolygon.Between(point.X, _a.X, _b.X) &&
             MapMembershipPolygon.Between(point.Z, _a.Z, _b.Z);
         internal bool End(MapExactXz point) => point == _b;
-        internal MapExactValue? Height(MapExactXz point, MapMembershipExact exact) => _height!.Height(point, exact);
+        internal MapExactValue? Height(MapExactXz point, MapMembershipExact exact) => _height!.Value.Height(point, exact);
     }
     internal readonly MapCavePortal Record;
     internal readonly bool Ignored;

@@ -11,8 +11,8 @@ namespace KhaozEngine.Tests.MapDoc.Interiors;
 public sealed class MapMembershipCapacityTests
 {
     [Theory]
-    [InlineData(33049, false)]
-    [InlineData(33050, true)]
+    [InlineData(37167, false)]
+    [InlineData(37168, true)]
     public void HighCoefficient_ChargesNormalizedOutputAndOneLiveArithmeticWorkspace(long allowance, bool accepted)
     {
         var admission = new MapSceneAdmission(new(MaxPreparedBytes: allowance));
@@ -22,14 +22,14 @@ public sealed class MapMembershipCapacityTests
         if (!accepted)
         {
             var refusal = Assert.Throws<MapSceneCapacityException>(() => new MapMembershipAffine(BigInteger.One << 180, 0, 1, 1));
-            Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", 33050, allowance), refusal.Capacity);
+            Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", 37168, allowance), refusal.Capacity);
             return;
         }
         var affine = new MapMembershipAffine(BigInteger.One << 180, 0, 1, 1);
-        // Four coefficient objects and one affine. Magnitudes contain 23, 1, 1 and 1 bytes.
-        Assert.Equal(282, affine.InventoryBytes);
-        Assert.Equal(282, admission.WorkspaceBytes);
-        Assert.Equal(33050, admission.PeakBytes);
+        // Store 128, token directory 32 and page 88, magnitude directory 32 and page 4120.
+        Assert.Equal(4400, affine.Store.InventoryBytes);
+        Assert.Equal(4400, admission.WorkspaceBytes);
+        Assert.Equal(37168, admission.PeakBytes);
         Assert.Equal(26, counts.NormalizedCoefficientBytes);
     }
 
@@ -45,30 +45,33 @@ public sealed class MapMembershipCapacityTests
     }
 
     [Theory]
-    [InlineData(49, false)]
-    [InlineData(50, true)]
-    public void Coefficient_AdmitsItsActualMagnitudeBeforeAllocating(long allowance, bool accepted)
+    [InlineData(247, false)]
+    [InlineData(248, true)]
+    public void Coefficient_AdmitsItsTokenPageBeforeAllocating(long allowance, bool accepted)
     {
         int entered = 0;
-        var admission = new MapSceneAdmission(new(MaxPreparedBytes: allowance), _ => entered++);
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: allowance));
+        admission.AllocationAdmitted = increment => { if (increment == 88) entered++; };
         using var active = admission.Enter();
         using var product = admission.BeginPreparation();
         var counts = new MapRoofPreparationCounts();
         using var build = new MapMembershipBuild(admission, product, counts);
+        var store = MapMembershipCoefficientStore.Create(4);
         if (!accepted)
         {
-            var refusal = Assert.Throws<MapSceneCapacityException>(() => new MapMembershipCoefficient(new BigInteger(256)));
-            Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", 50, allowance), refusal.Capacity);
+            var refusal = Assert.Throws<MapSceneCapacityException>(() => store.Append(new BigInteger(256)));
+            Assert.Equal(new MapSceneCapacity("MaxPreparedBytes", 248, allowance), refusal.Capacity);
             Assert.Equal(0, entered);
-            Assert.Equal(0, admission.WorkspaceBytes);
+            Assert.Equal(160, admission.WorkspaceBytes);
             Assert.Equal(0, counts.NormalizedCoefficientBytes);
             return;
         }
-        var coefficient = new MapMembershipCoefficient(new BigInteger(256));
-        Assert.Equal(50, coefficient.InventoryBytes);
-        Assert.Equal(50, admission.WorkspaceBytes);
+        int coefficient = store.Append(new BigInteger(256));
+        Assert.Equal(0, store[coefficient].Kind);
+        Assert.Equal(248, store.InventoryBytes);
+        Assert.Equal(248, admission.WorkspaceBytes);
         Assert.Equal(2, counts.NormalizedCoefficientBytes);
-        product.Complete(50).Dispose();
+        product.Complete(248).Dispose();
         Assert.Equal(0, admission.RetainedBytes);
     }
 }

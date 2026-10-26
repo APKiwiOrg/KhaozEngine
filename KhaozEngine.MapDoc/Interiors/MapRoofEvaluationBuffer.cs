@@ -71,7 +71,7 @@ public sealed class MapRoofEvaluationBuffer
         if (admission.PreparationRefusal(demand.Bytes, demand.Faces) is { } headerCapacity) return Refused(headerCapacity, counts);
         using var active = admission.Enter();
         using var preparation = admission.BeginPreparation();
-        using var build = new MapMembershipBuild(admission, preparation, counts);
+        using var build = new MapMembershipBuild(admission, preparation, counts, scene);
         try
         {
             preparation.Reserve(demand.Bytes);
@@ -101,6 +101,8 @@ public sealed class MapRoofEvaluationBuffer
             publication.Dispose();
             planning.Dispose();
             counts.RetainedBytes = buffer.RetainedBytes;
+            counts.SharedCapacityBytes = buffer._scratch.SharedBytes;
+            counts.PrivateCapacityBytes = checked(buffer.RetainedBytes - sceneInventoryBytes - counts.SharedCapacityBytes);
             if (buffer.RetainedBytes > checked(preparation.Bytes + sceneInventoryBytes))
                 throw new InvalidOperationException("Membership inventory was not admitted before construction.");
             dependency?.Absorb();

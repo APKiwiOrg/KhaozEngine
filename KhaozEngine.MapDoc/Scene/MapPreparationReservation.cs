@@ -17,6 +17,21 @@ internal sealed class MapPreparationReservation : IDisposable
     MapPreparationDependencies? _dependencies;
     internal long Bytes => checked(_bytes + (_dependencies?.Bytes ?? 0));
     internal object WindowIdentity => (object?)_window ?? _ledger;
+    internal long DependOnProduct(IMapPreparationSharedProduct product) => (_dependencies ??= new()).AddProduct(this, product);
+    internal IDisposable? ReferenceProductWindow(long bytes, object origin)
+    {
+        if (_window is null) return null;
+        MapPreparationLedger.Window? stop = _window;
+        while (stop is not null)
+        {
+            bool covered = false;
+            for (var ancestor = origin as MapPreparationLedger.Window; ancestor is not null; ancestor = ancestor.Parent)
+                if (ReferenceEquals(ancestor, stop)) { covered = true; break; }
+            if (covered) break;
+            stop = stop.Parent;
+        }
+        return stop == _window ? null : _window.ReferenceUntil(bytes, stop);
+    }
     internal long InventoryBytes(HashSet<object> seen, bool includeDependencies = true) =>
         checked(_bytes + (includeDependencies ? _dependencies?.UniqueBytes(seen) ?? 0 : 0));
     internal void DependOn(MapSceneAdmission admission, object identity, long bytes) =>

@@ -22,16 +22,18 @@ public sealed class MapMembershipAdmissionBoundaryTests
     }
 
     [Theory]
-    [InlineData(49, 0)]
-    [InlineData(50, 1)]
-    public void Magnitude_EntersTheAllocationOnlyAfterItsCapacityIsAdmitted(long allowance, int expectedEntries)
+    [InlineData(247, 0)]
+    [InlineData(248, 1)]
+    public void TokenPage_EntersTheAllocationOnlyAfterItsCapacityIsAdmitted(long allowance, int expectedEntries)
     {
         int entered = 0;
-        var admission = new MapSceneAdmission(new(MaxPreparedBytes: allowance), _ => entered++);
+        var admission = new MapSceneAdmission(new(MaxPreparedBytes: allowance));
+        admission.AllocationAdmitted = increment => { if (increment == 88) entered++; };
         using var product = admission.BeginPreparation();
         using var build = new MapMembershipBuild(admission, product, new MapRoofPreparationCounts());
-        if (allowance == 49) Assert.Throws<MapSceneCapacityException>(() => new MapMembershipCoefficient(new BigInteger(256)));
-        else _ = new MapMembershipCoefficient(new BigInteger(256));
+        var store = MapMembershipCoefficientStore.Create(4);
+        if (allowance == 247) Assert.Throws<MapSceneCapacityException>(() => store.Append(new BigInteger(256)));
+        else _ = store.Append(new BigInteger(256));
         Assert.Equal(expectedEntries, entered);
     }
 }

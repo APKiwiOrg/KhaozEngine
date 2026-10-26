@@ -50,7 +50,7 @@ internal sealed class MapMembershipExact
     {
         R(0).Set(point.X.Numerator); R(1).Set(point.X.Denominator);
         R(2).Set(point.Z.Numerator); R(3).Set(point.Z.Denominator);
-        affine.X.Load(R(4)); affine.Z.Load(R(5)); affine.C.Load(R(6));
+        affine.Load(0, R(4)); affine.Load(1, R(5)); affine.Load(2, R(6));
         MapMembershipInteger.Multiply(R(4), R(0), R(10));
         MapMembershipInteger.Multiply(R(10), R(3), R(11));
         MapMembershipInteger.Multiply(R(5), R(2), R(10));
@@ -59,7 +59,7 @@ internal sealed class MapMembershipExact
         MapMembershipInteger.Multiply(R(1), R(3), R(7));
         MapMembershipInteger.Multiply(R(6), R(7), R(10));
         MapMembershipInteger.Add(R(13), R(10), R(8));
-        affine.D.Load(R(4));
+        affine.Load(3, R(4));
         MapMembershipInteger.Multiply(R(4), R(7), R(9));
     }
     internal int Sign(MapMembershipAffine affine, MapExactXz point)
@@ -143,32 +143,6 @@ internal sealed class MapMembershipExact
     }
 }
 
-/// <summary>Immutable coefficient magnitude and a certified enclosing binary64 interval.</summary>
-internal sealed class MapMembershipCoefficient
-{
-    internal long InventoryBytes => 48L + _magnitude.LongLength;
-    readonly byte[] _magnitude;
-    readonly int _sign;
-    internal MapMembershipInterval Interval { get; }
-    internal MapMembershipCoefficient(BigInteger value)
-    {
-        if (BigInteger.Abs(value).GetBitLength() > MapMembershipInteger.CoefficientBits)
-            throw new MapExactOverflowException();
-        MapMembershipBuild.Coefficient(BigInteger.Abs(value).GetByteCount(isUnsigned: true));
-        _sign = value.Sign;
-        _magnitude = BigInteger.Abs(value).ToByteArray(isUnsigned: true);
-        double approximate = (double)value;
-        if (!double.IsFinite(approximate)) Interval = MapMembershipInterval.Uncertain;
-        else
-        {
-            var represented = new BigInteger(approximate);
-            Interval = new(represented > value ? Math.BitDecrement(approximate) : approximate,
-                represented < value ? Math.BitIncrement(approximate) : approximate);
-        }
-    }
-    internal void Load(MapMembershipInteger target) => target.Load(_magnitude, _sign);
-}
-
 /// <summary>Outward-rounded interval operations. A filter answers only when zero is excluded.</summary>
 internal readonly record struct MapMembershipInterval(double Low, double High)
 {
@@ -198,34 +172,37 @@ internal readonly record struct MapMembershipInterval(double Low, double High)
 }
 
 /// <summary>Cleared-denominator affine numerator, with a positive constant denominator for heights.</summary>
-internal sealed class MapMembershipAffine
+internal readonly struct MapMembershipAffine
 {
-    internal long InventoryBytes => 64L + X.InventoryBytes + Z.InventoryBytes + C.InventoryBytes + D.InventoryBytes;
-    internal MapMembershipCoefficient X { get; }
-    internal MapMembershipCoefficient Z { get; }
-    internal MapMembershipCoefficient C { get; }
-    internal MapMembershipCoefficient D { get; }
-    internal MapExactValue? Constant { get; }
-    internal int Direction { get; }
+    readonly MapMembershipCoefficientStore _store;
+    readonly int _first;
+    internal MapMembershipCoefficientStore Store => _store;
+    internal MapMembershipAffine(MapMembershipCoefficientStore store, int first) { _store = store; _first = first; }
+    internal MapMembershipCoefficient X => _store[_first];
+    internal MapMembershipCoefficient Z => _store[_first + 1];
+    internal MapMembershipCoefficient C => _store[_first + 2];
+    internal MapMembershipCoefficient D => _store[_first + 3];
+    internal MapExactValue? Constant => X.Sign == 0 && Z.Sign == 0 && C.Kind == 0 && D.Kind == 0
+        ? new MapExactValue(C.Inline, D.Inline) : null;
+    internal int Direction => X.Sign != 0 ? X.Sign : Z.Sign;
+    internal void Load(int coefficient, MapMembershipInteger target) => _store.Load(_store[_first + coefficient], target);
     internal MapMembershipAffine(BigInteger x, BigInteger z, BigInteger c, BigInteger d)
     {
         using var arithmetic = MapMembershipBuild.Kernel();
-        MapMembershipBuild.Inventory(64);
         if (d.IsZero) throw new MapDocumentException("invalid prepared plane");
         if (d.Sign < 0) { x = -x; z = -z; c = -c; d = -d; }
         BigInteger gcd = BigInteger.GreatestCommonDivisor(BigInteger.Abs(x), BigInteger.Abs(z));
         gcd = BigInteger.GreatestCommonDivisor(gcd, BigInteger.Abs(c));
         gcd = BigInteger.GreatestCommonDivisor(gcd, d);
         x /= gcd; z /= gcd; c /= gcd; d /= gcd;
-        X = new(x); Z = new(z); C = new(c); D = new(d);
-        Direction = x.Sign != 0 ? x.Sign : z.Sign;
-        if (x.IsZero && z.IsZero && c >= long.MinValue && c <= long.MaxValue && d <= long.MaxValue)
-            Constant = new((long)c, (long)d);
+        _store = MapMembershipCoefficientStore.Current ?? MapMembershipCoefficientStore.Create(4);
+        _first = _store.Count;
+        _store.Append(x); _store.Append(z); _store.Append(c); _store.Append(d);
     }
     internal int? Filter(MapExactXz point)
     {
-        var interval = X.Interval.Multiply(MapMembershipInterval.Point(point.X))
-            .Add(Z.Interval.Multiply(MapMembershipInterval.Point(point.Z))).Add(C.Interval);
+        var interval = _store.Interval(X).Multiply(MapMembershipInterval.Point(point.X))
+            .Add(_store.Interval(Z).Multiply(MapMembershipInterval.Point(point.Z))).Add(_store.Interval(C));
         return interval.Low > 0 ? 1 : interval.High < 0 ? -1 : null;
     }
     internal static BigInteger Lcm(BigInteger a, BigInteger b) => a / BigInteger.GreatestCommonDivisor(a, b) * b;

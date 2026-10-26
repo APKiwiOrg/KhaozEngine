@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.MapDoc.Interiors;
 internal static class MapMembershipFullPolicyInventory
 {
     internal const long BorrowedScene = 1000000, External = 29, Reused = 73, Historical = 50000000;
-    internal static long Prior => 4096 + 12640 + 256 + 2 * Unsafe.SizeOf<MapMembershipPart>() + 5 - 2816;
+    internal static long Prior => MapMembershipCompactInventory.EmptyRetained;
     internal static long Header => 4096 + 12640 + 2 * 512 + 4 * 4096 + 16 * (5 + 5 + 4 + 5) +
         16 * 4 * 4 + 256 + 2 * (2 * Unsafe.SizeOf<MapMembershipPart>() + 5) + 1;
 
@@ -39,16 +39,14 @@ internal static class MapMembershipFullPolicyInventory
         const long plannerControls = 1024 + 128 * 4, patchIndex = 256 * 2, pending = 2304, bound = 128 + 32;
         const long planning = plannerControls + 2 * bound + 2 * 640, publication = 4096 + 64 * 4;
         const long arithmetic = 32768;
-        // Every normalized coefficient, including zero, occupies one magnitude byte on these unit squares.
-        const long affine = 64 + 4 * (48 + 1), polygon = 128 + 45 * 4 + 4 * affine;
-        const long triangle = 219 + 4 * affine, cellBase = 256 + 256 * 2;
-        const long cell = cellBase + polygon + 2 * triangle, geometry = 512 + 256 * 2 + 64 * 2;
-        const long collections = 1024 + 32 * 2 + 96 * 2, cellIndexes = 2 * (64 + 8 + 96);
-        long groups = 1024 + 256 + 2L * Unsafe.SizeOf<MapCompiledFace>() +
-            2L * (3 * Unsafe.SizeOf<MapCompiledFace>() + Unsafe.SizeOf<MapFaceKey>() + 4);
         long construction = h + planning + publication;
-        long footprint = geometry + 2 * cell + cellIndexes + 128 + 8;
-        long prism = footprint + polygon + 2 * (128 + 192);
+        // Two cells, four physical triangles and one later prism ring fit one page in each private column.
+        // The shared footprint has fifteen owners, eight arrays and one registry metadata identity.
+        const long arena = 30240, geometryControls = 768 + 256 * 2, indexes = 2 * (64 + 24 + 4 + 24 + 80);
+        const long frozenBounds = MapMembershipCompactInventory.FrozenBounds;
+        const long footprintView = 128 + 512 + 2 * (128 + 8);
+        const long shared = MapMembershipCompactInventory.Shared, cache = 256;
+        const long completeOutputs = arena + geometryControls + indexes + frozenBounds + footprintView + shared + cache;
         return new Boundary[]
         {
             new("Header", "header and borrowed scene", h),
@@ -76,20 +74,10 @@ internal static class MapMembershipFullPolicyInventory
                 h + plannerControls + patchIndex + pending + bound + arithmetic + 128 + pending),
             new("Planner", "both pending and frozen masks before builders retire",
                 h + planning + patchIndex + 2 * pending),
-            new("Construction", "geometry controls, collections and first compiler",
-                construction + geometry + collections + compilerEnvelope + subdivision),
-            new("Construction", "first cell, second compiler and grouping copies",
-                construction + geometry + collections + cell + compiled + groups),
-            new("Construction", "first cell, second polygon output and three nested arithmetic kernels",
-                construction + geometry + collections + cell + compiled + groups + cellBase + polygon + 3 * arithmetic),
-            new("Construction", "both exact cells, both indexes and last index sorting kernel",
-                construction + geometry + 2 * cell + cellIndexes + collections + arithmetic),
-            new("Construction", "geometry and footprint polygon output with three arithmetic kernels",
-                construction + footprint + polygon + 3 * arithmetic),
-            new("Construction", "geometry, footprint, bound rows, prism domain and exact prism polygon",
-                construction + prism + 32768 + 1024 * 4 + polygon + 3 * arithmetic),
-            new("Publication", "surviving plan, publication workspace and all exact outputs",
-                construction + prism + polygon),
+            new("Construction", "private columns, shared page receipts, private bounds, prism domain and three arithmetic kernels",
+                construction + completeOutputs + 32768 + 1024 * 4 + 3 * arithmetic),
+            new("Publication", "surviving planner/publication workspace and frozen shared/private capacities",
+                construction + completeOutputs),
         };
     }
 

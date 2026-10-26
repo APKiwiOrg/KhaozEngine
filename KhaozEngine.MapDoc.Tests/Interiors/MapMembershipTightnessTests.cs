@@ -28,14 +28,14 @@ public sealed class MapMembershipTightnessTests(ITestOutputHelper output)
         using var native = MapMembershipIntervalFixtures.Create(shape);
         var scene = NativeSceneFixtures.Open(native, false).Acquire(MapMembershipIntervalTests.Scope()).Scene!;
         Assert.NotNull(scene);
-        long inventory = MapMembershipInventoryModel.SimultaneousSubtotal(scene);
+        long inventory = MapMembershipInventoryModel.SimultaneousSubtotal(scene, shape);
         long bound = checked(2 * inventory + MapMembershipInventoryModel.FixedKernelAllowance);
         var admission = new MapSceneAdmission(new(MaxPreparedBytes: 1000000000));
         using var empty = NativeSceneFixtures.Create("empty");
         var emptyScene = NativeSceneFixtures.Open(empty, false).Acquire(MapMembershipIntervalTests.Scope()).Scene!;
         var prior = MapRoofEvaluationBuffer.Prepare(emptyScene, admission).Buffer!;
-        // Empty final graph is the header less 2816 bytes of preparation-only control allowance.
-        long priorBytes = MapMembershipIntervalTests.EmptyHeader - 2816;
+        // Empty private columns, semantic-row owners and scratch have a pinned independent layout.
+        const long priorBytes = MapMembershipCompactInventory.EmptyRetained;
         Assert.Equal(priorBytes, prior.RetainedBytes);
         using var historical = admission.Workspace();
         historical.Reserve(50000000); historical.Release(50000000);

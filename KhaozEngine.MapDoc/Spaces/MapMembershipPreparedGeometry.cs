@@ -48,13 +48,16 @@ internal sealed class MapMembershipPreparedGeometry
             if (surface.IndoorSpan is { } span)
             {
                 SpanLower = Raised(span.LowerOffsetUnits); SpanUpper = Raised(span.UpperOffsetUnits);
+                if (MapMembershipBuild.Current is { } build) build.Counts.SpanTriangles += SpanLower.Length + SpanUpper.Length;
             }
             if (MapSurfaceCompiler.Fallback(surface, patch.Cells[_z * patch.Width + _x]) && Transform is not null)
             {
                 MapExactPoint P(int i, long y) => new(polygon[i].X, new(y, 1), polygon[i].Z);
                 LegacyX = [new(new(P(0, 0), P(1, 1), P(2, 1))), new(new(P(0, 0), P(2, 1), P(3, 0)))];
                 LegacyZ = [new(new(P(0, 0), P(1, 0), P(2, 1))), new(new(P(0, 0), P(2, 1), P(3, 1)))];
+                if (MapMembershipBuild.Current is { } build) build.Counts.LegacyTriangles += LegacyX.Length + LegacyZ.Length;
             }
+            if (MapMembershipBuild.Current is { } completed) completed.Counts.UniqueCellProducts++;
             MapMembershipTriangle[] Raised(long units)
             {
                 var offset = surface.Frame.Metres(new(units, 1));
@@ -173,6 +176,7 @@ internal sealed class MapMembershipPreparedGeometry
                 _openingBytes += entry.Value.Sum(t => 8L + t.InventoryBytes);
             }
             OpeningSets.Add(reference, sets);
+            if (MapMembershipBuild.Current is { } completed) completed.Counts.OpeningTriangles += triangles.Values.Sum(t => t.Length);
         }
     }
     internal static MapExactValue? Height(MapMembershipTriangle[] faces, MapExactXz point, MapMembershipExact exact)

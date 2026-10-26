@@ -29,6 +29,19 @@ public sealed class MapRoofPreparationCounts
     public long PeakPatchBytes { get; internal set; }
     public long PeakCompilerBytes { get; internal set; }
     public long NormalizedCoefficientBytes { get; internal set; }
+    public long Coefficients { get; internal set; }
+    public long Polygons { get; internal set; }
+    public long PolygonCorners { get; internal set; }
+    public long Triangles { get; internal set; }
+    public long SpanTriangles { get; internal set; }
+    public long LegacyTriangles { get; internal set; }
+    public long OpeningTriangles { get; internal set; }
+    public long UniqueCellProducts { get; internal set; }
+    public long UniqueFootprintPolygons { get; internal set; }
+    public long CoefficientPoolPages { get; internal set; }
+    public long CoefficientPoolCapacity { get; internal set; }
+    public long SideTableRows { get; internal set; }
+    public long SideTableBytes { get; internal set; }
     public long ValidationRawPieces { get; internal set; }
     public long ValidationVertices { get; internal set; }
     public long PeakValidationCandidates { get; internal set; }

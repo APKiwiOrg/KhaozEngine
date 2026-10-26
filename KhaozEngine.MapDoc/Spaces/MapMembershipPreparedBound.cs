@@ -85,6 +85,7 @@ internal sealed class MapMembershipPreparedFootprint
         _cells = new MapMembershipPolygon[record.SlotCells.Count];
         for (int i = 0; i < _cells.Length; i++)
             _cells[i] = new(MapEffectiveGeometry.CellPolygon(view, record.Lattice, record.SlotCells[i]), cell: true);
+        if (MapMembershipBuild.Current is { } build) build.Counts.UniqueFootprintPolygons += _cells.Length;
         Lower = new(view, geometry, record, record.Lower, plan); Upper = new(view, geometry, record, record.Upper, plan);
     }
     internal bool Contains(MapExactXz point, MapMembershipExact exact)

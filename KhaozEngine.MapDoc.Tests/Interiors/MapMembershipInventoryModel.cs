@@ -14,6 +14,19 @@ internal static class MapMembershipInventoryModel
 {
     // Three simultaneously active polygon, edge and normalization arithmetic kernels.
     internal const long FixedKernelAllowance = 3 * 32768;
+    // Pinned design layouts, independently specified here. Capacities include unused rows.
+    internal const int TokenBytes = 16, PolygonBytes = 80, VertexBytes = 32, CornerBytes = 1,
+        TriangleBytes = 160, FaceBytes = 32, CellBytes = 64, BoundBytes = 32, IndexBytes = 80;
+    internal readonly record struct Columns(int Polygons, int Corners, int Triangles, int Faces, int Cells,
+        int Bounds, int Affines, int IndexNodes, int MagnitudeCapacity, long SideTables);
+    internal static long ArrayBytes(long count, int stride) => checked((24 + count * stride + 7) & ~7L);
+    internal static long CompactColumns(Columns c) => checked(ArrayBytes(c.Polygons, PolygonBytes) +
+        ArrayBytes(c.Corners, VertexBytes) + ArrayBytes(c.Corners, CornerBytes) +
+        ArrayBytes(c.Triangles, TriangleBytes) + ArrayBytes(c.Faces, FaceBytes) + ArrayBytes(c.Cells, CellBytes) +
+        ArrayBytes(c.Bounds, BoundBytes) + ArrayBytes(4L * c.Affines, TokenBytes) +
+        ArrayBytes(c.IndexNodes, IndexBytes) + ArrayBytes(c.MagnitudeCapacity, 1) + c.SideTables);
+    internal static long ReplacementOverlap(Columns old, Columns replacement, long workspace) =>
+        checked(CompactColumns(old) + CompactColumns(replacement) + workspace);
     internal static long Header(MapScopedScene scene)
     {
         var records = MapSpaceGeometry.Records(scene.SurfaceView).ToArray();

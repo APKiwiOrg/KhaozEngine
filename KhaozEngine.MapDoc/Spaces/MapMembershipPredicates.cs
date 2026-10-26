@@ -21,6 +21,8 @@ internal sealed class MapMembershipPolygon
     internal MapMembershipPolygon(IReadOnlyList<MapExactXz> vertices, bool cell = false)
     {
         MapMembershipBuild.Inventory(checked(128L + 45L * vertices.Count));
+        if (MapMembershipBuild.Current is { } build)
+        { build.Counts.Polygons++; build.Counts.PolygonCorners += vertices.Count; }
         using var arithmetic = MapMembershipBuild.Kernel();
         _vertices = vertices.ToArray();
         _cell = cell;
@@ -91,6 +93,7 @@ internal sealed class MapMembershipTriangle
     internal MapMembershipTriangle(MapExactTriangle triangle)
     {
         MapMembershipBuild.Inventory(219);
+        if (MapMembershipBuild.Current is { } build) build.Counts.Triangles++;
         Triangle = triangle;
         MapExactXz a = new(triangle.A.X, triangle.A.Z), b = new(triangle.B.X, triangle.B.Z), c = new(triangle.C.X, triangle.C.Z);
         _edges = [MapMembershipAffine.Edge(a, b), MapMembershipAffine.Edge(b, c), MapMembershipAffine.Edge(c, a)];

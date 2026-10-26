@@ -29,7 +29,8 @@ internal sealed class MapMembershipBuild : IDisposable
     internal static void Coefficient(int bytes)
     {
         Inventory(checked(48L + bytes));
-        if (t_current is { } build) build.Counts.NormalizedCoefficientBytes += bytes;
+        if (t_current is { } build)
+        { build.Counts.Coefficients++; build.Counts.NormalizedCoefficientBytes += bytes; }
     }
     public void Dispose() => t_current = _previous;
 }

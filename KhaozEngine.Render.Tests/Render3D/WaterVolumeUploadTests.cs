@@ -72,7 +72,8 @@ public sealed class WaterVolumeUploadTests
         h.Scene.DrawWater(new WaterPlane(far + 2f, 130f, -far + 3f, 1f, 2f, floorY: 126f));
         h.Scene.DrawWater(new WaterPlane(far - 2f, 132f, -far - 3f, 2f, look: new WaterLook
         {
-            AbsorptionPerMetre = new Color(0.6f, 0.7f, 0.8f), UnderwaterPenumbraPerMetre = 0.09f,
+            AbsorptionPerMetre = new Color(0.6f, 0.7f, 0.8f),
+            UnderwaterPenumbraPerMetre = 0.09f,
             WaveSource = WaterWaveSource.FftOcean,
         }));
         h.Scene.DrawWater(new WaterPlane(far, 128f, -far, 2f,

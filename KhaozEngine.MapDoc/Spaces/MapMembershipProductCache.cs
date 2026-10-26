@@ -105,6 +105,7 @@ internal sealed class MapMembershipProductCache
         internal MapPreparationInventory Root = null!;
         internal Entry? Next;
         Group? _groups;
+        readonly MapPreparationWindowAttribution _attribution = new(origin);
         bool _retired;
         public IMapPreparationSharedProduct For(MapSceneAdmission admission)
         {
@@ -137,7 +138,7 @@ internal sealed class MapMembershipProductCache
                 MapPreparationInventory? pages = null;
                 try
                 {
-                    reference = destination.ReferenceProductWindow(Root.Bytes, origin);
+                    reference = _attribution.Acquire(Root.Bytes, destination.WindowIdentity);
                     control = workspace.Transfer(512);
                     pages = Root.Retain();
                     var inventory = MapPreparationInventory.Own(checked(Root.Bytes + 512), pages, control, reference);

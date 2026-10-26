@@ -11545,7 +11545,9 @@ private to each view, as do query registers and stamps. Cells outside footprints
 portal consumers. Queries never grow geometry or request capacity.
 Buffer `RetainedBytes` is reachable inventory, including shared and borrowed obligations. Its sum across buffers can
 exceed unique root storage. Root receipts deduplicate physical page identities, while every borrowing window carries
-the full shared footprint obligation once. The final lease retires the footprint's cache entry and receipts together.
+the full shared footprint obligation once across its direct and descendant consumers, including sibling borrowers.
+Each window's attribution ends when its last consumer retires. Refusal or cancellation leaves earlier attributions
+intact. The final lease retires the footprint's cache entry and receipts together.
 Its optional `Counts` diagnostics contain counts and byte totals without geometry or source identities.
 They include shared/private capacities, polygon corners, every triangle family, frozen bounds, page capacities,
 fallback magnitude pages and side tables. Headers, directory growth and unused capacity are charged before allocation.

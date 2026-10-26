@@ -87,72 +87,29 @@ internal sealed class MapPreparationInventory : IDisposable
                             entry = new(retained, window);
                             _entries.Add(part.Identity, entry);
                         }
-                        var windows = new List<MapPreparationLedger.Window>();
-                        MapPreparationLedger.Window? binding = null;
-                        for (var current = window as MapPreparationLedger.Window; current is not null; current = current.Parent)
-                        {
-                            if (Covers(current, entry.Origin)) break;
-                            windows.Add(current);
-                            if (!entry.Views.ContainsKey(current) && (binding is null || current.Remaining < binding.Remaining))
-                                binding = current;
-                        }
-                        if (binding is not null && entry.Reservation.Bytes > binding.Remaining)
-                            throw new MapSceneCapacityException(binding.RefuseReference(entry.Reservation.Bytes,
-                                windows[0], windows[^1].Parent, entry.Views.Keys));
-                        var covered = new List<(object Key, View Value)>();
-                        try
-                        {
-                            // Each borrowing window has one attribution, shared by every consumer using it.
-                            foreach (var current in windows)
-                            {
-                                if (!entry.Views.TryGetValue(current, out var view))
-                                {
-                                    view = new(current.ReferenceOnly(entry.Reservation.Bytes));
-                                    entry.Views.Add(current, view);
-                                }
-                                view.Owners++;
-                                covered.Add((current, view));
-                            }
-                        }
-                        catch { ReleaseViews(); throw; }
+                        var reference = entry.Attribution.Acquire(entry.Reservation.Bytes, window);
                         entry.Owners++;
                         leases.Add(new PieceLease(() =>
                         {
                             lock (_gate)
                             {
-                                ReleaseViews();
+                                reference?.Dispose();
                                 if (--entry.Owners == 0) { entry.Reservation.Dispose(); _entries.Remove(part.Identity); }
                             }
                         }));
-                        void ReleaseViews()
-                        {
-                            foreach (var ancestor in covered)
-                                if (--ancestor.Value.Owners == 0)
-                                { ancestor.Value.Reference?.Dispose(); entry.Views.Remove(ancestor.Key); }
-                        }
                     }
                     return new(leases, parts.Sum(p => p.Bytes));
                 }
                 catch { foreach (var lease in leases) lease.Dispose(); throw; }
             }
         }
-        static bool Covers(object ancestor, object window)
-        {
-            if (ReferenceEquals(ancestor, window)) return true;
-            for (var current = window as MapPreparationLedger.Window; current is not null; current = current.Parent)
-                if (ReferenceEquals(ancestor, current)) return true;
-            return false;
-        }
     }
     sealed class Entry(MapPreparationReservation reservation, object origin)
     {
         internal MapPreparationReservation Reservation => reservation;
-        internal object Origin => origin;
         internal int Owners;
-        internal readonly Dictionary<object, View> Views = new(ReferenceEqualityComparer.Instance);
+        internal readonly MapPreparationWindowAttribution Attribution = new(origin);
     }
-    sealed class View(IDisposable? reference)
-    { internal int Owners; internal IDisposable? Reference => reference; }
     sealed class PieceLease(Action release) : IDisposable
     {
         bool _disposed;

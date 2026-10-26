@@ -695,7 +695,9 @@ The final footprint lease releases its page receipts, window attribution and cac
 `RetainedBytes` describes a buffer's reachable obligation, including borrowed scene inventory. `SharedCapacityBytes`
 reports footprint leases and `PrivateCapacityBytes` reports private products and query scratch. Root accounting deduplicates
 physical page identities and includes cache controls, so buffer totals must not be summed as root inventory.
-A borrowing window carries a footprint's full obligation once, regardless of how many buffers use it there.
+A borrowing window carries a footprint's full obligation once across all buffers in that window and its descendants.
+Nested and sibling borrowers share each ancestor's attribution. Each window releases it only after its last
+borrowing consumer retires, independently of retirement order. Refusal and cancellation preserve earlier leases.
 `GeometryArenaPages`, `GeometryArenaCapacityBytes`, `FrozenBoundRows`, `FrozenBoundCapacityBytes`, coefficient pool
 capacities and side-table counts expose actual layouts, including array headers, directories and unused page capacity.
 Borrowed-input preflight stays allocation free and runs before the interval when the header fits. An input or

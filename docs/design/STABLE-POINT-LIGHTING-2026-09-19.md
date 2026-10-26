@@ -24,6 +24,11 @@ slices use logarithmic distance, while orthographic slices use linear distance, 
 near planes. A CPU builder conservatively intersects light spheres with six inward-facing planes for each
 cluster. This retains instancing and uses the same clusters for every receiver family.
 
+`ClusterFrameGrid` owns the camera boundaries, slice depths and geometry scale, prepared once for each
+frame with point lights. `PointLightClusterBuilder` consumes that geometry and owns light assignment
+and compact image packing. Invalid light-cluster planes retain the full-list fallback without
+invalidating the shared camera geometry.
+
 The cluster buffer contains 17 four-uint records per cluster: a count and overflow header followed by room
 for 64 stable submitted-light indices. It occupies about 918 KiB, allocated once per scene. The fragment
 shader reads its cluster's indices into the growable point-light buffer. A cluster that overflows evaluates

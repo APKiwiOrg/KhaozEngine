@@ -32,14 +32,16 @@ public sealed class PointLightClusterEquivalenceTests
     public void SeededScenesAssignEveryClusterExactlyAsTheBruteForceBuilder(int batch)
     {
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
         var oracle = new PointLightClusterOracle();
         for (int index = 0; index < ScenesPerBatch; index++)
         {
             int seed = batch * ScenesPerBatch + index;
             ClusterScene scene = ClusterScene.Generate(seed);
 
-            builder.Build(scene.Lights, scene.ViewProjection, scene.Eye, scene.Forward, scene.Projection,
-                scene.RenderOrigin);
+            builderGrid.TryPrepare(scene.ViewProjection, scene.Eye, scene.Forward,
+                scene.Projection, scene.RenderOrigin);
+            builder.Build(scene.Lights, builderGrid, scene.RenderOrigin);
             oracle.Build(scene.Lights, scene.ViewProjection, scene.Eye, scene.Forward, scene.Projection,
                 scene.RenderOrigin);
 
@@ -58,9 +60,11 @@ public sealed class PointLightClusterEquivalenceTests
         ModelRenderer.PointLightData[] lights = [Light(new Vector3(-10.5f, 0f, 4.8f), 5f)];
         var oracle = new PointLightClusterOracle();
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
 
         oracle.Build(lights, projection, Vector3.Zero, Forward, projection, Vector3.Zero);
-        builder.Build(lights, projection, Vector3.Zero, Forward, projection, Vector3.Zero);
+        builderGrid.TryPrepare(projection, Vector3.Zero, Forward, projection, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         Assert.True(PointLightClusterImage.Contains(oracle, 15, 4, 0, 0u),
             "precondition: the brute-force plane test accepts this sphere in cluster (15, 4, 0)");
@@ -83,9 +87,11 @@ public sealed class PointLightClusterEquivalenceTests
         ];
         var oracle = new PointLightClusterOracle();
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
 
         oracle.Build(lights, projection, Vector3.Zero, Forward, projection, Vector3.Zero);
-        builder.Build(lights, projection, Vector3.Zero, Forward, projection, Vector3.Zero);
+        builderGrid.TryPrepare(projection, Vector3.Zero, Forward, projection, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         PointLightClusterImage.AssertSameAssignment(oracle, builder, $"camera inside a light, perspective {perspective}");
     }

@@ -23,9 +23,11 @@ public sealed class PointLightClusterBuilderTests
     public void SpheresTouchingAClusterFaceEdgeOrCornerAreKept(float x, float y, float z, float radius)
     {
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
         ModelRenderer.PointLightData[] lights = [Light(new Vector3(x, y, z), radius)];
 
-        builder.Build(lights, Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builderGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         AssertContains(builder, x: 8, y: 4, z: 0, light: 0);
     }
@@ -34,6 +36,7 @@ public sealed class PointLightClusterBuilderTests
     public void SamplePointsInsideLightInfluenceAlwaysFindThatLightInTheirAnalyticOrthoCluster()
     {
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
         ModelRenderer.PointLightData[] lights =
         [
             Light(new Vector3(1f, 0.5f, -1.5f), 0.6f),
@@ -41,7 +44,8 @@ public sealed class PointLightClusterBuilderTests
             Light(new Vector3(15f, 8f, -12.5f), 0.8f),
         ];
 
-        builder.Build(lights, Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builderGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         // Samples (0.5,0.5,-1.5), (-15.5,-8.5,-24.5), and (15.5,8.5,-12.5) are inside the
         // corresponding spheres. The 32 by 18 by 24 ortho frustum makes each cell exactly 2 by 2 by 1.
@@ -54,9 +58,11 @@ public sealed class PointLightClusterBuilderTests
     public void PerspectiveSphereWhoseCenterIsBehindTheNearPlaneStillReachesTheFirstSlice()
     {
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
         ModelRenderer.PointLightData[] lights = [Light(new Vector3(0f, 0f, -0.5f), 0.6f)];
 
-        builder.Build(lights, Perspective, Vector3.Zero, Forward, Perspective, Vector3.Zero);
+        builderGrid.TryPrepare(Perspective, Vector3.Zero, Forward, Perspective, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         Assert.Equal(1f, builder.Depth.W);
         AssertContains(builder, 8, 4, 0, 0);
@@ -66,12 +72,14 @@ public sealed class PointLightClusterBuilderTests
     public void PerspectiveLogSliceBoundaryKeepsATouchingSphereOnBothSides()
     {
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
         // 256 far over 1 near across 24 slices makes the first boundary cube-root(2).
         const float FirstBoundary = 1.25992105f;
         ModelRenderer.PointLightData[] lights =
             [Light(new Vector3(0f, 0f, -FirstBoundary), 0.001f)];
 
-        builder.Build(lights, Perspective, Vector3.Zero, Forward, Perspective, Vector3.Zero);
+        builderGrid.TryPrepare(Perspective, Vector3.Zero, Forward, Perspective, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         AssertContains(builder, 8, 4, 0, 0);
         AssertContains(builder, 8, 4, 1, 0);
@@ -83,9 +91,11 @@ public sealed class PointLightClusterBuilderTests
     {
         Matrix4x4 projection = Matrix4x4.CreateOrthographic(32f, 18f, -2f, 22f);
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
         ModelRenderer.PointLightData[] lights = [Light(new Vector3(0f, 0f, 1f), 0.01f)];
 
-        builder.Build(lights, projection, Vector3.Zero, Forward, projection, Vector3.Zero);
+        builderGrid.TryPrepare(projection, Vector3.Zero, Forward, projection, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         Assert.Equal(-2f, builder.Depth.X, 4);
         Assert.Equal(22f, builder.Depth.Y, 4);
@@ -98,12 +108,16 @@ public sealed class PointLightClusterBuilderTests
     public void CorrectedClipYControlsTheClusterRow()
     {
         var regular = new PointLightClusterBuilder();
+        var regularGrid = new ClusterFrameGrid();
         var flipped = new PointLightClusterBuilder();
+        var flippedGrid = new ClusterFrameGrid();
         Matrix4x4 corrected = Ortho * Matrix4x4.CreateScale(1f, -1f, 1f);
         ModelRenderer.PointLightData[] lights = [Light(new Vector3(0f, 6f, -1.5f), 0.1f)];
 
-        regular.Build(lights, Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
-        flipped.Build(lights, corrected, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        regularGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        regular.Build(lights, regularGrid, Vector3.Zero);
+        flippedGrid.TryPrepare(corrected, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        flipped.Build(lights, flippedGrid, Vector3.Zero);
 
         AssertContains(regular, 8, 7, 0, 0);
         AssertContains(flipped, 8, 1, 0, 0);
@@ -114,7 +128,9 @@ public sealed class PointLightClusterBuilderTests
     public void FloatingOriginShiftLeavesEveryPackedIndexUnchanged()
     {
         var atZero = new PointLightClusterBuilder();
+        var atZeroGrid = new ClusterFrameGrid();
         var shifted = new PointLightClusterBuilder();
+        var shiftedGrid = new ClusterFrameGrid();
         var origin = new Vector3(100_000f, -50_000f, 70_000f);
         ModelRenderer.PointLightData[] local =
         [
@@ -127,8 +143,10 @@ public sealed class PointLightClusterBuilderTests
             Light(origin + new Vector3(-8f, -4f, -20f), 3f),
         ];
 
-        atZero.Build(local, Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
-        shifted.Build(absolute, Ortho, Vector3.Zero, Forward, Ortho, origin);
+        atZeroGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        atZero.Build(local, atZeroGrid, Vector3.Zero);
+        shiftedGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, origin);
+        shifted.Build(absolute, shiftedGrid, origin);
 
         Assert.Equal(atZero.Depth, shifted.Depth);
         Assert.Equal(atZero.CameraForward, shifted.CameraForward);
@@ -145,10 +163,12 @@ public sealed class PointLightClusterBuilderTests
         projection.M13 = 0.002f;
         projection.M23 = -0.001f;
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
         Vector3 sample = new(3f, -1f, -12f);
         ModelRenderer.PointLightData[] lights = [Light(sample + new Vector3(0.2f, 0f, 0f), 0.25f)];
 
-        builder.Build(lights, projection, Vector3.Zero, Forward, projection, Vector3.Zero);
+        builderGrid.TryPrepare(projection, Vector3.Zero, Forward, projection, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         Assert.NotEqual(-1f, builder.Depth.W);
         Vector4 clip = Vector4.Transform(new Vector4(sample, 1f), projection);
@@ -176,9 +196,10 @@ public sealed class PointLightClusterBuilderTests
         if (invalidKind == 3) projection = default;
         if (invalidKind == 4) vp = Matrix4x4.Identity;
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
 
-        builder.Build([Light(new Vector3(0f, 0f, -2f), 1f)], vp, Vector3.Zero, forward,
-            projection, Vector3.Zero);
+        builderGrid.TryPrepare(vp, Vector3.Zero, forward, projection, Vector3.Zero);
+        builder.Build([Light(new Vector3(0f, 0f, -2f), 1f)], builderGrid, Vector3.Zero);
 
         Assert.Equal(-1f, builder.Depth.W);
         Assert.True(float.IsFinite(builder.Depth.X));
@@ -195,8 +216,10 @@ public sealed class PointLightClusterBuilderTests
     public void SixtyFifthReferenceMarksOverflowAndStoresNoIndices()
     {
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
 
-        builder.Build(Stack(65, new Vector3(1f, 0f, -1.5f), 0.1f), Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builderGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builder.Build(Stack(65, new Vector3(1f, 0f, -1.5f), 0.1f), builderGrid, Vector3.Zero);
 
         Assert.Equal(PointLightClusterBuilder.OverflowCount, builder.Image[PointLightClusterImage.ClusterIndex(8, 4, 0)]);
         Assert.Equal(1, builder.OverflowedClusters);
@@ -209,8 +232,10 @@ public sealed class PointLightClusterBuilderTests
     public void SixtyFourReferencesFillAClusterInAscendingOrderWithoutOverflow()
     {
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
 
-        builder.Build(Stack(64, new Vector3(1f, 0f, -1.5f), 0.1f), Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builderGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builder.Build(Stack(64, new Vector3(1f, 0f, -1.5f), 0.1f), builderGrid, Vector3.Zero);
 
         ReadOnlySpan<uint> stored = PointLightClusterImage.Lights(builder, PointLightClusterImage.ClusterIndex(8, 4, 0),
             out bool overflow);
@@ -236,8 +261,10 @@ public sealed class PointLightClusterBuilderTests
     public void SixtyFourLightsReachingEveryClusterFillTheIndexRegionWithoutRunningOut()
     {
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
 
-        builder.Build(Stack(64, new Vector3(0f, 0f, -13f), 100f), Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builderGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builder.Build(Stack(64, new Vector3(0f, 0f, -13f), 100f), builderGrid, Vector3.Zero);
 
         Assert.Equal(0, builder.OverflowedClusters);
         Assert.Equal(PointLightClusterBuilder.ClusterCount * 64, builder.LightReferenceCount);
@@ -255,8 +282,10 @@ public sealed class PointLightClusterBuilderTests
     public void SixtyFiveLightsReachingEveryClusterOverflowEveryHeaderAndStoreNoIndices()
     {
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
 
-        builder.Build(Stack(65, new Vector3(0f, 0f, -13f), 100f), Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builderGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builder.Build(Stack(65, new Vector3(0f, 0f, -13f), 100f), builderGrid, Vector3.Zero);
 
         Assert.Equal(0f, builder.Depth.W);
         Assert.Equal(PointLightClusterBuilder.ClusterCount, builder.OverflowedClusters);
@@ -270,6 +299,7 @@ public sealed class PointLightClusterBuilderTests
     public void ClusterIndicesAreContiguousInClusterOrderAndThePaddingIsZero()
     {
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
         ModelRenderer.PointLightData[] lights =
         [
             Light(new Vector3(0f, 0f, -2f), 1f),
@@ -283,11 +313,13 @@ public sealed class PointLightClusterBuilderTests
         // A dense frame first stores indices 0 to 63 in every cluster, so index slot k of the region holds k mod 64.
         // The pad below starts past a count that is not a multiple of four, so every slot it covers holds a non-zero
         // stale index and only the build's own zeroing clears it.
-        builder.Build(Stack(64, new Vector3(0f, 0f, -13f), 100f), Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builderGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builder.Build(Stack(64, new Vector3(0f, 0f, -13f), 100f), builderGrid, Vector3.Zero);
         Assert.Equal(0, builder.OverflowedClusters);
         Assert.Equal(PointLightClusterBuilder.HeaderRegionUInts + PointLightClusterBuilder.ClusterCount * 64,
             builder.UsedUIntCount);
-        builder.Build(lights, Perspective, Vector3.Zero, Forward, Perspective, Vector3.Zero);
+        builderGrid.TryPrepare(Perspective, Vector3.Zero, Forward, Perspective, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         int next = 0;
         for (int cluster = 0; cluster < PointLightClusterBuilder.ClusterCount; cluster++)
@@ -316,16 +348,21 @@ public sealed class PointLightClusterBuilderTests
     public void ASparseFrameAfterADenseOneMatchesAFreshBuilderOverItsUsedPrefix()
     {
         var reused = new PointLightClusterBuilder();
+        var reusedGrid = new ClusterFrameGrid();
         var fresh = new PointLightClusterBuilder();
+        var freshGrid = new ClusterFrameGrid();
         ModelRenderer.PointLightData[] sparse =
         [
             Light(new Vector3(1f, 0.5f, -1.5f), 0.6f),
             Light(new Vector3(-6f, 3f, -12f), 3f),
         ];
 
-        reused.Build(Stack(65, new Vector3(0f, 0f, -13f), 100f), Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
-        reused.Build(sparse, Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
-        fresh.Build(sparse, Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        reusedGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        reused.Build(Stack(65, new Vector3(0f, 0f, -13f), 100f), reusedGrid, Vector3.Zero);
+        reusedGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        reused.Build(sparse, reusedGrid, Vector3.Zero);
+        freshGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        fresh.Build(sparse, freshGrid, Vector3.Zero);
 
         Assert.Equal(fresh.UsedUIntCount, reused.UsedUIntCount);
         Assert.Equal(fresh.Image[..fresh.UsedUIntCount], reused.Image[..reused.UsedUIntCount]);
@@ -335,18 +372,25 @@ public sealed class PointLightClusterBuilderTests
     public void WarmBuildAllocatesNothing()
     {
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
         ModelRenderer.PointLightData[] lights =
         [
             Light(new Vector3(0f, 0f, -2f), 1f),
             Light(new Vector3(4f, 2f, -12f), 2f),
         ];
         for (int i = 0; i < 4; i++)
-            builder.Build(lights, Perspective, Vector3.Zero, Forward, Perspective, Vector3.Zero);
+        {
+            builderGrid.TryPrepare(Perspective, Vector3.Zero, Forward, Perspective, Vector3.Zero);
+            builder.Build(lights, builderGrid, Vector3.Zero);
+        }
 
         AllocAssert.NoPerCallAllocation("PointLightClusterBuilder.Build over 8 warmed calls", () =>
         {
             for (int i = 0; i < 8; i++)
-                builder.Build(lights, Perspective, Vector3.Zero, Forward, Perspective, Vector3.Zero);
+            {
+                builderGrid.TryPrepare(Perspective, Vector3.Zero, Forward, Perspective, Vector3.Zero);
+                builder.Build(lights, builderGrid, Vector3.Zero);
+            }
         });
     }
 

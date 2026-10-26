@@ -177,6 +177,7 @@ internal readonly struct MapMembershipAffine
     readonly MapMembershipCoefficientStore _store;
     readonly int _first;
     internal MapMembershipCoefficientStore Store => _store;
+    internal MapMembershipAffine(MapMembershipCoefficientStore store, int first) { _store = store; _first = first; }
     internal MapMembershipCoefficient X => _store[_first];
     internal MapMembershipCoefficient Z => _store[_first + 1];
     internal MapMembershipCoefficient C => _store[_first + 2];

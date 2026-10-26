@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -15,15 +16,15 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
 {
     readonly record struct Active(MapMembershipPreparedFootprint Footprint, MapMembershipBoundPlan Lower, MapMembershipBoundPlan Upper);
     readonly record struct Demand(MapMembershipPreparedGeometry.Cell Cell, int Opening);
-    readonly record struct Prism(MapSpaceDoc Space, string Owner, string Parent, MapMembershipPolygon[] Rings,
+    readonly record struct Prism(MapSpaceDoc Space, string Owner, string Parent, MapMembershipPolygonRange Rings,
         MapExactValue Lower, MapExactValue Upper);
-    internal long InventoryBytes => checked(512L + _geometry.InventoryBytes + MapMembershipExact.StorageBytes + (_coefficientOwner?.InventoryBytes ?? 0) +
+    internal long InventoryBytes => checked(512L + _geometry.InventoryBytes + MapMembershipExact.StorageBytes + (_arenaOwner?.InventoryBytes ?? 0) +
         _footprints.Sum(f => 8L + f.InventoryBytes) + _portals.Sum(p => 8L + p.InventoryBytes) +
         192L * _spaces.Count + _ancestors.Values.Sum(a => 96L + 8L * a.Length) +
-        _prisms.Sum(p => 128L + p.Rings.Sum(r => 8L + r.InventoryBytes)) + 32L * _active.Length + 16L * _demands.Length +
+        _prisms.Length * 128L + (long)Unsafe.SizeOf<Active>() * _active.Length + (long)Unsafe.SizeOf<Demand>() * _demands.Length +
         8L * (_validated.Length + _physical.Length + _opening.Length) + 8L * _patchFaces.Length +
         MapMembershipPointScratch.Bytes(_scratch.Raw.Length, _scratch.Prisms.Length));
-    readonly MapMembershipCoefficientStore? _coefficientOwner;
+    readonly MapMembershipGeometryArena? _arenaOwner;
     readonly MapScopedSurfaces _view;
     readonly MapMembershipPreparedGeometry _geometry;
     readonly MapMembershipPreparedFootprint[] _footprints;
@@ -50,8 +51,8 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
 
     internal MapSpaceMembershipScratch(MapScopedSurfaces view, MapMembershipPreparation demand, MapMembershipDemandPlan? plan = null)
     {
-        using var encoding = MapMembershipCoefficientStore.Begin();
-        _coefficientOwner = encoding.Owns ? encoding.Store : null;
+        using var building = MapMembershipArenaBuilder.Begin();
+        _arenaOwner = building.Owns ? building.Arena : null;
         _view = view;
         var records = MapSpaceGeometry.Records(view).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
         Prisms = records.OfType<MapPrismDomain>().ToArray();
@@ -76,15 +77,16 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
             if (s.Kind != MapSpaceKind.Room || s.Parent != p.Parent) throw new MapDocumentException("missing geometry: prism parent mismatch");
             var domain = MapPrismGeometry.Prepare(view, p);
             var heights = MapPrismGeometry.Heights(view, p);
+            int first = building.Arena.Polygons.Count;
+            foreach (var piece in domain.Pieces) _ = new MapMembershipPolygon(piece.Ring);
             return new Prism(_spaces[_owners[s.Id]], _owners[s.Id], _owners[p.Parent.Id],
-                domain.Pieces.Select(r => new MapMembershipPolygon(r.Ring)).ToArray(), heights.Lower, heights.Upper);
+                new(building.Arena, first, domain.Pieces.Count), heights.Lower, heights.Upper);
         }).ToArray();
         _active = new Active[_footprints.Length];
         _demands = new Demand[checked(2 * _footprints.Length + 16 * _portals.Length + view.Surfaces.Count)];
         _validated = new long[_geometry.PatchCount]; _physical = new long[_geometry.Cells.Length];
         _opening = new long[_geometry.FaceSets.Count]; _patchFaces = new long[_geometry.PatchCount];
         _scratch = new(demand.Parts, Prisms.Length);
-        if (encoding.Owns) encoding.Store.Freeze();
     }
     public MapPrismDomain[] Prisms { get; }
     public int CandidateCount => _activeCount;
@@ -153,7 +155,7 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
                 var surface = _view.Surfaces[i];
                 if (surface.IndoorSpan is null) continue;
                 var cell = _geometry.Surfaces[surface.Id].Find(_point, _exact);
-                if (cell is not null && cell.Indoor) Queue(cell, -1);
+                if (cell is { } found && found.Indoor) Queue(found, -1);
             }
             long faces = 0, remaining = scope.Limits.MaxInspectedFaces - _prismVertices;
             for (int i = 0; i < _demandCount; i++)
@@ -186,9 +188,9 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
                 for (int j = 0; j < ancestry.Length; j++) parent |= ancestry[j].Id == span.ParentSpace.Id;
                 if (!parent) continue;
                 var cell = _geometry.Surfaces[surface.Id].Find(_point, _exact);
-                if (cell is null || !cell.Indoor) continue;
-                var lower = MapMembershipPreparedGeometry.Height(cell.SpanLower!, _point, _exact);
-                var upper = MapMembershipPreparedGeometry.Height(cell.SpanUpper!, _point, _exact);
+                if (cell is not { } found || !found.Indoor) continue;
+                var lower = MapMembershipPreparedGeometry.Height(found.SpanLower, _point, _exact);
+                var upper = MapMembershipPreparedGeometry.Height(found.SpanUpper, _point, _exact);
                 if (lower is null || upper is null) return Result(_exact.NotRepresentable ? MapMembershipStatus.NotRepresentable : MapMembershipStatus.MissingGeometry);
             }
             _space = selected.Id;

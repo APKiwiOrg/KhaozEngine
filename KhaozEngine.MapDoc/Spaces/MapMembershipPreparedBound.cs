@@ -10,8 +10,8 @@ internal readonly record struct MapMembershipBoundPlan(MapSpacePointBounds.Bound
 {
     internal MapExactValue? Height(MapExactXz point, MapMembershipPreparedGeometry geometry, MapMembershipExact exact)
     {
-        if (Cell is null) return null;
-        return Result.Compatibility is not null ? Cell.LegacyHeight(point, exact)
+        if (Cell is not { } cell) return null;
+        return Result.Compatibility is not null ? cell.LegacyHeight(point, exact)
             : MapMembershipPreparedGeometry.Height(geometry.FaceSets[Faces], point, exact);
     }
 }
@@ -67,24 +67,28 @@ internal sealed class MapMembershipPreparedBound
     internal MapMembershipBoundPlan Plan(MapExactXz point, MapMembershipExact exact)
     {
         var cell = _surface?.Find(point, exact);
-        int index = cell is null ? -1 : Array.BinarySearch(_ids, cell.Id);
+        int index = cell is { } found ? Array.BinarySearch(_ids, found.Id) : -1;
         return index < 0 ? _absent : _plans[index];
     }
 }
 
 internal sealed class MapMembershipPreparedFootprint
 {
-    internal long InventoryBytes => checked(128L + _cells.Sum(c => 8L + c.InventoryBytes) + Lower.InventoryBytes + Upper.InventoryBytes);
+    internal long InventoryBytes => checked(128L + (_arenaOwner?.InventoryBytes ?? 0) + Lower.InventoryBytes + Upper.InventoryBytes);
     internal readonly MapSpaceFootprint Record;
     internal readonly MapMembershipPreparedBound Lower, Upper;
-    readonly MapMembershipPolygon[] _cells;
+    readonly MapMembershipGeometryArena? _arenaOwner;
+    readonly MapMembershipPolygonRange _cells;
     internal MapMembershipPreparedFootprint(MapScopedSurfaces view, MapMembershipPreparedGeometry geometry, MapSpaceFootprint record, MapMembershipDemandPlan plan)
     {
-        MapMembershipBuild.Inventory(checked(128L + 8L * record.SlotCells.Count));
+        using var building = MapMembershipArenaBuilder.Begin();
+        _arenaOwner = building.Owns ? building.Arena : null;
+        MapMembershipBuild.Inventory(128);
         Record = record;
-        _cells = new MapMembershipPolygon[record.SlotCells.Count];
-        for (int i = 0; i < _cells.Length; i++)
-            _cells[i] = new(MapEffectiveGeometry.CellPolygon(view, record.Lattice, record.SlotCells[i]), cell: true);
+        int first = building.Arena.Polygons.Count;
+        for (int i = 0; i < record.SlotCells.Count; i++)
+            _ = new MapMembershipPolygon(MapEffectiveGeometry.CellPolygon(view, record.Lattice, record.SlotCells[i]), cell: true);
+        _cells = new(building.Arena, first, record.SlotCells.Count);
         if (MapMembershipBuild.Current is { } build) build.Counts.UniqueFootprintPolygons += _cells.Length;
         Lower = new(view, geometry, record, record.Lower, plan); Upper = new(view, geometry, record, record.Upper, plan);
     }

@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 namespace KhaozEngine.MapDoc.Spaces;
 
 /// <summary>Attempt-owned bounded pages. Growth admits both directories before the old one retires.</summary>
-internal sealed class MapMembershipArenaPages<T> where T : struct
+internal sealed class MapMembershipArenaPages<T>
 {
     readonly int _capacity;
     int _count, _pageCount;

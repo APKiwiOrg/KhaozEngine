@@ -42,6 +42,8 @@ internal sealed class MapMembershipCoefficientStore
         public void Dispose() => t_current = _previous;
     }
     internal int Count => _tokens.Count;
+    internal int TokenPages => _tokens.PageCount;
+    internal int MagnitudePages => _magnitudes.PageCount;
     internal long InventoryBytes => checked(32 + _tokens.InventoryBytes + _magnitudes.InventoryBytes);
     internal MapMembershipCoefficient this[int index] => _tokens[index];
     internal int Append(BigInteger value)

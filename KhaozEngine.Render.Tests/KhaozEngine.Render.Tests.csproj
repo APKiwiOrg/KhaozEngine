@@ -113,6 +113,8 @@
   <ItemGroup>
     <Compile Include="../KhaozEngine.MapDoc.Tests/Foliage/FarFoliageGenerationFixtures.cs" Link="MapDoc/FarFoliageGenerationFixtures.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Tests/Scene/*Fixtures.cs" Link="MapDoc/Scene/%(Filename)%(Extension)" />
+    <Compile Include="../KhaozEngine.MapDoc.Tests/Scene/MapAcquisitionInventoryOracle.cs" Link="MapDoc/Scene/MapAcquisitionInventoryOracle.cs" />
+    <Compile Include="../KhaozEngine.MapDoc.Tests/Interiors/MapMembershipCompactInventory.cs" Link="MapDoc/MapMembershipCompactInventory.cs" />
     <Compile Include="../test-shared/SkinnedAttachmentGlbFixture.cs" Link="Shared/SkinnedAttachmentGlbFixture.cs" />
   </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />

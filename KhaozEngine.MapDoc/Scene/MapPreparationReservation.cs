@@ -36,6 +36,8 @@ internal sealed class MapPreparationReservation : IDisposable
     }
     internal long InventoryBytes(HashSet<object> seen, bool includeDependencies = true) =>
         checked(_bytes + (includeDependencies ? _dependencies?.UniqueBytes(seen) ?? 0 : 0));
+    internal long RootInventoryBytes(HashSet<object> seen) => seen.Add(this)
+        ? checked(_bytes + (_dependencies?.RootInventoryBytes(seen) ?? 0)) : 0;
     internal void DependOn(MapSceneAdmission admission, object identity, long bytes) =>
         (_dependencies ??= new()).Add(admission, identity, bytes, windowOwner: this);
     internal void Share(MapSceneAdmission admission, object identity) =>

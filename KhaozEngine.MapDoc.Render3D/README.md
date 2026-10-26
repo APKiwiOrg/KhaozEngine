@@ -256,8 +256,10 @@ Idle composition entries and pieces are evicted after the last plan or upload re
 replace its image while retaining an identical mesh. Frames borrow admitted input and never decode again.
 
 `MapRenderAdmission` charges source metadata, encoded closure retention, decoder peaks, prepared plans and the
-renderer-measured upload demand. Settled plans include the unique canonical water allocations retained by their
-batch readers, alongside the plan and scene receipts. `MapUploadReservation` is claimed before factories with
+renderer-measured upload demand. Composite CPU settlement unions physical inventory by reference identity across
+all plan and scene receipts. It includes each shared membership page once, the cache control, every distinct
+window control and canonical water once. Foliage context and sample ownership remains on its separate charges.
+Reachable per-window receipt totals must not be summed as unique root storage. `MapUploadReservation` is claimed before factories with
 the unchanged complete CPU and GPU peak. GPU staging credit returns only after transfer completion on the
 device. After publication drops detached inputs and transfer storage, CPU settles to the renderer's independent
 retained inventory. Final `Released` returns only the remaining CPU and owned GPU payload, once. Cancellation

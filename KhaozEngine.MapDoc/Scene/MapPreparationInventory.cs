@@ -9,23 +9,35 @@ namespace KhaozEngine.MapDoc.Scene;
 internal sealed class MapPreparationInventory : IDisposable
 {
     static readonly ConditionalWeakTable<MapSceneAdmission, Registry> Registries = new();
-    sealed class Shared(List<IDisposable> pieces)
-    { internal readonly List<IDisposable> Pieces = pieces; internal int Owners = 1; internal long Bytes; }
+    sealed class Shared(List<IDisposable> pieces, Func<HashSet<object>, long> rootBytes)
+    {
+        internal readonly List<IDisposable> Pieces = pieces;
+        internal Func<HashSet<object>, long>? RootBytes = rootBytes;
+        internal int Owners = 1;
+        internal long Bytes;
+    }
     readonly Shared _shared;
     bool _disposed;
     internal long Bytes => _shared.Bytes;
-    internal static MapPreparationInventory Own(long bytes, params IDisposable?[] pieces)
+    /// <summary>Physical root ownership, including controls outside the borrowing view's reachable bytes.</summary>
+    internal long RootInventoryBytes(HashSet<object> seen)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return seen.Add(_shared) ? _shared.RootBytes!(seen) : 0;
+    }
+    internal static MapPreparationInventory Own(long bytes, Func<HashSet<object>, long> rootBytes, params IDisposable?[] pieces)
     {
         var owned = new List<IDisposable>(pieces.Length);
         foreach (var piece in pieces) if (piece is not null) owned.Add(piece);
-        return new(owned, bytes);
+        return new(owned, bytes, rootBytes);
     }
     // A frozen arena has one fixed set of identities. Its registry dies with that arena's last lease,
     // keeping directory high-water storage out of the long-lived source inventory registry.
     internal static MapPreparationInventory AcquireIsolated(MapSceneAdmission admission,
         IEnumerable<(object Identity, long Bytes)> inventory, MapPreparationReservation workspace) =>
         new Registry(admission).Acquire(inventory, workspace, null, workspace, false);
-    MapPreparationInventory(List<IDisposable> pieces, long bytes) => _shared = new(pieces) { Bytes = bytes };
+    MapPreparationInventory(List<IDisposable> pieces, long bytes, Func<HashSet<object>, long> rootBytes) =>
+        _shared = new(pieces, rootBytes) { Bytes = bytes };
     MapPreparationInventory(Shared shared) => _shared = shared;
     internal static MapPreparationInventory Acquire(MapSceneAdmission admission,
         IEnumerable<(object Identity, long Bytes)> inventory, MapPreparationReservation? workspace = null,
@@ -49,6 +61,7 @@ internal sealed class MapPreparationInventory : IDisposable
             if (--_shared.Owners != 0) return;
             foreach (var piece in _shared.Pieces) piece.Dispose();
             _shared.Pieces.Clear();
+            _shared.RootBytes = null;
         }
     }
     sealed class Registry(MapSceneAdmission admission)
@@ -98,7 +111,8 @@ internal sealed class MapPreparationInventory : IDisposable
                             }
                         }));
                     }
-                    return new(leases, parts.Sum(p => p.Bytes));
+                    return new(leases, parts.Sum(p => p.Bytes),
+                        seen => parts.Where(p => seen.Add(p.Identity)).Sum(p => p.Bytes));
                 }
                 catch { foreach (var lease in leases) lease.Dispose(); throw; }
             }

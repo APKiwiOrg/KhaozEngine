@@ -36,6 +36,7 @@ internal sealed class MapPreparationDependencies : IDisposable
         _pieces.Add(identity, new(bytes, lease));
     }
     internal long UniqueBytes(HashSet<object> seen) => _pieces.Where(p => seen.Add(p.Key)).Sum(p => p.Value.Bytes);
+    internal long RootInventoryBytes(HashSet<object> seen) => _pieces.Values.Sum(p => p.Lease.RootInventoryBytes(seen));
     internal MapPreparationDependencies Rebind(MapPreparationReservation destination, MapPreparationReservation? workspace = null)
     {
         var result = new MapPreparationDependencies();

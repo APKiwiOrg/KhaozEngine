@@ -8,6 +8,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-27
 
+- Settle native scene residency CPU to unique shared membership inventory across windows, including cache and
+  per-window controls, so overlapping windows neither duplicate physical capacity nor omit retained controls.
 - Store roof membership geometry in compact ledger-owned arena columns. Exact coefficients are 16-byte tokens with
   pooled large magnitudes, and polygons, triangles, cells and bound rows are packed columns. Footprint products are
   shared across a window's buffers under a full identity key and charged once per borrowing window. Query results,

@@ -11737,6 +11737,9 @@ intact. The final lease retires the footprint's cache entry and receipts togethe
 Private stamp arrays and surface cell IDs reserve their selected-cell capacity before allocation. Publication checks
 private bytes against direct preparation and shared bytes against live product leases. Native cell, placement and
 plan collectors deduplicate shared membership dependencies when combining their buffers' reachable inventories.
+Composite residency CPU settlement unions physical allocation identities across windows, including the membership
+cache control, each distinct window control and canonical water once. Foliage contexts and samples keep their
+separate CPU ownership. Recenter and unload settle the replacement union, and the last window returns to source-only CPU.
 Its optional `Counts` diagnostics contain counts and byte totals without geometry or source identities.
 They include shared/private capacities, polygon corners, every triangle family, frozen bounds, page capacities,
 fallback magnitude pages and side tables. Headers, directory growth and unused capacity are charged before allocation.

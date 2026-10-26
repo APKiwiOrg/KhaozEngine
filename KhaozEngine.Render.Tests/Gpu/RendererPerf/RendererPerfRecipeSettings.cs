@@ -13,11 +13,30 @@ internal static class RendererPerfRecipeSettings
         var resolver = new DefaultJsonTypeInfoResolver();
         resolver.Modifiers.Add(static info =>
         {
-            // WaterPlane.Optics did not exist in the frozen recipes. Only a bound binding is new work to encode.
+            // New water defaults preserve the frozen encoding. Explicit opt-ins remain authored inputs.
             if (info.Type == typeof(WaterPlane))
             {
                 foreach (var property in info.Properties)
                     if (property.Name == nameof(WaterPlane.Optics)) property.ShouldSerialize = BoundOptics;
+                    else if (property.Name == nameof(WaterPlane.FloorY))
+                        property.ShouldSerialize = static (_, field) => field is not null;
+                return;
+            }
+            if (info.Type == typeof(WaterSettings))
+            {
+                foreach (var property in info.Properties)
+                    if (property.Name == nameof(WaterSettings.UnderwaterSunlight))
+                        property.ShouldSerialize = static (_, field) => field is true;
+                    else if (property.Name == nameof(WaterSettings.UnderwaterPenumbraPerMetre))
+                        property.ShouldSerialize = static (_, field) => field is float penumbra && penumbra != 0.03f;
+                return;
+            }
+            if (info.Type == typeof(WaterLook))
+            {
+                foreach (var property in info.Properties)
+                    if (property.Name is nameof(WaterLook.UnderwaterSunlight)
+                        or nameof(WaterLook.UnderwaterPenumbraPerMetre))
+                        property.ShouldSerialize = static (_, field) => field is not null;
                 return;
             }
             if (info.Type != typeof(PixelPostProcessSettings)) return;

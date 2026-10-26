@@ -15,6 +15,13 @@ public sealed class RendererPerfEntrypointRootTests
     const string RuntimeRefusal = "Observed runtime, GC, tiering or relevant environment differs from approval.";
 
     [Fact]
+    public void Nested_test_host_keeps_its_canonical_working_directory_when_given_dot_segments()
+    {
+        using var fixture = new EntryFixture(hostRelativePath: "tools/../tools/Renderer.Perf.Tests/bin/Release/net10.0");
+        fixture.Refuse(RuntimeRefusal);
+    }
+
+    [Fact]
     public void Nested_test_host_reads_authorized_checkout_manifest_then_refuses_runtime_before_native_startup()
     {
         using var fixture = new EntryFixture();
@@ -92,7 +99,7 @@ public sealed class RendererPerfEntrypointRootTests
         internal readonly string Host;
         internal readonly string Root;
 
-        internal EntryFixture(bool matchRuntime = false)
+        internal EntryFixture(bool matchRuntime = false, string hostRelativePath = "tools/Renderer.Perf.Tests/bin/Release/net10.0")
         {
             Root = Work.Git("rev-parse", "--show-toplevel").Trim();
             if (matchRuntime)
@@ -107,7 +114,7 @@ public sealed class RendererPerfEntrypointRootTests
             Work.Git("add", "--", "tools/Renderer.Perf.Tests/authorized/pilot-linux.json");
             Work.Git("commit", "--quiet", "--amend", "--no-edit");
             AuthorizeCurrentHead();
-            Host = Path.Combine(Root, "tools/Renderer.Perf.Tests/bin/Release/net10.0");
+            Host = Path.GetFullPath(Path.Combine(Root, hostRelativePath));
             Directory.CreateDirectory(Host);
             if (matchRuntime)
             {

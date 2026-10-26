@@ -111,7 +111,12 @@ public sealed class RendererPerfWorkflowTrustTests
             string run = legs.Split("        run: |\n", 2)[1];
             _selector = string.Join('\n', run.TrimEnd().Split('\n').Select(s => s.Length >= 10 ? s[10..] : s));
         }
-        internal (int Code, string Output) Select() => Fixture.Execute("bash", ["-e", "-o", "pipefail", "-c", _selector]);
+        internal (int Code, string Output) Select()
+        {
+            string shell = OperatingSystem.IsWindows()
+                ? RendererPerfWorkflowShell.WindowsBash(Fixture.Git("--exec-path").Trim()) : "bash";
+            return Fixture.Execute(shell, ["-e", "-o", "pipefail", "-c", _selector]);
+        }
         public void Dispose()
         {
             Fixture.Dispose();

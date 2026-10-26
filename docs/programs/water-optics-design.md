@@ -107,7 +107,8 @@ must do the same, recorded in the R8b handoff.
 - Each frame, after queueing and before the opaque pass (where point-light clusters are built today), the scene
   collects every queued plane whose resolved look has `UnderwaterSunlight` true and builds one record per plane in
   render-relative coordinates: rectangle min and max XZ, still surface Y, floor Y (or a large negative), resolved
-  absorption RGB, penumbra-per-metre. Two vec4 (32 bytes). Submission order is preserved.
+  absorption RGB, penumbra-per-metre. Ten floats, packed as three uvec4 (48 bytes) for alignment, with the reader
+  layout documented on `WaterVolumeClusterBuilder`. Submission order is preserved.
 - Records are binned into the existing view-space cluster grid (16 x 9 x 24 froxels, the same jittered raster
   view-projection, render-relative eye and log depth slices as point lights), so a fragment computes ONE cluster
   index for both point lights and water. A record enters a cluster when its box (rectangle by floor to surface)

@@ -956,6 +956,17 @@ generator's candidate scan, support and clearance evaluator, decomposition check
 `Generate`, `Query` and observer APIs continue to expose complete diagnostic samples. A one-shot builder admits
 accepted-row, ordinal-index growth and frozen-array overlap before allocating them, then releases its workspace.
 
+`MapNativeFoliageBatch` owns resident foliage data for its prepared render plan. Residency disposes the old plan
+when a replacement is accepted or its window unloads. After batch disposal, `GeneratedIdentities`, `CoverBatches`,
+`Register` and `Record` throw `ObjectDisposedException`, even if another plan or the cache still owns the same
+columns. Capture any comparison data before requesting replacement, for example
+`var identities = plan.Inventory.Foliage.GeneratedIdentities.ToArray();`. Public identity and cover snapshots,
+and foliage payloads emitted by public `Register`, are detached and remain usable after disposal. Retaining the
+disposed batch does not retain a per-row identity copy or keep its resident columns alive.
+`MapRenderResidency.Record` registers borrowed resident payloads for current-frame use. `MapDrawRecorder.Snapshot`
+does not detach those payloads. To retain a draw inventory, call each live plan's public `Register` on the recorder
+before recording the frame, so its foliage registrations use detached snapshots.
+
 ### Compatibility support and paint
 
 Payload 1 supports `legacy-tile/1` with explicit boundary/material metadata, resolver identity (1, 2) and

@@ -279,6 +279,11 @@ Cache, accepted plan and pending replacement readers share the same column owner
 ownership only. Last release detaches the backing payload before returning its receipt and CPU lease.
 Strings and generation policies have a separate metadata owner counted by object identity. It retains no context,
 support geometry or decoded assets. Context charge wrappers clear their context references when capture ownership ends.
+Accepted-plan replacement and window unload dispose the old `MapNativeFoliageBatch`. Its `GeneratedIdentities`
+and `CoverBatches` getters, `Register` and `Record` throw `ObjectDisposedException` after disposal. Capture detached
+public snapshots before requesting replacement. Those snapshots and foliage payloads from public `Register` survive disposal,
+while retaining the batch shell keeps no per-row identity copy. See the
+[foliage lifetime contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract).
 Settled CPU bytes are the unique retained source, input, context, column, metadata,
 plan, recording and upload inventory. In-flight CPU additionally includes queue reservations and staging.
 At publication, zero recording references or demand below half the retained capacity replaces both dictionaries

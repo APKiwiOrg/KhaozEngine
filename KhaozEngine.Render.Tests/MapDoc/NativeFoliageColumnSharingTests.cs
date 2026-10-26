@@ -95,6 +95,10 @@ public sealed partial class NativeMapFoliageTests
         var matrixBits = Bits(snapshot.WorldTransforms.ToArray());
         var keys = identities.ToArray();
         batch.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => batch.GeneratedIdentities);
+        Assert.Throws<ObjectDisposedException>(() => batch.CoverBatches);
+        Assert.Throws<ObjectDisposedException>(() => batch.Register(fixture.Stamp, publicRecorder));
+        Assert.Throws<ObjectDisposedException>(() => batch.Record(Frame, publicRecorder));
         Assert.Equal(before, cover);
         Assert.Equal(keys, identities);
         Assert.Equal(matrixBits, Bits(snapshot.WorldTransforms.ToArray()));

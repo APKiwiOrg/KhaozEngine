@@ -11462,6 +11462,15 @@ sample's exact CPU matrix, then expand XYZ. Preserve CPU selection, live blade/s
 render dependency digest plus generation to reject stale work. Keep one owned batch across every intersected residency
 membership and release after the last leaves. The R8 handoff does not upload, stream, draw or certify appearance.
 
+Native render residency disposes an accepted plan when its replacement is published or its window unloads.
+Its `MapNativeFoliageBatch.GeneratedIdentities` and `CoverBatches` getters then throw `ObjectDisposedException`,
+as do `Register` and `Record`. Before requesting replacement, capture comparison data with
+`var identities = plan.Inventory.Foliage.GeneratedIdentities.ToArray();`. Public identity and cover snapshots
+and foliage payloads emitted by public `Register` are detached and survive disposal. `MapRenderResidency.Record`
+supplies borrowed payloads. To retain a draw inventory, register each live plan publicly on the recorder before
+recording the frame. Keeping the old batch reference does not extend its resident data lifetime or retain a
+per-row identity copy.
+
 The [MapDoc foliage contract](../KhaozEngine.MapDoc/README.md#native-foliage-consumer-contract) is the living reference
 for payload/storage ceilings, compatibility owner fallback, paint tie-break, typed refusals, aggregate budgets,
 `MapFoliageEffectSet(Chunks, Layers)`, whole-layer stale entries and public acceptance evidence. Bounds and density are

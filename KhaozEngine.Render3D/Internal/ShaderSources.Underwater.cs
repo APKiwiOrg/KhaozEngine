@@ -220,11 +220,11 @@ vec2 underwaterMarchOffset(UnderwaterKey key, int cascade, int slice, vec2 pixel
 
     // Spliced after projectCascade and the key kernel.
     internal const string UnderwaterSubmergedOcclusionGlsl = @"
-// One POINT depth, never a filtered depth. The horizontal water plane is evaluated on the fetched texel's
-// light ray, not the unsnapped lookup ray. ShadowMat is orthographic with orthogonal, scaled basis rows.
+// One POINT depth, never a filtered depth. Reconstruct the stored caster's height on the fetched texel's
+// light ray. ShadowMat is orthographic with orthogonal, scaled basis rows, including at horizontal light.
 float underwaterSliceAtCascade(int cascade, int count, vec3 endPos, vec3 Ngeo, float slopeSin,
                               float surfaceY, float startDepth, float endDepth, float endBias,
-                              vec2 uv, float z, vec2 tapOffset) {
+                              vec2 uv, float z, vec2 tapOffset, bool finalSlice) {
     float stepSize = ShadowParams2.x;
     vec2 tapUv = (floor((uv + tapOffset) / stepSize) + vec2(0.5)) * stepSize;
     tapUv = clamp(tapUv, vec2(stepSize * 0.5), vec2(1.0 - stepSize * 0.5));
@@ -235,16 +235,33 @@ float underwaterSliceAtCascade(int cascade, int count, vec3 endPos, vec3 Ngeo, f
     vec3 rowX = vec3(m[0].x, m[1].x, m[2].x);
     vec3 rowY = vec3(m[0].y, m[1].y, m[2].y);
     vec3 rowZ = vec3(m[0].z, m[1].z, m[2].z);
-    vec2 worldYPerClipXY = vec2(rowX.y / dot(rowX, rowX), rowY.y / dot(rowY, rowY));
+    vec3 worldPerClipX = rowX / dot(rowX, rowX);
+    vec3 worldPerClipY = rowY / dot(rowY, rowY);
+    vec3 worldPerClipZ = rowZ / dot(rowZ, rowZ);
     vec2 snapClip = (tapUv - uv) * vec2(2.0, -2.0);
+    vec3 tapDisplacement = worldPerClipX * snapClip.x + worldPerClipY * snapClip.y;
     float normalY = Ngeo.y * ShadowNormalOffsets[cascade] * slopeSin;
-    float rayY = endPos.y + normalY + dot(worldYPerClipXY, snapClip);
+    float endY = endPos.y + normalY;
+    float tapEndY = endY + tapDisplacement.y;
     // Use the atlas's fitted axis. ShadowLightHold can keep it fixed while LightDir moves between fits.
-    float zPerY = dot(rowZ, rowZ) / rowZ.y;
-    float surfaceZ = z + (surfaceY - rayY) * zPerY;
-    float startZ = surfaceZ - (startDepth - normalY) * zPerY;
-    float endZ = surfaceZ - (endDepth - normalY) * zPerY - endBias;
-    bool occluded = stored < 1.0 && stored > surfaceZ && stored >= startZ && stored < endZ;
+    float storedY = tapEndY + (stored - z) * worldPerClipZ.y;
+    // Adjacent slices share world-height boundaries, even though their widened rays differ. Shifting
+    // every band with its tap would open gaps through a roof. Horizontal rays have constant height.
+    float bandEndY = worldPerClipZ.y == 0.0 ? tapEndY : endY;
+    float startY = bandEndY + (endDepth - startDepth);
+    bool beforeEnd;
+    if (finalSlice) {
+        // Evaluate the receiver's normal-offset geometric plane directly on this displaced ray instead
+        // of solving for its intersection, avoiding any division by light elevation or plane slope.
+        // Adding the existing depth bias to the stored depth is the same strict endpoint comparison.
+        float planeSlope = dot(Ngeo, worldPerClipZ);
+        float planeDistance = dot(Ngeo, tapDisplacement) + (stored - z + endBias) * planeSlope;
+        beforeEnd = planeSlope < 0.0 ? planeDistance > 0.0
+            : planeSlope > 0.0 ? planeDistance < 0.0 : stored < z - endBias;
+    } else {
+        beforeEnd = storedY >= bandEndY && (worldPerClipZ.y != 0.0 || stored < z);
+    }
+    bool occluded = stored < 1.0 && storedY < surfaceY && storedY <= startY && beforeEnd;
     return occluded ? 0.0 : 1.0;
 }
 
@@ -275,14 +292,14 @@ float underwaterSubmergedOcclusion(UnderwaterKey key, vec3 renderPos, vec3 Ngeo,
         if (selected >= 0) {
             float lit = underwaterSliceAtCascade(selected, count, endPos, Ngeo, slopeSin, key.entry.y,
                 start * key.depth, end * key.depth, endBias, uv, z,
-                underwaterMarchOffset(key, selected, slice, gl_FragCoord.xy));
+                underwaterMarchOffset(key, selected, slice, gl_FragCoord.xy), last);
             float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
             if (selected < count - 1 && ShadowParams2.w > 0.0 && edge < ShadowParams2.w) {
                 vec2 uv2; float z2;
                 if (projectCascade(selected + 1, endPos, Ngeo, slopeSin, margin, uv2, z2)) {
                     float lit2 = underwaterSliceAtCascade(selected + 1, count, endPos, Ngeo, slopeSin,
                         key.entry.y, start * key.depth, end * key.depth, endBias, uv2, z2,
-                        underwaterMarchOffset(key, selected + 1, slice, gl_FragCoord.xy));
+                        underwaterMarchOffset(key, selected + 1, slice, gl_FragCoord.xy), last);
                     lit = mix(lit2, lit, smoothstep(0.0, ShadowParams2.w, edge));
                 }
             }

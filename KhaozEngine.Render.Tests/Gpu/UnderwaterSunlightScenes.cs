@@ -8,7 +8,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
 
-public enum UnderwaterSunlightGeometry { FlatBed, ThinSlab, StraddlingHull, SubmergedRock, Cave, Bank, AboveWater }
+public enum UnderwaterSunlightGeometry { FlatBed, ThinSlab, StraddlingHull, SubmergedRock, Cave, Bank, AboveWater, HorizontalReceiver, SlopedBed }
 
 public readonly record struct UnderwaterSunlightCase(UnderwaterSunlightGeometry Geometry = UnderwaterSunlightGeometry.FlatBed,
     float Depth = 1f, bool Enabled = true, bool Orthographic = false, float ShadowStrength = 1f,
@@ -38,6 +38,13 @@ public sealed class UnderwaterSunlightScenes : IDisposable
     IGpuFramebuffer? _target;
     IGpuCommandList? _commands;
     MeshHandle _plane, _box;
+
+    internal float[] ReadOpaqueHdrColor()
+    {
+        IGpuTexture texture = _scene!.TemporalPostTargetsForTests!.OpaqueColor;
+        Assert.Equal(GpuPixelFormat.R16G16B16A16Float, texture.Format);
+        return TemporalTextureIo.Read(_gpu!.GpuDevice, texture);
+    }
 
     internal Vector3 CaptureCasterFace(GltfMesh mesh)
     {
@@ -82,6 +89,12 @@ public sealed class UnderwaterSunlightScenes : IDisposable
 
     static IIsoCamera3D Camera(UnderwaterSunlightCase settings)
     {
+        if (settings.Geometry == UnderwaterSunlightGeometry.HorizontalReceiver)
+            return new FlyCamera3D
+            {
+                Position = new Vector3(0f, -1f, -4f), Yaw = 0f, Pitch = 0f, FieldOfView = 0.7f,
+                AspectRatio = 1f, NearPlane = 0.1f, FarPlane = 25f
+            };
         if (settings.Orthographic)
             return new IsoCamera3D
             {
@@ -103,14 +116,16 @@ public sealed class UnderwaterSunlightScenes : IDisposable
         scene.RenderOrigin = Vector3.Zero;
         scene.CameraCut();
         scene.Post.RenderScale = RenderScale.MatchViewport;
-        scene.Post.Quality.AntiAliasing = AntiAliasing.Off;
-        scene.Post.Hdr.Enabled = false;
+        bool horizontal = settings.Geometry == UnderwaterSunlightGeometry.HorizontalReceiver;
+        scene.Post.Quality.AntiAliasing = horizontal ? AntiAliasing.Temporal : AntiAliasing.Off;
+        scene.Post.Hdr.Enabled = horizontal;
         scene.Post.Starfield = false;
         scene.Post.Sky.Enabled = false;
         scene.Post.Background = BackgroundMode.Solid;
         scene.Post.BackgroundColor = new Color(0.1f, 0.05f, 0.15f, 1f);
         scene.Post.Outline = false;
-        scene.Post.LightDirection = new Vector3(0f, -0.57357645f, 0.81915204f);
+        scene.Post.LightDirection = settings.Geometry == UnderwaterSunlightGeometry.HorizontalReceiver
+            ? Vector3.UnitZ : new Vector3(0f, -0.57357645f, 0.81915204f);
         scene.Post.LightColor = settings.AmbientOnly ? Color.Black : Color.White;
         scene.Post.FillLightColor = Color.Black;
         scene.Post.AmbientColor = settings.AmbientOnly ? new Color(0.4f, 0.3f, 0.2f, 1f)
@@ -137,9 +152,17 @@ public sealed class UnderwaterSunlightScenes : IDisposable
     {
         Color bedColor = settings.SpecularOnly ? Color.Black : BedColor;
         Material bedMaterial = settings.SpecularOnly ? Material.Shiny(settings.SpecularStrength, 1f) : Material.None;
-        if (settings.Geometry == UnderwaterSunlightGeometry.Bank)
+        if (settings.Geometry == UnderwaterSunlightGeometry.HorizontalReceiver)
+            scene.Draw(_plane, Matrix4x4.CreateScale(4f, 1f, 3f) * Matrix4x4.CreateRotationX(-MathF.PI / 2f)
+                * Matrix4x4.CreateTranslation(0f, -1f, 0f), bedColor, bedMaterial, castsShadows: false);
+        else if (settings.Geometry == UnderwaterSunlightGeometry.Bank)
             scene.Draw(_plane, Matrix4x4.CreateScale(12f, 1f, 12f)
                 * Matrix4x4.CreateRotationX(-MathF.Atan(0.25f)), bedColor, bedMaterial, castsShadows: false);
+        else if (settings.Geometry == UnderwaterSunlightGeometry.SlopedBed)
+            scene.Draw(_plane, Matrix4x4.CreateScale(12f, 1f, 12f)
+                * Matrix4x4.CreateRotationZ(MathF.PI / 4f)
+                * Matrix4x4.CreateTranslation(0f, settings.BedY, 0f), bedColor, bedMaterial,
+                castsShadows: settings.BedCastsShadows);
         else
             scene.Draw(_plane, Matrix4x4.CreateScale(12f, 1f, 12f)
                 * Matrix4x4.CreateTranslation(0f, settings.BedY, 0f), bedColor, bedMaterial,
@@ -158,6 +181,10 @@ public sealed class UnderwaterSunlightScenes : IDisposable
                 case UnderwaterSunlightGeometry.SubmergedRock:
                     Box(scene, new Vector3(0.8f, 0.2f, 0.16f), new Vector3(0f, settings.BedY + 0.5f, 0f));
                     break;
+                case UnderwaterSunlightGeometry.HorizontalReceiver:
+                    // Fully submerged. The camera sees the wall below the box, along y=-1.
+                    Box(scene, new Vector3(1.2f, 0.6f, 0.4f), new Vector3(0f, -0.5f, -0.6f));
+                    break;
                 case UnderwaterSunlightGeometry.Cave:
                     // Closed room. Camera is inside, below the lake bed at the roof's top (-1.4 m).
                     Box(scene, new Vector3(12f, 0.2f, 12f), new Vector3(0f, -1.5f, 0f));
@@ -173,7 +200,8 @@ public sealed class UnderwaterSunlightScenes : IDisposable
         }
         if (settings.Water)
             scene.DrawWater(new WaterPlane(0f, 0f, 0f, 6f,
-                floorY: settings.Geometry == UnderwaterSunlightGeometry.Cave ? null : MathF.Min(-0.1f, settings.BedY - 0.1f)));
+                floorY: settings.Geometry is UnderwaterSunlightGeometry.Cave or UnderwaterSunlightGeometry.SlopedBed
+                    ? null : MathF.Min(-0.1f, settings.BedY - 0.1f)));
     }
 
     void Box(Scene3D scene, Vector3 scale, Vector3 position) => scene.Draw(_box,
@@ -257,7 +285,10 @@ public sealed class UnderwaterSunlightImage
         Vector4 f = Vector4.Transform(new Vector4(nx, ny, 1f, 1f), _inverse);
         Vector3 near = new Vector3(n.X, n.Y, n.Z) / n.W;
         Vector3 direction = new Vector3(f.X, f.Y, f.Z) / f.W - near;
-        return near + direction * ((Settings.BedY - near.Y) / direction.Y);
+        float distance = Settings.Geometry == UnderwaterSunlightGeometry.SlopedBed
+            ? (Settings.BedY + near.X - near.Y) / (direction.Y - direction.X)
+            : (Settings.BedY - near.Y) / direction.Y;
+        return near + direction * distance;
     }
 
     public Vector3 Pixel(int x, int y)

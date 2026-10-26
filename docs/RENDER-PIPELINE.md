@@ -192,8 +192,12 @@ as one storage buffer appended to every lit receiver's set 0. Each fragment sele
 the sun at the still surface with index `1.333`, and samples key shadows at that entry point with the receiver's own
 bias. Key diffuse and specular attenuate along the refracted path using the body's absorption. The query also works
 with orthographic cameras and disabled shadows. Zero records skip buffer reads. Four jittered depth slices along
-the refracted segment test stored caster depths below the analytic surface and within each slice's band. The
-final slice uses the receiver's normal offset and depth bias to avoid self-shadow. Slice lookups blend cascades,
+the refracted segment reconstruct stored caster heights below the surface and within each slice's height band.
+The orthographic matrix's squared basis lengths keep reconstruction finite through exactly horizontal key light,
+and a separate light-depth comparison excludes casters beyond horizontal endpoints. Non-horizontal slices
+share world-height boundaries, so widened rays cannot open gaps through a roof. The final slice tests the
+receiver's geometric plane on each displaced ray with its normal offset and existing depth bias. This signed
+comparison avoids division by light elevation or plane slope and excludes upslope self-shadow. Slice lookups blend cascades,
 with the outer coverage fade applied once at the real receiver so virtual points near the atlas border do not
 brighten cave floors. The opaque atlas stores the sun-facing near side for outward CCW meshes under
 orientation-preserving transforms, including glTF geometry whose winding the loader preserves. A straddling box's

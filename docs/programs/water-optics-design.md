@@ -153,10 +153,17 @@ attenuation are implemented.
    using the receiver's own normal offset and slope bias (from `P`'s geometric normal and `ndl`) exactly as the dry
    lookup does. That keeps step 7's continuity exact.
 4. Submerged occlusion: march the refracted segment from `E` to `P` in four depth slices. At each slice end,
-   one comparison counts the stored caster depth as occluding only when it
-   lies below the water surface along that tap's light ray AND within that slice's depth band. The surface depth
-   at a tap is analytic, from the cascade matrix and the plane `y = surfaceY`. The last slice stops short of `P` by
-   the receiver's existing bias so the bed does not shadow itself. All ends use the receiver's geometric normal
+   one comparison reconstructs the stored caster's world height on the texel-snapped light ray. It counts only
+   casters below `surfaceY` and inside the slice's height band. Non-horizontal rays use shared world-height
+   boundaries, so different widened tap offsets cannot open gaps through a roof. The
+   inverse height coefficients are each orthographic basis row's Y component divided by its squared length.
+   Those denominators remain nonzero at every light elevation, including exactly horizontal. The height-band
+   endpoint is inclusive so a horizontal ray can occlude, and a separate light-depth comparison excludes
+   casters beyond the endpoint. The final endpoint is the receiver's geometric plane evaluated on each offset
+   tap's ray, retaining the normal offset and existing light-depth bias. A signed plane comparison multiplies
+   by the plane's light-depth slope, with no division by light elevation or plane slope. A parallel plane keeps
+   the light-depth endpoint test. This excludes the receiver's own upslope samples as well as a flat bed.
+   All ends use the receiver's geometric normal
    offset. Internal boundaries share a per-pixel interleaved-gradient-noise offset of up to half a slice, leaving
    no band gaps. The final end stays at the biased receiver. TAA can resolve the jitter. The four slice rays
    spread with the same widened radius, converted separately for each selected cascade. Their offsets vanish

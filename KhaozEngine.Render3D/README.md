@@ -440,10 +440,16 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   fill, point lights, emissive and fog keep their values. Attenuation also applies with shadows disabled, while
   exported key visibility remains exactly one for non-positive shadow strength. Empty water counts skip
   buffer reads, and depth zero meets the dry result. Four jittered depth slices along the refracted segment
-  also test submerged casters. Each fetched atlas texel counts only a stored depth below its analytic water
-  surface and inside that slice's band. The last slice uses the receiver's normal offset and depth bias to
-  avoid self-shadow. The outer coverage fade applies at the real receiver, so virtual slice points near the
-  atlas border do not brighten a covered cave floor. For outward CCW opaque meshes with orientation-preserving
+  also test submerged casters. Each fetched atlas texel reconstructs its stored caster's height and counts it
+  only below the water surface and inside that slice's height band. Reconstruction divides by the squared
+  lengths of the cascade basis rows, so horizontal and near-horizontal light rays remain finite. A separate
+  light-space depth comparison rejects casters beyond horizontal slice ends. Other slices share fixed
+  world-height boundaries, preventing widened rays from opening gaps through a roof. The final limit is the
+  receiver's geometric plane on each offset ray, retaining the normal offset and depth bias. Its signed
+  comparison needs no division by light elevation or plane slope, so tilted receivers also avoid self-shadow.
+  The outer coverage fade applies at the real receiver,
+  so virtual slice points near the atlas border do not brighten a covered cave floor. For outward CCW opaque
+  meshes with orientation-preserving
   transforms, the clockwise-front culling pipeline stores the sun-facing near side. The glTF loader preserves
   that winding, so the entry lookup already shadows a straddling box's above-water face. The march supplies
   the fully submerged rock and cave-roof shadows. The atlas retains one caster per texel, so a nearer caster

@@ -431,6 +431,16 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `TotalDrawCalls`. Same last-frame shape as `PassTimingsMs`, always on and allocation-free, so a game can sample it
   every frame into a telemetry line. The counts are what THIS frame recorded, so a skipped frame reports zero of them
   (the `ShadowCascadeSpanCount` / `ShadowCascadeCasterCount` properties keep reporting the last rendered pass instead).
+  - **Underwater key light**. Every lit receiver inside an opted-in water slab queries the shared cluster grid
+  once, then selects the lowest surface above it, keeping submission order on ties. Rectangle minima and
+  `FloorY` are inclusive, rectangle maxima and the surface are exclusive. The key-shadow lookup moves to the
+  refracted surface entry with the receiver's normal offset and slope bias and selects cascades there.
+  With refractive index `1.333`, depth `h`, and refracted travel direction `t`, the in-water path is
+  `L = h / -t.y`. Only key diffuse and specular receive `exp(-AbsorptionPerMetre * L)`. Ambient, indirect,
+  fill, point lights, emissive and fog keep their values. Attenuation also applies with shadows disabled, while
+  exported key visibility remains exactly one for non-positive shadow strength. Empty water counts skip
+  buffer reads, and depth zero meets the dry result. Submerged-caster marching and penumbra widening remain
+  pending, so a submerged rock or a bed above a cave does not yet occlude this entry lookup.
   - The fit also quantizes the LIGHT's rotation, not just its focus translation: `ShadowLightHoldTexels` (default
   `1`) and `ShadowLightHoldCasterHeight` (default `12`) hold the direction the cascades were last fitted from until
   the sun has turned far enough to drag a worst-case caster's shadow by that many shadow texels, so a stationary
@@ -945,8 +955,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   it per plane. Diagnostics expose `RecordCount`, `DroppedRecords`, `ReferenceCount` and `OverflowedClusters`.
   Water-only frames prepare the same camera grid as point lights. Empty and opted-out frames set the count
   in `ClusterCamera.w` to zero and skip water uploads, so retained buffer contents cannot be read next frame.
-  These uploads prepare a scene-owned buffer for the underwater lighting path. Receiver bindings and shader
-  declarations will be added together with the first shading reads. Existing lit layouts are unchanged.
+  Every lit receiver reads that scene-owned buffer in shared key shading. Set 0 appends binding 15 for rigid,
+  foliage and CPU-skinned receivers, 7 for GPU-skinned, and 6 for splat and tile ground. Lit fragments require
+  three storage buffers, checked at renderer creation against `GpuCapabilities.MaxFragmentStorageBuffers`.
 - Per-plane water look (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
   identical**): a trailing optional constructor parameter on `WaterPlane`, so every call site written before this
   existed still compiles and still packs from the caller's own `WaterSettings` object unchanged. Every field on

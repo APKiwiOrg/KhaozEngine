@@ -40,10 +40,12 @@ floater sun shadows and adopts authored beds once the engine work ships.
 - WO-D7: Public fixtures are synthetic. No Grimhollow image, model or source enters this repository.
 - WO-D8: The release carrying M2 is sent to the Grimhollow coordinator with its tag and adoption notes.
   Grimhollow keeps floaters without a sun shadow until then.
-- WO-D9: Allocate and upload water records before integrating receiver shading, but append the lit layout
-  bindings and declare the GLSL buffer only when shading first reads it. The optimizer removes an unread
-  declaration, which otherwise shifts Direct3D11 material registers out of agreement with the C# layouts.
-  Do not change the engine-wide shaderc preserve-bindings option for this staging step.
+- WO-D9: Every lit receiver appends the water volume buffer to set 0 and reads it in shared key shading.
+  Rigid, foliage and CPU-skinned receivers use binding 15, GPU-skinned receivers use 7, and splat and tile
+  ground use 6. Bindings landed with their first reader because the optimizer removes unread declarations,
+  which shifts Direct3D11 material registers out of agreement with the C# layouts. Keep shaderc
+  preserve-bindings unchanged. Entry refraction and key attenuation are implemented. Submerged-caster
+  marching and the depth-widened kernel remain pending.
 
 ## Open questions and owner gates
 

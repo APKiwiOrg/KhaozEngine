@@ -206,12 +206,12 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         public IGpuSampler CreateSampler(in GpuSamplerDescription d) => new FakeSampler();
-        public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => new FakeResourceLayout();
+        public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => new FakeResourceLayout(d);
         public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d)
         {
             if (ThrowOnResourceSetCreate == ResourceSets.Count + 1)
                 throw new InvalidOperationException("planned resource-set creation failure");
-            var set = new FakeResourceSet(d.Resources);
+            var set = new FakeResourceSet(d.Resources, d.Layout);
             ResourceSets.Add(set);
             return set;
         }
@@ -353,13 +353,22 @@ namespace KhaozEngine.Tests.Gpu
     }
 
     internal sealed class FakeSampler : IGpuSampler { public void Dispose() { } }
-    internal sealed class FakeResourceLayout : IGpuResourceLayout { public void Dispose() { } }
+    internal sealed class FakeResourceLayout(GpuResourceLayoutDescription description = default) : IGpuResourceLayout
+    {
+        internal GpuResourceLayoutDescription Description { get; } = description;
+        public void Dispose() { }
+    }
 
     internal sealed class FakeResourceSet : IGpuResourceSet
     {
         // Default empty for the tests that hand a set straight to a backend and never ask what is in it.
-        internal FakeResourceSet(IGpuBindableResource[]? resources = null) =>
+        internal FakeResourceSet(IGpuBindableResource[]? resources = null, IGpuResourceLayout? layout = null)
+        {
             Resources = resources ?? Array.Empty<IGpuBindableResource>();
+            Layout = layout;
+        }
+
+        internal IGpuResourceLayout? Layout { get; }
 
         /// <summary>What was bound into this set, in binding order. Kept because a set outlives the handles in
         /// it: see <see cref="FakeGpuResourceFactory.LiveSetsNamingAFreedTexture"/>.</summary>

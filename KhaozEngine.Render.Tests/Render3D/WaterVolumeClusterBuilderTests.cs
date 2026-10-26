@@ -404,7 +404,7 @@ public sealed class WaterVolumeClusterBuilderTests
         return grid;
     }
 
-    // Literal C# port of pointLightClusterForFragment in ShaderSources.Lighting.cs, including epsilon and clamping.
+    // Literal C# port of clusterForFragment in ShaderSources.Underwater.cs, including epsilon and clamping.
     static bool ClusterForFragment(Vector3 point, Matrix4x4 viewProjection, ClusterFrameGrid grid, out int cluster)
     {
         cluster = 0;

@@ -149,7 +149,7 @@ layout(set=0, binding=0) uniform U {
     vec4 IndirectParams;
     vec4 IrradianceSH[9];
 };
-" + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
+" + PointLightBufferGlsl + PointLightClusterBufferGlsl + WaterVolumesAt6Glsl + @"
 // The material's own uniforms, written ONCE at load and never re-uploaded. Declared here and NOT in
 // TileGroundVert, because the vertex stage reads none of them (TileGroundMaterialConfig.BuildParams is the C#
 // side of this block, 2 * MaxMaterials + 2 vec4).

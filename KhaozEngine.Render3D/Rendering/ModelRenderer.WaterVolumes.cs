@@ -14,8 +14,7 @@ internal sealed partial class ModelRenderer
 
     static void RequireFragmentStorageBuffers(GpuCapabilities capabilities)
     {
-        // Reserve the count lit pipelines will need when receiver shading first reads and binds water volumes.
-        // The current layouts still have only the point-light record and cluster buffers.
+        // Point-light records, point-light clusters and water volumes are all read by lit fragments.
         const int required = 3;
         if (capabilities.MaxFragmentStorageBuffers < required)
             throw new NotSupportedException($"Lit receivers require maxPerStageDescriptorStorageBuffers >= {required}, "
@@ -35,6 +34,12 @@ internal sealed partial class ModelRenderer
             checked((uint)(WaterVolumeClusterBuilder.ImageUIntCount * sizeof(uint))),
             GpuBufferUsage.StructuredBufferReadOnly, 16));
     }
+
+    static GpuResourceLayoutElement[] AppendWaterVolumeLayout(params GpuResourceLayoutElement[] existing) =>
+        [.. existing, new("WaterVolumes", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment)];
+
+    IGpuBindableResource[] AppendWaterVolumeResources(params IGpuBindableResource[] existing) =>
+        [.. existing, _waterVolumeBuffer];
 
     internal void BuildAndUploadLightingClusters(IGpuCommandList cl, ReadOnlySpan<PointLightData> lights,
         ReadOnlySpan<WaterVolumeRecord> waterRecords, Matrix4x4 viewProjection, Vector3 eyeRender,

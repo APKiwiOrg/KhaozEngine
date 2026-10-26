@@ -39,6 +39,25 @@ public sealed class UnderwaterSunlightGpuTests(UnderwaterSunlightScenes scenes, 
         AssertAttenuation(new UnderwaterSunlightCase(Depth: UnderwaterSunlightAcceptance.AttenuationDepth));
 
     [GpuFact]
+    public void SubmergedKeySpecularIsAttenuatedAlongThePath()
+    {
+        // Black albedo removes diffuse, so an unattenuated specular term cannot hide behind it.
+        var settings = new UnderwaterSunlightCase(Depth: UnderwaterSunlightAcceptance.AttenuationDepth,
+            Caster: false, SpecularOnly: true);
+        UnderwaterSunlightImage on = scenes.Capture(settings);
+        UnderwaterSunlightImage off = scenes.Capture(settings with { Enabled = false });
+        UnderwaterSunlightImage matte = scenes.Capture(settings with { Enabled = false, SpecularStrength = 0f });
+        Vector3 probe = new(-2f, settings.BedY, 1f);
+        Vector3 control = off.Sample(probe), ratio = on.ChannelRatio(off, probe);
+        Assert.True(control.X > 0.5f && control.Y > 0.5f && control.Z > 0.5f,
+            $"The black specular receiver must show a strong key highlight, got {control}.");
+        Assert.True(matte.Sample(probe).Length() <= 1f / 255f, "Black albedo without specular must stay black.");
+        output.WriteLine($"specular-only RGB on/off={ratio}, expected={UnderwaterSunlightAcceptance.ExpectedTransmittance(settings.Depth)}, matte reference={matte.Sample(probe)}");
+        Assert.True(UnderwaterSunlightAcceptance.AcceptsAttenuation(ratio, settings.Depth),
+            $"Key specular RGB ratios {ratio} must match path transmittance within {UnderwaterSunlightAcceptance.RatioAllowance:F6} per channel.");
+    }
+
+    [GpuFact]
     public void WaterlineHasNoSeam()
     {
         UnderwaterSunlightImage image = scenes.Capture(new UnderwaterSunlightCase(UnderwaterSunlightGeometry.Bank));

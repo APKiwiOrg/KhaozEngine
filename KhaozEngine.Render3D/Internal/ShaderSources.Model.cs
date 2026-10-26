@@ -118,7 +118,7 @@ layout(set=0, binding=0) uniform U {
     vec4 IndirectParams;
     vec4 IrradianceSH[9];
 };
-" + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
+" + PointLightBufferGlsl + PointLightClusterBufferGlsl + WaterVolumesAt15Glsl + @"
 layout(set=0, binding=3) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
 layout(set=0, binding=4) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); sampled up front, applied only when a tangent exists
 layout(set=0, binding=5) uniform texture2D RoughnessMap; // 1x1 zero default => spec uses per-instance params
@@ -256,7 +256,7 @@ layout(set=0, binding=0) uniform U {
     vec4 IndirectParams;
     vec4 IrradianceSH[9];
 };
-" + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
+" + PointLightBufferGlsl + PointLightClusterBufferGlsl + WaterVolumesAt15Glsl + @"
 layout(set=0, binding=3) uniform texture2D Albedo;
 layout(set=0, binding=4) uniform texture2D NormalMap;
 layout(set=0, binding=5) uniform texture2D RoughnessMap;
@@ -483,7 +483,7 @@ layout(set=0, binding=0) uniform U {
     vec4 IndirectParams;
     vec4 IrradianceSH[9];
 };
-" + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
+" + PointLightBufferGlsl + PointLightClusterBufferGlsl + WaterVolumesAt7Glsl + @"
 layout(set=1, binding=0) uniform texture2D Albedo;
 layout(set=1, binding=1) uniform texture2D NormalMap;
 layout(set=1, binding=2) uniform texture2D RoughnessMap;
@@ -564,7 +564,7 @@ layout(set=0, binding=0) uniform U {
     vec4 IndirectParams;
     vec4 IrradianceSH[9];
 };
-" + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
+" + PointLightBufferGlsl + PointLightClusterBufferGlsl + WaterVolumesAt7Glsl + @"
 layout(set=1, binding=0) uniform texture2D Albedo;
 layout(set=1, binding=1) uniform texture2D NormalMap;
 layout(set=1, binding=2) uniform texture2D RoughnessMap;

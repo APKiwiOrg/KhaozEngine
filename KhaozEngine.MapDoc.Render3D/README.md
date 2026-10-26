@@ -295,6 +295,13 @@ Capacity can refuse at the first control, accepted-row growth, ordinal growth or
 exceed the allowance. A sparse layer never keeps a full candidate-lattice reservation. Query limits and generated
 addresses are unchanged.
 
+The foliage inventory proof independently counts actual array lengths, index capacities, object identities and
+pinned 64-bit controls. It covers empty, tiny, dense, sparse, maximal-table and replacement cases. Root and binding
+window interval peaks stay within twice the simultaneous domain inventory plus a fixed 4096-byte kernel allowance
+for ledger and callback machinery. That allowance never scales with rows. Old builder/index arrays and frozen
+columns coexist during freeze. Old and pending cover views count their shared column store once. Renderer-owned
+F1 temporal and point-shadow snapshots remain charged after source columns are collected and until retirement.
+
 ## Roof channels and presentation picks
 
 `MapRenderPlan` prepares `PresentationGeometry` and `RoofEvaluation` against the same aggregate admission

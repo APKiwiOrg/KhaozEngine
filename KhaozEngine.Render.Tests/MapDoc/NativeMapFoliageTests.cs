@@ -90,6 +90,8 @@ public sealed partial class NativeMapFoliageTests
         Assert.Equal(0, cache.GenerationCalls - generated);
         Assert.Equal(first.GenerationKeys, changed.GenerationKeys);
         Assert.Equal(first.GeneratedIdentities, changed.GeneratedIdentities);
+        foreach (var group in ColumnGroups(first).Where(g => !g.Explicit))
+            Assert.Same(ColumnSource(group.Cover)!.Columns, ColumnSource(ColumnGroups(changed).Single(g => g.OwnerId == group.OwnerId).Cover)!.Columns);
         var a = Foliage(before); var b = Foliage(after);
         Assert.Equal(a.Length, b.Length);
         for (int i = 0; i < a.Length; i++)

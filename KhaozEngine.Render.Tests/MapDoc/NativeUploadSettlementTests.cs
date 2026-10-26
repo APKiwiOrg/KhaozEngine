@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -6,12 +7,54 @@ using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Tests.Gpu;
+using KhaozEngine.Terrain;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
 
 public sealed class NativeUploadSettlementTests
 {
+    [Fact]
+    public void ReleasedSourceColumns_LeaveRendererSnapshotsChargedUntilRetirement()
+    {
+        using var device = new ReadbackRingFakeDevice();
+        using var host = new NativeUploadTestScene(device);
+        var probe = DetachedColumnUpload(host.Scene);
+        using var upload = probe.Upload;
+        upload.Advance(long.MaxValue);
+        device.SubmittedFences[^1].AsManual().Signal();
+        var handle = upload.Publish();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        Assert.All(probe.Arrays, reference => Assert.False(reference.IsAlive));
+        Assert.Equal(RetainedCpu(2), probe.Admission.CpuBytes);
+        host.Scene.ReleaseResource(handle); upload.Dispose(); host.Scene.Begin();
+        Assert.Equal(RetainedCpu(2), probe.Admission.CpuBytes);
+        foreach (var fence in device.SubmittedFences) fence.AsManual().Signal();
+        host.Scene.Begin(); probe.Reservation.Released();
+        Assert.Equal(0, probe.Admission.CpuBytes);
+        Assert.Equal(0, probe.Admission.GpuBytes);
+        GC.KeepAlive(probe);
+    }
+    sealed record ColumnUploadProbe(MapRenderAdmission Admission, MapUploadReservation Reservation, SceneResourceUpload Upload, WeakReference[] Arrays);
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static ColumnUploadProbe DetachedColumnUpload(Scene3D scene)
+    {
+        var original = Data(scene, 2).Foliage!;
+        var matrices = original.WorldTransforms.ToArray();
+        var positions = matrices.Select(m => m.Translation).ToArray();
+        var ranks = original.Ranks.ToArray(); var indices = original.ModelIndices.ToArray();
+        var ids = original.Models.Select(m => m.ModelId).ToArray();
+        var columns = GroundCoverInstanceColumns.TakeOwnership(matrices, positions, ranks, indices, ids);
+        var detached = new SceneFoliageSource(original.Anchor, columns.Transforms, columns.Ranks, columns.ModelIndices, original.Models, original.TransformSpace);
+        var data = new SceneUploadData(null, null, detached, default);
+        var admission = new MapRenderAdmission(new());
+        var reservation = admission.TryReserve(scene.MeasureResourceUpload(data))!;
+        var upload = scene.PrepareResourceUpload(data, reservation);
+        return new(admission, reservation, upload, [new(matrices), new(positions), new(ranks), new(indices), new(ids)]);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

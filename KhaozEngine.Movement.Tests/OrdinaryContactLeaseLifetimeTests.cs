@@ -5,7 +5,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Movement;
 
-public class OrdinaryContactLeaseLifetimeTests
+public partial class OrdinaryContactLeaseLifetimeTests
 {
     [Theory]
     [InlineData(false, "held")]
@@ -14,7 +14,9 @@ public class OrdinaryContactLeaseLifetimeTests
     [InlineData(true, "rebuild")]
     [InlineData(false, "unselected")]
     [InlineData(true, "unselected")]
-    public void TicksAdvanceWithHeldLeaseOrReconstructionOnEachFreshLease(bool swimming, string strategy)
+    [InlineData(false, "carried")]
+    [InlineData(true, "carried")]
+    public void TicksAdvanceWithCarriedSelectionAcrossFreshOrHeldLeases(bool swimming, string strategy)
     {
         using var scene = CreateScene(swimming);
         FramedMovementState state = Start(scene, swimming);
@@ -46,7 +48,7 @@ public class OrdinaryContactLeaseLifetimeTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void FreshNullHintLeaseRefusesCarriedSelectionUntilItReconstructs(bool swimming)
+    public void DirectQueriesOnFreshNullHintLeaseRequireReconstruction(bool swimming)
     {
         using var scene = CreateScene(swimming);
         FramedMovementState state = Start(scene, swimming);
@@ -66,9 +68,6 @@ public class OrdinaryContactLeaseLifetimeTests
         var body = new MovementBodyQuery(state.State.Position, scene.Tuning.CapsuleRadius,
             scene.Tuning.CapsuleHalfHeight, state.Selection!.Value.Space, state.Selection.Value.Support);
         Assert.Equal(MovementAvailability.Unresolved, fresh.SampleCentreWater(body).Availability);
-        MovementStepResult refused = scene.Binding.StepTowards(state, Vector2.UnitX, false, 1f / 30f, fresh);
-        Assert.Equal(MovementStepOutcome.EnvironmentUnresolved, refused.Outcome);
-        Assert.Equal(state.State.Position, refused.State.State.Position);
         fresh.AssertCurrent();
 
         Assert.Equal(MovementAvailability.Known, fresh.RebuildSelection(state, out var rebuilt));
@@ -79,6 +78,26 @@ public class OrdinaryContactLeaseLifetimeTests
             Vector2.UnitX, false, 1f / 30f, fresh);
         Assert.Equal(MovementStepOutcome.Advanced, resumed.Outcome);
         Assert.True(resumed.State.State.Position.X > state.State.Position.X);
+    }
+
+    [Fact]
+    public void FreshLeaseTickExecutesACarriedBufferedJump()
+    {
+        using var scene = CreateScene(swimming: false);
+        FramedMovementState state = Start(scene, swimming: false);
+        using (var first = scene.Acquire())
+        {
+            MovementStepResult initial = scene.Binding.StepTowards(state, Vector2.UnitX, false, 1f / 30f, first);
+            Assert.Equal(MovementStepOutcome.Advanced, initial.Outcome);
+            state = initial.State;
+        }
+        var buffered = new FramedMovementState(state.State with { JumpBufferRemaining = 0.1f }, state.Frame, state.Selection);
+        using var fresh = scene.Acquire();
+        MovementStepResult result = scene.Binding.StepTowards(buffered, Vector2.UnitX, false, 1f / 30f, fresh);
+        Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
+        Assert.False(result.State.State.Grounded);
+        Assert.True(result.State.State.VerticalVelocity > 0);
+        Assert.Equal(0, result.State.State.JumpBufferRemaining);
     }
 
     static OrdinaryContactScene CreateScene(bool swimming)

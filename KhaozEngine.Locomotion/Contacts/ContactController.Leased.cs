@@ -42,7 +42,7 @@ internal static partial class ContactController
             beganTick = true;
             GroundCoreSettings foot = composition.Foot;
             ShellGeometry.Validate(tuning, foot);
-            MovementSelection selection;
+            MovementSelection selection = default;
             if (state.Selection is { } selected)
             {
                 if (selected.Identity != queries.Identity ||
@@ -51,7 +51,8 @@ internal static partial class ContactController
                     return HoldLeased(state, MovementStepOutcome.EnvironmentInvalid);
                 selection = selected;
             }
-            else
+            // A carried key does not establish readiness for a fresh null-hint interval.
+            if (state.Selection is null || queries.RequiresSelectionReconstruction)
             {
                 MovementAvailability status = queries.RebuildSelection(state, out selection);
                 if (status != MovementAvailability.Known)

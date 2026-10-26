@@ -33,10 +33,10 @@ public readonly struct MovementQueryLeaseId : IEquatable<MovementQueryLeaseId>
 
 /// <summary>Thread-affine read interval. Publish pure outputs before disposal and mutate physics afterward.</summary>
 /// <remarks>A fresh lease may be acquired each tick. Each null-hint lease requires its own successful
-/// <see cref="RebuildSelection"/> before selected-space queries, even when a carried state already has a selection.
-/// A carried selection does not transfer readiness from a disposed lease. The movement tick reconstructs
-/// automatically for a state with null Selection. Otherwise rebuild and use the returned selection first.
-/// Holding a lease across ticks retains readiness until disposal, but prevents physical writes throughout.</remarks>
+/// <see cref="RebuildSelection"/> before direct selected-space queries. Movement ticks reconstruct automatically
+/// when selection is missing or a null-hint lease is unready, including when the input carries a selection.
+/// Ready held leases and known-hint leases retain their selected-state path. A lease may serve several ticks,
+/// but prevents physical writes until disposal.</remarks>
 public sealed partial class MovementQueryLease : IDisposable
 {
     readonly IPhysicsWorldQueryView _view;

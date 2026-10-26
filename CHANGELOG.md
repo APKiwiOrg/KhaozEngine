@@ -4,6 +4,15 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.15.0
+
+2026-10-26
+
+- Reconstruct canonical selection automatically when a Contact movement tick receives a carried state on
+  an unready null-hint query lease. Reacquiring per tick no longer stalls the second tick or discards buffered
+  jumps. Direct selected-space queries remain guarded, and real reconstruction failures keep their refusal
+  outcomes (Closes #1578).
+
 ## 21.14.0
 
 2026-10-26

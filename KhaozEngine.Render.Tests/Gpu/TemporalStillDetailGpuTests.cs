@@ -26,7 +26,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             // A 0.4-texel trim at luma 0.75 separates the 0.60 tile from the 0.11 fascia.
             StillRun run = RunStillStep(preset, trim: true);
-            output.WriteLine($"{preset}: {run}");
+            output.WriteLine($"{preset}: {run}, pixels {StepPixels(preset, trim: true).Count}");
             Assert.True(run.MaxChange <= 0.1f, $"{preset}: {run}");
             Assert.True(run.MaxRange <= 0.15f, $"{preset}: {run}");
         }
@@ -92,19 +92,25 @@ namespace KhaozEngine.Tests.Gpu
         {
             float factor = TemporalSettings.DisplayOverInternal(preset);
             int iw = (int)(DisplayW / factor), ih = (int)(DisplayH / factor);
-            var pixels = new List<int>();
+            List<int> pixels = StepPixels(preset, trim);
             float expected = 0f;
-            for (int y = 2; y < DisplayH - 2; y++)
-                for (int x = 2; x < DisplayW - 2; x++)
-                {
-                    float edge = StepCoverage(x / factor, y / factor, 1f / factor, ih, trim: false);
-                    if (edge <= 0.05f || edge >= 0.95f) continue;
-                    pixels.Add(y * DisplayW + x);
-                    expected += StepCoverage(x / factor, y / factor, 1f / factor, ih, trim);
-                }
-            Assert.NotEmpty(pixels);
+            foreach (int p in pixels)
+                expected += StepCoverage(p % DisplayW / factor, p / DisplayW / factor, 1f / factor, ih, trim);
             return RunStill(preset, (jitter, _) => StillStepScene(iw, ih, jitter, trim), pixels,
                 0.11f, trim ? 0.75f : 0.60f, expected / pixels.Count);
+        }
+
+        /// <summary>The display pixels a boundary of the step crosses, the pixels the step facts measure.</summary>
+        internal static List<int> StepPixels(TemporalUpscale preset, bool trim)
+        {
+            float factor = TemporalSettings.DisplayOverInternal(preset);
+            int ih = (int)(DisplayH / factor);
+            var pixels = new List<int>();
+            for (int y = 2; y < DisplayH - 2; y++)
+                for (int x = 2; x < DisplayW - 2; x++)
+                    if (Transitions(x / factor, y / factor, 1f / factor, ih, trim)) pixels.Add(y * DisplayW + x);
+            Assert.NotEmpty(pixels);
+            return pixels;
         }
 
         internal static StillRun RunOncePerCycleLine(TemporalUpscale preset)
@@ -304,20 +310,36 @@ namespace KhaozEngine.Tests.Gpu
             return pixels;
         }
 
+        // A pixel is a transition pixel when any boundary of the step crosses it: the slab edge, and with the trim
+        // also the tile-to-trim and trim-to-fascia edges either side of it.
+        static bool Transitions(float x, float y, float side, int ih, bool trim)
+        {
+            foreach (float offset in trim ? TrimBoundaries : SlabBoundary)
+            {
+                float edge = Below(x, y, side, ih, offset);
+                if (edge > 0.05f && edge < 0.95f) return true;
+            }
+            return false;
+        }
+
+        static readonly float[] SlabBoundary = { 0f }, TrimBoundaries = { -0.2f, 0f, 0.2f };
+
         // Integrate the clipped linear edge analytically over each display pixel, independently of jitter.
         static float StepCoverage(float x, float y, float side, int ih, bool trim)
         {
-            float Below(float offset)
-            {
-                float a = StepY(x, ih) + offset - y;
-                float b = a + 0.2f * side;
-                static float Integral(float v, float height) => v <= 0f ? 0f
-                    : v < height ? 0.5f * v * v : height * (v - 0.5f * height);
-                return (Integral(b, side) - Integral(a, side)) / (0.2f * side * side);
-            }
-            if (!trim) return Below(0f);
-            float tile = Below(-0.2f), strip = Below(0.2f) - tile;
+            if (!trim) return Below(x, y, side, ih, 0f);
+            float tile = Below(x, y, side, ih, -0.2f), strip = Below(x, y, side, ih, 0.2f) - tile;
             return tile * Share(0.60f, 0.11f, 0.75f) + strip;
+        }
+
+        // The share of the pixel on the tile side of the boundary offset from StepY by the given texels.
+        static float Below(float x, float y, float side, int ih, float offset)
+        {
+            float a = StepY(x, ih) + offset - y;
+            float b = a + 0.2f * side;
+            static float Integral(float v, float height) => v <= 0f ? 0f
+                : v < height ? 0.5f * v * v : height * (v - 0.5f * height);
+            return (Integral(b, side) - Integral(a, side)) / (0.2f * side * side);
         }
     }
 }

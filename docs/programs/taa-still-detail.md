@@ -43,6 +43,10 @@ steps, smear, lag or sparkle. The owner bar is "No flicker you notice, especiall
 - TSD-D7: M1 starts with the classifier feasibility gate. A creeping shadow over a shimmering
   receiver must release as promptly as over a plain receiver. Keeping still detail must not hide
   real lighting change.
+- TSD-D8: The still eave class has no engine reproduction. Neither the resolve rig step nor a
+  full-scene eave with HDR, the sharpen and a perspective camera shimmers past 0.15 of contrast on
+  the unchanged resolve. It reaches M1 without an engine regression fact and is judged by M1's
+  real-content A/B. If M1 misses it, a follow-up task builds the reproduction and the fix.
 
 ## Open questions and owner gates
 

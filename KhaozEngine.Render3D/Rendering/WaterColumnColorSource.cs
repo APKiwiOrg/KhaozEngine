@@ -63,7 +63,7 @@ internal sealed class WaterColumnColorSource : IDisposable
         if (!wanted) return WaterColumnCopyPath.None;
         if (targets.Msaa)
         {
-            cl.ResolveTexture(targets.MsColor!, targets.ColorTex);
+            cl.ResolveTexture(targets.MsColor!, targets.ColorTex, preserveSource: true);
             return WaterColumnCopyPath.MsaaResolve;
         }
         // The source may carry a full mip chain. Only its base level belongs in this single-mip destination.

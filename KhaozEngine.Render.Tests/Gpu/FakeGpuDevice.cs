@@ -461,6 +461,7 @@ namespace KhaozEngine.Tests.Gpu
         /// never asks for a generation pass.</summary>
         internal List<IGpuTexture> MipGenerations { get; } = new();
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { }
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource) { }
         public void SetComputePipeline(IGpuComputePipeline p) { }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) { }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) { }

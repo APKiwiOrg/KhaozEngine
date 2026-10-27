@@ -76,16 +76,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// that loads never reads one, and there is no depth slot: the incumbent's <c>ResolveTextureCore</c>
         /// builds exactly this descriptor and this reproduces it field for field.
         /// <para>
-        /// THE SOURCE'S CONTENTS ARE DESTROYED BY THIS, which the incumbent's own TODO says and which is
-        /// reproduced rather than fixed (M-C4): the engine re-clears its MSAA sources at the start of the next
-        /// frame's pass, discarding is the bandwidth-correct answer on this architecture, and it is what
-        /// <c>scene3d_hdr_msaa</c> was baked under. The divergence from <c>ResolveSubresource</c> and
-        /// <c>vkCmdResolveImage</c> is documented in the package README so a consumer that ever needs the source
-        /// preserved finds a property rather than a surprise.
+        /// The default resolve discards the source with MultisampleResolve, retaining its existing bandwidth
+        /// cost. Explicit preservation uses StoreAndMultisampleResolve so subsequent passes can load every source
+        /// sample. Real textures, including MSAA render targets, use Private storage rather than memoryless storage.
         /// </para>
         /// </remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination)
+        public IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination, bool preserveSource)
         {
             MTLRenderPassDescriptor descriptor = MTLRenderPassDescriptor.Create();
             if (descriptor.IsNull) return IntPtr.Zero;
@@ -99,7 +96,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             slot.SetTexture(new MTLTexture(source));
             slot.SetLoadAction(MTLLoadAction.Load);
-            slot.SetStoreAction(MTLStoreAction.MultisampleResolve);
+            slot.SetStoreAction(preserveSource ? MTLStoreAction.StoreAndMultisampleResolve : MTLStoreAction.MultisampleResolve);
             slot.SetResolveTexture(new MTLTexture(destination));
 
             return descriptor.Handle;

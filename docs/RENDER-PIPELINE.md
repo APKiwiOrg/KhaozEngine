@@ -221,8 +221,10 @@ geometry, textured billboards, beams, trails, translucent overlays, silhouettes,
 It contains no water. A water surface seen through another column-lit surface therefore shows the scene
 behind it with the farther water omitted.
 
-MSAA frames resolve the actual `MsColor` attachment into the existing single-sample `ColorTex` before water.
-Water continues writing `MsColor`, and the final colour resolve still runs after water and particles.
+MSAA frames resolve the actual `MsColor` attachment into the existing single-sample `ColorTex` before water
+with `preserveSource: true`. Every multisample survives for water to load and continue writing `MsColor`.
+Metal uses `StoreAndMultisampleResolve` for this early snapshot. The existing final colour resolve still runs
+after water and particles with its original store action.
 Single-sample frames copy only `ColorTex` mip zero into a separate, same-format, single-mip, single-sample
 texture. The earlier temporal opaque-only copy keeps its existing position and contents.
 

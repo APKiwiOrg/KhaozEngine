@@ -337,6 +337,7 @@ namespace KhaozEngine.Tests.Gpu
                     l => l.CopyTextureSubresource(f.Colour, 0, 0, f.Readback, 0, 0, 16, 16)),
                 (nameof(IGpuCommandList.GenerateMipmaps), l => l.GenerateMipmaps(f.Colour)),
                 (nameof(IGpuCommandList.ResolveTexture), l => l.ResolveTexture(f.Multisampled, f.Readback)),
+                (nameof(IGpuCommandList.ResolveTexture), l => l.ResolveTexture(f.Multisampled, f.Readback, true)),
                 (nameof(IGpuCommandList.SetComputePipeline), l => l.SetComputePipeline(f.ComputePipeline)),
                 (nameof(IGpuCommandList.SetComputeResourceSet), l => l.SetComputeResourceSet(0, f.Set)),
                 (nameof(IGpuCommandList.SetComputeResourceSet), l => l.SetComputeResourceSet(0, f.Set, 256)),

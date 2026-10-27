@@ -136,6 +136,11 @@ namespace KhaozEngine.Tests.Gpu
             Count(GpuCommandKind.ResolveTexture);
             Inner.ResolveTexture(src, dst);
         }
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource)
+        {
+            Count(GpuCommandKind.ResolveTexture);
+            Inner.ResolveTexture(src, dst, preserveSource);
+        }
 
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
         {

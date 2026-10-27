@@ -97,6 +97,8 @@ public sealed class WaterColumnCopyTests
         Assert.Same(h.Targets.ColorTex, h.Source.Texture);
         var color = h.Commands.Resolves.Where(r => ReferenceEquals(r.Source, h.Targets.MsColor)).ToArray();
         Assert.Equal(2, color.Length);
+        Assert.True(color[0].PreserveSource);
+        Assert.False(color[1].PreserveSource);
         Assert.All(color, r => Assert.Same(h.Targets.ColorTex, r.Destination));
         Assert.DoesNotContain(h.Commands.TextureCopies, c => ReferenceEquals(c.Source, h.Targets.ColorTex)
             || ReferenceEquals(c.Source, h.Targets.MsColor));
@@ -310,6 +312,8 @@ public sealed class WaterColumnCopyTests
         public void GenerateMipmaps(IGpuTexture texture) => inner.GenerateMipmaps(texture);
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
         { Entries.Add(new("resolve", src, dst)); inner.ResolveTexture(src, dst); }
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource)
+        { Entries.Add(new("resolve", src, dst)); inner.ResolveTexture(src, dst, preserveSource); }
         public void SetComputePipeline(IGpuComputePipeline p) => inner.SetComputePipeline(p);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) => inner.SetComputeResourceSet(slot, set);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) => inner.SetComputeResourceSet(slot, set, dynamicOffset);

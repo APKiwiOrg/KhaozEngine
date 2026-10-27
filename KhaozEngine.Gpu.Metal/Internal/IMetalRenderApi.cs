@@ -82,17 +82,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <para>
         /// IT IS A SECOND MEMBER RATHER THAN A WIDER FIRST ONE, AND THAT KEEPS A DEFERRED DECISION DEFERRED. A
         /// resolve pass is one colour attachment holding the MSAA source, at <c>loadAction = Load</c> and
-        /// <c>storeAction = MultisampleResolve</c>, with the destination as its <c>resolveTexture</c> and no
+        /// <c>storeAction = MultisampleResolve</c> by default, or <c>StoreAndMultisampleResolve</c> when source
+        /// preservation is requested, with the destination as its <c>resolveTexture</c> and no
         /// clear, no depth and no second attachment. Widening <see cref="MetalColourAttachment"/> with a resolve
         /// texture and <c>MetalStoreAction</c> with a resolve member would express exactly the FOLDED resolve
         /// section 2.5 defers with a stated blocker (https://github.com/APKiwiOrg/KhaozEngine/issues/596), and a
         /// deferral that leaves the mechanism sitting on the ordinary pass path is a deferral in name only.
         /// </para>
         /// </summary>
-        /// <param name="source">The multisampled <c>MTLTexture</c>, which the pass loads and discards.</param>
+        /// <param name="source">The multisampled <c>MTLTexture</c> the pass loads.</param>
         /// <param name="destination">The single-sample <c>MTLTexture</c> the samples resolve into.</param>
+        /// <param name="preserveSource">Store source samples alongside the resolve when later draws need them.</param>
         /// <returns>The retained descriptor, or <see cref="IntPtr.Zero"/> when Metal would not make one.</returns>
-        IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination);
+        IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination, bool preserveSource);
 
         /// <summary>Give back the retain <see cref="CreateRenderPassDescriptor"/> or
         /// <see cref="CreateResolveDescriptor"/> took. Safe on <see cref="IntPtr.Zero"/>, so the caller's

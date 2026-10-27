@@ -200,8 +200,10 @@ namespace KhaozEngine.Tests.Gpu
         /// call, so it is asserted where a fake can see it and the pixel half is the <c>[GpuFact]</c> companion's.
         /// </para>
         /// </summary>
-        [Fact]
-        public void AResolveWithAPassOpenEndsItAndBeginsAFreshEncoderWithItsOwnDescriptor()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void AResolveWithAPassOpenEndsItAndBeginsAFreshEncoderWithItsOwnDescriptor(bool preserveSource)
         {
             IntPtr source = new(0x51);
             IntPtr destination = new(0x52);
@@ -210,7 +212,8 @@ namespace KhaozEngine.Tests.Gpu
             IntPtr scene = _list.Encoders.EnsureRenderEncoder(Descriptor);
             Assert.NotEqual(IntPtr.Zero, scene);
 
-            _list.StandaloneResolvePass(source, destination);
+            _list.StandaloneResolvePass(source, destination, preserveSource);
+            Assert.Equal(preserveSource, Assert.Single(_render.PreserveSources));
 
             // THE RESOLVE'S OWN DESCRIPTOR REACHED A BEGIN, which is the whole claim: two render begins, the
             // second one handed a descriptor that is not the scene pass's.

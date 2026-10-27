@@ -18,7 +18,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// resolve opens a RENDER encoder, which is the SAME kind
     /// a draw uses, so <see cref="MetalEncoderScope.EnsureRenderEncoder"/> short-circuits on an open pass and hands
     /// the caller's own scene encoder straight back with the resolve descriptor unused. Row 12's comment said "a
-    /// resolve opens a blit one" and it was wrong. So <see cref="ResolveTexture"/> calls
+    /// resolve opens a blit one" and it was wrong. So <see cref="ResolveTexture(IGpuTexture, IGpuTexture)"/> calls
     /// <see cref="MetalEncoderScope.EnsureNoEncoder"/> itself, first, and the incumbent did the same thing for
     /// the same reason (<c>ResolveTextureCore</c> is <c>EnsureNoBlitEncoder</c> then <c>EnsureNoRenderPass</c>
     /// then a DIRECT encoder creation).</para>
@@ -223,7 +223,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// before their blit.
         /// </para>
         /// </remarks>
-        public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst) => ResolveTexture(src, dst, preserveSource: false);
+
+        /// <summary>Resolve with an explicit store of the multisampled source when subsequent draws need it.</summary>
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             ArgumentNullException.ThrowIfNull(src);
@@ -234,12 +237,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
             RequireRecording("Resolving a multisampled texture");
             RequireResolvable(source, destination);
 
-            StandaloneResolvePass(source.Handle.Handle, destination.Handle.Handle);
+            StandaloneResolvePass(source.Handle.Handle, destination.Handle.Handle, preserveSource);
         }
 
         /// <summary>
         /// THE RESOLVE'S ENCODER SEQUENCE, with the two textures already resolved to handles and every refusal
-        /// already spent. Called by <see cref="ResolveTexture"/> and, for the reason
+        /// already spent. Called by <see cref="ResolveTexture(IGpuTexture, IGpuTexture)"/> and, for the reason
         /// <c>MetalTransferPathTests</c> records in full, by the device-free row that asserts the end-first
         /// ordering: a <see cref="MetalTexture"/> has a private constructor and one factory that takes an
         /// <c>MTLDevice</c>, so the public member cannot be driven off a device at all, and the ordering it
@@ -249,7 +252,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </param>
         /// <param name="destinationTexture">The single-sample <c>MTLTexture</c> named as the resolve target.
         /// </param>
-        internal void StandaloneResolvePass(IntPtr sourceTexture, IntPtr destinationTexture)
+        /// <param name="preserveSource">Store the source samples as well as resolving when true.</param>
+        internal void StandaloneResolvePass(IntPtr sourceTexture, IntPtr destinationTexture, bool preserveSource = false)
         {
             // M-N5's one pool, here rather than on ResolveTexture so the device-free row that drives this member
             // directly takes the same shape. See the type remarks.
@@ -259,7 +263,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // half the scope cannot do for this member. Plain EnsureNoEncoder, not EndPass: see the remarks above.
             _encoders.EnsureNoEncoder();
 
-            IntPtr descriptor = _render.CreateResolveDescriptor(sourceTexture, destinationTexture);
+            IntPtr descriptor = _render.CreateResolveDescriptor(sourceTexture, destinationTexture, preserveSource);
             if (descriptor == IntPtr.Zero) return;
 
             try

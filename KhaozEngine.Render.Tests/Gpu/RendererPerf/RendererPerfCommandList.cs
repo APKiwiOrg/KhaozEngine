@@ -202,6 +202,13 @@ internal class RendererPerfCommandList : IGpuCommandList
         _recorder.Count(RendererPerfCounter.ResolveReadBytes, checked(bytes * source.SampleCount));
         _recorder.Count(RendererPerfCounter.ResolveWriteBytes, bytes); Native.ResolveTexture(source, destination);
     }
+    public void ResolveTexture(IGpuTexture source, IGpuTexture destination, bool preserveSource)
+    {
+        Count(RendererPerfCounter.Resolves);
+        long bytes = checked((long)source.Width * source.Height * RendererPerfRecorder.BytesPerPixel(source.Format));
+        _recorder.Count(RendererPerfCounter.ResolveReadBytes, checked(bytes * source.SampleCount));
+        _recorder.Count(RendererPerfCounter.ResolveWriteBytes, bytes); Native.ResolveTexture(source, destination, preserveSource);
+    }
     public void GenerateMipmaps(IGpuTexture texture) { Count(RendererPerfCounter.MipGenerations); Native.GenerateMipmaps(texture); }
     public void BeginTimestamps(IGpuTimestampPool pool, uint count) => Native.BeginTimestamps(pool, count);
     public void WriteTimestamp(IGpuTimestampPool pool, uint index) => Native.WriteTimestamp(pool, index);

@@ -158,8 +158,9 @@ public sealed class WaterColumnGpuTests(WaterColumnRiverScene scene, ITestOutput
             WaterColumnImage wet = scene.Capture(settings, 8);
             WaterColumnImage bed = scene.Capture(settings with { BedOnly = true }, 8);
             Vector3 expected = CpuExpected(wet, bed, LitColumn, 0.3f);
-            output.WriteLine($"AA={aa}, RGB={wet.Sample(LitColumn)}, CPU={expected}, path={wet.Diagnostics.CopyPath}");
-            Assert.InRange(MaxChannelAbs(wet.Sample(LitColumn) - expected), 0f, 0.02f);
+            Vector3 resolved = wet.ResolvedSample(LitColumn);
+            output.WriteLine($"AA={aa}, resolved RGB={resolved}, CPU={expected}, path={wet.Diagnostics.CopyPath}");
+            Assert.InRange(MaxChannelAbs(resolved - expected), 0f, 0.02f);
             Assert.Equal(new WaterColumnDiagnostics(1, true, aa.Mode == AntiAliasingMode.Msaa
                 ? WaterColumnCopyPath.MsaaResolve : WaterColumnCopyPath.SingleSampleCopy), wet.Diagnostics);
         }
@@ -216,12 +217,15 @@ public sealed class WaterColumnGpuTests(WaterColumnRiverScene scene, ITestOutput
                 }
             }
         }
-        var noShadow = new WaterColumnCase { ShadowStrength = 0f, BlackBed = true, Bound = true };
+        var noShadow = new WaterColumnCase { ShadowStrength = 0f, BlackBed = true, Bound = true, Ripples = false };
         WaterColumnImage casting = scene.Capture(noShadow), open = scene.Capture(noShadow with { Caster = false });
         Assert.InRange(MaxChannelAbs(casting.Sample(ShadowColumn) - open.Sample(ShadowColumn)), 0f, 2f / 255f);
         WaterColumnImage wet = scene.Capture(noShadow with { Caster = false, BlackBed = false });
         WaterColumnImage bed = scene.Capture(noShadow with { Caster = false, BlackBed = false, BedOnly = true });
-        Assert.True(MaxChannelAbs(wet.Sample(LitColumn) - bed.Sample(LitColumn)) > 0.02f);
+        Vector3 zeroShadowExpected = CpuExpected(wet, bed, LitColumn, noShadow.Depth);
+        float zeroShadowError = MaxChannelAbs(wet.Sample(LitColumn) - zeroShadowExpected);
+        output.WriteLine($"zero shadow strength RGB={wet.Sample(LitColumn)}, CPU={zeroShadowExpected}, transport error={zeroShadowError:F6}, wet/bed difference={MaxChannelAbs(wet.Sample(LitColumn) - bed.Sample(LitColumn)):F6}");
+        Assert.InRange(zeroShadowError, 0f, 0.02f);
 
         var rock = new WaterColumnCase { CasterTop = -0.05f, CasterBottom = -0.25f, Ripples = false };
         WaterColumnImage rockBed = scene.Capture(rock with { BedOnly = true });

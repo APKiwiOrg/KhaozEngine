@@ -41,12 +41,17 @@ public sealed class WaterColumnImage(byte[] rgba, float[] linearRgb, Matrix4x4 v
         return new Vector3(ResolvedRgb[i], ResolvedRgb[i + 1], ResolvedRgb[i + 2]);
     }
 
-    public Vector3 Sample(Vector3 world)
+    public Vector3 Sample(Vector3 world) => SamplePixels(world, resolved: false);
+
+    public Vector3 ResolvedSample(Vector3 world) => SamplePixels(world, resolved: true);
+
+    Vector3 SamplePixels(Vector3 world, bool resolved)
     {
         Vector2 p = Project(world);
         Vector3 sum = Vector3.Zero;
         for (int dy = -1; dy <= 1; dy++)
-            for (int dx = -1; dx <= 1; dx++) sum += Pixel((int)p.X + dx, (int)p.Y + dy);
+            for (int dx = -1; dx <= 1; dx++)
+                sum += resolved ? ResolvedPixel((int)p.X + dx, (int)p.Y + dy) : Pixel((int)p.X + dx, (int)p.Y + dy);
         return sum / 9f;
     }
 

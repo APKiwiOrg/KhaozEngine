@@ -50,7 +50,7 @@ public sealed class WaterColumnTemporalGpuTests(WaterColumnRiverScene scene, ITe
                 }
             double rms = Math.Sqrt(residualSquares / sum.Length);
             WaterColumnImage control = scene.Capture(settings with { Caster = false }, 8);
-            float margin = L(control.Sample(ShadowColumn) - last.Sample(ShadowColumn));
+            float margin = L(control.ResolvedSample(ShadowColumn) - last.ResolvedSample(ShadowColumn));
             output.WriteLine($"AA={aa}, max temporal variance={maximumVariance:G9}, 5x5 residual RMS={rms:G9}, caster-free margin={margin:F6}");
             Assert.InRange(maximumVariance, 0d, aa.Mode == AntiAliasingMode.Temporal ? 0.000025d : 0d);
             Assert.InRange(rms, 0d, 0.01d);

@@ -8,7 +8,7 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// Fit this frame's <see cref="ShadowSettings.ResolvedCascadeCount"/> cascades (CPU-authored, NOT
         /// GPU-clip-corrected) into <see cref="_cascadeCpuVps"/> (render-relative) and
-        /// <see cref="_cascadeCpuVpsAbsolute"/> (the CPU caster test's, see <see cref="FitCascade"/>), and return the
+        /// <see cref="_cascadeCpuVpsAbsolute"/> (absolute diagnostic views, see <see cref="FitCascade"/>), and return the
         /// count. Standard frustum-slice
         /// CSM: the active camera's frustum is split along VIEW DEPTH (near plane, <see cref="ShadowSettings.ShadowNearDistance"/>,
         /// ... , <see cref="ShadowSettings.ResolvedMaxDistance"/> via the practical split) and each cascade
@@ -61,9 +61,9 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Fit and texel-snap once in render space, then express that same clip volume against absolute caster
-        /// bounds. Rebuilding the light view around an absolute centre would lose precision again and give the
-        /// caster tests a different snap from the atlas. At origin zero, keep the fitted bits without a multiply.
+        /// Fit and texel-snap once in render space for both rendering and caster evaluation. Keep an absolute view
+        /// for diagnostics only: composing its large translation loses precision, so caster culls must instead
+        /// reduce their inputs before testing the relative fit. Origin zero keeps the fitted bits without a multiply.
         /// </summary>
         void FitCascade(int i, Vector3 lightDir, Vector3 center, float radius, int resolution)
         {

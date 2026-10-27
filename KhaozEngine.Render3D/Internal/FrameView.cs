@@ -12,8 +12,8 @@ namespace KhaozEngine.Render3D.Internal;
 /// <para>
 /// Render-relative means expressed against <see cref="RenderOrigin"/>, like every GPU-bound position (see
 /// Scene3D.RenderOrigin.cs). <see cref="AbsoluteViewProjection"/> is the one absolute matrix, for CPU culling
-/// against absolute bounds. Cascades fit from the unjittered render-relative view-projection, then derive an
-/// absolute matrix for caster classification.
+/// against absolute bounds. Cascades fit from the unjittered render-relative view-projection, and caster tests
+/// reduce absolute bounds into that same frame before evaluation.
 /// </para>
 /// </summary>
 internal readonly struct FrameView

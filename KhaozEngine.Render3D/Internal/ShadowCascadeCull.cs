@@ -72,8 +72,8 @@ namespace KhaozEngine.Render3D.Internal
         /// of clip space.</summary>
         public static float ClipMargin(int resolution) => (2f * MarginTexels) / Math.Max(1, resolution);
 
-        /// <summary>Build the test for ONE cascade from its world-to-light-clip matrix (the ABSOLUTE-space fit, to
-        /// match the absolute instance transforms the caster test reads) at the atlas's per-cascade
+        /// <summary>Build the test for ONE cascade from its render-relative light-clip matrix. Caster centres must
+        /// be reduced into the same render frame before testing. Uses the atlas's per-cascade
         /// <paramref name="resolution"/>.</summary>
         public static ShadowCascadeCull FromLightViewProj(in Matrix4x4 lightViewProj, int resolution)
             => new(lightViewProj, ClipMargin(resolution));

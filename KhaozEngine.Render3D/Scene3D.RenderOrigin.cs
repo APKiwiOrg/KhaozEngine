@@ -14,12 +14,12 @@ namespace KhaozEngine.Render3D
     /// Camera-relative rendering: the half of <see cref="Scene3D"/> that owns the render origin and every
     /// world-to-render-frame reduction. See <c>docs/design/FLOATING-ORIGIN-DESIGN-2026-07-27.md</c> for the why.
     /// <para>
-    /// ONE rule governs the whole file: <b>the subtraction happens where data is built for the GPU, and nowhere
-    /// else.</b> Every submission queue stays ABSOLUTE, so frustum culling, the terrain identity fast path,
-    /// shadow-caster classification and the four transparency sorts still test absolute inputs. The cascade fit
-    /// in Scene3D.ShadowCascadeFit.cs instead uses render-relative corners and derives absolute caster matrices
-    /// from that fit. A site that forgets a GPU reduction renders visibly displaced at range, which is loud. A
-    /// cull that silently ran in the wrong space is not.
+    /// Every submission queue stays ABSOLUTE. Frustum culling, the terrain identity fast path and the four
+    /// transparency sorts still test those absolute inputs, and GPU-bound copies subtract the frame origin.
+    /// Shadow cascade fitting and caster evaluation instead use the render frame: caster tests reduce their
+    /// absolute bounds before the light-space dot products, avoiding cancellation against a large translation.
+    /// A site that forgets a GPU reduction renders visibly displaced at range, which is loud. A cull that silently
+    /// ran in the wrong space is not.
     /// </para>
     /// <para>
     /// Five queues are the deliberate exception and reduce AT SUBMISSION rather than on a GPU-bound copy: the
@@ -51,8 +51,8 @@ namespace KhaozEngine.Render3D
         readonly List<WaterPlane> _waterPlanesRelative = new();
         readonly List<DistortionSprite> _distortionRelative = new();
         readonly List<TrailSample> _trailSamplesRelative = new();
-        // Absolute views of the render-relative cascade fit, beside _cascadeCpuVps. CPU caster tests
-        // extract their frustums from these to keep testing the absolute submission bounds.
+        // Absolute diagnostic views of the render-relative cascade fit, beside _cascadeCpuVps. Caster tests
+        // use the relative fit and reduce absolute bounds before evaluating it, preserving local precision.
         readonly Matrix4x4[] _cascadeCpuVpsAbsolute = new Matrix4x4[ShadowSettings.MaxCascades];
 
         /// <summary>

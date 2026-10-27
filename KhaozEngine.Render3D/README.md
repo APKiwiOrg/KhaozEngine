@@ -89,9 +89,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `WorldFrame.Nearest(camera.Eye).Anchor`, a 128 m grid point, so the subtraction is exact) from every world
   position on its way to the GPU, which removes the large operands before the matrix concatenation ever meets
   them. **Adoption: none** - every entry point still takes ABSOLUTE world coordinates, `WorldToScreen` and
-  `ScreenToRay` still speak absolute. Frustum culling, the terrain cull fast path, caster classification and
-  the transparency sorts still run in absolute space. Shadow cascades fit
-  from the unjittered render-relative frustum, then derive absolute matrices for caster classification. The
+  `ScreenToRay` still speak absolute. Frustum culling, the terrain cull fast path and the transparency sorts
+  still run in absolute space. Shadow cascades fit from the unjittered render-relative frustum, and caster
+  tests subtract the render origin from absolute bounds before evaluating that same relative fit. The
   origin-zero fit remains bit-identical. The origin is LATCHED at `Begin()`.
   `RenderOrigin = Vector3.Zero` opts out exactly.
   The three engine cameras implement `IRenderOriginAware`. A consumer camera that does not falls the WHOLE

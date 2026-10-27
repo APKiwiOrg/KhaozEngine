@@ -1958,24 +1958,24 @@ namespace KhaozEngine.Render3D
         /// <paramref name="restBounds"/> transformed by its <paramref name="world"/> matrix, inflated by
         /// <see cref="SkinnedCullSafetyFactor"/>. <paramref name="cullMain"/> is <see cref="FrustumCulling"/> (off
         /// = always visible in the main pass, the rigid-instance parity path). <paramref name="shadowActive"/> is
-        /// whether the shadow-map tier is resolved this frame AND the draw casts (off = never a shadow caster). It is a shadow
-        /// caster when its inflated sphere intersects every lateral and far plane of ANY cascade in
-        /// <paramref name="shadowFrustums"/>. The near plane is excluded because depth clamping pancakes closer
+        /// whether the shadow-map tier is resolved this frame AND the draw casts (off = never a shadow caster).
+        /// Subtract <paramref name="shadowOrigin"/> before testing the sphere against the render-relative
+        /// <paramref name="shadowFrustums"/> union. The near plane is excluded because depth clamping pancakes closer
         /// casters onto it. Under the frustum-slice fit the cascades do not nest, so their union is tested. Returns
         /// (VisibleMain, VisibleShadow), the camera and key-light classification. <c>RenderInternal</c> also tests
-        /// eligible point-shadow requests before it decides whether to record and upload the draw. Pure
-        /// <see cref="MeshBounds"/> + <see cref="FrustumPlanes"/> arithmetic, no GPU, headless-testable.
+        /// eligible point-shadow requests before recording and uploading the draw. Pure headless-testable arithmetic.
         /// </summary>
         internal static (bool VisibleMain, bool VisibleShadow) ClassifySkinnedVisibility(
             in MeshBounds restBounds, in Matrix4x4 world,
             bool cullMain, in FrustumPlanes mainFrustum,
-            bool shadowActive, ReadOnlySpan<FrustumPlanes> shadowFrustums)
+            bool shadowActive, ReadOnlySpan<FrustumPlanes> shadowFrustums, Vector3 shadowOrigin = default)
         {
             if (!cullMain && !shadowActive) return (true, false);
             restBounds.WorldSphere(world, out Vector3 center, out float radius);
             float r = radius * SkinnedCullSafetyFactor;
             bool visibleMain = !cullMain || mainFrustum.IntersectsSphere(center, r);
             bool visibleShadow = false;
+            if (shadowOrigin != Vector3.Zero) center -= shadowOrigin;
             if (shadowActive)
                 for (int i = 0; i < shadowFrustums.Length && !visibleShadow; i++)
                     visibleShadow = shadowFrustums[i].IntersectsSphereExceptPlane(center, r, excludedPlane: 4);

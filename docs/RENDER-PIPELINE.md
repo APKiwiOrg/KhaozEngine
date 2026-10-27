@@ -191,8 +191,11 @@ input. API detail lives in the [Render3D package reference](../KhaozEngine.Rende
 Shadow cascades fit from the frame's unjittered render-relative camera frustum and eye. Near and far
 depths, slice spheres and light-hold radii therefore avoid large absolute float coordinates for both
 perspective and orthographic cameras. Each light matrix is fitted and texel-snapped once in render space.
-The CPU caster matrix is `T(-RenderOrigin) * relativeCascade`, so absolute caster bounds see the same clip
-volume as the atlas. Origin zero bypasses that translation and preserves the original fitted bits.
+Submission queues and caster bounds stay absolute. Rigid, skinned and foliage caster tests subtract the
+render origin before evaluating the relative cascade, preserving the atlas's local precision. Composing
+`T(-RenderOrigin) * relativeCascade` would restore large translation terms and can reject in-cascade casters
+through cancellation. Absolute matrices remain diagnostic views only. Origin zero bypasses the subtraction
+and preserves the original fitted bits and cull decisions.
 
 Water appends fragment bindings `12=ColumnShadowAtlas`, `13=ColumnShadowSampler` and `14=WaterLitFrame` after
 the optical bed resources. Scene water borrows the existing cascade atlas, its point-clamp sampler and the

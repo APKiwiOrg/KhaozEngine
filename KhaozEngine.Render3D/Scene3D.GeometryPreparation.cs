@@ -15,7 +15,7 @@ public sealed partial class Scene3D
             shadowCascadeCount = ComputeShadowCascades();
             if (shadowCascadeCount == 0) shadowMapActive = false;   // degenerate camera: no shadows this frame
             for (int i = 0; i < shadowCascadeCount; i++)
-                _shadowFrustums[i] = FrustumPlanes.Extract(_cascadeCpuVpsAbsolute[i]);
+                _shadowFrustums[i] = FrustumPlanes.Extract(_cascadeCpuVps[i]);
         }
 
         hasPointShadowRequests = PreparePointShadowRequests(ActiveCamera.Eye);

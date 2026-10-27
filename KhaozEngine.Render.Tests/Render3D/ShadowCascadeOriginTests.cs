@@ -68,6 +68,41 @@ public sealed class ShadowCascadeOriginTests(ITestOutputHelper output)
         Assert.Equal(Held(zero.Scene), Held(far.Scene));
     }
 
+    [Theory]
+    [InlineData(false, -2.5f, 1)]
+    [InlineData(true, -2.5f, 1)]
+    [InlineData(false, -2.75f, 0)]
+    [InlineData(true, -2.75f, 0)]
+    public void Submitted_caster_reaches_only_its_rendered_cascades(bool translated, float y, int expectedCount)
+    {
+        Vector3 origin = translated ? LargeOrigin : Vector3.Zero;
+        using var rig = Create(orthographic: false, origin);
+        // A centred box with a 0.01 m bounding-sphere radius, matching the reviewer's near-edge caster.
+        GltfMesh geometry = MeshPrimitives.Box(0.02f / MathF.Sqrt(3f));
+        Assert.Equal(0.01f, MeshBounds.FromVertices(geometry.Vertices).Radius, tolerance: 1e-8f);
+        MeshHandle mesh = rig.Scene.LoadMesh(geometry);
+        Vector3 center = origin + new Vector3(1.5f, y, 5f);
+        rig.Frame(scene => scene.Draw(mesh, Matrix4x4.CreateTranslation(center)));
+
+        Assert.Equal(1, rig.Scene.ShadowCasterCandidateCount);
+        Assert.Equal(expectedCount, rig.Scene.ShadowCascadeCasterCount(0));
+
+        // Also pin the exact review sphere and the skinned/foliage visibility predicates against this frame's fit.
+        Span<byte> masks = stackalloc byte[1];
+        Scene3D.ComputeCascadeMasks([new Vector4(center, 0.01f)],
+            [ShadowCascadeCull.FromLightViewProj(rig.Scene.CascadeFitRelativeForTests[0], 2048)], 1, masks, origin);
+        Assert.Equal((byte)expectedCount, masks[0]);
+        var frustums = (FrustumPlanes[])typeof(Scene3D)
+            .GetField("_shadowFrustums", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(rig.Scene)!;
+        var visibility = Scene3D.ClassifySkinnedVisibility(MeshBounds.FromVertices(geometry.Vertices),
+            Matrix4x4.CreateTranslation(center), true, FrustumPlanes.Extract(Matrix4x4.Identity),
+            true, frustums.AsSpan(0, 1), origin);
+        Assert.Equal(expectedCount == 1, visibility.VisibleShadow);
+        Assert.Equal(expectedCount == 1,
+            FoliageShadowSelection.IntersectsCascade(new MeshBounds(center, center), frustums[0], origin));
+        output.WriteLine($"origin={origin}, relative centre={center - origin}, cascade 0 casters={rig.Scene.ShadowCascadeCasterCount(0)}");
+    }
+
     static Vector3 Held(Scene3D scene) => (Vector3)typeof(Scene3D)
         .GetField("_heldLightDir", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scene)!;
 

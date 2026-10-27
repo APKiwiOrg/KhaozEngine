@@ -557,6 +557,7 @@ void main() {
         /// </summary>
         public void DrawString(SpriteFont font, string text, Vector2 position, Color color, float scale)
         {
+            font = font.Resolve();
             // atlas texels -> logical pixels (glyphs are baked at the bake density), then the caller's scale.
             float k = font.RenderScale * scale;
             // In a point-space UI pass, snap the whole text block's origin (pen X + the ascent baseline) to the
@@ -589,6 +590,7 @@ void main() {
         // can assert baseline coherence on the real emitted quads without reading back GPU vertex buffers.
         internal System.Collections.Generic.List<Vector4> DebugGlyphDests(SpriteFont font, string text, Vector2 position, float scale)
         {
+            font = font.Resolve();
             float k = font.RenderScale * scale;
             (float penX, float baseline) = SnapTextOrigin(position.X, position.Y + font.Ascent * scale);
             var dests = new System.Collections.Generic.List<Vector4>(text.Length);

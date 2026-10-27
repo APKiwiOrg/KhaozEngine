@@ -75,7 +75,7 @@ What draws, plays and lays out a frame, plus the game loop and headless screensh
 | [KhaozEngine.Render3D](../KhaozEngine.Render3D/README.md) | Mesh rendering, animation, materials, lighting, shadows, cameras, water and visual effects. | Windowing, Gpu, Render2D, Collision, Physics, Primitives | Game3D |
 | [KhaozEngine.Render3D.Ecs](../KhaozEngine.Render3D.Ecs/README.md) | Components and a scene binder for drawing entities with 3D transforms, meshes and materials. | Ecs, Render3D | Game3D |
 | [KhaozEngine.Gui](../KhaozEngine.Gui/README.md) | Immediate-mode controls, retained widgets, screen stacks, menus, notifications and editor tools. | App, Windowing, Render2D, Updates, Diagnostics, Netcode | Game2D, Game3D |
-| [KhaozEngine.Audio](../KhaozEngine.Audio/README.md) | Streaming music, sound effects, positional audio, volume buses and output-device recovery. | Diagnostics, Primitives | Game2D, Game3D |
+| [KhaozEngine.Audio](../KhaozEngine.Audio/README.md) | Streaming music, one-shot effects, protected loops, positional audio, volume buses and output-device recovery. | Diagnostics, Primitives | Game2D, Game3D |
 | [KhaozEngine.Particles](../KhaozEngine.Particles/README.md) | Deterministic particles, emitter scheduling, motion trails, attraction and screen shake. | Primitives | Game2D, Game3D |
 | [KhaozEngine.Particles.Render3D](../KhaozEngine.Particles.Render3D/README.md) | Draws particle simulations as sprites, trails, lights, flipbooks and distortion effects, with ready-to-use presets. | Particles, Render3D | Game3D |
 | [KhaozEngine.Telegraphs](../KhaozEngine.Telegraphs/README.md) | Animated attack warnings and danger zones with reusable styles and a 2D renderer. | Render2D, Primitives | Game2D, Game3D |

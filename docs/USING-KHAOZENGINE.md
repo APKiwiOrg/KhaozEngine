@@ -1323,11 +1323,11 @@ owns no camera. Call `Advance(input, uiBlocked)` once a frame, then read:
 
 - `Phase`: `Idle`, `Pending` (pressed and still undecided) or `Dragging` (past the threshold, and a drag until the
   button comes up or a block arrives).
-- `DragDelta`: zero unless dragging, the frame's `MouseDeltaPoints` while dragging, and the whole pending movement
+- `DragDelta` by default: zero unless dragging, the frame's `MouseDeltaPoints` while dragging, and the whole pending movement
   replay on the frame the press crosses the threshold. All are window points.
 - `TapThisFrame` and `TapPosition`: a release while still pending is a tap, at the framebuffer position the press began.
 
-The rules:
+The default rules:
 
 - Travel is path length over the whole press, so slow movement still becomes a drag, and a wiggle that returns to
   its start is a drag rather than a tap.
@@ -1375,6 +1375,21 @@ gesture.Advance(input, uiBlocked, dt);   // the two-argument Advance throws on a
   `ArgumentException` otherwise. With a tolerance, `elapsedSeconds` must be finite and not negative, else
   `Advance` throws `ArgumentOutOfRangeException`. `TapTolerance` is null on a gesture built with a threshold, and its
   three-argument `Advance` neither uses nor checks the time, so it matches the two-argument one for any value.
+
+Set `LivePendingTravel = true` on an individual gesture to deliver motion while the tap decision is still pending.
+It defaults to false and works with either tap rule. With a positive threshold, each held frame after the press
+reports its own `MouseDeltaPoints` in `DragDelta`, both while pending and on the crossing. Nothing replays, and
+`CatchUpLimitPoints` has no effect. The press and release frames deliver zero. Tap decisions, grace, suppression
+and `TapPosition` stay unchanged, so a pending release still taps at the press origin. The strict path rule keeps
+its existing threshold accounting, including the press frame. A nonpositive threshold keeps its immediate-drag
+behavior.
+
+```csharp
+var gesture = new PointerGesture(MouseButton.Right, new PointerTapTolerance(6f, 0.2f, 10f))
+{
+    LivePendingTravel = true,
+};
+```
 
 It is lifted from the reference consumer's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
 them (see "Tap-or-drag gestures" in the follow camera chapter).
@@ -1712,6 +1727,41 @@ quality.Update(im, focused: nav.Focused == 2);   // Enter opens the dropdown; Up
 
 `KhaozEngine.Showcase`'s Settings dialog (`Room2DGui.cs`) is the runnable reference: enter the "2D & GUI" room, open the "Screens & dialogs" tab, launch the Settings dialog, and drive the volume slider + fullscreen toggle with the keyboard/gamepad (Up/Down between rows, Left/Right to adjust, Enter to flip, Esc to back out) or the pointer.
 
+**Bounded `Dropdown` popups** - set `PopupViewport` in the same logical coordinates as `TriggerBounds`
+before update and draw. The popup fits below, flips above when that fits, or uses the side with more space
+and scrolls. Horizontal placement and width clamp to the viewport without moving the trigger or shrinking
+option text. Opening reveals the current selection. Keyboard highlight movement, including wrap, reveals
+the target row. Wheel scrolling persists across idle updates.
+
+```csharp
+var resolution = new Dropdown(resolutionOptions, triggerBounds)
+{
+    PopupViewport = new Rect(0, 0, 400, 300),
+};
+// Each frame, after InputManager.Update and before parent content updates:
+resolution.Update(input, focused: resolutionFocused);
+parent.Update(input.Pointer, resolution.WheelConsumed ? input.State.WithoutScroll() : input.State);
+// Draw the trigger with normal content, then draw the popup after the parent's clip has ended.
+resolution.Draw(batch, white, font);
+resolution.DrawOverlay(batch, white, font, input.Pointer);
+```
+
+`PopupBounds` is the actual list rectangle, excluding the trigger. `FirstVisibleIndex` and
+`VisibleOptionCount` identify intersecting rows, including partial edge rows. Bounded `OptionBounds(i)`
+is the visible, hit-testable part of the row and returns the empty default rectangle for a fully offscreen
+row. Drawing, pointer reservation and selection use this same resolved geometry. A row press is cancelled
+when scrolling, popup reflow or a pointer-coordinate mapping change intervenes before release. Returning
+to the original geometry does not revive that press. Same-frame taps still select visible options.
+
+The additive `Update(Pointer, float wheelDelta)` scrolls upward for positive deltas. `Update(Pointer)`
+remains a zero-wheel call. `WheelConsumed` resets on each update and claims nonzero wheel input only while
+a bounded popup is open and the pointer is inside it, including at a scroll limit. Update the popup first
+and withhold consumed wheel input from parent content as above. Bounded `Update(InputManager, ...)` reads
+keyboard/gamepad navigation from a scroll-free snapshot, so a wheel event never also moves the highlight,
+and a wheel outside the popup remains available to parent content. Simultaneous keyboard/gamepad input
+still works. Leaving `PopupViewport` null preserves the original unbounded placement, `OptionBounds` and
+InputManager wheel-as-menu navigation.
+
 **Overlay chrome on the core widgets (opt-in, 9.21.0)** - `ScrollablePanel`, `Dropdown`, and `Tooltip` carry
 opt-in "panel overlay" behaviours for bottom-sheet-style UI. Every knob defaults to a no-op, so a widget you
 already use is unchanged until you set one.
@@ -2012,6 +2062,45 @@ DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
 What stays in the GAME: the palette values it assigns to `GuiTheme`, the metric numbers if the default shape is
 wrong for it, which taps it swallows through `BlockRegion`, each window's natural-bounds rule, the grip rect,
 and whatever fills the strip, content and footer bands.
+
+### Saved HUD layout
+
+`HudLayout` and `HudLayoutEditor` in `KhaozEngine.Gui` provide movable HUD regions without owning the
+game's presentation or storage. A `HudLayoutPosition(CenterX, CenterY)` stores a normalized center from
+0 to 1 as serializable properties. The caller supplies each region's current default rectangle and a
+canvas extent in the same coordinates as its `Pointer` and drawing pass.
+
+`HudLayout.Resolve(defaultBounds, canvas, savedPosition)` uses a valid saved center or the default, then
+clamps the complete rectangle. Its size remains caller-owned. An oversized region keeps its top-left
+reachable. A zero or invalid canvas extent is treated as zero, allowing initial layout before the first
+sized window frame. `FromBounds(bounds, canvas)` captures a normalized center and requires a positive
+finite canvas. Neither method changes stored settings. This preserves the intended position when a
+resize or user-scale change temporarily clamps a region against an edge.
+
+For an edit mode, register `HudLayoutRegion(Id, DefaultBounds)` entries in draw order. Identifiers must
+be unique and stable. Include hidden regions if the game wants to paint editable ghosts for them.
+
+```csharp
+var editor = new HudLayoutEditor();
+editor.Begin(savedPositions);   // copies valid entries, including unknown future region ids
+editor.Update(pointer, regions, canvas);
+Rect bounds = editor.Resolve("status", statusDefaultBounds, canvas);
+// Draw and hit-test this same rectangle. The caller supplies real or ghost content.
+Dictionary<string, HudLayoutPosition> updatedPositions = editor.Commit();
+// Persist updatedPositions through the consumer's existing settings owner.
+```
+
+Only a fresh unconsumed press can capture a region. The last drawn region under it wins. Capture follows
+the pointer outside the region, consumes the whole gesture through release, and does not apply travel
+that happened before the press. Clamping does not accumulate invisible drag distance. If the canvas or
+the pointer's captured transform changes during capture, that frame rebases the gesture without treating
+coordinate remapping as travel. This includes a DPI change that leaves the logical canvas size unchanged.
+
+`Reset(regionIds)` removes only those overrides from the draft, leaving unknown future entries alone
+when the consumer supplies its known ids. `Cancel()` discards the draft and is safe on repeated close or
+disconnect paths. `Commit()` returns a separate dictionary and ends editing. Reset and Commit require an
+active session. The editor does not persist, draw a modal scrim, reserve unrelated pointer regions or
+consume keyboard input. The caller owns those policies, along with labels and Done/Cancel controls.
 
 ### Overlapping windows (`WindowStack`, 21.3.0)
 
@@ -3996,18 +4085,37 @@ half-lit edges). The fix is to draw the UI in **logical points at native DPI** i
 canvas, then snap to whole device pixels. The game world stays letterboxed in its `DesignViewport`; only the UI
 layer is decoupled.
 
-**`UiViewport` (`KhaozEngine.Windowing`)** is a point-space `IDesignViewport` where 1 logical point = `DpiScale`
-device pixels, with no letterbox. Its `Width`/`Height` track the logical window, so the UI reflows on resize
-rather than scaling. Drive it once per frame with `uiViewport.Update(frame)`. `Frame.DpiScale` is the window's
-OS content scale, so a Windows display at 150% gives 1.5 even though its window coordinates are pixels, and a
-resize never perturbs the scale.
+**`UiViewport` (`KhaozEngine.Windowing`)** is a point-space `IDesignViewport` without letterboxing.
+`DpiScale` is the physical OS content scale. `ScaleMultiplier`, default 1, requests a user scale from 0.1
+through 10 inclusive. Invalid requests throw before replacing the last good value. The next valid `Update`
+applies the request to projection, pointer mapping, clipping and layout together. A request made during a
+frame does not alter that frame's transform. `EffectiveScale` is the applied DPI times user multiplier,
+also exposed as `ScaleX`/`ScaleY`. `Width`/`Height` divide the logical window size by the multiplier and round
+for integer layout consumers. `DesignBounds` keeps exact fractional coverage and `ContentBounds` is the
+complete framebuffer. Drive it once per frame with `uiViewport.Update(frame)`. Physical DPI remains stable
+on resize. This does not change the game viewport or camera.
 
 **`DpiFont` (`KhaozEngine.Render2D`)** authors at a logical `pixelHeight`, and each frame you call
-`font.For(frame.DpiScale)` to get a `SpriteFont` baked for the current DPI, drawn 1:1 in the point-space pass. It
-re-bakes the atlas only when the DPI scale changes. Create one via `surface.LoadDpiFont(...)` /
+`font.For(uiViewport.EffectiveScale)` to get a `SpriteFont` baked for the applied UI density, drawn 1:1 in
+the point-space pass. It re-bakes only when that density changes, from OS DPI or a user-scale update.
+Create one via `surface.LoadDpiFont(...)` /
 `surface.LoadDefaultDpiFont(...)`. Pass `cacheSlots` &gt; 1 when the same face is drawn at several scales in one
 pass and each must be texel-exact (e.g. a boot title + smaller label): each `For(scale * dpiScale)` stays baked
 instead of thrashing a single slot.
+
+**Retained UI fonts.** `DpiFont.Bind(Func<float>)` returns a stable borrowed `SpriteFont` for controls that
+keep their font reference. Bind to the frame's effective UI density and pass that view to the controls.
+Each measurement or text draw resolves current glyphs, metrics and atlas. Text drawing uses one resolved
+font snapshot for the whole operation. The callback must return a finite positive density and should not
+change during a frame. The first use bakes lazily, and values below 1 keep the minimum bake density of 1.
+Dispose the `DpiFont` after the controls stop using it. Disposing the view does not dispose the owner.
+A disposed owner rejects For, Bind and any later use of its views.
+
+```csharp
+DpiFont owner = surface.LoadDefaultDpiFont(16f);
+SpriteFont retained = owner.Bind(() => uiViewport.EffectiveScale);
+// Pass retained to controls. Keep owner alive and dispose it when those controls are finished.
+```
 
 **Device-pixel snapping.** Inside a point-space `Begin`, `SpriteBatch.SnapRect` / `SnapLength` and the
 `DeviceScale` / `DeviceOffset` accessors snap coordinates to whole device pixels (they are inert outside a
@@ -4024,7 +4132,7 @@ it. `minHeight` holds a desired resting scale (e.g. couple it to camera zoom), `
 edge seams. It is the rect form of the scalar `Cover`.
 
 **With `KhaozEngine.Game`.** Override `GameApp.OnDrawUi(SpriteBatch)`, a second pass that runs after `OnDraw2D`
-with the batch already in `Begin(Ui)`. Draw crisp UI there with `DpiFont.For(Ui.DpiScale)` and hit-test with
+with the batch already in `Begin(Ui)`. Draw crisp UI there with `DpiFont.For(Ui.EffectiveScale)` and hit-test with
 `UiPointer`. `OnDraw2D` stays the design-space game field, so the world layer is unchanged. Scenes get the same
 split: `GameScene.OnDrawUi` plus `Manager.UiViewport` / `Manager.UiPointer`.
 
@@ -4034,7 +4142,7 @@ DpiFont _title = null!;   // Surface2D.LoadDefaultDpiFont(40f) in OnLoad
 
 protected override void OnDrawUi(SpriteBatch batch)
 {
-    SpriteFont f = _title.For(Ui.DpiScale);
+    SpriteFont f = _title.For(Ui.EffectiveScale);
     batch.DrawString(f, "Menu", new Vector2(40, 40), color);   // crisp at any DPI
 }
 ```
@@ -8247,10 +8355,13 @@ With either set, `OrbitButton` is ignored. `UiBlocked` is a field the game sets 
 `Update` advances each set gesture once with its `dt`, which times a gesture built on a `PointerTapTolerance`, so
 pass the real frame time. `UpdateInput(input, elapsedSeconds)` is `Update` without `AdvanceTarget` and `AdvanceBoom`,
 for a game that reads camera input early in its frame and advances those camera clocks itself after the subject
-moves. Pass it the real frame time too, since a zero freezes the tolerance's grace. The camera orbits only while a
-gesture drags, and by one delta a frame, so each mouse movement turns it once however many buttons are held. A
-gesture that crosses its threshold with no orbit since its press began applies its `DragDelta`, the replay of its
-pending travel, with `LookGesture` first when both cross together. Otherwise the frame's `MouseDeltaPoints` applies.
+moves. Pass it the real frame time too, since a zero freezes the tolerance's grace. The camera orbits while a
+gesture drags and also by a live gesture's `DragDelta` while pending. It applies at most one delta a frame however
+many buttons are held. Live motion takes precedence over a default crossing's replay. Without live motion, a
+default gesture that crosses its threshold with no orbit since its press began applies its pending replay, with
+`LookGesture` first when both cross together. After any prior orbit, it applies only the
+frame's `MouseDeltaPoints`. Live gestures always supply their own frame delta, including the crossing, so motion
+already delivered is never replayed. A newly pressed live gesture cannot swallow the other gesture's motion.
 Gesture replay and continuing motion are in window points before and during capture. Speed, invert and sign are as
 for the orbit button, and scroll zoom, target damping and boom recovery run unchanged. With neither gesture set,
 `Update` keeps the original orbit button path and its legacy `MouseDelta` units.
@@ -8261,11 +8372,14 @@ The controller reports three things:
 - `WantsPointerCapture` is true while either gesture drags. Forward it to `SetPointerCaptured` so the cursor hides
   and holds for the drag (see "Pointer capture" in the input chapter).
 - `OrbitTap` and `LookTap` report each gesture's tap after `Update` or `UpdateInput`, in the same frame, with the
-  press origin in that gesture's `TapPosition`. A tap counts only if the camera did not turn during that press,
-  its release frame included. The camera turns on every frame a gesture drags, even with no mouse movement. A
-  tapping gesture never dragged, so any turn came from the other one, and a both-buttons release is never a select
-  whichever button went down first. Read taps there rather than from `PointerGesture.TapThisFrame`, which knows
-  nothing of the other gesture.
+  press origin in that gesture's `TapPosition`. Its own live pending travel preserves the tap. A turn from the
+  other gesture voids it, including on the release frame. Both live gestures delivering motion together void both
+  taps, whichever button went down first. A simultaneous release of both gestures suppresses both taps when
+  either gesture is live, including completely stationary presses. Default-off stationary taps remain unchanged.
+  An active drag still invalidates the other gesture's tap on stationary
+  frames, preserving the existing handoff rule. Read taps here rather than from `PointerGesture.TapThisFrame`,
+  which knows nothing of the other gesture. Live pending look motion turns the camera alone. `TurnBodyActive`
+  and `WantsPointerCapture` still begin at the crossing.
 
 The WoW wiring puts orbit on the left button and look on the right. The game reads `TurnBodyActive` and hands it to
 `CharacterMovement` as `MoveCommand.FaceCamera`, with `Camera.Yaw` as `CameraYaw`. A local
@@ -9060,7 +9174,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.15.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.17.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9261,7 +9375,10 @@ Legacy proofs use dry medium. Contact proofs retain their ordinary water policy.
 one. Defaults are `1 / 30` seconds and 64 total core calls, with a 1 mm arrival proof tolerance that is not a gameplay epsilon.
 
 The profile checks the whole circular footprint and each surface's area tags. It uses raw radius-zero grid
-checks after the physical capsule proof, so the radius is not eroded twice. Grounded extraction respects
+checks after the physical capsule proof, so the radius is not eroded twice. Contact footprints keep surface reach
+and area restrictions but leave clearance to placement and swept-shell proofs. A neighbouring captured floor beneath
+a climbable slab does not reject the resting pose for that floor's low headroom. The candidate's own headroom and
+raw surface ownership band still apply. Legacy footprints retain captured headroom checks. Grounded extraction respects
 `MaxLayerCells` before dense arrays, emits only `NavLinkKind.Stair` links and never creates `Hop` links.
 `Space.Links` contains candidate Stair topology. Accepted links are a separate guarded graph used by
 `Planner` and `AllowsSegment`. The planner requires the exact profile radius and returns unsmoothed cell-centre
@@ -9498,7 +9615,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.15.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.17.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10297,7 +10414,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.15.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.17.0" />
 ```
 
 ```csharp
@@ -10682,6 +10799,14 @@ balance through the boundary. Labels are nonblank, preserved exactly and compare
 exclusive to the innermost label and completed children enter the parent once. Snapshots are detached,
 cumulative and immutable. Sample only the active top scope, or its frozen final result on the creating thread.
 Never carry a scope across `await`, `Task.Run` or a thread handoff. Results may be read on any thread.
+
+The six outer invocation counters separate NPC Hold and Step calls from authoritative
+`PlayerMovementSystem` per-entity Steps, each split by Legacy or Contact controller. NPC attribution uses
+requested tuning, never destinations or steering state. Player Steps include idle commands and rejected
+selected Steps, exclude skipped entities, and count only this authoritative system. Players have no outer
+Hold entry point here. The nested `HoldExplicit` fallback and direct `PlayerMoveSimulator` consumers such as
+client prediction add no outer invocations. The [counter contract](../KhaozEngine.Physics/README.md#support-query-measurement)
+names each identity and describes disabled recording.
 
 `SupportQueryMeasurement.Combine` adds disjoint completed measurements, coalescing repeated labels. It does
 not deduplicate parent/child overlap or repeated cumulative snapshots. Independent consumer threads need
@@ -17469,9 +17594,9 @@ Rules:
 ## Audio (`KhaozEngine.Audio`)
 
 `AudioSystem` over a cross-platform OpenAL (Silk.NET.OpenAL) backend. Streaming music (WAV/OGG/MP3,
-one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), SFX one-shots, and 3D positional audio
-(`PlaySfx`/`PlaySfx3D`/`SetListener`, a 16-voice pool, per-channel volume). `LoadContent(directory)` +
-`Update()` per frame.
+one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), sixteen one-shot SFX sources and four separate
+protected-loop slots, with optional 3D positioning (`PlaySfx`/`PlaySfx3D`/`TryPlayLoop`/`SetListener`).
+`LoadContent(directory)` and `Update()` per frame.
 
 **Threading: main-thread-only, and it throws if you get it wrong.** An `AudioSystem` belongs to the thread that
 constructed it, normally the thread pumping the frame loop. Its registries are plain dictionaries, sets and lists
@@ -17482,9 +17607,11 @@ crossfade call, `Update`, `StopAllSfx`, `SetListener`, `SetRng`, `SetRotationPoo
 it is the wrong one. The comparison is a thread-local `int` read, so it costs the same in Release as in Debug and
 a background job cannot get a pass on a build where `Debug.Assert` has been compiled away. To play a sound in
 response to work on a worker thread (an ECS job under `ThreadPoolJobScheduler`, an async content load), record
-the request in your own structure and issue the call from the main thread on the next frame. `Dispose` is the one
-deliberate exemption: a process-exit handler or host teardown on another thread stays legal, since failing at the
-point where the state is about to be dropped buys nothing.
+the request in your own structure and issue the call from the main thread on the next frame. Loop starts, controls,
+`IsLoopActive` and `LoopCapacity` enforce the same owning-thread check before handle lookup or disposed-state handling.
+`Dispose` is the deliberate exemption, provided it does not race a live update or play call. It invalidates loop use
+before attempting SFX, music and context cleanup in that order, attempts every cleanup even after an exception, and
+rethrows the first failure.
 
 **Output device changes follow themselves, as long as `Update` runs.** The OpenAL backend opens the system default
 output, and `Update` checks it once a second (about 0.4 ms per check on macOS). When the default output changes, or
@@ -17494,6 +17621,10 @@ logged once through the OpenAL error log and retried: every second while the old
 backoff up to 30 seconds while the old device still plays, because each failed attempt briefly interrupts it. The
 check runs ahead of the music early-out, so an SFX-only game gets it too, but only if it calls `Update` every
 frame. The silent backends have no device and do nothing here.
+
+A resource-preserving reopen also keeps protected-loop identities and sources. A failed reopen neither frees
+capacity nor permits duplicate loops. This is logical resource ownership, not a promise of audible continuity
+through disconnects, which depends on the output and device extensions.
 
 **Music crossfade.** Switching tracks can fade the old one out and the new one in instead of a hard cut. Set
 `MusicCrossfadeDuration` (seconds, default `0` = hard cut, today's behavior) to make every track change
@@ -17541,14 +17672,53 @@ reports is harder to diagnose than an audible cut. `ISfxBackend.Play(..., priori
 member forwarding to the priority-free overload, so a game's own backend written before it keeps compiling and
 simply ignores the priority.
 
-**Releasing SFX.** `UnregisterSfx(name)` drops a sound from the registry and releases its buffer through
-`ISfxBackend.Unload(handle)`, returning whether a loaded buffer was actually freed. `UnregisterSfxes(names)`
-does a whole set and returns how many it released, which is the zone-scoped or level-scoped shape: load a
-zone's sounds on entry, release them on exit, instead of accumulating every sound the session ever touched.
-A released name stops resolving (`IsSfxLoaded` goes false and `PlaySfx` on it is a no-op) and can be
-registered again later, which reloads it. On the OpenAL backend the freed handle is reused by the next load.
-`Unload` is a default interface member with a no-op body, so a game's own `ISfxBackend` written before it
-keeps compiling and simply never frees anything.
+**Protected loops.** Register and load the same SFX key, then start a whole-buffer loop with
+`TryPlayLoop(in SfxLoopRequest)`. The stock OpenAL and null backends declare `LoopCapacity == 4`,
+separate from the unchanged sixteen-source one-shot pool. Ordinary effect pressure cannot steal loop
+sources. A full protected pool returns `Capacity` without changing existing playback. It does not borrow
+one-shot sources, expand, substitute a one-shot, queue a restart or silently reacquire a stopped loop.
+
+```csharp
+var result = audio.TryPlayLoop(new SfxLoopRequest("wind", Bus: "ambience", Volume: 0.6f, Position: pos));
+if (result.Status == SfxLoopStartStatus.Started)
+{
+    SfxLoopHandle handle = result.Handle;
+    audio.SetLoopPosition(handle, nextPos);
+    audio.SetLoopVolume(handle, 0.3f);
+    audio.StopLoop(handle);
+}
+```
+
+Every successful call starts a distinct loop. Omit `Position` for a flat, listener-relative loop.
+`SetLoopPosition` returns false for flat loops. Request volume must be finite and clamps to 0..1.
+Pitch must be finite and clamps to a minimum of 0.01. Blank keys and non-finite request values or
+positions throw argument errors. Missing keys and unknown buses share the existing bounded diagnostics,
+with unknown buses using the default mix.
+
+Start outcomes are `Started`, `Capacity`, `NotLoaded`, `Unsupported`, `BackendFailure` and `Disposed`.
+Only success carries a handle, and the default result is failure with an empty handle. Handles are opaque
+identities scoped to the admitting system. They retain no system, backend or native source. Copies refer
+to the same loop, and retaining or dropping a handle does not change playback. Default, foreign and
+expired handles cannot control another loop, including after numeric buffer reuse. `IsLoopActive`
+reports logical ownership, not audibility. The null backend enforces the same capacity and identity rules
+without creating a native context. Legacy backends report zero capacity and `Unsupported` for a valid
+loaded loop request. Disposed systems report zero capacity and reject loop operations.
+
+`StopLoop` succeeds only after confirmed stop and detach. Failure retains ownership for explicit retry.
+An uncertain failed start publishes no handle and quarantines its slot. Explicit unload, `StopAllSfx` or
+disposal can recover quarantine. `StopAllSfx` includes loops and leaves music alone. No timer retries
+failed starts or rebuilds stopped loops.
+
+**Releasing SFX.** `UnregisterSfx(name)` releases a loaded buffer and removes its registration. For a
+backend implementing `ISfxLoopBackend`, release is confirmed by `TryUnloadSfx(handle)` before the name,
+loaded mapping and warning state are removed. False or an exception returns false and retains the
+registration for deliberate retry. Partial cleanup expires confirmed stopped identities while preserving
+the remaining owners and buffer. Referencing loops and one-shots must stop and detach before buffer
+deletion. `UnregisterSfxes(names)` counts successful releases only. Unknown or registered-but-unloaded
+names are removed and return false. A released key can be registered again later. The OpenAL backend
+reuses freed numeric buffer slots without reviving old loop identities. Legacy backends keep the existing
+void `ISfxBackend.Unload` path, treating a normal return as success. Its default no-op body remains
+compatible but cannot confirm that a custom backend actually freed storage.
 
 **SFX buses.** Group sounds (UI, ambience, combat, and any game-defined others) under one volume without the
 game tracking individual voices. `DefineBus(id)` registers a bus (opaque identifier, not player-facing text),
@@ -17560,11 +17730,12 @@ one-time debug note (call `DefineBus` first). A newly defined bus starts at 1.0,
 its current volume. Music is unaffected: it stays on its own `master * music` (+ crossfade factor) path, so
 there is no "music bus" here.
 
-Note (a documented limitation): a bus volume change applies to sounds played AFTER the change, not to voices
-already playing on that bus. The `ISfxBackend` seam is fire-and-forget (`Play` returns no voice handle and
-exposes no per-voice gain setter), so a live per-voice re-gain would need a breaking seam change and is out of
-scope. SFX one-shots are short, so lowering a bus is heard on the next sound rather than mid-tail. (A future
-seam that returns a voice handle + per-voice gain setter is the upgrade path for live re-gain.)
+One-shots sample their mix at start. Changing a bus affects their next play and does not change an
+existing tail. Protected loops use `master * sfx * current bus * local loop volume` and refresh live gain
+before a mixer setter returns. `SetLoopVolume` replaces the local factor. Failed gain writes retain the
+desired value and get at most one refresh per normal `Update`, including the no-music path, without
+restart or reallocation. Existing volume setters clamp positive infinity to 1 and negative infinity to 0. A non-finite composed
+loop gain, including NaN, becomes zero. One-shot mixing keeps its existing behavior. Muting keeps the loop running and retains its slot.
 
 Bus volumes are game settings, like `MasterVolume` / `SfxVolume`: the game persists them however it persists
 its other audio settings (no built-in bus serialization).
@@ -17579,11 +17750,13 @@ audio.PlaySfx3D("wind", pos, bus: "ambience"); // master * sfx * 0.4 * volume
 audio.PlaySfx("beep");                         // no bus => default bus (1.0), unchanged from before
 ```
 
-`DefineBus(id, new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance))` also sets the curve for
-later positional one-shots. Reference distance must be positive, rolloff non-negative and maximum at least
-the reference distance. Values must be finite. `DefineBus` rejects `default(SfxAttenuation)`. The historical default is `(1, 1, 50)`. Existing bus volume
-is preserved, and non-positional sounds ignore attenuation. The new `ISfxBackend.Play` overload forwards
-to the existing priority overload unless a custom backend opts into the curve.
+`DefineBus(id, new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance))` sets the curve for
+later positional plays, including loops. A loop captures that immutable profile at start. Reference
+distance must be positive, rolloff non-negative and maximum at least the reference distance. Values must
+be finite. `DefineBus` rejects `default(SfxAttenuation)`. The historical default is `(1, 1, 50)`, and
+redefining a bus preserves its volume. Non-positional sounds ignore attenuation. The attenuation-aware
+`ISfxBackend.Play` overload still forwards to the existing priority overload unless a custom backend
+opts into the curve.
 
 **Authoring SFX assets (`ke-sfxbake`).** The `KhaozEngine.Sfx.Tool` dotnet tool bulk-generates and bakes a
 game's sound effects from a `sfx.manifest.jsonc` (prompt -> ElevenLabs sound-effects API -> ffmpeg/oggenc ->
@@ -18485,7 +18658,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.15.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.17.0" />
 ```
 
 ```csharp
@@ -18521,7 +18694,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.15.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.17.0" />
 ```
 
 ```csharp
@@ -18765,7 +18938,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.15.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.17.0" />
 ```
 
 ```csharp
@@ -23157,7 +23330,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.15.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.17.0" />
 </ItemGroup>
 ```
 
@@ -23203,10 +23376,11 @@ Dispose it (a `using`, an `OnUnload`, either) so the handshake file goes. The ho
 ordinary path, where `quit` closes the window and `Run` returns without anything being disposed, but a hard crash
 still leaves a file naming a dead port, so a bridge checks the file's `pid` is alive before trusting it.
 
-`Log` is the diagnostic hook, null and silent by default. It is called with a message, and an exception when there
-was one, whenever an accept loop or a connection ends for a reason other than shutdown: the accept loop dying takes
-the endpoint down for the whole run and the bridge sees only connection refused, which is exactly the failure worth
-one log line. It runs on a socket thread, so do not block in it.
+`Log` is the diagnostic hook, null and silent by default. It receives a message and an optional exception when a
+connection or acceptance ends for a reason other than shutdown. An accept that reports `SocketError.Interrupted`
+resumes while the listener is running. Other accept failures stop further acceptance for that host instance and
+are reported, while established clients keep their independent serving loops. Disposing the host stops acceptance
+quietly and closes those clients. The hook runs on a socket thread, so do not block in it. A throwing hook is contained.
 
 Two bounds sit ahead of the token check, because the token travels inside the request line. A line past
 `AutomationHost.MaxRequestLineBytes` (64 KiB) is refused and the connection closes, without the rest of it ever being

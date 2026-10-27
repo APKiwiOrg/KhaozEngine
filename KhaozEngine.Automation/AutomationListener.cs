@@ -26,6 +26,7 @@ namespace KhaozEngine.Automation
     {
         readonly AutomationOptions _options;
         readonly TcpListener _listener;
+        readonly AutomationAcceptLoop _acceptLoop;
         readonly string _token;
         readonly Func<long> _frame;
         readonly Func<AutomationRequest, Task<AutomationReply>> _dispatch;
@@ -37,10 +38,13 @@ namespace KhaozEngine.Automation
         /// <summary>The ephemeral port the loopback listener bound.</summary>
         public int Port { get; }
 
+        internal Task AcceptLoopCompletion => _acceptLoop.Completion;
+
         /// <summary>Bind loopback on an ephemeral port and start accepting. Throws if the bind fails, because a host
         /// that cannot listen must not go on to advertise a port in the handshake file.</summary>
         public AutomationListener(
-            AutomationOptions options, string token, Func<long> frame, Func<AutomationRequest, Task<AutomationReply>> dispatch)
+            AutomationOptions options, string token, Func<long> frame, Func<AutomationRequest, Task<AutomationReply>> dispatch,
+            Func<TcpListener, TcpClient>? accept = null)
         {
             _options = options;
             _token = token;
@@ -50,35 +54,22 @@ namespace KhaozEngine.Automation
             _listener.Start();
             Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
 
-            var accept = new Thread(AcceptLoop) { IsBackground = true, Name = "ke-automation-accept" };
-            accept.Start();
+            _acceptLoop = new AutomationAcceptLoop(
+                _listener, accept ?? (static listener => listener.AcceptTcpClient()), () => _stopping, StartClient, Report);
+            var acceptThread = new Thread(_acceptLoop.Run) { IsBackground = true, Name = "ke-automation-accept" };
+            acceptThread.Start();
         }
 
-        /// <summary>Accept connections until <see cref="Dispose"/>. Same rule as <see cref="Serve"/>: nothing escapes
-        /// this thread. <c>Stop()</c> unblocks the pending accept by faulting it, which is the ordinary shutdown path
-        /// rather than an error, and any other failure ends the endpoint for this run, which is exactly the case
-        /// <see cref="AutomationOptions.Log"/> exists to report: from the bridge's side it is indistinguishable from
-        /// a game that never opened one.</summary>
-        void AcceptLoop()
+        /// <summary>Register a newly accepted client before starting its independent serving thread.</summary>
+        void StartClient(TcpClient client)
         {
-            try
+            lock (_clientsLock)
             {
-                while (!_stopping)
-                {
-                    TcpClient client = _listener.AcceptTcpClient();
-                    lock (_clientsLock)
-                    {
-                        if (_stopping) { client.Dispose(); return; }
-                        _clients.Add(client);
-                    }
-                    var serve = new Thread(() => Serve(client)) { IsBackground = true, Name = "ke-automation-serve" };
-                    serve.Start();
-                }
+                if (_stopping) { client.Dispose(); return; }
+                _clients.Add(client);
             }
-            catch (Exception ex)
-            {
-                Report("automation: the accept loop stopped, so the endpoint is gone for the rest of this run", ex);
-            }
+            var serve = new Thread(() => Serve(client)) { IsBackground = true, Name = "ke-automation-serve" };
+            serve.Start();
         }
 
         /// <summary>

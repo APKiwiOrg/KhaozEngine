@@ -15,6 +15,7 @@ internal sealed record RendererPerfBlockSummary(RendererPerfBlock Block,
 {
     internal ImmutableDictionary<string, ImmutableArray<RendererPerfFloorAssessment>> GapEvidence { get; init; }
         = ImmutableDictionary<string, ImmutableArray<RendererPerfFloorAssessment>>.Empty;
+    internal RendererPerfControlResolution? TimingResolution { get; init; }
 }
 internal sealed record RendererPerfCombinedSummary(string SceneId, RendererPerfLayout Layout,
     ImmutableDictionary<string, RendererPerfDistribution> Metrics, ImmutableArray<RendererPerfMetric> IterationMeans);
@@ -161,7 +162,7 @@ internal static class RendererPerfAnalysis
                     ("operations.perSecond", "operations/s"), ("fill.pixelsPerSecond", "pixels/s") })
                     metrics.Add("achieved." + name, Distribution([Unavailable(unit, "checked control work / outer GPU duration", error.Message)], 1));
             }
-            return new RendererPerfBlockSummary(block, metrics.ToImmutable(), []);
+            return new RendererPerfBlockSummary(block, metrics.ToImmutable(), []) { TimingResolution = RendererPerfControlTiming.Summarize(control) };
         }).ToImmutableArray();
         var perturbations = ImmutableDictionary.CreateBuilder<string, RendererPerfPerturbation>(StringComparer.Ordinal);
         foreach (var group in blocks.GroupBy(b => (b.Block.SceneId, b.Block.Iteration)))

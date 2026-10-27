@@ -45,7 +45,7 @@ public sealed class RendererPerfRehearsalClassesTests
         Assert.Equal(paid.Blocks, manifest.Blocks, EqualityComparer<RendererPerfBlock>.Default);
         Assert.Equal(paid.Controls, manifest.Controls, EqualityComparer<RendererPerfControl>.Default);
         Assert.Equal(paid.Recipes, manifest.Recipes, EqualityComparer<RendererPerfRecipeIdentity>.Default);
-        Assert.Equal(new RendererPerfLimits(full ? 19800 : 5400, 60000, full ? 350 : 120), manifest.Limits);
+        Assert.Equal(new RendererPerfLimits(full ? 19800 : 5400, 60000, 120000, full ? 350 : 120), manifest.Limits);
         Assert.Equal(new RendererPerfBudget(full ? 350 : 120, 0, "USD", 0), manifest.Budget);
     }
 

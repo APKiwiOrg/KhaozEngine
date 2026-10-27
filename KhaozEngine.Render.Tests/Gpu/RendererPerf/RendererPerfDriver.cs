@@ -59,7 +59,12 @@ internal static class RendererPerfDriver
             if (budget is not null) { _start = budget.ColdStart; _deadline = budget.Deadline; _started = true; }
             // Construct and admit the first session before reading any clock.
             var conditioning = new RendererPerfBlock("conditioning:S3", RendererPerfLayout.TotalOnly, 0, 0, manifest.ConditioningFrames);
-            Execute(conditioning, (warm, measured, info, errors) => _conditioning = measured);
+            Execute(conditioning, (warm, measured, info, errors) =>
+            {
+                _conditioning = measured;
+                // A controls rehearsal has no scene block to retain the real conditioning recipe.
+                if (manifest.Blocks.IsEmpty && info?.Recipe is { } recipe) _recipes.TryAdd(recipe.Identity.SceneId, recipe);
+            });
             foreach (var block in manifest.Blocks)
             {
                 if (_failure is not null) break;
@@ -79,7 +84,7 @@ internal static class RendererPerfDriver
                     string state = info?.ControlStateSha256 ?? control.WorkSha256;
                     if (info?.ControlStateSha256 is null && _failure is null) Record("renderer.execute", new InvalidOperationException("The control omitted its retained-output state identity."));
                     _controls.Add(new(control, state, warm, measured, info?.Telemetry ?? ImmutableDictionary<string, RendererPerfMetric>.Empty));
-                });
+                }, control.Id);
             }
             var metrics = RendererPerfDriverAssessment.WindowMetrics(_blocks, _conditioning);
             if (manifest.ExecutionClass == RendererPerfExecutionClass.Rehearsal)
@@ -106,8 +111,11 @@ internal static class RendererPerfDriver
             return new(report, _failures.ToImmutable());
         }
 
-        void Execute(RendererPerfBlock block, Action<ImmutableArray<RendererPerfFrameSample>, ImmutableArray<RendererPerfFrameSample>, RendererPerfSessionInfo?, ImmutableArray<string>> retain)
+        void Execute(RendererPerfBlock block, Action<ImmutableArray<RendererPerfFrameSample>, ImmutableArray<RendererPerfFrameSample>, RendererPerfSessionInfo?, ImmutableArray<string>> retain,
+            int controlId = 0)
         {
+            int FrameLimit(int frameId) => block.SceneId == "conditioning:S3" && frameId == 0
+                ? manifest.Limits.ColdFrameMilliseconds : manifest.Limits.FrameMilliseconds;
             IRendererPerfSession? session = null;
             RendererPerfSessionInfo? info = null;
             var samples = new RendererPerfFrameSample[checked(block.WarmupFrames + block.MeasuredFrames)];
@@ -150,7 +158,7 @@ internal static class RendererPerfDriver
                             }
                             if (recorded == before) throw new InvalidOperationException("The session returned without a frame sample.");
                             if (!samples[before].Errors.IsEmpty) throw new InvalidOperationException(samples[before].Errors[0]);
-                            CheckFrame(frameStart, clock.Now());
+                            CheckFrame(frameStart, clock.Now(), FrameLimit(before));
                             CheckDeadline();
                         }
                     }
@@ -189,13 +197,15 @@ internal static class RendererPerfDriver
                                     for (int i = first; i < recorded; i++)
                                     {
                                         var sample = samples[i];
-                                        CheckFrame(sample.CpuStartTicks, sample.CpuEndTicks);
-                                        if (sample.GpuFrame.Value / 1000000d > manifest.Limits.FrameMilliseconds)
+                                        int frameLimit = FrameLimit(i);
+                                        CheckFrame(sample.CpuStartTicks, sample.CpuEndTicks, frameLimit);
+                                        if (sample.GpuFrame.Value / 1000000d > frameLimit)
                                             throw new TimeoutException("FrameTimeout in retained GPU duration.");
                                         int expectedSequence = RendererPerfRecipe.SequenceIndex(i - block.WarmupFrames);
                                         if (sample.FrameId != i || sample.SequenceIndex != expectedSequence || sample.CpuFrequency != clock.Frequency)
                                             throw new InvalidOperationException("A frame was dropped, duplicated or used the wrong deterministic sequence.");
-                                        if (!sample.Errors.IsEmpty || sample.GpuFrame.Status != RendererPerfMetricStatus.Available)
+                                        if (!sample.Errors.IsEmpty || !(sample.GpuFrame.Status == RendererPerfMetricStatus.Available && sample.GpuElapsedTicks > 0)
+                                            && !RendererPerfControlTiming.AcceptsZero(sample, controlId, identity.TimestampPeriodNs))
                                             throw new InvalidOperationException(sample.Errors.FirstOrDefault() ?? "Invalid GPU frame timing.");
                                     }
                                 }
@@ -238,10 +248,10 @@ internal static class RendererPerfDriver
             if (budget is not null) budget.Check("renderer.execute");
             else if (clock.Now() >= _deadline) throw new TimeoutException("UnitTimeout.");
         }
-        void CheckFrame(long start, long end)
+        void CheckFrame(long start, long end, int limitMilliseconds)
         {
             if (end < start) throw new InvalidOperationException("The monotonic clock moved backwards.");
-            if ((end - start) * 1000d / clock.Frequency > manifest.Limits.FrameMilliseconds)
+            if ((end - start) * 1000d / clock.Frequency > limitMilliseconds)
                 throw new TimeoutException("FrameTimeout, including retained completion.");
         }
         void Record(string stage, Exception error)

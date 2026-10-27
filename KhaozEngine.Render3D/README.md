@@ -18,11 +18,17 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `MoveSpeed` (clamped `MinMoveSpeed`..`MaxMoveSpeed`). No smoothing (dt-scaled direct integration), no input
   statics touched (the snapshot is handed in), allocation-free per frame.
 - `FollowCameraController` gestures (since 20.17.0, off by default). Set `OrbitGesture` and `LookGesture` to a
-  `PointerGesture` each and `OrbitButton` is ignored. The camera orbits only while a gesture drags, by one delta a
-  frame, and a press begun while the game's `UiBlocked` is set never taps, and above a zero threshold never
+  `PointerGesture` each and `OrbitButton` is ignored. The camera orbits while a gesture drags, or by its pending
+  `DragDelta` when that gesture opts into `LivePendingTravel`. It applies at most one delta per frame, even with
+  both buttons live. Live motion takes precedence over a default crossing's replay.
+  A press begun while the game's `UiBlocked` is set never taps, and above a zero threshold never
   orbits. `TurnBodyActive` is true while `LookGesture` drags, for `MoveCommand.FaceCamera`, and
   `WantsPointerCapture` while either drags, for `SetPointerCaptured`. `OrbitTap` and `LookTap` report taps after
-  `Update` or `UpdateInput`, and a tap counts only if the camera did not turn during that press. `UpdateInput` is
+  `Update` or `UpdateInput`. A gesture's own live pending travel preserves its tap. A turn from the other gesture
+  voids it, including on the release frame. Both live buttons moving together void both taps. A simultaneous
+  release of both gestures also suppresses both taps when either gesture is live, even without motion. Default-off
+  stationary taps retain their existing behavior. Pending live travel
+  changes neither body turning nor capture timing. `UpdateInput` is
   `Update` without the target and boom clocks, for a game that advances those itself later in the frame, and it
   still needs the real frame time for a tap tolerance. Gesture replay and continuing motion use
   `MouseDeltaPoints`, so sensitivity stays in window points before and during capture. Tap origins keep

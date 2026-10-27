@@ -166,9 +166,10 @@ triangulation or infer geometry from a resolved material slot.
 ### Gestures
 
 The reference consumer's `RightMouseGesture` becomes the engine's `PointerGesture` (in `KhaozEngine.Windowing`), per
-button, unchanged in behaviour: travel is path length over the press, crossing the threshold replays the
-accumulated delta with no dead zone, a release below the threshold is a tap at the press origin, and a press
-that starts while the UI owns the pointer stays inert.
+button. By default travel is path length over the press, crossing the threshold replays the accumulated delta
+with no dead zone, a release below the threshold is a tap at the press origin, and a press that starts while the
+UI owns the pointer stays inert. `LivePendingTravel` opts a gesture into per-frame pending motion without replay,
+while preserving its tap rule.
 
 `FollowCameraController` gains two optional gestures and three outputs:
 
@@ -180,7 +181,11 @@ that starts while the UI owns the pointer stays inert.
   `SetPointerCaptured`.
 - `TapThisFrame` and `TapPosition` per gesture, for a default action on a click without a drag. Amended in execution
   (plan C ruling C7a): the controller reports `OrbitTap` and `LookTap`, which count only when the camera did not turn
-  during that press.
+  during that press except by that same gesture's own live pending travel. A turn from the other gesture still
+  voids the tap, and two live gestures delivering motion together void both taps. A simultaneous release
+  suppresses both taps when either gesture is live, including stationary presses. Default-off stationary taps
+  keep their existing behavior. Pending live look motion
+  turns only the camera. Body turning and pointer capture still begin at the crossing.
 
 With neither gesture set, the controller behaves exactly as today: `OrbitButton` orbits from the first frame
 of the press. Grimhollow's middle-button orbit, the Showcase rooms and the reference consumer's masked snapshot all keep

@@ -4,13 +4,56 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.15.1
+## 21.17.0
+
+2026-10-28
+
+- Add user UI scaling to `UiViewport`, applied with DPI at a frame boundary so drawing, clipping and pointer
+  mapping agree. `EffectiveScale` supplies the font density and exact canvas bounds retain framebuffer coverage.
+- Add normalized saved HUD positions and a draft `HudLayoutEditor` with topmost drag capture, viewport and DPI
+  change handling, reset, commit and cancel. Consumers own region presentation and settings storage (#1275).
+- Add `DpiFont.Bind` for retained widgets to keep a stable font reference across density changes. The owner
+  retains atlas ownership and disposed font owners cannot be reused.
+- Add optional viewport constraints to dropdown popups, with upward placement, scrolling, clipped option
+  geometry and gesture identity preserved across scrolling or reflow (#1624).
+
+- Add opt-in live pending travel to `PointerGesture` through the init-only `LivePendingTravel` property, default
+  off. A live gesture delivers each held frame's own motion in `DragDelta` while its press is still undecided,
+  and replays nothing when it crosses into a drag, so the catch-up limit does not apply. The tap or drag
+  decision, grace, press origin and blocked-press rules are unchanged. `FollowCameraController` orbits by a live
+  gesture's pending motion, so the camera follows the mouse from the first motion of a press, and a press that
+  stays inside its tolerance still taps. Another gesture turning the camera voids the tap, and a simultaneous
+  release of both buttons taps neither when either gesture is live. `TurnBodyActive` and pointer capture still
+  start at the crossing (#1619).
+
+## 21.16.0
 
 2026-10-27
 
+- Keep Contact ground navigation connected beside climbable slab risers. Captured ground below a tread no longer
+  rejects the neighbouring resting anchor for its low headroom. Contact placement and swept-shell proofs still
+  enforce clearance, and raw layer, area, roof and climb limits remain enforced (Closes #1573).
+- Reconstruct canonical selection automatically when a Contact movement tick receives a carried state on
+  an unready null-hint query lease. Reacquiring per tick no longer stalls the second tick or discards buffered
+  jumps. Carried selections from another world are refused before reconstruction or producer queries.
+  Direct selected-space queries remain guarded, and real reconstruction failures keep their refusal outcomes
+  (Closes #1578).
+- Add six `SupportQueryCapture` counters for outer NPC Hold and Step invocations and authoritative
+  `PlayerMovementSystem` per-entity Steps, each split by Legacy and Contact controller. Idle and rejected
+  selected player Steps count once. Direct player simulators and nested held-result fallbacks add no
+  outer invocations (#1598).
 - Pin the multiline C# shader sources in Render3D, Render2D and Gpu to LF checkouts, so a Windows build compiles
   the same shader bytes and renderer shader identities as Linux and macOS. A CRLF checkout previously changed the
   hashed shader source and refused renderer performance units before device creation.
+- Resume automation accepts after `Interrupted` while the listener is running, and treat disposal as quiet
+  shutdown. Deterministic loopback tests cover terminal accept faults and established-client lifetimes separately.
+- Add four protected loop voices beside the sixteen one-shot sources, with opaque lifetime handles,
+  live volume and position controls, and explicit capacity refusal. Failed cleanup retains ownership and
+  registration for deliberate retry, and legacy SFX backends remain compatible (Closes #817).
+- Keep buoyant swimmers on walkable rising beds while the water is still too deep for land footing.
+  Contact clips onto the bed without changing swim hysteresis or climb pacing, then lands normally when
+  the seated bed clears the existing swim exit line. A refused bank lift or ceiling clearance that would
+  leave the swimmer below the certified bed blocks and holds the original pose for the tick (Closes #1606).
 
 ## 21.15.0
 

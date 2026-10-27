@@ -16,6 +16,7 @@ public sealed partial class SpriteBatch
         Vector2 position, float scale = 1f, float opacity = 1f)
     {
         ArgumentNullException.ThrowIfNull(font);
+        font = font.Resolve();
         float k = font.RenderScale * scale;
         (float penX, float baseline) = SnapTextOrigin(position.X, position.Y + font.Ascent * scale);
         foreach (ColoredTextRun run in runs)
@@ -31,6 +32,7 @@ public sealed partial class SpriteBatch
     internal List<Vector4> DebugGlyphDestsRuns(SpriteFont font, ReadOnlySpan<ColoredTextRun> runs,
         Vector2 position, float scale)
     {
+        font = font.Resolve();
         float k = font.RenderScale * scale;
         (float penX, float baseline) = SnapTextOrigin(position.X, position.Y + font.Ascent * scale);
         var destinations = new List<Vector4>();

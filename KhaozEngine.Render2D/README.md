@@ -168,9 +168,9 @@ pixel, unchanged).
 
 ## `DpiFont` - crisp point-space text on HiDPI (since 10.12.0)
 
-`DpiFont` is a logical-size font that stays crisp on HiDPI. It bakes its glyph atlas at the live DPI scale and
-re-bakes only when that scale changes (stable per display, so not per window resize). Author at a logical
-`pixelHeight` (points). Each frame call `font.For(dpiScale)` (pass `frame.DpiScale`) and draw the returned
+`DpiFont` is a logical-size font that stays crisp on HiDPI. It bakes its glyph atlas at the live device-pixel
+density and re-bakes only when that density changes. Author at a logical `pixelHeight` (points). Each frame
+call `font.For(uiViewport.EffectiveScale)` to include both OS DPI and user UI scale, and draw the returned
 `SpriteFont` 1:1 in a point-space pass (a `UiViewport` `Begin`). `DpiFont` is `IDisposable` (it owns the
 baked `SpriteFont`s).
 
@@ -178,8 +178,17 @@ Each factory takes an optional `cacheSlots` (default 1). Pass `cacheSlots` &gt; 
 several different effective scales in one pass and each must be texel-exact - e.g. a boot screen title and a
 smaller step label from one font: call `For(titleScale * dpiScale)` and `For(labelScale * dpiScale)` and both
 atlases stay baked (LRU eviction past the slot count), instead of thrashing a single slot (baking twice every
-frame). The default of 1 keeps the single-display-scale behaviour (one atlas, re-baked only on a DPI change).
+frame). The default of 1 keeps one atlas, re-baked only when the requested density changes.
 `LiveCount` reports how many scales are baked right now (`BakeCount` the total (re)bakes over the font's life).
+
+Retained controls can keep one `SpriteFont` reference with `dpiFont.Bind(() => uiViewport.EffectiveScale)`.
+The borrowed view resolves current metrics, glyphs and atlas lazily, using one font snapshot for each text
+draw. The provider must return a finite positive density and should be stable for the frame. Densities
+below 1 keep the existing minimum bake density of 1. `Bind` does not bake until the view is used.
+Keep and dispose the `DpiFont` owner. Disposing its view does not free the owner's atlas, and using a
+view after the owner is disposed throws `ObjectDisposedException`. A disposed owner cannot create another
+view or bake another font. If several bindings use different live densities, give the owner enough cache
+slots to retain those atlases together.
 
 Create one via `Render2DSurface`:
 
@@ -195,7 +204,7 @@ Create one via `Render2DSurface`:
 ```csharp
 var uiFont = surface.LoadDpiFont("fonts/Inter.ttf");  // logical points
 // per frame, inside a UiViewport Begin:
-var font = uiFont.For(frame.DpiScale);
+var font = uiFont.For(uiViewport.EffectiveScale);
 TextHelper.Draw(spriteBatch, font, "UPGRADES", x, y, Color.White);
 ```
 

@@ -4052,6 +4052,20 @@ Create one via `surface.LoadDpiFont(...)` /
 pass and each must be texel-exact (e.g. a boot title + smaller label): each `For(scale * dpiScale)` stays baked
 instead of thrashing a single slot.
 
+**Retained UI fonts.** `DpiFont.Bind(Func<float>)` returns a stable borrowed `SpriteFont` for controls that
+keep their font reference. Bind to the frame's effective UI density and pass that view to the controls.
+Each measurement or text draw resolves current glyphs, metrics and atlas. Text drawing uses one resolved
+font snapshot for the whole operation. The callback must return a finite positive density and should not
+change during a frame. The first use bakes lazily, and values below 1 keep the minimum bake density of 1.
+Dispose the `DpiFont` after the controls stop using it. Disposing the view does not dispose the owner.
+A disposed owner rejects For, Bind and any later use of its views.
+
+```csharp
+DpiFont owner = surface.LoadDefaultDpiFont(16f);
+SpriteFont retained = owner.Bind(() => uiViewport.EffectiveScale);
+// Pass retained to controls. Keep owner alive and dispose it when those controls are finished.
+```
+
 **Device-pixel snapping.** Inside a point-space `Begin`, `SpriteBatch.SnapRect` / `SnapLength` and the
 `DeviceScale` / `DeviceOffset` accessors snap coordinates to whole device pixels (they are inert outside a
 point-space pass). The pure math is `ViewportMath.SnapToDevicePixel` / `SnapRectToDevice` / `SnapLengthToDevice`.

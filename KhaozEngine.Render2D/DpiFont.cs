@@ -27,6 +27,7 @@ namespace KhaozEngine.Render2D
     public sealed class DpiFont : IDisposable
     {
         readonly DpiRebakeCache<SpriteFont> _cache;
+        bool _disposed;
 
         /// <summary>The logical (point) pixel height the font is authored at; the DPI scale multiplies it at bake time.</summary>
         public float PixelHeight { get; }
@@ -43,7 +44,36 @@ namespace KhaozEngine.Render2D
         /// Scales below 1 are clamped (the atlas is never baked below the logical density). Draw the result 1:1 in a
         /// point-space batch. With <c>cacheSlots</c> &gt; 1 several scales stay baked at once (LRU eviction).
         /// </summary>
-        public SpriteFont For(float dpiScale) => _cache.For(dpiScale < 1f ? 1f : dpiScale);
+        public SpriteFont For(float dpiScale)
+        {
+            ThrowIfDisposed();
+            return _cache.For(dpiScale < 1f ? 1f : dpiScale);
+        }
+
+        /// <summary>
+        /// A stable font view for retained controls. It resolves the current effective UI density lazily
+        /// when measuring or drawing, so controls keep their font reference across DPI and user-scale changes.
+        /// The density provider must return a finite positive value and should be stable for a frame.
+        /// </summary>
+        /// <remarks>
+        /// This DpiFont owns the cached atlases. Disposing the borrowed view does not dispose its owner.
+        /// Dispose the DpiFont when its views are no longer used. Several bindings with different live
+        /// densities should use enough cache slots to retain those atlases together.
+        /// </remarks>
+        public SpriteFont Bind(Func<float> effectiveScale)
+        {
+            ArgumentNullException.ThrowIfNull(effectiveScale);
+            ThrowIfDisposed();
+            return SpriteFont.CreateBound(() =>
+            {
+                ThrowIfDisposed();
+                float density = effectiveScale();
+                if (!float.IsFinite(density) || density <= 0f)
+                    throw new ArgumentOutOfRangeException(nameof(effectiveScale), density,
+                        "Font density must be finite and positive.");
+                return For(density);
+            });
+        }
 
         /// <summary>The scale of the MOST RECENTLY requested cached font (0 before the first <see cref="For"/>).</summary>
         public float BakedDpiScale => _cache.Key;
@@ -54,7 +84,17 @@ namespace KhaozEngine.Render2D
         /// <summary>How many distinct scales are baked and live right now (&lt;= <c>cacheSlots</c>). For tests / diagnostics.</summary>
         public int LiveCount => _cache.LiveCount;
 
-        public void Dispose() => _cache.Dispose();
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _cache.Dispose();
+        }
+
+        void ThrowIfDisposed()
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(DpiFont));
+        }
     }
 
     /// <summary>

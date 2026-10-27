@@ -181,6 +181,15 @@ atlases stay baked (LRU eviction past the slot count), instead of thrashing a si
 frame). The default of 1 keeps one atlas, re-baked only when the requested density changes.
 `LiveCount` reports how many scales are baked right now (`BakeCount` the total (re)bakes over the font's life).
 
+Retained controls can keep one `SpriteFont` reference with `dpiFont.Bind(() => uiViewport.EffectiveScale)`.
+The borrowed view resolves current metrics, glyphs and atlas lazily, using one font snapshot for each text
+draw. The provider must return a finite positive density and should be stable for the frame. Densities
+below 1 keep the existing minimum bake density of 1. `Bind` does not bake until the view is used.
+Keep and dispose the `DpiFont` owner. Disposing its view does not free the owner's atlas, and using a
+view after the owner is disposed throws `ObjectDisposedException`. A disposed owner cannot create another
+view or bake another font. If several bindings use different live densities, give the owner enough cache
+slots to retain those atlases together.
+
 Create one via `Render2DSurface`:
 
 | Factory | Loads from |

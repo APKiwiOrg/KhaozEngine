@@ -57,7 +57,7 @@ public static class NativeMapTerrain
             var materials = palettes.Sets.Select(ids => new MapTerrainMaterialSet(ids.Order().Select(id => layers[id]))).ToArray();
             var byKey = canonical.ToDictionary(f => f.Face.Key);
             MapTerrainMesh.Admit(partitions, byKey, admission);
-            var boundaries = MapTerrainPaint.Boundaries(partitions, admission);
+            var boundaries = MapTerrainPaint.Boundaries(partitions, scene.SurfaceView, admission);
             var parts = new List<MapTerrainPart>();
             foreach (var group in partitions.Where(p => palettes.ByFace.ContainsKey(p.Face)).GroupBy(p =>
                 (p.Face.OwnerId, p.Face.Patch, byKey[p.Face].Anchor, Palette: palettes.ByFace[p.Face])))

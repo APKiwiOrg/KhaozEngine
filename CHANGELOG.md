@@ -6,8 +6,12 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.14.0
 
-2026-10-27
+2026-10-28
 
+- Preserve continuous native terrain material across patch and paint joins when a feathered overlay meets
+  matching hard-filled material or an overlay over a different underlay, including validated surface-owner
+  seams. Keep exposed-edge feather widths and cut-overlay boundaries without inventing outlines at diagonal gaps.
+  Isolate stacked patch sheets across owner joins and admit source seam validation within preparation capacity.
 - Compare native scene oracle rigid poses and fixture exclusion boxes in common coordinate frames.
   Accept equivalent HLOD proxy vertex and index ordering while retaining exact identities, draw counts,
   channels and declared light clearances.

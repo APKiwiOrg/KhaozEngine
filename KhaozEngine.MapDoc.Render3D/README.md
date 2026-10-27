@@ -64,6 +64,16 @@ Terrain uses Render3D's ground pipeline, without a TileWorld dependency. Its ord
 numeric IDs to albedo layers. Vertex Color carries four underlay weights, Uv.xy and Tangent.xy carry their
 slots, Tangent.z is one, and Tangent.w names the optional overlay slot plus one. The overlay takes the
 remaining weight. Feather tessellation stays on the canonical face, with a 0.2 m inward smoothstep band.
+Feather candidates come only from matching overlay coverage across paint and patch partitions. Matching
+bare underlay suppresses an adjoining candidate without supplying an outline. A cell or paint source with
+a different nonzero overlay never qualifies through its uncovered underlay. Matching overlays over different
+underlays continue without an interior feather, regardless of feather flags or paint identities. Validated
+surface-owner seams join this occupancy only for the same surface role. Boundary rows belong to connected
+physical patch sheets. Patches connect through exact shared 3D edge intervals in effective world space.
+Cross-owner connections also require a validated same-role seam authorizing that patch pair. Stacked patches
+stay isolated even when effective surface transforms separate a source-valid seam. Seam validation admits
+its full source-patch workspace, including absent-cell corners and subdivisions,
+before building geometry, then releases that workspace.
 Its world-space refinement demand is admitted before render tessellation. Faces that cannot retain that
 sampling density within the captured scene allowance refuse with `CapacityExceeded`.
 Canonical geometry never changes with observer distance. Ceilings retain inward normals and wall sides

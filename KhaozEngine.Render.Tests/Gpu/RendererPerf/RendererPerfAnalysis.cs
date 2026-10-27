@@ -121,6 +121,7 @@ internal static class RendererPerfAnalysis
             reasons.Add(report.Publication.OriginalFailure ?? "Final completed publication is unavailable.");
         reasons.AddRange(report.Publication.Errors);
         RendererPerfDriverAssessment.Drift(report.Blocks, reasons);
+        if (report.GpuClock.State == RendererPerfGpuClockState.Refused) reasons.Add(RendererPerfGpuClockPolicy.Reason);
         var blocks = new List<RendererPerfBlockSummary>();
         var values = new Dictionary<RendererPerfBlock, ImmutableArray<ImmutableDictionary<string, RendererPerfMetric>>>();
         foreach (var block in report.Blocks)

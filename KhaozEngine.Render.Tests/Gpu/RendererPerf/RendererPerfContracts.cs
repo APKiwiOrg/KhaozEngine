@@ -84,6 +84,8 @@ internal sealed record RendererPerfReport(string Schema, RendererPerfManifest Ma
     ImmutableArray<RendererPerfControlReport> Controls, RendererPerfAssessment Assessment,
     RendererPerfPublication Publication, ImmutableArray<RendererPerfExpectedSidecar> Sidecars)
 {
+    internal RendererPerfGpuClockVerification GpuClock => RendererPerfGpuClockPolicy.Assess(Manifest, Batches);
+
     [JsonRequired]
     public RendererPerfCompilerEvidence Compiler { get; init; } = RendererPerfCompilerEvidence.Pending;
     [JsonRequired]

@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Xunit;
 
@@ -36,6 +38,8 @@ public sealed class RendererPerfGpuClockSelectorTests
     [InlineData("fractional")]
     [InlineData("null")]
     [InlineData("other-clock")]
+    [InlineData("duplicate")]
+    [InlineData("wrong-case")]
     public void Selector_refuses_invalid_paid_clocks(string fault)
     {
         using var fixture = new RendererPerfWorkflowContractTests.WorkflowFixture();
@@ -44,9 +48,17 @@ public sealed class RendererPerfGpuClockSelectorTests
             "text" => JsonValue.Create("1200"),
             "fractional" => JsonValue.Create(1200.5),
             "other-clock" => JsonValue.Create(1215),
+            "duplicate" or "wrong-case" => JsonValue.Create(1200),
             _ => null
         };
         fixture.SaveManifest();
+        if (fault is "duplicate" or "wrong-case")
+        {
+            string text = File.ReadAllText(fixture.ManifestPath).Replace("\"lockedGraphicsClockMHz\":1200",
+                fault == "duplicate" ? "\"lockedGraphicsClockMHz\":1200,\"lockedGraphicsClockMHz\":1200" : "\"LockedGraphicsClockMHz\":1200", StringComparison.Ordinal);
+            File.WriteAllText(fixture.ManifestPath, text);
+            fixture.Environment["RENDERER_PERF_MANIFEST_SHA256"] = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(fixture.ManifestPath)));
+        }
         Assert.NotEqual(0, fixture.Run("Select").Code);
     }
 }

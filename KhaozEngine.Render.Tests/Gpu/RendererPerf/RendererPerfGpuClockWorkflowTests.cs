@@ -35,8 +35,8 @@ public sealed class RendererPerfGpuClockWorkflowTests
     [InlineData("Linux", "exit", false)]
     [InlineData("Windows", "unsupported", false)]
     [InlineData("Linux", "range", false)]
-    [InlineData("Windows", "observed", false)]
-    public void Clock_setup_retains_driver_output_and_refuses_failed_or_unheld_locks(string platform, string fault, bool accepted)
+    [InlineData("Windows", "observed", true)]
+    public void Clock_setup_retains_driver_output_and_refuses_failed_or_changed_ranges(string platform, string fault, bool accepted)
     {
         using var fixture = Fixture(platform, fault);
         var result = fixture.Execute("pwsh", ["-NoProfile", "-File", Path.Combine(fixture.Directory, "clock-test.ps1"), "Lock"]);
@@ -50,6 +50,9 @@ public sealed class RendererPerfGpuClockWorkflowTests
         if (accepted)
         {
             string evidence = File.ReadAllText(Path.Combine(fixture.Reports, "gpu-clock-lock.json"));
+            var decoded = System.Text.Json.Nodes.JsonNode.Parse(evidence)!;
+            Assert.Equal("applied", decoded["state"]!.GetValue<string>());
+            Assert.Equal(fault == "observed" ? 1185 : 1200, decoded["observedGraphicsClockMHz"]!.GetValue<int>());
             Assert.Contains("1200", evidence, StringComparison.Ordinal);
             Assert.Contains("gpuClkMax", log, StringComparison.Ordinal);
         }

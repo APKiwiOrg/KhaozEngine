@@ -58,7 +58,7 @@ try {
         if ($readback -cnotmatch '\A\s*(\d+)\s*,\s*(\d+)\s*\z') { throw 'One identified numeric graphics-clock readback is required' }
         $evidence.observedGraphicsClockMHz = [int]$Matches[1]
         $evidence.maximumGraphicsClockMHz = [int]$Matches[2]
-        if ($evidence.observedGraphicsClockMHz -ne $clock) { throw 'Observed graphics clock differs from the admitted lock' }
+        # Current clocks may idle before the workload. Counted execution telemetry verifies the hold.
         $evidence.state = 'applied'
         $evidence.code = $null
     }

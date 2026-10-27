@@ -4,10 +4,15 @@ from collections import Counter
 from fractions import Fraction
 import hashlib
 import json
+from pathlib import PurePosixPath
 import re
 
 ENGINE_BASE = '7ae1e83d18a0cafe4d3b079b0dc3a399de390b4f'
 GAME_BASE = 'f45462a87441c18682f7c2309ef2f048c4abebb0'
+WORLD_ROOT = 'assets/worlds/hollowmere'
+WORLD_INPUT_SHA256 = 'e057497431deaf910db248d706c385e99898b0830a06fa8a9415d07dc5fa9707'
+CATALOG_INPUT_SHA256 = '753413079a39bbfb68f96e911279585805db34666f67adf914628bac7ec890f2'
+CATALOG_PATHS = ('assets/catalogs/archetypes.json','assets/catalogs/ground.json')
 MARKER = 'KE_METAL_RECORDING_CAPACITY_V1 '
 POLICY_FIELDS = set(('schemaVersion probe baseFrames selectedRecordingSlots actualRecordingSlots '
                      'requestedDrawableCount actualDrawableCount drawableReadback retirementPolicyCap '
@@ -16,6 +21,57 @@ POLICY_FIELDS = set(('schemaVersion probe baseFrames selectedRecordingSlots actu
 HELPERS = {'analyze.py','collect.py','capacity.py','archive.py'}
 WINDOW_FIELDS = ('width','height','focused','minimized','renderSuppressed','effectiveBaseCapHz','vsync',
                  'rendererInitializesSwapchain','preparePhaseSplitActive')
+
+
+def input_fingerprint(rows):
+    if type(rows) is not list or not rows: raise ValueError('Missing source inventory')
+    paths=[]
+    for row in rows:
+        path=row['path'];digest=row['sha256']
+        if (type(path) is not str or not path or path!=str(PurePosixPath(path))
+            or PurePosixPath(path).is_absolute() or '..' in PurePosixPath(path).parts or path=='.'
+            or any(character in path for character in '\r\n\0')
+            or type(digest) is not str or re.fullmatch('[0-9a-f]{64}',digest) is None):
+            raise ValueError('Invalid canonical source identity')
+        paths.append(path)
+    if len(paths)!=len(set(paths)): raise ValueError('Duplicate source identity')
+    text=''.join(row['path']+' '+row['sha256']+'\n' for row in sorted(rows,key=lambda row:row['path']))
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+def expected_world_selection():
+    return dict(schemaVersion=1,gameCommit=GAME_BASE,root=WORLD_ROOT,worldFiles=40,
+                worldSha256=WORLD_INPUT_SHA256,catalogFiles=2,catalogSha256=CATALOG_INPUT_SHA256)
+
+
+def validate_world_selection(value, game_commit):
+    expected=expected_world_selection()
+    if (game_commit!=GAME_BASE or type(value) is not dict or set(value)!=set(expected)
+        or any(type(value[key]) is not type(wanted) or value[key]!=wanted for key,wanted in expected.items())):
+        raise ValueError('Frozen world selection identity differs')
+    return expected
+
+
+def validate_world_manifest(manifest):
+    try:
+        expected=validate_world_selection(manifest['worldSelection'],manifest['gameCommit'])
+        if manifest['frozenEngineBase']!=ENGINE_BASE: raise ValueError('Frozen engine base differs')
+        world=manifest['world']
+        if len(world)!=40 or input_fingerprint(world)!=WORLD_INPUT_SHA256:
+            raise ValueError('Frozen Hollowmere directory inventory differs')
+        source_rows=manifest['gameSourceHashes'];input_fingerprint(source_rows)
+        sources={row['path']:row['sha256'] for row in source_rows}
+        if any(sources.get(row['path'])!=row['sha256'] for row in world):
+            raise ValueError('World input is missing from committed source proof')
+        catalogs=[dict(path=path,sha256=sources[path]) for path in CATALOG_PATHS]
+        if input_fingerprint(catalogs)!=CATALOG_INPUT_SHA256:
+            raise ValueError('Frozen catalog identity differs')
+        payload={row['path']:row['sha256'] for row in manifest['clientFiles']}
+        if any(payload.get('Content/'+row['path'].removeprefix('assets/'))!=row['sha256'] for row in catalogs):
+            raise ValueError('Catalog payload differs from the frozen source')
+        return expected
+    except (KeyError,TypeError,AttributeError) as error:
+        raise ValueError('Invalid frozen world inventory') from error
 
 
 def validate_expectation(value):
@@ -91,6 +147,7 @@ def audit_treatment(report, proof, expected_slots):
         device = guid(policy['deviceIdentity'])
         check(re.fullmatch('[0-9a-f]{40}',proof['probeCommit']) is not None,'Invalid probe commit')
         check(proof['frozenEngineBase']==ENGINE_BASE and proof['gameCommit']==GAME_BASE,'Frozen source base differs')
+        validate_world_selection(proof['worldSelection'],proof['gameCommit'])
         check(report['engineCodeIdentity']['informationalVersion']=='21.13.0+'+proof['probeCommit'],
               'Recorder source identity differs')
         check(report['appCodeIdentity']['informationalVersion'].endswith('+'+GAME_BASE),'Game source identity differs')
@@ -175,7 +232,7 @@ def compare_runs(control_report, control_proof, candidate_report, candidate_proo
         return {key:[(json.dumps(row['value'],sort_keys=True),row['share']) for row in rows]
                 for key,rows in run['workDistributions'].items()}
     compare('recorded work distribution',work(control),work(candidate))
-    for key in ('probeCommit','gameCommit','sourceHashes','codeIdentities','preparationSha256','helperHashes','metalAssembly'):
+    for key in ('probeCommit','gameCommit','sourceHashes','codeIdentities','preparationSha256','helperHashes','metalAssembly','worldSelection'):
         compare(key,control_proof.get(key),candidate_proof.get(key))
     def dlls(proof): return sorted((row['path'].split('/')[-1],row['sha256']) for row in proof.get('runtimeFiles',[]))
     compare('DLL bytes',dlls(control_proof),dlls(candidate_proof))

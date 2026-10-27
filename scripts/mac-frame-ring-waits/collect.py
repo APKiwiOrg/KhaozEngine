@@ -57,8 +57,13 @@ def validate_preparation(manifest):
         require(m['status']=='prepared-and-audited', 'Preparation has not been audited')
         for key in ('probeCommit','gameCommit'):
             require(re.fullmatch('[0-9a-f]{40}',m[key]) is not None, 'Missing exact code commit')
-        require(integer(m['runtimeFileCount'],644,644)==644 and integer(m['contentFileCount'],395,395)==395
-                and len(m['world'])==41, 'Frozen inventory counts changed')
+        require(integer(m['runtimeFileCount'],644,644)==644 and integer(m['contentFileCount'],395,395)==395,
+                'Frozen inventory counts changed')
+        if 'worldSelection' in m:
+            from capacity import validate_world_manifest
+            validate_world_manifest(m)
+        else:
+            require(len(m['world'])==41,'Legacy world row count changed')
         replacements=m['replacements']; names=[x['name'] for x in replacements]
         require(set(names)==REQUIRED_CLOSURE and len(names)==5, 'Require exactly five replacement DLLs')
         for row in replacements:
@@ -141,6 +146,22 @@ def verify_sources(manifest):
 
 def verify_world(manifest):
     root=Path(manifest['gameRoot']).resolve(strict=True)
+    if 'worldSelection' in manifest:
+        import archive
+        from capacity import CATALOG_PATHS, WORLD_ROOT, validate_world_manifest
+        selection=validate_world_manifest(manifest)
+        directory=root/WORLD_ROOT
+        with archive._directory(directory): pass
+        actual={str(path.relative_to(root)) for path in directory.rglob('*')
+                if path.is_symlink() or not path.is_dir()}
+        require(actual=={row['path'] for row in manifest['world']},'Working world inventory changed')
+        sources={row['path']:row['sha256'] for row in manifest['gameSourceHashes']}
+        rows=manifest['world']+[dict(path=path,sha256=sources[path]) for path in CATALOG_PATHS]
+        with archive._directory(root) as parent:
+            for row in rows:
+                raw,_=archive._read(parent,row['path'])
+                require(hashlib.sha256(raw).hexdigest()==row['sha256'],'World or catalog input changed')
+        return selection
     for row in manifest['world']:
         require(digest(canonical_owned(root/relative(row['path']),root))==row['sha256'], 'World input changed')
 
@@ -195,7 +216,8 @@ def archive_outcome(args,root,preparation,result,metadata,audit_path,record,*,me
         sources=dict(probeCommit=record.get('probeCommit'),gameCommit=record.get('gameCommit'),
                      frozenEngineBase=record.get('frozenEngineBase'),sourceHashes=record.get('sourceHashes'),
                      helperHashes=record.get('helperHashes'),actualHelperHashes=helper_hashes(),
-                     metalAssembly=record.get('metalAssembly'),codeIdentities=record.get('codeIdentities'))
+                     metalAssembly=record.get('metalAssembly'),codeIdentities=record.get('codeIdentities'),
+                     worldSelection=record.get('worldSelection'))
         with archive._directory(root) as directory:
             if metadata_error is not None:
                 # Retain both the old claim and any incomplete temporary file. Recovery uses a new,
@@ -332,8 +354,9 @@ def main():
         record.update(preparationSha256=digest(preparation),probeCommit=manifest['probeCommit'],gameCommit=manifest['gameCommit'],
                       requiredClosure=sorted(REQUIRED_CLOSURE),codeIdentities=dict(app=manifest['appCodeIdentity'],engine=manifest['engineCodeIdentity']))
         if args.expected_recording_slots is not None:
-            from capacity import ENGINE_BASE, GAME_BASE, select_startup, validate_startup
+            from capacity import ENGINE_BASE, GAME_BASE, select_startup, validate_startup, validate_world_manifest
             require(manifest['frozenEngineBase']==ENGINE_BASE and manifest['gameCommit']==GAME_BASE,'Frozen capacity source differs')
+            validate_world_manifest(manifest)
             startup_path=canonical_owned(args.startup_log,root)
             require(startup_path.parent==root and not args.startup_log.is_symlink(),'Startup log must be owned and direct')
             selected=select_startup(startup_path.read_bytes())
@@ -350,8 +373,9 @@ def main():
         payload=verify_payload(manifest)
         record.update(payloadBefore=payload,runtimeFilesRehashed=len(payload),contentFiles=395)
         record['sourceHashes']=verify_sources(manifest)
-        verify_world(manifest)
-        record['worldFilesRehashed']=41
+        world_selection=verify_world(manifest)
+        record['worldFilesRehashed']=len(manifest['world'])
+        if world_selection is not None: record['worldSelection']=world_selection
         record['mappedBefore']=mappings(pid,client)
         require(identity(pid,client)==record['processBefore'],'Process changed during preflight')
         record['foregroundBefore']=foreground()
@@ -387,7 +411,7 @@ def main():
         record['payloadAfter']=verify_payload(manifest)
         require(record['payloadAfter']==payload,'Payload bytes, modes or identities changed')
         require(verify_sources(manifest)==record['sourceHashes'],'Source changed during capture')
-        verify_world(manifest)
+        require(verify_world(manifest)==world_selection,'World selection changed during capture')
         require(digest(preparation)==record['preparationSha256'],'Preparation changed during capture')
         before_files={row['path']:row for row in payload}
         after_files={row['path']:row for row in record['payloadAfter']}

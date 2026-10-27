@@ -68,6 +68,26 @@ committed source declarations before triggering and again after collection, and 
 the pair. Existing payload,
 source, process, mapped-DLL, trigger-consumption, focus and callback-completion audits still apply.
 
+This comparison requires the named `worldSelection` descriptor returned by
+`capacity.expected_world_selection()`. It binds all 40 committed files under
+`assets/worlds/hollowmere` at the frozen game commit: world.json, 30 region JSON files and nine generated
+navigation files. The navigation files are already part of 40. Exact path/content identities are pinned
+by SHA-256 of sorted UTF-8 lines `path SHA256`, each terminated by LF. The directory fingerprint is
+`e057497431deaf910db248d706c385e99898b0830a06fa8a9415d07dc5fa9707`.
+
+Both relative catalogs, `assets/catalogs/archetypes.json` and `assets/catalogs/ground.json`, are checked
+separately against declared game source hashes, working bytes and their corresponding Content payload
+rows. Their fingerprint under the same recipe is
+`753413079a39bbfb68f96e911279585805db34666f67adf914628bac7ec890f2`.
+Every world row must also match a declared game source hash. Working directory inventory is checked
+before and after capture, with extra entries, missing files and symlinked paths refused. Prefabs, the
+gameplay bundle and other runtime assets retain their separate game-source and payload coverage.
+
+The descriptor is copied into collection metadata and checked by offline analysis with exact types.
+`worldFilesRehashed` reports the actual 40 directory files. The original generic collector's 41-row shape
+is retained only for historical metadata without a named selection. Its original path recipe was not
+recovered, and its numeric count is not used as proof of the current world selection.
+
 After independent acceptance and a fresh human-ready response, one collection command has this shape.
 It neither launches a client nor grants permission for another capture.
 

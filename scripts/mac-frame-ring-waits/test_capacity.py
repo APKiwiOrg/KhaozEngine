@@ -2,6 +2,7 @@ import base64
 import copy
 import hashlib
 import json
+from pathlib import Path
 import unittest
 from analyze import analyse
 from test_analyze import fixture, DEVICE, MVID
@@ -26,6 +27,8 @@ def capacity_fixture(slots=3, **options):
     report['summary']['cadenceCapped'] = True
     report['appCodeIdentity']['informationalVersion'] = '0.1.0+' + capacity.GAME_BASE
     proof['gameCommit'] = capacity.GAME_BASE
+    proof['worldFilesRehashed'] = 40
+    proof['worldSelection'] = capacity.expected_world_selection()
     proof['codeIdentities']['app'] = report['appCodeIdentity'].copy()
     policy = dict(schemaVersion=1, probe='metal-recording-capacity', baseFrames=3,
                   selectedRecordingSlots=slots, actualRecordingSlots=slots, requestedDrawableCount=3,
@@ -166,6 +169,7 @@ def capacity_workflow(slots=3, **options):
     from unittest.mock import patch
     import archive
     import test_collect
+    from test_world_inventory import install_world
     with test_collect.CollectorWorkflowTests().workflow() as w:
         r,p=capacity_fixture(slots,**options)
         w.report.clear();w.report.update(r)
@@ -177,15 +181,16 @@ def capacity_workflow(slots=3, **options):
         helpers=__import__('collect').helper_hashes()
         w.manifest['sourceHashes'].extend(dict(path='scripts/mac-frame-ring-waits/'+name,sha256=value)
                                            for name,value in helpers.items())
-        preparation=w.result.parent/'preparation.json';preparation.write_text(json.dumps(w.manifest))
-        w.startup=w.result.parent/'process.log'
-        w.selectedLine=base64.b64decode(p['startupProof']['lineBase64'])
-        w.startup.write_bytes(b'private unrelated log line\n'+w.selectedLine+b'other\n')
-        args=sys.argv+['--expected-recording-slots',str(slots),'--startup-log',str(w.startup),'--run-id','synthetic-run']
-        with patch.object(sys,'argv',args),patch.object(archive,'ARCHIVE_ROOT',w.result.parent/'durable'), \
-             patch.object(__import__('collect'),'CAPACITY_WORK_ROOT',w.result.parent):
-            w.archiveDestination=archive.destination_for(w.manifest['probeCommit'],'synthetic-run')
-            yield w
+        with install_world(w.manifest,Path(w.manifest['gameRoot']),Path(w.manifest['client'])):
+            preparation=w.result.parent/'preparation.json';preparation.write_text(json.dumps(w.manifest))
+            w.startup=w.result.parent/'process.log'
+            w.selectedLine=base64.b64decode(p['startupProof']['lineBase64'])
+            w.startup.write_bytes(b'private unrelated log line\n'+w.selectedLine+b'other\n')
+            args=sys.argv+['--expected-recording-slots',str(slots),'--startup-log',str(w.startup),'--run-id','synthetic-run']
+            with patch.object(sys,'argv',args),patch.object(archive,'ARCHIVE_ROOT',w.result.parent/'durable'), \
+                 patch.object(__import__('collect'),'CAPACITY_WORK_ROOT',w.result.parent):
+                w.archiveDestination=archive.destination_for(w.manifest['probeCommit'],'synthetic-run')
+                yield w
 
 
 class CapacityCollectorTests(unittest.TestCase):

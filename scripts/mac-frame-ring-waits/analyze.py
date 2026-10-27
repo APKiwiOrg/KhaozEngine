@@ -497,8 +497,12 @@ def _identity_audit(report, proof, pid):
                    ('startedAtUtc','triggeredAtUtc','triggerConsumedAtUtc','resultObservedAtUtc')]
     check(all(x.utcoffset() == datetime.timedelta(0) for x in trigger_times)
           and trigger_times == sorted(trigger_times), 'Trigger consumption chronology invalid')
+    world_count=41
+    if 'worldSelection' in proof:
+        from capacity import validate_world_selection
+        world_count=validate_world_selection(proof['worldSelection'],proof['gameCommit'])['worldFiles']
     check(integer(proof['runtimeFilesRehashed'],644,644) == 644 and integer(proof['contentFiles'],395,395) == 395
-          and integer(proof['worldFilesRehashed'],41,41) == 41, 'Payload/content/world coverage mismatch')
+          and integer(proof['worldFilesRehashed'],world_count,world_count) == world_count, 'Payload/content/world coverage mismatch')
     check(set(proof['requiredClosure']) == REQUIRED_CLOSURE and len(proof['requiredClosure']) == 5, 'Required five-DLL closure mismatch')
     check(sha(proof['probeCommit'],40) and sha(proof['gameCommit'],40), 'Code commit identity missing')
     check(sha(proof['preparationSha256']) and sha(proof['resultSha256']), 'Manifest or result hash missing')

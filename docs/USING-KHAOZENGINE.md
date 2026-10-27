@@ -2042,8 +2042,9 @@ Dictionary<string, HudLayoutPosition> updatedPositions = editor.Commit();
 
 Only a fresh unconsumed press can capture a region. The last drawn region under it wins. Capture follows
 the pointer outside the region, consumes the whole gesture through release, and does not apply travel
-that happened before the press. Clamping does not accumulate invisible drag distance. If the canvas
-changes during capture, that frame rebases the gesture without treating coordinate remapping as travel.
+that happened before the press. Clamping does not accumulate invisible drag distance. If the canvas or
+the pointer's captured transform changes during capture, that frame rebases the gesture without treating
+coordinate remapping as travel. This includes a DPI change that leaves the logical canvas size unchanged.
 
 `Reset(regionIds)` removes only those overrides from the draft, leaving unknown future entries alone
 when the consumer supplies its known ids. `Cancel()` discards the draft and is safe on repeated close or

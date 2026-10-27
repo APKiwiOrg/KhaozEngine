@@ -14,6 +14,7 @@ public sealed class HudLayoutEditor
 {
     readonly Dictionary<string, HudLayoutPosition> _draft = new(StringComparer.Ordinal);
     Vector2 _dragViewport;
+    PointerCoordinates _dragCoordinates;
 
     public bool IsEditing { get; private set; }
     public string? DraggingId { get; private set; }
@@ -61,11 +62,12 @@ public sealed class HudLayoutEditor
                 DraggingId = null;
                 return false;
             }
-            // A new canvas remaps the cursor too. Rebase that frame instead of treating the coordinate
+            // A new canvas or pointer mapping remaps the cursor too. Rebase instead of treating the coordinate
             // change as mouse travel, and leave the saved normalized center untouched.
-            if (_dragViewport != viewport)
+            if (_dragViewport != viewport || !_dragCoordinates.HasSameMapping(pointer.Coordinates))
             {
                 _dragViewport = viewport;
+                _dragCoordinates = pointer.Coordinates;
                 return false;
             }
             Vector2 delta = pointer.Delta;
@@ -94,6 +96,7 @@ public sealed class HudLayoutEditor
             if (!pointer.IsDragStartIn(bounds)) continue;
             DraggingId = region.Id;
             _dragViewport = viewport;
+            _dragCoordinates = pointer.Coordinates;
             pointer.ConsumeGesture();
             // Travel before the press is not part of this drag.
             return false;
@@ -129,6 +132,7 @@ public sealed class HudLayoutEditor
         IsEditing = false;
         DraggingId = null;
         _dragViewport = default;
+        _dragCoordinates = default;
         _draft.Clear();
     }
 

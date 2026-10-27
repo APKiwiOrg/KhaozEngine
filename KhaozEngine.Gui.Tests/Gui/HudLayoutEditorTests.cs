@@ -146,6 +146,23 @@ public sealed class HudLayoutEditorTests
         Assert.False(_editor.Commit().ContainsKey("orb"));
     }
 
+    [Fact]
+    public void ADpiChangeWithTheSameCanvasDoesNotMoveTheCapturedRegion()
+    {
+        var mapping = new UiViewport(1280, 720, 1280, 720);
+        _editor.Begin(null);
+        StepMapped(new Vector2(150f, 125f), false, mapping);
+        StepMapped(new Vector2(150f, 125f), true, mapping);
+        StepMapped(new Vector2(210f, 175f), true, mapping);
+
+        mapping.Update(2560, 1440, 1280, 720);
+        StepMapped(new Vector2(210f, 175f), true, mapping);
+        AssertBounds(new Rect(160f, 150f, 200f, 100f), _editor.Resolve("orb", Natural, Viewport));
+
+        StepMapped(new Vector2(230f, 195f), true, mapping);
+        AssertBounds(new Rect(170f, 160f, 200f, 100f), _editor.Resolve("orb", Natural, Viewport));
+    }
+
     static void AssertBounds(Rect expected, Rect actual)
     {
         Assert.Equal(expected.X, actual.X, 3);
@@ -157,6 +174,18 @@ public sealed class HudLayoutEditorTests
     void Step(Vector2 at, bool down, Vector2? viewport = null)
     {
         Vector2 canvas = viewport ?? Viewport;
+        AdvancePointer(at, down, (int)canvas.X, (int)canvas.Y);
+        _editor.Update(_pointer, _regions, canvas);
+    }
+
+    void StepMapped(Vector2 at, bool down, UiViewport mapping)
+    {
+        AdvancePointer(at, down, (int)mapping.ContentBounds.Width, (int)mapping.ContentBounds.Height, mapping);
+        _editor.Update(_pointer, _regions, new Vector2(mapping.Width, mapping.Height));
+    }
+
+    void AdvancePointer(Vector2 at, bool down, int width, int height, IDesignViewport? mapping = null)
+    {
         var held = new HashSet<MouseButton>();
         var pressed = new HashSet<MouseButton>();
         var released = new HashSet<MouseButton>();
@@ -164,8 +193,7 @@ public sealed class HudLayoutEditorTests
         if (down && !_wasDown) pressed.Add(MouseButton.Left);
         if (!down && _wasDown) released.Add(MouseButton.Left);
         _pointer.Update(new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-            held, pressed, at, Vector2.Zero, 0, (int)canvas.X, (int)canvas.Y, mouseReleased: released));
-        _editor.Update(_pointer, _regions, canvas);
+            held, pressed, at, Vector2.Zero, 0, width, height, mouseReleased: released), mapping);
         _wasDown = down;
     }
 }

@@ -475,7 +475,7 @@ namespace KhaozEngine.Game
         /// <summary>
         /// Draw the point-space UI layer (empty by default), in a separate pass AFTER <see cref="OnDraw2D"/> each
         /// frame with <paramref name="batch"/>.Begin(<see cref="Ui"/>) already called. Author DPI-aware, reflowing UI
-        /// here (text via <c>DpiFont.For(Ui.DpiScale)</c>, chrome auto-snapped to device pixels) so it stays crisp on
+        /// here (text via <c>DpiFont.For(Ui.EffectiveScale)</c>, chrome auto-snapped to device pixels) so it stays crisp on
         /// HiDPI; hit-test with <see cref="UiPointer"/>. The design-space game field stays in <see cref="OnDraw2D"/>.
         /// </summary>
         protected virtual void OnDrawUi(SpriteBatch batch) { }
@@ -616,8 +616,7 @@ namespace KhaozEngine.Game
                 _lastH = frame.Height;
             }
 
-            // Point-space UI viewport + pointer: 1 logical point = the DPI scale in device pixels, reflowing to
-            // the logical window size (stable per display, so DpiFont atlases re-bake only on a DPI change).
+            // Apply DPI and the requested user scale together before mapping this frame's UI input.
             _ui.Update(frame);
 
             // Overlays read the raw frame first. One that holds leaves the game, its pointers and the HUD a frame

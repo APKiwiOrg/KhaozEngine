@@ -133,8 +133,10 @@ contract is in the living performance reference.
 
 One RendererPerfUnitBudget owns the original ColdStart, absolute deadline and cancellation through
 production, cleanup, freeze, replay, publication, verification and stamping. Full schedule remains
-16,944 frames over 43 operations. Pilot/full deadlines remain 600/1500 seconds, individual frame limit
-10,000 ms and job caps 12/35 minutes. Collection adds no frame, calibration, query block or profiler.
+16,944 frames over 43 operations. Pilot/full deadlines remain 600/1500 seconds. Only conditioning
+frame 0 uses the explicit bounded cold-frame limit. Every other frame retains its steady limit.
+The [living performance reference](../RENDERER-PERFORMANCE.md#evidence-and-authorization) owns the
+per-class frame and job caps. Collection adds no frame, calibration, query block or profiler.
 
 Dispose all production owners before replay and all diagnostic graphs/context before certification.
 Check budget before and after safe native/file boundaries. Native compiler/query/disposal calls are

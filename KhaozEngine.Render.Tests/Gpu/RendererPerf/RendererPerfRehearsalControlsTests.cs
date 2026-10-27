@@ -46,7 +46,7 @@ public sealed class RendererPerfRehearsalControlsTests
         Assert.Equal(Enumerable.Range(1, 12), manifest.Controls.Select(c => c.Id));
         Assert.All(manifest.Controls, c => { Assert.Equal(64, c.WarmupFrames); Assert.Equal(128, c.MeasuredFrames); });
         Assert.Equal(2307, manifest.TotalFrameCount);
-        Assert.Equal(new RendererPerfLimits(5400, 60000, 120), manifest.Limits);
+        Assert.Equal(new RendererPerfLimits(5400, 60000, 60000, 120), manifest.Limits);
         Assert.Equal(new RendererPerfBudget(120, 0, "USD", 0), manifest.Budget);
     }
 

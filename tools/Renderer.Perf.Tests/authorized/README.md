@@ -26,6 +26,13 @@ approvals, limits and correctness verdict. The same reference's
 per-leg job caps, cleanup billing allowance and the campaign envelope. Every execution class requires
 usable timestamps, complete compiler evidence and certified publication. Partial artifacts survive failures.
 
+Every manifest must explicitly include `limits.coldFrameMilliseconds` as well as
+`limits.frameMilliseconds`. The renderer reference owns their fixed values. Only conditioning frame 0
+uses the bounded cold limit for immediate and retained CPU timing and retained GPU duration. It stays
+counted inside the original unit and job caps. Later conditioning, warm-up, measured and control frames
+retain the steady limit. An older manifest missing the cold field refuses strict parsing. Existing
+authorizations are never rewritten to supply it, and another run requires fresh exact owner approval.
+
 The shader identity hashes an ordered map of exact literal and generated readonly Render3D and
 SpriteBatch GLSL source strings, specialized outdoors FFT kernels and control shader sources.
 Recipe and control definitions, frozen pass layouts and compiler

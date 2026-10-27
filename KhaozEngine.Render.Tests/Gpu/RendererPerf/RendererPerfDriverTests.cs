@@ -197,6 +197,8 @@ public sealed class RendererPerfDriverTests
         internal int Disposals, ClockCalls;
         internal long Tick;
         internal long FirstBatchFrameTicks = 1, FirstDrainTicks = 1, ColdReadbackTicks;
+        internal Func<RendererPerfBlock, int, long>? FrameTicks;
+        internal Func<RendererPerfBlock, RendererPerfFrameSample, RendererPerfFrameSample>? RetainFrame;
         internal bool ObserveMemory;
         internal RendererPerfClock Clock => new(() => { ClockCalls++; return Tick; }, 1000);
         internal RendererPerfReport Run(RendererPerfRunIdentity? identity = null)
@@ -231,8 +233,8 @@ public sealed class RendererPerfDriverTests
                 _pending++;
                 if (_pending > 3) throw new InvalidOperationException("Undrained batch.");
                 long start = rig.Tick;
-                rig.Tick += rig.Fault == "frame-timeout" ? 10001
-                    : rig.Created.Count == 1 && _next < 3 ? rig.FirstBatchFrameTicks : 1;
+                rig.Tick += rig.FrameTicks?.Invoke(block, _next) ?? (rig.Fault == "frame-timeout" ? 10001
+                    : rig.Created.Count == 1 && _next < 3 ? rig.FirstBatchFrameTicks : 1);
                 ulong duration = rig.Drift && frameIndex >= 64 ? 120UL : 100UL;
                 if (rig.Fault == "gpu-timeout") duration = 10000000001;
                 bool slow = rig.Outlier && block.SceneId == "S3" && frameIndex == 17;
@@ -258,6 +260,8 @@ public sealed class RendererPerfDriverTests
                     throw new InvalidOperationException("second drain failed");
                 _drain = new("batch.completionDrain", null, start, rig.Tick);
                 _harvest = new("batch.harvest", null, rig.Tick, rig.Tick);
+                if (rig.RetainFrame is { } retain)
+                    for (int i = 0; i < samples.Length; i++) samples[i] = retain(block, samples[i]);
                 if (rig.Created.Count == 1 && _next == block.MeasuredFrames) rig.Tick += rig.ColdReadbackTicks;
             }
             public RendererPerfSessionInfo ReadInfo()

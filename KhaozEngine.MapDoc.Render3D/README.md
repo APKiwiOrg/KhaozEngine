@@ -69,9 +69,10 @@ bare underlay suppresses an adjoining candidate without supplying an outline. A 
 a different nonzero overlay never qualifies through its uncovered underlay. Matching overlays over different
 underlays continue without an interior feather, regardless of feather flags or paint identities. Validated
 surface-owner seams join this occupancy only for the same surface role. Boundary rows belong to connected
-physical patch sheets. Same-owner patches connect through exact shared 3D edge intervals, while owner seams
-connect only their validated patch pair. Stacked patches stay isolated even when their owner joins another
-sheet. Seam validation admits its full source-patch workspace, including absent-cell corners and subdivisions,
+physical patch sheets. Patches connect through exact shared 3D edge intervals in effective world space.
+Cross-owner connections also require a validated same-role seam authorizing that patch pair. Stacked patches
+stay isolated even when effective surface transforms separate a source-valid seam. Seam validation admits
+its full source-patch workspace, including absent-cell corners and subdivisions,
 before building geometry, then releases that workspace.
 Its world-space refinement demand is admitted before render tessellation. Faces that cannot retain that
 sampling density within the captured scene allowance refuse with `CapacityExceeded`.

@@ -18,16 +18,17 @@ internal static class MapTerrainSheets
     internal static Dictionary<Node, Node> Connect(IReadOnlyList<MapTerrainPartition> partitions,
         MapScopedSurfaces view, MapSceneAdmission admission, MapPreparationReservation storage)
     {
-        // Admit the maps, polygon conversion, line buckets and interval sorting before allocating them.
+        // The per-edge allowance includes line buckets, interval sorting and the reusable active list.
+        // Each acquired record also admits an authorized-pair entry, including set growth, before allocation.
         storage.Reserve(checked(256L * (view.Surfaces.Count + view.Witness.Present.Count + partitions.Count) +
-            1024L * partitions.Sum(p => (long)p.Polygon.Count)));
+            1024L * partitions.Sum(p => (long)p.Polygon.Count) + 512L * view.Witness.Records.Count));
         var roots = new Dictionary<Node, Node>();
         foreach (var (patch, _) in view.Witness.Present)
         {
             var node = new Node(patch.SurfaceId, patch);
             roots.Add(node, node);
         }
-        var lines = new Dictionary<(string Owner, MapTerrainLine Line), List<Interval>>();
+        var lines = new Dictionary<MapTerrainLine, List<Interval>>();
         foreach (var partition in partitions)
         {
             var node = Key(partition);
@@ -40,25 +41,11 @@ internal static class MapTerrainSheets
                 var line = MapTerrainLine.Through(a, b);
                 var start = line.Coordinate(a); var end = line.Coordinate(b);
                 if (start.CompareTo(end) > 0) (start, end) = (end, start);
-                if (!lines.TryGetValue((node.Owner, line), out var intervals)) lines.Add((node.Owner, line), intervals = new());
+                if (!lines.TryGetValue(line, out var intervals)) lines.Add(line, intervals = new());
                 intervals.Add(new(start, end, node));
             }
         }
-        foreach (var intervals in lines.Values)
-        {
-            intervals.Sort((a, b) => a.Start.CompareTo(b.Start));
-            var current = intervals[0];
-            foreach (var next in intervals.Skip(1))
-            {
-                // A point contact does not connect sheets. Collinear subdivisions may share a longer edge.
-                if (next.Start.CompareTo(current.End) < 0)
-                {
-                    Join(current.Sheet, next.Sheet);
-                    if (next.End.CompareTo(current.End) > 0) current = next;
-                }
-                else current = next;
-            }
-        }
+        var authorized = new HashSet<(Node, Node)>();
         var roles = view.Surfaces.ToDictionary(s => s.Id, s => s.Role, StringComparer.Ordinal);
         foreach (var reference in view.Witness.Records)
         {
@@ -68,7 +55,23 @@ internal static class MapTerrainSheets
             if (!roots.ContainsKey(first) || !roots.ContainsKey(second) ||
                 !roles.TryGetValue(first.Owner, out var role) || !roles.TryGetValue(second.Owner, out var other) || role != other ||
                 !MapTerrainSeamValidation.IsValid(seam, view, admission)) continue;
-            Join(first, second);
+            authorized.Add(Pair(first, second));
+        }
+        var active = new List<Interval>();
+        foreach (var intervals in lines.Values)
+        {
+            intervals.Sort((a, b) => a.Start.CompareTo(b.Start));
+            active.Clear();
+            foreach (var next in intervals)
+            {
+                // A point contact does not connect sheets. Keep every longer overlap for seam authorization.
+                for (int i = active.Count - 1; i >= 0; i--)
+                    if (active[i].End.CompareTo(next.Start) <= 0) active.RemoveAt(i);
+                foreach (var current in active)
+                    if (current.Sheet.Owner == next.Sheet.Owner || authorized.Contains(Pair(current.Sheet, next.Sheet)))
+                        Join(current.Sheet, next.Sheet);
+                active.Add(next);
+            }
         }
         foreach (var node in roots.Keys.ToArray()) roots[node] = Root(node);
         return roots;
@@ -80,10 +83,14 @@ internal static class MapTerrainSheets
         }
         void Join(Node first, Node second)
         {
-            first = Root(first); second = Root(second);
+            (first, second) = Pair(Root(first), Root(second));
+            roots[second] = first;
+        }
+        static (Node, Node) Pair(Node first, Node second)
+        {
             int order = StringComparer.Ordinal.Compare(first.Owner, second.Owner);
             if (order > 0 || order == 0 && Nullable.Compare(first.Patch, second.Patch) > 0) (first, second) = (second, first);
-            roots[second] = first;
+            return (first, second);
         }
     }
 }

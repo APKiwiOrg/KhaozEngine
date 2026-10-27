@@ -5,6 +5,7 @@ using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Interiors;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
@@ -187,6 +188,64 @@ public sealed class NativeMapTerrainFeatherBoundaryTests
         AssertOverlayAt(Record(batch), 63.9375, -.5, .23193359375);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TransformedSourceValidSeam_DoesNotFeatherSeparateEffectiveFloor(bool tiled)
+    {
+        using var fixture = OwnerFixture(true, 125, MapSurfaceRole.SupportFloor, seam: true);
+        var left = fixture.Document.Surfaces.Patches[new("ground", 0, 0)];
+        left.CellMinX = 61; left.Width = 3;
+        left.Heights = Enumerable.Repeat(125, 8).ToArray();
+        left.Cells = Enumerable.Repeat(left.Cells[0], 3).ToArray();
+        left.Presence = [7];
+        var right = fixture.Document.Surfaces.Patches[new("adjoining", 1, 0)];
+        right.Cells[0] = right.Cells[0] with { Flags = MapCellFlags.None };
+        fixture.Document.NativeResourceTransforms = [new(MapPrefabChildKind.Surface, "adjoining",
+            new(-2, 1, 0, 0, 1), new string('a', 64))];
+        Refresh(fixture);
+        using var batch = Prepare(fixture, tiled);
+        // B's effective west edge at (62, 2.25) is above A's interior, not part of A's outline.
+        AssertOverlayAt(Record(batch), 62.0625, -.5, 1, y: 1.25);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MatchingEffectiveTransforms_KeepSeamedHardFillContinuous(bool tiled)
+    {
+        using var fixture = OwnerFixture(true, 125, MapSurfaceRole.SupportFloor, seam: true);
+        var right = fixture.Document.Surfaces.Patches[new("adjoining", 1, 0)];
+        right.Cells[0] = right.Cells[0] with { Flags = MapCellFlags.None };
+        fixture.Document.NativeResourceTransforms = new[] { "ground", "adjoining" }.Select(id =>
+            new MapStandaloneResourceTransform(MapPrefabChildKind.Surface, id, new(-2, 1, 0, 0, 1), new string('b', 64))).ToArray();
+        Refresh(fixture);
+        using var batch = Prepare(fixture, tiled);
+        // Both patches now share x=62 at y=2.25. The matching hard overlay suppresses that edge.
+        AssertOverlayAt(Record(batch), 61.9375, -.5, 1, y: 2.25);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ThreeOwnerLine_ConnectsAuthorizedOverlapBehindLongestInterval(bool tiled)
+    {
+        using var fixture = OwnerFixture(false, 125, MapSurfaceRole.SupportFloor, seam: true);
+        var surfaces = fixture.Document.Surfaces;
+        var unseamed = surfaces.Patches[new("ground", 0, 0)].Clone();
+        unseamed.Key = new("unseamed", 0, 0);
+        unseamed.Records.Clear();
+        unseamed.Cells[0] = new(12, 0, MapOverlayCut.Full, 0, 0, MapCellTopology.ForceSwNe);
+        surfaces.Patches.Add(unseamed.Key, unseamed);
+        surfaces.Refs.Add(surfaces.Refs[0] with { Id = "unseamed" });
+        fixture.Document.NativeResourceTransforms = [new(MapPrefabChildKind.Surface, "unseamed",
+            new(-128, -2.5, 0, 0, 3), new string('c', 64))];
+        Refresh(fixture);
+        using var batch = Prepare(fixture, tiled);
+        // Unseamed spans z=[-3,0] at x=64, y=1.25. Only the shorter ground/adjoining pair is authorized.
+        AssertOverlayAt(Record(batch), 63.9375, -.5, 1);
+    }
+
     static NativeSceneFixture OwnerFixture(bool overlay, int height, MapSurfaceRole role, bool seam)
     {
         var fixture = Fixture(overlay ? (ushort)12 : (ushort)11, overlay ? (ushort)11 : (ushort)0, overlay);
@@ -272,7 +331,7 @@ public sealed class NativeMapTerrainFeatherBoundaryTests
         return recorder.Snapshot();
     }
 
-    static void AssertOverlayAt(MapDrawSet set, double x, double z, double expected)
+    static void AssertOverlayAt(MapDrawSet set, double x, double z, double expected, double? y = null)
     {
         var samples = new List<double>();
         foreach (var draw in set.Draws)
@@ -285,6 +344,7 @@ public sealed class NativeMapTerrainFeatherBoundaryTests
                 var b = mesh.Vertices[mesh.Indices32[i + 1]];
                 var c = mesh.Vertices[mesh.Indices32[i + 2]];
                 if (a.Tangent.W == 0) continue;
+                if (y.HasValue && a.Position.Y + draw.Anchor.Y != y.Value) continue;
                 double px = x - draw.Anchor.X, pz = z - draw.Anchor.Z;
                 double denominator = Cross(b.Position - a.Position, c.Position - a.Position);
                 var offset = new Vector3((float)(px - a.Position.X), 0, (float)(pz - a.Position.Z));

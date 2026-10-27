@@ -85,7 +85,7 @@ public sealed class AtmosphereRendererTests
         var elements = pair.Reflection.ResourceLayouts[0].Elements;
         bool waterReceiver = program is "Model" or "ModelDissolve" or "Foliage" or "SkinnedModel"
             or "SkinnedModelDissolve" or "Splat" or "TileGround";
-        Assert.Equal(prefix + 3 + (program == "Water" ? 5 : prefix == 11 ? 1 : 0)
+        Assert.Equal(prefix + 3 + (program == "Water" ? 7 : prefix == 11 ? 1 : 0)
             + (waterReceiver ? 1 : 0), elements.Length);
         if (waterReceiver) Assert.Equal(GpuResourceKind.StructuredBufferReadOnly, elements[^1].Kind);
         Assert.Equal(new[] { GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly,

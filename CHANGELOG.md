@@ -16,7 +16,6 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   retains atlas ownership and disposed font owners cannot be reused.
 - Add optional viewport constraints to dropdown popups, with upward placement, scrolling, clipped option
   geometry and gesture identity preserved across scrolling or reflow (#1624).
-
 - Add opt-in live pending travel to `PointerGesture` through the init-only `LivePendingTravel` property, default
   off. A live gesture delivers each held frame's own motion in `DragDelta` while its press is still undecided,
   and replays nothing when it crosses into a drag, so the catch-up limit does not apply. The tap or drag

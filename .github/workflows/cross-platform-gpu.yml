@@ -438,6 +438,13 @@ on:
         description: 'Optional Render.Tests filter for diagnosis. Empty retains the standard full release gate.'
         type: string
         default: ''
+      # Arms D3D11FxcValidationTests.DumpVisibilityDisassembly on the FXC step alone, the only source of the
+      # visibility DXBC fixtures. The dump fails the step on purpose so the runner prints its listings, and
+      # scripts/recapture-taa-dxbc.py reads them back from the run. Default false, so no other trigger changes.
+      dumpDxbc:
+        description: 'Print the visibility DXBC listings on the direct3d11-native FXC step for scripts/recapture-taa-dxbc.py. Fails that step on purpose.'
+        type: boolean
+        default: false
 
 # Least privilege: this workflow only checks out, builds, tests, and uploads run artifacts. No step
 # writes back to the repo or publishes a package, so contents: read covers everything it does.
@@ -1079,6 +1086,8 @@ jobs:
         # not a matrix-key rename. `primary` keeps it to one run per leg when the full suite is sharded
         # (#1438): the `rest` shard runs it, and an unsharded run is always primary.
         if: matrix.backend == 'direct3d11-native' && matrix.primary == '1'
+        env:
+          KE_DUMP_VISIBILITY_DXBC: ${{ (github.event_name == 'workflow_dispatch' && inputs.dumpDxbc) && '1' || '' }}
         run: |
           dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build \
             --filter "FullyQualifiedName~D3D11FxcValidationTests|FullyQualifiedName~D3D11VorticeStructLayoutTests" \

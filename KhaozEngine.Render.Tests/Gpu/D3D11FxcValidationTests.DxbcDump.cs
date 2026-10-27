@@ -10,11 +10,13 @@ namespace KhaozEngine.Tests.Gpu
     /// The recapture source of the visibility DXBC fixtures (<see cref="TemporalVisibilityDxbcRealProgramTests"/>).
     /// Skipped unless <see cref="VisibilityDxbcDumpFactAttribute.EnvironmentVariable"/> is <c>1</c> on Windows. Then it
     /// prints FXC's full disassembly of the decision helper and six paired programs as D and shipped, plus every
-    /// additional shipped release-bearing program. Source hashes accompany the listings, one <c>DXBC|program|D or S|line number|text</c> line each, and fails so the runner prints the output.
-    /// To recapture, set the variable on the Windows FXC step of <c>cross-platform-gpu.yml</c> in a diagnostic commit
-    /// on a diagnostic branch, dispatch the workflow there with <c>legs=direct3d11-native</c>, take each stale fixture's
-    /// lines from the job log with carriage returns removed, gzip them over the fixture and store the GLSL hash beside
-    /// it. Delete the diagnostic branch afterwards.
+    /// additional shipped release-bearing program. Each listing is one <c>DXBC|program|D or S|line number|text</c> line
+    /// per disassembly line, after a <c>DXBCSOURCE|program|D or S|sha256</c> line holding the hash of the GLSL it
+    /// compiled. Then it fails so the runner prints the output.
+    /// To recapture, dispatch <c>cross-platform-gpu.yml</c> on the branch with <c>legs=direct3d11-native</c> and
+    /// <c>dumpDxbc=true</c>, which arms the variable on the Windows FXC step. Then run
+    /// <c>scripts/recapture-taa-dxbc.py</c> with the run id to list the fixtures that would change, and again with
+    /// <c>--write</c> to rewrite them and their hashes.
     /// </summary>
     public sealed partial class D3D11FxcValidationTests
     {

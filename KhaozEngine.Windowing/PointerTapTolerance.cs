@@ -27,7 +27,8 @@ namespace KhaozEngine.Windowing
         /// or past <see cref="GraceSeconds"/>, with the distance still within <see cref="GraceDistancePoints"/>. A
         /// press that crept through the grace would otherwise jump by everything it gathered. A crossing the distance
         /// alone would have made keeps its full catch-up. Zero drops the capped catch-up. Not negative and not NaN.
-        /// Unlimited by default.</summary>
+        /// Unlimited by default. Ignored when <see cref="PointerGesture.LivePendingTravel"/> is enabled, since
+        /// live travel never replays.</summary>
         public float CatchUpLimitPoints { get; init; } = float.PositiveInfinity;
 
         internal void Validate(string paramName)

@@ -100,7 +100,7 @@ public sealed partial class TileWorldView
             : nearest;
     }
 
-    bool IsGameplayObject(TileObject o) =>
+    internal bool IsGameplayObject(TileObject o) =>
         _loaded.TryGetValue(RegionCoord.Of(o.X, o.Z), out RegionHandles? handles)
         && handles.Residency == TileRegionResidencyState.Gameplay;
 

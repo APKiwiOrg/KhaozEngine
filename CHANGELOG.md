@@ -4,6 +4,14 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.15.1
+
+2026-10-27
+
+- Pin the multiline C# shader sources in Render3D, Render2D and Gpu to LF checkouts, so a Windows build compiles
+  the same shader bytes and renderer shader identities as Linux and macOS. A CRLF checkout previously changed the
+  hashed shader source and refused renderer performance units before device creation.
+
 ## 21.15.0
 
 2026-10-27

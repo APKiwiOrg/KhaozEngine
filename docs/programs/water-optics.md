@@ -28,7 +28,7 @@ Rows are in the order the milestones run.
 | --- | --- | --- | --- |
 | M1 Authored beds at the world manifest edge | shipped in v21.14.0 | https://github.com/APKiwiOrg/KhaozEngine/issues/1586 | none |
 | M2 Underwater sunlight for submerged receivers | shipped in v21.15.0 | https://github.com/APKiwiOrg/KhaozEngine/issues/1588 | Native performance run before M3 ships |
-| M5 Water column light and shadow, with a bent view of the bed | Landing 1 built, awaiting measured-cost gate before release. Landing 2 bent view not built | https://github.com/APKiwiOrg/KhaozEngine/issues/1608 | Owner approves the M5 ON performance run and rules on measured cost |
+| M5 Water column light and shadow, with a bent view of the bed | Landing 1 built, awaiting measured-cost gate before release. Landing 2 bent view not built | https://github.com/APKiwiOrg/KhaozEngine/issues/1608 | Owner rules on the measured cost of the approved #1602 run |
 | M6 Scene reflections in water | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1609 | Owner approves its design |
 | M7 River flow for procedural water | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1610 | Owner approves its design |
 | M3 Underwater caustics | design decisions taken, document not written | https://github.com/APKiwiOrg/KhaozEngine/issues/1604 | Owner approves its design, rules on its measured cost |
@@ -74,12 +74,15 @@ Rows are in the order the milestones run.
   workloads in https://github.com/APKiwiOrg/KhaozEngine/issues/1602 exist. Those recipes touch the renderer
   performance files, so they are coordinated with the renderer performance lanes.
 - Each milestone's design goes to the owner for approval before implementation.
-- M5 Landing 1 waits for the owner to approve the separate M5 ON village and outdoors run in
-  https://github.com/APKiwiOrg/KhaozEngine/issues/1602, then rule on its measured cost before release.
+- The owner approved the M5 ON village and outdoors run on
+  https://github.com/APKiwiOrg/KhaozEngine/issues/1602 with a USD 5.852 cap. M5 Landing 1 is released only after
+  the owner rules on its measured cost. Its water-optics-v2 recipes touch the renderer performance files, so
+  they are built in coordination with that program.
 - M4 starts only when the R8a native renderer prepares and submits bounded water on main.
 
 ## Next step
 
-Obtain the owner's approval for the #1602 run with an M5 ON variant, then their ruling on measured cost.
+Build the water-optics-v2 recipes for the approved #1602 run with the renderer performance program, run it
+within its cap, then bring the measured cost to the owner.
 After release, Grimhollow adopts the selected river look and restores the duck shadow under
 https://github.com/APKiwiOrg/Grimhollow/issues/644. [Landing 2](water-optics-design.md) remains unbuilt.

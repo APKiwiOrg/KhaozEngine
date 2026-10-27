@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Audio;
+using KhaozEngine.Diagnostics;
 using Xunit;
 
 namespace KhaozEngine.Tests.Audio;
@@ -362,6 +364,195 @@ public sealed class SfxLoopPoolTests
     }
 
     [Theory]
+    [InlineData(false, 0)]
+    [InlineData(false, 1)]
+    [InlineData(false, 2)]
+    [InlineData(true, 0)]
+    [InlineData(true, 1)]
+    [InlineData(true, 2)]
+    public void ThrowingLoggerCannotBypassStartRollback(bool startThrows, int rollbackOutcome)
+    {
+        var device = new ScriptedLoopDevice();
+        var logger = new LoopLogger { ThrowOnWarning = true };
+        device.StartOutcomes.Enqueue(() => Fail(startThrows));
+        device.StopOutcomes.Enqueue(() => rollbackOutcome == 2
+            ? throw new InvalidOperationException("scripted rollback") : rollbackOutcome == 0);
+        using var pool = new SfxLoopPool(1, device, logger);
+
+        var failed = pool.TryStartLoop(Playback);
+
+        Assert.Equal(SfxLoopStartStatus.BackendFailure, failed.Status);
+        Assert.Equal(default, failed.Handle);
+        Assert.Equal(new[] { ("start", 0), ("stop", 0) }, device.Calls);
+        Assert.Equal(rollbackOutcome == 0 ? 1 : 2, logger.Warnings.Count);
+        Assert.False(pool.IsLoopActive(new(0, 1)));
+        if (rollbackOutcome != 0)
+        {
+            var calls = device.Calls.ToArray();
+            Assert.Equal(SfxLoopStartStatus.Capacity, pool.TryStartLoop(Playback).Status);
+            Assert.Equal(calls, device.Calls);
+        }
+        Assert.True(pool.StopAllLoops());
+        var recovered = pool.TryStartLoop(Playback);
+        Assert.Equal(SfxLoopStartStatus.Started, recovered.Status);
+        Assert.Equal(new SfxLoopBackendHandle(0, 2), recovered.Handle);
+    }
+
+    [Fact]
+    public void ThrowingLoggerCannotAbortDisposeCleanup()
+    {
+        var device = new ScriptedLoopDevice();
+        var logger = new LoopLogger { ThrowOnWarning = true };
+        using var pool = new SfxLoopPool(4, device, logger);
+        var handles = new SfxLoopBackendHandle[4];
+        for (int i = 0; i < handles.Length; i++)
+            handles[i] = pool.TryStartLoop(Playback with { Positional = true }).Handle;
+        device.StopOutcomes.Enqueue(() => false);
+        device.StopOutcomes.Enqueue(() => throw new InvalidOperationException("scripted stop"));
+        device.StopOutcomes.Enqueue(() => false);
+        device.Calls.Clear();
+
+        var exception = Record.Exception(pool.Dispose);
+
+        Assert.Equal(new[] { ("stop", 0), ("stop", 1), ("stop", 2), ("stop", 3), ("dispose", -1) }, device.Calls);
+        Assert.Null(exception);
+        Assert.True(device.Disposed);
+        Assert.Equal(3, logger.Warnings.Count);
+        var calls = device.Calls.ToArray();
+        Assert.All(handles, handle =>
+        {
+            Assert.False(pool.IsLoopActive(handle));
+            Assert.False(pool.StopLoop(handle));
+            Assert.False(pool.SetLoopGain(handle, 0.5f));
+            Assert.False(pool.SetLoopPosition(handle, Vector3.One));
+        });
+        pool.Dispose();
+        Assert.Equal(calls, device.Calls);
+        Assert.Equal(3, logger.Warnings.Count);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ThrowingLoggerCannotAbortBulkCleanup(bool byBuffer)
+    {
+        var device = new ScriptedLoopDevice();
+        var logger = new LoopLogger { ThrowOnWarning = true };
+        using var pool = new SfxLoopPool(3, device, logger);
+        var first = pool.TryStartLoop(Playback).Handle;
+        var second = pool.TryStartLoop(Playback).Handle;
+        var third = pool.TryStartLoop(Playback).Handle;
+        device.StopOutcomes.Enqueue(() => false);
+        device.StopOutcomes.Enqueue(() => throw new InvalidOperationException("scripted stop"));
+        device.Calls.Clear();
+
+        Assert.False(byBuffer ? pool.StopBufferLoops(0) : pool.StopAllLoops());
+
+        Assert.Equal(new[] { ("stop", 0), ("stop", 1), ("stop", 2) }, device.Calls);
+        Assert.True(pool.IsLoopActive(first));
+        Assert.True(pool.IsLoopActive(second));
+        Assert.False(pool.IsLoopActive(third));
+        Assert.Equal(2, logger.Warnings.Count);
+        Assert.True(pool.StopAllLoops());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FailureDiagnosticsBoundGainEpisodesAndPreserveExplicitRecovery(bool loggerThrows)
+    {
+        var device = new ScriptedLoopDevice();
+        var logger = new LoopLogger { ThrowOnWarning = loggerThrows };
+        using var pool = new SfxLoopPool(1, device, logger);
+        var handle = pool.TryStartLoop(Playback).Handle;
+        device.GainOutcomes.Enqueue(() => false);
+        device.GainOutcomes.Enqueue(() => throw new InvalidOperationException("scripted gain"));
+        device.GainOutcomes.Enqueue(() => false);
+        device.GainOutcomes.Enqueue(() => throw new InvalidOperationException("scripted gain"));
+
+        for (int i = 0; i < 4; i++)
+            Assert.False(pool.SetLoopGain(handle, 0.25f));
+
+        Assert.Single(logger.Warnings);
+        Assert.Equal(4, device.GainWrites.Count);
+        Assert.True(pool.IsLoopActive(handle));
+        Assert.True(pool.SetLoopGain(handle, 0.5f));
+        Assert.Equal((0, 0.5f), device.GainWrites[^1]);
+        Assert.Equal(5, device.GainWrites.Count);
+        Assert.Single(device.Starts);
+        device.GainOutcomes.Enqueue(() => false);
+        Assert.False(pool.SetLoopGain(handle, 0.75f));
+        Assert.Equal(2, logger.Warnings.Count);
+
+        Assert.True(pool.StopLoop(handle));
+        var next = pool.TryStartLoop(Playback).Handle;
+        device.GainOutcomes.Enqueue(() => false);
+        Assert.False(pool.SetLoopGain(next, 0.25f));
+        Assert.Equal(3, logger.Warnings.Count);
+        Assert.Equal(2, device.Starts.Count);
+    }
+
+    [Fact]
+    public void FailureDiagnosticsAreIndependentPerSlotAndOperation()
+    {
+        var device = new ScriptedLoopDevice();
+        var logger = new LoopLogger();
+        using var pool = new SfxLoopPool(2, device, logger);
+        var first = pool.TryStartLoop(Playback with { Positional = true }).Handle;
+        var second = pool.TryStartLoop(Playback with { Positional = true }).Handle;
+        device.GainOutcomes.Enqueue(() => false);
+        device.GainOutcomes.Enqueue(() => false);
+        Assert.False(pool.SetLoopGain(first, 0.25f));
+        Assert.False(pool.SetLoopGain(second, 0.25f));
+        Assert.Equal(2, logger.Warnings.Count);
+        device.PositionOutcomes.Enqueue(() => false);
+        device.PositionOutcomes.Enqueue(() => throw new InvalidOperationException("scripted position"));
+        Assert.False(pool.SetLoopPosition(first, Vector3.One));
+        Assert.False(pool.SetLoopPosition(first, Vector3.One));
+        Assert.Equal(3, logger.Warnings.Count);
+
+        Assert.True(pool.SetLoopGain(first, 0.5f));
+        device.PositionOutcomes.Enqueue(() => false);
+        Assert.False(pool.SetLoopPosition(first, Vector3.One));
+        Assert.Equal(3, logger.Warnings.Count);
+        Assert.True(pool.SetLoopPosition(first, Vector3.Zero));
+        device.PositionOutcomes.Enqueue(() => false);
+        Assert.False(pool.SetLoopPosition(first, Vector3.One));
+        Assert.Equal(4, logger.Warnings.Count);
+        Assert.Equal(2, device.Starts.Count);
+        Assert.True(pool.IsLoopActive(first));
+        Assert.True(pool.IsLoopActive(second));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FailureDiagnosticsBoundQuarantineCleanupAndResetAtNewGeneration(bool loggerThrows)
+    {
+        var device = new ScriptedLoopDevice();
+        var logger = new LoopLogger { ThrowOnWarning = loggerThrows };
+        using var pool = new SfxLoopPool(1, device, logger);
+        device.StartOutcomes.Enqueue(() => false);
+        device.StopOutcomes.Enqueue(() => false);
+        Assert.Equal(SfxLoopStartStatus.BackendFailure, pool.TryStartLoop(Playback).Status);
+        Assert.Equal(2, logger.Warnings.Count);
+        device.StopOutcomes.Enqueue(() => false);
+        device.StopOutcomes.Enqueue(() => throw new InvalidOperationException("scripted stop"));
+        Assert.False(pool.StopBufferLoops(0));
+        Assert.False(pool.StopAllLoops());
+        Assert.Equal(new[] { ("start", 0), ("stop", 0), ("stop", 0), ("stop", 0) }, device.Calls);
+        Assert.Equal(2, logger.Warnings.Count);
+        Assert.True(pool.StopAllLoops());
+
+        device.StartOutcomes.Enqueue(() => throw new InvalidOperationException("scripted start"));
+        device.StopOutcomes.Enqueue(() => false);
+        Assert.Equal(SfxLoopStartStatus.BackendFailure, pool.TryStartLoop(Playback).Status);
+        Assert.Equal(4, logger.Warnings.Count);
+        Assert.Equal(2, device.Starts.Count);
+        Assert.True(pool.StopAllLoops());
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(-1)]
     public void NonPositiveCapacityIsRejected(int capacity)
@@ -376,6 +567,28 @@ public sealed class SfxLoopPoolTests
     }
 
     static bool Fail(bool throws) => throws ? throw new InvalidOperationException("scripted failure") : false;
+
+    sealed class LoopLogger : ILogger
+    {
+        public List<(string Message, Exception? Exception)> Warnings { get; } = new();
+        public bool ThrowOnWarning { get; init; }
+        public string Category => "loop-test";
+        public bool IsEnabled(LogLevel level) => true;
+
+        public void Log(LogLevel level, string message, Exception? exception = null)
+        {
+            if (level != LogLevel.Warn) return;
+            Warnings.Add((message, exception));
+            if (ThrowOnWarning) throw new InvalidOperationException("scripted logger");
+        }
+
+        public void Trace(string message, Exception? exception = null) => Log(LogLevel.Trace, message, exception);
+        public void Debug(string message, Exception? exception = null) => Log(LogLevel.Debug, message, exception);
+        public void Info(string message, Exception? exception = null) => Log(LogLevel.Info, message, exception);
+        public void Warn(string message, Exception? exception = null) => Log(LogLevel.Warn, message, exception);
+        public void Error(string message, Exception? exception = null) => Log(LogLevel.Error, message, exception);
+        public void Fatal(string message, Exception? exception = null) => Log(LogLevel.Fatal, message, exception);
+    }
 
     sealed class EqualOwner
     {

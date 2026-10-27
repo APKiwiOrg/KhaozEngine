@@ -20,17 +20,23 @@ internal sealed class SfxLoopPool : IDisposable
 
     enum SlotState { Free, Reserved, Active, Quarantined, Retired }
 
+    [Flags]
+    enum FailureOperation : byte { None = 0, Start = 1, Stop = 2, Gain = 4, Position = 8, Dispose = 16 }
+
     struct Slot
     {
         public SlotState State;
         public ulong Generation;
         public int Buffer;
         public bool Positional;
+        // Successful controls clear only their operation. A new generation clears all slot episodes.
+        public FailureOperation ReportedFailures;
     }
 
     readonly Slot[] _slots;
     readonly ISfxLoopDevice _device;
     readonly ILogger? _logger;
+    FailureOperation _reportedPoolFailures;
     bool _disposed;
 
     public SfxLoopPool(int capacity, ISfxLoopDevice device, ILogger? logger = null, ulong initialGeneration = 0)
@@ -60,6 +66,7 @@ internal sealed class SfxLoopPool : IDisposable
             }
 
             slot.Generation++;
+            slot.ReportedFailures = FailureOperation.None;
             slot.State = SlotState.Reserved;
             // A partial start may bind the buffer even when no identity can be published.
             slot.Buffer = playback.Buffer;
@@ -84,13 +91,17 @@ internal sealed class SfxLoopPool : IDisposable
         if (!IsLoopActive(handle)) return false;
         try
         {
-            if (_device.TrySetGain(handle.Slot, gain)) return true;
+            if (_device.TrySetGain(handle.Slot, gain))
+            {
+                _slots[handle.Slot].ReportedFailures &= ~FailureOperation.Gain;
+                return true;
+            }
         }
         catch (Exception exception)
         {
-            return ReportFailure("gain", handle.Slot, exception);
+            return ReportFailure(FailureOperation.Gain, handle.Slot, exception);
         }
-        return ReportFailure("gain", handle.Slot);
+        return ReportFailure(FailureOperation.Gain, handle.Slot);
     }
 
     public bool SetLoopPosition(SfxLoopBackendHandle handle, Vector3 position)
@@ -98,13 +109,17 @@ internal sealed class SfxLoopPool : IDisposable
         if (!IsLoopActive(handle) || !_slots[handle.Slot].Positional) return false;
         try
         {
-            if (_device.TrySetPosition(handle.Slot, position)) return true;
+            if (_device.TrySetPosition(handle.Slot, position))
+            {
+                _slots[handle.Slot].ReportedFailures &= ~FailureOperation.Position;
+                return true;
+            }
         }
         catch (Exception exception)
         {
-            return ReportFailure("position", handle.Slot, exception);
+            return ReportFailure(FailureOperation.Position, handle.Slot, exception);
         }
-        return ReportFailure("position", handle.Slot);
+        return ReportFailure(FailureOperation.Position, handle.Slot);
     }
 
     public bool IsLoopActive(SfxLoopBackendHandle handle) =>
@@ -149,7 +164,7 @@ internal sealed class SfxLoopPool : IDisposable
         }
         catch (Exception exception)
         {
-            ReportFailure("dispose", -1, exception);
+            ReportFailure(FailureOperation.Dispose, -1, exception);
         }
     }
 
@@ -161,9 +176,9 @@ internal sealed class SfxLoopPool : IDisposable
         }
         catch (Exception exception)
         {
-            return ReportFailure("start", index, exception);
+            return ReportFailure(FailureOperation.Start, index, exception);
         }
-        return ReportFailure("start", index);
+        return ReportFailure(FailureOperation.Start, index);
     }
 
     bool TryStopSlot(int index)
@@ -172,20 +187,39 @@ internal sealed class SfxLoopPool : IDisposable
         {
             if (_device.TryStop(index))
             {
+                _slots[index].ReportedFailures &= ~FailureOperation.Stop;
                 _slots[index].State = SlotState.Free;
                 return true;
             }
         }
         catch (Exception exception)
         {
-            return ReportFailure("stop", index, exception);
+            return ReportFailure(FailureOperation.Stop, index, exception);
         }
-        return ReportFailure("stop", index);
+        return ReportFailure(FailureOperation.Stop, index);
     }
 
-    bool ReportFailure(string operation, int slot, Exception? exception = null)
+    bool ReportFailure(FailureOperation operation, int slot, Exception? exception = null)
     {
-        _logger?.Warn($"SFX loop {operation} failed for slot {slot}.", exception);
+        // Mark the attempt before invoking diagnostics, so a throwing logger is also bounded.
+        if (slot >= 0)
+        {
+            if ((_slots[slot].ReportedFailures & operation) != 0) return false;
+            _slots[slot].ReportedFailures |= operation;
+        }
+        else
+        {
+            if ((_reportedPoolFailures & operation) != 0) return false;
+            _reportedPoolFailures |= operation;
+        }
+        try
+        {
+            _logger?.Warn($"SFX loop {operation} failed for slot {slot}.", exception);
+        }
+        catch (Exception)
+        {
+            // Injected diagnostics must not interrupt rollback, subsequent cleanup or device disposal.
+        }
         return false;
     }
 

@@ -18,12 +18,29 @@ correctness only. They cannot establish a hardware floor or a T4 result.
 Paid caps are fixed by preset and leg. Unit deadlines include startup, replay and publication. The
 job cap also covers external setup and builds.
 
-| Paid unit | Unit seconds | Frame milliseconds | Job minutes | Maximum billed minutes | USD per minute | Maximum USD |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Linux Vulkan pilot | 600 | 10,000 | 12 | 15 | 0.052 | 0.780 |
-| Windows D3D11 pilot | 600 | 10,000 | 20 | 23 | 0.102 | 2.346 |
-| Linux Vulkan full | 1,500 | 10,000 | 35 | 38 | 0.052 | 1.976 |
-| Windows D3D11 or Vulkan full | 1,500 | 10,000 | 35 | 38 | 0.102 | 3.876 |
+| Paid unit | Unit seconds | Steady frame milliseconds | Cold frame milliseconds | Job minutes | Maximum billed minutes | USD per minute | Maximum USD |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Linux Vulkan pilot | 600 | 10,000 | 120,000 | 12 | 15 | 0.052 | 0.780 |
+| Windows D3D11 pilot | 600 | 10,000 | 120,000 | 20 | 23 | 0.102 | 2.346 |
+| Linux Vulkan full | 1,500 | 10,000 | 120,000 | 35 | 38 | 0.052 | 1.976 |
+| Windows D3D11 or Vulkan full | 1,500 | 10,000 | 120,000 | 35 | 38 | 0.102 | 3.876 |
+
+The strict manifest requires both `limits.frameMilliseconds` and `limits.coldFrameMilliseconds`.
+Only conditioning frame 0 uses the cold limit, for its immediate CPU interval, retained CPU interval
+including completion and retained GPU duration. Every later conditioning frame, scene frame and
+control frame keeps the steady limit, including the first warm-up frame of each fresh session.
+Equality with a limit passes. The cold frame remains counted and reported inside the original unit
+deadline and job cap. Batch drains and final readback remain separate from an individual frame.
+
+The shared 120,000 ms cold bound is about 2.7 times the 44.9-second first CPU frame in the
+[Windows T4 pilot](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40454067253). The already
+valid Linux T4 pilot's cold frame took 9.42 seconds against its old 10-second limit. A thin margin
+turns ordinary hosted-runner CPU variance into a paid refusal. The 120-second bound admits startup
+work with margin while staying well inside the 600-second pilot and 1,500-second full unit deadlines.
+Every other frame limit stays unchanged. All presets and execution classes use the same first-frame
+rule. Fresh workloads share the unit's native device and compiler caches. The completed WARP and
+Linux T4 pilots retained no later frame above 10 seconds, but these pilot observations do not
+establish a timing bound for unmeasured full schedules or Windows Vulkan.
 
 The modeled maximum billed minutes are the job cap plus an explicit three-minute cleanup allowance.
 The maximum unit cost is those billed minutes times the leg rate. Windows pilot
@@ -150,11 +167,11 @@ resolve remain required. Hardware refuses rehearsal admission, while performance
 non-software NVIDIA T4 identity. The shared timestamp ring still refuses software by default. Only
 the rehearsal session explicitly opts in, and missing timestamp or completion capability still refuses.
 
-| Rehearsal schedule | Unit seconds | Frame milliseconds | Job minutes | Maximum billed minutes | Rate and maximum cost |
-| --- | ---: | ---: | ---: | ---: | --- |
-| Pilot on either leg | 5,400 | 60,000 | 120 | 120 | USD 0 |
-| Full on either leg | 19,800 | 60,000 | 350 | 350 | USD 0 |
-| All controls on either leg | 5,400 | 60,000 | 120 | 120 | USD 0 |
+| Rehearsal schedule | Unit seconds | Steady frame milliseconds | Cold frame milliseconds | Job minutes | Maximum billed minutes | Rate and maximum cost |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Pilot on either leg | 5,400 | 60,000 | 120,000 | 120 | 120 | USD 0 |
+| Full on either leg | 19,800 | 60,000 | 120,000 | 350 | 350 | USD 0 |
+| All controls on either leg | 5,400 | 60,000 | 120,000 | 120 | 120 | USD 0 |
 
 Owner and campaign approval references remain required, with a zero-cost campaign instead of the
 paid campaign cap. The full job cap stays inside the hosted six-hour limit. These conservative first

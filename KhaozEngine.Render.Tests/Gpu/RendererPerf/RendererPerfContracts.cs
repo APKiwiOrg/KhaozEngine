@@ -18,7 +18,7 @@ internal sealed record RendererPerfRuntimePolicy(string Configuration, string Ru
     ImmutableDictionary<string, string> Environment, string GcMode, bool TieredCompilation);
 internal sealed record RendererPerfExecutionPolicy(string Backend, string AdapterPolicy, string Runner, string Workflow,
     string Leg, string CompletionPolicy);
-internal sealed record RendererPerfLimits(int UnitSeconds, int FrameMilliseconds, int JobMinutes);
+internal sealed record RendererPerfLimits(int UnitSeconds, int FrameMilliseconds, int ColdFrameMilliseconds, int JobMinutes);
 internal sealed record RendererPerfBudget(int MaximumBilledMinutes, decimal RatePerMinute, string Currency, decimal MaximumCostUsd);
 internal sealed record RendererPerfApproval(string Reference, string Purpose, string CampaignReference, decimal CampaignMaximumUsd);
 

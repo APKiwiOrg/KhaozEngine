@@ -177,7 +177,12 @@ def main():
     parser.add_argument('--ready-process-id',type=int,required=True)
     parser.add_argument('--mode',choices=['counts','timings'],required=True)
     parser.add_argument('--result',type=Path,required=True)
+    parser.add_argument('--expected-recording-slots',type=int,choices=[3,6])
+    parser.add_argument('--startup-log',type=Path)
     args=parser.parse_args()
+    require((args.expected_recording_slots is None)==(args.startup_log is None),
+            'Recording-slot expectation and owned startup log are a paired opt-in')
+    require(args.expected_recording_slots is None or args.mode=='counts','Capacity comparison requires counts mode')
     os.umask(0o077)
     preparation=args.preparation.resolve(strict=True)
     root=preparation.parent
@@ -215,6 +220,17 @@ def main():
         require(client==root/'client','Preparation does not own this client directory')
         record.update(preparationSha256=digest(preparation),probeCommit=manifest['probeCommit'],gameCommit=manifest['gameCommit'],
                       requiredClosure=sorted(REQUIRED_CLOSURE),codeIdentities=dict(app=manifest['appCodeIdentity'],engine=manifest['engineCodeIdentity']))
+        if args.expected_recording_slots is not None:
+            from capacity import ENGINE_BASE, GAME_BASE, select_startup, validate_startup
+            require(manifest['frozenEngineBase']==ENGINE_BASE and manifest['gameCommit']==GAME_BASE,'Frozen capacity source differs')
+            startup_path=canonical_owned(args.startup_log,root)
+            require(startup_path.parent==root and not args.startup_log.is_symlink(),'Startup log must be owned and direct')
+            selected=select_startup(startup_path.read_bytes())
+            metal=next(x for x in manifest['replacements'] if x['name']=='KhaozEngine.Gpu.Metal')
+            validate_startup(selected,metal,args.expected_recording_slots,manifest['probeCommit'])
+            record.update(expectedRecordingSlots=args.expected_recording_slots,frozenEngineBase=ENGINE_BASE,
+                          startupProof=selected,metalAssembly={k:metal[k] for k in
+                          ('name','mvid','assemblyVersion','informationalVersion','sha256')})
         record['processBefore']=identity(pid,client)
         payload=verify_payload(manifest)
         record.update(payloadBefore=payload,runtimeFilesRehashed=len(payload),contentFiles=395)
@@ -266,7 +282,8 @@ def main():
         raw=result.read_bytes()
         require(stat_key(result)==result_stat,'Result changed while being read')
         record['resultSha256']=hashlib.sha256(raw).hexdigest()
-        audit=analyse(json.loads(raw),1 if args.mode=='counts' else 2,pid,record)
+        audit=analyse(json.loads(raw),1 if args.mode=='counts' else 2,pid,record,
+                      expected_recording_slots=args.expected_recording_slots)
         audit['inputSha256']=record['resultSha256']
         with audit_path.open('x') as stream:
             json.dump(audit,stream,indent=2)

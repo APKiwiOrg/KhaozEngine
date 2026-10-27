@@ -526,7 +526,7 @@ def _identity_audit(report, proof, pid):
     return errors
 
 
-def analyse(report, mode, pid, proof=None):
+def analyse(report, mode, pid, proof=None, *, expected_recording_slots=None):
     try:
         if type(report.get('schemaVersion')) is not int or report['schemaVersion'] != 4:
             raise ValueError('Only schema 4 is supported')
@@ -536,11 +536,18 @@ def analyse(report, mode, pid, proof=None):
         errors = context['errors'] + ring.pop('errors')
         if proof is not None:
             errors.extend(_identity_audit(report,proof,pid))
+        capacity_result = None
+        if expected_recording_slots is not None:
+            from capacity import audit_treatment
+            capacity_result = audit_treatment(report,proof,expected_recording_slots)
+            errors.extend(capacity_result['errors'])
         full = not errors and ring['fullyAttributed'] and proof is not None
+        if capacity_result is not None and capacity_result['status'] != 'valid': full = False
         return dict(status='invalid' if errors else 'valid' if full else 'limited', errors=errors,
                     processId=pid, sampleCount=report['sampleCount'], durationSeconds=report['durationSeconds'],
                     framesPerSecond=context['framesPerSecond'], identityAudited=proof is not None,
                     **{**ring, 'fullyAttributed':full},
+                    **({'capacity':capacity_result} if capacity_result is not None else {}),
                     limits=['Counted CPU ring waits only. No GPU completion or physical presentation claim.',
                             'Whole-window reconciliation and interval coverage are independent.',
                             'Different workloads establish neither overhead nor speedup.'])
@@ -554,12 +561,13 @@ if __name__ == '__main__':
     parser.add_argument('--mode',type=int,choices=[1,2],required=True)
     parser.add_argument('--pid',type=int,required=True)
     parser.add_argument('--collection',type=Path)
+    parser.add_argument('--expected-recording-slots',type=int,choices=[3,6])
     args=parser.parse_args()
     raw=args.input.read_bytes()
     proof=json.loads(args.collection.read_text()) if args.collection else None
     if proof is not None and proof['resultSha256'] != hashlib.sha256(raw).hexdigest():
         raise ValueError('Raw result differs from collection evidence')
-    result=analyse(json.loads(raw),args.mode,args.pid,proof)
+    result=analyse(json.loads(raw),args.mode,args.pid,proof,expected_recording_slots=args.expected_recording_slots)
     result['inputSha256']=hashlib.sha256(raw).hexdigest()
     with args.output.open('x') as stream:
         json.dump(result,stream,indent=2);stream.write('\n')

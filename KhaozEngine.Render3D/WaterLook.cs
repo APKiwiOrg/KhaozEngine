@@ -79,6 +79,23 @@ namespace KhaozEngine.Render3D
         /// Default <c>null</c> inherits the scene's value, which defaults to <c>0.03</c>.</summary>
         public float? UnderwaterPenumbraPerMetre;
 
+        /// <summary>Overrides <see cref="WaterSettings.WaterColumnLight"/> for this plane. Default <c>null</c>
+        /// inherits the scene's opt-in, which defaults to <c>false</c>. An explicit <c>false</c> disables the
+        /// column even when the scene enables it. An enabled column bypasses <see cref="AbsorptionPerMetre"/>,
+        /// <see cref="ShallowColor"/>, <see cref="DeepColor"/>, <see cref="ShallowDepth"/> and <see cref="Opacity"/>.</summary>
+        public bool? WaterColumnLight;
+
+        /// <summary>Overrides <see cref="WaterSettings.WaterColor"/> for this plane, in linear RGB with alpha
+        /// ignored. Resolved RGB channels must be finite and in [0, 1] when <see cref="WaterColumnLight"/> is
+        /// enabled. Default <c>null</c> inherits the scene's neutral <c>(0.10, 0.13, 0.10, 1)</c> default.</summary>
+        public Color? WaterColor;
+
+        /// <summary>Overrides <see cref="WaterSettings.Clarity"/> for this plane, in metres of vertical depth
+        /// at about 5% bed visibility when seen straight down. Must resolve finite and positive when
+        /// <see cref="WaterColumnLight"/> is enabled. Default <c>null</c> inherits the scene's neutral
+        /// <c>2</c>-metre default.</summary>
+        public float? Clarity;
+
         /// <summary>Overrides <see cref="WaterSettings.ShallowDepth"/> for this plane. <c>null</c> inherits. A pond
         /// that is two metres deep everywhere wants a much shorter blend than an ocean shelf.</summary>
         public float? ShallowDepth;
@@ -271,6 +288,9 @@ namespace KhaozEngine.Render3D
             if (AbsorptionPerMetre.HasValue) scratch.AbsorptionPerMetre = AbsorptionPerMetre.Value;
             if (UnderwaterSunlight.HasValue) scratch.UnderwaterSunlight = UnderwaterSunlight.Value;
             if (UnderwaterPenumbraPerMetre.HasValue) scratch.UnderwaterPenumbraPerMetre = UnderwaterPenumbraPerMetre.Value;
+            if (WaterColumnLight.HasValue) scratch.WaterColumnLight = WaterColumnLight.Value;
+            if (WaterColor.HasValue) scratch.WaterColor = WaterColor.Value;
+            if (Clarity.HasValue) scratch.Clarity = Clarity.Value;
             if (ShallowDepth.HasValue) scratch.ShallowDepth = ShallowDepth.Value;
             if (Opacity.HasValue) scratch.Opacity = Opacity.Value;
 

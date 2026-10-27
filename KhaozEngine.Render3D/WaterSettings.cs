@@ -123,6 +123,25 @@ namespace KhaozEngine.Render3D
         /// and non-negative. Default <c>0.03</c>. Used when <see cref="UnderwaterSunlight"/> is enabled.</summary>
         public float UnderwaterPenumbraPerMetre = 0.03f;
 
+        /// <summary>Opt in to water-column light and shadow using <see cref="WaterColor"/> and
+        /// <see cref="Clarity"/>. Default <c>false</c>. Each plane may override this through
+        /// <see cref="WaterLook.WaterColumnLight"/>. The enabled column bypasses <see cref="AbsorptionPerMetre"/>,
+        /// <see cref="ShallowColor"/>, <see cref="DeepColor"/>, <see cref="ShallowDepth"/> and
+        /// <see cref="Opacity"/>. Shore fade and foam keep their own settings.</summary>
+        public bool WaterColumnLight = false;
+
+        /// <summary>Linear RGB deep-water scattered colour under a reference white sun at zenith and sky.
+        /// Channels must be finite and in [0, 1] when <see cref="WaterColumnLight"/> is enabled. Alpha is ignored.
+        /// Default <c>(0.10, 0.13, 0.10, 1)</c> is a neutral authoring default, not a tuned river preset.
+        /// Each plane may override this through <see cref="WaterLook.WaterColor"/>.</summary>
+        public Color WaterColor = new(0.10f, 0.13f, 0.10f, 1f);
+
+        /// <summary>Vertical depth in metres at which a bed seen straight down has about 5% visibility.
+        /// Must be finite and positive when <see cref="WaterColumnLight"/> is enabled. Default <c>2</c> metres
+        /// is a neutral authoring default, not a tuned river preset. Each plane may override this through
+        /// <see cref="WaterLook.Clarity"/>.</summary>
+        public float Clarity = 2f;
+
         /// <summary>World-space depth below the surface over which <see cref="ShallowColor"/> blends into
         /// <see cref="DeepColor"/> in the LEGACY two-stop path. Only consulted when
         /// <see cref="AbsorptionPerMetre"/> is all-zero. Independent of <see cref="ShoreFadeDistance"/> (which is

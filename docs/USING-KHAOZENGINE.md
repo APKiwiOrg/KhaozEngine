@@ -5853,8 +5853,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     ```
     **Overridable fields**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
     (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`UnderwaterSunlight`/`UnderwaterPenumbraPerMetre`/
-    `ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars, `ShoreFadeDistance`, and the
-    two depth-response strengths `ShoalingStrength`/`SurfStrength`. **What stays scene-wide, and cannot be put on
+    `WaterColumnLight`/`WaterColor`/`Clarity`/`ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars,
+    `ShoreFadeDistance`, and the two depth-response strengths `ShoalingStrength`/`SurfStrength`.
+    **What stays scene-wide, and cannot be put on
     a look at all**: `SeaState` (one FFT bake - calling the producer twice a frame with two sea states does not
     make two oceans, it makes the one producer rebake on every call for both states and corrupts the persistent
     foam accumulator, whose contract is that one invocation owns each texel), `Bathymetry` (one depth texture),
@@ -5871,6 +5872,16 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     being written anyway. Per-body sea states, bathymetry and grid modes stay deferred to
     [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275). Rationale, including why a per-plane sea state
     is refused rather than deferred: `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
+  - **Water-column authoring**: `WaterColumnLight` defaults to `false`, `WaterColor` defaults to neutral linear
+    RGB `(0.10, 0.13, 0.10, 1)` with alpha ignored, and `Clarity` defaults to `2` metres of vertical depth for
+    about 5% bed visibility when seen straight down. These are neutral authoring defaults, not tuned river values.
+    Each nullable `WaterLook` field inherits the scene, a value overrides it and an explicit `false` opts out.
+    `DrawWater` checks resolved inputs before enqueue when the column is enabled. Clarity must be finite and
+    positive, and each RGB channel must be finite and in [0, 1]. A rejection throws `ArgumentException` naming
+    `Clarity` or `WaterColor` and leaves the queue unchanged. Disabled columns leave these inputs unvalidated.
+    The column path bypasses `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`, `ShallowDepth` and `Opacity`.
+    Shore fade and foam keep their own settings. The fields currently resolve and validate at admission.
+    Column rendering is not connected yet.
   - **Independent optical bed** (`WaterPlane.Optics`, a `WaterOpticsBinding`, **default unbound = legacy scene
     depth**). An unbound plane grades its colour, shore foam and shore fade from the first opaque surface behind it,
     which can be a swimming creature, a bridge or a prop. A bound plane reads its own signed bed depth for those

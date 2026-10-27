@@ -36,6 +36,9 @@ namespace KhaozEngine.Tests.Render3D
             new(nameof(WaterLook.AbsorptionPerMetre), l => l.AbsorptionPerMetre = new Color(0.03f, 0.05f, 0.07f, 0f), (_, u) => u.Absorption.X),
             new(nameof(WaterLook.UnderwaterSunlight), l => l.UnderwaterSunlight = true, (s, _) => s.UnderwaterSunlight ? 1f : 0f),
             new(nameof(WaterLook.UnderwaterPenumbraPerMetre), l => l.UnderwaterPenumbraPerMetre = 0.09f, (s, _) => s.UnderwaterPenumbraPerMetre),
+            new(nameof(WaterLook.WaterColumnLight), l => l.WaterColumnLight = true, (s, _) => s.WaterColumnLight ? 1f : 0f),
+            new(nameof(WaterLook.WaterColor), l => l.WaterColor = new Color(0.2f, 0.3f, 0.4f), (s, _) => s.WaterColor.R),
+            new(nameof(WaterLook.Clarity), l => l.Clarity = 7f, (s, _) => s.Clarity),
             new(nameof(WaterLook.ShallowDepth), l => l.ShallowDepth = 7.5f, (_, u) => u.DetailParams.W),
             new(nameof(WaterLook.Opacity), l => l.Opacity = 0.42f, (_, u) => u.ShoreGlint.W),
 
@@ -124,8 +127,8 @@ namespace KhaozEngine.Tests.Render3D
         public void Every_overridable_field_is_covered_by_the_table()
         {
             HashSet<string> declared = LookFieldNames();
-            Assert.True(declared.Count == 39,
-                $"WaterLook declares {declared.Count} fields, not the 39 the design specifies. Either the cut " +
+            Assert.True(declared.Count == 42,
+                $"WaterLook declares {declared.Count} fields, not the 42 the design specifies. Either the cut " +
                 "moved (update the design doc) or a field landed here by accident.");
 
             HashSet<string> covered = Table.Select(f => f.Name).ToHashSet();

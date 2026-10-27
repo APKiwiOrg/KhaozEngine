@@ -893,6 +893,17 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   that body's light path. The surface entry can lie beyond the rectangle, where the bank can shadow it.
   How submerged receivers are lit is described under key shadows.
 
+  Water-column authoring uses `WaterColumnLight` (scene default `false`), `WaterColor` (linear RGB, neutral
+  default `(0.10, 0.13, 0.10, 1)`, alpha ignored) and `Clarity` (neutral default `2` metres of vertical depth
+  for about 5% bed visibility when seen straight down). These are authoring defaults, not tuned river values.
+  Their nullable `WaterLook` fields inherit the scene, a value overrides it and an explicit `false` opts out.
+  `DrawWater` validates the resolved values before enqueue only when the column is enabled. Clarity must be
+  finite and positive, and each RGB channel must be finite and in [0, 1]. Rejections throw `ArgumentException`
+  naming `Clarity` or `WaterColor`. Disabled columns leave those inputs unused and unvalidated. The column path
+  bypasses `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`, `ShallowDepth` and `Opacity`, while shore fade and
+  foam retain their settings. These fields currently resolve and validate at admission. Column rendering is
+  not connected yet.
+
   On top of that the ripple normal field is a generated SLOPE SPECTRUM (14.26.0): `RippleComponents` cosines with
   golden-angle headings (no two parallel, no dominant ribbon direction) laddering by `RippleLacunarity` over about
   five octaves, amplitudes renormalized to a fixed slope variance so `NormalStrength` keeps its meaning, sampled at
@@ -1017,9 +1028,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `WaterLook` mirrors a `WaterSettings` field and is itself nullable - `null` inherits the scene, a value overrides
   it for that plane alone, leaving every other queued plane on the scene's look, which is what lets a calm inland
   lake and a rough FFT sea share a frame. The overridable fields are `WaveSource`, the swell group, the ripple/
-  detail group, body colour including `AbsorptionPerMetre`, `UnderwaterSunlight` and
-  `UnderwaterPenumbraPerMetre`, foam, the four `Glint*` scalars, `ShoreFadeDistance` and the two depth-response
-  strengths `ShoalingStrength`/`SurfStrength`. Scene-wide and NOT on a look at all: `SeaState` (one FFT bake - two sea states a frame does not
+  detail group, body colour including `AbsorptionPerMetre`, `UnderwaterSunlight`, `UnderwaterPenumbraPerMetre`,
+  `WaterColumnLight`, `WaterColor` and `Clarity`, foam, the four `Glint*` scalars, `ShoreFadeDistance` and the two
+  depth-response strengths `ShoalingStrength`/`SurfStrength`. Scene-wide and NOT on a look at all: `SeaState`
+  (one FFT bake - two sea states a frame does not
   make two oceans, it makes the one producer rebake on every call for both and corrupts the persistent foam
   accumulator), `Bathymetry` (one depth texture), the grid group (`GridMode` and the `Clipmap*` knobs, which pick
   the pass's pipeline and vertex layout before the draw loop starts), reflection weights (read the one sky),

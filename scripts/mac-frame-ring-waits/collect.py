@@ -1,5 +1,6 @@
 """Collect one already-running, human-readied schema-4 window. No launch or retry."""
 import argparse
+from contextlib import contextmanager
 import datetime
 import hashlib
 import json
@@ -30,11 +31,31 @@ def require(condition, message):
         raise ValueError(message)
 
 
+@contextmanager
+def regular_input(path):
+    import archive
+    path=Path(path).absolute()
+    if path.is_relative_to('/tmp'):
+        path=Path('/tmp').resolve()/path.relative_to('/tmp')
+    with archive._directory(path.parent) as directory, archive._file(directory,path.name) as descriptor:
+        yield descriptor
+
+
+def read_regular_bytes(path):
+    # Startup logs may append. Keep the existing byte-snapshot semantics after safe file admission.
+    with regular_input(path) as descriptor, os.fdopen(os.dup(descriptor),'rb') as stream:
+        return stream.read()
+
+
 def digest(path):
+    import archive
     h=hashlib.sha256()
-    with Path(path).open('rb') as stream:
-        for chunk in iter(lambda:stream.read(1024*1024),b''):
-            h.update(chunk)
+    with regular_input(path) as descriptor:
+        before=archive._identity(os.fstat(descriptor))
+        with os.fdopen(os.dup(descriptor),'rb') as stream:
+            for chunk in iter(lambda:stream.read(1024*1024),b''):
+                h.update(chunk)
+        require(archive._identity(os.fstat(descriptor))==before,'Input changed while hashing')
     return h.hexdigest()
 
 
@@ -105,7 +126,7 @@ def verify_payload(manifest):
     require(sum(x.startswith('Content/') for x in actual)==395, 'Content inventory changed')
     result=[]; inodes=set()
     for name,row in sorted(expected.items()):
-        path=canonical_owned(client/name,client); before=stat_key(path); st=path.stat()
+        path=client/name; canonical_owned(path,client); before=stat_key(path); st=path.stat()
         require(st.st_nlink==1 and (st.st_dev,st.st_ino) not in inodes, 'Payload is hardlinked')
         inodes.add((st.st_dev,st.st_ino))
         require(before[2]==row['bytes'] and oct(stat.S_IMODE(st.st_mode))==row['mode'], 'Payload size or mode changed')
@@ -125,7 +146,7 @@ def verify_sources(manifest):
     require(not run_text(['git','-C',str(engine),'status','--porcelain=v1']), 'Probe source is dirty')
     rows=[]
     for row in manifest['sourceHashes']:
-        path=canonical_owned(engine/relative(row['path']),engine)
+        path=engine/relative(row['path']);canonical_owned(path,engine)
         committed=subprocess.check_output(['git','-C',str(engine),'show',manifest['probeCommit']+':'+row['path']],timeout=30)
         value=digest(path)
         require(value==row['sha256']==hashlib.sha256(committed).hexdigest(), 'Probe source identity changed')
@@ -133,13 +154,13 @@ def verify_sources(manifest):
     game=Path(manifest['gameRoot']).resolve(strict=True)
     require(bool(manifest['gameSourceHashes']), 'Game source hashes missing')
     for row in manifest['gameSourceHashes']:
-        path=canonical_owned(game/relative(row['path']),game)
+        path=game/relative(row['path']);canonical_owned(path,game)
         committed=subprocess.check_output(['git','-C',str(game),'show',manifest['gameCommit']+':'+row['path']],timeout=30)
         require(digest(path)==row['sha256']==hashlib.sha256(committed).hexdigest(), 'Game source identity changed')
     for row in manifest['replacements']:
-        source=canonical_owned(row['source'],engine)
+        source=Path(row['source']);canonical_owned(source,engine)
         require(digest(source)==row['sha256'], 'Committed replacement binary changed')
-        client=canonical_owned(Path(manifest['client'])/(row['name']+'.dll'),Path(manifest['client']))
+        client=Path(manifest['client'])/(row['name']+'.dll');canonical_owned(client,Path(manifest['client']))
         require(digest(client)==row['sha256'] and source.stat().st_ino!=client.stat().st_ino, 'Replacement payload mismatch')
     return rows
 
@@ -152,9 +173,13 @@ def verify_world(manifest):
         selection=validate_world_manifest(manifest)
         directory=root/WORLD_ROOT
         with archive._directory(directory): pass
-        actual={str(path.relative_to(root)) for path in directory.rglob('*')
-                if path.is_symlink() or not path.is_dir()}
-        require(actual=={row['path'] for row in manifest['world']},'Working world inventory changed')
+        expected={row['path'] for row in manifest['world']}
+        expected.update(str(parent) for row in manifest['world'] for parent in Path(row['path']).parents
+                        if str(parent).startswith(WORLD_ROOT+'/'))
+        actual=set()
+        for parent,directories,files in os.walk(directory,followlinks=False):
+            actual.update(str((Path(parent)/name).relative_to(root)) for name in directories+files)
+        require(actual==expected,'Working world inventory changed')
         sources={row['path']:row['sha256'] for row in manifest['gameSourceHashes']}
         rows=manifest['world']+[dict(path=path,sha256=sources[path]) for path in CATALOG_PATHS]
         with archive._directory(root) as parent:
@@ -347,11 +372,12 @@ def main():
             raise
 
     try:
-        manifest=json.loads(preparation.read_text())
+        preparation_raw=read_regular_bytes(preparation)
+        manifest=json.loads(preparation_raw)
         validate_preparation(manifest)
         client=Path(manifest['client']).resolve(strict=True)
         require(client==root/'client','Preparation does not own this client directory')
-        record.update(preparationSha256=digest(preparation),probeCommit=manifest['probeCommit'],gameCommit=manifest['gameCommit'],
+        record.update(preparationSha256=hashlib.sha256(preparation_raw).hexdigest(),probeCommit=manifest['probeCommit'],gameCommit=manifest['gameCommit'],
                       requiredClosure=sorted(REQUIRED_CLOSURE),codeIdentities=dict(app=manifest['appCodeIdentity'],engine=manifest['engineCodeIdentity']))
         if args.expected_recording_slots is not None:
             from capacity import ENGINE_BASE, GAME_BASE, select_startup, validate_startup, validate_world_manifest
@@ -359,7 +385,7 @@ def main():
             validate_world_manifest(manifest)
             startup_path=canonical_owned(args.startup_log,root)
             require(startup_path.parent==root and not args.startup_log.is_symlink(),'Startup log must be owned and direct')
-            selected=select_startup(startup_path.read_bytes())
+            selected=select_startup(read_regular_bytes(startup_path))
             record.update(startupProof=selected,helperHashes=helper_hashes())
             metal=next(x for x in manifest['replacements'] if x['name']=='KhaozEngine.Gpu.Metal')
             validate_startup(selected,metal,args.expected_recording_slots,manifest['probeCommit'])
@@ -418,12 +444,12 @@ def main():
         critical=sorted(name+'.dll' for name in REQUIRED_CLOSURE|{'Grimhollow'})
         record['runtimeFiles']=[dict(before_files[name],afterSha256=after_files[name]['sha256'],afterStat=after_files[name]['stat']) for name in critical]
         result_stat=stat_key(result)
-        raw=result.read_bytes()
+        raw=read_regular_bytes(result)
         require(stat_key(result)==result_stat,'Result changed while being read')
         record['resultSha256']=hashlib.sha256(raw).hexdigest()
         if args.expected_recording_slots is not None:
             require(helper_hashes()==record['helperHashes'],'Collection helpers changed during capture')
-            require(select_startup(startup_path.read_bytes())==record['startupProof'],'Startup proof changed during capture')
+            require(select_startup(read_regular_bytes(startup_path))==record['startupProof'],'Startup proof changed during capture')
         audit=analyse(json.loads(raw),1 if args.mode=='counts' else 2,pid,record,
                       expected_recording_slots=args.expected_recording_slots)
         audit['inputSha256']=record['resultSha256']

@@ -80,7 +80,11 @@ separately against declared game source hashes, working bytes and their correspo
 rows. Their fingerprint under the same recipe is
 `753413079a39bbfb68f96e911279585805db34666f67adf914628bac7ec890f2`.
 Every world row must also match a declared game source hash. Working directory inventory is checked
-before and after capture, with extra entries, missing files and symlinked paths refused. Prefabs, the
+before and after capture against the files and their implied ancestor directories. Extra entries,
+including empty directories, missing files and symlinked paths are refused. Collector source hashing
+and input reads admit regular files through no-follow, nonblocking descriptors before reading, so a
+FIFO substitution cannot block an earlier source-read step. Preparation hashes identify the bytes
+actually parsed. Startup logs keep their append-compatible byte-snapshot behavior. Prefabs, the
 gameplay bundle and other runtime assets retain their separate game-source and payload coverage.
 
 The descriptor is copied into collection metadata and checked by offline analysis with exact types.

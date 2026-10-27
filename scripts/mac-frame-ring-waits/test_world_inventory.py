@@ -136,5 +136,21 @@ class WorldInventoryTests(unittest.TestCase):
             self.assertEqual(1,len(w.triggers))
             self.assertEqual('failed',archive.verify_bundle(w.archiveDestination)['measurementStatus'])
 
+    def test_unexpected_empty_directories_are_refused_at_both_endpoints(self):
+        from test_capacity import capacity_workflow
+        for endpoint in ('before','after'):
+            with self.subTest(endpoint=endpoint),capacity_workflow() as w:
+                directory=Path(w.manifest['gameRoot'])/'assets/worlds/hollowmere/unexpected'
+                emit=collect.time.sleep
+                def add_after_emit(delay):
+                    emit(delay)
+                    directory.mkdir()
+                if endpoint=='before':directory.mkdir()
+                with patch.object(collect.time,'sleep',side_effect=emit if endpoint=='before' else add_after_emit):
+                    self.assertEqual(1,collect.main())
+                self.assertEqual(0 if endpoint=='before' else 1,len(w.triggers))
+                self.assertTrue(directory.is_dir())
+                self.assertIn('Working world inventory changed',json.loads(w.metadata.read_text())['error'])
+
 
 if __name__=='__main__':unittest.main()

@@ -5886,6 +5886,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     Shore fade and foam keep their own settings. An enabled column also opts its plane into underwater
     sunlight without changing `UnderwaterSunlight`. Its volume record carries extinction derived from
     resolved `WaterColor` and `Clarity`, with mean extinction `3 / Clarity`, instead of legacy absorption.
+    Enabled planes also shadow glint and the sun-lit foam term through the scene's cascades, leaving foam's
+    ambient term unshadowed. Disabled planes keep the original surface shading.
     Water surface column scattering is not connected yet.
   - **Independent optical bed** (`WaterPlane.Optics`, a `WaterOpticsBinding`, **default unbound = legacy scene
     depth**). An unbound plane grades its colour, shore foam and shore fade from the first opaque surface behind it,

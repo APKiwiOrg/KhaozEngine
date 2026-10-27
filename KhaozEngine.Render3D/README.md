@@ -907,7 +907,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `ArgumentException` naming `Clarity` or `WaterColor`. Disabled columns leave those inputs unused and
   unvalidated. The column path bypasses `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`, `ShallowDepth` and
   `Opacity`, while shore fade and foam retain their settings. These fields resolve and validate at admission
-  and supply underwater sunlight's extinction. Water surface column scattering is not connected yet.
+  and supply underwater sunlight's extinction. Enabled planes also shadow glint and the sun-lit foam term
+  through the scene's cascades, leaving foam's ambient term unshadowed. Disabled planes keep the original
+  surface shading. Water surface column scattering is not connected yet.
 
   On top of that the ripple normal field is a generated SLOPE SPECTRUM (14.26.0): `RippleComponents` cosines with
   golden-angle headings (no two parallel, no dominant ribbon direction) laddering by `RippleLacunarity` over about

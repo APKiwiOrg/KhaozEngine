@@ -178,8 +178,8 @@ namespace KhaozEngine.Tests.Gpu
             ("WaterRenderer._layout",
                 new[] { T("BathyTex"), S("BathySamp"), T("OceanMap"), S("OceanSamp"), T("DepthTex"), S("Samp"),
                     U("Water", dynamic: true), U("Atmosphere"), T("AtmoSkyView"), S("AtmoSkySampler"),
-                    T("OpticsTex"), S("OpticsSamp") },
-                "t0 s0 t1 s1 t2 s2 b0 b1 t3 s3 t4 s4"),
+                    T("OpticsTex"), S("OpticsSamp"), T("ColumnShadowAtlas"), S("ColumnShadowSampler"), U("WaterLitFrame") },
+                "t0 s0 t1 s1 t2 s2 b0 b1 t3 s3 t4 s4 t5 s5 b2"),
         };
 
         /// <summary>

@@ -108,6 +108,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly GpuRetireQueue _retired;
         readonly bool _ownsRetired;
         internal WaterOpticsResources Optics { get; }
+        internal WaterColumnBindings ColumnShadows { get; }
         int _capacity;
         IGpuResourceSet? _set;
         RenderResources? _bound;
@@ -191,6 +192,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _gd = gd;
             _retired = retired;
+            ColumnShadows = new WaterColumnBindings(gd, retired);
             Optics = new WaterOpticsResources(gd, retired);
             _atmosphere = atmosphere ?? new AtmosphereBindings(gd);
             _ownsAtmosphere = atmosphere is null;
@@ -646,6 +648,7 @@ namespace KhaozEngine.Render3D.Rendering
             _bathymetry.Dispose();
             _set?.Dispose();
             foreach (IGpuResourceSet set in _opticsSets.Values) set.Dispose();
+            ColumnShadows.Dispose();
             if (_ownsAtmosphere) _atmosphere.Dispose();
             DisposeWaterPrograms();
             _ubo?.Dispose();

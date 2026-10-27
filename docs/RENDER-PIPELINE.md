@@ -186,6 +186,33 @@ and bound FFT water is refused until FFT has a certified displacement envelope. 
 plane, so geometry above the surface occludes it. The FFT shoaling and surf bathymetry is a separate scene-wide
 input. API detail lives in the [Render3D package reference](../KhaozEngine.Render3D/README.md).
 
+## Water surface shadows
+
+Water appends fragment bindings `12=ColumnShadowAtlas`, `13=ColumnShadowSampler` and `14=WaterLitFrame` after
+the optical bed resources. Scene water borrows the existing cascade atlas, its point-clamp sampler and the
+complete model frame buffer. The `WaterLitFrame` declaration preserves the 688-byte prefix with `LitPrefix[43]`,
+then four matrices (256 bytes) and three vectors at offsets 944, 960 and 976. Ambient is `LitPrefix[6].rgb`
+at offset 96. Water makes no additional frame-buffer uploads for any number of planes, and its per-plane
+slot remains 1280 bytes. Standalone water owns a neutral R32F texel containing 1 and a zero-strength 1024-byte
+frame buffer, initialized once. The padded range contains the complete 992-byte shader prefix.
+
+Water and lit receivers share parameter-only cascade projection, blend weights and coverage fade. Selection
+uses each lookup point's matrix coverage, both depth bounds, a two-texel margin and the existing normal,
+constant and slope biases. A surface lookup uses the existing bilinear comparison PCF. Column entry lookups
+use one point comparison, with one neighbouring-cascade comparison inside a blend band. The column march
+budget is four stratified samples, so the worst case is eight point comparisons plus the surface PCF lookup
+at `S`. Column entries use the refracted surface point rather than the below-surface receiver march. Casters
+wholly below the water do not shadow the column, while underwater receiver lighting can still darken the bed.
+Both paths share the refractive index `1.333`. Water adds no storage buffers, and the device minimum remains
+three fragment storage buffers.
+
+Only planes with `WaterColumnLight` enabled shadow glint and the sun-lit foam term. Foam uses
+`FoamColor.rgb * (ambient + LightColor.rgb * max(dot(N, Lsun), 0) * surfaceVisibility)`, leaving ambient
+unshadowed. Disabled columns retain the original glint and foam arithmetic. Disabled scene shadows return
+visibility 1. A committed shadow layout replacement invalidates and retires every bound and unbound water
+set before retiring the old atlas graph. Failed replacements preserve the current sets. Preparation borrows
+the current resources again, and atlas, sampler and frame-buffer identity independently invalidate stale sets.
+
 ## Underwater lit receivers
 
 Underwater key lighting runs in every lit opaque receiver, independently of the water pass's depth sources.

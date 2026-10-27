@@ -47,7 +47,7 @@ public sealed class WaterOpticsBindingTests
         internal void Draw() => Renderer.Draw(Commands, Targets, Planes, WaterTestFrames.TopDown,
             WaterTestFrames.TopDown, -Vector3.UnitY, Color.White, Vector3.UnitY * 100f, Settings, Sky, 0f);
 
-        internal FakeResourceSet[] WaterSets() => Factory.ResourceSets.Where(s => s.Resources.Length == 12).ToArray();
+        internal FakeResourceSet[] WaterSets() => Factory.ResourceSets.Where(s => s.Resources.Length == 15).ToArray();
 
         public void Dispose()
         {

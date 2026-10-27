@@ -224,7 +224,7 @@ void main() {
     + WaterShoreBindingsGlsl + WaterFftBindingsGlsl + @"
 layout(set=0, binding=4) uniform texture2D DepthTex;   // .r = resolved scene linear depth (single-channel R32F)
 layout(set=0, binding=5) uniform sampler Samp;
-" + WaterUboGlsl + WaterFftCommonGlsl + WaterShoreCommonGlsl + WaterSwellCommonGlsl + @"
+" + WaterUboGlsl + WaterFftCommonGlsl + WaterShoreCommonGlsl + WaterSwellCommonGlsl + WaterColumnShadowSource.Glsl + @"
 layout(location=0) in vec3 vWorldPos;
 layout(location=1) in vec2 vRefXz;
 layout(location=2) in vec2 vFocusRot;
@@ -640,6 +640,12 @@ void main() {
         }
     }
 
+    float surfaceVisibility = 1.0;
+    if (ColumnExtinction.w > 0.5) {
+        surfaceVisibility = waterColumnSurfaceVisibility(vWorldPos, N);
+        glint *= surfaceVisibility;
+    }
+
     // Foam: whitecaps where the swell folds (mirrors WaterMath.Whitecap over the attenuated per-pixel fold) and a
     // shoreline band off the reconstructed depth (mirrors WaterMath.ShoreFoam), both broken up by the same
     // scrolling pattern (mirrors WaterMath.FoamAmount). A max, not a sum, so a whitecap inside the shore band does
@@ -687,7 +693,12 @@ void main() {
     float alpha = tintAlpha * opacity * shoreFade;
     // Foam paints over the surface and pushes it toward its own (near-solid) opacity, but still inside the
     // waterline feather, so the very edge does not become a hard white line.
-    rgb = mix(rgb, FoamColor.rgb, foam);
+    if (ColumnExtinction.w > 0.5) {
+        vec3 foamLight = LitPrefix[6].rgb + LightColor.rgb * max(dot(N, Lsun), 0.0) * surfaceVisibility;
+        rgb = mix(rgb, FoamColor.rgb * foamLight, foam);
+    } else {
+        rgb = mix(rgb, FoamColor.rgb, foam);
+    }
     alpha = mix(alpha, max(alpha, FoamColor.a * opacity * shoreFade), foam);
     if (alpha <= 0.001) discard;
     rgb = atmosphereFog(rgb, vWorldPos, false, SkyParams.y > 0.5);

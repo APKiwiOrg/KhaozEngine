@@ -436,7 +436,7 @@ namespace KhaozEngine.Render3D
             _starfield = new Rendering.StarfieldRenderer(gd, _res.ColorDepthFB.Outputs);
             // Animated water draws into the same ColorDepthFB, AFTER the sky + decals (see RenderInternal). Default
             // off (no DrawWater request queued == the pass never runs, existing scenes byte-stable).
-            _water = new Rendering.WaterRenderer(gd, _res.ColorDepthFB.Outputs, _retired, _atmosphere.Bindings);
+            _water = CreateWaterRenderer(gd);
             // Depth-tested debug wire volumes draw into the same ColorDepthFB (lit colour + read-only scene depth)
             // after the water pass, before the post chain, so scene geometry occludes their buried parts.
             _depthLines = new Rendering.DepthLineRenderer(gd, _res.ColorDepthFB.Outputs);

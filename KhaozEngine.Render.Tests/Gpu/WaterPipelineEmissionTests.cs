@@ -57,7 +57,7 @@ public sealed class WaterPipelineEmissionTests
                 Assert.DoesNotContain("opticsAdd(", program.FragmentGlsl);
                 Assert.DoesNotContain("tryOpticsTriangle(", program.FragmentGlsl);
             }
-            Assert.Equal(12, hlsl.Reflection.ResourceLayouts[0].Elements.Length);
+            Assert.Equal(15, hlsl.Reflection.ResourceLayouts[0].Elements.Length);
             Assert.Contains("register(t4)", hlsl.FragmentSource);
             Assert.Contains("register(s4)", hlsl.FragmentSource);
             foreach (string uniform in new[] { "vec4 OpticsRect;", "vec4 OpticsParams;", "vec4 SkyDiscHalo[8];" })

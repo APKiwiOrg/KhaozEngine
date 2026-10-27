@@ -14,6 +14,9 @@ internal sealed partial class WaterRenderer
     PreparedPlane[] _preparedPlanes = Array.Empty<PreparedPlane>();
     IGpuResourceSet[] _planeSets = Array.Empty<IGpuResourceSet>();
     IGpuBuffer? _boundUbo;
+    IGpuTexture? _boundColumnAtlas;
+    IGpuSampler? _boundColumnSampler;
+    IGpuBuffer? _boundColumnFrame;
     bool _opticsPrepared;
     // Whether the last viewport preparation queued bound water. Such a frame stays strict even if recording
     // later sees no bound plane.
@@ -60,11 +63,30 @@ internal sealed partial class WaterRenderer
         _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout,
             _bathymetry.Texture, _bathymetry.Sampler, _ocean.Map, _ocean.Sampler,
             targets.DepthColorTex, _gd.PointSampler, new GpuBufferRange(_ubo!, 0, SlotBytes),
-            _atmosphere.Uniforms, _atmosphere.SkyView, _atmosphere.SkySampler, optics, _gd.PointSampler));
+            _atmosphere.Uniforms, _atmosphere.SkyView, _atmosphere.SkySampler, optics, _gd.PointSampler,
+            ColumnShadows.ShadowAtlas, ColumnShadows.ShadowSampler, ColumnShadows.FrameUniforms));
 
     bool TargetsMatch(RenderResources targets) => ReferenceEquals(_bound, targets)
         && _boundGen == targets.Generation && ReferenceEquals(_boundUbo, _ubo)
-        && ReferenceEquals(_boundMap, _ocean.Map) && ReferenceEquals(_boundBathy, _bathymetry.Texture);
+        && ReferenceEquals(_boundMap, _ocean.Map) && ReferenceEquals(_boundBathy, _bathymetry.Texture)
+        && ReferenceEquals(_boundColumnAtlas, ColumnShadows.ShadowAtlas)
+        && ReferenceEquals(_boundColumnSampler, ColumnShadows.ShadowSampler)
+        && ReferenceEquals(_boundColumnFrame, ColumnShadows.FrameUniforms);
+
+    static GpuResourceLayoutElement[] AppendColumnShadowLayout(GpuResourceLayoutElement[] prefix)
+    {
+        Array.Resize(ref prefix, prefix.Length + 3);
+        prefix[^3] = new("ColumnShadowAtlas", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment);
+        prefix[^2] = new("ColumnShadowSampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment);
+        prefix[^1] = new("WaterLitFrame", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment);
+        return prefix;
+    }
+
+    internal void InvalidateColumnShadowBindings()
+    {
+        RetireWaterSets();
+        _opticsPrepared = false;
+    }
 
     void RetireWaterSets()
     {
@@ -103,6 +125,9 @@ internal sealed partial class WaterRenderer
             _boundUbo = _ubo;
             _boundMap = _ocean.Map;
             _boundBathy = _bathymetry.Texture;
+            _boundColumnAtlas = ColumnShadows.ShadowAtlas;
+            _boundColumnSampler = ColumnShadows.ShadowSampler;
+            _boundColumnFrame = ColumnShadows.FrameUniforms;
         }
         _set ??= CreateWaterSet(targets, _bathymetry.NeutralTexture);
     }

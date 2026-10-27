@@ -521,6 +521,81 @@ USD 0. No measured baseline or performance acceptance was produced. The approval
 authorizes no retry. Another run needs a corrected workload, independently reviewed preparation and
 fresh owner approval.
 
+## Software rehearsals, round 3
+
+The workload and trusted workflow are `764ee6287dd87f84bf219f187873aa478e5ad824`, with main CI green.
+
+| Unit | B | Run, job | Job window UTC | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| `rehearsal-linux` | `9cd69d8f750baedd8e7b18eb5f2baaed2c583c31` | 40414693565, 121894123000 | 22:44:39 to 23:12:19 | 12695874082, 3,165,123, `sha256:f698e37efc86bbf6f83352260e04ffcbe423d64eca1d60344cede37431988109` | `47d3a4b39dded525eea836bcbc4253beff5108217247bc8ff280db962bd2560b` |
+| `rehearsal-windows` | `41a3f6cf177866389ef3eb0cc6845460962095a1` | 40414697088, 121894193057 | 22:44:48 to 22:48:43 | 12696100058, 9,073, `sha256:4da98567bff4e20ed30546670e726d5325fe17c76c46ffebee9dcf0d723e50cf` | `3d0dffc05cf621c88a2b37b8fefb7860198cd5632ecdc096e6c7e74017ef8201` |
+| `rehearsal-full-windows` | `496e0e91d01732244bd44f34442619e1a5b32681` | 40414704044, 121894194607 | 22:44:49 to 22:48:28 | 12695970450, 10,092, `sha256:7b3a2b19e30858300e5be581a2a211c1e8a206126f548f64883feecdb60f4239` | `c1fd73a65f70bdf62a129bae7873ab5e1b90609f95f517f1a5cd8f0db81593a1` |
+
+The Linux pilot completed and certified with compiler collection `Complete` and all 1,260 frames. Native
+admission was software `llvmpipe (LLVM 20.1.2, 256 bits)`. Promotion is false with only
+`SoftwareRehearsalNotPerformanceEvidence`. Trusted `VerifyRehearsal` passed. The measurement step ran from
+22:50:47 to 23:12:08 UTC. Evidence is under `/tmp/khaozengine-renderer-rehearsal-3/artifact-linux/linux-vulkan/`,
+including `rehearsal-linux.json`.
+
+Both WARP units refused at runtime admission before device creation. The standard Windows image exports
+`DOTNET_MULTILEVEL_LOOKUP=0`, `DOTNET_NOLOGO=1` and `DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1`, and all nine declared
+entries matched. Evidence is under `/tmp/khaozengine-renderer-rehearsal-3/artifact-windows/` and
+`/tmp/khaozengine-renderer-rehearsal-3/artifact-full-windows/`.
+
+`rehearsal-full-linux` (run `40414700520`) was still running at the time of this record. Root records its outcome later.
+
+Each attempt consumed the owner's standing free-run approval for that reviewed state. Cost was USD 0 on standard
+runners.
+
+## Fifth authorized Linux pilot, attempt 5
+
+The workload and trusted workload are `764ee6287dd87f84bf219f187873aa478e5ad824`. Authorization
+`4f7ee4cfadd6d6bb3e0b05f33013c7e447e2b899` has that workload as its sole parent on
+`feature/renderer-pilot-linux-5`. Its exact manifest SHA-256 is
+`9dfdb24072ce0699636a8366f1f9a89da9bb498346a81efec2b4506780faa663`. The unit is `pilot-linux` with the `pilot`
+preset.
+
+The fifth pilot approval was consumed by
+[run 40420458329](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40420458329), attempt 1, job
+`121913480573`, from 23:33:03 to 23:37:34 UTC. The measurement step ran from 23:36:33 to 23:37:25 UTC. Trusted paid
+`Verify` passed.
+
+Artifact `renderer-perf-linux-vulkan`, ID `12697419177`, is 3,052,972 bytes. GitHub reports digest
+`sha256:558f6f210556b5ec0bd32eb6272b73ad350a8871aff2f7794793b2e05e437509`. The measurement TRX SHA-256 is
+`216a8ead72a7ae84a33e638f078487f60ea50b1f199a0c0f60659b2a2f9c8c0f`. Evidence is under
+`/tmp/khaozengine-renderer-pilot-5/artifact/linux-vulkan/`, including `pilot-linux.json`, `native-admission.json`,
+`runtime-admission.json`, the compiler inventory and telemetry.
+
+Publication completed and certified. `ValidForPromotion` is true with no reasons. Compiler collection is `Complete`.
+Native admission recorded a Tesla T4, vendor `0x10de`, device `0x1eb8`, not software, 64-bit timestamps with a 1 ns
+period, image `Linux/Linux/20261013.76.1` and driver
+`VkPhysicalDeviceProperties.driverVersion=2475425856`. All 1,260 frames completed.
+
+These are recorded pilot values, not a baseline. The S3 blocks each retained 128 measured frames:
+
+| Unit | Measured GPU frame median | Measured CPU frame median |
+| --- | ---: | ---: |
+| S3 TotalOnly | 8,115,584 ns | 1,026,105 ns |
+| S3 PerPass | 7,475,264 ns | 1,515,810 ns |
+
+The six controls each retained 64 measured frames. Control 7 is the portable 128 MiB stream.
+
+| Control | Measured GPU frame median |
+| ---: | ---: |
+| 1 | 10,480 ns |
+| 4 | 10,304 ns |
+| 5 | 64,800 ns |
+| 7 | 955,360 ns |
+| 9 | 32,768 ns |
+| 11 | 120,976 ns |
+
+The usage API showed no GPU line for 2026-10-26 or 2026-10-27 shortly after the run because it lags. The billed
+figure is pending confirmation. The 4 minute 31 second job window is at most 5 billed minutes at USD 0.052, or
+USD 0.26, inside the USD 0.624 cap. Campaign spend before this attempt was USD 0.884 of the USD 10 envelope.
+
+The approval is consumed and authorizes no retry or full unit. This is a promotable pilot unit, not the published
+baseline. The full units and the Windows leg remain separate approvals.
+
 ## Outstanding native and preparation gates
 
 Accepted Tasks10/11 and the cold amendment implement optional D3D11, Vulkan and Metal diagnostics.

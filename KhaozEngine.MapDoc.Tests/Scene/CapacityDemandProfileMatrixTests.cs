@@ -155,12 +155,15 @@ public sealed class CapacityDemandProfileMatrixTests
         using (var probe = new CapacityDemandProbe())
         {
             MapFoliageDistribution.Generate(decorated, "cover-a", new(0, 0), new(MaxRuleCandidates: (int)rules));
-            Assert.Equal(MapFoliageStatus.CapacityExceeded, MapFoliageDistribution.Generate(decorated, "cover-a", new(0, 0), new(MaxRuleCandidates: 0)).Status);
-            var rows = probe.For("MaxRuleCandidates").ToArray();
-            Assert.Contains(rows, r => Read<decimal>(r, "Requested") == rules && Read<decimal>(r, "Allowance") == rules && !Read<bool>(r, "Refused"));
-            var refused = rows.Single(r => Read<bool>(r, "Refused"));
-            Row(refused, 0, Read<decimal>(refused, "ProposedIncrement"), 0, true);
-            Assert.InRange(Read<decimal>(refused, "ProposedIncrement"), 1, rules);
+            var refusal = MapFoliageDistribution.Generate(decorated, "cover-a", new(0, 0), new(MaxRuleCandidates: 0));
+            Assert.Equal(MapFoliageStatus.CapacityExceeded, refusal.Status);
+            // The last matched rule reaches the accepted run's rule total. A zero ceiling refuses the inspected owner
+            // candidates, which the refused work reports as its rule candidates.
+            Row(At(probe, "MapFoliageClearance.MaxRuleCandidates.2", "MaxRuleCandidates").Where(r => Read<decimal>(r, "Allowance") == rules).Last(), 0, rules, rules, false);
+            var refused = Assert.Single(probe.For("MaxRuleCandidates"), r => Read<bool>(r, "Refused"));
+            Assert.Equal("MapFoliageClearance.MaxRuleCandidates.1", Read<string>(refused, "Site"));
+            Assert.True(refusal.Work.RuleCandidates > 0);
+            Row(refused, 0, refusal.Work.RuleCandidates, 0, true);
         }
     }
 
@@ -271,6 +274,7 @@ public sealed class CapacityDemandProfileMatrixTests
             var refused = Assert.Single(rows, r => Read<bool>(r, "Refused"));
             Row(refused, 1, 1, 1, true);
             string site = Read<string>(refused, "Site");
+            Assert.Equal("MapSurfaceQuery.MaxCandidatePatches.1", site);
             var accepted = rows.Where(r => Read<string>(r, "Site") == site && Read<decimal>(r, "Allowance") == 2).ToArray();
             Row(accepted[0], 0, 1, 2, false);
             Row(accepted[1], 1, 1, 2, false);
@@ -283,6 +287,7 @@ public sealed class CapacityDemandProfileMatrixTests
             Assert.Equal(records, rows.Where(r => Read<decimal>(r, "Allowance") == records).Max(r => Read<decimal>(r, "Requested")));
             var refused = Assert.Single(rows, r => Read<bool>(r, "Refused"));
             // The effective source admits its whole record request before reading any record.
+            Assert.Equal("MapEffectiveSurfaceSource.MaxRecordReads.1", Read<string>(refused, "Site"));
             Row(refused, 0, records, records - 1, true);
         }
         using (var probe = new CapacityDemandProbe())
@@ -300,6 +305,7 @@ public sealed class CapacityDemandProfileMatrixTests
             var rows = probe.For("MaxRecordDepth").ToArray();
             var refused = Assert.Single(rows, r => Read<bool>(r, "Refused"));
             Row(refused, 0, 1, 0, true);
+            Assert.Equal("MapScopedAcquisition.MaxRecordDepth.1", Read<string>(refused, "Site"));
             Assert.Contains(rows, r => Read<string>(r, "Site") == Read<string>(refused, "Site") && Read<decimal>(r, "Allowance") == 8 &&
                 Read<decimal>(r, "CurrentDemand") == 0 && Read<decimal>(r, "ProposedIncrement") == 1 && !Read<bool>(r, "Refused"));
         }

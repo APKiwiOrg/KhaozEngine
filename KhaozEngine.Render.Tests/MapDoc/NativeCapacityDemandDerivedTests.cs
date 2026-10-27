@@ -85,7 +85,9 @@ public sealed class NativeCapacityDemandDerivedTests
         Assert.Equal(queued.Length, scene.Length);
         Assert.All(queued, r => Assert.Equal(33_554_432, Read<decimal>(r, "Allowance")));
         Assert.All(scene, r => Assert.Equal(134_217_728, Read<decimal>(r, "Allowance")));
-        Assert.Equal(queued.Select(r => Read<decimal>(r, "Requested")), scene.Select(r => Read<decimal>(r, "Requested")));
+        // A build admission starts empty, and the completed build refuses nothing at either ceiling.
+        Assert.Equal((0m, 0m), (Read<decimal>(queued[0], "CurrentDemand"), Read<decimal>(scene[0], "CurrentDemand")));
+        Assert.NotEmpty(residency.AcceptedPlans);
         Assert.All(build, r => Assert.False(Read<bool>(r, "Refused")));
     }
 

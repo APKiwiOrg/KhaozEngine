@@ -159,19 +159,21 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         bool refused = cellArea > 4.0 * limits.MaxFaces + 64;
         if (DemandDiagnostics.IsObserved)
         {
-            decimal cells;
+            // The cell ceiling 4 * MaxFaces + 64 admits exactly the grids needing at most MaxFaces faces, ceil((cells - 64) / 4).
+            // Each origin of a derived MaxFaces compares that face demand in its own field's units, so it refuses exactly
+            // when the floor of its remaining allowance is below the demand, as the gate does.
+            decimal faces;
             bool saturated = false;
-            try { cells = ((decimal)x1 - x0) * ((decimal)z1 - z0); }
-            catch (OverflowException) { cells = decimal.MaxValue; saturated = true; }
-            // The cell ceiling is 4 * MaxFaces + 64 faces' worth of cells. Each origin of a derived MaxFaces states the
-            // same ceiling in its own units: four cells per remaining face, plus the fixed 64.
+            try { faces = Math.Max(0, Math.Ceiling((((decimal)x1 - x0) * ((decimal)z1 - z0) - 64) / 4)); }
+            catch (OverflowException) { faces = decimal.MaxValue; saturated = true; }
             foreach (var origin in MapDemandOrigins.Of(limits, "MaxFaces", limits.MaxFaces))
             {
-                decimal consumed = 4m * origin.Consumed / origin.Scale, allowance = 4m * origin.Allowance / origin.Scale + 64;
-                bool over;
-                try { over = saturated || consumed + cells > allowance; } catch (System.OverflowException) { over = true; }
-                DemandDiagnostics.Check(this, "MapFoliageSupportBuilder.MaxFaces.1", origin.LimitName, consumed, cells, allowance, over,
-                    CapacityDemandLifetime.Transient, origin.Identity, saturated);
+                decimal increment;
+                bool over, wide = saturated;
+                try { increment = origin.Scale * faces; over = wide || origin.Consumed + increment > origin.Allowance; }
+                catch (OverflowException) { increment = decimal.MaxValue; over = true; wide = true; }
+                DemandDiagnostics.Check(this, "MapFoliageSupportBuilder.MaxFaces.1", origin.LimitName, origin.Consumed, increment, origin.Allowance, over,
+                    CapacityDemandLifetime.Transient, origin.Identity, wide);
             }
         }
         if (refused)

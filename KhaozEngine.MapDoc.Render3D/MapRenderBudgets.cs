@@ -9,7 +9,7 @@ namespace KhaozEngine.MapDoc.Render3D;
 /// <param name="MaxAppliesPerUpdate">MapRenderResidency.Applies. Accepted plans in one Update.</param>
 /// <param name="MaxUploadBytesPerUpdate">MapRenderResidency.UploadBytes. Transfer bytes in one Update.</param>
 /// <param name="MaxDisposalsPerUpdate">MapRenderResidency.Disposals. Retired handles released in one Update.</param>
-/// <param name="MaxResidentCpuBytes">MapRenderAdmission and MapRenderUploadPreflight. Simultaneous resident and pending CPU bytes.</param>
+/// <param name="MaxResidentCpuBytes">MapRenderAdmission, MapRenderUploadPreflight and, as an origin, the native decode views (GltfDecodeBudget, GltfDecodeAdmission, ImageRgba). Simultaneous resident and pending CPU bytes.</param>
 /// <param name="MaxResidentGpuBytes">MapRenderAdmission and MapRenderUploadPreflight. Simultaneous owned and staging GPU bytes.</param>
 /// <param name="MaxPlanBytes">Preparation ledger windows. Live preparation bytes attributed to one window, including reuse.</param>
 /// <param name="MaxActiveWindows">MapRenderResidency.MaxActiveWindows. Windows in the proposed state.</param>

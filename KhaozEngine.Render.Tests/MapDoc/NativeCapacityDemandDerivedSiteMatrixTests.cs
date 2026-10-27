@@ -77,14 +77,18 @@ public sealed class NativeCapacityDemandDerivedSiteMatrixTests
         var scheduler = new ResidencyScheduler();
         using var residency = new MapRenderResidency(state, new ResidencyDevice(), new(MaxQueuedBytes: 8192, MaxPlanBytes: 67_108_864), scheduler);
         for (int i = 0; i < 8; i++) { residency.Update(); scheduler.RunAll(); }
-        Assert.Equal(MapSceneStatus.CapacityExceeded, residency.Update().Transition.Status);
+        var transition = residency.Update().Transition;
+        Assert.Equal(MapSceneStatus.CapacityExceeded, transition.Status);
+        // The public refusal names the queue's ceiling and the build's requested root total.
+        var capacity = transition.Capacity!;
+        Assert.Equal(("MaxQueuedBytes", 8192m), (capacity.LimitName, capacity.Allowance));
         var root = probe.Events.Where(r => Read<string>(r, "Site").StartsWith("MapPreparationLedger.", StringComparison.Ordinal) &&
             !Read<string>(r, "Site").StartsWith("MapPreparationLedger.Window.", StringComparison.Ordinal)).ToArray();
-        var refused = root.First(r => Read<string>(r, "LimitName") == "MaxQueuedBytes" && Read<bool>(r, "Refused"));
-        Assert.Equal(8192, Read<decimal>(refused, "Allowance"));
+        var refused = Assert.Single(root, r => Read<string>(r, "LimitName") == "MaxQueuedBytes" && Read<bool>(r, "Refused"));
+        Assert.Equal((capacity.Requested, 8192m), (Read<decimal>(refused, "Requested"), Read<decimal>(refused, "Allowance")));
         var scene = root[Array.IndexOf(root, refused) - 1];
         Assert.Equal("MaxPreparedBytes", Read<string>(scene, "LimitName"));
-        Assert.Equal((Read<decimal>(refused, "CurrentDemand"), Read<decimal>(refused, "ProposedIncrement"), 134_217_728m, false), Of(scene));
+        Assert.Equal((capacity.Requested, 134_217_728m, false), (Read<decimal>(scene, "Requested"), Read<decimal>(scene, "Allowance"), Read<bool>(scene, "Refused")));
         Assert.Contains(root, r => Read<string>(r, "LimitName") == "MaxQueuedBytes" && !Read<bool>(r, "Refused") && Read<decimal>(r, "Allowance") == 8192);
     }
 
@@ -103,16 +107,8 @@ public sealed class NativeCapacityDemandDerivedSiteMatrixTests
             ResidencyFixture.Window(0, 64) with { Channels = MapSceneChannels.Foliage }) with
         { Policy = policy };
         var budgets = new MapRenderBudgets(MaxQueuedBytes: 134217728, MaxPlanBytes: 134217728, MaxResidentCpuBytes: 536870912);
-        int faces = 262144;
-        if (bound == "faces")
-        {
-            // The scene faces prepared before the chunk are its baseline. One more face then binds the chunk's copy.
-            using var baseline = new CapacityDemandProbe();
-            var warm = new ResidencyScheduler();
-            using (var complete = new MapRenderResidency(State(faces), new ResidencyDevice(), budgets, warm)) ResidencyFixture.Complete(complete, warm);
-            var first = baseline.Events.First(r => Read<string>(r, "Site") == "MapFoliageSupportBuilder.MaxFaces.2" && Read<string>(r, "LimitName") == "MaxPreparedFaces");
-            faces = (int)Read<decimal>(first, "CurrentDemand") + 1;
-        }
+        // A one-face scene ceiling binds the first chunk's copy. A foliage-only window prepares no face before it.
+        int faces = bound == "faces" ? 1 : 262144;
         var state = State(faces);
         using var probe = new CapacityDemandProbe();
         var scheduler = new ResidencyScheduler();
@@ -130,8 +126,10 @@ public sealed class NativeCapacityDemandDerivedSiteMatrixTests
         if (bound == "faces") site = "MapFoliageSupportBuilder.MaxFaces.1";
         var rows = probe.Events.Where(r => Read<string>(r, "Site") == site).ToArray();
         var refused = rows.First(r => Read<string>(r, "LimitName") == limit && Read<bool>(r, "Refused"));
-        Assert.Equal(bound == "faces" ? 4m * faces + 64 : declared, Read<decimal>(refused, "Allowance"));
-        if (bound == "faces") Assert.Equal(4m * (faces - 1), Read<decimal>(refused, "CurrentDemand"));
+        Assert.Equal(bound == "faces" ? faces : declared, Read<decimal>(refused, "Allowance"));
+        // The grid's faces are field units: no scene face is consumed before it, and its cells need more than one face.
+        if (bound == "faces") Assert.Equal(0m, Read<decimal>(refused, "CurrentDemand"));
+        if (bound == "faces") Assert.True(Read<decimal>(refused, "ProposedIncrement") > faces);
         if (bound == "first") Assert.Equal((0m, (decimal)MapFoliageInventory.ConstructionControls), (Read<decimal>(refused, "CurrentDemand"), Read<decimal>(refused, "ProposedIncrement")));
         if (bound == "retained")
         {
@@ -141,23 +139,21 @@ public sealed class NativeCapacityDemandDerivedSiteMatrixTests
                     Of(r) == (0m, (decimal)MapFoliageInventory.ConstructionControls, (decimal)declared, false));
         }
         if (bound != "faces") return;
-        // The same evaluation is accepted by the declared face ceiling, which is far larger.
+        // The declared face ceiling accepts the same grid against its own default allowance.
         var declaredFaces = rows[Array.IndexOf(rows, refused) - 1];
         Assert.Equal("MaxFaces", Read<string>(declaredFaces, "LimitName"));
-        Assert.False(Read<bool>(declaredFaces, "Refused"));
-        Assert.Equal(Read<decimal>(refused, "ProposedIncrement"), Read<decimal>(declaredFaces, "ProposedIncrement"));
+        Assert.Equal((0m, (decimal)new MapFoliageLimits().MaxFaces, false),
+            (Read<decimal>(declaredFaces, "CurrentDemand"), Read<decimal>(declaredFaces, "Allowance"), Read<bool>(declaredFaces, "Refused")));
     }
 
     [Fact]
     public void DecodeView_PeakRemainderRefusesAtTheDeclaredOrigin()
     {
         byte[] glb = NativeRenderAssetFixtures.Glb("instanced");
-        decimal peak;
-        using (var measured = new CapacityDemandProbe())
-        {
-            Assert.True(GltfDecodeAdmission.Measure(glb, Decode(900_000).Budget).Allowed);
-            peak = Read<decimal>(measured.Events.Last(r => Read<string>(r, "Site") == "GltfDecodeAdmission.MaxPeakBytes.2"), "ProposedIncrement");
-        }
+        // The admitted measurement's public peak, taken without an observer.
+        var admitted = GltfDecodeAdmission.Measure(glb, Decode(900_000).Budget);
+        Assert.True(admitted.Allowed);
+        decimal peak = admitted.PeakBytes;
         using var probe = new CapacityDemandProbe();
         // One byte below the measured peak still admits the metadata scan, then refuses the expanded peak.
         Assert.False(GltfDecodeAdmission.Measure(glb, Decode((long)peak - 1).Budget).Allowed);

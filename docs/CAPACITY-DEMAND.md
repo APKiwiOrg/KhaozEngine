@@ -37,12 +37,13 @@ own requested total. A refusal at one origin does not mark a larger origin refus
 `LimitName` recover each profile field's full demand without decoding a site name or adding a consumed
 remainder themselves. The effective admission predicate remains unchanged.
 
-Derived limit copies carry their provenance. `CapacityDemandDiagnostics.Derive(derived, limitName, origins)`
-names the `CapacityDemandOrigin` fields of one derived allowance, `Origins` flattens a possibly derived source
-after some of it is spent, and `Inherit` gives a defensive record copy the same provenance. A gate passes the
-derived object as `allowanceSource`. An origin's `Scale` converts one derived unit into its own units, so a gate
-demand `d` is reported as `Consumed + Scale * d`. All three calls do nothing without an observer, so
-subscribe before the build you measure. The engine's derived allowances are:
+Derived limit copies carry their provenance inside the engine. The internal `CapacityDemandDiagnostics.Derive`,
+`Origins` and `Inherit` record, flatten and copy the originating fields of a derived allowance, and only
+`KhaozEngine.MapDoc` and `KhaozEngine.MapDoc.Render3D` have friend access to them, so no caller can attach
+provenance to an engine-held record or change another collector's stream. A gate passes the derived object as
+`allowanceSource`. An origin's `Scale` converts one derived unit into its own units, so a gate demand `d` is
+reported as `Consumed + Scale * d`. Provenance is recorded only while an observer is subscribed, so subscribe
+before the build you measure. The engine's derived allowances are:
 
 - A foliage input's query cap intersects the scope's `MapQueryLimits` and its refinement field by field.
   Both profiles report at every query and refinement gate unless they hold the same value.
@@ -65,8 +66,9 @@ subscribe before the build you measure. The engine's derived allowances are:
 - A metadata token window clamped to one array reports `MaxMetadataBytes` and `Int32.MaxValue`.
 - Instance and chunk retention minima report `MaxSamples` and `MaxQuerySamples` separately.
 
-The support grid's cell ceiling is `4 * MaxFaces + 64`. Each `MaxFaces` origin reports it in cells,
-as four times its consumed baseline against four times its ceiling plus 64.
+The support grid's cell ceiling is `4 * MaxFaces + 64`, so a grid of `cells` needs
+`f = max(0, ceil((cells - 64) / 4))` faces. Each `MaxFaces` origin reports that face demand in its own field's
+units, as `Consumed` plus `Scale * f` against its own ceiling, and refuses exactly when the gate does.
 
 The diagnostic returns the original predicate unchanged. It does not reserve, refund, retry, continue,
 raise an allowance or materialize rejected work. Observer exceptions are isolated from the engine.
@@ -87,6 +89,7 @@ The source contract below also lists helper expressions whose runtime limit name
 | Limit | Evaluated sites |
 | --- | --- |
 | `Array.MaxLength` | `MapRenderExtentValidator` |
+| `Int32.MaxValue` | `MapSceneMetadataReader (clamped token window origin)` |
 | `MaxActiveWindows` | `MapRenderResidency` |
 | `MaxAppliesPerUpdate` | `MapRenderResidency` |
 | `MaxBindings` | `MapPrefabPreflight` |
@@ -101,7 +104,7 @@ The source contract below also lists helper expressions whose runtime limit name
 | `MaxChildren` | `MapPrefabPreflight` |
 | `MaxChunkDescriptors` | `MapFoliageContextPreflight`, `MapFoliageWindowCapture`, `MapSceneAdmission` |
 | `MaxComparisonPreparedChunks` | `MapFoliageDistribution` |
-| `MaxComparisonRetainedBytes` | `MapFoliageDistribution` |
+| `MaxComparisonRetainedBytes` | `MapBoundFaceContext (comparison face origin)`, `MapFoliageDistribution`, `MapFoliageSupportBuilder (comparison face origin)` |
 | `MaxContextFaces` | `MapBoundFaceContext`, `MapPartialPaintCompiler` |
 | `MaxContextPatches` | `MapBoundPreparation`, `MapPartialPaintCompiler` |
 | `MaxDecodedBytes` | `MapRenderAssetAllowance`, `MapRenderAssets` |
@@ -134,23 +137,23 @@ The source contract below also lists helper expressions whose runtime limit name
 | `MaxPaintTargets` | `MapFoliageContextPreflight`, `MapSceneAdmission` |
 | `MaxPairChecks` | `MapEffectiveGeometry`, `MapPartialPaintCompiler`, `MapWaterWorkBudget` |
 | `MaxParts` | `MapRenderAssetAllowance`, `MapRenderAssets` |
-| `MaxPatchScopes` | `MapSceneAdmission` |
+| `MaxPatchScopes` | `MapFoliageOwners (native chunk origin)`, `MapFoliageSupport (native chunk origin)`, `MapSceneAdmission` |
 | `MaxPatches` | `MapPrefabPreflight` |
 | `MaxPayloadBytes` | `MapPrefabPreflight` |
 | `MaxPeakBytes` | `GltfDecodeAdmission`, `GltfDecodeBudget`, `ImageRgba` |
 | `MaxPieceVertices` | `MapWaterWorkBudget` |
 | `MaxPieces` | `MapWaterWorkBudget` |
 | `MaxPlacements` | `MapFoliageContextPreflight`, `MapSceneAdmission` |
-| `MaxPlanBytes` | `MapPreparationLedger.Demand` |
+| `MaxPlanBytes` | `GltfDecodeAdmission (decode origin)`, `GltfDecodeBudget (decode origin)`, `ImageRgba (decode origin)`, `MapBoundFaceContext (native chunk origin)`, `MapFoliageColumnBudget (native chunk origin)`, `MapFoliageGenerationAdmission (native chunk origin)`, `MapFoliageSupportBuilder (native chunk origin)`, `MapPreparationLedger.Demand` |
 | `MaxPrepareScopes` | `MapFoliageOwners`, `MapFoliageSupport` |
-| `MaxPreparedBytes` | `MapPreparationLedger.Demand`, `MapRoofEvaluationBuffer`, `MapSceneAdmission` |
-| `MaxPreparedFaces` | `MapRoofEvaluationBuffer`, `MapSceneAdmission` |
+| `MaxPreparedBytes` | `GltfDecodeAdmission (decode origin)`, `GltfDecodeBudget (decode origin)`, `ImageRgba (decode origin)`, `MapBoundFaceContext (native chunk origin)`, `MapFoliageColumnBudget (native chunk origin)`, `MapFoliageGenerationAdmission (native chunk origin)`, `MapFoliageSupportBuilder (native chunk origin)`, `MapPreparationLedger.Demand`, `MapRoofEvaluationBuffer`, `MapSceneAdmission` |
+| `MaxPreparedFaces` | `MapBoundFaceContext (native chunk origin)`, `MapFoliageSupportBuilder (native chunk origin)`, `MapRoofEvaluationBuffer`, `MapSceneAdmission` |
 | `MaxPreparedSides` | `MapFoliageDependents` |
 | `MaxProofBytes` | `MapRenderExtentValidator` |
 | `MaxQueryChunks` | `MapFoliageDistribution` |
 | `MaxQueryRetainedBytes` | `MapFoliageColumnBudget`, `MapFoliageGenerationAdmission`, `MapFoliageRenderCache`, `MapFoliageRetentionBudget` |
 | `MaxQuerySamples` | `MapFoliageInstanceBuilder`, `MapFoliageRetentionBudget`, `NativeMapFoliage` |
-| `MaxQueuedBytes` | `MapPreparationLedger.Demand`, `MapRenderBuildQueue` |
+| `MaxQueuedBytes` | `GltfDecodeAdmission (build origin)`, `GltfDecodeBudget (build origin)`, `ImageRgba (build origin)`, `MapBoundFaceContext (build origin)`, `MapFoliageColumnBudget (build origin)`, `MapFoliageGenerationAdmission (build origin)`, `MapFoliageSupportBuilder (build origin)`, `MapPreparationLedger.Demand`, `MapRenderBuildQueue` |
 | `MaxQueuedPlans` | `MapRenderBuildQueue` |
 | `MaxRecordDepth` | `MapEffectiveAcquisition`, `MapMembershipPointKernel`, `MapOccupiedPartitions`, `MapScopedAcquisition` |
 | `MaxRecordReads` | `MapEffectiveAcquisition`, `MapEffectiveSurfaceSource`, `MapOccupiedPartitions`, `MapScopedAcquisition`, `MapSpaceMembership`, `MapSpaceMembershipScratch` |
@@ -158,7 +161,7 @@ The source contract below also lists helper expressions whose runtime limit name
 | `MaxReferenceEdges` | `MapPrefabPreflight` |
 | `MaxRefinementFaces` | `MapEffectiveGeometry`, `MapOccupiedPartitions`, `MapPartialPaintCompiler` |
 | `MaxRefinementVertices` | `MapEffectiveGeometry`, `MapOccupiedPartitions`, `MapPartialPaintCompiler` |
-| `MaxResidentCpuBytes` | `MapRenderAdmission`, `MapRenderUploadPreflight` |
+| `MaxResidentCpuBytes` | `GltfDecodeAdmission (decode origin)`, `GltfDecodeBudget (decode origin)`, `ImageRgba (decode origin)`, `MapRenderAdmission`, `MapRenderUploadPreflight` |
 | `MaxResidentGpuBytes` | `MapRenderAdmission`, `MapRenderUploadPreflight` |
 | `MaxRuleCandidates` | `MapFoliageClearance` |
 | `MaxSamples` | `MapFoliageDistribution`, `MapFoliageInstanceBuilder` |
@@ -210,7 +213,6 @@ representation and throttle gates. It does not claim every site is reached by ev
 | KhaozEngine.MapDoc.Render3D/MapRenderAdmission.cs | `"MapRenderAdmission.MaxResidentGpuBytes.1"` | `"MaxResidentGpuBytes"` |
 | KhaozEngine.MapDoc.Render3D/MapRenderAssetAllowance.cs | `"MapRenderAssetAllowance.MaxDecodedBytes.1"` | `"MaxDecodedBytes"` |
 | KhaozEngine.MapDoc.Render3D/MapRenderAssetAllowance.cs | `"MapRenderAssetAllowance.MaxParts.1"` | `"MaxParts"` |
-| KhaozEngine.MapDoc.Render3D/MapRenderAssetAllowance.cs | `"MapRenderAssetAllowance.Refuse"` | `capacity.LimitName` |
 | KhaozEngine.MapDoc.Render3D/MapRenderAssets.cs | `"MapRenderAssets.MaxDecodedBytes.1"` | `"MaxDecodedBytes"` |
 | KhaozEngine.MapDoc.Render3D/MapRenderAssets.cs | `"MapRenderAssets.MaxLods.1"` | `"MaxLods"` |
 | KhaozEngine.MapDoc.Render3D/MapRenderAssets.cs | `"MapRenderAssets.MaxParts.1"` | `"MaxParts"` |

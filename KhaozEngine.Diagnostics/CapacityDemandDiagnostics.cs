@@ -14,18 +14,28 @@ public readonly record struct CapacityDemand(long AdmissionId, long AllowanceId,
     decimal CurrentDemand, decimal ProposedIncrement, decimal Allowance, bool Refused,
     CapacityDemandLifetime Lifetime, bool Saturated)
 {
-    public decimal Requested => CurrentDemand + ProposedIncrement;
+    /// <summary>The requested total. A total wider than decimal saturates at its bound, as a saturated count does.</summary>
+    public decimal Requested
+    {
+        get
+        {
+            try { return CurrentDemand + ProposedIncrement; }
+            catch (OverflowException) { return CurrentDemand > 0 ? decimal.MaxValue : decimal.MinValue; }
+        }
+    }
 }
 
 /// <summary>One originating profile field behind a derived allowance. A gate demand <c>d</c>, in the derived
 /// allowance's units, is this field's <c>Consumed + Scale * d</c> against its original <c>Allowance</c>.</summary>
-public readonly record struct CapacityDemandOrigin(string LimitName, decimal Consumed, decimal Allowance,
+/// <remarks>Engine-internal provenance, reached through friend access. Only the published events are public.</remarks>
+internal readonly record struct CapacityDemandOrigin(string LimitName, decimal Consumed, decimal Allowance,
     object? Identity = null, decimal Scale = 1);
 
 /// <summary>Opt-in count-only observations. Observer failures cannot affect admission.</summary>
 /// <remarks>Identities are process-local. Operations flow with ExecutionContext into workers. No observation storage
-/// is created until Observe is called. Refused is the original evaluated predicate, including probes and eviction
-/// thresholds. No later work is evaluated after an earlier gate stops it.</remarks>
+/// is created until Observe is called. A plain event's Refused is the original evaluated predicate, including probes and
+/// eviction thresholds. An origin event's Refused compares that origin's own requested total with its own ceiling. No
+/// later work is evaluated after an earlier gate stops it.</remarks>
 public static class CapacityDemandDiagnostics
 {
     static State? s_state;
@@ -124,7 +134,7 @@ public static class CapacityDemandDiagnostics
 
     /// <summary>Names the originating profile fields of an allowance derived as a remainder or a minimum. Later gates
     /// that pass <paramref name="derived"/> as their allowance source publish these origins. Unobserved calls do nothing.</summary>
-    public static void Derive(object derived, string limitName, IEnumerable<CapacityDemandOrigin> origins)
+    internal static void Derive(object derived, string limitName, IEnumerable<CapacityDemandOrigin> origins)
     {
         var state = Volatile.Read(ref s_state);
         if (state is null || Volatile.Read(ref state.Observer) is null || derived is null || limitName is null || origins is null) return;
@@ -144,7 +154,7 @@ public static class CapacityDemandDiagnostics
     }
 
     /// <summary>Gives a defensive copy of a derived limit record the same origins. Unobserved calls do nothing.</summary>
-    public static void Inherit(object copy, object source)
+    internal static void Inherit(object copy, object source)
     {
         var state = Volatile.Read(ref s_state);
         if (state is null || copy is null || source is null || ReferenceEquals(copy, source) ||
@@ -155,7 +165,7 @@ public static class CapacityDemandDiagnostics
 
     /// <summary>The origins of an allowance after <paramref name="consumed"/> of it is spent and each remaining unit is
     /// worth <paramref name="scale"/> units of the new allowance. An underived source is its own single origin.</summary>
-    public static CapacityDemandOrigin[] Origins(object? source, string limitName, decimal allowance, decimal consumed = 0, decimal scale = 1)
+    internal static CapacityDemandOrigin[] Origins(object? source, string limitName, decimal allowance, decimal consumed = 0, decimal scale = 1)
     {
         var state = Volatile.Read(ref s_state);
         if (state is not null && source is not null && state.Derived.TryGetValue(source, out var derivation) &&

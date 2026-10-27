@@ -32,14 +32,13 @@ internal sealed class MapRenderAssetAllowance(MapRenderAssetLimits? limits)
         w.WriteStartArray(); w.WriteStringValue(key); w.WriteNumberValue(limits.MaxDecodedBytes); w.WriteNumberValue(limits.MaxParts);
         w.WriteNumberValue(limits.MaxLods); w.WriteEndArray();
     });
+    // The decode gate already published this refusal against the selected set's origin. Only the reported totals translate.
     internal MapRenderAssetRefusal Refuse(MapSceneCapacity capacity)
     {
         if (limits is null || capacity.LimitName is not (nameof(MapRenderAssetLimits.MaxDecodedBytes) or nameof(MapRenderAssetLimits.MaxParts)))
             return MapRenderDecodeCapacity.Refuse(capacity);
         decimal current = capacity.LimitName == nameof(MapRenderAssetLimits.MaxDecodedBytes) ? _bytes : _parts;
         long allowance = capacity.LimitName == nameof(MapRenderAssetLimits.MaxDecodedBytes) ? limits.MaxDecodedBytes : limits.MaxParts;
-        DemandDiagnostics.Check(this, "MapRenderAssetAllowance.Refuse", capacity.LimitName, current,
-            capacity.Requested, allowance, true, CapacityDemandLifetime.Inventory);
         return MapRenderDecodeCapacity.Refuse(new(capacity.LimitName, current + capacity.Requested, allowance));
     }
     internal void Record(MapRenderAssets assets)

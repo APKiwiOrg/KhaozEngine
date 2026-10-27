@@ -262,6 +262,6 @@ records for evaluated gates on success and refusal. Admission identities disting
 and shared allowances. Operation identities distinguish nested acquisitions and windows within one build.
 Checks and operation scopes allocate nothing without a subscriber, including first use. Observer failures
 cannot alter admission. A gate whose allowance is a remainder or minimum names its derived limits object as
-`allowanceSource`, after `Derive` recorded that object's `CapacityDemandOrigin` fields, and then publishes one
-event per originating field. See [capacity demand](../docs/CAPACITY-DEMAND.md) for collection, lifetimes,
+`allowanceSource` and then publishes one event per originating field. Recording that provenance is internal, with
+friend access only for `KhaozEngine.MapDoc` and `KhaozEngine.MapDoc.Render3D`. See [capacity demand](../docs/CAPACITY-DEMAND.md) for collection, lifetimes,
 derived allowances, profile sizing and the per-limit enforcement-site map.

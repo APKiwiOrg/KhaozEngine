@@ -32,13 +32,17 @@ public sealed class NativeCapacityDemandWorkerAssetTests
         var error = allowance.Refuse(rejected.Capacity!);
         string limit = parts ? "MaxParts" : "MaxDecodedBytes";
         var admitted = Assert.Single(probe.For(limit), r => Read<string>(r, "Site") == "MapRenderAssetAllowance." + limit + ".1");
-        var refusal = Assert.Single(probe.For(limit), r => Read<string>(r, "Site") == "MapRenderAssetAllowance.Refuse");
-        Assert.Equal(parts ? 6 : bytes, Read<decimal>(refusal, "CurrentDemand"));
-        Assert.Equal(rejected.Capacity!.Requested, Read<decimal>(refusal, "ProposedIncrement"));
-        Assert.Equal(parts ? 10 : bytes + 1, Read<decimal>(refusal, "Allowance"));
+        // The origin-aware decode gate publishes the one refusal. The translation adds no second event.
+        var refusal = Assert.Single(probe.For(limit), r => Read<bool>(r, "Refused"));
+        Assert.Equal("MapRenderAssets." + limit + ".1", Read<string>(refusal, "Site"));
+        // The selected set's admitted piece, six parts or its retained bytes, plus the refused load's own total within
+        // the remaining view, which already counts any earlier tier of the same piece.
+        decimal held = parts ? 6 : bytes;
+        Assert.Equal((held + rejected.Capacity!.Requested, parts ? 10 : bytes + 1, true),
+            (Read<decimal>(refusal, "Requested"), Read<decimal>(refusal, "Allowance"), Read<bool>(refusal, "Refused")));
+        Assert.True(Read<decimal>(refusal, "CurrentDemand") >= held);
         Assert.Equal(Read<long>(admitted, "AllowanceId"), Read<long>(refusal, "AllowanceId"));
-        Assert.True(Read<bool>(refusal, "Refused"));
-        Assert.Equal(Read<decimal>(refusal, "Requested"), error.Capacity!.Requested);
+        Assert.Equal(held + rejected.Capacity!.Requested, error.Capacity!.Requested);
     }
 
     [Fact]

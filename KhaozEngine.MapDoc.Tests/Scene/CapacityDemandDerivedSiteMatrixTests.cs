@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -8,6 +9,7 @@ using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Tests.MapDoc.Foliage;
 using KhaozEngine.Tests.MapDoc.Prefabs;
@@ -89,30 +91,78 @@ public sealed class CapacityDemandDerivedSiteMatrixTests
         }
     }
 
-    [Fact]
-    public void SupportGrid_AcceptsInCellsAgainstFourFacesPerCeilingFace()
+    static (decimal Current, decimal Increment, decimal Allowance, bool Refused) Of(object row) =>
+        (Read<decimal>(row, "CurrentDemand"), Read<decimal>(row, "ProposedIncrement"), Read<decimal>(row, "Allowance"), Read<bool>(row, "Refused"));
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SupportGrid_PublishesEachFaceOriginInItsOwnUnitsAtTheGateThreshold(bool refused)
     {
-        var context = FoliageFixtures.Context(FoliageFixtures.Create());
+        var fixture = FoliageFixtures.Create();
+        var view = MapScopedSurfaces.CompleteView(fixture.Document.Surfaces);
+        var surface = view.Surfaces.First(s => s.Role == MapSurfaceRole.SupportFloor);
+        // A rectangle beside the floor's authored cells, so the cell gate alone decides and no face compiles.
+        var min = new MapExactXz(MapExactValue.FromSingle(0), MapExactValue.FromSingle(20));
+        var max = new MapExactXz(MapExactValue.FromSingle(11), MapExactValue.FromSingle(31));
+        var range = MapLatticeRanges.CellRange(surface.Frame, min, max);
+        long cells = (range.MaxXExclusive - range.MinX + 2) * (range.MaxZExclusive - range.MinZ + 2);
+        // The grid admits 4 * MaxFaces + 64 cells, so it needs ceil((cells - 64) / 4) faces. This grid lies one to
+        // three cells above the next lower ceiling, where a cell-unit threshold of a scaled origin misses the refusal.
+        Assert.True(cells > 64);
+        Assert.NotEqual(0, (cells - 64) % 4);
+        long faces = (cells - 64 + 3) / 4;
+        long ceiling = refused ? faces - 1 : faces;
+        const long scale = 2560, consumed = 7 * 2560 + 11;
+        // A byte origin whose remaining allowance floors to the ceiling, keeping the largest remainder the floor drops.
+        long bytes = consumed + scale * ceiling + scale - 1;
+        var declared = new MapFoliageLimits(MaxFaces: 100_000);
+        var budget = new object();
+        var limits = new MapFoliageLimits(MaxFaces: (int)ceiling);
         using var probe = new CapacityDemandProbe();
-        Assert.Equal(MapFoliageStatus.Complete, MapFoliageSupport.Prepare(context, context.Foliage!.Layers[0], default, new(MaxFaces: 100_000)).Status);
-        var rows = At(probe, "MapFoliageSupportBuilder.MaxFaces.1", "MaxFaces");
-        Assert.NotEmpty(rows);
-        // The refused, saturated counterpart is MapCapacityDemandBoundaryTests.HugeFoliageCellRange.
-        Assert.All(rows, r => Assert.Equal(400_064, Read<decimal>(r, "Allowance")));
-        Assert.All(rows, r => Assert.Equal(0, Read<decimal>(r, "CurrentDemand")));
-        Assert.All(rows, r => Assert.False(Read<bool>(r, "Refused") || Read<bool>(r, "Saturated")));
+        MapDemandOrigins.Derive(limits, "MaxFaces", MapDemandOrigins.Of(declared, "MaxFaces", declared.MaxFaces),
+            MapDemandOrigins.Of(budget, "MaxPreparedBytes", bytes, consumed, scale));
+        var builder = new MapFoliageSupportBuilder(view, new Dictionary<string, MapPaintRegionSet>(), view.Surfaces,
+            fixture.Document.Foliage!.Layers[0], default, limits, null);
+        var grid = typeof(MapFoliageSupportBuilder).GetMethod("Grid", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Action run = () => grid.Invoke(builder, new object[] { surface, min, max });
+        if (refused)
+            Assert.Equal(MapFoliageStatus.CapacityExceeded, Assert.IsType<MapFoliageRefusal>(Assert.Throws<TargetInvocationException>(run).InnerException).Status);
+        else run();
+        var rows = probe.Events.Where(r => Read<string>(r, "Site") == "MapFoliageSupportBuilder.MaxFaces.1").ToArray();
+        // Each origin reports faces in its own field's units: faces for MaxFaces, bytes for MaxPreparedBytes.
+        Assert.Equal(new[] { "MaxFaces", "MaxPreparedBytes" }, rows.Select(r => Read<string>(r, "LimitName")));
+        Assert.Equal((0m, (decimal)faces, 100_000m, false), Of(rows[0]));
+        Assert.Equal(((decimal)consumed, (decimal)(scale * faces), (decimal)bytes, refused), Of(rows[1]));
+        Assert.All(rows, r => Assert.False(Read<bool>(r, "Saturated")));
     }
 
-    [Fact]
-    public void ComparisonFaceCeiling_AcceptsEarlierChunksAndRefusesAtTheFaceGate()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ComparisonFaceOrigin_AcceptsAndRefusesInComparisonBytesAtThePreparedFaceGate(bool refused)
     {
-        var context = FoliageFixtures.Context(FoliageComparisonFixtures.Flat());
+        var context = FoliageFixtures.Context(FoliageFixtures.Create());
+        var layer = context.Foliage!.Layers[0];
+        long faces = MapFoliageSupport.Prepare(context, layer, default, new()).Work.Faces;
+        // Comparison bytes already retained by earlier chunks, then 1280 bytes per prepared face, as a comparison derives
+        // its chunk face ceiling. The remaining bytes floor to this chunk's faces, or to one face fewer.
+        const long scale = 1280, consumed = 4096 + 3 * 1280;
+        long limit = consumed + scale * faces + (refused ? -1 : scale - 1);
+        var reconciliation = new object();
+        var limits = new MapFoliageLimits(MaxFaces: (int)(refused ? faces - 1 : faces));
         using var probe = new CapacityDemandProbe();
-        Assert.Equal(MapFoliageStatus.CapacityExceeded, MapFoliageDifferential.Compare(context, context, "cover-a", new(MaxComparisonRetainedBytes: 1_900_000)).Status);
+        MapDemandOrigins.Derive(limits, "MaxFaces", MapDemandOrigins.Of(new MapFoliageLimits(), "MaxFaces", new MapFoliageLimits().MaxFaces),
+            MapDemandOrigins.Of(reconciliation, "MaxComparisonRetainedBytes", limit, consumed, scale));
+        Assert.Equal(refused ? MapFoliageStatus.CapacityExceeded : MapFoliageStatus.Complete, MapFoliageSupport.Prepare(context, layer, default, limits).Status);
         var rows = At(probe, "MapFoliageSupportBuilder.MaxFaces.2", "MaxComparisonRetainedBytes");
-        Assert.Contains(rows, r => !Read<bool>(r, "Refused"));
-        var refused = Assert.Single(rows, r => Read<bool>(r, "Refused"));
-        Assert.True(Read<decimal>(refused, "Requested") > 1_900_000);
+        Assert.NotEmpty(rows);
+        Assert.Equal(consumed, Read<decimal>(rows[0], "CurrentDemand"));
+        Assert.All(rows, r => Assert.Equal(limit, Read<decimal>(r, "Allowance")));
+        Assert.All(rows, r => Assert.Equal(0, Read<decimal>(r, "ProposedIncrement") % scale));
+        Assert.Equal(consumed + scale * faces, Read<decimal>(rows[^1], "Requested"));
+        Assert.Equal(refused, Read<bool>(rows[^1], "Refused"));
+        Assert.All(rows[..^1], r => Assert.False(Read<bool>(r, "Refused")));
     }
 
     [Fact]

@@ -15,6 +15,30 @@ namespace KhaozEngine.Tests.MapDoc.Scene;
 public sealed class MapCapacityDemandTests
 {
     [Fact]
+    public void SaturatedEvent_RequestedStaysAtTheDecimalCeiling()
+    {
+        // A saturated origin event can carry a consumed baseline beside a saturated increment.
+        var demand = new CapacityDemand(1, 1, 1, 0, 1, "operation", "site", "MaxFaces", 3, decimal.MaxValue, 10, true,
+            CapacityDemandLifetime.Transient, true);
+        Assert.Equal(decimal.MaxValue, demand.Requested);
+        Assert.Equal(decimal.MinValue, (demand with { CurrentDemand = -3, ProposedIncrement = decimal.MinValue }).Requested);
+        Assert.Equal(13, (demand with { ProposedIncrement = 10 }).Requested);
+    }
+
+    [Fact]
+    public void OriginProvenance_StaysOffThePublicSurface()
+    {
+        var diagnostics = typeof(CapacityDemandDiagnostics);
+        var published = diagnostics.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static).Select(m => m.Name).ToHashSet();
+        Assert.Contains("Observe", published);
+        Assert.Contains("Check", published);
+        Assert.Contains("Enter", published);
+        foreach (string name in new[] { "Derive", "Inherit", "Origins" }) Assert.DoesNotContain(name, published);
+        Assert.False(diagnostics.Assembly.GetType("KhaozEngine.Diagnostics.CapacityDemandOrigin", throwOnError: true)!.IsPublic);
+        Assert.True(typeof(CapacityDemand).IsPublic);
+    }
+
+    [Fact]
     public void SharedSourceWork_ReportsSuccessAndRefusalWithoutAdmittingTheRefusedIncrement()
     {
         using var probe = new CapacityDemandProbe();

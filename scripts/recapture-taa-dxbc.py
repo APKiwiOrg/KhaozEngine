@@ -48,7 +48,7 @@ def gh(*args):
 
 def download(run_id):
     jobs = json.loads(gh("run", "view", run_id, "--json", "jobs"))["jobs"]
-    legs = [j for j in jobs if LEG in j["name"] and j.get("conclusion") not in ("skipped", None)]
+    legs = [j for j in jobs if LEG in j["name"] and j["status"] == "completed" and j["conclusion"] != "skipped"]
     if not legs:
         sys.exit(f"run {run_id} has no finished {LEG} job")
     return [gh("run", "view", run_id, "--log", "--job", str(j["databaseId"])) for j in legs]

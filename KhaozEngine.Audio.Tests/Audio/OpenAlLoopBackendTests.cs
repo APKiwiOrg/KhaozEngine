@@ -181,16 +181,92 @@ public sealed class OpenAlLoopBackendTests
         Assert.False(backend.SetLoopGain(loop.Handle, 0.4f));
         al.ThrowNext("Gain");
         Assert.False(backend.SetLoopGain(loop.Handle, 0.4f));
-        Assert.Single(fixture.Sink.Entries, e => e.Message.Contains("SFX loop gain failed", StringComparison.Ordinal));
+        var reported = Assert.Single(fixture.Sink.Entries, e => e.Exception?.Message == "Scripted Gain");
+        Assert.Equal(LogLevel.Warn, reported.Level);
         Assert.True(backend.SetLoopGain(loop.Handle, 0.4f));
         al.ThrowNext("Gain");
         Assert.False(backend.SetLoopGain(loop.Handle, 0.4f));
-        Assert.Equal(2, fixture.Sink.Entries.Count(e => e.Message.Contains("SFX loop gain failed", StringComparison.Ordinal)));
+        Assert.Equal(2, fixture.Sink.Entries.Count(e => e.Exception?.Message == "Scripted Gain"));
         al.FailNext("Position", AudioError.InvalidValue);
         Assert.False(backend.SetLoopPosition(loop.Handle, Vector3.One));
         Assert.True(backend.SetLoopPosition(loop.Handle, Vector3.One));
         Assert.Single(al.Plays);
         Assert.True(backend.IsLoopActive(loop.Handle));
+    }
+
+    [Theory]
+    [InlineData("Gain", false)]
+    [InlineData("Position", false)]
+    [InlineData("Gain", true)]
+    [InlineData("Position", true)]
+    public void HealthyPeerCannotResetAnotherLoopsExceptionEpisode(string operation, bool throwingDiagnostics)
+    {
+        var logger = throwingDiagnostics ? new ThrowingLogger() : null;
+        using var fixture = new RecordedSfxFixture(logger);
+        var al = fixture.Commands;
+        var backend = fixture.Backend;
+        var a = backend.TryStartLoop(fixture.Playback(true));
+        var b = backend.TryStartLoop(fixture.Playback(true));
+        Assert.Equal(SfxLoopStartStatus.Started, a.Status);
+        Assert.Equal(SfxLoopStartStatus.Started, b.Status);
+        uint first = al.Plays[0].Source;
+        uint second = al.Plays[1].Source;
+        al.Calls.Clear();
+
+        bool Update(SfxLoopBackendHandle handle) => operation == "Gain"
+            ? backend.SetLoopGain(handle, 0.4f)
+            : backend.SetLoopPosition(handle, Vector3.One);
+        int Reports() => logger?.Attempts ?? fixture.Sink.Entries.Count;
+
+        al.ThrowNext(operation);
+        Assert.False(Update(a.Handle));
+        int firstEpisodeReports = Reports();
+        Assert.True(firstEpisodeReports > 0);
+        Assert.True(Update(b.Handle));
+        al.ThrowNext(operation);
+        Assert.False(Update(a.Handle));
+
+        Assert.Equal(2, al.Calls.Count(c => c == (operation, first)));
+        Assert.Equal(1, al.Calls.Count(c => c == (operation, second)));
+        Assert.Equal(firstEpisodeReports, Reports());
+        if (operation == "Gain")
+        {
+            Assert.Equal(0.7f, al.Sources[first].Floats[SourceFloat.Gain]);
+            Assert.Equal(0.4f, al.Sources[second].Floats[SourceFloat.Gain]);
+        }
+        else
+        {
+            Assert.Equal(new Vector3(3, 4, 5), al.Sources[first].Vectors[SourceVector3.Position]);
+            Assert.Equal(Vector3.One, al.Sources[second].Vectors[SourceVector3.Position]);
+        }
+
+        Assert.True(Update(a.Handle));
+        al.ThrowNext(operation);
+        Assert.False(Update(a.Handle));
+        Assert.Equal(firstEpisodeReports + 1, Reports());
+        Assert.Equal(4, al.Calls.Count(c => c == (operation, first)));
+        Assert.Equal(2, al.Plays.Count);
+
+        Assert.True(backend.StopLoop(a.Handle));
+        var replacement = backend.TryStartLoop(fixture.Playback(true));
+        Assert.Equal(SfxLoopStartStatus.Started, replacement.Status);
+        Assert.Equal(a.Handle.Slot, replacement.Handle.Slot);
+        Assert.NotEqual(a.Handle, replacement.Handle);
+        Assert.Equal(first, al.Plays[2].Source);
+        al.Calls.Clear();
+        Assert.False(Update(a.Handle));
+        Assert.Empty(al.Calls);
+        al.ThrowNext(operation);
+        Assert.False(Update(replacement.Handle));
+        Assert.True(Update(b.Handle));
+        al.ThrowNext(operation);
+        Assert.False(Update(replacement.Handle));
+        Assert.Equal(firstEpisodeReports + 2, Reports());
+        Assert.Equal(2, al.Calls.Count(c => c == (operation, first)));
+        Assert.Equal(1, al.Calls.Count(c => c == (operation, second)));
+        Assert.Equal(3, al.Plays.Count);
+        Assert.True(backend.IsLoopActive(replacement.Handle));
+        Assert.True(backend.IsLoopActive(b.Handle));
     }
 
     [Fact]
@@ -355,9 +431,14 @@ public sealed class OpenAlLoopBackendTests
 
     sealed class ThrowingLogger : ILogger
     {
+        public int Attempts { get; private set; }
         public string Category => "throwing-test";
         public bool IsEnabled(LogLevel level) => true;
-        public void Log(LogLevel level, string message, Exception? exception = null) => throw new InvalidOperationException();
+        public void Log(LogLevel level, string message, Exception? exception = null)
+        {
+            Attempts++;
+            throw new InvalidOperationException();
+        }
         public void Trace(string message, Exception? exception = null) => Log(LogLevel.Trace, message, exception);
         public void Debug(string message, Exception? exception = null) => Log(LogLevel.Debug, message, exception);
         public void Info(string message, Exception? exception = null) => Log(LogLevel.Info, message, exception);

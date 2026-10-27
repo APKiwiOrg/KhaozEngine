@@ -103,11 +103,21 @@ internal sealed class OpenAlSfxLoopDevice(
         return native.Complete("SFX loop detach");
     }
 
-    public bool TrySetGain(int slot, float gain) =>
-        native.TryRun("SFX loop gain", () => commands.SetSourceProperty(_sources[slot], SourceFloat.Gain, gain));
+    // As with start and stop, let the pool own exception diagnostics per slot and operation. A healthy
+    // peer must not reset a failing loop's episode through the shared native batch helper.
+    public bool TrySetGain(int slot, float gain)
+    {
+        native.Begin("SFX loop gain");
+        commands.SetSourceProperty(_sources[slot], SourceFloat.Gain, gain);
+        return native.Complete("SFX loop gain");
+    }
 
-    public bool TrySetPosition(int slot, Vector3 position) =>
-        native.TryRun("SFX loop position", () => commands.SetSourceProperty(_sources[slot], SourceVector3.Position, position));
+    public bool TrySetPosition(int slot, Vector3 position)
+    {
+        native.Begin("SFX loop position");
+        commands.SetSourceProperty(_sources[slot], SourceVector3.Position, position);
+        return native.Complete("SFX loop position");
+    }
 
     public void Dispose()
     {

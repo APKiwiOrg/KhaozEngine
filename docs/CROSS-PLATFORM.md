@@ -276,9 +276,9 @@ own SHA, treating the requested checkout only as manifest and git data. Its trus
 runner allowlist selects one job with the validated preset cap before allocating a GPU runner.
 Partial renderer inputs also refuse ordinary and coverage allocation. Those modes otherwise retain
 their existing selection and execution. The renderer job uses the same trusted revision for repeated
-authorization and final evidence checks, enforces a 12-minute pilot
-or 35-minute full cap and retains the existing pinned PowerShell bootstrap, GRID setup, NVIDIA
-adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
+authorization and final evidence checks, applies the per-leg paid caps and cleanup-aware billing
+model in the [renderer reference](RENDERER-PERFORMANCE.md#evidence-and-authorization), and retains
+the existing pinned PowerShell bootstrap, GRID setup, NVIDIA adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
 
 The outside-solution `tools/Renderer.Perf.Tests` project exposes one fixed fact,
 `Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit`, category `RendererPerformance`.
@@ -371,11 +371,11 @@ profilers, consumer fit, optimization and release remain separate decisions.
 
 ### Free software renderer rehearsal
 
-The `rehearsal` and `rehearsal-full` renderer presets use the same `gpu-hosted-bench.yml` and one
+The `rehearsal`, `rehearsal-full` and `rehearsal-controls` renderer presets use the same `gpu-hosted-bench.yml` and one
 fixed `Measure_authorized_unit` fact. The [renderer reference](RENDERER-PERFORMANCE.md#software-correctness-rehearsal)
-owns their exact pilot/full schedules, separate limits, non-promotion reason, diagnostic drift and
+owns their exact pilot, full and all-controls schedules, separate limits, non-promotion reason, diagnostic drift and
 evidence boundary. The trusted selector admits only these standard hosted software mappings for
-either schedule:
+every schedule:
 
 | Leg | Pinned runner image family | Backend selector | Adapter policy | Device selection |
 | --- | --- | --- | --- | --- |
@@ -408,17 +408,22 @@ The approved runtime map includes those effective values and the isolated .NET h
 The observed standard Ubuntu map also includes `DOTNET_MULTILEVEL_LOOKUP=0`, `DOTNET_NOLOGO=1` and
 `DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1`, which the T4 partner image lacked.
 
-Windows needs its own exact testhost map. Controlled workflow values and an adjacent runner's
-observed temporary-directory layout do not establish inherited image values. Do not copy Ubuntu's
-three image entries or a T4 partner map into a Windows approval without observation. Any image,
+Windows needs its own exact testhost map. Standard-image Windows runs
+[40414697088](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40414697088) and
+[40414704044](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40414704044) observed twelve entries,
+including the same three standard-image .NET entries and the isolated `D:\a\_temp\renderer-dotnet`
+root. Linux observed fifteen entries, including the required Vulkan and ICD selectors. These observed
+standard-image maps do not establish partner-image inheritance. Any image,
 SDK-root or ICD path drift requires corrected approval rather than ignored environment entries.
 
 The trusted `VerifyRehearsal` mode accepts only the approved software leg and requires one passed
 test with zero skips, completed publication, actual software Vulkan or D3D11 identity, Complete
 compiler collection, the fixed sole non-promotion reason and managed directory certification.
 `Verify` retains the paid promotion and native T4 requirements and refuses every rehearsal report.
-Each mode refuses the other execution class. Successful software execution is never performance
-evidence and does not authorize a paid pilot.
+The all-controls preset uses this same matrix, fixed fact, native control workloads, managed verifier
+and upload path. It adds no alternate entrypoint or paid allocation. Each mode refuses the other
+execution class. Successful software execution is never performance evidence and does not authorize
+a paid pilot.
 
 ## CI matrix (`.github/workflows/cross-platform-gpu.yml`)
 

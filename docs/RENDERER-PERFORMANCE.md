@@ -9,11 +9,29 @@ retains the design rationale. This document records no measured baseline or perf
 
 `tools/Renderer.Perf.Tests` is outside the solution. Its one opt-in performance fact is not an ordinary
 headless test. Every native measurement or load run needs separate owner approval naming the workload,
-leg, frame counts, duration and spending cap. A paid manifest's campaign cap is at most USD 10, the owner's
+leg, frame counts, duration and spending cap. A paid manifest's campaign cap is at most USD 12, the owner's
 envelope for every paid pilot and full unit including attempts already billed, and each unit's own cost cap must
 fit inside it. Implementation approval never authorizes a dispatch, pilot, retry, profiler capture or follow-up
 measurement. Software Vulkan and WARP can establish
 correctness only. They cannot establish a hardware floor or a T4 result.
+
+Paid caps are fixed by preset and leg. Unit deadlines include startup, replay and publication. The
+job cap also covers external setup and builds.
+
+| Paid unit | Unit seconds | Frame milliseconds | Job minutes | Maximum billed minutes | USD per minute | Maximum USD |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Linux Vulkan pilot | 600 | 10,000 | 12 | 15 | 0.052 | 0.780 |
+| Windows D3D11 pilot | 600 | 10,000 | 20 | 23 | 0.102 | 2.346 |
+| Linux Vulkan full | 1,500 | 10,000 | 35 | 38 | 0.052 | 1.976 |
+| Windows D3D11 or Vulkan full | 1,500 | 10,000 | 35 | 38 | 0.102 | 3.876 |
+
+The modeled maximum billed minutes are the job cap plus an explicit three-minute cleanup allowance.
+The maximum unit cost is those billed minutes times the leg rate. Windows pilot
+[run 40435928569](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40435928569/job/121964605577)
+hit its former 12-minute cap during the build but lasted 14 minutes 17 seconds. Its 2 minutes 17 seconds
+overrun rounds up to three whole billed minutes. This reserves cleanup headroom without extending
+frame or unit execution. It is not a measured bound on future cleanup. Review actual billing against
+the approved unit and cumulative campaign envelope after every attempt.
 
 The public deterministic recipes cover empty, village, outdoors, crowd and effects/UI scenes. They
 use fixed simulation sequences and no consumer assets. The v1 settings encoding fixes uniform indirect
@@ -91,9 +109,9 @@ those proofs from outstanding native acceptance and diagnostic collection work.
 
 ## Software correctness rehearsal
 
-The `rehearsal` and `rehearsal-full` presets in `khaozengine.renderer-perf-unit/1` select an explicit
-correctness execution class and its pilot or full schedule. Neither the unit name nor approval purpose
-selects a class. Both use the production entrypoint, driver, concrete native session, scene/control
+The `rehearsal`, `rehearsal-full` and `rehearsal-controls` presets in
+`khaozengine.renderer-perf-unit/1` select an explicit correctness execution class and schedule. Neither the unit name nor approval purpose
+selects a class. All use the production entrypoint, driver, concrete native session, scene/control
 workloads, compiler replay, publication and directory certification. Performance presets retain their
 independent hardware, limits, budget and promotion requirements.
 
@@ -101,12 +119,25 @@ independent hardware, limits, budget and promotion requirements.
 | --- | --- | --- | --- | --- | --- |
 | Pilot | `rehearsal` | 300 S3 frames | S3 TotalOnly and PerPass, each 64 warm-up plus 128 measured | 1/4/5/7/9/11, each 32 plus 64 | 1,260 |
 | Full | `rehearsal-full` | 1,200 S3 frames | All five scenes, the same 30 rotated/alternating blocks as paid full, each 192 warm-up plus 256 measured | All twelve, each 64 plus 128 | 16,944 |
+| All controls | `rehearsal-controls` | 3 S3 frames | None | All twelve, each 64 warm-up plus 128 measured | 2,307 |
 
 All three-frame completion, timestamp lifecycle, temporal history and frame guards remain required.
 There is no hidden priming frame or semantic scene image oracle. Existing control output checks still
 run. Full rehearsal adds the other scene families and control shapes without shortening their work.
+The all-controls schedule opens one short S3 conditioning session followed by exactly twelve control
+sessions, with no scene blocks. The shared compiler inventory and entrypoint require the leading
+`conditioning:S3` operation. One counted three-frame batch retains that real operation and the
+first-frame temporal history checks. With no scene blocks, the driver retains S3 recipe facts from
+conditioning. This is startup correctness, not thermal conditioning. Each fresh control then warms
+its own resources and timestamps for 64 counted frames. Three-frame completion retains 769 batches. Production cleanup, same-adapter compiler replay, publication and
+directory certification remain required.
 
-An explicit allowlist binds either schedule to `linux-vulkan` with `mesa-lavapipe-software` or
+An approved successful all-controls rehearsal on each software leg precedes paid full units. The full
+scene rehearsal remains selectable with its finite cap, but its complete schedule has not fit within
+the hosted six-hour job. The all-controls schedule exercises the six additional full-only control
+shapes without making full-scene completion a prerequisite or claiming scene coverage.
+
+An explicit allowlist binds every schedule to `linux-vulkan` with `mesa-lavapipe-software` or
 `windows-d3d11` with `microsoft-warp-software`. The pinned standard runners and bootstrap belong to
 [CROSS-PLATFORM.md](CROSS-PLATFORM.md#free-software-renderer-rehearsal). Actual Vulkan CPU-class or Mesa
 llvmpipe software identity is required on Linux. Windows requires the actual DXGI software adapter
@@ -119,10 +150,13 @@ the rehearsal session explicitly opts in, and missing timestamp or completion ca
 | --- | ---: | ---: | ---: | ---: | --- |
 | Pilot on either leg | 5,400 | 60,000 | 120 | 120 | USD 0 |
 | Full on either leg | 19,800 | 60,000 | 350 | 350 | USD 0 |
+| All controls on either leg | 5,400 | 60,000 | 120 | 120 | USD 0 |
 
 Owner and campaign approval references remain required, with a zero-cost campaign instead of the
 paid campaign cap. The full job cap stays inside the hosted six-hour limit. These conservative first
-caps do not establish software fit or paid deadline acceptance. Complete approved runs can inform a
+caps do not establish software fit or paid deadline acceptance. The all-controls class has its own
+typed limits even where they equal pilot limits. Its cap allows more time than the observed pilot
+control subset, without asserting that the added controls fit. Complete approved runs can inform a
 separately reviewed tighter policy. Native blocking calls remain outside cooperative deadline checks.
 
 Success requires completed returned final publication, zero failures, every frame guard passed,

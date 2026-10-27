@@ -650,18 +650,18 @@ namespace KhaozEngine.Tests.Render3D
         // ---- Water surface pass UBO (WaterRenderer) ----
 
         [Fact]
-        public void WaterBlock_Preserves1088Bytes()
+        public void WaterBlock_Preserves1280ByteSlots()
         {
-            Assert.Equal(1088, Marshal.SizeOf<WaterRenderer.WaterUbo>());
+            Assert.Equal(1136, Marshal.SizeOf<WaterRenderer.WaterUbo>());
             Assert.Equal(1056, Marshal.OffsetOf<WaterRenderer.WaterUbo>("OpticsRect").ToInt32());
             Assert.Equal(1072, Marshal.OffsetOf<WaterRenderer.WaterUbo>("OpticsParams").ToInt32());
+            Assert.Equal(1088, Marshal.OffsetOf<WaterRenderer.WaterUbo>(nameof(WaterRenderer.WaterUbo.ColumnExtinction)).ToInt32());
+            Assert.Equal(1104, Marshal.OffsetOf<WaterRenderer.WaterUbo>(nameof(WaterRenderer.WaterUbo.ColumnScattering)).ToInt32());
+            Assert.Equal(1120, Marshal.OffsetOf<WaterRenderer.WaterUbo>(nameof(WaterRenderer.WaterUbo.ColumnAlbedo)).ToInt32());
             Assert.Equal(1280u, WaterRenderer.SlotBytes);
-            // Two mat4, 36 vec4 and three vec4[8] arrays. The GLSL declarations are checked below.
             Assert.Equal((int)WaterRenderer.PayloadBytes, Marshal.SizeOf<WaterRenderer.WaterUbo>());
-            Assert.Equal(2 * 64 + (36 + 3 * SkySettings.MaxDiscs) * 16, (int)WaterRenderer.PayloadBytes);
-            // D3D11 requires bound ranges and offsets in multiples of 16 constants (256 bytes).
-            // Binding the 272-byte payload in 14.22.0 left water invisible on WARP. Bind SlotBytes instead.
-            Assert.True(WaterRenderer.SlotBytes % 256 == 0);
+            Assert.Equal(2 * 64 + (39 + 3 * SkySettings.MaxDiscs) * 16, (int)WaterRenderer.PayloadBytes);
+            Assert.Equal(0u, WaterRenderer.SlotBytes % 256u);
             Assert.True(WaterRenderer.SlotBytes >= WaterRenderer.PayloadBytes);
             var matrix = System.Numerics.Matrix4x4.Identity;
             var sky = new SkySettings();
@@ -695,7 +695,7 @@ namespace KhaozEngine.Tests.Render3D
                 "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
                 "vec4 FftRotSin;", "vec4 FftSector;", "vec4 FftWave;", "vec4 BathyRect;", "vec4 BathyParams;",
                 "vec4 SurfParams;", "vec4 SurfShape;", "vec4 RenderOrigin;", "vec4 SkyGround;", "vec4 OpticsRect;", "vec4 OpticsParams;",
-                "vec4 SkyDiscColor[8];", "vec4 SkyDiscDir[8];", "vec4 SkyDiscHalo[8];" })
+                "vec4 SkyDiscColor[8];", "vec4 SkyDiscDir[8];", "vec4 SkyDiscHalo[8];", "vec4 ColumnExtinction;", "vec4 ColumnScattering;", "vec4 ColumnAlbedo;" })
                 Assert.True(ShaderSources.WaterFrag.Contains(member),
                     $"WaterFrag lost '{member}': the Water UBO block drifted from WaterRenderer.WaterUbo. Fix ShaderSources.WaterFrag or the struct.");
         }
@@ -713,7 +713,7 @@ namespace KhaozEngine.Tests.Render3D
                 "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
                 "vec4 FftRotSin;", "vec4 FftSector;", "vec4 FftWave;", "vec4 BathyRect;", "vec4 BathyParams;",
                 "vec4 SurfParams;", "vec4 SurfShape;", "vec4 RenderOrigin;", "vec4 SkyGround;", "vec4 OpticsRect;", "vec4 OpticsParams;",
-                "vec4 SkyDiscColor[8];", "vec4 SkyDiscDir[8];", "vec4 SkyDiscHalo[8];" })
+                "vec4 SkyDiscColor[8];", "vec4 SkyDiscDir[8];", "vec4 SkyDiscHalo[8];", "vec4 ColumnExtinction;", "vec4 ColumnScattering;", "vec4 ColumnAlbedo;" })
                 Assert.True(ShaderSources.WaterVert.Contains(member),
                     $"WaterVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's. Fix ShaderSources.WaterVert.");
         }
@@ -732,7 +732,7 @@ namespace KhaozEngine.Tests.Render3D
                 "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
                 "vec4 FftRotSin;", "vec4 FftSector;", "vec4 FftWave;", "vec4 BathyRect;", "vec4 BathyParams;",
                 "vec4 SurfParams;", "vec4 SurfShape;", "vec4 RenderOrigin;", "vec4 SkyGround;", "vec4 OpticsRect;", "vec4 OpticsParams;",
-                "vec4 SkyDiscColor[8];", "vec4 SkyDiscDir[8];", "vec4 SkyDiscHalo[8];" })
+                "vec4 SkyDiscColor[8];", "vec4 SkyDiscDir[8];", "vec4 SkyDiscHalo[8];", "vec4 ColumnExtinction;", "vec4 ColumnScattering;", "vec4 ColumnAlbedo;" })
                 Assert.True(ShaderSources.WaterClipmapVert.Contains(member),
                     $"WaterClipmapVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's.");
         }

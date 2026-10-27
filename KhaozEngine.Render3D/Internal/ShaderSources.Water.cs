@@ -55,6 +55,9 @@ namespace KhaozEngine.Render3D.Internal
     vec4 SkyDiscHalo[8];   // x = halo strength, y = halo falloff, z = physical primary marker
     vec4 OpticsRect;       // relative minimum XZ and inverse extent
     vec4 OpticsParams;     // relative reference Y, enabled, width, height
+    vec4 ColumnExtinction; // rgb = sigma_t, w = enabled
+    vec4 ColumnScattering; // rgb = sigma_s, w = 0
+    vec4 ColumnAlbedo;     // rgb = single-scattering albedo, w = noise phase
 };";
 
         // ---- Stylized ocean surface. Drawn AFTER the sky and the ground decals into ColorDepthFB (lit colour +

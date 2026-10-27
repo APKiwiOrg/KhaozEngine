@@ -24,7 +24,7 @@ namespace KhaozEngine.Render3D.Rendering
         internal RenderPassProfiling? Profiling { set => _ocean.Profiling = value; get => _ocean.Profiling; }
 
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
-        /// (2 mat4 + 36 vec4 + three vec4[8] disc arrays; every member 16-byte aligned, so std140 needs no extra padding).</summary>
+        /// (2 mat4 + 39 vec4 + three vec4[8] disc arrays, every member 16-byte aligned, so std140 needs no extra padding).</summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct WaterUbo
         {
@@ -69,11 +69,14 @@ namespace KhaozEngine.Render3D.Rendering
             public SkyDiscVec4s SkyDiscHalo;  // x = halo strength, y = halo falloff, z = physical primary marker
             public Vector4 OpticsRect;     // relative minimum XZ and inverse extent
             public Vector4 OpticsParams;   // relative reference Y, mode (0, 1, 2), physical texture width, height
+            public Vector4 ColumnExtinction; // rgb = sigma_t, w = enabled
+            public Vector4 ColumnScattering; // rgb = sigma_s, w = 0
+            public Vector4 ColumnAlbedo;     // rgb = single-scattering albedo, w = noise phase
         }
 
         /// <summary>Byte size of <see cref="WaterUbo"/>, i.e. how much each slot actually uploads.
-        /// 2*64 (mat4) + (36 + 3*8)*16 (vec4) = 1088.</summary>
-        internal const uint PayloadBytes = 1088;
+        /// 2*64 (mat4) + (39 + 3*8)*16 (vec4) = 1136.</summary>
+        internal const uint PayloadBytes = 1136;
 
         /// <summary>
         /// Per-plane stride in the shared UBO AND the size of the bound range. Each plane's params occupy their OWN
@@ -94,7 +97,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// the raw payload size. UboLayoutTests guards it.
         /// </para>
         /// </summary>
-        internal const uint SlotBytes = 1280;   // Align256(1088)
+        internal const uint SlotBytes = 1280;   // Align256(1136)
 
         readonly IGpuDevice _gd;
         readonly AtmosphereBindings _atmosphere;
@@ -271,7 +274,7 @@ namespace KhaozEngine.Render3D.Rendering
             float breakDepth = shoreLive
                 ? WaterShoaling.BreakDepth(ocean.SignificantHeight, settings.SurfBreakerIndex)
                 : 0f;
-            return new WaterUbo
+            var u = new WaterUbo
             {
                 ViewProj = clipViewProj,
                 InvViewProj = inv,
@@ -334,6 +337,8 @@ namespace KhaozEngine.Render3D.Rendering
                 SkyDiscDir = discDir,
                 SkyDiscHalo = discHalo,
             };
+            WaterColumnPacking.Pack(ref u, settings);
+            return u;
         }
 
         /// <summary>The focus blend's sector ring: how many fixed lattice rotations the wanted heading is

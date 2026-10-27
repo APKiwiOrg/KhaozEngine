@@ -162,17 +162,24 @@ namespace KhaozEngine.Tests.Render3D
 
         // ---- Inheriting --------------------------------------------------------------------------------------
 
-        [Fact]
-        public void An_empty_look_packs_the_same_bytes_as_the_scene_settings()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void An_empty_look_packs_the_same_bytes_as_the_scene_settings(bool columnEnabled)
         {
             // The no-look path in WaterRenderer.Draw hands PackUbo the caller's own settings object, so byte
             // identity there is structural. This pins the resolver to the same answer, which is what stops a
             // future refactor quietly forking the two paths.
             var scene = new WaterSettings();
             PerturbEveryField(scene);
-            WaterRenderer.WaterUbo direct = Pack(scene);
-            WaterRenderer.WaterUbo resolved = Pack(new WaterLook().ResolveInto(new WaterSettings(), scene));
-            Assert.Equal(Bytes(direct), Bytes(resolved));
+            scene.WaterColumnLight = columnEnabled;
+            var look = new WaterLook();
+            Assert.Null(look.WaterColumnLight);
+            Assert.Null(look.WaterColor);
+            Assert.Null(look.Clarity);
+            byte[] noLookBytes = Bytes(Pack(scene));
+            byte[] allNewFieldsNullLookBytes = Bytes(Pack(look.ResolveInto(new WaterSettings(), scene)));
+            Assert.Equal(noLookBytes, allNewFieldsNullLookBytes);
         }
 
         [Fact]

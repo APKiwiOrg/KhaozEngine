@@ -35,11 +35,13 @@ namespace KhaozEngine.Render3D
         /// <summary>Optional orbit gesture: its drag orbits the camera only, and its quick click is a tap read from
         /// <see cref="OrbitTap"/> after <see cref="UpdateInput"/>, with the press origin in
         /// <see cref="PointerGesture.TapPosition"/>. Null by default. Setting this or <see cref="LookGesture"/>
-        /// replaces <see cref="OrbitButton"/>, which is then ignored.</summary>
+        /// replaces <see cref="OrbitButton"/>, which is then ignored. A gesture with
+        /// <see cref="PointerGesture.LivePendingTravel"/> also orbits while pending without losing its own tap.</summary>
         public PointerGesture? OrbitGesture;
         /// <summary>Optional look gesture: its drag orbits the camera and sets <see cref="TurnBodyActive"/>, so the
         /// game turns the body to face the camera. Its quick click is a tap read from <see cref="LookTap"/>, with
-        /// the press origin in <see cref="PointerGesture.TapPosition"/>. Null by default.</summary>
+        /// the press origin in <see cref="PointerGesture.TapPosition"/>. Null by default. Live pending travel
+        /// orbits the camera alone, without turning the body or starting pointer capture.</summary>
         public PointerGesture? LookGesture;
         /// <summary>Whether the UI owns the pointer this frame. The game sets it before each <see cref="UpdateInput"/>.
         /// A press that begins while blocked never taps, and never orbits while the gesture's threshold is above zero.
@@ -52,15 +54,17 @@ namespace KhaozEngine.Render3D
         public bool TurnBodyActive => LookGesture?.Phase == PointerGesturePhase.Dragging;
 
         /// <summary>True on the frame of the last <see cref="UpdateInput"/> when <see cref="OrbitGesture"/> tapped and the
-        /// camera did not turn at any point during that press, its release frame included. A tapping gesture never
-        /// dragged, so a turn during its press came from <see cref="LookGesture"/>, and a both-buttons release is
-        /// never a select whichever button went first. Read taps here rather than from
+        /// camera did not turn during that press except by its own live pending travel, its release frame included.
+        /// A turn from <see cref="LookGesture"/> voids the tap, including when both live gestures deliver pending
+        /// motion together. A simultaneous release suppresses both taps when either gesture is live, even without
+        /// motion. Default-off stationary taps retain their existing behavior. Read taps here rather than from
         /// <see cref="PointerGesture.TapThisFrame"/>, which knows nothing of the other gesture. False while no
         /// gesture is set.</summary>
         public bool OrbitTap { get; private set; }
 
         /// <summary>The <see cref="LookGesture"/> twin of <see cref="OrbitTap"/>: its tap, unless the camera turned
-        /// during that press.</summary>
+        /// during that press except by its own live pending travel. A simultaneous release suppresses both taps
+        /// when either gesture is live.</summary>
         public bool LookTap { get; private set; }
 
         /// <summary>True while either gesture is dragging. The game forwards it to the pointer capture request so
@@ -69,9 +73,12 @@ namespace KhaozEngine.Render3D
 
         // Whether the camera has orbited since each gesture's latest press began. A gesture that crosses its
         // threshold replays its pending travel, which is only fresh movement if nothing orbited the camera during
-        // that travel. A gesture's tap counts only while its flag is still false after the release frame's orbit.
+        // that travel. Live pending travel counts here too, even when it preserves the gesture's tap.
         bool _orbitedSinceOrbitPress;
         bool _orbitedSinceLookPress;
+        // Live pending travel suppresses later replay but preserves its own tap, so tap invalidation is separate.
+        bool _orbitTapVoided;
+        bool _lookTapVoided;
 
         public FollowCameraController(FollowCamera3D camera)
         {
@@ -106,13 +113,15 @@ namespace KhaozEngine.Render3D
         /// <see cref="UiBlocked"/> and <paramref name="elapsedSeconds"/>, and <see cref="OrbitButton"/> is ignored. A
         /// gesture with a <see cref="PointerGesture.TapTolerance"/> is timed by <paramref name="elapsedSeconds"/>, so
         /// pass the real frame time here even when the camera clocks advance later. A zero freezes the grace.
-        /// The camera orbits only while a gesture drags, by one delta a frame, so each mouse movement turns it once
-        /// however many buttons are held. A gesture that crosses its threshold with no orbit since its press began
+        /// The camera orbits while a gesture drags or delivers live pending travel, by at most one delta a frame,
+        /// however many buttons are held. Live motion takes precedence over a default crossing's replay. Without
+        /// live motion, a default gesture crossing its threshold with no orbit since its press began
         /// applies its <see cref="PointerGesture.DragDelta"/>, the replay of its pending travel
         /// (<see cref="LookGesture"/> first if both cross together). Otherwise the frame's
         /// <see cref="InputState.MouseDeltaPoints"/> applies. Speed, invert and sign are as above. Read
         /// <see cref="OrbitTap"/> and <see cref="LookTap"/> after this call, in the same frame. A tap counts only if
-        /// the camera did not turn during that press.</para>
+        /// the camera did not turn during that press except by that same gesture's own live pending travel.
+        /// Live gestures use their own <see cref="PointerGesture.DragDelta"/> without replay.</para>
         /// </summary>
         public void UpdateInput(in InputState input, float elapsedSeconds)
         {
@@ -126,8 +135,10 @@ namespace KhaozEngine.Render3D
             {
                 AdvanceGestures(input, elapsedSeconds);
                 // After this frame's orbit, so a turn on the release frame also voids the tap.
-                OrbitTap = OrbitGesture?.TapThisFrame == true && !_orbitedSinceOrbitPress;
-                LookTap = LookGesture?.TapThisFrame == true && !_orbitedSinceLookPress;
+                bool simultaneousLiveTaps = OrbitGesture is { TapThisFrame: true } && LookGesture is { TapThisFrame: true }
+                    && (OrbitGesture.LivePendingTravel || LookGesture.LivePendingTravel);
+                OrbitTap = OrbitGesture?.TapThisFrame == true && !_orbitTapVoided && !simultaneousLiveTaps;
+                LookTap = LookGesture?.TapThisFrame == true && !_lookTapVoided && !simultaneousLiveTaps;
             }
 
             float scroll = input.ScrollDelta;
@@ -135,39 +146,57 @@ namespace KhaozEngine.Render3D
                 Camera.Distance *= MathF.Pow(ZoomStep, -scroll);   // setter clamps, and +scroll -> closer
         }
 
-        // Advances each set gesture once, then orbits by at most one delta: a crossing gesture's replay when nothing
-        // has orbited since its press began, else this frame's mouse delta while any gesture drags.
+        // Live motion wins over replay. A live press frame has zero delta and must not swallow motion from the
+        // other gesture. With no live motion, keep the default replay precedence.
         void AdvanceGestures(in InputState input, float dt)
         {
-            bool orbitCrossed = Step(OrbitGesture, input, dt, ref _orbitedSinceOrbitPress);
-            bool lookCrossed = Step(LookGesture, input, dt, ref _orbitedSinceLookPress);
-            if (!(IsDragging(OrbitGesture) || IsDragging(LookGesture)))
+            bool orbitCrossed = Step(OrbitGesture, input, dt, ref _orbitedSinceOrbitPress, ref _orbitTapVoided);
+            bool lookCrossed = Step(LookGesture, input, dt, ref _orbitedSinceLookPress, ref _lookTapVoided);
+            bool orbitDrives = DrivesOrbit(OrbitGesture);
+            bool lookDrives = DrivesOrbit(LookGesture);
+            if (!(orbitDrives || lookDrives))
                 return;
 
-            if (lookCrossed && !_orbitedSinceLookPress)
+            if (LookGesture is { LivePendingTravel: true } && LookGesture.DragDelta != Vector2.Zero)
+                Orbit(LookGesture.DragDelta);
+            else if (OrbitGesture is { LivePendingTravel: true } && OrbitGesture.DragDelta != Vector2.Zero)
+                Orbit(OrbitGesture.DragDelta);
+            else if (lookCrossed && !LookGesture!.LivePendingTravel && !_orbitedSinceLookPress)
                 Orbit(LookGesture!.DragDelta);
-            else if (orbitCrossed && !_orbitedSinceOrbitPress)
+            else if (orbitCrossed && !OrbitGesture!.LivePendingTravel && !_orbitedSinceOrbitPress)
                 Orbit(OrbitGesture!.DragDelta);
-            else
+            else if (IsDefaultDrag(LookGesture) || IsDefaultDrag(OrbitGesture))
                 Orbit(input.MouseDeltaPoints);
             _orbitedSinceOrbitPress = true;
             _orbitedSinceLookPress = true;
+            _orbitTapVoided |= !IsLivePending(OrbitGesture) || lookDrives;
+            _lookTapVoided |= !IsLivePending(LookGesture) || orbitDrives;
         }
 
-        // Advances one gesture. A press that began this frame clears its orbited-since flag, before this frame's
-        // orbit can set it. Returns whether the gesture crossed into a drag this frame.
-        bool Step(PointerGesture? gesture, in InputState input, float dt, ref bool orbitedSincePress)
+        // A new press resets both replay history and tap invalidation before this frame's orbit can set them.
+        // Returns whether the gesture crossed into a drag this frame.
+        bool Step(PointerGesture? gesture, in InputState input, float dt, ref bool orbitedSincePress, ref bool tapVoided)
         {
             if (gesture is null)
                 return false;
             PointerGesturePhase before = gesture.Phase;
             gesture.Advance(input, UiBlocked, dt);
             if (before == PointerGesturePhase.Idle && gesture.Phase != PointerGesturePhase.Idle)
+            {
                 orbitedSincePress = false;
+                tapVoided = false;
+            }
             return before != PointerGesturePhase.Dragging && gesture.Phase == PointerGesturePhase.Dragging;
         }
 
-        static bool IsDragging(PointerGesture? gesture) => gesture?.Phase == PointerGesturePhase.Dragging;
+        static bool IsLivePending(PointerGesture? gesture) =>
+            gesture is { LivePendingTravel: true, Phase: PointerGesturePhase.Pending };
+
+        static bool IsDefaultDrag(PointerGesture? gesture) =>
+            gesture is { LivePendingTravel: false, Phase: PointerGesturePhase.Dragging };
+
+        static bool DrivesOrbit(PointerGesture? gesture) => gesture?.Phase == PointerGesturePhase.Dragging
+            || (IsLivePending(gesture) && gesture!.DragDelta != Vector2.Zero);
 
         void Orbit(Vector2 d)
         {

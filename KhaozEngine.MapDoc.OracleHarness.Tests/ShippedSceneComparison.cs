@@ -168,7 +168,7 @@ internal static partial class ShippedSceneComparison
             if (native is null) continue;
             Check(report, "scene-light", Near(position.X, native.Position.X.ToDouble()) && Near(position.Y, native.Position.Y.ToDouble()) && Near(position.Z, native.Position.Z.ToDouble()) &&
                 Bits(light.Colour, native.Colour) && Bits(light.Intensity, native.Intensity) && Bits(light.Radius, native.Radius) && light.CastShadows == native.CastShadows &&
-                Bits(light.ShadowExclusion, native.ShadowExclusion) && native.OwnerPlacementId == inputs.Manifest.Placements.Single(p => p.SourceObjectId == light.SourceObjectId).NativePlacementId, new { mapping.NativeLightId });
+                SceneSubmissionGeometry.ExclusionEqual(light.ShadowExclusion, native.ShadowExclusion) && native.OwnerPlacementId == inputs.Manifest.Placements.Single(p => p.SourceObjectId == light.SourceObjectId).NativePlacementId, new { mapping.NativeLightId });
         }
     }
     internal static void CompareDrawSets(MapDrawSet expected, MapDrawSet actual, PrivateOracleReport report)
@@ -192,7 +192,7 @@ internal static partial class ShippedSceneComparison
     internal static bool PayloadEqual(MapResourcePayload a, MapResourcePayload b) => (a, b) switch
     {
         (MapRigidResource x, MapRigidResource y) => MeshEqual(x.Mesh, y.Mesh) && MapsEqual(x.Maps, y.Maps),
-        (MapLightResource x, MapLightResource y) => Bits(x.Light, y.Light),
+        (MapLightResource x, MapLightResource y) => SceneSubmissionGeometry.DeclaredLightEqual(x.Light, y.Light),
         (MapWaterResource x, MapWaterResource y) => MeshEqual(x.Mesh, y.Mesh) && x.ClipData.Span.SequenceEqual(y.ClipData.Span),
         (MapFoliageResource x, MapFoliageResource y) => FoliageEqual(x, y),
         (MapTerrainResource x, MapTerrainResource y) => MeshEqual(x.Mesh, y.Mesh) && x.FaceKeys.SequenceEqual(y.FaceKeys) &&

@@ -867,7 +867,16 @@ point and are compared as actual anchor-local submission inputs. Scope probes wi
 Midpoint probes must retain complementary 0/1 LOD phases, never two opaque overlapping tiers.
 
 Geometry/translation tolerance is 0.00001 m, normal component and rotation-angle tolerance are
-0.000001. Other frame scalar bits remain exact. Streaming duplicates require identical payloads. Compare
+0.000001. Rigid and light submissions compare poses and focus in a common anchor frame, subtracting
+integer anchors before floating conversion. Equivalent world poses may use different integer anchors.
+Declared fixture corners compare in the mapped owner's local metre frame. Submitted exclusion boxes
+compare in a common anchor frame, including rotated prefab owners. Exclusion kinds, margins, sphere
+radii, shadow modes, cache keys, ownership and photometric values remain exact.
+HLOD proxies compare consuming multisets of oriented triangles in a common frame. Vertex ordering,
+vertex sharing, cyclic index ordering and triangle ordering may differ. Missing, duplicated, reversed
+or displaced triangles fail. Positions and normals use the geometric tolerances, while vertex colour,
+UVs, tangents and material maps remain exact. This does not waive changed triangulation or coverage.
+Other frame scalar bits remain exact. Streaming duplicates require identical payloads. Compare
 canonical terrain/material/paint coverage independently of render-only triangulation order, every
 placement part/LOD/pose, selected/HLOD identities, full light owner/descriptors, four roof channels,
 water body/space/free regions/area/level with closed regions excluded, and foliage keys/matrices/ranks/

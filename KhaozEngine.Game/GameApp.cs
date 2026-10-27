@@ -677,7 +677,7 @@ namespace KhaozEngine.Game
             {
                 hud.SetDrawStats(CollectFrameStats());
                 _surface2D.Batch.Begin(_ui);
-                hud.Draw(_surface2D.Batch, _hudFont!.For(_ui.DpiScale), _hudWhite!, _ui.DesignBounds);
+                hud.Draw(_surface2D.Batch, _hudFont!.For(_ui.EffectiveScale), _hudWhite!, _ui.DesignBounds);
                 _surface2D.Batch.End();
             }
         }

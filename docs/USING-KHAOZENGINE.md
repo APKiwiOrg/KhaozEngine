@@ -3996,15 +3996,20 @@ half-lit edges). The fix is to draw the UI in **logical points at native DPI** i
 canvas, then snap to whole device pixels. The game world stays letterboxed in its `DesignViewport`; only the UI
 layer is decoupled.
 
-**`UiViewport` (`KhaozEngine.Windowing`)** is a point-space `IDesignViewport` where 1 logical point = `DpiScale`
-device pixels, with no letterbox. Its `Width`/`Height` track the logical window, so the UI reflows on resize
-rather than scaling. Drive it once per frame with `uiViewport.Update(frame)`. `Frame.DpiScale` is the window's
-OS content scale, so a Windows display at 150% gives 1.5 even though its window coordinates are pixels, and a
-resize never perturbs the scale.
+**`UiViewport` (`KhaozEngine.Windowing`)** is a point-space `IDesignViewport` without letterboxing.
+`DpiScale` is the physical OS content scale. `ScaleMultiplier`, default 1, requests a user scale from 0.1
+through 10 inclusive. Invalid requests throw before replacing the last good value. The next valid `Update`
+applies the request to projection, pointer mapping, clipping and layout together. A request made during a
+frame does not alter that frame's transform. `EffectiveScale` is the applied DPI times user multiplier,
+also exposed as `ScaleX`/`ScaleY`. `Width`/`Height` divide the logical window size by the multiplier and round
+for integer layout consumers. `DesignBounds` keeps exact fractional coverage and `ContentBounds` is the
+complete framebuffer. Drive it once per frame with `uiViewport.Update(frame)`. Physical DPI remains stable
+on resize. This does not change the game viewport or camera.
 
 **`DpiFont` (`KhaozEngine.Render2D`)** authors at a logical `pixelHeight`, and each frame you call
-`font.For(frame.DpiScale)` to get a `SpriteFont` baked for the current DPI, drawn 1:1 in the point-space pass. It
-re-bakes the atlas only when the DPI scale changes. Create one via `surface.LoadDpiFont(...)` /
+`font.For(uiViewport.EffectiveScale)` to get a `SpriteFont` baked for the applied UI density, drawn 1:1 in
+the point-space pass. It re-bakes only when that density changes, from OS DPI or a user-scale update.
+Create one via `surface.LoadDpiFont(...)` /
 `surface.LoadDefaultDpiFont(...)`. Pass `cacheSlots` &gt; 1 when the same face is drawn at several scales in one
 pass and each must be texel-exact (e.g. a boot title + smaller label): each `For(scale * dpiScale)` stays baked
 instead of thrashing a single slot.
@@ -4024,7 +4029,7 @@ it. `minHeight` holds a desired resting scale (e.g. couple it to camera zoom), `
 edge seams. It is the rect form of the scalar `Cover`.
 
 **With `KhaozEngine.Game`.** Override `GameApp.OnDrawUi(SpriteBatch)`, a second pass that runs after `OnDraw2D`
-with the batch already in `Begin(Ui)`. Draw crisp UI there with `DpiFont.For(Ui.DpiScale)` and hit-test with
+with the batch already in `Begin(Ui)`. Draw crisp UI there with `DpiFont.For(Ui.EffectiveScale)` and hit-test with
 `UiPointer`. `OnDraw2D` stays the design-space game field, so the world layer is unchanged. Scenes get the same
 split: `GameScene.OnDrawUi` plus `Manager.UiViewport` / `Manager.UiPointer`.
 
@@ -4034,7 +4039,7 @@ DpiFont _title = null!;   // Surface2D.LoadDefaultDpiFont(40f) in OnLoad
 
 protected override void OnDrawUi(SpriteBatch batch)
 {
-    SpriteFont f = _title.For(Ui.DpiScale);
+    SpriteFont f = _title.For(Ui.EffectiveScale);
     batch.DrawString(f, "Menu", new Vector2(40, 40), color);   // crisp at any DPI
 }
 ```

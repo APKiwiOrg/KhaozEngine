@@ -5,13 +5,10 @@ using KhaozEngine.Primitives;
 namespace KhaozEngine.Windowing
 {
     /// <summary>
-    /// A point-space viewport for DPI-aware UI: unlike <see cref="DesignViewport"/> (a fixed design canvas
-    /// Fit-scaled onto the framebuffer, so it magnifies fractionally on HiDPI), this authors UI in <b>logical
-    /// points</b> and maps 1 point to <see cref="DpiScale"/> device pixels. Its <see cref="Width"/>/<see cref="Height"/>
-    /// track the logical window size (so the UI reflows as the window resizes, like a desktop app, rather than
-    /// scaling), and its scale is the DPI factor - stable for a given display, changing only on a monitor / OS-scale
-    /// change, not on resize. Bake fonts at that scale (see <c>DpiFont</c>) and draw 1:1 for crisp text; snap
-    /// geometry to whole device pixels for pixel-exact chrome.
+    /// A point-space viewport for DPI-aware UI. One design point maps to <see cref="EffectiveScale"/> device
+    /// pixels, combining the physical <see cref="DpiScale"/> with the requested <see cref="ScaleMultiplier"/>.
+    /// The canvas reflows to fill the framebuffer without letterboxing. Bake fonts at the effective scale
+    /// (see <c>DpiFont</c>) and draw 1:1 for crisp text. Geometry snaps to device pixels.
     /// <para>
     /// Implements <see cref="IDesignViewport"/>, so it drops straight into <c>SpriteBatch.Begin(IDesignViewport)</c>,
     /// <c>Pointer.Update(InputState, IDesignViewport)</c>, and the Gui screens/layout that already target that seam.
@@ -21,13 +18,36 @@ namespace KhaozEngine.Windowing
     /// </summary>
     public sealed class UiViewport : IDesignViewport
     {
-        /// <summary>Logical width in points (the current logical window width).</summary>
+        int _framebufferWidth, _framebufferHeight;
+        float _requestedScale = 1f;
+
+        /// <summary>The UI canvas width, rounded to whole design points for integer layout consumers.</summary>
         public int Width { get; private set; }
-        /// <summary>Logical height in points (the current logical window height).</summary>
+        /// <summary>The UI canvas height, rounded to whole design points for integer layout consumers.</summary>
         public int Height { get; private set; }
 
-        /// <summary>Device pixels per logical point (the DPI scale). Equals <see cref="ScaleX"/>/<see cref="ScaleY"/>.</summary>
+        /// <summary>Physical device pixels per OS logical point, independent of user UI scale.</summary>
         public float DpiScale { get; private set; } = 1f;
+
+        /// <summary>
+        /// Requested user UI multiplier. The next valid Update applies it to layout, projection and pointer
+        /// mapping together. Setting it while a frame is being handled never remaps that frame's input.
+        /// Values must be finite and between 0.1 and 10 inclusive. Consumers may offer a narrower range.
+        /// </summary>
+        public float ScaleMultiplier
+        {
+            get => _requestedScale;
+            set
+            {
+                if (!float.IsFinite(value) || value < 0.1f || value > 10f)
+                    throw new ArgumentOutOfRangeException(nameof(value), value,
+                        "UI scale must be finite and between 0.1 and 10.");
+                _requestedScale = value;
+            }
+        }
+
+        /// <summary>Applied device pixels per UI design point. Use this density for UI font rasterization.</summary>
+        public float EffectiveScale => ScaleX;
 
         public float ScaleX { get; private set; } = 1f;
         public float ScaleY { get; private set; } = 1f;
@@ -48,16 +68,14 @@ namespace KhaozEngine.Windowing
 
         /// <summary>
         /// Recompute from the device framebuffer size (pixels) and the logical window size (points).
-        /// <see cref="Width"/>/<see cref="Height"/> become the logical size; <see cref="DpiScale"/> (and both axis
-        /// scales) become <c>framebufferWidth / logicalWidth</c>. Non-positive / degenerate input is ignored.
+        /// The physical DPI is <c>framebufferWidth / logicalWidth</c>. The requested user scale is applied
+        /// to the UI canvas and both axis scales. Non-positive or degenerate input is ignored.
         /// </summary>
         public void Update(int framebufferWidth, int framebufferHeight, int logicalWidth, int logicalHeight)
         {
             if (framebufferWidth <= 0 || framebufferHeight <= 0 || logicalWidth <= 0 || logicalHeight <= 0) return;
-            Width = logicalWidth;
-            Height = logicalHeight;
-            DpiScale = (float)framebufferWidth / logicalWidth;   // the OS scale factor (uniform on both axes)
-            ScaleX = ScaleY = DpiScale;
+            Apply(framebufferWidth, framebufferHeight, logicalWidth, logicalHeight,
+                (float)framebufferWidth / logicalWidth);
         }
 
         /// <summary>Recompute from a <see cref="Frame"/>: its logical <see cref="Frame.LogicalWidth"/>/<see cref="Frame.LogicalHeight"/>
@@ -67,10 +85,7 @@ namespace KhaozEngine.Windowing
         {
             ArgumentNullException.ThrowIfNull(frame);
             if (frame.Width <= 0 || frame.Height <= 0 || frame.LogicalWidth <= 0 || frame.LogicalHeight <= 0) return;
-            Width = frame.LogicalWidth;
-            Height = frame.LogicalHeight;
-            DpiScale = frame.DpiScale;
-            ScaleX = ScaleY = DpiScale;
+            Apply(frame.Width, frame.Height, frame.LogicalWidth, frame.LogicalHeight, frame.DpiScale);
         }
 
         /// <summary>
@@ -81,29 +96,43 @@ namespace KhaozEngine.Windowing
         public void Update(int windowWidth, int windowHeight)
         {
             if (windowWidth <= 0 || windowHeight <= 0 || DpiScale <= 0f) return;
-            ScaleX = ScaleY = DpiScale;
-            Width = (int)MathF.Round(windowWidth / DpiScale);
-            Height = (int)MathF.Round(windowHeight / DpiScale);
+            Apply(windowWidth, windowHeight, windowWidth / (double)DpiScale,
+                windowHeight / (double)DpiScale, DpiScale);
         }
 
-        /// <summary>Point-space rect covering the whole logical UI area: (0, 0, Width, Height).</summary>
-        public Rect DesignBounds => new(0, 0, Width, Height);
+        void Apply(int framebufferWidth, int framebufferHeight, double logicalWidth, double logicalHeight,
+            float dpiScale)
+        {
+            float effective = dpiScale * _requestedScale;
+            if (!float.IsFinite(effective) || effective <= 0f) return;
+            int width = (int)Math.Clamp(Math.Round(logicalWidth / _requestedScale), 1d, int.MaxValue);
+            int height = (int)Math.Clamp(Math.Round(logicalHeight / _requestedScale), 1d, int.MaxValue);
+            _framebufferWidth = framebufferWidth;
+            _framebufferHeight = framebufferHeight;
+            Width = width;
+            Height = height;
+            DpiScale = dpiScale;
+            ScaleX = ScaleY = effective;
+        }
 
-        /// <summary>The device-pixel rect the UI covers: the full framebuffer (no letterbox), (0, 0, Width*scale, Height*scale).</summary>
-        public Rect ContentBounds => new(0, 0, Width * ScaleX, Height * ScaleY);
+        /// <summary>Exact UI canvas coverage, including fractional points lost by integer layout rounding.</summary>
+        public Rect DesignBounds => new(0, 0, _framebufferWidth / ScaleX, _framebufferHeight / ScaleY);
+
+        /// <summary>The complete device framebuffer, without letterbox margins or logical-size rounding.</summary>
+        public Rect ContentBounds => new(0, 0, _framebufferWidth, _framebufferHeight);
 
         /// <summary>Equals <see cref="DesignBounds"/>: point-space UI reflows to fill the window, so there is no bar to cover.</summary>
         public Rect WindowBounds => DesignBounds;
 
-        /// <summary>Map a logical point to device pixels (scale by DPI; no offset).</summary>
+        /// <summary>Map a UI design point to device pixels using the applied effective scale, without offset.</summary>
         public Vector2 DesignToScreen(Vector2 design) => new(design.X * ScaleX, design.Y * ScaleY);
 
-        /// <summary>Map a device-pixel point back to logical points (for hit-testing the DPI-scaled cursor).</summary>
+        /// <summary>Map a device-pixel point back into the same UI space used by drawing and clipping.</summary>
         public Vector2 ScreenToDesign(Vector2 screen) => new(screen.X / ScaleX, screen.Y / ScaleY);
 
         /// <summary>
         /// Point-to-clip transform for <c>SpriteBatch.Begin</c>: scale points up to device pixels then ortho by the
-        /// framebuffer size, so a logical point at <c>p</c> lands at <c>p * DpiScale</c> device pixels and the logical
+        /// framebuffer size, so a logical point at <c>p</c> lands at <c>p * EffectiveScale</c> device pixels and the logical
         /// extent fills the framebuffer. <paramref name="viewportWidth"/>/<paramref name="viewportHeight"/> are the
         /// framebuffer size the batch passes in.
         /// </summary>

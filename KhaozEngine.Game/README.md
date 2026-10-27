@@ -152,7 +152,9 @@ wire `KhaozEngine.Diagnostics.CrashHandler` for the richer `game.log` path. See
 point-space `Ui` (a `UiViewport`) and `UiPointer` (a `Pointer` mapped through it), plus a new virtual
 `OnDrawUi(SpriteBatch batch)` that runs in a SECOND draw pass after `OnDraw2D` each frame, with the batch
 already in `Begin(Ui)`. `OnDraw2D` stays the design-space (letterboxed) game field, `OnDrawUi` is the
-DPI-aware UI layer: author text via `DpiFont.For(Ui.DpiScale)` and hit-test with `UiPointer`. `OnDrawUi`
+DPI-aware UI layer: author text via `DpiFont.For(Ui.EffectiveScale)` and hit-test with `UiPointer`. Request
+user UI scaling with `Ui.ScaleMultiplier`. The next frame applies it before mapping input, without changing
+the game viewport or camera. Physical OS DPI remains available as `Ui.DpiScale`. `OnDrawUi`
 is empty by default, so a game that only overrides `OnDraw2D` is completely unaffected.
 
 Hand the manager its whole frame context in one call,

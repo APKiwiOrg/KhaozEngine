@@ -6,11 +6,12 @@ namespace KhaozEngine.Render2D
     /// <summary>
     /// A logical-size font that stays crisp under HiDPI by baking its atlas at the live device-pixel scale and
     /// re-baking only when that scale changes. Author UI at a logical <c>pixelHeight</c> (points); each frame call
-    /// <see cref="For"/> with the current DPI scale (device px per logical point, e.g. <c>Frame.DpiScale</c>) and
+    /// <see cref="For"/> with the current effective UI scale (device px per design point, e.g.
+    /// <c>UiViewport.EffectiveScale</c>) and
     /// draw the returned <see cref="SpriteFont"/> 1:1 in a point-space batch - the glyph atlas is baked at
     /// <c>pixelHeight * dpiScale</c> so it maps texel-for-texel onto the framebuffer. Because the DPI scale is
-    /// stable for a given display (it changes on a monitor / OS-scale change, not on window resize), the atlas is
-    /// re-baked only on those rare changes, not every frame or resize.
+    /// stable for a given display, the atlas is re-baked only on a DPI or user-scale change, not every frame
+    /// or resize.
     /// <para>
     /// Build one via <c>Render2DSurface.LoadDpiFont(...)</c> or <c>Render2DSnapshot.LoadDpiFont(...)</c>. Dispose it
     /// (it owns the baked <see cref="SpriteFont"/>s).

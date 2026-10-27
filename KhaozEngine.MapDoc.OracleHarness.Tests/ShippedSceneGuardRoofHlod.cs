@@ -12,10 +12,10 @@ namespace KhaozEngine.Tests.MapDocOracle;
 
 internal static partial class ShippedSceneGuardFixtures
 {
-    static void AddRoofHlod(string root, TileWorldDocument world, MapDocument native, JsonObject comparison, bool shadows, bool exitOverlap = false)
+    static void AddRoofHlod(string root, TileWorldDocument world, MapDocument native, JsonObject comparison, bool shadows, bool exitOverlap = false, float nativeTileSize = 1)
     {
         world.AddObject("column", 10, 2, 0, 0); TileWorldFile.Save(world, Path.Combine(root, "world"));
-        native.TileSize = 1; native.TerrainOverrides = new(.03125f); native.NumericIdHighWaterMark = 2;
+        native.TileSize = nativeTileSize; native.TerrainOverrides = new(.03125f); native.NumericIdHighWaterMark = 2;
         native.Placements.Add(new() { Id = "native-second", AssetId = "native-column", Kind = "column", NumericId = 2, X = 10.5f, Y = 0, Z = -2.5f });
         native.BuildingIntent = new(1, [], [], [], [])
         {

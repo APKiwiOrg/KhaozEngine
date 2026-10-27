@@ -94,6 +94,7 @@ internal static partial class ShippedSceneGuardFixtures
         bool wideRaster = variant == "foliage-wide-raster";
         if (wideRaster) variant = "foliage-valid";
         bool roofHlod = variant.StartsWith("roof-hlod", StringComparison.Ordinal);
+        bool wrongNativeTileSize = variant == "roof-hlod-native-tile-size";
         bool roofShadows = variant != "roof-hlod-no-shadows";
         bool exitOverlap = variant == "roof-hlod-exit-overlap";
         if (roofHlod) variant = "roof-valid";
@@ -344,7 +345,7 @@ internal static partial class ShippedSceneGuardFixtures
             comparison["expectations"]!["roofs"] = 1;
             foreach (var probe in comparison["policy"]!["probes"]!.AsArray()) probe!["roofMode"] = "AlwaysHidden";
         }
-        if (roofHlod) AddRoofHlod(root, world, native, comparison, roofShadows, exitOverlap);
+        if (roofHlod) AddRoofHlod(root, world, native, comparison, roofShadows, exitOverlap, wrongNativeTileSize ? 512 : 1);
         return WithStorageAndSelections(root, native, comparison, variant);
     }
     internal static byte[] TriangleGlb()

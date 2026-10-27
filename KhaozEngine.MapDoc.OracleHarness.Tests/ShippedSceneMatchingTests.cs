@@ -104,6 +104,17 @@ public sealed class ShippedSceneMatchingTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ProxyMatching_AmbiguousToleranceCandidatesCanBeReassigned(bool reverseSource)
+    {
+        const float tolerance = .00001f;
+        // A can match C or D, while B can only match C. A -> D, B -> C is complete.
+        var source = reverseSource ? ProxyPlanes(0, 1.5f * tolerance) : ProxyPlanes(1.5f * tolerance, 0);
+        Compare(source, ProxyPlanes(.75f * tolerance, 2.25f * tolerance));
+    }
+
+    [Theory]
     [InlineData("position")]
     [InlineData("hole")]
     [InlineData("overlap")]
@@ -143,6 +154,19 @@ public sealed class ShippedSceneMatchingTests
             source ? new uint[] { 0, 1, 2, 1, 3, 2 } : new uint[] { 3, 4, 2, 1, 3, 2 });
         return Set(new(MapRenderKind.Roof, "cluster/caps/0/0/0", "hlod", 0), new MapRigidResource(mesh, default),
             source ? new(3, 0, -4) : new(2, 0, -4), Matrix4x4.Identity, source ? new(7, 8, 9) : new(8, 8, 9), Rigid);
+    }
+
+    static MapDrawSet ProxyPlanes(params float[] xs)
+    {
+        var vertices = xs.SelectMany(x => new ModelVertex[]
+        {
+            new(new(x, 0, 0), Vector3.UnitX, Vector4.One),
+            new(new(x, 1, 0), Vector3.UnitX, Vector4.One),
+            new(new(x, 0, 1), Vector3.UnitX, Vector4.One)
+        }).ToArray();
+        var mesh = new GltfMesh(vertices, Enumerable.Range(0, vertices.Length).Select(i => (uint)i).ToArray());
+        return Set(new(MapRenderKind.Roof, "cluster/caps/0/0/0", "hlod", 0), new MapRigidResource(mesh, default),
+            default, Matrix4x4.Identity, Vector3.Zero, Rigid);
     }
 
     static MapDrawSet LightDraw(bool source)

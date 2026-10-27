@@ -21,7 +21,11 @@ internal static class SceneProxyGeometry
         if (a.Indices32.Length != b.Indices32.Length || a.Indices32.Length % 3 != 0 ||
             !Vertices(a, drawA, drawA.Anchor, out var left) || !Vertices(b, drawB, drawA.Anchor, out var right)) return false;
         var candidates = new Dictionary<Point, List<(int Triangle, int Corner)>>();
-        var consumed = new bool[b.Indices32.Length / 3];
+        int count = b.Indices32.Length / 3;
+        // Match indices are one-based, with zero denoting an unmatched triangle.
+        var leftMatches = new int[count]; var rightMatches = new int[count];
+        var visited = new int[count]; var parents = new int[count];
+        var pending = new Queue<int>();
         for (int t = 0; t < b.Indices32.Length; t += 3)
             for (int c = 0; c < 3; c++)
             {
@@ -34,25 +38,48 @@ internal static class SceneProxyGeometry
         for (int t = 0; t < a.Indices32.Length; t += 3)
         {
             if (a.Indices32[t] >= left.Length || a.Indices32[t + 1] >= left.Length || a.Indices32[t + 2] >= left.Length) return false;
-            var cell = Cell(left[a.Indices32[t]].Position);
-            bool found = false;
-            for (int x = -1; x <= 1 && !found; x++)
-                for (int y = -1; y <= 1 && !found; y++)
-                    for (int z = -1; z <= 1 && !found; z++)
-                        if (candidates.TryGetValue(new(cell.X + x, cell.Y + y, cell.Z + z), out var rows))
-                            foreach (var row in rows)
-                            {
-                                if (consumed[row.Triangle]) continue;
-                                bool equal = true;
-                                for (int c = 0; c < 3 && equal; c++)
-                                    equal = Equal(left[a.Indices32[t + c]], right[b.Indices32[row.Triangle * 3 + (row.Corner + c) % 3]]);
-                                if (!equal) continue;
-                                consumed[row.Triangle] = found = true;
-                                break;
-                            }
-            if (!found) return false;
+            if (!Match(t / 3)) return false;
         }
         return true;
+
+        bool Match(int first)
+        {
+            pending.Clear(); pending.Enqueue(first);
+            while (pending.TryDequeue(out int triangle))
+            {
+                var cell = Cell(left[a.Indices32[triangle * 3]].Position);
+                for (int x = -1; x <= 1; x++)
+                    for (int y = -1; y <= 1; y++)
+                        for (int z = -1; z <= 1; z++)
+                            if (candidates.TryGetValue(new(cell.X + x, cell.Y + y, cell.Z + z), out var rows))
+                                foreach (var row in rows)
+                                {
+                                    if (visited[row.Triangle] == first + 1) continue;
+                                    bool equal = true;
+                                    for (int c = 0; c < 3 && equal; c++)
+                                        equal = Equal(left[a.Indices32[triangle * 3 + c]], right[b.Indices32[row.Triangle * 3 + (row.Corner + c) % 3]]);
+                                    if (!equal) continue;
+                                    visited[row.Triangle] = first + 1;
+                                    parents[row.Triangle] = triangle;
+                                    if (rightMatches[row.Triangle] != 0)
+                                    {
+                                        pending.Enqueue(rightMatches[row.Triangle] - 1);
+                                        continue;
+                                    }
+                                    // Reassign the alternating path only after finding an unmatched triangle.
+                                    int target = row.Triangle;
+                                    while (target >= 0)
+                                    {
+                                        int source = parents[target], previous = leftMatches[source] - 1;
+                                        leftMatches[source] = target + 1;
+                                        rightMatches[target] = source + 1;
+                                        target = previous;
+                                    }
+                                    return true;
+                                }
+            }
+            return false;
+        }
     }
 
     static Point Cell(Point p) => new(Math.Floor(p.X / GeometryTolerance), Math.Floor(p.Y / GeometryTolerance), Math.Floor(p.Z / GeometryTolerance));

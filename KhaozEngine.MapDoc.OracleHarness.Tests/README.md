@@ -706,9 +706,10 @@ The full entry and the seam guards share `ShippedSceneComparison.CompareDrawSets
 consuming one-to-one submission matching. Legacy prop emission retains `GroundObjectIds` and
 `RoofObjectIds`, mapped owner/part/LOD keys, original meshes/material maps, transforms and all channels.
 No coincident owner can borrow another owner's draw. Missing, duplicate and unmatched submissions
-fail. Independent source canonical faces and water domains establish required batches, with prepared
-keys and anchors serving only as checked transport correspondences. Native Write output never
-selects the expected frame roster. Every expected terrain, light, water and foliage write is required
+fail. Legacy HLOD grouping and transition distances use the original source tile size, independently
+of the native document. Independent source canonical faces and water domains establish required
+batches, with prepared keys and anchors serving only as checked transport correspondences.
+Native Write output never selects the expected frame roster. Every expected terrain, light, water and foliage write is required
 before its complete typed frame values are compared.
 Submitted terrain triangles must cover their independently matched source faces without holes or overlap.
 Their positions and normals bind to the source plane. Decoded material slots and weights bind to source
@@ -873,9 +874,11 @@ Declared fixture corners compare in the mapped owner's local metre frame. Submit
 compare in a common anchor frame, including rotated prefab owners. Exclusion kinds, margins, sphere
 radii, shadow modes, cache keys, ownership and photometric values remain exact.
 HLOD proxies compare consuming multisets of oriented triangles in a common frame. Vertex ordering,
-vertex sharing, cyclic index ordering and triangle ordering may differ. Missing, duplicated, reversed
-or displaced triangles fail. Positions and normals use the geometric tolerances, while vertex colour,
-UVs, tangents and material maps remain exact. This does not waive changed triangulation or coverage.
+vertex sharing, cyclic index ordering and triangle ordering may differ. Spatial candidates are matched
+one to one through augmenting paths, reassigning earlier matches when tolerance candidates overlap.
+Missing, duplicated, reversed or displaced triangles fail. Positions and normals use the geometric
+tolerances, while vertex colour, UVs, tangents and material maps remain exact. This does not waive
+changed triangulation or coverage.
 Other frame scalar bits remain exact. Streaming duplicates require identical payloads. Compare
 canonical terrain/material/paint coverage independently of render-only triangulation order, every
 placement part/LOD/pose, selected/HLOD identities, full light owner/descriptors, four roof channels,

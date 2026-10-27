@@ -770,7 +770,7 @@ Source and native keys are unique, with complete source coverage checked before 
 | limits (optional) | Required `scene` and `residency`, with optional `queries`, `decode`, `assets`, `foliage`, `foliageContext`, `water`, `refinement` and `maxProofBytes`. Every declared family object is complete. Null refuses. Every value is a positive JSON integer within its field's range. Unknown, missing, duplicate and case-variant fields refuse |
 | limits.scene | Exactly `maxTiles`, `maxMetadataRows`, `maxMemberships`, `maxMembershipsPerResource`, `maxScannedBytes`, `maxMetadataBytes`, `maxSelectedResources`, `maxPatchScopes`, `maxPreparedFaces`, `maxPreparedBytes`, matching `MapSceneLimits`. Byte fields are int64, all other fields are int32 |
 | limits.queries (optional) | Exactly `maxCandidatePatches`, `maxInspectedFaces`, `maxSupportIntersections`, `maxPageReads`, `maxRecordReads`, `maxRecordDepth`, matching `MapQueryLimits`. All fields are positive int32 values. Omission preserves the existing query defaults |
-| limits.residency | Exactly `maxWorkers`, `maxQueuedPlans`, `maxQueuedBytes`, `maxAppliesPerUpdate`, `maxUploadBytesPerUpdate`, `maxDisposalsPerUpdate`, `maxResidentCpuBytes`, `maxResidentGpuBytes`, `maxPlanBytes`, `maxActiveWindows`, matching `MapRenderBudgets`. Byte fields are int64, all other fields are int32 |
+| limits.residency | Exactly `maxWorkers`, `maxQueuedPlans`, `maxQueuedBytes`, `maxAppliesPerUpdate`, `maxUploadBytesPerUpdate`, `maxDisposalsPerUpdate`, `maxResidentCpuBytes`, `maxResidentGpuBytes`, `maxPlanBytes`, `maxActiveWindows`, `maxInFlightUploadCpuBytes`, `maxInFlightUploadStagingGpuBytes`, matching `MapRenderBudgets`. Byte fields are int64, all other fields are int32 |
 | limits.decode (optional) | Exactly `maxPeakBytes`, `maxVertices`, `maxIndices`, `maxImagePixels`, `maxImages`, matching `GltfDecodeLimits`. Peak bytes are int64, counts are int32 |
 | limits.assets (optional) | Exactly `maxDecodedBytes`, `maxParts`, `maxLods`, matching `MapRenderAssetLimits`. Decoded bytes are int64, counts are int32. Applies to complete selected sets, including cached pieces |
 | limits.foliage (optional) | Exactly `maxCandidates`, `maxSamples`, `maxPrepareScopes`, `maxFaces`, `maxRuleCandidates`, `maxMaskCandidates`, `maxQueryChunks`, `maxQuerySamples`, `maxQueryRetainedBytes`, `maxDifferentialCandidates`, `maxChangeRows`, `maxComparisonPreparedChunks`, `maxComparisonRetainedBytes`, matching `MapFoliageLimits`. Query sample and byte totals, differential candidates and change rows are int64. Other values are int32 |
@@ -813,7 +813,7 @@ those remaining allowances. Shared residency byte admission enforces the declare
 policy. Foliage sample retention is aggregate across the captured context cache, with a 64 MiB default
 on omission. Explicit larger allowances remain available through distribution and cache admission.
 A cache retention refusal reports retained bytes plus the next reservation against the declared total.
-The profile covers all 65 scalar limits in the nine registered families,
+The profile covers all 67 scalar limits in the nine registered families,
 plus the extent-proof metadata byte allowance. Full input expansion and foliage correspondence capture
 use the same declared query and context limits as window preparation. Decode limits follow extent
 scratch work and every selected asset, material and composition decode into residency.

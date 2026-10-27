@@ -8,6 +8,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-27
 
+- Bound native scene upload batches with caller limits `MaxInFlightUploadCpuBytes` (256 MiB) and
+  `MaxInFlightUploadStagingGpuBytes` (128 MiB). Release each resource's transient CPU at device completion,
+  before atomic window publication, and refuse windows whose retained uploads and in-flight allowance cannot fit.
 - Settle native scene residency CPU to unique shared membership inventory across windows, including cache and
   per-window controls, so overlapping windows neither duplicate physical capacity nor omit retained controls.
 - Store roof membership geometry in compact ledger-owned arena columns. Exact coefficients are 16-byte tokens with

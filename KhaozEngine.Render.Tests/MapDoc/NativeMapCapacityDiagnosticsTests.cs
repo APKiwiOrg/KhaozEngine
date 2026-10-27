@@ -42,16 +42,17 @@ public sealed class NativeMapCapacityDiagnosticsTests
     }
 
     [Fact]
-    public void UploadBackpressure_NamesGpuDemandAndAllowance()
+    public void UploadPreflight_NamesWholeWindowGpuDemandAndAllowance()
     {
         using var fixture = ResidencyFixture.Placement();
         var scheduler = new ResidencyScheduler(); var device = new ResidencyDevice();
         using var residency = new MapRenderResidency(fixture.State(ResidencyFixture.Window()), device, new(MaxResidentGpuBytes: 0), scheduler);
         scheduler.RunAll();
         var transition = residency.Update().Transition;
-        Assert.Equal(MapSceneStatus.Incomplete, transition.Status);
-        Assert.Equal(new MapSceneCapacity("MaxResidentGpuBytes", 110, 0), transition.Capacity);
-        Assert.Contains("requested 110", Assert.Single(transition.Findings));
+        Assert.Equal(MapSceneStatus.CapacityExceeded, transition.Status);
+        // Six LOD mesh parts and one light each own 100 bytes and need 10 staging bytes.
+        Assert.Equal(new MapSceneCapacity("MaxResidentGpuBytes", 770, 0), transition.Capacity);
+        Assert.Contains("requested 770", Assert.Single(transition.Findings));
         Assert.Equal(0, device.Begins);
     }
 

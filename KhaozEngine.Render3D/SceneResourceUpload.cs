@@ -16,6 +16,7 @@ public sealed class SceneResourceUpload : IDisposable
     readonly ISceneUploadReservation _reservation;
     readonly long _meshOrder;
     SceneUploadData? _data;
+    readonly SceneUploadPublication? _publication;
     readonly List<Transfer> _transfers = new();
     readonly List<IDisposable> _owned = new();
     IGpuBuffer? _vertices, _normals, _indices, _clip, _foliage, _groundParams, _anchor;
@@ -34,6 +35,9 @@ public sealed class SceneResourceUpload : IDisposable
     {
         _scene = scene; _device = device; _data = data; Demand = demand; _reservation = reservation;
         _meshOrder = data.BorrowMesh is null ? 0 : scene.ReserveMeshOrder();
+        if (data.BorrowMesh is { } mesh)
+            _publication = SceneUploadPublication.From(mesh) with
+            { AlphaCutoff = data.BorrowMaps?.AlphaCutoff ?? 0, Ground = data.GroundMaterial is not null, Sampler = data.GroundMaterial?.Sampler };
     }
 
     internal void Prepare()
@@ -114,7 +118,13 @@ public sealed class SceneResourceUpload : IDisposable
                 // Completion machinery is transfer workspace too. Some backends retain command arrays here.
                 if (_barrier is not null) { _barrier.Dispose(); _owned.Remove(_barrier); _barrier = null; }
                 if (_completion is not null) { _completion.Dispose(); _owned.Remove(_completion); _completion = null; }
-                _reservation.TransferCompleted(); _transferSettled = true;
+                ReleaseInputs();
+                int bindings = (_publication?.BindingCount(_albedo is not null, _normal is not null, _roughness is not null) ?? 0) +
+                    (PreparedFoliage is not null ? 1 : 0);
+                _owned.Capacity = checked(_owned.Count + bindings);
+                _reservation.TransferCompleted();
+                _reservation.InputsReleased(SceneResourceCpuInventory.Measure(_owned, _publication.HasValue, PreparedFoliage, bindings));
+                _transferSettled = true;
             }
             return true;
         }
@@ -163,17 +173,13 @@ public sealed class SceneResourceUpload : IDisposable
         SceneResourceHandle handle = default;
         try
         {
-            var data = _data!;
-            if (data.BorrowMesh is { } mesh)
+            if (_publication is { } mesh)
                 PublishedMesh = _scene.PublishUploadedMesh(mesh, _vertices!, _normals!, _indices!, _albedo, _normal, _roughness,
-                    data.BorrowMaps?.AlphaCutoff ?? 0, data.GroundMaterial, _groundAlbedo, _groundParams, _owned, _meshOrder);
+                    _groundAlbedo, _groundParams, _owned, _meshOrder);
             if (_clip is not null) _scene.PublishWaterDomain(PublishedMesh, _clip);
             if (PreparedFoliage is { } prepared) PublishedFoliage = _scene.PublishPreparedFoliage(prepared, _foliage, _anchor!, _owned);
             handle = _scene.PublishResource(this);
             _reservation.Published(handle);
-            ReleaseInputs();
-            _owned.Capacity = _owned.Count;
-            _reservation.InputsReleased(SceneResourceCpuInventory.Measure(_owned, PublishedMesh.Generation > 0, PreparedFoliage));
             _published = true;
             return handle;
         }

@@ -1641,6 +1641,10 @@ upload counts. `CandidateInstances` includes instances the shader rejects, rathe
 `Scene3D.MeasureResourceUpload(SceneUploadData)` measures aligned vertex, outline-normal and index buffers,
 full RGBA8 mip chains, water-domain bytes, expanded 96-byte foliage instances, anchor uniforms and preparation
 and staging peaks. Measurement allocates the returned demand token, with no payload copies or GPU factories.
+`SceneUploadDemand.RetainedCpuBytes` is a before-work upper bound for the independent survivor inventory.
+`MeasureResourceUploadCapacity(description)` returns CPU and GPU capacity only. It can price unresolved foliage
+mesh parts by their declared count, while the claimable `MeasureResourceUpload` path requires live mesh handles.
+Capacity values cannot be used as upload claim tokens.
 Detached inputs compute their digest when constructed. `PrepareResourceUpload(data, reservation)` verifies
 that digest and the complete demand, then calls `ISceneUploadReservation.Claim` before preparing or allocating.
 `Advance(bytes)` copies at most that allowance through bounded buffers and texture rows/mips. A budget smaller
@@ -1648,10 +1652,10 @@ than the next aligned element makes no progress. Native mip staging samples sour
 `Ready` includes completion of the final GPU fence. Observing completion disposes the transfer-only fence and
 command list, then calls `ISceneUploadReservation.TransferCompleted` to return GPU staging credit. Devices
 without completion fences use the existing idle wait. Publication refuses until ready and succeeds once.
-After publication releases detached inputs and all transfer-row backing storage, `InputsReleased` settles CPU
+Completion releases detached inputs and all transfer-row backing storage before publication. `InputsReleased` settles CPU
 to an independent inventory of surviving owner metadata, GPU wrappers, foliage arrays and both retained temporal
-uniform snapshots. The ownership list
-is compacted before returning credit. Preparation inputs, welding, mip workspace and CPU transfer staging do
+uniform snapshots. Compact value metadata preserves mesh bounds and material settings for publication. The ownership list
+is sized for surviving objects and future publication bindings before returning credit. Preparation inputs, welding, mip workspace and CPU transfer staging do
 not remain in that inventory. The original complete peak is still reserved before any preparation or factory.
 
 `SceneResourceAccess(scene)` resolves published mesh handles through `MeshOf` and submits rigid descriptors

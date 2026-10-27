@@ -27,7 +27,14 @@ public sealed partial class Scene3D
         ArgumentNullException.ThrowIfNull(data);
         return MeasureResourceUpload(data, SceneUploadFingerprint.Compute(data));
     }
-    SceneUploadDemand MeasureResourceUpload(SceneUploadDescription data, string digest)
+    /// <summary>Price unresolved foliage by declared part counts. This capacity has no claim token and never
+    /// relaxes live-handle validation on the preparation path.</summary>
+    public SceneUploadCapacity MeasureResourceUploadCapacity(SceneUploadDescription data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        return MeasureResourceUpload(data, string.Empty, requireLiveParts: false).Capacity;
+    }
+    SceneUploadDemand MeasureResourceUpload(SceneUploadDescription data, string digest, bool requireLiveParts = true)
     {
         ObjectDisposedException.ThrowIf(_sceneResourcesDisposed, this);
         bool mesh = data.Mesh is not null, foliage = data.Foliage is not null;
@@ -91,6 +98,7 @@ public sealed partial class Scene3D
                 Buffer(TileGroundMaterialConfig.ParamsBytes);
             }
         }
+        long expanded = 0;
         if (data.Foliage is { } source)
         {
             if (!Enum.IsDefined(source.TransformSpace) || source.Transforms.Length != source.Ranks.Length || source.ModelIndices.Length != source.Ranks.Length)
@@ -100,14 +108,13 @@ public sealed partial class Scene3D
             for (int a = 0; a < source.Models.Count; a++)
                 for (int b = a + 1; b < source.Models.Count; b++)
                     if (source.Models[a].ModelId == source.Models[b].ModelId) throw new ArgumentException("Duplicate foliage model.", nameof(data));
-            long expanded = 0;
             for (int model = 0; model < source.Models.Count; model++)
             {
                 var parts = source.Models[model].Parts;
                 // Detached model references and constructor validation metadata coexist with prepared streams.
                 cpu = checked(cpu + 256L + parts.Count * 16L);
                 for (int part = 0; part < parts.Count; part++)
-                    if (FoliageBounds(parts[part]) is null) throw new ArgumentException("Foliage requires live scene mesh parts.", nameof(data));
+                    if (requireLiveParts && FoliageBounds(parts[part]) is null) throw new ArgumentException("Foliage requires live scene mesh parts.", nameof(data));
             }
             var indices = source.ModelIndices.Span;
             for (int row = 0; row < indices.Length; row++)
@@ -120,7 +127,7 @@ public sealed partial class Scene3D
             Buffer(256); // Per-resource anchor uniform, independent of the legacy foliage block.
             cpu = checked(cpu + expanded * 1024 + source.Transforms.Length * 144L);
         }
-        return new(digest, gpu, staging, cpu, gpu, transfer);
+        return new(digest, gpu, staging, cpu, gpu, transfer, SceneResourceCpuInventory.UpperBound(data, expanded));
     }
 
     internal static long Align(long bytes, int alignment) => checked((bytes + alignment - 1) / alignment * alignment);

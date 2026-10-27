@@ -8,7 +8,15 @@ public readonly record struct SceneResourceHandle(long Value);
 /// <summary>Complete before-work envelope. GPU payload survives publication, staging is transient, and CPU
 /// partitions at input release using an independent inventory of the surviving objects.</summary>
 public sealed record SceneUploadDemand(string InputDigest, long OwnedGpuBytes, long PeakStagingGpuBytes,
-    long PeakCpuBytes, long MaxRetiredGpuBytes, long TransferBytes);
+    long PeakCpuBytes, long MaxRetiredGpuBytes, long TransferBytes, long? RetainedCpuBytes = null)
+{
+    /// <summary>Before-work capacity. Omitted retained bounds conservatively retain the complete CPU peak.</summary>
+    public SceneUploadCapacity Capacity => new(OwnedGpuBytes, PeakStagingGpuBytes, PeakCpuBytes, RetainedCpuBytes ?? PeakCpuBytes);
+}
+
+/// <summary>Capacity only, without a claim token or permission to resolve unpublished mesh handles.</summary>
+public readonly record struct SceneUploadCapacity(long OwnedGpuBytes, long PeakStagingGpuBytes,
+    long PeakCpuBytes, long RetainedCpuBytes);
 
 /// <summary>Claim precedes every allocation factory. Transient credit settles only after its ownership ends.
 /// Retirement holds the retained remainder until Released confirms destruction.</summary>

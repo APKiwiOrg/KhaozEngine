@@ -23,12 +23,13 @@ public sealed class NativeUploadSettlementTests
         using var upload = probe.Upload;
         upload.Advance(long.MaxValue);
         device.SubmittedFences[^1].AsManual().Signal();
-        var handle = upload.Publish();
+        Assert.True(upload.Ready);
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
         Assert.All(probe.Arrays, reference => Assert.False(reference.IsAlive));
         Assert.Equal(RetainedCpu(2), probe.Admission.CpuBytes);
+        var handle = upload.Publish();
         host.Scene.ReleaseResource(handle); upload.Dispose(); host.Scene.Begin();
         Assert.Equal(RetainedCpu(2), probe.Admission.CpuBytes);
         foreach (var fence in device.SubmittedFences) fence.AsManual().Signal();
@@ -59,7 +60,7 @@ public sealed class NativeUploadSettlementTests
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(2)]
-    public void Publication_ChargesOnlyTheIndependentSurvivorInventory(int kind)
+    public void Completion_ChargesOnlyTheIndependentSurvivorInventory(int kind)
     {
         using var host = new NativeUploadTestScene();
         var data = Data(host.Scene, kind);
@@ -68,9 +69,10 @@ public sealed class NativeUploadSettlementTests
         using var reservation = admission.TryReserve(demand)!;
         using var upload = host.Scene.PrepareResourceUpload(data, reservation);
         Assert.Equal(demand.PeakCpuBytes, admission.CpuBytes);
+        Assert.Equal(RetainedCpu(kind), demand.RetainedCpuBytes);
         upload.Advance(long.MaxValue);
         Assert.True(upload.Ready);
-        Assert.Equal(demand.PeakCpuBytes, admission.CpuBytes);
+        Assert.Equal(RetainedCpu(kind), admission.CpuBytes);
         var handle = upload.Publish();
         Assert.Equal(RetainedCpu(kind), admission.CpuBytes);
         Assert.Null(typeof(SceneResourceUpload).GetField("_data", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(upload));
@@ -107,7 +109,7 @@ public sealed class NativeUploadSettlementTests
         Assert.Equal(demand.OwnedGpuBytes, admission.GpuBytes);
         Assert.True(device.SubmittedFences[^1].AsManual().Disposed);
         Assert.True(upload.Ready);
-        Assert.Equal(demand.PeakCpuBytes, admission.CpuBytes);
+        Assert.Equal(RetainedCpu(kind), admission.CpuBytes);
     }
 
     [Theory]

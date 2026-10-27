@@ -38,6 +38,8 @@ maximumDrawableCount back once and requires 3. An offscreen-only device reports 
 `not-applicable`, which cannot establish a windowed treatment capture. No per-frame reads or timing
 sites are added. Startup failure preserves the original exception and releases constructed children
 before the existing outer owners release their layer, timeline, queue and device references.
+Swapchain attachment and startup readback each own a lexical autorelease scope, including exceptional
+exits from the initialization callback. These scopes run only during device creation.
 
 ## Collection and treatment audit
 

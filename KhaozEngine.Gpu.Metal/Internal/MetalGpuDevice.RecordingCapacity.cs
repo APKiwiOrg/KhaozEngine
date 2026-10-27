@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Runtime.Versioning;
 using System.Text.Json;
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal;
 
@@ -12,6 +13,8 @@ internal sealed partial class MetalGpuDevice
     [SupportedOSPlatform("macos")]
     void ReportRecordingCapacity(MetalRecordingCapacityPolicy policy, MetalSwapchainHost? host)
     {
+        using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
         int? actualDrawables = host?.Layer.MaximumDrawableCount();
         int retireCap = GpuRetireQueue.SealedBatchCapFor(this);
         policy.ValidateActual(_rings.FramesInFlight, actualDrawables, retireCap);

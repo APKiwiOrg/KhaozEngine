@@ -2,22 +2,30 @@ using System;
 using KhaozEngine.Tests.Gpu.RendererPerf;
 using KhaozEngine.Gpu;
 
-if (args.Length != 2)
+bool publish = args.Length == 3 && args[0] == "publish" && args[1] == "--request";
+if (!publish && args.Length != 2)
 {
-    Console.Error.WriteLine("Expected exactly two arguments, evidence directory and report filename.");
+    Console.Error.WriteLine("Expected evidence directory and report filename, or publish --request and request filename.");
     return 2;
 }
 try
 {
     RequireNoProviders();
-    _ = RendererPerfArtifactVerification.Verify(args[0], args[1]);
+    if (publish)
+    {
+        _ = RendererPerfBaselinePublisher.PublishFile(args[2]);
+    }
+    else _ = RendererPerfArtifactVerification.Verify(args[0], args[1]);
     RequireNoProviders();
-    Console.WriteLine("Verified renderer artifacts with no GPU providers registered.");
+    Console.WriteLine(publish ? "Published immutable baseline files with no GPU providers registered."
+        : "Verified renderer artifacts with no GPU providers registered.");
     return 0;
 }
 catch (Exception error)
 {
-    string cause = error.GetType().Name + ": " + error.Message;
+    string cause = (error is RendererPerfBaselineException baseline ? baseline.Code : error.GetType().Name) + ": " + error.Message;
+    if (error is RendererPerfBaselineException && error.InnerException is { } inner)
+        cause += ". " + inner.GetType().Name + ": " + inner.Message;
     Console.Error.WriteLine("Renderer evidence refused. " + cause[..Math.Min(cause.Length, 512)]);
     return 1;
 }

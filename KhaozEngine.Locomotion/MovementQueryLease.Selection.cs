@@ -4,7 +4,20 @@ namespace KhaozEngine.Locomotion;
 
 public sealed partial class MovementQueryLease
 {
+    internal bool RequiresSelectionReconstruction
+    {
+        get
+        {
+            AssertUsable();
+            return !_selectionReady && Witness.Scope.CurrentSpace is null;
+        }
+    }
+
     /// <summary>Reconstructs canonical selection under a null-hint certificate without upgrading that certificate.</summary>
+    /// <remarks>Call before direct selected-space queries on a fresh null-hint lease. A movement tick does this
+    /// automatically when selection is missing or its null-hint lease is unready, even with a carried selection.
+    /// Success enables queries only for this live lease. Refusal or exception clears readiness, including after
+    /// earlier success. Known-hint certificates cannot reconstruct selection.</remarks>
     public MovementAvailability RebuildSelection(in FramedMovementState state, out MovementSelection selection)
     {
         selection = default;

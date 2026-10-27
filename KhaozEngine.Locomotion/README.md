@@ -53,6 +53,15 @@ The served query domain includes exterior footprint, signal look-ahead and verti
 independently of commands or replay length.
 `CreateOrdinaryScope(frame)` returns the same cold scope for that frame. Capture the ordinary boundary
 before acquisition, acquire with `TryAcquire`, then use the binding's tick, placement or continuation doors.
+Fresh per-tick acquisition is supported. Pass the previous accepted `FramedMovementState` unchanged to
+`Step` or `StepTowards` on the new lease. Tick entry validates its frame and carried selection, then
+reconstructs canonical selection if the null-hint lease is unready and uses that returned selection.
+Carried selections from another world return `EnvironmentInvalid` before reconstruction or producer queries.
+Real reconstruction failures still refuse the tick. Already-ready held leases and known-hint leases
+keep their selected-state path without another reconstruction.
+Direct selected-space queries still require a successful `RebuildSelection` on each fresh null-hint lease,
+or the automatic reconstruction performed by a successful tick. Explicit reconstruction and null-selection
+tick input remain supported. Holding a lease across ticks excludes physical writes until disposal.
 Ground residency holes return Unresolved when a query needs them. Support enumeration always refuses.
 
 `IMovementWaterField` supplies point and complete capsule-path water evidence for a body in physics-local
@@ -645,7 +654,8 @@ return `MovementStepResult`. Publish its pure framed state before disposing the 
 world commands share the existing direction and facing rules and one internal leased entry.
 `Advanced` and `Blocked` are distinct from unresolved/invalid environment, placement refusal and
 frame mismatch. A refusal holds the recorded pose/frame, clears per-tick effects and consumes the
-jump buffer. Cold state rebuilds canonical selection through the existing null-hint witness.
+jump buffer. Tick entry reconstructs missing selection, or a valid carried selection on an unready
+null-hint lease, through the same immutable witness before querying movement.
 
 Land support stays geometric. The published body uses one vertical 0.001 m placement offset,
 proved before shell and full-body medium queries. The tuning's selected `FootRadiusFraction` follows

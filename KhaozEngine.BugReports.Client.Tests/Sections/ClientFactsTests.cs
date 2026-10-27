@@ -132,7 +132,8 @@ public sealed class ClientFactsTests
     public void Capabilities_are_every_bool_int_and_string_property_by_name()
     {
         var capabilities = new GpuCapabilities(clipSpaceYInverted: true, depthRangeZeroToOne: true, deviceName: "Apple M3",
-            maxMsaaSampleCount: 4, supportsCompute: true) { MaxFragmentStorageBuffers = 7 };
+            maxMsaaSampleCount: 4, supportsCompute: true)
+        { MaxFragmentStorageBuffers = 7 };
 
         IReadOnlyDictionary<string, string> described = ClientFacts.DescribeCapabilities(capabilities);
 

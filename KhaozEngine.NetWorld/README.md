@@ -810,6 +810,16 @@ one served state before the next simulation step clears them. Timeout, deep-wate
 at its first stride abort the sequence without a landing event. A second server begin supersedes the first.
 Disconnect emits an ended result and strips the state before persistence.
 
+## Authoritative movement invocation measurement
+
+`SupportQueryCapture` records `PlayerLegacySteps` or `PlayerContactSteps` once at each eligible entity's
+Step selection in `PlayerMovementSystem`. Idle commands and rejected selected Steps count. Ghosts,
+migrating entities and entities missing required components do not count. This system has no outer Hold
+entry point. Its nested `HoldExplicit` held-result fallback adds no invocation, and direct
+`PlayerMoveSimulator` consumers such as client prediction and replay are outside this population.
+NPC Hold and Step counters remain separate. See the
+[Physics measurement contract](../KhaozEngine.Physics/README.md#support-query-measurement).
+
 ## Movement holds (since 20.27.3)
 
 Both `WorldServer` and `ShardedWorldServer` can hold a seat's movement input, for a death screen, a cutscene or

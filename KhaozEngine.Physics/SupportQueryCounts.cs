@@ -44,7 +44,13 @@ internal readonly record struct SupportQueryCounts(
     long FootprintReuseStores,
     long FootprintReuseBudgetSkips,
     long EdgeSteps,
-    long InitialHoldReuseHits)
+    long InitialHoldReuseHits,
+    long NpcLegacyHolds,
+    long NpcContactHolds,
+    long NpcLegacySteps,
+    long NpcContactSteps,
+    long PlayerLegacySteps,
+    long PlayerContactSteps)
 {
     internal long this[SupportQueryCounter counter] => counter switch
     {
@@ -90,6 +96,12 @@ internal readonly record struct SupportQueryCounts(
         SupportQueryCounter.FootprintReuseBudgetSkips => FootprintReuseBudgetSkips,
         SupportQueryCounter.EdgeSteps => EdgeSteps,
         SupportQueryCounter.InitialHoldReuseHits => InitialHoldReuseHits,
+        SupportQueryCounter.NpcLegacyHolds => NpcLegacyHolds,
+        SupportQueryCounter.NpcContactHolds => NpcContactHolds,
+        SupportQueryCounter.NpcLegacySteps => NpcLegacySteps,
+        SupportQueryCounter.NpcContactSteps => NpcContactSteps,
+        SupportQueryCounter.PlayerLegacySteps => PlayerLegacySteps,
+        SupportQueryCounter.PlayerContactSteps => PlayerContactSteps,
         _ => throw new ArgumentOutOfRangeException(nameof(counter)),
     };
 
@@ -135,7 +147,13 @@ internal readonly record struct SupportQueryCounts(
         checked(a.FootprintReuseStores + b.FootprintReuseStores),
         checked(a.FootprintReuseBudgetSkips + b.FootprintReuseBudgetSkips),
         checked(a.EdgeSteps + b.EdgeSteps),
-        checked(a.InitialHoldReuseHits + b.InitialHoldReuseHits));
+        checked(a.InitialHoldReuseHits + b.InitialHoldReuseHits),
+        checked(a.NpcLegacyHolds + b.NpcLegacyHolds),
+        checked(a.NpcContactHolds + b.NpcContactHolds),
+        checked(a.NpcLegacySteps + b.NpcLegacySteps),
+        checked(a.NpcContactSteps + b.NpcContactSteps),
+        checked(a.PlayerLegacySteps + b.PlayerLegacySteps),
+        checked(a.PlayerContactSteps + b.PlayerContactSteps));
 
     public static SupportQueryCounts operator -(SupportQueryCounts a, SupportQueryCounts b) => new(
         checked(a.Find - b.Find),
@@ -179,5 +197,11 @@ internal readonly record struct SupportQueryCounts(
         checked(a.FootprintReuseStores - b.FootprintReuseStores),
         checked(a.FootprintReuseBudgetSkips - b.FootprintReuseBudgetSkips),
         checked(a.EdgeSteps - b.EdgeSteps),
-        checked(a.InitialHoldReuseHits - b.InitialHoldReuseHits));
+        checked(a.InitialHoldReuseHits - b.InitialHoldReuseHits),
+        checked(a.NpcLegacyHolds - b.NpcLegacyHolds),
+        checked(a.NpcContactHolds - b.NpcContactHolds),
+        checked(a.NpcLegacySteps - b.NpcLegacySteps),
+        checked(a.NpcContactSteps - b.NpcContactSteps),
+        checked(a.PlayerLegacySteps - b.PlayerLegacySteps),
+        checked(a.PlayerContactSteps - b.PlayerContactSteps));
 }

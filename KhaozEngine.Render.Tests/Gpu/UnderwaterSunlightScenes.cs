@@ -98,27 +98,47 @@ public sealed class UnderwaterSunlightScenes : IDisposable
         if (settings.Geometry == UnderwaterSunlightGeometry.CascadeRoof)
             return new FlyCamera3D
             {
-                Position = new Vector3(0f, -2.1f, -2f), Yaw = 0f, Pitch = -0.45f, FieldOfView = 0.7f,
-                AspectRatio = 1f, NearPlane = 0.1f, FarPlane = 40f
+                Position = new Vector3(0f, -2.1f, -2f),
+                Yaw = 0f,
+                Pitch = -0.45f,
+                FieldOfView = 0.7f,
+                AspectRatio = 1f,
+                NearPlane = 0.1f,
+                FarPlane = 40f
             };
         if (settings.Geometry == UnderwaterSunlightGeometry.HorizontalReceiver)
             return new FlyCamera3D
             {
-                Position = new Vector3(0f, -1f, -4f), Yaw = 0f, Pitch = 0f, FieldOfView = 0.7f,
-                AspectRatio = 1f, NearPlane = 0.1f, FarPlane = 25f
+                Position = new Vector3(0f, -1f, -4f),
+                Yaw = 0f,
+                Pitch = 0f,
+                FieldOfView = 0.7f,
+                AspectRatio = 1f,
+                NearPlane = 0.1f,
+                FarPlane = 25f
             };
         if (settings.Orthographic)
             return new IsoCamera3D
             {
-                Target = new Vector3(0f, -1f, 1.5f), Distance = 11f, OrthoSize = 8f,
-                Azimuth = MathF.PI, Elevation = 1.55f, AspectRatio = 1f, NearPlane = 0.1f, FarPlane = 25f
+                Target = new Vector3(0f, -1f, 1.5f),
+                Distance = 11f,
+                OrthoSize = 8f,
+                Azimuth = MathF.PI,
+                Elevation = 1.55f,
+                AspectRatio = 1f,
+                NearPlane = 0.1f,
+                FarPlane = 25f
             };
         return new FlyCamera3D
         {
             Position = settings.Geometry == UnderwaterSunlightGeometry.Cave
                 ? new Vector3(0f, -2.1f, 0f) : new Vector3(0f, 10f, 1.5f),
-            Yaw = MathF.PI, Pitch = -MathF.PI / 2f, FieldOfView = 0.7f,
-            AspectRatio = 1f, NearPlane = 0.1f, FarPlane = 25f
+            Yaw = MathF.PI,
+            Pitch = -MathF.PI / 2f,
+            FieldOfView = 0.7f,
+            AspectRatio = 1f,
+            NearPlane = 0.1f,
+            FarPlane = 25f
         };
     }
 
@@ -162,9 +182,15 @@ public sealed class UnderwaterSunlightScenes : IDisposable
             UnderwaterSunlight = settings.Enabled,
             UnderwaterPenumbraPerMetre = settings.PenumbraPerMetre,
             AbsorptionPerMetre = settings.Absorption ? new Color(0.6f, 0.3f, 0.15f, 0f) : Color.Transparent,
-            Opacity = 0f, GlintStrength = 0f, FoamStrength = 0f,
-            SwellAmplitude = 0f, SwellSteepness = 0f, NormalStrength = 0f,
-            SurfStrength = 0f, ShoalingStrength = 0f, GridMode = WaterGridMode.Clipmap
+            Opacity = 0f,
+            GlintStrength = 0f,
+            FoamStrength = 0f,
+            SwellAmplitude = 0f,
+            SwellSteepness = 0f,
+            NormalStrength = 0f,
+            SurfStrength = 0f,
+            ShoalingStrength = 0f,
+            GridMode = WaterGridMode.Clipmap
         };
     }
 

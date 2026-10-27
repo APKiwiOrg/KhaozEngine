@@ -67,7 +67,8 @@ public sealed class WaterVolumeClusterBuilderTests
         var random = new Random(300);
         var records = new WaterVolumeRecord[301];
         records[0] = Box(new Vector3(-50000f, -100f, -50000f), new Vector3(50000f, 2f, 50000f))
-            with { FloorY = float.MinValue };
+            with
+        { FloorY = float.MinValue };
         for (int i = 1; i < records.Length; i++)
         {
             float depth = Between(random, 5f, 170f);
@@ -112,7 +113,8 @@ public sealed class WaterVolumeClusterBuilderTests
         Assert.True(grid.TryPrepare(viewProjection, Vector3.Zero, forward, projection, Vector3.Zero));
         var records = new WaterVolumeRecord[301];
         records[0] = Box(new Vector3(-50000f, -100f, -50000f), new Vector3(50000f, 2f, 50000f))
-            with { FloorY = float.MinValue };
+            with
+        { FloorY = float.MinValue };
         for (int i = 0; i < 300; i++)
         {
             float x = (i % 30 - 14.5f) * 0.2f;

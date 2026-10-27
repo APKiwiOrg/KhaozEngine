@@ -22,10 +22,11 @@ public class SupportQueryCaptureTests
             "AnalyticSamples Bindings PhysicsLeases MovementLeases ProducerPins GroundSubsteps MediumRetries ModeSegments " +
             "WorldFormBuilds PolygonOperands PrefilterRejects TopologyJoins TangentSamples JoinsSkipped MeshTriangleCaptures " +
             "FindMemoHits AdmissionCertificates StairStratum RectangleContact SharedMemberFacts FootprintReuseHits " +
-            "FootprintReuseMisses FootprintReuseStores FootprintReuseBudgetSkips EdgeSteps InitialHoldReuseHits").Split(' ');
+            "FootprintReuseMisses FootprintReuseStores FootprintReuseBudgetSkips EdgeSteps InitialHoldReuseHits " +
+            "NpcLegacyHolds NpcContactHolds NpcLegacySteps NpcContactSteps PlayerLegacySteps PlayerContactSteps").Split(' ');
         Assert.Equal(names, Enum.GetNames<SupportQueryCounter>());
         using var capture = SupportQueryCapture.Begin("all");
-        long[] counts = Enumerable.Range(0, 42).Select(i => (long)int.MaxValue + i + 1).ToArray();
+        long[] counts = Enumerable.Range(0, 48).Select(i => (long)int.MaxValue + i + 1).ToArray();
         SupportQueryDiagnostics.Exchange(State() with { Counts = counts, Routes = new(11, 12, 13, 14, 15, 16, 17, 18, 19, 20) });
         var measured = capture.Snapshot();
         var routes = measured.Total.Routes;
@@ -69,7 +70,7 @@ public class SupportQueryCaptureTests
     [InlineData(true)]
     public void CaptureRestoresEveryPriorValueWhenMeasuredWorkThrows(bool enabled)
     {
-        long[] counts = Enumerable.Range(1, 42).Select(i => (long)i).ToArray();
+        long[] counts = Enumerable.Range(1, 48).Select(i => (long)i).ToArray();
         long[] original = (long[])counts.Clone();
         Action begin = () => { }, end = () => { };
         Action<SupportFindObservation> find = _ => { };

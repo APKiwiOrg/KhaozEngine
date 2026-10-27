@@ -23,7 +23,8 @@ public sealed class PreservingResolveGoldenTests(ITestOutputHelper output)
         using IGpuTexture final = Target(factory);
         using IGpuFramebuffer framebuffer = factory.CreateFramebuffer(null, msaa);
         using IGpuShaderSet red = factory.CreateShadersFromSpirv(Vertex, Red);
-        using IGpuShaderSet green = factory.CreateShadersFromSpirv(Vertex, Green);
+        // Bound green by geometry because a scissor edge under MSAA is not pixel exact on lavapipe.
+        using IGpuShaderSet green = factory.CreateShadersFromSpirv(RightHalfVertex, Green);
         using IGpuPipeline redPipeline = Pipeline(factory, framebuffer, red);
         using IGpuPipeline greenPipeline = Pipeline(factory, framebuffer, green);
         using IGpuCommandList commands = factory.CreateCommandList();
@@ -45,6 +46,15 @@ public sealed class PreservingResolveGoldenTests(ITestOutputHelper output)
 
         byte[] before = GpuReadback.ToRgba(device, early, Width, Height);
         byte[] after = GpuReadback.ToRgba(device, final, Width, Height);
+        for (int y = 0; y < Height; y++)
+            for (int x = 0; x < Width; x++)
+            {
+                int p = (y * Width + x) * 4;
+                bool left = x < Width / 2;
+                if (before[p] != (left ? 255 : 0) || before[p + 1] != 0 || before[p + 2] != 0 || before[p + 3] != 255
+                    || after[p] != (left ? 255 : 0) || after[p + 1] != (left ? 0 : 255) || after[p + 2] != 0 || after[p + 3] != 255)
+                    output.WriteLine($"Pixel ({x}, {y}): early RGBA=({before[p]}, {before[p + 1]}, {before[p + 2]}, {before[p + 3]}), final RGBA=({after[p]}, {after[p + 1]}, {after[p + 2]}, {after[p + 3]})");
+            }
         for (int y = 0; y < Height; y++)
             for (int x = 0; x < Width; x++)
             {
@@ -87,6 +97,13 @@ public sealed class PreservingResolveGoldenTests(ITestOutputHelper output)
         #version 450
         layout(location=0) out vec4 Color;
         void main() { Color = vec4(1, 0, 0, 1); }
+        """;
+    const string RightHalfVertex = """
+        #version 450
+        void main() {
+            vec2 p = vec2(float((gl_VertexIndex << 1) & 2), float(gl_VertexIndex & 2));
+            gl_Position = vec4(p.x, p.y * 2.0 - 1.0, 0.0, 1.0);
+        }
         """;
     const string Green = """
         #version 450

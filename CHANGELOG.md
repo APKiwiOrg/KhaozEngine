@@ -26,6 +26,14 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   start at the crossing (#1619).
 - Report automation connection errors before closing the affected socket, so diagnostics are recorded before
   the peer observes EOF (Closes #1628).
+- Add `TileWorldView.CameraFade`, off by default. While the camera eye is inside an eligible placed object's
+  drawn triangles, by generalized winding number or a near-plane clip radius with exit hysteresis, that object's
+  colour fades out over `FadeSeconds` and back once the eye leaves. Its shadow stays whole. Prop layers,
+  ungrouped ground props and roofs honour it, a roof the roof rule hides stays hidden, and the outline and
+  silhouette skip a faded object. `IPropClusterVisibility.ColourFade` and `ITileWorldScene.DrawColourOnlyProps`
+  are the new default members behind it.
+- Add `MeshContainment.WindingNumber` and `NearestDistanceSquared`, and `RayMath.ContainsObbY` and `ToObbLocalY`,
+  sharing the oriented-box transform `IntersectObbY` uses.
 
 ## 21.16.0
 

@@ -14,13 +14,17 @@ public sealed partial class RendererPerfConstructionTests
         var capture = new RendererPerfConstructionCapture(OneOperation()); capture.BeginOperation(0);
         var device = RendererPerfDevice.Wrap(native, Recorder(), capture);
         var elements = Enumerable.Repeat(new GpuResourceLayoutElement(new string('x', 1024), GpuResourceKind.Sampler, GpuShaderStages.Fragment), 128).ToArray();
-        for (int n = 0; n < 126; n++) device.Factory.CreateResourceLayout(new(elements)).Dispose();
+        for (int n = 0; n < 126; n++)
+        {
+            elements[0] = new(n.ToString("D3", System.Globalization.CultureInfo.InvariantCulture) + new string('x', 1021), GpuResourceKind.Sampler, GpuShaderStages.Fragment);
+            device.Factory.CreateResourceLayout(new(elements)).Dispose();
+        }
         var last = elements.Take(49).Append(new GpuResourceLayoutElement(new string('x', 639), GpuResourceKind.Sampler, GpuShaderStages.Fragment)).ToArray();
         device.Factory.CreateResourceLayout(new(last)).Dispose();
         capture.EndOperation(); var i = capture.Freeze();
         Assert.False(i.Complete); Assert.Contains("descriptor byte", i.Reason!, StringComparison.Ordinal);
         Assert.Equal(126, i.Layouts.Length); Assert.Equal(127, native.FactoryAttempts); Assert.Equal(1, i.Counts.OmittedFactoryEvents);
-        _output.WriteLine("descriptor bytes before=16725744 requested=51473 oneOver=16777217 limit=16777216 retained=126 forwarded=127 omitted=1");
+        _output.WriteLine("unique descriptor bytes limit=16777216 retained=126 forwarded=127 omitted=1");
     }
 
     [Fact]

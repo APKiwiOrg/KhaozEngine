@@ -22,7 +22,7 @@ internal static class RendererPerfCompilerCorrespondence
         RendererPerfCompilerEvidence c, ImmutableArray<string>.Builder reasons)
     {
         void Require(bool condition, string reason) { if (!condition) reasons.Add(reason); }
-        Require(i.Schema == "khaozengine.renderer-compiler-inventory/1", "Unknown compiler inventory schema.");
+        Require(i.Schema == RendererPerfCompilerJson.Schema, "Unknown compiler inventory schema.");
         Require(i.Complete && i.Reason is null && i.Counts.OmittedFactoryEvents == 0, "Construction inventory is incomplete.");
         Require(c.State == RendererPerfCollectionState.Complete && c.Reason is null && c.Errors.IsEmpty, "Compiler collection is incomplete.");
         Require(i.Operations.Length is > 0 and <= 43 && i.Operations.All(s => !string.IsNullOrWhiteSpace(s))

@@ -236,7 +236,43 @@ through the scene's completion queue. The source borrows MSAA resolve targets wi
 `Scene3D.WaterColumnLightDiagnostics` reports `WaterColumnDiagnostics(OptedInPlanes, CopyRan, CopyPath)` for the
 latest rendered frame. `OptedInPlanes` counts queued effective opt-ins, including culled planes. `CopyPath` is
 `None`, `MsaaResolve` or `SingleSampleCopy`. An empty or disabled rendered frame resets all three fields.
-`Begin` alone preserves the previous rendered result.
+`Begin` and preparation alone preserve the previous rendered result.
+
+## Water column composite
+
+Enabled columns append fragment bindings `15=ColumnSceneColor` and `16=ColumnColorSampler`, with a point-clamp
+sampler and an initialized placeholder when off. Every water set carries both bindings. Source texture identity
+and source generation independently invalidate prepared sets, including bound optical beds.
+
+The first landing reads the copy at the original pixel with mip-zero `texelFetch`. It unprojects two depths
+through `InvViewProj` to recover the incident direction for perspective and orthographic cameras, then refracts
+through the upward surface normal with the shared index `1.333`. Vertical `opticalBedDepth` gives the path
+`d = h / mu`, where `mu` is the downward refracted view cosine. The virtual endpoint is `S + v*d`.
+Invalid homogeneous coordinates are rejected before division. Missing depth uses a finite far reconstruction,
+with its path capped at `8 * Clarity / max(mu, 0.0001)` as an asymptotic numerical limit, retaining the copied colour.
+Valid optical beds retain their exact depth-derived path.
+The colour and scene-depth lookups stay unoffset. Bent image lookup and foreground rejection are deferred.
+
+Four samples share scalar-mean equal-integral strata while each RGB stratum integrates its own exponential
+weight exactly. Light depths use `h(s) = max(0, stillSurfaceY - S.y + mu*s)`, split exactly where a crest crosses
+the still-water plane. The CDF uses those same two segments. Entries have `E.y = max(X.y, stillSurfaceY)`,
+so an above-plane crest sample is its own entry. Small exponential integrals use a quadratic series.
+Sun single scattering and analytic, unshadowed sky single scattering use `sigma_s / 4` in engine light units.
+The H-function estimate adds only multiple scattering, scaled by the four entries' mean visibility.
+Its finite-depth extension for each source is
+`exp(-sigma_t*h(0)/mu0) * (1-exp(-sigma_t*(d+(h(d)-h(0))/mu0)))`, with `mu0=1` for sky.
+This displaced-surface extension and the effective zenith sky source are approximations.
+Sun below the horizon contributes no sun scattering or glint. Ambient scattering remains.
+
+Interleaved gradient noise uses the latched `FrameView.FrameIndex % 64` only on the render that runs temporal
+anti-aliasing's resolve. Other renders use phase zero. The temporal reactive policy is unchanged.
+
+The copy already includes atmosphere fog and underwater sunlight's light-path extinction. With foam coverage
+`q = foam * clamp(FoamColor.a, 0, 1)`, the copied share is `W = (1-q)*(1-fresnel)*exp(-sigma_t*d)`.
+Water's own radiance includes in-scatter, reflection, shadowed glint and lit foam after Fresnel and coverage.
+The inside colour is `copiedBed*W + ownRadiance*fogT + fogColor*(1-fogT)*(1-W)`, mixed toward the copy by
+shore fade and written with alpha 1. The completed colour never passes through atmosphere fog again.
+Disabled columns retain the legacy body, opacity, alpha blend and fog arithmetic.
 
 ## Underwater lit receivers
 

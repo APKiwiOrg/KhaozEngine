@@ -909,7 +909,15 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `Opacity`, while shore fade and foam retain their settings. These fields resolve and validate at admission
   and supply underwater sunlight's extinction. Enabled planes also shadow glint and the sun-lit foam term
   through the scene's cascades, leaving foam's ambient term unshadowed. Disabled planes keep the original
-  surface shading. Water surface column scattering is not connected yet.
+  surface shading. Enabled columns apply view-path extinction, four shadowed sun samples, analytic unshadowed
+  ambient single scattering and an H-function multiple-scattering estimate that dims with mean sun visibility.
+  The refracted view path works with perspective and orthographic cameras. It uses the original pixel's pre-water
+  colour, with no bent image lookup. The copy includes everything before water, so farther water seen through
+  another column surface is omitted. Wholly submerged casters shadow the bed but not the column.
+  Foam coverage includes `FoamColor.a`. Shore fade mixes toward the copy, and enabled output has alpha 1.
+  Fog applies to water's own radiance without fogging the copied bed twice. Temporal sample noise advances only
+  on the render that resolves temporal anti-aliasing. See [the pipeline](../docs/RENDER-PIPELINE.md#water-column-composite)
+  for the displaced-surface integral, finite-depth approximation and shadow budget.
 
   On top of that the ripple normal field is a generated SLOPE SPECTRUM (14.26.0): `RippleComponents` cosines with
   golden-angle headings (no two parallel, no dominant ribbon direction) laddering by `RippleLacunarity` over about
@@ -921,7 +929,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   the swell's shading contrast fades on the same measure. `DetailFadeDistance`/`DistantDetailScale` remain as an
   artistic extra layered on top. Plus the
   depth-driven shore fade (`ShoreFadeDistance`) and `Opacity`.
-  **No view-ray refraction, no screen-space reflections, no caustics, no submerged view** (all out of scope) - a stylized
+  **No bent image lookup, no screen-space reflections, no caustics, no submerged view** (all out of scope) - a stylized
   LDR surface. Drawn after the sky + ground decals, before the MRT resolve, one draw per plane, with depth test ON
   (`Less`, so geometry above the surface occludes it) but depth WRITE OFF (so the resolved normal/linear-depth the
   outline pass reads is untouched - matching the ground-decal/beam/textured-billboard depth-interleave convention).

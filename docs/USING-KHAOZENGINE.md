@@ -5808,7 +5808,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   ripple normal on top, a camera-distance detail fade, per-channel Beer-Lambert depth grading of the body colour, a
   fresnel blend toward the reflected sky, a GGX sun glint with distance/footprint roughness widening,
   procedural whitecap and shoreline foam, and a depth-driven shore fade at the waterline.
-  **No view-ray refraction, no screen-space reflections, no caustics, no submerged view** - the reflection is the
+  **No bent image lookup, no screen-space reflections, no caustics, no submerged view** - the reflection is the
   sky only (the legacy gradient or the enabled atmosphere's sky-view LUT, with a CPU mirror through
   `AtmosphereModel`). Feed the returning camera-aware `SunCycle.Apply` horizon to `Post.Water.HorizonColor`.
   Issue #54 records probes/SSR as not planned at the current bar. This is a stylized LDR surface, not a
@@ -5888,7 +5888,16 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     resolved `WaterColor` and `Clarity`, with mean extinction `3 / Clarity`, instead of legacy absorption.
     Enabled planes also shadow glint and the sun-lit foam term through the scene's cascades, leaving foam's
     ambient term unshadowed. Disabled planes keep the original surface shading.
-    Water surface column scattering is not connected yet.
+    Enabled columns refract the view direction for perspective and orthographic cameras and apply view-path
+    extinction, four shadowed sun samples, analytic unshadowed ambient single scattering and an H-function
+    multiple-scattering estimate scaled by mean sun visibility. The bed colour is the pre-water copy at the
+    original pixel, with no bent image lookup. The copy includes everything drawn before water, so farther water
+    seen through another column surface is omitted. Wholly submerged casters shadow the bed but not the column.
+    `FoamColor.a` scales foam coverage. Shore fade mixes toward the copied bed and enabled output has alpha 1.
+    Atmosphere fog applies only to water's own terms, avoiding a second fog pass over the bed. Sample noise
+    advances with the latched frame index only on the render that resolves temporal anti-aliasing, otherwise it
+    stays screen-fixed. The [pipeline reference](RENDER-PIPELINE.md#water-column-composite) records the displaced
+    crest integral, finite-depth approximation and shadow budget.
   - **Independent optical bed** (`WaterPlane.Optics`, a `WaterOpticsBinding`, **default unbound = legacy scene
     depth**). An unbound plane grades its colour, shore foam and shore fade from the first opaque surface behind it,
     which can be a swimming creature, a bridge or a prop. A bound plane reads its own signed bed depth for those

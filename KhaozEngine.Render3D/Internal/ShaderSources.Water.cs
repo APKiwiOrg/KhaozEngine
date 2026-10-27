@@ -382,7 +382,7 @@ vec3 skyAlongDirection(vec3 dir, float sunStrength) {
     return col;
 }
 
-" + (triangle ? WaterTriangleOpticsGlsl : WaterOpticsGlsl) + @"
+" + (triangle ? WaterTriangleOpticsGlsl : WaterOpticsGlsl) + WaterColumnShaderSource.Glsl + @"
 // Mirrors WaterMath.GlintRoughnessAt exactly: widen the specular lobe wherever the surface is under-sampled, by
 // camera distance OR by the pixel's world footprint against the ripple wavelength, whichever is worse. The
 // footprint is the measure that is actually right (what aliases is a wave narrower than a pixel, and distance is
@@ -423,7 +423,7 @@ float fftFoamBreakup(float oceanFoam) {
 void main() {
     float waveScale = WaveParams.x, waveSpeed = WaveParams.y, normalStrength = WaveParams.z, time = WaveParams.w;
     float warpStrength = DetailParams.x, detailFadeDist = DetailParams.y;
-    float distantDetail = DetailParams.z, shallowDepth = DetailParams.w;
+    float distantDetail = DetailParams.z;
 
     // Screen-space footprint of this pixel on the surface, taken at the TOP of main so the derivative is in
     // uniform control flow on every backend (a derivative inside a per-fragment branch is undefined).
@@ -485,9 +485,16 @@ void main() {
 " + (triangle ? WaterTriangleDepthBindingGuardGlsl : "") + @"
     vec4 ndc = vec4(gl_FragCoord.x / float(sz.x) * 2.0 - 1.0, 1.0 - gl_FragCoord.y / float(sz.y) * 2.0, groundDepth, 1.0);
     vec4 wp = InvViewProj * ndc;
-    vec3 groundWorld = wp.xyz / wp.w;
+    vec3 groundWorld;
+    if (ColumnExtinction.w > 0.5) groundWorld = waterColumnGround(ndc.xy, groundDepth, vWorldPos);
+    else groundWorld = wp.xyz / wp.w;
     float depthBelowSurface = vWorldPos.y - groundWorld.y;
     float bedDepth = opticalBedDepth(vWorldPos, depthBelowSurface);
+    float columnDepth = bedDepth;
+    if (ColumnExtinction.w > 0.5) {
+        V = -waterColumnIncident(ndc.xy);
+        columnDepth = waterColumnDepth(groundDepth, bedDepth);
+    }
 
     vec3 N;
     float lostSlopeVariance;
@@ -565,9 +572,11 @@ void main() {
     // down the line between two colours - that curve is what keeps the midtones clean. An all-zero coefficient
     // falls back to the legacy two-stop smoothstep over ShallowDepth (mirrors WaterMath.ShallowWeight/ShallowTint).
     // Applied BEFORE the fresnel blend so a grazing view of the shallows still picks up the sky on top.
+    vec3 body = vec3(0.0);
+    float bodyAlpha = 0.0;
+    if (ColumnExtinction.w <= 0.5) {
+    float shallowDepth = DetailParams.w;
     vec3 absorb = Absorption.rgb;
-    vec3 body;
-    float bodyAlpha;
     if (absorb.r + absorb.g + absorb.b > 0.0) {
         vec3 tr = exp(-absorb * max(bedDepth, 0.0));
         body = DeepColor.rgb + (ShallowColor.rgb - DeepColor.rgb) * tr;
@@ -577,6 +586,7 @@ void main() {
             : 1.0 - smoothstep(0.0, 1.0, clamp(bedDepth / shallowDepth, 0.0, 1.0));
         body = mix(DeepColor.rgb, ShallowColor.rgb, shallowW);
         bodyAlpha = mix(DeepColor.a, ShallowColor.a, shallowW);
+    }
     }
 
     vec3 Lsun = -normalize(LightDir.xyz);   // mirrors SkyMath.SunDirectionFromLight
@@ -595,8 +605,12 @@ void main() {
     // Schlick-style fresnel: (1-ndotv)^5, mirrors WaterMath.Fresnel.
     float fx = clamp(1.0 - ndotv, 0.0, 1.0);
     float fresnel = fx * fx * fx * fx * fx;
-    vec3 tint = mix(body, reflectColor, fresnel);
-    float tintAlpha = mix(bodyAlpha, HorizonColor.a, fresnel);
+    vec3 tint = vec3(0.0);
+    float tintAlpha = 0.0;
+    if (ColumnExtinction.w <= 0.5) {
+        tint = mix(body, reflectColor, fresnel);
+        tintAlpha = mix(bodyAlpha, HorizonColor.a, fresnel);
+    }
 
     // Key-light specular sun glint. GGX (mirrors WaterMath.GgxGlint), peak-normalized so GlintStrength means the
     // same brightness as the legacy lobe, with the roughness widened wherever the surface is under-sampled. A
@@ -638,12 +652,6 @@ void main() {
                 glint = pow(ndoth, max(glintExponent, 1.0)) * glintStrength;
             }
         }
-    }
-
-    float surfaceVisibility = 1.0;
-    if (ColumnExtinction.w > 0.5) {
-        surfaceVisibility = waterColumnSurfaceVisibility(vWorldPos, N);
-        glint *= surfaceVisibility;
     }
 
     // Foam: whitecaps where the swell folds (mirrors WaterMath.Whitecap over the attenuated per-pixel fold) and a
@@ -688,17 +696,18 @@ void main() {
     float shoreFadeDist = ShoreGlint.x;
     float shoreFade = shoreFadeDist <= 0.0 ? 1.0 : smoothstep(0.0, 1.0, clamp(bedDepth / shoreFadeDist, 0.0, 1.0));
 
+    if (ColumnExtinction.w > 0.5) {
+        oColor = vec4(waterColumnComposite(vWorldPos, N, groundWorld, columnDepth, reflectColor, fresnel,
+            glint, foam, shoreFade), 1.0);
+        return;
+    }
+
     float opacity = ShoreGlint.w;
     vec3 rgb = tint + LightColor.rgb * glint;
     float alpha = tintAlpha * opacity * shoreFade;
     // Foam paints over the surface and pushes it toward its own (near-solid) opacity, but still inside the
     // waterline feather, so the very edge does not become a hard white line.
-    if (ColumnExtinction.w > 0.5) {
-        vec3 foamLight = LitPrefix[6].rgb + LightColor.rgb * max(dot(N, Lsun), 0.0) * surfaceVisibility;
-        rgb = mix(rgb, FoamColor.rgb * foamLight, foam);
-    } else {
-        rgb = mix(rgb, FoamColor.rgb, foam);
-    }
+    rgb = mix(rgb, FoamColor.rgb, foam);
     alpha = mix(alpha, max(alpha, FoamColor.a * opacity * shoreFade), foam);
     if (alpha <= 0.001) discard;
     rgb = atmosphereFog(rgb, vWorldPos, false, SkyParams.y > 0.5);

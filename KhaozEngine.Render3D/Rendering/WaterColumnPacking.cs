@@ -6,6 +6,9 @@ namespace KhaozEngine.Render3D.Rendering;
 /// <summary>Packs the column tail without changing the legacy water fields or the per-plane slot stride.</summary>
 internal static class WaterColumnPacking
 {
+    internal static uint NoisePhase(long frameIndex, bool resolvesThisRender) =>
+        resolvesThisRender ? (uint)(frameIndex % 64) : 0u;
+
     internal static void Pack(ref WaterRenderer.WaterUbo u, WaterSettings settings, uint noisePhase = 0)
     {
         if (!settings.WaterColumnLight)

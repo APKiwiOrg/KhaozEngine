@@ -189,6 +189,8 @@ public sealed class WaterColumnCopyTests
         WaterColumnDiagnostics last = h.Scene.WaterColumnLightDiagnostics;
         h.Scene.Begin();
         Assert.Equal(last, h.Scene.WaterColumnLightDiagnostics);
+        h.Scene.PrepareFrame(96, 64);
+        Assert.Equal(last, h.Scene.WaterColumnLightDiagnostics);
         h.Render();
         WaterColumnDiagnostics emptyFrameDiagnostics = h.Scene.WaterColumnLightDiagnostics;
         Assert.Equal(default(WaterColumnDiagnostics), emptyFrameDiagnostics);

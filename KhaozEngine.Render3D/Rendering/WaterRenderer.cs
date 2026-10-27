@@ -246,7 +246,7 @@ namespace KhaozEngine.Render3D.Rendering
         public static WaterUbo PackUbo(Matrix4x4 clipViewProj, Matrix4x4 rawViewProj, Vector3 lightDirection,
             Color lightColor, Vector3 cameraPos, WaterSettings settings, SkySettings sky, float timeSeconds,
             in OceanMaps ocean, Vector3 renderOrigin = default, ShoreMaps shore = default,
-            float planeSurfaceY = 0f, bool atmosphereEnabled = false)
+            float planeSurfaceY = 0f, bool atmosphereEnabled = false, uint columnNoisePhase = 0)
         {
             Matrix4x4.Invert(rawViewProj, out var inv);
             Vector4 deep = settings.DeepColor;
@@ -339,7 +339,7 @@ namespace KhaozEngine.Render3D.Rendering
                 SkyDiscDir = discDir,
                 SkyDiscHalo = discHalo,
             };
-            WaterColumnPacking.Pack(ref u, settings);
+            WaterColumnPacking.Pack(ref u, settings, columnNoisePhase);
             return u;
         }
 
@@ -492,7 +492,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void Draw(IGpuCommandList cl, RenderResources res, ReadOnlySpan<WaterPlane> planes,
             Matrix4x4 viewProj, Matrix4x4 cullViewProj, Vector3 lightDirection, Color lightColor, Vector3 cameraPos,
             WaterSettings settings, SkySettings sky, float timeSeconds, Vector3 renderOrigin = default,
-            bool atmosphereEnabled = false)
+            bool atmosphereEnabled = false, uint columnNoisePhase = 0)
         {
             if (planes.Length == 0) return;
             LastClipmapRebuilds = 0;
@@ -562,7 +562,7 @@ namespace KhaozEngine.Render3D.Rendering
                 // lake loses them without needing a flag of its own.
                 OceanMaps planeMaps = effective.WaveSource == WaterWaveSource.FftOcean ? oceanMaps : default;
                 var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, effective, sky, timeSeconds,
-                    planeMaps, renderOrigin, shore, planes[i].SurfaceY, atmosphereEnabled);
+                    planeMaps, renderOrigin, shore, planes[i].SurfaceY, atmosphereEnabled, columnNoisePhase);
                 PackOptics(ref u, planes[i]);
                 PackSlot(i, in u);
             }

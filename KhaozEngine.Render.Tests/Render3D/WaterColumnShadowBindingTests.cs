@@ -76,7 +76,7 @@ public sealed class WaterColumnShadowBindingTests
         h.Prepare(planes);
         FakeResourceSet[] sets = h.WaterSets;
         Assert.NotEmpty(sets);
-        Assert.All(sets, set => Assert.Equal(15, set.Resources.Length));
+        Assert.All(sets, set => Assert.Equal(17, set.Resources.Length));
         var model = (ModelRenderer)typeof(Scene3D).GetField("_model", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(h.Scene)!;
         IGpuBuffer frame = model.SharedFrameUniforms;
@@ -124,7 +124,7 @@ public sealed class WaterColumnShadowBindingTests
         h.Prepare();
         FakeResourceSet[] oldSets = h.WaterSets;
         Assert.Equal(2, oldSets.Length);
-        Assert.All(oldSets, s => Assert.Equal(15, s.Resources.Length));
+        Assert.All(oldSets, s => Assert.Equal(17, s.Resources.Length));
         var atlas = (FakeTexture)oldSets[0].Resources[12];
         bool readersRetiredFirst = false;
         atlas.OnDispose = () => readersRetiredFirst = oldSets.All(s => s.Disposed);
@@ -169,7 +169,7 @@ public sealed class WaterColumnShadowBindingTests
         water.PrepareOpticsFrame(targets, frame);
         var factory = (FakeGpuResourceFactory)device.Factory;
         FakeResourceSet set = Assert.Single(factory.ResourceSets, s => s.Resources.Length >= 12);
-        Assert.Equal(15, set.Resources.Length);
+        Assert.Equal(17, set.Resources.Length);
         var atlas = Assert.IsType<FakeTexture>(set.Resources[12]);
         Assert.Equal(GpuPixelFormat.R32Float, atlas.Format);
         Assert.Equal((1u, 1u), (atlas.Width, atlas.Height));
@@ -192,7 +192,7 @@ public sealed class WaterColumnShadowBindingTests
         Assert.Contains("pcfCascade(ColumnShadowAtlas, ColumnShadowSampler", shader, StringComparison.Ordinal);
         var pair = SpirvCrossCompile.GlslPairToHlsl(ShaderSources.WaterVert, shader);
         GpuResourceLayoutElement[] elements = Assert.Single(pair.Reflection.ResourceLayouts).Elements;
-        Assert.Equal(15, elements.Length);
+        Assert.Equal(17, elements.Length);
         Assert.Equal(GpuResourceKind.TextureReadOnly, elements[12].Kind);
         Assert.Equal(GpuResourceKind.Sampler, elements[13].Kind);
         Assert.Equal(GpuResourceKind.UniformBuffer, elements[14].Kind);

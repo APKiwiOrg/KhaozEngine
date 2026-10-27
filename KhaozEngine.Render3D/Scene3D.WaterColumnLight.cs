@@ -16,7 +16,6 @@ public sealed partial class Scene3D
 
     void PrepareWaterColumnInputs()
     {
-        WaterColumnLightDiagnostics = default;
         _waterColumnOptedInPlanes = 0;
         foreach (WaterPlane plane in _waterPlanes)
         {
@@ -26,18 +25,21 @@ public sealed partial class Scene3D
             if (effective.WaterColumnLight) _waterColumnOptedInPlanes++;
         }
         (_waterColumnColor ??= new WaterColumnColorSource(_gd, _retired)).Prepare(_res, _waterColumnOptedInPlanes > 0);
+        _water.ColumnShadows.SetColor(_waterColumnColor.Texture, _waterColumnColor.Generation);
     }
 
     void DrawWaterWithColumnInputs(IGpuCommandList cl, Matrix4x4 vp, Matrix4x4 displayVp, Vector3 eye)
     {
         // After sky and ground decals, before every water draw, including legacy planes sharing the queue.
         WaterColumnCopyPath path = _waterColumnColor!.Record(cl, _res, _waterColumnOptedInPlanes > 0);
+        _water.ColumnShadows.SetColor(_waterColumnColor.Texture, _waterColumnColor.Generation);
         WaterColumnLightDiagnostics = new(_waterColumnOptedInPlanes, path != WaterColumnCopyPath.None, path);
         using (ProfilePass(cl, "water", executed: _waterPlanes.Count > 0))
             if (_waterPlanes.Count > 0)
             {
                 _water.Draw(cl, _res, RelativeWaterPlanes(), vp, displayVp,
-                    Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin, Post.Atmosphere.Enabled);
+                    Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin, Post.Atmosphere.Enabled,
+                    WaterColumnPacking.NoisePhase(_currentFrameView.FrameIndex, _resolveThisRender));
                 _frameStats.DrawCalls++;
             }
     }

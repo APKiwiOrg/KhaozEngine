@@ -191,6 +191,7 @@ public sealed partial class AudioSystem : IDisposable
         {
             EnsureOwningThread();
             _masterVolume = Math.Clamp(value, 0f, 1f);
+            RefreshLoopMix();
             ApplyVolume();
         }
     }
@@ -244,13 +245,12 @@ public sealed partial class AudioSystem : IDisposable
     }
 
     /// <summary>
-    /// SFX volume (0.0 - 1.0). Scaled by master volume. Applied per <see cref="PlaySfx(string, float, float, string)"/> (no eager apply,
-    /// since SFX are fire-and-forget one-shots).
+    /// SFX volume (0.0 - 1.0). Scaled by master volume. Sampled when one-shots start and applied live to loops.
     /// </summary>
     public float SfxVolume
     {
         get => _sfxVolume;
-        set { EnsureOwningThread(); _sfxVolume = Math.Clamp(value, 0f, 1f); }
+        set { EnsureOwningThread(); _sfxVolume = Math.Clamp(value, 0f, 1f); RefreshLoopMix(); }
     }
 
     /// <summary>Name of the track currently playing, or null when nothing is playing.</summary>
@@ -579,8 +579,10 @@ public sealed partial class AudioSystem : IDisposable
     public void Update(float dt)
     {
         EnsureOwningThread();
+        if (_disposed) return;
         // Ahead of the music early-out: SFX play through the same device when no music is registered or enabled.
         _context?.PollOutputDevice();
+        UpdateLoopMix();
         if (_backend.TrackCount == 0 || !_available || !_musicEnabled) return;
 
         try
@@ -681,12 +683,6 @@ public sealed partial class AudioSystem : IDisposable
     public bool PlaySfx3D(IReadOnlyList<string> candidateKeys, Vector3 position, float volume = 1f, float pitch = 1f, string? bus = null)
         => PlayFirstAvailable(candidateKeys, volume, pitch, positional: true, position, bus, SfxPriority.Normal);
 
-    /// <summary>
-    /// Stops every currently-playing SFX voice immediately (music is unaffected). Useful on a scene / screen
-    /// transition or pause so lingering one-shots do not bleed across the cut. A no-op when nothing is playing.
-    /// </summary>
-    public void StopAllSfx() { EnsureOwningThread(); _sfxBackend.StopAll(); }
-
     // Plays the first candidate that resolves to a loaded buffer (reusing PlaySfxInternal's gain math + guard), or
     // warns once on the joined list and returns false if none load. Null / empty list is a silent no-op (false).
     private bool PlayFirstAvailable(IReadOnlyList<string> candidateKeys, float volume, float pitch, bool positional, Vector3 position, string? bus, SfxPriority priority)
@@ -754,20 +750,6 @@ public sealed partial class AudioSystem : IDisposable
         {
             _logger.Warn("SetListener failed.", ex);
         }
-    }
-
-    /// <inheritdoc/>
-    /// <remarks>
-    /// The one member exempt from the main-thread guard described on the class: a shutdown path (a process-exit
-    /// handler, a host tearing the game down) may legitimately run on another thread, and failing a teardown
-    /// there gains nothing. It still must not race a live <see cref="Update(float)"/> or play call.
-    /// </remarks>
-    public void Dispose()
-    {
-        // Dispose order: SFX backend, music backend, then the shared context LAST (the backends borrow it).
-        _sfxBackend.Dispose();
-        _backend.Dispose();
-        _context?.Dispose();
     }
 
     private void ApplyVolume()

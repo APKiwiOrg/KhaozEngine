@@ -32,6 +32,8 @@ public sealed partial class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMa
     {
         var data = Input(resource); return _scene.MeasureResourceUpload(data);
     }
+    public SceneUploadCapacity MeasureUploadCapacity(MapPreparedResource resource) =>
+        _scene.MeasureResourceUploadCapacity(Input(resource, capacityOnly: true));
     public IMapRenderUpload BeginUpload(MapPreparedResource resource, ISceneUploadReservation reservation)
     {
         var data = UploadInput(resource);
@@ -47,7 +49,7 @@ public sealed partial class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMa
             { Transforms = foliage.Transforms.ToArray(), Ranks = foliage.Ranks.ToArray(), ModelIndices = foliage.ModelIndices.ToArray() }
         } : input;
     }
-    SceneUploadDescription Input(MapPreparedResource resource)
+    SceneUploadDescription Input(MapPreparedResource resource, bool capacityOnly = false)
     {
         switch (resource.Payload)
         {
@@ -59,7 +61,7 @@ public sealed partial class MapScene3DSink : IMapRenderDevice, IMapDrawSink, IMa
             case MapWaterResource water: return new(water.BorrowMesh, null, null, water.BorrowClipData);
             case MapFoliageResource foliage:
                 var models = foliage.Models.Select(model => new SceneFoliageModelBinding(model.ModelId,
-                    model.Parts.Select(p => _access.MeshOf(new(_references[p].Value))).ToArray(), model.Motion, model.CastShadows)).ToArray();
+                    model.Parts.Select(p => capacityOnly ? new MeshHandle(0, 1) : _access.MeshOf(new(_references[p].Value))).ToArray(), model.Motion, model.CastShadows)).ToArray();
                 var transforms = foliage.TransformSpace == MapFoliageTransformSpace.World ? foliage.BorrowWorldTransforms : foliage.BorrowAnchorLocalTransforms;
                 return new(null, null, new(new(foliage.Anchor.X, foliage.Anchor.Y, foliage.Anchor.Z), transforms,
                     foliage.BorrowRanks, foliage.BorrowModelIndices, models, foliage.TransformSpace == MapFoliageTransformSpace.World

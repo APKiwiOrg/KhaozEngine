@@ -1641,6 +1641,10 @@ upload counts. `CandidateInstances` includes instances the shader rejects, rathe
 `Scene3D.MeasureResourceUpload(SceneUploadData)` measures aligned vertex, outline-normal and index buffers,
 full RGBA8 mip chains, water-domain bytes, expanded 96-byte foliage instances, anchor uniforms and preparation
 and staging peaks. Measurement allocates the returned demand token, with no payload copies or GPU factories.
+`SceneUploadDemand.RetainedCpuBytes` is a before-work upper bound for the independent survivor inventory.
+`MeasureResourceUploadCapacity(description)` returns CPU and GPU capacity only. It can price unresolved foliage
+mesh parts by their declared count, while the claimable `MeasureResourceUpload` path requires live mesh handles.
+Capacity values cannot be used as upload claim tokens.
 Detached inputs compute their digest when constructed. `PrepareResourceUpload(data, reservation)` verifies
 that digest and the complete demand, then calls `ISceneUploadReservation.Claim` before preparing or allocating.
 `Advance(bytes)` copies at most that allowance through bounded buffers and texture rows/mips. A budget smaller

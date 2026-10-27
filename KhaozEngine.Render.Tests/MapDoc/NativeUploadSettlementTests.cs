@@ -69,6 +69,7 @@ public sealed class NativeUploadSettlementTests
         using var reservation = admission.TryReserve(demand)!;
         using var upload = host.Scene.PrepareResourceUpload(data, reservation);
         Assert.Equal(demand.PeakCpuBytes, admission.CpuBytes);
+        Assert.Equal(RetainedCpu(kind), demand.RetainedCpuBytes);
         upload.Advance(long.MaxValue);
         Assert.True(upload.Ready);
         Assert.Equal(RetainedCpu(kind), admission.CpuBytes);

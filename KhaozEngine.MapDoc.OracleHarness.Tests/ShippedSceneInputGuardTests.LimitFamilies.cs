@@ -38,13 +38,15 @@ public sealed partial class ShippedSceneInputGuardTests
     [InlineData("assets", "maxDecodedBytes", "MaxDecodedBytes", "valid")]
     [InlineData("foliage", "maxCandidates", "MaxCandidates", "foliage-valid")]
     [InlineData("foliageContext", "maxSourceUtf8Bytes", "MaxSourceUtf8Bytes", "foliage-valid")]
+    [InlineData("residency", "maxInFlightUploadCpuBytes", "MaxInFlightUploadCpuBytes", "valid")]
+    [InlineData("residency", "maxInFlightUploadStagingGpuBytes", "MaxInFlightUploadStagingGpuBytes", "valid")]
     [InlineData("water", "maxTriangles", "MaxTriangles", "water-valid")]
     public void SceneLimits_AdditionalBudgetsReachEngineCalls(string family, string field, string limit, string variant)
     {
         using var fixture = ShippedSceneGuardFixtures.Create(variant, json =>
         {
             var profile = LimitsProfile();
-            var group = Family(family); group[field] = 1; profile[family] = group;
+            var group = profile[family]?.DeepClone().AsObject() ?? Family(family); group[field] = 1; profile[family] = group;
             json["limits"] = profile;
         });
         Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment,
@@ -57,7 +59,7 @@ public sealed partial class ShippedSceneInputGuardTests
     [Fact]
     public void SceneLimits_RegisteredScalarFieldsHaveManifestCoverage()
     {
-        Assert.Equal(65, System.Linq.Enumerable.Sum(SceneLimitsProfile.Families.Values, t => SceneLimitsProfile.Fields(t).Count));
+        Assert.Equal(67, System.Linq.Enumerable.Sum(SceneLimitsProfile.Families.Values, t => SceneLimitsProfile.Fields(t).Count));
     }
 
     [Fact]

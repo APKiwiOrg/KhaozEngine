@@ -244,6 +244,23 @@ Source, closure, proof, policy and scope identities are checked before decode, u
 resource must finish its incremental upload before one atomic accepted-plan publication. Ready resources wait
 until the next update, allowing a completed unpublished generation to be superseded safely.
 
+`MaxInFlightUploadCpuBytes` defaults to 256 MiB and `MaxInFlightUploadStagingGpuBytes` to 128 MiB.
+They bound unfinished uploads across accepted, pending and retiring generations. CPU admission counts each
+unfinished resource's complete preparation peak until its inputs are released, independently of the copy budget
+`MaxUploadBytesPerUpdate`. GPU staging stays charged until device completion. Contending resources wait for a
+later update. A resource larger than either in-flight limit refuses with that limit before any upload begins.
+Zero disables uploads requiring that allowance. Defaults for the existing resident allowances are unchanged.
+
+Before the first upload, preflight checks all new resources' retained CPU bounds and owned GPU bytes, plus
+the attainable in-flight envelope and replacement recording storage, against the current resident allowances.
+This includes old accepted owners and outstanding retirements. A window that cannot fit refuses before any
+upload factory. When earlier cancellation or retirement temporarily holds credit, a replacement waits at
+preflight until destruction releases it, then rechecks the whole window before starting uploads. Scalar
+capacity totals are measured once per prepared replacement, so waiting does not repeat mesh or foliage scans. `IMapRenderDevice.MeasureUploadCapacity` supplies this capacity-only view. Custom devices
+can use its default measurement, and a demand without a retained CPU bound conservatively retains its full peak.
+The native adapter can price unresolved foliage part counts without authorizing placeholder handles for upload.
+Actual preparation still validates live scene mesh parts. Window draws, ordering and witness publication stay atomic.
+
 Resource owners are keyed by stable logical identity, verified payload and bounds. Intersecting windows borrow
 one owner, including complete canonical water cells and all placement tiers. Removing the first membership keeps
 the handle. Removing the last queues its release under the disposal allowance. HLOD keeps individual geometry

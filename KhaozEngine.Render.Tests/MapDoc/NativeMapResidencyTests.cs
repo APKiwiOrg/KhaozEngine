@@ -253,7 +253,9 @@ public sealed class NativeMapResidencyTests
         // Cancel the partially uploaded generation. Its GPU credit remains held by the device.
         f.Document.Placements[0].X = .2f;
         residency.RequestReplacement(f.State(ResidencyFixture.Window())); scheduler.RunAll(); residency.Update(); residency.Update();
-        Assert.Equal(14, device.Begins);
+        // Whole-window preflight waits before starting any of the replacement while retirement holds credit.
+        Assert.Equal(10, device.Begins);
+        Assert.Equal(MapSceneStatus.Incomplete, residency.CurrentTransition.Status);
         Assert.Equal(accepted, residency.CurrentTransition.AcceptedWitness);
         device.CompleteRetirements();
         ResidencyFixture.Complete(residency, scheduler);

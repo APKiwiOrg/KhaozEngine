@@ -9,6 +9,8 @@ public sealed class MapRenderAdmission
 {
     readonly object _gate = new();
     readonly MapRenderBudgets _budgets;
+    long _inFlightCpu, _inFlightStaging, _retiringUploads;
+    internal bool HasRetiringUploads { get { lock (_gate) return _retiringUploads != 0; } }
     internal MapRenderLifetime Lifetime { get; }
     public long CpuBytes => Lifetime.CpuBytes;
     public long GpuBytes => Lifetime.GpuBytes;
@@ -21,7 +23,8 @@ public sealed class MapRenderAdmission
     {
         ArgumentNullException.ThrowIfNull(demand);
         if (string.IsNullOrEmpty(demand.InputDigest) || demand.OwnedGpuBytes < 0 || demand.PeakStagingGpuBytes < 0 ||
-            demand.PeakCpuBytes < 0 || demand.MaxRetiredGpuBytes < 0 || demand.MaxRetiredGpuBytes > demand.OwnedGpuBytes || demand.TransferBytes < 0)
+            demand.PeakCpuBytes < 0 || demand.MaxRetiredGpuBytes < 0 || demand.MaxRetiredGpuBytes > demand.OwnedGpuBytes || demand.TransferBytes < 0 ||
+            demand.Capacity.RetainedCpuBytes < 0 || demand.Capacity.RetainedCpuBytes > demand.PeakCpuBytes)
             throw new ArgumentException("Invalid renderer upload demand.", nameof(demand));
         lock (_gate)
         {
@@ -31,8 +34,13 @@ public sealed class MapRenderAdmission
                 capacity = new(nameof(MapRenderBudgets.MaxResidentGpuBytes), (decimal)GpuBytes + demand.OwnedGpuBytes + demand.PeakStagingGpuBytes, _budgets.MaxResidentGpuBytes);
             else if (demand.PeakCpuBytes > _budgets.MaxResidentCpuBytes - CpuBytes)
                 capacity = new(nameof(MapRenderBudgets.MaxResidentCpuBytes), (decimal)CpuBytes + demand.PeakCpuBytes, _budgets.MaxResidentCpuBytes);
+            else if (demand.PeakCpuBytes > _budgets.MaxInFlightUploadCpuBytes - _inFlightCpu)
+                capacity = new(nameof(MapRenderBudgets.MaxInFlightUploadCpuBytes), (decimal)_inFlightCpu + demand.PeakCpuBytes, _budgets.MaxInFlightUploadCpuBytes);
+            else if (demand.PeakStagingGpuBytes > _budgets.MaxInFlightUploadStagingGpuBytes - _inFlightStaging)
+                capacity = new(nameof(MapRenderBudgets.MaxInFlightUploadStagingGpuBytes), (decimal)_inFlightStaging + demand.PeakStagingGpuBytes, _budgets.MaxInFlightUploadStagingGpuBytes);
             if (capacity is not null) return null;
             long gpu = demand.OwnedGpuBytes + demand.PeakStagingGpuBytes;
+            _inFlightCpu += demand.PeakCpuBytes; _inFlightStaging += demand.PeakStagingGpuBytes;
             Lifetime.Gpu(gpu); Lifetime.Cpu(demand.PeakCpuBytes);
             return new(this, demand, gpu);
         }
@@ -54,10 +62,15 @@ public sealed class MapRenderAdmission
         var lease = TryReserveCpu(bytes, out var capacity);
         return lease ?? throw new MapSceneCapacityException(capacity!.LimitName, capacity.Requested, capacity.Allowance);
     }
-    internal void ReleaseUpload(long cpu, long gpu, bool claimed)
+    internal void RetirementStarted() { lock (_gate) _retiringUploads++; }
+    internal void ReleaseUpload(long cpu, long gpu, bool claimed, long inFlightCpu = 0, long inFlightStaging = 0, bool retiring = false)
     {
         lock (_gate)
-        { Lifetime.Cpu(-cpu); Lifetime.Gpu(-gpu); if (claimed) Lifetime.Released(); }
+        {
+            _inFlightCpu -= inFlightCpu; _inFlightStaging -= inFlightStaging;
+            if (retiring) _retiringUploads--;
+            Lifetime.Cpu(-cpu); Lifetime.Gpu(-gpu); if (claimed) Lifetime.Released();
+        }
     }
     internal sealed class CpuLease : IDisposable
     {

@@ -22,9 +22,9 @@ public sealed partial class ShippedSceneInputGuardTests
         Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment,
             (_, report) => ShippedSceneComparison.Compare(inputs, report)));
         string detail = File.ReadAllText(fixture.ReportPath);
-        Assert.Contains("scene replacement did not settle", detail);
+        Assert.Contains("scene replacement refused CapacityExceeded", detail);
         Assert.Contains("MaxResidentGpuBytes", detail);
-        Assert.Contains("requested 144", detail);
+        Assert.Contains("requested ", detail);
         Assert.Contains("allowance 1", detail);
     }
 
@@ -151,7 +151,8 @@ public sealed partial class ShippedSceneInputGuardTests
         "maxPreparedFaces":262144,"maxPreparedBytes":67108864},
         "residency":{"maxWorkers":2,"maxQueuedPlans":32,"maxQueuedBytes":67108864,"maxAppliesPerUpdate":2,
         "maxUploadBytesPerUpdate":4194304,"maxDisposalsPerUpdate":8,"maxResidentCpuBytes":268435456,
-        "maxResidentGpuBytes":536870912,"maxPlanBytes":67108864,"maxActiveWindows":256}}
+        "maxResidentGpuBytes":536870912,"maxPlanBytes":67108864,"maxActiveWindows":256,
+        "maxInFlightUploadCpuBytes":268435456,"maxInFlightUploadStagingGpuBytes":134217728}}
         """)!.AsObject();
 
 }

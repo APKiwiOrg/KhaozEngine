@@ -62,7 +62,7 @@ public sealed class NativeResourceUploadAllocationTests
         var expected = host.Scene.MeasureResourceUpload(data);
         SceneUploadDemand? token = null, measured = null;
         void Token() => token = new(expected.InputDigest, expected.OwnedGpuBytes, expected.PeakStagingGpuBytes,
-            expected.PeakCpuBytes, expected.MaxRetiredGpuBytes, expected.TransferBytes);
+            expected.PeakCpuBytes, expected.MaxRetiredGpuBytes, expected.TransferBytes, expected.RetainedCpuBytes);
         void Measure() => measured = host.Scene.MeasureResourceUpload(data);
         Token(); Measure(); Token(); Measure();
 

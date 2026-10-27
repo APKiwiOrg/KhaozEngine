@@ -9,6 +9,7 @@ public readonly record struct MapRenderHandle(long Value);
 public interface IMapRenderDevice
 {
     SceneUploadDemand MeasureUpload(MapPreparedResource resource);
+    SceneUploadCapacity MeasureUploadCapacity(MapPreparedResource resource) => MeasureUpload(resource).Capacity;
     IMapRenderUpload BeginUpload(MapPreparedResource resource, ISceneUploadReservation reservation);
     void Release(MapRenderHandle handle);
 }

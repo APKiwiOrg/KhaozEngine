@@ -226,6 +226,15 @@ public sealed partial class MapRenderResidency : IDisposable
     void Advance(Pending pending)
     {
         Fence(pending);
+        if (!pending.UploadsAdmitted)
+        {
+            pending.UploadAdmission ??= MapRenderUploadPreflight.Measure(pending.Resources.Where(p => !pending.Owners.ContainsKey(p.Key)).Select(p => Device.MeasureUploadCapacity(p.Value)),
+                _budgets, pending.Batch!.Plans.Sum(p => p.Resources.Count), _recordingCapacity);
+            var capacity = pending.UploadAdmission.Validate(Lifetime, _admission.HasRetiringUploads || _cancelled.Count > 0 || _retired.Count > 0);
+            if (capacity is not null) { PendingCapacity(capacity); return; }
+            pending.UploadsAdmitted = true;
+        }
+        foreach (var upload in pending.Uploads.Values) _ = upload.Ready;
         if (pending.PublishNext)
         {
             Publish(pending); return;
@@ -254,6 +263,7 @@ public sealed partial class MapRenderResidency : IDisposable
             long written = upload.Advance(available);
             if (written < 0 || written > available) throw new InvalidOperationException("Device exceeded its incremental upload allowance.");
             available -= written; Lifetime.Uploaded(written);
+            _ = upload.Ready;
         }
         PublishDependencies(pending);
         pending.PublishNext = pending.Owners.Count + pending.Uploads.Count == pending.Resources.Count && pending.Uploads.Values.All(u => u.Ready);
@@ -461,7 +471,8 @@ public sealed partial class MapRenderResidency : IDisposable
         internal readonly Dictionary<Identity, Owner> Owners = new();
         internal readonly Dictionary<Identity, IMapRenderUpload> Uploads = new();
         internal readonly List<Owner> Created = [];
-        internal bool PublishNext;
+        internal MapRenderUploadPreflight? UploadAdmission;
+        internal bool PublishNext, UploadsAdmitted;
     }
     sealed class CompositeSink : IMapDrawSink
     {

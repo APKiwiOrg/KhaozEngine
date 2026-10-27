@@ -79,7 +79,7 @@ public sealed class NativeRoofBatchAdmissionTests
         });
         // Two native rows, one tier dictionary, three tier references/objects, six handles,
         // two thresholds, one source dictionary/copy and the request's instance references.
-        long request = 2 * 128L + 64 + 3L * IntPtr.Size + 3 * 24L + 6L * Unsafe.SizeOf<MeshHandle>() +
+        long request = 2 * (128L + Unsafe.SizeOf<PropPlacement?>()) + 64 + 3L * IntPtr.Size + 3 * 24L + 6L * Unsafe.SizeOf<MeshHandle>() +
             2 * 4 + 64 + Mesh(source) + 2 * 16;
         long products = 1024 + 2 * 128L + 15 * 256L + 32 + payloads + Mesh(build.BorrowMesh) + request +
             2 * 8 + Mesh(build.BorrowContribution(0)) + Mesh(build.BorrowContribution(1));

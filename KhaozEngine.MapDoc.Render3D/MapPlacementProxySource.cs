@@ -13,13 +13,13 @@ internal static class MapPlacementProxySource
 {
     internal static GltfMesh Load(MapRenderAsset asset, MapRenderLod tier, MapAssetClosure closure)
     {
-        var bytes = closure.BorrowVerifiedResourceBytes(tier.ResourceId);
-        // Selected-asset loading already enforced the caller's decode limits. Measure this additional
-        // decode independently and admit its complete transient peak in the active scene preparation.
-        var demand = GltfDecodeAdmission.Measure(bytes, new(new(long.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue)));
-        if (!demand.Allowed) throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "Proxy source decode exceeds representable workspace.");
+        // Reuse selected loading's verified measurement. Measuring again would allocate JSON and
+        // embedded-buffer workspace before the scene or plan could admit it.
+        if (tier.DecodePeakBytes <= 0)
+            throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Proxy source requires a measured selected tier.");
         using var workspace = MapSceneAdmission.Current!.Workspace();
-        workspace.Reserve(demand.PeakBytes);
+        workspace.Reserve(tier.DecodePeakBytes);
+        var bytes = closure.BorrowVerifiedResourceBytes(tier.ResourceId);
         var source = GltfLoader.LoadFlattenedAlbedo(bytes, asset.AssetId + "/" + tier.ResourceId);
         foreach (ref var vertex in source.Vertices.AsSpan()) vertex.Position *= asset.Descriptor.SourceUnitsToMetres;
         return source;

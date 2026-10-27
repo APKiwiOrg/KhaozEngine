@@ -9,6 +9,7 @@ namespace KhaozEngine.MapDoc.Render3D;
 /// <summary>Owned copies count independently. Shared layer containers count once within their product.</summary>
 internal sealed class MapNativeInventory
 {
+    internal static readonly long InstanceBytes = 128L + Unsafe.SizeOf<PropPlacement?>();
     readonly HashSet<object> _seen = new(ReferenceEqualityComparer.Instance);
     internal static long Mesh(GltfMesh mesh, GltfMaterialMaps maps = default) => checked(256L +
         (long)ModelVertex.SizeInBytes * mesh.Vertices.Length + 4L * mesh.Indices32.Length +
@@ -17,7 +18,7 @@ internal sealed class MapNativeInventory
     internal long Layer(PropLayer layer, bool includeTierPayloads)
     {
         long bytes = 0;
-        if (layer.NativePlacements is { } rows && _seen.Add(rows)) bytes += 128L * rows.Count;
+        if (layer.NativePlacements is { } rows && _seen.Add(rows)) bytes += InstanceBytes * rows.Count;
         if (layer.NativeLods is { } lods && _seen.Add(lods))
         {
             bytes += 64L * lods.Count;

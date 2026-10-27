@@ -274,9 +274,13 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   `NativePropClusterRequest` carries the same per-cell inventory to the internal CPU builder. The MapDoc adapter
   preserves the configured native `fadeBandWidth`, composed with the HLOD floor before LOD coverage. It
   validates routing, the bounded native region-cell domain, homogeneous effective roof roles and every binary64
-  anchor-relative vertex coordinate before the builder enters. Admission and merge share the same position
-  kernel. Non-welded merges round anchor-local vertices only after certification and keep source topology and
-  attributes. Positive weld cells use the same absolute-world binary32 positions, division/floor lattice and
+  anchor-relative vertex coordinate before the builder enters. Admission and non-welded merging share the
+  binary64 position kernel. Non-welded merges round anchor-local vertices only after certification and keep source
+  topology and attributes. The MapDoc adapter retains the original binary32 placement for welded sources before
+  reducing its translation to an anchor. Welded merges construct the same scale, rotation and translation matrix
+  as `PropHlod` and call `Vector3.Transform`, preserving multiplication and cancellation rounding at cell boundaries.
+  Matrix-only native instances use their binary32 matrix with its absolute translation restored.
+  Positive weld cells use the same absolute-world binary32 positions, division/floor lattice and
   centroid accumulation as `PropHlod`. Only final proxy and selected contribution vertices subtract the storage
   anchor, in binary64. Selected contributions share that lattice and the full cluster's averages.
   `ApplyNative` retains only publication metadata and an

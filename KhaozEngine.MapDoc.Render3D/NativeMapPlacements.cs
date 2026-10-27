@@ -81,7 +81,11 @@ public static class NativeMapPlacements
                 var pose = Pose(placementScene, placement); var anchor = Anchor(pose);
                 posesById.Add(placement.PlacementId, pose);
                 var instance = new NativePropInstance(placement.PlacementId, placement.NumericId, placement.AssetId,
-                    MapRenderTransform.ToLocal(pose, anchor), new(anchor.X, anchor.Y, anchor.Z));
+                    MapRenderTransform.ToLocal(pose, anchor), new(anchor.X, anchor.Y, anchor.Z))
+                {
+                    WeldPlacement = policy.Layers.Any(l => l.HlodDistance > 0 && l.HlodWeldCell > 0 && l.AssetIds.Contains(placement.AssetId))
+                    ? MapRenderTransform.ToWeldPlacement(placement.AssetId, pose) : null
+                };
                 instances.Add(instance);
                 var bounds = Bounds(assets.ById[placement.AssetId].Descriptor, pose);
                 boundsById.Add(placement.PlacementId, bounds);
@@ -197,12 +201,12 @@ public static class NativeMapPlacements
             PropLayer Shared(IReadOnlyList<NativePropInstance> rows, MapPlacementLayer? layer)
             {
                 using var layerPreparation = admission.BeginPreparation();
-                admission.ReserveBytes(checked(256L + 128L * rows.Count + handles.Values.Sum(t => 64L + 32L * t.Count + 8L * t.Sum(l => l.Parts.Count))));
+                admission.ReserveBytes(checked(256L + MapNativeInventory.InstanceBytes * rows.Count + handles.Values.Sum(t => 64L + 32L * t.Count + 8L * t.Sum(l => l.Parts.Count))));
                 var tiers = rows.Select(i => i.AssetId).Distinct(StringComparer.Ordinal).ToDictionary(id => id, id => handles[id], StringComparer.Ordinal);
                 var shared = PropLayer.PlacementLayer(rows, tiers, layer?.DrawRadius ?? policy.DefaultDrawRadius,
                     layer?.LodDistances ?? Array.Empty<float>(), layer?.LodCrossfadeWidth ?? 0, layer?.CastsShadows ?? true, layer?.HlodCrossfadeWidth ?? 0);
                 var result = layer is null ? shared : shared.WithIdentity(layer.Id);
-                layerPreparation.Complete(checked(128L * rows.Count + 64L * tiers.Count + 8L * tiers.Values.Sum(t => t.Count) + 4L * result.LodDistances.Count));
+                layerPreparation.Complete(checked(MapNativeInventory.InstanceBytes * rows.Count + 64L * tiers.Count + 8L * tiers.Values.Sum(t => t.Count) + 4L * result.LodDistances.Count));
                 return result;
             }
         }
@@ -261,6 +265,7 @@ public static class NativeMapPlacements
             if (roofs.Contains(instance.Id) != (request.Key.Cohort == 1) || !routing.Entries.TryGetValue(instance.Id, out var route) || route != MapPlacementRoute.Cluster ||
                 !placements.TryGetValue(instance.Id, out var placement) || instance.AssetId != placement.AssetId || instance.NumericId != placement.NumericId ||
                 instance.LocalTransform != MapRenderTransform.ToLocal(Pose(scene, placement), new(instance.Anchor.X, instance.Anchor.Y, instance.Anchor.Z)) ||
+                (instance.WeldPlacement is { } weldPlacement && !weldPlacement.Equals(MapRenderTransform.ToWeldPlacement(placement.AssetId, Pose(scene, placement)))) ||
                 MapPlacementCells.Key(request.Key.LayerId, Pose(scene, placement), scene.Source.Data.TileSize, roofs.Contains(instance.Id)) != request.Key)
                 throw new MapDocumentException("Native cluster request disagrees with the effective scene routing.");
             var anchor = Anchor(Pose(scene, placement));
@@ -305,6 +310,12 @@ public static class NativeMapPlacements
             var m = instance.LocalTransform;
             foreach (float value in new[] { m.M11, m.M12, m.M13, m.M14, m.M21, m.M22, m.M23, m.M24,
                 m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44 }) w.WriteNumberValue(value);
+            if (weld > 0 && instance.WeldPlacement is { } placement)
+            {
+                w.WriteStartArray();
+                foreach (float value in new[] { placement.X, placement.Y, placement.Z, placement.Scale, placement.Yaw }) w.WriteNumberValue(value);
+                w.WriteEndArray();
+            }
         }
         w.WriteEndArray();
     });

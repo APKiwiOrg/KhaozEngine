@@ -1082,7 +1082,8 @@ It adds no third-party package or direct backend edge, has no editor, TileWorld 
 and belongs to no umbrella. Render3D already carries Metal, D3D11 and Vulkan through Windowing.
 MapDoc grants friend access only, with no renderer reference in the reverse direction.
 Terrain.Render3D also grants MapDoc.Render3D friend access for the shared native prop emitter and
-CPU cluster builder and its binary64 position kernel. The upper adapter validates scene routing, the frozen
+CPU cluster builder, its binary64 precision kernel and original binary32 weld-placement provenance.
+The upper adapter validates scene routing, the frozen
 native layer inventory and bounded native region-cell domain, excludes effective roofs, and certifies every
 anchor-relative vertex coordinate before calling that internal builder. Native regions span 64 document tiles,
 with equal subdivisions capped at 1024 m. Render.Tests pins the native region constant to TileRegion.Size

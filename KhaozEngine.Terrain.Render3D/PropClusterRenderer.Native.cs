@@ -41,6 +41,7 @@ public sealed partial class PropClusterRenderer
             // Weld the same absolute binary32 positions as the released route. Storage anchors
             // must change neither cell membership nor the order and precision of centroid accumulation.
             var transform = new NativePropClusterTransform(instance, weld ? default : request.Anchor);
+            var world = weld ? transform.Binary32Matrix(instance) : default;
             pose.Translation = Vector3.Zero;
             if (!Matrix4x4.Invert(pose, out var inverse)) throw new ArgumentException("Native cluster requires invertible transforms.", nameof(request));
             var normal = Matrix4x4.Transpose(inverse);
@@ -50,8 +51,12 @@ public sealed partial class PropClusterRenderer
                 var output = v;
                 // Admission certified anchor-local source coordinates. A non-welded merge retains
                 // that single local rounding. A welded merge rebases only its final world centroids.
-                var position = transform.Position(v.Position);
-                output.Position = new((float)position.X, (float)position.Y, (float)position.Z);
+                if (weld) output.Position = Vector3.Transform(v.Position, world);
+                else
+                {
+                    var position = transform.Position(v.Position);
+                    output.Position = new((float)position.X, (float)position.Y, (float)position.Z);
+                }
                 output.Normal = Vector3.Normalize(Vector3.TransformNormal(v.Normal, normal)); output.Tangent = Vector4.Zero;
                 vertices[vertex++] = output;
             }

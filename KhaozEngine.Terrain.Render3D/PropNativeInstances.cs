@@ -6,7 +6,11 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Terrain;
 
-public sealed record NativePropInstance(string Id, long? NumericId, string AssetId, Matrix4x4 LocalTransform, RenderAnchor Anchor);
+public sealed record NativePropInstance(string Id, long? NumericId, string AssetId, Matrix4x4 LocalTransform, RenderAnchor Anchor)
+{
+    // Anchored binary32 matrices cannot recover the original placement's translation or rotation rounding.
+    internal PropPlacement? WeldPlacement { get; init; }
+}
 public sealed record NativePropLod
 {
     public int Index { get; }

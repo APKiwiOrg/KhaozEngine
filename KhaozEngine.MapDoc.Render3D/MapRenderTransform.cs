@@ -4,6 +4,7 @@ using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Primitives;
+using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapDoc.Render3D;
 
@@ -13,6 +14,9 @@ public readonly record struct MapFrameState(WorldFrame Frame, MapFramePoint Obse
 /// <summary>Reduces precise poses and focus before their single local binary32 rounding.</summary>
 public static class MapRenderTransform
 {
+    internal static PropPlacement ToWeldPlacement(string assetId, MapEffectiveTransform pose) =>
+        new(assetId, Single(pose.X), Single(pose.Y), Single(pose.Z), Single(pose.Scale), Single(pose.YawRadians), 0);
+
     public static Matrix4x4 ToLocal(MapEffectiveTransform pose, MapSubmissionAnchor anchor)
     {
         pose = MapEffectiveTransform.Valid(pose);

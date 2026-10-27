@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Render3D;
 using KhaozEngine.MapDoc.Scene;
@@ -48,7 +49,7 @@ public sealed class NativeClusterAdmissionTests
         // Two six-vertex meshes, one native row, one asset's three tier references, two LOD
         // distances, one source-map entry and the represented/request identity references.
         long mesh = 256 + 6 * ModelVertex.SizeInBytes + 6 * 4;
-        long expected = 2 * mesh + 128 + 64 + 3 * 8 + 2 * 4 + 64 + 16;
+        long expected = 2 * mesh + 128 + Unsafe.SizeOf<PropPlacement?>() + 64 + 3 * 8 + 2 * 4 + 64 + 16;
         Assert.Equal(expected, admission.RetainedBytes);
         Assert.Equal(0, admission.WorkspaceBytes);
         Assert.Equal(new[] { "sparse-0" }, build.RepresentedIds);

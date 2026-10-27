@@ -13,6 +13,57 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class NativeProxyParityTests
 {
     [Theory]
+    [InlineData(0f)]
+    [InlineData(.2f)]
+    [InlineData(.5f)]
+    public void SelectedPlacement_PreservesBinary32WeldPose(float yaw)
+    {
+        Vector3[] positions = [new(.1f, 0, 0), new(.2f, 0, 0), new(.1f, 1, 0),
+            new(.1f, 0, 0), new(.2f, 0, 0), new(.1f, 1, 0)];
+        var glb = NativeProxyFixtures.Coarsest(positions, sameMaterial: true);
+        var closure = NativeRenderAssetFixtures.Placements(coarsestLod: glb, sourceUnitsToMetres: 1);
+        float x = -(.1f * (3f * MathF.Cos(yaw)));
+        var scene = NativeMapClusterCellTests.Scene(closure, 1, new MapEffectiveTransform(x, 0, 0, yaw, 3));
+        using var assets = NativeMapPlacementTests.Assets(closure);
+        var policy = new MapPlacementPolicy([new("selected", new HashSet<string> { "prop-a" }, [10, 20], 4, 1000, 30, 10, 1, true)], 1000);
+        var routing = MapPlacementRouting.Create(scene, policy, new HashSet<string>()).Routing!;
+        using var batch = NativeMapPlacements.Prepare(scene, assets, policy, routing);
+        var build = Assert.Single(batch.Clusters);
+        var source = GltfLoader.LoadFlattenedAlbedo(glb, "synthetic-placement");
+        var expected = PropHlod.BuildMergedMesh([new("prop-a", x, 0, 0, 3, yaw, 0)],
+            new Dictionary<string, GltfMesh> { ["prop-a"] = source }, 1);
+        Assert.Equal(0, expected.TriangleCount);
+        Assert.Equal(expected.Indices32, build.MergedMesh.Indices32);
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(.5f)]
+    public void PlacementCancellation_WeldUsesBinary32WorldTransform(float yaw)
+    {
+        var source = new GltfMesh(
+            [new(new(.1f, 0, 0), Vector3.UnitY, Vector4.One),
+             new(new(.2f, 0, 0), Vector3.UnitY, Vector4.One),
+             new(new(.1f, 1, 0), Vector3.UnitY, Vector4.One)], new uint[] { 0, 1, 2 });
+        var sources = new Dictionary<string, GltfMesh> { ["prop"] = source };
+        float x = -(.1f * (3f * MathF.Cos(yaw)));
+        var placement = new PropPlacement("prop", x, 0, 0, 3, yaw, 0);
+        var pose = Matrix4x4.CreateScale(3) * Matrix4x4.CreateRotationY(yaw) * Matrix4x4.CreateTranslation(x, 0, 0);
+        var instanceAnchor = new RenderAnchor(-1, 0, 0);
+        pose.Translation -= new Vector3(-1, 0, 0);
+        NativePropInstance[] instances = [new("a", null, "prop", pose, instanceAnchor) { WeldPlacement = placement }];
+        var expected = PropHlod.BuildMergedMesh([placement], sources, 1);
+        Assert.Equal(0, expected.TriangleCount);
+        foreach (int storageX in new[] { -1, 0 })
+        {
+            var anchor = new RenderAnchor(storageX, 0, 0);
+            using var build = PropClusterRenderer.BuildNativeCpu(Request(instances, sources, anchor, 1), true);
+            AssertWorldMesh(expected, build.MergedMesh, anchor);
+            AssertWorldMesh(PropHlod.BuildPlacementMesh([placement], 0, sources, 1), build.BorrowContribution(0), anchor);
+        }
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(-1)]
     [InlineData(64)]

@@ -31,6 +31,10 @@ providers, ocean templates, temporal uniform declarations, sprite shaders and sc
 therefore use `text eol=lf` in `.gitattributes`, alongside embedded control shaders and approvals.
 Normalizing only the hash would hide source changes and detach the identity from the compiler input.
 New exact-byte providers must join the attributes and `RendererPerfIdentityCheckoutTests` inventory.
+So must a test file whose multiline literals are frozen copies of those sources, or snippets compared
+with, spliced into or hashed with them, such as `TemporalVisibilityFrozenD` and
+`PointShadowFilterShaderTests`. Unpinned, Windows compares CRLF test text against LF shipped text.
+Normalizing the comparison instead would leave the frozen copies no longer byte-exact.
 That guard checks effective Git attributes, so an LF development checkout also catches a missing rule.
 Recipe, settings, layout and control-definition objects use canonical JSON serialization instead of
 hashing checkout whitespace. Frozen recipe files are parsed before construction comparison.

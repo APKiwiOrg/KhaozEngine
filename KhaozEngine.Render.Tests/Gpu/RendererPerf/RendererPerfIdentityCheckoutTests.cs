@@ -22,6 +22,11 @@ public sealed class RendererPerfIdentityCheckoutTests
             "KhaozEngine.Render2D/SpriteBatch.cs",
             "KhaozEngine.Render2D/MaskedSpriteShader.cs",
             "KhaozEngine.Gpu/GpuScaledCopy.cs",
+            // Test-side frozen copies and snippets compared byte for byte against the sources above.
+            "KhaozEngine.Render.Tests/Gpu/TemporalVisibilityFrozenD.cs",
+            "KhaozEngine.Render.Tests/Gpu/TemporalVisibilityFrozenDMask.cs",
+            "KhaozEngine.Render.Tests/Gpu/TemporalLockReleaseProbe.cs",
+            "KhaozEngine.Render.Tests/Render3D/PointShadowFilterShaderTests.cs",
             .. checkout.Git("ls-files", "-z", "--",
                 "KhaozEngine.Render.Tests/Gpu/RendererPerf/controls/*.glsl",
                 "tools/Renderer.Perf.Tests/authorized/*.json").Split('\0', StringSplitOptions.RemoveEmptyEntries)];

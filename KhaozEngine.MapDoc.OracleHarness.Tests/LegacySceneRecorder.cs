@@ -149,7 +149,7 @@ internal static class LegacySceneRecorder
                         return GltfLoader.LoadFlattenedAlbedo(inputs.OriginalMeshes[path], "attested source HLOD");
                     });
                     layer = layer.WithHlod(flat, policy.HlodDistance, policy.HlodWeldCell, policy.HlodCrossfadeWidth);
-                    double edge = 64 * inputs.NativeTileSize, divisions = Math.Ceiling(edge / 1024);
+                    double edge = 64 * document.TileSize, divisions = Math.Ceiling(edge / 1024);
                     double cellEdge = edge / divisions;
                     (int X, int Z) Cell(PropPlacement p) => (checked((int)Math.Floor(p.X / cellEdge)), checked((int)Math.Floor(p.Z / cellEdge)));
                     var requiredCells = selected.Where(Selected).Select(Cell).ToHashSet();

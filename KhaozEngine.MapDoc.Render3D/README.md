@@ -115,9 +115,26 @@ effective origin and half-open boundaries before any absolute float conversion. 
 The anchor floors the cell's X/Z origin and the minimum member origin Y to whole metres.
 Fractional cell origins remain local. Before the internal builder enters, every transformed source vertex must
 have an absolute anchor-relative coordinate strictly below 2048 m on every axis, checked in binary64 through
-the same position kernel as the merge. Failure throws `MapRenderAssetRefusal` with `NotRepresentable` and refuses
+the same position kernel as non-welded merging. Failure throws `MapRenderAssetRefusal` with `NotRepresentable` and refuses
 preparation. It never silently drops the cluster or falls back to individual geometry.
-Merged vertices round once after certification, within the 0.0001 m binary32 submission allowance.
+Non-welded merged vertices round once after certification, within the 0.0001 m binary32 submission allowance.
+Each welded proxy tier flattens its verified source GLB through `GltfLoader.LoadFlattenedAlbedo` before applying
+source units and merging placements. The whole-scene corner weld preserves generated normals and material
+colour provenance across parts. Selected loading retains the verified tier's measured decode peak.
+Re-decoding reserves that peak in scene workspace before reading the GLB, without repeating the allocating
+metadata and embedded-buffer scan. Success and failure release this temporary reservation.
+Positive weld cells use the original binary32 placement from canonical source poses to construct the
+same scale, yaw and translation matrix and `Vector3.Transform` positions as `PropHlod`, and turn normals by
+the same binary32 yaw.
+Each positive-weld cluster request owns an immutable, member-aligned `WeldPlacements` inventory admitted
+before construction. Public `PrepareCluster` refuses missing provenance or a mismatch with any canonical
+source pose before merging. The inventory is charged once with the build or its owning batch, released with
+that owner's receipt and included in welded proxy content digests. Ordinary and zero-weld layers retain
+the existing native-row charge without a provenance inventory. Weld membership is resolved per selected cell.
+Their centroid accumulation, division and floor also match `PropHlod`.
+Only the final proxy and selected contribution vertices subtract the storage anchor, in binary64.
+The storage anchor changes neither the weld lattice nor its averages. Non-welded proxies retain their existing
+material-part flattening, attributes and topology. Individual material parts remain unchanged.
 Content digests retain inventory, transforms,
 closure and weld settings separately from the stable spatial owner key.
 Cell discovery acquires the complete layer inventory through the captured source and its existing admission

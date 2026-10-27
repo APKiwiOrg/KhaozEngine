@@ -31,6 +31,7 @@ public sealed class MapRenderLod
     public string ResourceId { get; }
     public IReadOnlyList<GltfMeshPart> Parts => Array.AsReadOnly(_parts.Select(MapRenderCopies.Part).ToArray());
     internal IReadOnlyList<GltfMeshPart> BorrowParts => _parts;
+    internal long DecodePeakBytes { get; init; }
     public MapRenderLod(int index, string resourceId, IReadOnlyList<GltfMeshPart> parts)
     {
         ArgumentNullException.ThrowIfNull(parts);
@@ -106,7 +107,7 @@ public sealed class MapRenderAssets : IDisposable
                     var parts = NativeMapAssetLoader.LoadParts(asset, closure, budget, lod == 0 ? null : resourceId);
                     owned = checked(owned + demand.OwnedBytes); partCount = checked(partCount + parts.Count);
                     MapRenderDecodeCapacity.Reserve(budget, 0, demand.OwnedBytes);
-                    try { lods.Add(new(lod, resourceId, parts)); }
+                    try { lods.Add(new(lod, resourceId, parts) { DecodePeakBytes = demand.PeakBytes }); }
                     finally { budget.ReleaseTemporary(demand.OwnedBytes); }
                 }
                 selected.Add(id, new(id, lods, asset));

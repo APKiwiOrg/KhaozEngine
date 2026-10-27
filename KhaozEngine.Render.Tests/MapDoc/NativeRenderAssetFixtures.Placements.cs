@@ -32,7 +32,8 @@ internal static partial class NativeRenderAssetFixtures
         return Pack(root, bin);
     }
 
-    internal static MapAssetClosure Placements(bool sharedRoofAsset = false, bool originVertex = false, string? shadowExclusionJson = null, bool leafLightResource = false)
+    internal static MapAssetClosure Placements(bool sharedRoofAsset = false, bool originVertex = false, string? shadowExclusionJson = null, bool leafLightResource = false,
+        byte[]? coarsestLod = null, float sourceUnitsToMetres = .01f)
     {
         var source = new Source();
         var resources = new JsonArray();
@@ -48,7 +49,7 @@ internal static partial class NativeRenderAssetFixtures
         }
         Resource("mesh", "Mesh", Glb());
         Resource("lod-1", "Lod", PlacementLod(1));
-        Resource("lod-2", "Lod", PlacementLod(2, originVertex));
+        Resource("lod-2", "Lod", coarsestLod ?? PlacementLod(2, originVertex));
         if (leafLightResource)
         {
             var light = JsonNode.Parse(MapLightFile.Write(new(1, "fixture-light",
@@ -104,7 +105,7 @@ internal static partial class NativeRenderAssetFixtures
                 ["materialResourceIds"] = new JsonArray(),
                 ["lodResourceIds"] = new JsonArray("lod-1", "lod-2"),
                 ["lightResourceIds"] = id == "lamp" ? new JsonArray("fixture-light") : new JsonArray(),
-                ["sourceUnitsToMetres"] = .01f,
+                ["sourceUnitsToMetres"] = sourceUnitsToMetres,
                 ["renderBounds"] = Bounds(10),
                 ["lodBounds"] = Bounds(20),
                 ["source"] = "invented.blend",

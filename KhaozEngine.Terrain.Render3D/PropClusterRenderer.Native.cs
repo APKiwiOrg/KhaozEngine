@@ -24,6 +24,10 @@ public sealed partial class PropClusterRenderer
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(selectContribution);
         var sources = request.BorrowLayer.HlodSourceMeshes ?? throw new ArgumentException("Native cluster requires its source inventory.", nameof(request));
+        float weldCell = request.BorrowLayer.HlodWeldCell;
+        bool weld = weldCell > 0;
+        if (weld && request.WeldPlacements is null)
+            throw new ArgumentException("Native welded clusters require every original binary32 placement.", nameof(request));
         int vertexCount = 0, indexCount = 0;
         foreach (var instance in request.Instances)
         {
@@ -32,21 +36,32 @@ public sealed partial class PropClusterRenderer
             vertexCount = checked(vertexCount + source.Vertices.Length); indexCount = checked(indexCount + source.Indices32.Length);
         }
         var vertices = new ModelVertex[vertexCount]; var indices = new uint[indexCount];
-        int vertex = 0, index = 0;
+        int vertex = 0, index = 0, member = 0;
         foreach (var instance in request.Instances)
         {
             var source = sources[instance.AssetId]; var pose = instance.LocalTransform;
+            // Weld the same absolute binary32 positions as the released route. Storage anchors
+            // must change neither cell membership nor the order and precision of centroid accumulation.
             var transform = new NativePropClusterTransform(instance, request.Anchor);
+            var placement = weld ? request.WeldPlacements![member] : default;
+            var world = weld ? NativePropClusterTransform.Binary32Matrix(placement) : default;
+            member++;
             pose.Translation = Vector3.Zero;
             if (!Matrix4x4.Invert(pose, out var inverse)) throw new ArgumentException("Native cluster requires invertible transforms.", nameof(request));
-            var normal = Matrix4x4.Transpose(inverse);
+            // Welded normals turn by the same binary32 yaw as welded positions, as in the released route.
+            var normal = weld ? NativePropClusterTransform.Binary32Rotation(placement) : Matrix4x4.Transpose(inverse);
             uint start = (uint)vertex;
             foreach (var v in source.Vertices)
             {
                 var output = v;
-                // Admission certified these coordinates before this single binary32 rounding.
-                var position = transform.Position(v.Position);
-                output.Position = new((float)position.X, (float)position.Y, (float)position.Z);
+                // Admission certified anchor-local source coordinates. A non-welded merge retains
+                // that single local rounding. A welded merge rebases only its final world centroids.
+                if (weld) output.Position = Vector3.Transform(v.Position, world);
+                else
+                {
+                    var position = transform.Position(v.Position);
+                    output.Position = new((float)position.X, (float)position.Y, (float)position.Z);
+                }
                 output.Normal = Vector3.Normalize(Vector3.TransformNormal(v.Normal, normal)); output.Tangent = Vector4.Zero;
                 vertices[vertex++] = output;
             }
@@ -65,11 +80,16 @@ public sealed partial class PropClusterRenderer
             for (int i = 0; i < contributions.Length; i++)
             {
                 int count = sources[request.Instances[i].AssetId].Indices32.Length;
-                contributions[i] = selectContribution(mesh, firstIndex, count, request.BorrowLayer.HlodWeldCell);
+                contributions[i] = selectContribution(mesh, firstIndex, count, weldCell);
+                if (weld) NativePropClusterWeld.Store(contributions[i], request.Anchor);
                 firstIndex += count;
             }
         }
-        if (request.BorrowLayer.HlodWeldCell > 0) mesh = PropHlod.Weld(mesh, request.BorrowLayer.HlodWeldCell);
+        if (weld)
+        {
+            mesh = PropHlod.Weld(mesh, weldCell);
+            NativePropClusterWeld.Store(mesh, request.Anchor);
+        }
         return new(request, mesh, contributions);
     }
 

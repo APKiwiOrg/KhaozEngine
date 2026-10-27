@@ -127,19 +127,28 @@ public static class NativeMapPlacements
                     {
                         var source = assets.ById[id].Lods[^1];
                         sourcePreparation.Reserve(checked(8 * source.BorrowParts.Sum(p => Bytes(p.Mesh, p.Maps))));
-                        sources.Add(id, Flatten(source.BorrowParts));
+                        sources.Add(id, layer.HlodWeldCell > 0
+                            ? MapPlacementProxySource.Load(assets.ById[id], source, assets.Closure)
+                            : MapPlacementProxySource.Concatenate(source.BorrowParts));
                     }
                     long mergeBytes = members.Sum(i => Bytes(sources[i.AssetId], default));
                     var (build, clusterBytes) = MapPlacementClusterPreparation.Build(mergeBytes, () =>
                         {
                             var shared = Shared(members, layer).WithHlod(sources, layer.HlodDistance, layer.HlodWeldCell, layer.HlodCrossfadeWidth);
-                            var request = new NativePropClusterRequest(cell.Key, 0, domain.Area, shared, members, domain.Anchor);
+                            PropPlacement[]? weldPlacements = null;
+                            if (layer.HlodWeldCell > 0)
+                            {
+                                // Admit both the temporary input and request's frozen copy before constructing either.
+                                admission.ReserveBytes(checked(2 * MapNativeInventory.WeldPlacementBytes(members.Length)));
+                                weldPlacements = members.Select(i => MapRenderTransform.ToWeldPlacement(i.AssetId, posesById[i.Id])).ToArray();
+                            }
+                            var request = new NativePropClusterRequest(cell.Key, 0, domain.Area, shared, members, domain.Anchor, weldPlacements);
                             sourcePreparation.Dispose();
                             return request;
                         }, request => PrepareCluster(cells.Get(cell.Key), request));
                     clusters.Add(build);
                     var anchor = new MapSubmissionAnchor(domain.Anchor.X, domain.Anchor.Y, domain.Anchor.Z);
-                    string inventory = ClusterInventoryDigest(members, assets.Closure.Hash, layer.HlodWeldCell);
+                    string inventory = ClusterInventoryDigest(build.Request, assets.Closure.Hash);
                     if (cell.Key.Cohort == 1)
                         for (int member = 0; member < members.Length; member++)
                         {
@@ -195,12 +204,12 @@ public static class NativeMapPlacements
             PropLayer Shared(IReadOnlyList<NativePropInstance> rows, MapPlacementLayer? layer)
             {
                 using var layerPreparation = admission.BeginPreparation();
-                admission.ReserveBytes(checked(256L + 128L * rows.Count + handles.Values.Sum(t => 64L + 32L * t.Count + 8L * t.Sum(l => l.Parts.Count))));
+                admission.ReserveBytes(checked(256L + MapNativeInventory.InstanceBytes * rows.Count + handles.Values.Sum(t => 64L + 32L * t.Count + 8L * t.Sum(l => l.Parts.Count))));
                 var tiers = rows.Select(i => i.AssetId).Distinct(StringComparer.Ordinal).ToDictionary(id => id, id => handles[id], StringComparer.Ordinal);
                 var shared = PropLayer.PlacementLayer(rows, tiers, layer?.DrawRadius ?? policy.DefaultDrawRadius,
                     layer?.LodDistances ?? Array.Empty<float>(), layer?.LodCrossfadeWidth ?? 0, layer?.CastsShadows ?? true, layer?.HlodCrossfadeWidth ?? 0);
                 var result = layer is null ? shared : shared.WithIdentity(layer.Id);
-                layerPreparation.Complete(checked(128L * rows.Count + 64L * tiers.Count + 8L * tiers.Values.Sum(t => t.Count) + 4L * result.LodDistances.Count));
+                layerPreparation.Complete(checked(MapNativeInventory.InstanceBytes * rows.Count + 64L * tiers.Count + 8L * tiers.Values.Sum(t => t.Count) + 4L * result.LodDistances.Count));
                 return result;
             }
         }
@@ -254,11 +263,15 @@ public static class NativeMapPlacements
         var roofs = scene.CapturedBuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var placements = scene.Placements.ToDictionary(p => p.PlacementId, StringComparer.Ordinal);
         if (request.Instances.Count == 0) throw new MapDocumentException("Native cluster requires its effective members.");
-        foreach (var instance in request.Instances)
+        if (request.BorrowLayer.HlodWeldCell > 0 && request.WeldPlacements is null)
+            throw new MapDocumentException("Native welded cluster requires every original binary32 placement.");
+        for (int member = 0; member < request.Instances.Count; member++)
         {
+            var instance = request.Instances[member];
             if (roofs.Contains(instance.Id) != (request.Key.Cohort == 1) || !routing.Entries.TryGetValue(instance.Id, out var route) || route != MapPlacementRoute.Cluster ||
                 !placements.TryGetValue(instance.Id, out var placement) || instance.AssetId != placement.AssetId || instance.NumericId != placement.NumericId ||
                 instance.LocalTransform != MapRenderTransform.ToLocal(Pose(scene, placement), new(instance.Anchor.X, instance.Anchor.Y, instance.Anchor.Z)) ||
+                (request.WeldPlacements is { } weldPlacements && !weldPlacements[member].Equals(MapRenderTransform.ToWeldPlacement(placement.AssetId, Pose(scene, placement)))) ||
                 MapPlacementCells.Key(request.Key.LayerId, Pose(scene, placement), scene.Source.Data.TileSize, roofs.Contains(instance.Id)) != request.Key)
                 throw new MapDocumentException("Native cluster request disagrees with the effective scene routing.");
             var anchor = Anchor(Pose(scene, placement));
@@ -293,16 +306,24 @@ public static class NativeMapPlacements
             }
         }
     }
-    static string ClusterInventoryDigest(IReadOnlyList<NativePropInstance> instances, string closure, float weld) => MapPlacementDigest.Hash(w =>
+    static string ClusterInventoryDigest(NativePropClusterRequest request, string closure) => MapPlacementDigest.Hash(w =>
     {
-        w.WriteStartArray(); w.WriteStringValue("kemap/native-cluster/1"); w.WriteStringValue(closure); w.WriteNumberValue(weld);
-        foreach (var instance in instances.OrderBy(i => i.Id, StringComparer.Ordinal))
+        w.WriteStartArray(); w.WriteStringValue("kemap/native-cluster/1"); w.WriteStringValue(closure); w.WriteNumberValue(request.BorrowLayer.HlodWeldCell);
+        foreach (int member in Enumerable.Range(0, request.Instances.Count).OrderBy(i => request.Instances[i].Id, StringComparer.Ordinal))
         {
+            var instance = request.Instances[member];
             w.WriteStringValue(instance.Id); w.WriteStringValue(instance.AssetId);
             w.WriteNumberValue(instance.Anchor.X); w.WriteNumberValue(instance.Anchor.Y); w.WriteNumberValue(instance.Anchor.Z);
             var m = instance.LocalTransform;
             foreach (float value in new[] { m.M11, m.M12, m.M13, m.M14, m.M21, m.M22, m.M23, m.M24,
                 m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44 }) w.WriteNumberValue(value);
+            if (request.WeldPlacements is { } placements)
+            {
+                var placement = placements[member];
+                w.WriteStartArray();
+                foreach (float value in new[] { placement.X, placement.Y, placement.Z, placement.Scale, placement.Yaw }) w.WriteNumberValue(value);
+                w.WriteEndArray();
+            }
         }
         w.WriteEndArray();
     });
@@ -348,19 +369,4 @@ public static class NativeMapPlacements
         4L * mesh.Indices32.Length + (maps.Albedo?.Rgba.LongLength ?? 0) + (maps.Normal?.Rgba.LongLength ?? 0) + (maps.Roughness?.Rgba.LongLength ?? 0));
     static MapBox3 Union(MapBox3 a, MapBox3 b) => new(Math.Min(a.MinX, b.MinX), Math.Min(a.MinY, b.MinY), Math.Min(a.MinZ, b.MinZ),
         Math.Max(a.MaxX, b.MaxX), Math.Max(a.MaxY, b.MaxY), Math.Max(a.MaxZ, b.MaxZ));
-    static GltfMesh Flatten(IReadOnlyList<GltfMeshPart> parts)
-    {
-        var vertices = new List<ModelVertex>(); var indices = new List<uint>();
-        foreach (var part in parts)
-        {
-            uint start = (uint)vertices.Count;
-            var albedo = part.Maps.Albedo is { } image ? GltfLoader.AverageAlbedo(image) : Vector3.One;
-            foreach (var v in part.Mesh.Vertices)
-            {
-                var output = v; output.Color *= new Vector4(albedo, 1); vertices.Add(output);
-            }
-            indices.AddRange(part.Mesh.Indices32.Select(i => start + i));
-        }
-        return new(vertices.ToArray(), indices.ToArray());
-    }
 }

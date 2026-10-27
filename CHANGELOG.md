@@ -15,6 +15,10 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Compare native scene oracle rigid poses and fixture exclusion boxes in common coordinate frames.
   Accept equivalent HLOD proxy vertex and index ordering while retaining exact identities, draw counts,
   channels and declared light clearances.
+- Build native HLOD proxy sources with the loader's whole-scene weld and select proxy weld cells in absolute
+  world space with the released binary32 placement transform for positions and normals, preserving legacy
+  coverage and averaged colours independently of the storage anchor. Welded cluster requests carry their
+  original placements and refuse missing or mismatched ones.
 - Bound native scene upload batches with caller limits `MaxInFlightUploadCpuBytes` (256 MiB) and
   `MaxInFlightUploadStagingGpuBytes` (128 MiB). Release each resource's transient CPU at device completion,
   before atomic window publication, and refuse windows whose retained uploads and in-flight allowance cannot fit.

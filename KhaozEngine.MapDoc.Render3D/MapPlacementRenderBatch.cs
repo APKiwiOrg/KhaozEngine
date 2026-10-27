@@ -47,7 +47,7 @@ public sealed partial class MapPlacementRenderBatch : IDisposable
             return checked(1024L + 128L * (Inventory.Count + Markers.Count) + 256L * _parts.Count + 32L * Clusters.Count +
                 _parts.Sum(p => MapNativeInventory.Mesh(p.Payload.BorrowMesh, p.Payload.BorrowMaps)) +
                 _ordinary.Concat(_roofs).Sum(inventory.Layer) + Clusters.Sum(c => MapNativeInventory.Mesh(c.BorrowMesh) +
-                    inventory.Layer(c.Request.BorrowLayer) + 16L * c.Request.Instances.Count +
+                    inventory.Layer(c.Request.BorrowLayer) + inventory.WeldPlacements(c.Request) + 16L * c.Request.Instances.Count +
                     8L * c.BorrowContributions.Count + c.BorrowContributions.Sum(m => MapNativeInventory.Mesh(m))) + FrameRetainedBytes);
         }
     }

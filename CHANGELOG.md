@@ -20,6 +20,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `PlayerMovementSystem` per-entity Steps, each split by Legacy and Contact controller. Idle and rejected
   selected player Steps count once. Direct player simulators and nested held-result fallbacks add no
   outer invocations (#1598).
+- Pin the multiline C# shader sources in Render3D, Render2D and Gpu to LF checkouts, so a Windows build compiles
+  the same shader bytes and renderer shader identities as Linux and macOS. A CRLF checkout previously changed the
+  hashed shader source and refused renderer performance units before device creation.
 
 ## 21.15.0
 

@@ -25,6 +25,16 @@ pilot has its own frozen schedule and 1,260 frames. Warm-up and conditioning rem
 measured distributions. A three-frame batch has one completion drain and one harvest, including
 the final short batch. No frame trimming, fastest-iteration selection or adaptive warm-up is allowed.
 
+Shader identities hash exact UTF-8 source bytes, including composed programs and shared fragments.
+Multiline C# literals retain their source file's checkout line endings when compiled. The shader
+providers, ocean templates, temporal uniform declarations, sprite shaders and scaled-copy shaders
+therefore use `text eol=lf` in `.gitattributes`, alongside embedded control shaders and approvals.
+Normalizing only the hash would hide source changes and detach the identity from the compiler input.
+New exact-byte providers must join the attributes and `RendererPerfIdentityCheckoutTests` inventory.
+That guard checks effective Git attributes, so an LF development checkout also catches a missing rule.
+Recipe, settings, layout and control-definition objects use canonical JSON serialization instead of
+hashing checkout whitespace. Frozen recipe files are parsed before construction comparison.
+
 Cold preparation renders no hidden scene frame. The first counted conditioning frame uses driver
 index 0 and scene frame index 1. Its active temporal history is deliberately invalid with
 `FirstFrame`, since no previous frame exists. Only that first conditioning frame accepts this reset.

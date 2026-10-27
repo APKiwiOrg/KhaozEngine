@@ -9,6 +9,14 @@ KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.txt text eol=lf
 KhaozEngine.Game.Tests/Physics/Fixtures/*.jsonl text eol=lf
 # Renderer control identities hash exact embedded shader bytes on every host.
 KhaozEngine.Render.Tests/Gpu/RendererPerf/controls/*.glsl text eol=lf
+# Multiline C# shader literals retain checkout line endings in exact compiler-input hashes.
+# Pin complete programs and shared fragments so Windows builds preserve the approved LF bytes.
+KhaozEngine.Render3D/Internal/ShaderSources*.cs text eol=lf
+KhaozEngine.Render3D/Internal/OceanComputeShaders.cs text eol=lf
+KhaozEngine.Render3D/Internal/TemporalResolveUniforms.cs text eol=lf
+KhaozEngine.Render2D/SpriteBatch.cs text eol=lf
+KhaozEngine.Render2D/MaskedSpriteShader.cs text eol=lf
+KhaozEngine.Gpu/GpuScaledCopy.cs text eol=lf
 # Renderer approvals bind the same exact UTF-8 bytes on every hosted checkout.
 tools/Renderer.Perf.Tests/authorized/*.json text eol=lf
 # Tile installation compatibility fixtures are compared byte for byte.

@@ -252,6 +252,12 @@ latest rendered frame. `OptedInPlanes` counts queued effective opt-ins, includin
 Enabled columns append fragment bindings `15=ColumnSceneColor` and `16=ColumnColorSampler`, with a point-clamp
 sampler and an initialized placeholder when off. Every water set carries both bindings. Source texture identity
 and source generation independently invalidate prepared sets, including bound optical beds.
+Scene water borrows the model's shadow atlas, sampler and frame uniforms at construction, without allocating
+or retiring standalone shadow fallbacks. Standalone water owns initialized neutral shadow and colour resources.
+Scene colour fallbacks and their sampler wait until the first water set needs them. The pre-water colour source is
+created only for the first opted-in column frame, so scenes and frames without water create or upload no column
+resources. Later replacements retain deferred retirement. The colour source is released in the existing water
+disposal stage, after its water sets, preserving the later scene disposal stages.
 
 The first landing reads the copy at the original pixel with mip-zero `texelFetch`. It unprojects two depths
 through `InvViewProj` to recover the incident direction for perspective and orthographic cameras, then refracts

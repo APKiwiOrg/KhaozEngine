@@ -6,25 +6,38 @@ namespace KhaozEngine.Render3D.Rendering;
 /// <summary>Borrowed shadow and colour resources, with initialized neutral resources for standalone water.</summary>
 internal sealed class WaterColumnBindings : IDisposable
 {
+    readonly IGpuDevice _device;
     readonly GpuRetireQueue _retired;
     IGpuTexture? _ownedAtlas;
     IGpuSampler? _ownedSampler;
     IGpuBuffer? _ownedUniforms;
     IGpuTexture? _ownedColor;
+    IGpuTexture? _sceneColor;
     IGpuSampler? _colorSampler;
 
     internal IGpuTexture ShadowAtlas { get; private set; }
     internal IGpuSampler ShadowSampler { get; private set; }
     internal IGpuBuffer FrameUniforms { get; private set; }
-    internal IGpuTexture SceneColor { get; private set; }
-    internal IGpuSampler ColorSampler => _colorSampler!;
+    internal IGpuTexture SceneColor => _sceneColor ??= CreateNeutralColor();
+    internal IGpuSampler ColorSampler => _colorSampler ??= _device.Factory.CreateSampler(new GpuSamplerDescription(
+        GpuSamplerFilter.MinPointMagPointMipPoint,
+        GpuSamplerAddress.Clamp, GpuSamplerAddress.Clamp, GpuSamplerAddress.Clamp));
     internal int ColorGeneration { get; private set; }
 
-    internal WaterColumnBindings(IGpuDevice device, GpuRetireQueue retired)
+    internal WaterColumnBindings(IGpuDevice device, GpuRetireQueue retired,
+        (IGpuTexture Atlas, IGpuSampler Sampler, IGpuBuffer FrameUniforms)? shadows = null)
     {
+        _device = device;
         _retired = retired;
         try
         {
+            if (shadows is { } borrowed)
+            {
+                ShadowAtlas = borrowed.Atlas;
+                ShadowSampler = borrowed.Sampler;
+                FrameUniforms = borrowed.FrameUniforms;
+                return;
+            }
             _ownedAtlas = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
                 1, 1, GpuPixelFormat.R32Float, GpuTextureUsage.Sampled));
             device.UpdateTexture(_ownedAtlas, BitConverter.GetBytes(1f), 0, 0, 1, 1);
@@ -37,19 +50,24 @@ internal sealed class WaterColumnBindings : IDisposable
             ShadowAtlas = _ownedAtlas;
             ShadowSampler = _ownedSampler;
             FrameUniforms = _ownedUniforms;
-            _ownedColor = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
-                1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
-            device.UpdateTexture(_ownedColor, new byte[4], 0, 0, 1, 1);
-            _colorSampler = device.Factory.CreateSampler(new GpuSamplerDescription(
-                GpuSamplerFilter.MinPointMagPointMipPoint,
-                GpuSamplerAddress.Clamp, GpuSamplerAddress.Clamp, GpuSamplerAddress.Clamp));
-            SceneColor = _ownedColor;
+            _sceneColor = CreateNeutralColor();
+            _ = ColorSampler;
         }
         catch
         {
             Dispose();
             throw;
         }
+    }
+
+    IGpuTexture CreateNeutralColor()
+    {
+        // A scene with no water never builds a water set, so it never needs these colour resources.
+        IGpuTexture color = _device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+            1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+        try { _device.UpdateTexture(color, new byte[4], 0, 0, 1, 1); }
+        catch { color.Dispose(); throw; }
+        return _ownedColor = color;
     }
 
     internal void SetColor(IGpuTexture texture, int generation)
@@ -59,7 +77,7 @@ internal sealed class WaterColumnBindings : IDisposable
             _retired.Retire(_ownedColor);
             _ownedColor = null;
         }
-        SceneColor = texture;
+        _sceneColor = texture;
         ColorGeneration = generation;
     }
 

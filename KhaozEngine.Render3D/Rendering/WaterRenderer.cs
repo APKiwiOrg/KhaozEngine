@@ -188,11 +188,12 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         public WaterRenderer(IGpuDevice gd, GpuOutputDescription colorOutput, GpuRetireQueue retired,
-            AtmosphereBindings? atmosphere = null)
+            AtmosphereBindings? atmosphere = null,
+            (IGpuTexture Atlas, IGpuSampler Sampler, IGpuBuffer FrameUniforms)? columnShadows = null)
         {
             _gd = gd;
             _retired = retired;
-            ColumnShadows = new WaterColumnBindings(gd, retired);
+            ColumnShadows = new WaterColumnBindings(gd, retired, columnShadows);
             Optics = new WaterOpticsResources(gd, retired);
             _atmosphere = atmosphere ?? new AtmosphereBindings(gd);
             _ownsAtmosphere = atmosphere is null;

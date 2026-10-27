@@ -24,6 +24,8 @@ public sealed partial class Scene3D
             WaterColumnValidation.Validate(effective);
             if (effective.WaterColumnLight) _waterColumnOptedInPlanes++;
         }
+        if (_waterColumnOptedInPlanes == 0 && _waterColumnColor is null) return;
+        using var device = _water.Profiling?.Cpu("device.water.prepare") ?? default;
         (_waterColumnColor ??= new WaterColumnColorSource(_gd, _retired)).Prepare(_res, _waterColumnOptedInPlanes > 0);
         _water.ColumnShadows.SetColor(_waterColumnColor.Texture, _waterColumnColor.Generation);
     }
@@ -31,8 +33,9 @@ public sealed partial class Scene3D
     void DrawWaterWithColumnInputs(IGpuCommandList cl, Matrix4x4 vp, Matrix4x4 displayVp, Vector3 eye)
     {
         // After sky and ground decals, before every water draw, including legacy planes sharing the queue.
-        WaterColumnCopyPath path = _waterColumnColor!.Record(cl, _res, _waterColumnOptedInPlanes > 0);
-        _water.ColumnShadows.SetColor(_waterColumnColor.Texture, _waterColumnColor.Generation);
+        WaterColumnCopyPath path = _waterColumnColor?.Record(cl, _res, _waterColumnOptedInPlanes > 0)
+            ?? WaterColumnCopyPath.None;
+        if (_waterColumnColor is { } source) _water.ColumnShadows.SetColor(source.Texture, source.Generation);
         WaterColumnLightDiagnostics = new(_waterColumnOptedInPlanes, path != WaterColumnCopyPath.None, path);
         using (ProfilePass(cl, "water", executed: _waterPlanes.Count > 0))
             if (_waterPlanes.Count > 0)
@@ -44,12 +47,9 @@ public sealed partial class Scene3D
             }
     }
 
-    Rendering.WaterRenderer CreateWaterRenderer(IGpuDevice device)
-    {
-        var water = new Rendering.WaterRenderer(device, _res.ColorDepthFB.Outputs, _retired, _atmosphere.Bindings);
-        BindWaterColumnShadows(water);
-        return water;
-    }
+    Rendering.WaterRenderer CreateWaterRenderer(IGpuDevice device) => new(device,
+        _res.ColorDepthFB.Outputs, _retired, _atmosphere.Bindings,
+        (_model.ShadowMap.ShadowTexture, _model.ShadowMap.ShadowSampler, _model.SharedFrameUniforms));
 
     void BindWaterColumnShadows(Rendering.WaterRenderer water) => water.ColumnShadows.SetShadows(
         _model.ShadowMap.ShadowTexture, _model.ShadowMap.ShadowSampler, _model.SharedFrameUniforms);

@@ -3,10 +3,11 @@ using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Render3D;
 
-public sealed class WaterColumnCompositeTests
+public sealed class WaterColumnCompositeTests(ITestOutputHelper output)
 {
     static readonly float[] Lit = [1f, 1f, 1f, 1f];
     static readonly float[] Dark = [0f, 0f, 0f, 0f];
@@ -188,14 +189,32 @@ public sealed class WaterColumnCompositeTests
             Matrix4x4.Invert(Matrix4x4.CreateLookAt(eye - origin, target - origin, Vector3.UnitY) * projection, out var reduced);
             Assert.True(WaterColumnComposite.TryIncidentDirection(inverse, new Vector2(0.2f, 0.3f), out var before));
             Assert.True(WaterColumnComposite.TryIncidentDirection(reduced, new Vector2(0.2f, 0.3f), out var after));
-            Assert.InRange(Vector3.Distance(before, after), 0f, 0.00002f);
+            AssertInvariant(inverse, new Vector2(0.2f, 0.3f), before, reduced, new Vector2(0.2f, 0.3f), after);
             if (projection.M44 == 1f)
             {
                 Assert.True(WaterColumnComposite.TryIncidentDirection(inverse, new Vector2(-0.5f, -0.4f), out var otherPixel));
-                Assert.InRange(Vector3.Distance(before, otherPixel), 0f, 0.00002f);
+                AssertInvariant(inverse, new Vector2(0.2f, 0.3f), before, inverse, new Vector2(-0.5f, -0.4f), otherPixel);
             }
         }
         Assert.False(WaterColumnComposite.TryIncidentDirection(default, Vector2.Zero, out _));
+    }
+
+    void AssertInvariant(Matrix4x4 firstInverse, Vector2 firstPixel, Vector3 first,
+        Matrix4x4 secondInverse, Vector2 secondPixel, Vector3 second)
+    {
+        var a = IncidentDirectionRoundoff.Evaluate(firstInverse, firstPixel);
+        var b = IncidentDirectionRoundoff.Evaluate(secondInverse, secondPixel);
+        Assert.InRange(Vector3.Distance(first, a.Direction), 0f, a.Error);
+        Assert.InRange(Vector3.Distance(second, b.Direction), 0f, b.Error);
+        // In perspective, z=0 and z=0.5 are only 0.103 m apart at coordinates near 10 m.
+        // Subtracting the unprojected float positions amplifies roundoff by about 100.
+        // Keep the original bound on the input matrices' independent double rays, then add
+        // the derived transform/divide/subtract/normalize bounds for both float evaluations.
+        float inputDrift = Vector3.Distance(a.Direction, b.Direction);
+        Assert.InRange(inputDrift, 0f, 0.00002f);
+        float tolerance = MathF.BitIncrement(inputDrift + a.Error + b.Error);
+        Assert.InRange(Vector3.Distance(first, second), 0f, tolerance);
+        output.WriteLine($"Input ray drift {inputDrift:R}, float evaluation bounds {a.Error:R}, {b.Error:R}, total {tolerance:R}");
     }
 
     [Theory]

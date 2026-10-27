@@ -117,9 +117,8 @@ absorption M2 packs into that plane's water volume record is the derived extinct
 `AbsorptionPerMetre`. This is what WO-D13 requires. `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`,
 `ShallowDepth` and `Opacity` keep their meaning for bodies that do not opt in, and are not read by an
 opted-in body's water column (the shore fade and foam still use their own settings). `DrawWater` rejects a
-non-finite or non-positive `Clarity`, a `Clarity` whose derived extinction is not finite and positive in
-float (checked in double before conversion), and a `WaterColor` channel outside [0, 1] on the resolved
-settings, as M2 does for its fields.
+non-finite `Clarity`, a `Clarity` below 0.001 m (which keeps every shader intermediate finite in float),
+and a `WaterColor` channel outside [0, 1] on the resolved settings, as M2 does for its fields.
 
 Derivation, documented in the XML docs and mirrored by a CPU helper the tests use:
 

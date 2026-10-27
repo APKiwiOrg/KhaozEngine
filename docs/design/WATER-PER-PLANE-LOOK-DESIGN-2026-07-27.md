@@ -44,9 +44,10 @@ Two more facts make the expensive-looking parts free:
   effective wave source is not FftOcean loses shoaling and breaking surf automatically. The lake gets
   "no surf" for free rather than needing its own flag.
 
-So the per-plane look costs **zero new UBO bytes** (the payload stays 672, the slot stays 768), zero
-new GPU resources, and zero new pipelines. That is why this ships as a minor rather than as a program
-with its own buffer layout.
+So the per-plane look costs **zero new UBO bytes** (every field rides the existing per-plane slot, whose
+current payload and slot sizes are documented in the [Render3D README](../../KhaozEngine.Render3D/README.md)),
+zero new GPU resources, and zero new pipelines. That is why this ships as a minor rather than as a
+program with its own buffer layout.
 
 ## The cut
 

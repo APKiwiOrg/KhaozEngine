@@ -62,7 +62,8 @@ internal static class RendererPerfRehearsalPolicy
     internal static bool FramesPassed(RendererPerfReport report)
         => report.Blocks.All(b => b.Errors.IsEmpty)
             && report.Conditioning.Concat(report.Blocks.SelectMany(b => b.Warmup.Concat(b.Measured)))
-                .Concat(report.Controls.SelectMany(c => c.Warmup.Concat(c.Measured))).All(RendererPerfReportJson.Promotable)
+                .All(RendererPerfReportJson.Promotable)
+            && report.Controls.All(c => RendererPerfControlTiming.Promotable(c, report.Identity.TimestampPeriodNs))
             && report.Conditioning.Length + report.Blocks.Sum(b => b.Warmup.Length + b.Measured.Length)
                 + report.Controls.Sum(c => c.Warmup.Length + c.Measured.Length) == report.Manifest.TotalFrameCount;
 

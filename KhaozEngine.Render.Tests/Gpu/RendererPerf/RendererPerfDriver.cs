@@ -84,7 +84,7 @@ internal static class RendererPerfDriver
                     string state = info?.ControlStateSha256 ?? control.WorkSha256;
                     if (info?.ControlStateSha256 is null && _failure is null) Record("renderer.execute", new InvalidOperationException("The control omitted its retained-output state identity."));
                     _controls.Add(new(control, state, warm, measured, info?.Telemetry ?? ImmutableDictionary<string, RendererPerfMetric>.Empty));
-                });
+                }, control.Id);
             }
             var metrics = RendererPerfDriverAssessment.WindowMetrics(_blocks, _conditioning);
             if (manifest.ExecutionClass == RendererPerfExecutionClass.Rehearsal)
@@ -111,7 +111,8 @@ internal static class RendererPerfDriver
             return new(report, _failures.ToImmutable());
         }
 
-        void Execute(RendererPerfBlock block, Action<ImmutableArray<RendererPerfFrameSample>, ImmutableArray<RendererPerfFrameSample>, RendererPerfSessionInfo?, ImmutableArray<string>> retain)
+        void Execute(RendererPerfBlock block, Action<ImmutableArray<RendererPerfFrameSample>, ImmutableArray<RendererPerfFrameSample>, RendererPerfSessionInfo?, ImmutableArray<string>> retain,
+            int controlId = 0)
         {
             int FrameLimit(int frameId) => block.SceneId == "conditioning:S3" && frameId == 0
                 ? manifest.Limits.ColdFrameMilliseconds : manifest.Limits.FrameMilliseconds;
@@ -203,7 +204,8 @@ internal static class RendererPerfDriver
                                         int expectedSequence = RendererPerfRecipe.SequenceIndex(i - block.WarmupFrames);
                                         if (sample.FrameId != i || sample.SequenceIndex != expectedSequence || sample.CpuFrequency != clock.Frequency)
                                             throw new InvalidOperationException("A frame was dropped, duplicated or used the wrong deterministic sequence.");
-                                        if (!sample.Errors.IsEmpty || sample.GpuFrame.Status != RendererPerfMetricStatus.Available)
+                                        if (!sample.Errors.IsEmpty || !(sample.GpuFrame.Status == RendererPerfMetricStatus.Available && sample.GpuElapsedTicks > 0)
+                                            && !RendererPerfControlTiming.AcceptsZero(sample, controlId, identity.TimestampPeriodNs))
                                             throw new InvalidOperationException(sample.Errors.FirstOrDefault() ?? "Invalid GPU frame timing.");
                                     }
                                 }

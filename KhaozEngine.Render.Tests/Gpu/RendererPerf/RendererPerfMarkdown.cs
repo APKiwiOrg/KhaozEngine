@@ -30,6 +30,7 @@ internal static class RendererPerfMarkdown
             Header(text);
             foreach (var metric in block.Metrics.Where(p => Display(p.Key, p.Value)).OrderBy(p => p.Key, StringComparer.Ordinal))
                 Distribution(text, row, metric.Key, metric.Value);
+            ControlResolution(text, block);
             if (!block.GcFrames.IsEmpty) text.Append("\nGC-associated frame IDs ").Append(Cell(row)).Append(": ")
                 .AppendJoin(", ", block.GcFrames).Append("\n\n");
             foreach (var gap in block.GapEvidence.OrderBy(p => p.Key, StringComparer.Ordinal))
@@ -97,6 +98,17 @@ internal static class RendererPerfMarkdown
         foreach (var metric in new[] { value.Mean, value.Median, value.P95, value.P99, value.Minimum, value.Maximum,
             value.StandardDeviation, value.First64, value.Last64 }) text.Append(" | ").Append(Metric(metric));
         text.Append(" |\n");
+    }
+
+    internal static void ControlResolution(StringBuilder text, RendererPerfBlockSummary control)
+    {
+        if (control.TimingResolution is not { } resolution) return;
+        text.Append("\nBelowResolution ").Append(Cell(control.Block.SceneId)).Append(": warmup ")
+            .Append(resolution.WarmupBelowResolution).Append('/').Append(resolution.WarmupCount)
+            .Append(", measured ").Append(resolution.MeasuredBelowResolution).Append('/').Append(resolution.MeasuredCount)
+            .Append(". Retained zero query ticks, null durations, reported tick periods ")
+            .AppendJoin(", ", resolution.ReportedTickPeriodsNs.Select(period => Number(period) + " ns"))
+            .Append(". The reported period is not an execution-time upper bound. No numerical distribution or reference rate uses a positive subset.\n");
     }
 
     static bool Display(string name, RendererPerfDistribution value) => name is "gpu.frame" or "cpu.frame" or "gpu.unattributed" or "cpu.partitionGap"

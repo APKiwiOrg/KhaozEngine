@@ -110,11 +110,23 @@ internal static class RendererPerfControls
             || validation.Status != RendererPerfMetricStatus.Available || validation.Value != 1)
             throw new InvalidOperationException("Achieved rates require complete, identity-matched, checked control outputs.");
         foreach (var sample in report.Warmup.Concat(report.Measured))
-            if (sample.GpuFrame.Status != RendererPerfMetricStatus.Available || sample.GpuFrame.Unit != "ns"
-                || sample.GpuFrame.Value is not { } duration || !double.IsFinite(duration) || duration <= 0 || !sample.Errors.IsEmpty)
+            if (!(sample.GpuFrame.Status == RendererPerfMetricStatus.Available && sample.GpuFrame.Unit == "ns"
+                && sample.GpuFrame.Value is { } duration && double.IsFinite(duration) && duration > 0 && sample.Errors.IsEmpty)
+                && !RendererPerfControlTiming.AcceptsZero(sample, report.Control.Id, report.Warmup[0].GpuPeriodNs))
                 throw new InvalidOperationException("A control sample lacks valid native GPU duration evidence.");
-        double ns = report.Measured.Average(sample => sample.GpuFrame.Value!.Value);
         string source = $"retained logical work / reported whole-frame GPU mean, no overhead subtraction, work {facts.WorkSha256}, output {report.StateSha256}";
+        RendererPerfMetric NoRate(string unit) => new(null, unit, source, RendererPerfMetricStatus.Unsupported,
+            "A clear-only control supplies no matched rate work or complete numerical GPU duration. Below-resolution samples are never zero references.");
+        if (report.Measured.Any(sample => sample.GpuFrame.Status == RendererPerfMetricStatus.BelowResolution))
+        {
+            var distribution = RendererPerfAnalysis.Distribution([.. report.Measured.Select(sample => sample.GpuFrame)], report.Control.MeasuredFrames);
+            return ImmutableDictionary<string, RendererPerfMetric>.Empty
+                .Add("frame.meanNs", distribution.Mean)
+                .Add("bandwidth.bytesPerSecond", NoRate("bytes/s"))
+                .Add("operations.perSecond", NoRate("operations/s"))
+                .Add("fill.pixelsPerSecond", NoRate("pixels/s"));
+        }
+        double ns = report.Measured.Average(sample => sample.GpuFrame.Value!.Value);
         RendererPerfMetric Rate(double work, string unit, string kind) => work == 0
             ? new(null, unit, source, RendererPerfMetricStatus.Unsupported, "This control supplies no matched " + kind + " work.")
             : RendererPerfDriver.Value(work / ns * 1e9, unit, kind + ", " + source);

@@ -95,6 +95,17 @@ public static class CapacityDemandDiagnostics
     {
         var state = Volatile.Read(ref s_state);
         if (state is null || Volatile.Read(ref state.Observer) is not { } observer) return refused;
+        Publish(state, observer, admission, site, limitName, currentDemand, proposedIncrement, allowance, refused,
+            lifetime, allowanceIdentity, saturated);
+        return refused;
+    }
+
+    // Keep the lambda cache and identity machinery out of the first unobserved Check's JIT path.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static void Publish(State state, Action<CapacityDemand> observer, object? admission, string site, string limitName,
+        decimal currentDemand, decimal proposedIncrement, decimal allowance, bool refused,
+        CapacityDemandLifetime lifetime, object? allowanceIdentity, bool saturated)
+    {
         try
         {
             var frame = state.Current.Value;
@@ -107,7 +118,6 @@ public static class CapacityDemandDiagnostics
                 try { callback(demand); } catch { /* One failing collector cannot affect admission or another collector. */ }
         }
         catch { /* Diagnostics cannot change a reservation, counter, allowance or exception. */ }
-        return refused;
     }
 
     public readonly struct OperationScope : IDisposable

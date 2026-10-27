@@ -14,9 +14,9 @@ public enum MapFoliageStatus { Complete, MissingSupport, Unavailable, PartialRes
 /// 1280 bytes once: that covers the support grid's record and the membership context's reused hold of the same face.
 /// Context construction has its own <see cref="MapFoliageContextLimits"/>.</summary>
 /// <param name="MaxCandidates">Demand sites: MapFoliageDistribution, MapFoliageGenerationAdmission, MapFoliageInstanceDistribution. See docs/CAPACITY-DEMAND.md.</param>
-/// <param name="MaxSamples">Demand sites: MapFoliageDistribution. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxSamples">Demand sites: MapFoliageDistribution, MapFoliageInstanceBuilder. See docs/CAPACITY-DEMAND.md.</param>
 /// <param name="MaxPrepareScopes">Demand sites: MapFoliageOwners, MapFoliageSupport. See docs/CAPACITY-DEMAND.md.</param>
-/// <param name="MaxFaces">Demand sites: MapFoliageCandidateSupport (via bound context), MapFoliageSupportBuilder. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxFaces">Demand sites: MapBoundFaceContext (foliage origin), MapFoliageSupportBuilder. See docs/CAPACITY-DEMAND.md.</param>
 /// <param name="MaxRuleCandidates">Demand sites: MapFoliageClearance. See docs/CAPACITY-DEMAND.md.</param>
 /// <param name="MaxMaskCandidates">Demand sites: MapFoliageClearance. See docs/CAPACITY-DEMAND.md.</param>
 /// <param name="MaxQueryChunks">Demand sites: MapFoliageDistribution. See docs/CAPACITY-DEMAND.md.</param>

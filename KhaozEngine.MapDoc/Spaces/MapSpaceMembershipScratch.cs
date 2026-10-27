@@ -141,7 +141,7 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
                 }
                 if (demand.Opening >= 0 && _opening[demand.Opening] != _generation)
                 { _opening[demand.Opening] = _generation; faces += _geometry.FaceSets[demand.Opening].Length; }
-                if (DemandDiagnostics.Check(this, "MapSpaceMembershipScratch.MaxInspectedFaces.2", "MaxInspectedFaces", _prismVertices, faces, scope.Limits.MaxInspectedFaces, faces > remaining, CapacityDemandLifetime.Cumulative) || _patchFaces[cell.PatchIndex] > MapSurfaceCompiler.MaxFacesPerPatch)
+                if (DemandDiagnostics.Check(this, "MapSpaceMembershipScratch.MaxInspectedFaces.2", "MaxInspectedFaces", _prismVertices, faces, scope.Limits.MaxInspectedFaces, faces > remaining, CapacityDemandLifetime.Cumulative) || DemandDiagnostics.Check(this, "MapSpaceMembershipScratch.MaxFacesPerPatch", "MaxFacesPerPatch", 0, _patchFaces[cell.PatchIndex], MapSurfaceCompiler.MaxFacesPerPatch, _patchFaces[cell.PatchIndex] > MapSurfaceCompiler.MaxFacesPerPatch, CapacityDemandLifetime.Inventory))
                     return Result(MapMembershipStatus.CapacityExceeded);
             }
             _status = MapMembershipStatus.Resolved;

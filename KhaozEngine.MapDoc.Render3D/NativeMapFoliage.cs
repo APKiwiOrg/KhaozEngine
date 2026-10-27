@@ -77,6 +77,7 @@ public static class NativeMapFoliage
                     MaxQueryRetainedBytes = Math.Min(declared?.MaxQueryRetainedBytes ?? long.MaxValue, available),
                     ChargePreparation = bytes => MapFoliageGenerationAdmission.Charge(admission, bytes),
                 };
+                MapFoliageDemandOrigins.Carry(limits, requested, count);
                 var reader = cache.Acquire(layer.Id, key, limits, admission, retainSamples, requested.MaxQueryRetainedBytes);
                 var batch = readers.Add(reader);
                 count += batch.Count;

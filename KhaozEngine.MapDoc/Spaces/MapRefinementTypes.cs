@@ -11,7 +11,7 @@ public enum MapRefinementStatus { Complete, CapacityExceeded, NotRepresentable, 
 /// compile. Pair checks count exact tests. Partial paint and room coverage charge one per broad-phase candidate whose
 /// exact bounds openly overlap, and partial paint also charges its slab, conflict and occlusion checks to the same
 /// counter.</summary>
-/// <param name="MaxSourceFacesPerBound">Demand sites: MapBoundPreparation, MapEffectiveGeometry. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxSourceFacesPerBound">Demand sites: MapBoundPreparation, MapEffectiveGeometry, MapWaterBoundReads. See docs/CAPACITY-DEMAND.md.</param>
 /// <param name="MaxPairChecks">Demand sites: MapEffectiveGeometry, MapPartialPaintCompiler, MapWaterWorkBudget. See docs/CAPACITY-DEMAND.md.</param>
 /// <param name="MaxRefinementFaces">Demand sites: MapEffectiveGeometry, MapOccupiedPartitions, MapPartialPaintCompiler. See docs/CAPACITY-DEMAND.md.</param>
 /// <param name="MaxRefinementVertices">Demand sites: MapEffectiveGeometry, MapOccupiedPartitions, MapPartialPaintCompiler. See docs/CAPACITY-DEMAND.md.</param>

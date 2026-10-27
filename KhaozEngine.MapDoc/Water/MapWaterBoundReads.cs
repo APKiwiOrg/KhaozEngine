@@ -1,3 +1,4 @@
+using KhaozEngine.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -158,9 +159,11 @@ internal static class MapWaterBoundReads
             long[] row = new long[width];
             long rowFaces = 0;
             for (long x = x0; x < x1; x++) rowFaces += row[x - x0] = faces(x, z);
-            if (width <= limit && rowFaces <= limit)
+            if (!CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.RowCells", "MaxSourceFacesPerBound", 0, width, limit, width > limit, CapacityDemandLifetime.Transient) &&
+                !CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.RowFaces", "MaxSourceFacesPerBound", 0, rowFaces, limit, rowFaces > limit, CapacityDemandLifetime.Transient))
             {
-                if (cells + width > limit || total + rowFaces > limit)
+                if (CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.ChunkCells", "MaxSourceFacesPerBound", cells, width, limit, cells + width > limit, CapacityDemandLifetime.Transient) ||
+                    CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.ChunkFaces", "MaxSourceFacesPerBound", total, rowFaces, limit, total + rowFaces > limit, CapacityDemandLifetime.Transient))
                 {
                     if (cells > 0) yield return new(x0, start, x1, z, total);
                     start = z;
@@ -177,12 +180,13 @@ internal static class MapWaterBoundReads
             for (long x = x0; x < x1; x++)
             {
                 long cellFaces = row[x - x0];
-                if (cellFaces > limit)
+                if (CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.CellFaces", "MaxSourceFacesPerBound", 0, cellFaces, limit, cellFaces > limit, CapacityDemandLifetime.Transient))
                 {
                     yield return new(x, z, x + 1, z + 1, -1);
                     yield break;
                 }
-                if (x > runStart && (x - runStart + 1 > limit || runFaces + cellFaces > limit))
+                if (x > runStart && (CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.RunCells", "MaxSourceFacesPerBound", x - runStart, 1, limit, x - runStart + 1 > limit, CapacityDemandLifetime.Transient) ||
+                    CapacityDemandDiagnostics.Check(null, "MapWaterBoundReads.RunFaces", "MaxSourceFacesPerBound", runFaces, cellFaces, limit, runFaces + cellFaces > limit, CapacityDemandLifetime.Transient)))
                 {
                     yield return new(runStart, z, x, z + 1, runFaces);
                     runStart = x;

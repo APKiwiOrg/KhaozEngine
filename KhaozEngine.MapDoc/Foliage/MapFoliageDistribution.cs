@@ -258,6 +258,7 @@ public static partial class MapFoliageDistribution
                     MaxFaces = (int)Math.Min(limits.MaxFaces, reconciliation.Available / 1280),
                     ChargePreparation = bytes => { reconciliation.Take(bytes); charge += bytes; },
                 };
+                MapFoliageDemandOrigins.Carry(scoped, limits);
             }
             var clearance = MapFoliageClearance.Prepare(context, layer, key, scoped);
             meter.Preparation(clearance.Work);

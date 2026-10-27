@@ -68,6 +68,7 @@ public sealed class MapFoliageRenderCache
                     AllocateInstances = Take,
                     ReleaseInstances = Give,
                 };
+                MapFoliageDemandOrigins.Carry(bounded, limits);
                 _generationCalls++;
                 var batch = MapFoliageDistribution.GenerateInstances(_context, layer, chunk, bounded);
                 if (batch.Status != MapFoliageStatus.Complete)

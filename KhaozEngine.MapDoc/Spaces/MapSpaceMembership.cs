@@ -169,6 +169,7 @@ public sealed class MapSpaceMembership
             { MaxContextPatches = Math.Min(declared.MaxContextPatches, budgets.MaxCandidatePatches), MaxContextFaces = Math.Min(declared.MaxContextFaces, budgets.MaxInspectedFaces) }
                 : new MapRefinementLimits(MaxContextPatches: budgets.MaxCandidatePatches, MaxContextFaces: budgets.MaxInspectedFaces);
             var bounds = supplied is null ? new MapSpacePointBounds(_view, limits, work) : new(supplied, limits);
+            bounds.Preparation.PatchQueryLimits = budgets;
             MapTopologyRecord[] records = _preparedRecords?.Invoke() ?? MapSpaceGeometry.Records(_view).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
             var prisms = records.OfType<MapPrismDomain>().ToArray();
             var roomIds = records.OfType<MapSpaceDoc>().Where(s => s.Kind == MapSpaceKind.Room).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
@@ -218,10 +219,11 @@ public sealed class MapSpaceMembership
             }
             if (additional is not null) demands.AddRange(additional);
             // A supplied context may hold more than this point demands. The point still keeps its own face allowance.
-            if (supplied is not null && pointBudget && !WithinPointFaces(demands, remainingFaces))
+            if (supplied is not null && pointBudget && !WithinPointFaces(demands, remainingFaces, prismVertices, budgets.MaxInspectedFaces))
                 return Failure(MapMembershipStatus.CapacityExceeded, "context faces");
             MapBoundFaceContext? context = supplied ?? MapBoundFaceContext.PrepareBounds(_view, demands,
-                budgets.MaxCandidatePatches, remainingFaces, work, out _, bounds.Preparation);
+                budgets.MaxCandidatePatches, remainingFaces, work, out _, bounds.Preparation,
+                faceOrigin: new("MaxInspectedFaces", prismVertices, budgets.MaxInspectedFaces, budgets));
             prepared = context;
             if (context is null) return Failure(MapMembershipStatus.CapacityExceeded, bounds.Preparation.Refusal ?? "context faces");
             if (!column)
@@ -405,7 +407,7 @@ public sealed class MapSpaceMembership
 
     // The face count a point's own context would charge: each distinct demanded cell's physical faces and each distinct
     // opening cell's plane faces, as MapBoundFaceContext.PrepareBounds counts them, against the point's allowance.
-    bool WithinPointFaces(List<MapBoundFaceDemand> demands, long maxFaces)
+    bool WithinPointFaces(List<MapBoundFaceDemand> demands, long maxFaces, long consumed, long allowance)
     {
         var cells = new HashSet<MapCellDemand>();
         var openings = new HashSet<(MapRecordRef, int)>();
@@ -421,7 +423,7 @@ public sealed class MapSpaceMembership
                 throw new MapDocumentException($"context demand patch {cell.Patch}: unavailable");
             if (freshCell) count = checked(count + MapSurfaceCompiler.CountFaces(surface, patch, cell.SlotCell));
             if (freshOpening) count = checked(count + MapBoundFaceContext.OpeningFaceCount(patch, cell.SlotCell));
-            if (DemandDiagnostics.Check(this, "MapSpaceMembership.MaxInspectedFaces.2", "MaxInspectedFaces", 0, count, maxFaces, count > maxFaces, CapacityDemandLifetime.Cumulative)) return false;
+            if (DemandDiagnostics.Check(this, "MapSpaceMembership.MaxInspectedFaces.2", "MaxInspectedFaces", consumed, count, allowance, count > maxFaces, CapacityDemandLifetime.Cumulative)) return false;
         }
         return true;
     }

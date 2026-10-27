@@ -19,6 +19,7 @@ internal sealed class MapBoundPreparation
     readonly Dictionary<MapPatchKey, MapValidatedSurfacePatch> _validated = new();
     readonly MapBoundFaceContext? _context;
     internal MapWaterWorkMeter? WaterMeter { get; }
+    internal MapQueryLimits? PatchQueryLimits { get; set; }
 
     internal MapBoundPreparation(MapScopedSurfaces view, MapRefinementLimits limits, MapBoundFaceWork? work, MapWaterWorkMeter? meter = null)
     {
@@ -172,7 +173,17 @@ internal sealed class MapBoundPreparation
     {
         if (_context is not null) return _context.ValidatedPatch(patch.Key);
         if (_validated.TryGetValue(patch.Key, out MapValidatedSurfacePatch? validated)) return validated;
-        if (DemandDiagnostics.Check(this, "MapBoundPreparation.MaxContextPatches.1", "MaxContextPatches", _validated.Count, 1, _limits.MaxContextPatches, _validated.Count >= _limits.MaxContextPatches, CapacityDemandLifetime.Inventory))
+        bool exceeded = _validated.Count >= _limits.MaxContextPatches;
+        if (PatchQueryLimits is { } query)
+        {
+            new MapCapacityDemandOrigin("MaxCandidatePatches", _validated.Count, query.MaxCandidatePatches, query)
+                .Report(this, "MapBoundPreparation.MaxContextPatches.1", 1, CapacityDemandLifetime.Inventory);
+            if (query.Refinement is { } refinement)
+                new MapCapacityDemandOrigin("MaxContextPatches", _validated.Count, refinement.MaxContextPatches, refinement)
+                    .Report(this, "MapBoundPreparation.MaxContextPatches.1", 1, CapacityDemandLifetime.Inventory);
+        }
+        else DemandDiagnostics.Check(this, "MapBoundPreparation.MaxContextPatches.1", "MaxContextPatches", _validated.Count, 1, _limits.MaxContextPatches, exceeded, CapacityDemandLifetime.Inventory);
+        if (exceeded)
         {
             Refusal = "context patches";
             return null;

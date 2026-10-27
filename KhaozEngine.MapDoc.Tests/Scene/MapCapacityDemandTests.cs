@@ -109,13 +109,19 @@ public sealed class MapCapacityDemandTests
         {
             var assembly = context.LoadFromAssemblyPath(typeof(CapacityDemandDiagnostics).Assembly.Location);
             var type = assembly.GetType(typeof(CapacityDemandDiagnostics).FullName!)!;
-            var observed = type.GetProperty(nameof(CapacityDemandDiagnostics.IsObserved))!.GetMethod!.CreateDelegate<Func<bool>>();
+            var testAssembly = context.LoadFromAssemblyPath(typeof(CapacityDemandColdPath).Assembly.Location);
+            var observed = testAssembly.GetType(typeof(CapacityDemandColdPath).FullName!)!
+                .GetMethod(nameof(CapacityDemandColdPath.Exercise))!.CreateDelegate<Func<bool>>();
+            _ = testAssembly.GetType(typeof(CapacityDemandColdPath).FullName!)!.GetMethod(nameof(CapacityDemandColdPath.Arguments))!.Invoke(null, null);
+            Assert.Same(assembly, testAssembly.GetType(typeof(CapacityDemandColdPath).FullName!)!
+                .GetMethod(nameof(CapacityDemandColdPath.DiagnosticAssembly))!.Invoke(null, null));
             RuntimeHelpers.PrepareDelegate(observed);
             RuntimeHelpers.PrepareMethod(observed.Method.MethodHandle);
             bool result = true;
             long allocated = AllocationMeasurement.Measure("first unobserved diagnostic use", () => result = observed());
             Assert.False(result);
             Assert.Equal(0, allocated);
+            Assert.Null(type.GetField("s_state", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null));
         }
         finally { context.Unload(); }
     }
@@ -129,5 +135,17 @@ public sealed class MapCapacityDemandTests
         Assert.Equal(refused, Read<bool>(row, "Refused"));
         Assert.True(Read<long>(row, "AdmissionId") > 0);
         Assert.NotEmpty(Read<string>(row, "Site"));
+    }
+}
+
+// Loaded into a fresh context so neither real diagnostic call has run before the allocation region.
+public static class CapacityDemandColdPath
+{
+    public static System.Reflection.Assembly DiagnosticAssembly() => typeof(CapacityDemandDiagnostics).Assembly;
+    public static string[] Arguments() => ["cold", "MaxFaces"];
+    public static bool Exercise()
+    {
+        using var scope = CapacityDemandDiagnostics.Enter("cold");
+        return CapacityDemandDiagnostics.Check(null, "cold", "MaxFaces", 0, 1, 2, false);
     }
 }

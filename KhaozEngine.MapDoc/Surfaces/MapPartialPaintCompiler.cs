@@ -75,7 +75,8 @@ public static partial class MapPartialPaintCompiler
         var sourceBounds = source.Select(p => MapWaterPolygons.Bounds.Of(p.Polygon)).ToArray();
         // The cell filter refuses at the first hit target slot past the patch allowance, before marking it.
         var cells = TargetCells(view, target, sourceBounds, present.Where(k => k.SurfaceId == target.Id).ToArray(),
-            limits.MaxContextPatches - paintKeys.Length);
+            limits.MaxContextPatches - paintKeys.Length,
+            new("MaxContextPatches", paintKeys.Length, limits.MaxContextPatches, limits));
         work.Require(cells is null ? (long)limits.MaxContextPatches + 1 : (long)paintKeys.Length + cells.Count, limits.MaxContextPatches, nameof(MapRefinementLimits.MaxContextPatches), "context patches");
         var targets = cells!.Select(entry => (Patch: Acquired(view, entry.Key), Cells: entry.Value)).ToArray();
         long targetCount = targets.Sum(p => MapSurfaceCompiler.CountFaces(target, p.Patch, p.Cells));
@@ -258,16 +259,16 @@ public static partial class MapPartialPaintCompiler
     // source's bounds. Patches without such a cell are never read or counted. A posed target keeps every cell, because
     // its lattice is reached only through the rounded pose, so the exact face sweep alone culls it.
     static IReadOnlyList<KeyValuePair<MapPatchKey, MapSlotCellMask>>? TargetCells(MapScopedSurfaces view, MapSurfaceRef target,
-        IReadOnlyList<MapWaterPolygons.Bounds> sources, IReadOnlyList<MapPatchKey> keys, int maxSlots) =>
+        IReadOnlyList<MapWaterPolygons.Bounds> sources, IReadOnlyList<MapPatchKey> keys, int maxSlots, MapCapacityDemandOrigin? patchOrigin = null) =>
         view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, target.Id) is not null
             ? keys.Select(key => KeyValuePair.Create(key, MapSlotCellMask.All)).ToList()
-            : CandidateCells(target.Frame, sources, keys, maxSlots);
+            : CandidateCells(target.Frame, sources, keys, maxSlots, patchOrigin);
 
     /// <summary>The cells of the present slots <paramref name="keys"/> whose exact lattice rectangle openly overlaps a
     /// source's bounds, in key order. Null, with no partial result, once more than <paramref name="maxSlots"/> distinct
     /// slots are hit. A source visits only the present slots in its range, and each hit slot costs one OR per row.</summary>
     internal static IReadOnlyList<KeyValuePair<MapPatchKey, MapSlotCellMask>>? CandidateCells(MapLatticeFrame frame,
-        IReadOnlyList<MapWaterPolygons.Bounds> sources, IReadOnlyList<MapPatchKey> keys, int maxSlots)
+        IReadOnlyList<MapWaterPolygons.Bounds> sources, IReadOnlyList<MapPatchKey> keys, int maxSlots, MapCapacityDemandOrigin? patchOrigin = null)
     {
         var rows = keys.GroupBy(key => key.SlotZ).OrderBy(g => g.Key)
             .Select(g => (Z: g.Key, X: g.Select(key => key.SlotX).Distinct().Order().ToArray())).ToArray();
@@ -290,7 +291,12 @@ public static partial class MapPartialPaintCompiler
                     long slotX = xs[xi], originX = slotX * 64;
                     if (!hit.TryGetValue((slotX, slotZ), out var mask))
                     {
-                        if (DemandDiagnostics.Check(hit, "MapPartialPaintCompiler.MaxContextPatches.1", "MaxContextPatches", hit.Count, 1, maxSlots, hit.Count >= maxSlots, CapacityDemandLifetime.Inventory)) return null;
+                        bool refused = hit.Count >= maxSlots;
+                        if (patchOrigin is { } origin)
+                            (origin with { Consumed = origin.Consumed + hit.Count })
+                                .Report(hit, "MapPartialPaintCompiler.MaxContextPatches.1", 1, CapacityDemandLifetime.Inventory);
+                        else DemandDiagnostics.Check(hit, "MapPartialPaintCompiler.MaxContextPatches.1", "MaxContextPatches", hit.Count, 1, maxSlots, refused, CapacityDemandLifetime.Inventory);
+                        if (refused) return null;
                         hit.Add((slotX, slotZ), mask = new ulong[64]);
                     }
                     int x0 = (int)(Math.Max(range.MinX, originX) - originX), x1 = (int)(Math.Min(range.MaxXExclusive, originX + 64) - originX);

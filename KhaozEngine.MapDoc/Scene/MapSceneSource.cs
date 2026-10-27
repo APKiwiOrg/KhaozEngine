@@ -123,7 +123,7 @@ public sealed class MapSceneSource
                 long prospective = input.Placements.Count + (input.Prefabs?.Instances.Sum(i => i.Bindings.Entries.Count) ?? 0) +
                     (input.BuildingIntent?.Lights.Count ?? 0) + (input.BuildingIntent?.Markers.Count ?? 0) +
                     (input.BuildingIntent?.RoofLinks.Count ?? 0) + (input.BuildingIntent?.RoofGroups.Count ?? 0) + (prepaidWater ? 0 : input.Water?.Bodies.Count ?? 0);
-                if (prospective > scan.Limits.MaxMetadataRows - scan.MetadataRows) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), scan.MetadataRows + prospective, scan.Limits.MaxMetadataRows);
+                if (DemandDiagnostics.Check(scan, "MapSceneSource.OwnerRows", "MaxMetadataRows", scan.MetadataRows, prospective, scan.Limits.MaxMetadataRows, prospective > scan.Limits.MaxMetadataRows - scan.MetadataRows, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), scan.MetadataRows + prospective, scan.Limits.MaxMetadataRows);
                 var expanded = MapEffectiveResolutionKernel.Enumerate(input, assets, metadataOnly: true);
                 var ownerRows = new List<MapSceneResourceKey>();
                 MapBox3? groupBounds = null;

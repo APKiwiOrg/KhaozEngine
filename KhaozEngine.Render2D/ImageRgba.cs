@@ -61,7 +61,10 @@ namespace KhaozEngine.Render2D
             try
             {
                 long pixels = (long)info.Width * info.Height;
-                if (DemandDiagnostics.Check(null, "ImageRgba.MaxImagePixels.1", "MaxImagePixels", 0, pixels, maxPixels, pixels > maxPixels, CapacityDemandLifetime.Transient) || DemandDiagnostics.Check(null, "ImageRgba.MaxImageBufferPixels.1", "MaxImageBufferPixels", 0, pixels, Array.MaxLength / 4, pixels > Array.MaxLength / 4, CapacityDemandLifetime.Transient) || DemandDiagnostics.Check(null, "ImageRgba.MaxPeakBytes.1", "MaxPeakBytes", 0, ImageDecodeAdmission.Demand(info), maxPeakBytes, ImageDecodeAdmission.Demand(info) > maxPeakBytes, CapacityDemandLifetime.Transient))
+                if (DemandDiagnostics.Check(null, "ImageRgba.MaxImagePixels.1", "MaxImagePixels", 0, pixels, maxPixels, pixels > maxPixels, CapacityDemandLifetime.Transient) || DemandDiagnostics.Check(null, "ImageRgba.MaxImageBufferPixels.1", "MaxImageBufferPixels", 0, pixels, Array.MaxLength / 4, pixels > Array.MaxLength / 4, CapacityDemandLifetime.Transient))
+                    throw new ImageDecodeRefusal(ImageDecodeStatus.CapacityExceeded, "Image decode allowance exceeded.");
+                long peak = ImageDecodeAdmission.Demand(info);
+                if (DemandDiagnostics.Check(null, "ImageRgba.MaxPeakBytes.1", "MaxPeakBytes", 0, peak, maxPeakBytes, peak > maxPeakBytes, CapacityDemandLifetime.Transient))
                     throw new ImageDecodeRefusal(ImageDecodeStatus.CapacityExceeded, "Image decode allowance exceeded.");
                 ImageRgba image = Decode(encoded);
                 if (image.Width != info.Width || image.Height != info.Height)

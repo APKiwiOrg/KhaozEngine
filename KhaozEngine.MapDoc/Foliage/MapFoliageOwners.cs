@@ -141,7 +141,7 @@ internal sealed class MapFoliageOwners
             {
                 limits.ChargePreparation?.Invoke(checked(1280 * count));
                 contextFaces = checked(contextFaces + count);
-            });
+            }, faceOrigin: new("MaxFaces", work.Faces, MapFoliageDemandOrigins.Profile(limits).MaxFaces, limits));
         }
         finally { work = work with { Faces = checked(work.Faces + contextFaces) }; }
         work = work with { SurfaceQueries = checked(work.SurfaceQueries + 1) };

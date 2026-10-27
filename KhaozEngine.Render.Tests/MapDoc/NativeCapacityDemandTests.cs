@@ -25,8 +25,21 @@ public sealed class NativeCapacityDemandTests
         var rows = probe.For("MaxSourceUtf8Bytes").Where(r => Read<decimal>(r, "ProposedIncrement") > 0).ToArray();
         Assert.NotEmpty(rows);
         Assert.Single(rows.Select(r => Read<long>(r, "AdmissionId")).Distinct());
-        Assert.True(rows.Select(r => Read<long>(r, "OperationId")).Distinct().Count() > 1);
-        Assert.Contains(rows, r => Read<decimal>(r, "CurrentDemand") > 0);
+        Assert.Single(rows.Select(r => Read<long>(r, "RootOperationId")).Distinct());
+        var acquisitions = rows.Where(r => Read<string>(r, "Operation") == "MapSceneAcquisition").ToArray();
+        var windows = acquisitions.GroupBy(r => Read<long>(r, "ParentOperationId")).ToArray();
+        Assert.Equal(2, windows.Length);
+        Assert.All(windows, w => Assert.NotEqual(0, w.Key));
+        Assert.NotEqual(windows[0].Key, windows[1].Key);
+        // Each invented window acquires one placement and its embedded light, each charged at 512 bytes.
+        Assert.Equal(0, Read<decimal>(windows[0].First(), "CurrentDemand"));
+        decimal first = windows[0].Sum(r => Read<decimal>(r, "ProposedIncrement"));
+        Assert.Equal(1024, first);
+        Assert.Equal(first, Read<decimal>(windows[0].Last(), "Requested"));
+        Assert.Equal(first, Read<decimal>(windows[1].First(), "CurrentDemand"));
+        Assert.Equal(1024, windows[1].Sum(r => Read<decimal>(r, "ProposedIncrement")));
+        Assert.Equal(2048, Read<decimal>(windows[1].Last(), "Requested"));
+        Assert.Equal(2048, rows.Max(r => Read<decimal>(r, "Requested")));
         Assert.All(rows, r => Assert.False(Read<bool>(r, "Refused")));
         Assert.Equal(2, residency.AcceptedPlans.Count);
     }

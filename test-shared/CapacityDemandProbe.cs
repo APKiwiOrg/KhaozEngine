@@ -10,11 +10,13 @@ namespace KhaozEngine.Tests;
 internal sealed class CapacityDemandProbe : IDisposable
 {
     readonly IDisposable _subscription;
-    internal List<object> Events { get; } = new();
+    readonly object _gate = new();
+    readonly List<object> _events = new();
+    internal object[] Events { get { lock (_gate) return _events.ToArray(); } }
     internal bool ThrowOnEvent { get; set; }
     internal CapacityDemandProbe() => _subscription = CapacityDemandDiagnostics.Observe(value =>
     {
-        Events.Add(value);
+        lock (_gate) _events.Add(value);
         if (ThrowOnEvent) throw new InvalidOperationException("observer failure");
     });
     internal IEnumerable<object> For(string limit) => Events.Where(e => Read<string>(e, "LimitName") == limit);

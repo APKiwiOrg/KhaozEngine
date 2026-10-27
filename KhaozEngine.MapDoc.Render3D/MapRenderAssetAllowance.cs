@@ -17,12 +17,16 @@ internal sealed class MapRenderAssetAllowance(MapRenderAssetLimits? limits)
         w.WriteStartArray(); w.WriteStringValue(key); w.WriteNumberValue(limits.MaxDecodedBytes); w.WriteNumberValue(limits.MaxParts);
         w.WriteNumberValue(limits.MaxLods); w.WriteEndArray();
     });
-    internal MapRenderAssetRefusal Refuse(MapSceneCapacity capacity) => MapRenderDecodeCapacity.Refuse(limits is null ? capacity : capacity.LimitName switch
+    internal MapRenderAssetRefusal Refuse(MapSceneCapacity capacity)
     {
-        nameof(MapRenderAssetLimits.MaxDecodedBytes) => new(capacity.LimitName, _bytes + capacity.Requested, limits.MaxDecodedBytes),
-        nameof(MapRenderAssetLimits.MaxParts) => new(capacity.LimitName, _parts + capacity.Requested, limits.MaxParts),
-        _ => capacity,
-    });
+        if (limits is null || capacity.LimitName is not (nameof(MapRenderAssetLimits.MaxDecodedBytes) or nameof(MapRenderAssetLimits.MaxParts)))
+            return MapRenderDecodeCapacity.Refuse(capacity);
+        decimal current = capacity.LimitName == nameof(MapRenderAssetLimits.MaxDecodedBytes) ? _bytes : _parts;
+        long allowance = capacity.LimitName == nameof(MapRenderAssetLimits.MaxDecodedBytes) ? limits.MaxDecodedBytes : limits.MaxParts;
+        DemandDiagnostics.Check(this, "MapRenderAssetAllowance.Refuse", capacity.LimitName, current,
+            capacity.Requested, allowance, true, CapacityDemandLifetime.Inventory);
+        return MapRenderDecodeCapacity.Refuse(new(capacity.LimitName, current + capacity.Requested, allowance));
+    }
     internal void Record(MapRenderAssets assets)
     {
         if (limits is null) return;

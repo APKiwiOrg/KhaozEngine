@@ -297,12 +297,12 @@ internal sealed class MapSceneScan(MapSceneLimits limits)
     internal long TileReads, MetadataRows, Memberships, ScannedBytes, RetainedBytes;
     internal void Scan(long bytes)
     {
-        if (!DemandDiagnostics.Check(this, "MapSceneMetadataReader.MaxScannedBytes.1", "MaxScannedBytes", ScannedBytes, bytes, limits.MaxScannedBytes, !(bytes < 0 || bytes > limits.MaxScannedBytes - ScannedBytes), CapacityDemandLifetime.Cumulative)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxScannedBytes), (decimal)ScannedBytes + bytes, limits.MaxScannedBytes);
+        if (DemandDiagnostics.Check(this, "MapSceneMetadataReader.MaxScannedBytes.1", "MaxScannedBytes", ScannedBytes, bytes, limits.MaxScannedBytes, bytes < 0 || bytes > limits.MaxScannedBytes - ScannedBytes, CapacityDemandLifetime.Cumulative)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxScannedBytes), (decimal)ScannedBytes + bytes, limits.MaxScannedBytes);
         ScannedBytes = checked(ScannedBytes + bytes);
     }
     internal void Scratch(long bytes)
     {
-        if (!DemandDiagnostics.Check(this, "MapSceneMetadataReader.MaxMetadataBytes.4", "MaxMetadataBytes", RetainedBytes, bytes, limits.MaxMetadataBytes, !(bytes < 0 || bytes > limits.MaxMetadataBytes - RetainedBytes), CapacityDemandLifetime.Transient)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), (decimal)RetainedBytes + bytes, limits.MaxMetadataBytes);
+        if (DemandDiagnostics.Check(this, "MapSceneMetadataReader.MaxMetadataBytes.4", "MaxMetadataBytes", RetainedBytes, bytes, limits.MaxMetadataBytes, bytes < 0 || bytes > limits.MaxMetadataBytes - RetainedBytes, CapacityDemandLifetime.Transient)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), (decimal)RetainedBytes + bytes, limits.MaxMetadataBytes);
     }
     internal void RetainBytes(long bytes)
     {

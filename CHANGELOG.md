@@ -4,7 +4,7 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.17.0
+## 21.18.0
 
 2026-10-28
 
@@ -18,6 +18,11 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   multisampled source. Metal uses store-and-resolve to retain every source sample.
 - Fit shadow cascades and cull their casters in render-relative coordinates so shadows remain correct far
   from the world origin (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1618).
+
+## 21.17.0
+
+2026-10-28
+
 - Add user UI scaling to `UiViewport`, applied with DPI at a frame boundary so drawing, clipping and pointer
   mapping agree. `EffectiveScale` supplies the font density and exact canvas bounds retain framebuffer coverage.
 - Add normalized saved HUD positions and a draft `HudLayoutEditor` with topmost drag capture, viewport and DPI

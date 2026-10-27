@@ -11,6 +11,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Preserve continuous native terrain material across patch and paint joins when a feathered overlay meets
   matching hard-filled material or an overlay over a different underlay, including validated surface-owner
   seams. Keep exposed-edge feather widths and cut-overlay boundaries without inventing outlines at diagonal gaps.
+  Isolate stacked patch sheets across owner joins and admit source seam validation within preparation capacity.
 - Bound native scene upload batches with caller limits `MaxInFlightUploadCpuBytes` (256 MiB) and
   `MaxInFlightUploadStagingGpuBytes` (128 MiB). Release each resource's transient CPU at device completion,
   before atomic window publication, and refuse windows whose retained uploads and in-flight allowance cannot fit.

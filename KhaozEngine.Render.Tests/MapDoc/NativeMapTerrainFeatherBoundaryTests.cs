@@ -138,6 +138,55 @@ public sealed class NativeMapTerrainFeatherBoundaryTests
         AssertOverlayAt(Record(batch), 63.9375, -.5, .23193359375);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void JoinedOwnerStackedPatch_DoesNotFeatherLowerSheet(bool tiled)
+    {
+        using var fixture = OwnerFixture(false, 125, MapSurfaceRole.SupportFloor, seam: true);
+        var surfaces = fixture.Document.Surfaces;
+        var left = surfaces.Patches[new("ground", 0, 0)];
+        left.CellMinX = 61; left.Width = 3;
+        left.Heights = Enumerable.Repeat(125, 8).ToArray();
+        left.Cells = Enumerable.Repeat(left.Cells[0], 3).ToArray();
+        left.Presence = [7];
+        var upper = surfaces.Patches[new("adjoining", 1, 0)].Clone();
+        upper.Key = new("adjoining", 0, 0); upper.CellMinX = 62;
+        upper.Heights = [225, 225, 225, 225];
+        upper.Cells[0] = new(12, 11, MapOverlayCut.Full, 0, 0, MapCellTopology.ForceSwNe);
+        surfaces.Patches.Add(upper.Key, upper);
+        Refresh(fixture);
+        using var batch = Prepare(fixture, tiled);
+        // The upper west edge at x=62 is unrelated to the lower sheet's exposed outline.
+        AssertOverlayAt(Record(batch), 62.0625, -.5, 1);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StackedSlotsSameOwner_KeepTheirOwnHardOverlayOutline(bool tiled)
+    {
+        using var fixture = Fixture(12, 11, false);
+        fixture.Document.Surfaces.Patches[new("ground", 1, 0)].Heights = [225, 225, 225, 225];
+        Refresh(fixture);
+        using var batch = Prepare(fixture, tiled);
+        AssertOverlayAt(Record(batch), 63.9375, -.5, .23193359375);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InvalidOwnerSeam_KeepsOwnersSeparate(bool tiled)
+    {
+        using var fixture = OwnerFixture(false, 125, MapSurfaceRole.SupportFloor, seam: true);
+        var left = fixture.Document.Surfaces.Patches[new("ground", 0, 0)];
+        var seam = Assert.IsType<MapSurfaceSeam>(Assert.Single(left.Records));
+        left.Records[0] = seam with { Pairs = seam.Pairs.Take(1).ToArray() };
+        Refresh(fixture);
+        using var batch = Prepare(fixture, tiled);
+        AssertOverlayAt(Record(batch), 63.9375, -.5, .23193359375);
+    }
+
     static NativeSceneFixture OwnerFixture(bool overlay, int height, MapSurfaceRole role, bool seam)
     {
         var fixture = Fixture(overlay ? (ushort)12 : (ushort)11, overlay ? (ushort)11 : (ushort)0, overlay);

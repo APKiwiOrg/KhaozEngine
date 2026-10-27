@@ -13,11 +13,9 @@ namespace KhaozEngine.MapDoc.Render3D;
 /// Shared canonical diagonals and collinear subdivisions cancel before any distance is sampled.</summary>
 internal static class MapTerrainPaint
 {
-    internal readonly record struct FeatherKey(string Owner, ushort Material);
+    internal readonly record struct FeatherKey(MapTerrainSheets.Node Sheet, ushort Material);
     internal readonly record struct Edge(MapWideXz A, MapWideXz B);
-    readonly record struct Line(bool Vertical, MapWideRational Slope, MapWideRational Intercept,
-        MapWideRational HeightSlope, MapWideRational HeightIntercept);
-    internal static FeatherKey Key(MapTerrainPartition p) => new(p.Face.OwnerId,
+    internal static FeatherKey Key(MapTerrainPartition p) => new(MapTerrainSheets.Key(p),
         p.Paint.OverlayCovers && p.Paint.Overlay != 0 ? p.Paint.Overlay : p.Paint.Underlay);
 
     internal static IEnumerable<MapTerrainPartition> Partition(MapTerrainCanonicalFace face,
@@ -96,16 +94,15 @@ internal static class MapTerrainPaint
         using var scratch = admission.Workspace();
         using var indexStorage = admission.Workspace();
         long indexBytes = 0, edgeBytes = 0;
-        using var ownerStorage = admission.Workspace();
-        ownerStorage.Reserve(checked(256L * view.Surfaces.Count));
-        var owners = JoinedOwners(view);
+        using var sheetStorage = admission.Workspace();
+        var sheets = MapTerrainSheets.Connect(partitions, view, admission, sheetStorage);
         // A cut with another overlay cannot qualify through its uncovered underlay. Bare underlay
         // suppresses candidate overlay edges, but never supplies an outline of its own.
         foreach (var group in partitions.Where(p => p.Paint.Overlay == 0 || p.Paint.OverlayCovers)
-            .GroupBy(p => new FeatherKey(owners.GetValueOrDefault(p.Face.OwnerId, p.Face.OwnerId), Key(p).Material)).Where(g => g.Any(NeedsFeather)))
+            .GroupBy(p => new FeatherKey(sheets[MapTerrainSheets.Key(p)], Key(p).Material)).Where(g => g.Any(NeedsFeather)))
         {
             using var groupPreparation = admission.BeginPreparation();
-            var lines = new Dictionary<Line, SortedDictionary<MapWideRational, (MapWideXz Point, int Overlay, int Coverage)>>();
+            var lines = new Dictionary<MapTerrainLine, SortedDictionary<MapWideRational, (MapWideXz Point, int Overlay, int Coverage)>>();
             foreach (var partition in group)
             {
                 long bytes = checked(256L + 256L * partition.Polygon.Count);
@@ -119,12 +116,8 @@ internal static class MapTerrainPaint
                         var a = polygon[i]; var b = polygon[(i + 1) % polygon.Length];
                         if (a.Xz == b.Xz) continue;
                         admission.ReserveBytes(1024);
-                        bool vertical = a.X.Equals(b.X);
-                        var slope = vertical ? default : b.Z.Subtract(a.Z).Divide(b.X.Subtract(a.X));
-                        var first = vertical ? a.Z : a.X; var last = vertical ? b.Z : b.X;
-                        var heightSlope = b.Y.Subtract(a.Y).Divide(last.Subtract(first));
-                        var line = new Line(vertical, slope, vertical ? a.X : a.Z.Subtract(slope.Multiply(a.X)),
-                            heightSlope, a.Y.Subtract(heightSlope.Multiply(first)));
+                        var line = MapTerrainLine.Through(a, b);
+                        var first = line.Coordinate(a); var last = line.Coordinate(b);
                         if (!lines.TryGetValue(line, out var events)) lines.Add(line, events = new());
                         // Keep the polygon's direction. Sorting the events then cancels opposite copies,
                         // including one long edge opposed by several collinear subedges.
@@ -167,30 +160,6 @@ internal static class MapTerrainPaint
         preparation.AdoptWorkspace(indexStorage, indexBytes);
         preparation.Complete(checked(indexBytes + edgeBytes));
         return result;
-    }
-
-    static Dictionary<string, string> JoinedOwners(MapScopedSurfaces view)
-    {
-        var owners = view.Surfaces.ToDictionary(s => s.Id, s => s.Id, StringComparer.Ordinal);
-        var roles = view.Surfaces.ToDictionary(s => s.Id, s => s.Role, StringComparer.Ordinal);
-        foreach (var reference in view.Witness.Records)
-        {
-            if (!view.TryRecord(reference, out var record, out _, borrow: true) || record is not MapSurfaceSeam seam) continue;
-            string first = seam.First.Patch.SurfaceId, second = seam.Second.Patch.SurfaceId;
-            if (!roles.TryGetValue(first, out var role) || !roles.TryGetValue(second, out var other) || role != other ||
-                MapSeamValidator.Validate(seam, view).Count != 0) continue;
-            string a = Root(first), b = Root(second);
-            if (StringComparer.Ordinal.Compare(a, b) > 0) (a, b) = (b, a);
-            owners[b] = a;
-        }
-        foreach (string owner in owners.Keys.ToArray()) owners[owner] = Root(owner);
-        return owners;
-
-        string Root(string owner)
-        {
-            while (owners[owner] != owner) owner = owners[owner];
-            return owner;
-        }
     }
 
     static bool NeedsFeather(MapTerrainPartition p) => p.Paint.Feather && p.Paint.OverlayCovers &&

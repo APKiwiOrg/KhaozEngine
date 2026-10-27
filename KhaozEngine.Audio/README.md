@@ -25,8 +25,9 @@ Game-agnostic audio: streaming music, one-shot SFX, protected loops and 3D posit
   1.0, so bus-less plays are byte-for-byte the old behavior. One-shots sample this mix at start, so a bus
   volume change applies to their next play. Protected loops update their live gain immediately when master,
   SFX, bus or local loop volume changes. A failed gain write remains dirty and gets at most one refresh per
-  normal `Update`, including when no music plays. This never restarts or reallocates a loop. Loop mixing
-  clamps finite global factors to 0..1 and treats non-finite factors as zero, without changing one-shot mixing.
+  normal `Update`, including when no music plays. This never restarts or reallocates a loop. Existing volume setters
+  clamp positive infinity to 1 and negative infinity to 0. A non-finite composed loop gain, including NaN,
+  becomes zero. One-shot mixing keeps its existing behavior.
   Positional plays on a configured bus carry its immutable inverse-distance curve to the backend. The default
   remains reference distance 1, rolloff 1, maximum distance 50. Non-positional sounds ignore attenuation.
   Construct curves with `new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance)` or use

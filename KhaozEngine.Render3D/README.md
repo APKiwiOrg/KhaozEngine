@@ -1648,10 +1648,10 @@ than the next aligned element makes no progress. Native mip staging samples sour
 `Ready` includes completion of the final GPU fence. Observing completion disposes the transfer-only fence and
 command list, then calls `ISceneUploadReservation.TransferCompleted` to return GPU staging credit. Devices
 without completion fences use the existing idle wait. Publication refuses until ready and succeeds once.
-After publication releases detached inputs and all transfer-row backing storage, `InputsReleased` settles CPU
+Completion releases detached inputs and all transfer-row backing storage before publication. `InputsReleased` settles CPU
 to an independent inventory of surviving owner metadata, GPU wrappers, foliage arrays and both retained temporal
-uniform snapshots. The ownership list
-is compacted before returning credit. Preparation inputs, welding, mip workspace and CPU transfer staging do
+uniform snapshots. Compact value metadata preserves mesh bounds and material settings for publication. The ownership list
+is sized for surviving objects and future publication bindings before returning credit. Preparation inputs, welding, mip workspace and CPU transfer staging do
 not remain in that inventory. The original complete peak is still reserved before any preparation or factory.
 
 `SceneResourceAccess(scene)` resolves published mesh handles through `MeshOf` and submits rigid descriptors

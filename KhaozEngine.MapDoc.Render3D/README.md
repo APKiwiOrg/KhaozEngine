@@ -261,7 +261,7 @@ all plan and scene receipts. It includes each shared membership page once, the c
 window control and canonical water once. Foliage context and sample ownership remains on its separate charges.
 Reachable per-window receipt totals must not be summed as unique root storage. `MapUploadReservation` is claimed before factories with
 the unchanged complete CPU and GPU peak. GPU staging credit returns only after transfer completion on the
-device. After publication drops detached inputs and transfer storage, CPU settles to the renderer's independent
+device. Completion drops detached inputs and transfer storage before publication, then CPU settles to the renderer's independent
 retained inventory. Final `Released` returns only the remaining CPU and owned GPU payload, once. Cancellation
 before publication returns all unsettled credit at destruction. The decoded upload borrow remains held through
 retirement. `MaxRetiredGpuBytes` never

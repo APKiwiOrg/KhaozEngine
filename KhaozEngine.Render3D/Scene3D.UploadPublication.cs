@@ -10,16 +10,17 @@ public sealed partial class Scene3D
 
     internal long ReserveMeshOrder() => _slots.ReserveAllocationOrder();
 
-    internal MeshHandle PublishUploadedMesh(GltfMesh source, IGpuBuffer vertices, IGpuBuffer normals, IGpuBuffer indices,
-        IGpuTexture? albedo, IGpuTexture? normal, IGpuTexture? roughness, float alphaCutoff,
-        SceneGroundMaterialData? ground, IGpuTexture? groundAlbedo, IGpuBuffer? groundParams,
+    internal MeshHandle PublishUploadedMesh(SceneUploadPublication source, IGpuBuffer vertices, IGpuBuffer normals, IGpuBuffer indices,
+        IGpuTexture? albedo, IGpuTexture? normal, IGpuTexture? roughness,
+        IGpuTexture? groundAlbedo, IGpuBuffer? groundParams,
         List<IDisposable> owned, long meshOrder)
     {
         IGpuResourceSet? material = null, outline = null, cutout = null;
         int tileGround = -1;
-        if (ground is not null)
+        float alphaCutoff = source.AlphaCutoff;
+        if (source.Ground)
         {
-            var handle = LoadTileGroundMaterial(groundAlbedo!, groundParams!, ground.Sampler, owned);
+            var handle = LoadTileGroundMaterial(groundAlbedo!, groundParams!, source.Sampler, owned);
             tileGround = handle.ListIndex;
         }
         else
@@ -39,10 +40,15 @@ public sealed partial class Scene3D
     MeshHandle PublishMesh(GltfMesh source, IGpuBuffer vertices, IGpuBuffer normals, IGpuBuffer indices,
         IGpuResourceSet? material, IGpuResourceSet? outline, int splatMaterial = -1, float alphaCutoff = 0,
         int tileGroundMaterial = -1, IGpuResourceSet? shadowCutout = null, long meshOrder = 0)
+        => PublishMesh(SceneUploadPublication.From(source), vertices, normals, indices, material, outline,
+            splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout, meshOrder);
+
+    MeshHandle PublishMesh(SceneUploadPublication source, IGpuBuffer vertices, IGpuBuffer normals, IGpuBuffer indices,
+        IGpuResourceSet? material, IGpuResourceSet? outline, int splatMaterial = -1, float alphaCutoff = 0,
+        int tileGroundMaterial = -1, IGpuResourceSet? shadowCutout = null, long meshOrder = 0)
     {
-        var bounds = MeshBounds.FromVertices(source.Vertices);
         int index = _slots.Alloc(out int generation, meshOrder);
-        var mesh = new Mesh(vertices, normals, indices, source.Indices32.Length, source.IndexFormat, bounds,
+        var mesh = new Mesh(vertices, normals, indices, source.IndexCount, source.IndexFormat, source.Bounds,
             material, outline, splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout);
         if (index < _meshes.Count) _meshes[index] = mesh;
         else _meshes.Add(mesh);

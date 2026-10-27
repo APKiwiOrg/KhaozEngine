@@ -12,11 +12,11 @@ internal static class SceneResourceCpuInventory
 {
     const long OwnerMetadataBytes = 1024, GpuObjectMetadataBytes = 256, MeshMetadataBytes = 256, FoliageMetadataBytes = 512;
 
-    internal static long Measure(List<IDisposable> owned, bool mesh, ScenePreparedFoliage? foliage)
+    internal static long Measure(List<IDisposable> owned, bool mesh, ScenePreparedFoliage? foliage, int pendingBindings = 0)
     {
         // Bounded metadata for the upload, reservation, demand/digests, tracking entries and list headers.
         // Each remaining GPU object has a separate wrapper/binding allowance. GPU payload is charged separately.
-        long cpu = checked(OwnerMetadataBytes + (long)owned.Capacity * IntPtr.Size + owned.Count * GpuObjectMetadataBytes + (mesh ? MeshMetadataBytes : 0));
+        long cpu = checked(OwnerMetadataBytes + (long)owned.Capacity * IntPtr.Size + (owned.Count + pendingBindings) * GpuObjectMetadataBytes + (mesh ? MeshMetadataBytes : 0));
         if (foliage is null) return cpu;
         var layout = foliage.Layout!;
         var points = foliage.PointStream!;

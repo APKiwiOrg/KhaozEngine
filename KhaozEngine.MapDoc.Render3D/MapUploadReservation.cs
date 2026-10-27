@@ -47,9 +47,9 @@ public sealed class MapUploadReservation : ISceneUploadReservation
         lock (_gate)
         {
             if (_released) return;
-            if (!_claimed || !_published || _retiring || retainedCpuBytes < 0 || retainedCpuBytes > _cpu ||
+            if (!_claimed || !_transferCompleted || _retiring || retainedCpuBytes < 0 || retainedCpuBytes > _cpu ||
                 (_inputsReleased && retainedCpuBytes != _cpu))
-                throw new InvalidOperationException("Only published input release can settle its reserved CPU inventory.");
+                throw new InvalidOperationException("Only completed input release can settle its reserved CPU inventory.");
             if (_inputsReleased) return;
             long transient = _cpu - retainedCpuBytes;
             _cpu = retainedCpuBytes; _inputsReleased = true;

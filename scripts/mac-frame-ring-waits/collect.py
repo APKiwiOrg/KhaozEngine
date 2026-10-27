@@ -10,8 +10,14 @@ import re
 import shlex
 import stat
 import subprocess
+import sys
 import time
 import uuid
+
+# A normal CLI invocation must not contaminate its own frozen-source check.
+if __name__ == '__main__':
+    sys.dont_write_bytecode = True
+
 from analyze import INT_MAX, REQUIRED_CLOSURE, analyse, guid, integer
 
 CAPACITY_WORK_ROOT = Path('/tmp').resolve()/'grimhollow-mac-frame-performance'

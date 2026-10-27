@@ -57,6 +57,12 @@ JSON keys, unknown fields, contradictory counts, wrong types and mismatched devi
 identity are refused. Available boundary and prefix/main receipt depths must all equal the exact
 integer expectation. Gaps remain limited evidence.
 
+Direct `python3` invocation of the collector and analyzer disables bytecode writes before loading
+local helper modules. It therefore leaves the frozen source directory clean without requiring an
+interpreter flag from the operator. Imported use remains caller-owned: analysis or test harnesses
+that import these modules use `python3 -B` or `PYTHONDONTWRITEBYTECODE=1`. Existing untracked files
+still fail the source check. No cleanliness, input-admission or evidence-retention rule is relaxed.
+
 The preparation manifest additionally records `frozenEngineBase` and uses the frozen game source
 `f45462a87441c18682f7c2309ef2f048c4abebb0`. The frozen engine base is
 `7ae1e83d18a0cafe4d3b079b0dc3a399de390b4f`. The actual `probeCommit` is the new accepted archive

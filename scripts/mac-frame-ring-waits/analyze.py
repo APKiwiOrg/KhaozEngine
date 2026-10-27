@@ -7,6 +7,11 @@ import json
 import math
 from pathlib import Path
 import statistics
+import sys
+
+# Offline analysis must leave the helper source clean for the next collection.
+if __name__ == '__main__':
+    sys.dont_write_bytecode = True
 
 STAGES = ('scenePrefix pointRequests pointPreparation rigidIndexBuild slotLookup staticSignatures '
           'rigidSignatureQuery rigidSignatureFold foliageIndexBuild foliageSignatureQuery foliageSignatureFold '

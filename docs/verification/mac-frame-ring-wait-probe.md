@@ -18,6 +18,9 @@ python3 "$PROBE_ROOT/scripts/mac-frame-ring-waits/collect.py" \
   --result "$CAPTURE_ROOT/recording-waits-01.json"
 ```
 
+Collector and analyzer invocation follows the [helper bytecode contract](mac-frame-recording-capacity-probe.md#collection-and-treatment-audit).
+Direct command-line execution leaves the helper source directory clean without an operator-supplied interpreter flag.
+
 The collector audits the exact PID, process start and command, six critical mapped DLLs, code identities, payload bytes and modes, source hashes, 41 world inputs and foreground endpoints. It creates one exclusive trigger, waits at most 45 seconds for the existing recorder to finish, then repeats the identity and content checks. It never launches, profiles, reads back a client, kills a process or automatically repeats a capture. `/tmp` and `/private/tmp` are canonical aliases. Resolving an alias never permits a path outside the owned capture directory.
 
 Result, trigger, collection metadata, temporary metadata and analysis paths must all be fresh. Before preflight, exclusive creation of collection metadata atomically reserves this invocation's paths. The metadata is a permanent filesystem claim with a collection GUID, not a runtime or build lock. A competing collector exits without overwriting the owner's evidence. An interrupted or failed invocation retains its claim, including an incomplete initial metadata write.

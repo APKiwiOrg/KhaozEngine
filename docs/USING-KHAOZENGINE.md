@@ -23186,10 +23186,11 @@ Dispose it (a `using`, an `OnUnload`, either) so the handshake file goes. The ho
 ordinary path, where `quit` closes the window and `Run` returns without anything being disposed, but a hard crash
 still leaves a file naming a dead port, so a bridge checks the file's `pid` is alive before trusting it.
 
-`Log` is the diagnostic hook, null and silent by default. It is called with a message, and an exception when there
-was one, whenever an accept loop or a connection ends for a reason other than shutdown: the accept loop dying takes
-the endpoint down for the whole run and the bridge sees only connection refused, which is exactly the failure worth
-one log line. It runs on a socket thread, so do not block in it.
+`Log` is the diagnostic hook, null and silent by default. It receives a message and an optional exception when a
+connection or acceptance ends for a reason other than shutdown. An accept that reports `SocketError.Interrupted`
+resumes while the listener is running. Other accept failures stop further acceptance for that host instance and
+are reported, while established clients keep their independent serving loops. Disposing the host stops acceptance
+quietly and closes those clients. The hook runs on a socket thread, so do not block in it. A throwing hook is contained.
 
 Two bounds sit ahead of the token check, because the token travels inside the request line. A line past
 `AutomationHost.MaxRequestLineBytes` (64 KiB) is refused and the connection closes, without the rest of it ever being

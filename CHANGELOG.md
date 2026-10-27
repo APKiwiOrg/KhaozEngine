@@ -23,6 +23,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Pin the multiline C# shader sources in Render3D, Render2D and Gpu to LF checkouts, so a Windows build compiles
   the same shader bytes and renderer shader identities as Linux and macOS. A CRLF checkout previously changed the
   hashed shader source and refused renderer performance units before device creation.
+- Resume automation accepts after `Interrupted` while the listener is running, and treat disposal as quiet
+  shutdown. Deterministic loopback tests cover terminal accept faults and established-client lifetimes separately.
 
 ## 21.15.0
 

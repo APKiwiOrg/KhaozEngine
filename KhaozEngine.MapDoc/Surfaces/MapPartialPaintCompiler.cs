@@ -1,3 +1,6 @@
+using System.Runtime.CompilerServices;
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -287,7 +290,7 @@ public static partial class MapPartialPaintCompiler
                     long slotX = xs[xi], originX = slotX * 64;
                     if (!hit.TryGetValue((slotX, slotZ), out var mask))
                     {
-                        if (hit.Count >= maxSlots) return null;
+                        if (DemandDiagnostics.Check(hit, "MapPartialPaintCompiler.MaxContextPatches.1", "MaxContextPatches", hit.Count, 1, maxSlots, hit.Count >= maxSlots, CapacityDemandLifetime.Inventory)) return null;
                         hit.Add((slotX, slotZ), mask = new ulong[64]);
                     }
                     int x0 = (int)(Math.Max(range.MinX, originX) - originX), x1 = (int)(Math.Min(range.MaxXExclusive, originX + 64) - originX);
@@ -380,9 +383,12 @@ public static partial class MapPartialPaintCompiler
         long _pairs, _regions, _vertices, _sources, _sourceVertices;
         internal MapPaintPreparation Preparation { get; } = new();
         public void Dispose() => Preparation.Dispose();
-        internal void Require(long requested, long allowance, string name, string detail)
+        internal void Require(long requested, long allowance, string name, string detail, [CallerMemberName] string caller = "")
         {
-            if (requested <= allowance) return;
+            bool accepted = requested <= allowance;
+            if (DemandDiagnostics.IsObserved)
+                DemandDiagnostics.Check(this, "MapPartialPaintCompiler." + caller, name, 0, requested, allowance, !accepted);
+            if (accepted) return;
             var capacity = new Scene.MapSceneCapacity(name, requested, allowance);
             throw new MapDocumentException("CapacityExceeded: paint " + detail + " budget exceeded. " + capacity.Message,
                 new Scene.MapSceneCapacityException(capacity));

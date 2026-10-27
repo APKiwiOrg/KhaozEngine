@@ -1,3 +1,5 @@
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using KhaozEngine.Diagnostics;
 using System;
 using System.IO;
 using StbImageSharp;
@@ -54,11 +56,12 @@ namespace KhaozEngine.Render2D
         /// <summary>Refuses unsupported headers and capacity excess before copying or decoding pixels.</summary>
         public static ImageRgba DecodeBounded(ReadOnlySpan<byte> encoded, long maxPeakBytes, int maxPixels)
         {
+            using var demandScope = DemandDiagnostics.Enter("ImageRgba.DecodeBounded");
             ImageDecodeInfo info = ImageDecodeAdmission.Probe(encoded);
             try
             {
                 long pixels = (long)info.Width * info.Height;
-                if (pixels > maxPixels || pixels > Array.MaxLength / 4 || ImageDecodeAdmission.Demand(info) > maxPeakBytes)
+                if (DemandDiagnostics.Check(null, "ImageRgba.MaxImagePixels.1", "MaxImagePixels", 0, pixels, maxPixels, pixels > maxPixels, CapacityDemandLifetime.Transient) || DemandDiagnostics.Check(null, "ImageRgba.MaxImageBufferPixels.1", "MaxImageBufferPixels", 0, pixels, Array.MaxLength / 4, pixels > Array.MaxLength / 4, CapacityDemandLifetime.Transient) || DemandDiagnostics.Check(null, "ImageRgba.MaxPeakBytes.1", "MaxPeakBytes", 0, ImageDecodeAdmission.Demand(info), maxPeakBytes, ImageDecodeAdmission.Demand(info) > maxPeakBytes, CapacityDemandLifetime.Transient))
                     throw new ImageDecodeRefusal(ImageDecodeStatus.CapacityExceeded, "Image decode allowance exceeded.");
                 ImageRgba image = Decode(encoded);
                 if (image.Width != info.Width || image.Height != info.Height)

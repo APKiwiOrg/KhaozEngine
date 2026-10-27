@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Numerics;
 using KhaozEngine.Terrain;
@@ -44,7 +46,7 @@ internal sealed class MapFoliageInstanceBuilder : IDisposable
     internal bool TryPrepare(string? support, string model)
     {
         Open(); ArgumentNullException.ThrowIfNull(model);
-        if (_count >= _maxRows) return false;
+        if (DemandDiagnostics.Check(this, "MapFoliageInstanceBuilder.MaxQuerySamples.1", "MaxQuerySamples", _count, 1, _maxRows, _count >= _maxRows, CapacityDemandLifetime.Inventory)) return false;
         if (!_supports.Contains(support)) RetainText(support);
         _support = _supports.Intern(support);
         if (!_models.Contains(model)) RetainText(model);

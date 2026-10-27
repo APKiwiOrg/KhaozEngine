@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -141,6 +143,7 @@ public sealed class MapSpaceMembership
         IEnumerable<MapBoundFaceDemand>? additional, out MapBoundFaceContext? prepared, List<MapSpaceBoundsPart>? parts, bool column, MapExactPoint? exactWorld = null,
         bool pointBudget = false)
     {
+        using var demandScope = DemandDiagnostics.Enter(this, "MapSpaceMembership.Query");
         prepared = null;
         if (point.Frame != _view.Scope.Frame) throw new ArgumentException("point frame differs from acquired frame", nameof(point));
         if (!float.IsFinite(point.Local.X) || !float.IsFinite(point.Local.Y) || !float.IsFinite(point.Local.Z))
@@ -174,7 +177,7 @@ public sealed class MapSpaceMembership
             foreach (var room in records.OfType<MapSpaceDoc>().Where(s => s.Kind == MapSpaceKind.Room && s.AliasOf is null))
                 if (prisms.Count(p => p.Space.Id == room.Id) != 1) return Failure(MapMembershipStatus.MissingGeometry, "room requires one acquired prism");
             long prismVertices = prisms.Sum(MapPrismGeometry.Cost);
-            if (prisms.Length > budgets.MaxRecordReads || prismVertices > budgets.MaxInspectedFaces)
+            if (DemandDiagnostics.Check(this, "MapSpaceMembership.MaxRecordReads.1", "MaxRecordReads", 0, prisms.Length, budgets.MaxRecordReads, prisms.Length > budgets.MaxRecordReads, CapacityDemandLifetime.Cumulative) || DemandDiagnostics.Check(this, "MapSpaceMembership.MaxInspectedFaces.1", "MaxInspectedFaces", 0, prismVertices, budgets.MaxInspectedFaces, prismVertices > budgets.MaxInspectedFaces, CapacityDemandLifetime.Cumulative))
                 return Failure(MapMembershipStatus.CapacityExceeded, "prism records or vertices");
             int remainingFaces = budgets.MaxInspectedFaces - (int)prismVertices;
             bool nested = prisms.Length != 0;
@@ -418,7 +421,7 @@ public sealed class MapSpaceMembership
                 throw new MapDocumentException($"context demand patch {cell.Patch}: unavailable");
             if (freshCell) count = checked(count + MapSurfaceCompiler.CountFaces(surface, patch, cell.SlotCell));
             if (freshOpening) count = checked(count + MapBoundFaceContext.OpeningFaceCount(patch, cell.SlotCell));
-            if (count > maxFaces) return false;
+            if (DemandDiagnostics.Check(this, "MapSpaceMembership.MaxInspectedFaces.2", "MaxInspectedFaces", 0, count, maxFaces, count > maxFaces, CapacityDemandLifetime.Cumulative)) return false;
         }
         return true;
     }

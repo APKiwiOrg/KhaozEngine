@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 
 namespace KhaozEngine.MapDoc.Foliage;
@@ -10,7 +12,7 @@ internal sealed class MapFoliageColumnBudget(long allowance, Action<long>? alloc
     internal void Take(long bytes)
     {
         if (bytes < 0) throw new ArgumentOutOfRangeException(nameof(bytes));
-        if (bytes > allowance - Live) throw MapFoliageDistribution.Refuse(MapFoliageStatus.CapacityExceeded, "native foliage columns");
+        if (DemandDiagnostics.Check(this, "MapFoliageColumnBudget.MaxQueryRetainedBytes.1", "MaxQueryRetainedBytes", Live, bytes, allowance, bytes > allowance - Live, CapacityDemandLifetime.Transient)) throw MapFoliageDistribution.Refuse(MapFoliageStatus.CapacityExceeded, "native foliage columns");
         allocate?.Invoke(bytes);
         Live = checked(Live + bytes); Peak = Math.Max(Peak, Live);
     }

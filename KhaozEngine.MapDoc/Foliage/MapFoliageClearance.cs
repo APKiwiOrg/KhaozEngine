@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -47,7 +49,7 @@ public static class MapFoliageClearance
             var seats = new Dictionary<MapPrefabReference, string>();
             var consulted = new HashSet<string>(StringComparer.Ordinal);
             var placements = context.PlacementsIn(rect, out long inspected);
-            if (inspected > limits.MaxRuleCandidates)
+            if (DemandDiagnostics.Check(context, "MapFoliageClearance.MaxRuleCandidates.1", "MaxRuleCandidates", 0, inspected, limits.MaxRuleCandidates, inspected > limits.MaxRuleCandidates, CapacityDemandLifetime.Cumulative))
             {
                 work = work with { RuleCandidates = inspected };
                 throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "clearance owner candidates");
@@ -57,7 +59,7 @@ public static class MapFoliageClearance
                     foreach (var rule in matched)
                     {
                         work = work with { RuleCandidates = checked(work.RuleCandidates + 1) };
-                        if (work.RuleCandidates > limits.MaxRuleCandidates) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "clearance rules");
+                        if (DemandDiagnostics.Check(context, "MapFoliageClearance.MaxRuleCandidates.2", "MaxRuleCandidates", 0, work.RuleCandidates, limits.MaxRuleCandidates, work.RuleCandidates > limits.MaxRuleCandidates, CapacityDemandLifetime.Cumulative)) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "clearance rules");
                         if (!Enabled(layer, rule.Kind) || rule.PlacementTag is { } tag && !placement.Tags.Any(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase))) continue;
                         var owner = MapFoliageOwners.World(MapPrefabChildKind.Placement, placement.PlacementId);
                         var pose = context.Pose(owner);
@@ -68,7 +70,7 @@ public static class MapFoliageClearance
                     }
             var masks = context.ClearanceOwners.Masks(layer.Id, rect, out long maskCandidates);
             work = work with { MaskCandidates = maskCandidates };
-            if (maskCandidates > limits.MaxMaskCandidates) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "clearance masks");
+            if (DemandDiagnostics.Check(context, "MapFoliageClearance.MaxMaskCandidates.1", "MaxMaskCandidates", 0, maskCandidates, limits.MaxMaskCandidates, maskCandidates > limits.MaxMaskCandidates, CapacityDemandLifetime.Cumulative)) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "clearance masks");
             foreach (var row in masks)
             {
                 var mask = row.Mask;

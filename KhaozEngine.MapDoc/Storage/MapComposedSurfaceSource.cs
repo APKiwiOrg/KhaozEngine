@@ -1,10 +1,12 @@
+using KhaozEngine.Diagnostics;
+using KhaozEngine.Primitives;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
-using KhaozEngine.Primitives;
 
 namespace KhaozEngine.MapDoc.Storage;
 
@@ -150,7 +152,7 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
         }
         void Reserve(MapPatchKey key)
         {
-            if (!_reserved.Contains(key) && _reserved.Count >= _scope.Limits.MaxCandidatePatches)
+            if (!_reserved.Contains(key) && DemandDiagnostics.Check(this, "MapComposedSurfaceSource.MaxCandidatePatches.1", "MaxCandidatePatches", _reserved.Count, 1, _scope.Limits.MaxCandidatePatches, _reserved.Count >= _scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory))
                 throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)_reserved.Count + 1, _scope.Limits.MaxCandidatePatches);
             _reserved.Add(key);
         }

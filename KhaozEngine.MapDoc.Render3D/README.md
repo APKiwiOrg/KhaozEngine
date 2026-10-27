@@ -457,3 +457,12 @@ terrain/light/water/foliage writes, all four roof flags and every foliage part m
 CPU runs with GPU skips do not certify a backend. Required native facts must execute without skips
 on Metal, Direct3D 11 and Vulkan at the exact integration candidate. These tests do not claim R8b
 appearance or R11 import acceptance.
+
+## Evaluated capacity demand
+
+`KhaozEngine.Diagnostics.CapacityDemandDiagnostics.Observe` subscribes to count-only `CapacityDemand`
+records for evaluated gates on success and refusal. Admission identities distinguish independent counters
+and shared allowances. Operation identities distinguish nested acquisitions and windows within one build.
+Checks and operation scopes allocate nothing without a subscriber, including first use. Observer failures
+cannot alter admission. See [capacity demand](../docs/CAPACITY-DEMAND.md) for collection, lifetimes,
+profile sizing and the per-limit enforcement-site map.

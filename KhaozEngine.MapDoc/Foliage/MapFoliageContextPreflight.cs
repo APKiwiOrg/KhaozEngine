@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,6 +13,11 @@ namespace KhaozEngine.MapDoc.Foliage;
 /// <summary>Context construction ceilings, admitted before expansion, cloning or index staging. Released prefab
 /// expansion limits still apply beside these. Window capture applies them to admitted scoped input bytes, generation
 /// and density descriptors, placements, patches and paint targets through the scene admission allowance.</summary>
+/// <param name="MaxSourceUtf8Bytes">Demand sites: MapFoliageContextPreflight, MapSceneAdmission. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxChunkDescriptors">Demand sites: MapFoliageContextPreflight, MapFoliageWindowCapture, MapSceneAdmission. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxPlacements">Demand sites: MapFoliageContextPreflight, MapSceneAdmission. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxSurfacePatches">Demand sites: MapFoliageContextPreflight, MapSceneAdmission. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxPaintTargets">Demand sites: MapFoliageContextPreflight, MapSceneAdmission. See docs/CAPACITY-DEMAND.md.</param>
 public sealed record MapFoliageContextLimits(long MaxSourceUtf8Bytes = 134_217_728, int MaxChunkDescriptors = 65_536,
     int MaxPlacements = 65_536, int MaxSurfacePatches = 65_536, int MaxPaintTargets = 4096);
 
@@ -47,26 +54,27 @@ internal static class MapFoliageContextPreflight
         ArgumentNullException.ThrowIfNull(limits);
         if (limits.MaxSourceUtf8Bytes < 0 || limits.MaxChunkDescriptors < 0 || limits.MaxPlacements < 0 ||
             limits.MaxSurfacePatches < 0 || limits.MaxPaintTargets < 0) throw new ArgumentOutOfRangeException(nameof(limits));
+        using var demandScope = DemandDiagnostics.Enter(document, "MapFoliageContextPreflight");
         var work = new MapFoliageContextWork(0, 0, 0, 0, 0, 0, 0);
         if (IsPartial(document) || set?.Layers.Any(l => l.Chunks.Count != l.ChunkDigests.Count) == true)
             return new(MapFoliageStatus.PartialResidency, work);
 
         work = work with { ChunkDescriptors = set?.Layers.Sum(l => (long)l.ChunkDigests.Count) ?? 0 };
-        if (work.ChunkDescriptors > limits.MaxChunkDescriptors) return new(MapFoliageStatus.CapacityExceeded, work)
+        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxChunkDescriptors.1", "MaxChunkDescriptors", 0, work.ChunkDescriptors, limits.MaxChunkDescriptors, work.ChunkDescriptors > limits.MaxChunkDescriptors, CapacityDemandLifetime.Inventory)) return new(MapFoliageStatus.CapacityExceeded, work)
         { Capacity = new(nameof(MapFoliageContextLimits.MaxChunkDescriptors), work.ChunkDescriptors, limits.MaxChunkDescriptors) };
 
         var source = new SourceCharge(limits.MaxSourceUtf8Bytes);
         if (set is not null) Charge(source, set);
         work = work with { SourceUtf8Bytes = source.Bytes };
-        if (source.Exceeded) return new(MapFoliageStatus.CapacityExceeded, work)
+        if (DemandDiagnostics.Check(source, "MapFoliageContextPreflight.SourceBytes", nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), 0, source.Bytes, limits.MaxSourceUtf8Bytes, source.Exceeded)) return new(MapFoliageStatus.CapacityExceeded, work)
         { Capacity = new(nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), work.SourceUtf8Bytes, limits.MaxSourceUtf8Bytes) };
 
         work = work with { Placements = PlacementDemand(document, assets) };
-        if (work.Placements > limits.MaxPlacements) return new(MapFoliageStatus.CapacityExceeded, work)
+        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxPlacements.1", "MaxPlacements", 0, work.Placements, limits.MaxPlacements, work.Placements > limits.MaxPlacements, CapacityDemandLifetime.Inventory)) return new(MapFoliageStatus.CapacityExceeded, work)
         { Capacity = new(nameof(MapFoliageContextLimits.MaxPlacements), work.Placements, limits.MaxPlacements) };
 
         work = work with { PaintTargets = PaintTargetDemand(document, assets) };
-        if (work.PaintTargets > limits.MaxPaintTargets) return new(MapFoliageStatus.CapacityExceeded, work)
+        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxPaintTargets.1", "MaxPaintTargets", 0, work.PaintTargets, limits.MaxPaintTargets, work.PaintTargets > limits.MaxPaintTargets, CapacityDemandLifetime.Inventory)) return new(MapFoliageStatus.CapacityExceeded, work)
         { Capacity = new(nameof(MapFoliageContextLimits.MaxPaintTargets), work.PaintTargets, limits.MaxPaintTargets) };
 
         MapPrefabExpansionWork expansion;
@@ -79,7 +87,7 @@ internal static class MapFoliageContextPreflight
         }
         catch (KeyNotFoundException) { return new(MapFoliageStatus.Invalid, work); }
         work = work with { SurfacePatches = expansion.Patches };
-        if (work.SurfacePatches > limits.MaxSurfacePatches) return new(MapFoliageStatus.CapacityExceeded, work)
+        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxSurfacePatches.1", "MaxSurfacePatches", 0, work.SurfacePatches, limits.MaxSurfacePatches, work.SurfacePatches > limits.MaxSurfacePatches, CapacityDemandLifetime.Inventory)) return new(MapFoliageStatus.CapacityExceeded, work)
         { Capacity = new(nameof(MapFoliageContextLimits.MaxSurfacePatches), work.SurfacePatches, limits.MaxSurfacePatches) };
         return new(MapFoliageStatus.Complete, work);
     }
@@ -256,8 +264,10 @@ internal static class MapFoliageContextPreflight
         internal void Add(long count, long each)
         {
             if (Exceeded) return;
+            long current = Bytes;
             try { Bytes = checked(Bytes + checked(count * each)); }
             catch (OverflowException) { Bytes = long.MaxValue; }
+            DemandDiagnostics.Check(this, "MapFoliageContextPreflight.SourceCharge", nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), current, Bytes - current, max, Exceeded);
         }
     }
 }

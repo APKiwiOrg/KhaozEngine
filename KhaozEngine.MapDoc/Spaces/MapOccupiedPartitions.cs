@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -63,7 +65,7 @@ internal static class MapOccupiedPartitions
     internal static IReadOnlyList<MapSpaceBoundsPart> At(MapScopedSurfaces view, MapExactXz xz,
         IReadOnlyList<MapSpaceBoundsPart> canonical, IReadOnlyList<MapPrismDomain> prisms)
     {
-        if (prisms.Count > view.Scope.Limits.MaxRecordReads) throw new MapDocumentException("capacity exceeded: prism records");
+        if (DemandDiagnostics.Check(view, "MapOccupiedPartitions.MaxRecordReads.1", "MaxRecordReads", 0, prisms.Count, view.Scope.Limits.MaxRecordReads, prisms.Count > view.Scope.Limits.MaxRecordReads, CapacityDemandLifetime.Cumulative)) throw new MapDocumentException("capacity exceeded: prism records");
         var raw = canonical.Select(p => Identify(view, p)).ToList();
         var visiting = new HashSet<string>(StringComparer.Ordinal);
         var done = new HashSet<string>(StringComparer.Ordinal);
@@ -79,7 +81,7 @@ internal static class MapOccupiedPartitions
         void Add(MapPrismDomain prism, int depth)
         {
             if (done.Contains(prism.Id)) return;
-            if (depth > view.Scope.Limits.MaxRecordDepth) throw new MapDocumentException("capacity exceeded: prism parent depth");
+            if (DemandDiagnostics.Check(view, "MapOccupiedPartitions.MaxRecordDepth.1", "MaxRecordDepth", 0, depth, view.Scope.Limits.MaxRecordDepth, depth > view.Scope.Limits.MaxRecordDepth, CapacityDemandLifetime.Cumulative)) throw new MapDocumentException("capacity exceeded: prism parent depth");
             if (!visiting.Add(prism.Id)) throw new MapDocumentException("invalid prism parent cycle");
             MapPrismCoverage.RequireStorey(view, prism);
             var space = MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Space);
@@ -184,8 +186,15 @@ internal static class MapOccupiedPartitions
         if (!view.Witness.Complete) throw new MapDocumentException("missing geometry: occupied partition acquisition");
         var records = MapSpaceGeometry.Records(view).ToArray();
         var domains = records.OfType<MapPrismDomain>().ToArray();
-        if (domains.Length > view.Scope.Limits.MaxRecordReads || domains.Sum(MapPrismGeometry.Cost) > limits.MaxRefinementVertices)
-            throw new MapDocumentException("capacity exceeded: prism records or vertices");
+        bool refused = DemandDiagnostics.Check(view, "MapOccupiedPartitions.MaxRecordReads.2", "MaxRecordReads", 0,
+            domains.Length, view.Scope.Limits.MaxRecordReads, domains.Length > view.Scope.Limits.MaxRecordReads);
+        if (!refused)
+        {
+            long domainVertices = domains.Sum(MapPrismGeometry.Cost);
+            refused = DemandDiagnostics.Check(view, "MapOccupiedPartitions.PrismVertices.1", "MaxRefinementVertices", 0,
+                domainVertices, limits.MaxRefinementVertices, domainVertices > limits.MaxRefinementVertices);
+        }
+        if (refused) throw new MapDocumentException("capacity exceeded: prism records or vertices");
         var footprints = records.OfType<MapSpaceFootprint>().ToArray();
         using var contextPreparation = MapPrismValidationWorkspace.Admission?.BeginPreparation();
         var prepared = MapFootprintCoveragePreparation.Prepare(view, footprints, min, max, limits, meter);
@@ -305,7 +314,7 @@ internal static class MapOccupiedPartitions
         {
             piece = piece with { Polygon = MapWideRefinementGeometry.Normalize(piece.Polygon) };
             long count = vertices.GetValueOrDefault(target) + piece.Polygon.Count;
-            if (target.Count >= limits.MaxRefinementFaces || count > limits.MaxRefinementVertices)
+            if (DemandDiagnostics.Check(view, "MapOccupiedPartitions.MaxRefinementFaces.1", "MaxRefinementFaces", target.Count, 1, limits.MaxRefinementFaces, target.Count >= limits.MaxRefinementFaces, CapacityDemandLifetime.Cumulative) || DemandDiagnostics.Check(view, "MapOccupiedPartitions.MaxRefinementVertices.1", "MaxRefinementVertices", 0, count, limits.MaxRefinementVertices, count > limits.MaxRefinementVertices, CapacityDemandLifetime.Cumulative))
                 throw new MapDocumentException("capacity exceeded: occupied pieces");
             vertices[target] = count;
             target.Add(piece);
@@ -327,7 +336,7 @@ internal static class MapOccupiedPartitions
         void Room(MapPrismDomain prism, int depth)
         {
             if (done.Contains(prism.Id)) return;
-            if (depth > view.Scope.Limits.MaxRecordDepth) throw new MapDocumentException("capacity exceeded: prism depth");
+            if (DemandDiagnostics.Check(view, "MapOccupiedPartitions.MaxRecordDepth.2", "MaxRecordDepth", 0, depth, view.Scope.Limits.MaxRecordDepth, depth > view.Scope.Limits.MaxRecordDepth, CapacityDemandLifetime.Cumulative)) throw new MapDocumentException("capacity exceeded: prism depth");
             if (!visiting.Add(prism.Id)) throw new MapDocumentException("invalid prism parent cycle");
             MapPrismCoverage.RequireStorey(view, prism);
             var space = MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Space);

@@ -1,3 +1,5 @@
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using KhaozEngine.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -37,7 +39,7 @@ public static class MapSurfaceCompiler
         try
         {
             long count = CountFaces(validated, cells, logical);
-            if (count > maxFaces) throw new MapDocumentException($"compiled patch exceeds face budget {maxFaces}");
+            if (DemandDiagnostics.Check(validated, "MapSurfaceCompiler.MaxFacesPerPatch.1", "MaxFacesPerPatch", 0, count, maxFaces, count > maxFaces, CapacityDemandLifetime.Cumulative)) throw new MapDocumentException($"compiled patch exceeds face budget {maxFaces}");
             if (surface.Role == MapSurfaceRole.PaintOverride)
                 throw new MapDocumentException("paint override has no physical faces. Use ApplyPaintOverride.");
             var result = CompileCore(surface, patch, cells, (int)count, logical);

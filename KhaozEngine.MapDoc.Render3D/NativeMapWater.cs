@@ -1,3 +1,5 @@
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using KhaozEngine.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -70,16 +72,16 @@ public static class NativeMapWater
                 using var cellPreparation = admission.BeginPreparation();
                 canonical.Add(cell);
                 long triangleCount = cell.Regions.Where(r => r.Kind == MapWaterRegionKind.FreeSurface).Sum(r => (long)r.Triangles.Count);
-                if (3L * triangleCount > MapWaterScopedCompiler.MaxEmittedVertices - emitted) throw new MapSceneCapacityException(nameof(MapWaterScopedCompiler.MaxEmittedVertices), checked(emitted + 3L * triangleCount), MapWaterScopedCompiler.MaxEmittedVertices);
+                if (DemandDiagnostics.Check(admission, "NativeMapWater.MaxEmittedVertices.1", "MaxEmittedVertices", emitted, 3m * triangleCount, MapWaterScopedCompiler.MaxEmittedVertices, 3L * triangleCount > MapWaterScopedCompiler.MaxEmittedVertices - emitted, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapWaterScopedCompiler.MaxEmittedVertices), checked(emitted + 3L * triangleCount), MapWaterScopedCompiler.MaxEmittedVertices);
                 admission.ReserveBytes(checked(triangleCount * 8));
                 var triangles = cell.Regions.Where(r => r.Kind == MapWaterRegionKind.FreeSurface).SelectMany(r => r.Triangles).ToArray();
                 if (cell.Regions.Any(r => r.Kind == MapWaterRegionKind.Unresolved))
                     throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, "Unresolved water cannot be drawn.");
                 if (triangles.Length == 0) continue;
                 emitted = checked(emitted + 3L * triangles.Length);
-                if (emitted > MapWaterScopedCompiler.MaxEmittedVertices)
+                if (DemandDiagnostics.Check(admission, "NativeMapWater.MaxEmittedVertices.2", "MaxEmittedVertices", 0, emitted, MapWaterScopedCompiler.MaxEmittedVertices, emitted > MapWaterScopedCompiler.MaxEmittedVertices, CapacityDemandLifetime.Inventory))
                     throw new MapSceneCapacityException(nameof(MapWaterScopedCompiler.MaxEmittedVertices), emitted, MapWaterScopedCompiler.MaxEmittedVertices);
-                if (parts.Count >= MapWaterScopedCompiler.MaxCells)
+                if (DemandDiagnostics.Check(admission, "NativeMapWater.MaxCells.1", "MaxCells", parts.Count, 1, MapWaterScopedCompiler.MaxCells, parts.Count >= MapWaterScopedCompiler.MaxCells, CapacityDemandLifetime.Inventory))
                     throw new MapSceneCapacityException(nameof(MapWaterScopedCompiler.MaxCells), (long)parts.Count + 1, MapWaterScopedCompiler.MaxCells);
                 // List, dictionary, final arrays and the detached typed registration are all admitted before copies.
                 admission.ReserveCompilation(triangles.Length);

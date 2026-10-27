@@ -6,8 +6,10 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.14.0
 
-2026-10-27
+2026-10-28
 
+- Expose count-only evaluated capacity demand across native scene preparation, nested queries, multi-window residency,
+  refinement, foliage and asset decoding through `CapacityDemandDiagnostics`, without changing admission.
 - Bound native scene upload batches with caller limits `MaxInFlightUploadCpuBytes` (256 MiB) and
   `MaxInFlightUploadStagingGpuBytes` (128 MiB). Release each resource's transient CPU at device completion,
   before atomic window publication, and refuse windows whose retained uploads and in-flight allowance cannot fit.

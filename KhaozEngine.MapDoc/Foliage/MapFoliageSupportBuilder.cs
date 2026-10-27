@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -150,7 +152,7 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         MapCellRect range = MapEffectiveGeometry.CellRange(view, surface.Id, min, max);
         // One cell of margin on every side absorbs the released float floor at the rectangle's edges.
         long x0 = checked(range.MinX - 1), z0 = checked(range.MinZ - 1), x1 = checked(range.MaxXExclusive + 1), z1 = checked(range.MaxZExclusive + 1);
-        if (((double)x1 - x0) * ((double)z1 - z0) > 4.0 * limits.MaxFaces + 64)
+        if (DemandDiagnostics.Check(this, "MapFoliageSupportBuilder.MaxFaces.1", "MaxFaces", 0, ((decimal)x1 - x0) * ((decimal)z1 - z0), 4m * limits.MaxFaces + 64, ((double)x1 - x0) * ((double)z1 - z0) > 4.0 * limits.MaxFaces + 64, CapacityDemandLifetime.Transient))
             throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, Work(), "support cells");
         var lattice = new MapFoliageLattice(view, surface, layer.Policy.NormalBoundaryHeight);
         var byPatch = new Dictionary<MapPatchKey, List<(long X, long Z)>>();
@@ -170,7 +172,7 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
             var validated = new MapValidatedSurfacePatch(surface, patch);
             var mask = MapSlotCellMask.Of(cells.Select(c => MapLowerCellClassifier.SlotCell(c.X, c.Z)));
             long count = MapFoliageTriangles.CountFaces(validated, mask);
-            if (checked(_faces + count) > limits.MaxFaces)
+            if (DemandDiagnostics.Check(this, "MapFoliageSupportBuilder.MaxFaces.2", "MaxFaces", _faces, count, limits.MaxFaces, checked(_faces + count) > limits.MaxFaces, CapacityDemandLifetime.Cumulative))
                 throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, Work(), "prepared faces");
             // One 1280-byte charge per unique face covers both holds: this grid's record and the membership context's
             // reused hold of the same face (its transformed copy, bound face and index entries). ReusePhysical charges

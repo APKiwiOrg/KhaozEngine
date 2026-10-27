@@ -117,5 +117,8 @@
     <Compile Include="../KhaozEngine.MapDoc.Tests/Interiors/MapMembershipCompactInventory.cs" Link="MapDoc/MapMembershipCompactInventory.cs" />
     <Compile Include="../test-shared/SkinnedAttachmentGlbFixture.cs" Link="Shared/SkinnedAttachmentGlbFixture.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../test-shared/CapacityDemandProbe.cs" Link="Shared/CapacityDemandProbe.cs" />
+  </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

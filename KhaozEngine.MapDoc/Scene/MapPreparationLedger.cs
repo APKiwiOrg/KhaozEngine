@@ -126,6 +126,7 @@ internal sealed partial class MapPreparationLedger(long allowance, string limitN
         internal long Live;
         internal long Ordinal { get; }
         internal long Allowance => _allowance;
+        internal string LimitName => _name;
         internal long Reused => _reused;
         internal long Total => checked(_reused + Live);
         internal long Remaining => _allowance - _reused - Live;

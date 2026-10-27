@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 namespace KhaozEngine.MapDoc.Storage;
 
 /// <summary>Before-work admission for traversal, rectangle bookkeeping, metadata and page decodes.</summary>
@@ -23,7 +25,7 @@ internal sealed class MapPageBudget
 
     internal void BeforeMetadata()
     {
-        if (_admission.Metadata >= _admission.RangeLimit) throw new MapSurfaceCapacityException("MaxPageMetadataChecks", (decimal)_admission.Metadata + 1, _admission.RangeLimit);
+        if (DemandDiagnostics.Check(_admission, "MapPageBudget.MaxPageMetadataChecks.1", "MaxPageMetadataChecks", _admission.Metadata, 1, _admission.RangeLimit, _admission.Metadata >= _admission.RangeLimit, CapacityDemandLifetime.Cumulative)) throw new MapSurfaceCapacityException("MaxPageMetadataChecks", (decimal)_admission.Metadata + 1, _admission.RangeLimit);
         MetadataInspecting?.Invoke();
         _admission.Metadata++;
         if (Work is { } observation) observation.MetadataChecks++;
@@ -31,7 +33,7 @@ internal sealed class MapPageBudget
 
     internal void BeforeVisit()
     {
-        if (_admission.Visits >= _admission.Limit) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxPageReads), (long)_admission.Visits + 1, _admission.Limit);
+        if (DemandDiagnostics.Check(_admission, "MapPageBudget.MaxPageReads.1", "MaxPageReads", _admission.Visits, 1, _admission.Limit, _admission.Visits >= _admission.Limit, CapacityDemandLifetime.Cumulative)) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxPageReads), (long)_admission.Visits + 1, _admission.Limit);
         PageVisiting?.Invoke();
         _admission.Visits++;
         if (Work is { } observation) observation.PageVisits++;
@@ -39,7 +41,7 @@ internal sealed class MapPageBudget
 
     internal void BeforeRange()
     {
-        if (_admission.Ranges >= _admission.RangeLimit) throw new MapSurfaceCapacityException("MaxPageRangeOperations", (decimal)_admission.Ranges + 1, _admission.RangeLimit);
+        if (DemandDiagnostics.Check(_admission, "MapPageBudget.MaxPageRangeOperations.1", "MaxPageRangeOperations", _admission.Ranges, 1, _admission.RangeLimit, _admission.Ranges >= _admission.RangeLimit, CapacityDemandLifetime.Cumulative)) throw new MapSurfaceCapacityException("MaxPageRangeOperations", (decimal)_admission.Ranges + 1, _admission.RangeLimit);
         RangeAdding?.Invoke();
         _admission.Ranges++;
         if (Work is { } observation) observation.RangeOperations++;
@@ -48,7 +50,7 @@ internal sealed class MapPageBudget
     internal void BeforeRead()
     {
         // Storage reads also use this budget outside queries. Cache hits never affect decoded statistics.
-        if (_admission.Attempts >= _admission.Limit) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxPageReads), (long)_admission.Attempts + 1, _admission.Limit);
+        if (DemandDiagnostics.Check(_admission, "MapPageBudget.MaxPageReads.2", "MaxPageReads", _admission.Attempts, 1, _admission.Limit, _admission.Attempts >= _admission.Limit, CapacityDemandLifetime.Cumulative)) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxPageReads), (long)_admission.Attempts + 1, _admission.Limit);
         _admission.Attempts++;
         if (Work is { } observation) observation.DecodeAttempts++;
     }

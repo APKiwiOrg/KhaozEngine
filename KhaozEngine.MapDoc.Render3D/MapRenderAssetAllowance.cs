@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System.Linq;
 using KhaozEngine.MapDoc.Scene;
 
@@ -25,9 +27,9 @@ internal sealed class MapRenderAssetAllowance(MapRenderAssetLimits? limits)
     {
         if (limits is null) return;
         long parts = assets.ById.Values.Sum(a => a.Lods.Sum(l => (long)l.BorrowParts.Count));
-        if (assets.RetainedBytes > limits.MaxDecodedBytes - _bytes)
+        if (DemandDiagnostics.Check(this, "MapRenderAssetAllowance.MaxDecodedBytes.1", "MaxDecodedBytes", _bytes, assets.RetainedBytes, limits.MaxDecodedBytes, assets.RetainedBytes > limits.MaxDecodedBytes - _bytes, CapacityDemandLifetime.Inventory))
             throw MapRenderDecodeCapacity.Refuse(nameof(MapRenderAssetLimits.MaxDecodedBytes), (decimal)_bytes + assets.RetainedBytes, limits.MaxDecodedBytes);
-        if (parts > limits.MaxParts - _parts)
+        if (DemandDiagnostics.Check(this, "MapRenderAssetAllowance.MaxParts.1", "MaxParts", _parts, parts, limits.MaxParts, parts > limits.MaxParts - _parts, CapacityDemandLifetime.Inventory))
             throw MapRenderDecodeCapacity.Refuse(nameof(MapRenderAssetLimits.MaxParts), (long)_parts + parts, limits.MaxParts);
         _bytes += assets.RetainedBytes; _parts += (int)parts;
     }

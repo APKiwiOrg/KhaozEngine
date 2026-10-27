@@ -1,3 +1,6 @@
+using KhaozEngine.Diagnostics;
+using KhaozEngine.Primitives;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,7 +10,6 @@ using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
-using KhaozEngine.Primitives;
 using Bounds = KhaozEngine.MapDoc.Foliage.MapFoliageGenerationContext.Bounds;
 using SpatialIndex = KhaozEngine.MapDoc.Foliage.MapFoliageGenerationContext.SpatialIndex;
 
@@ -125,7 +127,7 @@ internal sealed class MapFoliageOwners
         // One bounded support preparation per exceptional owner, never per foliage candidate. The shared selection
         // kernel retains its own released point budgets and all surface/room semantics.
         work = work with { PrepareScopes = checked(work.PrepareScopes + 1) };
-        if (work.PrepareScopes > limits.MaxPrepareScopes) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "owner support scopes");
+        if (DemandDiagnostics.Check(limits, "MapFoliageOwners.MaxPrepareScopes.1", "MaxPrepareScopes", 0, work.PrepareScopes, limits.MaxPrepareScopes, work.PrepareScopes > limits.MaxPrepareScopes, CapacityDemandLifetime.Cumulative)) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "owner support scopes");
         var point = new MapResourceTransform(pose).Point(new(default, default, default));
         var scope = SeatScope(point, _queryLimits);
         MapScopedSurfaces view = _acquire(scope);

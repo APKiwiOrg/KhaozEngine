@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -35,10 +37,11 @@ public sealed class MapSceneSource
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(assets);
         var scan = new MapSceneScan(limits ?? new());
+        using var demandScope = DemandDiagnostics.Enter(scan, "MapSceneSource.Capture");
         try
         {
             scan.Limits.Validate();
-            if (source.Tiles.Entries.Count > scan.Limits.MaxTiles) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxTiles), source.Tiles.Entries.Count, scan.Limits.MaxTiles);
+            if (DemandDiagnostics.Check(scan, "MapSceneSource.MaxTiles.1", "MaxTiles", 0, source.Tiles.Entries.Count, scan.Limits.MaxTiles, source.Tiles.Entries.Count > scan.Limits.MaxTiles, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxTiles), source.Tiles.Entries.Count, scan.Limits.MaxTiles);
             string? manifestDigest = source.Tiles.ManifestSha256;
             CheckManifest(source.SceneDirectory, manifestDigest, scan);
             if (source.ScenePartial) throw new MapSceneSourceException(MapSceneStatus.Incomplete, "Unloaded tile metadata cannot attest a reverse index.");
@@ -201,7 +204,7 @@ public sealed class MapSceneSource
             foreach (var instance in root.Prefabs?.Instances ?? [])
             {
                 if (instance.Removed) continue;
-                if (instance.Bindings.Entries.Count > scan.Limits.MaxMetadataRows - scan.MetadataRows) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), scan.MetadataRows + instance.Bindings.Entries.Count, scan.Limits.MaxMetadataRows);
+                if (DemandDiagnostics.Check(scan, "MapSceneSource.MaxMetadataRows.1", "MaxMetadataRows", scan.MetadataRows, instance.Bindings.Entries.Count, scan.Limits.MaxMetadataRows, instance.Bindings.Entries.Count > scan.Limits.MaxMetadataRows - scan.MetadataRows, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), scan.MetadataRows + instance.Bindings.Entries.Count, scan.Limits.MaxMetadataRows);
                 scan.RetainBytes(MapSceneResourceBounds.InstanceBytes(instance));
                 var resource = assets.GetResource(instance.ResourceId);
                 if (resource.Kind != MapResourceKind.Prefab || resource.Reference.Sha256 != instance.ResourceSha256)
@@ -290,7 +293,7 @@ public sealed class MapSceneSource
                 proof.Resources.Any(r => _data.Assets.GetResource(r.ResourceId).Reference.Sha256 != r.Sha256 || !Contains(r.DeclaredBounds, r.VerifiedBounds)))
                 return new(MapSceneSourceStatus.Invalid, null, _data.CaptureWork with { RetainedBytes = 0 });
         }
-        if (proofs.MetadataBytes > _data.Limits.MaxMetadataBytes - _data.CaptureWork.RetainedBytes)
+        if (DemandDiagnostics.Check(this, "MapSceneSource.MaxMetadataBytes.1", "MaxMetadataBytes", _data.CaptureWork.RetainedBytes, proofs.MetadataBytes, _data.Limits.MaxMetadataBytes, proofs.MetadataBytes > _data.Limits.MaxMetadataBytes - _data.CaptureWork.RetainedBytes, CapacityDemandLifetime.Inventory))
             return new(MapSceneSourceStatus.CapacityExceeded, null, _data.CaptureWork with { RetainedBytes = 0 })
             {
                 Capacity = new(nameof(MapSceneLimits.MaxMetadataBytes), (decimal)_data.CaptureWork.RetainedBytes + proofs.MetadataBytes, _data.Limits.MaxMetadataBytes),

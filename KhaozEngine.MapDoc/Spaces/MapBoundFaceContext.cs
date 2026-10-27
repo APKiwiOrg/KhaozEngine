@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -119,7 +121,7 @@ internal sealed class MapBoundFaceContext
             try { count = checked(count + faces); }
             catch (OverflowException) { refusal = "context faces"; continue; }
             if (work is not null) work.ContextFacesCounted = count;
-            if (count > maxFaces || entry.PhysicalFaces > MapSurfaceCompiler.MaxFacesPerPatch)
+            if (DemandDiagnostics.Check(preparation, "MapBoundFaceContext.MaxContextFaces.1", "MaxContextFaces", 0, count, maxFaces, count > maxFaces, CapacityDemandLifetime.Inventory) || entry.PhysicalFaces > MapSurfaceCompiler.MaxFacesPerPatch)
             { refusal = "context faces"; continue; }
             entry.Add(demand.SlotCell);
             if (freshOpeningCell)

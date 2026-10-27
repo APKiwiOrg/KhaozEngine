@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -63,7 +65,7 @@ public sealed partial class MapDocumentSurfaceSource : IMapSurfaceAcquisitionSou
             foreach (MapPatchRead patch in known.Patches.Concat(resident.Patches))
             {
                 if (patches.ContainsKey(patch.Key)) continue;
-                if (patches.Count >= scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
+                if (DemandDiagnostics.Check(patches, "MapDocumentSurfaceSource.MaxCandidatePatches.1", "MaxCandidatePatches", patches.Count, 1, scope.Limits.MaxCandidatePatches, patches.Count >= scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory)) throw new MapSurfaceCapacityException();
                 patches.Add(patch.Key, patch);
             }
             var empty = new List<MapCoveredRange>();

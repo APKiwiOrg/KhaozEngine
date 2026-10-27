@@ -53,6 +53,7 @@ public sealed class MapRenderPlan : IDisposable
         if (!ReferenceEquals(source, scene.Source) || !scene.Witness.CompleteForScope || input.ClosureHash != source.ClosureHash ||
             input.ProofDigest != source.RenderExtentsDigest || scene.Witness.RenderExtentsDigest != input.ProofDigest)
             throw new MapRenderAssetRefusal(MapRenderAssetStatus.Stale, "Render plan requires its exact proof-bound source, scene and input.");
+        using var demandScope = KhaozEngine.Diagnostics.CapacityDemandDiagnostics.Enter(admission, "MapRenderPlan.Prepare");
         using var preparation = admission.BeginPreparation();
         MapTerrainRenderBatch? terrain = null; MapPlacementRenderBatch? placements = null; MapNativeFoliageBatch? foliage = null; MapWaterRenderBatch? water = null;
         using var activation = admission.Enter();
@@ -96,6 +97,7 @@ public sealed class MapRenderPlan : IDisposable
                 (captured is null ? context.InventoryBytes : 0));
             retained = preparation.DeduplicateSharedProducts(retained, checked(placements.SharedMembershipBytes + roofs.Counts.SharedCapacityBytes));
             result.PreparationOwnership = preparation.Complete(retained - water.CanonicalPreparationBytes); result.PreparationBytes = retained;
+            admission.ReportRetained();
             return result;
         }
         catch

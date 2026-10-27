@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Collections.Generic;
 
 namespace KhaozEngine.MapDoc.Scene;
@@ -16,8 +17,9 @@ internal sealed partial class MapPreparationLedger
         return Capacity(additional);
     }
     void Request(decimal rootIncrement, decimal windowIncrement, Window? start, Window? stop, bool refused,
-        ICollection<object>? covered = null)
+        ICollection<object>? covered = null, [CallerMemberName] string site = "")
     {
+        ObserveDemand(rootIncrement, windowIncrement, start, stop, covered, site);
         for (var observer = _observation; observer is not null; observer = observer.Previous)
             observer.Request(rootIncrement, windowIncrement, start, stop, refused, covered);
         RequestingBytes?.Invoke(LiveBytes + rootIncrement);

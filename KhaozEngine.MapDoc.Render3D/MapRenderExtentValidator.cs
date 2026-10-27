@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -28,7 +30,7 @@ public static class MapRenderExtentValidator
         var rows = new List<MapAssetExtentProof>();
         try
         {
-            if (maxProofBytes < metadata) throw MapRenderDecodeCapacity.Refuse("MaxProofBytes", metadata, maxProofBytes);
+            if (DemandDiagnostics.Check(closure, "MapRenderExtentValidator.MaxProofBytes.1", "MaxProofBytes", 0, metadata, maxProofBytes, maxProofBytes < metadata, CapacityDemandLifetime.Transient)) throw MapRenderDecodeCapacity.Refuse("MaxProofBytes", metadata, maxProofBytes);
             foreach (string id in assetIds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
             {
                 MapResolvedAsset asset;
@@ -36,7 +38,7 @@ public static class MapRenderExtentValidator
                 catch (MapDocumentException ex) { throw new MapRenderAssetRefusal(MapRenderAssetStatus.Missing, ex.Message); }
                 string[] resources = new[] { asset.MeshResourceId }.Concat(asset.LodResourceIds).ToArray();
                 long rowBytes = checked(512L + Encoding.UTF8.GetByteCount(id) + resources.Sum(r => 256L + Encoding.UTF8.GetByteCount(r)));
-                if (rowBytes > maxProofBytes - metadata) throw MapRenderDecodeCapacity.Refuse("MaxProofBytes", (decimal)metadata + rowBytes, maxProofBytes);
+                if (DemandDiagnostics.Check(closure, "MapRenderExtentValidator.MaxProofBytes.2", "MaxProofBytes", metadata, rowBytes, maxProofBytes, rowBytes > maxProofBytes - metadata, CapacityDemandLifetime.Transient)) throw MapRenderDecodeCapacity.Refuse("MaxProofBytes", (decimal)metadata + rowBytes, maxProofBytes);
                 var proofs = new List<MapAssetResourceExtentProof>();
                 for (int i = 0; i < resources.Length; i++)
                 {
@@ -64,7 +66,7 @@ public static class MapRenderExtentValidator
             long hashStrings = rows.Count == 0 ? 0 : rows.Max(row => checked((long)Encoding.UTF8.GetByteCount(row.AssetId) +
                 row.Resources.Sum(resource => (long)Encoding.UTF8.GetByteCount(resource.ResourceId) + resource.Sha256.Length)));
             long hashCharge = checked(8192 + 12 * hashStrings);
-            if (hashCharge > Array.MaxLength) throw MapRenderDecodeCapacity.Refuse("Array.MaxLength", hashCharge, Array.MaxLength);
+            if (DemandDiagnostics.Check(closure, "MapRenderExtentValidator.Array.MaxLength.1", "Array.MaxLength", 0, hashCharge, Array.MaxLength, hashCharge > Array.MaxLength, CapacityDemandLifetime.Transient)) throw MapRenderDecodeCapacity.Refuse("Array.MaxLength", hashCharge, Array.MaxLength);
             MapRenderDecodeCapacity.Reserve(scratch, 0, hashCharge);
             peak = Math.Max(peak, hashCharge);
             string digest;

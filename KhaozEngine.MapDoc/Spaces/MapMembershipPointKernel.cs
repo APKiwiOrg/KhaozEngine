@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Surfaces;
@@ -162,7 +164,7 @@ internal static class MapMembershipPointKernel
     static bool AddPrism(IMapMembershipPointInput input, int index, int depth, MapMembershipPointScratch scratch)
     {
         if (scratch.Prisms[index] == 2) return true;
-        if (depth > input.MaxDepth)
+        if (DemandDiagnostics.Check(null, "MapMembershipPointKernel.MaxRecordDepth.1", "MaxRecordDepth", 0, depth, input.MaxDepth, depth > input.MaxDepth, CapacityDemandLifetime.Transient))
         { scratch.Status = MapMembershipStatus.CapacityExceeded; scratch.Detail = "capacity exceeded: prism parent depth"; return false; }
         if (scratch.Prisms[index] == 1)
         { scratch.Status = MapMembershipStatus.Invalid; scratch.Detail = "invalid prism parent cycle"; return false; }

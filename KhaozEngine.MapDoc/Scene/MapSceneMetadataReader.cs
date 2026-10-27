@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -56,7 +58,7 @@ internal static class MapSceneMetadataReader
                 else
                 {
                     // Bound the transient row before its JSON buffer or DTO is allocated.
-                    if ((long)placements.Count + spawns.Count + players.Count >= scan.Limits.MaxMetadataRows)
+                    if (DemandDiagnostics.Check(scan, "MapSceneMetadataReader.MaxMetadataRows.1", "MaxMetadataRows", (decimal)placements.Count + spawns.Count + players.Count, 1, scan.Limits.MaxMetadataRows, (long)placements.Count + spawns.Count + players.Count >= scan.Limits.MaxMetadataRows, CapacityDemandLifetime.Inventory))
                         throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), (long)placements.Count + spawns.Count + players.Count + 1, scan.Limits.MaxMetadataRows);
                     var options = MapDocumentFile.CreateOptions(source.SceneRegistry, write: false);
                     if (name == "placements") placements.Add(tokens.Value<MapPlacement>(options));
@@ -218,7 +220,7 @@ internal static class MapSceneMetadataReader
                 int left = _available - _used;
                 if (left == _buffer.Length)
                 {
-                    if (_buffer.Length >= _maxToken) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), (long)_buffer.Length + 1, _maxToken);
+                    if (DemandDiagnostics.Check(this, "MapSceneMetadataReader.MaxMetadataBytes.1", "MaxMetadataBytes", _buffer.Length, 1, _maxToken, _buffer.Length >= _maxToken, CapacityDemandLifetime.Transient)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), (long)_buffer.Length + 1, _maxToken);
                     Array.Resize(ref _buffer, (int)Math.Min(_maxToken, (long)_buffer.Length * 2));
                 }
                 _buffer.AsSpan(_used, left).CopyTo(_buffer); _base += _used; _used = 0; _available = left;
@@ -284,8 +286,8 @@ internal static class MapSceneMetadataReader
 
     sealed class LimitedRow(int limit) : MemoryStream
     {
-        public override void Write(ReadOnlySpan<byte> buffer) { if (buffer.Length > limit - Length) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), Length + buffer.Length, limit); base.Write(buffer); }
-        public override void Write(byte[] buffer, int offset, int count) { if (count > limit - Length) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), Length + count, limit); base.Write(buffer, offset, count); }
+        public override void Write(ReadOnlySpan<byte> buffer) { if (DemandDiagnostics.Check(this, "MapSceneMetadataReader.MaxMetadataBytes.2", "MaxMetadataBytes", Length, buffer.Length, limit, buffer.Length > limit - Length, CapacityDemandLifetime.Transient)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), Length + buffer.Length, limit); base.Write(buffer); }
+        public override void Write(byte[] buffer, int offset, int count) { if (DemandDiagnostics.Check(this, "MapSceneMetadataReader.MaxMetadataBytes.3", "MaxMetadataBytes", Length, count, limit, count > limit - Length, CapacityDemandLifetime.Transient)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), Length + count, limit); base.Write(buffer, offset, count); }
     }
 }
 
@@ -295,12 +297,12 @@ internal sealed class MapSceneScan(MapSceneLimits limits)
     internal long TileReads, MetadataRows, Memberships, ScannedBytes, RetainedBytes;
     internal void Scan(long bytes)
     {
-        if (bytes < 0 || bytes > limits.MaxScannedBytes - ScannedBytes) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxScannedBytes), (decimal)ScannedBytes + bytes, limits.MaxScannedBytes);
+        if (!DemandDiagnostics.Check(this, "MapSceneMetadataReader.MaxScannedBytes.1", "MaxScannedBytes", ScannedBytes, bytes, limits.MaxScannedBytes, !(bytes < 0 || bytes > limits.MaxScannedBytes - ScannedBytes), CapacityDemandLifetime.Cumulative)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxScannedBytes), (decimal)ScannedBytes + bytes, limits.MaxScannedBytes);
         ScannedBytes = checked(ScannedBytes + bytes);
     }
     internal void Scratch(long bytes)
     {
-        if (bytes < 0 || bytes > limits.MaxMetadataBytes - RetainedBytes) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), (decimal)RetainedBytes + bytes, limits.MaxMetadataBytes);
+        if (!DemandDiagnostics.Check(this, "MapSceneMetadataReader.MaxMetadataBytes.4", "MaxMetadataBytes", RetainedBytes, bytes, limits.MaxMetadataBytes, !(bytes < 0 || bytes > limits.MaxMetadataBytes - RetainedBytes), CapacityDemandLifetime.Transient)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataBytes), (decimal)RetainedBytes + bytes, limits.MaxMetadataBytes);
     }
     internal void RetainBytes(long bytes)
     {
@@ -310,9 +312,9 @@ internal sealed class MapSceneScan(MapSceneLimits limits)
     internal void Retain(long bytes, int memberships = 1)
     {
         bytes = checked(bytes + 512 + memberships * 16L);
-        if (MetadataRows >= limits.MaxMetadataRows) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), MetadataRows + 1, limits.MaxMetadataRows);
-        if (memberships > limits.MaxMembershipsPerResource) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMembershipsPerResource), memberships, limits.MaxMembershipsPerResource);
-        if (memberships > limits.MaxMemberships - Memberships) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMemberships), Memberships + memberships, limits.MaxMemberships);
+        if (DemandDiagnostics.Check(this, "MapSceneMetadataReader.MaxMetadataRows.2", "MaxMetadataRows", MetadataRows, 1, limits.MaxMetadataRows, MetadataRows >= limits.MaxMetadataRows, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), MetadataRows + 1, limits.MaxMetadataRows);
+        if (DemandDiagnostics.Check(this, "MapSceneMetadataReader.MaxMembershipsPerResource.1", "MaxMembershipsPerResource", 0, memberships, limits.MaxMembershipsPerResource, memberships > limits.MaxMembershipsPerResource, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMembershipsPerResource), memberships, limits.MaxMembershipsPerResource);
+        if (DemandDiagnostics.Check(this, "MapSceneMetadataReader.MaxMemberships.1", "MaxMemberships", Memberships, memberships, limits.MaxMemberships, memberships > limits.MaxMemberships - Memberships, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMemberships), Memberships + memberships, limits.MaxMemberships);
         Scratch(bytes);
         MetadataRows++; Memberships += memberships; RetainedBytes += bytes;
     }

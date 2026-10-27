@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -50,7 +52,7 @@ internal sealed class MapSurfaceSessionState
     {
         RequireFound();
         if (_reserved.Contains(key)) return;
-        if (_reserved.Count >= Scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)_reserved.Count + 1, Scope.Limits.MaxCandidatePatches);
+        if (DemandDiagnostics.Check(this, "MapSurfaceSessionState.MaxCandidatePatches.1", "MaxCandidatePatches", _reserved.Count, 1, Scope.Limits.MaxCandidatePatches, _reserved.Count >= Scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory)) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)_reserved.Count + 1, Scope.Limits.MaxCandidatePatches);
         Scope.SceneAdmission?.BeforeResource(Scene.MapSceneAcquisition.PatchKey(key));
         _reserved.Add(key);
     }

@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -46,6 +48,7 @@ internal sealed class MapScopedAcquisition
     }
     Result Run()
     {
+        using var demandScope = DemandDiagnostics.Enter(this, "MapScopedAcquisition");
         string phase = "discovery";
         try
         {
@@ -117,7 +120,7 @@ internal sealed class MapScopedAcquisition
             if (_facts.HasRecord(reference)) continue;
             if (!_facts.HasRead(reference.Anchor))
             {
-                if (need.Depth > _scope.Limits.MaxRecordDepth) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxRecordDepth), need.Depth, _scope.Limits.MaxRecordDepth);
+                if (DemandDiagnostics.Check(this, "MapScopedAcquisition.MaxRecordDepth.1", "MaxRecordDepth", 0, need.Depth, _scope.Limits.MaxRecordDepth, need.Depth > _scope.Limits.MaxRecordDepth, CapacityDemandLifetime.Transient)) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxRecordDepth), need.Depth, _scope.Limits.MaxRecordDepth);
                 Read(reference.Anchor, recordAnchor: true);
                 Expand(reference.Anchor, need.Depth);
             }
@@ -163,8 +166,8 @@ internal sealed class MapScopedAcquisition
     }
     void Read(MapPatchKey key, bool recordAnchor)
     {
-        if (!_reserved.Contains(key) && _reserved.Count >= _scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)_reserved.Count + 1, _scope.Limits.MaxCandidatePatches);
-        if (recordAnchor && _recordReads >= _scope.Limits.MaxRecordReads) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxRecordReads), (long)_recordReads + 1, _scope.Limits.MaxRecordReads);
+        if (!_reserved.Contains(key) && DemandDiagnostics.Check(this, "MapScopedAcquisition.MaxCandidatePatches.1", "MaxCandidatePatches", _reserved.Count, 1, _scope.Limits.MaxCandidatePatches, _reserved.Count >= _scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory)) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)_reserved.Count + 1, _scope.Limits.MaxCandidatePatches);
+        if (recordAnchor && DemandDiagnostics.Check(this, "MapScopedAcquisition.MaxRecordReads.1", "MaxRecordReads", _recordReads, 1, _scope.Limits.MaxRecordReads, _recordReads >= _scope.Limits.MaxRecordReads, CapacityDemandLifetime.Cumulative)) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxRecordReads), (long)_recordReads + 1, _scope.Limits.MaxRecordReads);
         Surface(key.SurfaceId);
         _reserved.Add(key);
         int before = _session.PagesRead;
@@ -210,7 +213,7 @@ internal sealed class MapScopedAcquisition
     {
         MapPatchKey[] snapshot = _session.ReservedPatchKeys.ToArray();
         foreach (MapPatchKey key in snapshot) MapAcquiredFacts.ValidateKey(key);
-        if (snapshot.Length > _scope.Limits.MaxCandidatePatches || !snapshot.SequenceEqual(snapshot.Distinct().OrderBy(k => k)))
+        if (DemandDiagnostics.Check(this, "MapScopedAcquisition.MaxCandidatePatches.2", "MaxCandidatePatches", 0, snapshot.Length, _scope.Limits.MaxCandidatePatches, snapshot.Length > _scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory) || !snapshot.SequenceEqual(snapshot.Distinct().OrderBy(k => k)))
             throw new MapDocumentException("incoherent acquisition reservations");
         return snapshot;
     }

@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -28,7 +30,7 @@ public sealed class MapFoliageRetentionBudget
 
     public bool TryRetainBatch()
     {
-        if (_maxBytes - Bytes < 256) return false;
+        if (DemandDiagnostics.Check(this, "MapFoliageRetentionBudget.MaxQueryRetainedBytes.1", "MaxQueryRetainedBytes", Bytes, 256, _maxBytes, _maxBytes - Bytes < 256, CapacityDemandLifetime.Inventory)) return false;
         Bytes += 256;
         return true;
     }
@@ -36,7 +38,7 @@ public sealed class MapFoliageRetentionBudget
     public bool TryRetain(long sampleCharge)
     {
         if (sampleCharge < 0) throw new ArgumentOutOfRangeException(nameof(sampleCharge));
-        if (Samples >= _maxSamples || sampleCharge > _maxBytes - Bytes) return false;
+        if (DemandDiagnostics.Check(this, "MapFoliageRetentionBudget.MaxQuerySamples.1", "MaxQuerySamples", Samples, 1, _maxSamples, Samples >= _maxSamples, CapacityDemandLifetime.Inventory) || DemandDiagnostics.Check(this, "MapFoliageRetentionBudget.MaxQueryRetainedBytes.2", "MaxQueryRetainedBytes", Bytes, sampleCharge, _maxBytes, sampleCharge > _maxBytes - Bytes, CapacityDemandLifetime.Inventory)) return false;
         Bytes += sampleCharge; Samples++;
         return true;
     }

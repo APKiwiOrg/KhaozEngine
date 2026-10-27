@@ -1,3 +1,5 @@
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using KhaozEngine.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -64,7 +66,7 @@ public static class NativeMapFoliage
             {
                 // Known off-raster owners have no geometry and must not populate the generation cache.
                 if (MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, key))) continue;
-                if (samples.Count >= ceilings.MaxSelectedResources) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)samples.Count + 1, ceilings.MaxSelectedResources);
+                if (DemandDiagnostics.Check(admission, "NativeMapFoliage.MaxSelectedResources.1", "MaxSelectedResources", samples.Count, 1, ceilings.MaxSelectedResources, samples.Count >= ceilings.MaxSelectedResources, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)samples.Count + 1, ceilings.MaxSelectedResources);
                 long available = admission.RemainingPreparedBytes;
                 // Bound retention and support scratch by the active composite and current window, not source defaults.
                 var limits = requested with
@@ -78,7 +80,7 @@ public static class NativeMapFoliage
                 var reader = cache.Acquire(layer.Id, key, limits, admission, retainSamples, requested.MaxQueryRetainedBytes);
                 var batch = readers.Add(reader);
                 count += batch.Count;
-                if (count > sampleLimit) throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQuerySamples), count, sampleLimit);
+                if (DemandDiagnostics.Check(admission, "NativeMapFoliage.MaxQuerySamples.1", "MaxQuerySamples", 0, count, sampleLimit, count > sampleLimit, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQuerySamples), count, sampleLimit);
                 samples.Add(reader);
             }
         }

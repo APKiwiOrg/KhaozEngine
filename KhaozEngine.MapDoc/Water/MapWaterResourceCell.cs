@@ -1,3 +1,5 @@
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using KhaozEngine.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -110,7 +112,7 @@ internal static class MapWaterCellGeometry
                 else { admission.ReserveBytes(192); bands.Add(new(left, right, interval.Low, interval.High)); }
             }
         }
-        if (6L * bands.Count > maxVertices) throw new MapWaterCapacityException("water emitted vertices");
+        if (DemandDiagnostics.Check(admission, "MapWaterResourceCell.MaxEmittedVertices", "MaxEmittedVertices", 0, 6m * bands.Count, maxVertices, 6L * bands.Count > maxVertices, CapacityDemandLifetime.Inventory)) throw new MapWaterCapacityException("water emitted vertices");
         admission.ReserveCompilation(checked(2L * bands.Count));
         var result = new List<MapExactTriangle>();
         var level = MapExactValue.FromSingle(y);

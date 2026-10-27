@@ -47,7 +47,12 @@ def fixture(nonzero=False, gap=-1, zero=False):
         rec = dict(status=2, count=None, ticks=None) if gap in (n-1, n) else dict(status=1,
                    count=1 if nonzero else 0, ticks=9 if nonzero else 0)
         shadow_req = dict(epoch=EPOCH, sequence=n, mode=1)
-        snapshot = dict(request=shadow_req.copy(), status=1, configuration={}, counters=dict(staticRequests=0), timings=None)
+        snapshot = dict(request=shadow_req.copy(), status=1,
+                        configuration=dict(hudTiming=False,terrainCastsShadows=True,cascadeCulling=True,
+                                           gpuSkinning=False,pointEnabled=True),
+                        counters=dict(staticRequests=0,hasPointRequests=True,pointAtlasAvailable=True,
+                                      directionalActive=True,directionalRendered=False,directionalSkipped=False,
+                                      rigidIndexBuilt=False,foliageIndexBuilt=False),timings=None)
         shadow = dict(request=shadow_req.copy(), status=1, callback=dict(request=shadow_req.copy(), completed=True,
                       producerCount=1, snapshot=snapshot))
         rows.append(dict(startTimestamp=(n-1)*5000, endTimestamp=n*5000, monotonicIntervalSeconds=5.0,
@@ -128,6 +133,69 @@ class AnalyzerTests(unittest.TestCase):
                 self.assertEqual('invalid',result['status'])
                 self.assertFalse(result['fullyAttributed'])
 
+    def test_review_boolean_substitutions_are_rejected(self):
+        for path,value in ((('samples',0,'shadowStage','callback','completed'),1.0),
+                           (('shadowStages','comparable'),1),(('summary','capacityLimited'),0)):
+            with self.subTest(path=path,value=value):
+                r,p=json.loads(json.dumps(fixture()))
+                self.assertEqual('valid',self.audit(r,p)['status'])
+                target=r
+                for key in path[:-1]:target=target[key]
+                target[path[-1]]=value
+                result=self.audit(r,p)
+                self.assertEqual('invalid',result['status'],result)
+                self.assertFalse(result['fullyAttributed'])
+
+    def test_unavailable_public_counters_keep_false_has_value_and_null_delta(self):
+        r,p=fixture()
+        for counters in [r['baseline']['counters'],r['end']['counters']]+[s['counters'] for s in r['samples']]:
+            counters.update(hasValue=False,framesBegun=0)
+        r['summary']['counterDelta']=None
+        result=self.audit(r,p)
+        self.assertEqual('valid',result['status'],result)
+        self.assertTrue(result['fullyAttributed'])
+
+    def boolean_paths(self,value,path=()):
+        if isinstance(value,dict):
+            for key,item in value.items():yield from self.boolean_paths(item,path+(key,))
+        elif isinstance(value,list):
+            for key,item in enumerate(value):yield from self.boolean_paths(item,path+(key,))
+        elif type(value) is bool:
+            yield path,value
+
+    def test_every_boolean_field_rejects_numeric_and_string_substitutes(self):
+        for gap in (-1,1):
+            originals=json.loads(json.dumps(fixture(gap=gap)))
+            control=self.audit(*originals)
+            self.assertEqual('valid' if gap==-1 else 'limited',control['status'],control)
+            self.assertEqual(gap==-1,control['fullyAttributed'])
+            for section,original in enumerate(originals):
+                for path,value in self.boolean_paths(original):
+                    for substitute in (int(value),float(value),str(value).lower(),str(int(value))):
+                        with self.subTest(gap=gap,section=section,path=path,substitute=substitute):
+                            data=json.loads(json.dumps(originals))
+                            target=data[section]
+                            for key in path[:-1]:target=target[key]
+                            target[path[-1]]=substitute
+                            result=self.audit(*data)
+                            self.assertEqual('invalid',result['status'],result)
+                            self.assertFalse(result['fullyAttributed'])
+
+    def test_declared_boolean_fields_are_required_and_cannot_be_null(self):
+        originals=json.loads(json.dumps(fixture()))
+        for section,original in enumerate(originals):
+            for path,_ in self.boolean_paths(original):
+                for missing in (False,True):
+                    with self.subTest(section=section,path=path,missing=missing):
+                        data=json.loads(json.dumps(originals))
+                        target=data[section]
+                        for key in path[:-1]:target=target[key]
+                        if missing:del target[path[-1]]
+                        else:target[path[-1]]=None
+                        result=self.audit(*data)
+                        self.assertEqual('invalid',result['status'],result)
+                        self.assertFalse(result['fullyAttributed'])
+
     def test_every_present_integer_field_rejects_float_and_bool_after_json_round_trip(self):
         def integers(value,path=()):
             if isinstance(value,dict):
@@ -140,7 +208,7 @@ class AnalyzerTests(unittest.TestCase):
         # Cover optional integer-bearing shadow structures as well as the minimal counts fixture.
         for sample in r['samples']:
             snapshot=sample['shadowStage']['callback']['snapshot']
-            snapshot['configuration']=dict(directionalMode=1,cascadeMergeGap=0,directionalResolution=1024,
+            snapshot['configuration'].update(directionalMode=1,cascadeMergeGap=0,directionalResolution=1024,
                 cascadeCount=4,pointFaceResolution=256,pointRows=8,transientRows=1,staticBudget=2,dynamicBudget=2,pointFilter=1)
             snapshot['counters'].update(foliageBuildOrigin=0,pointRigidIssuedInstances=0,
                 rigidSignatureQueries=dict(calls=0,exactTests=0,accepted=0,sortInputs=0))

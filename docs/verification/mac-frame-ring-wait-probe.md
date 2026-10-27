@@ -127,6 +127,22 @@ Every integer and enum used in acceptance rejects JSON booleans and floating-poi
 | Ring reconciliation, role totals and coverage summary | Exact independently derived signed 64-bit count/ticks or null, reconciliation status 0 through 6, row/boundary/interval counts bounded by the 4096 samples and 4097 boundaries |
 | Collector and preparation evidence | Exact integer PID/focus endpoints, ten requested seconds, 644 runtime/395 Content/41 world counts, nonnegative signed 64-bit payload sizes, unsigned 64-bit device/inode identities, nonnegative signed 64-bit file sizes/timestamps |
 
-Boolean window/configuration/work-count fields retain their declared types. Milliseconds, interval seconds, cadence statistics and per-interval averages retain floating-point values. Nullable unavailable timings, boundaries, role totals and remainders remain distinct from measured zero. The helper tests round-trip JSON mutations, exercise both capture modes and retain valid zero/nonzero remainders and limited interior/endpoint coverage.
+Every declared Boolean used by acceptance requires an exact JSON `true` or `false` before truthiness or equality checks. Numeric and string substitutes, null and absent required Boolean fields are invalid. The bounded Boolean inventory is:
+
+| Carrier and copies | Required Boolean fields |
+| --- | --- |
+| Baseline/end window and every completed/boundary window | `focused`, `minimized`, `renderSuppressed`, `vsync`, `rendererInitializesSwapchain`, `preparePhaseSplitActive` |
+| Baseline/end and every sample's public counters | `hasValue` |
+| Every shadow snapshot configuration | `hudTiming`, `terrainCastsShadows`, `cascadeCulling`, `gpuSkinning`, `pointEnabled` |
+| Every non-null shadow work-count carrier | `hasPointRequests`, `pointAtlasAvailable`, `directionalActive`, `directionalRendered`, `directionalSkipped`, `rigidIndexBuilt`, `foliageIndexBuilt` |
+| Every shadow callback | `completed` |
+| Cadence summary | `allForegroundRenderedStableSize`, `cadenceCapped`, `bufferCapacityReached`, `capacityLimited`, `allPreparePhaseSubmissionsPaired` |
+| Shadow summary | `comparable` |
+| Every recording-wait row/callback request copy | `enabled` |
+| Every recording-wait callback | `prefixExpected`, `identityViolation` |
+| Recording-wait summary | `enabled`, `roleCoverageComplete`, `boundaryCoverageComplete`, `intervalCoverageComplete`, `fullyAttributed` |
+| Collection evidence | `freshPaths`, `triggerCreated`, `ownershipReserved`, `preflightRechecked`, `triggerConsumed` |
+
+Boolean fields have no nullable or default-on-missing path. Nullable containing carriers retain their existing availability rules. Milliseconds, interval seconds, cadence statistics and per-interval averages retain floating-point values. Nullable unavailable timings, boundaries, public counter delta, role totals and remainders remain distinct from measured zero. The helper tests round-trip integer and Boolean mutations, exercise both capture modes and retain valid zero/nonzero remainders, legacy prefixes, owned collection and limited interior/endpoint coverage. In particular, `completed=1.0`, `comparable=1` and `capacityLimited=0` are invalid evidence and cannot advertise full attribution.
 
 These are CPU wait measurements and callback cadence. They establish neither GPU completion, physical display cadence, production overhead, speedup, a sustained frame-rate target nor a recommended ring depth. Parent-owned independent review, full frozen-solution verification, archive push, immutable client preparation and fresh human readiness remain separate gates before the one runtime capture.

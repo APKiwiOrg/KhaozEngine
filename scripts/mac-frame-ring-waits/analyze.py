@@ -201,11 +201,12 @@ def integer(value, low=0, high=LONG_MAX):
     return value
 
 
-# Integer/enum inventory. These names mirror the schema's C# value carriers.
+# Integer/enum and Boolean inventories mirror the schema's serialized value carriers.
 WINDOW_INTS = 'width height effectiveBaseCapHz'
 WINDOW_LONGS = 'preparePhaseSubmissionCount preparePhaseCompositeCount'
 WINDOW_FLAGS = ('focused minimized renderSuppressed vsync rendererInitializesSwapchain '
                 'preparePhaseSplitActive')
+COUNTER_FLAGS = 'hasValue'
 COUNTER_LONGS = 'framesBegun drainCount backpressureStallCount acquireWaitCount offTimelineDeferred offTimelineOutstanding'
 CONFIG_INTS = ('directionalMode cascadeMergeGap directionalResolution cascadeCount pointFaceResolution '
                'pointRows transientRows staticBudget dynamicBudget pointFilter')
@@ -222,6 +223,14 @@ SHADOW_LONGS = 'pointRigidIssuedInstances pointFoliageIssuedInstances foliageStr
 SHADOW_FLAGS = ('hasPointRequests pointAtlasAvailable directionalActive directionalRendered directionalSkipped '
                 'rigidIndexBuilt foliageIndexBuilt')
 SHADOW_QUERIES = 'rigidSignatureQueries rigidRowQueries foliageSignatureQueries foliageRowQueries'.split()
+SHADOW_CALLBACK_FLAGS = 'completed'
+SUMMARY_FLAGS = ('allForegroundRenderedStableSize cadenceCapped bufferCapacityReached capacityLimited '
+                 'allPreparePhaseSubmissionsPaired')
+SHADOW_SUMMARY_FLAGS = 'comparable'
+RING_REQUEST_FLAGS = 'enabled'
+RING_CALLBACK_FLAGS = 'prefixExpected identityViolation'
+RING_SUMMARY_FLAGS = ('enabled roleCoverageComplete boundaryCoverageComplete intervalCoverageComplete fullyAttributed')
+COLLECTION_FLAGS = 'freshPaths triggerCreated ownershipReserved preflightRechecked triggerConsumed'
 
 
 def integer_fields(value, names, low=0, high=LONG_MAX):
@@ -229,23 +238,27 @@ def integer_fields(value, names, low=0, high=LONG_MAX):
         integer(value[name],low,high)
 
 
+def boolean_fields(value, names):
+    for name in names.split():
+        if type(value[name]) is not bool:
+            raise ValueError('Invalid exact Boolean '+name)
+
+
 def typed_fields(value, ints='', longs='', flags='', other=(), enums=None, int_low=0):
     enums = enums or {}
+    boolean_fields(value,flags)
     for name, item in value.items():
         if name in ints.split():
             integer(item,int_low,INT_MAX)
         elif name in longs.split():
             integer(item)
-        elif name in flags.split():
-            if type(item) is not bool:
-                raise ValueError('Invalid boolean '+name)
         elif name in enums:
             integer(item,0,enums[name])
-        elif name not in other:
+        elif name not in flags.split() and name not in other:
             raise ValueError('Unknown schema field '+name)
 
 
-def _integer_schema(report, mode, pid):
+def _schema_types(report, mode, pid):
     integer(mode,1,2); integer(pid,2,INT_MAX)
     integer(report['schemaVersion'],4,4); integer(report['processId'],2,INT_MAX)
     integer(report['sampleCount'],1,4096); integer(report['stopwatchFrequency'],1)
@@ -253,11 +266,9 @@ def _integer_schema(report, mode, pid):
     def window(value):
         typed_fields(value,WINDOW_INTS,WINDOW_LONGS,WINDOW_FLAGS)
     def counters(value):
-        typed_fields(value,longs=COUNTER_LONGS,flags='hasValue',other=('drainMs','backpressureStallMs','acquireWaitMs'))
+        typed_fields(value,longs=COUNTER_LONGS,flags=COUNTER_FLAGS,other=('drainMs','backpressureStallMs','acquireWaitMs'))
     def request(value):
         integer(value['sequence']); integer(value['mode'],0,2)
-        if 'enabled' in value and type(value['enabled']) is not bool:
-            raise ValueError('Invalid request enabled flag')
     for endpoint in ('baseline','end'):
         value=report[endpoint]
         integer(value['timestamp'],-LONG_MAX-1)
@@ -266,6 +277,7 @@ def _integer_schema(report, mode, pid):
         integer_fields(sample,'startTimestamp endTimestamp',-LONG_MAX-1)
         window(sample['completedFrameWindow']); window(sample['boundaryWindow']); counters(sample['counters'])
         shadow=sample['shadowStage']; callback=shadow['callback']
+        boolean_fields(callback,SHADOW_CALLBACK_FLAGS)
         integer(shadow['status'],0,9); request(shadow['request']); request(callback['request'])
         integer(callback['producerCount'],0,INT_MAX)
         snapshot=callback['snapshot']
@@ -284,17 +296,22 @@ def _integer_schema(report, mode, pid):
                 for stage in STAGES:
                     if timing[stage] is not None:integer(timing[stage])
         ring=sample['recordingWait']; callback=ring['callback']
+        boolean_fields(ring['request'],RING_REQUEST_FLAGS); boolean_fields(callback['request'],RING_REQUEST_FLAGS)
+        boolean_fields(callback,RING_CALLBACK_FLAGS)
         request(ring['request']); request(callback['request']); integer(ring['status'],0,14)
         integer_fields(callback,'declarationCount acknowledgementCount prefixObservations mainObservations',0,INT_MAX)
         for role in ('prefix','main'):
             observation=callback[role]
             integer(observation['status'],0,10); integer(observation['priorAttempt'],0,ULONG_MAX)
         boundary(ring['start']); boundary(ring['end'])
+    boolean_fields(report['summary'],SUMMARY_FLAGS)
+    boolean_fields(report['recordingWaits'],RING_SUMMARY_FLAGS)
     delta=report['summary']['counterDelta']
     if delta is not None:
         integer_fields(delta,'framesBegun drainCount backpressureStallCount acquireWaitCount offTimelineDeferred')
         integer(delta['offTimelineOutstandingChange'],-LONG_MAX-1)
     stages=report['shadowStages']
+    boolean_fields(stages,SHADOW_SUMMARY_FLAGS)
     integer(stages['mode'],0,2); integer_fields(stages,'validRows invalidRows',0,4096)
     for row in stages['coverage']:
         integer(row['status'],0,9); integer(row['rows'],0,4096)
@@ -457,6 +474,7 @@ def _ring_audit(report):
 
 
 def _identity_audit(report, proof, pid):
+    boolean_fields(proof,COLLECTION_FLAGS)
     errors = []
     def check(condition, message):
         if not condition:
@@ -512,7 +530,7 @@ def analyse(report, mode, pid, proof=None):
     try:
         if type(report.get('schemaVersion')) is not int or report['schemaVersion'] != 4:
             raise ValueError('Only schema 4 is supported')
-        _integer_schema(report,mode,pid)
+        _schema_types(report,mode,pid)
         context = _analyse_context(report,mode,pid)
         ring = _ring_audit(report)
         errors = context['errors'] + ring.pop('errors')

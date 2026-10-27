@@ -524,7 +524,7 @@ public sealed partial class TileWorldView : IDisposable
                 if (handles.Residency != TileRegionResidencyState.Gameplay) continue;
 
                 TileRegionProps props = handles.Props[plane];
-                drawn += DrawGroundProps(handles, plane, focus);
+                drawn += DrawGroundProps(handles, plane, focus, ref shadowOnly);
                 if (props.Roofs.Count > 0) drawn += DrawRoofs(props, plane, focus, ref shadowOnly);
             }
         }
@@ -583,6 +583,8 @@ public sealed partial class TileWorldView : IDisposable
         string archetypeId = ArchetypeFor(o);
         if (_catalogs.Archetype(archetypeId) is not { } archetype) return;
         if (archetype.IsRoof && IsRoofHidden(TileFootprint.Of(archetype, o.X, o.Z, o.Rotation), o.Plane)) return;
+        // A hull around an object the camera is inside would wrap the screen in its colour.
+        if (CameraFadeOf(o.Id) > 0f) return;
         if (!_propMeshes.TryGetValue(archetypeId, out IReadOnlyList<MeshHandle>? parts)) return;
         Vector3 at = TileObjectProps.AnchorPosition(_doc, archetype, o);
         float dx = at.X - focus.X;

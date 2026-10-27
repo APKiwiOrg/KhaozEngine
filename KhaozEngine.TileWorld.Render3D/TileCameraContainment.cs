@@ -49,6 +49,9 @@ internal sealed class TileCameraContainment
         {
             if (!view.IsGameplayObject(o)) continue;
             string archetypeId = view.ArchetypeFor(o);
+            // Animated foliage draws through the ground-cover path, which the fade does not reach, so it never
+            // reports a fade that nothing on screen would show.
+            if (view.DrawsAsAnimatedFoliage(archetypeId)) continue;
             if (catalogs.Archetype(archetypeId) is not { } archetype || !options.Eligible(archetype)) continue;
             if (GeometryFor(archetype) is not { } geometry) continue;
 

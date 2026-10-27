@@ -25,9 +25,10 @@ public sealed partial class TileWorldView
                 _options.AnimatedFoliageStyles, _catalogs, _propMeshes);
     }
 
-    int DrawGroundProps(RegionHandles handles, int plane, Vector3 focus)
+    int DrawGroundProps(RegionHandles handles, int plane, Vector3 focus, ref int shadowOnly)
     {
-        IReadOnlyList<PropPlacement> ground = handles.Props[plane].Ground;
+        TileRegionProps props = handles.Props[plane];
+        IReadOnlyList<PropPlacement> ground = props.Ground;
         IReadOnlySet<string> selection = _options.AnimatedFoliageArchetypes;
         _animatedPropSplits.TryGetValue(handles, out AnimatedPropSplit?[]? splits);
         AnimatedPropSplit? split = splits?[plane];
@@ -37,7 +38,7 @@ public sealed partial class TileWorldView
         if (split is null || !ReferenceEquals(split.Source, ground) || !split.Key.Matches(_animatedFoliageStyles))
         {
             AnimatedPropSplit? replacement = selection.Count == 0 || ground.Count == 0
-                ? null : new AnimatedPropSplit(ground, _animatedFoliageStyles);
+                ? null : new AnimatedPropSplit(ground, props.GroundObjectIds, _animatedFoliageStyles);
             if (split is not null) ReleaseAnimatedFoliage(handles, plane);
             split = replacement;
             if (split is not null)
@@ -50,8 +51,9 @@ public sealed partial class TileWorldView
                 splits[plane] = split;
             }
         }
-        if (split is null) return DrawOrdinaryProps(ground, focus);
-        int drawn = DrawOrdinaryProps(split.Ordinary, focus);
+        bool faded = HasCameraFadeOn(props.Region, plane);
+        if (split is null) return DrawOrdinaryProps(ground, props.GroundObjectIds, faded, focus, ref shadowOnly);
+        int drawn = DrawOrdinaryProps(split.Ordinary, split.OrdinaryObjectIds, faded, focus, ref shadowOnly);
         if (split.Foliage.Count == 0) return drawn;
         GroundCoverRenderOptions source = _options.GroundCover;
         _animatedFoliageOptions.DrawRadius = _options.PropDrawRadius;
@@ -68,8 +70,18 @@ public sealed partial class TileWorldView
         return drawn + _scene.DrawGroundCover(split.Foliage, _propMeshes, focus, _animatedFoliageOptions);
     }
 
-    int DrawOrdinaryProps(IReadOnlyList<PropPlacement> placements, Vector3 focus) => placements.Count == 0
-        ? 0 : _scene.DrawProps(placements, _propMeshes, focus, _options.PropDrawRadius);
+    int DrawOrdinaryProps(IReadOnlyList<PropPlacement> placements, IReadOnlyList<long> objectIds, bool faded,
+        Vector3 focus, ref int shadowOnly)
+    {
+        if (placements.Count == 0) return 0;
+        if (faded) return DrawCameraFaded(placements, objectIds, focus, ref shadowOnly);
+        return _scene.DrawProps(placements, _propMeshes, focus, _options.PropDrawRadius);
+    }
+
+    /// <summary>Whether an archetype draws through the animated ground-cover path rather than as a prop: the split
+    /// below sends it there exactly when the view animates foliage and the archetype has a motion profile.</summary>
+    internal bool DrawsAsAnimatedFoliage(string archetypeId) =>
+        _options.AnimatedFoliageArchetypes.Count > 0 && _animatedFoliageStyles.MotionProfiles.ContainsKey(archetypeId);
 
     void ReleaseAnimatedFoliage(RegionHandles handles, int plane)
     {
@@ -90,19 +102,25 @@ public sealed partial class TileWorldView
         public AnimatedFoliageSplitKey Key { get; }
         public IReadOnlyList<PropPlacement> Source { get; }
         public IReadOnlyList<PropPlacement> Ordinary { get; }
+        public IReadOnlyList<long> OrdinaryObjectIds { get; }
         public GroundCoverBatch Foliage { get; }
 
-        public AnimatedPropSplit(IReadOnlyList<PropPlacement> source, AnimatedFoliageStyleSnapshot styles)
+        public AnimatedPropSplit(IReadOnlyList<PropPlacement> source, IReadOnlyList<long> sourceIds,
+            AnimatedFoliageStyleSnapshot styles)
         {
             Key = new AnimatedFoliageSplitKey(source, styles);
             Source = source;
             var ordinary = new List<PropPlacement>();
+            var ordinaryIds = new List<long>();
             var foliage = new List<GroundCoverInstance>();
-            foreach (PropPlacement prop in source)
+            for (int i = 0; i < source.Count; i++)
             {
+                PropPlacement prop = source[i];
                 if (!styles.MotionProfiles.ContainsKey(prop.Id))
                 {
                     ordinary.Add(prop);
+                    // A hand-built list may carry no ids. Only the camera fade reads them, and it reads none then.
+                    ordinaryIds.Add(i < sourceIds.Count ? sourceIds[i] : 0L);
                     continue;
                 }
                 var position = new Vector3(prop.X, prop.Y, prop.Z);
@@ -111,6 +129,7 @@ public sealed partial class TileWorldView
                 foliage.Add(new GroundCoverInstance(prop.Id, position, transform, 0f));
             }
             Ordinary = foliage.Count == 0 ? source : ordinary.ToArray();
+            OrdinaryObjectIds = foliage.Count == 0 ? sourceIds : ordinaryIds.ToArray();
             Foliage = new GroundCoverBatch(foliage);
         }
     }

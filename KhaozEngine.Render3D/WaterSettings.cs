@@ -133,13 +133,30 @@ namespace KhaozEngine.Render3D
         /// <summary>Linear RGB deep-water scattered colour under a reference white sun at zenith and sky.
         /// Channels must be finite and in [0, 1] when <see cref="WaterColumnLight"/> is enabled. Alpha is ignored.
         /// Default <c>(0.10, 0.13, 0.10, 1)</c> is a neutral authoring default, not a tuned river preset.
-        /// Each plane may override this through <see cref="WaterLook.WaterColor"/>.</summary>
+        /// Each plane may override this through <see cref="WaterLook.WaterColor"/>.
+        /// <para>Single-scattering albedo <c>a</c> independently inverts <c>F(a) = a*H(a,1)^2/4</c>, with
+        /// <c>H(a,mu) = (1+2*mu)/(1+2*mu*sqrt(1-a))</c>, using 32 double-precision bisections on [0, 1].
+        /// <c>F(0) = 0</c> and <c>F(1) = 2.25</c>, so every authored channel is reachable without a cap.
+        /// Reference light is linear white LightColor at zenith and AmbientColor, with a straight-down view
+        /// and zero Fresnel. Irradiance is pi times LightColor in engine units, giving <c>a/8</c> single
+        /// scattering per source. Sky is one unshadowed effective zenith source. Fill light is excluded.</para>
+        /// <para>This water adaptation of Hapke's isotropic multiple-scattering approximation assumes a
+        /// homogeneous semi-infinite medium and omits opposition and particulate-packing terms. It estimates
+        /// transport rather than solving it exactly. Enabled columns require finite <see cref="Clarity"/>
+        /// of at least 0.001 metres.</para></summary>
         public Color WaterColor = new(0.10f, 0.13f, 0.10f, 1f);
 
         /// <summary>Vertical depth in metres at which a bed seen straight down has about 5% visibility.
-        /// Must be finite and positive when <see cref="WaterColumnLight"/> is enabled. Default <c>2</c> metres
+        /// Must be finite and at least 0.001 when <see cref="WaterColumnLight"/> is enabled, keeping shader
+        /// intermediates finite in float. Default <c>2</c> metres
         /// is a neutral authoring default, not a tuned river preset. Each plane may override this through
-        /// <see cref="WaterLook.Clarity"/>.</summary>
+        /// <see cref="WaterLook.Clarity"/>.
+        /// <para>For requested RGB <c>c</c>, <c>w_rgb = 1 + 0.5*(mean(c)-c_rgb)</c> and
+        /// <c>sigma_t_rgb = (3/Clarity)*w_rgb</c>. Weights sum to three and stay positive, so mean extinction
+        /// is <c>3/Clarity</c>, giving <c>exp(-3) = 0.04978707</c> bed transmission at mean extinction.
+        /// <c>sigma_s = a*sigma_t</c> and <c>sigma_a = sigma_t-sigma_s</c> conserve energy per channel.
+        /// Albedo uses the approximate reference-light model and engine units documented on
+        /// <see cref="WaterColor"/>.</para></summary>
         public float Clarity = 2f;
 
         /// <summary>World-space depth below the surface over which <see cref="ShallowColor"/> blends into

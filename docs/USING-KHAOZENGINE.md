@@ -5877,8 +5877,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     about 5% bed visibility when seen straight down. These are neutral authoring defaults, not tuned river values.
     Each nullable `WaterLook` field inherits the scene, a value overrides it and an explicit `false` opts out.
     `DrawWater` checks resolved inputs before enqueue when the column is enabled. Clarity must be finite and
-    positive, and each RGB channel must be finite and in [0, 1]. A rejection throws `ArgumentException` naming
-    `Clarity` or `WaterColor` and leaves the queue unchanged. Disabled columns leave these inputs unvalidated.
+    at least 0.001 metres, and each RGB channel must be finite and in [0, 1]. A rejection throws
+    `ArgumentException` naming `Clarity` or `WaterColor` and leaves the queue unchanged. Disabled columns leave
+    these inputs unvalidated.
     The column path bypasses `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`, `ShallowDepth` and `Opacity`.
     Shore fade and foam keep their own settings. The fields currently resolve and validate at admission.
     Column rendering is not connected yet.

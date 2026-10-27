@@ -128,6 +128,45 @@ public sealed class WaterColumnSettingsTests
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ClarityBelowOneMillimetreIsRejectedBeforeEnqueue(bool enabled, bool useLook)
+    {
+        using var device = new FakeGpuDevice();
+        using var scene = new Scene3D(device, new(null, GpuPixelFormat.R8G8B8A8UNorm));
+        WaterSettings settings = scene.Post.Water;
+        settings.WaterColumnLight = useLook ? !enabled : enabled;
+        WaterLook? look = useLook ? new WaterLook { WaterColumnLight = enabled } : null;
+        var plane = new WaterPlane(0f, 0f, 0f, 1f, look: look);
+
+        foreach (float clarity in new[] { 0.000999f, float.Epsilon })
+        {
+            if (look is null) settings.Clarity = clarity;
+            else look.Clarity = clarity;
+            scene.Begin();
+            if (enabled)
+            {
+                ArgumentException error = Assert.Throws<ArgumentException>(() => scene.DrawWater(plane));
+                Assert.Equal("Clarity", error.ParamName);
+                Assert.Equal(0, scene.WaterPlaneCount);
+            }
+            else
+            {
+                scene.DrawWater(plane);
+                Assert.Equal(1, scene.WaterPlaneCount);
+            }
+        }
+
+        if (look is null) settings.Clarity = 0.001f;
+        else look.Clarity = 0.001f;
+        scene.Begin();
+        scene.DrawWater(plane);
+        Assert.Equal(1, scene.WaterPlaneCount);
+    }
+
+    [Theory]
     [InlineData(float.NaN)]
     [InlineData(float.PositiveInfinity)]
     [InlineData(float.NegativeInfinity)]

@@ -9,8 +9,8 @@ internal static class WaterColumnValidation
     {
         if (!settings.WaterColumnLight) return;
 
-        if (!float.IsFinite(settings.Clarity) || settings.Clarity <= 0f)
-            throw new ArgumentException("Clarity must be finite and positive.", nameof(WaterSettings.Clarity));
+        if (!float.IsFinite(settings.Clarity) || settings.Clarity < 0.001f)
+            throw new ArgumentException("Clarity must be finite and at least 0.001 metres.", nameof(WaterSettings.Clarity));
 
         Color color = settings.WaterColor;
         if (!ValidChannel(color.R) || !ValidChannel(color.G) || !ValidChannel(color.B))

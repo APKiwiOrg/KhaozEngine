@@ -898,11 +898,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   for about 5% bed visibility when seen straight down). These are authoring defaults, not tuned river values.
   Their nullable `WaterLook` fields inherit the scene, a value overrides it and an explicit `false` opts out.
   `DrawWater` validates the resolved values before enqueue only when the column is enabled. Clarity must be
-  finite and positive, and each RGB channel must be finite and in [0, 1]. Rejections throw `ArgumentException`
-  naming `Clarity` or `WaterColor`. Disabled columns leave those inputs unused and unvalidated. The column path
-  bypasses `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`, `ShallowDepth` and `Opacity`, while shore fade and
-  foam retain their settings. These fields currently resolve and validate at admission. Column rendering is
-  not connected yet.
+  finite and at least 0.001 metres, and each RGB channel must be finite and in [0, 1]. Rejections throw
+  `ArgumentException` naming `Clarity` or `WaterColor`. Disabled columns leave those inputs unused and
+  unvalidated. The column path bypasses `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`, `ShallowDepth` and
+  `Opacity`, while shore fade and foam retain their settings. These fields currently resolve and validate
+  at admission. Column rendering is not connected yet.
 
   On top of that the ripple normal field is a generated SLOPE SPECTRUM (14.26.0): `RippleComponents` cosines with
   golden-angle headings (no two parallel, no dominant ribbon direction) laddering by `RippleLacunarity` over about

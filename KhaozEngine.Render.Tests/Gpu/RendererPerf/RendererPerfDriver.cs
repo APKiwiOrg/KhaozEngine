@@ -59,7 +59,12 @@ internal static class RendererPerfDriver
             if (budget is not null) { _start = budget.ColdStart; _deadline = budget.Deadline; _started = true; }
             // Construct and admit the first session before reading any clock.
             var conditioning = new RendererPerfBlock("conditioning:S3", RendererPerfLayout.TotalOnly, 0, 0, manifest.ConditioningFrames);
-            Execute(conditioning, (warm, measured, info, errors) => _conditioning = measured);
+            Execute(conditioning, (warm, measured, info, errors) =>
+            {
+                _conditioning = measured;
+                // A controls rehearsal has no scene block to retain the real conditioning recipe.
+                if (manifest.Blocks.IsEmpty && info?.Recipe is { } recipe) _recipes.TryAdd(recipe.Identity.SceneId, recipe);
+            });
             foreach (var block in manifest.Blocks)
             {
                 if (_failure is not null) break;

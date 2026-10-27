@@ -4,7 +4,7 @@ using static KhaozEngine.Tests.Gpu.RendererPerf.RendererPerfManifest;
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 internal enum RendererPerfExecutionClass { Performance, Rehearsal }
-internal enum RendererPerfRehearsalSchedule { Pilot, Full }
+internal enum RendererPerfRehearsalSchedule { Pilot, Full, Controls }
 internal sealed record RendererPerfRehearsalClass(string Preset, RendererPerfRehearsalSchedule Schedule,
     RendererPerfExecutionPolicy Execution, RendererPerfLimits Limits);
 
@@ -19,12 +19,15 @@ internal static class RendererPerfRehearsalPolicy
         "windows-2025-vs2026", "gpu-hosted-bench.yml", "windows-d3d11", "retained-fence-batch-3/1");
     static readonly RendererPerfLimits PilotLimits = new(5400, 60000, 120);
     static readonly RendererPerfLimits FullLimits = new(19800, 60000, 350);
+    static readonly RendererPerfLimits ControlsLimits = new(5400, 60000, 120);
     static readonly RendererPerfRehearsalClass[] Classes =
     [
         new("rehearsal", RendererPerfRehearsalSchedule.Pilot, Linux, PilotLimits),
         new("rehearsal", RendererPerfRehearsalSchedule.Pilot, Windows, PilotLimits),
         new("rehearsal-full", RendererPerfRehearsalSchedule.Full, Linux, FullLimits),
-        new("rehearsal-full", RendererPerfRehearsalSchedule.Full, Windows, FullLimits)
+        new("rehearsal-full", RendererPerfRehearsalSchedule.Full, Windows, FullLimits),
+        new("rehearsal-controls", RendererPerfRehearsalSchedule.Controls, Linux, ControlsLimits),
+        new("rehearsal-controls", RendererPerfRehearsalSchedule.Controls, Windows, ControlsLimits)
     ];
 
     internal static RendererPerfRehearsalClass Class(RendererPerfManifest manifest)

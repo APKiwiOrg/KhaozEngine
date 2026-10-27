@@ -42,7 +42,7 @@ on:
         options: [all, windows-d3d11, windows-vulkan, linux-vulkan]
         default: all
       renderer-perf-unit:
-        description: Exact separately approved renderer unit, empty keeps existing modes
+        description: Exact approved renderer performance or software rehearsal unit, empty keeps existing modes
         required: false
         default: ''
         type: string
@@ -412,6 +412,7 @@ jobs:
     needs: legs
     if: inputs.renderer-perf-unit != '' && github.run_attempt == 1
     name: renderer / ${{ matrix.leg }}
+    # The trusted matrix binds paid caps and every software rehearsal schedule, including all controls.
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.jobMinutes }}
     strategy:

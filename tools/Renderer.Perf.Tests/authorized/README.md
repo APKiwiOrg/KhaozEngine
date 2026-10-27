@@ -20,9 +20,11 @@ The workflow checks the authorization diff and exact bytes before selecting a ho
 again on that runner. The entrypoint independently validates the strict manifest and runtime before
 native creation. Performance presets require hosted NVIDIA T4 hardware. The
 [renderer reference](../../../docs/RENDERER-PERFORMANCE.md#software-correctness-rehearsal)
-owns the supported software rehearsal legs and schedules, separate approvals, limits and correctness
-verdict. Every execution class requires usable timestamps, complete compiler evidence and certified
-publication. Partial artifacts survive failures.
+owns the supported software rehearsal legs and schedules, including `rehearsal-controls`, separate
+approvals, limits and correctness verdict. The same reference's
+[paid authorization contract](../../../docs/RENDERER-PERFORMANCE.md#evidence-and-authorization) owns
+per-leg job caps, cleanup billing allowance and the campaign envelope. Every execution class requires
+usable timestamps, complete compiler evidence and certified publication. Partial artifacts survive failures.
 
 The shader identity hashes an ordered map of exact literal and generated readonly Render3D and
 SpriteBatch GLSL source strings, specialized outdoors FFT kernels and control shader sources.
@@ -32,5 +34,6 @@ with no scene frames. It never contributes a steady-state sample or a throughput
 
 Task 15 owns independent integration review, the precise pilot approval, driver and native compiler
 retention checks, output validation, clock and marker perturbation review, artifact-size checks and
-actual billed minutes. Each full unit needs fresh approval after pilot review. Windows Vulkan,
+actual billed minutes. Each full unit needs fresh approval after pilot review and the separately
+approved all-controls software checks described in the renderer reference. Windows Vulkan,
 profilers, extra variants, release and consumer adoption remain separate owner decisions.

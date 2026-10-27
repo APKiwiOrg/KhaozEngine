@@ -188,6 +188,12 @@ input. API detail lives in the [Render3D package reference](../KhaozEngine.Rende
 
 ## Water surface shadows
 
+Shadow cascades fit from the frame's unjittered render-relative camera frustum and eye. Near and far
+depths, slice spheres and light-hold radii therefore avoid large absolute float coordinates for both
+perspective and orthographic cameras. Each light matrix is fitted and texel-snapped once in render space.
+The CPU caster matrix is `T(-RenderOrigin) * relativeCascade`, so absolute caster bounds see the same clip
+volume as the atlas. Origin zero bypasses that translation and preserves the original fitted bits.
+
 Water appends fragment bindings `12=ColumnShadowAtlas`, `13=ColumnShadowSampler` and `14=WaterLitFrame` after
 the optical bed resources. Scene water borrows the existing cascade atlas, its point-clamp sampler and the
 complete model frame buffer. The `WaterLitFrame` declaration preserves the 688-byte prefix with `LitPrefix[43]`,

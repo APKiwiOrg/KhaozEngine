@@ -33,8 +33,8 @@ namespace KhaozEngine.Render3D
 
         /// <summary>The pre-shift view-projection, i.e. what <see cref="IIsoCamera3D.ViewProjection"/> returned
         /// before this interface existed. <see cref="Scene3D"/> uses it for every CPU-side spatial computation that
-        /// runs against absolute bounds (frustum culling, shadow-cascade fitting, caster classification), so those
-        /// paths stay byte-identical to the pre-release engine at any origin.</summary>
+        /// runs against absolute bounds, such as frustum culling. Shadow cascades instead fit from the unjittered
+        /// render-relative view-projection and derive their absolute caster matrices from that fit.</summary>
         Matrix4x4 AbsoluteViewProjection { get; }
     }
 }

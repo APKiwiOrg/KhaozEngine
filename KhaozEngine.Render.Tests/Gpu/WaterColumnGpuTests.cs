@@ -166,6 +166,22 @@ public sealed class WaterColumnGpuTests(WaterColumnRiverScene scene, ITestOutput
         }
     }
 
+    // Absolute-coordinate reconstruction or a perspective-only view ray breaks translated or orthographic water.
+    [GpuFact]
+    public void Golden_OriginAndOrthographicParity()
+    {
+        foreach (bool orthographic in new[] { false, true })
+        {
+            var settings = new WaterColumnCase { Orthographic = orthographic, Ripples = false, Bound = true };
+            WaterColumnImage origin = scene.Capture(settings);
+            WaterColumnImage translated = scene.Capture(settings with { Origin = new Vector3(4194304f, 128f, -4194304f) });
+            float error = MaximumError(origin, translated);
+            output.WriteLine($"orthographic={orthographic}, origin max RGB error={error:F6}");
+            Assert.InRange(error, 0f, 0.02f);
+            Assert.True(L(origin.Sample(LitColumn)) - L(origin.Sample(ShadowColumn)) >= 0.025f);
+        }
+    }
+
     // Aging bindings across every allocation discriminator must produce the same non-temporal image as a fresh scene.
     [GpuFact]
     public void Golden_SharedSceneMatchesFreshScene()

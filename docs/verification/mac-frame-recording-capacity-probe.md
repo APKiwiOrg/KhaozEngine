@@ -105,6 +105,23 @@ working evidence and claim, and allows archive-only recovery. Failed and limited
 failed and limited after successful archival. No raw evidence is represented as remotely backed up.
 The coordinator pushes the result summary and bundle hash manifest separately before another handoff.
 
+Final collection bytes must equal the exact record that passed the measurement audit before they can
+become archive inputs. Replacing or editing that proof is refused. Archival interruption, including
+interruption after bundle publication, preserves finalized input bytes and their measurement status.
+It never returns to capture error handling or rewrites a claim's hashed inputs.
+
+If metadata writing or replacement fails, the collector preserves the original metadata and temporary
+file. It writes an exclusive `<result>.collection.recovery.json` containing the exact pending record
+and names that copy in the archive claim. The claim records `metadataFinalizationError`. Collection
+returns exit 3 with the original error and claim path, without retrying metadata replacement or capture.
+Archive-only recovery then uses the complete copy, including when the original temporary file is partial.
+If writing that recovery evidence also fails, the output reports the archival failure and retains the
+available files. It does not claim that a usable recovery claim exists.
+
+Exit 0 requires valid archived evidence. Exit 2 means limited archived evidence, exit 1 means failed
+archived evidence, and exit 3 means archival or metadata-finalization failure. Interrupted archival also
+uses exit 3, preserving the actual measurement status for recovery.
+
 Recovery takes the recorded claim and original hashes. It never invokes the collector or creates a
 trigger. An existing destination is accepted only when the exact manifest and all bytes verify.
 

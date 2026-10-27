@@ -178,10 +178,15 @@ def helper_hashes():
     return {name:digest(Path(__file__).with_name(name)) for name in HELPER_FILES}
 
 
-def archive_outcome(args,root,preparation,result,metadata,audit_path,record):
+def metadata_bytes(record):
+    return (json.dumps(record,indent=2)+'\n').encode('utf-8')
+
+
+def archive_outcome(args,root,preparation,result,metadata,audit_path,record,*,metadata_error=None):
     import archive
     from capacity import decode_startup
     measurement={'collected-and-audited':'valid','limited-retain-evidence':'limited'}.get(record['status'],'failed')
+    claim_written=False
     try:
         identity_path=result.with_suffix('.identity.json')
         startup_path=result.with_suffix('.startup-proof.log')
@@ -192,6 +197,11 @@ def archive_outcome(args,root,preparation,result,metadata,audit_path,record):
                      helperHashes=record.get('helperHashes'),actualHelperHashes=helper_hashes(),
                      metalAssembly=record.get('metalAssembly'),codeIdentities=record.get('codeIdentities'))
         with archive._directory(root) as directory:
+            if metadata_error is not None:
+                # Retain both the old claim and any incomplete temporary file. Recovery uses a new,
+                # exclusive copy of the exact pending record, never a second metadata replacement.
+                metadata=result.with_suffix('.collection.recovery.json')
+                archive._write(directory,metadata.name,metadata_bytes(record))
             archive._write(directory,identity_path.name,archive._json(sources))
             startup=None
             if record.get('startupProof') is not None:
@@ -210,6 +220,8 @@ def archive_outcome(args,root,preparation,result,metadata,audit_path,record):
                             'Previously captured '+name+' is missing before archival')
                     entries[name]=None
                     continue
+                require(name!='collection' or raw==metadata_bytes(record),
+                        'Final collection differs from the audited record')
                 value=hashlib.sha256(raw).hexdigest()
                 require(known is None or record.get(known) is None or record[known]==value,
                         'Final '+name+' differs from recorded capture hash')
@@ -222,7 +234,12 @@ def archive_outcome(args,root,preparation,result,metadata,audit_path,record):
             claim=dict(schemaVersion=1,probeCommit=commit,runId=args.run_id,collectionId=record['collectionId'],
                        sourceRoot=str(root),destination=str(destination),entries=entries,expectedHashes=hashes,
                        measurementStatus=measurement)
+            if metadata_error is not None:
+                claim['metadataFinalizationError']=dict(type=type(metadata_error).__name__,message=str(metadata_error))
             archive._write(directory,claim_path.name,archive._json(claim))
+            claim_written=True
+        if metadata_error is not None:
+            raise metadata_error
         receipt=archive.publish_bundle(source_root=root,destination=destination,entries=entries,
                                        measurement_status=measurement,expected_hashes=hashes)
         with archive._directory(root) as directory:
@@ -230,11 +247,13 @@ def archive_outcome(args,root,preparation,result,metadata,audit_path,record):
         print(json.dumps(dict(status=record['status'],measurementStatus=measurement,archive=receipt,
                               metadata=str(metadata),result=str(result),claim=str(claim_path),receipt=str(receipt_path))))
         return {'valid':0,'limited':2,'failed':1}[measurement]
-    except Exception as error:
+    except BaseException as error:
         captured=record.get('triggerCreated') is True or result.exists()
         print(json.dumps(dict(status='captured-but-not-archived' if captured else 'failed-not-archived',
                               measurementStatus=measurement,archivalStatus='failed',errorType=type(error).__name__,
-                              error=str(error),metadata=str(metadata))))
+                              error=str(error),metadata=str(metadata),claim=str(claim_path) if claim_written else None,
+                              metadataFinalizationError=None if metadata_error is None else
+                              dict(type=type(metadata_error).__name__,message=str(metadata_error)))))
         return 3
 
 
@@ -277,7 +296,8 @@ def main():
             'Use fresh result, start and evidence paths')
     if args.expected_recording_slots is not None:
         extra=[result.with_suffix(suffix) for suffix in
-               ('.identity.json','.startup-proof.log','.archive-claim.json','.archive-receipt.json')]
+               ('.identity.json','.startup-proof.log','.archive-claim.json','.archive-receipt.json',
+                '.collection.recovery.json')]
         require(all(not p.exists() and not p.is_symlink() for p in extra),'Use fresh archival evidence paths')
     pid=args.ready_process_id
     integer(pid,2,INT_MAX)
@@ -292,11 +312,17 @@ def main():
         json.dump(record,stream,indent=2)
         stream.write('\n')
 
+    save_error=None
     def save():
-        with temporary.open('x') as stream:
-            json.dump(record,stream,indent=2)
-            stream.write('\n')
-        os.replace(temporary,metadata)
+        nonlocal save_error
+        save_error=None
+        try:
+            with temporary.open('xb') as stream:
+                stream.write(metadata_bytes(record))
+            os.replace(temporary,metadata)
+        except BaseException as error:
+            save_error=error
+            raise
 
     try:
         manifest=json.loads(preparation.read_text())
@@ -384,18 +410,25 @@ def main():
                       collectionHelperSha256=digest(Path(__file__)),analysisStatus=audit['status'],finishedAtUtc=now())
         record['status']={'valid':'collected-and-audited','limited':'limited-retain-evidence','invalid':'failed-retain-evidence'}[audit['status']]
         save()
-        if args.expected_recording_slots is not None:
-            return archive_outcome(args,root,preparation,result,metadata,audit_path,record)
-        print(json.dumps(dict(status=record['status'],metadata=str(metadata),result=str(result))))
-        return {'valid':0,'limited':2,'invalid':1}[audit['status']]
     except BaseException as error:
         if args.expected_recording_slots is None and not isinstance(error,Exception): raise
+        if args.expected_recording_slots is not None and save_error is not None:
+            return archive_outcome(args,root,preparation,result,metadata,audit_path,record,metadata_error=save_error)
         record.update(status='failed-retain-evidence',finishedAtUtc=now(),errorType=type(error).__name__,error=str(error))
-        save()
-        if args.expected_recording_slots is not None:
-            return archive_outcome(args,root,preparation,result,metadata,audit_path,record)
-        print(json.dumps(dict(status=record['status'],error=str(error),metadata=str(metadata))))
-        return 1
+        try:
+            save()
+        except BaseException as metadata_error:
+            if args.expected_recording_slots is None: raise
+            return archive_outcome(args,root,preparation,result,metadata,audit_path,record,metadata_error=metadata_error)
+        if args.expected_recording_slots is None:
+            print(json.dumps(dict(status=record['status'],error=str(error),metadata=str(metadata))))
+            return 1
+
+    # Archival cannot return to capture failure handling and rewrite finalized claim inputs.
+    if args.expected_recording_slots is not None:
+        return archive_outcome(args,root,preparation,result,metadata,audit_path,record)
+    print(json.dumps(dict(status=record['status'],metadata=str(metadata),result=str(result))))
+    return {'valid':0,'limited':2,'invalid':1}[audit['status']]
 
 
 if __name__=='__main__':

@@ -1,8 +1,10 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Threading;
 using KhaozEngine.Audio;
+using KhaozEngine.Diagnostics;
 using Xunit;
 
 namespace KhaozEngine.Tests.Audio;
@@ -20,9 +22,9 @@ public sealed class AudioSystemLoopTests : IDisposable
 
     public void Dispose() => Directory.Delete(_directory, recursive: true);
 
-    AudioSystem Loaded(RecordingLoopBackend backend, IMusicBackend? music = null)
+    AudioSystem Loaded(RecordingLoopBackend backend, IMusicBackend? music = null, ILogger? logger = null)
     {
-        var audio = new AudioSystem(music ?? new NullMusicBackend(), backend, logger: _logger);
+        var audio = new AudioSystem(music ?? new NullMusicBackend(), backend, logger: logger ?? _logger);
         audio.RegisterSfx("wind");
         audio.LoadContent(_directory);
         return audio;
@@ -330,6 +332,209 @@ public sealed class AudioSystemLoopTests : IDisposable
         Assert.False(audio.StopLoop(old));
         Assert.True(audio.IsLoopActive(current));
         Assert.Equal(calls, sfx.Device.Calls.Count);
+    }
+
+    [Theory]
+    [InlineData("gain", false)]
+    [InlineData("gain", true)]
+    [InlineData("query", false)]
+    [InlineData("query", true)]
+    public void FacadeRecoveryDiagnosticsAreBoundedPerIdentityAndOperation(string operation, bool throwingLogger)
+    {
+        var logger = new AudioLoopLogger { ThrowOnWarning = throwingLogger };
+        var sfx = new RecordingLoopBackend();
+        using var audio = Loaded(sfx, logger: logger);
+        var failing = audio.TryPlayLoop(new("wind")).Handle;
+        var healthy = audio.TryPlayLoop(new("wind")).Handle;
+        bool fail = true;
+        var failure = new InvalidOperationException("scripted companion failure");
+        sfx.BeforeLoopCall = (name, handle) =>
+        {
+            if (fail && name == operation && handle == failing.BackendHandle) throw failure;
+        };
+
+        audio.SfxVolume = 0.5f;
+        Assert.Same(failure, Assert.Single(logger.Warnings));
+        UpdateAndAssertAttempt();
+        Assert.True(audio.SetLoopVolume(healthy, 0.8f));
+        UpdateAndAssertAttempt();
+        Assert.True(audio.SetLoopVolume(healthy, 0.6f));
+        UpdateAndAssertAttempt();
+        Assert.Single(logger.Warnings);
+        Assert.Equal(2, sfx.Device.Starts.Count);
+
+        fail = false;
+        audio.Update(0);
+        Assert.Equal(0.33f, sfx.Device.GainWrites.Last(write => write.Slot == failing.BackendHandle.Slot).Gain, 6);
+        Assert.True(audio.IsLoopActive(failing));
+        Assert.True(audio.IsLoopActive(healthy));
+        Assert.Single(logger.Warnings);
+        fail = true;
+        Assert.False(audio.SetLoopVolume(failing, 0.25f));
+        Assert.Equal(2, logger.Warnings.Count);
+        UpdateAndAssertAttempt();
+        UpdateAndAssertAttempt();
+        Assert.Equal(2, logger.Warnings.Count);
+        Assert.All(logger.Warnings, warning => Assert.Same(failure, warning));
+        Assert.Equal(2, sfx.Device.Starts.Count);
+
+        void UpdateAndAssertAttempt()
+        {
+            int before = Attempts();
+            audio.Update(0);
+            int after = Attempts();
+            if (operation == "gain") Assert.Equal(before + 1, after);
+            else Assert.True(after > before);
+        }
+        int Attempts() => sfx.CompanionCalls.Count(call => call.Operation == operation && call.Handle == failing.BackendHandle);
+    }
+
+    [Theory]
+    [InlineData("stop", false)]
+    [InlineData("stop", true)]
+    [InlineData("position", false)]
+    [InlineData("position", true)]
+    public void FacadeControlDiagnosticsResetOnRecoveryAndNewIdentity(string operation, bool throwingLogger)
+    {
+        var logger = new AudioLoopLogger { ThrowOnWarning = throwingLogger };
+        var sfx = new RecordingLoopBackend();
+        using var audio = Loaded(sfx, logger: logger);
+        var failing = audio.TryPlayLoop(new("wind", Position: Vector3.Zero)).Handle;
+        var healthy = audio.TryPlayLoop(new("wind", Position: Vector3.Zero)).Handle;
+        bool fail = true;
+        sfx.BeforeLoopCall = (name, handle) =>
+        {
+            if (fail && name == operation && handle == failing.BackendHandle)
+                throw new InvalidOperationException("scripted control failure");
+        };
+        Assert.False(Control(failing));
+        Assert.True(Control(healthy));
+        Assert.False(Control(failing));
+        Assert.Single(logger.Warnings);
+        fail = false;
+        Assert.True(Control(failing));
+        fail = true;
+        if (operation == "position")
+        {
+            Assert.False(Control(failing));
+            Assert.Equal(2, logger.Warnings.Count);
+            Assert.True(audio.StopLoop(failing));
+        }
+        var expired = failing;
+        failing = audio.TryPlayLoop(new("wind", Position: Vector3.Zero)).Handle;
+        Assert.NotEqual(expired, failing);
+        Assert.False(Control(failing));
+        Assert.False(Control(failing));
+        Assert.Equal(operation == "position" ? 3 : 2, logger.Warnings.Count);
+
+        bool Control(SfxLoopHandle handle) => operation == "stop" ? audio.StopLoop(handle) : audio.SetLoopPosition(handle, Vector3.One);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FacadeStartDiagnosticsResetOnlyAfterSuccessfulAdmission(bool throwingLogger)
+    {
+        var logger = new AudioLoopLogger { ThrowOnWarning = throwingLogger };
+        var sfx = new RecordingLoopBackend();
+        using var audio = Loaded(sfx, logger: logger);
+        bool fail = true;
+        sfx.BeforeLoopCall = (operation, _) =>
+        {
+            if (operation == "start" && fail) throw new InvalidOperationException("scripted start failure");
+        };
+        AssertFailure(audio.TryPlayLoop(new("wind")), SfxLoopStartStatus.BackendFailure);
+        AssertFailure(audio.TryPlayLoop(new("wind")), SfxLoopStartStatus.BackendFailure);
+        AssertFailure(audio.TryPlayLoop(new("wind")), SfxLoopStartStatus.BackendFailure);
+        Assert.Single(logger.Warnings);
+        Assert.Empty(sfx.Device.Starts);
+        fail = false;
+        var active = audio.TryPlayLoop(new("wind")).Handle;
+        fail = true;
+        AssertFailure(audio.TryPlayLoop(new("wind")), SfxLoopStartStatus.BackendFailure);
+        AssertFailure(audio.TryPlayLoop(new("wind")), SfxLoopStartStatus.BackendFailure);
+        Assert.Equal(2, logger.Warnings.Count);
+        int attempts = sfx.CompanionCalls.Count(call => call.Operation == "start");
+        audio.Update(0);
+        Assert.Equal(attempts, sfx.CompanionCalls.Count(call => call.Operation == "start"));
+        Assert.True(audio.IsLoopActive(active));
+        Assert.Single(sfx.Device.Starts);
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(-2f)]
+    [InlineData(0.005f)]
+    public void FiniteSubminimumPitchIsResolvedBeforeBackendAdmission(float pitch)
+    {
+        var sfx = new RecordingLoopBackend();
+        using var audio = Loaded(sfx);
+        var result = audio.TryPlayLoop(new("wind", Pitch: pitch));
+        Assert.Equal(SfxLoopStartStatus.Started, result.Status);
+        Assert.Equal(0.01f, Assert.Single(sfx.Device.Starts).Playback.Pitch);
+        Assert.True(audio.IsLoopActive(result.Handle));
+    }
+
+    [Fact]
+    public void LoopResolutionSharesMissingKeyWarnOnceStateWithOneShots()
+    {
+        var sfx = new RecordingLoopBackend();
+        using var audio = Loaded(sfx);
+        AssertFailure(audio.TryPlayLoop(new("missing")), SfxLoopStartStatus.NotLoaded);
+        AssertFailure(audio.TryPlayLoop(new("missing")), SfxLoopStartStatus.NotLoaded);
+        var entry = Assert.Single(_logger.Entries, entry => entry.Level == LogLevel.Warn);
+        audio.PlaySfx("missing");
+        Assert.Single(_logger.Warnings);
+        Assert.Equal("PlaySfx unknown SFX 'missing'; ignoring.", entry.Message);
+        audio.PlaySfx("oneshot-first");
+        AssertFailure(audio.TryPlayLoop(new("oneshot-first")), SfxLoopStartStatus.NotLoaded);
+        Assert.Equal(2, _logger.Entries.Count(entry => entry.Level == LogLevel.Warn));
+        Assert.Empty(sfx.Device.Calls);
+    }
+
+    [Fact]
+    public void LoopResolutionSharesUnknownBusDiagnosticsWithoutLoggingDuringRefresh()
+    {
+        var sfx = new RecordingLoopBackend();
+        using var audio = Loaded(sfx);
+        Assert.Equal(SfxLoopStartStatus.Started, audio.TryPlayLoop(new("wind", "unknown")).Status);
+        Assert.Equal(SfxLoopStartStatus.Started, audio.TryPlayLoop(new("wind", "unknown")).Status);
+        Assert.All(sfx.Device.Starts, start => Assert.Equal(0.66f * 0.7f, start.Playback.Gain));
+        var entry = Assert.Single(_logger.Entries, entry => entry.Level == LogLevel.Debug);
+        audio.PlaySfx("wind", bus: "unknown");
+        Assert.Single(_logger.Entries, entry => entry.Level == LogLevel.Debug);
+        Assert.Equal("PlaySfx unknown bus 'unknown'; using default bus (1.0). Call DefineBus first.", entry.Message);
+        audio.MasterVolume = 0.5f;
+        audio.SfxVolume = 0.4f;
+        audio.Update(0);
+        Assert.Single(_logger.Entries, entry => entry.Level == LogLevel.Debug);
+        audio.PlaySfx("wind", bus: "oneshot-first");
+        Assert.Equal(SfxLoopStartStatus.Started, audio.TryPlayLoop(new("wind", "oneshot-first")).Status);
+        Assert.Equal(2, _logger.Entries.Count(entry => entry.Level == LogLevel.Debug));
+    }
+
+    [Fact]
+    public void LoopResolutionContainsThrowingWarnOnceDiagnostics()
+    {
+        var logger = new AudioLoopLogger { ThrowOnWarning = true, ThrowOnDebug = true };
+        var sfx = new RecordingLoopBackend();
+        using var audio = Loaded(sfx, logger: logger);
+        AssertFailure(audio.TryPlayLoop(new("missing")), SfxLoopStartStatus.NotLoaded);
+        AssertFailure(audio.TryPlayLoop(new("missing")), SfxLoopStartStatus.NotLoaded);
+        Assert.Single(logger.Warnings);
+        Assert.Empty(sfx.Device.Calls);
+        var first = audio.TryPlayLoop(new("wind", "unknown"));
+        var second = audio.TryPlayLoop(new("wind", "unknown"));
+        Assert.Equal(SfxLoopStartStatus.Started, first.Status);
+        Assert.Equal(SfxLoopStartStatus.Started, second.Status);
+        Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Debug);
+        Assert.True(audio.SetLoopVolume(first.Handle, 0.5f));
+        audio.Update(0);
+        Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Debug);
+        Assert.True(audio.IsLoopActive(first.Handle));
+        Assert.True(audio.IsLoopActive(second.Handle));
+        Assert.Equal(2, sfx.Device.Starts.Count);
+        Assert.All(sfx.Device.Starts, start => Assert.Equal(0.66f * 0.7f, start.Playback.Gain));
     }
 
     static void AssertFailure(SfxLoopStartResult result, SfxLoopStartStatus status)

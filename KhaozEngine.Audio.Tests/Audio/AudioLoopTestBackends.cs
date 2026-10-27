@@ -21,6 +21,8 @@ internal sealed class RecordingLoopBackend : ISfxBackend, ISfxLoopBackend
     public Action? OnDispose { get; set; }
     public int DisposeCount { get; private set; }
     public int IdentityQueries { get; private set; }
+    public List<(string Operation, SfxLoopBackendHandle Handle)> CompanionCalls { get; } = new();
+    public Action<string, SfxLoopBackendHandle>? BeforeLoopCall { get; set; }
     public string Name => "recording-loop";
     public int LoopCapacity => _pool.Capacity;
 
@@ -41,15 +43,37 @@ internal sealed class RecordingLoopBackend : ISfxBackend, ISfxLoopBackend
     public void Play(int handle, float gain, float pitch, bool positional, Vector3 position) => OneShotGains.Add(gain);
     public void SetListener(Vector3 position, Vector3 forward, Vector3 up) { }
     public void StopAll() => _pool.StopAllLoops();
-    public SfxLoopBackendStartResult TryStartLoop(in SfxLoopPlayback playback) =>
-        LoadedBuffers.Contains(playback.Buffer) ? _pool.TryStartLoop(playback) : new(SfxLoopStartStatus.NotLoaded, default);
-    public bool StopLoop(SfxLoopBackendHandle handle) => _pool.StopLoop(handle);
-    public bool SetLoopGain(SfxLoopBackendHandle handle, float gain) => _pool.SetLoopGain(handle, gain);
-    public bool SetLoopPosition(SfxLoopBackendHandle handle, Vector3 position) => _pool.SetLoopPosition(handle, position);
+    public SfxLoopBackendStartResult TryStartLoop(in SfxLoopPlayback playback)
+    {
+        OnLoopCall("start", default);
+        return LoadedBuffers.Contains(playback.Buffer) ? _pool.TryStartLoop(playback) : new(SfxLoopStartStatus.NotLoaded, default);
+    }
+    public bool StopLoop(SfxLoopBackendHandle handle)
+    {
+        OnLoopCall("stop", handle);
+        return _pool.StopLoop(handle);
+    }
+    public bool SetLoopGain(SfxLoopBackendHandle handle, float gain)
+    {
+        OnLoopCall("gain", handle);
+        return _pool.SetLoopGain(handle, gain);
+    }
+    public bool SetLoopPosition(SfxLoopBackendHandle handle, Vector3 position)
+    {
+        OnLoopCall("position", handle);
+        return _pool.SetLoopPosition(handle, position);
+    }
     public bool IsLoopActive(SfxLoopBackendHandle handle)
     {
         IdentityQueries++;
+        OnLoopCall("query", handle);
         return _pool.IsLoopActive(handle);
+    }
+
+    void OnLoopCall(string operation, SfxLoopBackendHandle handle)
+    {
+        CompanionCalls.Add((operation, handle));
+        BeforeLoopCall?.Invoke(operation, handle);
     }
 
     public void Dispose()
@@ -87,10 +111,14 @@ internal sealed class AudioLoopLogger : ILogger
 {
     public List<Exception?> Warnings { get; } = new();
     public bool ThrowOnWarning { get; init; }
+    public bool ThrowOnDebug { get; init; }
+    public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = new();
     public string Category => "audio-loop-test";
     public bool IsEnabled(LogLevel level) => true;
     public void Log(LogLevel level, string message, Exception? exception = null)
     {
+        Entries.Add((level, message, exception));
+        if (level == LogLevel.Debug && ThrowOnDebug) throw new InvalidOperationException("scripted debug diagnostics failure");
         if (level != LogLevel.Warn) return;
         Warnings.Add(exception);
         if (ThrowOnWarning) throw new InvalidOperationException("scripted diagnostics failure");

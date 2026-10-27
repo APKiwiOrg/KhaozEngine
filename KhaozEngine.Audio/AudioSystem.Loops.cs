@@ -7,6 +7,9 @@ namespace KhaozEngine.Audio;
 /// <summary>Consumer identities and live gain mixing for explicitly controlled SFX loops.</summary>
 public sealed partial class AudioSystem
 {
+    [Flags]
+    enum LoopFailureOperation { None = 0, Start = 1, Stop = 2, Gain = 4, Position = 8, Query = 16 }
+
     sealed class LoopMix
     {
         public string? Bus;
@@ -15,11 +18,13 @@ public sealed partial class AudioSystem
         public float DesiredGain;
         public float AppliedGain;
         public bool GainDirty;
+        public LoopFailureOperation ReportedFailures;
     }
 
     readonly object _loopOwner = new();
     readonly Dictionary<SfxLoopBackendHandle, LoopMix> _loopMix = new();
     readonly List<SfxLoopBackendHandle> _endedLoops = new();
+    LoopFailureOperation _reportedLoopFailures;
 
     /// <summary>The backend's fixed protected-loop capacity, or zero without the optional capability.</summary>
     public int LoopCapacity
@@ -33,7 +38,7 @@ public sealed partial class AudioSystem
 
     /// <summary>
     /// Starts a protected loop using the registered SFX buffer. Admission belongs entirely to the backend.
-    /// Finite volume is clamped to 0..1. Pitch must be finite and positive, and positions must be finite.
+    /// Finite volume is clamped to 0..1 and finite pitch to a minimum of 0.01. Non-finite values are rejected.
     /// </summary>
     public SfxLoopStartResult TryPlayLoop(in SfxLoopRequest request)
     {
@@ -41,15 +46,26 @@ public sealed partial class AudioSystem
         if (_disposed) return new(SfxLoopStartStatus.Disposed, default);
         if (string.IsNullOrWhiteSpace(request.Key)) throw new ArgumentException("An SFX key is required.", nameof(request));
         ValidateLoopVolume(request.Volume);
-        if (!float.IsFinite(request.Pitch) || request.Pitch <= 0f) throw new ArgumentOutOfRangeException(nameof(request));
+        if (!float.IsFinite(request.Pitch)) throw new ArgumentOutOfRangeException(nameof(request));
         if (request.Position is Vector3 position) ValidateLoopPosition(position);
-        if (!_sfx.TryGetValue(request.Key, out int buffer)) return new(SfxLoopStartStatus.NotLoaded, default);
+        if (!_sfx.TryGetValue(request.Key, out int buffer))
+        {
+            if (_warnedSfx.Add(request.Key))
+            {
+                try { _logger.Warn($"PlaySfx unknown SFX '{request.Key}'; ignoring."); }
+                catch { /* The shared warn-once state also bounds throwing diagnostics. */ }
+            }
+            return new(SfxLoopStartStatus.NotLoaded, default);
+        }
         if (_sfxBackend is not ISfxLoopBackend backend) return new(SfxLoopStartStatus.Unsupported, default);
 
+        // Resolve the shared unknown-bus diagnostic only on requests, never during live mixer recovery.
+        try { ResolveBusVolume(request.Bus); }
+        catch { /* Diagnostic failures must not prevent a valid loop from starting. */ }
         ReconcileLoopMix();
         float volume = Math.Clamp(request.Volume, 0f, 1f);
         float gain = LoopGain(request.Bus, volume);
-        var playback = new SfxLoopPlayback(buffer, gain, request.Pitch, request.Position.HasValue,
+        var playback = new SfxLoopPlayback(buffer, gain, MathF.Max(0.01f, request.Pitch), request.Position.HasValue,
             request.Position.GetValueOrDefault(), ResolveBusAttenuation(request.Bus));
         try
         {
@@ -63,11 +79,12 @@ public sealed partial class AudioSystem
                 DesiredGain = gain,
                 AppliedGain = gain
             });
+            _reportedLoopFailures &= ~LoopFailureOperation.Start;
             return new(SfxLoopStartStatus.Started, new(_loopOwner, result.Handle));
         }
         catch (Exception exception)
         {
-            WarnLoopFailure("starting an SFX loop failed.", exception);
+            WarnLoopFailure(ref _reportedLoopFailures, LoopFailureOperation.Start, "starting an SFX loop failed.", exception);
             return default;
         }
     }
@@ -76,7 +93,7 @@ public sealed partial class AudioSystem
     public bool StopLoop(SfxLoopHandle handle)
     {
         EnsureOwningThread();
-        if (_disposed || !TryGetLoop(handle, out _)) return false;
+        if (_disposed || !TryGetLoop(handle, out var mix)) return false;
         try
         {
             if (!((ISfxLoopBackend)_sfxBackend).StopLoop(handle.BackendHandle)) return false;
@@ -85,7 +102,7 @@ public sealed partial class AudioSystem
         }
         catch (Exception exception)
         {
-            WarnLoopFailure("stopping an SFX loop failed.", exception);
+            WarnLoopFailure(ref mix.ReportedFailures, LoopFailureOperation.Stop, "stopping an SFX loop failed.", exception);
             return false;
         }
     }
@@ -116,11 +133,12 @@ public sealed partial class AudioSystem
         {
             if (!((ISfxLoopBackend)_sfxBackend).SetLoopPosition(handle.BackendHandle, position)) return false;
             mix.Position = position;
+            mix.ReportedFailures &= ~LoopFailureOperation.Position;
             return true;
         }
         catch (Exception exception)
         {
-            WarnLoopFailure("moving an SFX loop failed.", exception);
+            WarnLoopFailure(ref mix.ReportedFailures, LoopFailureOperation.Position, "moving an SFX loop failed.", exception);
             return false;
         }
     }
@@ -145,7 +163,7 @@ public sealed partial class AudioSystem
     {
         mix = null!;
         if (!ReferenceEquals(handle.Owner, _loopOwner) || !_loopMix.TryGetValue(handle.BackendHandle, out var found)) return false;
-        if (!TryQueryLoop(handle.BackendHandle, out bool active)) return false;
+        if (!TryQueryLoop(handle.BackendHandle, found, out bool active)) return false;
         if (!active)
         {
             _loopMix.Remove(handle.BackendHandle);
@@ -155,17 +173,18 @@ public sealed partial class AudioSystem
         return true;
     }
 
-    bool TryQueryLoop(SfxLoopBackendHandle handle, out bool active)
+    bool TryQueryLoop(SfxLoopBackendHandle handle, LoopMix mix, out bool active)
     {
         active = false;
         try
         {
             active = ((ISfxLoopBackend)_sfxBackend).IsLoopActive(handle);
+            mix.ReportedFailures &= ~LoopFailureOperation.Query;
             return true;
         }
         catch (Exception exception)
         {
-            WarnLoopFailure("querying an SFX loop failed.", exception);
+            WarnLoopFailure(ref mix.ReportedFailures, LoopFailureOperation.Query, "querying an SFX loop failed.", exception);
             return false;
         }
     }
@@ -177,7 +196,7 @@ public sealed partial class AudioSystem
         foreach (var (handle, mix) in _loopMix)
         {
             mix.DesiredGain = LoopGain(mix.Bus, mix.Volume);
-            if (TryQueryLoop(handle, out bool active) && active) ApplyLoopGain(handle, mix);
+            if (TryQueryLoop(handle, mix, out bool active) && active) ApplyLoopGain(handle, mix);
         }
     }
 
@@ -186,15 +205,15 @@ public sealed partial class AudioSystem
         if (_disposed) return;
         ReconcileLoopMix();
         foreach (var (handle, mix) in _loopMix)
-            if (TryQueryLoop(handle, out bool active) && active) ApplyLoopGain(handle, mix);
+            if (TryQueryLoop(handle, mix, out bool active) && active) ApplyLoopGain(handle, mix);
     }
 
     // A failed query retains the mixer record. Only confirmed ended identities are forgotten.
     void ReconcileLoopMix()
     {
         if (_disposed) return;
-        foreach (var handle in _loopMix.Keys)
-            if (TryQueryLoop(handle, out bool active) && !active) _endedLoops.Add(handle);
+        foreach (var (handle, mix) in _loopMix)
+            if (TryQueryLoop(handle, mix, out bool active) && !active) _endedLoops.Add(handle);
         foreach (var handle in _endedLoops) _loopMix.Remove(handle);
         _endedLoops.Clear();
     }
@@ -209,11 +228,12 @@ public sealed partial class AudioSystem
             if (!((ISfxLoopBackend)_sfxBackend).SetLoopGain(handle, mix.DesiredGain)) return false;
             mix.AppliedGain = mix.DesiredGain;
             mix.GainDirty = false;
+            mix.ReportedFailures &= ~LoopFailureOperation.Gain;
             return true;
         }
         catch (Exception exception)
         {
-            WarnLoopFailure("applying SFX loop gain failed.", exception);
+            WarnLoopFailure(ref mix.ReportedFailures, LoopFailureOperation.Gain, "applying SFX loop gain failed.", exception);
             return false;
         }
     }
@@ -235,8 +255,11 @@ public sealed partial class AudioSystem
             throw new ArgumentOutOfRangeException(nameof(position));
     }
 
-    void WarnLoopFailure(string message, Exception exception)
+    void WarnLoopFailure(ref LoopFailureOperation reported, LoopFailureOperation operation, string message, Exception exception)
     {
+        // Mark before logging. A healthy peer or another operation cannot reset this failure episode.
+        if ((reported & operation) != 0) return;
+        reported |= operation;
         try { _logger.Warn(message, exception); }
         catch { /* Diagnostics must not interrupt loop ownership or gain recovery. */ }
     }

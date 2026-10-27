@@ -9,7 +9,7 @@ namespace KhaozEngine.Windowing
         /// <summary>The button is up, or the press was ruled inert (it began while blocked).</summary>
         Idle,
         /// <summary>Pressed, but the cursor has not yet travelled past the threshold, so it is still undecided
-        /// whether this press is a tap or a drag. Nothing drags while a press is here.</summary>
+        /// whether this press is a tap or a drag. Live pending travel can deliver motion before that decision.</summary>
         Pending,
         /// <summary>The press crossed the threshold. It drags from here until the button comes up or a block arrives,
         /// however still the cursor goes, and it can never become a tap.</summary>
@@ -26,11 +26,14 @@ namespace KhaozEngine.Windowing
     /// <para>By default, travel is path length accumulated across the whole press, not this frame's step, so three slow points
     /// a frame still becomes a drag rather than never deciding, and a wiggle that returns to its start is a drag
     /// rather than a tap.</para>
-    /// <para>Crossing the threshold REPLAYS the travel accumulated while undecided rather than starting clean. The
+    /// <para>By default, crossing the threshold REPLAYS the travel accumulated while undecided rather than starting clean. The
     /// alternative is a dead zone: the first few points of every drag would be swallowed and whatever the drag
     /// drives would start from behind the cursor for the rest of the press. Replaying costs one frame of catch-up
     /// worth at most the threshold and keeps the property that the same mouse path ends in the same place
     /// whatever the threshold is.</para>
+    /// <para><see cref="LivePendingTravel"/> instead delivers each held frame's own motion while pending and on
+    /// the crossing, without replay. With a positive threshold the press frame delivers no motion. Tap decisions,
+    /// including the strict path rule's press-frame accounting, stay unchanged.</para>
     /// <para>Above a zero threshold, a press that begins while blocked (the UI owns the pointer, or the window is
     /// unfocused) is inert for its whole life. It never drags, and its release is never a tap. A block that arrives
     /// mid-press stops the drag and makes the rest of that press inert too. At a zero or negative threshold there is
@@ -71,6 +74,12 @@ namespace KhaozEngine.Windowing
         /// <summary>The tap rule this instance was built on, or null for the strict path-length rule.</summary>
         public PointerTapTolerance? TapTolerance { get; }
 
+        /// <summary>Deliver each held frame's own motion in <see cref="DragDelta"/> while pending and on crossing,
+        /// without replay or a catch-up cap. Default false. With a positive threshold the press and release frames
+        /// deliver zero. Tap decisions, grace, origin and suppression stay unchanged. A nonpositive threshold
+        /// retains its immediate-drag behavior.</summary>
+        public bool LivePendingTravel { get; init; }
+
         /// <summary>The threshold this instance was built on, in window points. The property name is retained for
         /// compatibility. Zero or less means drag from the first frame and never tap.</summary>
         public float ThresholdPixels { get; } = thresholdPixels;
@@ -78,11 +87,13 @@ namespace KhaozEngine.Windowing
         /// <summary>What the button is doing after the most recent <c>Advance</c>.</summary>
         public PointerGesturePhase Phase { get; private set; }
 
-        /// <summary>The delta a drag should apply for the frame of the most recent <c>Advance</c>: zero
+        /// <summary>The motion to apply for the frame of the most recent <c>Advance</c>. By default: zero
         /// unless dragging, that frame's own <see cref="InputState.MouseDeltaPoints"/> while dragging, and the whole
         /// accumulated travel on the frame the threshold is crossed (the catch-up). With a <see cref="TapTolerance"/>
         /// the catch-up is the net displacement, capped by <see cref="PointerTapTolerance.CatchUpLimitPoints"/> when the
-        /// end of the grace decided the press.</summary>
+        /// end of the grace decided the press. With <see cref="LivePendingTravel"/> and a positive threshold,
+        /// pending and crossing frames deliver only their own motion, with zero on the press and release frames.
+        /// The catch-up limit has no effect on live travel.</summary>
         public Vector2 DragDelta { get; private set; }
 
         /// <summary>
@@ -195,6 +206,7 @@ namespace KhaozEngine.Windowing
             }
 
             Vector2 mouseDelta = input.MouseDeltaPoints;
+            Vector2 liveDelta = pressFrame ? Vector2.Zero : mouseDelta;
             if (Phase == PointerGesturePhase.Dragging)
             {
                 DragDelta = mouseDelta;     // decided: every frame passes straight through until the button comes up
@@ -213,7 +225,7 @@ namespace KhaozEngine.Windowing
                 _pastGrace = pastGrace;
                 if (distance <= tolerance.LimitAt(_heldSeconds))
                 {
-                    DragDelta = Vector2.Zero;
+                    DragDelta = LivePendingTravel ? liveDelta : Vector2.Zero;
                     return;
                 }
 
@@ -226,15 +238,16 @@ namespace KhaozEngine.Windowing
                 _pendingTravel += mouseDelta.Length();
                 if (_pendingTravel <= ThresholdPixels)
                 {
-                    DragDelta = Vector2.Zero;   // still a candidate tap, so nothing may move yet
+                    DragDelta = LivePendingTravel ? liveDelta : Vector2.Zero;
                     return;
                 }
             }
 
             Phase = PointerGesturePhase.Dragging;
-            // Catch up in one frame, so the drag has no dead zone at its start. When the grace ending decided the
-            // press, the tolerance may cap that step, because the press may have gathered up to the grace distance.
-            DragDelta = graceDecided ? TapTolerance!.CapCatchUp(_pendingDelta) : _pendingDelta;
+            // Live travel has already delivered the pending motion. Otherwise catch up in one frame, capped when
+            // the grace ending decided the press, because it may have gathered up to the grace distance.
+            DragDelta = LivePendingTravel ? liveDelta
+                : graceDecided ? TapTolerance!.CapCatchUp(_pendingDelta) : _pendingDelta;
             _pendingDelta = Vector2.Zero;
         }
 

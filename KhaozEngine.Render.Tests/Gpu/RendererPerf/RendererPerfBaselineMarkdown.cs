@@ -82,8 +82,11 @@ internal static class RendererPerfBaselineMarkdown
         text.Append("\n## Controls\n\nOuter durations remain separate from scene frames. Unmatched or unsupported rates retain their causes.\n");
         Header(text);
         foreach (var control in summary.Controls.OrderBy(c => int.Parse(c.Block.SceneId.AsSpan(8), CultureInfo.InvariantCulture)))
+        {
             foreach (var metric in control.Metrics.Where(p => p.Key == "gpu.frame" || p.Key.StartsWith("achieved.", StringComparison.Ordinal)).OrderBy(p => p.Key, StringComparer.Ordinal))
                 Distribution(text, control.Block.SceneId, metric.Key, metric.Value);
+            ControlResolution(text, control);
+        }
         text.Append("\n## Marker perturbation\n\n| Scene/iteration | Difference | Percent | Threshold | Above threshold |\n| --- | --- | --- | --- | --- |\n");
         foreach (var row in summary.Perturbations.OrderBy(p => p.Key, StringComparer.Ordinal))
             text.Append("| ").Append(Cell(row.Key)).Append(" | ").Append(Metric(row.Value.DifferenceNs)).Append(" | ")

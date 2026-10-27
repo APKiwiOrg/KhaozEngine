@@ -4,6 +4,19 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.17.0
+
+2026-10-27
+
+- Add opt-in live pending travel to `PointerGesture` through the init-only `LivePendingTravel` property, default
+  off. A live gesture delivers each held frame's own motion in `DragDelta` while its press is still undecided,
+  and replays nothing when it crosses into a drag, so the catch-up limit does not apply. The tap or drag
+  decision, grace, press origin and blocked-press rules are unchanged. `FollowCameraController` orbits by a live
+  gesture's pending motion, so the camera follows the mouse from the first motion of a press, and a press that
+  stays inside its tolerance still taps. Another gesture turning the camera voids the tap, and a simultaneous
+  release of both buttons taps neither when either gesture is live. `TurnBodyActive` and pointer capture still
+  start at the crossing (#1619).
+
 ## 21.16.0
 
 2026-10-27

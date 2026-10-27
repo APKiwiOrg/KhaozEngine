@@ -264,7 +264,7 @@ with members at its 65 percent pace, strafe walk and run per side, each with its
 | Blend weights | Each cardinal is one clip, both diagonal pairs split half and half, continuity across every cardinal and the 180 degree seam, speed brackets and clamps, sum one, at most four in steady state | Game.Tests |
 | Blend phase | Distance over blended stride, pure strafe reproduces its own stride, sync phases keep contacts aligned on a diagonal, zero travel holds, `dt` split invariance, ease timings, `BodyFrame` convention, validation, allocation-free `Advance` (`AllocSensitive`) | Game.Tests |
 | Pose helper | One sample bit-identical to `SampleInto`, two samples equal `JointPose.Lerp`, zero total weight leaves the base | Render.Tests |
-| Tap tolerance (#1272) | Default off identical, a 20 point wobble ending 2 points from the press is a tap, a 6 point move released within 150 ms is a tap, a slow 15 point drag crosses, nothing reaches the consumer before the crossing, the catch-up cap | the gesture tests |
+| Tap tolerance (#1272) | Default off identical, a 20 point wobble ending 2 points from the press is a tap, a 6 point move released within 150 ms is a tap, a slow 15 point drag crosses, default gestures deliver nothing before the crossing and retain the catch-up cap, `LivePendingTravel` delivers each held frame without replay | the gesture tests |
 
 No test needs Grimhollow assets. Focused runs per task and one full Release run at the finish. No local repetition.
 

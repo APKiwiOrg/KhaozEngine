@@ -1323,11 +1323,11 @@ owns no camera. Call `Advance(input, uiBlocked)` once a frame, then read:
 
 - `Phase`: `Idle`, `Pending` (pressed and still undecided) or `Dragging` (past the threshold, and a drag until the
   button comes up or a block arrives).
-- `DragDelta`: zero unless dragging, the frame's `MouseDeltaPoints` while dragging, and the whole pending movement
+- `DragDelta` by default: zero unless dragging, the frame's `MouseDeltaPoints` while dragging, and the whole pending movement
   replay on the frame the press crosses the threshold. All are window points.
 - `TapThisFrame` and `TapPosition`: a release while still pending is a tap, at the framebuffer position the press began.
 
-The rules:
+The default rules:
 
 - Travel is path length over the whole press, so slow movement still becomes a drag, and a wiggle that returns to
   its start is a drag rather than a tap.
@@ -1375,6 +1375,21 @@ gesture.Advance(input, uiBlocked, dt);   // the two-argument Advance throws on a
   `ArgumentException` otherwise. With a tolerance, `elapsedSeconds` must be finite and not negative, else
   `Advance` throws `ArgumentOutOfRangeException`. `TapTolerance` is null on a gesture built with a threshold, and its
   three-argument `Advance` neither uses nor checks the time, so it matches the two-argument one for any value.
+
+Set `LivePendingTravel = true` on an individual gesture to deliver motion while the tap decision is still pending.
+It defaults to false and works with either tap rule. With a positive threshold, each held frame after the press
+reports its own `MouseDeltaPoints` in `DragDelta`, both while pending and on the crossing. Nothing replays, and
+`CatchUpLimitPoints` has no effect. The press and release frames deliver zero. Tap decisions, grace, suppression
+and `TapPosition` stay unchanged, so a pending release still taps at the press origin. The strict path rule keeps
+its existing threshold accounting, including the press frame. A nonpositive threshold keeps its immediate-drag
+behavior.
+
+```csharp
+var gesture = new PointerGesture(MouseButton.Right, new PointerTapTolerance(6f, 0.2f, 10f))
+{
+    LivePendingTravel = true,
+};
+```
 
 It is lifted from the reference consumer's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
 them (see "Tap-or-drag gestures" in the follow camera chapter).
@@ -8277,10 +8292,13 @@ With either set, `OrbitButton` is ignored. `UiBlocked` is a field the game sets 
 `Update` advances each set gesture once with its `dt`, which times a gesture built on a `PointerTapTolerance`, so
 pass the real frame time. `UpdateInput(input, elapsedSeconds)` is `Update` without `AdvanceTarget` and `AdvanceBoom`,
 for a game that reads camera input early in its frame and advances those camera clocks itself after the subject
-moves. Pass it the real frame time too, since a zero freezes the tolerance's grace. The camera orbits only while a
-gesture drags, and by one delta a frame, so each mouse movement turns it once however many buttons are held. A
-gesture that crosses its threshold with no orbit since its press began applies its `DragDelta`, the replay of its
-pending travel, with `LookGesture` first when both cross together. Otherwise the frame's `MouseDeltaPoints` applies.
+moves. Pass it the real frame time too, since a zero freezes the tolerance's grace. The camera orbits while a
+gesture drags and also by a live gesture's `DragDelta` while pending. It applies at most one delta a frame however
+many buttons are held. Live motion takes precedence over a default crossing's replay. Without live motion, a
+default gesture that crosses its threshold with no orbit since its press began applies its pending replay, with
+`LookGesture` first when both cross together. After any prior orbit, it applies only the
+frame's `MouseDeltaPoints`. Live gestures always supply their own frame delta, including the crossing, so motion
+already delivered is never replayed. A newly pressed live gesture cannot swallow the other gesture's motion.
 Gesture replay and continuing motion are in window points before and during capture. Speed, invert and sign are as
 for the orbit button, and scroll zoom, target damping and boom recovery run unchanged. With neither gesture set,
 `Update` keeps the original orbit button path and its legacy `MouseDelta` units.
@@ -8291,11 +8309,14 @@ The controller reports three things:
 - `WantsPointerCapture` is true while either gesture drags. Forward it to `SetPointerCaptured` so the cursor hides
   and holds for the drag (see "Pointer capture" in the input chapter).
 - `OrbitTap` and `LookTap` report each gesture's tap after `Update` or `UpdateInput`, in the same frame, with the
-  press origin in that gesture's `TapPosition`. A tap counts only if the camera did not turn during that press,
-  its release frame included. The camera turns on every frame a gesture drags, even with no mouse movement. A
-  tapping gesture never dragged, so any turn came from the other one, and a both-buttons release is never a select
-  whichever button went down first. Read taps there rather than from `PointerGesture.TapThisFrame`, which knows
-  nothing of the other gesture.
+  press origin in that gesture's `TapPosition`. Its own live pending travel preserves the tap. A turn from the
+  other gesture voids it, including on the release frame. Both live gestures delivering motion together void both
+  taps, whichever button went down first. A simultaneous release of both gestures suppresses both taps when
+  either gesture is live, including completely stationary presses. Default-off stationary taps remain unchanged.
+  An active drag still invalidates the other gesture's tap on stationary
+  frames, preserving the existing handoff rule. Read taps here rather than from `PointerGesture.TapThisFrame`,
+  which knows nothing of the other gesture. Live pending look motion turns the camera alone. `TurnBodyActive`
+  and `WantsPointerCapture` still begin at the crossing.
 
 The WoW wiring puts orbit on the left button and look on the right. The game reads `TurnBodyActive` and hands it to
 `CharacterMovement` as `MoveCommand.FaceCamera`, with `Camera.Yaw` as `CameraYaw`. A local
@@ -9090,7 +9111,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.16.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.17.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9531,7 +9552,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.16.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.17.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10330,7 +10351,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.16.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.17.0" />
 ```
 
 ```csharp
@@ -18574,7 +18595,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.16.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.17.0" />
 ```
 
 ```csharp
@@ -18610,7 +18631,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.16.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.17.0" />
 ```
 
 ```csharp
@@ -18854,7 +18875,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.16.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.17.0" />
 ```
 
 ```csharp
@@ -23246,7 +23267,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.16.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.17.0" />
 </ItemGroup>
 ```
 

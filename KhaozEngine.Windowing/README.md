@@ -382,13 +382,19 @@ Windowing and input foundation for KhaozEngine.
   `ThresholdPixels` property names remain for compatibility. `TapPosition` stays in framebuffer pixels.
   `Advance` allocates nothing. Lifted from the reference consumer's
   `RightMouseGesture`. See docs/USING-KHAOZENGINE.md.
+- `PointerGesture.LivePendingTravel` opts one gesture into immediate motion while its tap decision is pending.
+  Default false. With a positive threshold, `DragDelta` carries each held frame's own `MouseDeltaPoints`, including
+  the crossing, with no replay or catch-up cap. The press frame and release frame deliver zero. The tap rule,
+  grace, press origin and suppression stay unchanged. A pending release still taps. The strict path rule retains
+  its existing press-frame threshold accounting. A nonpositive threshold keeps its immediate-drag behavior.
 - `PointerTapTolerance(DistancePoints, GraceSeconds, GraceDistancePoints)` with `CatchUpLimitPoints` - the opt-in tap
   rule for `PointerGesture(button, tapTolerance)`. It judges straight-line distance from the press point (the
   cursor where the press frame ended, so that frame's own delta never counts) instead of path length, with the wider
   `GraceDistancePoints` limit until `GraceSeconds` after the press, so a click that wobbles and comes back is still a
   tap. A gesture built on one advances with `Advance(input, uiBlocked, elapsedSeconds)`, and its two-argument
   `Advance` throws. `CatchUpLimitPoints` caps the catch-up step when the grace ending decided the press (the distance
-  was still within `GraceDistancePoints`), and zero drops it. The strict path rule stays the default. See
+  was still within `GraceDistancePoints`), and zero drops it. It has no effect with `LivePendingTravel`.
+  The strict path rule stays the default. See
   docs/USING-KHAOZENGINE.md.
 - `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame
   that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume), `DesignViewport`

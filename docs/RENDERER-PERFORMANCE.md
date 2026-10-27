@@ -9,7 +9,7 @@ retains the design rationale. This document records no measured baseline or perf
 
 `tools/Renderer.Perf.Tests` is outside the solution. Its one opt-in performance fact is not an ordinary
 headless test. Every native measurement or load run needs separate owner approval naming the workload,
-leg, frame counts, duration and spending cap. A paid manifest's campaign cap is at most USD 12, the owner's
+leg, frame counts, duration and spending cap. A paid manifest's campaign cap is at most USD 14, the owner's
 envelope for every paid pilot and full unit including attempts already billed, and each unit's own cost cap must
 fit inside it. Implementation approval never authorizes a dispatch, pilot, retry, profiler capture or follow-up
 measurement. Software Vulkan and WARP can establish
@@ -116,6 +116,27 @@ The outer GPU pair precedes the host clear and follows native command-list End f
 `TotalOnly` brackets the frame with two queries. `PerPass` adds frozen parent/child scopes and
 reserved skip slots. Detailed markers may change synchronization or encoder boundaries. Its frame
 total is diagnostic and never substitutes for a total-only frame result.
+
+Ready, equal outer timestamps are retained as `BelowResolution`, with zero raw elapsed ticks,
+the admitted positive `GpuPeriodNs` and a null duration. Only clear-only controls 1 (`empty-frame`),
+2 (`empty-main-mrt`) and 3 (`empty-depth-only`) may complete with this state, on either backend.
+Their repeated clears can produce equal timestamps even when the native pair correctly brackets
+every clear and End tail. Admission requires every expected color/depth clear, one submission,
+no draws, dispatches, uploads, copies, resolves, mip generation, resource creation or waits,
+no pass markers or frame errors, and the unchanged admitted period. Final promotion also requires
+the frozen control work digest and retained output-validation result. Conditioning, all scene outer
+intervals and controls 4 through 12 still require positive Available timing. Existing per-pass
+BelowResolution support is unchanged.
+
+Raw samples and finite counts never shrink. Offline and published control summaries show separate
+warm-up and measured BelowResolution counts and their reported tick periods. A measured unavailable
+interval prevents the entire numerical timing distribution and achieved mean or rate. Available
+counts are diagnostic, and positive samples never form a substitute subset. Equal query values do
+not prove zero execution cost or redundant-clear elimination. Frequency-derived tick period is not
+an execution-time upper bound, so no such bound or zero reference is invented. Invalid, disjoint,
+pending, missing, nonmonotonic and failed timing keeps its existing refusal. Headless D3D11 traces
+check both recording modes and all three controls, while positive scene and observable-work timing
+guards continue to detect a zero outer bracket around real work.
 
 The [consumer reference](USING-KHAOZENGINE.md#gpu-timestamps-without-waiting) owns the public observer
 registry. `device.scene.begin`, `device.water.geometry`, `device.water.bathymetry` and

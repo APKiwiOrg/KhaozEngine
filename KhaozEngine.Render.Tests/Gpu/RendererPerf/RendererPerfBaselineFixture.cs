@@ -24,12 +24,19 @@ public sealed class RendererPerfBaselineFixture : IDisposable
     internal RendererPerfBaselineLeg Variant(string fault)
         => Create("linux-vulkan", fault, fault == "pilot" ? "pilot" : fault == "rehearsal" ? "rehearsal" : "full", 17, fault);
 
+    internal RendererPerfBaselineLeg Censored(string leg)
+        => Create(leg, "censored-" + leg, "full", 17, "censored");
+
     RendererPerfBaselineLeg Create(string leg, string unit, string preset, int billed, string? fault = null)
     {
         bool rehearsal = preset == "rehearsal";
         var report = RendererPerfAnalysisFixture.Report(preset == "full");
         var manifestJson = rehearsal ? RendererPerfRehearsalManifestTests.ManifestJson() : RendererPerfProtocolTests.ManifestJson(preset, leg);
         manifestJson["unitId"] = unit;
+        if (fault == "censored")
+            foreach (var control in manifestJson["controls"]!.AsArray())
+                if (control!["id"]!.GetValue<int>() is >= 1 and <= 3)
+                    control["workSha256"] = RendererPerfControls.Definition(control["id"]!.GetValue<int>()).WorkSha256;
         byte[] manifestBytes = Encoding.UTF8.GetBytes(manifestJson.ToJsonString());
         var manifest = RendererPerfManifest.Parse(manifestBytes);
         report = report with
@@ -59,6 +66,7 @@ public sealed class RendererPerfBaselineFixture : IDisposable
                 { Passes = [new("opaque", 0, null, null, 1, 2, 40, RendererPerfAnalysisFixture.Value(40), false)] })]
             })]
         };
+        if (fault == "censored") report = RendererPerfControlTimingFixture.Execute(report);
         if (fault == "failed-publication") report = RendererPerfAnalysisFixture.Failed(report);
         Assert.Equal(preset == "full" ? 16944 : 1260, RendererPerfCompactReportTests.Frames(report).Count());
         using var capture = new RendererPerfCompilerPublicationFixture(report);

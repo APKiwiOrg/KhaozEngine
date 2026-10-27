@@ -201,6 +201,13 @@ public sealed class RendererPerfDriverTests
         internal Func<RendererPerfBlock, RendererPerfFrameSample, RendererPerfFrameSample>? RetainFrame;
         internal bool ObserveMemory;
         internal RendererPerfClock Clock => new(() => { ClockCalls++; return Tick; }, 1000);
+        internal RendererPerfExecutionResult Execute()
+            => RendererPerfDriver.Execute(Template.Manifest, Template.Identity, (m, b, c) =>
+            {
+                Created.Add(b);
+                return new Session(this, b, Template.Identity);
+            }, new(Clock, Tick, checked(Tick + Template.Manifest.Limits.UnitSeconds * 1000L), default));
+
         internal RendererPerfReport Run(RendererPerfRunIdentity? identity = null)
         {
             var publication = new RendererPerfPublicationWriter((report, final) =>

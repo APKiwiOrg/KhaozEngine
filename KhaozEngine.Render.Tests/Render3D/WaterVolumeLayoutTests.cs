@@ -95,7 +95,7 @@ public sealed class WaterVolumeLayoutTests
     public void FewerStorageBuffersThanNeededRefusesTheRenderer(int reported)
     {
         using var device = new FakeGpuDevice(capabilityOverride: new GpuCapabilities(false, true)
-            { MaxFragmentStorageBuffers = reported });
+        { MaxFragmentStorageBuffers = reported });
         NotSupportedException error = Assert.Throws<NotSupportedException>(() => NewRenderer(device));
         Assert.Contains("maxPerStageDescriptorStorageBuffers", error.Message, StringComparison.Ordinal);
         Assert.Empty(((FakeGpuResourceFactory)device.Factory).ShaderRequests);
@@ -106,7 +106,7 @@ public sealed class WaterVolumeLayoutTests
     public void ExactlyThreeFragmentStorageBuffersCanCreateTheRenderer()
     {
         using var device = new FakeGpuDevice(capabilityOverride: new GpuCapabilities(false, true)
-            { MaxFragmentStorageBuffers = 3 });
+        { MaxFragmentStorageBuffers = 3 });
         using ModelRenderer renderer = NewRenderer(device);
     }
 
@@ -117,7 +117,7 @@ public sealed class WaterVolumeLayoutTests
     public void SceneRefusesInsufficientStorageBeforeCreatingAnyGpuResources(int reported)
     {
         using var device = new FakeGpuDevice(capabilityOverride: new GpuCapabilities(false, true)
-            { MaxFragmentStorageBuffers = reported });
+        { MaxFragmentStorageBuffers = reported });
         NotSupportedException error = Assert.Throws<NotSupportedException>(() =>
             new Scene3D(device, new(null, GpuPixelFormat.R8G8B8A8UNorm)));
         Assert.Contains("maxPerStageDescriptorStorageBuffers", error.Message, StringComparison.Ordinal);

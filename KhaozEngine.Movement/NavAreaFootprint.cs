@@ -12,6 +12,7 @@ internal sealed class NavAreaFootprint
     private readonly NavAreaFilter _areas;
     private readonly double _radius;
     private readonly double _height;
+    private readonly bool _checkHeadroom;
     private readonly double _surfaceReach;
 
     internal NavAreaFootprint(PhysicsNavColumns columns, PhysicsNavBakeOptions options,
@@ -22,6 +23,9 @@ internal sealed class NavAreaFootprint
         _areas = areas;
         _radius = tuning.CapsuleRadius;
         _height = 2d * tuning.CapsuleHalfHeight;
+        // Contact proves clearance at the resting pose and along each swept shell route. A neighbouring
+        // column can also capture ground under a low tread, whose headroom is not the body's clearance.
+        _checkHeadroom = tuning.Controller != MovementControllerKind.Contact;
         // A footprint can straddle a step or slope while the core seats or paces the body.
         _surfaceReach = tuning.StepHeight + (double)tuning.GroundedEpsilon +
             _radius * Math.Tan(tuning.MaxSlopeRadians);
@@ -79,7 +83,7 @@ internal sealed class NavAreaFootprint
             matched = true;
             double selectedLow = Math.Max(lowY, lower), selectedHigh = Math.Min(highY, upper);
             if (surface.Height - selectedLow > _surfaceReach || selectedHigh - surface.Height > _surfaceReach ||
-                surface.Headroom < _height || !_areas.Allows(surface.Areas)) return false;
+                (_checkHeadroom && surface.Headroom < _height) || !_areas.Allows(surface.Areas)) return false;
         }
         return matched;
     }

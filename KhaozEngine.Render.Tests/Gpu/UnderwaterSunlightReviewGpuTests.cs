@@ -27,7 +27,8 @@ public sealed class UnderwaterSunlightReviewGpuTests(UnderwaterSunlightReviewSce
         AssertDark(closed, open, gap.X, gap.Y, "unblended, zero widening");
         UnderwaterSunlightImage widened = scenes.Cascaded.Capture(settings with
         {
-            PenumbraPerMetre = UnderwaterSunlightScenes.PenumbraPerMetre, CascadeBlend = 0.15f
+            PenumbraPerMetre = UnderwaterSunlightScenes.PenumbraPerMetre,
+            CascadeBlend = 0.15f
         });
         Dump("cascade-roof-blended-widened", widened);
         AssertDark(widened, open, gap.X, gap.Y, "blended and widened");

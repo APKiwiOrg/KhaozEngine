@@ -86,8 +86,8 @@ node's physical pose (P5B-13). Raw heights stay the topology identity.
 - Three review rounds showed that footprint capture needs complete certified discovery of every resting support,
   certified headroom per discovered support, a new facts format, a new footprint predicate and a layering stage that
   does not reinterpret raw Stair candidates. Each was a new route to a wrong-area or wrong-layer admission.
-- Anchors keep every legacy roof, footprint and layer protection exactly as tested and still give #1270 its resting
-  proof.
+- Anchors retain captured axis headroom, surface reach, area and layer protections and give #1270 its resting proof.
+  Contact placement and swept shells decide clearance across the footprint, including beside low slab risers.
 
 **Cost if wrong:** footprint-only supports with no axis hit (the SG-23 flank) get no node. Missing nodes are
 conservative, and #1389 carries the seeds.
@@ -149,7 +149,11 @@ proof. A raw surface becomes a candidate only when all of these hold:
 2. **Ownership.** The anchor lies below the next raw surface above in the column and the raised body fits the captured
    headroom: anchor plus body height at most raw height plus headroom. A deck or rooftop never becomes another surface's
    anchor.
-3. **Footprints.** The footprint predicate accepts the body at the raw feet and at the anchor.
+3. **Footprints.** The footprint predicate accepts captured surface reach and areas at both raw feet and anchor.
+   Contact clearance comes from placement and swept-shell proofs. A neighbouring column can capture ground beneath
+   a low slab, whose low headroom does not describe clearance for the body standing on the slab. Legacy profiles
+   retain the captured headroom check across their footprints. The candidate's own axis headroom and ownership band
+   remain required.
 4. **Placement.** `SettlePlacement` at the anchor returns `Advanced`, grounded with footing, within the unchanged 3D 1 mm
    rule of the anchor. This is where the full shell clearance, the water policy and Unknown water are decided, at the
    resting pose rather than at the raw point.
@@ -205,7 +209,7 @@ Contact proofs step the proof binding with `StepTowards` and read every `Movemen
 - The Hold is the first slice of the edge budget. The bake options own timing and budget.
 - Any outcome other than `Advanced` at the Hold or at any slice refuses the edge. An unchanged pose is never evidence
   that a query succeeded. No prefix of a refused proof is published.
-- Every slice passes the unchanged footprint predicate and stays grounded.
+- Every slice passes the footprint's surface reach and area predicate and stays grounded.
 - Arrival is the shared 3D 1 mm sphere around the target anchor with the body grounded.
 - Edges step the wet proof binding, so the WadeOnly wall and the swim threshold shape them as at runtime.
 - Stair links use the same proof between anchors.
@@ -429,7 +433,8 @@ Rounds 1 to 3 (`review-1.md`, `review-2.md`, `review-3.md`, all Not ready):
 
 - F1, F4, F13, G1, G4, G5, G10, G12, H2, H3, H4, H6, U2: P5B-1 drops footprint capture for raw capture plus resting
   anchors, so discovery completeness, new facts, new headroom semantics and height substitution are no longer part of
-  this phase. Roof, footprint and layer protections are the legacy ones, unchanged.
+  this phase. Captured axis headroom, surface reach, area and layer protections remain, with Contact clearance
+  proved at physical resting poses and along swept shell routes.
 - F2, H1: the anchor comes from `ContactPlacement.Find` with no water or motion route, and water is judged by
   `SettlePlacement` at the anchor (P5B-4, P5B-5).
 - F3, H5 (settlement): fixed in 5b with a door matrix (P5B-6).

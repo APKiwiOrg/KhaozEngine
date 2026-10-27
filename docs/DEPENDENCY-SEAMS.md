@@ -778,6 +778,10 @@ skew across versions.
 Consumers instead use public `SupportQueryCapture` and immutable `SupportQueryMeasurement` in Physics,
 with `SupportQueryCounter`, `SupportQueryMetrics`, `SupportQueryRouteMetrics` and `SupportProofReuseMetrics`.
 These wrap the same recorder without exposing mutable thread state or granting consumer friend access.
+Physics also grants `InternalsVisibleTo` to NetWorld solely so `PlayerMovementSystem` records its per-entity
+outer Steps through the existing internal recorder. Movement records its own NPC Hold and Step entry points.
+The six controller-specific counters retain the same thread-local gates and worker reduction. The grant
+adds no public recording API and no package dependency.
 The existing worker bridge carries labels and lifetime completeness and merges once after join. Disabled
 workers restore state without allocating or materializing widened records. The
 [public contract](../KhaozEngine.Physics/README.md#support-query-measurement) owns scope, reduction and

@@ -28,7 +28,7 @@ namespace KhaozEngine.Render3D
         int _shadowPassRigidDraws;
         int _shadowPassSkinnedDraws;
 
-        /// <summary>This frame's fitted cascade matrices against absolute world space, the caster classification's.
+        /// <summary>Absolute diagnostic views of this frame's fits. Caster classification uses the relative matrices.
         /// Test seam for the proof that temporal jitter never reaches the fit (TemporalCpuIsolationTests).</summary>
         internal ReadOnlySpan<Matrix4x4> CascadeFitAbsoluteForTests => _cascadeCpuVpsAbsolute.AsSpan(0, _cascadeCount);
 

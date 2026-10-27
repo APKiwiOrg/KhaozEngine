@@ -95,9 +95,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `WorldFrame.Nearest(camera.Eye).Anchor`, a 128 m grid point, so the subtraction is exact) from every world
   position on its way to the GPU, which removes the large operands before the matrix concatenation ever meets
   them. **Adoption: none** - every entry point still takes ABSOLUTE world coordinates, `WorldToScreen` and
-  `ScreenToRay` still speak absolute, and every CPU-side spatial computation (frustum culling, the terrain cull
-  fast path, shadow-cascade fitting, caster classification, the transparency sorts) still runs in absolute space,
-  byte-identical to before. The origin is LATCHED at `Begin()`. `RenderOrigin = Vector3.Zero` opts out exactly.
+  `ScreenToRay` still speak absolute. Frustum culling, the terrain cull fast path and the transparency sorts
+  still run in absolute space. Shadow cascades fit from the unjittered render-relative frustum, and caster
+  tests subtract the render origin from absolute bounds before evaluating that same relative fit. The
+  origin-zero fit remains bit-identical. The origin is LATCHED at `Begin()`.
+  `RenderOrigin = Vector3.Zero` opts out exactly.
   The three engine cameras implement `IRenderOriginAware`. A consumer camera that does not falls the WHOLE
   pipeline back to the absolute path (never half an origin) and `RenderOriginActive` reports `false`.
   `Transform3D.ToMatrix(Vector3 renderOrigin)` (in `KhaozEngine.Render3D.Ecs`) builds a reduced matrix for a
@@ -443,10 +445,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   refracted surface entry with the receiver's normal offset and slope bias and selects cascades there.
   For receiver `P` at depth `h`, Snell refraction at the still-water surface uses the constant index `1.333`.
   With refracted travel direction `t`, the path is `L = h / cos(theta_water) = h / -t.y` and the entry is
-  `E = P - t * L`. Only key diffuse and specular receive `exp(-AbsorptionPerMetre * L)`. Ambient, indirect,
-  fill, point lights, emissive and fog keep their values. The water pass's vertical-depth tint already darkens
-  the view of deep beds. Attenuating ambient too would double-darken them, while reducing only the key light
-  lets shadow contrast fade against the unchanged ambient. Attenuation also applies with shadows disabled, while
+  `E = P - t * L`. Only key diffuse and specular receive `exp(-attenuation * L)`. Attenuation is the resolved
+  `AbsorptionPerMetre` for legacy bodies or derived extinction from `WaterColor` and `Clarity` for
+  `WaterColumnLight` bodies. Ambient, indirect, fill, point lights, emissive and fog keep their values.
+  The surface handles the view path through legacy vertical-depth tint or the opted-in column composite.
+  Reducing only the key light lets shadow contrast fade against unchanged ambient.
+  Attenuation also applies with shadows disabled, while
   exported key visibility remains exactly one for non-positive shadow strength. Empty water counts skip
   buffer reads, and depth zero meets the dry result. Four jittered depth slices along the refracted segment
   also test submerged casters. Each fetched atlas texel reconstructs its stored caster's height and counts it
@@ -879,10 +883,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     whichever is worse. The floor sits under the variance transfer below rather than adding to it, so the ripple
     detail both respond to is counted once (#308). `GlintRoughness = 0` selects the legacy Blinn-Phong lobe on
     `GlintExponent`.
-  - **Depth grading** (`AbsorptionPerMetre` over `DeepColor`/`ShallowColor`): per-channel Beer-Lambert
+  - **Legacy depth grading** (`WaterColumnLight` disabled, `AbsorptionPerMetre` over
+    `DeepColor`/`ShallowColor`): per-channel Beer-Lambert
     transmittance, so the ramp bends through green-teal rather than running straight between two colours. All-zero
-    coefficients restore the two-stop smoothstep over `ShallowDepth`. The same resolved coefficients drive underwater
-    sunlight, where all-zero absorption means no attenuation.
+    coefficients restore the two-stop smoothstep over `ShallowDepth`. For bodies without `WaterColumnLight`,
+    the same resolved coefficients drive underwater sunlight, where all-zero absorption means no attenuation.
   - **Foam** (`FoamColor`/`FoamStrength`/`FoamCrestCoverage`/`FoamShoreWidth`/`FoamPatternScale`): procedural, no
     texture assets. Whitecaps from the determinant of the swell's horizontal Jacobian (steepness-normalized, so
     coverage means the same at any steepness) and a shoreline band from the plane's depth source, both broken up by
@@ -890,14 +895,62 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     on the still-water plane grows, which keeps distant whitecap coverage where the old per-vertex fold left it
     rather than whitening the horizon to the near field's density.
 
-  Underwater sunlight is separately opt-in per water body through `UnderwaterSunlight` (scene default `false`) and
-  `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
+  Underwater sunlight opts in per water body through either `UnderwaterSunlight` or `WaterColumnLight`
+  (both scene defaults `false`). `WaterColumnLight` implies sunlight without changing the `UnderwaterSunlight`
+  setting. A column body's sunlight uses extinction derived from its resolved `WaterColor` and `Clarity`,
+  with mean extinction `3 / Clarity`, instead of legacy `AbsorptionPerMetre`.
+  `UnderwaterPenumbraPerMetre` defaults to `0.03` metres of extra penumbra radius per metre of in-water path.
   The value must be finite and non-negative. The penumbra rate is an art control for sun size and surface-slope
   scatter. It is available on any plane, procedural or FFT, bound or unbound.
   A frame with no opted-in water renders exactly as before. The water refractive index is the fixed constant `1.333`,
   not a setting. Refraction uses the body's still-water plane, without wave-displaced normals, and models only
   that body's light path. The surface entry can lie beyond the rectangle, where the bank can shadow it.
   How submerged receivers are lit is described under key shadows.
+
+  Water-column authoring uses `WaterColumnLight` (scene default `false`), `WaterColor` (linear RGB, neutral
+  default `(0.10, 0.13, 0.10, 1)`, alpha ignored) and `Clarity` (neutral default `2` metres of vertical depth
+  for about 5% bed visibility when seen straight down). These are authoring defaults, not tuned river values.
+  Their nullable `WaterLook` fields inherit the scene, a value overrides it and an explicit `false` opts out.
+  `DrawWater` validates the resolved values before enqueue only when the column is enabled. Clarity must be
+  finite and at least 0.001 metres, and each RGB channel must be finite and in [0, 1]. Rejections throw
+  `ArgumentException` naming `Clarity` or `WaterColor`. Disabled columns leave those inputs unused and
+  unvalidated. The column path bypasses `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`, `ShallowDepth` and
+  `Opacity`, while shore fade and foam retain their settings. These fields resolve and validate at admission
+  and supply underwater sunlight's extinction. Enabled planes also shadow glint and the sun-lit foam term
+  through the scene's cascades, leaving foam's ambient term unshadowed. Disabled planes keep the original
+  surface shading. Enabled columns apply view-path extinction, four shadowed sun samples, analytic unshadowed
+  ambient single scattering and an H-function multiple-scattering estimate that dims with mean sun visibility.
+  The refracted view path works with perspective and orthographic cameras. It uses the original pixel's pre-water
+  colour, with no bent image lookup. The copy includes everything before water, so farther water seen through
+  another column surface is omitted. Wholly submerged casters shadow the bed but not the column.
+  Foam coverage includes `FoamColor.a`. Shore fade mixes toward the copy, and enabled output has alpha 1.
+  Fog applies to water's own radiance without fogging the copied bed twice. Temporal sample noise advances only
+  on the render that resolves temporal anti-aliasing. See [the pipeline](../docs/RENDER-PIPELINE.md#water-column-composite)
+  for the displaced-surface integral, finite-depth approximation and shadow budget.
+
+  `TileWaterLooks.River` supplies the owner-selected linear RGB `(0.28, 0.30, 0.18)` and `Clarity = 1.5f`,
+  with `WaterColumnLight` left null. See [the TileWorld reference](../KhaozEngine.TileWorld.Render3D/README.md)
+  for preset ownership and explicit opt-in. The remaining bent-view design is
+  [Landing 2](../docs/programs/water-optics-design.md). Release waits for the owner's measured-cost ruling
+  tracked in [the water optics program](../docs/programs/water-optics.md).
+
+  <a id="water-column-coefficients"></a>
+  **Water column coefficients.** For authored linear RGB `c`, the CPU derives
+  `w_rgb = 1 + 0.5*(mean(c)-c_rgb)` and `sigma_t_rgb = (3/Clarity)*w_rgb` in inverse metres.
+  The weights stay positive and sum to three. Thus `mean(sigma_t_rgb) = 3/Clarity`, and mean-extinction
+  transmission at the clarity depth is `exp(-3) = 0.04978707`, about 5%. The RGB channels can differ.
+  For albedo `a` in [0, 1], `sigma_s = a*sigma_t_rgb` and `sigma_a = sigma_t_rgb-sigma_s`, conserving
+  energy per channel. Darker authored channels have greater extinction.
+
+  Albedo independently inverts the deep reference function `F(a) = a*H(a,1)^2/4` through 32
+  double-precision bisections, with `H(a,mu) = (1+2*mu)/(1+2*mu*sqrt(1-a))`. The reference is a
+  straight-down view, zero Fresnel, unit white `LightColor` at zenith and unit white `AmbientColor`.
+  Engine irradiance is pi times `LightColor`, and ambient is sky radiance, so each reference source's
+  single scattering is `a/8`. `F(0) = 0` and `F(1) = 2.25` make every authored channel reachable without
+  a colour cap. The fill light does not reach the column. The Hapke H-function estimates multiple
+  scattering in a homogeneous semi-infinite medium, omitting opposition and particulate-packing terms.
+  Sky is one unshadowed effective zenith source. This is an analytic estimate, not an exact transport
+  solution. The `Clarity >= 0.001` m admission domain keeps shader intermediates finite in float.
 
   On top of that the ripple normal field is a generated SLOPE SPECTRUM (14.26.0): `RippleComponents` cosines with
   golden-angle headings (no two parallel, no dominant ribbon direction) laddering by `RippleLacunarity` over about
@@ -908,9 +961,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   becomes a rougher surface rather than stripes or glass, and
   the swell's shading contrast fades on the same measure. `DetailFadeDistance`/`DistantDetailScale` remain as an
   artistic extra layered on top. Plus the
-  depth-driven shore fade (`ShoreFadeDistance`) and `Opacity`.
-  **No view-ray refraction, no screen-space reflections, no caustics, no submerged view** (all out of scope) - a stylized
-  LDR surface. Drawn after the sky + ground decals, before the MRT resolve, one draw per plane, with depth test ON
+  depth-driven shore fade (`ShoreFadeDistance`) and, for legacy columns, `Opacity`.
+  **No bent image lookup, no screen-space reflections, no caustics, no submerged view** (all out of scope) - a stylized
+  surface with analytic sky reflection. Drawn after the sky + ground decals, before the final MRT resolve,
+  one draw per plane, with depth test ON
   (`Less`, so geometry above the surface occludes it) but depth WRITE OFF (so the resolved normal/linear-depth the
   outline pass reads is untouched - matching the ground-decal/beam/textured-billboard depth-interleave convention).
   Time is driven by the same `Scene3D.EffectTimeSeconds` clock the beam pulse/scroll uses (freeze it for a
@@ -996,9 +1050,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   See [consumer use](../docs/USING-KHAOZENGINE.md) for a worked binding and
   [TileWorld](../KhaozEngine.TileWorld.Render3D/README.md) for the triangle producer.
 - Underwater volume uploads (`scene.WaterVolumeClusters`). Queued planes whose resolved
-  `WaterSettings.UnderwaterSunlight` is true contribute render-relative records, including their optional
-  `WaterPlane.FloorY`, resolved absorption and penumbra. The scene default is false and `WaterLook` can override
-  it per plane. Diagnostics expose `RecordCount`, `DroppedRecords`, `ReferenceCount` and `OverflowedClusters`.
+  `WaterSettings.UnderwaterSunlight` or `WaterColumnLight` is true contribute render-relative records, including
+  their optional `WaterPlane.FloorY`, attenuation and penumbra. Both scene defaults are false and `WaterLook`
+  can override them per plane. The retained absorption fields hold legacy absorption or derived column
+  extinction without a layout change. Diagnostics expose `RecordCount`, `DroppedRecords`, `ReferenceCount`
+  and `OverflowedClusters`.
   Each record is 48 bytes, packed as three `uvec4`: `(minX, minZ, maxX, maxZ)`,
   `(surfaceY, floorY, absorptionR, absorptionG)` and `(absorptionB, penumbraPerMetre, 0, 0)`.
   All positions are render-relative. A null floor encodes `float.MinValue`. A frame retains at most 4096
@@ -1023,9 +1079,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `WaterLook` mirrors a `WaterSettings` field and is itself nullable - `null` inherits the scene, a value overrides
   it for that plane alone, leaving every other queued plane on the scene's look, which is what lets a calm inland
   lake and a rough FFT sea share a frame. The overridable fields are `WaveSource`, the swell group, the ripple/
-  detail group, body colour including `AbsorptionPerMetre`, `UnderwaterSunlight` and
-  `UnderwaterPenumbraPerMetre`, foam, the four `Glint*` scalars, `ShoreFadeDistance` and the two depth-response
-  strengths `ShoalingStrength`/`SurfStrength`. Scene-wide and NOT on a look at all: `SeaState` (one FFT bake - two sea states a frame does not
+  detail group, body colour including `AbsorptionPerMetre`, `UnderwaterSunlight`, `UnderwaterPenumbraPerMetre`,
+  `WaterColumnLight`, `WaterColor` and `Clarity`, foam, the four `Glint*` scalars, `ShoreFadeDistance` and the two
+  depth-response strengths `ShoalingStrength`/`SurfStrength`. Scene-wide and NOT on a look at all: `SeaState`
+  (one FFT bake - two sea states a frame does not
   make two oceans, it makes the one producer rebake on every call for both and corrupts the persistent foam
   accumulator), `Bathymetry` (one depth texture), the grid group (`GridMode` and the `Clipmap*` knobs, which pick
   the pass's pipeline and vertex layout before the draw loop starts), reflection weights (read the one sky),
@@ -1033,9 +1090,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   inland-body case: the plane leaves the shared ocean, so it loses the sea's swell, whitecaps and (shoaling/surf
   ride the same gate) its breaking surf. The shared ocean itself now runs on DEMAND - it bakes when any queued
   plane's effective wave source is `FftOcean`, rather than off the scene's own default, so a `Procedural` scene
-  with one ocean plane still gets a real ocean. Costs zero new UBO bytes (payload 1088, slot 1280), zero new GPU
-  per-plane GPU resources and zero new pipelines: each plane already owned its slot in the water pass's uniform
-  buffer, so an override is a different set of numbers written into a slot that was being written anyway. Every
+  with one ocean plane still gets a real ocean. Look overrides add no per-plane resources or pipelines.
+  The water UBO payload is 1136 bytes inside the unchanged 1280-byte slot, binding range and dynamic-offset
+  stride. Overrides themselves cost zero new UBO bytes: each plane already owned its slot in the water pass's
+  uniform buffer, so an override changes numbers in a slot that was being written anyway. Every
   procedural plane whose effective swell does not displace (an amplitude or a wavelength that is zero or negative)
   draws one quad of a shared, grow-only buffer of 48 bytes per plane over one six-index buffer, in either grid
   mode, and the frame uploads every such quad in one write before the water pass opens. Per-body sea states,

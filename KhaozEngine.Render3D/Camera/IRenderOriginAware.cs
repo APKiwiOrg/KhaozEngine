@@ -26,15 +26,15 @@ namespace KhaozEngine.Render3D
     public interface IRenderOriginAware
     {
         /// <summary>The render origin subtracted from the eye and the look target when building <c>View</c>. Set by
-        /// <see cref="Scene3D"/> each frame; <see cref="Vector3.Zero"/> (the default) reproduces the pre-release
+        /// <see cref="Scene3D"/> each frame. <see cref="Vector3.Zero"/> (the default) reproduces the pre-release
         /// matrices bit for bit. <see cref="IIsoCamera3D.Eye"/> stays ABSOLUTE world: culling, the shadow-cascade
         /// fit and the origin choice itself all need it.</summary>
         Vector3 RenderOrigin { get; set; }
 
         /// <summary>The pre-shift view-projection, i.e. what <see cref="IIsoCamera3D.ViewProjection"/> returned
         /// before this interface existed. <see cref="Scene3D"/> uses it for every CPU-side spatial computation that
-        /// runs against absolute bounds (frustum culling, shadow-cascade fitting, caster classification), so those
-        /// paths stay byte-identical to the pre-release engine at any origin.</summary>
+        /// runs against absolute bounds, such as frustum culling. Shadow cascades instead fit from the unjittered
+        /// render-relative view-projection and reduce caster bounds into that same frame before testing.</summary>
         Matrix4x4 AbsoluteViewProjection { get; }
     }
 }

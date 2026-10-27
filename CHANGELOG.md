@@ -8,6 +8,16 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-28
 
+- Add opt-in water column light through `WaterColumnLight`, `WaterColor` and `Clarity` on `WaterSettings`
+  and nullable `WaterLook` overrides. Floaters cast attached column shadows that fade with physical clarity,
+  with an analytic multiple-scattering estimate and one extinction model shared with underwater sunlight.
+  Frames without opted-in water are unchanged, and non-water shaders compile byte-identical.
+- Tune the shared river look to linear RGB `(0.28, 0.30, 0.18)` and clarity `1.5` metres, leaving column
+  lighting off until the consumer explicitly opts in.
+- Add source-preserving MSAA resolve to `KhaozEngine.Gpu` for snapshots followed by more drawing into the
+  multisampled source. Metal uses store-and-resolve to retain every source sample.
+- Fit shadow cascades and cull their casters in render-relative coordinates so shadows remain correct far
+  from the world origin (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1618).
 - Add `TileWorldView.CameraFade`, off by default. While the camera eye is inside an eligible placed object's
   drawn triangles, by generalized winding number or a near-plane clip radius with exit hysteresis, that object's
   colour fades out over `FadeSeconds` and back once the eye leaves. Its shadow stays whole. Prop layers,

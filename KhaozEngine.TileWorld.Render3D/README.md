@@ -260,8 +260,12 @@ contributes, one per rectangle of each body `TileWaterBodies.Collect` returns, i
 
 `TileWaterLooks.River` is the shipped per-plane `WaterLook`: procedural waves off the shared FFT ocean, no swell,
 a small normal strength, no surf, foam only in a narrow shore band, silty colours and a 0.8 m `ShallowDepth` so a
-60 to 80 cm bed still darkens. It is modelled on the reference consumer's inland lake, and every value that differs from it
-differs because of SCALE (the sea's 1.6 m foam band and 2.5 m ripple wavelength would each consume a river whole).
+60 to 80 cm bed still darkens. Its legacy controls are modelled on the reference consumer's inland lake, with
+differences in scale (the sea's 1.6 m foam band and 2.5 m ripple wavelength would each consume a river whole).
+Its column inputs are linear RGB `WaterColor = (0.28, 0.30, 0.18)` and `Clarity = 1.5` m, chosen by the owner
+from synthetic daylight renders for a sunlit silty river close to the current tone, with an attached column
+shadow and physical depth fade. `WaterColumnLight` remains null, so consumers must explicitly opt in through
+their scene settings or a copied look. Grimhollow chooses its own final tuning at adoption.
 **It is one shared instance of a class of public fields, so do not mutate it**: copy it, or pass a look of your
 own through `TileWorldViewOptions.WaterLook`.
 

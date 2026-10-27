@@ -278,7 +278,13 @@ What it owns today:
   target; `GpuOutputDescription.SampleCount` / `WithSampleCount` carry the count so a pipeline matches its
   framebuffer (read a live multisampled framebuffer's count off `IGpuFramebuffer.Outputs`); and
   `IGpuCommandList.ResolveTexture(src, dst)` resolves a multisampled target into a single-sample texture. Default
-  sample count 1 (single-sample) everywhere, so existing render paths are unchanged.
+  sample count 1 (single-sample) everywhere, so existing render paths are unchanged. The two-argument resolve
+  permits discarding the source. Use `ResolveTexture(src, dst, preserveSource: true)` for a mid-frame snapshot
+  followed by further drawing into that same multisampled target. Every source sample then survives for a
+  later load and final resolve. Metal uses `StoreAndMultisampleResolve` for this request. Direct3D 11's
+  `ResolveSubresource` and Vulkan's `vkCmdResolveImage` already preserve the source for either setting.
+  `preserveSource: false` keeps the existing two-argument store actions and cost. Custom command-list decorators
+  must forward the option. The interface default refuses preservation rather than silently discarding samples.
 - **Texture arrays, including one-layer ones** - `GpuTextureDescription.Texture2DArray(w, h, format, usage,
   arrayLayers, mipLevels)` builds a 2D texture array and sets the new `GpuTextureDescription.IsArray`, so a set
   with exactly ONE layer is still created as an array and binds under a shader that declares `texture2DArray` /

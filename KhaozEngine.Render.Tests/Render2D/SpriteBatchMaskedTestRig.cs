@@ -351,6 +351,7 @@ internal sealed class SpriteBatchMaskedTestRig : IDisposable
         { CopyOperations++; _inner.CopyTextureSubresource(src, mip, layer, dst, dstMip, dstLayer, w, h); }
         public void GenerateMipmaps(IGpuTexture t) => _inner.GenerateMipmaps(t);
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { CopyOperations++; _inner.ResolveTexture(src, dst); }
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource) { CopyOperations++; _inner.ResolveTexture(src, dst, preserveSource); }
         public void SetComputePipeline(IGpuComputePipeline p) => _inner.SetComputePipeline(p);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) => _inner.SetComputeResourceSet(slot, set);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint offset) => _inner.SetComputeResourceSet(slot, set, offset);

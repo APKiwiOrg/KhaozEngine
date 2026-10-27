@@ -176,6 +176,7 @@ internal sealed class GpuPerfTimestampTestCommands : IGpuCommandList, IGpuComman
     { }
     public void GenerateMipmaps(IGpuTexture texture) { }
     public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { }
+    public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource) { }
     public void SetComputePipeline(IGpuComputePipeline p) { }
     public void SetComputeResourceSet(uint slot, IGpuResourceSet set) { }
     public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) { }

@@ -117,6 +117,7 @@ internal sealed partial class RendererPerfConstructionFixture : IGpuDevice, IGpu
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height) { Native.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, dstMipLevel, dstArrayLayer, width, height); }
         public void GenerateMipmaps(IGpuTexture texture) { Native.GenerateMipmaps(texture); }
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { Native.ResolveTexture(src, dst); }
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource) { Native.ResolveTexture(src, dst, preserveSource); }
         public void SetComputePipeline(IGpuComputePipeline p) { owner.LastComputeBind = p; Native.SetComputePipeline(p); }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) { Native.SetComputeResourceSet(slot, set); }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) { Native.SetComputeResourceSet(slot, set, dynamicOffset); }

@@ -232,7 +232,9 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/WaterRenderer.Pipelines.cs, shared by all four water programs.
                 ["Water"] = L(T("BathyTex", VF), S("BathySamp", VF), T("OceanMap", VF), S("OceanSamp", VF),
                     T("DepthTex"), S("Samp"), U("Water", VF, dynamic: true),
-                    U("Atmosphere", F), T("AtmoSkyView"), S("AtmoSkySampler"), T("OpticsTex"), S("OpticsSamp")),
+                    U("Atmosphere", F), T("AtmoSkyView"), S("AtmoSkySampler"), T("OpticsTex"), S("OpticsSamp"),
+                    T("ColumnShadowAtlas"), S("ColumnShadowSampler"), U("WaterLitFrame", F),
+                    T("ColumnSceneColor"), S("ColumnColorSampler")),
             };
 
         /// <summary>

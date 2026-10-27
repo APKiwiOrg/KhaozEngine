@@ -33,13 +33,9 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// <c>MTLStoreAction</c>, an <c>NSUInteger</c>: what happens to an attachment's contents when the encoder
     /// ends.
     /// <para>
-    /// <b>ONLY <see cref="Store"/> IS EVER SELECTED, AND IT IS SET EXPLICITLY (M-A4).</b> Leaving it to the
-    /// descriptor default would leave it at <see cref="DontCare"/>, which discards the attachment. The two
-    /// members this backend does not take are declared because 2.5 records both as measured follow-ups with
-    /// named consumers rather than as omissions: depth <see cref="DontCare"/> is a real tiler win the
-    /// determinism rule blocks, and <see cref="StoreAndMultisampleResolve"/> removes a whole encoder but changes
-    /// what a producing pass writes out, which would make MM2's golden A/B unreadable in the same phase as
-    /// M-A2's rendering change.
+    /// Ordinary colour and depth passes explicitly select <see cref="Store"/>. Standalone resolves select
+    /// <see cref="MultisampleResolve"/> by default or <see cref="StoreAndMultisampleResolve"/> when the caller
+    /// requests source preservation for subsequent draws. No resolve is folded into a producing pass.
     /// </para>
     /// </summary>
     internal enum MTLStoreAction : ulong
@@ -48,18 +44,17 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// why M-A4 sets the store action explicitly rather than relying on one.</summary>
         DontCare = 0,
 
-        /// <summary><c>MTLStoreActionStore</c>: the contents are written out. The only value this backend
-        /// selects, for colour and for depth alike.</summary>
+        /// <summary><c>MTLStoreActionStore</c>: the contents are written out. Selected for ordinary
+        /// colour and depth passes.</summary>
         Store = 1,
 
         /// <summary><c>MTLStoreActionMultisampleResolve</c>: resolve into the resolve attachment and discard the
-        /// multisampled one. Not taken: the incumbent resolved through a standalone encoder and
-        /// <c>scene3d_hdr_msaa</c> is a committed golden in the family this phase is measured against (2.5).
+        /// multisampled one. Selected by the default standalone resolve.
         /// </summary>
         MultisampleResolve = 2,
 
-        /// <summary><c>MTLStoreActionStoreAndMultisampleResolve</c>: both. The folded resolve 2.5 files with a
-        /// named consumer and a golden argument, and does not take here.</summary>
+        /// <summary><c>MTLStoreActionStoreAndMultisampleResolve</c>: store the multisampled source as well as
+        /// resolving it. Selected only for an explicitly source-preserving standalone resolve.</summary>
         StoreAndMultisampleResolve = 3,
     }
 

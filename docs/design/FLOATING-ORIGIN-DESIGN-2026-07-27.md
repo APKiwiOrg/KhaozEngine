@@ -1269,13 +1269,13 @@ The first draft's rendering section was right that `Scene3D` owns the subtractio
 majors, all confirmed against the code. This rewrite settles the subtraction point first, because every
 blocker below is a consequence of it rather than an independent problem.
 
-### The subtraction point: the GPU-bound copy, and nothing else
+### The subtraction point: GPU-bound copies and shadow evaluation
 
 One decision governs the whole section.
 
-> **The subtraction happens where the instance data is built for upload. Every submission queue stays
-> ABSOLUTE, every CPU-side spatial computation stays ABSOLUTE and byte-identical to the pre-release engine,
-> and only the copy that reaches the GPU is relative.**
+> **Every submission queue stays ABSOLUTE. Uploads use a render-relative copy, and shadow cascade tests
+> reduce absolute bounds locally before evaluation. Camera culling and transparency sorting keep their
+> absolute inputs. Origin zero preserves the pre-release fit bits and cull decisions.**
 
 The first draft put it at submission (`_instances.Add` and the skinned and overlay equivalents). That is wrong
 for a reason visible in one line of the culling loop. `ComputeMainPassVisibility` reads
@@ -1313,10 +1313,10 @@ stream and buys an invariant a later edit cannot quietly break.
 **What this buys, stated as the four properties the rest of the section leans on:**
 
 1. Submission queues are absolute, so no `Scene3D` signature moves and no consumer adopts anything.
-2. Frustum culling, terrain's identity fast path, shadow-cascade fitting, shadow-caster classification and the
-   four transparency sorts all run on absolute inputs and are byte-identical to the pre-release engine. That is
-   the inertness guarantee (section 11) holding by CONSTRUCTION rather than by a rule someone has to remember.
-3. Only the GPU-bound matrices are reduced, and the reduction is exact under the section 8 lemma.
+2. Frustum culling, terrain's identity fast path and the four transparency sorts run against absolute inputs.
+   Shadow cascades fit from the unjittered render-relative camera frustum. Caster tests reduce absolute bounds
+   into that frame before evaluation. Origin zero keeps the pre-release fit bits and cull decisions.
+3. GPU-bound matrices and the shadow fit use render-relative coordinates. Submission bounds stay absolute.
 4. A site that forgets the subtraction renders visibly displaced at range, which is loud, rather than quietly
    answering a spatial query in the wrong space, which is not.
 
@@ -1408,8 +1408,8 @@ public interface IRenderOriginAware
     Vector3 RenderOrigin { get; set; }
 
     /// <summary>The pre-shift ViewProjection, i.e. what <c>ViewProjection</c> returns today. Scene3D uses it
-    /// for every CPU-side spatial computation that runs against absolute bounds (frustum culling, shadow
-    /// cascade fitting, caster classification), so those paths stay byte-identical to the pre-release engine.</summary>
+    /// for CPU spatial computations against absolute bounds. Shadow cascades use the render-relative
+    /// view-projection and reduce absolute caster bounds into that same frame before testing.</summary>
     Matrix4x4 AbsoluteViewProjection { get; }
 }
 ```
@@ -1430,36 +1430,39 @@ subtracts `RenderOrigin` from its input, `ScreenToRay` adds it back to its outpu
 picking error equal to the render origin, which at 100 km means picking simply does not work and no golden
 catches it. Section 12 test 19 catches it.
 
-### Blocker 3: frustum culling must stay in absolute space, and now it does
+### Blocker 3: camera frustum culling stays in absolute space
 
 `FrustumPlanes.Extract(vp)` at `Scene3D.cs:1869` would become render-relative while the bounds it is tested
 against (`ComputeMainPassVisibility` at `:2986-3018`, and `ClassifySkinnedVisibility` at `:1919-1920`) are
 absolute world bounds. Everything culls, every frame, at any non-zero origin.
 
-**Fix: cull in ABSOLUTE space, rasterize in relative space.** That is what `AbsoluteViewProjection` is for,
+**Fix: camera culling uses ABSOLUTE space, rasterization uses relative space.** That is what `AbsoluteViewProjection` is for,
 and under the settled subtraction point it is now the ONLY thing needed: the matrices the cull reads never
 became relative in the first place, so `FrustumPlanes.Extract(ActiveCamera.AbsoluteViewProjection)` against
-unchanged absolute bounds and unchanged absolute `_instanceData` is **byte-identical to today's culling** on
-both operands rather than on one. That is what makes the inertness guarantee checkable: there is no
-combination of settings under which a cull input is relative.
+unchanged absolute bounds and unchanged absolute `_instanceData` is **byte-identical to today's camera
+culling** on both operands. Camera frustum tests always receive absolute inputs. Shadow cascade tests
+instead reduce their inputs into the fitted render frame as described below.
 
 ### Blocker 4: the shadow-caster union and cascade fitting
 
-Same disease, three sites:
+The shadow fit and caster evaluation share the render frame while submission queues stay absolute:
 
-- `ComputeShadowCascades` fits cascades from `ShadowMapMath.FrustumCornersWorld(ActiveCamera.ViewProjection)`
-  (`Scene3D.cs:1661`) and reads `ActiveCamera.Eye`/`Forward` at `:1666-1667`.
-- `_shadowFrustums[i] = FrustumPlanes.Extract(_cascadeCpuVps[i])` (`:1885-1886`) is the CPU caster-visibility
-  test, run against absolute bounds, and it feeds `ClassifySkinnedVisibility` at `:1919-1920` and the rigid
-  caster capture at `:2958`.
+- `ComputeShadowCascades` in `Scene3D.ShadowCascadeFit.cs` unprojects the frame snapshot's unjittered
+  render-relative view-projection and reduces `ActiveCamera.Eye` into that same frame.
+- `_shadowFrustums[i] = FrustumPlanes.Extract(_cascadeCpuVps[i])` feeds skinned and foliage caster
+  visibility. Those tests subtract the frame origin from their absolute bounds before evaluation.
+- Rigid caster masks use `ShadowCascadeCull` built from the same relative fit. Each absolute sphere centre
+  is reduced once before the cascade dot products, leaving the submission queues and signatures absolute.
 - The same `_cascadeCpuVps` feed the GPU shadow depth pass, which must be relative.
 
-**Fix: fit in absolute, classify casters in absolute, build a second relative VP for the GPU.** Cascade
-fitting runs from `AbsoluteViewProjection` and absolute `Eye`, and the caster classification runs against the
-absolute `_instanceData` and absolute `it.World` it already reads, so the fit, the radii and the
-classification are byte-identical to today. Then, per cascade, `BuildLightViewProj(lightDir, focus -
-RenderOrigin, radius, resolution)` produces the render-relative matrix the depth pass uploads. The rotation is
-unchanged and only the focus moves, so the ortho extents and the texel world size are unchanged.
+**Fit and classify casters in render space.** Inverting an absolute float camera matrix at
+large coordinates can corrupt the near and far depths, even reversing their order (issue #1618). The
+render-relative frustum supplies the slice spheres and light-hold radii for both perspective and orthographic
+cameras. `BuildLightViewProj` fits and texel-snaps each sphere once in render space. Multiplying
+`T(-RenderOrigin) * relativeCascade` restores large translation terms, causing cancellation in caster dot
+products and false rejection of geometry the atlas would render. Absolute matrices remain diagnostic views
+only. Rebuilding a light view around an absolute centre also loses precision and snaps independently of
+the atlas. At origin zero the input reduction is bypassed, preserving the original fit bits and cull decisions.
 
 ### Blocker 5: the terrain cull fast path, in both releases
 
@@ -1497,10 +1500,9 @@ eye against relative centres.
 
 The consequence is benign and the claim is not. `TransparencySort` keys on view depth along the camera
 forward axis, which is affine in a uniform translation of both operands, so the resulting ORDER is the same
-either way, and no artifact would ever have appeared. But "every CPU-side spatial computation stays absolute
-and byte-identical" would have been false at four sites, and a guarantee with four unlisted exceptions is a
-guarantee nobody can check. Under the settled subtraction point they read absolute against absolute, the
-sort keys are bit-identical to today, and the claim is literally true rather than true-in-effect.
+either way, and no artifact would ever have appeared. Comparing absolute eyes with relative centres would
+still violate the sorting contract at four sites. Under the settled subtraction point these sorts read
+absolute against absolute, and their sort keys stay bit-identical.
 
 **The residual artifact, stated rather than hidden.** `BuildLightViewProj` snaps the focus to a texel lattice
 in light-view space (`ShadowMapMath.cs:199-206`), and the lattice step is `2*radius/resolution`, which does
@@ -1653,8 +1655,9 @@ remedy.
 - **`InterestGrid` and `ShardHost` handoff.** Both consume absolute positions and keep doing so
   (`ShardedWorldServer.PositionAccessor:728-733`, `ShardHost.cs:305-307`).
 - **`MovementState`.** No planar position, `discreteSample`, monotonic epoch, unframed Y (section 7).
-- **Frustum culling, cascade fitting and shadow-caster classification.** All run in ABSOLUTE space against
-  absolute bounds and are byte-identical to the pre-release engine (section 9).
+- **Frustum culling and shadow-caster classification.** Both consume absolute submission bounds. Shadow
+  tests reduce bounds into the cascade's render frame before evaluation. The unjittered relative fit and
+  caster decisions preserve the original bits at origin zero (section 9).
 
 Two things DO change that read like they should not. The `ReplicatedPosition` wire encoding is a breaking wire
 generation bump, and `ReplicatedPosition.Value` loses its setter. Both are why release 3 is a major
@@ -1670,7 +1673,7 @@ in a form that can be checked rather than asserted.
 
 `Scene3D.RenderOrigin` (latched at `Begin`) and `RenderOriginActive`, the new `IRenderOriginAware` interface
 implemented by the three engine cameras, the origin-aware `View` on each, `AbsoluteViewProjection` for every
-CPU-side spatial path, the render-relative cascade VPs beside the absolute fitted ones, the
+camera cull against absolute bounds, the render-relative cascade fits and caster evaluation, the
 translation-column subtraction on the upload staging copy and on each per-draw GPU matrix, the converted eye
 for water/particle/distortion, the `RenderOrigin` shader uniform for world-anchored texturing and noise, the
 fixed `WorldToScreen`/`ScreenToRay`, and `Transform3D.ToMatrix(Vector3)`.

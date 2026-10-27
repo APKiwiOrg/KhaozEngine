@@ -41,7 +41,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>One recorded multisample resolve: which texture was averaged into which.</summary>
-        internal readonly record struct Resolve(IGpuTexture Source, IGpuTexture Destination);
+        internal readonly record struct Resolve(IGpuTexture Source, IGpuTexture Destination, bool PreserveSource = false);
 
         /// <summary>One <see cref="ClearColorTarget"/>: the attachment index and the colour it was cleared to.</summary>
         internal readonly record struct ColourClear(uint Index, Color Rgba);
@@ -213,6 +213,11 @@ namespace KhaozEngine.Tests.Gpu
         {
             _resolves.Add(new Resolve(src, dst));
             Inner.ResolveTexture(src, dst);
+        }
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource)
+        {
+            _resolves.Add(new Resolve(src, dst, preserveSource));
+            Inner.ResolveTexture(src, dst, preserveSource);
         }
         public void SetComputePipeline(IGpuComputePipeline p) => Inner.SetComputePipeline(p);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set)

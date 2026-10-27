@@ -47,7 +47,7 @@ namespace KhaozEngine.Gpu
         /// <summary>Mip-level count (1 == level 0 only, no mip chain).</summary>
         uint MipLevels { get; }
         /// <summary>MSAA sample count (1 == single-sample). &gt; 1 is a multisampled render target that must be
-        /// resolved (<see cref="IGpuCommandList.ResolveTexture"/>) into a single-sample texture before sampling.</summary>
+        /// resolved (<see cref="IGpuCommandList.ResolveTexture(IGpuTexture, IGpuTexture)"/>) into a single-sample texture before sampling.</summary>
         uint SampleCount { get; }
         /// <summary>Pixel format.</summary>
         GpuPixelFormat Format { get; }
@@ -320,8 +320,19 @@ namespace KhaozEngine.Gpu
         /// <summary>Resolve a multisampled (<paramref name="src"/>, <see cref="IGpuTexture.SampleCount"/> &gt; 1) render
         /// target into the single-sample <paramref name="dst"/> (same width/height/format, sample count 1), averaging
         /// the samples - the MSAA resolve. Do this before the post chain / any pass that SAMPLES the target, since a
-        /// multisampled texture cannot be bound as a normal sampled texture.</summary>
+        /// multisampled texture cannot be bound as a normal sampled texture. The source contents may be discarded.
+        /// Use the source-preserving overload before drawing into the multisampled target again.</summary>
         void ResolveTexture(IGpuTexture src, IGpuTexture dst);
+
+        /// <summary>Resolve as above, preserving every source sample when <paramref name="preserveSource"/> is true.
+        /// Later draws may load the same multisampled target and resolve it again. False retains the two-argument
+        /// resolve's store action and cost. Backends without preservation support refuse true before recording.</summary>
+        void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource)
+        {
+            if (preserveSource)
+                throw new NotSupportedException("This command list does not support source-preserving multisample resolves.");
+            ResolveTexture(src, dst);
+        }
 
         // ---- Compute ----
         //

@@ -358,7 +358,7 @@ public sealed class WaterOpticsTriangleResourceTests
         internal void Record(IGpuCommandList commands) => Renderer.Draw(commands, Targets, Planes, WaterTestFrames.TopDown,
             WaterTestFrames.TopDown, -Vector3.UnitY, Color.White, Vector3.UnitY * 100, Settings, Sky, 0);
 
-        internal FakeResourceSet[] WaterSets() => Factory.ResourceSets.Where(s => s.Resources.Length == 12).ToArray();
+        internal FakeResourceSet[] WaterSets() => Factory.ResourceSets.Where(s => s.Resources.Length == 17).ToArray();
 
         public void Dispose()
         {

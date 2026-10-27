@@ -5083,10 +5083,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       the constant index `1.333`. With in-water travel direction `t`, the path is
       `L = h / cos(theta_water) = h / -t.y` and the surface entry is `E = P - t * L`.
       The entry selects its own cascade, with `P`'s geometric normal offset and slope bias.
-      Key diffuse and specular receive the body's `exp(-AbsorptionPerMetre * L)` even with shadows disabled.
-      Ambient, indirect, fill, point lights, emissive and fog keep their values. The water pass already tints
-      deep beds darker, so attenuating ambient too would double-darken them. Key-only attenuation reduces
-      shadow contrast with depth against unchanged ambient.
+      Key diffuse and specular receive the body's `exp(-attenuation * L)` even with shadows disabled.
+      Attenuation is the resolved `AbsorptionPerMetre` for legacy bodies or the extinction derived from
+      `WaterColor` and `Clarity` for `WaterColumnLight` bodies.
+      Ambient, indirect, fill, point lights, emissive and fog keep their values. Underwater sunlight models
+      the direct sun path. The surface handles the view path through legacy depth grading or the opted-in
+      column composite. Key-only attenuation reduces shadow contrast against unchanged ambient.
 
       Ordinary outward CCW opaque meshes with orientation-preserving transforms retain their sun-facing near
       face in the atlas on every backend, with clockwise fronts culled. The glTF loader preserves that winding.
@@ -5914,7 +5916,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   ripple normal on top, a camera-distance detail fade, per-channel Beer-Lambert depth grading of the body colour, a
   fresnel blend toward the reflected sky, a GGX sun glint with distance/footprint roughness widening,
   procedural whitecap and shoreline foam, and a depth-driven shore fade at the waterline.
-  **No view-ray refraction, no screen-space reflections, no caustics, no submerged view** - the reflection is the
+  **No bent image lookup, no screen-space reflections, no caustics, no submerged view** - the reflection is the
   sky only (the legacy gradient or the enabled atmosphere's sky-view LUT, with a CPU mirror through
   `AtmosphereModel`). Feed the returning camera-aware `SunCycle.Apply` horizon to `Post.Water.HorizonColor`.
   Issue #54 records probes/SSR as not planned at the current bar. This is a stylized LDR surface, not a
@@ -5961,8 +5963,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     ```
     **Overridable fields**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
     (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`UnderwaterSunlight`/`UnderwaterPenumbraPerMetre`/
-    `ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars, `ShoreFadeDistance`, and the
-    two depth-response strengths `ShoalingStrength`/`SurfStrength`. **What stays scene-wide, and cannot be put on
+    `WaterColumnLight`/`WaterColor`/`Clarity`/`ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars,
+    `ShoreFadeDistance`, and the two depth-response strengths `ShoalingStrength`/`SurfStrength`.
+    **What stays scene-wide, and cannot be put on
     a look at all**: `SeaState` (one FFT bake - calling the producer twice a frame with two sea states does not
     make two oceans, it makes the one producer rebake on every call for both states and corrupts the persistent
     foam accumulator, whose contract is that one invocation owns each texel), `Bathymetry` (one depth texture),
@@ -5973,12 +5976,43 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     knobs (a plane wanting no surf sets `SurfStrength = 0`, which is the whole per-body need), and the sample-
     count quality knobs. Setting `WaveSource = WaterWaveSource.Procedural` on a look is the inland-body case: it
     takes the plane off the shared ocean entirely, so it loses the sea's swell and whitecaps, and (since shoaling
-    and breaking surf ride the same gate) its breaking surf too. Costs zero new UBO bytes (the payload stays 1088,
-    the slot stays 1280), zero new GPU resources and zero new pipelines - each plane already owned its own slot in
-    the water pass's uniform buffer, so an override is a different set of numbers written into a slot that was
+    and breaking surf ride the same gate) its breaking surf too. Look overrides add zero UBO bytes, per-plane
+    GPU resources or pipelines. The payload is 1136 bytes within the unchanged 1280-byte slot, binding range
+    and dynamic-offset stride. Each plane already owned its own slot in the water pass's uniform buffer,
+    so an override is a different set of numbers written into a slot that was
     being written anyway. Per-body sea states, bathymetry and grid modes stay deferred to
     [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275). Rationale, including why a per-plane sea state
     is refused rather than deferred: `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
+  - **Water-column authoring**: `WaterColumnLight` defaults to `false`, `WaterColor` defaults to neutral linear
+    RGB `(0.10, 0.13, 0.10, 1)` with alpha ignored, and `Clarity` defaults to `2` metres of vertical depth for
+    about 5% bed visibility when seen straight down. These are neutral authoring defaults, not tuned river values.
+    Each nullable `WaterLook` field inherits the scene, a value overrides it and an explicit `false` opts out.
+    `DrawWater` checks resolved inputs before enqueue when the column is enabled. Clarity must be finite and
+    at least 0.001 metres, and each RGB channel must be finite and in [0, 1]. A rejection throws
+    `ArgumentException` naming `Clarity` or `WaterColor` and leaves the queue unchanged. Disabled columns leave
+    these inputs unvalidated.
+    The column path bypasses `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`, `ShallowDepth` and `Opacity`.
+    Shore fade and foam keep their own settings. An enabled column also opts its plane into underwater
+    sunlight without changing `UnderwaterSunlight`. Its volume record carries extinction derived from
+    resolved `WaterColor` and `Clarity`, with mean extinction `3 / Clarity`, instead of legacy absorption.
+    Enabled planes also shadow glint and the sun-lit foam term through the scene's cascades, leaving foam's
+    ambient term unshadowed. Disabled planes keep the original surface shading.
+    Enabled columns refract the view direction for perspective and orthographic cameras and apply view-path
+    extinction, four shadowed sun samples, analytic unshadowed ambient single scattering and an H-function
+    multiple-scattering estimate scaled by mean sun visibility. The bed colour is the pre-water copy at the
+    original pixel, with no bent image lookup. The copy includes everything drawn before water, so farther water
+    seen through another column surface is omitted. Wholly submerged casters shadow the bed but not the column.
+    `FoamColor.a` scales foam coverage. Shore fade mixes toward the copied bed and enabled output has alpha 1.
+    Atmosphere fog applies only to water's own terms, avoiding a second fog pass over the bed. Sample noise
+    advances with the latched frame index only on the render that resolves temporal anti-aliasing, otherwise it
+    stays screen-fixed. The [pipeline reference](RENDER-PIPELINE.md#water-column-composite) records the displaced
+    crest integral, finite-depth approximation and shadow budget.
+    The [coefficient reference](../KhaozEngine.Render3D/README.md#water-column-coefficients) defines the
+    reference sun and sky, engine light units, extinction spread and energy-conserving albedo inversion.
+    `TileWaterLooks.River` carries the owner-selected linear RGB `(0.28, 0.30, 0.18)` and `Clarity = 1.5f`,
+    with `WaterColumnLight` left null. Set that nullable field on a consumer-owned look to opt in, preserving
+    the shared preset. Landing 1 is built and awaits the owner's measured-cost ruling before release.
+    [Landing 2's bent view](programs/water-optics-design.md) remains unbuilt.
   - **Independent optical bed** (`WaterPlane.Optics`, a `WaterOpticsBinding`, **default unbound = legacy scene
     depth**). An unbound plane grades its colour, shore foam and shore fade from the first opaque surface behind it,
     which can be a swimming creature, a bridge or a prop. A bound plane reads its own signed bed depth for those
@@ -6052,15 +6086,17 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     scene-appearance bags reached off `Post`). Grouped by what they do:
     - *Body colour*: `DeepColor`/`ShallowColor`, graded by `AbsorptionPerMetre` (per-channel 1/metre coefficients,
       all-zero falls back to the legacy two-stop blend over `ShallowDepth`), plus `Opacity`. The resolved absorption
-      also drives underwater sunlight, where all-zero absorption means no attenuation.
-    - *Underwater sunlight*: `UnderwaterSunlight` (scene default `false`) and
-      `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
+      also drives underwater sunlight for bodies without `WaterColumnLight`, where all-zero absorption means
+      no attenuation.
+    - *Underwater sunlight*: either `UnderwaterSunlight` or `WaterColumnLight` opts in (both scene defaults `false`),
+      with `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
       The penumbra value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or
       unbound. The water refractive index is the fixed constant `1.333`, not a setting. A frame with no opted-in water
       renders exactly as before. The receiver's own body supplies the light path, using its still-water plane
-      even for FFT waves. The entry can lie beyond the rectangle, where a bank can shadow it. The surface pass
-      keeps its existing depth tint. See **Underwater key light** under shadows for the march, widening and
-      single-caster atlas limit. The nullable `WaterLook` fields inherit these settings per plane.
+      even for FFT waves. The entry can lie beyond the rectangle, where a bank can shadow it. The surface uses
+      legacy depth tint unless `WaterColumnLight` selects the composite. See **Underwater key light** under
+      shadows for the march, widening and single-caster atlas limit. The nullable `WaterLook` fields inherit
+      these settings per plane.
     - *Reflection*: `SkyReflectionStrength` (0 = the flat `HorizonColor`, 1 = the sky along the reflected ray) and
       `SkyReflectionSunStrength` (how much of the sky's disc + halo the reflection carries).
     - *Swell*: `SwellAmplitude` (0 = flat plane), `SwellWavelength`, `SwellDirectionDegrees`, `SwellSpreadDegrees`,
@@ -6292,8 +6328,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     same unresolved ripple detail, and the sum put the far lobe at about twice the surface's slope variance. Now
     the lobe carries exactly that variance until the floor takes over, and 1.12 to 1.17 times it on the floor.
     `VarianceToRoughness = 0` leaves the lobe on the floor alone, the 14.24.0 lobe.
-  - **Depth grading**: the plane's depth source drives per-channel Beer-Lambert transmittance
-    (`exp(-AbsorptionPerMetre * depth)`), blending `ShallowColor` down into `DeepColor`. Because red is absorbed
+  - **Legacy depth grading** (`WaterColumnLight` disabled): the plane's depth source drives per-channel
+    Beer-Lambert transmittance (`exp(-AbsorptionPerMetre * depth)`), blending `ShallowColor` down into
+    `DeepColor`. Because red is absorbed
     several times faster than blue, the ramp bends through green-teal instead of running straight down the line
     between two colours, which is what keeps the midtones clean. An all-zero `AbsorptionPerMetre` restores the
     14.22.0 two-stop smoothstep over `ShallowDepth`. Keep both distinct from `ShoreFadeDistance`: the colour band

@@ -86,6 +86,8 @@ namespace KhaozEngine.Render3D
         {
             using var phase = ProfileCpu("cpu.water.prepare");
             EnsurePointLightCapacity();
+            PrepareWaterColumnInputs();
+            BindWaterColumnShadows(_water);
             HarvestTemporalCounts();   // an armed temporal count request: its one readback, here before any recording
             var frame = new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds);
             IFramePreparer[] preparers = _preparers ??= new IFramePreparer[] { _water };
@@ -136,6 +138,7 @@ namespace KhaozEngine.Render3D
         {
             if (HasBoundWater()) VerifyPreparedWaterTargets(width, height);
             EnsureSize(width, height);
+            PrepareWaterColumnInputs();
         }
     }
 }

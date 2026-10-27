@@ -6,7 +6,16 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.17.0
 
-2026-10-27
+2026-10-28
+
+- Add user UI scaling to `UiViewport`, applied with DPI at a frame boundary so drawing, clipping and pointer
+  mapping agree. `EffectiveScale` supplies the font density and exact canvas bounds retain framebuffer coverage.
+- Add normalized saved HUD positions and a draft `HudLayoutEditor` with topmost drag capture, viewport and DPI
+  change handling, reset, commit and cancel. Consumers own region presentation and settings storage (#1275).
+- Add `DpiFont.Bind` for retained widgets to keep a stable font reference across density changes. The owner
+  retains atlas ownership and disposed font owners cannot be reused.
+- Add optional viewport constraints to dropdown popups, with upward placement, scrolling, clipped option
+  geometry and gesture identity preserved across scrolling or reflow (#1624).
 
 - Add opt-in live pending travel to `PointerGesture` through the init-only `LivePendingTravel` property, default
   off. A live gesture delivers each held frame's own motion in `DragDelta` while its press is still undecided,

@@ -25,6 +25,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   hashed shader source and refused renderer performance units before device creation.
 - Resume automation accepts after `Interrupted` while the listener is running, and treat disposal as quiet
   shutdown. Deterministic loopback tests cover terminal accept faults and established-client lifetimes separately.
+- Add four protected loop voices beside the sixteen one-shot sources, with opaque lifetime handles,
+  live volume and position controls, and explicit capacity refusal. Failed cleanup retains ownership and
+  registration for deliberate retry, and legacy SFX backends remain compatible (Closes #817).
 
 ## 21.15.0
 

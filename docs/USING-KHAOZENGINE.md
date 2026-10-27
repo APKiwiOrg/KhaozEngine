@@ -17452,9 +17452,9 @@ Rules:
 ## Audio (`KhaozEngine.Audio`)
 
 `AudioSystem` over a cross-platform OpenAL (Silk.NET.OpenAL) backend. Streaming music (WAV/OGG/MP3,
-one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), SFX one-shots, and 3D positional audio
-(`PlaySfx`/`PlaySfx3D`/`SetListener`, a 16-voice pool, per-channel volume). `LoadContent(directory)` +
-`Update()` per frame.
+one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), sixteen one-shot SFX sources and four separate
+protected-loop slots, with optional 3D positioning (`PlaySfx`/`PlaySfx3D`/`TryPlayLoop`/`SetListener`).
+`LoadContent(directory)` and `Update()` per frame.
 
 **Threading: main-thread-only, and it throws if you get it wrong.** An `AudioSystem` belongs to the thread that
 constructed it, normally the thread pumping the frame loop. Its registries are plain dictionaries, sets and lists
@@ -17465,9 +17465,11 @@ crossfade call, `Update`, `StopAllSfx`, `SetListener`, `SetRng`, `SetRotationPoo
 it is the wrong one. The comparison is a thread-local `int` read, so it costs the same in Release as in Debug and
 a background job cannot get a pass on a build where `Debug.Assert` has been compiled away. To play a sound in
 response to work on a worker thread (an ECS job under `ThreadPoolJobScheduler`, an async content load), record
-the request in your own structure and issue the call from the main thread on the next frame. `Dispose` is the one
-deliberate exemption: a process-exit handler or host teardown on another thread stays legal, since failing at the
-point where the state is about to be dropped buys nothing.
+the request in your own structure and issue the call from the main thread on the next frame. Loop starts, controls,
+`IsLoopActive` and `LoopCapacity` enforce the same owning-thread check before handle lookup or disposed-state handling.
+`Dispose` is the deliberate exemption, provided it does not race a live update or play call. It invalidates loop use
+before attempting SFX, music and context cleanup in that order, attempts every cleanup even after an exception, and
+rethrows the first failure.
 
 **Output device changes follow themselves, as long as `Update` runs.** The OpenAL backend opens the system default
 output, and `Update` checks it once a second (about 0.4 ms per check on macOS). When the default output changes, or
@@ -17477,6 +17479,10 @@ logged once through the OpenAL error log and retried: every second while the old
 backoff up to 30 seconds while the old device still plays, because each failed attempt briefly interrupts it. The
 check runs ahead of the music early-out, so an SFX-only game gets it too, but only if it calls `Update` every
 frame. The silent backends have no device and do nothing here.
+
+A resource-preserving reopen also keeps protected-loop identities and sources. A failed reopen neither frees
+capacity nor permits duplicate loops. This is logical resource ownership, not a promise of audible continuity
+through disconnects, which depends on the output and device extensions.
 
 **Music crossfade.** Switching tracks can fade the old one out and the new one in instead of a hard cut. Set
 `MusicCrossfadeDuration` (seconds, default `0` = hard cut, today's behavior) to make every track change
@@ -17524,14 +17530,53 @@ reports is harder to diagnose than an audible cut. `ISfxBackend.Play(..., priori
 member forwarding to the priority-free overload, so a game's own backend written before it keeps compiling and
 simply ignores the priority.
 
-**Releasing SFX.** `UnregisterSfx(name)` drops a sound from the registry and releases its buffer through
-`ISfxBackend.Unload(handle)`, returning whether a loaded buffer was actually freed. `UnregisterSfxes(names)`
-does a whole set and returns how many it released, which is the zone-scoped or level-scoped shape: load a
-zone's sounds on entry, release them on exit, instead of accumulating every sound the session ever touched.
-A released name stops resolving (`IsSfxLoaded` goes false and `PlaySfx` on it is a no-op) and can be
-registered again later, which reloads it. On the OpenAL backend the freed handle is reused by the next load.
-`Unload` is a default interface member with a no-op body, so a game's own `ISfxBackend` written before it
-keeps compiling and simply never frees anything.
+**Protected loops.** Register and load the same SFX key, then start a whole-buffer loop with
+`TryPlayLoop(in SfxLoopRequest)`. The stock OpenAL and null backends declare `LoopCapacity == 4`,
+separate from the unchanged sixteen-source one-shot pool. Ordinary effect pressure cannot steal loop
+sources. A full protected pool returns `Capacity` without changing existing playback. It does not borrow
+one-shot sources, expand, substitute a one-shot, queue a restart or silently reacquire a stopped loop.
+
+```csharp
+var result = audio.TryPlayLoop(new SfxLoopRequest("wind", Bus: "ambience", Volume: 0.6f, Position: pos));
+if (result.Status == SfxLoopStartStatus.Started)
+{
+    SfxLoopHandle handle = result.Handle;
+    audio.SetLoopPosition(handle, nextPos);
+    audio.SetLoopVolume(handle, 0.3f);
+    audio.StopLoop(handle);
+}
+```
+
+Every successful call starts a distinct loop. Omit `Position` for a flat, listener-relative loop.
+`SetLoopPosition` returns false for flat loops. Request volume must be finite and clamps to 0..1.
+Pitch must be finite and clamps to a minimum of 0.01. Blank keys and non-finite request values or
+positions throw argument errors. Missing keys and unknown buses share the existing bounded diagnostics,
+with unknown buses using the default mix.
+
+Start outcomes are `Started`, `Capacity`, `NotLoaded`, `Unsupported`, `BackendFailure` and `Disposed`.
+Only success carries a handle, and the default result is failure with an empty handle. Handles are opaque
+identities scoped to the admitting system. They retain no system, backend or native source. Copies refer
+to the same loop, and retaining or dropping a handle does not change playback. Default, foreign and
+expired handles cannot control another loop, including after numeric buffer reuse. `IsLoopActive`
+reports logical ownership, not audibility. The null backend enforces the same capacity and identity rules
+without creating a native context. Legacy backends report zero capacity and `Unsupported` for a valid
+loaded loop request. Disposed systems report zero capacity and reject loop operations.
+
+`StopLoop` succeeds only after confirmed stop and detach. Failure retains ownership for explicit retry.
+An uncertain failed start publishes no handle and quarantines its slot. Explicit unload, `StopAllSfx` or
+disposal can recover quarantine. `StopAllSfx` includes loops and leaves music alone. No timer retries
+failed starts or rebuilds stopped loops.
+
+**Releasing SFX.** `UnregisterSfx(name)` releases a loaded buffer and removes its registration. For a
+backend implementing `ISfxLoopBackend`, release is confirmed by `TryUnloadSfx(handle)` before the name,
+loaded mapping and warning state are removed. False or an exception returns false and retains the
+registration for deliberate retry. Partial cleanup expires confirmed stopped identities while preserving
+the remaining owners and buffer. Referencing loops and one-shots must stop and detach before buffer
+deletion. `UnregisterSfxes(names)` counts successful releases only. Unknown or registered-but-unloaded
+names are removed and return false. A released key can be registered again later. The OpenAL backend
+reuses freed numeric buffer slots without reviving old loop identities. Legacy backends keep the existing
+void `ISfxBackend.Unload` path, treating a normal return as success. Its default no-op body remains
+compatible but cannot confirm that a custom backend actually freed storage.
 
 **SFX buses.** Group sounds (UI, ambience, combat, and any game-defined others) under one volume without the
 game tracking individual voices. `DefineBus(id)` registers a bus (opaque identifier, not player-facing text),
@@ -17543,11 +17588,12 @@ one-time debug note (call `DefineBus` first). A newly defined bus starts at 1.0,
 its current volume. Music is unaffected: it stays on its own `master * music` (+ crossfade factor) path, so
 there is no "music bus" here.
 
-Note (a documented limitation): a bus volume change applies to sounds played AFTER the change, not to voices
-already playing on that bus. The `ISfxBackend` seam is fire-and-forget (`Play` returns no voice handle and
-exposes no per-voice gain setter), so a live per-voice re-gain would need a breaking seam change and is out of
-scope. SFX one-shots are short, so lowering a bus is heard on the next sound rather than mid-tail. (A future
-seam that returns a voice handle + per-voice gain setter is the upgrade path for live re-gain.)
+One-shots sample their mix at start. Changing a bus affects their next play and does not change an
+existing tail. Protected loops use `master * sfx * current bus * local loop volume` and refresh live gain
+before a mixer setter returns. `SetLoopVolume` replaces the local factor. Failed gain writes retain the
+desired value and get at most one refresh per normal `Update`, including the no-music path, without
+restart or reallocation. Existing volume setters clamp positive infinity to 1 and negative infinity to 0. A non-finite composed
+loop gain, including NaN, becomes zero. One-shot mixing keeps its existing behavior. Muting keeps the loop running and retains its slot.
 
 Bus volumes are game settings, like `MasterVolume` / `SfxVolume`: the game persists them however it persists
 its other audio settings (no built-in bus serialization).
@@ -17562,11 +17608,13 @@ audio.PlaySfx3D("wind", pos, bus: "ambience"); // master * sfx * 0.4 * volume
 audio.PlaySfx("beep");                         // no bus => default bus (1.0), unchanged from before
 ```
 
-`DefineBus(id, new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance))` also sets the curve for
-later positional one-shots. Reference distance must be positive, rolloff non-negative and maximum at least
-the reference distance. Values must be finite. `DefineBus` rejects `default(SfxAttenuation)`. The historical default is `(1, 1, 50)`. Existing bus volume
-is preserved, and non-positional sounds ignore attenuation. The new `ISfxBackend.Play` overload forwards
-to the existing priority overload unless a custom backend opts into the curve.
+`DefineBus(id, new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance))` sets the curve for
+later positional plays, including loops. A loop captures that immutable profile at start. Reference
+distance must be positive, rolloff non-negative and maximum at least the reference distance. Values must
+be finite. `DefineBus` rejects `default(SfxAttenuation)`. The historical default is `(1, 1, 50)`, and
+redefining a bus preserves its volume. Non-positional sounds ignore attenuation. The attenuation-aware
+`ISfxBackend.Play` overload still forwards to the existing priority overload unless a custom backend
+opts into the curve.
 
 **Authoring SFX assets (`ke-sfxbake`).** The `KhaozEngine.Sfx.Tool` dotnet tool bulk-generates and bakes a
 game's sound effects from a `sfx.manifest.jsonc` (prompt -> ElevenLabs sound-effects API -> ffmpeg/oggenc ->

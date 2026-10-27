@@ -133,11 +133,38 @@ public sealed class NativeCapacityDemandDerivedSiteMatrixTests
         Assert.Equal(bound == "faces" ? 4m * faces + 64 : declared, Read<decimal>(refused, "Allowance"));
         if (bound == "faces") Assert.Equal(4m * (faces - 1), Read<decimal>(refused, "CurrentDemand"));
         if (bound == "first") Assert.Equal((0m, (decimal)MapFoliageInventory.ConstructionControls), (Read<decimal>(refused, "CurrentDemand"), Read<decimal>(refused, "ProposedIncrement")));
+        if (bound == "retained")
+        {
+            // The aggregate and per-copy generation gates accept the construction controls before the cache's storage refuses.
+            foreach (string gate in new[] { "MapFoliageGenerationAdmission.MaxQueryRetainedBytes.1", "MapFoliageGenerationAdmission.MaxQueryRetainedBytes.2" })
+                Assert.Contains(probe.Events, r => Read<string>(r, "Site") == gate && Read<string>(r, "LimitName") == "MaxQueryRetainedBytes" &&
+                    Of(r) == (0m, (decimal)MapFoliageInventory.ConstructionControls, (decimal)declared, false));
+        }
         if (bound != "faces") return;
         // The same evaluation is accepted by the declared face ceiling, which is far larger.
         var declaredFaces = rows[Array.IndexOf(rows, refused) - 1];
         Assert.Equal("MaxFaces", Read<string>(declaredFaces, "LimitName"));
         Assert.False(Read<bool>(declaredFaces, "Refused"));
         Assert.Equal(Read<decimal>(refused, "ProposedIncrement"), Read<decimal>(declaredFaces, "ProposedIncrement"));
+    }
+
+    [Fact]
+    public void DecodeView_PeakRemainderRefusesAtTheDeclaredOrigin()
+    {
+        byte[] glb = NativeRenderAssetFixtures.Glb("instanced");
+        decimal peak;
+        using (var measured = new CapacityDemandProbe())
+        {
+            Assert.True(GltfDecodeAdmission.Measure(glb, Decode(900_000).Budget).Allowed);
+            peak = Read<decimal>(measured.Events.Last(r => Read<string>(r, "Site") == "GltfDecodeAdmission.MaxPeakBytes.2"), "ProposedIncrement");
+        }
+        using var probe = new CapacityDemandProbe();
+        // One byte below the measured peak still admits the metadata scan, then refuses the expanded peak.
+        Assert.False(GltfDecodeAdmission.Measure(glb, Decode((long)peak - 1).Budget).Allowed);
+        var rows = probe.Events.Where(r => Read<string>(r, "Site") == "GltfDecodeAdmission.MaxPeakBytes.2").ToArray();
+        Assert.Equal(new[] { "MaxPreparedBytes", "MaxResidentCpuBytes", "MaxPeakBytes" }, rows.Select(r => Read<string>(r, "LimitName")));
+        Assert.Equal((1000m, peak, 1_000_000m, false), Of(rows[0]));
+        Assert.Equal((3000m, peak, 2_000_000m, false), Of(rows[1]));
+        Assert.Equal((0m, peak, peak - 1, true), Of(rows[2]));
     }
 }

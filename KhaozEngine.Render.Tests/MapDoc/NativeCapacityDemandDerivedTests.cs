@@ -122,6 +122,11 @@ public sealed class NativeCapacityDemandDerivedTests
         Assert.Contains(aggregate, r => Read<decimal>(r, "CurrentDemand") > 0);
         Assert.Contains(columns, r => Read<string>(r, "LimitName") == "MaxPlanBytes" && Read<decimal>(r, "Allowance") == 134217728);
         Assert.Contains(columns, r => Read<string>(r, "LimitName") == "MaxPreparedBytes" && Read<decimal>(r, "Allowance") == 134217728);
-        Assert.All(faces.Concat(columns), r => Assert.False(Read<bool>(r, "Refused")));
+        // The cache's own aggregate gate accepts both chunks against the declared ceiling.
+        var cache = probe.Events.Where(r => Read<string>(r, "Site") == "MapFoliageRenderCache.MaxQueryRetainedBytes.1").ToArray();
+        Assert.NotEmpty(cache);
+        Assert.All(cache, r => Assert.Equal(50_000_000, Read<decimal>(r, "Allowance")));
+        Assert.Contains(cache, r => Read<decimal>(r, "CurrentDemand") > 0);
+        Assert.All(faces.Concat(columns).Concat(cache), r => Assert.False(Read<bool>(r, "Refused")));
     }
 }

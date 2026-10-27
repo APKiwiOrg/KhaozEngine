@@ -1,12 +1,14 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Tests.MapDoc.Foliage;
 using KhaozEngine.Tests.MapDoc.Prefabs;
 using Xunit;
@@ -157,5 +159,37 @@ public sealed class CapacityDemandDerivedSiteMatrixTests
             Read<decimal>(rows[0], "Allowance"), Read<bool>(rows[0], "Refused")));
         Assert.Equal((3m, 3m, 5m, true), (Read<decimal>(rows[1], "CurrentDemand"), Read<decimal>(rows[1], "ProposedIncrement"),
             Read<decimal>(rows[1], "Allowance"), Read<bool>(rows[1], "Refused")));
+    }
+
+    [Theory]
+    [InlineData(700, 5000, false)]
+    [InlineData(9900, 100, true)]
+    public void ColumnBudget_PublishesTheRetainedOriginOfADerivedCopy(int consumed, int remaining, bool refused)
+    {
+        var original = new MapFoliageLimits(MaxQueryRetainedBytes: 10_000);
+        var copy = original with { MaxQueryRetainedBytes = remaining };
+        using var probe = new CapacityDemandProbe();
+        MapDemandOrigins.Derive(copy, "MaxQueryRetainedBytes", MapDemandOrigins.Of(original, "MaxQueryRetainedBytes", 10_000, consumed));
+        Action build = () => new MapFoliageInstanceBuilder("layer", new("legacy-tile", 1, 0), default, copy).Dispose();
+        if (refused) Assert.Throws<MapFoliageRefusal>(build); else build();
+        // The builder's first charge is its construction controls, after the bytes earlier chunks already retained.
+        var row = probe.For("MaxQueryRetainedBytes").First(r => Read<string>(r, "Site") == "MapFoliageColumnBudget.MaxQueryRetainedBytes.1");
+        Assert.Equal(((decimal)consumed, (decimal)MapFoliageInventory.ConstructionControls, 10_000m, refused),
+            (Read<decimal>(row, "CurrentDemand"), Read<decimal>(row, "ProposedIncrement"), Read<decimal>(row, "Allowance"), Read<bool>(row, "Refused")));
+    }
+
+    [Fact]
+    public void WaterTraversal_SaturatesAWideRefusal()
+    {
+        var meter = new MapWaterWorkMeter(new(MaxBoundCells: 2));
+        using var probe = new CapacityDemandProbe();
+        meter.ChargeBoundTraversal(BigInteger.Zero, 1);
+        Assert.Throws<MapWaterCapacityException>(() => meter.ChargeBoundTraversal(BigInteger.Pow(2, 200), 0));
+        var rows = probe.For("MaxBoundCells").Where(r => Read<string>(r, "Site") == "MapWaterWorkMeter.Traversal").ToArray();
+        Assert.Equal((0m, 1m, 2m, false, false), (Read<decimal>(rows[0], "CurrentDemand"), Read<decimal>(rows[0], "ProposedIncrement"),
+            Read<decimal>(rows[0], "Allowance"), Read<bool>(rows[0], "Refused"), Read<bool>(rows[0], "Saturated")));
+        // A count wider than decimal reports decimal.MaxValue as an explicit lower bound.
+        Assert.Equal((1m, decimal.MaxValue, true, true), (Read<decimal>(rows[1], "CurrentDemand"), Read<decimal>(rows[1], "Requested"),
+            Read<bool>(rows[1], "Refused"), Read<bool>(rows[1], "Saturated")));
     }
 }

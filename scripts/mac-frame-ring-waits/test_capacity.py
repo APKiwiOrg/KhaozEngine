@@ -38,6 +38,9 @@ def capacity_fixture(slots=3, **options):
                  startupProof=dict(lineBase64=base64.b64encode(raw).decode(), lineSha256=hashlib.sha256(raw).hexdigest()),
                  metalAssembly=dict(name=policy['assemblyName'], mvid=MVID, assemblyVersion='21.13.0.0',
                                     informationalVersion=policy['assemblyInformationalVersion'], sha256='f'*64))
+    proof['helperHashes']={name:'c'*64 for name in ('analyze.py','collect.py','capacity.py','archive.py')}
+    proof['sourceHashes'].extend(dict(path='scripts/mac-frame-ring-waits/'+name,sha256=value)
+                                 for name,value in proof['helperHashes'].items())
     return report, proof
 
 
@@ -102,6 +105,15 @@ class CapacityTests(unittest.TestCase):
                     raw.replace(b'"baseFrames": 3',b'"baseFrames": 3, "unknown": 3')):
             with self.subTest(raw=bad),self.assertRaises(ValueError):capacity.select_startup(bad)
 
+    def test_helper_source_inventory_is_required_and_must_match_committed_source_hashes(self):
+        for corruption in ('missing','extra','hash','source'):
+            r,p=capacity_fixture()
+            if corruption=='missing':p.pop('helperHashes')
+            elif corruption=='extra':p['helperHashes']['other.py']='c'*64
+            elif corruption=='hash':p['helperHashes']['capacity.py']='invalid'
+            else:p['sourceHashes'][-1]['sha256']='0'*64
+            self.assertEqual('invalid',capacity.audit_treatment(r,p,3)['status'],corruption)
+
     def test_absent_observation_stays_limited(self):
         r,p=capacity_fixture(gap=1)
         result=analyse(r,1,123,p,expected_recording_slots=3)
@@ -126,7 +138,7 @@ class CapacityTests(unittest.TestCase):
             self.assertNotIn(word,result)
 
     def test_pair_differences_or_limited_inputs_never_interpret_an_fps_effect(self):
-        for corruption in ('work','framebuffer','focus','cap','dll','source','reverse','limited','summary','startup'):
+        for corruption in ('work','framebuffer','focus','cap','dll','source','reverse','limited','summary','startup','helpers'):
             a,pa=capacity_fixture(3);b,pb=capacity_fixture(6)
             if corruption=='work':b['samples'][0]['shadowStage']['callback']['snapshot']['counters']['staticRequests']=1
             elif corruption=='framebuffer':b['baseline']['window']['width']=900
@@ -137,6 +149,7 @@ class CapacityTests(unittest.TestCase):
             elif corruption=='reverse':a,pa,b,pb=b,pb,a,pa
             elif corruption=='limited':b,pb=capacity_fixture(6,gap=1)
             elif corruption=='startup':change_policy(pb,'baseFrames',None)
+            elif corruption=='helpers':pb['helperHashes']['capacity.py']='1'*64
             else:b={'oldSummary':b['summary']}
             result=capacity.compare_runs(a,pa,b,pb)
             self.assertFalse(result['comparable'],corruption)
@@ -144,48 +157,67 @@ class CapacityTests(unittest.TestCase):
             self.assertTrue(result['differences'],corruption)
 
 
-if __name__=='__main__': unittest.main()
+import contextlib
+
+
+@contextlib.contextmanager
+def capacity_workflow(slots=3, **options):
+    import sys
+    from unittest.mock import patch
+    import archive
+    import test_collect
+    with test_collect.CollectorWorkflowTests().workflow() as w:
+        r,p=capacity_fixture(slots,**options)
+        w.report.clear();w.report.update(r)
+        w.manifest['gameCommit']=capacity.GAME_BASE
+        w.manifest['appCodeIdentity']=r['appCodeIdentity']
+        w.manifest['frozenEngineBase']=capacity.ENGINE_BASE
+        metal=next(x for x in w.manifest['replacements'] if x['name']=='KhaozEngine.Gpu.Metal')
+        metal['sha256']=next(x for x in w.manifest['clientFiles'] if x['path']=='KhaozEngine.Gpu.Metal.dll')['sha256']
+        helpers=__import__('collect').helper_hashes()
+        w.manifest['sourceHashes'].extend(dict(path='scripts/mac-frame-ring-waits/'+name,sha256=value)
+                                           for name,value in helpers.items())
+        preparation=w.result.parent/'preparation.json';preparation.write_text(json.dumps(w.manifest))
+        w.startup=w.result.parent/'process.log'
+        w.selectedLine=base64.b64decode(p['startupProof']['lineBase64'])
+        w.startup.write_bytes(b'private unrelated log line\n'+w.selectedLine+b'other\n')
+        args=sys.argv+['--expected-recording-slots',str(slots),'--startup-log',str(w.startup),'--run-id','synthetic-run']
+        with patch.object(sys,'argv',args),patch.object(archive,'ARCHIVE_ROOT',w.result.parent/'durable'), \
+             patch.object(__import__('collect'),'CAPACITY_WORK_ROOT',w.result.parent):
+            w.archiveDestination=archive.destination_for(w.manifest['probeCommit'],'synthetic-run')
+            yield w
+
 
 class CapacityCollectorTests(unittest.TestCase):
     def test_capacity_collection_selects_only_owned_startup_line_and_checks_actual_treatment(self):
-        import sys
-        from unittest.mock import patch
         import collect
-        import test_collect
         for slots in (3,6):
-            with test_collect.CollectorWorkflowTests().workflow() as w:
-                r,p=capacity_fixture(slots)
-                w.report.clear();w.report.update(r)
-                w.manifest['gameCommit']=capacity.GAME_BASE
-                w.manifest['appCodeIdentity']=r['appCodeIdentity']
-                w.manifest['frozenEngineBase']=capacity.ENGINE_BASE
-                metal=next(x for x in w.manifest['replacements'] if x['name']=='KhaozEngine.Gpu.Metal')
-                metal['sha256']=next(x for x in w.manifest['clientFiles'] if x['path']=='KhaozEngine.Gpu.Metal.dll')['sha256']
-                preparation=w.result.parent/'preparation.json';preparation.write_text(json.dumps(w.manifest))
-                log=w.result.parent/'process.log'
-                line=base64.b64decode(p['startupProof']['lineBase64'])
-                log.write_bytes(b'private unrelated log line\n'+line+b'other\n')
-                args=sys.argv+['--expected-recording-slots',str(slots),'--startup-log',str(log)]
-                with patch.object(sys,'argv',args):self.assertEqual(0,collect.main())
+            with capacity_workflow(slots) as w:
+                self.assertEqual(0,collect.main())
                 proof=json.loads(w.metadata.read_text())
                 self.assertEqual(slots,proof['expectedRecordingSlots'])
-                self.assertEqual(p['startupProof'],proof['startupProof'])
+                self.assertEqual(hashlib.sha256(w.selectedLine).hexdigest(),proof['startupProof']['lineSha256'])
                 self.assertNotIn('private unrelated',json.dumps(proof))
                 self.assertEqual('valid',analyse(w.report,1,123,proof,expected_recording_slots=slots)['status'])
 
     def test_wrong_startup_treatment_is_refused_before_any_trigger(self):
-        import sys
-        from unittest.mock import patch
         import collect
-        import test_collect
-        with test_collect.CollectorWorkflowTests().workflow() as w:
+        with capacity_workflow(3) as w:
             _,p=capacity_fixture(6)
-            w.manifest['frozenEngineBase']=capacity.ENGINE_BASE
-            w.manifest['gameCommit']=capacity.GAME_BASE
-            w.manifest['appCodeIdentity']['informationalVersion']='0.1.0+'+capacity.GAME_BASE
-            preparation=w.result.parent/'preparation.json';preparation.write_text(json.dumps(w.manifest))
-            log=w.result.parent/'process.log';log.write_bytes(base64.b64decode(p['startupProof']['lineBase64']))
-            with patch.object(sys,'argv',sys.argv+['--expected-recording-slots','3','--startup-log',str(log)]):
-                self.assertEqual(1,collect.main())
+            w.startup.write_bytes(base64.b64decode(p['startupProof']['lineBase64']))
+            self.assertEqual(1,collect.main())
             self.assertEqual([],w.triggers)
             self.assertFalse(w.trigger.exists())
+            self.assertIn('Startup',json.loads(w.metadata.read_text())['error'])
+
+    def test_changed_helper_source_is_refused_before_trigger_creation(self):
+        import collect
+        with capacity_workflow() as w:
+            w.manifest['sourceHashes'][-1]['sha256']='0'*64
+            (w.result.parent/'preparation.json').write_text(json.dumps(w.manifest))
+            self.assertEqual(1,collect.main())
+            self.assertEqual([],w.triggers)
+            self.assertIn('helper',json.loads(w.metadata.read_text())['error'])
+
+
+if __name__=='__main__': unittest.main()

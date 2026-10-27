@@ -13,6 +13,7 @@ POLICY_FIELDS = set(('schemaVersion probe baseFrames selectedRecordingSlots actu
                      'requestedDrawableCount actualDrawableCount drawableReadback retirementPolicyCap '
                      'uncommittedDiagnosticBound deviceIdentity deviceName assemblyName assemblyVersion '
                      'assemblyMvid assemblyInformationalVersion').split())
+HELPERS = {'analyze.py','collect.py','capacity.py','archive.py'}
 WINDOW_FIELDS = ('width','height','focused','minimized','renderSuppressed','effectiveBaseCapHz','vsync',
                  'rendererInitializesSwapchain','preparePhaseSplitActive')
 
@@ -96,6 +97,12 @@ def audit_treatment(report, proof, expected_slots):
         sources=proof['sourceHashes'];paths=[row['path'] for row in sources]
         check(bool(paths) and len(paths)==len(set(paths))
               and all(re.fullmatch('[0-9a-f]{64}',row['sha256']) for row in sources),'Source hash inventory invalid')
+        helpers=proof['helperHashes']
+        check(type(helpers) is dict and set(helpers)==HELPERS,'Helper identity inventory differs')
+        source_hashes={row['path']:row['sha256'] for row in sources}
+        check(all(type(value) is str and re.fullmatch('[0-9a-f]{64}',value)
+                  and source_hashes.get('scripts/mac-frame-ring-waits/'+name)==value
+                  for name,value in helpers.items()),'Helper committed-source hash differs')
         runtime=[row for row in proof['runtimeFiles'] if row['path'].split('/')[-1]=='KhaozEngine.Gpu.Metal.dll']
         check(len(runtime)==1 and runtime[0]['sha256']==metal['sha256']==runtime[0]['afterSha256'],
               'Startup Metal identity differs from mapped payload')
@@ -168,7 +175,7 @@ def compare_runs(control_report, control_proof, candidate_report, candidate_proo
         return {key:[(json.dumps(row['value'],sort_keys=True),row['share']) for row in rows]
                 for key,rows in run['workDistributions'].items()}
     compare('recorded work distribution',work(control),work(candidate))
-    for key in ('probeCommit','gameCommit','sourceHashes','codeIdentities','preparationSha256'):
+    for key in ('probeCommit','gameCommit','sourceHashes','codeIdentities','preparationSha256','helperHashes','metalAssembly'):
         compare(key,control_proof.get(key),candidate_proof.get(key))
     def dlls(proof): return sorted((row['path'].split('/')[-1],row['sha256']) for row in proof.get('runtimeFiles',[]))
     compare('DLL bytes',dlls(control_proof),dlls(candidate_proof))

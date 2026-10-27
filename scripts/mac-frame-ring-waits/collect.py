@@ -13,6 +13,9 @@ import time
 import uuid
 from analyze import INT_MAX, REQUIRED_CLOSURE, analyse, guid, integer
 
+CAPACITY_WORK_ROOT = Path('/tmp').resolve()/'grimhollow-mac-frame-performance'
+HELPER_FILES = ('analyze.py','collect.py','capacity.py','archive.py')
+
 REQUIRED_EDGES = {
     'KhaozEngine.Gpu': set(),
     'KhaozEngine.Gpu.Metal': {'KhaozEngine.Gpu'},
@@ -171,6 +174,70 @@ def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
+def helper_hashes():
+    return {name:digest(Path(__file__).with_name(name)) for name in HELPER_FILES}
+
+
+def archive_outcome(args,root,preparation,result,metadata,audit_path,record):
+    import archive
+    from capacity import decode_startup
+    measurement={'collected-and-audited':'valid','limited-retain-evidence':'limited'}.get(record['status'],'failed')
+    try:
+        identity_path=result.with_suffix('.identity.json')
+        startup_path=result.with_suffix('.startup-proof.log')
+        claim_path=result.with_suffix('.archive-claim.json')
+        receipt_path=result.with_suffix('.archive-receipt.json')
+        sources=dict(probeCommit=record.get('probeCommit'),gameCommit=record.get('gameCommit'),
+                     frozenEngineBase=record.get('frozenEngineBase'),sourceHashes=record.get('sourceHashes'),
+                     helperHashes=record.get('helperHashes'),actualHelperHashes=helper_hashes(),
+                     metalAssembly=record.get('metalAssembly'),codeIdentities=record.get('codeIdentities'))
+        with archive._directory(root) as directory:
+            archive._write(directory,identity_path.name,archive._json(sources))
+            startup=None
+            if record.get('startupProof') is not None:
+                raw,_=decode_startup(record['startupProof'])
+                archive._write(directory,startup_path.name,raw)
+                startup=startup_path.name
+            entries=dict(raw=result.name,collection=metadata.name,analysis=audit_path.name,
+                         preparation=preparation.name,startup=startup,identity=identity_path.name)
+            hashes={}
+            for name,path in list(entries.items()):
+                if path is None: continue
+                known={'raw':'resultSha256','analysis':'analysisSha256','preparation':'preparationSha256'}.get(name)
+                try: raw,_=archive._read(directory,path)
+                except FileNotFoundError:
+                    require(measurement=='failed' and name in ('raw','analysis') and record.get(known) is None,
+                            'Previously captured '+name+' is missing before archival')
+                    entries[name]=None
+                    continue
+                value=hashlib.sha256(raw).hexdigest()
+                require(known is None or record.get(known) is None or record[known]==value,
+                        'Final '+name+' differs from recorded capture hash')
+                hashes[name]=dict(sha256=value,bytes=len(raw))
+            commit=record.get('probeCommit')
+            if commit is None:
+                raw,_=archive._read(directory,preparation.name)
+                commit=json.loads(raw)['probeCommit']
+            destination=archive.destination_for(commit,args.run_id)
+            claim=dict(schemaVersion=1,probeCommit=commit,runId=args.run_id,collectionId=record['collectionId'],
+                       sourceRoot=str(root),destination=str(destination),entries=entries,expectedHashes=hashes,
+                       measurementStatus=measurement)
+            archive._write(directory,claim_path.name,archive._json(claim))
+        receipt=archive.publish_bundle(source_root=root,destination=destination,entries=entries,
+                                       measurement_status=measurement,expected_hashes=hashes)
+        with archive._directory(root) as directory:
+            archive._write(directory,receipt_path.name,archive._json(receipt))
+        print(json.dumps(dict(status=record['status'],measurementStatus=measurement,archive=receipt,
+                              metadata=str(metadata),result=str(result),claim=str(claim_path),receipt=str(receipt_path))))
+        return {'valid':0,'limited':2,'failed':1}[measurement]
+    except Exception as error:
+        captured=record.get('triggerCreated') is True or result.exists()
+        print(json.dumps(dict(status='captured-but-not-archived' if captured else 'failed-not-archived',
+                              measurementStatus=measurement,archivalStatus='failed',errorType=type(error).__name__,
+                              error=str(error),metadata=str(metadata))))
+        return 3
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--preparation',type=Path,required=True)
@@ -179,21 +246,39 @@ def main():
     parser.add_argument('--result',type=Path,required=True)
     parser.add_argument('--expected-recording-slots',type=int,choices=[3,6])
     parser.add_argument('--startup-log',type=Path)
+    parser.add_argument('--run-id')
     args=parser.parse_args()
     require((args.expected_recording_slots is None)==(args.startup_log is None),
             'Recording-slot expectation and owned startup log are a paired opt-in')
     require(args.expected_recording_slots is None or args.mode=='counts','Capacity comparison requires counts mode')
+    require((args.expected_recording_slots is None)==(args.run_id is None),'Capacity mode requires an archival run identifier')
+    if args.expected_recording_slots is not None:
+        import archive
+        archive.destination_for('0'*40,args.run_id)
     os.umask(0o077)
     preparation=args.preparation.resolve(strict=True)
     root=preparation.parent
     result=canonical_owned(args.result,root)
     require(result.parent==root and result.suffix=='.json','Result must be a direct child JSON path')
+    if args.expected_recording_slots is not None:
+        require(root.is_relative_to(CAPACITY_WORK_ROOT),'Capacity work must remain inside the approved temporary root')
+        # Canonicalize only the known system /tmp alias, then refuse every other symlink component.
+        for path in (args.preparation,args.result,args.startup_log):
+            absolute=path.absolute()
+            if absolute.is_relative_to('/tmp'):
+                absolute=Path('/tmp').resolve()/absolute.relative_to('/tmp')
+            with archive._directory(absolute.parent): pass
+            require(not absolute.is_symlink(),'Capacity evidence input is symlinked')
     trigger=Path(str(result)+'.start')
     metadata=result.with_suffix('.collection.json')
     temporary=metadata.with_suffix('.tmp')
     audit_path=result.with_suffix('.audit.json')
     require(all(not p.exists() and not p.is_symlink() for p in (result,trigger,metadata,temporary,audit_path)),
             'Use fresh result, start and evidence paths')
+    if args.expected_recording_slots is not None:
+        extra=[result.with_suffix(suffix) for suffix in
+               ('.identity.json','.startup-proof.log','.archive-claim.json','.archive-receipt.json')]
+        require(all(not p.exists() and not p.is_symlink() for p in extra),'Use fresh archival evidence paths')
     pid=args.ready_process_id
     integer(pid,2,INT_MAX)
     record=dict(status='preflight',startedAtUtc=now(),collectionId=str(uuid.uuid4()),ownershipReserved=True,
@@ -226,8 +311,12 @@ def main():
             startup_path=canonical_owned(args.startup_log,root)
             require(startup_path.parent==root and not args.startup_log.is_symlink(),'Startup log must be owned and direct')
             selected=select_startup(startup_path.read_bytes())
+            record.update(startupProof=selected,helperHashes=helper_hashes())
             metal=next(x for x in manifest['replacements'] if x['name']=='KhaozEngine.Gpu.Metal')
             validate_startup(selected,metal,args.expected_recording_slots,manifest['probeCommit'])
+            declared_sources={row['path']:row['sha256'] for row in manifest['sourceHashes']}
+            require(all(declared_sources.get('scripts/mac-frame-ring-waits/'+name)==value
+                        for name,value in record['helperHashes'].items()),'Committed helper source identity differs')
             record.update(expectedRecordingSlots=args.expected_recording_slots,frozenEngineBase=ENGINE_BASE,
                           startupProof=selected,metalAssembly={k:metal[k] for k in
                           ('name','mvid','assemblyVersion','informationalVersion','sha256')})
@@ -282,6 +371,9 @@ def main():
         raw=result.read_bytes()
         require(stat_key(result)==result_stat,'Result changed while being read')
         record['resultSha256']=hashlib.sha256(raw).hexdigest()
+        if args.expected_recording_slots is not None:
+            require(helper_hashes()==record['helperHashes'],'Collection helpers changed during capture')
+            require(select_startup(startup_path.read_bytes())==record['startupProof'],'Startup proof changed during capture')
         audit=analyse(json.loads(raw),1 if args.mode=='counts' else 2,pid,record,
                       expected_recording_slots=args.expected_recording_slots)
         audit['inputSha256']=record['resultSha256']
@@ -292,11 +384,16 @@ def main():
                       collectionHelperSha256=digest(Path(__file__)),analysisStatus=audit['status'],finishedAtUtc=now())
         record['status']={'valid':'collected-and-audited','limited':'limited-retain-evidence','invalid':'failed-retain-evidence'}[audit['status']]
         save()
+        if args.expected_recording_slots is not None:
+            return archive_outcome(args,root,preparation,result,metadata,audit_path,record)
         print(json.dumps(dict(status=record['status'],metadata=str(metadata),result=str(result))))
         return {'valid':0,'limited':2,'invalid':1}[audit['status']]
-    except Exception as error:
+    except BaseException as error:
+        if args.expected_recording_slots is None and not isinstance(error,Exception): raise
         record.update(status='failed-retain-evidence',finishedAtUtc=now(),errorType=type(error).__name__,error=str(error))
         save()
+        if args.expected_recording_slots is not None:
+            return archive_outcome(args,root,preparation,result,metadata,audit_path,record)
         print(json.dumps(dict(status=record['status'],error=str(error),metadata=str(metadata))))
         return 1
 

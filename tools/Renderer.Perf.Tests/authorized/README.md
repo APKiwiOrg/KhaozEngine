@@ -26,6 +26,13 @@ approvals, limits and correctness verdict. The same reference's
 per-leg job caps, cleanup billing allowance and the campaign envelope. Every execution class requires
 usable timestamps, complete compiler evidence and certified publication. Partial artifacts survive failures.
 
+Every manifest must explicitly include `execution.lockedGraphicsClockMHz`. Paid T4 presets require
+an integer matching the fixed [graphics-clock policy](../../../docs/RENDERER-PERFORMANCE.md#drift-perturbation-and-validity).
+Every software rehearsal class requires explicit JSON null. Missing, duplicate, string, fractional, overflowing
+or cross-class values refuse. The trusted selector carries this admitted value to the runner matrix.
+There is no dispatch clock override. Older authorizations are never edited to add the field, and
+another run needs fresh exact owner approval.
+
 Every manifest must explicitly include `limits.coldFrameMilliseconds` as well as
 `limits.frameMilliseconds`. The cold limit is 120,000 ms for every preset and execution class. Only
 conditioning frame 0 uses it for immediate and retained CPU timing and retained GPU duration. The

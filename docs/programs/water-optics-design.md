@@ -117,11 +117,16 @@ absorption M2 packs into that plane's water volume record is the derived extinct
 `AbsorptionPerMetre`. This is what WO-D13 requires. `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`,
 `ShallowDepth` and `Opacity` keep their meaning for bodies that do not opt in, and are not read by an
 opted-in body's water column (the shore fade and foam still use their own settings). `DrawWater` rejects a
-non-finite or non-positive `Clarity` and a `WaterColor` channel outside [0, 1] on the resolved settings, as
-M2 does for its fields.
+non-finite or non-positive `Clarity`, a `Clarity` whose derived extinction is not finite and positive in
+float (checked in double before conversion), and a `WaterColor` channel outside [0, 1] on the resolved
+settings, as M2 does for its fields.
 
 Derivation, documented in the XML docs and mirrored by a CPU helper the tests use:
 
+- Light units are the engine's. A white Lambertian receiver under `LightColor` (1, 1, 1) at normal
+  incidence shades to 1, so irradiance is pi times `LightColor`, and ambient acts as uniform sky radiance
+  `AmbientColor`. Every scattering term carries that factor of pi, or the water would render about three
+  times too dark beside its own banks. The fill light does not reach the water column.
 - Mean extinction `sigma_t = 3 / Clarity`, so `exp(-sigma_t * Clarity)` is about 0.05.
 - Scattering stays energy conserving, with single-scattering albedo `a` at most one per channel (owner).
   Single scattering alone leaves murky water far darker than real silty water, whose brightness comes from
@@ -129,9 +134,9 @@ Derivation, documented in the XML docs and mirrored by a CPU helper the tests us
   the four-sample single-scattering march. The estimate's form is the builder's, from an established
   closed-form approximation.
 - `a` is the inverse of the deep-water function (single plus multiple scattering, vertical view, reference
-  light), so a reachable `WaterColor` reproduces itself in deep water. A colour brighter than any albedo up
-  to one can produce is capped to the nearest reachable colour and reported by diagnostics, not rejected.
-  CPU tests pin the round trip and the cap.
+  light of unit sun at zenith plus unit ambient), so `WaterColor` reproduces itself in deep water. In engine
+  light units an albedo of one reaches about 2.25 under the reference light, so every channel in [0, 1] is
+  reachable and no cap is built. CPU tests pin the round trip at black, white and the river values.
 - Per-channel extinction `sigma_t_rgb` is spread around the mean so channels the water colour lacks are
   absorbed faster. `sigma_s = a * sigma_t_rgb`, `sigma_a = sigma_t_rgb - sigma_s`.
 - M2's record absorption for the plane is `sigma_t_rgb`. The direct sun beam is attenuated by extinction.
@@ -152,8 +157,9 @@ decals and before the first water draw:
 - Frames with no opted-in plane do neither. The water set binds a 1x1 placeholder so the layout is stable.
 
 The copy holds everything drawn before water (the opaque scene, textured billboards, beams, trails,
-translucent overlays and silhouettes, sky and ground decals, `Scene3D.cs` 1441 to 1531) and none of the water. A water surface seen through another
-opted-in water surface therefore shows the scene behind it without the farther water. That is rare in a
+translucent overlays and silhouettes, sky and ground decals, `Scene3D.cs` 1441 to 1531) and none of the
+water. A water surface seen through another opted-in water surface therefore shows the scene behind it
+without the farther water. That is rare in a
 river view and is documented as a limitation.
 
 #### Shadow access in the water pass
@@ -173,9 +179,12 @@ applies.
 Per opted-in water pixel, with `S` the surface point, `v` the view direction refracted at the surface with
 `n = 1.333` (the same constant as M2), `B` the bed point and `d` the in-water view path length:
 
-- `d` is the distance from `S` to the scene point behind it, from scene depth. When M1 optics are bound,
-  `d` is also limited to the authored bed's vertical depth at `S` divided by `-v.y`, because scene depth is
-  not the body's bed in every case M1 exists for. The bed colour is the copy at the pixel either way.
+- `d` runs along the refracted view ray. It is the vertical bed depth `h` the water pass already computes
+  at `S` (scene depth, or the authored bed through `opticalBedDepth` when M1 optics are bound) divided by
+  `mu = -v.y`. Refraction keeps `mu` at about 0.66 or more, so the division stays bounded. The march runs
+  along `S + v * s` for `s` in `[0, d]`. In landing 1 the bed colour is the copy at the original pixel,
+  which is the approximation landing 2's bent view removes. Sample light depths are measured from the
+  still-water surface, as M2's are, and clamp to zero above it on a displaced crest.
 - View transmittance `T = exp(-sigma_t_rgb * d)`.
 - Single-scattered sun: four samples `X_i` along `v` from `S` to `B`, jittered within equal-weight strata of
   the analytic in-scatter integral. Each contributes sun colour times `exp(-sigma_t_rgb * depth(X_i) / cos
@@ -184,7 +193,9 @@ Per opted-in water pixel, with `S` the surface point, `v` the view direction ref
 - Each sample's sun visibility follows M2's entry rule rather than the atlas's unrefracted ray through `X_i`.
   The sample's refracted surface entry is `E_i = X_i - t * (depth(X_i) / -t.y)` with M2's refracted sun
   travel `t`, and visibility is one point comparison of the cascade atlas at `E_i`, which selects its own
-  cascade as M2's slices do. This keeps column shadows aligned with M2's bed shadows at four comparisons.
+  cascade as M2's slices do. This keeps column shadows aligned with M2's bed shadows. As M2 counts its
+  slices, that is four comparisons before cascade blending, and a sample inside a blend band also compares
+  in the neighbouring cascade, so the worst case is eight plus the surface lookup at `S`.
   Casters wholly below the surface do not shadow the column. A submerged rock still darkens the bed through
   M2 but not the water above it, which is documented.
 - Ambient in-scatter uses the scene's ambient term, unshadowed, integrated analytically over `d`.
@@ -253,9 +264,9 @@ procedural ripples), absolute probes rather than self-baked goldens:
 A GPU fact checks that deep water under reference light renders its reachable `WaterColor` within
 tolerance, and that the attached shadow still reads at the murkiest `Clarity` the river preset uses.
 
-CPU tests pin the `WaterColor` and `Clarity` derivation, the reachable round trip and the cap, look inheritance, validation, the byte-identical UBO
-packing of a look with the new fields null, and that an opted-in plane's water volume record carries the
-derived extinction.
+CPU tests pin the `WaterColor` and `Clarity` derivation, the round trip, look inheritance, validation,
+the byte-identical UBO packing of a look with the new fields null, and that an opted-in plane's water
+volume record carries the derived extinction.
 
 Cost: the renderer performance workloads from https://github.com/APKiwiOrg/KhaozEngine/issues/1602 gain an
 M5 ON variant of the village and outdoors water, and the owner rules on the measured cost before M5 ships.

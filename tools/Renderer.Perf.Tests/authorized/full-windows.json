@@ -1,0 +1,405 @@
+{
+  "schema": "khaozengine.renderer-perf-unit/1",
+  "unitId": "full-windows",
+  "preset": "full",
+  "workloadSha": "40c6db74b338e3dabf47f2d9f2c9577478563589",
+  "baselineMainSha": "40c6db74b338e3dabf47f2d9f2c9577478563589",
+  "recipes": [
+    {
+      "sceneId": "S0",
+      "version": "empty/1",
+      "profile": "empty-native-1080/1",
+      "recipeSha256": "a008817d6b73ecd4aad1ac74e693a61a34d40844359eae3932ac2a58e5b915da",
+      "settingsSha256": "eea727a2f8338cd28b5c2a55b4de77c8cebca7e1fc08b2a1b74d2a6c6328871c",
+      "shaderSha256": "45e7985655e46139a9f9634d787aad98753dec759fb233dae4d8956d34adde97",
+      "geometrySha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "assetSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "sceneId": "S1",
+      "version": "village/1",
+      "profile": "renderer-full-native-1080/1",
+      "recipeSha256": "3caa143955578cb0505615593d45af7347c4547fbc48861b8b58d1edc8de5eb0",
+      "settingsSha256": "42e03f9674742023bdc5707d6fbfe12a8bcc9c697fb8ff3e99c95bd80e2c00a9",
+      "shaderSha256": "45e7985655e46139a9f9634d787aad98753dec759fb233dae4d8956d34adde97",
+      "geometrySha256": "7d3fa9a67fc4abce8c70de4be065bc4950cb5f832890585d65b73251585d2cd3",
+      "assetSha256": "99dc87de2047b8b4e06ed9a4aa8ace50f66267abc3ec134bc5acfdd7341eaa9b"
+    },
+    {
+      "sceneId": "S2",
+      "version": "outdoors/1",
+      "profile": "renderer-full-native-1080/1",
+      "recipeSha256": "4c4c72ce0586e35112cfa502fa8dab2f545360897d9c67db5b93a29e66b6236f",
+      "settingsSha256": "af65b9c3e6237fe32492962a662a81da2c72ae787bcc5da3207125005f6fb686",
+      "shaderSha256": "45e7985655e46139a9f9634d787aad98753dec759fb233dae4d8956d34adde97",
+      "geometrySha256": "7716a31991470815735af23855bca7435f4bd2c012761db8189806a1e920c17a",
+      "assetSha256": "e72c2b340d0c7bd66c83cac45f400748f143146672c663ed7173eb2577bcfafa"
+    },
+    {
+      "sceneId": "S3",
+      "version": "crowd/1",
+      "profile": "renderer-full-native-1080/1",
+      "recipeSha256": "dd702040fa4f868a9377cbf09c4eb7ff0fc57d54adb856fac2fec3b4af180f0b",
+      "settingsSha256": "fa254848b4d8b245d5fdb16e6e7617d00f2c0e6ea22336f123ae2da0434cb2a2",
+      "shaderSha256": "45e7985655e46139a9f9634d787aad98753dec759fb233dae4d8956d34adde97",
+      "geometrySha256": "90732a30384a0e9554ea017ce81a2c403c3b4a421f90035fe4a4b82b786df6e9",
+      "assetSha256": "99dc87de2047b8b4e06ed9a4aa8ace50f66267abc3ec134bc5acfdd7341eaa9b"
+    },
+    {
+      "sceneId": "S4",
+      "version": "effects-ui/1",
+      "profile": "renderer-full-native-1080/1",
+      "recipeSha256": "83f32fba53c54fecdadf10f4fd082528406ac761f98acfd0609df7950cc7ce86",
+      "settingsSha256": "9ea38f9ed7d788098bf5d2ee70e8d39c0972762eb821758e9686a3d79573bf6c",
+      "shaderSha256": "45e7985655e46139a9f9634d787aad98753dec759fb233dae4d8956d34adde97",
+      "geometrySha256": "1227d278786bcb1a5820c95be09e4feb6ee2ae0268b26aa9ffa0a08cd6ffb647",
+      "assetSha256": "ef723047c3daf64c09e3abbbb1e914ee15af010984a81a07698cfc07c34897ba"
+    }
+  ],
+  "blocks": [
+    {
+      "sceneId": "S0",
+      "layout": "total-only",
+      "iteration": 0,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S0",
+      "layout": "per-pass",
+      "iteration": 0,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S1",
+      "layout": "per-pass",
+      "iteration": 0,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S1",
+      "layout": "total-only",
+      "iteration": 0,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S2",
+      "layout": "total-only",
+      "iteration": 0,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S2",
+      "layout": "per-pass",
+      "iteration": 0,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S3",
+      "layout": "per-pass",
+      "iteration": 0,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S3",
+      "layout": "total-only",
+      "iteration": 0,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S4",
+      "layout": "total-only",
+      "iteration": 0,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S4",
+      "layout": "per-pass",
+      "iteration": 0,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S1",
+      "layout": "total-only",
+      "iteration": 1,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S1",
+      "layout": "per-pass",
+      "iteration": 1,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S2",
+      "layout": "per-pass",
+      "iteration": 1,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S2",
+      "layout": "total-only",
+      "iteration": 1,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S3",
+      "layout": "total-only",
+      "iteration": 1,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S3",
+      "layout": "per-pass",
+      "iteration": 1,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S4",
+      "layout": "per-pass",
+      "iteration": 1,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S4",
+      "layout": "total-only",
+      "iteration": 1,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S0",
+      "layout": "per-pass",
+      "iteration": 1,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S0",
+      "layout": "total-only",
+      "iteration": 1,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S2",
+      "layout": "total-only",
+      "iteration": 2,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S2",
+      "layout": "per-pass",
+      "iteration": 2,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S3",
+      "layout": "per-pass",
+      "iteration": 2,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S3",
+      "layout": "total-only",
+      "iteration": 2,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S4",
+      "layout": "total-only",
+      "iteration": 2,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S4",
+      "layout": "per-pass",
+      "iteration": 2,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S0",
+      "layout": "total-only",
+      "iteration": 2,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S0",
+      "layout": "per-pass",
+      "iteration": 2,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S1",
+      "layout": "per-pass",
+      "iteration": 2,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    },
+    {
+      "sceneId": "S1",
+      "layout": "total-only",
+      "iteration": 2,
+      "warmupFrames": 192,
+      "measuredFrames": 256
+    }
+  ],
+  "controls": [
+    {
+      "id": 1,
+      "version": "1",
+      "workSha256": "8ee116407cc935ea7ee1274b3153e95f161dec828ab5cabaac07149f06349e0f",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 2,
+      "version": "1",
+      "workSha256": "695fb77fc32b63d53c43570ffb0d051c6ee79fe86a445c1684edf9bc495a93ab",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 3,
+      "version": "1",
+      "workSha256": "372bedce1d87fbe81319cf46243642d48be332c8ce91f2bc86590a2f8109a47c",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 4,
+      "version": "1",
+      "workSha256": "d58660c9e1b986b4b5ed5b978bec4542fd762c24425cde4195120399c9653a61",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 5,
+      "version": "1",
+      "workSha256": "0d4897cffa0ef344422c9a49c31bac191ec1a2c6723b9766e6c8d67d8661d931",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 6,
+      "version": "1",
+      "workSha256": "2918b80903fb6e670c088b21a7844ebde5cc90a975d763ae746266bc1ad3329c",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 7,
+      "version": "1",
+      "workSha256": "e64795cdcae0233f37b8791bc43288851dabd87553a850c30da65514b1a90585",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 8,
+      "version": "1",
+      "workSha256": "b0228f6926f6738b3b17960b744a52c22eeedae5309749d2106765f138c3cd97",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 9,
+      "version": "1",
+      "workSha256": "de7287001199ce06c8f06862092343c1a5cf378c7a48049edbfc6844100f28f1",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 10,
+      "version": "1",
+      "workSha256": "ae5f82f4d6cdc2b44118f38670b02271728f519fbbb01c52145a141ff0bcbee0",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 11,
+      "version": "1",
+      "workSha256": "01adcb0b72aee7e82393c646ceb003ab9f390ae50416d6e94973d4285e33f097",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 12,
+      "version": "1",
+      "workSha256": "8c0915a2171ab4978253841e6e8e2dfd9103ad580ea79bdb81dd4d4dd12924ad",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    }
+  ],
+  "conditioningFrames": 1200,
+  "batchSize": 3,
+  "maximumScopeOccurrences": 255,
+  "runtime": {
+    "configuration": "Release",
+    "runtimeVersion": "10.0.13",
+    "environment": {
+      "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+      "DOTNET_HOST_PATH": "C:\\a\\_temp\\renderer-dotnet\\dotnet.exe",
+      "DOTNET_ROOT": "C:\\a\\_temp\\renderer-dotnet",
+      "DOTNET_ROOT_X64": "C:\\a\\_temp\\renderer-dotnet",
+      "DOTNET_TieredCompilation": "1",
+      "DOTNET_gcServer": "0",
+      "KE_D3D11_ADAPTER": "NVIDIA",
+      "KE_GPU_TESTS": "1",
+      "KE_GRAPHICS_BACKEND": "direct3d11-native",
+      "KE_VULKAN_DEVICE": "discrete"
+    },
+    "gcMode": "workstation",
+    "tieredCompilation": true
+  },
+  "execution": {
+    "backend": "d3d11",
+    "adapterPolicy": "nvidia-t4-hardware",
+    "runner": "gpu-t4-windows",
+    "workflow": "gpu-hosted-bench.yml",
+    "leg": "windows-d3d11",
+    "completionPolicy": "retained-fence-batch-3/1",
+    "lockedGraphicsClockMHz": 1200
+  },
+  "limits": {
+    "unitSeconds": 1500,
+    "frameMilliseconds": 10000,
+    "coldFrameMilliseconds": 120000,
+    "jobMinutes": 35
+  },
+  "budget": {
+    "maximumBilledMinutes": 38,
+    "ratePerMinute": 0.102,
+    "currency": "USD",
+    "maximumCostUsd": 3.876
+  },
+  "approval": {
+    "reference": "T3 thread f6c16dd2-ab68-482e-bf6c-335ec5ad4582 owner answered Approve both, one attempt each (Recommended) to the locked full pair question on 2026-10-28 for proposal b478ff553616c92e9b69946b1c6daa4dfb32c792bfe9efcae3d2fee12bff173b. One locked full-windows attempt only, USD 18 campaign.",
+    "purpose": "Publish the Windows D3D11 T4 full renderer baseline unit: all five scenes, both layouts, three iterations, all twelve controls, native identities, compiler correspondence, clocks, bounded publication and actual billed cost.",
+    "campaignReference": "T3 thread f6c16dd2-ab68-482e-bf6c-335ec5ad4582 owner answered Approve both, one attempt each (Recommended) to the locked full pair question on 2026-10-28 for proposal b478ff553616c92e9b69946b1c6daa4dfb32c792bfe9efcae3d2fee12bff173b. One locked full-windows attempt only, USD 18 campaign.",
+    "campaignMaximumUsd": 18
+  }
+}

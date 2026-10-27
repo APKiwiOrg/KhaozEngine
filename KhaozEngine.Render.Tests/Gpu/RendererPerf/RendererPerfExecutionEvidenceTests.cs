@@ -55,6 +55,6 @@ public sealed class RendererPerfExecutionEvidenceTests
             Add($"{block.Block.SceneId}/{block.Block.Layout}/{block.Block.Iteration}", block.Warmup.Length + block.Measured.Length);
         foreach (var control in report.Controls)
             Add($"control:{control.Control.Id}/TotalOnly/0", control.Warmup.Length + control.Measured.Length);
-        return report with { Conditioning = conditioning, Batches = [.. batches] };
+        return RendererPerfGpuClockAssessmentTests.WithClocks(report with { Conditioning = conditioning, Batches = [.. batches] });
     }
 }

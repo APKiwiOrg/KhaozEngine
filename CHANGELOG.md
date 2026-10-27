@@ -26,7 +26,6 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   retains atlas ownership and disposed font owners cannot be reused.
 - Add optional viewport constraints to dropdown popups, with upward placement, scrolling, clipped option
   geometry and gesture identity preserved across scrolling or reflow (#1624).
-
 - Add opt-in live pending travel to `PointerGesture` through the init-only `LivePendingTravel` property, default
   off. A live gesture delivers each held frame's own motion in `DragDelta` while its press is still undecided,
   and replays nothing when it crosses into a drag, so the catch-up limit does not apply. The tap or drag
@@ -35,6 +34,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   stays inside its tolerance still taps. Another gesture turning the camera voids the tap, and a simultaneous
   release of both buttons taps neither when either gesture is live. `TurnBodyActive` and pointer capture still
   start at the crossing (#1619).
+- Report automation connection errors before closing the affected socket, so diagnostics are recorded before
+  the peer observes EOF (Closes #1628).
 
 ## 21.16.0
 

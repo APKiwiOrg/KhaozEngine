@@ -9,7 +9,7 @@ retains the design rationale. This document records no measured baseline or perf
 
 `tools/Renderer.Perf.Tests` is outside the solution. Its one opt-in performance fact is not an ordinary
 headless test. Every native measurement or load run needs separate owner approval naming the workload,
-leg, frame counts, duration and spending cap. A paid manifest's campaign cap is at most USD 14, the owner's
+leg, frame counts, duration and spending cap. A paid manifest's campaign cap is at most USD 18, the owner's
 envelope for every paid pilot and full unit including attempts already billed, and each unit's own cost cap must
 fit inside it. Implementation approval never authorizes a dispatch, pilot, retry, profiler capture or follow-up
 measurement. Software Vulkan and WARP can establish
@@ -436,8 +436,39 @@ when timestamp partitions are complete.
 
 Clock/work drift uses the existing protocol rule. Flag a change above 5 percent between first64 and
 last64, or between corresponding iteration means and the first retained iteration mean. Such
-evidence cannot be promoted as a stable baseline. Keep slow and GC frames. Missing clock telemetry
-stays missing and does not certify stable clocks.
+evidence cannot be promoted as a stable baseline. Keep slow and GC frames.
+
+Paid T4 units lock the graphics clock at 1,200 MHz. The unlocked
+[Linux full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40572172000) and
+[Windows full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40572176659) completed every
+conditioning frame, block and control without frame errors, then refused promotion with
+`ClockOrWorkDrift`. Their telemetry alternated between idle clocks and software power capping at
+70 W. Loaded graphics clocks reached about 1,290 to 1,455 MHz at the cap, while lighter work boosted
+higher or dropped to idle. The selected 1,200 MHz is a supported-step candidate divisible by 15 and
+below that observed loaded range, leaving power headroom instead of relying on variable boost.
+This evidence motivates the lock. It does not prove that the hosted drivers can hold it. Fresh,
+separately approved pilots on each leg must establish that before the separately approved full pair.
+
+`GpuClockNotLocked` is independent of the unchanged drift rule. Every retained conditioning, scene
+and control batch must carry the identified host observation from the fixed sampler. Any observed
+graphics clock other than the approved value, unavailable clock or throttle mask, missing observation,
+or unknown throttle bit refuses promotion. The sampler also retains current memory and maximum
+graphics clocks. The deprecated requested application-clock field remains evidence even when the
+driver reports it unsupported. It is not the lock readback.
+
+The [NVIDIA throttle bitmask](https://docs.nvidia.com/deploy/archive/R550/nvml-api/group__nvmlClocksEventReasons.html)
+allows no limiter (`0x0`), idle (`0x1`) and application-clock setting (`0x2`), including their combination,
+only while the observed graphics clock is exactly the lock. The latter flags can describe the idle
+sampler boundary or an intentional clock setting. Power cap (`0x4`), hardware slowdown (`0x8`),
+software thermal slowdown (`0x20`), hardware thermal slowdown (`0x40`) and power brake (`0x80`)
+refuse even at the requested clock. Sync boost (`0x10`), display-clock setting (`0x100`) and unknown
+bits also refuse because another policy could limit the clock. A successful lock command alone
+never certifies a held clock.
+
+The strict report retains `gpuClock` with the approved clock, verification state, distinct sample
+count and refusal cause. Live assessment, strict decoding, directory verification and offline analysis
+recompute the result from retained observations. Published summaries retain it beside the immutable
+manifest. Software rehearsals record `NotApplicable` and never acquire the paid lock requirement.
 
 `Perturbations[scene/iteration]` retains the signed per-pass outer mean minus the matching total-only
 outer mean as `DifferenceNs`, and `Percent` is `100 * difference / totalOnlyMean`. `ThresholdNs` is

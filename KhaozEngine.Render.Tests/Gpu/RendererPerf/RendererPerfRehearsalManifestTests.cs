@@ -13,6 +13,7 @@ public sealed class RendererPerfRehearsalManifestTests
         json["preset"] = "rehearsal";
         json["execution"]!["runner"] = "ubuntu-24.04";
         json["execution"]!["adapterPolicy"] = "mesa-lavapipe-software";
+        json["execution"]!["lockedGraphicsClockMHz"] = null;
         json["limits"]!["unitSeconds"] = 5400;
         json["limits"]!["frameMilliseconds"] = 60000;
         json["limits"]!["jobMinutes"] = 120;

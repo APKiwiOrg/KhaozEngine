@@ -16,6 +16,8 @@ public interface IMapRenderDevice
 
 public interface IMapRenderUpload : IDisposable
 {
+    /// <summary>Confirms every transfer is complete and staging can be released. Residency returns in-flight
+    /// credit when observed, even without reservation callbacks. CPU stays charged until InputsReleased or destruction.</summary>
     bool Ready { get; }
     long Advance(long transferBytes);
     MapRenderHandle Publish();

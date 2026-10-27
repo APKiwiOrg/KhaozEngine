@@ -252,7 +252,7 @@ public sealed partial class MapRenderResidency : IDisposable
             // The upload may retain CPU inputs after cancellation until its renderer destruction callback.
             var borrow = pending.Batch!.Plans.First(p => p.Resources.Any(r => r.Reference == resource.Reference)).Input.Retain();
             reservation.OnRelease(borrow.Dispose);
-            try { pending.Uploads.Add(id, Device.BeginUpload(resource, reservation)); }
+            try { pending.Uploads.Add(id, new(Device.BeginUpload(resource, reservation), reservation)); }
             catch { reservation.Dispose(); throw; }
             applies++;
         }
@@ -469,7 +469,7 @@ public sealed partial class MapRenderResidency : IDisposable
         internal Batch? Batch;
         internal readonly Dictionary<Identity, MapPreparedResource> Resources = new();
         internal readonly Dictionary<Identity, Owner> Owners = new();
-        internal readonly Dictionary<Identity, IMapRenderUpload> Uploads = new();
+        internal readonly Dictionary<Identity, MapRenderAdmittedUpload> Uploads = new();
         internal readonly List<Owner> Created = [];
         internal MapRenderUploadPreflight? UploadAdmission;
         internal bool PublishNext, UploadsAdmitted;

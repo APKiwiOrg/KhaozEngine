@@ -246,10 +246,17 @@ until the next update, allowing a completed unpublished generation to be superse
 
 `MaxInFlightUploadCpuBytes` defaults to 256 MiB and `MaxInFlightUploadStagingGpuBytes` to 128 MiB.
 They bound unfinished uploads across accepted, pending and retiring generations. CPU admission counts each
-unfinished resource's complete preparation peak until its inputs are released, independently of the copy budget
-`MaxUploadBytesPerUpdate`. GPU staging stays charged until device completion. Contending resources wait for a
-later update. A resource larger than either in-flight limit refuses with that limit before any upload begins.
+unfinished resource's complete preparation peak until readiness is observed or its inputs are explicitly released,
+independently of the copy budget `MaxUploadBytesPerUpdate`. GPU staging stays charged until device completion.
+Contending resources wait for a later update. A resource larger than either in-flight limit refuses with that limit before any upload begins.
 Zero disables uploads requiring that allowance. Defaults for the existing resident allowances are unchanged.
+
+`IMapRenderUpload.Ready` confirms all transfer work has completed and staging is safe to release. Residency
+returns both in-flight allowances and GPU staging on that observation, even when a custom device omits the
+reservation completion callbacks. This does not return retained CPU credit. Only `InputsReleased` with a surviving
+inventory or final destruction reduces that charge. An omitted retained bound keeps the full CPU peak charged.
+Readiness settlement is idempotent with earlier or later completion callbacks. `InputsReleased` still follows
+`TransferCompleted`.
 
 Before the first upload, preflight checks all new resources' retained CPU bounds and owned GPU bytes, plus
 the attainable in-flight envelope and replacement recording storage, against the current resident allowances.

@@ -3,7 +3,7 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.MapDoc.Render3D;
 
-/// <summary>Renderer-confirmed transient release settles peak credit. Final destruction returns the remainder.</summary>
+/// <summary>Confirmed readiness ends in-flight credit. Input release and final destruction settle retained CPU.</summary>
 public sealed class MapUploadReservation : ISceneUploadReservation
 {
     readonly object _gate = new();
@@ -43,6 +43,16 @@ public sealed class MapUploadReservation : ISceneUploadReservation
             long staging = _gpu - Demand.OwnedGpuBytes;
             _gpu = Demand.OwnedGpuBytes; _transferCompleted = true;
             _owner.ReleaseUpload(0, staging, false, 0, _inFlightStaging); _inFlightStaging = 0;
+        }
+    }
+    internal void ConfirmReady()
+    {
+        lock (_gate)
+        {
+            if (_released) return;
+            TransferCompleted();
+            if (_inFlightCpu == 0) return;
+            _owner.ReleaseUpload(0, 0, false, _inFlightCpu); _inFlightCpu = 0;
         }
     }
     public void InputsReleased(long retainedCpuBytes)

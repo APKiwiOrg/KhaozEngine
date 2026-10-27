@@ -1530,26 +1530,9 @@ namespace KhaozEngine.Render3D
                     // reject skinned pixels so decals stay off characters (#235) - and it reads its OWN UBO slot (#483).
                     _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.Main, _frameOrigin, RelativeDecals(_decals));
 
-            // Animated water (Rendering gap #5): after the sky + ground decals, sampling the resolved scene depth
-            // (already valid via the ResolveDepthNormal call above the sky pass) for the shore fade. Depth test ON (so
-            // terrain/props above the surface occlude it) but depth WRITE off (so it never touches the normal/
-            // linear-depth MRT the outline pass reads below) - see Rendering.WaterRenderer / ShaderSources.WaterVert
-            // for the full reasoning. Fully skipped when nothing is queued, so a frame with no DrawWater call
-            // renders byte-identical to before this pass existed.
-            using (ProfilePass(cl, "water", executed: _waterPlanes.Count > 0))
-                if (_waterPlanes.Count > 0)
-                {
-                    _water.Draw(cl, _res, RelativeWaterPlanes(), vp, displayVp,
-                        Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin, Post.Atmosphere.Enabled);
-                    _frameStats.DrawCalls++;
-                    // The ocean FFT's remaining GPU drain (the one a frame pays to PRIME its cascades, since #398
-                    // ping-ponged the per-frame one away) is a Submit+WaitForIdle stall, not draw-call encode cost, so
-                    // it gets its own WaterSyncMs bucket (#374) rather than being misattributed to transparents. It no
-                    // longer lands INSIDE this bracket: since #423 the prime runs in PrepareFrame, before the frame's
-                    // list is even open, so there is nothing to carve out of transparentsMs - only to report. The water
-                    // renderer times that exact span with its own Stopwatch (OceanFftProducer.LastStallMs).
-                    if (EnableTiming) waterSyncMs = (float)_water.LastOceanCost.StallMs;
-                }
+            DrawWaterWithColumnInputs(cl, vp, displayVp, eye);
+            // FFT priming ran before recording. Report its Submit+WaitForIdle stall separately from encode cost.
+            if (EnableTiming && _waterPlanes.Count > 0) waterSyncMs = (float)_water.LastOceanCost.StallMs;
 
             // Modern particle sprites: after the sky + decals + water (so effects composite over water surfaces),
             // before the post chain, into ColorDepthFB with the depth test on (no write) so geometry occludes

@@ -39,6 +39,7 @@ namespace KhaozEngine.Render3D
             Release("sky", _sky.Dispose);
             Release("starfield", _starfield.Dispose);
             Release("water", _water.Dispose);
+            Release("waterColumnColor", () => _waterColumnColor?.Dispose());
             Release("overlayMeshes", _overlayMeshes.Dispose);
             Release("silhouettes", _silhouettes.Dispose);
             Release("targetOutlines", _targetOutlines.Dispose);

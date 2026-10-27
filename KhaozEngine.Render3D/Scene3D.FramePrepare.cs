@@ -137,6 +137,7 @@ namespace KhaozEngine.Render3D
         {
             if (HasBoundWater()) VerifyPreparedWaterTargets(width, height);
             EnsureSize(width, height);
+            PrepareWaterColumnInputs();
         }
     }
 }

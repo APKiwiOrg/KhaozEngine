@@ -213,6 +213,29 @@ visibility 1. A committed shadow layout replacement invalidates and retires ever
 set before retiring the old atlas graph. Failed replacements preserve the current sets. Preparation borrows
 the current resources again, and atlas, sampler and frame-buffer identity independently invalidate stale sets.
 
+## Water column scene colour
+
+When any queued plane effectively enables `WaterColumnLight`, the scene captures colour after sky and ground
+decals and before every water draw, including legacy water in the same queue. This source includes opaque
+geometry, textured billboards, beams, trails, translucent overlays, silhouettes, sky and ground decals.
+It contains no water. A water surface seen through another column-lit surface therefore shows the scene
+behind it with the farther water omitted.
+
+MSAA frames resolve the actual `MsColor` attachment into the existing single-sample `ColorTex` before water.
+Water continues writing `MsColor`, and the final colour resolve still runs after water and particles.
+Single-sample frames copy only `ColorTex` mip zero into a separate, same-format, single-mip, single-sample
+texture. The earlier temporal opaque-only copy keeps its existing position and contents.
+
+Frames without effective opt-ins perform neither transfer and allocate no full-size column target. They expose
+a stable initialized 1x1 placeholder. Source identity, target generation, dimensions, format and sample count
+invalidate cached colour sources, including same-size HDR and MSAA changes. Replaced owned copies retire
+through the scene's completion queue. The source borrows MSAA resolve targets without owning them.
+
+`Scene3D.WaterColumnLightDiagnostics` reports `WaterColumnDiagnostics(OptedInPlanes, CopyRan, CopyPath)` for the
+latest rendered frame. `OptedInPlanes` counts queued effective opt-ins, including culled planes. `CopyPath` is
+`None`, `MsaaResolve` or `SingleSampleCopy`. An empty or disabled rendered frame resets all three fields.
+`Begin` alone preserves the previous rendered result.
+
 ## Underwater lit receivers
 
 Underwater key lighting runs in every lit opaque receiver, independently of the water pass's depth sources.

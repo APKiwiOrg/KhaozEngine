@@ -563,7 +563,7 @@ public sealed class RendererPerfProtocolTests
           "workloadSha":"{{Sha}}", "baselineMainSha":"{{Sha}}", "recipes":[], "blocks":[], "controls":[],
           "conditioningFrames":300, "batchSize":3, "maximumScopeOccurrences":255,
           "runtime":{"configuration":"Release","runtimeVersion":"10.0.0","environment":{},"gcMode":"workstation","tieredCompilation":true},
-          "execution":{"backend":"vulkan","adapterPolicy":"nvidia-t4-hardware","runner":"gpu-t4-linux","workflow":"gpu-hosted-bench.yml","leg":"{{leg}}","completionPolicy":"retained-fence-batch-3/1"},
+          "execution":{"backend":"vulkan","adapterPolicy":"nvidia-t4-hardware","runner":"gpu-t4-linux","workflow":"gpu-hosted-bench.yml","leg":"{{leg}}","completionPolicy":"retained-fence-batch-3/1","lockedGraphicsClockMHz":1200},
           "limits":{"unitSeconds":600,"frameMilliseconds":10000,"coldFrameMilliseconds":120000,"jobMinutes":12},
           "budget":{"maximumBilledMinutes":15,"ratePerMinute":0.052,"currency":"USD","maximumCostUsd":0.780},
           "approval":{"reference":"owner message 2026-10-21, first Linux pilot","purpose":"validate the renderer protocol","campaignReference":"owner message 2026-10-21, two pilots and two full units","campaignMaximumUsd":7.24}

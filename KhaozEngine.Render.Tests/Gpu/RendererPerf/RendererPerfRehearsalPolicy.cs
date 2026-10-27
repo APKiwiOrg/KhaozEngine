@@ -14,9 +14,9 @@ internal static class RendererPerfRehearsalPolicy
     internal const string Reason = "SoftwareRehearsalNotPerformanceEvidence";
 
     static readonly RendererPerfExecutionPolicy Linux = new("vulkan", "mesa-lavapipe-software",
-        "ubuntu-24.04", "gpu-hosted-bench.yml", "linux-vulkan", "retained-fence-batch-3/1");
+        "ubuntu-24.04", "gpu-hosted-bench.yml", "linux-vulkan", "retained-fence-batch-3/1", null);
     static readonly RendererPerfExecutionPolicy Windows = new("d3d11", "microsoft-warp-software",
-        "windows-2025-vs2026", "gpu-hosted-bench.yml", "windows-d3d11", "retained-fence-batch-3/1");
+        "windows-2025-vs2026", "gpu-hosted-bench.yml", "windows-d3d11", "retained-fence-batch-3/1", null);
     static readonly RendererPerfLimits PilotLimits = new(5400, 60000, 120000, 120);
     static readonly RendererPerfLimits FullLimits = new(19800, 60000, 120000, 350);
     static readonly RendererPerfLimits ControlsLimits = new(5400, 60000, 120000, 120);

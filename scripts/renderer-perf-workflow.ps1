@@ -66,6 +66,13 @@ $backend = if ($env:LEGS -ceq 'windows-d3d11') { 'd3d11' } else { 'vulkan' }
 Require ($manifest.schema -ceq 'khaozengine.renderer-perf-unit/1' -and $manifest.unitId -ceq $env:RENDERER_PERF_UNIT -and $manifest.workloadSha -ceq $env:RENDERER_PERF_WORKLOAD_SHA) 'Manifest identity differs from the dispatch'
 Require ($manifest.execution.leg -ceq $env:LEGS -and $manifest.execution.runner -ceq $runner -and $manifest.execution.backend -ceq $backend -and $manifest.execution.workflow -ceq 'gpu-hosted-bench.yml') 'Manifest execution differs from the selected leg'
 Require ($manifest.execution.adapterPolicy -ceq $(if ($rehearsal) { $rehearsalPolicy.adapter } else { 'nvidia-t4-hardware' }) -and $manifest.execution.completionPolicy -ceq 'retained-fence-batch-3/1') 'Manifest adapter or completion policy differs from the execution class'
+Require ($manifest.execution.ContainsKey('lockedGraphicsClockMHz')) 'Manifest requires an explicit graphics clock policy'
+$lockedClock = $manifest.execution.lockedGraphicsClockMHz
+if ($rehearsal) {
+    Require ($null -eq $lockedClock) 'Software rehearsal requires a null graphics clock policy'
+} else {
+    Require ($lockedClock -is [long] -and $lockedClock -eq 1200) 'Paid T4 graphics clock must be an explicit 1200 MHz integer'
+}
 Require ($manifest.preset -cne 'pilot' -or $env:LEGS -cne 'windows-vulkan') 'Windows Vulkan has no initial pilot'
 $minutes = if ($rehearsal) { $rehearsalPolicy.minutes } elseif ($manifest.preset -ceq 'pilot') { if ($env:LEGS -ceq 'linux-vulkan') { 12 } else { 20 } } else { 35 }
 $billedMinutes = if ($rehearsal) { $minutes } else { $minutes + 3 } # Rounded-up cleanup overrun in run 40435928569.
@@ -84,7 +91,7 @@ if ($Mode -ceq 'Select') {
     $class = if ($rehearsal) { 'rehearsal' } else { 'performance' }
     $device = if ($rehearsal) { if ($backend -ceq 'vulkan') { 'llvmpipe' } else { '' } } else { 'discrete' }
     $d3d = if ($rehearsal) { if ($backend -ceq 'd3d11') { 'warp' } else { '' } } else { 'NVIDIA' }
-    $matrix = @{ include = @(@{ leg = $env:LEGS; runner = $runner; backend = $nativeBackend; jobMinutes = $minutes; executionClass = $class; vulkanDevice = $device; d3dAdapter = $d3d }) } | ConvertTo-Json -Compress -Depth 4
+    $matrix = @{ include = @(@{ leg = $env:LEGS; runner = $runner; backend = $nativeBackend; jobMinutes = $minutes; executionClass = $class; vulkanDevice = $device; d3dAdapter = $d3d; lockedGraphicsClockMHz = $lockedClock }) } | ConvertTo-Json -Compress -Depth 4
     "matrix=$matrix"
     "jobMinutes=$minutes"
     exit 0

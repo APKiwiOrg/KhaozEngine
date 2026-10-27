@@ -12,8 +12,20 @@ internal sealed class TileCameraFadeState
 
     readonly Dictionary<long, float> _fades = new();
     readonly List<long> _ids = new();
+    readonly HashSet<(RegionCoord Region, int Plane)> _regions = new();
 
     public int Count => _fades.Count;
+
+    /// <summary>Whether the view's camera fade is configured at all, even with nothing faded this frame.</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>Whether any faded object anchors in this region-plane.</summary>
+    public bool AnyOn(RegionCoord region, int plane) => _regions.Count > 0 && _regions.Contains((region, plane));
+
+    /// <summary>Records that a faded object anchors in this region-plane, after <see cref="ClearRegions"/>.</summary>
+    public void MarkRegion(RegionCoord region, int plane) => _regions.Add((region, plane));
+
+    public void ClearRegions() => _regions.Clear();
 
     public bool TryGet(long objectId, out float fade) => _fades.TryGetValue(objectId, out fade);
 
@@ -50,5 +62,9 @@ internal sealed class TileCameraFadeState
 
     public void Remove(long objectId) => _fades.Remove(objectId);
 
-    public void Clear() => _fades.Clear();
+    public void Clear()
+    {
+        _fades.Clear();
+        _regions.Clear();
+    }
 }

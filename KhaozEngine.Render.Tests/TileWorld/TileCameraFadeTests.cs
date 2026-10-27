@@ -17,7 +17,7 @@ public class TileCameraFadeTests
     const float Half = 0.075f;
     static readonly RegionCoord Region = TileRenderTestData.Region;
 
-    static TileWorldCatalogs Catalogs() => TileWorldCatalogs.Merge(TileRenderTestData.Catalogs,
+    internal static TileWorldCatalogs Catalogs() => TileWorldCatalogs.Merge(TileRenderTestData.Catalogs,
         TileWorldCatalogs.LoadJson("""
             { "archetypes": [
               { "id": "fade_box", "name": "fade box", "meshRef": "fade/box.glb" },
@@ -311,7 +311,7 @@ public class TileCameraFadeTests
         throw new InvalidOperationException("No point both inside the greybox tree and inside the interior field.");
     }
 
-    static (Vector3[] Positions, int[] Indices) Flatten(IReadOnlyList<GltfMeshPart> parts)
+    internal static (Vector3[] Positions, int[] Indices) Flatten(IReadOnlyList<GltfMeshPart> parts)
     {
         var positions = new List<Vector3>();
         var indices = new List<int>();
@@ -324,7 +324,7 @@ public class TileCameraFadeTests
         return (positions.ToArray(), indices.ToArray());
     }
 
-    sealed class ShapeResolver : ITileMeshResolver
+    internal sealed class ShapeResolver : ITileMeshResolver
     {
         readonly Dictionary<string, IReadOnlyList<GltfMeshPart>> _cache = new(StringComparer.Ordinal);
 

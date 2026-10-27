@@ -9,10 +9,10 @@ public sealed partial class TileWorldView
 {
     TileCameraFadeOptions? _cameraFade;
     TileCameraContainment? _cameraContainment;
+    // Created with the view, before the prop clusters that read it, and never replaced.
     readonly TileCameraFadeState _cameraFades = new();
     HashSet<long> _cameraInside = new();
     HashSet<long> _cameraWasInside = new();
-    readonly HashSet<(RegionCoord Region, int Plane)> _cameraFadeRegions = new();
 
     /// <summary>
     /// The camera fade, off while null (the default). When set, <see cref="UpdateCameraFade"/> fades out the colour
@@ -27,11 +27,11 @@ public sealed partial class TileWorldView
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             _cameraFade = value;
+            _cameraFades.Enabled = value is not null;
             if (value is not null) return;
             _cameraFades.Clear();
             _cameraInside.Clear();
             _cameraWasInside.Clear();
-            _cameraFadeRegions.Clear();
         }
     }
 
@@ -66,7 +66,7 @@ public sealed partial class TileWorldView
         _cameraFades.Advance(_cameraInside,
             options.FadeSeconds > 0f ? dt / options.FadeSeconds : float.PositiveInfinity);
 
-        _cameraFadeRegions.Clear();
+        _cameraFades.ClearRegions();
         foreach (long id in _cameraFades.Ids())
         {
             // An object that left Gameplay residency or the document is not drawn, so its fade has nothing to hide
@@ -76,7 +76,7 @@ public sealed partial class TileWorldView
                 _cameraFades.Remove(id);
                 continue;
             }
-            _cameraFadeRegions.Add((RegionCoord.Of(o.X, o.Z), o.Plane));
+            _cameraFades.MarkRegion(RegionCoord.Of(o.X, o.Z), o.Plane);
         }
     }
 
@@ -85,6 +85,5 @@ public sealed partial class TileWorldView
 
     /// <summary>Whether any faded object anchors in this region-plane, so a draw path can skip the per-placement
     /// split everywhere else.</summary>
-    internal bool HasCameraFadeOn(RegionCoord region, int plane) =>
-        _cameraFadeRegions.Count > 0 && _cameraFadeRegions.Contains((region, plane));
+    internal bool HasCameraFadeOn(RegionCoord region, int plane) => _cameraFades.AnyOn(region, plane);
 }

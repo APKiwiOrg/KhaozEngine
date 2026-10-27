@@ -255,7 +255,7 @@ public sealed partial class TileWorldView : IDisposable
             _animatedFoliageStyles = new AnimatedFoliageStyleSnapshot(_options.AnimatedFoliageArchetypes,
                 _options.AnimatedFoliageStyles, catalogs, _propMeshes);
             _propClusters = new TileWorldPropClusters(scene, catalogs, resolver, _propMeshes, validatedPropLayers,
-                doc.TileSize, buildQueueOptions, dispatcher);
+                doc.TileSize, buildQueueOptions, dispatcher, _cameraFades);
         }
         catch
         {

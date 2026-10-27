@@ -53,7 +53,7 @@ bool clusterForFragment(vec3 worldPos, out uint clusterIndex) {
 
 ";
 
-    internal const string UnderwaterKeyGlsl = WaterRefractionShaderSource.Glsl + @"
+    internal const string UnderwaterKeyGlsl = WaterRefractionShaderSource.RefractiveIndexGlsl + @"
 struct UnderwaterKey {
     bool submerged;
     float depth;

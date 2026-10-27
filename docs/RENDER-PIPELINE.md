@@ -259,6 +259,12 @@ created only for the first opted-in column frame, so scenes and frames without w
 resources. Later replacements retain deferred retirement. The colour source is released in the existing water
 disposal stage, after its water sets, preserving the later scene disposal stages.
 
+Cascade projection, coverage and blend policy share C# GLSL text fragments with lit receivers. The refraction
+constant is shared separately from water's sun-travel function. Lit composition retains its original statements,
+identifiers, whitespace and ordering, so every non-water program keeps its pre-M5 shader emission.
+`NonWaterShaderSourceEqualityTests` pins all 248 non-water stage sources to main at `0af218d5b`, alongside the
+existing HLSL, MSL and SPIR-V emission pins. Only the four water programs' emission pins change for this landing.
+
 The first landing reads the copy at the original pixel with mip-zero `texelFetch`. It unprojects two depths
 through `InvViewProj` to recover the incident direction for perspective and orthographic cameras, then refracts
 through the upward surface normal with the shared index `1.333`. Vertical `opticalBedDepth` gives the path

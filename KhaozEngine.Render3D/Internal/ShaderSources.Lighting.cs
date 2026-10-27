@@ -39,7 +39,7 @@ layout(std430, set=0, binding=2) readonly buffer PointLightClusterBuffer {
         //      ambient / emissive are derived differently per pass. Dry fragments retain the existing accumulation
         //      with unit water transmittance. Underwater fragments attenuate only the key colour before adding fill
         //      and point lights, leaving the callers' ambient and emissive terms alone.
-        public const string LightingCommonGlsl = ClusterForFragmentGlsl + UnderwaterKeyGlsl + CascadeShadowSelectionSource.Glsl + @"
+        public const string LightingCommonGlsl = ClusterForFragmentGlsl + UnderwaterKeyGlsl + @"
 vec3 indirectDiffuse(vec3 N, vec3 worldPos) {
     if (IndirectParams.x < 0.5) return Ambient.rgb;
     float x = N.x, y = N.y, z = N.z;
@@ -69,9 +69,8 @@ vec3 indirectDiffuse(vec3 N, vec3 worldPos) {
 // atlas texture + sampler are parameters, because their set/binding differ per fragment and GLSL cannot reference a
 // fragment's own bindings from a shared function. Texture + sampler are passed SEPARATELY (Vulkan-style) and combined
 // at the point of use inside. GLSL forbids a sampler2D(...) constructor as a call ARGUMENT.
-bool projectCascade(int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margin, out vec2 uv, out float z) {
-    return cascadeProject(ShadowMat[i], worldPos, Ngeo, ShadowNormalOffsets[i], slopeSin, margin, uv, z);
-}
+bool projectCascade(int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margin, out vec2 uv, out float z) {"
+    + CascadeShadowSelectionSource.LitProjectionGlsl + @"}
 " + CascadeShadowFilterGlsl + UnderwaterShadowKernelGlsl + UnderwaterSubmergedOcclusionGlsl + @"
 float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, vec3 Ngeo, float ndl) {
     fragmentUnderwaterKey = underwaterKeyForFragment(worldPos);
@@ -107,7 +106,7 @@ float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, 
         // Outermost cascade: nothing beyond it, so fade to fully lit toward its UV border (the coverage-limit
         // fade, sitting at ShadowMaxDistance - ShadowParams2.y documents that distance for downstream effects).
         float border = ShadowParams2.z;
-        float fade = cascadeCoverage(edge, border);
+        float fade = " + CascadeShadowSelectionSource.CoverageExpression + @";
         // The march has its own receiver coverage fade. The entry's border cannot erase a covered caster.
         if (fragmentUnderwaterKey.submerged)
             return mix(1.0, mix(1.0, lit, fade) * submergedLit, strength);
@@ -126,7 +125,7 @@ float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, 
                 ? filterKeyShadowWidened(uv2, z2 - bias, sel + 1,
                     underwaterKernelRadius(fragmentUnderwaterKey, sel + 1), gl_FragCoord.xy)
                 : pcfCascade(shadowAtlas, shadowSamp, sel + 1, count, uv2, z2 - bias, texelStep);
-            lit = mix(lit2, lit, cascadeBlendWeight(edge, blend));   // at the border (edge 0) fully the next cascade
+            lit = mix(lit2, lit, " + CascadeShadowSelectionSource.BlendWeightExpression + @");   // at the border (edge 0) fully the next cascade
         }
     }
     // strength 1 removes the key light fully in shadow, below 1 leaves a partial key term, and the fade/blend paths above ease the result toward fully lit.

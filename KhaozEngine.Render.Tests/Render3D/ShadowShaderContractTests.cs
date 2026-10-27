@@ -23,7 +23,7 @@ namespace KhaozEngine.Tests.Render3D
     public sealed class ShadowShaderContractTests
     {
         // The exact bounds test the receiver applies to a cascade-local depth. Both ends, in the CPU mirror's order.
-        const string DepthBoundsGlsl = "depth < 0.0 || depth > 1.0";
+        const string DepthBoundsGlsl = "z < 0.0 || z > 1.0";
 
         // The depth pass's near-plane pancake, in its two halves: the rasterized clip depth (vertex) and the stored
         // R32F value (fragment). Split deliberately - clamping the VARYING at the vertex instead would tilt the

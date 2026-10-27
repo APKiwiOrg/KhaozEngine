@@ -185,7 +185,7 @@ public sealed class WaterColumnShadowBindingTests
     {
         string shader = ShaderSources.WaterFrag;
         Assert.Contains("bool cascadeProject(mat4 matrix", shader, StringComparison.Ordinal);
-        Assert.Contains("depth < 0.0 || depth > 1.0", shader, StringComparison.Ordinal);
+        Assert.Contains("z < 0.0 || z > 1.0", shader, StringComparison.Ordinal);
         Assert.Contains("normalOffset * slopeSin", shader, StringComparison.Ordinal);
         Assert.Contains("float margin = texelStep * 2.0;", shader, StringComparison.Ordinal);
         Assert.Contains("float bias = ColumnShadowParams.z + ColumnShadowParams.w * slope;", shader, StringComparison.Ordinal);

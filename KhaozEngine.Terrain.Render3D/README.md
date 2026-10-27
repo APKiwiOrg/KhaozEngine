@@ -283,6 +283,8 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   native-row charge. The inventory is retained and charged once with its CPU build or owning batch, then released
   with that owner's receipt. Welded merges construct the same scale, rotation and translation matrix
   as `PropHlod` and call `Vector3.Transform`, preserving multiplication and cancellation rounding at cell boundaries.
+  Their normals turn by that placement's binary32 yaw, as `PropHlod` does, rather than the anchor-local row's
+  binary64 rotation, which can differ when a composed yaw does not round exactly.
   Positive weld cells use the same absolute-world binary32 positions, division/floor lattice and
   centroid accumulation as `PropHlod`. Only final proxy and selected contribution vertices subtract the storage
   anchor, in binary64. Selected contributions share that lattice and the full cluster's averages.

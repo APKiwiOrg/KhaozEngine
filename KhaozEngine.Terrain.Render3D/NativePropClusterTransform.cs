@@ -22,7 +22,9 @@ internal readonly struct NativePropClusterTransform
         vertex.X * (double)_pose.M12 + vertex.Y * (double)_pose.M22 + vertex.Z * (double)_pose.M32 + _y,
         vertex.X * (double)_pose.M13 + vertex.Y * (double)_pose.M23 + vertex.Z * (double)_pose.M33 + _z);
 
+    internal static Matrix4x4 Binary32Rotation(PropPlacement placement) => Matrix4x4.CreateRotationY(placement.Yaw);
+
     internal static Matrix4x4 Binary32Matrix(PropPlacement placement) =>
-        Matrix4x4.CreateScale(placement.Scale) * Matrix4x4.CreateRotationY(placement.Yaw) *
+        Matrix4x4.CreateScale(placement.Scale) * Binary32Rotation(placement) *
         Matrix4x4.CreateTranslation(placement.X, placement.Y, placement.Z);
 }

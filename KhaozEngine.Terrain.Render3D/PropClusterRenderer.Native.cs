@@ -43,11 +43,13 @@ public sealed partial class PropClusterRenderer
             // Weld the same absolute binary32 positions as the released route. Storage anchors
             // must change neither cell membership nor the order and precision of centroid accumulation.
             var transform = new NativePropClusterTransform(instance, request.Anchor);
-            var world = weld ? NativePropClusterTransform.Binary32Matrix(request.WeldPlacements![member]) : default;
+            var placement = weld ? request.WeldPlacements![member] : default;
+            var world = weld ? NativePropClusterTransform.Binary32Matrix(placement) : default;
             member++;
             pose.Translation = Vector3.Zero;
             if (!Matrix4x4.Invert(pose, out var inverse)) throw new ArgumentException("Native cluster requires invertible transforms.", nameof(request));
-            var normal = Matrix4x4.Transpose(inverse);
+            // Welded normals turn by the same binary32 yaw as welded positions, as in the released route.
+            var normal = weld ? NativePropClusterTransform.Binary32Rotation(placement) : Matrix4x4.Transpose(inverse);
             uint start = (uint)vertex;
             foreach (var v in source.Vertices)
             {

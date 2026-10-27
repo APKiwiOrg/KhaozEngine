@@ -49,6 +49,22 @@ public sealed class NativeProxyProvenanceTests
     }
 
     [Fact]
+    public void PublicCluster_WeldedNormalsUseOriginalBinary32Yaw()
+    {
+        // The effective yaw rounds to 33554432f, about one radian away. The released route lights
+        // welded proxies with that rounded rotation, the same one its positions use.
+        var pose = new MapEffectiveTransform(.5, 0, 0, 33554433d, 1);
+        Assert.NotEqual(pose.YawRadians, (double)(float)pose.YawRadians);
+        var (scene, routing, request) = Request(Wide, pose);
+        var expected = PropHlod.BuildMergedMesh([new("prop-a", .5f, 0, 0, 1, 33554432f, 0)], request.Layer.HlodSourceMeshes!, 1);
+        Assert.NotEqual(0, expected.TriangleCount);
+        Assert.All(expected.Vertices, v => Assert.True(MathF.Abs(v.Normal.Y) < .5f));
+        using var build = NativeMapPlacements.PrepareCluster(scene, routing, request);
+        Assert.Equal(expected.Indices32, build.MergedMesh.Indices32);
+        Assert.Equal(expected.Vertices.Select(v => v.Normal), build.MergedMesh.Vertices.Select(v => v.Normal));
+    }
+
+    [Fact]
     public void PublicCluster_ReorderedOriginalPlacementsRefuseBeforeMerge()
     {
         var (scene, routing, original) = Request(2);
@@ -67,14 +83,21 @@ public sealed class NativeProxyProvenanceTests
         return new(original.Key, original.Generation, original.Area, layer, rows, original.Anchor, weldPlacements);
     }
 
-    static (MapScopedScene Scene, MapPlacementRouting Routing, NativePropClusterRequest Request) Request(int count = 1)
+    static readonly Vector3[] Narrow = [new(.1f, 0, 0), new(.2f, 0, 0), new(.1f, 1, 0),
+        new(.1f, 0, 0), new(.2f, 0, 0), new(.1f, 1, 0)];
+    // Wide enough that a one-metre weld keeps both triangles at any yaw.
+    static readonly Vector3[] Wide = [new(0, 0, 0), new(3, 0, 0), new(0, 3, 0),
+        new(0, 0, 0), new(3, 0, 0), new(0, 3, 0)];
+
+    static (MapScopedScene Scene, MapPlacementRouting Routing, NativePropClusterRequest Request) Request(int count = 1) =>
+        Request(Narrow, Enumerable.Range(1, count).Select(i => new MapEffectiveTransform(-.1f * i, 0, 0, 0, 1)).ToArray());
+
+    static (MapScopedScene Scene, MapPlacementRouting Routing, NativePropClusterRequest Request) Request(
+        Vector3[] positions, params MapEffectiveTransform[] poses)
     {
-        Vector3[] positions = [new(.1f, 0, 0), new(.2f, 0, 0), new(.1f, 1, 0),
-            new(.1f, 0, 0), new(.2f, 0, 0), new(.1f, 1, 0)];
         var closure = NativeRenderAssetFixtures.Placements(
             coarsestLod: NativeProxyFixtures.Coarsest(positions, sameMaterial: true), sourceUnitsToMetres: 1);
-        var scene = NativeMapClusterCellTests.Scene(closure, 1,
-            Enumerable.Range(1, count).Select(i => new MapEffectiveTransform(-.1f * i, 0, 0, 0, 1)).ToArray());
+        var scene = NativeMapClusterCellTests.Scene(closure, 1, poses);
         using var assets = NativeMapPlacementTests.Assets(closure);
         var policy = new MapPlacementPolicy([new("selected", new HashSet<string> { "prop-a" }, [10, 20], 4, 1000, 30, 10, 1, true)], 1000);
         var routing = MapPlacementRouting.Create(scene, policy, new HashSet<string>()).Routing!;

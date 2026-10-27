@@ -114,7 +114,8 @@ colour provenance across parts. Selected loading retains the verified tier's mea
 Re-decoding reserves that peak in scene workspace before reading the GLB, without repeating the allocating
 metadata and embedded-buffer scan. Success and failure release this temporary reservation.
 Positive weld cells use the original binary32 placement from canonical source poses to construct the
-same scale, yaw and translation matrix and `Vector3.Transform` positions as `PropHlod`.
+same scale, yaw and translation matrix and `Vector3.Transform` positions as `PropHlod`, and turn normals by
+the same binary32 yaw.
 Each positive-weld cluster request owns an immutable, member-aligned `WeldPlacements` inventory admitted
 before construction. Public `PrepareCluster` refuses missing provenance or a mismatch with any canonical
 source pose before merging. The inventory is charged once with the build or its owning batch, released with

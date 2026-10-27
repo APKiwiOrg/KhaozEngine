@@ -48,14 +48,16 @@ Require ((Get-Item -LiteralPath $manifestPath).Length -le 65536) 'Manifest excee
 $hash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
 Require ($hash -ceq $env:RENDERER_PERF_MANIFEST_SHA256) 'Manifest byte hash differs from the dispatch'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -AsHashtable -Depth 32
-Require ($manifest.preset -cin @('pilot', 'full', 'rehearsal', 'rehearsal-full')) 'Unknown renderer preset'
-$rehearsal = $manifest.preset -cin @('rehearsal', 'rehearsal-full')
+Require ($manifest.preset -cin @('pilot', 'full', 'rehearsal', 'rehearsal-full', 'rehearsal-controls')) 'Unknown renderer preset'
+$rehearsal = $manifest.preset -cin @('rehearsal', 'rehearsal-full', 'rehearsal-controls')
 $rehearsalPolicy = if ($rehearsal) {
     switch -CaseSensitive ("$($manifest.preset)/$($env:LEGS)") {
         'rehearsal/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 5400; minutes = 120 } }
         'rehearsal/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 5400; minutes = 120 } }
         'rehearsal-full/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 19800; minutes = 350 } }
         'rehearsal-full/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 19800; minutes = 350 } }
+        'rehearsal-controls/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 5400; minutes = 120 } }
+        'rehearsal-controls/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 5400; minutes = 120 } }
         default { throw 'No software rehearsal class admits this preset and leg' }
     }
 } else { $null }

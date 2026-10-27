@@ -39,7 +39,7 @@ public sealed class RendererPerfExecutionEvidenceTests
 
     internal static RendererPerfReport WithTrace(RendererPerfReport report)
     {
-        var sample = report.Blocks[0].Measured[0];
+        var sample = report.Blocks.SelectMany(b => b.Measured).Concat(report.Controls.SelectMany(c => c.Measured)).First();
         var conditioning = Enumerable.Range(0, report.Manifest.ConditioningFrames)
             .Select(i => sample with { FrameId = i, SequenceIndex = i % 256 }).ToImmutableArray();
         var batches = new List<RendererPerfBatchReport>();

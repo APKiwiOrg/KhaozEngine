@@ -14,7 +14,7 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
     RendererPerfRuntimePolicy Runtime, RendererPerfExecutionPolicy Execution, RendererPerfLimits Limits,
     RendererPerfBudget Budget, RendererPerfApproval Approval)
 {
-    internal RendererPerfExecutionClass ExecutionClass => Preset is "rehearsal" or "rehearsal-full" ? RendererPerfExecutionClass.Rehearsal : RendererPerfExecutionClass.Performance;
+    internal RendererPerfExecutionClass ExecutionClass => Preset is "rehearsal" or "rehearsal-full" or "rehearsal-controls" ? RendererPerfExecutionClass.Rehearsal : RendererPerfExecutionClass.Performance;
 
     internal int TotalFrameCount => checked(ConditioningFrames + Blocks.Sum(b => checked(b.WarmupFrames + b.MeasuredFrames))
         + Controls.Sum(c => checked(c.WarmupFrames + c.MeasuredFrames)));
@@ -69,14 +69,14 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
             && manifest.UnitId[0] != '-', "Identity", "Unit ID must be a safe lowercase filename token.");
         Hash(manifest.WorkloadSha, 40);
         Hash(manifest.BaselineMainSha, 40);
-        Require(manifest.Preset is "pilot" or "full" or "rehearsal" or "rehearsal-full", "Preset", "Unknown renderer preset.");
+        Require(manifest.Preset is "pilot" or "full" or "rehearsal" or "rehearsal-full" or "rehearsal-controls", "Preset", "Unknown renderer preset.");
         bool pilot = manifest.ExecutionClass == RendererPerfExecutionClass.Rehearsal
             ? RendererPerfRehearsalPolicy.Class(manifest).Schedule == RendererPerfRehearsalSchedule.Pilot : manifest.Preset == "pilot";
         RendererPerfExecutionPolicy execution = manifest.Execution;
         Require(execution.Leg is "linux-vulkan" or "windows-d3d11" or "windows-vulkan", "Preset", "Unsupported hosted leg.");
         Require(!pilot || execution.Leg != "windows-vulkan", "Preset", "Windows Vulkan has no initial pilot preset.");
         Require(manifest.BatchSize == 3 && manifest.MaximumScopeOccurrences == 255
-            && manifest.ConditioningFrames == (pilot ? 300 : 1200), "Preset", "Pacing, scope capacity or conditioning count differs from the preset.");
+            && manifest.ConditioningFrames == (manifest.Preset == "rehearsal-controls" ? 3 : pilot ? 300 : 1200), "Preset", "Pacing, scope capacity or conditioning count differs from the preset.");
         if (manifest.ExecutionClass == RendererPerfExecutionClass.Rehearsal) RendererPerfRehearsalPolicy.Validate(manifest);
         else RendererPerfPaidPolicy.Validate(manifest);
         RendererPerfRuntimePolicy runtime = manifest.Runtime;
@@ -89,11 +89,12 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
 
     static void ValidateSchedule(RendererPerfManifest manifest, bool pilot)
     {
+        bool controlsOnly = manifest.Preset == "rehearsal-controls";
         string[] versions = ["empty/1", "village/1", "outdoors/1", "crowd/1", "effects-ui/1"];
-        Require(!manifest.Recipes.IsDefault && manifest.Recipes.Length == (pilot ? 1 : 5), "Preset", "Recipe list is incomplete.");
+        Require(!manifest.Recipes.IsDefault && manifest.Recipes.Length == (pilot || controlsOnly ? 1 : 5), "Preset", "Recipe list is incomplete.");
         for (int i = 0; i < manifest.Recipes.Length; i++)
         {
-            int scene = pilot ? 3 : i;
+            int scene = pilot || controlsOnly ? 3 : i;
             RendererPerfRecipeIdentity recipe = manifest.Recipes[i];
             Require(recipe.SceneId == $"S{scene}" && recipe.Version == versions[scene]
                 && recipe.Profile == (scene == 0 ? "empty-native-1080/1" : "renderer-full-native-1080/1"),
@@ -103,6 +104,13 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
             Hash(recipe.ShaderSha256, 64);
             Hash(recipe.GeometrySha256, 64);
             Hash(recipe.AssetSha256, 64);
+        }
+        if (controlsOnly)
+        {
+            Require(!manifest.Blocks.IsDefault && manifest.Blocks.IsEmpty, "Preset", "All-controls rehearsal has no scene blocks.");
+            ValidateControls(manifest, false);
+            Require(manifest.TotalFrameCount == 2307, "Preset", "All-controls frame accounting does not reconcile.");
+            return;
         }
         Require(!manifest.Blocks.IsDefault && manifest.Blocks.Length == (pilot ? 2 : 30), "Preset", "Expanded block list is incomplete.");
         int blockIndex = 0;
@@ -118,6 +126,12 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
                         pilot ? 64 : 192, pilot ? 128 : 256), "Preset", "Expanded block order or frame count differs from the preset.");
                 }
             }
+        ValidateControls(manifest, pilot);
+        Require(manifest.TotalFrameCount == (pilot ? 1260 : 16944), "Preset", "Unit frame accounting does not reconcile.");
+    }
+
+    static void ValidateControls(RendererPerfManifest manifest, bool pilot)
+    {
         int[] controlIds = pilot ? [1, 4, 5, 7, 9, 11] : Enumerable.Range(1, 12).ToArray();
         Require(!manifest.Controls.IsDefault && manifest.Controls.Length == controlIds.Length, "Preset", "Control list is incomplete.");
         for (int i = 0; i < controlIds.Length; i++)
@@ -127,7 +141,6 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
                 && control.MeasuredFrames == (pilot ? 64 : 128), "Preset", "Control order, version or frame count differs from the preset.");
             Hash(control.WorkSha256, 64);
         }
-        Require(manifest.TotalFrameCount == (pilot ? 1260 : 16944), "Preset", "Unit frame accounting does not reconcile.");
     }
 
     internal static T ReadJson<T>(ReadOnlySpan<byte> utf8, int maximumBytes)

@@ -64,6 +64,9 @@ Terrain uses Render3D's ground pipeline, without a TileWorld dependency. Its ord
 numeric IDs to albedo layers. Vertex Color carries four underlay weights, Uv.xy and Tangent.xy carry their
 slots, Tangent.z is one, and Tangent.w names the optional overlay slot plus one. The overlay takes the
 remaining weight. Feather tessellation stays on the canonical face, with a 0.2 m inward smoothstep band.
+Within each physical surface, feather boundaries follow visible material occupancy across paint and patch
+partitions. Matching hard-filled material and matching overlays over different underlays continue without
+an interior feather, regardless of their feather flags or paint identities.
 Its world-space refinement demand is admitted before render tessellation. Faces that cannot retain that
 sampling density within the captured scene allowance refuse with `CapacityExceeded`.
 Canonical geometry never changes with observer distance. Ceilings retain inward normals and wall sides

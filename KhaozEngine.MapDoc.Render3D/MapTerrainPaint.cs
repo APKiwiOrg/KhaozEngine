@@ -12,10 +12,11 @@ namespace KhaozEngine.MapDoc.Render3D;
 /// Shared canonical diagonals and collinear subdivisions cancel before any distance is sampled.</summary>
 internal static class MapTerrainPaint
 {
-    internal readonly record struct FeatherKey(string Owner, string? Paint, ushort Underlay, ushort Overlay);
+    internal readonly record struct FeatherKey(string Owner, ushort Material);
     internal readonly record struct Edge(MapWideXz A, MapWideXz B);
     readonly record struct Line(bool Vertical, MapWideRational Slope, MapWideRational Intercept);
-    internal static FeatherKey Key(MapTerrainPartition p) => new(p.Face.OwnerId, p.PaintId, p.Paint.Underlay, p.Paint.Overlay);
+    internal static FeatherKey Key(MapTerrainPartition p) => new(p.Face.OwnerId,
+        p.Paint.OverlayCovers && p.Paint.Overlay != 0 ? p.Paint.Overlay : p.Paint.Underlay);
 
     internal static IEnumerable<MapTerrainPartition> Partition(MapTerrainCanonicalFace face,
         IEnumerable<MapPaintRegion> published, MapSceneAdmission admission, MapPreparationReservation scratch)
@@ -83,15 +84,19 @@ internal static class MapTerrainPaint
         IReadOnlyList<MapTerrainPartition> partitions, MapSceneAdmission admission)
     {
         using var preparation = admission.BeginPreparation();
-        int selected = partitions.Count(p => p.Paint.Feather && p.Paint.OverlayCovers && p.Paint.Overlay != 0 &&
-            p.Paint.Underlay != 0 && p.Paint.Underlay != p.Paint.Overlay);
-        admission.ReserveBytes(checked(128L * selected));
+        var result = new Dictionary<FeatherKey, IReadOnlyList<Edge>>();
+        if (!partitions.Any(NeedsFeather))
+        {
+            preparation.Complete(0);
+            return result;
+        }
+        admission.ReserveBytes(checked(128L * partitions.Count));
         using var scratch = admission.Workspace();
         using var indexStorage = admission.Workspace();
         long indexBytes = 0, edgeBytes = 0;
-        var result = new Dictionary<FeatherKey, IReadOnlyList<Edge>>();
-        foreach (var group in partitions.Where(p => p.Paint.Feather && p.Paint.OverlayCovers && p.Paint.Overlay != 0 &&
-            p.Paint.Underlay != 0 && p.Paint.Underlay != p.Paint.Overlay).GroupBy(Key))
+        // An owner identifies the physical surface. Within it, visible material occupancy alone
+        // defines the boundary, including hard fills and paint over a different underlay.
+        foreach (var group in partitions.GroupBy(Key).Where(g => g.Any(NeedsFeather)))
         {
             using var groupPreparation = admission.BeginPreparation();
             var lines = new Dictionary<Line, SortedDictionary<MapWideRational, (MapWideXz Point, int Delta)>>();
@@ -149,4 +154,7 @@ internal static class MapTerrainPaint
         preparation.Complete(checked(indexBytes + edgeBytes));
         return result;
     }
+
+    static bool NeedsFeather(MapTerrainPartition p) => p.Paint.Feather && p.Paint.OverlayCovers &&
+        p.Paint.Overlay != 0 && p.Paint.Underlay != 0 && p.Paint.Underlay != p.Paint.Overlay;
 }

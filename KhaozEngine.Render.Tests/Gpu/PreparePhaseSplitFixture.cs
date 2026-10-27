@@ -17,6 +17,10 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class PreparePhaseSplitFixture : IDisposable
 {
     const int Width = 64, Height = 40, Frames = 8;
+    readonly int? _recordingSlots;
+    public PreparePhaseSplitFixture() { }
+    internal PreparePhaseSplitFixture(int recordingSlots) => _recordingSlots = recordingSlots;
+    internal int RetireCap { get { EnsureScene(); return _scene!.RetireSealedBatchCap; } }
     GpuDeviceContext? _gpu;
     PostChainRig.Output? _output;
     FrameOutputDevice? _device;
@@ -48,7 +52,9 @@ public sealed class PreparePhaseSplitFixture : IDisposable
     void EnsureScene()
     {
         if (_scene is not null) return;
-        _gpu = GpuDeviceContext.CreateHeadless();
+        _gpu = _recordingSlots is { } slots
+            ? MetalRecordingCapacityFixture.WithSlots(slots, () => GpuDeviceContext.CreateHeadless(GpuBackendKind.MetalNative))
+            : GpuDeviceContext.CreateHeadless();
         _output = new PostChainRig.Output(_gpu.GpuDevice, Width, Height);
         _device = new FrameOutputDevice(_gpu.GpuDevice, _output);
         _scene = new Scene3D(_device, _output.Framebuffer.Outputs);

@@ -710,12 +710,16 @@ controller. Accepted timed substeps hand the remaining time, climb budget, carry
 binding between land, swimming and water-origin flight. Swimming supplies vertical dynamics, while
 shared shell motion and footprint placement prove travel and landings. Commitments, facing, ground
 signals and land jumps resolve once for the whole tick. An exhausted eight-segment guard holds the
-whole input. Submerged bed contacts clip descent without granting land footing. Certified walkable
+whole input. Submerged walkable bed contacts clip descent and banks rising above the feet without granting
+land footing. A fluid floor seats on its surface without spending the land climb budget. Certified walkable
 or steep support at the axis remains a floor for later water segments that start at or below it,
 including an unraised rejected seat. Those segments clip downward velocity without sinking farther.
+A refused lift onto a bank above the whole travelled span blocks the tick, since an unraised fallback
+would leave the swimming feet inside that bank.
 A swimming segment seeks footing whatever the sign of its buoyant vertical speed, because a waterline
-settle can approach rest from below forever. Rising, it lands only on walkable support above its highest
-feet that grants footing, so a body reaches a rising bank, while a bed it rises off seats nothing.
+settle can approach rest from below forever. Rising, it contacts only walkable support above its highest
+feet, so a bed it rises off seats nothing. A bank deeper than the seated swim exit line keeps the body
+Swimming/Surface on the bed. Once that same depth test allows footing, the body lands Grounded/None.
 The existing legacy swimming path is unchanged. The generic fixtures do not establish native
 producer acceptance or a playable consumer feature.
 

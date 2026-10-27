@@ -67,7 +67,8 @@ internal static class AirPass
     /// <summary>As <see cref="Step"/>, with <paramref name="medium"/> classifying footing and owner changes and
     /// <paramref name="verticalDisplacement"/>, when given, replacing the integrated vertical move. A
     /// <paramref name="buoyant"/> body rides a waterline rather than an arc, so its rising substeps also run the
-    /// support query and land on walkable support above their highest feet.</summary>
+    /// support query and contact walkable support above their highest feet, clipping to a submerged bed or
+    /// landing when it allows footing.</summary>
     internal static AirStepResult StepWithMedium(Vector3 feet, Vector2 velocity, float verticalVelocity, float dt,
         float gravity, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
         ContactQueryContext queries, double? climbBudget = null,
@@ -156,23 +157,28 @@ internal static class AirPass
                 new FootSupportQuery(axis, high, footRadius, tuning.StepHeight, MathF.Max(0f, high - low),
                     cosMaxSlope));
             // A buoyant body settles on its waterline, so the sign of its vertical speed says nothing about its legs.
-            // Rising, it takes only walkable support that rose above its highest feet, the landing a descending
-            // substep makes there. A bed it rose off seats nothing, and analytic terrain has no shell to stop the legs.
+            // Rising, it takes only walkable support that rose above its highest feet. That contact must clip the
+            // legs even before the water allows footing. A bed it rose off seats nothing.
             if (rising && !(support.Status == SupportStatus.Walkable &&
                     (double)support.Height - support.HeightError > high))
                 continue;
             var remaining = new Vector2(displacement.X - next.X, displacement.Z - next.Z);
             var horizontal = new Vector2(current.X, current.Z);
             if (support.Status == SupportStatus.Walkable && medium?.AllowsFooting(at, support) == false &&
-                support.Height - support.HeightError <= high && support.Height + support.HeightError >= low)
+                (double)support.Height + support.HeightError >= low)
             {
-                // A submerged bed clips descent through the same proved placement as a landing. It grants no
-                // land footing. Buoyancy spends the remainder from the contact-clipped carry.
+                // A submerged bed clips descent and a bank rising above the feet through the same proved
+                // placement as a landing. This is a fluid floor, so it grants no footing and pays no land climb.
+                // Buoyancy spends the remainder from the contact-clipped carry.
                 // Keep the fluid contact outside the bed after centre mapping rounds. This is one representable
                 // clearance ordinate, not a climb or a second placement skin, and earns the placement proof.
                 var seat = new GroundSeatResult(SeatOutcome.Seated, MathF.BitIncrement(support.Height), support, 0, Vector3.Zero);
                 GroundPlacement bed = GroundPlacement.Try(queries, NoSupport, high, axis, Vector2.Zero,
                     seat, footRadius, tuning, cosMaxSlope, budget, ref route);
+                // An unraised fallback cannot clear a bank above the whole travelled span. Refuse this tick
+                // rather than publish swimming feet inside that bank when the required lift has no proof.
+                if (!bed.Valid && (double)support.Height - support.HeightError > high)
+                    throw new ContactQueryFailure(MovementAvailability.Known, MovementStepOutcome.Blocked);
                 // A refused seat clips at the clear unraised substep, as a land landing does.
                 // Continuing the descent would let the legs pass through an analytic bed.
                 return new(bed.Valid ? bed.Feet : at, 0,
@@ -183,7 +189,7 @@ internal static class AirPass
                     RemainingTime = remainingTime,
                     ClimbBudget = bed.Valid ? bed.Budget : budget,
                     MediumHandoff = true,
-                    DescendingAtContact = true,
+                    DescendingAtContact = !rising,
                 };
             }
             if (support.Status == SupportStatus.Walkable && medium?.AllowsFooting(at, support) != false)

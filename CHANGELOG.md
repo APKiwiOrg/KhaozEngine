@@ -4,6 +4,14 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.15.1
+
+2026-10-27
+
+- Keep buoyant swimmers on walkable rising beds while the water is still too deep for land footing.
+  Contact clips onto the bed without changing swim hysteresis or climb pacing, then lands normally when
+  the seated bed clears the existing swim exit line. A refused bank lift blocks the tick (Closes #1606).
+
 ## 21.15.0
 
 2026-10-27

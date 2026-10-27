@@ -46,6 +46,8 @@ internal sealed class ExplicitContactModes : ContactMediumPolicy
 
     internal override bool AllowsFooting(Vector3 feet, in SupportSample support)
     {
+        // Physical bed contact is independent of land ownership. The air pass clips a submerged bank to its
+        // surface while this seated-depth test keeps the body swimming until the existing exit line clears.
         Vector3 seated = feet with { Y = support.Height };
         MovementWaterPoint point = _queries.SampleMedium(seated)!.Value;
         return ExplicitCharacterMovement.FootingAllowed(point, _state.Swimming,

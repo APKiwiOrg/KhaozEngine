@@ -279,7 +279,8 @@ internal sealed class NativeMapGoldenSetup : IDisposable
         {
             doc.Surfaces = new();
             AddSurface(doc, "ground", MapSurfaceRole.SupportFloor, 4, 4, 0, (x, z) =>
-                new(10, 11, (MapOverlayCut)x, (byte)z, MapCellFlags.FeatherOverlay, MapCellTopology.Auto));
+                x == 1 && z == 2 ? new(11, 0, MapOverlayCut.Full, 0, 0, MapCellTopology.Auto)
+                : new(10, 11, (MapOverlayCut)x, (byte)z, MapCellFlags.FeatherOverlay, MapCellTopology.Auto));
             AddSurface(doc, "partial", MapSurfaceRole.PaintOverride, 1, 1, 0, (_, _) => new(12, 0, MapOverlayCut.Full, 0, 0, MapCellTopology.ForceSwNe), "ground");
             doc.NativeResourceTransforms = [new(MapPrefabChildKind.Surface, "partial", new(.25, 0, .25, .371, .5), new string('c', 64))];
             AddSurface(doc, "ceiling-edge", MapSurfaceRole.Ceiling, 4, 1, 150, (_, _) => new(10, 0, MapOverlayCut.Full, 0, 0, MapCellTopology.ForceSwNe));

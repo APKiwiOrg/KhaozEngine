@@ -194,7 +194,7 @@ public sealed class RendererPerfBaselinePublisherTests : IClassFixture<RendererP
         if (fault == "foreign") leg = leg with { ManifestSha256 = new('f', 64) };
         if (fault == "run-url") leg = leg with { RunUrl = "https://github.com/foreign/repo/actions/runs/123/attempts/1" };
         if (fault == "leg") leg = leg with { Leg = "windows-d3d11" };
-        if (fault == "billing") leg = leg with { BilledMinutes = 36 };
+        if (fault == "billing") leg = leg with { BilledMinutes = 39 };
         if (fault == "negative-billing") leg = leg with { BilledMinutes = -1 };
         request = request with { Legs = fault == "pair" ? [leg] : [leg, request.Legs[1]] };
         Assert.Equal(code, Assert.Throws<RendererPerfBaselineException>(() => RendererPerfBaselinePublisher.Publish(request)).Code);

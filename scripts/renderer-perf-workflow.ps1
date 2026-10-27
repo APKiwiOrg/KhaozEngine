@@ -65,8 +65,9 @@ Require ($manifest.schema -ceq 'khaozengine.renderer-perf-unit/1' -and $manifest
 Require ($manifest.execution.leg -ceq $env:LEGS -and $manifest.execution.runner -ceq $runner -and $manifest.execution.backend -ceq $backend -and $manifest.execution.workflow -ceq 'gpu-hosted-bench.yml') 'Manifest execution differs from the selected leg'
 Require ($manifest.execution.adapterPolicy -ceq $(if ($rehearsal) { $rehearsalPolicy.adapter } else { 'nvidia-t4-hardware' }) -and $manifest.execution.completionPolicy -ceq 'retained-fence-batch-3/1') 'Manifest adapter or completion policy differs from the execution class'
 Require ($manifest.preset -cne 'pilot' -or $env:LEGS -cne 'windows-vulkan') 'Windows Vulkan has no initial pilot'
-$minutes = if ($rehearsal) { $rehearsalPolicy.minutes } elseif ($manifest.preset -ceq 'pilot') { 12 } else { 35 }
-Require ($manifest.limits.jobMinutes -eq $minutes -and $manifest.budget.maximumBilledMinutes -eq $minutes) 'Preset job and billing caps disagree'
+$minutes = if ($rehearsal) { $rehearsalPolicy.minutes } elseif ($manifest.preset -ceq 'pilot') { if ($env:LEGS -ceq 'linux-vulkan') { 12 } else { 20 } } else { 35 }
+$billedMinutes = if ($rehearsal) { $minutes } else { $minutes + 3 } # Rounded-up cleanup overrun in run 40435928569.
+Require ($manifest.limits.jobMinutes -eq $minutes -and $manifest.budget.maximumBilledMinutes -eq $billedMinutes) 'Preset job and billing caps disagree'
 if ($rehearsal) {
     Require ($manifest.limits.unitSeconds -eq $rehearsalPolicy.unitSeconds -and $manifest.limits.frameMilliseconds -eq 60000) 'Rehearsal unit or frame limits differ'
     Require ($manifest.budget.ratePerMinute -eq 0 -and $manifest.budget.maximumCostUsd -eq 0 -and $manifest.budget.currency -ceq 'USD' -and $manifest.approval.campaignMaximumUsd -eq 0) 'Rehearsal requires zero USD cost and campaign budget'

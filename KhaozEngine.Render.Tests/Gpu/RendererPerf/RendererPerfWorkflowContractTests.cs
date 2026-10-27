@@ -28,7 +28,7 @@ public sealed class RendererPerfWorkflowContractTests
         fixture.Refuse("Select", "RENDERER_PERF_UNIT", "../escape");
         fixture.Manifest["preset"] = "full";
         fixture.Manifest["limits"]!["jobMinutes"] = 35;
-        fixture.Manifest["budget"]!["maximumBilledMinutes"] = 35;
+        fixture.Manifest["budget"]!["maximumBilledMinutes"] = 38;
         fixture.SaveManifest();
         fixture.Accept("Select", "jobMinutes=35");
         fixture.Manifest["limits"]!["jobMinutes"] = 60;

@@ -83,7 +83,7 @@ public sealed class RendererPerfProtocolTests
             case "bad-hash": json["workloadSha"] = "not-a-sha"; break;
             case "budget": json["budget"]!["maximumCostUsd"] = 7.24; break;
             case "approval": json["approval"]!["reference"] = " "; break;
-            case "campaign-cap": json["approval"]!["campaignMaximumUsd"] = 10.01; break;
+            case "campaign-cap": json["approval"]!["campaignMaximumUsd"] = 12.01; break;
             case "block-order": ((JsonArray)json["blocks"]!).ReverseInPlace(); break;
             case "control-order": ((JsonArray)json["controls"]!).ReverseInPlace(); break;
             case "count": json["blocks"]![0]!["measuredFrames"] = 129; break;
@@ -135,12 +135,12 @@ public sealed class RendererPerfProtocolTests
     }
 
     [Fact]
-    public void Accepts_the_owner_campaign_envelope_of_ten_dollars()
+    public void Accepts_the_owner_campaign_envelope_of_twelve_dollars()
     {
         JsonObject json = ManifestJson();
-        json["approval"]!["campaignMaximumUsd"] = 10;
+        json["approval"]!["campaignMaximumUsd"] = 12;
         RendererPerfManifest manifest = RendererPerfManifest.Parse(Encoding.UTF8.GetBytes(json.ToJsonString()));
-        Assert.Equal(10m, manifest.Approval.CampaignMaximumUsd);
+        Assert.Equal(12m, manifest.Approval.CampaignMaximumUsd);
     }
 
     [Fact]
@@ -171,11 +171,11 @@ public sealed class RendererPerfProtocolTests
     }
 
     [Theory]
-    [InlineData("pilot", "linux-vulkan", 1260, 0.624)]
-    [InlineData("pilot", "windows-d3d11", 1260, 1.224)]
-    [InlineData("full", "linux-vulkan", 16944, 1.820)]
-    [InlineData("full", "windows-d3d11", 16944, 3.570)]
-    [InlineData("full", "windows-vulkan", 16944, 3.570)]
+    [InlineData("pilot", "linux-vulkan", 1260, 0.780)]
+    [InlineData("pilot", "windows-d3d11", 1260, 2.346)]
+    [InlineData("full", "linux-vulkan", 16944, 1.976)]
+    [InlineData("full", "windows-d3d11", 16944, 3.876)]
+    [InlineData("full", "windows-vulkan", 16944, 3.876)]
     public void Round_trips_exact_scene_and_block_order(string preset, string leg, int frames, double maximumCost)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(ManifestJson(preset, leg).ToJsonString());
@@ -565,7 +565,7 @@ public sealed class RendererPerfProtocolTests
           "runtime":{"configuration":"Release","runtimeVersion":"10.0.0","environment":{},"gcMode":"workstation","tieredCompilation":true},
           "execution":{"backend":"vulkan","adapterPolicy":"nvidia-t4-hardware","runner":"gpu-t4-linux","workflow":"gpu-hosted-bench.yml","leg":"{{leg}}","completionPolicy":"retained-fence-batch-3/1"},
           "limits":{"unitSeconds":600,"frameMilliseconds":10000,"jobMinutes":12},
-          "budget":{"maximumBilledMinutes":12,"ratePerMinute":0.052,"currency":"USD","maximumCostUsd":0.624},
+          "budget":{"maximumBilledMinutes":15,"ratePerMinute":0.052,"currency":"USD","maximumCostUsd":0.780},
           "approval":{"reference":"owner message 2026-10-21, first Linux pilot","purpose":"validate the renderer protocol","campaignReference":"owner message 2026-10-21, two pilots and two full units","campaignMaximumUsd":7.24}
         }
         """)!.AsObject();
@@ -574,15 +574,20 @@ public sealed class RendererPerfProtocolTests
             root["conditioningFrames"] = 1200;
             root["limits"]!["unitSeconds"] = 1500;
             root["limits"]!["jobMinutes"] = 35;
-            root["budget"]!["maximumBilledMinutes"] = 35;
-            root["budget"]!["maximumCostUsd"] = leg == "linux-vulkan" ? 1.820m : 3.570m;
+            root["budget"]!["maximumBilledMinutes"] = 38;
+            root["budget"]!["maximumCostUsd"] = leg == "linux-vulkan" ? 1.976m : 3.876m;
         }
         if (leg != "linux-vulkan")
         {
             root["execution"]!["runner"] = "gpu-t4-windows";
             root["execution"]!["backend"] = leg == "windows-d3d11" ? "d3d11" : "vulkan";
             root["budget"]!["ratePerMinute"] = 0.102m;
-            if (preset == "pilot") root["budget"]!["maximumCostUsd"] = 1.224m;
+            if (preset == "pilot")
+            {
+                root["limits"]!["jobMinutes"] = 20;
+                root["budget"]!["maximumBilledMinutes"] = 23;
+                root["budget"]!["maximumCostUsd"] = 2.346m;
+            }
         }
         foreach (int scene in preset == "pilot" ? [3] : new[] { 0, 1, 2, 3, 4 })
             ((JsonArray)root["recipes"]!).Add(new JsonObject

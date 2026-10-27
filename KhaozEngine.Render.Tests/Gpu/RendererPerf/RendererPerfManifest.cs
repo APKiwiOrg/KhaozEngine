@@ -75,24 +75,10 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
         RendererPerfExecutionPolicy execution = manifest.Execution;
         Require(execution.Leg is "linux-vulkan" or "windows-d3d11" or "windows-vulkan", "Preset", "Unsupported hosted leg.");
         Require(!pilot || execution.Leg != "windows-vulkan", "Preset", "Windows Vulkan has no initial pilot preset.");
-        bool linux = execution.Leg == "linux-vulkan";
         Require(manifest.BatchSize == 3 && manifest.MaximumScopeOccurrences == 255
             && manifest.ConditioningFrames == (pilot ? 300 : 1200), "Preset", "Pacing, scope capacity or conditioning count differs from the preset.");
         if (manifest.ExecutionClass == RendererPerfExecutionClass.Rehearsal) RendererPerfRehearsalPolicy.Validate(manifest);
-        else
-        {
-            Require(execution.Backend == (execution.Leg == "windows-d3d11" ? "d3d11" : "vulkan")
-                && execution.Runner == (linux ? "gpu-t4-linux" : "gpu-t4-windows")
-                && execution.AdapterPolicy == "nvidia-t4-hardware" && execution.Workflow == "gpu-hosted-bench.yml"
-                && execution.CompletionPolicy == "retained-fence-batch-3/1", "Preset", "Backend, hardware, runner, workflow or completion policy differs from the preset.");
-            int minutes = pilot ? 12 : 35;
-            Require(manifest.Limits == new RendererPerfLimits(pilot ? 600 : 1500, 10000, minutes), "Preset", "Unit, frame or job deadline differs from the preset.");
-            decimal rate = linux ? 0.052m : 0.102m;
-            Require(manifest.Budget == new RendererPerfBudget(minutes, rate, "USD", minutes * rate), "Preset", "Billed minutes, rate, currency or cost cap differs from the preset.");
-            Require(Text(manifest.Approval.Reference) && Text(manifest.Approval.Purpose) && Text(manifest.Approval.CampaignReference)
-                && manifest.Approval.CampaignMaximumUsd >= manifest.Budget.MaximumCostUsd
-                && manifest.Approval.CampaignMaximumUsd <= 10m, "Approval", "Exact owner approval and campaign references with a sufficient cap of at most USD 10 are required. A manifest does not grant consent.");
-        }
+        else RendererPerfPaidPolicy.Validate(manifest);
         RendererPerfRuntimePolicy runtime = manifest.Runtime;
         Require(runtime.Configuration == "Release" && Version.TryParse(runtime.RuntimeVersion, out Version? version)
             && version.Major == 10 && runtime.GcMode is "workstation" or "server" && runtime.Environment != null

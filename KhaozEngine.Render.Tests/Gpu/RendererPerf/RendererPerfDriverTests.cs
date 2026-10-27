@@ -35,7 +35,7 @@ public sealed class RendererPerfDriverTests
             Assert.Equal(192, b.Warmup.Concat(b.Measured).Select(f => f.FrameId).Distinct().Count());
         });
         Assert.Equal(1260, report.Batches.Sum(b => b.Count));
-        Assert.All(report.Batches, b => Assert.Equal(900, b.Telemetry["clock.observedMHz"].Value));
+        Assert.All(report.Batches, b => Assert.Equal(1200, b.Telemetry["clock.observedMHz"].Value));
         Assert.Equal(9, rig.Disposals);
         _ = RendererPerfReportJson.Serialize(report);
     }
@@ -194,7 +194,7 @@ public sealed class RendererPerfDriverTests
         internal readonly List<(RendererPerfReport Report, bool Final)> Writes = [];
         internal bool Outlier, Drift, Enabled = true;
         internal string? Fault;
-        internal int Disposals, ClockCalls;
+        internal int Disposals, ClockCalls, InfoBoundary, ObservedClock = 1200;
         internal long Tick;
         internal long FirstBatchFrameTicks = 1, FirstDrainTicks = 1, ColdReadbackTicks;
         internal Func<RendererPerfBlock, int, long>? FrameTicks;
@@ -280,7 +280,8 @@ public sealed class RendererPerfDriverTests
                     rig.Template.Manifest.Recipes.FirstOrDefault(r => r.SceneId == (block.SceneId == "conditioning:S3" ? "S3" : block.SceneId)) is { } recipe
                         ? new(recipe, "public primitives", new string('b', 64), ImmutableDictionary<string, long>.Empty,
                             ImmutableDictionary<string, long>.Empty, ImmutableDictionary<string, RendererPerfMetric>.Empty) : null,
-                    ImmutableDictionary<string, RendererPerfMetric>.Empty.Add("clock.observedMHz", Value(900, "MHz")),
+                    RendererPerfGpuClockAssessmentTests.Telemetry(rig.ObservedClock, 0).SetItem("clock.observedAtTicks",
+                        Value(rig.InfoBoundary++ / 64 * 64 + 1, "ticks")),
                     ControlStateSha256: block.SceneId.StartsWith("control:", StringComparison.Ordinal) ? new string('b', 64) : null,
                     Memory: rig.ObserveMemory ? new([], ImmutableDictionary<string, RendererPerfMetric>.Empty
                         .Add("process.workingSet.bytes", Value(rig.Created.Count == 1 && _next == 3 ? 9000 : 100, "bytes"))

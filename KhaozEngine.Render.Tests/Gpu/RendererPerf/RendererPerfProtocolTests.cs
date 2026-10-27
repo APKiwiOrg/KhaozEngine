@@ -83,7 +83,7 @@ public sealed class RendererPerfProtocolTests
             case "bad-hash": json["workloadSha"] = "not-a-sha"; break;
             case "budget": json["budget"]!["maximumCostUsd"] = 7.24; break;
             case "approval": json["approval"]!["reference"] = " "; break;
-            case "campaign-cap": json["approval"]!["campaignMaximumUsd"] = 14.01; break;
+            case "campaign-cap": json["approval"]!["campaignMaximumUsd"] = 18.01; break;
             case "block-order": ((JsonArray)json["blocks"]!).ReverseInPlace(); break;
             case "control-order": ((JsonArray)json["controls"]!).ReverseInPlace(); break;
             case "count": json["blocks"]![0]!["measuredFrames"] = 129; break;
@@ -135,12 +135,12 @@ public sealed class RendererPerfProtocolTests
     }
 
     [Fact]
-    public void Accepts_the_owner_campaign_envelope_of_fourteen_dollars()
+    public void Accepts_the_owner_campaign_envelope_of_eighteen_dollars()
     {
         JsonObject json = ManifestJson();
-        json["approval"]!["campaignMaximumUsd"] = 14;
+        json["approval"]!["campaignMaximumUsd"] = 18;
         RendererPerfManifest manifest = RendererPerfManifest.Parse(Encoding.UTF8.GetBytes(json.ToJsonString()));
-        Assert.Equal(14m, manifest.Approval.CampaignMaximumUsd);
+        Assert.Equal(18m, manifest.Approval.CampaignMaximumUsd);
     }
 
     [Fact]
@@ -563,7 +563,7 @@ public sealed class RendererPerfProtocolTests
           "workloadSha":"{{Sha}}", "baselineMainSha":"{{Sha}}", "recipes":[], "blocks":[], "controls":[],
           "conditioningFrames":300, "batchSize":3, "maximumScopeOccurrences":255,
           "runtime":{"configuration":"Release","runtimeVersion":"10.0.0","environment":{},"gcMode":"workstation","tieredCompilation":true},
-          "execution":{"backend":"vulkan","adapterPolicy":"nvidia-t4-hardware","runner":"gpu-t4-linux","workflow":"gpu-hosted-bench.yml","leg":"{{leg}}","completionPolicy":"retained-fence-batch-3/1"},
+          "execution":{"backend":"vulkan","adapterPolicy":"nvidia-t4-hardware","runner":"gpu-t4-linux","workflow":"gpu-hosted-bench.yml","leg":"{{leg}}","completionPolicy":"retained-fence-batch-3/1","lockedGraphicsClockMHz":1200},
           "limits":{"unitSeconds":600,"frameMilliseconds":10000,"coldFrameMilliseconds":120000,"jobMinutes":12},
           "budget":{"maximumBilledMinutes":15,"ratePerMinute":0.052,"currency":"USD","maximumCostUsd":0.780},
           "approval":{"reference":"owner message 2026-10-21, first Linux pilot","purpose":"validate the renderer protocol","campaignReference":"owner message 2026-10-21, two pilots and two full units","campaignMaximumUsd":7.24}

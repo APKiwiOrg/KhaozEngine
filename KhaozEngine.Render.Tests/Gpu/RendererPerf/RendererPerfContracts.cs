@@ -17,7 +17,7 @@ internal sealed record RendererPerfRecipeIdentity(string SceneId, string Version
 internal sealed record RendererPerfRuntimePolicy(string Configuration, string RuntimeVersion,
     ImmutableDictionary<string, string> Environment, string GcMode, bool TieredCompilation);
 internal sealed record RendererPerfExecutionPolicy(string Backend, string AdapterPolicy, string Runner, string Workflow,
-    string Leg, string CompletionPolicy);
+    string Leg, string CompletionPolicy, int? LockedGraphicsClockMHz);
 internal sealed record RendererPerfLimits(int UnitSeconds, int FrameMilliseconds, int ColdFrameMilliseconds, int JobMinutes);
 internal sealed record RendererPerfBudget(int MaximumBilledMinutes, decimal RatePerMinute, string Currency, decimal MaximumCostUsd);
 internal sealed record RendererPerfApproval(string Reference, string Purpose, string CampaignReference, decimal CampaignMaximumUsd);
@@ -84,6 +84,8 @@ internal sealed record RendererPerfReport(string Schema, RendererPerfManifest Ma
     ImmutableArray<RendererPerfControlReport> Controls, RendererPerfAssessment Assessment,
     RendererPerfPublication Publication, ImmutableArray<RendererPerfExpectedSidecar> Sidecars)
 {
+    internal RendererPerfGpuClockVerification GpuClock => RendererPerfGpuClockPolicy.Assess(Manifest, Batches);
+
     [JsonRequired]
     public RendererPerfCompilerEvidence Compiler { get; init; } = RendererPerfCompilerEvidence.Pending;
     [JsonRequired]

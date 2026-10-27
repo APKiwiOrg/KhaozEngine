@@ -21,6 +21,11 @@ internal static class RendererPerfMarkdown
         text.Append("Run ").Append(Cell(report.Identity.RunId)).Append(" attempt ").Append(report.Identity.Attempt)
             .Append(". Backend ").Append(Cell(report.Identity.Backend)).Append(". Adapter ").Append(Cell(report.Identity.Adapter))
             .Append(". Driver ").Append(Cell(report.Identity.Driver)).Append(".\n\n");
+        var gpuClock = report.GpuClock;
+        if (gpuClock.LockedGraphicsClockMHz is { } clock)
+            text.Append("Locked graphics clock ").Append(clock.ToString(CultureInfo.InvariantCulture)).Append(" MHz. ");
+        text.Append("Verification ").Append(gpuClock.State).Append(". Samples ").Append(gpuClock.Samples)
+            .Append(". ").Append(Cell(gpuClock.Reason ?? string.Empty)).Append("\n\n");
         foreach (string reason in summary.Reasons) text.Append("- ").Append(Cell(reason)).Append('\n');
         text.Append("\nMeasured distributions only. p95/p99 use nearest rank ceil(p*N). Standard deviation is population.\n")
             .Append("Combined frames are descriptive. Iteration means remain separate replicates, with no significance claim.\n\n");

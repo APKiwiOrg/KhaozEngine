@@ -15,6 +15,7 @@ public sealed class RendererPerfRehearsalClassesTests
         json["preset"] = preset;
         json["execution"]!["runner"] = leg == "linux-vulkan" ? "ubuntu-24.04" : "windows-2025-vs2026";
         json["execution"]!["adapterPolicy"] = leg == "linux-vulkan" ? "mesa-lavapipe-software" : "microsoft-warp-software";
+        json["execution"]!["lockedGraphicsClockMHz"] = null;
         json["limits"]!["unitSeconds"] = full ? 19800 : 5400;
         json["limits"]!["frameMilliseconds"] = 60000;
         json["limits"]!["jobMinutes"] = full ? 350 : 120;

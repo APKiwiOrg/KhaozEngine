@@ -94,6 +94,9 @@ internal static class RendererPerfDriver
                 metrics = metrics.Add("rehearsal.clockOrWorkDrift.blocks", Value(drift.Count, "count", "diagnostic five-percent drift rule"));
             }
             else RendererPerfDriverAssessment.Drift(_blocks, _reasons);
+            if (manifest.ExecutionClass == RendererPerfExecutionClass.Performance
+                && RendererPerfGpuClockPolicy.Assess(manifest, _batches).State != RendererPerfGpuClockState.Verified)
+                _reasons.Add(RendererPerfGpuClockPolicy.Reason);
             if (_failure is null && manifest.Recipes.Any(r => !_recipes.ContainsKey(r.SceneId))) Record("renderer.execute", new InvalidOperationException("Recipe construction evidence is incomplete."));
             if (_failure is not null) _reasons.Add(_failure);
             var elapsed = Value(_started ? (clock.Now() - _start) * 1000d / clock.Frequency : 0, "ms", "unit monotonic clock");

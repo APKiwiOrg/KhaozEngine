@@ -280,6 +280,18 @@ authorization and final evidence checks, applies the per-leg paid caps and clean
 model in the [renderer reference](RENDERER-PERFORMANCE.md#evidence-and-authorization), and retains
 the existing pinned PowerShell bootstrap, GRID setup, NVIDIA adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
 
+After the GPU and driver steps, paid renderer jobs invoke the trusted graphics-clock setup before
+building or measuring. Linux enables persistence and uses `sudo nvidia-smi`. Windows uses the elevated
+runner shell after GRID installation. Setup retains the full command output, the driver-returned
+minimum and maximum lock range, a fresh current-clock readback and a clock/performance/power dump.
+A failed command, unsupported lock, changed range or malformed readback writes typed
+`GpuClockNotLocked` evidence and stops before measurement. The pre-build current clock is retained
+without asserting a held measurement clock while no workload is active. The renderer clock policy
+checks every retained observation during conditioning, scene blocks and controls. An always-run cleanup resets GPU clocks
+before artifact upload, retaining reset output even after setup or measurement failure. Software
+rehearsals skip both steps. The [renderer clock policy](RENDERER-PERFORMANCE.md#drift-perturbation-and-validity)
+owns the selected clock, telemetry admission and rationale. The existing preset job caps still apply.
+
 The outside-solution `tools/Renderer.Perf.Tests` project exposes one fixed fact,
 `Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit`, category `RendererPerformance`.
 The workflow explicitly passes `KE_RENDERER_PERF_UNIT` and `KE_RENDERER_PERF_REPORTS`. The entrypoint

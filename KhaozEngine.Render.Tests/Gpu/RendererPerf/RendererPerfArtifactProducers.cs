@@ -109,7 +109,7 @@ internal static class RendererPerfArtifactProducers
                 }
                 break;
             case "host-telemetry.jsonl":
-                RendererPerfHostTelemetry.Verify(bytes);
+                RendererPerfHostTelemetry.Verify(bytes, report);
                 break;
             case "work-models.json":
                 var models = Read<ImmutableArray<RendererPerfBlockModels>>();

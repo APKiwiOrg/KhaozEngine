@@ -188,6 +188,9 @@ input. API detail lives in the [Render3D package reference](../KhaozEngine.Rende
 
 ## Water surface shadows
 
+An underwater bed shadow is correctly displaced below a floater and cannot by itself tie shade to the
+waterline. The opted-in column supplies that attached shadow, fading with the same clarity as the bed.
+
 Shadow cascades fit from the frame's unjittered render-relative camera frustum and eye. Near and far
 depths, slice spheres and light-hold radii therefore avoid large absolute float coordinates for both
 perspective and orthographic cameras. Each light matrix is fitted and texel-snapped once in render space.
@@ -272,13 +275,20 @@ through the upward surface normal with the shared index `1.333`. Vertical `optic
 Invalid homogeneous coordinates are rejected before division. Missing depth uses a finite far reconstruction,
 with its path capped at `8 * Clarity / max(mu, 0.0001)` as an asymptotic numerical limit, retaining the copied colour.
 Valid optical beds retain their exact depth-derived path.
-The colour and scene-depth lookups stay unoffset. Bent image lookup and foreground rejection are deferred.
+The colour and scene-depth lookups stay unoffset. Bent image lookup and foreground rejection remain
+unbuilt in [Landing 2](programs/water-optics-design.md). The copy permits per-channel extinction and
+shadowed in-scatter in one physical composite. A scalar alpha blend could not carry those channel weights
+or support the later bent lookup. The [coefficient reference](../KhaozEngine.Render3D/README.md#water-column-coefficients)
+defines reference-light calibration, extinction spread and energy conservation. Column opt-in also supplies
+those extinction coefficients to M2, so the copied bed already includes its direct sunlight's light path.
 
 Four samples share scalar-mean equal-integral strata while each RGB stratum integrates its own exponential
 weight exactly. Light depths use `h(s) = max(0, stillSurfaceY - S.y + mu*s)`, split exactly where a crest crosses
 the still-water plane. The CDF uses those same two segments. Entries have `E.y = max(X.y, stillSurfaceY)`,
 so an above-plane crest sample is its own entry. Small exponential integrals use a quadratic series.
 Sun single scattering and analytic, unshadowed sky single scattering use `sigma_s / 4` in engine light units.
+Four entries preserve spatial shadow support along the view path in clear and murky water, where a single
+weighted-mean lookup would place the whole shadow at one depth.
 The H-function estimate adds only multiple scattering, scaled by the four entries' mean visibility.
 Its finite-depth extension for each source is
 `exp(-sigma_t*h(0)/mu0) * (1-exp(-sigma_t*(d+(h(d)-h(0))/mu0)))`, with `mu0=1` for sky.
@@ -287,6 +297,9 @@ Sun below the horizon contributes no sun scattering or glint. Ambient scattering
 
 Interleaved gradient noise uses the latched `FrameView.FrameIndex % 64` only on the render that runs temporal
 anti-aliasing's resolve. Other renders use phase zero. The temporal reactive policy is unchanged.
+Reactive water weakens temporal history wherever its weighted luminance differs from the opaque copy.
+Convergence is therefore verified rather than assumed. `WaterColumnTemporalGpuTests` pins still-frame
+noise with temporal anti-aliasing on and off. Without temporal resolve, the noise stays screen-fixed.
 
 The copy already includes atmosphere fog and underwater sunlight's light-path extinction. With foam coverage
 `q = foam * clamp(FoamColor.a, 0, 1)`, the copied share is `W = (1-q)*(1-fresnel)*exp(-sigma_t*d)`.
@@ -294,6 +307,12 @@ Water's own radiance includes in-scatter, reflection, shadowed glint and lit foa
 The inside colour is `copiedBed*W + ownRadiance*fogT + fogColor*(1-fogT)*(1-W)`, mixed toward the copy by
 shore fade and written with alpha 1. The completed colour never passes through atmosphere fog again.
 Disabled columns retain the legacy body, opacity, alpha blend and fog arithmetic.
+As `d` tends to zero, transmission tends to one and in-scatter tends to zero, preserving the dry-bed
+waterline. Fogged-space composition is exact there. Its distance approximation is bounded by the fog
+change across the in-water path. Diagnostics and the absolute `WaterColumnGpuTests` cover copy demand,
+legacy parity, AA paths, transport, shadow attachment, shallow beds and reference colour without rebaking
+existing water goldens. Landing 1 awaits the owner's measured-cost ruling in
+[the program tracker](programs/water-optics.md) before release.
 
 ## Underwater lit receivers
 
@@ -346,9 +365,9 @@ floater's bed-shadow displacement from `h * tan(theta_air)` to `h * tan(theta_wa
 `exp(-attenuation * L)`, including with shadows disabled. For legacy bodies, attenuation is the resolved
 `AbsorptionPerMetre`. For `WaterColumnLight` bodies it is the extinction derived from resolved `WaterColor`
 and `Clarity`, with mean extinction `3 / Clarity`, ignoring legacy absorption. Ambient, indirect, fill,
-point lights, emissive and fog retain their values. The water pass's existing vertical-depth tint already darkens the view of deep
-beds, so attenuating ambient too would double-darken them. Key-only attenuation lowers shadow contrast with
-depth against unchanged ambient.
+point lights, emissive and fog retain their values. Underwater sunlight models the direct sun path. The
+surface handles the view path through legacy vertical-depth tint or the opted-in column composite.
+Key-only attenuation lowers shadow contrast with depth against unchanged ambient.
 
 The opaque atlas retains the sun-facing near face of outward CCW meshes with orientation-preserving transforms
 on every backend, with clockwise fronts culled. The glTF loader preserves triangle order. A straddling floater's
@@ -400,8 +419,9 @@ comparisons before cascade blending. This comparison count is not a native timin
 As `h` tends to zero, `E` tends to `P` with the same bias, transmittance tends to one, the march tends to fully
 lit and the kernel matches the dry filter exactly. The waterline has no shading seam. Entry visibility and
 submerged visibility multiply before the existing strength, fade and blend policy. The scalar R8 key-visibility
-export remains valid, including exactly one for non-positive strength. Caustics, view-ray refraction,
-underwater view fog and light shafts are separate effects. This path does not change the water surface pass.
+export remains valid, including exactly one for non-positive strength. Caustics, underwater camera fog
+and light shafts are separate effects. Receiver lighting does not change the surface pass. Its opted-in
+refracted view path is described in [Water column composite](#water-column-composite).
 
 ## Where to look in the code
 

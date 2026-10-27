@@ -67,11 +67,13 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Overrides <see cref="WaterSettings.AbsorptionPerMetre"/> for this plane. <c>null</c> inherits.
         /// An all-zero value still means "no absorption, use the two-stop <see cref="ShallowDepth"/> blend", so a
-        /// look CAN turn absorption off for one body by overriding it with a zeroed colour.</summary>
+        /// look CAN turn legacy absorption off for one body by overriding it with a zeroed colour.
+        /// Ignored by an enabled <see cref="WaterColumnLight"/>, which derives extinction instead.</summary>
         public Color? AbsorptionPerMetre;
 
         /// <summary>Overrides <see cref="WaterSettings.UnderwaterSunlight"/> for this plane. Default <c>null</c>
-        /// inherits the scene's opt-in, which defaults to <c>false</c>.</summary>
+        /// inherits the scene's opt-in, which defaults to <c>false</c>. An enabled <see cref="WaterColumnLight"/>
+        /// also enables underwater sunlight without changing this field.</summary>
         public bool? UnderwaterSunlight;
 
         /// <summary>Overrides <see cref="WaterSettings.UnderwaterPenumbraPerMetre"/> in metres of extra
@@ -82,7 +84,9 @@ namespace KhaozEngine.Render3D
         /// <summary>Overrides <see cref="WaterSettings.WaterColumnLight"/> for this plane. Default <c>null</c>
         /// inherits the scene's opt-in, which defaults to <c>false</c>. An explicit <c>false</c> disables the
         /// column even when the scene enables it. An enabled column bypasses <see cref="AbsorptionPerMetre"/>,
-        /// <see cref="ShallowColor"/>, <see cref="DeepColor"/>, <see cref="ShallowDepth"/> and <see cref="Opacity"/>.</summary>
+        /// <see cref="ShallowColor"/>, <see cref="DeepColor"/>, <see cref="ShallowDepth"/> and <see cref="Opacity"/>.
+        /// It shares derived extinction with underwater sunlight and composites unoffset pre-water colour.
+        /// Bent image lookup is not implemented. Shore fade and foam retain their settings.</summary>
         public bool? WaterColumnLight;
 
         /// <summary>Overrides <see cref="WaterSettings.WaterColor"/> for this plane, in linear RGB with alpha

@@ -50,11 +50,11 @@ with its own buffer layout.
 
 ## The cut
 
-A `WaterSettings` field is overridable per plane when overriding it is a pure change to what `PackUbo`
-writes into that plane's slot. It stays scene-wide when it drives a GPU resource that is produced once
-per frame, or when it selects the pass's geometry or pipeline.
+A `WaterSettings` field is overridable per plane when the choice can be encoded in that plane's uniform
+slot or water-volume record. Shared column resources aggregate demand across the frame. The field stays
+scene-wide when it controls one shared FFT bake or bathymetry source, or selects the pass's grid policy.
 
-**Per plane**, 33 fields in seven groups:
+**Per plane**, 42 fields in ten groups:
 
 - Wave source: `WaveSource`
 - Swell: `SwellAmplitude`, `SwellWavelength`, `SwellDirectionDegrees`, `SwellSpreadDegrees`,
@@ -63,6 +63,9 @@ per frame, or when it selects the pass's geometry or pipeline.
   `RippleLacunarity`, `RippleGain`, `RippleSeed`, `DetailFadeDistance`, `DistantDetailScale`,
   `VarianceToRoughness`
 - Body colour: `DeepColor`, `ShallowColor`, `AbsorptionPerMetre`, `ShallowDepth`, `Opacity`
+- Underwater sunlight: `UnderwaterSunlight`, `UnderwaterPenumbraPerMetre`
+- Water column: `WaterColumnLight`, `WaterColor`, `Clarity`
+- Glint: `GlintStrength`, `GlintRoughness`, `GlintDistantRoughness`, `GlintExponent`
 - Foam: `FoamColor`, `FoamStrength`, `FoamCrestCoverage`, `FoamShoreWidth`, `FoamPatternScale`
 - Shore: `ShoreFadeDistance`
 - Depth response strength: `ShoalingStrength`, `SurfStrength`
@@ -176,21 +179,21 @@ the scene default.
 ## Deferred
 
 - Per-body sea states, bathymetry fields and grid modes: [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275).
-- Per-plane reflection and glint weights: cheap, out of #370's scope, no caller yet.
+- Per-plane reflection weights remain scene-wide until a caller needs independent sky reflection.
 - Nothing here gives gameplay a second water body. Submersion, the scatter guard and nav water blocking
   all still read one document water level. That is #275's half, and a consumer wiring a lake today does
   it in its own medium provider.
 
-## Later extension: per-plane sun response (#372)
+## Per-plane sun response
 
-The original 33-field cut kept glint scene-wide as a scope choice. The look now has 39 fields after
-adding `GlintStrength`, `GlintRoughness`, `GlintDistantRoughness` and `GlintExponent`, plus the
-`UnderwaterSunlight` and `UnderwaterPenumbraPerMetre` overrides from https://github.com/APKiwiOrg/KhaozEngine/issues/1588. The sun direction
-and colour remain scene-wide. Glint changes only the existing per-plane uniform scalars. Underwater sunlight
-also reads the shared clustered-water storage buffer in every lit receiver. Reflection weights remain outside
-the look.
+The sun direction and colour remain scene-wide. Glint changes only the existing per-plane uniform
+scalars. Underwater sunlight reads the shared clustered-water storage buffer in every lit receiver.
+An opted-in water column derives one extinction model for that light path and the surface's view path,
+using `WaterColor` and `Clarity`. Nullable fields inherit the scene and an explicit false opts out.
+The [Render3D reference](../../KhaozEngine.Render3D/README.md#water-column-coefficients) owns the coefficient
+contract. Reflection weights remain outside the look.
 
 `OceanPresets.ApplyToLook(kind, WaterLook)` can therefore apply the complete existing weather bundle. It
 leaves `WaveSource` unchanged so a preset never silently switches a plane between FFT and procedural
-water. It also retains unrelated shore and appearance overrides. The original scope table above
-records the initial design, the package README is the current API reference.
+water. It also retains unrelated shore and appearance overrides. The package README is the current
+API reference.

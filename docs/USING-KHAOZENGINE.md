@@ -5086,9 +5086,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       Key diffuse and specular receive the body's `exp(-attenuation * L)` even with shadows disabled.
       Attenuation is the resolved `AbsorptionPerMetre` for legacy bodies or the extinction derived from
       `WaterColor` and `Clarity` for `WaterColumnLight` bodies.
-      Ambient, indirect, fill, point lights, emissive and fog keep their values. The water pass already tints
-      deep beds darker, so attenuating ambient too would double-darken them. Key-only attenuation reduces
-      shadow contrast with depth against unchanged ambient.
+      Ambient, indirect, fill, point lights, emissive and fog keep their values. Underwater sunlight models
+      the direct sun path. The surface handles the view path through legacy depth grading or the opted-in
+      column composite. Key-only attenuation reduces shadow contrast against unchanged ambient.
 
       Ordinary outward CCW opaque meshes with orientation-preserving transforms retain their sun-facing near
       face in the atlas on every backend, with clockwise fronts culled. The glTF loader preserves that winding.
@@ -5976,9 +5976,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     knobs (a plane wanting no surf sets `SurfStrength = 0`, which is the whole per-body need), and the sample-
     count quality knobs. Setting `WaveSource = WaterWaveSource.Procedural` on a look is the inland-body case: it
     takes the plane off the shared ocean entirely, so it loses the sea's swell and whitecaps, and (since shoaling
-    and breaking surf ride the same gate) its breaking surf too. Costs zero new UBO bytes (the payload stays 1088,
-    the slot stays 1280), zero new GPU resources and zero new pipelines - each plane already owned its own slot in
-    the water pass's uniform buffer, so an override is a different set of numbers written into a slot that was
+    and breaking surf ride the same gate) its breaking surf too. Look overrides add zero UBO bytes, per-plane
+    GPU resources or pipelines. The payload is 1136 bytes within the unchanged 1280-byte slot, binding range
+    and dynamic-offset stride. Each plane already owned its own slot in the water pass's uniform buffer,
+    so an override is a different set of numbers written into a slot that was
     being written anyway. Per-body sea states, bathymetry and grid modes stay deferred to
     [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275). Rationale, including why a per-plane sea state
     is refused rather than deferred: `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
@@ -6006,6 +6007,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     advances with the latched frame index only on the render that resolves temporal anti-aliasing, otherwise it
     stays screen-fixed. The [pipeline reference](RENDER-PIPELINE.md#water-column-composite) records the displaced
     crest integral, finite-depth approximation and shadow budget.
+    The [coefficient reference](../KhaozEngine.Render3D/README.md#water-column-coefficients) defines the
+    reference sun and sky, engine light units, extinction spread and energy-conserving albedo inversion.
+    `TileWaterLooks.River` carries the owner-selected linear RGB `(0.28, 0.30, 0.18)` and `Clarity = 1.5f`,
+    with `WaterColumnLight` left null. Set that nullable field on a consumer-owned look to opt in, preserving
+    the shared preset. Landing 1 is built and awaits the owner's measured-cost ruling before release.
+    [Landing 2's bent view](programs/water-optics-design.md) remains unbuilt.
   - **Independent optical bed** (`WaterPlane.Optics`, a `WaterOpticsBinding`, **default unbound = legacy scene
     depth**). An unbound plane grades its colour, shore foam and shore fade from the first opaque surface behind it,
     which can be a swimming creature, a bridge or a prop. A bound plane reads its own signed bed depth for those
@@ -6086,9 +6093,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       The penumbra value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or
       unbound. The water refractive index is the fixed constant `1.333`, not a setting. A frame with no opted-in water
       renders exactly as before. The receiver's own body supplies the light path, using its still-water plane
-      even for FFT waves. The entry can lie beyond the rectangle, where a bank can shadow it. The surface pass
-      keeps its existing depth tint. See **Underwater key light** under shadows for the march, widening and
-      single-caster atlas limit. The nullable `WaterLook` fields inherit these settings per plane.
+      even for FFT waves. The entry can lie beyond the rectangle, where a bank can shadow it. The surface uses
+      legacy depth tint unless `WaterColumnLight` selects the composite. See **Underwater key light** under
+      shadows for the march, widening and single-caster atlas limit. The nullable `WaterLook` fields inherit
+      these settings per plane.
     - *Reflection*: `SkyReflectionStrength` (0 = the flat `HorizonColor`, 1 = the sky along the reflected ray) and
       `SkyReflectionSunStrength` (how much of the sky's disc + halo the reflection carries).
     - *Swell*: `SwellAmplitude` (0 = flat plane), `SwellWavelength`, `SwellDirectionDegrees`, `SwellSpreadDegrees`,
@@ -6320,8 +6328,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     same unresolved ripple detail, and the sum put the far lobe at about twice the surface's slope variance. Now
     the lobe carries exactly that variance until the floor takes over, and 1.12 to 1.17 times it on the floor.
     `VarianceToRoughness = 0` leaves the lobe on the floor alone, the 14.24.0 lobe.
-  - **Depth grading**: the plane's depth source drives per-channel Beer-Lambert transmittance
-    (`exp(-AbsorptionPerMetre * depth)`), blending `ShallowColor` down into `DeepColor`. Because red is absorbed
+  - **Legacy depth grading** (`WaterColumnLight` disabled): the plane's depth source drives per-channel
+    Beer-Lambert transmittance (`exp(-AbsorptionPerMetre * depth)`), blending `ShallowColor` down into
+    `DeepColor`. Because red is absorbed
     several times faster than blue, the ramp bends through green-teal instead of running straight down the line
     between two colours, which is what keeps the midtones clean. An all-zero `AbsorptionPerMetre` restores the
     14.22.0 two-stop smoothstep over `ShallowDepth`. Keep both distinct from `ShoreFadeDistance`: the colour band

@@ -19,11 +19,16 @@ spans more than one landing, so more than one plan, session or milestone. A sing
 needs no tracker. Its issue and its plan are enough. Each open program has one tracker at
 `docs/programs/<name>.md`, kebab-case.
 
-**Scratch** is specs, plans, subagent ledgers, brainstorm output, frames and contact sheets, under
-`docs/superpowers/` and `.superpowers/`. Both are ignored. Nothing tracked lives under them, and no
-tracked file names a file inside them. A bare mention of the folder in a rule is fine. A plan for a
-program milestone is named `<program>-m<N>-<topic>` so a new chat finds it locally by name. Scratch is
-disposable: a plan is needed only while its milestone is in flight.
+**Work files** are specs, plans, subagent ledgers, briefs, reports, receipts and brainstorm output.
+They live outside the repository in the work folder `~/.local/share/agent-work/<repo>/<key>/`, where
+`<key>` is the program's tracker name or the branch topic, so a reboot, a worktree removal or
+`git clean` cannot take them. They stay while the work or program runs and are removed when it ends.
+They are never committed, and no tracked file names a file inside them. `docs/superpowers/` and
+`.superpowers/` stay ignored scratch roots, and a worktree's `.superpowers/sdd` is a link into the work
+folder so the subagent ledger is durable. A bare mention of these folders in a rule is fine. A plan for a
+program milestone is named `<program>-m<N>-<topic>` so a new chat finds it by name. Output that can be
+regenerated, such as captures, frames, contact sheets, CI downloads and logs, goes in
+`/tmp/<repo>-<key>/` with mode 0700, never in the work folder.
 
 The staged check treats merge parents as existing content. A dated doc is new only when none of the
 parents has that path. A scratch reference is new only when its exact line is absent from that file

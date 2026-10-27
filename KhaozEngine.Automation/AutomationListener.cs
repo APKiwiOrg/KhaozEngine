@@ -82,6 +82,8 @@ namespace KhaozEngine.Automation
         /// <see cref="NullReferenceException"/> rather than <see cref="ObjectDisposedException"/>, which crashed a
         /// test host. So the catch is broad, on purpose, and every one of them ends the same way: this connection is
         /// gone and the game keeps running. What it no longer does is end SILENTLY.
+        /// Stream ownership stays with the client until <c>finally</c>, so error reporting precedes this thread
+        /// closing the connection.
         /// </para>
         /// <para>
         /// The receive deadline starts short, because the first line is the one that must carry the token, and goes
@@ -94,9 +96,9 @@ namespace KhaozEngine.Automation
             {
                 client.NoDelay = true;
                 client.ReceiveTimeout = Milliseconds(_options.FirstLineTimeout);
-                using NetworkStream stream = client.GetStream();
+                NetworkStream stream = client.GetStream();
                 var reader = new AutomationLineReader(stream, AutomationHost.MaxRequestLineBytes);
-                using var writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
+                using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
 
                 while (!_stopping)
                 {

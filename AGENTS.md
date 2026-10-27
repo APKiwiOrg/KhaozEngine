@@ -81,11 +81,13 @@ bash scripts/check-doc-versions.sh
 Plain `dotnet test` skips GPU facts. GPU work follows `docs/CROSS-PLATFORM.md` and uses the relevant
 backend CI bake. Do not launch consumer clients for engine tooling or documentation work.
 
-Scratch captures, coverage evidence and CI downloads go under `/tmp/khaozengine-<topic>/`, never inside a
-worktree or its `.superpowers/` folder. Delete per-frame images and raw buffers once the metrics and contact
-sheets they feed exist, unless the brief asks to keep them. Fetch only the artifact you need with
-`gh run download <run-id> -n <artifact> -D <dir>` and delete it once read, since the run keeps its own copy
-until it expires. One coverage evidence download is about 4 GB, and kept downloads once filled 30 GB of a
+Work files (specs, plans, ledgers, briefs, reports, receipts, private evidence and sourced scripts) go in the
+work folder `~/.local/share/agent-work/khaozengine/<key>/`, outside this public repository. Regenerable captures,
+coverage evidence, raw buffers and CI downloads go under `/tmp/khaozengine-<key>/` with mode 0700, never inside
+a worktree or its `.superpowers/` folder, because /tmp is cleared at boot. Delete per-frame images and raw buffers
+once the metrics and contact sheets they feed exist, unless the brief asks to keep them. Fetch only the artifact
+you need with `gh run download <run-id> -n <artifact> -D <dir>` and delete it once read, since the run keeps its
+own copy until it expires. One coverage evidence download is about 4 GB, and kept downloads once filled 30 GB of a
 worktree.
 
 ## Version and release boundary
@@ -118,9 +120,12 @@ merging into or pushing `main`, and wait while a release holds the lock.
   `docs/programs/<name>.md` in the shape [docs/programs/README.md](docs/programs/README.md) sets. Update it
   in the same commit as each milestone. When the program is done, move every decision still in force into
   the docs and delete the tracker.
-- Specs, plans, subagent ledgers and brainstorm output under `docs/superpowers/` and `.superpowers/` are
-  local scratch. They are never committed, and no tracked file names a file inside them, whatever a skill
-  says. `scripts/check-scratch.sh` enforces this.
+- Specs, plans, subagent ledgers, briefs, reports, receipts and sourced scripts are work files. They live in
+  the work folder `~/.local/share/agent-work/<repo>/<key>/` from the moment they are written, never only in
+  `/tmp` or a worktree. They are never committed, and no tracked file names a file inside `docs/superpowers/`
+  or `.superpowers/`, whatever a skill says. `scripts/check-scratch.sh` enforces this. Regenerable output
+  such as captures, frames, CI downloads and logs goes in `/tmp/<repo>-<key>/` with mode 0700. Details are in
+  [docs/programs/README.md](docs/programs/README.md).
 - A branch is not done until the docs describe its behaviour and every ruling, reason or gotcha from its
   plan that still applies is in a doc or in the program's decisions in force.
 - A merge that reports a modify/delete conflict on a scratch file: copy the file aside, `git rm --cached`

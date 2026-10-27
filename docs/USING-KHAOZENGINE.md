@@ -1727,6 +1727,41 @@ quality.Update(im, focused: nav.Focused == 2);   // Enter opens the dropdown; Up
 
 `KhaozEngine.Showcase`'s Settings dialog (`Room2DGui.cs`) is the runnable reference: enter the "2D & GUI" room, open the "Screens & dialogs" tab, launch the Settings dialog, and drive the volume slider + fullscreen toggle with the keyboard/gamepad (Up/Down between rows, Left/Right to adjust, Enter to flip, Esc to back out) or the pointer.
 
+**Bounded `Dropdown` popups** - set `PopupViewport` in the same logical coordinates as `TriggerBounds`
+before update and draw. The popup fits below, flips above when that fits, or uses the side with more space
+and scrolls. Horizontal placement and width clamp to the viewport without moving the trigger or shrinking
+option text. Opening reveals the current selection. Keyboard highlight movement, including wrap, reveals
+the target row. Wheel scrolling persists across idle updates.
+
+```csharp
+var resolution = new Dropdown(resolutionOptions, triggerBounds)
+{
+    PopupViewport = new Rect(0, 0, 400, 300),
+};
+// Each frame, after InputManager.Update and before parent content updates:
+resolution.Update(input, focused: resolutionFocused);
+parent.Update(input.Pointer, resolution.WheelConsumed ? input.State.WithoutScroll() : input.State);
+// Draw the trigger with normal content, then draw the popup after the parent's clip has ended.
+resolution.Draw(batch, white, font);
+resolution.DrawOverlay(batch, white, font, input.Pointer);
+```
+
+`PopupBounds` is the actual list rectangle, excluding the trigger. `FirstVisibleIndex` and
+`VisibleOptionCount` identify intersecting rows, including partial edge rows. Bounded `OptionBounds(i)`
+is the visible, hit-testable part of the row and returns the empty default rectangle for a fully offscreen
+row. Drawing, pointer reservation and selection use this same resolved geometry. A row press is cancelled
+when scrolling, popup reflow or a pointer-coordinate mapping change intervenes before release. Returning
+to the original geometry does not revive that press. Same-frame taps still select visible options.
+
+The additive `Update(Pointer, float wheelDelta)` scrolls upward for positive deltas. `Update(Pointer)`
+remains a zero-wheel call. `WheelConsumed` resets on each update and claims nonzero wheel input only while
+a bounded popup is open and the pointer is inside it, including at a scroll limit. Update the popup first
+and withhold consumed wheel input from parent content as above. Bounded `Update(InputManager, ...)` reads
+keyboard/gamepad navigation from a scroll-free snapshot, so a wheel event never also moves the highlight,
+and a wheel outside the popup remains available to parent content. Simultaneous keyboard/gamepad input
+still works. Leaving `PopupViewport` null preserves the original unbounded placement, `OptionBounds` and
+InputManager wheel-as-menu navigation.
+
 **Overlay chrome on the core widgets (opt-in, 9.21.0)** - `ScrollablePanel`, `Dropdown`, and `Tooltip` carry
 opt-in "panel overlay" behaviours for bottom-sheet-style UI. Every knob defaults to a no-op, so a widget you
 already use is unchanged until you set one.

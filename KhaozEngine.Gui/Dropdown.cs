@@ -18,7 +18,7 @@ namespace KhaozEngine.Gui
     public readonly record struct DropdownOption(LocalizedText Content, int Value);
 
     /// <summary>
-    /// A selector over <see cref="Pointer"/>: the trigger shows the current option; a tap opens a list below it;
+    /// A selector over <see cref="Pointer"/>. The trigger shows the current option and a tap opens its option list.
     /// tapping an option selects + closes; a release outside dismisses. Because the open list extends past the
     /// trigger, drawing is split: <see cref="Draw"/> renders the trigger (inside any clip), <see cref="DrawOverlay"/>
     /// renders the open list (call last / unclipped so it sits on top). Pointer gestures that open, close, select,
@@ -27,9 +27,22 @@ namespace KhaozEngine.Gui
     public sealed class Dropdown
     {
         readonly List<DropdownOption> _options;
+        readonly DropdownPopup _popup = new();
+        readonly InputManager _navigation = new();
 
-        /// <summary>Trigger button bounds; option rows render below it. Update before <see cref="Update(Pointer)"/> if it moves.</summary>
+        /// <summary>Trigger button bounds. The popup can fit independently when a viewport is supplied. Update before <see cref="Update(Pointer)"/> if it moves.</summary>
         public Rect TriggerBounds;
+        /// <summary>Optional popup canvas in the same coordinates as the trigger. Null preserves the unbounded list.</summary>
+        public Rect? PopupViewport { get; set; }
+        /// <summary>The resolved list bounds, excluding the unchanged trigger, even while closed.</summary>
+        public Rect PopupBounds { get { ResolvePopup(); return PopupViewport.HasValue ? _popup.Bounds : LegacyPopupBounds; } }
+        /// <summary>Index of the first row intersecting the popup. Zero for an unbounded list.</summary>
+        public int FirstVisibleIndex { get { ResolvePopup(); return PopupViewport.HasValue ? _popup.FirstVisibleIndex : 0; } }
+        /// <summary>Number of rows with visible hit geometry, including partially visible edge rows.</summary>
+        public int VisibleOptionCount { get { ResolvePopup(); return PopupViewport.HasValue ? _popup.VisibleOptionCount : _options.Count; } }
+        /// <summary>True for this update when a bounded open popup owns nonzero wheel input, including at a scroll limit.
+        /// Feed a scroll-free snapshot to parent content when true.</summary>
+        public bool WheelConsumed { get; private set; }
         public bool IsOpen { get; private set; }
         /// <summary>True on the frame the selection changed.</summary>
         public bool WasChanged { get; private set; }
@@ -111,12 +124,19 @@ namespace KhaozEngine.Gui
 
         /// <summary>Hit-test open/close/select/dismiss and consume any gesture that performs one of those actions.
         /// Returns true if the selection changed.</summary>
-        public bool Update(Pointer pointer)
+        public bool Update(Pointer pointer) => Update(pointer, 0f);
+
+        /// <summary>Update pointer gestures and bounded popup scrolling. Positive wheel scrolls upward.
+        /// Check <see cref="WheelConsumed"/> before routing the wheel to parent content.</summary>
+        public bool Update(Pointer pointer, float wheelDelta)
         {
             WasChanged = false;
+            WheelConsumed = false;
+            ResolvePopup();
             // Reserve the trigger (closed) or the whole expanded list (open) for click-through, so a layer
             // beneath can't be clicked through the dropdown.
-            pointer.BlockRegion(IsOpen ? FullBounds() : TriggerBounds);
+            pointer.BlockRegion(PopupViewport.HasValue || !IsOpen ? TriggerBounds : FullBounds());
+            if (IsOpen && PopupViewport.HasValue) pointer.BlockRegion(PopupBounds);
             if (!IsOpen)
             {
                 // Pointer-driven open: no keyboard cursor, so the overlay draws byte-identically to pre-key-nav.
@@ -125,6 +145,8 @@ namespace KhaozEngine.Gui
                     pointer.ConsumeGesture();
                     IsOpen = true;
                     HighlightedIndex = -1;
+                    ResetPopup();
+                    if (PopupViewport.HasValue) pointer.BlockRegion(PopupBounds);
                 }
                 return false;
             }
@@ -136,16 +158,32 @@ namespace KhaozEngine.Gui
                 return false;
             }
 
-            for (int i = 0; i < _options.Count; i++)
+            if (PopupViewport is Rect viewport)
             {
-                if (!pointer.IsTapIn(OptionBounds(i))) continue;
-                pointer.ConsumeGesture();
-                if (SelectedIndex != i) { SelectedIndex = i; WasChanged = true; }
-                IsOpen = false;
-                return WasChanged;
+                WheelConsumed = _popup.Update(pointer, wheelDelta, TriggerBounds, viewport);
+                int index = _popup.ReleasedOption(pointer);
+                if (index >= 0)
+                {
+                    if (SelectedIndex != index) { SelectedIndex = index; WasChanged = true; }
+                    IsOpen = false;
+                    return WasChanged;
+                }
+            }
+            else
+            {
+                for (int i = 0; i < _options.Count; i++)
+                {
+                    if (!pointer.IsTapIn(OptionBounds(i))) continue;
+                    pointer.ConsumeGesture();
+                    if (SelectedIndex != i) { SelectedIndex = i; WasChanged = true; }
+                    IsOpen = false;
+                    return WasChanged;
+                }
             }
 
-            if (pointer.IsReleasedOutside(FullBounds()))
+            if (PopupViewport.HasValue
+                ? pointer.IsReleasedOutside(TriggerBounds) && pointer.IsReleasedOutside(PopupBounds)
+                : pointer.IsReleasedOutside(FullBounds()))
             {
                 pointer.ConsumeGesture();
                 IsOpen = false;
@@ -163,12 +201,16 @@ namespace KhaozEngine.Gui
         /// </summary>
         public bool Update(InputManager input, bool focused, PlayerIndex? player = null)
         {
-            bool changed = Update(input.Pointer);
+            // Keep stick edges current even while unfocused or unbounded. Wheel belongs to the popup,
+            // so the bounded navigation snapshot excludes it without discarding simultaneous keys or buttons.
+            _navigation.Update(input.State.WithoutScroll());
+            bool changed = Update(input.Pointer, input.ScrollDelta);
             if (!focused) return changed;
+            InputManager navigation = PopupViewport.HasValue ? _navigation : input;
             if (IsOpen)
             {
-                if (input.IsMenuDown(player)) HighlightNext();
-                else if (input.IsMenuUp(player)) HighlightPrevious();
+                if (navigation.IsMenuDown(player)) HighlightNext();
+                else if (navigation.IsMenuUp(player)) HighlightPrevious();
                 else if (input.IsMenuSelect(player, out _)) { if (CommitHighlight()) changed = true; }
                 else if (input.IsMenuCancel(player, out _)) Close();
             }
@@ -182,7 +224,7 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>Open the list and seed the keyboard highlight to the current selection.</summary>
-        public void Open() { IsOpen = true; HighlightedIndex = SelectedIndex; }
+        public void Open() { IsOpen = true; HighlightedIndex = SelectedIndex; ResetPopup(); }
 
         /// <summary>Close the list. Leaves the selection untouched.</summary>
         public void Close() => IsOpen = false;
@@ -197,6 +239,7 @@ namespace KhaozEngine.Gui
         {
             int from = HighlightedIndex >= 0 ? HighlightedIndex : SelectedIndex;
             int to = Step(from, dir);
+            RevealOption(to);
             if (to == HighlightedIndex) return false;
             HighlightedIndex = to;
             return true;
@@ -239,9 +282,33 @@ namespace KhaozEngine.Gui
             return next < 0 ? 0 : (next >= n ? n - 1 : next);
         }
 
-        /// <summary>The bounds of option row <paramref name="i"/> in the open list.</summary>
-        public Rect OptionBounds(int i) =>
-            new(TriggerBounds.X, TriggerBounds.Bottom + i * TriggerBounds.Height, TriggerBounds.Width, TriggerBounds.Height);
+        /// <summary>The visible, hit-testable part of row <paramref name="i"/> when bounded, or the full legacy row
+        /// when unbounded. A fully offscreen bounded row returns the empty default rectangle.</summary>
+        public Rect OptionBounds(int i)
+        {
+            ResolvePopup();
+            return PopupViewport.HasValue ? _popup.VisibleBounds(i)
+                : new(TriggerBounds.X, TriggerBounds.Bottom + i * TriggerBounds.Height, TriggerBounds.Width, TriggerBounds.Height);
+        }
+
+        Rect LegacyPopupBounds => new(TriggerBounds.X, TriggerBounds.Bottom, TriggerBounds.Width, TriggerBounds.Height * _options.Count);
+
+        void ResolvePopup()
+        {
+            if (PopupViewport is Rect viewport) _popup.Resolve(TriggerBounds, viewport, _options.Count);
+        }
+
+        void RevealOption(int index)
+        {
+            ResolvePopup();
+            if (PopupViewport.HasValue) _popup.Reveal(index);
+        }
+
+        void ResetPopup()
+        {
+            ResolvePopup();
+            if (PopupViewport.HasValue) _popup.Reset(SelectedIndex);
+        }
 
         Rect FullBounds() =>
             new(TriggerBounds.X, TriggerBounds.Y, TriggerBounds.Width, TriggerBounds.Height * (1 + _options.Count));
@@ -268,22 +335,33 @@ namespace KhaozEngine.Gui
         public void DrawOverlay(SpriteBatch batch, Texture2D white, SpriteFont font, Pointer pointer)
         {
             if (!IsOpen) return;
-            var list = new Rect(TriggerBounds.X, TriggerBounds.Bottom, TriggerBounds.Width, TriggerBounds.Height * _options.Count);
+            Rect list = PopupBounds;
+            if (list.Width <= 0 || list.Height <= 0) return;
+            if (PopupViewport is Rect viewport) batch.SetScissor(viewport);
             GuiDraw.FillStyled(batch, white, list, Style with { BorderThickness = 1f },
                 GuiDraw.WithOpacity(ListBackground, Opacity), GuiDraw.WithOpacity(Border, Opacity));
+            if (PopupViewport.HasValue) _popup.BeginClip(batch);
 
-            for (int i = 0; i < _options.Count; i++)
+            int first = FirstVisibleIndex;
+            int end = first + VisibleOptionCount;
+            for (int i = first; i < end; i++)
             {
-                Rect r = OptionBounds(i);
+                Rect r = PopupViewport.HasValue ? _popup.RowBounds(i) : OptionBounds(i);
                 bool selected = i == SelectedIndex;
                 // Precedence: current selection, then the keyboard/gamepad highlight (inactive at -1 for the
                 // pointer-only path, so this stays byte-identical there), then pointer hover.
                 if (selected) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(SelectedColor, Opacity));
                 else if (i == HighlightedIndex) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(FocusColor, Opacity));
-                else if (pointer.IsPointerIn(r)) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(HoverColor, Opacity));
+                else if (pointer.IsPointerIn(OptionBounds(i))) GuiDraw.Fill(batch, white, r, GuiDraw.WithOpacity(HoverColor, Opacity));
                 float ty = GuiDraw.CenteredTextY(r.Y, r.Height, font.LineHeight, TextScale);
                 batch.DrawString(font, _options[i].Content.Resolve(), new Vector2(MathF.Floor(r.X + 6f), MathF.Floor(ty)),
                     (Color)GuiDraw.WithOpacity(selected ? SelectedTextColor : TextColor, Opacity), TextScale);
+            }
+            if (PopupViewport.HasValue)
+            {
+                _popup.DrawScrollIndicator(batch, white, GuiDraw.WithOpacity(Border, Opacity));
+                _popup.EndClip(batch);
+                batch.ClearScissor();
             }
         }
     }

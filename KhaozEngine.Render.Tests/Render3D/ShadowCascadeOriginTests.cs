@@ -14,32 +14,38 @@ public sealed class ShadowCascadeOriginTests(ITestOutputHelper output)
     static readonly Vector3 LargeOrigin = new(4194304f, 128f, -4194304f);
     static readonly Vector3 Light = new(-0.55f, -0.8f, -0.25f);
 
-    // Captured from c8f8b3495 before changing production code. Signed zeros are part of the contract.
+    // Compare with the pre-change algorithm on this architecture, including signed zero bits.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void Origin_zero_preserves_base_bits(bool orthographic)
     {
         using var rig = Create(orthographic, Vector3.Zero);
+        var oracle = new ShadowCascadeBaseOracle(rig.Scene.CameraOverride!, rig.Scene.Post);
         rig.Frame();
-        AssertBase(rig.Scene, orthographic);
+        oracle.Frame();
+        AssertBase(rig.Scene, oracle);
         rig.Scene.Post.LightDirection = Light + new Vector3(0.000001f, 0f, 0f);
         rig.Frame();
-        AssertBase(rig.Scene, orthographic);
+        oracle.Frame();
+        AssertBase(rig.Scene, oracle);
     }
 
-    static void AssertBase(Scene3D scene, bool orthographic)
+    static void AssertBase(Scene3D scene, ShadowCascadeBaseOracle oracle)
     {
-        int[] matrices = orthographic ? OrthographicBase : PerspectiveBase;
+        int[] matrices = MemoryMarshal.Cast<Matrix4x4, int>(oracle.Matrices).ToArray();
         Assert.Equal(matrices, MemoryMarshal.Cast<Matrix4x4, int>(scene.CascadeFitRelativeForTests).ToArray());
-        Assert.Equal(matrices, MemoryMarshal.Cast<Matrix4x4, int>(scene.CascadeFitAbsoluteForTests).ToArray());
+        Assert.Equal(MemoryMarshal.Cast<Matrix4x4, int>(oracle.AbsoluteMatrices).ToArray(),
+            MemoryMarshal.Cast<Matrix4x4, int>(scene.CascadeFitAbsoluteForTests).ToArray());
         Span<float> splits = stackalloc float[4];
         var shadows = scene.Post.Quality.Shadows;
         ShadowMapMath.FillCascadeSplits(splits, 4, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
-        Assert.Equal(new[] { 1084227584, 1099013354, 1107398785, 1114636288 },
+        Span<float> expectedSplits = stackalloc float[4];
+        oracle.Splits(expectedSplits);
+        Assert.Equal(MemoryMarshal.Cast<float, int>(expectedSplits).ToArray(),
             MemoryMarshal.Cast<float, int>(splits).ToArray());
         Vector3 held = Held(scene);
-        Assert.Equal(new[] { -1089703162, -1085519305, -1098949436 },
+        Assert.Equal(new[] { BitConverter.SingleToInt32Bits(oracle.Held.X), BitConverter.SingleToInt32Bits(oracle.Held.Y), BitConverter.SingleToInt32Bits(oracle.Held.Z) },
             new[] { BitConverter.SingleToInt32Bits(held.X), BitConverter.SingleToInt32Bits(held.Y), BitConverter.SingleToInt32Bits(held.Z) });
     }
 
@@ -120,46 +126,6 @@ public sealed class ShadowCascadeOriginTests(ITestOutputHelper output)
         rig.Scene.Post.LightDirection = Light;
         return rig;
     }
-
-    static readonly int[] PerspectiveBase =
-    [
-        1040620137, -1100197948, -1120766509, 0,
-        0, 1044645886, -1115567604, 0,
-        -1097592766, -1109994461, -1130218353, 0,
-        1057734655, 1051983869, 1060519643, 1065353216,
-        1027626468, -1113008786, -1132527408, 0,
-        0, 1032588836, -1128696588, 0,
-        -1110208081, -1122403276, -1142435280, 0,
-        -1094451200, -1101856768, 1051532174, 1065353216,
-        1019856934, -1120853966, -1140472960, 0,
-        0, 1024651026, -1136488262, 0,
-        -1117915707, -1130297859, -1150077722, 0,
-        -1086914562, -1093763070, 1045469859, 1065353216,
-        1012572521, -1128273303, -1148129585, 0,
-        0, 1017066472, -1143812166, 0,
-        -1125089703, -1137805309, -1157381676, 0,
-        -1084948481, -1091371003, 1042294327, 1065353216,
-    ];
-
-    static readonly int[] OrthographicBase =
-    [
-        1034717615, -1105759100, -1125859007, 0,
-        0, 1039877919, -1121559039, 0,
-        -1103246681, -1115050051, -1135610496, 0,
-        1054212094, 1049067523, 1059713581, 1065353216,
-        1030830626, -1110196148, -1130370667, 0,
-        0, 1034922047, -1125607021, 0,
-        -1106989881, -1119846333, -1139712005, 0,
-        -1097924609, -1106051066, 1052913010, 1065353216,
-        1027175734, -1113404443, -1133125000, 0,
-        0, 1032260621, -1129131200, 0,
-        -1110703887, -1122762964, -1142978545, 0,
-        -1082785794, -1089863679, 1036885359, 1065353216,
-        1022016105, -1118958626, -1139041617, 0,
-        0, 1026223296, -1134406309, 0,
-        -1115612741, -1128574824, -1148357289, 0,
-        -1079083010, -1085915134, -1115577035, 1065353216,
-    ];
 
     // Keep the local orientation before translating, as an origin-aware camera must.
     sealed class FixedCamera(Vector3 origin, bool orthographic) : IIsoCamera3D, IRenderOriginAware

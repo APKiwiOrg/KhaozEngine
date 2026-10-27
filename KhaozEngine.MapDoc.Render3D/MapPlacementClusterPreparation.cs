@@ -19,6 +19,7 @@ internal static class MapPlacementClusterPreparation
         var result = build(request());
         var inventory = new MapNativeInventory();
         long bytes = checked(MapNativeInventory.Mesh(result.BorrowMesh) + inventory.Layer(result.Request.BorrowLayer, false) +
+            inventory.WeldPlacements(result.Request) +
             16L * result.Request.Instances.Count + 8L * result.BorrowContributions.Count +
             result.BorrowContributions.Sum(m => MapNativeInventory.Mesh(m)));
         result.Own(preparation.Complete(bytes, publishToParent));

@@ -24,6 +24,10 @@ public sealed partial class PropClusterRenderer
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(selectContribution);
         var sources = request.BorrowLayer.HlodSourceMeshes ?? throw new ArgumentException("Native cluster requires its source inventory.", nameof(request));
+        float weldCell = request.BorrowLayer.HlodWeldCell;
+        bool weld = weldCell > 0;
+        if (weld && request.WeldPlacements is null)
+            throw new ArgumentException("Native welded clusters require every original binary32 placement.", nameof(request));
         int vertexCount = 0, indexCount = 0;
         foreach (var instance in request.Instances)
         {
@@ -32,16 +36,15 @@ public sealed partial class PropClusterRenderer
             vertexCount = checked(vertexCount + source.Vertices.Length); indexCount = checked(indexCount + source.Indices32.Length);
         }
         var vertices = new ModelVertex[vertexCount]; var indices = new uint[indexCount];
-        float weldCell = request.BorrowLayer.HlodWeldCell;
-        bool weld = weldCell > 0;
-        int vertex = 0, index = 0;
+        int vertex = 0, index = 0, member = 0;
         foreach (var instance in request.Instances)
         {
             var source = sources[instance.AssetId]; var pose = instance.LocalTransform;
             // Weld the same absolute binary32 positions as the released route. Storage anchors
             // must change neither cell membership nor the order and precision of centroid accumulation.
-            var transform = new NativePropClusterTransform(instance, weld ? default : request.Anchor);
-            var world = weld ? transform.Binary32Matrix(instance) : default;
+            var transform = new NativePropClusterTransform(instance, request.Anchor);
+            var world = weld ? NativePropClusterTransform.Binary32Matrix(request.WeldPlacements![member]) : default;
+            member++;
             pose.Translation = Vector3.Zero;
             if (!Matrix4x4.Invert(pose, out var inverse)) throw new ArgumentException("Native cluster requires invertible transforms.", nameof(request));
             var normal = Matrix4x4.Transpose(inverse);

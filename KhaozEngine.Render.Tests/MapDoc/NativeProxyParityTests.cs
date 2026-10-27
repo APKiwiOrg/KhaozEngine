@@ -51,13 +51,13 @@ public sealed class NativeProxyParityTests
         var pose = Matrix4x4.CreateScale(3) * Matrix4x4.CreateRotationY(yaw) * Matrix4x4.CreateTranslation(x, 0, 0);
         var instanceAnchor = new RenderAnchor(-1, 0, 0);
         pose.Translation -= new Vector3(-1, 0, 0);
-        NativePropInstance[] instances = [new("a", null, "prop", pose, instanceAnchor) { WeldPlacement = placement }];
+        NativePropInstance[] instances = [new("a", null, "prop", pose, instanceAnchor)];
         var expected = PropHlod.BuildMergedMesh([placement], sources, 1);
         Assert.Equal(0, expected.TriangleCount);
         foreach (int storageX in new[] { -1, 0 })
         {
             var anchor = new RenderAnchor(storageX, 0, 0);
-            using var build = PropClusterRenderer.BuildNativeCpu(Request(instances, sources, anchor, 1), true);
+            using var build = PropClusterRenderer.BuildNativeCpu(Request(instances, sources, anchor, 1, [placement]), true);
             AssertWorldMesh(expected, build.MergedMesh, anchor);
             AssertWorldMesh(PropHlod.BuildPlacementMesh([placement], 0, sources, 1), build.BorrowContribution(0), anchor);
         }
@@ -80,7 +80,7 @@ public sealed class NativeProxyParityTests
         foreach (int storageOffset in new[] { 0, 1 })
         {
             var anchor = new RenderAnchor(origin + storageOffset, origin - storageOffset, origin + storageOffset);
-            using var build = PropClusterRenderer.BuildNativeCpu(Request(instances, sources, anchor, 1.5f), true);
+            using var build = PropClusterRenderer.BuildNativeCpu(Request(instances, sources, anchor, 1.5f, placements), true);
             AssertWorldMesh(expected, build.MergedMesh, anchor);
             for (int member = 0; member < instances.Length; member++)
                 AssertWorldMesh(PropHlod.BuildPlacementMesh(placements, member, sources, 1.5f), build.BorrowContribution(member), anchor);
@@ -105,7 +105,7 @@ public sealed class NativeProxyParityTests
         var instances = Enumerable.Range(0, 100).Select(i => new NativePropInstance("prop-" + i, null, "prop", Matrix4x4.Identity, new(1000, 1000, 1000))).ToArray();
         var expected = PropHlod.BuildMergedMesh(placements, sources, 1.5f);
         var anchor = new RenderAnchor(999, 1001, 1000);
-        using var build = PropClusterRenderer.BuildNativeCpu(Request(instances, sources, anchor, 1.5f));
+        using var build = PropClusterRenderer.BuildNativeCpu(Request(instances, sources, anchor, 1.5f, placements));
         AssertWorldMesh(expected, build.MergedMesh, anchor);
     }
 
@@ -149,11 +149,11 @@ public sealed class NativeProxyParityTests
     }
 
     static NativePropClusterRequest Request(NativePropInstance[] instances, IReadOnlyDictionary<string, GltfMesh> sources,
-        RenderAnchor anchor, float cell)
+        RenderAnchor anchor, float cell, IReadOnlyList<PropPlacement>? weldPlacements = null)
     {
         var lods = new Dictionary<string, IReadOnlyList<NativePropLod>> { ["prop"] = new[] { new NativePropLod(0, new[] { new MeshHandle(1) }) } };
         var layer = PropLayer.PlacementLayer(instances, lods, 1000, Array.Empty<float>()).WithHlod(sources, 30, cell, 10);
-        return new(new("proxy", 0, 0, 0), 0, new(0, 0, 64, 64), layer, instances, anchor);
+        return new(new("proxy", 0, 0, 0), 0, new(0, 0, 64, 64), layer, instances, anchor, weldPlacements);
     }
 
     static GltfMesh Source() => new(

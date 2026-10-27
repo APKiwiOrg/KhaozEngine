@@ -113,9 +113,13 @@ source units and merging placements. The whole-scene corner weld preserves gener
 colour provenance across parts. Selected loading retains the verified tier's measured decode peak.
 Re-decoding reserves that peak in scene workspace before reading the GLB, without repeating the allocating
 metadata and embedded-buffer scan. Success and failure release this temporary reservation.
-Positive weld cells use the original binary32 placement, retained before anchor reduction, to construct the
+Positive weld cells use the original binary32 placement from canonical source poses to construct the
 same scale, yaw and translation matrix and `Vector3.Transform` positions as `PropHlod`.
-This placement provenance is validated, charged and included in welded proxy content digests.
+Each positive-weld cluster request owns an immutable, member-aligned `WeldPlacements` inventory admitted
+before construction. Public `PrepareCluster` refuses missing provenance or a mismatch with any canonical
+source pose before merging. The inventory is charged once with the build or its owning batch, released with
+that owner's receipt and included in welded proxy content digests. Ordinary and zero-weld layers retain
+the existing native-row charge without a provenance inventory. Weld membership is resolved per selected cell.
 Their centroid accumulation, division and floor also match `PropHlod`.
 Only the final proxy and selected contribution vertices subtract the storage anchor, in binary64.
 The storage anchor changes neither the weld lattice nor its averages. Non-welded proxies retain their existing

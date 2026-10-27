@@ -81,11 +81,7 @@ public static class NativeMapPlacements
                 var pose = Pose(placementScene, placement); var anchor = Anchor(pose);
                 posesById.Add(placement.PlacementId, pose);
                 var instance = new NativePropInstance(placement.PlacementId, placement.NumericId, placement.AssetId,
-                    MapRenderTransform.ToLocal(pose, anchor), new(anchor.X, anchor.Y, anchor.Z))
-                {
-                    WeldPlacement = policy.Layers.Any(l => l.HlodDistance > 0 && l.HlodWeldCell > 0 && l.AssetIds.Contains(placement.AssetId))
-                    ? MapRenderTransform.ToWeldPlacement(placement.AssetId, pose) : null
-                };
+                    MapRenderTransform.ToLocal(pose, anchor), new(anchor.X, anchor.Y, anchor.Z));
                 instances.Add(instance);
                 var bounds = Bounds(assets.ById[placement.AssetId].Descriptor, pose);
                 boundsById.Add(placement.PlacementId, bounds);
@@ -139,13 +135,20 @@ public static class NativeMapPlacements
                     var (build, clusterBytes) = MapPlacementClusterPreparation.Build(mergeBytes, () =>
                         {
                             var shared = Shared(members, layer).WithHlod(sources, layer.HlodDistance, layer.HlodWeldCell, layer.HlodCrossfadeWidth);
-                            var request = new NativePropClusterRequest(cell.Key, 0, domain.Area, shared, members, domain.Anchor);
+                            PropPlacement[]? weldPlacements = null;
+                            if (layer.HlodWeldCell > 0)
+                            {
+                                // Admit both the temporary input and request's frozen copy before constructing either.
+                                admission.ReserveBytes(checked(2 * MapNativeInventory.WeldPlacementBytes(members.Length)));
+                                weldPlacements = members.Select(i => MapRenderTransform.ToWeldPlacement(i.AssetId, posesById[i.Id])).ToArray();
+                            }
+                            var request = new NativePropClusterRequest(cell.Key, 0, domain.Area, shared, members, domain.Anchor, weldPlacements);
                             sourcePreparation.Dispose();
                             return request;
                         }, request => PrepareCluster(cells.Get(cell.Key), request));
                     clusters.Add(build);
                     var anchor = new MapSubmissionAnchor(domain.Anchor.X, domain.Anchor.Y, domain.Anchor.Z);
-                    string inventory = ClusterInventoryDigest(members, assets.Closure.Hash, layer.HlodWeldCell);
+                    string inventory = ClusterInventoryDigest(build.Request, assets.Closure.Hash);
                     if (cell.Key.Cohort == 1)
                         for (int member = 0; member < members.Length; member++)
                         {
@@ -260,12 +263,15 @@ public static class NativeMapPlacements
         var roofs = scene.CapturedBuildingIntent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var placements = scene.Placements.ToDictionary(p => p.PlacementId, StringComparer.Ordinal);
         if (request.Instances.Count == 0) throw new MapDocumentException("Native cluster requires its effective members.");
-        foreach (var instance in request.Instances)
+        if (request.BorrowLayer.HlodWeldCell > 0 && request.WeldPlacements is null)
+            throw new MapDocumentException("Native welded cluster requires every original binary32 placement.");
+        for (int member = 0; member < request.Instances.Count; member++)
         {
+            var instance = request.Instances[member];
             if (roofs.Contains(instance.Id) != (request.Key.Cohort == 1) || !routing.Entries.TryGetValue(instance.Id, out var route) || route != MapPlacementRoute.Cluster ||
                 !placements.TryGetValue(instance.Id, out var placement) || instance.AssetId != placement.AssetId || instance.NumericId != placement.NumericId ||
                 instance.LocalTransform != MapRenderTransform.ToLocal(Pose(scene, placement), new(instance.Anchor.X, instance.Anchor.Y, instance.Anchor.Z)) ||
-                (instance.WeldPlacement is { } weldPlacement && !weldPlacement.Equals(MapRenderTransform.ToWeldPlacement(placement.AssetId, Pose(scene, placement)))) ||
+                (request.WeldPlacements is { } weldPlacements && !weldPlacements[member].Equals(MapRenderTransform.ToWeldPlacement(placement.AssetId, Pose(scene, placement)))) ||
                 MapPlacementCells.Key(request.Key.LayerId, Pose(scene, placement), scene.Source.Data.TileSize, roofs.Contains(instance.Id)) != request.Key)
                 throw new MapDocumentException("Native cluster request disagrees with the effective scene routing.");
             var anchor = Anchor(Pose(scene, placement));
@@ -300,18 +306,20 @@ public static class NativeMapPlacements
             }
         }
     }
-    static string ClusterInventoryDigest(IReadOnlyList<NativePropInstance> instances, string closure, float weld) => MapPlacementDigest.Hash(w =>
+    static string ClusterInventoryDigest(NativePropClusterRequest request, string closure) => MapPlacementDigest.Hash(w =>
     {
-        w.WriteStartArray(); w.WriteStringValue("kemap/native-cluster/1"); w.WriteStringValue(closure); w.WriteNumberValue(weld);
-        foreach (var instance in instances.OrderBy(i => i.Id, StringComparer.Ordinal))
+        w.WriteStartArray(); w.WriteStringValue("kemap/native-cluster/1"); w.WriteStringValue(closure); w.WriteNumberValue(request.BorrowLayer.HlodWeldCell);
+        foreach (int member in Enumerable.Range(0, request.Instances.Count).OrderBy(i => request.Instances[i].Id, StringComparer.Ordinal))
         {
+            var instance = request.Instances[member];
             w.WriteStringValue(instance.Id); w.WriteStringValue(instance.AssetId);
             w.WriteNumberValue(instance.Anchor.X); w.WriteNumberValue(instance.Anchor.Y); w.WriteNumberValue(instance.Anchor.Z);
             var m = instance.LocalTransform;
             foreach (float value in new[] { m.M11, m.M12, m.M13, m.M14, m.M21, m.M22, m.M23, m.M24,
                 m.M31, m.M32, m.M33, m.M34, m.M41, m.M42, m.M43, m.M44 }) w.WriteNumberValue(value);
-            if (weld > 0 && instance.WeldPlacement is { } placement)
+            if (request.WeldPlacements is { } placements)
             {
+                var placement = placements[member];
                 w.WriteStartArray();
                 foreach (float value in new[] { placement.X, placement.Y, placement.Z, placement.Scale, placement.Yaw }) w.WriteNumberValue(value);
                 w.WriteEndArray();

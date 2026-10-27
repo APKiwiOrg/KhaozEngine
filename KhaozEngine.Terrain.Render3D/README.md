@@ -276,10 +276,13 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   validates routing, the bounded native region-cell domain, homogeneous effective roof roles and every binary64
   anchor-relative vertex coordinate before the builder enters. Admission and non-welded merging share the
   binary64 position kernel. Non-welded merges round anchor-local vertices only after certification and keep source
-  topology and attributes. The MapDoc adapter retains the original binary32 placement for welded sources before
-  reducing its translation to an anchor. Welded merges construct the same scale, rotation and translation matrix
+  topology and attributes. Positive-weld cluster requests freeze original binary32 placements in their
+  member-aligned `WeldPlacements` inventory, independent of the anchor-local native rows. The MapDoc adapter
+  admits this inventory before construction, validates every placement against its canonical source pose and
+  refuses missing or mismatched provenance before merging. Ordinary and zero-weld layers retain their existing
+  native-row charge. The inventory is retained and charged once with its CPU build or owning batch, then released
+  with that owner's receipt. Welded merges construct the same scale, rotation and translation matrix
   as `PropHlod` and call `Vector3.Transform`, preserving multiplication and cancellation rounding at cell boundaries.
-  Matrix-only native instances use their binary32 matrix with its absolute translation restored.
   Positive weld cells use the same absolute-world binary32 positions, division/floor lattice and
   centroid accumulation as `PropHlod`. Only final proxy and selected contribution vertices subtract the storage
   anchor, in binary64. Selected contributions share that lattice and the full cluster's averages.

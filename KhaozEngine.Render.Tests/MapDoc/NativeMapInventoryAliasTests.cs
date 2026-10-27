@@ -32,9 +32,8 @@ public sealed class NativeMapInventoryAliasTests
         var second = PropLayer.PlacementLayer(new[] { row }, lods, 10, []);
         var inventory = new MapNativeInventory();
         long actual = inventory.Layer(first) + inventory.Layer(second);
-        // Two instance arrays with inline weld placement storage, two dictionaries and tier-reference arrays,
-        // one shared tier and handle array.
-        long expected = 2 * (128L + Unsafe.SizeOf<PropPlacement?>()) + 2 * 64L + 2 * System.IntPtr.Size + 24 + Unsafe.SizeOf<MeshHandle>();
+        // Two instance arrays, two dictionaries and tier-reference arrays, one shared tier and handle array.
+        long expected = 2 * 128L + 2 * 64L + 2 * System.IntPtr.Size + 24 + Unsafe.SizeOf<MeshHandle>();
         Assert.Equal(expected, actual);
     }
 }

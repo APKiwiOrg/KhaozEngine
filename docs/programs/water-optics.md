@@ -14,6 +14,7 @@ binds the same neutral optical resource. Grimhollow adopts each milestone as it 
 - Docs changed: [TileWorld.Render3D](../../KhaozEngine.TileWorld.Render3D/README.md#authored-optical-beds),
   [Render3D](../../KhaozEngine.Render3D/README.md), [render pipeline](../RENDER-PIPELINE.md),
   [consumer contract](../USING-KHAOZENGINE.md).
+- Approved design of unbuilt milestones: [water optics design](water-optics-design.md)
 - Design rationale: [per-body water optics](../design/WATER-OBJECT-OPTICS-DESIGN-2026-10-24.md),
   [native handoff](../design/WATER-OPTICS-R8B-HANDOFF-2026-10-24.md).
 - Consumer adoption: https://github.com/APKiwiOrg/Grimhollow/issues/644
@@ -27,7 +28,7 @@ Rows are in the order the milestones run.
 | --- | --- | --- | --- |
 | M1 Authored beds at the world manifest edge | shipped in v21.14.0 | https://github.com/APKiwiOrg/KhaozEngine/issues/1586 | none |
 | M2 Underwater sunlight for submerged receivers | shipped in v21.15.0 | https://github.com/APKiwiOrg/KhaozEngine/issues/1588 | Native performance run before M3 ships |
-| M5 Water column light and shadow, with a bent view of the bed | design next | https://github.com/APKiwiOrg/KhaozEngine/issues/1608 | Owner approves its design |
+| M5 Water column light and shadow, with a bent view of the bed | design approved, plan next | https://github.com/APKiwiOrg/KhaozEngine/issues/1608 | Owner picks execution, rules on measured cost before it ships |
 | M6 Scene reflections in water | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1609 | Owner approves its design |
 | M7 River flow for procedural water | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1610 | Owner approves its design |
 | M3 Underwater caustics | design decisions taken, document not written | https://github.com/APKiwiOrg/KhaozEngine/issues/1604 | Owner approves its design, rules on its measured cost |
@@ -73,6 +74,6 @@ Rows are in the order the milestones run.
 
 ## Next step
 
-Design M5 for https://github.com/APKiwiOrg/KhaozEngine/issues/1608 and bring it to the owner. Its approved
-design goes in `docs/programs/water-optics-design.md`. Follow Grimhollow's adoption under
-https://github.com/APKiwiOrg/Grimhollow/issues/644.
+Write the M5 landing 1 implementation plan from [the design](water-optics-design.md) for
+https://github.com/APKiwiOrg/KhaozEngine/issues/1608 and ask the owner how to execute it. Follow Grimhollow's
+adoption under https://github.com/APKiwiOrg/Grimhollow/issues/644.

@@ -171,6 +171,20 @@ remain separate. Only the explicit diagnostic choices may differ. No extra frame
 part of collection. Current live resource counts accompany actual backend peak logical payload bytes.
 Diagnostic memory does not increase the production peak.
 
+Construction stores each distinct exact stage source and immutable descriptor once by content hash.
+Its unchanged 32 MiB source and 16 MiB descriptor limits charge distinct content, including retained
+unresolved descriptors and source hash keys. Every factory event and occurrence witness still counts
+against 16 MiB of evidence, within the combined 64 MiB logical limit. This lets fresh operations
+recreate identical pipelines across the full 43-operation schedule without exhausting the source cap.
+Hash equality always requires value equality. No occurrence or source byte is pruned.
+
+`khaozengine.renderer-compiler-inventory/2` carries a first-reference-ordered table of source hashes
+and exact text. Shader stages reference that table, while all factory events reference canonical
+shader/layout descriptors. Recipe identities retain their existing exact-value encoding. The strict
+reader refuses inventory/1 without migration, changed hashes, unused or duplicate rows, foreign
+references and noncanonical order. Live publication, offline verification and baseline publication
+share this codec and its production-to-replay correspondence checks.
+
 `GpuDiagnosticDigest` carries a nullable SHA-256, provenance, status and reason. Available identities
 require a lowercase 64-digit hash of actual nonempty bytes. Unsupported or Invalid identities require
 a null hash and an explicit cause. Metal retains MSL as source, with its native artifact Unsupported.

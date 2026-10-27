@@ -28,6 +28,10 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Add four protected loop voices beside the sixteen one-shot sources, with opaque lifetime handles,
   live volume and position controls, and explicit capacity refusal. Failed cleanup retains ownership and
   registration for deliberate retry, and legacy SFX backends remain compatible (Closes #817).
+- Keep buoyant swimmers on walkable rising beds while the water is still too deep for land footing.
+  Contact clips onto the bed without changing swim hysteresis or climb pacing, then lands normally when
+  the seated bed clears the existing swim exit line. A refused bank lift or ceiling clearance that would
+  leave the swimmer below the certified bed blocks and holds the original pose for the tick (Closes #1606).
 
 ## 21.15.0
 

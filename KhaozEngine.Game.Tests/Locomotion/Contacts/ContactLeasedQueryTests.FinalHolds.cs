@@ -98,6 +98,24 @@ public partial class ContactLeasedQueryTests
         Assert.Equal(SupportStatus.None, result.Support.Status);
     }
 
+    [Theory]
+    [InlineData(-1f)]
+    [InlineData(1f)]
+    public void RejectedLiftOntoARisingSubmergedBedCannotPublishPenetration(float vertical)
+    {
+        using var scene = new QueryScene(x => x > 0.05f ? 0.2f : -1);
+        var queries = new LeasedContactQueryContext(scene.Lease, Tuning,
+            new(Room, null, scene.Lease.Identity), new(Room, Vector3.Zero),
+            boundary: new RefuseRiseBoundary(pureRiseOnly: true));
+
+        ContactQueryFailure failure = Assert.Throws<ContactQueryFailure>(() =>
+            AirPass.StepWithMedium(Vector3.Zero, Vector2.UnitX, vertical, 0.1f,
+                0, Tuning, Settings, Tuning.MaxSlopeRadians, queries, null, null,
+                new SubmergedBedPolicy(), buoyant: true));
+
+        Assert.Equal(MovementStepOutcome.Blocked, failure.Outcome);
+    }
+
     sealed class SubmergedBedPolicy : ContactMediumPolicy
     {
         internal override bool AllowsFooting(Vector3 feet, in SupportSample support) => false;
@@ -105,7 +123,7 @@ public partial class ContactLeasedQueryTests
             bool grounded) => false;
     }
 
-    sealed class RefuseRiseBoundary : MovementBoundary
+    sealed class RefuseRiseBoundary(bool pureRiseOnly = false) : MovementBoundary
     {
         internal bool SteepRiseSeen;
         public override string SemanticIdentity => "refuse-rise";
@@ -117,7 +135,7 @@ public partial class ContactLeasedQueryTests
             out bool admitted)
         {
             SteepRiseSeen |= start.X > 0.2f && displacement.X == 0 && displacement.Y > 0;
-            admitted = displacement.Y <= 0;
+            admitted = displacement.Y <= 0 || pureRiseOnly && (displacement.X != 0 || displacement.Z != 0);
             return MovementAvailability.Known;
         }
     }

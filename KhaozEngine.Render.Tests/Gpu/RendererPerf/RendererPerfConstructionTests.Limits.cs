@@ -61,7 +61,7 @@ public sealed partial class RendererPerfConstructionTests
         for (int n = 0; n < count; n++)
         {
             if (pipelines) device.Factory.CreateComputePipeline(new(shader!)).Dispose();
-            else device.Factory.CreateResourceLayout(new([])).Dispose();
+            else device.Factory.CreateResourceLayout(new([new("Binding" + n, GpuResourceKind.Sampler, GpuShaderStages.Fragment)])).Dispose();
         }
         capture.EndOperation(); var i = capture.Freeze();
         Assert.False(i.Complete); Assert.Equal(pipelines ? 258 : 1025, native.FactoryAttempts);
@@ -113,8 +113,7 @@ public sealed partial class RendererPerfConstructionTests
         using var native = new RendererPerfConstructionFixture();
         var capture = new RendererPerfConstructionCapture(OneOperation()); capture.BeginOperation(0);
         var device = RendererPerfDevice.Wrap(native, Recorder(), capture);
-        var source = new string('x', 1048576);
-        for (int n = 0; n < 31; n++) device.Factory.CreateComputeShaderFromSpirv(source).Dispose();
+        for (int n = 0; n < 31; n++) device.Factory.CreateComputeShaderFromSpirv(new string('x', 1048574) + n.ToString("D2", System.Globalization.CultureInfo.InvariantCulture)).Dispose();
         device.Factory.CreateComputeShaderFromSpirv(new string('x', 1048445)).Dispose();
         Assert.Null(capture.Failure);
         // 33554429 retained bytes plus the empty source's four-byte length is one over the partition.

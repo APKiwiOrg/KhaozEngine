@@ -13,7 +13,7 @@ public partial class ContactLeasedQueryTests
     [InlineData(10)]
     [InlineData(30)]
     [InlineData(60)]
-    public void RejectedBedSeatRetainsTheWaterFloorForTenFollowingTicks(int hz)
+    public void RejectedBuoyantBedSeatHoldsAboveTheFloorForTenFollowingTicks(int hz)
     {
         using var environment = LakeWithBed(0.15f);
         using var lease = environment.Acquire("room", 4, 4);
@@ -31,24 +31,36 @@ public partial class ContactLeasedQueryTests
         {
             MovementStepResult result = ContactController.StepLeased(state, Vector2.Zero, 0, false, false,
                 1f / hz, tuning, new(WaterTraversalMode.SurfaceSwimmer), lease, boundary);
-            Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
+            if (boundary.SeatRefused)
+            {
+                Assert.Equal(MovementStepOutcome.Blocked, result.Outcome);
+                Assert.Equal(state.State.Position, result.State.State.Position);
+                Assert.Equal(state.State.VerticalVelocity, result.State.State.VerticalVelocity);
+            }
+            else
+                Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
             state = result.State;
         }
         Assert.True(boundary.SeatRefused);
-        Assert.Equal(0, state.State.VerticalVelocity);
-        float fallback = state.State.Position.Y;
-        Assert.True(fallback - 0.751f < 0.15f);
+        Vector3 held = state.State.Position;
+        float vertical = state.State.VerticalVelocity;
+        Assert.True(held.Y - tuning.CapsuleHalfHeight >= 0.15f);
         for (int tick = 0; tick < 10; tick++)
         {
+            // A held tick clears selection, so the next input acquires a fresh cold reconstruction witness.
+            using var nextEnvironment = LakeWithBed(0.15f);
+            using var next = nextEnvironment.Acquire(null, 4, 4);
             MovementStepResult result = ContactController.StepLeased(state, Vector2.Zero, 0, false, false,
-                1f / hz, tuning, new(WaterTraversalMode.SurfaceSwimmer), lease, boundary);
-            Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
-            Assert.True(result.State.State.Position.Y >= fallback,
-                $"tick {tick}, first fallback {fallback}, pose {result.State.State.Position}");
-            Assert.Equal(0, result.State.State.VerticalVelocity);
+                1f / hz, tuning, new(WaterTraversalMode.SurfaceSwimmer), next, boundary);
+            Assert.Equal(MovementStepOutcome.Blocked, result.Outcome);
+            Assert.Equal(held, result.State.State.Position);
+            Assert.True(result.State.State.Position.Y - tuning.CapsuleHalfHeight >= 0.15f);
+            Assert.Equal(vertical, result.State.State.VerticalVelocity);
             Assert.True(result.State.State.Swimming);
             Assert.False(result.State.State.Grounded);
-            Assert.Null(result.State.Selection!.Value.Support);
+            Assert.False(result.State.State.SupportGranted);
+            Assert.Equal(WaterExcursionState.Surface, result.State.State.WaterExcursion);
+            Assert.Null(result.State.Selection);
             state = result.State;
         }
     }

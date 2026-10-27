@@ -17,14 +17,15 @@ internal sealed partial class RendererPerfConstructionCapture
         if (_operation >= 0) throw new InvalidOperationException("End the operation before freezing construction evidence.");
         if (!_attempts.SequenceEqual(_forwarded)) Refuse("Independent wrapper forwarding counts disagree.");
         if (_nextOperation != _operations.Length) Refuse("Not every scheduled construction operation completed.");
-        var shaders = _shaders.Take(_shaderCount).Select(s => s!).ToImmutableArray();
-        var layouts = _layouts.Take(_layoutCount).Select(s => s!).ToImmutableArray();
+        var shaders = Canonical(_shaders, _shaderCount, (s, id) => s with { Id = id }, out var shaderRemap);
+        var layouts = Canonical(_layouts, _layoutCount, (l, id) => l with { Id = id }, out var layoutRemap);
         var recipes = ImmutableArray.CreateBuilder<RendererPerfPipelineRecipe>();
         var buckets = new Dictionary<string, List<int>>(RendererPerfConstructionAdmission.UniqueRecipes, StringComparer.Ordinal);
         int[] remap = new int[_recipeCount]; Array.Fill(remap, -1);
         for (int i = 0; i < _recipeCount; i++)
         {
-            var recipe = _recipes[i]!;
+            var original = _recipes[i]!;
+            var recipe = original with { ShaderId = shaderRemap[original.ShaderId], LayoutIds = [.. original.LayoutIds.Select(id => layoutRemap[id])] };
             try
             {
                 byte[] value = RendererPerfConstructionEncoding.Bytes(recipe, shaders, layouts);
@@ -64,6 +65,11 @@ internal sealed partial class RendererPerfConstructionCapture
                 if (remap[e.InputId] < 0 || e.OutputId is { } output && occurrenceRemap[output] < 0) { _omitted = checked(_omitted + 1); continue; }
                 e = e with { InputId = remap[e.InputId], OutputId = e.OutputId is { } id ? occurrenceRemap[id] : null };
             }
+            else
+            {
+                int[] graphRemap = e.Kind == RendererPerfFactoryKind.Shader ? shaderRemap : layoutRemap;
+                e = e with { InputId = graphRemap[e.InputId], OutputId = e.OutputId is { } id ? graphRemap[id] : null };
+            }
             events.Add(e);
         }
         var frozenOccurrences = occurrences.ToImmutable();
@@ -72,7 +78,22 @@ internal sealed partial class RendererPerfConstructionCapture
             new(frozenOccurrences.Count(o => o.Kind == RendererPerfPipelineKind.Graphics), frozenOccurrences.Count(o => o.Kind == RendererPerfPipelineKind.Compute)),
             new(0, 0), new(0, 0), recipes.Count, frozenOccurrences.Select(o => o.RecipeId).Distinct().Count(),
             frozenOccurrences.Count(o => o.BindCount > 0), 0, 0, _omitted);
-        return _frozen = new("khaozengine.renderer-compiler-inventory/1", _operations, events.ToImmutable(), shaders, layouts,
+        return _frozen = new(RendererPerfCompilerJson.Schema, _operations, events.ToImmutable(), shaders, layouts,
             recipes.ToImmutable(), frozenOccurrences, counts, Failure is null, Failure);
+    }
+
+    static ImmutableArray<T> Canonical<T>(T?[] inputs, int count, Func<T, int, T> identify, out int[] remap) where T : class
+    {
+        var rows = ImmutableArray.CreateBuilder<T>();
+        var ids = new Dictionary<T, int>(ReferenceEqualityComparer.Instance);
+        remap = new int[count];
+        for (int n = 0; n < count; n++)
+        {
+            var row = inputs[n]!;
+            if (!ids.TryGetValue(row, out int id))
+            { id = rows.Count; ids.Add(row, id); rows.Add(identify(row, id)); }
+            remap[n] = id;
+        }
+        return rows.ToImmutable();
     }
 }

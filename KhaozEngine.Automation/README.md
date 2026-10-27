@@ -80,7 +80,8 @@ which ends the process at a frame count rather than yielding control.
 Dispose it, and the host also hooks `ProcessExit` so an ordinary `quit` to `AppWindow.Close` to `Run` returning
 still removes the handshake file rather than leaving one that names a dead port. `Log` is where a loop or a
 connection ending for a reason other than shutdown is reported: a terminal accept failure, a refused over-long
-line, an expired read deadline. While running, an accept that throws `SocketError.Interrupted` resumes acceptance.
+line, an expired read deadline. A serving error is reported before its serving thread closes the connection.
+While running, an accept that throws `SocketError.Interrupted` resumes acceptance.
 Other accept failures end acceptance for that host instance. Neither failure closes established clients, whose
 serving loops remain independent. Disposing the host closes those clients and stops acceptance without retrying or
 reporting a terminal fault. The hook takes a message and an optional exception, because half of what is worth

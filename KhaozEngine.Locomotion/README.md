@@ -714,8 +714,9 @@ whole input. Submerged walkable bed contacts clip descent and banks rising above
 land footing. A fluid floor seats on its surface without spending the land climb budget. Certified walkable
 or steep support at the axis remains a floor for later water segments that start at or below it,
 including an unraised rejected seat. Those segments clip downward velocity without sinking farther.
-A refused lift onto a bank above the whole travelled span blocks the tick, since an unraised fallback
-would leave the swimming feet inside that bank.
+A buoyant floor's published feet must clear the whole certified bed interval at the final axis after
+clearance and centre mapping. A clearance push or refused seat that cannot satisfy this condition
+blocks and holds the original pose for the tick. Land placement keeps its intentional paced leg lag.
 A swimming segment seeks footing whatever the sign of its buoyant vertical speed, because a waterline
 settle can approach rest from below forever. Rising, it contacts only walkable support above its highest
 feet, so a bed it rises off seats nothing. A bank deeper than the seated swim exit line keeps the body

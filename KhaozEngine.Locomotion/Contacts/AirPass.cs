@@ -172,16 +172,28 @@ internal static class AirPass
                 // Buoyancy spends the remainder from the contact-clipped carry.
                 // Keep the fluid contact outside the bed after centre mapping rounds. This is one representable
                 // clearance ordinate, not a climb or a second placement skin, and earns the placement proof.
-                var seat = new GroundSeatResult(SeatOutcome.Seated, MathF.BitIncrement(support.Height), support, 0, Vector3.Zero);
+                float floorHeight = buoyant
+                    ? GroundPlacement.NotBelow((double)support.Height + support.HeightError) : support.Height;
+                var seat = new GroundSeatResult(SeatOutcome.Seated, MathF.BitIncrement(floorHeight), support, 0, Vector3.Zero);
                 GroundPlacement bed = GroundPlacement.Try(queries, NoSupport, high, axis, Vector2.Zero,
                     seat, footRadius, tuning, cosMaxSlope, budget, ref route);
                 // An unraised fallback cannot clear a bank above the whole travelled span. Refuse this tick
                 // rather than publish swimming feet inside that bank when the required lift has no proof.
                 if (!bed.Valid && (double)support.Height - support.HeightError > high)
                     throw new ContactQueryFailure(MovementAvailability.Known, MovementStepOutcome.Blocked);
+                Vector3 clipped = bed.Valid ? bed.Feet : at;
+                if (buoyant)
+                {
+                    // Land placement permits leg lag after clearance. A buoyant floor must clear the final
+                    // axis's whole certified bed interval after centre mapping, or the original tick holds.
+                    SupportSample floor = bed.Valid ? bed.Support : support;
+                    double publishedFeet = (double)queries.BodyCentre(clipped).Y - tuning.CapsuleHalfHeight;
+                    if (!(publishedFeet >= (double)floor.Height + floor.HeightError))
+                        throw new ContactQueryFailure(MovementAvailability.Known, MovementStepOutcome.Blocked);
+                }
                 // A refused seat clips at the clear unraised substep, as a land landing does.
                 // Continuing the descent would let the legs pass through an analytic bed.
-                return new(bed.Valid ? bed.Feet : at, 0,
+                return new(clipped, 0,
                     Achieved(feet, start, moved + (bed.Valid ? new Vector3(bed.Total.X, 0, bed.Total.Y) : Vector3.Zero)),
                     remaining, AirOutcome.Airborne, NoSupport, 0, blocked || bed.Valid && bed.Pushed)
                 {

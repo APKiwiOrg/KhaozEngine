@@ -10,7 +10,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 - Keep buoyant swimmers on walkable rising beds while the water is still too deep for land footing.
   Contact clips onto the bed without changing swim hysteresis or climb pacing, then lands normally when
-  the seated bed clears the existing swim exit line. A refused bank lift blocks the tick (Closes #1606).
+  the seated bed clears the existing swim exit line. A refused bank lift or ceiling clearance that would
+  leave the swimmer below the certified bed blocks and holds the original pose for the tick (Closes #1606).
 
 ## 21.15.0
 

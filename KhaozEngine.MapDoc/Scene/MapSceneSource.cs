@@ -41,7 +41,7 @@ public sealed class MapSceneSource
         try
         {
             scan.Limits.Validate();
-            if (DemandDiagnostics.Check(scan, "MapSceneSource.MaxTiles.1", "MaxTiles", 0, source.Tiles.Entries.Count, scan.Limits.MaxTiles, source.Tiles.Entries.Count > scan.Limits.MaxTiles, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxTiles), source.Tiles.Entries.Count, scan.Limits.MaxTiles);
+            if (DemandDiagnostics.Check(scan, "MapSceneSource.MaxTiles.1", "MaxTiles", 0, source.Tiles.Entries.Count, scan.Limits.MaxTiles, source.Tiles.Entries.Count > scan.Limits.MaxTiles, CapacityDemandLifetime.Inventory, allowanceSource: scan.Limits)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxTiles), source.Tiles.Entries.Count, scan.Limits.MaxTiles);
             string? manifestDigest = source.Tiles.ManifestSha256;
             CheckManifest(source.SceneDirectory, manifestDigest, scan);
             if (source.ScenePartial) throw new MapSceneSourceException(MapSceneStatus.Incomplete, "Unloaded tile metadata cannot attest a reverse index.");
@@ -123,7 +123,7 @@ public sealed class MapSceneSource
                 long prospective = input.Placements.Count + (input.Prefabs?.Instances.Sum(i => i.Bindings.Entries.Count) ?? 0) +
                     (input.BuildingIntent?.Lights.Count ?? 0) + (input.BuildingIntent?.Markers.Count ?? 0) +
                     (input.BuildingIntent?.RoofLinks.Count ?? 0) + (input.BuildingIntent?.RoofGroups.Count ?? 0) + (prepaidWater ? 0 : input.Water?.Bodies.Count ?? 0);
-                if (DemandDiagnostics.Check(scan, "MapSceneSource.OwnerRows", "MaxMetadataRows", scan.MetadataRows, prospective, scan.Limits.MaxMetadataRows, prospective > scan.Limits.MaxMetadataRows - scan.MetadataRows, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), scan.MetadataRows + prospective, scan.Limits.MaxMetadataRows);
+                if (DemandDiagnostics.Check(scan, "MapSceneSource.OwnerRows", "MaxMetadataRows", scan.MetadataRows, prospective, scan.Limits.MaxMetadataRows, prospective > scan.Limits.MaxMetadataRows - scan.MetadataRows, CapacityDemandLifetime.Inventory, allowanceSource: scan.Limits)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), scan.MetadataRows + prospective, scan.Limits.MaxMetadataRows);
                 var expanded = MapEffectiveResolutionKernel.Enumerate(input, assets, metadataOnly: true);
                 var ownerRows = new List<MapSceneResourceKey>();
                 MapBox3? groupBounds = null;
@@ -204,7 +204,7 @@ public sealed class MapSceneSource
             foreach (var instance in root.Prefabs?.Instances ?? [])
             {
                 if (instance.Removed) continue;
-                if (DemandDiagnostics.Check(scan, "MapSceneSource.MaxMetadataRows.1", "MaxMetadataRows", scan.MetadataRows, instance.Bindings.Entries.Count, scan.Limits.MaxMetadataRows, instance.Bindings.Entries.Count > scan.Limits.MaxMetadataRows - scan.MetadataRows, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), scan.MetadataRows + instance.Bindings.Entries.Count, scan.Limits.MaxMetadataRows);
+                if (DemandDiagnostics.Check(scan, "MapSceneSource.MaxMetadataRows.1", "MaxMetadataRows", scan.MetadataRows, instance.Bindings.Entries.Count, scan.Limits.MaxMetadataRows, instance.Bindings.Entries.Count > scan.Limits.MaxMetadataRows - scan.MetadataRows, CapacityDemandLifetime.Inventory, allowanceSource: scan.Limits)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxMetadataRows), scan.MetadataRows + instance.Bindings.Entries.Count, scan.Limits.MaxMetadataRows);
                 scan.RetainBytes(MapSceneResourceBounds.InstanceBytes(instance));
                 var resource = assets.GetResource(instance.ResourceId);
                 if (resource.Kind != MapResourceKind.Prefab || resource.Reference.Sha256 != instance.ResourceSha256)
@@ -293,7 +293,7 @@ public sealed class MapSceneSource
                 proof.Resources.Any(r => _data.Assets.GetResource(r.ResourceId).Reference.Sha256 != r.Sha256 || !Contains(r.DeclaredBounds, r.VerifiedBounds)))
                 return new(MapSceneSourceStatus.Invalid, null, _data.CaptureWork with { RetainedBytes = 0 });
         }
-        if (DemandDiagnostics.Check(this, "MapSceneSource.MaxMetadataBytes.1", "MaxMetadataBytes", _data.CaptureWork.RetainedBytes, proofs.MetadataBytes, _data.Limits.MaxMetadataBytes, proofs.MetadataBytes > _data.Limits.MaxMetadataBytes - _data.CaptureWork.RetainedBytes, CapacityDemandLifetime.Inventory))
+        if (DemandDiagnostics.Check(this, "MapSceneSource.MaxMetadataBytes.1", "MaxMetadataBytes", _data.CaptureWork.RetainedBytes, proofs.MetadataBytes, _data.Limits.MaxMetadataBytes, proofs.MetadataBytes > _data.Limits.MaxMetadataBytes - _data.CaptureWork.RetainedBytes, CapacityDemandLifetime.Inventory, allowanceSource: _data.Limits))
             return new(MapSceneSourceStatus.CapacityExceeded, null, _data.CaptureWork with { RetainedBytes = 0 })
             {
                 Capacity = new(nameof(MapSceneLimits.MaxMetadataBytes), (decimal)_data.CaptureWork.RetainedBytes + proofs.MetadataBytes, _data.Limits.MaxMetadataBytes),

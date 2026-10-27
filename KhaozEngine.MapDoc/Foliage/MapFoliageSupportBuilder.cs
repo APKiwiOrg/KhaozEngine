@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
@@ -65,7 +66,7 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         {
             long consumed = _faces - PhysicalFaces();
             candidates = MapFoliageCandidateSupport.Create(view, _support, grids, binding, min, max, limits.MaxFaces - consumed,
-                out _, ReusePhysical, RetainContextFaces, new("MaxFaces", consumed, MapFoliageDemandOrigins.Profile(limits).MaxFaces, limits));
+                out _, ReusePhysical, RetainContextFaces, new("MaxFaces", consumed, limits.MaxFaces, limits));
         }
         catch (MapFoliageRefusal refusal) { throw new MapFoliageRefusal(refusal.Status, Work(), refusal.Message); }
 
@@ -162,9 +163,16 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
             bool saturated = false;
             try { cells = ((decimal)x1 - x0) * ((decimal)z1 - z0); }
             catch (OverflowException) { cells = decimal.MaxValue; saturated = true; }
-            var profile = MapFoliageDemandOrigins.Profile(limits);
-            DemandDiagnostics.Check(this, "MapFoliageSupportBuilder.MaxFaces.1", "MaxFaces", 0, cells,
-                4m * profile.MaxFaces + 64, cellArea > 4.0 * profile.MaxFaces + 64, CapacityDemandLifetime.Transient, saturated: saturated);
+            // The cell ceiling is 4 * MaxFaces + 64 faces' worth of cells. Each origin of a derived MaxFaces states the
+            // same ceiling in its own units: four cells per remaining face, plus the fixed 64.
+            foreach (var origin in MapDemandOrigins.Of(limits, "MaxFaces", limits.MaxFaces))
+            {
+                decimal consumed = 4m * origin.Consumed / origin.Scale, allowance = 4m * origin.Allowance / origin.Scale + 64;
+                bool over;
+                try { over = saturated || consumed + cells > allowance; } catch (System.OverflowException) { over = true; }
+                DemandDiagnostics.Check(this, "MapFoliageSupportBuilder.MaxFaces.1", origin.LimitName, consumed, cells, allowance, over,
+                    CapacityDemandLifetime.Transient, origin.Identity, saturated);
+            }
         }
         if (refused)
             throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, Work(), "support cells");
@@ -188,7 +196,7 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
             long count = MapFoliageTriangles.CountFaces(validated, mask);
             bool faceRefused = checked(_faces + count) > limits.MaxFaces;
             if (DemandDiagnostics.IsObserved)
-                new MapCapacityDemandOrigin("MaxFaces", _faces, MapFoliageDemandOrigins.Profile(limits).MaxFaces)
+                new MapCapacityDemandOrigin("MaxFaces", _faces, limits.MaxFaces, limits)
                     .Report(this, "MapFoliageSupportBuilder.MaxFaces.2", count, CapacityDemandLifetime.Cumulative);
             if (faceRefused)
                 throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, Work(), "prepared faces");

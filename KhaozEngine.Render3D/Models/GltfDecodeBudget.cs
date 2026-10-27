@@ -60,7 +60,7 @@ public sealed class GltfDecodeBudget
         {
             capacity = null;
             long remaining = Limits.MaxPeakBytes - _shared.Owned - _shared.Temporary;
-            if (DemandDiagnostics.Check(_shared, "GltfDecodeBudget.MaxPeakBytes.1", "MaxPeakBytes", (decimal)_shared.Owned + _shared.Temporary, (decimal)ownedBytes + temporaryBytes, Limits.MaxPeakBytes, ownedBytes > remaining || temporaryBytes > remaining - ownedBytes, CapacityDemandLifetime.Transient))
+            if (DemandDiagnostics.Check(_shared, "GltfDecodeBudget.MaxPeakBytes.1", "MaxPeakBytes", (decimal)_shared.Owned + _shared.Temporary, (decimal)ownedBytes + temporaryBytes, Limits.MaxPeakBytes, ownedBytes > remaining || temporaryBytes > remaining - ownedBytes, CapacityDemandLifetime.Transient, allowanceSource: Limits))
             { capacity = PeakCapacity((decimal)ownedBytes + temporaryBytes); return false; }
             _observer?.Reserve(checked(ownedBytes + temporaryBytes));
             _shared.Owned += ownedBytes;

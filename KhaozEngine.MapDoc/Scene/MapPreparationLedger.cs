@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace KhaozEngine.MapDoc.Scene;
 
 /// <summary>Before-work admission of live modeled capacity, independent of garbage collection.</summary>
-internal sealed partial class MapPreparationLedger(long allowance, string limitName)
+internal sealed partial class MapPreparationLedger(long allowance, string limitName, object? source = null)
 {
     Window? _window;
     PeakObservation? _observation;

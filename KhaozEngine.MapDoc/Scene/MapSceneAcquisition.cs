@@ -43,6 +43,7 @@ internal static class MapSceneAcquisition
             ArgumentNullException.ThrowIfNull(scope);
             scope.Validate();
             admission.ReserveBytes(checked(128L + 4L * scope.Surfaces.Roles.Count + 8L * (scope.Surfaces.SpaceIds?.Count ?? 0)));
+            var requestedLimits = scope.Surfaces.Limits;
             scope = scope with
             {
                 Surfaces = scope.Surfaces with
@@ -52,6 +53,7 @@ internal static class MapSceneAcquisition
                     Limits = scope.Surfaces.Limits with { },
                 }
             };
+            MapDemandOrigins.Inherit(scope.Surfaces.Limits, requestedLimits);
             digest = scope.Digest;
             MapSceneSource.CheckManifest(data.Directory, data.ManifestDigest);
             if (!MapSceneAdmission.Supports(data.Surfaces)) throw new MapSceneSourceException(MapSceneStatus.Invalid, "Surface source cannot participate in scene admission.");
@@ -80,7 +82,7 @@ internal static class MapSceneAcquisition
             void AddOwner(string id)
             {
                 if (!owners.Add(id)) return;
-                if (DemandDiagnostics.Check(admission, "MapSceneAcquisition.MaxSelectedResources.1", "MaxSelectedResources", 0, owners.Count, data.Limits.MaxSelectedResources, owners.Count > data.Limits.MaxSelectedResources, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), owners.Count, data.Limits.MaxSelectedResources);
+                if (DemandDiagnostics.Check(admission, "MapSceneAcquisition.MaxSelectedResources.1", "MaxSelectedResources", 0, owners.Count, data.Limits.MaxSelectedResources, owners.Count > data.Limits.MaxSelectedResources, CapacityDemandLifetime.Inventory, allowanceSource: data.Limits)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), owners.Count, data.Limits.MaxSelectedResources);
                 pending.Enqueue(id);
                 foreach (var key in data.Owners[id].Resources) AddKey(key);
             }
@@ -206,7 +208,7 @@ internal static class MapSceneAcquisition
                 }
             }
             foreach (var key in required) if (!unavailable.Contains(key) && !empty.Contains(key)) present.Add(key);
-            if (DemandDiagnostics.Check(admission, "MapSceneAcquisition.MaxSelectedResources.2", "MaxSelectedResources", 0, required.Count, data.Limits.MaxSelectedResources, required.Count > data.Limits.MaxSelectedResources, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), required.Count, data.Limits.MaxSelectedResources);
+            if (DemandDiagnostics.Check(admission, "MapSceneAcquisition.MaxSelectedResources.2", "MaxSelectedResources", 0, required.Count, data.Limits.MaxSelectedResources, required.Count > data.Limits.MaxSelectedResources, CapacityDemandLifetime.Inventory, allowanceSource: data.Limits)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), required.Count, data.Limits.MaxSelectedResources);
             if (required.Count == 0 && empty.Count == 0) empty.Add(new("Scene", digest));
             bool whole = scope.Channels == MapSceneChannels.All && scope.Surfaces.MinY is null && scope.Surfaces.MaxY is null &&
                 scope.Surfaces.SpaceIds is null &&
@@ -335,7 +337,7 @@ internal static class MapSceneAcquisition
             foreach (var chunkKey in keys)
             {
                 var key = FoliageKey(layer.Id, chunkKey); admission.BeforeResource(key); required.Add(key);
-                if (DemandDiagnostics.Check(admission, "MapSceneAcquisition.MaxSelectedResources.3", "MaxSelectedResources", 0, required.Count, data.Limits.MaxSelectedResources, required.Count > data.Limits.MaxSelectedResources, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), required.Count, data.Limits.MaxSelectedResources);
+                if (DemandDiagnostics.Check(admission, "MapSceneAcquisition.MaxSelectedResources.3", "MaxSelectedResources", 0, required.Count, data.Limits.MaxSelectedResources, required.Count > data.Limits.MaxSelectedResources, CapacityDemandLifetime.Inventory, allowanceSource: data.Limits)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), required.Count, data.Limits.MaxSelectedResources);
                 if (!data.FoliageRows.ContainsKey(key)) { empty.Add(key); continue; }
                 // Pack decoding stages every contained chunk. Admit that exact density demand before the read.
                 long bytes = MapFoliageChunk.ByteLength;

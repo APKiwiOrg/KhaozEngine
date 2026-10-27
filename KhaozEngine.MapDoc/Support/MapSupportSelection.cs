@@ -119,7 +119,7 @@ internal static class MapSupportSelection
                         selected = new(context.CompiledFace(face.Key), height);
                 }
                 if (selected is null) continue;
-                if (DemandDiagnostics.Check(view, "MapSupportSelection.MaxSupportIntersections.1", "MaxSupportIntersections", intersections.Count, 1, scope.Limits.MaxSupportIntersections, intersections.Count >= scope.Limits.MaxSupportIntersections, CapacityDemandLifetime.Inventory))
+                if (DemandDiagnostics.Check(view, "MapSupportSelection.MaxSupportIntersections.1", "MaxSupportIntersections", intersections.Count, 1, scope.Limits.MaxSupportIntersections, intersections.Count >= scope.Limits.MaxSupportIntersections, CapacityDemandLifetime.Inventory, allowanceSource: scope.Limits))
                     return Failure(MapSupportStatus.CapacityExceeded, "support intersections");
                 intersections.Add(selected);
             }

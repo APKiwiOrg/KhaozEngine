@@ -169,7 +169,7 @@ public sealed class MapSpaceMembership
             { MaxContextPatches = Math.Min(declared.MaxContextPatches, budgets.MaxCandidatePatches), MaxContextFaces = Math.Min(declared.MaxContextFaces, budgets.MaxInspectedFaces) }
                 : new MapRefinementLimits(MaxContextPatches: budgets.MaxCandidatePatches, MaxContextFaces: budgets.MaxInspectedFaces);
             var bounds = supplied is null ? new MapSpacePointBounds(_view, limits, work) : new(supplied, limits);
-            bounds.Preparation.PatchQueryLimits = budgets;
+            if (DemandDiagnostics.IsObserved) DeriveContext(limits, budgets);
             MapTopologyRecord[] records = _preparedRecords?.Invoke() ?? MapSpaceGeometry.Records(_view).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
             var prisms = records.OfType<MapPrismDomain>().ToArray();
             var roomIds = records.OfType<MapSpaceDoc>().Where(s => s.Kind == MapSpaceKind.Room).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
@@ -178,7 +178,7 @@ public sealed class MapSpaceMembership
             foreach (var room in records.OfType<MapSpaceDoc>().Where(s => s.Kind == MapSpaceKind.Room && s.AliasOf is null))
                 if (prisms.Count(p => p.Space.Id == room.Id) != 1) return Failure(MapMembershipStatus.MissingGeometry, "room requires one acquired prism");
             long prismVertices = prisms.Sum(MapPrismGeometry.Cost);
-            if (DemandDiagnostics.Check(this, "MapSpaceMembership.MaxRecordReads.1", "MaxRecordReads", 0, prisms.Length, budgets.MaxRecordReads, prisms.Length > budgets.MaxRecordReads, CapacityDemandLifetime.Cumulative) || DemandDiagnostics.Check(this, "MapSpaceMembership.MaxInspectedFaces.1", "MaxInspectedFaces", 0, prismVertices, budgets.MaxInspectedFaces, prismVertices > budgets.MaxInspectedFaces, CapacityDemandLifetime.Cumulative))
+            if (DemandDiagnostics.Check(this, "MapSpaceMembership.MaxRecordReads.1", "MaxRecordReads", 0, prisms.Length, budgets.MaxRecordReads, prisms.Length > budgets.MaxRecordReads, CapacityDemandLifetime.Cumulative, allowanceSource: budgets) || DemandDiagnostics.Check(this, "MapSpaceMembership.MaxInspectedFaces.1", "MaxInspectedFaces", 0, prismVertices, budgets.MaxInspectedFaces, prismVertices > budgets.MaxInspectedFaces, CapacityDemandLifetime.Cumulative, allowanceSource: budgets))
                 return Failure(MapMembershipStatus.CapacityExceeded, "prism records or vertices");
             int remainingFaces = budgets.MaxInspectedFaces - (int)prismVertices;
             bool nested = prisms.Length != 0;
@@ -219,7 +219,7 @@ public sealed class MapSpaceMembership
             }
             if (additional is not null) demands.AddRange(additional);
             // A supplied context may hold more than this point demands. The point still keeps its own face allowance.
-            if (supplied is not null && pointBudget && !WithinPointFaces(demands, remainingFaces, prismVertices, budgets.MaxInspectedFaces))
+            if (supplied is not null && pointBudget && !WithinPointFaces(demands, remainingFaces, prismVertices, budgets.MaxInspectedFaces, budgets))
                 return Failure(MapMembershipStatus.CapacityExceeded, "context faces");
             MapBoundFaceContext? context = supplied ?? MapBoundFaceContext.PrepareBounds(_view, demands,
                 budgets.MaxCandidatePatches, remainingFaces, work, out _, bounds.Preparation,
@@ -405,9 +405,22 @@ public sealed class MapSpaceMembership
         }
     }
 
+    // A point context is bounded by its query allowance and, when declared, its refinement allowance.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static void DeriveContext(MapRefinementLimits limits, MapQueryLimits budgets)
+    {
+        var declared = budgets.Refinement;
+        Scene.MapDemandOrigins.Derive(limits, nameof(MapRefinementLimits.MaxContextPatches),
+            Scene.MapDemandOrigins.Of(budgets, nameof(MapQueryLimits.MaxCandidatePatches), budgets.MaxCandidatePatches),
+            declared is null ? [] : Scene.MapDemandOrigins.Of(declared, nameof(MapRefinementLimits.MaxContextPatches), declared.MaxContextPatches));
+        Scene.MapDemandOrigins.Derive(limits, nameof(MapRefinementLimits.MaxContextFaces),
+            Scene.MapDemandOrigins.Of(budgets, nameof(MapQueryLimits.MaxInspectedFaces), budgets.MaxInspectedFaces),
+            declared is null ? [] : Scene.MapDemandOrigins.Of(declared, nameof(MapRefinementLimits.MaxContextFaces), declared.MaxContextFaces));
+    }
+
     // The face count a point's own context would charge: each distinct demanded cell's physical faces and each distinct
     // opening cell's plane faces, as MapBoundFaceContext.PrepareBounds counts them, against the point's allowance.
-    bool WithinPointFaces(List<MapBoundFaceDemand> demands, long maxFaces, long consumed, long allowance)
+    bool WithinPointFaces(List<MapBoundFaceDemand> demands, long maxFaces, long consumed, long allowance, MapQueryLimits budgets)
     {
         var cells = new HashSet<MapCellDemand>();
         var openings = new HashSet<(MapRecordRef, int)>();
@@ -423,7 +436,7 @@ public sealed class MapSpaceMembership
                 throw new MapDocumentException($"context demand patch {cell.Patch}: unavailable");
             if (freshCell) count = checked(count + MapSurfaceCompiler.CountFaces(surface, patch, cell.SlotCell));
             if (freshOpening) count = checked(count + MapBoundFaceContext.OpeningFaceCount(patch, cell.SlotCell));
-            if (DemandDiagnostics.Check(this, "MapSpaceMembership.MaxInspectedFaces.2", "MaxInspectedFaces", consumed, count, allowance, count > maxFaces, CapacityDemandLifetime.Cumulative)) return false;
+            if (DemandDiagnostics.Check(this, "MapSpaceMembership.MaxInspectedFaces.2", "MaxInspectedFaces", consumed, count, allowance, count > maxFaces, CapacityDemandLifetime.Cumulative, allowanceSource: budgets)) return false;
         }
         return true;
     }

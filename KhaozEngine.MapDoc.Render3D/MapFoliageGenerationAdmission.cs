@@ -14,12 +14,12 @@ internal static class MapFoliageGenerationAdmission
         ((IMapFoliageInputs)context).RequireChunk(layer, chunk);
         var rectangle = MapFoliageDistribution.Rectangle(layer, chunk);
         var range = MapFoliageLatticeRange.Of(rectangle.MinX, rectangle.MinZ, rectangle.MaxX, rectangle.MaxZ, layer.Spacing);
-        if (DemandDiagnostics.Check(context, "MapFoliageGenerationAdmission.MaxCandidates.1", "MaxCandidates", 0, (decimal)range.Count, limits.MaxCandidates, range.Count > limits.MaxCandidates, CapacityDemandLifetime.Cumulative))
+        if (DemandDiagnostics.Check(context, "MapFoliageGenerationAdmission.MaxCandidates.1", "MaxCandidates", 0, (decimal)range.Count, limits.MaxCandidates, range.Count > limits.MaxCandidates, CapacityDemandLifetime.Cumulative, allowanceSource: limits))
             throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxCandidates), (decimal)range.Count, limits.MaxCandidates);
         long first = MapFoliageInventory.ConstructionControls;
         if (DemandDiagnostics.Check(context, "MapFoliageGenerationAdmission.MaxQueryRetainedBytes.1", "MaxQueryRetainedBytes", retained, first, allowance, first > allowance - retained, CapacityDemandLifetime.Transient))
             throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQueryRetainedBytes), (decimal)retained + first, allowance);
-        if (DemandDiagnostics.Check(context, "MapFoliageGenerationAdmission.MaxQueryRetainedBytes.2", "MaxQueryRetainedBytes", 0, first, limits.MaxQueryRetainedBytes, first > limits.MaxQueryRetainedBytes, CapacityDemandLifetime.Transient))
+        if (DemandDiagnostics.Check(context, "MapFoliageGenerationAdmission.MaxQueryRetainedBytes.2", "MaxQueryRetainedBytes", 0, first, limits.MaxQueryRetainedBytes, first > limits.MaxQueryRetainedBytes, CapacityDemandLifetime.Transient, allowanceSource: limits))
             throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQueryRetainedBytes), first, limits.MaxQueryRetainedBytes);
         admission?.ReserveBytes(first);
         return admission is null ? 0 : first;

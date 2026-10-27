@@ -63,6 +63,7 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
     public int CandidateCount => _activeCount;
     public int PortalCount => _portals.Length;
     public int MaxDepth => _view.Scope.Limits.MaxRecordDepth;
+    public object? MaxDepthSource => _view.Scope.Limits;
     public bool PruneAncestors => _view.EffectiveContext is not null;
     public MapMembershipStatus FailureStatus => _status;
 
@@ -88,7 +89,7 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
             if (_view.Status == MapAcquireStatus.NotRepresentable) return Result(MapMembershipStatus.NotRepresentable);
             if (_view.EffectiveContext is not null && _view.Status == MapAcquireStatus.Incomplete) return Result(MapMembershipStatus.MissingGeometry);
             if (_roomFailure is not null) return Result(MapMembershipStatus.MissingGeometry);
-            if (DemandDiagnostics.Check(this, "MapSpaceMembershipScratch.MaxRecordReads.1", "MaxRecordReads", 0, Prisms.Length, scope.Limits.MaxRecordReads, Prisms.Length > scope.Limits.MaxRecordReads, CapacityDemandLifetime.Cumulative) || DemandDiagnostics.Check(this, "MapSpaceMembershipScratch.MaxInspectedFaces.1", "MaxInspectedFaces", 0, _prismVertices, scope.Limits.MaxInspectedFaces, _prismVertices > scope.Limits.MaxInspectedFaces, CapacityDemandLifetime.Cumulative))
+            if (DemandDiagnostics.Check(this, "MapSpaceMembershipScratch.MaxRecordReads.1", "MaxRecordReads", 0, Prisms.Length, scope.Limits.MaxRecordReads, Prisms.Length > scope.Limits.MaxRecordReads, CapacityDemandLifetime.Cumulative, allowanceSource: scope.Limits) || DemandDiagnostics.Check(this, "MapSpaceMembershipScratch.MaxInspectedFaces.1", "MaxInspectedFaces", 0, _prismVertices, scope.Limits.MaxInspectedFaces, _prismVertices > scope.Limits.MaxInspectedFaces, CapacityDemandLifetime.Cumulative, allowanceSource: scope.Limits))
                 return Result(MapMembershipStatus.CapacityExceeded);
             if (Prisms.Length != 0 && _view.Status == MapAcquireStatus.Incomplete) return Result(MapMembershipStatus.MissingGeometry);
             if (++_generation == long.MaxValue)
@@ -141,7 +142,7 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
                 }
                 if (demand.Opening >= 0 && _opening[demand.Opening] != _generation)
                 { _opening[demand.Opening] = _generation; faces += _geometry.FaceSets[demand.Opening].Length; }
-                if (DemandDiagnostics.Check(this, "MapSpaceMembershipScratch.MaxInspectedFaces.2", "MaxInspectedFaces", _prismVertices, faces, scope.Limits.MaxInspectedFaces, faces > remaining, CapacityDemandLifetime.Cumulative) || DemandDiagnostics.Check(this, "MapSpaceMembershipScratch.MaxFacesPerPatch", "MaxFacesPerPatch", 0, _patchFaces[cell.PatchIndex], MapSurfaceCompiler.MaxFacesPerPatch, _patchFaces[cell.PatchIndex] > MapSurfaceCompiler.MaxFacesPerPatch, CapacityDemandLifetime.Inventory))
+                if (DemandDiagnostics.Check(this, "MapSpaceMembershipScratch.MaxInspectedFaces.2", "MaxInspectedFaces", _prismVertices, faces, scope.Limits.MaxInspectedFaces, faces > remaining, CapacityDemandLifetime.Cumulative, allowanceSource: scope.Limits) || DemandDiagnostics.Check(this, "MapSpaceMembershipScratch.MaxFacesPerPatch", "MaxFacesPerPatch", 0, _patchFaces[cell.PatchIndex], MapSurfaceCompiler.MaxFacesPerPatch, _patchFaces[cell.PatchIndex] > MapSurfaceCompiler.MaxFacesPerPatch, CapacityDemandLifetime.Inventory))
                     return Result(MapMembershipStatus.CapacityExceeded);
             }
             _status = MapMembershipStatus.Resolved;
@@ -186,7 +187,7 @@ internal sealed class MapSpaceMembershipScratch : IMapMembershipPointInput
     bool ValidatePatch(int index)
     {
         if (_validated[index] == _generation) return true;
-        if (DemandDiagnostics.Check(this, "MapSpaceMembershipScratch.MaxCandidatePatches.1", "MaxCandidatePatches", _validatedCount, 1, _view.Scope.Limits.MaxCandidatePatches, _validatedCount >= _view.Scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory))
+        if (DemandDiagnostics.Check(this, "MapSpaceMembershipScratch.MaxCandidatePatches.1", "MaxCandidatePatches", _validatedCount, 1, _view.Scope.Limits.MaxCandidatePatches, _validatedCount >= _view.Scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory, allowanceSource: _view.Scope.Limits))
         { _status = MapMembershipStatus.CapacityExceeded; return false; }
         _validated[index] = _generation; _patchFaces[index] = 0; _validatedCount++; return true;
     }

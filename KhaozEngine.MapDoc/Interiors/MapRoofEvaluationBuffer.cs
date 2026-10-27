@@ -44,8 +44,8 @@ public sealed class MapRoofEvaluationBuffer
         var status = MapMembershipPreparation.Measure(scene, out var demand, out string? detail);
         if (status != MapSceneStatus.CompleteForScope) return new(status, null, detail);
         var limits = scene.Source.Data.Limits;
-        if (!CapacityDemandDiagnostics.Check(scene, "MapRoofEvaluationBuffer.Bytes", "MaxPreparedBytes", 0, demand.Bytes, limits.MaxPreparedBytes, demand.Bytes > limits.MaxPreparedBytes, CapacityDemandLifetime.Transient) &&
-            !CapacityDemandDiagnostics.Check(scene, "MapRoofEvaluationBuffer.Faces", "MaxPreparedFaces", 0, demand.Faces, limits.MaxPreparedFaces, demand.Faces > limits.MaxPreparedFaces, CapacityDemandLifetime.Inventory))
+        if (!CapacityDemandDiagnostics.Check(scene, "MapRoofEvaluationBuffer.Bytes", "MaxPreparedBytes", 0, demand.Bytes, limits.MaxPreparedBytes, demand.Bytes > limits.MaxPreparedBytes, CapacityDemandLifetime.Transient, allowanceSource: limits) &&
+            !CapacityDemandDiagnostics.Check(scene, "MapRoofEvaluationBuffer.Faces", "MaxPreparedFaces", 0, demand.Faces, limits.MaxPreparedFaces, demand.Faces > limits.MaxPreparedFaces, CapacityDemandLifetime.Inventory, allowanceSource: limits))
         {
             status = MapMembershipPreflight.Check(scene, demand);
             if (status != MapSceneStatus.CompleteForScope) return Refused(status);

@@ -125,7 +125,8 @@ internal sealed class MapBoundFaceContext
             bool exceeded = count > maxFaces;
             if (faceOrigin is { } origin)
                 origin.Report(preparation, "MapBoundFaceContext.MaxContextFaces.1", count, CapacityDemandLifetime.Inventory);
-            else DemandDiagnostics.Check(preparation, "MapBoundFaceContext.MaxContextFaces.1", "MaxContextFaces", 0, count, maxFaces, exceeded, CapacityDemandLifetime.Inventory);
+            else DemandDiagnostics.Check(preparation, "MapBoundFaceContext.MaxContextFaces.1", "MaxContextFaces", 0, count, maxFaces, exceeded, CapacityDemandLifetime.Inventory,
+                allowanceSource: preparation is { } contextPreparation && contextPreparation.Limits.MaxContextFaces == maxFaces ? contextPreparation.Limits : null);
             if (exceeded || DemandDiagnostics.Check(preparation, "MapBoundFaceContext.MaxFacesPerPatch", "MaxFacesPerPatch", entry.PhysicalFaces - physicalFaces, physicalFaces, MapSurfaceCompiler.MaxFacesPerPatch, entry.PhysicalFaces > MapSurfaceCompiler.MaxFacesPerPatch, CapacityDemandLifetime.Inventory))
             { refusal = "context faces"; continue; }
             entry.Add(demand.SlotCell);

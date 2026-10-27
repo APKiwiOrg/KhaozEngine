@@ -17,6 +17,8 @@ internal interface IMapMembershipPointInput
     int CandidateCount { get; }
     int PortalCount { get; }
     int MaxDepth { get; }
+    /// <summary>The query limits record that supplies <see cref="MaxDepth"/>, for evaluated demand provenance.</summary>
+    object? MaxDepthSource => null;
     bool PruneAncestors { get; }
     MapMembershipStatus FailureStatus { get; }
     MapMembershipPart? Portal(int index);
@@ -164,7 +166,7 @@ internal static class MapMembershipPointKernel
     static bool AddPrism(IMapMembershipPointInput input, int index, int depth, MapMembershipPointScratch scratch)
     {
         if (scratch.Prisms[index] == 2) return true;
-        if (DemandDiagnostics.Check(null, "MapMembershipPointKernel.MaxRecordDepth.1", "MaxRecordDepth", 0, depth, input.MaxDepth, depth > input.MaxDepth, CapacityDemandLifetime.Transient))
+        if (DemandDiagnostics.Check(null, "MapMembershipPointKernel.MaxRecordDepth.1", "MaxRecordDepth", 0, depth, input.MaxDepth, depth > input.MaxDepth, CapacityDemandLifetime.Transient, allowanceSource: input.MaxDepthSource))
         { scratch.Status = MapMembershipStatus.CapacityExceeded; scratch.Detail = "capacity exceeded: prism parent depth"; return false; }
         if (scratch.Prisms[index] == 1)
         { scratch.Status = MapMembershipStatus.Invalid; scratch.Detail = "invalid prism parent cycle"; return false; }

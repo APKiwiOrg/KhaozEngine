@@ -74,7 +74,7 @@ public static class MapFoliageSupport
         try { scope = Scope(layer, chunk, context.SupportFloorsFor(layer, chunk), context.Transforms, context.QueryLimits); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException or ArgumentException)
         { return MapPreparedFoliageSupport.Refused(layer, chunk, MapFoliageStatus.NotRepresentable, NoWork, "chunk scope is not representable"); }
-        if (DemandDiagnostics.Check(context, "MapFoliageSupport.MaxPrepareScopes.1", "MaxPrepareScopes", 0, 1, limits.MaxPrepareScopes, limits.MaxPrepareScopes < 1, CapacityDemandLifetime.Cumulative))
+        if (DemandDiagnostics.Check(context, "MapFoliageSupport.MaxPrepareScopes.1", "MaxPrepareScopes", 0, 1, limits.MaxPrepareScopes, limits.MaxPrepareScopes < 1, CapacityDemandLifetime.Cumulative, allowanceSource: limits))
             return MapPreparedFoliageSupport.Refused(layer, chunk, MapFoliageStatus.CapacityExceeded, NoWork, "prepare scopes");
         MapScopedSurfaces view;
         IReadOnlyDictionary<string, MapPaintRegionSet> paint;

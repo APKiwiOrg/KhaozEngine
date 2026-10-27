@@ -46,7 +46,7 @@ internal static class MapFoliageWindowCapture
                 foreach (var key in MapFoliageWindowChunks.Discover(layer, source.Data.Assets, b))
                 {
                     work = work with { ChunkDescriptors = checked(work.ChunkDescriptors + 1) };
-                    if (DemandDiagnostics.Check(source, "MapFoliageWindowCapture.MaxChunkDescriptors.1", "MaxChunkDescriptors", work.ChunkDescriptors - 1, 1, limits.MaxChunkDescriptors, work.ChunkDescriptors > limits.MaxChunkDescriptors, CapacityDemandLifetime.Cumulative)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxChunkDescriptors), work.ChunkDescriptors, limits.MaxChunkDescriptors);
+                    if (DemandDiagnostics.Check(source, "MapFoliageWindowCapture.MaxChunkDescriptors.1", "MaxChunkDescriptors", work.ChunkDescriptors - 1, 1, limits.MaxChunkDescriptors, work.ChunkDescriptors > limits.MaxChunkDescriptors, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxChunkDescriptors), work.ChunkDescriptors, limits.MaxChunkDescriptors);
                     admission.ReserveBytes(128);
                     chunks.Add((layer, key));
                     if (MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, key))) continue;

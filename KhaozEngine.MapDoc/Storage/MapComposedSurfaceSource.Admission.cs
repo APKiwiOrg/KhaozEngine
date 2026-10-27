@@ -55,7 +55,7 @@ internal sealed partial class MapComposedSurfaceSource
 
         void AdmitPageVisit()
         {
-            if (DemandDiagnostics.Check(this, "MapComposedSurfaceSource.Admission.MaxPageReads.1", "MaxPageReads", _pageVisits, 1, _scope.Limits.MaxPageReads, _pageVisits >= _scope.Limits.MaxPageReads, CapacityDemandLifetime.Cumulative)) throw new MapSurfaceCapacityException();
+            if (DemandDiagnostics.Check(this, "MapComposedSurfaceSource.Admission.MaxPageReads.1", "MaxPageReads", _pageVisits, 1, _scope.Limits.MaxPageReads, _pageVisits >= _scope.Limits.MaxPageReads, CapacityDemandLifetime.Cumulative, allowanceSource: _scope.Limits)) throw new MapSurfaceCapacityException();
             PageVisiting?.Invoke();
             _pageVisits++;
         }

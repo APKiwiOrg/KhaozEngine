@@ -60,21 +60,21 @@ internal static class MapFoliageContextPreflight
             return new(MapFoliageStatus.PartialResidency, work);
 
         work = work with { ChunkDescriptors = set?.Layers.Sum(l => (long)l.ChunkDigests.Count) ?? 0 };
-        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxChunkDescriptors.1", "MaxChunkDescriptors", 0, work.ChunkDescriptors, limits.MaxChunkDescriptors, work.ChunkDescriptors > limits.MaxChunkDescriptors, CapacityDemandLifetime.Inventory)) return new(MapFoliageStatus.CapacityExceeded, work)
+        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxChunkDescriptors.1", "MaxChunkDescriptors", 0, work.ChunkDescriptors, limits.MaxChunkDescriptors, work.ChunkDescriptors > limits.MaxChunkDescriptors, CapacityDemandLifetime.Inventory, allowanceSource: limits)) return new(MapFoliageStatus.CapacityExceeded, work)
         { Capacity = new(nameof(MapFoliageContextLimits.MaxChunkDescriptors), work.ChunkDescriptors, limits.MaxChunkDescriptors) };
 
         var source = new SourceCharge(limits.MaxSourceUtf8Bytes);
         if (set is not null) Charge(source, set);
         work = work with { SourceUtf8Bytes = source.Bytes };
-        if (DemandDiagnostics.Check(source, "MapFoliageContextPreflight.SourceBytes", nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), 0, source.Bytes, limits.MaxSourceUtf8Bytes, source.Exceeded)) return new(MapFoliageStatus.CapacityExceeded, work)
+        if (DemandDiagnostics.Check(source, "MapFoliageContextPreflight.SourceBytes", nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), 0, source.Bytes, limits.MaxSourceUtf8Bytes, source.Exceeded, allowanceSource: limits)) return new(MapFoliageStatus.CapacityExceeded, work)
         { Capacity = new(nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), work.SourceUtf8Bytes, limits.MaxSourceUtf8Bytes) };
 
         work = work with { Placements = PlacementDemand(document, assets) };
-        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxPlacements.1", "MaxPlacements", 0, work.Placements, limits.MaxPlacements, work.Placements > limits.MaxPlacements, CapacityDemandLifetime.Inventory)) return new(MapFoliageStatus.CapacityExceeded, work)
+        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxPlacements.1", "MaxPlacements", 0, work.Placements, limits.MaxPlacements, work.Placements > limits.MaxPlacements, CapacityDemandLifetime.Inventory, allowanceSource: limits)) return new(MapFoliageStatus.CapacityExceeded, work)
         { Capacity = new(nameof(MapFoliageContextLimits.MaxPlacements), work.Placements, limits.MaxPlacements) };
 
         work = work with { PaintTargets = PaintTargetDemand(document, assets) };
-        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxPaintTargets.1", "MaxPaintTargets", 0, work.PaintTargets, limits.MaxPaintTargets, work.PaintTargets > limits.MaxPaintTargets, CapacityDemandLifetime.Inventory)) return new(MapFoliageStatus.CapacityExceeded, work)
+        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxPaintTargets.1", "MaxPaintTargets", 0, work.PaintTargets, limits.MaxPaintTargets, work.PaintTargets > limits.MaxPaintTargets, CapacityDemandLifetime.Inventory, allowanceSource: limits)) return new(MapFoliageStatus.CapacityExceeded, work)
         { Capacity = new(nameof(MapFoliageContextLimits.MaxPaintTargets), work.PaintTargets, limits.MaxPaintTargets) };
 
         MapPrefabExpansionWork expansion;
@@ -87,7 +87,7 @@ internal static class MapFoliageContextPreflight
         }
         catch (KeyNotFoundException) { return new(MapFoliageStatus.Invalid, work); }
         work = work with { SurfacePatches = expansion.Patches };
-        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxSurfacePatches.1", "MaxSurfacePatches", 0, work.SurfacePatches, limits.MaxSurfacePatches, work.SurfacePatches > limits.MaxSurfacePatches, CapacityDemandLifetime.Inventory)) return new(MapFoliageStatus.CapacityExceeded, work)
+        if (DemandDiagnostics.Check(document, "MapFoliageContextPreflight.MaxSurfacePatches.1", "MaxSurfacePatches", 0, work.SurfacePatches, limits.MaxSurfacePatches, work.SurfacePatches > limits.MaxSurfacePatches, CapacityDemandLifetime.Inventory, allowanceSource: limits)) return new(MapFoliageStatus.CapacityExceeded, work)
         { Capacity = new(nameof(MapFoliageContextLimits.MaxSurfacePatches), work.SurfacePatches, limits.MaxSurfacePatches) };
         return new(MapFoliageStatus.Complete, work);
     }

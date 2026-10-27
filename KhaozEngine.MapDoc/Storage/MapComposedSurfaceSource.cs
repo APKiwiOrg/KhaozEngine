@@ -152,7 +152,7 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
         }
         void Reserve(MapPatchKey key)
         {
-            if (!_reserved.Contains(key) && DemandDiagnostics.Check(this, "MapComposedSurfaceSource.MaxCandidatePatches.1", "MaxCandidatePatches", _reserved.Count, 1, _scope.Limits.MaxCandidatePatches, _reserved.Count >= _scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory))
+            if (!_reserved.Contains(key) && DemandDiagnostics.Check(this, "MapComposedSurfaceSource.MaxCandidatePatches.1", "MaxCandidatePatches", _reserved.Count, 1, _scope.Limits.MaxCandidatePatches, _reserved.Count >= _scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory, allowanceSource: _scope.Limits))
                 throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)_reserved.Count + 1, _scope.Limits.MaxCandidatePatches);
             _reserved.Add(key);
         }

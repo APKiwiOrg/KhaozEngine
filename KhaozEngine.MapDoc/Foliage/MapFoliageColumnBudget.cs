@@ -5,14 +5,14 @@ using System;
 namespace KhaozEngine.MapDoc.Foliage;
 
 /// <summary>Accounts simultaneous builder and frozen allocations, before allocation, without pooling.</summary>
-internal sealed class MapFoliageColumnBudget(long allowance, Action<long>? allocate = null, Action<long>? release = null)
+internal sealed class MapFoliageColumnBudget(long allowance, Action<long>? allocate = null, Action<long>? release = null, object? source = null)
 {
     internal long Live { get; private set; }
     internal long Peak { get; private set; }
     internal void Take(long bytes)
     {
         if (bytes < 0) throw new ArgumentOutOfRangeException(nameof(bytes));
-        if (DemandDiagnostics.Check(this, "MapFoliageColumnBudget.MaxQueryRetainedBytes.1", "MaxQueryRetainedBytes", Live, bytes, allowance, bytes > allowance - Live, CapacityDemandLifetime.Transient)) throw MapFoliageDistribution.Refuse(MapFoliageStatus.CapacityExceeded, "native foliage columns");
+        if (DemandDiagnostics.Check(this, "MapFoliageColumnBudget.MaxQueryRetainedBytes.1", "MaxQueryRetainedBytes", Live, bytes, allowance, bytes > allowance - Live, CapacityDemandLifetime.Transient, allowanceSource: source)) throw MapFoliageDistribution.Refuse(MapFoliageStatus.CapacityExceeded, "native foliage columns");
         allocate?.Invoke(bytes);
         Live = checked(Live + bytes); Peak = Math.Max(Peak, Live);
     }

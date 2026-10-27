@@ -393,7 +393,7 @@ public static partial class MapPartialPaintCompiler
         {
             bool accepted = requested <= allowance;
             if (DemandDiagnostics.IsObserved)
-                DemandDiagnostics.Check(this, "MapPartialPaintCompiler." + caller, name, 0, requested, allowance, !accepted);
+                DemandDiagnostics.Check(this, "MapPartialPaintCompiler." + caller, name, 0, requested, allowance, !accepted, allowanceSource: limits);
             if (accepted) return;
             var capacity = new Scene.MapSceneCapacity(name, requested, allowance);
             throw new MapDocumentException("CapacityExceeded: paint " + detail + " budget exceeded. " + capacity.Message,

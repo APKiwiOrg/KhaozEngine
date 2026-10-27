@@ -67,7 +67,7 @@ public sealed class GltfDecodeAdmission
         while (reader.Read()) tokens = checked(tokens + 1);
         long metadata = checked(512L + glb.Length * 2L + jsonBytes.Length * 6L + tokens * 32);
         long remaining = budget.RemainingBytes;
-        if (DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxPeakBytes.1", "MaxPeakBytes", budget.Limits.MaxPeakBytes - remaining, metadata, budget.Limits.MaxPeakBytes, metadata > remaining, CapacityDemandLifetime.Transient)) return new(false, metadata, capacity: new(nameof(GltfDecodeLimits.MaxPeakBytes),
+        if (DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxPeakBytes.1", "MaxPeakBytes", budget.Limits.MaxPeakBytes - remaining, metadata, budget.Limits.MaxPeakBytes, metadata > remaining, CapacityDemandLifetime.Transient, allowanceSource: budget.Limits)) return new(false, metadata, capacity: new(nameof(GltfDecodeLimits.MaxPeakBytes),
             (decimal)budget.Limits.MaxPeakBytes - remaining + metadata, budget.Limits.MaxPeakBytes));
         using var json = JsonDocument.Parse(jsonBytes);
         JsonElement root = json.RootElement;
@@ -133,7 +133,7 @@ public sealed class GltfDecodeAdmission
                 if (Int(primitive, "mode", 4) != 4) throw new GltfDecodeRefusal(GltfDecodeStatus.Unsupported, "Strict rigid decoding requires triangles.");
                 int position = primitive.GetProperty("attributes").GetProperty("POSITION").GetInt32();
                 var positionFact = Accessor(facts, position);
-                if (DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxVertices.1", "MaxVertices", 0, positionFact.Count, budget.Limits.MaxVertices, positionFact.Count > budget.Limits.MaxVertices, CapacityDemandLifetime.Transient)) throw Refused(nameof(GltfDecodeLimits.MaxVertices), positionFact.Count, budget.Limits.MaxVertices);
+                if (DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxVertices.1", "MaxVertices", 0, positionFact.Count, budget.Limits.MaxVertices, positionFact.Count > budget.Limits.MaxVertices, CapacityDemandLifetime.Transient, allowanceSource: budget.Limits)) throw Refused(nameof(GltfDecodeLimits.MaxVertices), positionFact.Count, budget.Limits.MaxVertices);
                 if (positionFact.Components != 3 || accessors[position].GetProperty("componentType").GetInt32() != 5126)
                     throw Invalid("POSITION must be floating VEC3.");
                 long n = primitive.TryGetProperty("indices", out var index) ? Accessor(facts, index.GetInt32()).Count : positionFact.Count;
@@ -143,8 +143,8 @@ public sealed class GltfDecodeAdmission
             }
         }
         if (corners == 0) throw Invalid("glTF has no triangles.");
-        if (DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxVertices.2", "MaxVertices", 0, corners, budget.Limits.MaxVertices, corners > budget.Limits.MaxVertices, CapacityDemandLifetime.Transient)) throw Refused(nameof(GltfDecodeLimits.MaxVertices), corners, budget.Limits.MaxVertices);
-        if (DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxIndices.1", "MaxIndices", 0, indices, budget.Limits.MaxIndices, indices > budget.Limits.MaxIndices, CapacityDemandLifetime.Transient)) throw Refused(nameof(GltfDecodeLimits.MaxIndices), indices, budget.Limits.MaxIndices);
+        if (DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxVertices.2", "MaxVertices", 0, corners, budget.Limits.MaxVertices, corners > budget.Limits.MaxVertices, CapacityDemandLifetime.Transient, allowanceSource: budget.Limits)) throw Refused(nameof(GltfDecodeLimits.MaxVertices), corners, budget.Limits.MaxVertices);
+        if (DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxIndices.1", "MaxIndices", 0, indices, budget.Limits.MaxIndices, indices > budget.Limits.MaxIndices, CapacityDemandLifetime.Transient, allowanceSource: budget.Limits)) throw Refused(nameof(GltfDecodeLimits.MaxIndices), indices, budget.Limits.MaxIndices);
         long pixels = 0, encodedImages = 0;
         var images = new List<ImageDecodeInfo>();
         foreach (int id in materials)
@@ -167,8 +167,8 @@ public sealed class GltfDecodeAdmission
         long peak = checked(metadata + owned + corners * (256 + weldPerCorner) + indices * 16 +
             nodeCount * 64L + pixels * 8 + encodedImages * 2 + arrayHeaders);
         remaining = budget.RemainingBytes;
-        return new(!DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxPeakBytes.2", "MaxPeakBytes", budget.Limits.MaxPeakBytes - remaining, peak, budget.Limits.MaxPeakBytes, !(peak <= remaining), CapacityDemandLifetime.Transient), peak, owned, corners, indices, materials.Count, facts, images.ToArray(),
-            !DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxPeakBytes.3", "MaxPeakBytes", budget.Limits.MaxPeakBytes - remaining, peak, budget.Limits.MaxPeakBytes, !(peak <= remaining), CapacityDemandLifetime.Transient) ? null : new(nameof(GltfDecodeLimits.MaxPeakBytes), (decimal)budget.Limits.MaxPeakBytes - remaining + peak, budget.Limits.MaxPeakBytes));
+        return new(!DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxPeakBytes.2", "MaxPeakBytes", budget.Limits.MaxPeakBytes - remaining, peak, budget.Limits.MaxPeakBytes, !(peak <= remaining), CapacityDemandLifetime.Transient, allowanceSource: budget.Limits), peak, owned, corners, indices, materials.Count, facts, images.ToArray(),
+            !DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxPeakBytes.3", "MaxPeakBytes", budget.Limits.MaxPeakBytes - remaining, peak, budget.Limits.MaxPeakBytes, !(peak <= remaining), CapacityDemandLifetime.Transient, allowanceSource: budget.Limits) ? null : new(nameof(GltfDecodeLimits.MaxPeakBytes), (decimal)budget.Limits.MaxPeakBytes - remaining + peak, budget.Limits.MaxPeakBytes));
 
         void AddImage(JsonElement material, string channel)
         {
@@ -185,9 +185,9 @@ public sealed class GltfDecodeAdmission
             }
             ImageDecodeInfo info = ImageDecodeAdmission.Probe(content.Span);
             long p = checked((long)info.Width * info.Height);
-            if (DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxImagePixels.1", "MaxImagePixels", 0, p, budget.Limits.MaxImagePixels, p > budget.Limits.MaxImagePixels, CapacityDemandLifetime.Transient)) throw Refused(nameof(GltfDecodeLimits.MaxImagePixels), p, budget.Limits.MaxImagePixels);
+            if (DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxImagePixels.1", "MaxImagePixels", 0, p, budget.Limits.MaxImagePixels, p > budget.Limits.MaxImagePixels, CapacityDemandLifetime.Transient, allowanceSource: budget.Limits)) throw Refused(nameof(GltfDecodeLimits.MaxImagePixels), p, budget.Limits.MaxImagePixels);
             if (DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxImageBufferPixels.1", "MaxImageBufferPixels", 0, p, Array.MaxLength / 4, p > Array.MaxLength / 4, CapacityDemandLifetime.Transient)) throw Refused("MaxImageBufferPixels", p, Array.MaxLength / 4);
-            if (DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxImages.1", "MaxImages", images.Count, 1, budget.Limits.MaxImages, images.Count >= budget.Limits.MaxImages, CapacityDemandLifetime.Transient)) throw Refused(nameof(GltfDecodeLimits.MaxImages), (long)images.Count + 1, budget.Limits.MaxImages);
+            if (DemandDiagnostics.Check(budget.DemandIdentity, "GltfDecodeAdmission.MaxImages.1", "MaxImages", images.Count, 1, budget.Limits.MaxImages, images.Count >= budget.Limits.MaxImages, CapacityDemandLifetime.Transient, allowanceSource: budget.Limits)) throw Refused(nameof(GltfDecodeLimits.MaxImages), (long)images.Count + 1, budget.Limits.MaxImages);
             pixels = checked(pixels + p); encodedImages = checked(encodedImages + content.Length);
             images.Add(info);
         }

@@ -92,7 +92,7 @@ internal static class MapSurfaceQuery
                         Subtract(emptyRects, KeyRange(stored.Key), budget);
                         MapSurfaceIndexEntry entry = index.ByKey[stored.Key];
                         if (!entry.Cells.Overlaps(cells) || !HeightAndSpace(entry, surface, scope)) continue;
-                        if (DemandDiagnostics.Check(candidates, "MapSurfaceQuery.MaxCandidatePatches.1", "MaxCandidatePatches", candidates.Count, 1, scope.Limits.MaxCandidatePatches, candidates.Count >= scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory)) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)candidates.Count + 1, scope.Limits.MaxCandidatePatches);
+                        if (DemandDiagnostics.Check(candidates, "MapSurfaceQuery.MaxCandidatePatches.1", "MaxCandidatePatches", candidates.Count, 1, scope.Limits.MaxCandidatePatches, candidates.Count >= scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory, allowanceSource: scope.Limits)) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)candidates.Count + 1, scope.Limits.MaxCandidatePatches);
                         candidates.Add(entry.Key, entry);
                     }
                 }

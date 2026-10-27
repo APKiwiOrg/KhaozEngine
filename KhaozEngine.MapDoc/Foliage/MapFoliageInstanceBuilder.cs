@@ -2,6 +2,7 @@ using KhaozEngine.Diagnostics;
 using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Numerics;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapDoc.Foliage;
@@ -26,7 +27,7 @@ internal sealed class MapFoliageInstanceBuilder : IDisposable
     internal MapFoliageInstanceBuilder(string layerId, MapFoliagePolicy policy, MapFoliageChunkKey chunk, MapFoliageLimits limits)
     {
         _layerId = layerId; _policy = policy; _chunk = chunk; _limits = limits;
-        _budget = new(limits.MaxQueryRetainedBytes, limits.AllocateInstances, limits.ReleaseInstances);
+        _budget = new(limits.MaxQueryRetainedBytes, limits.AllocateInstances, limits.ReleaseInstances, limits);
         _budget.Take(MapFoliageInventory.ConstructionControls);
         _models = new(_budget); _supports = new(_budget);
         _metadata = checked(32 + MapFoliageInventory.Text(layerId) +
@@ -48,10 +49,10 @@ internal sealed class MapFoliageInstanceBuilder : IDisposable
         bool refused = _count >= Math.Min(_limits.MaxSamples, _limits.MaxQuerySamples);
         if (DemandDiagnostics.IsObserved)
         {
-            MapFoliageDemandOrigins.Samples(_limits, _count)
+            new MapCapacityDemandOrigin("MaxQuerySamples", _count, _limits.MaxQuerySamples, _limits)
                 .Report(this, "MapFoliageInstanceBuilder.MaxQuerySamples.1", 1, CapacityDemandLifetime.Inventory);
             DemandDiagnostics.Check(this, "MapFoliageInstanceBuilder.MaxSamples", "MaxSamples", _count, 1,
-                _limits.MaxSamples, _count >= _limits.MaxSamples, CapacityDemandLifetime.Inventory);
+                _limits.MaxSamples, _count >= _limits.MaxSamples, CapacityDemandLifetime.Inventory, allowanceSource: _limits);
         }
         if (refused) return false;
         if (!_supports.Contains(support)) RetainText(support);

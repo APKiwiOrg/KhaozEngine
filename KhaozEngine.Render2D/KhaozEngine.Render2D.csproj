@@ -24,6 +24,9 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <!-- Bounded image decode names its derived decode allowance for evaluated capacity demand. -->
+    <InternalsVisibleTo Include="KhaozEngine.Render3D" />
+    <InternalsVisibleTo Include="KhaozEngine.MapDoc.Render3D" />
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Gui.Tests" />
   </ItemGroup>

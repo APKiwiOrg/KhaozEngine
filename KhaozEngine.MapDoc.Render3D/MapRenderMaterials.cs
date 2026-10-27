@@ -81,7 +81,7 @@ public static class MapRenderMaterials
         DecodedImage? Decode(string? id, MapResolvedResource parent)
         {
             if (id is null) return null;
-            if (DemandDiagnostics.Check(budget.DemandIdentity, "MapRenderMaterials.MaxImages.1", "MaxImages", images, 1, budget.Limits.MaxImages, images >= budget.Limits.MaxImages, CapacityDemandLifetime.Transient)) throw MapRenderDecodeCapacity.Refuse(nameof(GltfDecodeLimits.MaxImages), (long)images + 1, budget.Limits.MaxImages);
+            if (DemandDiagnostics.Check(budget.DemandIdentity, "MapRenderMaterials.MaxImages.1", "MaxImages", images, 1, budget.Limits.MaxImages, images >= budget.Limits.MaxImages, CapacityDemandLifetime.Transient, allowanceSource: budget.Limits)) throw MapRenderDecodeCapacity.Refuse(nameof(GltfDecodeLimits.MaxImages), (long)images + 1, budget.Limits.MaxImages);
             images++;
             if (!parent.Dependencies.Contains(id, StringComparer.Ordinal))
                 throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Material texture is not a declared dependency.");
@@ -92,14 +92,14 @@ public static class MapRenderMaterials
             {
                 var info = ImageDecodeAdmission.Probe(closure.BorrowVerifiedResourceBytes(id).Span);
                 long pixels = checked((long)info.Width * info.Height);
-                if (DemandDiagnostics.Check(budget.DemandIdentity, "MapRenderMaterials.MaxImagePixels.1", "MaxImagePixels", 0, pixels, budget.Limits.MaxImagePixels, pixels > budget.Limits.MaxImagePixels, CapacityDemandLifetime.Transient)) throw MapRenderDecodeCapacity.Refuse(nameof(GltfDecodeLimits.MaxImagePixels), pixels, budget.Limits.MaxImagePixels);
+                if (DemandDiagnostics.Check(budget.DemandIdentity, "MapRenderMaterials.MaxImagePixels.1", "MaxImagePixels", 0, pixels, budget.Limits.MaxImagePixels, pixels > budget.Limits.MaxImagePixels, CapacityDemandLifetime.Transient, allowanceSource: budget.Limits)) throw MapRenderDecodeCapacity.Refuse(nameof(GltfDecodeLimits.MaxImagePixels), pixels, budget.Limits.MaxImagePixels);
                 if (DemandDiagnostics.Check(budget.DemandIdentity, "MapRenderMaterials.MaxImageBufferPixels.1", "MaxImageBufferPixels", 0, pixels, Array.MaxLength / 4, pixels > Array.MaxLength / 4, CapacityDemandLifetime.Transient)) throw MapRenderDecodeCapacity.Refuse("MaxImageBufferPixels", pixels, Array.MaxLength / 4);
                 long charge = checked(pixels * 4 + 24), temporary = checked(pixels * 8 + resource.ByteLength * 2L + 256);
                 MapRenderDecodeCapacity.Reserve(budget, charge, temporary);
                 bool success = false;
                 try
                 {
-                    var image = ImageRgba.DecodeBounded(resource.Bytes.Span, budget.Limits.MaxPeakBytes, budget.Limits.MaxImagePixels);
+                    var image = ImageRgba.DecodeBounded(resource.Bytes.Span, budget.Limits.MaxPeakBytes, budget.Limits.MaxImagePixels, budget.Limits);
                     owned = checked(owned + charge); success = true;
                     return new(image.Pixels, image.Width, image.Height);
                 }

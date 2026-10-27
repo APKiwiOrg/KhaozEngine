@@ -127,7 +127,7 @@ internal sealed class MapFoliageOwners
         // One bounded support preparation per exceptional owner, never per foliage candidate. The shared selection
         // kernel retains its own released point budgets and all surface/room semantics.
         work = work with { PrepareScopes = checked(work.PrepareScopes + 1) };
-        if (DemandDiagnostics.Check(limits, "MapFoliageOwners.MaxPrepareScopes.1", "MaxPrepareScopes", 0, work.PrepareScopes, limits.MaxPrepareScopes, work.PrepareScopes > limits.MaxPrepareScopes, CapacityDemandLifetime.Cumulative)) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "owner support scopes");
+        if (DemandDiagnostics.Check(limits, "MapFoliageOwners.MaxPrepareScopes.1", "MaxPrepareScopes", 0, work.PrepareScopes, limits.MaxPrepareScopes, work.PrepareScopes > limits.MaxPrepareScopes, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, work, "owner support scopes");
         var point = new MapResourceTransform(pose).Point(new(default, default, default));
         var scope = SeatScope(point, _queryLimits);
         MapScopedSurfaces view = _acquire(scope);
@@ -141,7 +141,7 @@ internal sealed class MapFoliageOwners
             {
                 limits.ChargePreparation?.Invoke(checked(1280 * count));
                 contextFaces = checked(contextFaces + count);
-            }, faceOrigin: new("MaxFaces", work.Faces, MapFoliageDemandOrigins.Profile(limits).MaxFaces, limits));
+            }, faceOrigin: new("MaxFaces", work.Faces, limits.MaxFaces, limits));
         }
         finally { work = work with { Faces = checked(work.Faces + contextFaces) }; }
         work = work with { SurfaceQueries = checked(work.SurfaceQueries + 1) };

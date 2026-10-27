@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.MapDoc.Foliage;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
 using System.Numerics;
 using KhaozEngine.MapDoc.Surfaces;
@@ -64,7 +65,7 @@ public sealed class MapCapacityDemandOriginTests
         using var probe = new CapacityDemandProbe();
         var original = new MapFoliageLimits(MaxSamples: 300, MaxQuerySamples: 100);
         var remaining = original with { MaxQuerySamples = 1 };
-        MapFoliageDemandOrigins.Carry(remaining, original, samples: 99);
+        MapDemandOrigins.Derive(remaining, "MaxQuerySamples", MapDemandOrigins.Of(original, "MaxQuerySamples", original.MaxQuerySamples, 99));
         using var builder = new MapFoliageInstanceBuilder("layer", new("legacy-tile", 1, 0), default, remaining);
         Assert.True(builder.TryPrepare(null, "model"));
         builder.AppendPrepared(0, 0, new("model", Vector3.Zero, Matrix4x4.Identity, 0));

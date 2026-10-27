@@ -15,6 +15,7 @@ internal sealed class MapMembershipColdInput(MapScopedSurfaces view, MapExactXz 
     public int CandidateCount => candidateCount;
     public int PortalCount => portalCount;
     public int MaxDepth => view.Scope.Limits.MaxRecordDepth;
+    public object? MaxDepthSource => view.Scope.Limits;
     public bool PruneAncestors => view.EffectiveContext is not null;
     public MapMembershipStatus FailureStatus => failure();
     public MapMembershipPart? Candidate(int index) => candidate(index);

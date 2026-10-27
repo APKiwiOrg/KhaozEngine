@@ -7,7 +7,16 @@ namespace KhaozEngine.MapDoc.Scene;
 internal sealed partial class MapPreparationLedger
 {
     internal void ReportRetained() => CapacityDemandDiagnostics.Check(this, "MapPreparationLedger.FinalRetained",
-        limitName, RetainedBytes, 0, allowance, false, CapacityDemandLifetime.FinalInventory);
+        limitName, RetainedBytes, 0, allowance, false, CapacityDemandLifetime.FinalInventory, allowanceSource: source);
+
+    /// <summary>The originating fields of <see cref="Remaining"/>: the root allowance's origins and every open window.</summary>
+    internal CapacityDemandOrigin[] RemainingOrigins()
+    {
+        var origins = new List<CapacityDemandOrigin>(CapacityDemandDiagnostics.Origins(source, limitName, allowance, LiveBytes));
+        for (var window = _window; window is not null; window = window.Parent)
+            origins.Add(new(window.LimitName, window.Total, window.Allowance, window));
+        return origins.ToArray();
+    }
 
     internal bool CheckDemand(decimal bytes, bool refused, [CallerMemberName] string site = "")
     {
@@ -23,7 +32,7 @@ internal sealed partial class MapPreparationLedger
         {
             CapacityDemandDiagnostics.Check(this, "MapPreparationLedger." + site, limitName, LiveBytes,
                 rootIncrement, allowance, rootIncrement < 0 || rootIncrement > allowance - LiveBytes,
-                CapacityDemandLifetime.Transient);
+                CapacityDemandLifetime.Transient, allowanceSource: source);
             for (var window = _window; window is not null; window = window.Parent)
             {
                 decimal increment = 0;

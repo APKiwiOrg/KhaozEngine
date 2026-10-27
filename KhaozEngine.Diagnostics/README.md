@@ -261,5 +261,7 @@ The overlay widget that draws these lives in [`KhaozEngine.Gui`](../KhaozEngine.
 records for evaluated gates on success and refusal. Admission identities distinguish independent counters
 and shared allowances. Operation identities distinguish nested acquisitions and windows within one build.
 Checks and operation scopes allocate nothing without a subscriber, including first use. Observer failures
-cannot alter admission. See [capacity demand](../docs/CAPACITY-DEMAND.md) for collection, lifetimes,
-profile sizing and the per-limit enforcement-site map.
+cannot alter admission. A gate whose allowance is a remainder or minimum names its derived limits object as
+`allowanceSource`, after `Derive` recorded that object's `CapacityDemandOrigin` fields, and then publishes one
+event per originating field. See [capacity demand](../docs/CAPACITY-DEMAND.md) for collection, lifetimes,
+derived allowances, profile sizing and the per-limit enforcement-site map.

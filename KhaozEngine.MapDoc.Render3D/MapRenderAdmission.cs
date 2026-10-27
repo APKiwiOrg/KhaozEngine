@@ -33,13 +33,13 @@ public sealed class MapRenderAdmission
         {
             capacity = null;
             long available = _budgets.MaxResidentGpuBytes - GpuBytes;
-            if (DemandDiagnostics.Check(this, "MapRenderAdmission.MaxResidentGpuBytes.1", "MaxResidentGpuBytes", GpuBytes, (decimal)demand.OwnedGpuBytes + demand.PeakStagingGpuBytes, _budgets.MaxResidentGpuBytes, demand.OwnedGpuBytes > available || demand.PeakStagingGpuBytes > available - demand.OwnedGpuBytes, CapacityDemandLifetime.Transient))
+            if (DemandDiagnostics.Check(this, "MapRenderAdmission.MaxResidentGpuBytes.1", "MaxResidentGpuBytes", GpuBytes, (decimal)demand.OwnedGpuBytes + demand.PeakStagingGpuBytes, _budgets.MaxResidentGpuBytes, demand.OwnedGpuBytes > available || demand.PeakStagingGpuBytes > available - demand.OwnedGpuBytes, CapacityDemandLifetime.Transient, allowanceSource: _budgets))
                 capacity = new(nameof(MapRenderBudgets.MaxResidentGpuBytes), (decimal)GpuBytes + demand.OwnedGpuBytes + demand.PeakStagingGpuBytes, _budgets.MaxResidentGpuBytes);
-            else if (DemandDiagnostics.Check(this, "MapRenderAdmission.MaxResidentCpuBytes.1", "MaxResidentCpuBytes", CpuBytes, demand.PeakCpuBytes, _budgets.MaxResidentCpuBytes, demand.PeakCpuBytes > _budgets.MaxResidentCpuBytes - CpuBytes, CapacityDemandLifetime.Transient))
+            else if (DemandDiagnostics.Check(this, "MapRenderAdmission.MaxResidentCpuBytes.1", "MaxResidentCpuBytes", CpuBytes, demand.PeakCpuBytes, _budgets.MaxResidentCpuBytes, demand.PeakCpuBytes > _budgets.MaxResidentCpuBytes - CpuBytes, CapacityDemandLifetime.Transient, allowanceSource: _budgets))
                 capacity = new(nameof(MapRenderBudgets.MaxResidentCpuBytes), (decimal)CpuBytes + demand.PeakCpuBytes, _budgets.MaxResidentCpuBytes);
-            else if (DemandDiagnostics.Check(this, "MapRenderAdmission.MaxInFlightUploadCpuBytes.1", "MaxInFlightUploadCpuBytes", _inFlightCpu, demand.PeakCpuBytes, _budgets.MaxInFlightUploadCpuBytes, demand.PeakCpuBytes > _budgets.MaxInFlightUploadCpuBytes - _inFlightCpu, CapacityDemandLifetime.Transient))
+            else if (DemandDiagnostics.Check(this, "MapRenderAdmission.MaxInFlightUploadCpuBytes.1", "MaxInFlightUploadCpuBytes", _inFlightCpu, demand.PeakCpuBytes, _budgets.MaxInFlightUploadCpuBytes, demand.PeakCpuBytes > _budgets.MaxInFlightUploadCpuBytes - _inFlightCpu, CapacityDemandLifetime.Transient, allowanceSource: _budgets))
                 capacity = new(nameof(MapRenderBudgets.MaxInFlightUploadCpuBytes), (decimal)_inFlightCpu + demand.PeakCpuBytes, _budgets.MaxInFlightUploadCpuBytes);
-            else if (DemandDiagnostics.Check(this, "MapRenderAdmission.MaxInFlightUploadStagingGpuBytes.1", "MaxInFlightUploadStagingGpuBytes", _inFlightStaging, demand.PeakStagingGpuBytes, _budgets.MaxInFlightUploadStagingGpuBytes, demand.PeakStagingGpuBytes > _budgets.MaxInFlightUploadStagingGpuBytes - _inFlightStaging, CapacityDemandLifetime.Transient))
+            else if (DemandDiagnostics.Check(this, "MapRenderAdmission.MaxInFlightUploadStagingGpuBytes.1", "MaxInFlightUploadStagingGpuBytes", _inFlightStaging, demand.PeakStagingGpuBytes, _budgets.MaxInFlightUploadStagingGpuBytes, demand.PeakStagingGpuBytes > _budgets.MaxInFlightUploadStagingGpuBytes - _inFlightStaging, CapacityDemandLifetime.Transient, allowanceSource: _budgets))
                 capacity = new(nameof(MapRenderBudgets.MaxInFlightUploadStagingGpuBytes), (decimal)_inFlightStaging + demand.PeakStagingGpuBytes, _budgets.MaxInFlightUploadStagingGpuBytes);
             if (capacity is not null) return null;
             long gpu = demand.OwnedGpuBytes + demand.PeakStagingGpuBytes;
@@ -55,7 +55,7 @@ public sealed class MapRenderAdmission
         {
             if (bytes < 0) throw new ArgumentOutOfRangeException(nameof(bytes));
             capacity = null;
-            if (DemandDiagnostics.Check(this, "MapRenderAdmission.MaxResidentCpuBytes.2", "MaxResidentCpuBytes", CpuBytes, bytes, _budgets.MaxResidentCpuBytes, bytes > _budgets.MaxResidentCpuBytes - CpuBytes, CapacityDemandLifetime.Transient))
+            if (DemandDiagnostics.Check(this, "MapRenderAdmission.MaxResidentCpuBytes.2", "MaxResidentCpuBytes", CpuBytes, bytes, _budgets.MaxResidentCpuBytes, bytes > _budgets.MaxResidentCpuBytes - CpuBytes, CapacityDemandLifetime.Transient, allowanceSource: _budgets))
             { capacity = new(nameof(MapRenderBudgets.MaxResidentCpuBytes), (decimal)CpuBytes + bytes, _budgets.MaxResidentCpuBytes); return null; }
             Lifetime.Cpu(bytes); return new(this, bytes);
         }

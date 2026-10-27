@@ -30,21 +30,43 @@ An inventory attempt is not a promise that the enclosing
 operation completed or retained its output. Group by admission, site, effective limit and operation
 when computing maxima. Summing all events double-counts probes, shared views and repeated checks.
 
-Origin-aware shared gates publish one event for each originating profile field that contributes to
-their effective allowance. Each origin carries its consumed baseline and original ceiling. For example, a membership
-context with four prism vertices and six demanded faces publishes `MaxInspectedFaces` as `4 + 6`
-against the original query ceiling. A min of sample limits publishes `MaxSamples` and
-`MaxQuerySamples` separately, with each origin's own comparison. A refusal at one origin does not
-mark a larger origin refused. At these gates, collectors grouping by `LimitName` recover full profile demand
-without decoding a site name or adding a consumed remainder themselves. The effective admission
-predicate remains unchanged. Selected-asset refusals use the selected-set allowance identity and
-include already admitted parts/bytes plus the rejected piece's requested increment.
+Every gate whose effective allowance is a remainder (`limit - consumed`) or a minimum of several limits
+publishes one event for each originating profile field instead of the derived value. Each origin event carries
+that field's name, its consumed baseline plus this gate's demand, and its original ceiling, and compares its
+own requested total. A refusal at one origin does not mark a larger origin refused. Collectors grouping by
+`LimitName` recover each profile field's full demand without decoding a site name or adding a consumed
+remainder themselves. The effective admission predicate remains unchanged.
 
-Origin provenance currently covers cold membership faces, query-derived patch ceilings, foliage
-support and exceptional-owner contexts, instance sample minima and native chunk sample remainders,
-paint target patch remainders, and selected-asset refusals. Foliage input query-cap intersections and
-nested decode/retention byte views still report effective allowances. Those views are not complete
-originating-profile measurements.
+Derived limit copies carry their provenance. `CapacityDemandDiagnostics.Derive(derived, limitName, origins)`
+names the `CapacityDemandOrigin` fields of one derived allowance, `Origins` flattens a possibly derived source
+after some of it is spent, and `Inherit` gives a defensive record copy the same provenance. A gate passes the
+derived object as `allowanceSource`. An origin's `Scale` converts one derived unit into its own units, so a gate
+demand `d` is reported as `Consumed + Scale * d`. All three calls do nothing without an observer, so
+subscribe before the build you measure. The engine's derived allowances are:
+
+- A foliage input's query cap intersects the scope's `MapQueryLimits` and its refinement field by field.
+  Both profiles report at every query and refinement gate unless they hold the same value.
+- A point membership context reports `MaxInspectedFaces` as prism vertices plus context faces, and its
+  patch ceiling as `MaxCandidatePatches` and, when declared, the refinement `MaxContextPatches`.
+  A foliage support context reports only the acquisition's `MaxCandidatePatches`, the ceiling it enforces.
+- A native foliage chunk copy reports `MaxPrepareScopes` with the scene's `MaxPatchScopes`, `MaxFaces` with
+  `MaxPreparedFaces` and the remaining preparation bytes at 2560 bytes per face, `MaxQuerySamples` with
+  the samples of earlier chunks, and `MaxQueryRetainedBytes` with the remaining preparation bytes.
+  The render cache copy adds the bytes it already retains against the aggregate `MaxQueryRetainedBytes`.
+- A comparison's chunk face ceiling reports `MaxComparisonRetainedBytes` at 1280 bytes per face.
+- Remaining preparation bytes report the root ledger's origins and every open window, such as
+  `MaxPlanBytes`. A residency build's root reports both `MaxPreparedBytes` and `MaxQueuedBytes`.
+  Its share of `MaxPlanBytes` per window never binds first, because the build charges only inside windows
+  and each window reports `MaxPlanBytes` itself.
+- A native decode peak reports the remaining preparation bytes, `MaxResidentCpuBytes` with the residency
+  bytes already held, and a declared `MaxPeakBytes`, at decoder, scratch and bounded image gates.
+- A selected asset set's later pieces report the admitted parts and bytes against `MaxParts` and
+  `MaxDecodedBytes`. Refusals use the selected-set allowance identity.
+- A metadata token window clamped to one array reports `MaxMetadataBytes` and `Int32.MaxValue`.
+- Instance and chunk retention minima report `MaxSamples` and `MaxQuerySamples` separately.
+
+The support grid's cell ceiling is `4 * MaxFaces + 64`. Each `MaxFaces` origin reports it in cells,
+as four times its consumed baseline against four times its ceiling plus 64.
 
 The diagnostic returns the original predicate unchanged. It does not reserve, refund, retry, continue,
 raise an allowance or materialize rejected work. Observer exceptions are isolated from the engine.
@@ -59,7 +81,7 @@ throttles, so an exceeded gate can mean deferred work or eviction rather than a 
 ## Limit sites
 
 The same scalar can bound several different sets. These are separate sizing observations.
-Query and foliage context sites report original profile allowances and consumed baselines.
+Derived and context sites report original profile allowances and consumed baselines.
 The source contract below also lists helper expressions whose runtime limit names come from callers.
 
 | Limit | Evaluated sites |
@@ -155,10 +177,10 @@ The source contract below also lists helper expressions whose runtime limit name
 | `MaxWorkers` | `MapRenderBuildQueue` |
 | `SupportCandidateBuffer` | `MapSupportQuery` |
 
-The support grid derived from `MaxFaces` also evaluates its cell ceiling `4 * MaxFaces + 64`.
-`MaxPageMetadataChecks` and `MaxPageRangeOperations` derive from `1 + 4 * 256 * MaxPageReads`.
-Context gates report their effective local context allowance, including the remaining query or foliage
-allowance passed to them. Their sites are listed under both the local and originating profile limit.
+`MaxPageMetadataChecks` and `MaxPageRangeOperations` are representation ceilings scaled from
+`MaxPageReads` as `1 + 4 * 256 * MaxPageReads`, not profile fields. This table lists each site under the
+limit it compares directly. The derived allowances above also publish their origin names at those sites. The accessor pre-check before an accessor's role is known compares
+against the larger of `MaxVertices` and `MaxIndices`, a maximum rather than a minimum, so it reports that one field.
 
 ## Source gate contract
 
@@ -246,7 +268,7 @@ representation and throttle gates. It does not claim every site is reached by ev
 | KhaozEngine.MapDoc/Foliage/MapFoliageRetentionBudget.cs | `"MapFoliageRetentionBudget.MaxQueryRetainedBytes.2"` | `"MaxQueryRetainedBytes"` |
 | KhaozEngine.MapDoc/Foliage/MapFoliageRetentionBudget.cs | `"MapFoliageRetentionBudget.MaxQuerySamples.1"` | `"MaxQuerySamples"` |
 | KhaozEngine.MapDoc/Foliage/MapFoliageSupport.cs | `"MapFoliageSupport.MaxPrepareScopes.1"` | `"MaxPrepareScopes"` |
-| KhaozEngine.MapDoc/Foliage/MapFoliageSupportBuilder.cs | `"MapFoliageSupportBuilder.MaxFaces.1"` | `"MaxFaces"` |
+| KhaozEngine.MapDoc/Foliage/MapFoliageSupportBuilder.cs | `"MapFoliageSupportBuilder.MaxFaces.1"` | `origin.LimitName` |
 | KhaozEngine.MapDoc/Foliage/MapFoliageSupportBuilder.cs | `"MapFoliageSupportBuilder.MaxFaces.2"` | `origin.LimitName` |
 | KhaozEngine.MapDoc/Foliage/MapFoliageWindowCapture.cs | `"MapFoliageWindowCapture.MaxChunkDescriptors.1"` | `"MaxChunkDescriptors"` |
 | KhaozEngine.MapDoc/Interiors/MapRoofEvaluationBuffer.cs | `"MapRoofEvaluationBuffer.Bytes"` | `"MaxPreparedBytes"` |
@@ -295,7 +317,6 @@ representation and throttle gates. It does not claim every site is reached by ev
 | KhaozEngine.MapDoc/Spaces/MapBoundFaceContext.cs | `"MapBoundFaceContext.MaxContextFaces.1"` | `origin.LimitName` |
 | KhaozEngine.MapDoc/Spaces/MapBoundFaceContext.cs | `"MapBoundFaceContext.MaxFacesPerPatch"` | `"MaxFacesPerPatch"` |
 | KhaozEngine.MapDoc/Spaces/MapBoundPreparation.cs | `"MapBoundPreparation.MaxContextPatches.1"` | `"MaxContextPatches"` |
-| KhaozEngine.MapDoc/Spaces/MapBoundPreparation.cs | `"MapBoundPreparation.MaxContextPatches.1"` | `origin.LimitName` |
 | KhaozEngine.MapDoc/Spaces/MapBoundPreparation.cs | `"MapBoundPreparation.MaxSourceFacesPerBound.1"` | `"MaxSourceFacesPerBound"` |
 | KhaozEngine.MapDoc/Spaces/MapBoundPreparation.cs | `"MapBoundPreparation.MaxSourceFacesPerBound.2"` | `"MaxSourceFacesPerBound"` |
 | KhaozEngine.MapDoc/Spaces/MapBoundPreparation.cs | `"MapBoundPreparation.MaxSourceFacesPerBound.3"` | `"MaxSourceFacesPerBound"` |

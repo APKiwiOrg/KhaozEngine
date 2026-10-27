@@ -5,6 +5,7 @@ using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Scene;
 
 namespace KhaozEngine.MapDoc.Foliage;
 
@@ -67,7 +68,10 @@ internal sealed class MapFoliageCandidateSupport
         // point's released patch allowance, and the supplied-context query still checks that point's face budget.
         var limits = new MapRefinementLimits(MaxContextPatches: view.Scope.Limits.MaxCandidatePatches);
         var bounds = new MapSpacePointBounds(view, limits, null);
-        bounds.Preparation.PatchQueryLimits = view.Scope.Limits;
+        // The foliage context's patch ceiling is the acquisition's candidate patch allowance, never a refinement profile.
+        if (KhaozEngine.Diagnostics.CapacityDemandDiagnostics.IsObserved)
+            MapDemandOrigins.Derive(limits, nameof(MapRefinementLimits.MaxContextPatches),
+                MapDemandOrigins.Of(view.Scope.Limits, nameof(MapQueryLimits.MaxCandidatePatches), view.Scope.Limits.MaxCandidatePatches));
         // Stream demands into PrepareBounds. Its face admission precedes retained masks and compiled arrays, and no
         // chunk-wide demand list is allocated before that gate.
         IEnumerable<MapBoundFaceDemand> Demands()

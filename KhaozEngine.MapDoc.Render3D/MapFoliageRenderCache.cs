@@ -68,7 +68,14 @@ public sealed class MapFoliageRenderCache
                     AllocateInstances = Take,
                     ReleaseInstances = Give,
                 };
-                MapFoliageDemandOrigins.Carry(bounded, limits);
+                if (DemandDiagnostics.IsObserved)
+                {
+                    // The copy is bounded by its own retained ceiling and by the aggregate allowance this cache already retains.
+                    MapDemandOrigins.Derive(bounded, nameof(MapFoliageLimits.MaxQueryRetainedBytes),
+                        MapDemandOrigins.Of(limits, nameof(MapFoliageLimits.MaxQueryRetainedBytes), limits.MaxQueryRetainedBytes),
+                        [new(nameof(MapFoliageLimits.MaxQueryRetainedBytes), RetainedBytes, allowance, this)]);
+                    MapDemandOrigins.InheritFoliage(bounded, limits, nameof(MapFoliageLimits.MaxQueryRetainedBytes));
+                }
                 _generationCalls++;
                 var batch = MapFoliageDistribution.GenerateInstances(_context, layer, chunk, bounded);
                 if (batch.Status != MapFoliageStatus.Complete)

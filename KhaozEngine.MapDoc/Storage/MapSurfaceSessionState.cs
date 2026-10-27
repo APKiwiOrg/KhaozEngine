@@ -25,9 +25,10 @@ internal sealed class MapSurfaceSessionState
             SpaceIds = scope.SpaceIds is null ? null : Array.AsReadOnly(scope.SpaceIds.ToArray()),
             Limits = scope.Limits with { },
         };
+        Scene.MapDemandOrigins.Inherit(Scope.Limits, scope.Limits);
         SnapshotId = snapshotId;
         RootSha256 = rootSha256;
-        Budget = Scope.SharedBudget?.Share(work) ?? new(Scope.Limits.MaxPageReads, work);
+        Budget = Scope.SharedBudget?.Share(work) ?? new(Scope.Limits.MaxPageReads, work, Scope.Limits);
     }
 
     internal MapSurfaceScope Scope { get; }
@@ -52,7 +53,7 @@ internal sealed class MapSurfaceSessionState
     {
         RequireFound();
         if (_reserved.Contains(key)) return;
-        if (DemandDiagnostics.Check(this, "MapSurfaceSessionState.MaxCandidatePatches.1", "MaxCandidatePatches", _reserved.Count, 1, Scope.Limits.MaxCandidatePatches, _reserved.Count >= Scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory)) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)_reserved.Count + 1, Scope.Limits.MaxCandidatePatches);
+        if (DemandDiagnostics.Check(this, "MapSurfaceSessionState.MaxCandidatePatches.1", "MaxCandidatePatches", _reserved.Count, 1, Scope.Limits.MaxCandidatePatches, _reserved.Count >= Scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory, allowanceSource: Scope.Limits)) throw new MapSurfaceCapacityException(nameof(MapQueryLimits.MaxCandidatePatches), (long)_reserved.Count + 1, Scope.Limits.MaxCandidatePatches);
         Scope.SceneAdmission?.BeforeResource(Scene.MapSceneAcquisition.PatchKey(key));
         _reserved.Add(key);
     }

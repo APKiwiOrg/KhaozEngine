@@ -35,7 +35,7 @@ public static class MapFoliageDifferential
         {
             MapFoliageLayer a = Layer(before, layerId), b = Layer(after, layerId);
             MapFoliageLatticeRange ar = Range(a), br = Range(b);
-            if (DemandDiagnostics.Check(meter, "MapFoliageDifferential.MaxDifferentialCandidates.1", "MaxDifferentialCandidates", 0, 2 * (ar.Count + br.Count - ar.Intersection(br)), admitted.MaxDifferentialCandidates, 2 * (ar.Count + br.Count - ar.Intersection(br)) > admitted.MaxDifferentialCandidates, CapacityDemandLifetime.Cumulative))
+            if (DemandDiagnostics.Check(meter, "MapFoliageDifferential.MaxDifferentialCandidates.1", "MaxDifferentialCandidates", 0, 2 * (ar.Count + br.Count - ar.Intersection(br)), admitted.MaxDifferentialCandidates, 2 * (ar.Count + br.Count - ar.Intersection(br)) > admitted.MaxDifferentialCandidates, CapacityDemandLifetime.Cumulative, allowanceSource: admitted))
                 throw Refuse(MapFoliageStatus.CapacityExceeded, "differential candidates");
             using var digest = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             Add("kemap/foliage-differential/1"); Add(before.SnapshotId); Add(after.SnapshotId); Add(layerId);
@@ -52,12 +52,12 @@ public static class MapFoliageDifferential
                     long admittedRows = added + removed + changed;
                     rows = Block(before, after, a, b, ar, br, block, admitted, meter, retained, () =>
                     {
-                        if (DemandDiagnostics.Check(meter, "MapFoliageDifferential.MaxChangeRows.1", "MaxChangeRows", admittedRows, 1, admitted.MaxChangeRows, admittedRows++ >= admitted.MaxChangeRows, CapacityDemandLifetime.Cumulative)) throw Refuse(MapFoliageStatus.CapacityExceeded, "change rows");
+                        if (DemandDiagnostics.Check(meter, "MapFoliageDifferential.MaxChangeRows.1", "MaxChangeRows", admittedRows, 1, admitted.MaxChangeRows, admittedRows++ >= admitted.MaxChangeRows, CapacityDemandLifetime.Cumulative, allowanceSource: admitted)) throw Refuse(MapFoliageStatus.CapacityExceeded, "change rows");
                         retained.Take(256);
                     });
                     foreach (MapFoliageChange row in rows)
                     {
-                        if (DemandDiagnostics.Check(meter, "MapFoliageDifferential.MaxChangeRows.2", "MaxChangeRows", (decimal)added + removed + changed, 1, admitted.MaxChangeRows, added + removed + changed >= admitted.MaxChangeRows, CapacityDemandLifetime.Cumulative)) throw Refuse(MapFoliageStatus.CapacityExceeded, "change rows");
+                        if (DemandDiagnostics.Check(meter, "MapFoliageDifferential.MaxChangeRows.2", "MaxChangeRows", (decimal)added + removed + changed, 1, admitted.MaxChangeRows, added + removed + changed >= admitted.MaxChangeRows, CapacityDemandLifetime.Cumulative, allowanceSource: admitted)) throw Refuse(MapFoliageStatus.CapacityExceeded, "change rows");
                         switch (row.Kind)
                         {
                             case MapFoliageChangeKind.Added: added++; break;
@@ -97,7 +97,7 @@ public static class MapFoliageDifferential
         int rows = 0;
         return Block(before, after, a, b, Range(a), Range(b), block, admitted, meter, retained, () =>
         {
-            if (DemandDiagnostics.Check(meter, "MapFoliageDifferential.MaxChangeRows.3", "MaxChangeRows", rows, 1, admitted.MaxChangeRows, rows++ >= admitted.MaxChangeRows, CapacityDemandLifetime.Cumulative)) throw Refuse(MapFoliageStatus.CapacityExceeded, "change rows");
+            if (DemandDiagnostics.Check(meter, "MapFoliageDifferential.MaxChangeRows.3", "MaxChangeRows", rows, 1, admitted.MaxChangeRows, rows++ >= admitted.MaxChangeRows, CapacityDemandLifetime.Cumulative, allowanceSource: admitted)) throw Refuse(MapFoliageStatus.CapacityExceeded, "change rows");
             retained.Take(256);
         });
     }
@@ -118,7 +118,7 @@ public static class MapFoliageDifferential
             {
                 if (x < int.MinValue || x > int.MaxValue || z < int.MinValue || z > int.MaxValue ||
                     !ar.Contains((int)x, (int)z) && !br.Contains((int)x, (int)z)) continue;
-                if (DemandDiagnostics.Check(meter, "MapFoliageDifferential.MaxDifferentialCandidates.2", "MaxDifferentialCandidates", meter.Candidates, 2, limits.MaxDifferentialCandidates, meter.Candidates > limits.MaxDifferentialCandidates - 2, CapacityDemandLifetime.Cumulative)) throw Refuse(MapFoliageStatus.CapacityExceeded, "differential candidates");
+                if (DemandDiagnostics.Check(meter, "MapFoliageDifferential.MaxDifferentialCandidates.2", "MaxDifferentialCandidates", meter.Candidates, 2, limits.MaxDifferentialCandidates, meter.Candidates > limits.MaxDifferentialCandidates - 2, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) throw Refuse(MapFoliageStatus.CapacityExceeded, "differential candidates");
                 retained.Take(2048);
                 old.Add(ae.Decide((int)x, (int)z, null, Admit));
                 next.Add(be.Decide((int)x, (int)z, null, Admit));

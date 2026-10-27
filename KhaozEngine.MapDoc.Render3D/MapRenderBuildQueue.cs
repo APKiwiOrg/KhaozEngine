@@ -20,12 +20,12 @@ public sealed class MapRenderBuildQueue
     internal bool CanEnqueue(int plans, long bytes)
     {
         if (CapacityDemandDiagnostics.Check(this, "MapRenderBuildQueue.Workers", nameof(MapRenderBudgets.MaxWorkers),
-            _jobs.Count, 1, _budgets.MaxWorkers, _jobs.Count >= _budgets.MaxWorkers, CapacityDemandLifetime.Transient)) return false;
+            _jobs.Count, 1, _budgets.MaxWorkers, _jobs.Count >= _budgets.MaxWorkers, CapacityDemandLifetime.Transient, allowanceSource: _budgets)) return false;
         int queued = _jobs.Sum(j => j.Plans);
         return !CapacityDemandDiagnostics.Check(this, "MapRenderBuildQueue.Plans", nameof(MapRenderBudgets.MaxQueuedPlans),
-            queued, plans, _budgets.MaxQueuedPlans, queued > _budgets.MaxQueuedPlans - plans, CapacityDemandLifetime.Transient) &&
+            queued, plans, _budgets.MaxQueuedPlans, queued > _budgets.MaxQueuedPlans - plans, CapacityDemandLifetime.Transient, allowanceSource: _budgets) &&
             !CapacityDemandDiagnostics.Check(this, "MapRenderBuildQueue.Bytes", nameof(MapRenderBudgets.MaxQueuedBytes),
-                _lifetime.QueuedBytes, bytes, _budgets.MaxQueuedBytes, bytes > _budgets.MaxQueuedBytes - _lifetime.QueuedBytes, CapacityDemandLifetime.Transient);
+                _lifetime.QueuedBytes, bytes, _budgets.MaxQueuedBytes, bytes > _budgets.MaxQueuedBytes - _lifetime.QueuedBytes, CapacityDemandLifetime.Transient, allowanceSource: _budgets);
     }
     internal Job Enqueue(int plans, long bytes, Func<CancellationToken, MapRenderPlan[]> prepare, IDisposable charge)
     {

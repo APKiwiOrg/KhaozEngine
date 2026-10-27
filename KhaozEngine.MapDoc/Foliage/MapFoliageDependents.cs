@@ -193,11 +193,11 @@ internal static class MapFoliageDependents
         internal void Scan(long count = 1)
         {
             _scanned += count;
-            if (DemandDiagnostics.Check(this, "MapFoliageDependents.MaxScannedBatches", "MaxScannedBatches", 0, _scanned, limits.MaxScannedBatches, _scanned > limits.MaxScannedBatches, CapacityDemandLifetime.Cumulative)) throw new BudgetExceeded();
+            if (DemandDiagnostics.Check(this, "MapFoliageDependents.MaxScannedBatches", "MaxScannedBatches", 0, _scanned, limits.MaxScannedBatches, _scanned > limits.MaxScannedBatches, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) throw new BudgetExceeded();
         }
         internal void Prepare()
         {
-            if (DemandDiagnostics.Check(this, "MapFoliageDependents.MaxPreparedSides", "MaxPreparedSides", _prepared, 1, limits.MaxPreparedSides, ++_prepared > limits.MaxPreparedSides, CapacityDemandLifetime.Cumulative)) throw new BudgetExceeded();
+            if (DemandDiagnostics.Check(this, "MapFoliageDependents.MaxPreparedSides", "MaxPreparedSides", _prepared, 1, limits.MaxPreparedSides, ++_prepared > limits.MaxPreparedSides, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) throw new BudgetExceeded();
         }
     }
 

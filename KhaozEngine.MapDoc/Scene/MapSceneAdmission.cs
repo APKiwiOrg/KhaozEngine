@@ -19,8 +19,14 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     [ThreadStatic] static MapSceneAdmission? t_current;
     [ThreadStatic] static int t_suspensions;
     internal static MapSceneAdmission? Current => t_current;
-    readonly MapPreparationLedger _bytes = new(limits.MaxPreparedBytes, preparationLimitName);
+    readonly MapPreparationLedger _bytes = new(limits.MaxPreparedBytes, preparationLimitName, limits);
     internal long RemainingPreparedBytes => _bytes.Remaining;
+    // Observed-only provenance of the remaining allowances that native preparation copies into derived limits.
+    internal CapacityDemandOrigin[] PreparedByteOrigins() => _bytes.RemainingOrigins();
+    internal CapacityDemandOrigin[] PreparedFaceOrigins() =>
+        DemandDiagnostics.Origins(limits, nameof(MapSceneLimits.MaxPreparedFaces), limits.MaxPreparedFaces, PreparedFaces);
+    internal CapacityDemandOrigin[] PatchScopeOrigins() =>
+        DemandDiagnostics.Origins(limits, nameof(MapSceneLimits.MaxPatchScopes), limits.MaxPatchScopes, PatchScopes);
     internal long WorkspaceBytes => _bytes.WorkspaceBytes;
     internal long RetainedBytes => _bytes.RetainedBytes;
     internal long PeakBytes => _bytes.PeakBytes;
@@ -65,27 +71,27 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     internal void BeforePaintTarget(string id)
     {
         if (!_paintTargets.Add(id)) return;
-        if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxPaintTargets.1", "MaxPaintTargets", FoliagePaintTargets, 1, _foliageLimits.MaxPaintTargets, FoliagePaintTargets >= _foliageLimits.MaxPaintTargets, CapacityDemandLifetime.Cumulative)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxPaintTargets), (long)FoliagePaintTargets + 1, _foliageLimits.MaxPaintTargets);
+        if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxPaintTargets.1", "MaxPaintTargets", FoliagePaintTargets, 1, _foliageLimits.MaxPaintTargets, FoliagePaintTargets >= _foliageLimits.MaxPaintTargets, CapacityDemandLifetime.Cumulative, allowanceSource: _foliageLimits)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxPaintTargets), (long)FoliagePaintTargets + 1, _foliageLimits.MaxPaintTargets);
         FoliagePaintTargets++;
     }
     readonly HashSet<MapSceneResourceKey> _resources = new();
     internal void BeforeResource(MapSceneResourceKey key)
     {
         if (_resources.Contains(key)) return;
-        if (DemandDiagnostics.Check(this, "MapSceneAdmission.MaxSelectedResources.1", "MaxSelectedResources", _resources.Count, 1, limits.MaxSelectedResources, _resources.Count >= limits.MaxSelectedResources, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)_resources.Count + 1, limits.MaxSelectedResources);
+        if (DemandDiagnostics.Check(this, "MapSceneAdmission.MaxSelectedResources.1", "MaxSelectedResources", _resources.Count, 1, limits.MaxSelectedResources, _resources.Count >= limits.MaxSelectedResources, CapacityDemandLifetime.Inventory, allowanceSource: limits)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)_resources.Count + 1, limits.MaxSelectedResources);
         if (key.Kind == "Foliage")
         {
-            if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxChunkDescriptors.1", "MaxChunkDescriptors", FoliageChunks, 1, _foliageLimits.MaxChunkDescriptors, FoliageChunks >= _foliageLimits.MaxChunkDescriptors, CapacityDemandLifetime.Cumulative)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxChunkDescriptors), (long)FoliageChunks + 1, _foliageLimits.MaxChunkDescriptors);
+            if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxChunkDescriptors.1", "MaxChunkDescriptors", FoliageChunks, 1, _foliageLimits.MaxChunkDescriptors, FoliageChunks >= _foliageLimits.MaxChunkDescriptors, CapacityDemandLifetime.Cumulative, allowanceSource: _foliageLimits)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxChunkDescriptors), (long)FoliageChunks + 1, _foliageLimits.MaxChunkDescriptors);
             FoliageChunks++;
         }
         if (key.Kind == "Placement")
         {
-            if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxPlacements.1", "MaxPlacements", FoliagePlacements, 1, _foliageLimits.MaxPlacements, FoliagePlacements >= _foliageLimits.MaxPlacements, CapacityDemandLifetime.Cumulative)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxPlacements), (long)FoliagePlacements + 1, _foliageLimits.MaxPlacements);
+            if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxPlacements.1", "MaxPlacements", FoliagePlacements, 1, _foliageLimits.MaxPlacements, FoliagePlacements >= _foliageLimits.MaxPlacements, CapacityDemandLifetime.Cumulative, allowanceSource: _foliageLimits)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxPlacements), (long)FoliagePlacements + 1, _foliageLimits.MaxPlacements);
             FoliagePlacements++;
         }
         if (key.Kind == "Patch")
         {
-            if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxSurfacePatches.1", "MaxSurfacePatches", FoliagePatches, 1, _foliageLimits.MaxSurfacePatches, FoliagePatches >= _foliageLimits.MaxSurfacePatches, CapacityDemandLifetime.Cumulative)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxSurfacePatches), (long)FoliagePatches + 1, _foliageLimits.MaxSurfacePatches);
+            if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxSurfacePatches.1", "MaxSurfacePatches", FoliagePatches, 1, _foliageLimits.MaxSurfacePatches, FoliagePatches >= _foliageLimits.MaxSurfacePatches, CapacityDemandLifetime.Cumulative, allowanceSource: _foliageLimits)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxSurfacePatches), (long)FoliagePatches + 1, _foliageLimits.MaxSurfacePatches);
             FoliagePatches++;
         }
         _resources.Add(key);
@@ -109,18 +115,18 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
     internal void BeforeScope(IMapSurfaceSource source)
     {
         if (!Supports(source)) throw new MapSceneSourceException(MapSceneStatus.Invalid, "Surface source cannot participate in scene admission.");
-        if (DemandDiagnostics.Check(this, "MapSceneAdmission.MaxPatchScopes.1", "MaxPatchScopes", PatchScopes, 1, limits.MaxPatchScopes, PatchScopes >= limits.MaxPatchScopes, CapacityDemandLifetime.Cumulative)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPatchScopes), (long)PatchScopes + 1, limits.MaxPatchScopes);
+        if (DemandDiagnostics.Check(this, "MapSceneAdmission.MaxPatchScopes.1", "MaxPatchScopes", PatchScopes, 1, limits.MaxPatchScopes, PatchScopes >= limits.MaxPatchScopes, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxPatchScopes), (long)PatchScopes + 1, limits.MaxPatchScopes);
         PatchScopes++;
         AcquisitionDiagnostics?.Scope(source.SnapshotId);
     }
 
     internal bool CanReservePreparation(long bytes, long faces) => bytes >= 0 && faces >= 0 &&
         !_bytes.CheckDemand(bytes, bytes > RemainingPreparedBytes) &&
-        !DemandDiagnostics.Check(this, "MapSceneAdmission.CanReservePreparation.Faces", nameof(MapSceneLimits.MaxPreparedFaces), PreparedFaces, faces, limits.MaxPreparedFaces, faces > limits.MaxPreparedFaces - PreparedFaces);
+        !DemandDiagnostics.Check(this, "MapSceneAdmission.CanReservePreparation.Faces", nameof(MapSceneLimits.MaxPreparedFaces), PreparedFaces, faces, limits.MaxPreparedFaces, faces > limits.MaxPreparedFaces - PreparedFaces, allowanceSource: limits);
     internal MapSceneCapacity? PreparationRefusal(long bytes, long faces)
     {
         if (_bytes.CheckDemand(bytes, bytes < 0 || bytes > RemainingPreparedBytes)) return PreparedByteCapacity(bytes);
-        if (!DemandDiagnostics.Check(this, "MapSceneAdmission.MaxPreparedFaces.1", "MaxPreparedFaces", PreparedFaces, faces, limits.MaxPreparedFaces, !(faces >= 0 && faces <= RemainingPreparedFaces), CapacityDemandLifetime.Cumulative)) return null;
+        if (!DemandDiagnostics.Check(this, "MapSceneAdmission.MaxPreparedFaces.1", "MaxPreparedFaces", PreparedFaces, faces, limits.MaxPreparedFaces, !(faces >= 0 && faces <= RemainingPreparedFaces), CapacityDemandLifetime.Cumulative, allowanceSource: limits)) return null;
         _bytes.Refusal(bytes);
         return new(nameof(MapSceneLimits.MaxPreparedFaces), (decimal)PreparedFaces + faces, limits.MaxPreparedFaces);
     }
@@ -151,7 +157,7 @@ internal sealed class MapSceneAdmission(MapSceneLimits limits, Action<string>? e
 
     internal void BeforeInputBytes(long bytes)
     {
-        if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxSourceUtf8Bytes.1", "MaxSourceUtf8Bytes", FoliageSourceUtf8Bytes, bytes, _foliageLimits.MaxSourceUtf8Bytes, bytes > _foliageLimits.MaxSourceUtf8Bytes - FoliageSourceUtf8Bytes, CapacityDemandLifetime.Cumulative)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), (decimal)FoliageSourceUtf8Bytes + bytes, _foliageLimits.MaxSourceUtf8Bytes);
+        if (_foliageLimits is not null && DemandDiagnostics.Check(this, "MapSceneAdmission.MaxSourceUtf8Bytes.1", "MaxSourceUtf8Bytes", FoliageSourceUtf8Bytes, bytes, _foliageLimits.MaxSourceUtf8Bytes, bytes > _foliageLimits.MaxSourceUtf8Bytes - FoliageSourceUtf8Bytes, CapacityDemandLifetime.Cumulative, allowanceSource: _foliageLimits)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxSourceUtf8Bytes), (decimal)FoliageSourceUtf8Bytes + bytes, _foliageLimits.MaxSourceUtf8Bytes);
         ReserveBytes(bytes);
         FoliageSourceUtf8Bytes = checked(FoliageSourceUtf8Bytes + bytes);
     }

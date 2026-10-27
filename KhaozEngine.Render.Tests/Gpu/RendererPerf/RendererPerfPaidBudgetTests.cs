@@ -19,7 +19,7 @@ public sealed class RendererPerfPaidBudgetTests
     {
         JsonObject json = ManifestJson(preset, leg, minutes, billed, (decimal)cost);
         var manifest = RendererPerfRehearsalManifestTests.Parse(json);
-        Assert.Equal(new RendererPerfLimits(seconds, 10000, 60000, minutes), manifest.Limits);
+        Assert.Equal(new RendererPerfLimits(seconds, 10000, 120000, minutes), manifest.Limits);
         Assert.Equal(new RendererPerfBudget(billed, (decimal)rate, "USD", (decimal)cost), manifest.Budget);
         Assert.Equal(preset == "pilot" ? 1260 : 16944, manifest.TotalFrameCount);
         Assert.Equal(12m, manifest.Approval.CampaignMaximumUsd);

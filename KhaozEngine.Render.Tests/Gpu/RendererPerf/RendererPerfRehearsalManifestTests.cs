@@ -29,7 +29,7 @@ public sealed class RendererPerfRehearsalManifestTests
         RendererPerfManifest manifest = Parse(ManifestJson());
         Assert.Equal(1260, manifest.TotalFrameCount);
         Assert.Equal(300, manifest.ConditioningFrames);
-        Assert.Equal(new RendererPerfLimits(5400, 60000, 60000, 120), manifest.Limits);
+        Assert.Equal(new RendererPerfLimits(5400, 60000, 120000, 120), manifest.Limits);
         Assert.Equal(new RendererPerfBudget(120, 0, "USD", 0), manifest.Budget);
         Assert.Equal(RendererPerfManifest.Parse(Encoding.UTF8.GetBytes(RendererPerfProtocolTests.ManifestJson().ToJsonString())).Blocks,
             manifest.Blocks, System.Collections.Generic.EqualityComparer<RendererPerfBlock>.Default);

@@ -17,9 +17,9 @@ internal static class RendererPerfRehearsalPolicy
         "ubuntu-24.04", "gpu-hosted-bench.yml", "linux-vulkan", "retained-fence-batch-3/1");
     static readonly RendererPerfExecutionPolicy Windows = new("d3d11", "microsoft-warp-software",
         "windows-2025-vs2026", "gpu-hosted-bench.yml", "windows-d3d11", "retained-fence-batch-3/1");
-    static readonly RendererPerfLimits PilotLimits = new(5400, 60000, 60000, 120);
-    static readonly RendererPerfLimits FullLimits = new(19800, 60000, 60000, 350);
-    static readonly RendererPerfLimits ControlsLimits = new(5400, 60000, 60000, 120);
+    static readonly RendererPerfLimits PilotLimits = new(5400, 60000, 120000, 120);
+    static readonly RendererPerfLimits FullLimits = new(19800, 60000, 120000, 350);
+    static readonly RendererPerfLimits ControlsLimits = new(5400, 60000, 120000, 120);
     static readonly RendererPerfRehearsalClass[] Classes =
     [
         new("rehearsal", RendererPerfRehearsalSchedule.Pilot, Linux, PilotLimits),

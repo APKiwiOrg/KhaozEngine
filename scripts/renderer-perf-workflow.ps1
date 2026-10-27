@@ -70,7 +70,7 @@ Require ($manifest.preset -cne 'pilot' -or $env:LEGS -cne 'windows-vulkan') 'Win
 $minutes = if ($rehearsal) { $rehearsalPolicy.minutes } elseif ($manifest.preset -ceq 'pilot') { if ($env:LEGS -ceq 'linux-vulkan') { 12 } else { 20 } } else { 35 }
 $billedMinutes = if ($rehearsal) { $minutes } else { $minutes + 3 } # Rounded-up cleanup overrun in run 40435928569.
 Require ($manifest.limits.jobMinutes -eq $minutes -and $manifest.budget.maximumBilledMinutes -eq $billedMinutes) 'Preset job and billing caps disagree'
-Require ($manifest.limits.coldFrameMilliseconds -is [long] -and $manifest.limits.coldFrameMilliseconds -eq 60000) 'Preset cold frame limit must be an explicit 60000 ms integer'
+Require ($manifest.limits.coldFrameMilliseconds -is [long] -and $manifest.limits.coldFrameMilliseconds -eq 120000) 'Preset cold frame limit must be an explicit 120000 ms integer'
 if ($rehearsal) {
     Require ($manifest.limits.unitSeconds -eq $rehearsalPolicy.unitSeconds -and $manifest.limits.frameMilliseconds -eq 60000) 'Rehearsal unit or frame limits differ'
     Require ($manifest.budget.ratePerMinute -eq 0 -and $manifest.budget.maximumCostUsd -eq 0 -and $manifest.budget.currency -ceq 'USD' -and $manifest.approval.campaignMaximumUsd -eq 0) 'Rehearsal requires zero USD cost and campaign budget'

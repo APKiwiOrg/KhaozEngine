@@ -8,12 +8,18 @@ public sealed class RendererPerfColdFrameLimitTests
     [InlineData("cpu", 10001)]
     [InlineData("cpu", 45000)]
     [InlineData("cpu", 60000)]
+    [InlineData("cpu", 60001)]
+    [InlineData("cpu", 120000)]
     [InlineData("retained-cpu", 10001)]
     [InlineData("retained-cpu", 45000)]
     [InlineData("retained-cpu", 60000)]
+    [InlineData("retained-cpu", 60001)]
+    [InlineData("retained-cpu", 120000)]
     [InlineData("gpu", 10001)]
     [InlineData("gpu", 45000)]
     [InlineData("gpu", 60000)]
+    [InlineData("gpu", 60001)]
+    [InlineData("gpu", 120000)]
     public void First_conditioning_frame_keeps_bounded_cold_work(string interval, long milliseconds)
     {
         var rig = Rig(interval, milliseconds, "conditioning:S3", 0);
@@ -32,7 +38,7 @@ public sealed class RendererPerfColdFrameLimitTests
     [InlineData("gpu")]
     public void First_conditioning_frame_beyond_cold_limit_refuses(string interval)
     {
-        var rig = Rig(interval, 60001, "conditioning:S3", 0);
+        var rig = Rig(interval, 120001, "conditioning:S3", 0);
         var report = rig.Run();
         Assert.False(report.Publication.FinalUnitPublished);
         Assert.Contains("FrameTimeout", report.Publication.OriginalFailure);

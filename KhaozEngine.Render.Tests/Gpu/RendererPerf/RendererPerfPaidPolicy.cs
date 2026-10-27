@@ -16,7 +16,7 @@ internal static class RendererPerfPaidPolicy
             && execution.AdapterPolicy == "nvidia-t4-hardware" && execution.Workflow == "gpu-hosted-bench.yml"
             && execution.CompletionPolicy == "retained-fence-batch-3/1", "Preset", "Backend, hardware, runner, workflow or completion policy differs from the preset.");
         int minutes = pilot ? (linux ? 12 : 20) : 35;
-        Require(manifest.Limits == new RendererPerfLimits(pilot ? 600 : 1500, 10000, 60000, minutes),
+        Require(manifest.Limits == new RendererPerfLimits(pilot ? 600 : 1500, 10000, 120000, minutes),
             "Preset", "Unit, steady frame, cold frame or job deadline differs from the preset.");
         int billedMinutes = minutes + CleanupAllowanceMinutes;
         decimal rate = linux ? 0.052m : 0.102m;

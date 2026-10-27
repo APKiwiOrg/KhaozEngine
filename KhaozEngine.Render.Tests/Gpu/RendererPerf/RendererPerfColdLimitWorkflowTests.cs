@@ -14,8 +14,8 @@ public sealed class RendererPerfColdLimitWorkflowTests
         using var fixture = new RendererPerfWorkflowContractTests.WorkflowFixture();
         fixture.Manifest["limits"]!["coldFrameMilliseconds"] = fault switch
         {
-            "text" => System.Text.Json.Nodes.JsonValue.Create("60000"),
-            "fractional" => System.Text.Json.Nodes.JsonValue.Create(60000.5),
+            "text" => System.Text.Json.Nodes.JsonValue.Create("120000"),
+            "fractional" => System.Text.Json.Nodes.JsonValue.Create(120000.5),
             _ => null
         };
         fixture.SaveManifest();
@@ -30,10 +30,13 @@ public sealed class RendererPerfColdLimitWorkflowTests
         fixture.Manifest = RendererPerfColdLimitPolicyTests.ManifestJson(preset, leg);
         fixture.Manifest["workloadSha"] = fixture.Workload;
         fixture.Environment["LEGS"] = leg;
-        fixture.Manifest["limits"]!["coldFrameMilliseconds"] = 60000;
+        fixture.Manifest["limits"]!["coldFrameMilliseconds"] = 120000;
         fixture.SaveManifest();
         fixture.Accept("Select", "jobMinutes=");
-        fixture.Manifest["limits"]!["coldFrameMilliseconds"] = 60001;
+        fixture.Manifest["limits"]!["coldFrameMilliseconds"] = 60000;
+        fixture.SaveManifest();
+        Assert.NotEqual(0, fixture.Run("Select").Code);
+        fixture.Manifest["limits"]!["coldFrameMilliseconds"] = 120001;
         fixture.SaveManifest();
         Assert.NotEqual(0, fixture.Run("Select").Code);
         fixture.Manifest["limits"]!.AsObject().Remove("coldFrameMilliseconds");

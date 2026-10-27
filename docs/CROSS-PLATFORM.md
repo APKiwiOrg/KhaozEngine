@@ -395,7 +395,7 @@ class from the validated preset and binds its schedule, leg, runner, software po
 never derives class from the unit name or approval purpose. Paid labels, opposite-leg software
 policies, floating `windows-latest`, cross-schedule limits and nonzero rehearsal cost refuse.
 
-Every preset requires the explicit `limits.coldFrameMilliseconds` value from the
+Every preset requires the explicit `limits.coldFrameMilliseconds` value of 120,000 ms from the
 [renderer frame-limit contract](RENDERER-PERFORMANCE.md#evidence-and-authorization). The same bounded
 rule applies only to conditioning frame 0 on every leg and execution class. Later fresh sessions
 keep their existing steady limit. Neither the unit deadline nor the hosted job cap is extended.

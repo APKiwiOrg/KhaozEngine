@@ -27,8 +27,12 @@ per-leg job caps, cleanup billing allowance and the campaign envelope. Every exe
 usable timestamps, complete compiler evidence and certified publication. Partial artifacts survive failures.
 
 Every manifest must explicitly include `limits.coldFrameMilliseconds` as well as
-`limits.frameMilliseconds`. The renderer reference owns their fixed values. Only conditioning frame 0
-uses the bounded cold limit for immediate and retained CPU timing and retained GPU duration. It stays
+`limits.frameMilliseconds`. The cold limit is 120,000 ms for every preset and execution class. Only
+conditioning frame 0 uses it for immediate and retained CPU timing and retained GPU duration. The
+renderer reference owns the fixed limits and rationale. The Windows T4 cold frame took 44.9 seconds,
+and the valid Linux T4 pilot took 9.42 seconds against its old 10-second limit. A thin margin turns
+ordinary hosted-runner CPU variance into a paid refusal. The 120-second bound is about 2.7 times the
+worst observation and remains inside the 600-second and 1,500-second paid unit deadlines. It stays
 counted inside the original unit and job caps. Later conditioning, warm-up, measured and control frames
 retain the steady limit. An older manifest missing the cold field refuses strict parsing. Existing
 authorizations are never rewritten to supply it, and another run requires fresh exact owner approval.

@@ -451,8 +451,9 @@ object whose drawn triangles contain the eye fades out of colour over `FadeSecon
 back the same way once the eye leaves. Null, the default, turns it off and clears every fade, and a view with it
 off submits exactly what it did before. `Eligible` is the consumer's rule, because tags are game content.
 
-- **Inside.** An object contains the eye when the generalized winding number of its triangles there is at least
-  0.5 in magnitude, which tolerates the open, overlapping and inside-out shells low-poly models are made of, or
+- **Inside.** An object contains the eye when the generalized winding number of any one of its shells there is at
+  least 0.5 in magnitude, which tolerates the open, overlapping and inside-out shells low-poly models are made of,
+  or
   when its nearest triangle is within `ClipRadius` (default 0.25 m), the near plane slicing a face from just
   outside. It keeps containing the eye until both fail by a further `ExitMargin` (default 0.15 m), so an eye
   resting on a surface does not flicker the object. An eye under a canopy, inside the model's box but outside its
@@ -462,7 +463,8 @@ off submits exactly what it did before. `Eligible` is the consumer's rule, becau
   is not inside it, the rule picking applies. Animated foliage is never a candidate, because the ground-cover path
   it draws through does not honour the fade.
 - **Geometry.** The triangles come from the resolver the view was built with, the parts its props draw, flattened
-  once per archetype. The broad-phase box is measured from the same vertices, so box and triangles agree. Only an
+  once per archetype and grouped into shells, the triangles connected through shared corners welded by position.
+  Judged as one sum, a shell exported inside out would cancel a correctly wound one it overlaps. The broad-phase box is measured from the same vertices, so box and triangles agree. Only an
   object whose box, grown by `ClipRadius + ExitMargin`, holds the eye is tested against its triangles, and
   `CameraContainmentTests` counts those tests. After an archetype's first test the per-frame path allocates
   nothing.

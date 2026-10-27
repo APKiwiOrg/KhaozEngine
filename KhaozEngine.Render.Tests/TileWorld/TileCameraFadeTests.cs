@@ -22,7 +22,8 @@ public class TileCameraFadeTests
             { "archetypes": [
               { "id": "fade_box", "name": "fade box", "meshRef": "fade/box.glb" },
               { "id": "fade_tree", "name": "fade tree", "meshRef": "fade/tree.glb" },
-              { "id": "fade_stump", "name": "fade stump", "meshRef": "fade/stump.glb" }
+              { "id": "fade_stump", "name": "fade stump", "meshRef": "fade/stump.glb" },
+              { "id": "fade_mixed", "name": "fade mixed", "meshRef": "fade/mixed.glb" }
             ] }
             """, "camera fade tests"));
 
@@ -178,6 +179,19 @@ public class TileCameraFadeTests
         Assert.Equal(1f, rig.View.CameraFadeOf(first.Id), 4);
         Assert.Equal(1f, rig.View.CameraFadeOf(second.Id), 4);
         Assert.Equal(2, rig.View.CameraFadedCount);
+    }
+
+    [Fact]
+    public void OppositelyWoundOverlappingShellsStillContainTheirOverlap()
+    {
+        // One part holding two overlapping shells, the second exported inside out. Summed over the whole part their
+        // winding numbers cancel in the overlap. Judged shell by shell, the eye is inside both.
+        using var rig = new Rig(null, ("fade_mixed", 20, 20, 0));
+        TileObject mixed = rig.Object(0);
+
+        rig.Step(rig.Anchor(mixed) + new Vector3(0.5f, 2f, 0f), Half, 2);
+
+        Assert.Equal(1f, rig.View.CameraFadeOf(mixed.Id), 4);
     }
 
     [Fact]
@@ -342,6 +356,9 @@ public class TileCameraFadeTests
                     Part(new Vector3(-0.1f, 0f, -0.1f), new Vector3(0.1f, 2f, 0.1f)),
                 ],
                 "fade_stump" => [Part(new Vector3(-0.25f, 0f, -0.25f), new Vector3(0.25f, 0.5f, 0.25f))],
+                "fade_mixed" => [new GltfMeshPart(Merge(
+                    Cuboid(new Vector3(-1f, 0f, -1f), new Vector3(1f, 4f, 1f)),
+                    Cuboid(new Vector3(0f, 0f, -1f), new Vector3(2f, 4f, 1f), insideOut: true)), default)],
                 _ => [Part(new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, 1f, 0.5f))],
             };
             _cache[archetype.Id] = parts;
@@ -350,8 +367,16 @@ public class TileCameraFadeTests
 
         static GltfMeshPart Part(Vector3 min, Vector3 max) => new(Cuboid(min, max), default);
 
-        // A closed, outward-wound cuboid.
-        static GltfMesh Cuboid(Vector3 min, Vector3 max)
+        // Two meshes as one part, as an exporter joining two objects would write them.
+        static GltfMesh Merge(GltfMesh a, GltfMesh b)
+        {
+            ModelVertex[] vertices = [.. a.Vertices, .. b.Vertices];
+            uint[] indices = [.. a.Indices32, .. b.Indices32.Select(i => i + (uint)a.Vertices.Length)];
+            return new GltfMesh(vertices, indices);
+        }
+
+        // A closed cuboid, wound outward unless it is inside out.
+        static GltfMesh Cuboid(Vector3 min, Vector3 max, bool insideOut = false)
         {
             var vertices = new ModelVertex[8];
             for (int i = 0; i < 8; i++)
@@ -369,6 +394,8 @@ public class TileCameraFadeTests
                 0, 2, 3, 0, 3, 1,   // -Z
                 4, 5, 7, 4, 7, 6,   // +Z
             ];
+            if (insideOut)
+                for (int i = 0; i < indices.Length; i += 3) (indices[i + 1], indices[i + 2]) = (indices[i + 2], indices[i + 1]);
             return new GltfMesh(vertices, indices);
         }
     }

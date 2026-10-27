@@ -39,6 +39,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   start at the crossing (#1619).
 - Report automation connection errors before closing the affected socket, so diagnostics are recorded before
   the peer observes EOF (Closes #1628).
+
 ## 21.16.0
 
 2026-10-27

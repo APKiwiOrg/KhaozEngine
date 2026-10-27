@@ -2013,6 +2013,44 @@ What stays in the GAME: the palette values it assigns to `GuiTheme`, the metric 
 wrong for it, which taps it swallows through `BlockRegion`, each window's natural-bounds rule, the grip rect,
 and whatever fills the strip, content and footer bands.
 
+### Saved HUD layout
+
+`HudLayout` and `HudLayoutEditor` in `KhaozEngine.Gui` provide movable HUD regions without owning the
+game's presentation or storage. A `HudLayoutPosition(CenterX, CenterY)` stores a normalized center from
+0 to 1 as serializable properties. The caller supplies each region's current default rectangle and a
+canvas extent in the same coordinates as its `Pointer` and drawing pass.
+
+`HudLayout.Resolve(defaultBounds, canvas, savedPosition)` uses a valid saved center or the default, then
+clamps the complete rectangle. Its size remains caller-owned. An oversized region keeps its top-left
+reachable. A zero or invalid canvas extent is treated as zero, allowing initial layout before the first
+sized window frame. `FromBounds(bounds, canvas)` captures a normalized center and requires a positive
+finite canvas. Neither method changes stored settings. This preserves the intended position when a
+resize or user-scale change temporarily clamps a region against an edge.
+
+For an edit mode, register `HudLayoutRegion(Id, DefaultBounds)` entries in draw order. Identifiers must
+be unique and stable. Include hidden regions if the game wants to paint editable ghosts for them.
+
+```csharp
+var editor = new HudLayoutEditor();
+editor.Begin(savedPositions);   // copies valid entries, including unknown future region ids
+editor.Update(pointer, regions, canvas);
+Rect bounds = editor.Resolve("status", statusDefaultBounds, canvas);
+// Draw and hit-test this same rectangle. The caller supplies real or ghost content.
+Dictionary<string, HudLayoutPosition> updatedPositions = editor.Commit();
+// Persist updatedPositions through the consumer's existing settings owner.
+```
+
+Only a fresh unconsumed press can capture a region. The last drawn region under it wins. Capture follows
+the pointer outside the region, consumes the whole gesture through release, and does not apply travel
+that happened before the press. Clamping does not accumulate invisible drag distance. If the canvas
+changes during capture, that frame rebases the gesture without treating coordinate remapping as travel.
+
+`Reset(regionIds)` removes only those overrides from the draft, leaving unknown future entries alone
+when the consumer supplies its known ids. `Cancel()` discards the draft and is safe on repeated close or
+disconnect paths. `Commit()` returns a separate dictionary and ends editing. Reset and Commit require an
+active session. The editor does not persist, draw a modal scrim, reserve unrelated pointer regions or
+consume keyboard input. The caller owns those policies, along with labels and Done/Cancel controls.
+
 ### Overlapping windows (`WindowStack`, 21.3.0)
 
 `WindowStack` owns the z-order of a consumer's non-modal windows. Register each window once with

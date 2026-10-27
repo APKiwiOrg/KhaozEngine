@@ -950,6 +950,14 @@ chat.Draw(batch, white);
         closeHovered: pointer.IsPointerIn(close));
     DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
     ```
+  - `HudLayout` + `HudLayoutEditor` - saved HUD centers and an isolated edit draft. `HudLayoutPosition` stores
+    normalized center coordinates as serializable properties. `HudLayout.Resolve` combines a saved position
+    with the caller's current size and clamps the complete rectangle without rewriting the saved value.
+    `HudLayoutEditor.Begin` copies valid positions, `Update` captures one topmost region through `Pointer`,
+    `Reset` removes supplied overrides from the draft, `Commit` returns a copied dictionary, and `Cancel`
+    discards it. The caller supplies regions in draw order, including hidden ones it wants to show as ghosts,
+    and owns their drawing, localized labels, modal keyboard behavior and settings persistence. See
+    [Saved HUD layout](../docs/USING-KHAOZENGINE.md#saved-hud-layout).
   - `WindowStack` (since 21.3.0) - the z-order of overlapping non-modal windows. It raises a window on open and
     on press, updates open windows top to bottom with every window above occluded on the `Pointer`, and draws
     them bottom to top. Update it before any layer beneath reads the pointer, and draw tooltips and menus after

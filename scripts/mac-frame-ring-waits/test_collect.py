@@ -1,4 +1,12 @@
 import copy
+import contextlib
+import hashlib
+import json
+import sys
+from types import SimpleNamespace
+from unittest.mock import patch
+import collect
+from test_analyze import fixture
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,6 +40,17 @@ class CollectorTests(unittest.TestCase):
                 next(x for x in m['replacements'] if x['name']==name)['references']=[]
                 with self.assertRaises(ValueError):validate_preparation(m)
 
+    def test_preparation_integer_fields_reject_coercion_and_range_errors(self):
+        for field in ('runtimeFileCount','contentFileCount'):
+            for replacement in (float(preparation()[field]),True,1<<31):
+                with self.subTest(field=field,replacement=replacement):
+                    m=preparation();m[field]=replacement
+                    with self.assertRaises(ValueError):validate_preparation(json.loads(json.dumps(m)))
+        for replacement in (1.0,True,-1,1<<63):
+            with self.subTest(bytes=replacement):
+                m=preparation();m['clientFiles'][0]['bytes']=replacement
+                with self.assertRaises(ValueError):validate_preparation(json.loads(json.dumps(m)))
+
     def test_tmp_alias_is_canonical_without_allowing_escape(self):
         with tempfile.TemporaryDirectory(prefix="khaozengine-ring-wait-collector-", dir="/tmp") as directory:
             root=Path(directory)
@@ -60,13 +79,8 @@ class CollectorTests(unittest.TestCase):
                 with self.assertRaises(ValueError):validate_preparation(m)
 
 class CollectorWorkflowTests(unittest.TestCase):
-    def test_one_trigger_and_complete_before_after_audit_without_a_real_process(self):
-        import collect
-        import hashlib
-        import json
-        import sys
-        from unittest.mock import patch
-        from test_analyze import fixture
+    @contextlib.contextmanager
+    def workflow(self):
         with tempfile.TemporaryDirectory(prefix='khaozengine-ring-wait-workflow-',dir='/tmp') as directory:
             root=Path(directory).resolve();client=root/'client';client.mkdir()
             game=root/'game';game.mkdir()
@@ -85,26 +99,118 @@ class CollectorWorkflowTests(unittest.TestCase):
                 p=game/x['path'];p.parent.mkdir(exist_ok=True);p.write_bytes(b'world');x['sha256']=hashlib.sha256(b'world').hexdigest()
             preparation_path=root/'preparation.json';preparation_path.write_text(json.dumps(m))
             result=root/'result.json';trigger=Path(str(result)+'.start')
+            metadata=result.with_suffix('.collection.json')
             identity='123 Tue Oct 27 12:00:00 2026 dotnet '+str(client/'Grimhollow.dll')+' --with-server'
             mapped=[str(client/(x+'.dll')) for x in sorted(REQUIRED_CLOSURE|{'Grimhollow'})]
             triggers=[]
             def emit(_):
                 self.assertTrue(trigger.is_file());triggers.append(trigger.stat().st_ino)
+                trigger.unlink()  # Fake the recorder's Waiting -> Armed consumption, before publication.
                 result.write_text(json.dumps(r))
             argv=['collect.py','--preparation',str(preparation_path),'--ready-process-id','123','--mode','counts','--result',str(result)]
             with patch.object(sys,'argv',argv),patch.object(collect,'identity',return_value=identity), \
                  patch.object(collect,'mappings',return_value=mapped),patch.object(collect,'foreground',return_value={'pid':123}), \
                  patch.object(collect,'verify_sources',return_value=m['sourceHashes']),patch.object(collect.time,'sleep',side_effect=emit):
-                self.assertEqual(0,collect.main())
-                self.assertEqual(1,len(triggers))
-                # The same path is refused before any second trigger can be written.
-                with self.assertRaises(ValueError):collect.main()
-            metadata=json.loads(result.with_suffix('.collection.json').read_text())
+                yield SimpleNamespace(result=result,trigger=trigger,metadata=metadata,report=r,manifest=m,triggers=triggers)
+
+    def test_one_trigger_and_complete_before_after_audit_without_a_real_process(self):
+        with self.workflow() as w:
+            self.assertEqual(0,collect.main())
+            self.assertEqual(1,len(w.triggers))
+            with self.assertRaises(ValueError):collect.main()
+            metadata=json.loads(w.metadata.read_text())
             self.assertEqual('collected-and-audited',metadata['status'])
             self.assertEqual(644,len(metadata['payloadBefore']))
             self.assertEqual(metadata['payloadBefore'],metadata['payloadAfter'])
             self.assertEqual(6,len(metadata['runtimeFiles']))
             self.assertTrue(metadata['triggerCreated'])
+            self.assertTrue(metadata['ownershipReserved'])
+            self.assertTrue(metadata['preflightRechecked'])
+            self.assertTrue(metadata['triggerConsumed'])
+            self.assertEqual(w.triggers[0],metadata['triggerIdentity'][1])
+            self.assertLessEqual(metadata['triggeredAtUtc'],metadata['triggerConsumedAtUtc'])
+            self.assertLessEqual(metadata['triggerConsumedAtUtc'],metadata['resultObservedAtUtc'])
+
+    def test_report_from_an_older_window_does_not_consume_this_trigger(self):
+        with self.workflow() as w:
+            def older_window(_):w.result.write_text(json.dumps(w.report))
+            with patch.object(collect.time,'sleep',side_effect=older_window):
+                self.assertEqual(1,collect.main())
+            self.assertTrue(w.trigger.is_file())
+            self.assertEqual(w.report,json.loads(w.result.read_text()))
+            metadata=json.loads(w.metadata.read_text())
+            self.assertEqual('failed-retain-evidence',metadata['status'])
+            self.assertFalse(metadata['triggerConsumed'])
+            self.assertIn('consum',metadata['error'])
+            self.assertFalse(w.result.with_suffix('.audit.json').exists())
+
+    def test_result_published_during_preflight_is_refused_before_trigger_creation(self):
+        with self.workflow() as w:
+            def preflight(_):
+                w.result.write_text(json.dumps(w.report))
+                return w.manifest['sourceHashes']
+            with patch.object(collect,'verify_sources',side_effect=preflight):
+                self.assertEqual(1,collect.main())
+            self.assertFalse(w.trigger.exists())
+            self.assertEqual(w.report,json.loads(w.result.read_text()))
+            self.assertFalse(json.loads(w.metadata.read_text())['triggerCreated'])
+
+    def test_competitor_during_preflight_cannot_overwrite_the_owners_metadata(self):
+        with self.workflow() as w:
+            def compete(_):
+                before=w.metadata.read_bytes()
+                with self.assertRaises((ValueError,FileExistsError)):collect.main()
+                self.assertEqual(before,w.metadata.read_bytes())
+                self.assertFalse(w.trigger.exists())
+                return w.manifest['sourceHashes']
+            # One nested invocation at a fixed preflight checkpoint, no concurrent workers.
+            calls=[]
+            def sources(manifest):
+                if not calls:
+                    calls.append(True)
+                    return compete(manifest)
+                return w.manifest['sourceHashes']
+            with patch.object(collect,'verify_sources',side_effect=sources):
+                self.assertEqual(0,collect.main())
+            self.assertEqual(1,len(w.triggers))
+
+    def test_collectors_that_both_pass_freshness_have_one_atomic_claim_winner(self):
+        with self.workflow() as w:
+            open_file=Path.open
+            winner=[]
+            def interleave(path,mode='r',*args,**kwargs):
+                if path==w.metadata and mode=='x' and not winner:
+                    winner.append(None)
+                    self.assertEqual(0,collect.main())
+                    winner[0]=(w.metadata.read_bytes(),w.result.read_bytes())
+                return open_file(path,mode,*args,**kwargs)
+            # Suspend the first invocation just before its atomic claim. A second wins,
+            # consumes its trigger and publishes before the first resumes. No threads.
+            with patch.object(Path,'open',new=interleave):
+                with self.assertRaises(FileExistsError):collect.main()
+            self.assertEqual(winner[0],(w.metadata.read_bytes(),w.result.read_bytes()))
+            self.assertEqual(1,len(w.triggers))
+            self.assertFalse(w.trigger.exists())
+
+    def test_interruption_during_preflight_leaves_a_non_overwritable_claim(self):
+        with self.workflow() as w:
+            with patch.object(collect,'verify_sources',side_effect=KeyboardInterrupt):
+                with self.assertRaises(KeyboardInterrupt):collect.main()
+            before=w.metadata.read_bytes()
+            self.assertEqual('preflight',json.loads(before)['status'])
+            with self.assertRaises((ValueError,FileExistsError)):collect.main()
+            self.assertEqual(before,w.metadata.read_bytes())
+            self.assertFalse(w.trigger.exists())
+
+    def test_interruption_after_trigger_creation_retains_claim_and_unconsumed_trigger(self):
+        with self.workflow() as w:
+            with patch.object(collect,'now',side_effect=['2026-10-27T00:00:00+00:00',KeyboardInterrupt]):
+                with self.assertRaises(KeyboardInterrupt):collect.main()
+            self.assertTrue(w.trigger.is_file())
+            before=w.metadata.read_bytes()
+            with self.assertRaises((ValueError,FileExistsError)):collect.main()
+            self.assertEqual(before,w.metadata.read_bytes())
+            self.assertTrue(w.trigger.is_file())
 
 
 if __name__=='__main__':

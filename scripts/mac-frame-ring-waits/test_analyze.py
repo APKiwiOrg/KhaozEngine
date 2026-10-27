@@ -79,6 +79,10 @@ def fixture(nonzero=False, gap=-1, zero=False):
                   window=dict(status=1, count=2 if nonzero else 0, ticks=18 if nonzero else 0) if end_valid else dict(status=2, count=None, ticks=None),
                   prefixMs=0.0 if zero else 10.0, mainMs=0.0 if zero else 14.0, unattributedMs=(18.0 if nonzero else 0.0) if end_valid else None))
     proof = dict(processId=123, processBefore='123 start dotnet client/Grimhollow.dll --with-server',
+                 collectionId=EPOCH,ownershipReserved=True,preflightRechecked=True,triggerConsumed=True,
+                 triggerIdentity=[1,42],startedAtUtc='2026-10-27T00:00:00+00:00',
+                 triggeredAtUtc='2026-10-27T00:00:01+00:00',triggerConsumedAtUtc='2026-10-27T00:00:02+00:00',
+                 resultObservedAtUtc='2026-10-27T00:00:12+00:00',
                  processAfter='123 start dotnet client/Grimhollow.dll --with-server', foregroundBefore=dict(pid=123),
                  foregroundAfter=dict(pid=123), probeCommit='a'*40, gameCommit='b'*40, requestedSeconds=10,
                  triggerCreated=True, freshPaths=True, runtimeFilesRehashed=644, contentFiles=395, worldFilesRehashed=41,
@@ -96,7 +100,7 @@ class AnalyzerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='khaozengine-ring-wait-synthetic-', dir='/tmp') as directory:
             path = Path(directory) / 'result.json'
             path.write_text(json.dumps(report))
-            return analyse(json.loads(path.read_text()), 1, 123, proof)
+            return analyse(json.loads(path.read_text()), 1, 123, json.loads(json.dumps(proof)))
 
     def test_exact_zero_and_nonzero_remainder_are_accepted(self):
         for options in ({'zero': True}, {}, {'nonzero': True}):
@@ -115,6 +119,118 @@ class AnalyzerTests(unittest.TestCase):
                 self.assertFalse(a['fullyAttributed'])
                 self.assertEqual(gap == 1, a['windowReconciled'])
                 self.assertEqual(2, a['validRoleRows'])
+
+    def test_runtime_acceptance_requires_ownership_and_consumed_trigger_proof(self):
+        for field in ('ownershipReserved','preflightRechecked','triggerConsumed'):
+            with self.subTest(field=field):
+                r,p=fixture();p[field]=False
+                result=self.audit(r,p)
+                self.assertEqual('invalid',result['status'])
+                self.assertFalse(result['fullyAttributed'])
+
+    def test_every_present_integer_field_rejects_float_and_bool_after_json_round_trip(self):
+        def integers(value,path=()):
+            if isinstance(value,dict):
+                for key,item in value.items():yield from integers(item,path+(key,))
+            elif isinstance(value,list):
+                for key,item in enumerate(value):yield from integers(item,path+(key,))
+            elif type(value) is int:
+                yield path,value
+        r,p=fixture()
+        # Cover optional integer-bearing shadow structures as well as the minimal counts fixture.
+        for sample in r['samples']:
+            snapshot=sample['shadowStage']['callback']['snapshot']
+            snapshot['configuration']=dict(directionalMode=1,cascadeMergeGap=0,directionalResolution=1024,
+                cascadeCount=4,pointFaceResolution=256,pointRows=8,transientRows=1,staticBudget=2,dynamicBudget=2,pointFilter=1)
+            snapshot['counters'].update(foliageBuildOrigin=0,pointRigidIssuedInstances=0,
+                rigidSignatureQueries=dict(calls=0,exactTests=0,accepted=0,sortInputs=0))
+        self.assertEqual('valid',self.audit(r,p)['status'])
+        originals=json.loads(json.dumps([r,p]))
+        for section,original in enumerate(originals):
+            for path,value in integers(original):
+                for replacement in (float(value),bool(value)):
+                    with self.subTest(section=section,path=path,replacement=replacement):
+                        data=json.loads(json.dumps(originals))
+                        target=data[section]
+                        for key in path[:-1]:target=target[key]
+                        target[path[-1]]=replacement
+                        result=self.audit(*data)
+                        self.assertEqual('invalid',result['status'],result)
+                        self.assertFalse(result['fullyAttributed'])
+
+    def test_integer_ranges_and_enum_values_cannot_escape_the_schema(self):
+        for field,value in (('sampleCount',4097),('stopwatchFrequency',1<<63),('processId',1<<31)):
+            r,p=fixture();r[field]=value
+            result=self.audit(r,p)
+            self.assertEqual('invalid',result['status'])
+            self.assertFalse(result['fullyAttributed'])
+        for field,value in (('priorAttempt',1<<64),('status',11),('status',-1)):
+            r,p=fixture();r['samples'][0]['recordingWait']['callback']['main'][field]=value
+            result=self.audit(r,p)
+            self.assertEqual('invalid',result['status'])
+            self.assertFalse(result['fullyAttributed'])
+        for changes in ('window-int32','depth-int32','shadow-int32','shadow-int64','shadow-enum','configuration-int32','stat-uint64'):
+            with self.subTest(changes=changes):
+                r,p=fixture()
+                if changes=='window-int32':
+                    for window in [r['baseline']['window'],r['end']['window']]+[s[k] for s in r['samples'] for k in ('completedFrameWindow','boundaryWindow')]:
+                        window['width']=1<<31
+                elif changes=='depth-int32':
+                    for boundary in [r['baseline']['recordingWait'],r['end']['recordingWait']]+[s['recordingWait'][k] for s in r['samples'] for k in ('start','end')]:
+                        boundary['totals']['depth']=1<<31
+                elif changes.startswith('shadow-') or changes=='configuration-int32':
+                    for sample in r['samples']:
+                        snapshot=sample['shadowStage']['callback']['snapshot']
+                        if changes=='shadow-int32':snapshot['counters']['staticRequests']=1<<31
+                        elif changes=='shadow-int64':snapshot['counters']['pointRigidIssuedInstances']=1<<63
+                        elif changes=='shadow-enum':snapshot['counters']['foliageBuildOrigin']=4
+                        else:snapshot['configuration']['pointRows']=1<<31
+                else:
+                    p['runtimeFiles'][0]['stat'][1]=p['runtimeFiles'][0]['afterStat'][1]=1<<64
+                result=self.audit(r,p)
+                self.assertEqual('invalid',result['status'],result)
+                self.assertFalse(result['fullyAttributed'])
+
+    def test_not_applicable_prefix_keeps_strict_status_and_prior_attempt_types(self):
+        r,p=json.loads(json.dumps(fixture()))
+        for window in [r['baseline']['window'],r['end']['window']]+[s[k] for s in r['samples'] for k in ('completedFrameWindow','boundaryWindow')]:
+            window.update(preparePhaseSplitActive=False,preparePhaseSubmissionCount=0,preparePhaseCompositeCount=0)
+        for b in [r['baseline']['recordingWait'],r['end']['recordingWait']]+[s['recordingWait'][k] for s in r['samples'] for k in ('start','end')]:
+            b['totals']['count'] //= 2
+            b['totals']['ticks'] = b['totals']['count']*7
+        for sample in r['samples']:
+            sample['recordingWait']['callback'].update(prefixExpected=False,prefixObservations=0,
+                prefix=dict(status=3,priorAttempt=0,receipt=None))
+        r['recordingWaits'].update(prefix=None,prefixMs=None)
+        self.assertEqual('valid',self.audit(r,p)['status'])
+        for field,value in (('status',3.0),('status',True),('priorAttempt',0.0),('priorAttempt',False)):
+            mutated=json.loads(json.dumps(r))
+            mutated['samples'][0]['recordingWait']['callback']['prefix'][field]=value
+            result=self.audit(mutated,p)
+            self.assertEqual('invalid',result['status'])
+            self.assertFalse(result['fullyAttributed'])
+
+    def test_timing_integer_fields_are_strict_while_durations_remain_floating_point(self):
+        r,p=fixture()
+        r['shadowStages']['mode']=2
+        r['shadowStages']['meanScenePrefixMs']=0.0
+        for summary in r['shadowStages']['timings']:
+            summary.update(sampleCount=2,meanMs=0.0,maxMs=0.0)
+        for sample in r['samples']:
+            shadow=sample['shadowStage']
+            for request in (shadow['request'],shadow['callback']['request'],shadow['callback']['snapshot']['request'],
+                            sample['recordingWait']['request'],sample['recordingWait']['callback']['request']):request['mode']=2
+            shadow['callback']['snapshot']['timings']=dict(frequency=1000,timestampReads=2,**{key:0 for key in STAGES})
+        def audit(report):return analyse(json.loads(json.dumps(report)),2,123,json.loads(json.dumps(p)))
+        self.assertEqual('valid',audit(r)['status'])
+        for field in ('frequency','timestampReads',*STAGES):
+            for replacement in (float(r['samples'][0]['shadowStage']['callback']['snapshot']['timings'][field]),True,1<<63):
+                with self.subTest(field=field,replacement=replacement):
+                    mutated=json.loads(json.dumps(r))
+                    mutated['samples'][0]['shadowStage']['callback']['snapshot']['timings'][field]=replacement
+                    result=audit(mutated)
+                    self.assertEqual('invalid',result['status'],result)
+                    self.assertFalse(result['fullyAttributed'])
 
     def test_code_mvid_comparison_uses_guid_identity_not_hex_letter_case(self):
         r,p=fixture()

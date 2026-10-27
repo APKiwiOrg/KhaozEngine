@@ -10,7 +10,8 @@ import shlex
 import stat
 import subprocess
 import time
-from analyze import REQUIRED_CLOSURE, analyse, guid
+import uuid
+from analyze import INT_MAX, REQUIRED_CLOSURE, analyse, guid, integer
 
 REQUIRED_EDGES = {
     'KhaozEngine.Gpu': set(),
@@ -53,7 +54,8 @@ def validate_preparation(manifest):
         require(m['status']=='prepared-and-audited', 'Preparation has not been audited')
         for key in ('probeCommit','gameCommit'):
             require(re.fullmatch('[0-9a-f]{40}',m[key]) is not None, 'Missing exact code commit')
-        require(m['runtimeFileCount']==644 and m['contentFileCount']==395 and len(m['world'])==41, 'Frozen inventory counts changed')
+        require(integer(m['runtimeFileCount'],644,644)==644 and integer(m['contentFileCount'],395,395)==395
+                and len(m['world'])==41, 'Frozen inventory counts changed')
         replacements=m['replacements']; names=[x['name'] for x in replacements]
         require(set(names)==REQUIRED_CLOSURE and len(names)==5, 'Require exactly five replacement DLLs')
         for row in replacements:
@@ -67,6 +69,7 @@ def validate_preparation(manifest):
             paths=[relative(x['path']) for x in m[kind]]
             require(bool(paths) and len(set(paths))==len(paths), 'Missing or duplicate '+kind)
             require(all(re.fullmatch('[0-9a-f]{64}',x['sha256']) is not None for x in m[kind]), 'Invalid '+kind+' hash')
+        for row in m['clientFiles']:integer(row['bytes'])
         for key,name,commit in (('appCodeIdentity','Grimhollow','gameCommit'),('engineCodeIdentity','KhaozEngine.Windowing','probeCommit')):
             value=m[key];guid(value['mvid'])
             require(value['name']==name and value['informationalVersion'].endswith('+'+m[commit]), 'Code identity mismatch')
@@ -187,10 +190,17 @@ def main():
     require(all(not p.exists() and not p.is_symlink() for p in (result,trigger,metadata,temporary,audit_path)),
             'Use fresh result, start and evidence paths')
     pid=args.ready_process_id
-    require(pid>1,'Invalid ready PID')
-    record=dict(status='preflight',startedAtUtc=now(),processId=pid,expectedMode=args.mode,result=str(result),
+    integer(pid,2,INT_MAX)
+    record=dict(status='preflight',startedAtUtc=now(),collectionId=str(uuid.uuid4()),ownershipReserved=True,
+                preflightRechecked=False,triggerConsumed=False,processId=pid,expectedMode=args.mode,result=str(result),
                 trigger=str(trigger),requestedSeconds=10,boundedWaitSeconds=45,triggerCreated=False,freshPaths=True,
                 continuousFocusTelemetry='Engine interval focus state and OS endpoints, no continuous OS focus observer')
+
+    # Metadata is also the permanent claim. A loser exits outside the owner's failure/save path.
+    # Even an interruption before the JSON finishes leaves the path reserved for diagnosis.
+    with metadata.open('x') as stream:
+        json.dump(record,stream,indent=2)
+        stream.write('\n')
 
     def save():
         with temporary.open('x') as stream:
@@ -215,16 +225,30 @@ def main():
         require(identity(pid,client)==record['processBefore'],'Process changed during preflight')
         record['foregroundBefore']=foreground()
         require(record['foregroundBefore']['pid']==pid,'Client is not foreground, no trigger created')
+        require(all(not p.exists() and not p.is_symlink() for p in (result,trigger,temporary,audit_path)),
+                'Capture paths changed during preflight, no trigger created')
+        record['preflightRechecked']=True
+        save()
+        require(all(not p.exists() and not p.is_symlink() for p in (result,trigger,temporary,audit_path)),
+                'Capture paths changed before trigger creation')
         # This is the only trigger creation. Any later failure retains evidence and ends the command.
-        with trigger.open('xb'):
-            pass
+        with trigger.open('xb') as stream:
+            created=os.fstat(stream.fileno())
+            record['triggerIdentity']=[created.st_dev,created.st_ino]
         record.update(triggerCreated=True,triggeredAtUtc=now(),status='sampling')
         save()
         deadline=time.monotonic()+45
-        while not result.is_file() and time.monotonic()<deadline:
+        while True:
+            if not trigger.exists() and not trigger.is_symlink() and not record['triggerConsumed']:
+                record.update(triggerConsumed=True,triggerConsumedAtUtc=now())
+                save()
+            if result.exists() or result.is_symlink() or time.monotonic()>=deadline:
+                break
             time.sleep(.25)
         require(result.is_file() and not result.is_symlink(),'No result before timeout, do not repeat automatically')
         record['resultObservedAtUtc']=now()
+        require(record['triggerConsumed'] and not trigger.exists() and not trigger.is_symlink(),
+                'Result appeared without consumption of this collection trigger')
         record['processAfter']=identity(pid,client)
         record['foregroundAfter']=foreground()
         require(record['processAfter']==record['processBefore'] and record['foregroundAfter']['pid']==pid,'Process/focus endpoint changed')

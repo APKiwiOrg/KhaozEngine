@@ -20,7 +20,11 @@ python3 "$PROBE_ROOT/scripts/mac-frame-ring-waits/collect.py" \
 
 The collector audits the exact PID, process start and command, six critical mapped DLLs, code identities, payload bytes and modes, source hashes, 41 world inputs and foreground endpoints. It creates one exclusive trigger, waits at most 45 seconds for the existing recorder to finish, then repeats the identity and content checks. It never launches, profiles, reads back a client, kills a process or automatically repeats a capture. `/tmp` and `/private/tmp` are canonical aliases. Resolving an alias never permits a path outside the owned capture directory.
 
-Result, trigger, collection metadata, temporary metadata and analysis paths must all be fresh. Failures retain evidence. A new automatic capture is not a recovery step. Collector exits are 0 for complete audited evidence, 2 for explicitly limited evidence and 1 for invalid evidence or failure.
+Result, trigger, collection metadata, temporary metadata and analysis paths must all be fresh. Before preflight, exclusive creation of collection metadata atomically reserves this invocation's paths. The metadata is a permanent filesystem claim with a collection GUID, not a runtime or build lock. A competing collector exits without overwriting the owner's evidence. An interrupted or failed invocation retains its claim, including an incomplete initial metadata write.
+
+After preflight the collector rechecks result, trigger and other evidence paths, saves the completed preflight, then rechecks immediately before its sole exclusive trigger creation. A report published during preflight is refused. Metadata records the new trigger's device/inode identity and creation time. Acceptance requires observing that trigger absent before accepting the result, with ordered creation, consumption and result-observation timestamps. A previously armed or sampling recorder cannot consume the new trigger, so its report is refused while that trigger remains. The collector never removes an unconsumed trigger. Offline runtime acceptance requires the same ownership, preflight and consumption proof. Older collection metadata without it cannot establish complete attribution.
+
+Failures retain result, trigger and metadata evidence. A new automatic capture is not a recovery step. Collector exits are 0 for complete audited evidence, 2 for explicitly limited evidence and 1 for invalid evidence or failure. A freshness or ownership refusal exits before the owner's failure/save path.
 
 The preparation manifest must name `probeCommit`, `gameCommit`, `probeRoot`, `gameRoot`, `client`, `clientFiles`, `world`, `sourceHashes`, `gameSourceHashes`, `replacements`, `appCodeIdentity` and `engineCodeIdentity`. Counts are exactly 644 runtime files, 395 Content paths and 41 world inputs. File rows carry relative paths, SHA-256, byte size and mode. Sources are checked against both working bytes and the named committed bytes. Game HEAD may carry evidence commits, but the declared frozen game source and its working bytes must still match.
 
@@ -103,5 +107,26 @@ Deterministic fake tests own exact accounting, overlapping acquisitions, revalid
 Strict native tests use `KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native KE_METAL_REQUIRED=1 MTL_DEBUG_LAYER=1`. They compare eight-frame prepared output and same-frame capture RGBA bytes with observation off and on, preserve draw order, and inspect real Metal validation evidence. Native tests may observe zero stalls. No native load is manufactured.
 
 The analyzer independently checks exact integers, role cardinality, epochs, sequences, attempts, device metadata, both boundary copies, every coverage dimension and summary arithmetic. It rejects early or capacity completion presented as duration completion. Complete runtime acceptance also requires fresh collector identity evidence. Offline-only evidence is explicitly limited.
+
+Every integer and enum used in acceptance rejects JSON booleans and floating-point substitutes, including equal-valued `sampleCount=2.0` and observation `status=2.0`. The following inventory matches the C# carriers and collector evidence. `integer()` enforces exact type and range. `exact()` compares independently computed ring summaries and remainders recursively with exact types.
+
+| Fields | Integer contract |
+| --- | --- |
+| Schema, report PID, sample count, frequency | Schema exactly 4, PID 2 through signed 32-bit max, sample count 1 through 4096, positive signed 64-bit frequency |
+| Baseline/end timestamps and sample start/end timestamps | Signed 64-bit |
+| All endpoint/completed/boundary windows | Nonnegative signed 32-bit width, height and cap Hz, nonnegative signed 64-bit submission/composite counts |
+| Device counters and public counter delta | Nonnegative signed 64-bit frame/drain/backpressure/acquire/deferred/outstanding counts, signed 64-bit outstanding change |
+| Every shadow/ring request copy | Nonnegative signed 64-bit sequence, mode enum 0 through 2, accepted capture mode 1 or 2 |
+| Shadow row/snapshot/coverage status, foliage origin | Status enum 0 through 9, origin enum 0 through 3 |
+| Shadow callback, coverage and timing summaries | Nonnegative signed 32-bit producer count, coverage rows and timing sample counts bounded by 4096 |
+| Shadow configuration | Signed 32-bit directional mode, cascade merge gap/resolution/count, point face resolution/rows/transient rows/budgets/filter |
+| Shadow work counts | Nonnegative signed 32-bit request/touch/acquire/signature/selection/slot/row/rebuild/render/demand/draw/index/population/cascade/mask/span/instance counts and query calls, signed 64-bit issued-instance/stream-proxy counts and query exact-tests/accepted/sort-inputs |
+| Shadow timings | Positive signed 64-bit frequency, nonnegative signed 32-bit timestamp reads, nullable nonnegative signed 64-bit ticks for every stage |
+| Ring callback and observations | Role status 0 through 14, observation status 0 through 10 including not-applicable prefix, nonnegative signed 32-bit declaration/acknowledgement/role counts, unsigned 64-bit prior attempt |
+| Ring receipts and every endpoint/interval boundary copy | Unsigned 64-bit attempt/ordinal, positive signed 32-bit depth, nonnegative signed 32-bit segment/wait calls, count 0 or 1, nonnegative signed 64-bit ticks, positive signed 64-bit frequency, boundary status 0 through 5 and nullable totals |
+| Ring reconciliation, role totals and coverage summary | Exact independently derived signed 64-bit count/ticks or null, reconciliation status 0 through 6, row/boundary/interval counts bounded by the 4096 samples and 4097 boundaries |
+| Collector and preparation evidence | Exact integer PID/focus endpoints, ten requested seconds, 644 runtime/395 Content/41 world counts, nonnegative signed 64-bit payload sizes, unsigned 64-bit device/inode identities, nonnegative signed 64-bit file sizes/timestamps |
+
+Boolean window/configuration/work-count fields retain their declared types. Milliseconds, interval seconds, cadence statistics and per-interval averages retain floating-point values. Nullable unavailable timings, boundaries, role totals and remainders remain distinct from measured zero. The helper tests round-trip JSON mutations, exercise both capture modes and retain valid zero/nonzero remainders and limited interior/endpoint coverage.
 
 These are CPU wait measurements and callback cadence. They establish neither GPU completion, physical display cadence, production overhead, speedup, a sustained frame-rate target nor a recommended ring depth. Parent-owned independent review, full frozen-solution verification, archive push, immutable client preparation and fresh human readiness remain separate gates before the one runtime capture.

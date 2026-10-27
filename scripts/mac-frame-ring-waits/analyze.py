@@ -1,6 +1,7 @@
 """Strict offline schema-4 audit. Collection and process ownership stay separate."""
 from collections import Counter, defaultdict
 import argparse
+import datetime
 import hashlib
 import json
 import math
@@ -189,6 +190,7 @@ def _analyse_context(report, mode, pid):
 # Numeric states are the private schema-4 contract, independent of the C# implementation.
 LONG_MAX = (1 << 63) - 1
 ULONG_MAX = (1 << 64) - 1
+INT_MAX = (1 << 31) - 1
 REQUIRED_CLOSURE = {'KhaozEngine.Gpu', 'KhaozEngine.Gpu.Metal', 'KhaozEngine.Windowing',
                     'KhaozEngine.Render3D', 'KhaozEngine.Game.Render3D'}
 
@@ -197,6 +199,109 @@ def integer(value, low=0, high=LONG_MAX):
     if type(value) is not int or not low <= value <= high:
         raise ValueError('Invalid exact integer')
     return value
+
+
+# Integer/enum inventory. These names mirror the schema's C# value carriers.
+WINDOW_INTS = 'width height effectiveBaseCapHz'
+WINDOW_LONGS = 'preparePhaseSubmissionCount preparePhaseCompositeCount'
+WINDOW_FLAGS = ('focused minimized renderSuppressed vsync rendererInitializesSwapchain '
+                'preparePhaseSplitActive')
+COUNTER_LONGS = 'framesBegun drainCount backpressureStallCount acquireWaitCount offTimelineDeferred offTimelineOutstanding'
+CONFIG_INTS = ('directionalMode cascadeMergeGap directionalResolution cascadeCount pointFaceResolution '
+               'pointRows transientRows staticBudget dynamicBudget pointFilter')
+CONFIG_FLAGS = 'hudTiming terrainCastsShadows cascadeCulling gpuSkinning pointEnabled'
+SHADOW_INTS = ('staticRequests dynamicRequests touchAttempts touchHits acquireAttempts acquireSuccesses '
+               'acquireRefusals signatures signatureMismatches selectedStaticRows selectedDynamicRows '
+               'selectedTransientRows pointSlotsInUse pointShadowedLights packedRows completedStaticRebuilds '
+               'completedDynamicRenders transientDemand pointFaceDrawCalls pointFoliageFaceDrawCalls '
+               'pointDynamicSkinnedFaceDrawCalls pointTransientSkinnedFaceDrawCalls rigidIndexPopulation '
+               'rigidOversizePopulation foliageSources foliageRanges foliageSelectedProxies directionalCascadeCount '
+               'directionalInvalidationCasters directionalMaskTests directionalSelectedSpans '
+               'directionalSelectedInstances directionalRigidDrawCalls directionalSkinnedDrawCalls directionalFoliageDrawCalls')
+SHADOW_LONGS = 'pointRigidIssuedInstances pointFoliageIssuedInstances foliageStreamProxies'
+SHADOW_FLAGS = ('hasPointRequests pointAtlasAvailable directionalActive directionalRendered directionalSkipped '
+                'rigidIndexBuilt foliageIndexBuilt')
+SHADOW_QUERIES = 'rigidSignatureQueries rigidRowQueries foliageSignatureQueries foliageRowQueries'.split()
+
+
+def integer_fields(value, names, low=0, high=LONG_MAX):
+    for name in names.split():
+        integer(value[name],low,high)
+
+
+def typed_fields(value, ints='', longs='', flags='', other=(), enums=None, int_low=0):
+    enums = enums or {}
+    for name, item in value.items():
+        if name in ints.split():
+            integer(item,int_low,INT_MAX)
+        elif name in longs.split():
+            integer(item)
+        elif name in flags.split():
+            if type(item) is not bool:
+                raise ValueError('Invalid boolean '+name)
+        elif name in enums:
+            integer(item,0,enums[name])
+        elif name not in other:
+            raise ValueError('Unknown schema field '+name)
+
+
+def _integer_schema(report, mode, pid):
+    integer(mode,1,2); integer(pid,2,INT_MAX)
+    integer(report['schemaVersion'],4,4); integer(report['processId'],2,INT_MAX)
+    integer(report['sampleCount'],1,4096); integer(report['stopwatchFrequency'],1)
+
+    def window(value):
+        typed_fields(value,WINDOW_INTS,WINDOW_LONGS,WINDOW_FLAGS)
+    def counters(value):
+        typed_fields(value,longs=COUNTER_LONGS,flags='hasValue',other=('drainMs','backpressureStallMs','acquireWaitMs'))
+    def request(value):
+        integer(value['sequence']); integer(value['mode'],0,2)
+        if 'enabled' in value and type(value['enabled']) is not bool:
+            raise ValueError('Invalid request enabled flag')
+    for endpoint in ('baseline','end'):
+        value=report[endpoint]
+        integer(value['timestamp'],-LONG_MAX-1)
+        window(value['window']); counters(value['counters']); boundary(value['recordingWait'])
+    for sample in report['samples']:
+        integer_fields(sample,'startTimestamp endTimestamp',-LONG_MAX-1)
+        window(sample['completedFrameWindow']); window(sample['boundaryWindow']); counters(sample['counters'])
+        shadow=sample['shadowStage']; callback=shadow['callback']
+        integer(shadow['status'],0,9); request(shadow['request']); request(callback['request'])
+        integer(callback['producerCount'],0,INT_MAX)
+        snapshot=callback['snapshot']
+        if snapshot is not None:
+            request(snapshot['request']); integer(snapshot['status'],0,9)
+            typed_fields(snapshot['configuration'],CONFIG_INTS,flags=CONFIG_FLAGS,int_low=-INT_MAX-1)
+            counts=snapshot['counters']
+            if counts is not None:
+                typed_fields(counts,SHADOW_INTS,SHADOW_LONGS,SHADOW_FLAGS,SHADOW_QUERIES,{'foliageBuildOrigin':3})
+                for name in SHADOW_QUERIES:
+                    if name in counts:
+                        typed_fields(counts[name],'calls','exactTests accepted sortInputs')
+            timing=snapshot['timings']
+            if timing is not None:
+                integer(timing['frequency'],1); integer(timing['timestampReads'],0,INT_MAX)
+                for stage in STAGES:
+                    if timing[stage] is not None:integer(timing[stage])
+        ring=sample['recordingWait']; callback=ring['callback']
+        request(ring['request']); request(callback['request']); integer(ring['status'],0,14)
+        integer_fields(callback,'declarationCount acknowledgementCount prefixObservations mainObservations',0,INT_MAX)
+        for role in ('prefix','main'):
+            observation=callback[role]
+            integer(observation['status'],0,10); integer(observation['priorAttempt'],0,ULONG_MAX)
+        boundary(ring['start']); boundary(ring['end'])
+    delta=report['summary']['counterDelta']
+    if delta is not None:
+        integer_fields(delta,'framesBegun drainCount backpressureStallCount acquireWaitCount offTimelineDeferred')
+        integer(delta['offTimelineOutstandingChange'],-LONG_MAX-1)
+    stages=report['shadowStages']
+    integer(stages['mode'],0,2); integer_fields(stages,'validRows invalidRows',0,4096)
+    for row in stages['coverage']:
+        integer(row['status'],0,9); integer(row['rows'],0,4096)
+    for row in stages['timings']:
+        integer(row['sampleCount'],0,4096)
+    # Ring contributions/remainders and coverage summaries use exact() against bounded,
+    # independently computed integer values below. Null remains unavailable, never zero.
 
 
 def guid(value):
@@ -208,7 +313,7 @@ def guid(value):
 
 
 def metadata(value):
-    return guid(value['deviceIdentity']), integer(value['depth'], 1), integer(value['frequency'], 1)
+    return guid(value['deviceIdentity']), integer(value['depth'], 1, INT_MAX), integer(value['frequency'], 1)
 
 
 def boundary(value):
@@ -225,7 +330,7 @@ def boundary(value):
 
 
 def receipt(observation, frequency):
-    if observation['status'] != 2:
+    if integer(observation['status'],0,10) != 2:
         raise ValueError('Missing successful recording observation')
     r = observation['receipt']
     prior = integer(observation['priorAttempt'], 0, ULONG_MAX)
@@ -236,7 +341,7 @@ def receipt(observation, frequency):
         raise ValueError('Receipt clock disagrees with report')
     guid(r['listIdentity'])
     ordinal = integer(r['recordingOrdinal'], 0, ULONG_MAX)
-    if integer(r['segment']) != ordinal % meta[1]:
+    if integer(r['segment'],0,INT_MAX) != ordinal % meta[1]:
         raise ValueError('Segment disagrees with captured ordinal')
     count = integer(r['count'], 0, 1); ticks = integer(r['ticks']); calls = integer(r['waitCallCount'], 0, (1 << 31)-1)
     if (count == 0 and (ticks != 0 or calls != 0)) or (count == 1 and calls == 0):
@@ -359,11 +464,23 @@ def _identity_audit(report, proof, pid):
     def sha(value, length=64):
         import re
         return isinstance(value,str) and re.fullmatch('[0-9a-f]{'+str(length)+'}',value) is not None
-    check(proof['processId'] == pid and report['processId'] == pid, 'Identity PID mismatch')
+    check(integer(proof['processId'],2,INT_MAX) == pid and report['processId'] == pid, 'Identity PID mismatch')
     check(bool(proof['processBefore']) and proof['processBefore'] == proof['processAfter'], 'Process start/command identity changed')
-    check(proof['foregroundBefore']['pid'] == pid and proof['foregroundAfter']['pid'] == pid, 'Foreground endpoint mismatch')
-    check(proof['requestedSeconds'] == 10 and proof['freshPaths'] is True and proof['triggerCreated'] is True, 'Fresh one-shot capture proof missing')
-    check(proof['runtimeFilesRehashed'] == 644 and proof['contentFiles'] == 395 and proof['worldFilesRehashed'] == 41, 'Payload/content/world coverage mismatch')
+    check(integer(proof['foregroundBefore']['pid'],2,INT_MAX) == pid
+          and integer(proof['foregroundAfter']['pid'],2,INT_MAX) == pid, 'Foreground endpoint mismatch')
+    check(integer(proof['requestedSeconds'],10,10) == 10 and proof['freshPaths'] is True
+          and proof['triggerCreated'] is True, 'Fresh one-shot capture proof missing')
+    guid(proof['collectionId'])
+    check(proof['ownershipReserved'] is True and proof['preflightRechecked'] is True
+          and proof['triggerConsumed'] is True, 'Owned trigger consumption proof missing')
+    check(len(proof['triggerIdentity']) == 2
+          and all(integer(x,0,ULONG_MAX) == x for x in proof['triggerIdentity']), 'Trigger file identity missing')
+    trigger_times=[datetime.datetime.fromisoformat(proof[key]) for key in
+                   ('startedAtUtc','triggeredAtUtc','triggerConsumedAtUtc','resultObservedAtUtc')]
+    check(all(x.utcoffset() == datetime.timedelta(0) for x in trigger_times)
+          and trigger_times == sorted(trigger_times), 'Trigger consumption chronology invalid')
+    check(integer(proof['runtimeFilesRehashed'],644,644) == 644 and integer(proof['contentFiles'],395,395) == 395
+          and integer(proof['worldFilesRehashed'],41,41) == 41, 'Payload/content/world coverage mismatch')
     check(set(proof['requiredClosure']) == REQUIRED_CLOSURE and len(proof['requiredClosure']) == 5, 'Required five-DLL closure mismatch')
     check(sha(proof['probeCommit'],40) and sha(proof['gameCommit'],40), 'Code commit identity missing')
     check(sha(proof['preparationSha256']) and sha(proof['resultSha256']), 'Manifest or result hash missing')
@@ -372,6 +489,9 @@ def _identity_audit(report, proof, pid):
     files = {Path(row['path']).name:row for row in proof['runtimeFiles']}
     check(set(files) == {x+'.dll' for x in names} and len(files) == len(proof['runtimeFiles']), 'Critical runtime inventory mismatch')
     for row in files.values():
+        for key in ('stat','afterStat'):
+            check(len(row[key]) == 5, 'Invalid file identity tuple')
+            for index, value in enumerate(row[key]):integer(value,0,ULONG_MAX if index < 2 else LONG_MAX)
         check(sha(row['sha256']) and row['sha256'] == row['afterSha256'] and row['stat'] == row['afterStat'], 'Mapped payload changed')
     for key in ('mappedBefore','mappedAfter'):
         check({Path(x).name for x in proof[key]} == set(files), 'Critical mapped-DLL coverage mismatch')
@@ -392,6 +512,7 @@ def analyse(report, mode, pid, proof=None):
     try:
         if type(report.get('schemaVersion')) is not int or report['schemaVersion'] != 4:
             raise ValueError('Only schema 4 is supported')
+        _integer_schema(report,mode,pid)
         context = _analyse_context(report,mode,pid)
         ring = _ring_audit(report)
         errors = context['errors'] + ring.pop('errors')

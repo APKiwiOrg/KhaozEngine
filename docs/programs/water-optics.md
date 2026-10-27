@@ -36,7 +36,7 @@ Rows are in the order the milestones run.
 | M9 Wet banks above the waterline, free to run alongside | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1612 | Owner approves its design |
 | M10 Underwater camera view | later, when Grimhollow schedules diving or swimming | https://github.com/APKiwiOrg/KhaozEngine/issues/1613 | Owner approves its design |
 | M4 Native R8b optical adapter | waiting on the R8a native renderer | https://github.com/APKiwiOrg/KhaozEngine/issues/1300 | None beyond the normal GPU gate |
-| Adoption in Grimhollow | v21.15.0 adoption in progress, ducks shadowless until M5 | https://github.com/APKiwiOrg/Grimhollow/issues/644 | Grimhollow owner |
+| Adoption in Grimhollow | v21.15.0 adoption in progress, ducks shadowless until M5. Shared River column inputs are linear RGB (0.28, 0.30, 0.18) and Clarity 1.5 m, with WaterColumnLight null for explicit consumer opt-in | https://github.com/APKiwiOrg/Grimhollow/issues/644 | Grimhollow owner |
 
 ## Decisions in force
 

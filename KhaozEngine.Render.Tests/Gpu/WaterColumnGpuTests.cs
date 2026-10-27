@@ -27,10 +27,12 @@ public sealed class WaterColumnGpuTests(WaterColumnRiverScene scene, ITestOutput
         MathF.Max(MathF.Abs(value.Y), MathF.Abs(value.Z)));
 
     // Ignoring the sun-entry shadow would leave the adjacent column bright and detach the dark component.
-    [GpuFact]
-    public void Golden_ColumnShadowTouchesFloaterWaterline()
+    [GpuTheory]
+    [InlineData(2f, 0.10f, 0.13f, 0.10f)]
+    [InlineData(1.5f, 0.28f, 0.30f, 0.18f)]
+    public void Golden_ColumnShadowTouchesFloaterWaterline(float clarity, float red, float green, float blue)
     {
-        var settings = new WaterColumnCase();
+        var settings = new WaterColumnCase { Clarity = clarity, WaterColor = new Color(red, green, blue) };
         WaterColumnImage shadow = scene.Capture(settings);
         WaterColumnImage open = scene.Capture(settings with { Caster = false });
         Vector3 shadowColumn = shadow.Sample(ShadowColumn), litColumn = shadow.Sample(LitColumn);
@@ -103,14 +105,17 @@ public sealed class WaterColumnGpuTests(WaterColumnRiverScene scene, ITestOutput
     }
 
     // Incorrect reference units or normalization cannot reproduce the authored reachable deep colour.
-    [GpuFact]
-    public void Golden_DeepReferenceReproducesWaterColor()
+    [GpuTheory]
+    [InlineData(2f, 0.10f, 0.13f, 0.10f)]
+    [InlineData(1.5f, 0.28f, 0.30f, 0.18f)]
+    public void Golden_DeepReferenceReproducesWaterColor(float clarity, float red, float green, float blue)
     {
-        var settings = new WaterColumnCase { ReferenceLight = true, Depth = 16f, Clarity = 2f,
+        var settings = new WaterColumnCase { ReferenceLight = true, Depth = 16f, Clarity = clarity,
+            WaterColor = new Color(red, green, blue),
             Caster = false, Ripples = false, TopDown = true, Orthographic = true };
         Vector3 reference = scene.Capture(settings).Sample(LitColumn);
-        output.WriteLine($"reference deep RGB={reference}, target=(0.10,0.13,0.10)");
-        Assert.InRange(MaxChannelAbs(reference - new Vector3(0.10f, 0.13f, 0.10f)), 0f, 0.02f);
+        output.WriteLine($"clarity={clarity}, reference deep RGB={reference}, target=({red},{green},{blue})");
+        Assert.InRange(MaxChannelAbs(reference - new Vector3(red, green, blue)), 0f, 0.02f);
     }
 
     // Surface extras must use the surface shadow, rather than the average column or an unshadowed key.

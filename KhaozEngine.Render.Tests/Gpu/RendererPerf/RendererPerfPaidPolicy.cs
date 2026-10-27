@@ -24,7 +24,7 @@ internal static class RendererPerfPaidPolicy
             "Preset", "Billed minutes, rate, currency or cost cap differs from the preset.");
         Require(Text(manifest.Approval.Reference) && Text(manifest.Approval.Purpose) && Text(manifest.Approval.CampaignReference)
             && manifest.Approval.CampaignMaximumUsd >= manifest.Budget.MaximumCostUsd
-            && manifest.Approval.CampaignMaximumUsd <= 12m, "Approval",
-            "Exact owner approval and campaign references with a sufficient cap of at most USD 12 are required. A manifest does not grant consent.");
+            && manifest.Approval.CampaignMaximumUsd <= 14m, "Approval",
+            "Exact owner approval and campaign references with a sufficient cap of at most USD 14 are required. A manifest does not grant consent.");
     }
 }

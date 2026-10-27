@@ -127,7 +127,9 @@ public static class NativeMapPlacements
                     {
                         var source = assets.ById[id].Lods[^1];
                         sourcePreparation.Reserve(checked(8 * source.BorrowParts.Sum(p => Bytes(p.Mesh, p.Maps))));
-                        sources.Add(id, Flatten(source.BorrowParts));
+                        sources.Add(id, layer.HlodWeldCell > 0
+                            ? MapPlacementProxySource.Load(assets.ById[id], source, assets.Closure)
+                            : MapPlacementProxySource.Concatenate(source.BorrowParts));
                     }
                     long mergeBytes = members.Sum(i => Bytes(sources[i.AssetId], default));
                     var (build, clusterBytes) = MapPlacementClusterPreparation.Build(mergeBytes, () =>
@@ -348,19 +350,4 @@ public static class NativeMapPlacements
         4L * mesh.Indices32.Length + (maps.Albedo?.Rgba.LongLength ?? 0) + (maps.Normal?.Rgba.LongLength ?? 0) + (maps.Roughness?.Rgba.LongLength ?? 0));
     static MapBox3 Union(MapBox3 a, MapBox3 b) => new(Math.Min(a.MinX, b.MinX), Math.Min(a.MinY, b.MinY), Math.Min(a.MinZ, b.MinZ),
         Math.Max(a.MaxX, b.MaxX), Math.Max(a.MaxY, b.MaxY), Math.Max(a.MaxZ, b.MaxZ));
-    static GltfMesh Flatten(IReadOnlyList<GltfMeshPart> parts)
-    {
-        var vertices = new List<ModelVertex>(); var indices = new List<uint>();
-        foreach (var part in parts)
-        {
-            uint start = (uint)vertices.Count;
-            var albedo = part.Maps.Albedo is { } image ? GltfLoader.AverageAlbedo(image) : Vector3.One;
-            foreach (var v in part.Mesh.Vertices)
-            {
-                var output = v; output.Color *= new Vector4(albedo, 1); vertices.Add(output);
-            }
-            indices.AddRange(part.Mesh.Indices32.Select(i => start + i));
-        }
-        return new(vertices.ToArray(), indices.ToArray());
-    }
 }

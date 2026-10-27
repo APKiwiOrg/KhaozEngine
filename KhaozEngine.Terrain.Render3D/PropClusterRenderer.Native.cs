@@ -32,11 +32,15 @@ public sealed partial class PropClusterRenderer
             vertexCount = checked(vertexCount + source.Vertices.Length); indexCount = checked(indexCount + source.Indices32.Length);
         }
         var vertices = new ModelVertex[vertexCount]; var indices = new uint[indexCount];
+        float weldCell = request.BorrowLayer.HlodWeldCell;
+        bool weld = weldCell > 0;
         int vertex = 0, index = 0;
         foreach (var instance in request.Instances)
         {
             var source = sources[instance.AssetId]; var pose = instance.LocalTransform;
-            var transform = new NativePropClusterTransform(instance, request.Anchor);
+            // Weld the same absolute binary32 positions as the released route. Storage anchors
+            // must change neither cell membership nor the order and precision of centroid accumulation.
+            var transform = new NativePropClusterTransform(instance, weld ? default : request.Anchor);
             pose.Translation = Vector3.Zero;
             if (!Matrix4x4.Invert(pose, out var inverse)) throw new ArgumentException("Native cluster requires invertible transforms.", nameof(request));
             var normal = Matrix4x4.Transpose(inverse);
@@ -44,7 +48,8 @@ public sealed partial class PropClusterRenderer
             foreach (var v in source.Vertices)
             {
                 var output = v;
-                // Admission certified these coordinates before this single binary32 rounding.
+                // Admission certified anchor-local source coordinates. A non-welded merge retains
+                // that single local rounding. A welded merge rebases only its final world centroids.
                 var position = transform.Position(v.Position);
                 output.Position = new((float)position.X, (float)position.Y, (float)position.Z);
                 output.Normal = Vector3.Normalize(Vector3.TransformNormal(v.Normal, normal)); output.Tangent = Vector4.Zero;
@@ -65,11 +70,16 @@ public sealed partial class PropClusterRenderer
             for (int i = 0; i < contributions.Length; i++)
             {
                 int count = sources[request.Instances[i].AssetId].Indices32.Length;
-                contributions[i] = selectContribution(mesh, firstIndex, count, request.BorrowLayer.HlodWeldCell);
+                contributions[i] = selectContribution(mesh, firstIndex, count, weldCell);
+                if (weld) NativePropClusterWeld.Store(contributions[i], request.Anchor);
                 firstIndex += count;
             }
         }
-        if (request.BorrowLayer.HlodWeldCell > 0) mesh = PropHlod.Weld(mesh, request.BorrowLayer.HlodWeldCell);
+        if (weld)
+        {
+            mesh = PropHlod.Weld(mesh, weldCell);
+            NativePropClusterWeld.Store(mesh, request.Anchor);
+        }
         return new(request, mesh, contributions);
     }
 

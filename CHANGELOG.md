@@ -8,6 +8,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-27
 
+- Build native HLOD proxy sources with the loader's whole-scene weld and select proxy weld cells in absolute
+  world space, preserving legacy coverage and averaged colours independently of the storage anchor.
 - Bound native scene upload batches with caller limits `MaxInFlightUploadCpuBytes` (256 MiB) and
   `MaxInFlightUploadStagingGpuBytes` (128 MiB). Release each resource's transient CPU at device completion,
   before atomic window publication, and refuse windows whose retained uploads and in-flight allowance cannot fit.

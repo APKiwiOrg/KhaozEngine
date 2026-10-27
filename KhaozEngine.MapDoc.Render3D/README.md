@@ -107,7 +107,14 @@ Fractional cell origins remain local. Before the internal builder enters, every 
 have an absolute anchor-relative coordinate strictly below 2048 m on every axis, checked in binary64 through
 the same position kernel as the merge. Failure throws `MapRenderAssetRefusal` with `NotRepresentable` and refuses
 preparation. It never silently drops the cluster or falls back to individual geometry.
-Merged vertices round once after certification, within the 0.0001 m binary32 submission allowance.
+Non-welded merged vertices round once after certification, within the 0.0001 m binary32 submission allowance.
+Each welded proxy tier flattens its verified source GLB through `GltfLoader.LoadFlattenedAlbedo` before applying
+source units and merging placements. The whole-scene corner weld preserves generated normals and material
+colour provenance across parts. Re-decoding admits its measured transient peak in scene workspace.
+Positive weld cells and their centroid accumulation use the released absolute binary32 positions, division
+and floor. Only the final proxy and selected contribution vertices subtract the storage anchor, in binary64.
+The storage anchor changes neither the weld lattice nor its averages. Non-welded proxies retain their existing
+material-part flattening, attributes and topology. Individual material parts remain unchanged.
 Content digests retain inventory, transforms,
 closure and weld settings separately from the stable spatial owner key.
 Cell discovery acquires the complete layer inventory through the captured source and its existing admission

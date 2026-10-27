@@ -16,7 +16,10 @@ public sealed class NativeRoofWeldOutlineTests
     [Fact]
     public void SelectedOutline_UsesSurvivingTrianglesAndCrossMemberWeldAverages()
     {
-        var closure = NativeRenderAssetFixtures.Placements();
+        // Source units are centimetres. Feed the authored bytes so proxy flattening sees the
+        // same source triangles as the individual tier, including its original corner provenance.
+        Vector3[] positions = [new(0, 0, 0), new(1, 0, 0), new(0, 20, 0), new(0, 0, 20), new(20, 0, 20), new(0, 20, 20)];
+        var closure = NativeRenderAssetFixtures.Placements(coarsestLod: NativeProxyFixtures.Coarsest(positions));
         using var fixture = NativeSceneFixtures.SeparatedPlacements(closure, 1, new(8, 0, 8, 0, 1), new(8.04, 0, 8, 0, 1));
         fixture.Document.BuildingIntent = new(1, [], [], [], [])
         {
@@ -25,9 +28,6 @@ public sealed class NativeRoofWeldOutlineTests
         };
         var scene = NativeSceneFixtures.Open(fixture, false).Acquire(NativePresentationFixtures.Scope).Scene!;
         using var assets = NativeMapPlacementTests.Assets(closure);
-        Vector3[] positions = [new(0, 0, 0), new(.01f, 0, 0), new(0, .2f, 0), new(0, 0, .2f), new(.2f, 0, .2f), new(0, .2f, .2f)];
-        var parts = assets.ById["prop-a"].Lods[^1].BorrowParts;
-        for (int part = 0; part < 2; part++) for (int v = 0; v < 3; v++) parts[part].Mesh.Vertices[v].Position = positions[part * 3 + v];
         var policy = new MapPlacementPolicy([new("caps", new HashSet<string> { "prop-a" }, [10, 20], 4, 1000, 30, 10, .1f, true)], 1000);
         var routing = MapPlacementRouting.Create(scene, policy, new HashSet<string>()).Routing!;
         using var batch = NativeMapPlacements.Prepare(scene, assets, policy, routing);

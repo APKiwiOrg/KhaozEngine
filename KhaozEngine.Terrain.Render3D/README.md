@@ -275,7 +275,11 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   preserves the configured native `fadeBandWidth`, composed with the HLOD floor before LOD coverage. It
   validates routing, the bounded native region-cell domain, homogeneous effective roof roles and every binary64
   anchor-relative vertex coordinate before the builder enters. Admission and merge share the same position
-  kernel, with binary32 conversion only after certification. `ApplyNative` retains only publication metadata and an
+  kernel. Non-welded merges round anchor-local vertices only after certification and keep source topology and
+  attributes. Positive weld cells use the same absolute-world binary32 positions, division/floor lattice and
+  centroid accumulation as `PropHlod`. Only final proxy and selected contribution vertices subtract the storage
+  anchor, in binary64. Selected contributions share that lattice and the full cluster's averages.
+  `ApplyNative` retains only publication metadata and an
   externally owned accepted mesh. Native typed recording consumes the shared HLOD coverage kernel.
   Native handles are never uploaded or freed by this owner. Legacy `Apply` retains its existing ownership.
 - **`PropClusterRenderer`** - the shared runtime owner for terrain and TileWorld prop clusters.

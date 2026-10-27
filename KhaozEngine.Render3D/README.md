@@ -437,8 +437,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   refracted surface entry with the receiver's normal offset and slope bias and selects cascades there.
   For receiver `P` at depth `h`, Snell refraction at the still-water surface uses the constant index `1.333`.
   With refracted travel direction `t`, the path is `L = h / cos(theta_water) = h / -t.y` and the entry is
-  `E = P - t * L`. Only key diffuse and specular receive `exp(-AbsorptionPerMetre * L)`. Ambient, indirect,
-  fill, point lights, emissive and fog keep their values. The water pass's vertical-depth tint already darkens
+  `E = P - t * L`. Only key diffuse and specular receive `exp(-attenuation * L)`. Attenuation is the resolved
+  `AbsorptionPerMetre` for legacy bodies or derived extinction from `WaterColor` and `Clarity` for
+  `WaterColumnLight` bodies. Ambient, indirect, fill, point lights, emissive and fog keep their values.
+  The water pass's vertical-depth tint already darkens
   the view of deep beds. Attenuating ambient too would double-darken them, while reducing only the key light
   lets shadow contrast fade against the unchanged ambient. Attenuation also applies with shadows disabled, while
   exported key visibility remains exactly one for non-positive shadow strength. Empty water counts skip
@@ -875,8 +877,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     `GlintExponent`.
   - **Depth grading** (`AbsorptionPerMetre` over `DeepColor`/`ShallowColor`): per-channel Beer-Lambert
     transmittance, so the ramp bends through green-teal rather than running straight between two colours. All-zero
-    coefficients restore the two-stop smoothstep over `ShallowDepth`. The same resolved coefficients drive underwater
-    sunlight, where all-zero absorption means no attenuation.
+    coefficients restore the two-stop smoothstep over `ShallowDepth`. For bodies without `WaterColumnLight`,
+    the same resolved coefficients drive underwater sunlight, where all-zero absorption means no attenuation.
   - **Foam** (`FoamColor`/`FoamStrength`/`FoamCrestCoverage`/`FoamShoreWidth`/`FoamPatternScale`): procedural, no
     texture assets. Whitecaps from the determinant of the swell's horizontal Jacobian (steepness-normalized, so
     coverage means the same at any steepness) and a shoreline band from the plane's depth source, both broken up by
@@ -884,8 +886,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     on the still-water plane grows, which keeps distant whitecap coverage where the old per-vertex fold left it
     rather than whitening the horizon to the near field's density.
 
-  Underwater sunlight is separately opt-in per water body through `UnderwaterSunlight` (scene default `false`) and
-  `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
+  Underwater sunlight opts in per water body through either `UnderwaterSunlight` or `WaterColumnLight`
+  (both scene defaults `false`). `WaterColumnLight` implies sunlight without changing the `UnderwaterSunlight`
+  setting. A column body's sunlight uses extinction derived from its resolved `WaterColor` and `Clarity`,
+  with mean extinction `3 / Clarity`, instead of legacy `AbsorptionPerMetre`.
+  `UnderwaterPenumbraPerMetre` defaults to `0.03` metres of extra penumbra radius per metre of in-water path.
   The value must be finite and non-negative. The penumbra rate is an art control for sun size and surface-slope
   scatter. It is available on any plane, procedural or FFT, bound or unbound.
   A frame with no opted-in water renders exactly as before. The water refractive index is the fixed constant `1.333`,
@@ -901,8 +906,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   finite and at least 0.001 metres, and each RGB channel must be finite and in [0, 1]. Rejections throw
   `ArgumentException` naming `Clarity` or `WaterColor`. Disabled columns leave those inputs unused and
   unvalidated. The column path bypasses `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`, `ShallowDepth` and
-  `Opacity`, while shore fade and foam retain their settings. These fields currently resolve and validate
-  at admission. Column rendering is not connected yet.
+  `Opacity`, while shore fade and foam retain their settings. These fields resolve and validate at admission
+  and supply underwater sunlight's extinction. Water surface column scattering is not connected yet.
 
   On top of that the ripple normal field is a generated SLOPE SPECTRUM (14.26.0): `RippleComponents` cosines with
   golden-angle headings (no two parallel, no dominant ribbon direction) laddering by `RippleLacunarity` over about
@@ -1001,9 +1006,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   See [consumer use](../docs/USING-KHAOZENGINE.md) for a worked binding and
   [TileWorld](../KhaozEngine.TileWorld.Render3D/README.md) for the triangle producer.
 - Underwater volume uploads (`scene.WaterVolumeClusters`). Queued planes whose resolved
-  `WaterSettings.UnderwaterSunlight` is true contribute render-relative records, including their optional
-  `WaterPlane.FloorY`, resolved absorption and penumbra. The scene default is false and `WaterLook` can override
-  it per plane. Diagnostics expose `RecordCount`, `DroppedRecords`, `ReferenceCount` and `OverflowedClusters`.
+  `WaterSettings.UnderwaterSunlight` or `WaterColumnLight` is true contribute render-relative records, including
+  their optional `WaterPlane.FloorY`, attenuation and penumbra. Both scene defaults are false and `WaterLook`
+  can override them per plane. The retained absorption fields hold legacy absorption or derived column
+  extinction without a layout change. Diagnostics expose `RecordCount`, `DroppedRecords`, `ReferenceCount`
+  and `OverflowedClusters`.
   Each record is 48 bytes, packed as three `uvec4`: `(minX, minZ, maxX, maxZ)`,
   `(surfaceY, floorY, absorptionR, absorptionG)` and `(absorptionB, penumbraPerMetre, 0, 0)`.
   All positions are render-relative. A null floor encodes `float.MinValue`. A frame retains at most 4096

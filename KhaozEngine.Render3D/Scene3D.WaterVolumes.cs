@@ -21,13 +21,20 @@ public sealed partial class Scene3D
         {
             if (plane.Look is { } look) look.ResolveInto(_waterVolumeScratch, Post.Water);
             else _waterVolumeScratch.CopyFrom(Post.Water);
-            if (!_waterVolumeScratch.UnderwaterSunlight) continue;
-            var absorption = _waterVolumeScratch.AbsorptionPerMetre;
+            if (!_waterVolumeScratch.UnderwaterSunlight && !_waterVolumeScratch.WaterColumnLight) continue;
+            Vector3 attenuation;
+            if (_waterVolumeScratch.WaterColumnLight)
+                attenuation = WaterColumnOptics.Derive(_waterVolumeScratch.WaterColor, _waterVolumeScratch.Clarity).Extinction;
+            else
+            {
+                var absorption = _waterVolumeScratch.AbsorptionPerMetre;
+                attenuation = new Vector3(absorption.R, absorption.G, absorption.B);
+            }
             _waterVolumeRecords.Add(new WaterVolumeRecord(
                 plane.CenterX - plane.HalfExtentX, plane.CenterZ - plane.HalfExtentZ,
                 plane.CenterX + plane.HalfExtentX, plane.CenterZ + plane.HalfExtentZ,
                 plane.SurfaceY, plane.FloorY ?? float.MinValue,
-                new Vector3(absorption.R, absorption.G, absorption.B), _waterVolumeScratch.UnderwaterPenumbraPerMetre));
+                attenuation, _waterVolumeScratch.UnderwaterPenumbraPerMetre));
         }
         return CollectionsMarshal.AsSpan(_waterVolumeRecords);
     }

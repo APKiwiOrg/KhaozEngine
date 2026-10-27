@@ -190,8 +190,9 @@ input. API detail lives in the [Render3D package reference](../KhaozEngine.Rende
 
 Underwater key lighting runs in every lit opaque receiver, independently of the water pass's depth sources.
 `WaterSettings.UnderwaterSunlight` defaults to false, with nullable `WaterLook` overrides for each procedural
-or FFT plane, bound or unbound. The query uses a render-relative slab bounded by the rectangle, still surface
-and optional `WaterPlane.FloorY`, with an unbounded floor when null. Rectangle minima and the floor are
+or FFT plane, bound or unbound. A plane also opts in when its resolved `WaterColumnLight` is true, without
+changing its `UnderwaterSunlight` setting. The query uses a render-relative slab bounded by the rectangle,
+still surface and optional `WaterPlane.FloorY`, with an unbounded floor when null. Rectangle minima and the floor are
 inclusive, maxima and the surface exclusive. Overlapping slabs choose the lowest surface above the receiver,
 keeping submission order on ties. A slab can conservatively include dry space beneath a locally higher bed.
 Only the key path changes there, and the bed's shadow keeps a cave dark. Exact local containment would need a
@@ -208,8 +209,9 @@ changing the camera-grid uniforms water reads. Point-light-only frames preserve 
 
 One storage buffer holds 3456 uint headers, 32 fixed uint index slots per cluster, then up to 4096 records in
 submission order. Each record is 48 bytes (three `uvec4`), holding rectangle min/max XZ, surface/floor Y,
-absorption RGB and penumbra per metre, all positions render-relative. Excess records are dropped from the tail.
-A cluster overflow scans all retained records, preserving correctness at greater query cost. Only the used
+attenuation RGB and penumbra per metre, all positions render-relative. The retained `AbsorptionPerMetre` member
+and its buffer offsets carry legacy absorption or derived extinction for a column body. Excess records are
+dropped from the tail. A cluster overflow scans all retained records, preserving correctness at greater query cost. Only the used
 buffer prefix uploads. `ClusterCamera.w` carries the record count independently of point lights. Empty and
 opted-out frames skip building and upload. A zero count skips shader buffer reads, leaving stale contents
 unreachable and the old dry frame unchanged.
@@ -232,8 +234,10 @@ For a submerged receiver `P` at depth `h`, Snell refraction uses the still-water
 without wave-displaced normals, and may lie beyond the rectangle where a bank can shadow it. The entry chooses
 its own cascade with `P`'s geometric normal offset and slope bias. Refraction reduces the in-water part of a
 floater's bed-shadow displacement from `h * tan(theta_air)` to `h * tan(theta_water)`. Key diffuse and specular multiply by
-`exp(-AbsorptionPerMetre * L)`, including with shadows disabled. Ambient, indirect, fill, point lights, emissive
-and fog retain their values. The water pass's existing vertical-depth tint already darkens the view of deep
+`exp(-attenuation * L)`, including with shadows disabled. For legacy bodies, attenuation is the resolved
+`AbsorptionPerMetre`. For `WaterColumnLight` bodies it is the extinction derived from resolved `WaterColor`
+and `Clarity`, with mean extinction `3 / Clarity`, ignoring legacy absorption. Ambient, indirect, fill,
+point lights, emissive and fog retain their values. The water pass's existing vertical-depth tint already darkens the view of deep
 beds, so attenuating ambient too would double-darken them. Key-only attenuation lowers shadow contrast with
 depth against unchanged ambient.
 

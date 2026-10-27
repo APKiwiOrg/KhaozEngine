@@ -4975,7 +4975,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       the constant index `1.333`. With in-water travel direction `t`, the path is
       `L = h / cos(theta_water) = h / -t.y` and the surface entry is `E = P - t * L`.
       The entry selects its own cascade, with `P`'s geometric normal offset and slope bias.
-      Key diffuse and specular receive the body's `exp(-AbsorptionPerMetre * L)` even with shadows disabled.
+      Key diffuse and specular receive the body's `exp(-attenuation * L)` even with shadows disabled.
+      Attenuation is the resolved `AbsorptionPerMetre` for legacy bodies or the extinction derived from
+      `WaterColor` and `Clarity` for `WaterColumnLight` bodies.
       Ambient, indirect, fill, point lights, emissive and fog keep their values. The water pass already tints
       deep beds darker, so attenuating ambient too would double-darken them. Key-only attenuation reduces
       shadow contrast with depth against unchanged ambient.
@@ -5881,8 +5883,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `ArgumentException` naming `Clarity` or `WaterColor` and leaves the queue unchanged. Disabled columns leave
     these inputs unvalidated.
     The column path bypasses `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`, `ShallowDepth` and `Opacity`.
-    Shore fade and foam keep their own settings. The fields currently resolve and validate at admission.
-    Column rendering is not connected yet.
+    Shore fade and foam keep their own settings. An enabled column also opts its plane into underwater
+    sunlight without changing `UnderwaterSunlight`. Its volume record carries extinction derived from
+    resolved `WaterColor` and `Clarity`, with mean extinction `3 / Clarity`, instead of legacy absorption.
+    Water surface column scattering is not connected yet.
   - **Independent optical bed** (`WaterPlane.Optics`, a `WaterOpticsBinding`, **default unbound = legacy scene
     depth**). An unbound plane grades its colour, shore foam and shore fade from the first opaque surface behind it,
     which can be a swimming creature, a bridge or a prop. A bound plane reads its own signed bed depth for those
@@ -5956,9 +5960,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     scene-appearance bags reached off `Post`). Grouped by what they do:
     - *Body colour*: `DeepColor`/`ShallowColor`, graded by `AbsorptionPerMetre` (per-channel 1/metre coefficients,
       all-zero falls back to the legacy two-stop blend over `ShallowDepth`), plus `Opacity`. The resolved absorption
-      also drives underwater sunlight, where all-zero absorption means no attenuation.
-    - *Underwater sunlight*: `UnderwaterSunlight` (scene default `false`) and
-      `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
+      also drives underwater sunlight for bodies without `WaterColumnLight`, where all-zero absorption means
+      no attenuation.
+    - *Underwater sunlight*: either `UnderwaterSunlight` or `WaterColumnLight` opts in (both scene defaults `false`),
+      with `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
       The penumbra value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or
       unbound. The water refractive index is the fixed constant `1.333`, not a setting. A frame with no opted-in water
       renders exactly as before. The receiver's own body supplies the light path, using its still-water plane

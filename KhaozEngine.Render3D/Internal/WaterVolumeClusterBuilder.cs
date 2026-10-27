@@ -14,6 +14,8 @@ namespace KhaozEngine.Render3D.Internal;
 /// Every record field is a float bit pattern read with uintBitsToFloat. Its first uvec4 is (MinX,MinZ,MaxX,MaxZ),
 /// its second is (SurfaceY,FloorY,AbsorptionPerMetre.X,AbsorptionPerMetre.Y), and its third is
 /// (AbsorptionPerMetre.Z,PenumbraPerMetre,0,0). FloorY equal to float.MinValue encodes an unbounded floor.
+/// AbsorptionPerMetre retains its name and offsets, carrying legacy absorption or derived extinction for
+/// WaterColumnLight bodies. The direct sun beam uses the packed coefficient in either case.
 /// All positions, including FloorY, are already in render-relative metres. Build does not subtract an origin.
 /// UsedUIntCount is 114048 + RecordCount * 12 for a nonempty valid build, otherwise zero. The frame record count
 /// is supplied separately by the caller. Empty or invalid-grid builds reset every diagnostic and expose no image.

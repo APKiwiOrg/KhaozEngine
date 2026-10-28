@@ -5,6 +5,21 @@ Set-StrictMode -Version Latest
 function Require([bool]$Condition, [string]$Reason) {
     if (!$Condition) { throw $Reason }
 }
+# ConvertFrom-Json reads JSON numbers as doubles, which round a cap such as 7.382000000000001 onto 7.382.
+# Money comparisons read the exact decimal token instead, as the C# paid policy does.
+function Read-ExactUsd([string]$Section, [string]$Name) {
+    $document = [System.Text.Json.JsonDocument]::Parse($manifestText)
+    try {
+        # Typed out targets, because a $null [ref] cannot pick among the TryGetProperty overloads.
+        $sectionElement = [System.Text.Json.JsonElement]::new()
+        $valueElement = [System.Text.Json.JsonElement]::new()
+        $amount = [decimal]0
+        Require ($document.RootElement.TryGetProperty($Section, [ref]$sectionElement) -and $sectionElement.ValueKind -eq [System.Text.Json.JsonValueKind]::Object -and $sectionElement.TryGetProperty($Name, [ref]$valueElement) -and $valueElement.ValueKind -eq [System.Text.Json.JsonValueKind]::Number -and $valueElement.TryGetDecimal([ref]$amount)) "Manifest $Section.$Name must be an exact USD decimal"
+        return $amount
+    } finally {
+        $document.Dispose()
+    }
+}
 function Git-Read([string[]]$Arguments) {
     $lines = @(& git @Arguments)
     if ($LASTEXITCODE -ne 0) { throw "git $Arguments failed" }
@@ -88,8 +103,8 @@ if ($rehearsal) {
 }
 Require ($manifest.preset -cne 'pilot' -or $env:LEGS -cne 'windows-vulkan') 'Windows Vulkan has no initial pilot'
 Require ($manifest.preset -cne 'water-optics-v2' -or $env:LEGS -cne 'windows-vulkan') 'Windows Vulkan is not an approved leg for the water-optics-v2 campaign.'
-$campaignMaximumUsd = [decimal]22
-$waterOpticsV2CampaignMaximumUsd = [decimal]7.382
+$campaignMaximumUsd = 22d
+$waterOpticsV2CampaignMaximumUsd = 7.382d
 # Windows full allows for the slow GRID setup and clock query seen in run 40599810511.
 $minutes = if ($rehearsal) { $rehearsalPolicy.minutes } elseif ($manifest.preset -ceq 'pilot') { if ($env:LEGS -ceq 'linux-vulkan') { 12 } else { 20 } } elseif ($env:LEGS -ceq 'linux-vulkan') { 35 } else { 50 }
 $billedMinutes = if ($rehearsal) { $minutes } else { $minutes + 3 } # Rounded-up cleanup overrun in run 40435928569.
@@ -100,8 +115,10 @@ if ($rehearsal) {
     Require ($manifest.budget.ratePerMinute -eq 0 -and $manifest.budget.maximumCostUsd -eq 0 -and $manifest.budget.currency -ceq 'USD' -and $manifest.approval.campaignMaximumUsd -eq 0) 'Rehearsal requires zero USD cost and campaign budget'
     Require (![string]::IsNullOrWhiteSpace($manifest.approval.reference) -and ![string]::IsNullOrWhiteSpace($manifest.approval.purpose) -and ![string]::IsNullOrWhiteSpace($manifest.approval.campaignReference)) 'Rehearsal requires exact owner approval references'
 } else {
+    $campaignCap = Read-ExactUsd 'approval' 'campaignMaximumUsd'
+    $unitBudget = Read-ExactUsd 'budget' 'maximumCostUsd'
     $campaignMaximum = if ($manifest.preset -ceq 'water-optics-v2') { $waterOpticsV2CampaignMaximumUsd } else { $campaignMaximumUsd }
-    Require ([decimal]$manifest.approval.campaignMaximumUsd -ge [decimal]$manifest.budget.maximumCostUsd -and [decimal]$manifest.approval.campaignMaximumUsd -le $campaignMaximum) 'Paid campaign cap must cover the unit budget and stay within the preset maximum'
+    Require ($campaignCap -ge $unitBudget -and $campaignCap -le $campaignMaximum) 'Paid campaign cap must cover the unit budget and stay within the preset maximum'
 }
 Require ($Mode -cne 'Verify' -or !$rehearsal) 'Paid Verify refuses rehearsal evidence'
 Require ($Mode -cne 'VerifyRehearsal' -or $rehearsal) 'Rehearsal Verify refuses performance evidence'

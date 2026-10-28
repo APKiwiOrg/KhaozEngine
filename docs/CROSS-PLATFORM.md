@@ -285,7 +285,8 @@ caps: `gpu-t4-linux` for `linux-vulkan` with 35 job minutes, or `gpu-t4-windows`
 `windows-d3d11` with 50. Both require the 1,095 MHz clock and emit the `performance` execution class.
 Windows Vulkan refuses v2 admission. Before any paid runner is allocated, the trusted `legs` job
 requires every paid manifest's `approval.campaignMaximumUsd` to cover `budget.maximumCostUsd` without
-exceeding its campaign envelope. The [renderer reference](RENDERER-PERFORMANCE.md#water-optics-campaign)
+exceeding its campaign envelope. It reads both amounts as exact JSON decimal tokens, because
+`ConvertFrom-Json` would round a cap such as 7.382000000000001 onto the maximum. The [renderer reference](RENDERER-PERFORMANCE.md#water-optics-campaign)
 owns the v2 USD 7.382 maximum and exact schedules. The v1 `pilot` and `full` maximum stays USD 22.
 
 After the GPU and driver steps, paid renderer jobs invoke the trusted graphics-clock setup before

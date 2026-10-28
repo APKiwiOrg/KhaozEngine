@@ -70,23 +70,43 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
         Assert.DoesNotContain("matrix=", result.Output, StringComparison.Ordinal);
     }
 
+    // The last three caps differ from a boundary only past double precision, so the selector must compare exact decimals.
     [Theory]
-    [InlineData("water-optics-v2", "linux-vulkan", 7.383)]
-    [InlineData("water-optics-v2", "windows-d3d11", 7.383)]
-    [InlineData("water-optics-v2", "linux-vulkan", 1.975)]
-    [InlineData("water-optics-v2", "windows-d3d11", 5.405)]
-    [InlineData("full", "linux-vulkan", 22.001)]
-    [InlineData("full", "windows-d3d11", 22.001)]
-    [InlineData("pilot", "linux-vulkan", 22.001)]
-    [InlineData("pilot", "windows-d3d11", 22.001)]
-    public void Select_refuses_campaign_overruns(string preset, string leg, double cap)
+    [InlineData("water-optics-v2", "linux-vulkan", "7.383")]
+    [InlineData("water-optics-v2", "windows-d3d11", "7.383")]
+    [InlineData("water-optics-v2", "linux-vulkan", "1.975")]
+    [InlineData("water-optics-v2", "windows-d3d11", "5.405")]
+    [InlineData("full", "linux-vulkan", "22.001")]
+    [InlineData("full", "windows-d3d11", "22.001")]
+    [InlineData("pilot", "linux-vulkan", "22.001")]
+    [InlineData("pilot", "windows-d3d11", "22.001")]
+    [InlineData("water-optics-v2", "linux-vulkan", "7.382000000000001")]
+    [InlineData("full", "windows-d3d11", "22.000000000000001")]
+    [InlineData("water-optics-v2", "linux-vulkan", "1.9759999999999999")]
+    public void Select_refuses_campaign_overruns(string preset, string leg, string cap)
     {
         using var workspace = new RendererPerfWorkflowTrustTests.AdmissionWorkspace();
-        Prepare(workspace.Fixture, preset, leg, (decimal)cap);
+        Prepare(workspace.Fixture, preset, leg, decimal.Parse(cap, CultureInfo.InvariantCulture));
+        Assert.Matches("\"campaignMaximumUsd\":" + Regex.Escape(cap) + "[,}]", File.ReadAllText(workspace.Fixture.ManifestPath));
         var result = workspace.Select();
         Assert.NotEqual(0, result.Code);
         Assert.Contains("Paid campaign cap must cover the unit budget", result.Output, StringComparison.Ordinal);
         Assert.False(File.Exists(workspace.Output) && File.ReadAllText(workspace.Output).Contains("matrix=", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("approval", "campaignMaximumUsd")]
+    [InlineData("budget", "maximumCostUsd")]
+    public void Select_refuses_a_paid_amount_that_is_not_a_json_number(string section, string name)
+    {
+        using var fixture = new RendererPerfWorkflowContractTests.WorkflowFixture();
+        Prepare(fixture, "water-optics-v2", "linux-vulkan");
+        fixture.Manifest[section]![name] = fixture.Manifest[section]![name]!.ToJsonString();
+        fixture.SaveManifest();
+        var result = fixture.Run("Select");
+        Assert.NotEqual(0, result.Code);
+        Assert.Contains($"Manifest {section}.{name} must be an exact USD decimal", result.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("matrix=", result.Output, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -128,7 +148,7 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
         string selector = RendererPerfWorkflowText.Selector();
         decimal Constant(string name)
         {
-            Match match = Regex.Match(selector, @"(?m)^\$" + name + @" = \[decimal\]([0-9.]+)$");
+            Match match = Regex.Match(selector, @"(?m)^\$" + name + @" = ([0-9.]+)d$");
             Assert.True(match.Success, "Missing selector campaign maximum " + name);
             return decimal.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
         }

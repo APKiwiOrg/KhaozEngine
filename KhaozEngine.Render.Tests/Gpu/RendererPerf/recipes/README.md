@@ -56,6 +56,7 @@ the candidate instances. The
 range narrows and widens the frustum by 0.1 percent, so a draw at the frame edge cannot make the authored
 counts differ between platforms. v1 recipes frame all their content and keep their original block.
 
-The six files were frozen on `osx-arm64`. Their `linux-x64` and `win-x64` families come from a hosted
-`cross-platform-gpu` run, as for any new family. Until then the frozen recipe theory and every test that
-constructs these recipes with verification fail on Linux and Windows.
+The six files were frozen on `osx-arm64`. Their `linux-x64` and `win-x64` families come from hosted
+`cross-platform-gpu` run 40715141521, as for any new family. As with the v1 recipes, the village files share
+one sequence digest between Linux and Windows and differ in geometry, and the outdoors files share geometry
+and differ in sequence.

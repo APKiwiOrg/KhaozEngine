@@ -58,7 +58,7 @@ internal static class RendererPerfDriver
         {
             if (budget is not null) { _start = budget.ColdStart; _deadline = budget.Deadline; _started = true; }
             // Construct and admit the first session before reading any clock.
-            var conditioning = new RendererPerfBlock("conditioning:S3", RendererPerfLayout.TotalOnly, 0, 0, manifest.ConditioningFrames);
+            var conditioning = new RendererPerfBlock(manifest.Schedule.ConditioningBlockId, RendererPerfLayout.TotalOnly, 0, 0, manifest.ConditioningFrames);
             Execute(conditioning, (warm, measured, info, errors) =>
             {
                 _conditioning = measured;
@@ -117,7 +117,8 @@ internal static class RendererPerfDriver
         void Execute(RendererPerfBlock block, Action<ImmutableArray<RendererPerfFrameSample>, ImmutableArray<RendererPerfFrameSample>, RendererPerfSessionInfo?, ImmutableArray<string>> retain,
             int controlId = 0)
         {
-            int FrameLimit(int frameId) => block.SceneId == "conditioning:S3" && frameId == 0
+            bool conditioning = block.SceneId == manifest.Schedule.ConditioningBlockId;
+            int FrameLimit(int frameId) => conditioning && frameId == 0
                 ? manifest.Limits.ColdFrameMilliseconds : manifest.Limits.FrameMilliseconds;
             IRendererPerfSession? session = null;
             RendererPerfSessionInfo? info = null;

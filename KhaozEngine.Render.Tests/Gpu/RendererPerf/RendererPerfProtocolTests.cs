@@ -545,7 +545,7 @@ public sealed class RendererPerfProtocolTests
         return RendererPerfExecutionEvidenceTests.WithTrace(report);
     }
 
-    static readonly string[] FullOrder =
+    internal static readonly string[] FullOrder =
     [
         "S0/0/TotalOnly", "S0/0/PerPass", "S1/0/PerPass", "S1/0/TotalOnly", "S2/0/TotalOnly", "S2/0/PerPass",
         "S3/0/PerPass", "S3/0/TotalOnly", "S4/0/TotalOnly", "S4/0/PerPass",

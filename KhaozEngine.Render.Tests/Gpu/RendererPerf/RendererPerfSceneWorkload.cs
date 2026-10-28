@@ -31,7 +31,7 @@ internal sealed class RendererPerfSceneWorkload : IRendererPerfNativeWork
         Scene3D? scene = null;
         try
         {
-            _recipe = recipe = RendererPerfRecipe.Create(expected.Version.Split('/')[0]);
+            _recipe = recipe = RendererPerfRecipe.Create(RendererPerfRecipe.IdFromVersion(expected.Version));
             var facts = _recipe.Facts;
             if (expected.Version != facts.Id + "/" + facts.Version || expected.Profile != facts.Profile
                 || expected.RecipeSha256 != facts.RecipeSha256 || expected.SettingsSha256 != facts.SettingsSha256

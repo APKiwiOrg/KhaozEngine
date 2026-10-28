@@ -39,7 +39,7 @@ internal static class RendererPerfExecutable
     {
         foreach (var expected in manifest.Recipes)
         {
-            using var recipe = RendererPerfRecipe.Create(expected.Version.Split('/')[0]);
+            using var recipe = RendererPerfRecipe.Create(RendererPerfRecipe.IdFromVersion(expected.Version));
             var f = recipe.Facts;
             var actual = new RendererPerfRecipeIdentity(expected.SceneId, f.Id + "/" + f.Version, f.Profile,
                 f.RecipeSha256, f.SettingsSha256, ShaderSha256, f.GeometrySha256, f.AssetSha256);

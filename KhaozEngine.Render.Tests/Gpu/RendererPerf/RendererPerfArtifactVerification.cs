@@ -71,7 +71,7 @@ internal static class RendererPerfArtifactVerification
             budget?.Check("renderer.verify.sidecar.decode.after");
         }
         if (inventory is null || inventory.Recipes.IsEmpty || inventory.Occurrences.IsEmpty) throw new InvalidOperationException("Registered nonempty compiler inventory is missing.");
-        var operations = new[] { "conditioning:S3/TotalOnly/0" }.Concat(report.Manifest.Blocks.Select(b => $"{b.SceneId}/{b.Layout}/{b.Iteration}"))
+        var operations = new[] { report.Manifest.Schedule.ConditioningOperation }.Concat(report.Manifest.Blocks.Select(b => $"{b.SceneId}/{b.Layout}/{b.Iteration}"))
             .Concat(report.Manifest.Controls.Select(c => $"control:{c.Id}/TotalOnly/0"));
         if (!inventory.Operations.SequenceEqual(operations)) throw new InvalidOperationException("Inventory operation membership differs from the frozen manifest.");
         var reasons = RendererPerfCompilerCorrespondence.Validate(inventory, report.Pipelines, report.Compiler);

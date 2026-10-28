@@ -18,6 +18,19 @@ attempts count against it. Implementation approval never authorizes a dispatch, 
 measurement. Software Vulkan and WARP can establish
 correctness only. They cannot establish a hardware floor or a T4 result.
 
+Each preset is one entry in the typed schedule table, `RendererPerfSchedules` in
+`KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfSchedule.cs`. An entry names its execution class,
+scenes with recipe versions and profiles, iterations, block and control frame counts, control IDs,
+conditioning frames and scene, total frames and admitted hosted legs. A manifest must reproduce its entry
+exactly. An unknown preset, including a differently cased one, is refused with the `Preset` code before
+anything reads a schedule. Blocks expand in one order for every entry: each iteration rotates the scene
+order by one, and a scene runs TotalOnly first when its scene number plus the iteration is even, or always
+when the entry has one scene. Conditioning runs as `conditioning:S<n>` for the entry's conditioning scene,
+which is S3 for every current preset. A recipe version is `<id>/<revision>`, and the recipe ID is
+everything before the last `/`. `RendererPerfV1IdentityGoldenTests` pins the bytes of the five v1 recipe
+files and their recipe, settings, geometry, asset and per-platform sequence digests, so a new entry cannot
+move them.
+
 Paid caps are fixed by preset and leg. Unit deadlines include startup, replay and publication. The
 job cap also covers external setup and builds.
 
@@ -181,8 +194,8 @@ All three-frame completion, timestamp lifecycle, temporal history and frame guar
 There is no hidden priming frame or semantic scene image oracle. Existing control output checks still
 run. Full rehearsal adds the other scene families and control shapes without shortening their work.
 The all-controls schedule opens one short S3 conditioning session followed by exactly twelve control
-sessions, with no scene blocks. The shared compiler inventory and entrypoint require the leading
-`conditioning:S3` operation. One counted three-frame batch retains that real operation and the
+sessions, with no scene blocks. The shared compiler inventory and entrypoint require the schedule's
+leading conditioning operation, here `conditioning:S3`. One counted three-frame batch retains that real operation and the
 first-frame temporal history checks. With no scene blocks, the driver retains S3 recipe facts from
 conditioning. This is startup correctness, not thermal conditioning. Each fresh control then warms
 its own resources and timestamps for 64 counted frames. Three-frame completion retains 769 batches. Production cleanup, same-adapter compiler replay, publication and

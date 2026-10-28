@@ -88,7 +88,7 @@ internal static class RendererPerfEntrypoint
                 budget.Check("renderer.startup.recipe.before");
                 string name = recipe.SceneId + "-recipe.json";
                 writer.Produce(name, RendererPerfArtifactProducers.Schema(name),
-                    File.ReadAllBytes(RendererPerfRecipe.RecipePath(recipe.Version.Split('/')[0])), budget);
+                    File.ReadAllBytes(RendererPerfRecipe.RecipePath(RendererPerfRecipe.IdFromVersion(recipe.Version))), budget);
                 budget.Check("renderer.startup.recipe.after");
             }
 
@@ -142,7 +142,8 @@ internal static class RendererPerfEntrypoint
         IRendererPerfSession CreateSession(IGpuDevice device, RendererPerfConstructionCapture capture,
             RendererPerfManifest approved, RendererPerfBlock block, RendererPerfClock unitClock)
         {
-            bool conditioning = block.SceneId == "conditioning:S3";
+            RendererPerfSchedule schedule = approved.Schedule;
+            bool conditioning = block.SceneId == schedule.ConditioningBlockId;
             var info = new RendererPerfSessionInfo(identity, true, true, null, ImmutableDictionary<string, RendererPerfMetric>.Empty,
                 Startup: conditioning ? new(block.SceneId, new("startup.admission", null, coldStart, coldStart), clock.Frequency,
                     ImmutableDictionary<string, RendererPerfMetric>.Empty) : null);
@@ -154,7 +155,7 @@ internal static class RendererPerfEntrypoint
                     (wrapped, _) => RendererPerfControls.Create(wrapped, control), telemetry.Read,
                     capture, operationOrdinal++, approved.ExecutionClass);
             }
-            string scene = conditioning ? "S3" : block.SceneId;
+            string scene = conditioning ? schedule.ConditioningSceneId : block.SceneId;
             var recipe = approved.Recipes.Single(r => r.SceneId == scene);
             return new RendererPerfNativeSession(device, info, block, layouts[scene], unitClock,
                 (wrapped, observer) => new RendererPerfSceneWorkload(wrapped, observer, recipe), telemetry.Read,

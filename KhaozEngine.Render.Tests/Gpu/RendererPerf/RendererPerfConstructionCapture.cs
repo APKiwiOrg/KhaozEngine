@@ -35,7 +35,7 @@ internal sealed partial class RendererPerfConstructionCapture
         _content = new(_admission);
         RendererPerfConstructionAdmission.Count(checked(1 + manifest.Blocks.Length + manifest.Controls.Length), 43, "operations");
         var operations = ImmutableArray.CreateBuilder<string>();
-        operations.Add("conditioning:S3/TotalOnly/0");
+        operations.Add(manifest.Schedule.ConditioningOperation);
         foreach (var b in manifest.Blocks) operations.Add($"{b.SceneId}/{b.Layout}/{b.Iteration}");
         foreach (var c in manifest.Controls) operations.Add($"control:{c.Id}/TotalOnly/0");
         RendererPerfConstructionAdmission.Count(operations.Count, 43, "operations");

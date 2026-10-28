@@ -14,7 +14,9 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
     RendererPerfRuntimePolicy Runtime, RendererPerfExecutionPolicy Execution, RendererPerfLimits Limits,
     RendererPerfBudget Budget, RendererPerfApproval Approval)
 {
-    internal RendererPerfExecutionClass ExecutionClass => Preset is "rehearsal" or "rehearsal-full" or "rehearsal-controls" ? RendererPerfExecutionClass.Rehearsal : RendererPerfExecutionClass.Performance;
+    // Validate refuses an unknown preset before anything reads its schedule.
+    internal RendererPerfSchedule Schedule => RendererPerfSchedules.For(Preset);
+    internal RendererPerfExecutionClass ExecutionClass => Schedule.ExecutionClass;
 
     internal int TotalFrameCount => checked(ConditioningFrames + Blocks.Sum(b => checked(b.WarmupFrames + b.MeasuredFrames))
         + Controls.Sum(c => checked(c.WarmupFrames + c.MeasuredFrames)));
@@ -69,35 +71,39 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
             && manifest.UnitId[0] != '-', "Identity", "Unit ID must be a safe lowercase filename token.");
         Hash(manifest.WorkloadSha, 40);
         Hash(manifest.BaselineMainSha, 40);
-        Require(manifest.Preset is "pilot" or "full" or "rehearsal" or "rehearsal-full" or "rehearsal-controls", "Preset", "Unknown renderer preset.");
-        bool pilot = manifest.ExecutionClass == RendererPerfExecutionClass.Rehearsal
-            ? RendererPerfRehearsalPolicy.Class(manifest).Schedule == RendererPerfRehearsalSchedule.Pilot : manifest.Preset == "pilot";
+        RendererPerfSchedule schedule = RendererPerfSchedules.For(manifest.Preset);
+        // A rehearsal leg with no software class is refused before the hosted leg checks.
+        if (schedule.ExecutionClass == RendererPerfExecutionClass.Rehearsal) _ = RendererPerfRehearsalPolicy.Class(manifest);
         RendererPerfExecutionPolicy execution = manifest.Execution;
         Require(execution.Leg is "linux-vulkan" or "windows-d3d11" or "windows-vulkan", "Preset", "Unsupported hosted leg.");
-        Require(!pilot || execution.Leg != "windows-vulkan", "Preset", "Windows Vulkan has no initial pilot preset.");
+        Require(schedule.Legs.Contains(execution.Leg), "Preset", $"{LegName(execution.Leg)} has no initial {schedule.Preset} preset.");
         Require(manifest.BatchSize == 3 && manifest.MaximumScopeOccurrences == 255
-            && manifest.ConditioningFrames == (manifest.Preset == "rehearsal-controls" ? 3 : pilot ? 300 : 1200), "Preset", "Pacing, scope capacity or conditioning count differs from the preset.");
-        if (manifest.ExecutionClass == RendererPerfExecutionClass.Rehearsal) RendererPerfRehearsalPolicy.Validate(manifest);
+            && manifest.ConditioningFrames == schedule.ConditioningFrames, "Preset", "Pacing, scope capacity or conditioning count differs from the preset.");
+        if (schedule.ExecutionClass == RendererPerfExecutionClass.Rehearsal) RendererPerfRehearsalPolicy.Validate(manifest);
         else RendererPerfPaidPolicy.Validate(manifest);
         RendererPerfRuntimePolicy runtime = manifest.Runtime;
         Require(runtime.Configuration == "Release" && Version.TryParse(runtime.RuntimeVersion, out Version? version)
             && version.Major == 10 && runtime.GcMode is "workstation" or "server" && runtime.Environment != null
             && runtime.Environment.Count <= 128 && runtime.Environment.All(p => Text(p.Key) && Text(p.Value)),
             "Preset", "Explicit Release runtime, ordinary GC and bounded environment facts are required.");
-        ValidateSchedule(manifest, pilot);
+        ValidateSchedule(manifest, schedule);
     }
 
-    static void ValidateSchedule(RendererPerfManifest manifest, bool pilot)
+    static string LegName(string leg) => leg switch
     {
-        bool controlsOnly = manifest.Preset == "rehearsal-controls";
-        string[] versions = ["empty/1", "village/1", "outdoors/1", "crowd/1", "effects-ui/1"];
-        Require(!manifest.Recipes.IsDefault && manifest.Recipes.Length == (pilot || controlsOnly ? 1 : 5), "Preset", "Recipe list is incomplete.");
+        "linux-vulkan" => "Linux Vulkan",
+        "windows-d3d11" => "Windows D3D11",
+        _ => "Windows Vulkan",
+    };
+
+    static void ValidateSchedule(RendererPerfManifest manifest, RendererPerfSchedule schedule)
+    {
+        Require(!manifest.Recipes.IsDefault && manifest.Recipes.Length == schedule.Recipes.Length, "Preset", "Recipe list is incomplete.");
         for (int i = 0; i < manifest.Recipes.Length; i++)
         {
-            int scene = pilot || controlsOnly ? 3 : i;
+            RendererPerfScheduledRecipe expected = schedule.Recipes[i];
             RendererPerfRecipeIdentity recipe = manifest.Recipes[i];
-            Require(recipe.SceneId == $"S{scene}" && recipe.Version == versions[scene]
-                && recipe.Profile == (scene == 0 ? "empty-native-1080/1" : "renderer-full-native-1080/1"),
+            Require(recipe.SceneId == expected.SceneId && recipe.Version == expected.Version && recipe.Profile == expected.Profile,
                 "Preset", "Recipe order, version or profile differs from the preset.");
             Hash(recipe.RecipeSha256, 64);
             Hash(recipe.SettingsSha256, 64);
@@ -105,40 +111,30 @@ internal sealed record RendererPerfManifest(string Schema, string UnitId, string
             Hash(recipe.GeometrySha256, 64);
             Hash(recipe.AssetSha256, 64);
         }
-        if (controlsOnly)
+        ImmutableArray<RendererPerfBlock> blocks = schedule.Blocks();
+        if (blocks.IsEmpty)
         {
             Require(!manifest.Blocks.IsDefault && manifest.Blocks.IsEmpty, "Preset", "All-controls rehearsal has no scene blocks.");
-            ValidateControls(manifest, false);
-            Require(manifest.TotalFrameCount == 2307, "Preset", "All-controls frame accounting does not reconcile.");
+            ValidateControls(manifest, schedule);
+            Require(manifest.TotalFrameCount == schedule.TotalFrames, "Preset", "All-controls frame accounting does not reconcile.");
             return;
         }
-        Require(!manifest.Blocks.IsDefault && manifest.Blocks.Length == (pilot ? 2 : 30), "Preset", "Expanded block list is incomplete.");
-        int blockIndex = 0;
-        for (int iteration = 0; iteration < (pilot ? 1 : 3); iteration++)
-            for (int ordinal = 0; ordinal < (pilot ? 1 : 5); ordinal++)
-            {
-                int scene = pilot ? 3 : (ordinal + iteration) % 5;
-                bool totalFirst = pilot || (scene + iteration) % 2 == 0;
-                for (int layout = 0; layout < 2; layout++)
-                {
-                    RendererPerfLayout expected = (layout == 0) == totalFirst ? RendererPerfLayout.TotalOnly : RendererPerfLayout.PerPass;
-                    Require(manifest.Blocks[blockIndex++] == new RendererPerfBlock($"S{scene}", expected, iteration,
-                        pilot ? 64 : 192, pilot ? 128 : 256), "Preset", "Expanded block order or frame count differs from the preset.");
-                }
-            }
-        ValidateControls(manifest, pilot);
-        Require(manifest.TotalFrameCount == (pilot ? 1260 : 16944), "Preset", "Unit frame accounting does not reconcile.");
+        Require(!manifest.Blocks.IsDefault && manifest.Blocks.Length == blocks.Length, "Preset", "Expanded block list is incomplete.");
+        for (int i = 0; i < blocks.Length; i++)
+            Require(manifest.Blocks[i] == blocks[i], "Preset", "Expanded block order or frame count differs from the preset.");
+        ValidateControls(manifest, schedule);
+        Require(manifest.TotalFrameCount == schedule.TotalFrames, "Preset", "Unit frame accounting does not reconcile.");
     }
 
-    static void ValidateControls(RendererPerfManifest manifest, bool pilot)
+    static void ValidateControls(RendererPerfManifest manifest, RendererPerfSchedule schedule)
     {
-        int[] controlIds = pilot ? [1, 4, 5, 7, 9, 11] : Enumerable.Range(1, 12).ToArray();
+        ImmutableArray<int> controlIds = schedule.ControlIds;
         Require(!manifest.Controls.IsDefault && manifest.Controls.Length == controlIds.Length, "Preset", "Control list is incomplete.");
         for (int i = 0; i < controlIds.Length; i++)
         {
             RendererPerfControl control = manifest.Controls[i];
-            Require(control.Id == controlIds[i] && control.Version == "1" && control.WarmupFrames == (pilot ? 32 : 64)
-                && control.MeasuredFrames == (pilot ? 64 : 128), "Preset", "Control order, version or frame count differs from the preset.");
+            Require(control.Id == controlIds[i] && control.Version == "1" && control.WarmupFrames == schedule.ControlWarmupFrames
+                && control.MeasuredFrames == schedule.ControlMeasuredFrames, "Preset", "Control order, version or frame count differs from the preset.");
             Hash(control.WorkSha256, 64);
         }
     }

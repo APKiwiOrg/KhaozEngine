@@ -15,7 +15,7 @@ internal static class RendererPerfExecutionEvidence
         var ids = new HashSet<int>();
         for (int i = 0; i < report.Conditioning.Length; i++)
             RendererPerfReportJson.ValidateFrame(report.Conditioning[i], i % 256, ids);
-        var operations = new List<(string Id, int Count)> { ("conditioning:S3/TotalOnly/0", report.Conditioning.Length) };
+        var operations = new List<(string Id, int Count)> { (report.Manifest.Schedule.ConditioningOperation, report.Conditioning.Length) };
         operations.AddRange(report.Blocks.Select(b => ($"{b.Block.SceneId}/{b.Block.Layout}/{b.Block.Iteration}", b.Warmup.Length + b.Measured.Length)));
         operations.AddRange(report.Controls.Select(c => ($"control:{c.Control.Id}/TotalOnly/0", c.Warmup.Length + c.Measured.Length)));
         foreach (var startup in report.Startup)

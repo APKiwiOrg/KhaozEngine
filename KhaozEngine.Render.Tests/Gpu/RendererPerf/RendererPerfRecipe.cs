@@ -133,6 +133,14 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         return recipe;
     }
 
+    // A recipe version is "<id>/<revision>" and the id itself may contain '/'.
+    internal static string IdFromVersion(string version)
+    {
+        int slash = version.LastIndexOf('/');
+        RendererPerfManifest.Require(slash > 0 && slash < version.Length - 1, "Identity", $"Recipe version '{version}' has no id and revision.");
+        return version[..slash];
+    }
+
     internal static string RecipePath(string id, [CallerFilePath] string source = "") =>
         Path.Combine(Path.GetDirectoryName(source)!, "recipes", id + ".json");
     internal byte[] Describe() => (byte[])_description.Clone();

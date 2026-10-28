@@ -5,17 +5,46 @@ Set-StrictMode -Version Latest
 function Require([bool]$Condition, [string]$Reason) {
     if (!$Condition) { throw $Reason }
 }
-# ConvertFrom-Json reads JSON numbers as doubles, which round a cap such as 7.382000000000001 onto 7.382.
-# Money comparisons read the exact decimal token instead, as the C# paid policy does.
-function Read-ExactUsd([string]$Section, [string]$Name) {
-    $document = [System.Text.Json.JsonDocument]::Parse($manifestText)
+# ConvertFrom-Json keeps the last duplicate, ignores key case and reads doubles that round exact caps.
+# Match the managed reader with unique ordinal names and exact integer or decimal numbers throughout.
+function Read-ManifestValue([System.Text.Json.JsonElement]$Element) {
+    switch ($Element.ValueKind) {
+        Object {
+            $value = [System.Collections.Hashtable]::new([System.StringComparer]::Ordinal)
+            foreach ($property in $Element.EnumerateObject()) {
+                Require (!$value.ContainsKey($property.Name)) "Duplicate field '$($property.Name)'."
+                $value.Add($property.Name, (Read-ManifestValue $property.Value))
+            }
+            return $value
+        }
+        Array {
+            $items = [System.Collections.Generic.List[object]]::new()
+            foreach ($item in $Element.EnumerateArray()) {
+                Require ($item.ValueKind -ne [System.Text.Json.JsonValueKind]::Null) 'Null array entries are forbidden.'
+                $items.Add((Read-ManifestValue $item))
+            }
+            return ,$items.ToArray()
+        }
+        Number {
+            $integer = [long]0
+            if ($Element.TryGetInt64([ref]$integer)) { return $integer }
+            $number = [decimal]0
+            Require ($Element.TryGetDecimal([ref]$number)) 'Nonfinite or excessive numeric value.'
+            return $number
+        }
+        String { return $Element.GetString() }
+        True { return $true }
+        False { return $false }
+        Null { return $null }
+        default { throw 'Unsupported manifest JSON value.' }
+    }
+}
+function Read-Manifest([string]$Text) {
+    $options = [System.Text.Json.JsonDocumentOptions]::new()
+    $options.MaxDepth = 32
+    $document = [System.Text.Json.JsonDocument]::Parse($Text, $options)
     try {
-        # Typed out targets, because a $null [ref] cannot pick among the TryGetProperty overloads.
-        $sectionElement = [System.Text.Json.JsonElement]::new()
-        $valueElement = [System.Text.Json.JsonElement]::new()
-        $amount = [decimal]0
-        Require ($document.RootElement.TryGetProperty($Section, [ref]$sectionElement) -and $sectionElement.ValueKind -eq [System.Text.Json.JsonValueKind]::Object -and $sectionElement.TryGetProperty($Name, [ref]$valueElement) -and $valueElement.ValueKind -eq [System.Text.Json.JsonValueKind]::Number -and $valueElement.TryGetDecimal([ref]$amount)) "Manifest $Section.$Name must be an exact USD decimal"
-        return $amount
+        return Read-ManifestValue $document.RootElement
     } finally {
         $document.Dispose()
     }
@@ -63,7 +92,7 @@ Require ((Get-Item -LiteralPath $manifestPath).Length -le 65536) 'Manifest excee
 $hash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
 Require ($hash -ceq $env:RENDERER_PERF_MANIFEST_SHA256) 'Manifest byte hash differs from the dispatch'
 $manifestText = Get-Content -LiteralPath $manifestPath -Raw
-$manifest = $manifestText | ConvertFrom-Json -AsHashtable -Depth 32
+$manifest = Read-Manifest $manifestText
 Require ($manifest.preset -cin @('pilot', 'full', 'rehearsal', 'rehearsal-full', 'rehearsal-controls', 'water-optics-v2', 'rehearsal-water-optics-v2', 'rehearsal-water-optics-v2-single')) 'Unknown renderer preset'
 $rehearsal = $manifest.preset -cin @('rehearsal', 'rehearsal-full', 'rehearsal-controls', 'rehearsal-water-optics-v2', 'rehearsal-water-optics-v2-single')
 $rehearsalPolicy = if ($rehearsal) {
@@ -84,16 +113,6 @@ $backend = if ($env:LEGS -ceq 'windows-d3d11') { 'd3d11' } else { 'vulkan' }
 Require ($manifest.schema -ceq 'khaozengine.renderer-perf-unit/1' -and $manifest.unitId -ceq $env:RENDERER_PERF_UNIT -and $manifest.workloadSha -ceq $env:RENDERER_PERF_WORKLOAD_SHA) 'Manifest identity differs from the dispatch'
 Require ($manifest.execution.leg -ceq $env:LEGS -and $manifest.execution.runner -ceq $runner -and $manifest.execution.backend -ceq $backend -and $manifest.execution.workflow -ceq 'gpu-hosted-bench.yml') 'Manifest execution differs from the selected leg'
 Require ($manifest.execution.adapterPolicy -ceq $(if ($rehearsal) { $rehearsalPolicy.adapter } else { 'nvidia-t4-hardware' }) -and $manifest.execution.completionPolicy -ceq 'retained-fence-batch-3/1') 'Manifest adapter or completion policy differs from the execution class'
-# ConvertFrom-Json keeps the last duplicate key. Check the admitted clock's exact JSON identity first.
-$clockOptions = [System.Text.Json.JsonDocumentOptions]::new()
-$clockOptions.MaxDepth = 32
-$clockDocument = [System.Text.Json.JsonDocument]::Parse($manifestText, $clockOptions)
-try {
-    $executions = @($clockDocument.RootElement.EnumerateObject() | Where-Object { $_.Name -ieq 'execution' })
-    Require ($executions.Count -eq 1 -and $executions[0].Name -ceq 'execution') 'Manifest requires one exact execution object'
-    $clocks = @($executions[0].Value.EnumerateObject() | Where-Object { $_.Name -ieq 'lockedGraphicsClockMHz' })
-    Require ($clocks.Count -eq 1 -and $clocks[0].Name -ceq 'lockedGraphicsClockMHz') 'Manifest requires one exact graphics clock field, without duplicates'
-} finally { $clockDocument.Dispose() }
 Require ($manifest.execution.ContainsKey('lockedGraphicsClockMHz')) 'Manifest requires an explicit graphics clock policy'
 $lockedClock = $manifest.execution.lockedGraphicsClockMHz
 if ($rehearsal) {
@@ -105,6 +124,8 @@ Require ($manifest.preset -cne 'pilot' -or $env:LEGS -cne 'windows-vulkan') 'Win
 Require ($manifest.preset -cne 'water-optics-v2' -or $env:LEGS -cne 'windows-vulkan') 'Windows Vulkan is not an approved leg for the water-optics-v2 campaign.'
 $campaignMaximumUsd = 22d
 $waterOpticsV2CampaignMaximumUsd = 7.382d
+$linuxT4RatePerMinuteUsd = 0.052d
+$windowsT4RatePerMinuteUsd = 0.102d
 # Windows full allows for the slow GRID setup and clock query seen in run 40599810511.
 $minutes = if ($rehearsal) { $rehearsalPolicy.minutes } elseif ($manifest.preset -ceq 'pilot') { if ($env:LEGS -ceq 'linux-vulkan') { 12 } else { 20 } } elseif ($env:LEGS -ceq 'linux-vulkan') { 35 } else { 50 }
 $billedMinutes = if ($rehearsal) { $minutes } else { $minutes + 3 } # Rounded-up cleanup overrun in run 40435928569.
@@ -115,10 +136,15 @@ if ($rehearsal) {
     Require ($manifest.budget.ratePerMinute -eq 0 -and $manifest.budget.maximumCostUsd -eq 0 -and $manifest.budget.currency -ceq 'USD' -and $manifest.approval.campaignMaximumUsd -eq 0) 'Rehearsal requires zero USD cost and campaign budget'
     Require (![string]::IsNullOrWhiteSpace($manifest.approval.reference) -and ![string]::IsNullOrWhiteSpace($manifest.approval.purpose) -and ![string]::IsNullOrWhiteSpace($manifest.approval.campaignReference)) 'Rehearsal requires exact owner approval references'
 } else {
-    $campaignCap = Read-ExactUsd 'approval' 'campaignMaximumUsd'
-    $unitBudget = Read-ExactUsd 'budget' 'maximumCostUsd'
+    $campaignCap = $manifest.approval.campaignMaximumUsd
+    $unitBudget = $manifest.budget.maximumCostUsd
+    Require ($campaignCap -is [long] -or $campaignCap -is [decimal]) 'Manifest approval.campaignMaximumUsd must be an exact USD decimal'
+    Require ($unitBudget -is [long] -or $unitBudget -is [decimal]) 'Manifest budget.maximumCostUsd must be an exact USD decimal'
+    $rate = if ($env:LEGS -ceq 'linux-vulkan') { $linuxT4RatePerMinuteUsd } else { $windowsT4RatePerMinuteUsd }
+    Require ($manifest.budget.maximumBilledMinutes -is [long] -and $manifest.budget.maximumBilledMinutes -eq $billedMinutes -and ($manifest.budget.ratePerMinute -is [long] -or $manifest.budget.ratePerMinute -is [decimal]) -and $manifest.budget.ratePerMinute -eq $rate -and $manifest.budget.currency -is [string] -and $manifest.budget.currency -ceq 'USD' -and $unitBudget -eq ($billedMinutes * $rate)) 'Paid billed minutes, rate, currency or cost cap differs from the preset'
     $campaignMaximum = if ($manifest.preset -ceq 'water-optics-v2') { $waterOpticsV2CampaignMaximumUsd } else { $campaignMaximumUsd }
     Require ($campaignCap -ge $unitBudget -and $campaignCap -le $campaignMaximum) 'Paid campaign cap must cover the unit budget and stay within the preset maximum'
+    Require ($manifest.approval.reference -is [string] -and ![string]::IsNullOrWhiteSpace($manifest.approval.reference) -and $manifest.approval.purpose -is [string] -and ![string]::IsNullOrWhiteSpace($manifest.approval.purpose) -and $manifest.approval.campaignReference -is [string] -and ![string]::IsNullOrWhiteSpace($manifest.approval.campaignReference)) 'Paid requires exact owner approval references'
 }
 Require ($Mode -cne 'Verify' -or !$rehearsal) 'Paid Verify refuses rehearsal evidence'
 Require ($Mode -cne 'VerifyRehearsal' -or $rehearsal) 'Rehearsal Verify refuses performance evidence'

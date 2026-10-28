@@ -162,11 +162,13 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
         decimal Constant(string name)
         {
             Match match = Regex.Match(selector, @"(?m)^\$" + name + @" = ([0-9.]+)d$");
-            Assert.True(match.Success, "Missing selector campaign maximum " + name);
+            Assert.True(match.Success, "Missing selector decimal constant " + name);
             return decimal.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
         }
         Assert.Equal(RendererPerfPaidPolicy.CampaignMaximumUsd, Constant("campaignMaximumUsd"));
         Assert.Equal(RendererPerfPaidPolicy.WaterOpticsV2CampaignMaximumUsd, Constant("waterOpticsV2CampaignMaximumUsd"));
+        Assert.Equal(RendererPerfPaidPolicy.LinuxT4RatePerMinuteUsd, Constant("linuxT4RatePerMinuteUsd"));
+        Assert.Equal(RendererPerfPaidPolicy.WindowsT4RatePerMinuteUsd, Constant("windowsT4RatePerMinuteUsd"));
     }
 
     [Fact]

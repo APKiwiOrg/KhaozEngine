@@ -48,6 +48,11 @@ field. The v1 sea state's bound exceeds 30 m, so the outdoors pool shortens the 
 the surface at 0.0955 m. Tests check both bounds against the engine's own surface heights. Both cameras target the
 shoreline centre and frame the pool so its surface covers about half of every measured frame.
 
+The accepted outdoors FFT surface is nearly flat, with a sampled peak of about 2.4 mm. FFT dispatch
+work per frame is unchanged, and per-pixel M2 and M5 water shading cost does not depend on wave height,
+so the profile deltas are unaffected. Any cost that grows with wave height would be understated, but
+neither M2 nor M5 has such a path.
+
 The v2 cameras cull part of the land, so their `Expected` block records it. Terrain visibility comes from
 the engine's main-pass rule (`Scene3D.IntersectsMainPass`) and is constant over the sequence. Rigid
 draws and foliage patches move by a few as the camera drifts, so they are ranges over all 256 sequence

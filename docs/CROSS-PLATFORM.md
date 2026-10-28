@@ -284,9 +284,12 @@ The paid presets are `pilot`, `full` and `water-optics-v2`. The v2 campaign uses
 caps: `gpu-t4-linux` for `linux-vulkan` with 35 job minutes, or `gpu-t4-windows` for
 `windows-d3d11` with 50. Both require the 1,095 MHz clock and emit the `performance` execution class.
 Windows Vulkan refuses v2 admission. Before any paid runner is allocated, the trusted `legs` job
-requires every paid manifest's `approval.campaignMaximumUsd` to cover `budget.maximumCostUsd` without
-exceeding its campaign envelope. It reads both amounts as exact JSON decimal tokens, because
-`ConvertFrom-Json` would round a cap such as 7.382000000000001 onto the maximum. The [renderer reference](RENDERER-PERFORMANCE.md#water-optics-campaign)
+reads manifests with the managed reader's strictness: exact property names, no duplicate fields or
+null array entries, and exact integer or decimal numbers. It checks the complete paid budget's billed
+minutes, rate, USD currency and exact cost, the campaign cap and non-blank approval references in that
+free job, so those managed policy refusals happen before paid allocation. Every paid manifest's
+`approval.campaignMaximumUsd` must cover `budget.maximumCostUsd` without exceeding its campaign
+envelope. The [renderer reference](RENDERER-PERFORMANCE.md#water-optics-campaign)
 owns the v2 USD 7.382 maximum and exact schedules. The v1 `pilot` and `full` maximum stays USD 22.
 
 After the GPU and driver steps, paid renderer jobs invoke the trusted graphics-clock setup before

@@ -29,6 +29,7 @@ public sealed class RendererPerfWorkflowContractTests
         fixture.Manifest["preset"] = "full";
         fixture.Manifest["limits"]!["jobMinutes"] = 35;
         fixture.Manifest["budget"]!["maximumBilledMinutes"] = 38;
+        fixture.Manifest["budget"]!["maximumCostUsd"] = 38 * fixture.Manifest["budget"]!["ratePerMinute"]!.GetValue<decimal>();
         fixture.SaveManifest();
         fixture.Accept("Select", "jobMinutes=35");
         fixture.Manifest["limits"]!["jobMinutes"] = 60;

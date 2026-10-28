@@ -11,6 +11,8 @@ internal static class RendererPerfPaidPolicy
     // The owner's envelope for every paid pilot and full unit, including attempts already billed.
     internal const decimal CampaignMaximumUsd = 22m;
     internal const decimal WaterOpticsV2CampaignMaximumUsd = 7.382m;
+    internal const decimal LinuxT4RatePerMinuteUsd = 0.052m;
+    internal const decimal WindowsT4RatePerMinuteUsd = 0.102m;
 
     internal static decimal CampaignMaximumFor(string preset) => preset switch
     {
@@ -33,7 +35,7 @@ internal static class RendererPerfPaidPolicy
         Require(manifest.Limits == new RendererPerfLimits(pilot ? 600 : 1500, 10000, 120000, minutes),
             "Preset", "Unit, steady frame, cold frame or job deadline differs from the preset.");
         int billedMinutes = minutes + CleanupAllowanceMinutes;
-        decimal rate = linux ? 0.052m : 0.102m;
+        decimal rate = linux ? LinuxT4RatePerMinuteUsd : WindowsT4RatePerMinuteUsd;
         decimal campaignMaximum = CampaignMaximumFor(manifest.Preset);
         Require(manifest.Budget == new RendererPerfBudget(billedMinutes, rate, "USD", billedMinutes * rate),
             "Preset", "Billed minutes, rate, currency or cost cap differs from the preset.");

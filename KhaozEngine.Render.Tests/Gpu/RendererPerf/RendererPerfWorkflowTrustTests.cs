@@ -50,12 +50,9 @@ public sealed class RendererPerfWorkflowTrustTests
     {
         using var workspace = new AdmissionWorkspace();
         var fixture = workspace.Fixture;
-        fixture.Manifest["preset"] = preset;
-        fixture.Manifest["execution"]!["leg"] = leg;
-        fixture.Manifest["execution"]!["runner"] = runner;
-        fixture.Manifest["execution"]!["backend"] = leg == "windows-d3d11" ? "d3d11" : "vulkan";
-        fixture.Manifest["limits"]!["jobMinutes"] = minutes;
-        fixture.Manifest["budget"]!["maximumBilledMinutes"] = minutes + 3;
+        fixture.Manifest = RendererPerfColdLimitPolicyTests.ManifestJson(preset, leg);
+        fixture.Manifest["workloadSha"] = fixture.Workload;
+        RendererPerfRehearsalManifestTests.Parse(fixture.Manifest);
         fixture.Environment["LEGS"] = leg;
         fixture.SaveManifest();
         fixture.Git("add", "--", "tools/Renderer.Perf.Tests/authorized/pilot-linux.json");

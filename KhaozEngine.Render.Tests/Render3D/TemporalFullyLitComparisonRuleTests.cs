@@ -44,7 +44,9 @@ public sealed class TemporalFullyLitComparisonRuleTests(ITestOutputHelper output
     void Compare(int colour = 0, int confidence = 0, ushort bits = 0x2c00, string? exactMutation = null,
         bool entry = false, bool softwareVulkan = false, bool warp = true, bool nvidia = false, ushort baselineBits = 0)
     {
-        var a = new TemporalFullyLitHistoryOracle.Snapshot(1000, 1000, new byte[8000], new byte[4000],
+        // 1000 texels: four half colour channels, four half state channels (confidence, lock, drift, swing), one R8
+        // byte and one single-float depth each.
+        var a = new TemporalFullyLitHistoryOracle.Snapshot(1000, 1000, new byte[8000], new byte[8000],
             new byte[1000], new byte[4000]);
         var b = a with
         {
@@ -60,8 +62,8 @@ public sealed class TemporalFullyLitComparisonRuleTests(ITestOutputHelper output
         }
         for (int i = 0; i < confidence; i++)
         {
-            Store(a.State, i * 4, baselineBits);
-            Store(b.State, i * 4, bits);
+            Store(a.State, i * 8, baselineBits);
+            Store(b.State, i * 8, bits);
         }
         if (exactMutation == "lock") Store(b.State, 2, 0x8000); // Signed zero still differs in storage.
         if (exactMutation == "R8") b.Visibility[0] = 1;

@@ -10,12 +10,13 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>The shimmer record the resolve stores in the history state's last two channels: drift, the average of
     /// this frame's luma less its reprojected history, and swing, the average of its size. A still line the jitter
     /// shows on one frame a cycle swings without drifting, a steady ramp drifts as far as it swings, a frame without
-    /// valid history stores an empty record, and the record moves at one over the jitter phase count. The scenes are
-    /// <see cref="TemporalStillDetailGpuTests"/>' own.</summary>
+    /// valid history, a pixel the shading release dropped and a disoccluded pixel store an empty record, and the record
+    /// moves at one over the jitter phase count. The line scene is <see cref="TemporalStillDetailGpuTests"/>' own.
+    /// </summary>
     public sealed class TemporalShimmerRecordGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
     {
         const int DisplayW = TemporalStillDetailGpuTests.DisplayW, DisplayH = TemporalStillDetailGpuTests.DisplayH;
-        const int Converge = TemporalStillDetailGpuTests.Converge, RampFrames = TemporalStillDetailGpuTests.RampFrames;
+        const int Converge = TemporalStillDetailGpuTests.Converge;
 
         readonly record struct ShimmerRecord(float Drift, float Swing);
 
@@ -33,13 +34,52 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void A_steady_ramp_builds_drift_that_tracks_swing()
         {
-            // The wall alone, its luma falling at a steady rate from frame Converge on, read on the ramp's last frame.
-            ShimmerRecord record = RunNative(Converge + RampFrames, (jitter, n) =>
-                TemporalStillDetailGpuTests.RampUnderLineScene(DisplayW, DisplayH, jitter, n, withLine: false),
+            // The wall alone, its luma rising 0.004 a frame for 32 frames from frame Converge on, read on the last.
+            const int Rising = 32;
+            const float Step = 0.004f;
+            static float Luma(int n) => TemporalStillDetailGpuTests.Wall + Step * Math.Clamp(n - Converge + 1, 0, Rising);
+            ShimmerRecord record = RunNative(Converge + Rising, (_, n) => Grey(DisplayW, DisplayH, (_, _) => Luma(n)),
                 DisplayW / 2);
-            // A ramp step is about 0.009 of weighted luma a frame, and an empty record would pass the drift bound.
-            Assert.True(record.Swing >= 0.004f, $"{record}");
+            // A step is about 0.002 of weighted luma, and an empty record would pass the drift bound.
+            float weightedStep = Weighted(Luma(Converge + Rising - 1)) - Weighted(Luma(Converge + Rising - 2));
+            output.WriteLine($"weighted step {weightedStep}");
+            Assert.True(record.Swing >= 0.5f * weightedStep, $"{record}");
             Assert.True(MathF.Abs(record.Drift) >= 0.8f * record.Swing, $"{record}");
+        }
+
+        [GpuFact]
+        public void A_pixel_whose_shading_release_fires_writes_an_empty_shimmer_record()
+        {
+            // A still textured ramp under a history far brighter than its box, with no lock and no ridge, at Native: the
+            // shading release fires and drops the accumulated weight, so the stored confidence is one sample's. A history
+            // close to the ramp is the control, which keeps its weight and carries the record on.
+            ShimmerRecord[] released = ResolveOverRecord(_ => Q(0.9f), SceneLinear, out float[] state);
+            for (int p = 0; p < released.Length; p++)
+            {
+                Assert.Equal(1f / Max, state[Interior(p) * 4], 1e-3);
+                Assert.Equal(default, released[p]);
+            }
+            ShimmerRecord[] kept = ResolveOverRecord(x => Q(Ramp(x) + 0.01f), SceneLinear, out state);
+            for (int p = 0; p < kept.Length; p++)
+            {
+                Assert.Equal((Q(3f / Max) * Max + 1f) / Max, state[Interior(p) * 4], 1e-3);
+                Assert.True(kept[p].Swing > 0.1f, $"control pixel {Interior(p)}: {kept[p]}");
+            }
+            output.WriteLine($"released {released[0]}, kept {kept[0]}");
+        }
+
+        [GpuFact]
+        public void A_disoccluded_pixel_writes_an_empty_shimmer_record()
+        {
+            // Last frame's depth nearer than the wall everywhere disoccludes every pixel, as in
+            // TemporalResolveRendererGpuTests.A_disoccluded_pixel_drops_its_history.
+            ShimmerRecord[] dropped = ResolveOverRecord(_ => Q(0.9f), SceneLinear * 0.5f, out float[] state);
+            for (int p = 0; p < dropped.Length; p++)
+            {
+                Assert.Equal(1f / Max, state[Interior(p) * 4], 1e-3);
+                Assert.Equal(default, dropped[p]);
+            }
+            output.WriteLine($"disoccluded {dropped[0]}");
         }
 
         [GpuFact]
@@ -88,6 +128,26 @@ namespace KhaozEngine.Tests.Gpu
                 + $"rate {driftRate}, swing {state[pixel + 3]} rate {swingRate}");
             Assert.InRange(driftRate, 0.97f * expected, 1.03f * expected);
             Assert.InRange(swingRate, 0.97f * expected, 1.03f * expected);
+        }
+
+        // The interior pixels of the 8 by 8 rig, whose 3x3 lies inside the frame.
+        static int Interior(int index) => (1 + index / (N - 2)) * N + 1 + index % (N - 2);
+
+        // One resolve of the grey ramp over a history of the given grey, every state texel holding three samples' weight,
+        // no lock and the record (0.5, 0.5), and the record each interior pixel stored.
+        static ShimmerRecord[] ResolveOverRecord(Func<int, float> history, float previousDepth, out float[] state)
+        {
+            using var rig = new Rig();
+            rig.BeginFrame();
+            rig.Fill(Grey((x, _) => Ramp(x)), Grey((x, _) => Ramp(x)), Motion((_, _) => Vector2.Zero));
+            rig.FillHistory(Grey((x, _) => history(x)),
+                StateWithRecord(N, N, (_, _) => new Vector4(Q(3f / Max), 0f, 0.5f, 0.5f)), previousDepth);
+            rig.Resolve(Uniforms(historyValid: true));
+            state = rig.ReadState();
+            var records = new ShimmerRecord[(N - 2) * (N - 2)];
+            for (int p = 0; p < records.Length; p++)
+                records[p] = new ShimmerRecord(state[Interior(p) * 4 + 2], state[Interior(p) * 4 + 3]);
+            return records;
         }
 
         // Converge-style run at Native, the record read at the middle row's pixel in the given column after the last

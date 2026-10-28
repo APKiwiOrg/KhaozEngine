@@ -22,6 +22,7 @@ public sealed partial class TileWorldView
     // rather than allocated, and only ever handed to ITileWorldScene.DrawProps / DrawShadowOnlyProps, both of
     // which read during the call and do not retain, so one pair of lists serves the whole frame.
     readonly List<PropPlacement> _visibleRoofs = new();
+    readonly List<long> _visibleRoofIds = new();
     readonly List<PropPlacement> _hiddenRoofs = new();
 
     /// <summary>The roof rule, and the whole of it. Under <see cref="RoofVisibility.Interior"/> a roof is hidden
@@ -45,10 +46,11 @@ public sealed partial class TileWorldView
     // LastDrawnProps stays the VISIBLE total and a shadow the player cannot see is not a prop they were shown.
     int DrawRoofs(TileRegionProps props, int plane, Vector3 focus, ref int shadowOnly)
     {
-        (IReadOnlyList<PropPlacement> visible, IReadOnlyList<PropPlacement> hidden) = SplitRoofs(props, plane);
-        int drawn = visible.Count > 0
-            ? _scene.DrawProps(visible, _propMeshes, focus, _options.PropDrawRadius)
-            : 0;
+        (IReadOnlyList<PropPlacement> visible, IReadOnlyList<long> visibleIds, IReadOnlyList<PropPlacement> hidden) =
+            SplitRoofs(props, plane);
+        int drawn = visible.Count == 0 ? 0
+            : HasCameraFadeOn(props.Region, plane) ? DrawCameraFaded(visible, visibleIds, focus, ref shadowOnly)
+            : _scene.DrawProps(visible, _propMeshes, focus, _options.PropDrawRadius);
         if (hidden.Count > 0)
             shadowOnly += _scene.DrawShadowOnlyProps(hidden, _propMeshes, focus, _options.PropDrawRadius);
         return drawn;
@@ -58,13 +60,15 @@ public sealed partial class TileWorldView
     // nothing copied: nothing on the plane can be hidden (every outdoor frame, and every plane at or below the
     // observer) hands back the whole list as visible, and the roofs-off mode hands the whole list back as hidden.
     // Only the per-building rule refills the two scratch lists.
-    (IReadOnlyList<PropPlacement> Visible, IReadOnlyList<PropPlacement> Hidden) SplitRoofs(
-        TileRegionProps props, int plane)
+    (IReadOnlyList<PropPlacement> Visible, IReadOnlyList<long> VisibleIds, IReadOnlyList<PropPlacement> Hidden)
+        SplitRoofs(TileRegionProps props, int plane)
     {
-        if (!RoofRule.AnyHiddenOn(plane)) return (props.Roofs, Array.Empty<PropPlacement>());
-        if (RoofMode != RoofVisibility.Interior) return (Array.Empty<PropPlacement>(), props.Roofs);
+        if (!RoofRule.AnyHiddenOn(plane)) return (props.Roofs, props.RoofObjectIds, Array.Empty<PropPlacement>());
+        if (RoofMode != RoofVisibility.Interior)
+            return (Array.Empty<PropPlacement>(), Array.Empty<long>(), props.Roofs);
 
         _visibleRoofs.Clear();
+        _visibleRoofIds.Clear();
         _hiddenRoofs.Clear();
         IReadOnlyList<TileRect> footprints = props.RoofFootprints;
         for (int i = 0; i < props.Roofs.Count; i++)
@@ -73,9 +77,13 @@ public sealed partial class TileWorldView
             // and stays visible. TileObjectProps.Build always fills the list, so this is the hand-built case.
             TileRect footprint = i < footprints.Count ? footprints[i] : default;
             if (RoofRule.IsHidden(footprint, plane)) _hiddenRoofs.Add(props.Roofs[i]);
-            else _visibleRoofs.Add(props.Roofs[i]);
+            else
+            {
+                _visibleRoofs.Add(props.Roofs[i]);
+                _visibleRoofIds.Add(i < props.RoofObjectIds.Count ? props.RoofObjectIds[i] : 0L);
+            }
         }
-        return (_visibleRoofs, _hiddenRoofs);
+        return (_visibleRoofs, _visibleRoofIds, _hiddenRoofs);
     }
 
     TileRoofVisibilityRule RoofRule => new(RoofMode, ObserverIndoors, _observer.Plane, _interior);

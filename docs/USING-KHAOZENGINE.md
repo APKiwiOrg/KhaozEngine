@@ -8476,6 +8476,15 @@ camera.BoomProbe = new TileWorldCameraProbe(view, bounds.TryGetBounds,
     archetype => archetype.Tags?.Contains("camera-blocker") == true);   // the game's rule and tag
 ```
 
+What the boom passes through, such as trees and props, the camera can end up inside. `TileWorldView.CameraFade`
+fades the colour of whatever object the eye is inside and keeps its shadow (since 21.18.0, off by default). The
+README's camera inside fade section gives the rules.
+
+```csharp
+view.CameraFade = new TileCameraFadeOptions { Eligible = archetype => !blocks(archetype) };
+view.UpdateCameraFade(camera.Eye, dt);   // once a frame, after the camera settles and before view.Draw
+```
+
 **Eased boom recovery (since 20.13.0, off by default).** `BoomRecoveryRate` (per second, default 0) eases the
 boom back out after an obstruction clears. A pull-in is always instant, because an eased pull-in would put the
 eye inside the occluder. The camera holds the metres the boom is short of its full length, and `AdvanceBoom(dt)`

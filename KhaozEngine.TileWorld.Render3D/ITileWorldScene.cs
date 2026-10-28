@@ -200,6 +200,14 @@ public interface ITileWorldScene
                             IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                             Vector3 focus, float drawRadius) => 0;
 
+    /// <summary>Queues every placement within <paramref name="drawRadius"/> of <paramref name="focus"/> into the
+    /// COLOUR pass alone, dissolved by <paramref name="dissolve"/> and casting no shadow: a camera-faded prop, whose
+    /// shadow the caller queues separately through <see cref="DrawShadowOnlyProps"/> so it stays whole. The default
+    /// draws nothing, so an older scene seam hides a fading prop rather than drawing it solid.</summary>
+    int DrawColourOnlyProps(IReadOnlyList<PropPlacement> placements,
+                            IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
+                            Vector3 focus, float drawRadius, float dissolve) => 0;
+
     /// <summary>Queues cached ground cover. Defaults to no draws for an older
     /// headless scene seam implementation.</summary>
     int DrawGroundCover(IReadOnlyList<GroundCoverInstance> cover,
@@ -423,6 +431,12 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene, I
                                    IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                                    Vector3 focus, float drawRadius) =>
         _scene.DrawShadowOnlyProps(placements, parts, focus, drawRadius);
+
+    /// <inheritdoc />
+    public int DrawColourOnlyProps(IReadOnlyList<PropPlacement> placements,
+                                   IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
+                                   Vector3 focus, float drawRadius, float dissolve) =>
+        _scene.DrawProps(placements, parts, focus, drawRadius, dissolveFloor: dissolve, castsShadows: false);
 
     /// <inheritdoc />
     public int DrawGroundCover(IReadOnlyList<GroundCoverInstance> cover,

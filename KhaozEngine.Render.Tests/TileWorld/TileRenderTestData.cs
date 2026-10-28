@@ -421,6 +421,10 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene, ITileWorl
     /// list, so a test names which pass a placement reached rather than only that it reached one.</summary>
     public List<TilePropDrawRecord> ShadowOnlyPropDraws { get; } = new();
 
+    /// <summary>The COLOUR-ONLY prop draws: a camera-faded placement's dissolving colour, queued without a shadow,
+    /// with the dissolve it was queued at. Same snapshot-copy discipline as <see cref="PropDraws"/>.</summary>
+    public List<(TilePropDrawRecord Record, float Dissolve)> ColourOnlyPropDraws { get; } = new();
+
     /// <summary>How many handles are live right now, uploaded and not yet freed.</summary>
     public int AliveMeshCount => _alive.Count;
 
@@ -558,6 +562,17 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene, ITileWorl
                                    IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                                    Vector3 focus, float drawRadius) =>
         RecordPropCall(placements, parts, focus, drawRadius, ShadowOnlyPropDraws);
+
+    /// <summary>The colour-only prop path: the same cull and record as <see cref="DrawProps"/>, with its dissolve.</summary>
+    public int DrawColourOnlyProps(IReadOnlyList<PropPlacement> placements,
+                                   IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
+                                   Vector3 focus, float drawRadius, float dissolve)
+    {
+        var records = new List<TilePropDrawRecord>();
+        int drawn = RecordPropCall(placements, parts, focus, drawRadius, records);
+        ColourOnlyPropDraws.Add((records[0], dissolve));
+        return drawn;
+    }
 
     // Both prop paths cull the same way and record the same shape, so they share one body: the only difference is
     // which list the record lands in. The snapshot COPY is the load-bearing part, because the view hands over one

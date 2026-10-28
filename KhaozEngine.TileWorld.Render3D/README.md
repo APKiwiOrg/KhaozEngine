@@ -446,6 +446,42 @@ Cut branches cannot shorten the boom, including when its origin starts inside th
   nothing after the hit list and model bounds cache have warmed. Object candidates walk resident region lists
   without iterator allocations. Not thread-safe, like the view it reads.
 
+### Camera inside fade (`TileWorldView.CameraFade`)
+
+A camera the world does not stop, through trees and props for instance, can end up inside a model and see nothing
+but its faces. Set `view.CameraFade = new TileCameraFadeOptions { Eligible = archetype => ... }` and call
+`view.UpdateCameraFade(eye, dt)` once a frame, after the camera has settled and before `Draw`. Every eligible
+object whose drawn triangles contain the eye fades out of colour over `FadeSeconds` (default 0.15 s) and fades
+back the same way once the eye leaves. Null, the default, turns it off and clears every fade, and a view with it
+off submits exactly what it did before. `Eligible` is the consumer's rule, because tags are game content.
+
+- **Inside.** An object contains the eye when the generalized winding number of any one of its shells there is at
+  least 0.5 in magnitude, which tolerates the open, overlapping and inside-out shells low-poly models are made of,
+  or
+  when its nearest triangle is within `ClipRadius` (default 0.25 m), the near plane slicing a face from just
+  outside. It keeps containing the eye until both fail by a further `ExitMargin` (default 0.15 m), so an eye
+  resting on a surface does not flicker the object. An eye under a canopy, inside the model's box but outside its
+  triangles, leaves it drawn.
+- **Candidates.** Gameplay-resident objects on every plane, around the eye, through the effective archetype, so
+  an override is tested as the mesh it draws. A point the applied interior cut removes from an opted-in archetype
+  is not inside it, the rule picking applies. Animated foliage is never a candidate, because the ground-cover path
+  it draws through does not honour the fade.
+- **Geometry.** The triangles come from the resolver the view was built with, the parts its props draw, flattened
+  once per archetype and grouped into shells, the triangles connected through shared corners welded by position.
+  Judged as one sum, a shell exported inside out would cancel a correctly wound one it overlaps. The broad-phase box is measured from the same vertices, so box and triangles agree. Only an
+  object whose box, grown by `ClipRadius + ExitMargin`, holds the eye is tested against its triangles, and
+  `CameraContainmentTests` counts those tests. After an archetype's first test the per-frame path allocates
+  nothing.
+- **Drawing.** Prop layers, ungrouped ground props and ungrouped roofs all honour the fade. A partly faded
+  placement queues its colour through the dissolve, without a shadow, and queues its shadow separately at the
+  ordinary floor, because the dissolve threshold also discards in the shadow pass and would thin the shadow. A
+  fully faded placement is shadow-only. A roof the roof rule hides stays hidden. In a prop layer a fade forces a
+  mixed merge back to resident individuals, and a merge with no resident individuals ignores the fade rather than
+  blanking every placement it carries. The target outline and the silhouette skip an object while it is faded.
+- **Seams.** A configured fade makes prop-layer clusters require visibility-aware submission, so an owner that
+  cannot honour it refuses at the first draw. `ITileWorldScene.DrawColourOnlyProps` defaults to drawing nothing,
+  so an older scene seam hides a fading prop rather than drawing it solid.
+
 ### Real meshes (`GltfMeshResolver`)
 
 `GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)` is the

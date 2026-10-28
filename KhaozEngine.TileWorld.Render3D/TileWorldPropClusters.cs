@@ -21,13 +21,14 @@ public sealed partial class TileWorldPropClusters : IDisposable
                                    IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> fullMeshes,
                                    ValidatedLayers validated, float tileSize,
                                    TileWorldBuildQueueOptions? buildQueueOptions,
-                                   IChunkBuildDispatcher? dispatcher)
+                                   IChunkBuildDispatcher? dispatcher, TileCameraFadeState cameraFades)
     {
         _scene = scene;
         _catalogs = catalogs;
         _archetypeLayers = validated.ArchetypeLayers;
         _layers = new LayerResources[validated.Layers.Length];
         _roofVisibility = new TileRoofLayerVisibility(_presentationSnapshots, validated.Layers);
+        _visibility = new TilePlacementVisibility(_roofVisibility, _presentationSnapshots, cameraFades);
         ITileLodMeshResolver? lodResolver = resolver as ITileLodMeshResolver;
         try
         {

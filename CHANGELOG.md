@@ -18,6 +18,14 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   multisampled source. Metal uses store-and-resolve to retain every source sample.
 - Fit shadow cascades and cull their casters in render-relative coordinates so shadows remain correct far
   from the world origin (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1618).
+- Add `TileWorldView.CameraFade`, off by default. While the camera eye is inside an eligible placed object's
+  drawn triangles, by generalized winding number or a near-plane clip radius with exit hysteresis, that object's
+  colour fades out over `FadeSeconds` and back once the eye leaves. Its shadow stays whole. Prop layers,
+  ungrouped ground props and roofs honour it, a roof the roof rule hides stays hidden, and the outline and
+  silhouette skip a faded object. `IPropClusterVisibility.ColourFade` and `ITileWorldScene.DrawColourOnlyProps`
+  are the new default members behind it.
+- Add `MeshContainment.WindingNumber` and `NearestDistanceSquared`, and `RayMath.ContainsObbY` and `ToObbLocalY`,
+  sharing the oriented-box transform `IntersectObbY` uses.
 
 ## 21.17.0
 

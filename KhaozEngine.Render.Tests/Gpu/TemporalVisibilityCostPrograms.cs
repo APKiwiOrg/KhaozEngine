@@ -1,5 +1,6 @@
 using System;
 using System.Text.RegularExpressions;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Tests.Gpu;
 
@@ -7,6 +8,8 @@ namespace KhaozEngine.Tests.Gpu;
 // through the renderer's existing fragment source hook, so no production switch exists for them.
 internal static class TemporalVisibilityCostPrograms
 {
+    /// <summary>The visibility decision made false and the shimmer score's shadow evidence removed, so the program
+    /// reads no visibility and binds with the compact layout the pipeline pair selects for it.</summary>
     internal static string WithoutCheck(string source)
     {
         const string first = "    bool visibilityReleased = ";
@@ -16,7 +19,8 @@ internal static class TemporalVisibilityCostPrograms
         int end = source.IndexOf(last, start, StringComparison.Ordinal);
         if (end < 0 || source.IndexOf(first, start + first.Length, StringComparison.Ordinal) >= 0)
             throw new InvalidOperationException("the cost rewrite found an incomplete or repeated visibility call site");
-        return source[..start] + "    bool visibilityReleased = false;\n" + source[end..];
+        return (source[..start] + "    bool visibilityReleased = false;\n" + source[end..])
+            .Replace(ShaderSources.TemporalShimmerVisibilityGlsl, string.Empty, StringComparison.Ordinal);
     }
 
     /// <summary>The lock release barrier as production writes it.</summary>

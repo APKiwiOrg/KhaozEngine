@@ -432,7 +432,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
             && all(greaterThan(fetchedRecord, vec2(-HalfMax))) && all(lessThan(fetchedRecord, vec2(HalfMax)));
         if (finite) {
             history = max(fetched, vec4(0.0));
-            historyState = clamp(fetchedState, vec2(0.0), vec2(1.0));
+            historyState = clamp(fetchedState, vec2(0.0), vec2(MaxStillAccumulation / MaxAccumulation, 1.0));
             historyRecord = fetchedRecord;
         } else {
             useHistory = false;
@@ -442,12 +442,10 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     vec3 historyYcc = rgbToYCoCg(toWeighted(history.rgb));
     float lumaChange = current.x - historyYcc.x;
 
-    // Step 8, first half: the accumulated sample weight, capped lower as motion grows and cut by reactive content.
+    // Step 8, first half: the accumulated sample weight's cap, lower as motion grows. The weight itself waits for the
+    // shimmer score, after the shading release.
     float motionCap = mix(MaxAccumulation, MovingAccumulation,
         clamp(motionPixels / MotionAccumulationPixels, 0.0, 1.0));
-    float accumulated = useHistory
-        ? min(historyState.x * MaxAccumulation, motionCap) * (1.0 - reactive * ReactiveStrength)
-        : 0.0;
 
     // Step 6: thin features. A ridge through the centre texel refreshes the lock, which decays by LockDecay a frame
     // whatever the preset. Large motion and reactive content release it, and so does motion at an edge, where the pixel
@@ -496,7 +494,6 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     vec3 boxCentre = 0.5 * (boxMin + boxMax);
     vec3 boxExtent = 0.5 * (boxMax - boxMin) + vec3(1.0e-5);
     vec3 fromCentre = historyYcc - boxCentre;
-    vec3 excess = abs(fromCentre) / boxExtent;
 
     // Steps 6 and 8 where a pixel's shading changed: a light or a shadow sliding over a surface, still or moving. A
     // ridged texel refreshes its lock every frame and the hold keeps the old luma out of the clip, so only the floor
@@ -552,12 +549,39 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         }
     }
     if (released || visibilityReleased) hold = 0.0;
-    if (released) accumulated = 0.0;
     // The shimmer record steps where the pixel kept its history and its shading, and starts empty elsewhere.
     vec2 shimmerRecord = useHistory && !released ? temporalShimmerStep(historyRecord, lumaChange) : vec2(0.0);
-    excess.x *= 1.0 - hold;
-    float clipScale = max(excess.x, max(excess.y, excess.z));
-    vec3 clipped = clipScale > 1.0 ? boxCentre + fromCentre / clipScale : historyYcc;
+    // The score from the stepped record and this frame's change (temporalShimmerScore). It is none on a moving pixel,
+    // so a moving pixel keeps its motion cap, and none on a released or fresh one, whose record is empty.
+    float shimmer = temporalShimmerScore(shimmerRecord.x, shimmerRecord.y, lumaChange, motionPixels, reactive);
+#ifdef TemporalShimmerVisibility
+    // Where the exported key-shadow visibility moved since last frame a shadow is passing, which is real however the
+    // luma alternates, so the pixel scores none (temporalShimmerVisibilityChanged). Read only where the score holds.
+    if (shimmer > 0.0 && temporalShimmerVisibilityChanged(uv, centreTexel, previousUv)) shimmer = 0.0;
+#endif
+
+    // Step 8, first half, done: a still pixel that only shimmers carries up to MaxStillAccumulation, so its current
+    // weight's floor and the sawtooth each jitter hit leaves fall about two times lower. A score of none keeps the
+    // motion cap exactly, so a one-way change accumulates as before. Cut by reactive content, and dropped where the
+    // shading release fired.
+    float cap = mix(motionCap, MaxStillAccumulation, shimmer);
+    float accumulated = useHistory && !released
+        ? min(historyState.x * MaxAccumulation, cap) * (1.0 - reactive * ReactiveStrength)
+        : 0.0;
+
+    // Step 5's final clip: the box's luma extent widened by ShimmerClipGain swings times the score on both sides, so a
+    // still pixel's history inside its own shimmer band survives the frames the jitter misses the feature, and history
+    // past the band clips as before. The shading release above judged the unwidened box.
+    float shimmerReach = ShimmerClipGain * shimmer * shimmerRecord.y;
+    vec3 clipMin = vec3(boxMin.x - shimmerReach, boxMin.yz);
+    vec3 clipMax = vec3(boxMax.x + shimmerReach, boxMax.yz);
+    vec3 clipCentre = 0.5 * (clipMin + clipMax);
+    vec3 clipExtent = 0.5 * (clipMax - clipMin) + vec3(1.0e-5);
+    vec3 clipFrom = historyYcc - clipCentre;
+    vec3 clipExcess = abs(clipFrom) / clipExtent;
+    clipExcess.x *= 1.0 - hold;
+    float clipScale = max(clipExcess.x, max(clipExcess.y, clipExcess.z));
+    vec3 clipped = clipScale > 1.0 ? clipCentre + clipFrom / clipScale : historyYcc;
     clipped.x = mix(clipped.x, historyYcc.x, hold);
     float historyAlpha = clamp(history.a, alphaMin, alphaMax);
 
@@ -605,14 +629,15 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // the shading release dropped the pixel's accumulated weight this frame. A program compiled for the display's own
     // size (TemporalAtDisplaySize), where the share is always none, leaves it out.
 #ifndef TemporalAtDisplaySize
-    float displayShare = temporalDisplayShare(useHistory && !released, historyState.x, motionPixels, reactive);
+    float displayShare = temporalDisplayShare(useHistory && !released, min(historyState.x, 1.0), motionPixels,
+        reactive);
     if (displayShare > 0.0)
         current.xyz = temporalDisplayCurrent(current.xyz, n.display, displayShare, neighbourMin, neighbourMax);
 #endif
 
     // Step 8, second half: blend in the weighted space. The current weight is 1 on a reset and falls to
-    // sampleWeight / (MaxAccumulation + sampleWeight), about one in sixteen, raised wherever reactive content or a
-    // disocclusion removed accumulated weight.
+    // sampleWeight / (MaxAccumulation + sampleWeight), about one in sixteen, or toward one in 32 on a still pixel that
+    // only shimmers, raised wherever reactive content or a disocclusion removed accumulated weight.
     float currentWeight = accumulated > 1.0e-3 ? sampleWeight / (accumulated + sampleWeight) : 1.0;
     vec3 resolvedYcc = mix(clipped, current.xyz, currentWeight);
 
@@ -620,7 +645,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     result.color = fromWeighted(max(yCoCgToRgb(resolvedYcc), vec3(0.0)));
     result.alpha = mix(historyAlpha, current.w, currentWeight);
     result.confidence = movingShare > 0.0 ? MovingShareConfidence
-        : min(accumulated + sampleWeight, motionCap) / MaxAccumulation;
+        : min(accumulated + sampleWeight, cap) / MaxAccumulation;
     result.stability = lockValue;
     result.moved = followed ? 3.0 : band ? 2.0 : historyValid && !depthTested ? 1.0 : 0.0;
     result.disocclusion = historyValid && (!onScreen || disoccluded) ? 1.0 : 0.0;
@@ -628,7 +653,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     result.clip = useHistory && clipScale > 1.0 && length(clipped - historyYcc) > ClipFlagMinimumMove ? 1.0 : 0.0;
     result.drift = shimmerRecord.x;
     result.swing = shimmerRecord.y;
-    result.shimmer = 0.0;
+    result.shimmer = shimmer;
     return result;
 }
 ";

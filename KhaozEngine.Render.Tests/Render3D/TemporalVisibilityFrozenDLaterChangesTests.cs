@@ -23,14 +23,19 @@ public sealed class TemporalVisibilityFrozenDLaterChangesTests
     [Fact]
     public void Every_entry_program_carries_each_later_change_whole()
     {
+        // Each change is read on the program with the changes undone before it, the text it was written against.
         foreach (string program in EntryPrograms)
+        {
+            string restored = program;
             foreach (TemporalVisibilityFrozenDLaterChanges.Change change in TemporalVisibilityFrozenDLaterChanges.Changes)
             {
                 foreach (TemporalVisibilityFrozenDLaterChanges.Undo undo in change.Core)
-                    Assert.True(Count(program, undo.Production) == 1, $"{change.Name}.{undo.Name}");
+                    Assert.True(Count(restored, undo.Production) == 1, $"{change.Name}.{undo.Name}");
                 foreach (TemporalVisibilityFrozenDLaterChanges.Undo undo in change.Optional)
-                    Assert.True(Count(program, undo.Production) == 1, $"{change.Name}.{undo.Name}");
+                    Assert.True(Count(restored, undo.Production) == 1, $"{change.Name}.{undo.Name}");
+                restored = TemporalVisibilityFrozenDLaterChanges.Restore(restored, change);
             }
+        }
     }
 
     [Fact]

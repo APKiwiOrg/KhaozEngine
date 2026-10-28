@@ -108,6 +108,12 @@ const float MovingShareConfidence = 0.0;
 const float DisplayKernelConfidenceStart = 0.5;
 const float DisplayKernelMotionPixels = 2.0;
 const float DisplayKernelFullWeight = 0.25;
+const float ShimmerFloor = 0.03125;
+const float ShimmerStillPixels = 0.25;
+const float ShimmerChangeBand = 3.0;
+const float ShimmerClipGain = 0.35;
+const float MaxStillAccumulation = 31.0;
+const float VisibilityShimmerGate = 0.1;
 ";
 
         // ---- The fused entry point's core: its bindings, the uniforms, the per-texel preparation and per-pixel
@@ -124,7 +130,7 @@ layout(set=0, binding=7) uniform sampler LinearClamp;
 // The members are TemporalResolveUniforms.GlslMembers, documented on the struct's fields.
 layout(set=0, binding=8) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
 " + TemporalResolveVisibilityBindingsGlsl + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalVisibilityMaskGlsl + TemporalVisibilityGlsl
-            + TemporalNarrowBothGlsl + TemporalPrepareGlsl + TemporalShimmerGlsl + TemporalAccumulateGlsl + @"
+            + TemporalShimmerVisibilityGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl + TemporalShimmerGlsl + TemporalAccumulateGlsl + @"
 // The fused entry point: one display pixel, its 3x3 read from the scene's inputs and prepared inline
 // (temporalWeighted, temporalReactiveDifference, temporalDilate, temporalVisibilityCurrentBit), gathered
 // (temporalGather), its centre texel's surface prepared (temporalPrepareSurface), and the accumulation

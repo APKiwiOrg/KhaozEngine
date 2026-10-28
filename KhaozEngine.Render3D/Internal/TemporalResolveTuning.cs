@@ -490,5 +490,41 @@ namespace KhaozEngine.Render3D.Internal
         /// pixel takes it only in proportion. Not measured apart: the one variant at 0.1 also started the share at a
         /// quarter of the confidence (<see cref="DisplayKernelConfidenceStart"/>).</summary>
         public const float DisplayKernelFullWeight = 0.25f;
+        /// <summary>Steps 5 and 8, the shimmer score (<see cref="ShaderSources.TemporalShimmerGlsl"/>). A swing below
+        /// this weighted luma scores none, and it floors the swing the drift is read against. At 1/256 a textured
+        /// receiver behind a shadow retreating 8 pixels a frame at Native lagged 0.0072221 against design D's
+        /// 0.0072211, with or without <see cref="VisibilityShimmerGate"/>: the lag sits on frames after the edge has
+        /// passed, where the visibility no longer changes. Here it measures D's own value.</summary>
+        public const float ShimmerFloor = 1f / 32f;
+        /// <summary>Steps 5 and 8. A pixel moving this many display pixels a frame or more scores none: its history is
+        /// resampled, so its change is not the jitter's alone.</summary>
+        public const float ShimmerStillPixels = 0.25f;
+        /// <summary>Steps 5 and 8. A frame whose luma change exceeds this many swings scores none on that frame, so
+        /// a change larger than the shimmer the pixel already shows clips and accumulates as before, and any lag the
+        /// score adds is bounded by the pixel's own swing.</summary>
+        public const float ShimmerChangeBand = 3f;
+        /// <summary>Step 5. The clip's luma extent grows by this many swings times the score on both sides, so a still
+        /// pixel's history inside its own shimmer survives the frames the jitter misses the feature, while history past
+        /// that band clips as before. The shading release keeps the unwidened box. A locked pixel's hold already frees
+        /// its luma from the clip in part, and the reach adds to what the hold keeps, so a wider band holds a passing
+        /// line's history too: a line drifting a fifth of a texel a frame at Native left 0.107 of its contrast behind
+        /// at 1.5, 1.0 and 0.5, against 0.098 here and 0.053 with no band. Here a still line the jitter hits once a
+        /// cycle keeps a mean of 0.104 of its 0.125 coverage at Native and 0.106 at Quality, against 0.042 and 0.030
+        /// with no band, and its drift averages 0.16 of its swing over a cycle. At 0.5 it kept 0.123, but a shadow
+        /// creeping over it erred 0.1323 at Quality, past its guard of 0.1317.</summary>
+        public const float ShimmerClipGain = 0.35f;
+        /// <summary>Step 8. The accumulated weight's cap rises from <see cref="MaxAccumulation"/> toward this with the
+        /// score, so a still shimmering pixel's current weight falls to about one in 32 and its per-cycle sawtooth
+        /// shrinks. Stored confidence stays weight over <see cref="MaxAccumulation"/> and may reach this over it, and
+        /// readers that need a share clamp it to 1. At 63 the still line, record and trail facts measured the same and
+        /// the textured grain within 1e-7, since their windows rarely carry a pixel past 31 samples.</summary>
+        public const float MaxStillAccumulation = 31f;
+        /// <summary>Steps 5 and 8. Where the key-shadow visibility the scene exports at the centre texel lies more
+        /// than this from last frame's at the same surface point, the pixel scores none, so a shadow passing over a
+        /// surface that already shimmers clips and accumulates as before. Programs without exported visibility (the
+        /// fully lit ones) skip the read. Texture ridges under a coarse moving shadow at Quality held grain of 0.008035
+        /// against design D's 0.008031 with the luma record alone, and 0.0080306 with this gate. 0.05 left a shadow's
+        /// textured tail as it was at 0.1.</summary>
+        public const float VisibilityShimmerGate = 0.1f;
     }
 }

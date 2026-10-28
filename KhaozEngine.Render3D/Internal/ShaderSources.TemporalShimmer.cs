@@ -8,9 +8,11 @@ namespace KhaozEngine.Render3D.Internal
     /// frames and misses on others swings with no drift over a cycle, while a light or a shadow creeping over a
     /// surface keeps the change one-signed, so drift follows swing. <c>temporalAccumulatePixel</c> reads the record
     /// with the confidence's four state texels and bilinear weights, steps it by this frame's change, and stores an
-    /// empty record wherever it used no history or the shading release dropped it. Included in both entry points beside
-    /// <see cref="TemporalAccumulateGlsl"/>, after the <c>Resolve</c> block. <see cref="TemporalShimmer"/> is the C#
-    /// mirror, and the jitter constants mirror <see cref="TemporalJitter"/>.
+    /// empty record wherever it used no history or the shading release dropped it. The score
+    /// (<c>temporalShimmerScore</c>) read from the stepped record widens the final luma clip and raises the
+    /// accumulation cap toward <see cref="TemporalResolveTuning.MaxStillAccumulation"/>. Included in both entry points
+    /// beside <see cref="TemporalAccumulateGlsl"/>, after the <c>Resolve</c> block. <see cref="TemporalShimmer"/> is
+    /// the C# mirror of the rate, and the jitter constants mirror <see cref="TemporalJitter"/>.
     /// </summary>
     internal static partial class ShaderSources
     {
@@ -30,6 +32,40 @@ float temporalShimmerRate() {
 vec2 temporalShimmerStep(vec2 record, float lumaChange) {
     float rate = temporalShimmerRate();
     return vec2(mix(record.x, lumaChange, rate), mix(record.y, abs(lumaChange), rate));
+}
+// The shimmer score from the stepped record and this frame's luma change: near 1 where the pixel swings about a steady
+// mean, as a still feature the jitter shows and misses does, and falling toward 0 as drift follows swing under a
+// one-way change. None below ShimmerFloor of swing (noise), on a pixel moving ShimmerStillPixels or more, on reactive
+// content, and on a frame whose change exceeds ShimmerChangeBand swings, which is real however much the pixel
+// shimmers. Comparisons are negated so a value that is not a number scores none.
+float temporalShimmerScore(float drift, float swing, float lumaChange, float motionPixels, float reactive) {
+    if (!(swing >= ShimmerFloor) || !(motionPixels < ShimmerStillPixels) || !(reactive <= 0.0)
+        || !(abs(lumaChange) <= ShimmerChangeBand * swing)) return 0.0;
+    return clamp(1.0 - abs(drift) / max(swing, ShimmerFloor), 0.0, 1.0);
+}
+";
+
+        /// <summary>
+        /// The shimmer score's shadow evidence, in the programs that read exported key-shadow visibility, spliced in
+        /// after <see cref="TemporalVisibilityGlsl"/>. A shadow creeping over a surface that already shimmers can keep
+        /// the luma change alternating, so the record alone may read the passing shadow as shimmer and hold the old
+        /// shading.
+        /// The visibility the scene exports moves one way there. It defines <c>TemporalShimmerVisibility</c>, so
+        /// <see cref="TemporalVisibilityPrograms.WithoutDecision"/>, which removes this text with the other visibility
+        /// helpers, leaves the score as it is in the fully lit programs.
+        /// </summary>
+        internal const string TemporalShimmerVisibilityGlsl = @"
+#define TemporalShimmerVisibility
+// Whether the visibility exported at the centre texel lies more than VisibilityShimmerGate from last frame's at the
+// same surface point, the centre texel's own term of temporalVisibilityChange: one texel fetch and one bilinear sample,
+// with no depth qualification, since a miss only keeps a score the luma record allowed. False until a previous
+// visibility exists (PreviousJitter.z). A value that is not a number reads as changed.
+bool temporalShimmerVisibilityChanged(vec2 uv, ivec2 centre, vec2 previousUv) {
+    if (!(PreviousJitter.z > 0.5)) return false;
+    float current = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), centre, 0).r;
+    vec2 historyUv = previousUv + (vec2(centre) + 0.5 - Jitter.xy) / Sizes.xy - uv + PreviousJitter.xy / Sizes.xy;
+    float previous = textureLod(sampler2D(PreviousKeyShadowVisibility, LinearClamp), historyUv, 0.0).r;
+    return !(abs(current - previous) <= VisibilityShimmerGate);
 }
 ";
     }

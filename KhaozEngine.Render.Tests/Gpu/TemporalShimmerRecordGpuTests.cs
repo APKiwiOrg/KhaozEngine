@@ -20,15 +20,22 @@ namespace KhaozEngine.Tests.Gpu
 
         readonly record struct ShimmerRecord(float Drift, float Swing);
 
-        // Expected red until the shimmer clip lands: the unchanged clip strips the line's history between hits.
         [GpuFact]
         public void A_line_the_jitter_hits_once_per_cycle_builds_swing_without_drift()
         {
+            // Averaged over the last whole jitter cycle: an average at one over the phase count reads a periodic hit
+            // with a phase, so a single frame's drift says where in the cycle it was read, not whether the line drifts.
             int column = DisplayW / 2;
-            ShimmerRecord record = RunNative(Converge, (jitter, n) =>
+            ShimmerRecord[] cycle = RunNative(Converge, (jitter, n) =>
                 TemporalStillDetailGpuTests.OncePerCycleLineScene(DisplayW, DisplayH, jitter, n), column);
-            Assert.True(record.Swing >= 0.01f, $"{record}");
-            Assert.True(MathF.Abs(record.Drift) <= 0.25f * record.Swing, $"{record}");
+            float ratio = 0f;
+            foreach (ShimmerRecord record in cycle)
+            {
+                Assert.True(record.Swing >= 0.01f, $"{record}");
+                ratio += MathF.Abs(record.Drift) / record.Swing / cycle.Length;
+            }
+            output.WriteLine($"mean |drift| / swing over the last {cycle.Length} frames {ratio}");
+            Assert.True(ratio <= 0.25f, $"mean |drift| / swing {ratio}");
         }
 
         [GpuFact]
@@ -39,7 +46,7 @@ namespace KhaozEngine.Tests.Gpu
             const float Step = 0.004f;
             static float Luma(int n) => TemporalStillDetailGpuTests.Wall + Step * Math.Clamp(n - Converge + 1, 0, Rising);
             ShimmerRecord record = RunNative(Converge + Rising, (_, n) => Grey(DisplayW, DisplayH, (_, _) => Luma(n)),
-                DisplayW / 2);
+                DisplayW / 2)[^1];
             // A step is about 0.002 of weighted luma, and an empty record would pass the drift bound.
             float weightedStep = Weighted(Luma(Converge + Rising - 1)) - Weighted(Luma(Converge + Rising - 2));
             output.WriteLine($"weighted step {weightedStep}");
@@ -150,9 +157,9 @@ namespace KhaozEngine.Tests.Gpu
             return records;
         }
 
-        // Converge-style run at Native, the record read at the middle row's pixel in the given column after the last
-        // frame. Each frame of the last jitter cycle is printed.
-        ShimmerRecord RunNative(int frames, Func<Vector2, int, float[]> scene, int column)
+        // Converge-style run at Native, the record read at the middle row's pixel in the given column on each frame of
+        // the last jitter cycle, oldest first, each printed.
+        ShimmerRecord[] RunNative(int frames, Func<Vector2, int, float[]> scene, int column)
         {
             int phases = TemporalJitter.PhaseCount(1f);
             Matrix4x4 projection = Perspective((float)DisplayW / DisplayH);
@@ -160,7 +167,7 @@ namespace KhaozEngine.Tests.Gpu
             using var rig = new Rig(DisplayW, DisplayH, DisplayW, DisplayH, NdcDepth(projection, SceneMetres));
             float[] motion = Pairs(DisplayW, DisplayH, (_, _) => Vector2.Zero);
             int pixel = DisplayH / 2 * DisplayW + column;
-            ShimmerRecord record = default;
+            var cycle = new ShimmerRecord[phases];
             for (int n = 0; n < frames; n++)
             {
                 Vector2 jitter = TemporalJitter.Offset(n, phases);
@@ -171,10 +178,11 @@ namespace KhaozEngine.Tests.Gpu
                     DisplayH, n > 0));
                 if (n < frames - phases) continue;
                 float[] state = rig.ReadState();
-                record = new ShimmerRecord(state[pixel * 4 + 2], state[pixel * 4 + 3]);
+                ShimmerRecord record = new(state[pixel * 4 + 2], state[pixel * 4 + 3]);
+                cycle[n - (frames - phases)] = record;
                 output.WriteLine($"frame {n}: {record}, |drift| / swing {MathF.Abs(record.Drift) / record.Swing}");
             }
-            return record;
+            return cycle;
         }
     }
 }

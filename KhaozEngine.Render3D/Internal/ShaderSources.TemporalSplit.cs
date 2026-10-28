@@ -97,7 +97,7 @@ layout(set=0, binding=10) uniform sampler LinearClamp;
 // The members are TemporalResolveUniforms.GlslMembers, documented on the struct's fields.
 layout(set=0, binding=11) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
 " + TemporalAccumulateVisibilityBindingsGlsl + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalVisibilityMaskGlsl + TemporalVisibilityGlsl
-            + TemporalNarrowBothGlsl + TemporalPrepareGlsl + TemporalShimmerGlsl + TemporalAccumulateGlsl + @"
+            + TemporalShimmerVisibilityGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl + TemporalShimmerGlsl + TemporalAccumulateGlsl + @"
 // The split's per-pixel resolve: its 3x3 gathered from the first pass's targets (temporalGather), its centre texel's
 // surface read back (temporalStoredSurface), and the accumulation (temporalAccumulatePixel).
 TemporalPixel temporalSplitPixel(ivec2 displayPixel) {

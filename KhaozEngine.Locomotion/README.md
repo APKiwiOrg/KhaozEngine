@@ -35,12 +35,63 @@ configuration as two selections.
 ## Ordinary contact environment
 
 `EffectiveMovementBinding.Ordinary` composes the leased contact controller at zero placement offset.
-The static installer publishes an immutable `OrdinaryMovementRegistration` under its source read lease,
+The static installer publishes fixed authored provenance in `OrdinaryMovementRegistration` under its source read lease,
 with a finite `OrdinaryMovementExtent`, inclusive feature ranges and authored `MovementSupportKey` owners.
 Several pieces may alias one owner. Ambiguous, missing, excluded and stale features refuse binding.
 Register excluded statics before publication so their provenance participates in portable identity.
 The optional `IPhysicsStaticGeometrySource` marker keeps a registration valid across steps and pure rebases.
 Without it, a fresh physics geometry generation requires a fresh registration.
+
+### Runtime statics
+
+Use `registration.ApplyRuntimeStatics` between movement reads to add, replace or remove ordinary stationary
+geometry. The complete source must support `IPhysicsQueryLeaseSource` and `IPhysicsStaticMutationSource`.
+Existing bindings, contexts and selected views see the change without reconstruction. Every runtime static
+blocks and supplies support under the same shape and slope rules as authored geometry, including placement,
+overlap recovery, footprint support, ground signals and the solid part of water movement. Legacy sees the same
+real statics through its existing selection.
+
+```csharp
+var owner = new MovementSupportKey(registration.WorldId, "gate/west");
+registration.ApplyRuntimeStatics([
+    RuntimeStaticChange.Set(owner, new BoxShape(new(0.2f, 1f, 3f)), Pose.At(gateCentre))
+]);
+// At a later tick boundary, while no movement read is held.
+registration.ApplyRuntimeStatics([RuntimeStaticChange.Remove(owner)]);
+```
+
+`Set` takes an absolute world pose, including after a rebase. Do not subtract `world.Origin`.
+It validates and deep-copies all descriptor arrays and compound descendants when the request is created.
+Cylinders retain base-aligned physics placement. Unsupported shape classes and mesh children inside compounds
+refuse. Rigid orientations retain their supplied bits. Cycles and nesting beyond 32 descriptor levels refuse.
+The batch checks conservative installed absolute bounds against the fixed `Extent`, including rounded local
+placement, compound composition and hull recentring. A bound that cannot be proved refuses before editing.
+Reserve enough volume in the builder before constructing bindings. Tuning-expanded query margins do not
+enlarge this admission extent.
+
+One canonical owner names one root static. `Set` is an upsert and an identical Set is still a replacement.
+`Remove` requires a live runtime owner. Baked owners and `analytic-ground` cannot be targeted. Duplicate owners
+in one batch refuse. Requests execute in ordinal `Owner.LocalId` order, with all removals before all additions.
+An empty batch does nothing. A successful nonempty batch advances live `Generation` once.
+`GeometryGeneration`, authored provenance, exclusions, `Extent`, semantic digest and environment `Identity`
+retain their installation values. Pins track the live registration revision alongside physics and water.
+
+The writer publishes geometry and immutable runtime provenance before admitting another reader. Raw static
+edits still invalidate authentication. A raw add before a sanctioned Set cannot be adopted by it, and another
+registration on the same source does not adopt the update. Validation failures and backend failures with no
+physical write preserve the old state. A partial edit, unexpected revision increment or changed writer origin
+poisons the installation. Contact then refuses acquisition and later batches cannot repair it. Rebuild the
+installation after such a failure. This API supplies no rollback or character evacuation.
+
+The host collects one complete batch for each effective tick, resolves duplicate events, and applies it before
+any movement read for that tick. Matching heads use the same initial construction order, origin, backend,
+shape bits, tuning, commands and tick-indexed change history. Batch enumeration may differ. Owner names must
+be stable rather than derived from handles or time. Replay must restore historical blocker state before each
+replayed tick. Inverse edits alone do not restore the backend's insertion history. No event transport or
+rollback timeline is implied. Explicit Remove releases runtime geometry. Disposing the complete world releases
+remaining entries, while disposing a baked installer removes only its baked handles.
+
+### Ground and read intervals
 
 Supply ground delegates and a `MovementBoundary.Rectangle` or `MovementBoundary.Circle`. Each physics
 frame captures that boundary once in local coordinates with double arithmetic and its configured identity, as

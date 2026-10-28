@@ -18,11 +18,31 @@ recipe source paths must belong to that checkout before startup. No working-dire
 output-directory manifest copy or alternate-checkout search is used.
 The workflow checks the authorization diff and exact bytes before selecting a hosted runner and
 again on that runner. The entrypoint independently validates the strict manifest and runtime before
-native creation. Performance presets require hosted NVIDIA T4 hardware. The `rehearsal` preset requires
-standard hosted Linux Vulkan lavapipe, retains the pilot schedule and can never promote as performance
-evidence. Both require usable timestamps, complete compiler evidence and certified publication.
-Partial artifacts survive failures. The [renderer reference](../../../docs/RENDERER-PERFORMANCE.md#software-correctness-rehearsal)
-owns the rehearsal policy and its separate approval, limits and correctness verdict.
+native creation. Performance presets require hosted NVIDIA T4 hardware. The
+[renderer reference](../../../docs/RENDERER-PERFORMANCE.md#software-correctness-rehearsal)
+owns the supported software rehearsal legs and schedules, including `rehearsal-controls`, separate
+approvals, limits and correctness verdict. The same reference's
+[paid authorization contract](../../../docs/RENDERER-PERFORMANCE.md#evidence-and-authorization) owns
+per-leg job caps, cleanup billing allowance and the campaign envelope. Every execution class requires
+usable timestamps, complete compiler evidence and certified publication. Partial artifacts survive failures.
+
+Every manifest must explicitly include `execution.lockedGraphicsClockMHz`. Paid T4 presets require
+an integer matching the fixed [graphics-clock policy](../../../docs/RENDERER-PERFORMANCE.md#drift-perturbation-and-validity).
+Every software rehearsal class requires explicit JSON null. Missing, duplicate, string, fractional, overflowing
+or cross-class values refuse. The trusted selector carries this admitted value to the runner matrix.
+There is no dispatch clock override. Older authorizations are never edited to add the field, and
+another run needs fresh exact owner approval.
+
+Every manifest must explicitly include `limits.coldFrameMilliseconds` as well as
+`limits.frameMilliseconds`. The cold limit is 120,000 ms for every preset and execution class. Only
+conditioning frame 0 uses it for immediate and retained CPU timing and retained GPU duration. The
+renderer reference owns the fixed limits and rationale. The Windows T4 cold frame took 44.9 seconds,
+and the valid Linux T4 pilot took 9.42 seconds against its old 10-second limit. A thin margin turns
+ordinary hosted-runner CPU variance into a paid refusal. The 120-second bound is about 2.7 times the
+worst observation and remains inside the 600-second and 1,500-second paid unit deadlines. It stays
+counted inside the original unit and job caps. Later conditioning, warm-up, measured and control frames
+retain the steady limit. An older manifest missing the cold field refuses strict parsing. Existing
+authorizations are never rewritten to supply it, and another run requires fresh exact owner approval.
 
 The shader identity hashes an ordered map of exact literal and generated readonly Render3D and
 SpriteBatch GLSL source strings, specialized outdoors FFT kernels and control shader sources.
@@ -32,5 +52,6 @@ with no scene frames. It never contributes a steady-state sample or a throughput
 
 Task 15 owns independent integration review, the precise pilot approval, driver and native compiler
 retention checks, output validation, clock and marker perturbation review, artifact-size checks and
-actual billed minutes. Each full unit needs fresh approval after pilot review. Windows Vulkan,
+actual billed minutes. Each full unit needs fresh approval after pilot review and the separately
+approved all-controls software checks described in the renderer reference. Windows Vulkan,
 profilers, extra variants, release and consumer adoption remain separate owner decisions.

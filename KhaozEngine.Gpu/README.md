@@ -265,12 +265,26 @@ What it owns today:
   `SupportedMsaaSampleCounts` (the full shared set across the engine's MRT formats, including sparse masks) and
   `MaxMsaaSampleCount` (its largest member, kept for compatibility), `SupportsShadowMaps` (whether the device can render + sample an R32_Float depth target, gating the
   `ShadowMode.ShadowMap` tier in Render3D), and `SupportsCompletionFences` (see **Completion fences** below).
+  `MaxFragmentStorageBuffers` reports the per-stage storage buffer limit, with Vulkan reading
+  `maxPerStageDescriptorStorageBuffers`, Direct3D11 reporting 128 SRV slots and Metal reporting 31 buffer slots.
+  Older capability producers default to four. Explicit reports below three make Render3D scene and standalone
+  lit renderer construction throw `NotSupportedException` before GPU allocation, naming `maxPerStageDescriptorStorageBuffers`.
+  `MaxStorageBufferRangeBytes` is the maximum admitted whole storage
+  binding in bytes, or zero when unknown. Vulkan retains `maxStorageBufferRange` from the selected
+  physical device. Direct3D 11 folds its adapter-dependent resource guarantee with the full raw-view
+  limit. This is a per-binding compatibility bound, not an available-memory or allocation-success guarantee.
   Read off the live device.
 - **MSAA plumbing** - `GpuTextureDescription.SampleCount` (and `IGpuTexture.SampleCount`) make a multisampled render
   target; `GpuOutputDescription.SampleCount` / `WithSampleCount` carry the count so a pipeline matches its
   framebuffer (read a live multisampled framebuffer's count off `IGpuFramebuffer.Outputs`); and
   `IGpuCommandList.ResolveTexture(src, dst)` resolves a multisampled target into a single-sample texture. Default
-  sample count 1 (single-sample) everywhere, so existing render paths are unchanged.
+  sample count 1 (single-sample) everywhere, so existing render paths are unchanged. The two-argument resolve
+  permits discarding the source. Use `ResolveTexture(src, dst, preserveSource: true)` for a mid-frame snapshot
+  followed by further drawing into that same multisampled target. Every source sample then survives for a
+  later load and final resolve. Metal uses `StoreAndMultisampleResolve` for this request. Direct3D 11's
+  `ResolveSubresource` and Vulkan's `vkCmdResolveImage` already preserve the source for either setting.
+  `preserveSource: false` keeps the existing two-argument store actions and cost. Custom command-list decorators
+  must forward the option. The interface default refuses preservation rather than silently discarding samples.
 - **Texture arrays, including one-layer ones** - `GpuTextureDescription.Texture2DArray(w, h, format, usage,
   arrayLayers, mipLevels)` builds a 2D texture array and sets the new `GpuTextureDescription.IsArray`, so a set
   with exactly ONE layer is still created as an array and binds under a shader that declares `texture2DArray` /

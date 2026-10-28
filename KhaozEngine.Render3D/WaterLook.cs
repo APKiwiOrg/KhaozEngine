@@ -67,8 +67,49 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Overrides <see cref="WaterSettings.AbsorptionPerMetre"/> for this plane. <c>null</c> inherits.
         /// An all-zero value still means "no absorption, use the two-stop <see cref="ShallowDepth"/> blend", so a
-        /// look CAN turn absorption off for one body by overriding it with a zeroed colour.</summary>
+        /// look CAN turn legacy absorption off for one body by overriding it with a zeroed colour.
+        /// Ignored by an enabled <see cref="WaterColumnLight"/>, which derives extinction instead.</summary>
         public Color? AbsorptionPerMetre;
+
+        /// <summary>Overrides <see cref="WaterSettings.UnderwaterSunlight"/> for this plane. Default <c>null</c>
+        /// inherits the scene's opt-in, which defaults to <c>false</c>. An enabled <see cref="WaterColumnLight"/>
+        /// also enables underwater sunlight without changing this field.</summary>
+        public bool? UnderwaterSunlight;
+
+        /// <summary>Overrides <see cref="WaterSettings.UnderwaterPenumbraPerMetre"/> in metres of extra
+        /// key-shadow penumbra radius per metre of in-water light path. Must be finite and non-negative when set.
+        /// Default <c>null</c> inherits the scene's value, which defaults to <c>0.03</c>.</summary>
+        public float? UnderwaterPenumbraPerMetre;
+
+        /// <summary>Overrides <see cref="WaterSettings.WaterColumnLight"/> for this plane. Default <c>null</c>
+        /// inherits the scene's opt-in, which defaults to <c>false</c>. An explicit <c>false</c> disables the
+        /// column even when the scene enables it. An enabled column bypasses <see cref="AbsorptionPerMetre"/>,
+        /// <see cref="ShallowColor"/>, <see cref="DeepColor"/>, <see cref="ShallowDepth"/> and <see cref="Opacity"/>.
+        /// It shares derived extinction with underwater sunlight and composites unoffset pre-water colour.
+        /// Bent image lookup is not implemented. Shore fade and foam retain their settings.</summary>
+        public bool? WaterColumnLight;
+
+        /// <summary>Overrides <see cref="WaterSettings.WaterColor"/> for this plane, in linear RGB with alpha
+        /// ignored. Resolved RGB channels must be finite and in [0, 1] when <see cref="WaterColumnLight"/> is
+        /// enabled. Default <c>null</c> inherits the scene's neutral <c>(0.10, 0.13, 0.10, 1)</c> default.
+        /// <para>Albedo inverts <c>F(a) = a*H(a,1)^2/4</c>, where
+        /// <c>H(a,mu) = (1+2*mu)/(1+2*mu*sqrt(1-a))</c>. The reference is a straight-down view with zero
+        /// Fresnel, unit white sun at zenith and unit white sky. Engine irradiance is pi times LightColor.
+        /// Sky is one unshadowed effective zenith source. Fill light is excluded. <c>F(1) = 2.25</c>, so every
+        /// channel in [0, 1] is reachable. This Hapke approximation assumes a homogeneous semi-infinite medium,
+        /// omits opposition and particulate-packing terms and is not an exact transport solution.
+        /// Enabled columns require finite <see cref="Clarity"/> of at least 0.001 metres.</para></summary>
+        public Color? WaterColor;
+
+        /// <summary>Overrides <see cref="WaterSettings.Clarity"/> for this plane, in metres of vertical depth
+        /// at about 5% bed visibility when seen straight down. Must resolve finite and at least 0.001 when
+        /// <see cref="WaterColumnLight"/> is enabled. Default <c>null</c> inherits the scene's neutral
+        /// <c>2</c>-metre default. The minimum keeps shader intermediates finite in float.
+        /// <para>For requested RGB <c>c</c>, <c>sigma_t_rgb = (3/Clarity)*(1+0.5*(mean(c)-c_rgb))</c>.
+        /// Mean extinction is <c>3/Clarity</c>, giving <c>exp(-3) = 0.04978707</c> bed transmission at mean extinction.
+        /// <c>sigma_s = a*sigma_t</c> and <c>sigma_a = sigma_t-sigma_s</c> conserve energy. Albedo uses the
+        /// approximate reference-light model and engine units documented on <see cref="WaterColor"/>.</para></summary>
+        public float? Clarity;
 
         /// <summary>Overrides <see cref="WaterSettings.ShallowDepth"/> for this plane. <c>null</c> inherits. A pond
         /// that is two metres deep everywhere wants a much shorter blend than an ocean shelf.</summary>
@@ -260,6 +301,11 @@ namespace KhaozEngine.Render3D
             if (DeepColor.HasValue) scratch.DeepColor = DeepColor.Value;
             if (ShallowColor.HasValue) scratch.ShallowColor = ShallowColor.Value;
             if (AbsorptionPerMetre.HasValue) scratch.AbsorptionPerMetre = AbsorptionPerMetre.Value;
+            if (UnderwaterSunlight.HasValue) scratch.UnderwaterSunlight = UnderwaterSunlight.Value;
+            if (UnderwaterPenumbraPerMetre.HasValue) scratch.UnderwaterPenumbraPerMetre = UnderwaterPenumbraPerMetre.Value;
+            if (WaterColumnLight.HasValue) scratch.WaterColumnLight = WaterColumnLight.Value;
+            if (WaterColor.HasValue) scratch.WaterColor = WaterColor.Value;
+            if (Clarity.HasValue) scratch.Clarity = Clarity.Value;
             if (ShallowDepth.HasValue) scratch.ShallowDepth = ShallowDepth.Value;
             if (Opacity.HasValue) scratch.Opacity = Opacity.Value;
 

@@ -618,8 +618,9 @@ deciding WHERE the planes are:
   ground below the rim inside the box would render as water, which is the exact failure the reference consumer's inland
   lake was built to avoid (it covers a round basin with inscribed strips for this reason). The rectangles are
   the component's own tiles and nothing else, so nothing that is not water gets a surface. The collector
-  asserts pairwise disjointness over every plane a region-plane emits, because two overlapping planes
-  double-darken (the blend is depth-write off) and the boundary reads as a crisp step, and it logs once when a
+  asserts pairwise disjointness over every plane a region-plane emits, because overlapping planes repeat
+  legacy alpha blending or compete to replace the column composite, and the boundary reads as a crisp step.
+  The pass has depth writes off. It logs once when a
   region-plane emits more than 16 planes, which is the signal that an author drew a river that wants fewer,
   longer runs.
 - **A sloped river renders as steps.** One surface height per component. A river that descends is authored as
@@ -630,7 +631,9 @@ deciding WHERE the planes are:
   the sea, so a 60 to 80 cm bed reads as deep enough to darken. The reference consumer's inland lake look is the reference
   values. `TileWorldViewOptions.WaterLook` overrides it for a world that wants something else. The grid mode
   stays the scene's (camera focused by default, the clipmap mode is scene-wide and camera centred, neither is
-  chosen per plane).
+  chosen per plane). The preset also carries inactive column inputs, with opt-in left to consumers.
+  Current values and ownership live in the [TileWorld reference](../../KhaozEngine.TileWorld.Render3D/README.md).
+  Overlapping column surfaces have the [pre-water source limitation](../RENDER-PIPELINE.md#water-column-scene-colour).
 - **The view submits every frame.** `TileWorldView.Draw` enqueues the planes of each loaded region-plane through
   a new `ITileWorldScene.DrawWater` seam member. As shipped the planes are collected lazily on the first draw
   after a change and cached against the region-plane's MESH handle rather than at mesh-build time: a remesh always

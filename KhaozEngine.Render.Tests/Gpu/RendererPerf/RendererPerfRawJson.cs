@@ -31,11 +31,17 @@ internal static class RendererPerfRawJson
         ImmutableArray<RendererPerfControlReport> Controls, RendererPerfAssessment Assessment,
         RendererPerfPublication Publication, ImmutableArray<RendererPerfExpectedSidecar> Sidecars,
         ImmutableArray<RendererPerfFrameSample> Conditioning, ImmutableArray<RendererPerfBatchReport> Batches,
-        ImmutableArray<RendererPerfStartupReport> Startup, RendererPerfCompilerEvidence Compiler, [property: JsonPropertyOrder(100)] Schema Raw)
+        ImmutableArray<RendererPerfStartupReport> Startup, RendererPerfCompilerEvidence Compiler,
+        RendererPerfGpuClockVerification GpuClock, [property: JsonPropertyOrder(100)] Schema Raw)
     {
-        internal RendererPerfReport Report() => new(Schema, Manifest, Identity, Recipes, Blocks, Memory,
-            Pipelines, Controls, Assessment, Publication, Sidecars)
-        { Conditioning = Conditioning, Batches = Batches, Startup = Startup, Compiler = Compiler };
+        internal RendererPerfReport Report()
+        {
+            var report = new RendererPerfReport(Schema, Manifest, Identity, Recipes, Blocks, Memory,
+                Pipelines, Controls, Assessment, Publication, Sidecars)
+            { Conditioning = Conditioning, Batches = Batches, Startup = Startup, Compiler = Compiler };
+            RendererPerfGpuClockPolicy.ValidateClaim(report, GpuClock);
+            return report;
+        }
     }
 
     internal static byte[] Serialize(RendererPerfReport report, int maximumBytes)
@@ -43,7 +49,7 @@ internal static class RendererPerfRawJson
         var tables = new Tables(new("metric-vectors/2", [], [], [], [], []));
         var wire = new WireReport(report.Schema, report.Manifest, report.Identity, report.Recipes, report.Blocks,
             report.Memory, report.Pipelines, report.Controls, report.Assessment, report.Publication, report.Sidecars,
-            report.Conditioning, report.Batches, report.Startup, report.Compiler, tables.Schema);
+            report.Conditioning, report.Batches, report.Startup, report.Compiler, report.GpuClock, tables.Schema);
         using var stream = new BoundedStream(maximumBytes);
         JsonSerializer.Serialize(stream, wire, tables.Options);
         return stream.ToArray();

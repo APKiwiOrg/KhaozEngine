@@ -116,7 +116,7 @@ internal sealed partial class ModelRenderer
         CreateShadowSamplingSet(_splatMaterialLayout, _shadowMap.ShadowTexture,
             paramsUbo, albedoArray, normalArray, sampler ?? _terrainSampler);
 
-    // Shadow resources end each material prefix. Rigid set 0 appends atmosphere, then the interior texture.
+    // Shadow resources end each material prefix. Rigid set 0 appends atmosphere, the interior texture, then water volumes.
     IGpuResourceSet BuildShadowSamplingSet(ShadowSamplingBinding binding, IGpuTexture shadowTexture,
         IGpuTexture pointShadowTexture, IGpuTexture pointShadowTransientTexture, IGpuBuffer pointLightBuffer,
         IGpuTexture? interiorCut = null)
@@ -138,7 +138,7 @@ internal sealed partial class ModelRenderer
         resources[^3] = _shadowMap.ShadowSampler;
         resources[^2] = pointShadowTexture;
         resources[^1] = pointShadowTransientTexture;
-        if (binding.IncludesAtmosphere) resources = [.. _atmosphere.AppendResources(resources), interiorCut ?? _interiorTexture];
+        if (binding.IncludesAtmosphere) resources = [.. _atmosphere.AppendResources(resources), interiorCut ?? _interiorTexture, _waterVolumeBuffer];
         return _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(binding.Layout, resources));
     }
 

@@ -1,0 +1,37 @@
+using static KhaozEngine.Tests.Gpu.RendererPerf.RendererPerfManifest;
+
+namespace KhaozEngine.Tests.Gpu.RendererPerf;
+
+internal static class RendererPerfPaidPolicy
+{
+    // Run 40435928569 lasted 14m17s after a 12-minute cap. Round its 2m17s overrun up.
+    internal const int CleanupAllowanceMinutes = 3;
+    // Run 40599806485 held 1,200 MHz but hit the 70 W software power cap. 1,095 MHz leaves headroom.
+    internal const int LockedGraphicsClockMHz = 1095;
+    // The owner's envelope for every paid pilot and full unit, including attempts already billed.
+    internal const decimal CampaignMaximumUsd = 22m;
+
+    internal static void Validate(RendererPerfManifest manifest)
+    {
+        var execution = manifest.Execution;
+        bool linux = execution.Leg == "linux-vulkan", pilot = manifest.Preset == "pilot";
+        Require(execution.Backend == (execution.Leg == "windows-d3d11" ? "d3d11" : "vulkan")
+            && execution.Runner == (linux ? "gpu-t4-linux" : "gpu-t4-windows")
+            && execution.AdapterPolicy == "nvidia-t4-hardware" && execution.Workflow == "gpu-hosted-bench.yml"
+            && execution.CompletionPolicy == "retained-fence-batch-3/1"
+            && execution.LockedGraphicsClockMHz == LockedGraphicsClockMHz, "Preset", "Backend, hardware, runner, workflow or completion policy differs from the preset.");
+        // Run 40599810511 spent 31 minutes in GRID setup and the first clock query before measuring.
+        int minutes = pilot ? (linux ? 12 : 20) : linux ? 35 : 50;
+        Require(manifest.Limits == new RendererPerfLimits(pilot ? 600 : 1500, 10000, 120000, minutes),
+            "Preset", "Unit, steady frame, cold frame or job deadline differs from the preset.");
+        int billedMinutes = minutes + CleanupAllowanceMinutes;
+        decimal rate = linux ? 0.052m : 0.102m;
+        Require(manifest.Budget == new RendererPerfBudget(billedMinutes, rate, "USD", billedMinutes * rate),
+            "Preset", "Billed minutes, rate, currency or cost cap differs from the preset.");
+        Require(Text(manifest.Approval.Reference) && Text(manifest.Approval.Purpose) && Text(manifest.Approval.CampaignReference)
+            && manifest.Approval.CampaignMaximumUsd >= manifest.Budget.MaximumCostUsd
+            && manifest.Approval.CampaignMaximumUsd <= CampaignMaximumUsd, "Approval",
+            "Exact owner approval and campaign references with a sufficient cap of at most USD "
+            + CampaignMaximumUsd.ToString(System.Globalization.CultureInfo.InvariantCulture) + " are required. A manifest does not grant consent.");
+    }
+}

@@ -3,15 +3,85 @@
 This is the living contract for the internal renderer baseline, offline summaries and comparisons.
 [CROSS-PLATFORM.md](CROSS-PLATFORM.md#paid-hosted-renderer-performance-mode) owns hosted admission
 and execution. The [cold publication design](design/RENDERER-COLD-PUBLICATION.md)
-retains the design rationale. This document records no measured baseline or performance budget.
+retains the design rationale. The renderer sections record no measured baseline or performance budget.
+The hosted CPU physics rebase diagnostic below carries its own fixed limit.
+
+## Hosted physics rebase diagnostic
+
+The separate `physics-rebase-perf.yml` CPU lane runs on `main` every Monday at 04:37 UTC and on
+`workflow_dispatch` against the ref it is started on. It checks out its event's own commit, so the summary
+always describes the commit the run names. It uses only GitHub-hosted `ubuntu-24.04`, follows the isolated
+hosted bench pattern, and is outside the solution, push/PR workflows and merge/release gates. It needs no
+GPU or paid runner. Dispatch it with `gh workflow run physics-rebase-perf.yml --ref <branch>`.
+
+`tools/Physics.Rebase.Perf.Tests` shares the warmed resident fixture with the deterministic Game.Tests guards:
+25 terrain meshes, 2,000 prop statics and 200 dynamics. It retains five interleaved samples, each one step
+followed by two round-trip rebases, and takes the median of the five per-sample rebase/step ratios.
+Each rebase duration is half the pair's duration. The fact writes every paired sample and the median ratio
+to the job summary before asserting. A median above 3x fails that job and retains its TRX artifact.
+Exactly 3x passes. A missing, skipped or unmatched measurement also fails. There are no retries or extra samples.
+
+Ordinary Game.Tests keep zero managed allocation, structurally bounded engine refit call counts and the
+prohibition on `Statics.ApplyDescription`, whose overlap activation wakes sleepers. Identical final tree
+state and zero managed allocation cannot expose extra native tree visits within Bepu. Timing covers that
+remaining class without turning scheduler noise into a merge failure again ([#1512](https://github.com/APKiwiOrg/KhaozEngine/issues/1512)).
+The perf project refuses accidental execution outside its dedicated GitHub workflow. Local verification
+builds it and tests only the pure summary/verdict logic, never the timing workload.
 
 ## Evidence and authorization
 
 `tools/Renderer.Perf.Tests` is outside the solution. Its one opt-in performance fact is not an ordinary
 headless test. Every native measurement or load run needs separate owner approval naming the workload,
-leg, frame counts, duration and spending cap. Implementation approval never authorizes a dispatch,
-pilot, retry, profiler capture or follow-up measurement. Software Vulkan and WARP can establish
+leg, frame counts, duration and spending cap. A paid manifest's campaign cap is at most USD 22, the owner's
+envelope for every paid pilot and full unit including attempts already billed, and each unit's own cost cap must
+fit inside it. The owner raised it from USD 18 after the locked
+[Linux full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599806485) refused and the locked
+[Windows full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599810511) was cancelled. Both
+attempts count against it. Implementation approval never authorizes a dispatch, pilot, retry, profiler capture or follow-up
+measurement. Software Vulkan and WARP can establish
 correctness only. They cannot establish a hardware floor or a T4 result.
+
+Paid caps are fixed by preset and leg. Unit deadlines include startup, replay and publication. The
+job cap also covers external setup and builds.
+
+| Paid unit | Unit seconds | Steady frame milliseconds | Cold frame milliseconds | Job minutes | Maximum billed minutes | USD per minute | Maximum USD |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Linux Vulkan pilot | 600 | 10,000 | 120,000 | 12 | 15 | 0.052 | 0.780 |
+| Windows D3D11 pilot | 600 | 10,000 | 120,000 | 20 | 23 | 0.102 | 2.346 |
+| Linux Vulkan full | 1,500 | 10,000 | 120,000 | 35 | 38 | 0.052 | 1.976 |
+| Windows D3D11 or Vulkan full | 1,500 | 10,000 | 120,000 | 50 | 53 | 0.102 | 5.406 |
+
+The Windows full job cap is 50 minutes because external setup on that runner varies widely. In the
+[locked Windows full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599810511) the GRID
+driver step took 14 minutes 19 seconds against 2 minutes 51 seconds in the locked pilot, and the first
+`nvidia-smi` calls of the clock lock step blocked about 10 minutes against under a second in the pilot.
+Measurement began 31 minutes in and the former 35-minute cap cancelled the job. The unit deadline, frame
+limits, rate and cleanup allowance are unchanged, so the larger cap only absorbs setup time.
+
+The strict manifest requires both `limits.frameMilliseconds` and `limits.coldFrameMilliseconds`.
+Only conditioning frame 0 uses the cold limit, for its immediate CPU interval, retained CPU interval
+including completion and retained GPU duration. Every later conditioning frame, scene frame and
+control frame keeps the steady limit, including the first warm-up frame of each fresh session.
+Equality with a limit passes. The cold frame remains counted and reported inside the original unit
+deadline and job cap. Batch drains and final readback remain separate from an individual frame.
+
+The shared 120,000 ms cold bound is about 2.7 times the 44.9-second first CPU frame in the
+[Windows T4 pilot](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40454067253). The already
+valid Linux T4 pilot's cold frame took 9.42 seconds against its old 10-second limit. A thin margin
+turns ordinary hosted-runner CPU variance into a paid refusal. The 120-second bound admits startup
+work with margin while staying well inside the 600-second pilot and 1,500-second full unit deadlines.
+Every other frame limit stays unchanged. All presets and execution classes use the same first-frame
+rule. Fresh workloads share the unit's native device and compiler caches. The completed WARP and
+Linux T4 pilots retained no later frame above 10 seconds, but these pilot observations do not
+establish a timing bound for unmeasured full schedules or Windows Vulkan.
+
+The modeled maximum billed minutes are the job cap plus an explicit three-minute cleanup allowance.
+The maximum unit cost is those billed minutes times the leg rate. Windows pilot
+[run 40435928569](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40435928569/job/121964605577)
+hit its former 12-minute cap during the build but lasted 14 minutes 17 seconds. Its 2 minutes 17 seconds
+overrun rounds up to three whole billed minutes. This reserves cleanup headroom without extending
+frame or unit execution. It is not a measured bound on future cleanup. Review actual billing against
+the approved unit and cumulative campaign envelope after every attempt.
 
 The public deterministic recipes cover empty, village, outdoors, crowd and effects/UI scenes. They
 use fixed simulation sequences and no consumer assets. The v1 settings encoding fixes uniform indirect
@@ -22,6 +92,24 @@ controls with 64 warm-up and 128 measured frames each. That is 16,944 retained f
 pilot has its own frozen schedule and 1,260 frames. Warm-up and conditioning remain separate from
 measured distributions. A three-frame batch has one completion drain and one harvest, including
 the final short batch. No frame trimming, fastest-iteration selection or adaptive warm-up is allowed.
+
+Shader identities hash exact UTF-8 source bytes, including composed programs and shared fragments.
+Multiline C# literals retain their source file's checkout line endings when compiled. The shader
+providers, ocean templates, temporal uniform declarations, sprite shaders and scaled-copy shaders
+therefore use `text eol=lf` in `.gitattributes`, alongside embedded control shaders and approvals.
+Normalizing only the hash would hide source changes and detach the identity from the compiler input.
+New exact-byte providers must join the attributes and `RendererPerfIdentityCheckoutTests` inventory.
+That class also refuses any string hashed into `ShaderSha256` that carries a carriage return, so a provider
+missing from the inventory still fails on a Windows checkout. `NonWaterShaderSourceEqualityTests` normalizes
+line endings and cannot catch it. Four unpinned water and cascade providers once moved the Windows identity of
+every lit program, and a WARP rehearsal refused at startup.
+So must a test file whose multiline literals are frozen copies of those sources, or snippets compared
+with, spliced into or hashed with them, such as `TemporalVisibilityFrozenD` and
+`PointShadowFilterShaderTests`. Unpinned, Windows compares CRLF test text against LF shipped text.
+Normalizing the comparison instead would leave the frozen copies no longer byte-exact.
+That guard checks effective Git attributes, so an LF development checkout also catches a missing rule.
+Recipe, settings, layout and control-definition objects use canonical JSON serialization instead of
+hashing checkout whitespace. Frozen recipe files are parsed before construction comparison.
 
 Cold preparation renders no hidden scene frame. The first counted conditioning frame uses driver
 index 0 and scene frame index 1. Its active temporal history is deliberately invalid with
@@ -38,6 +126,41 @@ creations. Cold creation remains visible in raw counters and outside measured di
 submissions, completion backpressure and native allocations remain separate backend diagnostics.
 The one batch completion drain and final validation readback occur outside frame brackets.
 
+On Direct3D 11 the batch completion drain also waits for query availability, because a completed later fence
+does not make Direct3D 11 query data available. The free WARP full rehearsal
+[run 40628799283](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40628799283) refused at `S4/TotalOnly/0`
+when the last frame of a drained batch still read S_FALSE, although its final timestamp and disjoint ends came
+before the drained fence in stream order and were flushed. After the fence drain, every pending slot reads its
+disjoint and timestamp queries once without flushing, then repeats flushing `GetData` on each unavailable query
+until all return S_OK, bounded by the unit deadline. The drain span includes this wait. The wait never reads or
+substitutes a value, so a query still unavailable at the bound keeps the strict Pending refusal and disjoint data
+stays Invalid. Vulkan query results are available at fence completion, so Vulkan pools have no wait and record
+nothing.
+
+Each wait is batch telemetry under `completion.queryWait.<ordinal>.`, where the ordinal is the frame's position in
+its batch: `ready`, `polls`, `elapsedTicks`, `fenceTarget`, `fenceCompleted` and `drainTarget`, then
+`<query>.notReady` and `<query>.finalHresult` for `disjoint` and each `timestamp.<index>`. `polls` counts flushing
+rounds, so an already available batch records zero. A query's HRESULT sequence is `notReady` S_FALSE reads, the
+first of them non-flushing, followed by `finalHresult`. A failing HRESULT throws and refuses instead.
+
+Construction capture records conditioning pipelines as `Cold` with their counted nonnegative frame
+indices. Cold setup outside frame brackets has no frame index. Only the conditioning operation may
+have counted `Cold` occurrences. Negative indices remain `Warmup`, and creation at measured indices
+still refuses execution and compiler correspondence.
+
+Unit startup admits every manifest control before the first scene session. Each control also admits
+its whole storage-buffer bindings before creating control resources or recording a frame.
+`GpuCapabilities.MaxStorageBufferRangeBytes` retains the selected Vulkan physical device's
+`maxStorageBufferRange`. Direct3D 11 uses the smaller of its feature-level resource-size guarantee
+from the selected adapter's dedicated video memory and its full raw-view limit. An unknown range
+refuses compute controls. A compatibility refusal names the control, required bytes and admitted
+device bytes. The buffers, schedule and complete output checks never shrink to fit a device.
+Control 7 fixes a 128 MiB input and 128 MiB output on every leg, local size 256 and 1024 by 128 groups.
+This uses the portable 134,217,728-byte storage range advertised by lavapipe and guaranteed by
+Direct3D 11 for WARP. Each frame transforms all 33,554,432 words. Final validation checks every output
+word once after completion. The large stream remains four times control 8's 32 MiB buffers. Its bandwidth numerator
+is 256 MiB of reads plus writes per frame. A device below 128 MiB still refuses before the first session.
+
 Cascade layouts, point-shadow demand and MRT changes retire outgoing graphs through the scene queue.
 The workload starts each scene with `Scene3D.BeginFrame(frame.Submission)`, sharing the host completion
 fence instead of adding the standalone retirement queue's empty submission. No hidden rendered priming
@@ -47,6 +170,27 @@ The outer GPU pair precedes the host clear and follows native command-list End f
 `TotalOnly` brackets the frame with two queries. `PerPass` adds frozen parent/child scopes and
 reserved skip slots. Detailed markers may change synchronization or encoder boundaries. Its frame
 total is diagnostic and never substitutes for a total-only frame result.
+
+Ready, equal outer timestamps are retained as `BelowResolution`, with zero raw elapsed ticks,
+the admitted positive `GpuPeriodNs` and a null duration. Only clear-only controls 1 (`empty-frame`),
+2 (`empty-main-mrt`) and 3 (`empty-depth-only`) may complete with this state, on either backend.
+Their repeated clears can produce equal timestamps even when the native pair correctly brackets
+every clear and End tail. Admission requires every expected color/depth clear, one submission,
+no draws, dispatches, uploads, copies, resolves, mip generation, resource creation or waits,
+no pass markers or frame errors, and the unchanged admitted period. Final promotion also requires
+the frozen control work digest and retained output-validation result. Conditioning, all scene outer
+intervals and controls 4 through 12 still require positive Available timing. Existing per-pass
+BelowResolution support is unchanged.
+
+Raw samples and finite counts never shrink. Offline and published control summaries show separate
+warm-up and measured BelowResolution counts and their reported tick periods. A measured unavailable
+interval prevents the entire numerical timing distribution and achieved mean or rate. Available
+counts are diagnostic, and positive samples never form a substitute subset. Equal query values do
+not prove zero execution cost or redundant-clear elimination. Frequency-derived tick period is not
+an execution-time upper bound, so no such bound or zero reference is invented. Invalid, disjoint,
+pending, missing, nonmonotonic and failed timing keeps its existing refusal. Headless D3D11 traces
+check both recording modes and all three controls, while positive scene and observable-work timing
+guards continue to detect a zero outer bracket around real work.
 
 The [consumer reference](USING-KHAOZENGINE.md#gpu-timestamps-without-waiting) owns the public observer
 registry. `device.scene.begin`, `device.water.geometry`, `device.water.bathymetry` and
@@ -61,41 +205,76 @@ those proofs from outstanding native acceptance and diagnostic collection work.
 
 ## Software correctness rehearsal
 
-The `rehearsal` preset in `khaozengine.renderer-perf-unit/1` selects an explicit correctness execution
-class. It uses the production entrypoint, driver, concrete native session, S3 scene, controls,
-compiler replay, publication and directory certification. Its frozen pilot schedule is unchanged:
-300 conditioning frames, TotalOnly and PerPass at 64 warm-up plus 128 measured frames, and controls
-1/4/5/7/9/11 at 32 plus 64. All 1,260 frames, three-frame completion, timestamp lifecycle, temporal
-history and frame guards remain required. There is no hidden priming frame or semantic scene image
-oracle. Existing control output checks still run.
+The `rehearsal`, `rehearsal-full` and `rehearsal-controls` presets in
+`khaozengine.renderer-perf-unit/1` select an explicit correctness execution class and schedule. Neither the unit name nor approval purpose
+selects a class. All use the production entrypoint, driver, concrete native session, scene/control
+workloads, compiler replay, publication and directory certification. Performance presets retain their
+independent hardware, limits, budget and promotion requirements.
 
-This class binds Linux Vulkan, `ubuntu-24.04`, `mesa-lavapipe-software` and the same workflow and
-completion policy. Actual Vulkan CPU-class or Mesa llvmpipe software identity is required. Hardware
-refuses rehearsal admission, while performance presets keep requiring non-software NVIDIA T4 identity.
-The shared timestamp ring still refuses software by default. Only the rehearsal session explicitly
-opts in, and missing timestamp or completion capability still refuses execution.
+| Schedule | Preset | Conditioning | Scenes and blocks | Controls | Total frames |
+| --- | --- | --- | --- | --- | --- |
+| Pilot | `rehearsal` | 300 S3 frames | S3 TotalOnly and PerPass, each 64 warm-up plus 128 measured | 1/4/5/7/9/11, each 32 plus 64 | 1,260 |
+| Full | `rehearsal-full` | 1,200 S3 frames | All five scenes, the same 30 rotated/alternating blocks as paid full, each 192 warm-up plus 256 measured | All twelve, each 64 plus 128 | 16,944 |
+| All controls | `rehearsal-controls` | 3 S3 frames | None | All twelve, each 64 warm-up plus 128 measured | 2,307 |
 
-Rehearsal has separate fixed limits of 5,400 seconds per unit, 60,000 milliseconds per frame and
-120 minutes per job. Its maximum billed minutes is 120, with rate and maximum USD cost both zero.
+All three-frame completion, timestamp lifecycle, temporal history and frame guards remain required.
+There is no hidden priming frame or semantic scene image oracle. Existing control output checks still
+run. Full rehearsal adds the other scene families and control shapes without shortening their work.
+The all-controls schedule opens one short S3 conditioning session followed by exactly twelve control
+sessions, with no scene blocks. The shared compiler inventory and entrypoint require the leading
+`conditioning:S3` operation. One counted three-frame batch retains that real operation and the
+first-frame temporal history checks. With no scene blocks, the driver retains S3 recipe facts from
+conditioning. This is startup correctness, not thermal conditioning. Each fresh control then warms
+its own resources and timestamps for 64 counted frames. Three-frame completion retains 769 batches. Production cleanup, same-adapter compiler replay, publication and
+directory certification remain required.
+
+An approved successful all-controls rehearsal on each software leg precedes paid full units. The full
+scene rehearsal remains selectable with its finite cap, but its complete schedule has not fit within
+the hosted six-hour job. The all-controls schedule exercises the six additional full-only control
+shapes without making full-scene completion a prerequisite or claiming scene coverage.
+
+An explicit allowlist binds every schedule to `linux-vulkan` with `mesa-lavapipe-software` or
+`windows-d3d11` with `microsoft-warp-software`. The pinned standard runners and bootstrap belong to
+[CROSS-PLATFORM.md](CROSS-PLATFORM.md#free-software-renderer-rehearsal). Actual Vulkan CPU-class or Mesa
+llvmpipe software identity is required on Linux. Windows requires the actual DXGI software adapter
+(WARP), checked before D3D11's single cold timestamp calibration. The End-tail probe and single
+resolve remain required. Hardware refuses rehearsal admission, while performance keeps requiring
+non-software NVIDIA T4 identity. The shared timestamp ring still refuses software by default. Only
+the rehearsal session explicitly opts in, and missing timestamp or completion capability still refuses.
+
+| Rehearsal schedule | Unit seconds | Steady frame milliseconds | Cold frame milliseconds | Job minutes | Maximum billed minutes | Rate and maximum cost |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Pilot on either leg | 5,400 | 60,000 | 120,000 | 120 | 120 | USD 0 |
+| Full on either leg | 19,800 | 60,000 | 120,000 | 350 | 350 | USD 0 |
+| All controls on either leg | 5,400 | 60,000 | 120,000 | 120 | 120 | USD 0 |
+
 Owner and campaign approval references remain required, with a zero-cost campaign instead of the
-paid campaign cap. These initial limits do not establish tighter fit or paid deadline acceptance.
-The first approved hosted run can inform a separately reviewed tighter policy.
+paid campaign cap. The full job cap stays inside the hosted six-hour limit. These conservative first
+caps do not establish software fit or paid deadline acceptance. The all-controls class has its own
+typed limits even where they equal pilot limits. Its cap allows more time than the observed pilot
+control subset, without asserting that the added controls fit. Complete approved runs can inform a
+separately reviewed tighter policy. Native blocking calls remain outside cooperative deadline checks.
 
 Success requires completed returned final publication, zero failures, every frame guard passed,
-Complete compiler collection and successful directory certification. Its assessment is non-promotable
-from creation, with fixed reason `SoftwareRehearsalNotPerformanceEvidence`. That must be its only
-promotion reason on success. Five-percent clock/work drift is retained in window metrics and the
-`rehearsal.clockOrWorkDrift.blocks` diagnostic count. It does not fail this correctness verdict.
+Complete compiler collection and successful directory certification. Every rehearsal assessment is
+non-promotable from creation, with fixed reason `SoftwareRehearsalNotPerformanceEvidence`. That must
+be its only promotion reason on success. Five-percent clock/work drift is retained in window metrics
+and the `rehearsal.clockOrWorkDrift.blocks` diagnostic count. It does not fail this correctness verdict.
 The strict reader refuses any attempt to promote a rehearsal, and offline analysis and comparison
 cannot use it as eligible performance evidence. The paid success verdict stays unchanged.
 
 Authorization uses the same workload A, single-manifest authorization B, immutable ref, byte hash,
 first-attempt rule and exact declared runtime/environment map described in
 [CROSS-PLATFORM.md](CROSS-PLATFORM.md#free-software-renderer-rehearsal). A proposal or implementation
-is not permission to run. A successful rehearsal proves that this shared Linux unit completed on that
-host. It cannot certify a future T4 image, NVIDIA driver/compiler behavior, physical synchronization,
-clocks, paid budgets, unchanged paid deadlines, Windows or D3D11. It never establishes a hardware floor,
-reference rate or performance comparison.
+is not permission to run. Each leg and schedule needs its own exact approval.
+
+A completed Linux run proves its approved production schedule, Vulkan shader/query/fence lifecycle,
+compiler replay and Linux publication path on that software host. A completed Windows run covers its
+Windows runtime, WARP identity, D3D11 query/fence/End-tail lifecycle, shader/control execution, DXBC
+replay and Windows publication path. Neither certifies a future T4 image, GRID installation, NVIDIA
+driver/compiler behavior, physical synchronization, clocks, paid billing or unchanged paid deadlines.
+Neither establishes a hardware floor, reference rate or performance comparison. Different software
+ordering can conceal physical synchronization defects, and a green run does not inject device loss.
 
 ## Cold backend evidence
 
@@ -121,6 +300,20 @@ state, code generation and actual primary-backend artifacts. Requested and effec
 remain separate. Only the explicit diagnostic choices may differ. No extra frame or calibration is
 part of collection. Current live resource counts accompany actual backend peak logical payload bytes.
 Diagnostic memory does not increase the production peak.
+
+Construction stores each distinct exact stage source and immutable descriptor once by content hash.
+Its unchanged 32 MiB source and 16 MiB descriptor limits charge distinct content, including retained
+unresolved descriptors and source hash keys. Every factory event and occurrence witness still counts
+against 16 MiB of evidence, within the combined 64 MiB logical limit. This lets fresh operations
+recreate identical pipelines across the full 43-operation schedule without exhausting the source cap.
+Hash equality always requires value equality. No occurrence or source byte is pruned.
+
+`khaozengine.renderer-compiler-inventory/2` carries a first-reference-ordered table of source hashes
+and exact text. Shader stages reference that table, while all factory events reference canonical
+shader/layout descriptors. Recipe identities retain their existing exact-value encoding. The strict
+reader refuses inventory/1 without migration, changed hashes, unused or duplicate rows, foreign
+references and noncanonical order. Live publication, offline verification and baseline publication
+share this codec and its production-to-replay correspondence checks.
 
 `GpuDiagnosticDigest` carries a nullable SHA-256, provenance, status and reason. Available identities
 require a lowercase 64-digit hash of actual nonempty bytes. Unsupported or Invalid identities require
@@ -151,7 +344,12 @@ chunks no larger than 65,536 bytes. It checks safe relative paths, aliases, link
 nonempty lengths, SHA-256, strict schema, execution identity, decoded counts and all construction,
 read and result associations. Expected files come from producer registration, never enumeration. The existing fixed-cadence host telemetry producer also registers its exact JSONL output, without another sampler call.
 `RendererPerfAnalysis.ReadDirectory` calls this same verifier. Only verification constructs the
-immutable verified artifact. It retains actual handle identities and no-follow directory-entry
+immutable verified artifact. The control corpus contains exactly `chain.comp`, `stream.comp`,
+`fma.comp`, `dependent.comp`, `fullscreen` and `depth-read`. Compute local sizes are 1, 256, 64
+and 64. Both graphics pairs use zero. Every record retains its four shader hashes, positive store
+count and nonnegative instruction counts.
+
+The verified artifact retains actual handle identities and no-follow directory-entry
 identities, refuses hard-link aliases, and rechecks all retained files and parent directories at the
 final certification boundary. macOS arm64/x64 uses fstat/fstatat and no-follow openat. Linux x64
 uses statx and no-follow openat. Windows uses disk-file IDs and reparse-point handles. Unavailable
@@ -189,7 +387,8 @@ outside-solution process prerequisite before `dotnet test -c Release --no-build`
 ordinary CI and the native GPU matrix use this same build owner, including native shard solutions
 that select Render.Tests. Process tests refuse a missing executable.
 
-The outside-solution `tools/Renderer.Perf.Verify` console takes exactly directory and report filename.
+The directory-verification mode of the outside-solution `tools/Renderer.Perf.Verify` console takes
+exactly directory and report filename. Its `publish` mode is described under Publishing a baseline.
 It performs no backend registration, device creation or measurement. Exit zero means directory
 verification succeeded. The trusted workflow invokes its built DLL after independent execution
 identity checks, then verifies received files again rather than accepting parsed JSON alone.
@@ -291,8 +490,43 @@ when timestamp partitions are complete.
 
 Clock/work drift uses the existing protocol rule. Flag a change above 5 percent between first64 and
 last64, or between corresponding iteration means and the first retained iteration mean. Such
-evidence cannot be promoted as a stable baseline. Keep slow and GC frames. Missing clock telemetry
-stays missing and does not certify stable clocks.
+evidence cannot be promoted as a stable baseline. Keep slow and GC frames.
+
+Paid T4 units lock the graphics clock at 1,095 MHz on every preset and leg. The unlocked
+[Linux full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40572172000) and
+[Windows full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40572176659) completed every
+conditioning frame, block and control without frame errors, then refused promotion with
+`ClockOrWorkDrift`. Their telemetry alternated between idle clocks and software power capping at
+70 W. Loaded graphics clocks reached about 1,290 to 1,455 MHz at the cap, while lighter work boosted
+higher or dropped to idle. That motivated a lock below the loaded range instead of variable boost.
+The [locked Linux full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599806485) then
+applied a 1,200 MHz lock, completed all 30 blocks and 12 controls with a worst drift of 1.03 percent
+and no `ClockOrWorkDrift`, and refused only `GpuClockNotLocked`. One of its 90 samples reported
+software power cap (`0x4`) at a held 1,200 MHz while averaging 54.4 W. The lock moved to 1,095 MHz
+for more power headroom below the 70 W cap. It is a T4 graphics clock already observed in this
+program's telemetry and a multiple of 15 MHz. The throttle policy below is unchanged and still
+refuses `0x4` at the locked clock. No measured unit has held 1,095 MHz yet.
+
+`GpuClockNotLocked` is independent of the unchanged drift rule. Every retained conditioning, scene
+and control batch must carry the identified host observation from the fixed sampler. Any observed
+graphics clock other than the approved value, unavailable clock or throttle mask, missing observation,
+or unknown throttle bit refuses promotion. The sampler also retains current memory and maximum
+graphics clocks. The deprecated requested application-clock field remains evidence even when the
+driver reports it unsupported. It is not the lock readback.
+
+The [NVIDIA throttle bitmask](https://docs.nvidia.com/deploy/archive/R550/nvml-api/group__nvmlClocksEventReasons.html)
+allows no limiter (`0x0`), idle (`0x1`) and application-clock setting (`0x2`), including their combination,
+only while the observed graphics clock is exactly the lock. The latter flags can describe the idle
+sampler boundary or an intentional clock setting. Power cap (`0x4`), hardware slowdown (`0x8`),
+software thermal slowdown (`0x20`), hardware thermal slowdown (`0x40`) and power brake (`0x80`)
+refuse even at the requested clock. Sync boost (`0x10`), display-clock setting (`0x100`) and unknown
+bits also refuse because another policy could limit the clock. A successful lock command alone
+never certifies a held clock.
+
+The strict report retains `gpuClock` with the approved clock, verification state, distinct sample
+count and refusal cause. Live assessment, strict decoding, directory verification and offline analysis
+recompute the result from retained observations. Published summaries retain it beside the immutable
+manifest. Software rehearsals record `NotApplicable` and never acquire the paid lock requirement.
 
 `Perturbations[scene/iteration]` retains the signed per-pass outer mean minus the matching total-only
 outer mean as `DifferenceNs`, and `Percent` is `100 * difference / totalOnlyMean`. `ThresholdNs` is
@@ -387,3 +621,67 @@ compact invariant-culture output. JSON and the retained inputs remain the reprod
 Summary Markdown revalidates the retained raw report and references before computing eligibility,
 reasons and distributions. Cached success cannot override failed raw evidence at publication.
 A changed recipe, driver or protocol starts a new baseline series with the prior result retained.
+
+
+## Publishing a baseline
+
+Build the offline verifier through the Release setup above, then publish a received full pair with
+one command. This reads files only, registers no GPU provider and starts no measurement:
+
+```sh
+dotnet tools/Renderer.Perf.Verify/bin/Release/net10.0/Renderer.Perf.Verify.dll publish --request request.json
+```
+
+The request schema is `khaozengine.renderer-baseline-request/1`. JSON is capped at 1 MiB and depth
+32. Duplicate or unknown fields, missing required values, null array entries and nonfinite numbers
+refuse. It requires `outputDirectory` and
+exactly two `legs`, one `linux-vulkan` and one `windows-d3d11`. Each leg supplies `leg`, `directory`,
+`reportName`, `runUrl`, integer `billedMinutes`, `manifestSha256`, `workloadSha`, `workflowSha` and
+`harnessSha256`. The hashes name the expected approved evidence, independently of the received report.
+The run URL must name that report's first attempt in `APKiwiOrg/KhaozEngine`, including
+`/actions/runs/<runId>/attempts/1`. `reportName` is the unit ID plus `.json`.
+Paths in a request file resolve relative to that file. Billing is an explicit operator-supplied
+actual, never inferred from elapsed time or estimated cost. It must be positive and within the
+approved billed-minute cap. The publisher records the supplied minutes without claiming to query
+GitHub billing.
+
+An optional `references` object per leg uses the exact `scene/pass/occurrence` keys and
+`RendererPerfReferenceRates` fields described under Work models and reference gaps. Omit it when no
+matched evidence exists. Each rate object supplies all eight constructor fields, using null for unavailable numeric inputs.
+The summary retains all supplied reference rates and their sources.
+
+The command calls the real registered-file directory verifier for both legs before creating output.
+It then reruns analysis and admission. Rehearsals, pilots, failed promotion, partial or incomplete
+publication, missing or changed sidecars, foreign hashes, mismatched native/compiler backends and
+unmatched run links refuse. Both legs must share workload and baseline source identities. Each leg retains its independently
+pinned workflow and harness identity.
+They remain separate series and acquire no cross-backend regression deltas. Refusals have typed
+codes printed by the console. Verification failures retain their original exception as the cause.
+The codes are `Request`, `EvidenceInvalid`, `Rehearsal`, `NotFull`, `Identity`, `Promotion`, `Billing`,
+`Pair`, `Exists` and `Write`.
+
+The output format is `khaozengine.renderer-baseline/1`. Each leg writes
+`<leg>-<unitId>.md`, and the pair writes `index-<linuxUnitId>-<windowsUnitId>.md`. The summary records
+its immutable run and attempt, verified report digest, manifest, workflow, source and harness hashes,
+runtime and native identity, full declared configuration and compiler configurations. It lists
+combined total-only scene distributions, each iteration's mean, detailed pass and gap assessments,
+controls and instrumentation perturbation. ModelIncomplete, Unsupported, Invalid and NotExecuted
+remain visible with their reasons. Only available excess distributions enter the largest-excess
+ranking. Investigation suggestions are leads, not established causes. If none is available, the
+summary says so and requests matched reference evidence.
+
+Three iterations establish within-job repeatability only. The summary retains that limit, the
+partial-write accounting proof limit in [#1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547),
+and the separate boundaries for optimization, consumer fit, Windows Vulkan and release. Successful
+publication does not close any of those boundaries.
+
+Output is UTF-8 without a BOM, with LF line endings, invariant numbers, ordinal ordering and sorted
+JSON object keys. No publication time or input/output directory path enters the summary. Reversing
+the request's leg or reference-key ordering produces the same bytes. Every output uses exclusive
+creation. An existing summary or pair index refuses before writes, even for identical inputs.
+Keep earlier files and publish new units under new names. An I/O failure can leave partial output,
+which remains evidence of that failed publication rather than permission to overwrite it.
+
+Store reviewed summaries under `docs/performance/renderer/` with the original received artifacts
+retained in their workflow run. The publisher does not commit files or dispatch follow-up work.
+No measured baseline is checked in until an eligible full pair exists.

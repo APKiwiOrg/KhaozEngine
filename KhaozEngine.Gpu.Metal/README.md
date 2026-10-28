@@ -1030,16 +1030,19 @@ storage buffer an earlier dispatch wrote sees the write without an intermediate 
 needs no barrier batch, layout tracker or dependency analysis for that contract. Ordering across command lists
 still requires a submit boundary and a wait.
 
-**`ResolveTexture` DESTROYS the source texture's contents, and that is deliberate.** The resolve is a
-standalone render pass whose one colour attachment is the multisampled source at `loadAction = Load` and
-`storeAction = MultisampleResolve`, with the destination as its resolve texture. Metal's resolve store action
-does not also store the multisampled attachment, so the source is undefined afterwards. This diverges from
-Direct3D 11's `ResolveSubresource` and Vulkan's `vkCmdResolveImage`, which both leave the source alone, and it
-is reproduced from the deleted Veldrid Metal backend rather than fixed: the engine re-clears its MSAA render
-targets at the start of the next frame's pass, discarding is the bandwidth-correct answer on Apple's tile-based
-architecture, and the committed `metal` goldens were baked under it. **If you need the source preserved, copy it
-before resolving.** A consumer relying on the source surviving a resolve is relying on behaviour this backend
-does not have.
+**The two-argument `ResolveTexture(src, dst)` discards the source contents.** Its standalone render pass
+loads the multisampled source with `loadAction = Load` and uses `storeAction = MultisampleResolve`, with the
+destination as its resolve texture. This keeps the existing final resolve's bandwidth cost and store action.
+The source is undefined afterwards, unlike Direct3D 11's `ResolveSubresource` and Vulkan's `vkCmdResolveImage`,
+which preserve it.
+
+**`ResolveTexture(src, dst, preserveSource: true)` stores every source sample as well as resolving.** It uses
+`MTLStoreAction.StoreAndMultisampleResolve`, so a later pass can reload the same multisampled attachment,
+draw more colour and issue the normal final resolve. Native MSAA textures use `MTLStorageMode.Private`,
+including `Scene3D`'s `MsColor`, so they can be stored and reloaded. No texture storage mode changes for this
+option. The extra source store is paid only by callers requesting preservation, including water's early
+scene-colour snapshot. Calls with `preserveSource: false` use the default store action. The resolve remains a
+standalone encoder, independent of any future folded-resolve optimization.
 
 **A resolve ends the render pass you have open, and it does not flush a clear-only one.** It is the only
 recorded command here that needs its own end, because it opens a render encoder of its own and every other

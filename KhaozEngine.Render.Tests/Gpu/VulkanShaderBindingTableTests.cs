@@ -251,6 +251,9 @@ namespace KhaozEngine.Tests.Gpu
                 ];
                 if (prefix == 11)
                     atmosphere = [.. atmosphere, new(0, 14, GpuResourceKind.TextureReadOnly, "InteriorCut")];
+                int waterBinding = prefix == 11 ? 15 : prefix + 3;
+                atmosphere = [.. atmosphere,
+                    new(0, waterBinding, GpuResourceKind.StructuredBufferReadOnly, "WaterVolumeBuffer")];
                 Assert.Equal(atmosphere, Parse(program.FragmentGlsl)
                     .Where(d => d.Set == 0 && d.Binding >= prefix).OrderBy(d => d.Binding).ToArray());
             }
@@ -260,7 +263,7 @@ namespace KhaozEngine.Tests.Gpu
         public void WaterPrograms_AppendAtmosphereAfterTheDynamicWaterUniform()
         {
             var elements = VulkanDescriptorLimitTests.ShippedLayouts["Water"].Elements!;
-            Assert.Equal(12, elements.Length);
+            Assert.Equal(17, elements.Length);
             Assert.Equal("Water", elements[6].Name);
             Assert.True(elements[6].Dynamic);
             Declaration[] atmosphere =
@@ -270,10 +273,15 @@ namespace KhaozEngine.Tests.Gpu
                 new(0, 9, GpuResourceKind.Sampler, "AtmoSkySampler"),
                 new(0, 10, GpuResourceKind.TextureReadOnly, "OpticsTex"),
                 new(0, 11, GpuResourceKind.Sampler, "OpticsSamp"),
+                new(0, 12, GpuResourceKind.TextureReadOnly, "ColumnShadowAtlas"),
+                new(0, 13, GpuResourceKind.Sampler, "ColumnShadowSampler"),
+                new(0, 14, GpuResourceKind.UniformBuffer, "WaterLitFrame"),
+                new(0, 15, GpuResourceKind.TextureReadOnly, "ColumnSceneColor"),
+                new(0, 16, GpuResourceKind.Sampler, "ColumnColorSampler"),
             ];
-            foreach (var program in ShippedShaderPrograms.GraphicsPrograms()
-                .Where(p => p.Name is "Water" or "WaterClipmap" or "BoundedWater" or "WaterTriangle" or "WaterClipmapTriangle"))
-                Assert.Equal(atmosphere, Parse(program.FragmentGlsl).Where(d => d.Set == 0 && d.Binding >= 7).ToArray());
+            foreach (var program in ShippedShaderPrograms.GraphicsPrograms().Where(p => p.Name is "Water" or "WaterClipmap" or "BoundedWater" or "WaterTriangle" or "WaterClipmapTriangle"))
+                Assert.Equal(atmosphere, Parse(program.FragmentGlsl).Where(d => d.Set == 0 && d.Binding >= 7)
+                    .OrderBy(d => d.Binding).ToArray());
         }
 
         /// <summary>The compute half, over all four cascade resolutions of both ocean kernels.</summary>

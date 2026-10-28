@@ -143,7 +143,7 @@ internal sealed class PointLightClusterRanges
         return min >= 0;
     }
 
-    // One plane per tile boundary, through the corner rays the builder unprojected for it, oriented so the next tile
+    // One plane per tile boundary, through the corner rays the shared grid unprojected for it, oriented so the next tile
     // along lies on its positive side. Every cluster's side plane on that boundary is built from points on the same
     // rays, so the two agree up to rounding. The margin covers that rounding on the seeded equivalence scenes, with the
     // same slice-zero exception the class summary describes, rather than by proof. A failure here gives every light the

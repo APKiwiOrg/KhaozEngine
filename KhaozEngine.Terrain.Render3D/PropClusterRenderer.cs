@@ -21,6 +21,8 @@ namespace KhaozEngine.Terrain
         int DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor);
         int DrawShadowOnlyProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
             float dissolveFloor) => throw new NotSupportedException("This cluster backend has no shadow-only prop path.");
+        int DrawColourOnlyProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
+            float dissolveFloor) => throw new NotSupportedException("This cluster backend has no colour-only prop path.");
         void DrawShadowOnlyMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement) =>
             throw new NotSupportedException("This cluster backend has no shadow-only merged path.");
         void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement);
@@ -385,19 +387,27 @@ namespace KhaozEngine.Terrain
             public void UnloadMesh(MeshHandle handle) => _scene.UnloadMesh(handle);
 
             public int DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
-                                  float dissolveFloor)
+                                  float dissolveFloor) =>
+                Draw(placements, layer, focus, dissolveFloor, layer.CastsShadows);
+
+            public int DrawColourOnlyProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
+                                           float dissolveFloor) =>
+                Draw(placements, layer, focus, dissolveFloor, castsShadows: false);
+
+            int Draw(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor,
+                     bool castsShadows)
             {
                 if (layer.PartMeshes is { } partMeshes)
                     return _scene.DrawProps(placements, partMeshes, focus, layer.DrawRadius,
                         tint: null, fadeBandWidth: layer.FadeBandWidth, lodParts: layer.LodPartMeshes,
                         lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor,
-                        castsShadows: layer.CastsShadows, blobRadii: layer.BlobRadii,
+                        castsShadows: castsShadows, blobRadii: layer.BlobRadii,
                         lodCrossfadeWidth: layer.LodCrossfadeWidth, cutInsideInteriors: layer.CutsInsideInteriors);
                 else
                     return _scene.DrawProps(placements, layer.Meshes, focus, layer.DrawRadius,
                         tint: null, fadeBandWidth: layer.FadeBandWidth, lodMeshes: layer.LodMeshes,
                         lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor,
-                        castsShadows: layer.CastsShadows, blobRadii: layer.BlobRadii,
+                        castsShadows: castsShadows, blobRadii: layer.BlobRadii,
                         lodCrossfadeWidth: layer.LodCrossfadeWidth, cutInsideInteriors: layer.CutsInsideInteriors);
             }
 

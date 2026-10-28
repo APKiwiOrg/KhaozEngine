@@ -39,7 +39,7 @@ public sealed class RendererPerfExecutionEvidenceTests
 
     internal static RendererPerfReport WithTrace(RendererPerfReport report)
     {
-        var sample = report.Blocks[0].Measured[0];
+        var sample = report.Blocks.SelectMany(b => b.Measured).Concat(report.Controls.SelectMany(c => c.Measured)).First();
         var conditioning = Enumerable.Range(0, report.Manifest.ConditioningFrames)
             .Select(i => sample with { FrameId = i, SequenceIndex = i % 256 }).ToImmutableArray();
         var batches = new List<RendererPerfBatchReport>();
@@ -55,6 +55,6 @@ public sealed class RendererPerfExecutionEvidenceTests
             Add($"{block.Block.SceneId}/{block.Block.Layout}/{block.Block.Iteration}", block.Warmup.Length + block.Measured.Length);
         foreach (var control in report.Controls)
             Add($"control:{control.Control.Id}/TotalOnly/0", control.Warmup.Length + control.Measured.Length);
-        return report with { Conditioning = conditioning, Batches = [.. batches] };
+        return RendererPerfGpuClockAssessmentTests.WithClocks(report with { Conditioning = conditioning, Batches = [.. batches] });
     }
 }

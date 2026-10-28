@@ -77,12 +77,26 @@ covering the same work. Independent consumer threads start their own scopes, joi
 There is no implicit propagation to arbitrary consumer tasks. An empty combination has no labels and zero
 totals. Null sequences or elements throw `ArgumentNullException`.
 
-The counter indexer returns `long`. The 42 `SupportQueryCounter` identities are explicit values 0 through 41,
-from `Find` to `InitialHoldReuseHits`, with new counters appended and no Count sentinel. Undefined values throw
+The counter indexer returns `long`. The 48 `SupportQueryCounter` identities are explicit values 0 through 47,
+from `Find` to `PlayerContactSteps`, with new counters appended and no Count sentinel. Undefined values throw
 `ArgumentOutOfRangeException`. Enabled recording and aggregation use checked long arithmetic and throw
 `OverflowException` on overflow. Ordinary counters and routes add. `Routes` exposes `WallRetries`,
 `PushedPlacements`, `MediumResolves`, `MaximumMediumRetries`, `GroundSegments`, `SlideSegments`, `AirSegments`,
 `WaterSegments`, `RoundedReads` and `MediumHandoffs`. Only `MaximumMediumRetries` takes the maximum.
+
+Outer movement invocations use six appended counters. `NpcLegacyHolds`, `NpcContactHolds`, `NpcLegacySteps`
+and `NpcContactSteps` count calls to `NpcGroundMovement.Hold` or `Step` after the context null guard, classified
+by the requested tuning's controller. Destination and steering state do not decide the operation. A caller
+holding while waiting for a path counts a Hold, while a non-following call to Step still counts a Step.
+Direct `GroundMoveContext.Step` calls do not add outer NPC invocations.
+
+`PlayerLegacySteps` and `PlayerContactSteps` count the authoritative `PlayerMovementSystem` per-entity Step
+selection once, including idle commands and rejected selected Steps. Ghosts, migrating entities and entities
+missing required components do not step and do not count. Players have no outer Hold entry point in this
+system. `HoldExplicit` is a nested held-result fallback inside a Step and adds no outer invocation. Direct
+`PlayerMoveSimulator` consumers, including client prediction and replay, do not add these player counts.
+All six use the same thread-local recorder and exclusive labels as nested support work. They sum through
+`Combine` and worker reduction, and disabled recording allocates no counter storage or per-call overhead.
 
 Contact navigation joins every started worker and merges its local record exactly once in worker-index order,
 under the label captured when that build started. Partial worker work merges before the selected build failure

@@ -12,13 +12,14 @@ internal sealed record RendererPerfCompilerFile(string Schema, string UnitId, st
     string WorkloadSha, RendererPerfCompilerInventory Inventory);
 internal static partial class RendererPerfCompilerJson
 {
-    internal const string Schema = "khaozengine.renderer-compiler-inventory/1";
+    internal const string Schema = "khaozengine.renderer-compiler-inventory/2";
     internal static readonly JsonSerializerOptions Options = CreateOptions();
     static JsonSerializerOptions CreateOptions()
     {
         var options = new JsonSerializerOptions(RendererPerfManifest.JsonOptions)
         { TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { RequireMembers } } };
         AddValues(options);
+        options.Converters.Add(new InventoryConverter());
         return options;
     }
     static void RequireMembers(JsonTypeInfo type)
@@ -69,7 +70,8 @@ internal static partial class RendererPerfCompilerJson
     }
     static void Preflight(JsonElement root)
     {
-        foreach (var (name, maximum) in new[] { ("operations", 43), ("factoryEvents", 44032), ("shaders", 44032),
+        if (root.GetProperty("schema").GetString() != Schema) throw new JsonException("Unknown compiler inventory schema.");
+        foreach (var (name, maximum) in new[] { ("sources", 88064), ("operations", 43), ("factoryEvents", 44032), ("shaders", 44032),
             ("layouts", 44032), ("recipes", 1024), ("occurrences", 11008) })
             if (root.GetProperty(name).GetArrayLength() > maximum) throw new JsonException("Inventory count exceeds " + name + " capacity.");
     }

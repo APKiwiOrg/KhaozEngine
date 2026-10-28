@@ -54,10 +54,8 @@ public sealed partial class AudioSystem
 
     /// <summary>
     /// Sets the volume multiplier (0.0 - 1.0, clamped) for the bus <paramref name="id"/>, defining it if it was
-    /// not already defined. Applies to sounds played on that bus AFTER this call. Sounds already playing on the
-    /// bus keep the gain they were started with: the SFX backend seam is fire-and-forget (<c>ISfxBackend.Play</c>
-    /// returns no voice handle and exposes no per-voice gain setter), so a live per-voice re-gain is not possible
-    /// without a breaking seam change. SFX one-shots are short, so this is a mild limitation; see the Audio docs.
+    /// not already defined. One-shots sample the value when they start. Protected loops update live without
+    /// replaying, and a failed loop gain write is retried on the next explicit update.
     /// A <c>null</c> or empty id (the implicit default bus) is ignored: the default bus is always 1.0.
     /// </summary>
     /// <exception cref="InvalidOperationException">The caller is not on the thread that constructed this
@@ -67,6 +65,7 @@ public sealed partial class AudioSystem
         EnsureOwningThread();
         if (string.IsNullOrEmpty(id)) return;
         _busVolumes[id] = Math.Clamp(volume, 0f, 1f);
+        RefreshLoopMix();
     }
 
     /// <summary>

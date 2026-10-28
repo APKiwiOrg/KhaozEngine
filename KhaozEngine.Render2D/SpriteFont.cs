@@ -29,6 +29,7 @@ namespace KhaozEngine.Render2D
 
     /// <summary>
     /// A bitmap font rasterized at load time from a TrueType file (stb_truetype) into a single atlas.
+    /// A borrowed view from <c>DpiFont.Bind</c> keeps its identity while resolving the owner's current atlas.
     /// Draw with <see cref="SpriteBatch.DrawString(KhaozEngine.Render2D.SpriteFont, string, System.Numerics.Vector2, KhaozEngine.Primitives.Color)"/>.
     /// <para>
     /// A bake <c>density</c> rasterizes the atlas at <c>pixelHeight * density</c> while reporting all layout
@@ -42,20 +43,36 @@ namespace KhaozEngine.Render2D
     /// </summary>
     public sealed class SpriteFont : IDisposable, ITextMeasurer
     {
-        internal readonly Texture2D Atlas;
-        internal readonly int AtlasW, AtlasH;
-        internal readonly float Ascent;
+        readonly Texture2D? _atlas;
+        readonly int _atlasW, _atlasH;
+        readonly float _ascent, _lineHeight, _renderScale;
+        readonly Dictionary<char, GlyphInfo> _glyphs = new();
+        readonly Func<SpriteFont>? _source;
+
+        internal Texture2D Atlas => Resolve()._atlas!;
+        internal int AtlasW => Resolve()._atlasW;
+        internal int AtlasH => Resolve()._atlasH;
+        internal float Ascent => Resolve()._ascent;
         /// <summary>Atlas-texel -> logical-pixel scale (1 / density); applied to the glyph dest quad.</summary>
-        internal readonly float RenderScale;
-        internal readonly Dictionary<char, GlyphInfo> Glyphs = new();
+        internal float RenderScale => Resolve()._renderScale;
+        internal Dictionary<char, GlyphInfo> Glyphs => Resolve()._glyphs;
 
         /// <summary>Recommended line advance, in logical pixels (independent of the bake density).</summary>
-        public float LineHeight { get; }
+        public float LineHeight => Resolve()._lineHeight;
 
         SpriteFont(Texture2D atlas, int aw, int ah, float ascent, float lineHeight, float renderScale)
         {
-            Atlas = atlas; AtlasW = aw; AtlasH = ah; Ascent = ascent; LineHeight = lineHeight; RenderScale = renderScale;
+            _atlas = atlas; _atlasW = aw; _atlasH = ah; _ascent = ascent;
+            _lineHeight = lineHeight; _renderScale = renderScale;
         }
+
+        SpriteFont(Func<SpriteFont> source) => _source = source;
+
+        internal static SpriteFont CreateBound(Func<SpriteFont> source) => new(source);
+
+        // Retained controls keep the view's identity. A text operation resolves one physical font so its
+        // metrics, glyphs and atlas all come from the same density snapshot.
+        internal SpriteFont Resolve() => _source is null ? this : _source();
 
         /// <summary>
         /// The visible substitute for any codepoint outside the baked coverage: unbaked codepoints measure
@@ -70,12 +87,20 @@ namespace KhaozEngine.Render2D
         /// coverage measure as <see cref="FallbackChar"/> (control characters stay zero-width), matching
         /// what <see cref="SpriteBatch.DrawString(KhaozEngine.Render2D.SpriteFont, string, System.Numerics.Vector2, KhaozEngine.Primitives.Color)"/> draws.
         /// </summary>
-        public Vector2 Measure(string text) => new Vector2(MeasureWidth(Glyphs, text), LineHeight);
+        public Vector2 Measure(string text)
+        {
+            SpriteFont font = Resolve();
+            return new Vector2(MeasureWidth(font._glyphs, text), font._lineHeight);
+        }
 
         /// <summary>As <see cref="Measure(string)"/>, but genuinely allocation-free: <see cref="MeasureWidth"/>
         /// walks a span directly, so a caller measuring a candidate that may be thrown away (e.g.
         /// <see cref="TextLayout.Wrap"/>) never allocates a string just to measure it.</summary>
-        public Vector2 Measure(ReadOnlySpan<char> text) => new Vector2(MeasureWidth(Glyphs, text), LineHeight);
+        public Vector2 Measure(ReadOnlySpan<char> text)
+        {
+            SpriteFont font = Resolve();
+            return new Vector2(MeasureWidth(font._glyphs, text), font._lineHeight);
+        }
 
         /// <summary>The advance-sum width of <paramref name="text"/> under the shared measure/draw glyph
         /// resolution (<see cref="ResolveGlyph"/>), so metrics always agree with rendering.</summary>
@@ -108,7 +133,11 @@ namespace KhaozEngine.Render2D
             return glyphs.TryGetValue(FallbackChar, out GlyphInfo? f) ? f : null;
         }
 
-        public void Dispose() => Atlas.Dispose();
+        public void Dispose()
+        {
+            // A bound view borrows its owner's cached fonts. Only physical fonts own an atlas.
+            if (_source is null) _atlas!.Dispose();
+        }
 
         internal static SpriteFont Build(IGpuDevice gd, byte[] ttf, float pixelHeight, int oversample = 1) =>
             Build(gd, ttf, pixelHeight, (float)Math.Max(1, oversample));

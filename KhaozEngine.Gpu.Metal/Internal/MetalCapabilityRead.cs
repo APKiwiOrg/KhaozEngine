@@ -199,6 +199,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 supportsCompletionFences: SupportsCompletionFences)
             {
                 MaxColorAttachments = ColorRenderTargets,
+                MaxFragmentStorageBuffers = 31,
                 SupportsTimestamps = supportsTimestamps,
             };
     }

@@ -10,7 +10,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <param name="Name">A stable name for the program, used as the hash-table key.</param>
     /// <param name="VertexGlsl">The vertex source.</param>
     /// <param name="FragmentGlsl">The fragment source.</param>
-    public readonly record struct ShippedGraphicsProgram(string Name, string VertexGlsl, string FragmentGlsl);
+    /// <param name="WaterVolumeBinding">Set 0 binding for lit receivers, also checked after shader optimization.</param>
+    public readonly record struct ShippedGraphicsProgram(string Name, string VertexGlsl, string FragmentGlsl,
+        int? WaterVolumeBinding = null);
 
     /// <summary>One shipped compute kernel.</summary>
     /// <param name="Name">A stable name for the kernel, used as the hash-table key.</param>
@@ -60,37 +62,37 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("GpuScaledCopy", GpuScaledCopy.VertexSource, GpuScaledCopy.FragmentSource);
 
             // Render3D model and terrain.
-            yield return new("Model", ShaderSources.ModelVert, ShaderSources.ModelFrag);
-            yield return new("Foliage", ShaderSources.FoliageVert, ShaderSources.ModelFrag);
-            yield return new("PreparedFoliage", ShaderSources.PreparedFoliage(ShaderSources.FoliageVert, 2), ShaderSources.ModelFrag);
-            yield return new("PreparedFoliageMotion", ShaderSources.PreparedFoliage(ShaderSources.FoliageMotionVert, 3), ShaderSources.ModelMotionFrag);
+            yield return new("Model", ShaderSources.ModelVert, ShaderSources.ModelFrag, 15);
+            yield return new("Foliage", ShaderSources.FoliageVert, ShaderSources.ModelFrag, 15);
+            yield return new("PreparedFoliage", ShaderSources.PreparedFoliage(ShaderSources.FoliageVert, 2), ShaderSources.ModelFrag, 15);
+            yield return new("PreparedFoliageMotion", ShaderSources.PreparedFoliage(ShaderSources.FoliageMotionVert, 3), ShaderSources.ModelMotionFrag, 15);
             // R-GPU-1 / T8-R1. Both depth programs keep anchor set 3. Opaque has an empty set 2 in the resource catalog.
             yield return new("PreparedFoliageDepth", ShaderSources.PreparedFoliage(ShaderSources.FoliageDepthVert, 3), ShaderSources.ShadowDepthFrag);
             yield return new("PreparedFoliageDepthCutout", ShaderSources.PreparedFoliage(ShaderSources.FoliageDepthVert, 3), ShaderSources.FoliageDepthCutoutFrag);
             yield return new("PreparedFoliagePoint", ShaderSources.PreparedPointFoliageVert, ShaderSources.PointShadowRigidFrag);
-            yield return new("ModelDissolve", ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag);
-            yield return new("SkinnedModel", ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag);
+            yield return new("ModelDissolve", ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag, 15);
+            yield return new("SkinnedModel", ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag, 7);
             yield return new("SkinnedModelDissolve",
-                ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag);
+                ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag, 7);
             // The terrain pass. One half of decision S5's regression evidence: its interpolant ORDERING is what
             // keeps the fragment-used outputs a gap-free prefix.
-            yield return new("Splat", ShaderSources.SplatVert, ShaderSources.SplatFrag);
+            yield return new("Splat", ShaderSources.SplatVert, ShaderSources.SplatFrag, 6);
             // The tile-world ground pass. Same lesson applied ahead of the incident: every interpolant it emits is
             // read by the fragment, so its pixel-input block is gap-free by construction.
-            yield return new("TileGround", ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag);
+            yield return new("TileGround", ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag, 6);
 
             // Temporal variants (TEMPORAL-FOUNDATIONS-DESIGN section 3). Built only against a model target that carries
             // the motion attachment. VulkanShippedVertexLayoutTests builds one to capture them.
-            yield return new("ModelMotion", ShaderSources.ModelMotionVert, ShaderSources.ModelMotionFrag);
-            yield return new("SkinnedModelMotion", ShaderSources.SkinnedModelMotionVert, ShaderSources.SkinnedModelMotionFrag);
+            yield return new("ModelMotion", ShaderSources.ModelMotionVert, ShaderSources.ModelMotionFrag, 15);
+            yield return new("SkinnedModelMotion", ShaderSources.SkinnedModelMotionVert, ShaderSources.SkinnedModelMotionFrag, 7);
             yield return new("SkinnedModelDissolveMotion",
-                ShaderSources.SkinnedModelMotionVert, ShaderSources.SkinnedModelDissolveMotionFrag);
-            yield return new("ModelCpuSkinnedMotion", ShaderSources.ModelCpuSkinnedMotionVert, ShaderSources.ModelMotionFrag);
+                ShaderSources.SkinnedModelMotionVert, ShaderSources.SkinnedModelDissolveMotionFrag, 7);
+            yield return new("ModelCpuSkinnedMotion", ShaderSources.ModelCpuSkinnedMotionVert, ShaderSources.ModelMotionFrag, 15);
             yield return new("ModelCpuSkinnedDissolveMotion",
-                ShaderSources.ModelCpuSkinnedMotionVert, ShaderSources.ModelDissolveMotionFrag);
-            yield return new("FoliageMotion", ShaderSources.FoliageMotionVert, ShaderSources.ModelMotionFrag);
-            yield return new("SplatMotion", ShaderSources.SplatMotionVert, ShaderSources.SplatMotionFrag);
-            yield return new("TileGroundMotion", ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag);
+                ShaderSources.ModelCpuSkinnedMotionVert, ShaderSources.ModelDissolveMotionFrag, 15);
+            yield return new("FoliageMotion", ShaderSources.FoliageMotionVert, ShaderSources.ModelMotionFrag, 15);
+            yield return new("SplatMotion", ShaderSources.SplatMotionVert, ShaderSources.SplatMotionFrag, 6);
+            yield return new("TileGroundMotion", ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag, 6);
             yield return new("TexturedBillboardMotion", ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag);
             yield return new("BeamMotion", ShaderSources.BeamVert, ShaderSources.BeamMotionFrag);
             yield return new("TrailMotion", ShaderSources.TrailVert, ShaderSources.TrailMotionFrag);

@@ -21,6 +21,11 @@ internal static class RendererPerfMarkdown
         text.Append("Run ").Append(Cell(report.Identity.RunId)).Append(" attempt ").Append(report.Identity.Attempt)
             .Append(". Backend ").Append(Cell(report.Identity.Backend)).Append(". Adapter ").Append(Cell(report.Identity.Adapter))
             .Append(". Driver ").Append(Cell(report.Identity.Driver)).Append(".\n\n");
+        var gpuClock = report.GpuClock;
+        if (gpuClock.LockedGraphicsClockMHz is { } clock)
+            text.Append("Locked graphics clock ").Append(clock.ToString(CultureInfo.InvariantCulture)).Append(" MHz. ");
+        text.Append("Verification ").Append(gpuClock.State).Append(". Samples ").Append(gpuClock.Samples)
+            .Append(". ").Append(Cell(gpuClock.Reason ?? string.Empty)).Append("\n\n");
         foreach (string reason in summary.Reasons) text.Append("- ").Append(Cell(reason)).Append('\n');
         text.Append("\nMeasured distributions only. p95/p99 use nearest rank ceil(p*N). Standard deviation is population.\n")
             .Append("Combined frames are descriptive. Iteration means remain separate replicates, with no significance claim.\n\n");
@@ -30,6 +35,7 @@ internal static class RendererPerfMarkdown
             Header(text);
             foreach (var metric in block.Metrics.Where(p => Display(p.Key, p.Value)).OrderBy(p => p.Key, StringComparer.Ordinal))
                 Distribution(text, row, metric.Key, metric.Value);
+            ControlResolution(text, block);
             if (!block.GcFrames.IsEmpty) text.Append("\nGC-associated frame IDs ").Append(Cell(row)).Append(": ")
                 .AppendJoin(", ", block.GcFrames).Append("\n\n");
             foreach (var gap in block.GapEvidence.OrderBy(p => p.Key, StringComparer.Ordinal))
@@ -88,15 +94,26 @@ internal static class RendererPerfMarkdown
         return text.ToString();
     }
 
-    static void Header(StringBuilder text) => text.Append("\n| Row | Metric | Available/expected | Mean | Median | p95 | p99 | Min | Max | Population SD | First64 | Last64 |\n")
+    internal static void Header(StringBuilder text) => text.Append("\n| Row | Metric | Available/expected | Mean | Median | p95 | p99 | Min | Max | Population SD | First64 | Last64 |\n")
         .Append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
 
-    static void Distribution(StringBuilder text, string row, string name, RendererPerfDistribution value)
+    internal static void Distribution(StringBuilder text, string row, string name, RendererPerfDistribution value)
     {
         text.Append("| ").Append(Cell(row)).Append(" | ").Append(Cell(name)).Append(" | ").Append(value.Count).Append('/').Append(value.ExpectedCount);
         foreach (var metric in new[] { value.Mean, value.Median, value.P95, value.P99, value.Minimum, value.Maximum,
             value.StandardDeviation, value.First64, value.Last64 }) text.Append(" | ").Append(Metric(metric));
         text.Append(" |\n");
+    }
+
+    internal static void ControlResolution(StringBuilder text, RendererPerfBlockSummary control)
+    {
+        if (control.TimingResolution is not { } resolution) return;
+        text.Append("\nBelowResolution ").Append(Cell(control.Block.SceneId)).Append(": warmup ")
+            .Append(resolution.WarmupBelowResolution).Append('/').Append(resolution.WarmupCount)
+            .Append(", measured ").Append(resolution.MeasuredBelowResolution).Append('/').Append(resolution.MeasuredCount)
+            .Append(". Retained zero query ticks, null durations, reported tick periods ")
+            .AppendJoin(", ", resolution.ReportedTickPeriodsNs.Select(period => Number(period) + " ns"))
+            .Append(". The reported period is not an execution-time upper bound. No numerical distribution or reference rate uses a positive subset.\n");
     }
 
     static bool Display(string name, RendererPerfDistribution value) => name is "gpu.frame" or "cpu.frame" or "gpu.unattributed" or "cpu.partitionGap"
@@ -138,9 +155,9 @@ internal static class RendererPerfMarkdown
         }) + " " + metric.Unit + ", " + metric.Provenance + ", " + metric.Source)
         : Cell(metric.Status + ": " + metric.Reason + ", " + metric.Source);
     static string Number(double? value) => value?.ToString("R", CultureInfo.InvariantCulture) ?? "unavailable";
-    static string Metric(RendererPerfMetric value) => Cell(value.Value is { } number
+    internal static string Metric(RendererPerfMetric value) => Cell(value.Value is { } number
         ? Number(number) + " " + value.Unit : value.Status + ": " + value.Reason);
-    static string Cell(string text) => text.Replace("&", "&amp;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal)
+    internal static string Cell(string text) => text.Replace("&", "&amp;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal)
         .Replace(">", "&gt;", StringComparison.Ordinal).Replace("|", "&#124;", StringComparison.Ordinal)
         .Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal);
 }

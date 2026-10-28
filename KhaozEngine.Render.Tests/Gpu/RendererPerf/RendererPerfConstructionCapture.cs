@@ -11,6 +11,7 @@ internal sealed partial class RendererPerfConstructionCapture
 {
     readonly ImmutableArray<string> _operations;
     readonly RendererPerfConstructionAdmission _admission = new();
+    readonly RendererPerfConstructionContent _content;
     readonly RendererPerfShaderRecipe?[] _shaders = new RendererPerfShaderRecipe[RendererPerfConstructionAdmission.FactoryAttempts];
     readonly RendererPerfLayoutRecipe?[] _layouts = new RendererPerfLayoutRecipe[RendererPerfConstructionAdmission.FactoryAttempts];
     readonly RendererPerfPipelineRecipe?[] _recipes = new RendererPerfPipelineRecipe[RendererPerfConstructionAdmission.PipelineAttempts];
@@ -31,6 +32,7 @@ internal sealed partial class RendererPerfConstructionCapture
 
     internal RendererPerfConstructionCapture(RendererPerfManifest manifest)
     {
+        _content = new(_admission);
         RendererPerfConstructionAdmission.Count(checked(1 + manifest.Blocks.Length + manifest.Controls.Length), 43, "operations");
         var operations = ImmutableArray.CreateBuilder<string>();
         operations.Add("conditioning:S3/TotalOnly/0");
@@ -38,7 +40,7 @@ internal sealed partial class RendererPerfConstructionCapture
         foreach (var c in manifest.Controls) operations.Add($"control:{c.Id}/TotalOnly/0");
         RendererPerfConstructionAdmission.Count(operations.Count, 43, "operations");
         _operations = operations.ToImmutable();
-        _admission.Reserve(0, 0, checked(94 + RendererPerfConstructionAdmission.CauseReserveBytes + RendererPerfConstructionAdmission.Text("khaozengine.renderer-compiler-inventory/1") + _operations.Sum(s => RendererPerfConstructionAdmission.Text(s))));
+        _admission.Reserve(0, 0, checked(94 + RendererPerfConstructionAdmission.CauseReserveBytes + RendererPerfConstructionAdmission.Text(RendererPerfCompilerJson.Schema) + _operations.Sum(s => RendererPerfConstructionAdmission.Text(s))));
     }
     internal void BeginOperation(int operationOrdinal)
     {
@@ -58,7 +60,8 @@ internal sealed partial class RendererPerfConstructionCapture
     internal void EnterFrame(RendererPerfConstructionStage stage, int frameIndex)
     {
         Open();
-        if (_operation < 0 || _frame.HasValue || stage == RendererPerfConstructionStage.Cold || !Enum.IsDefined(stage)
+        if (_operation < 0 || _frame.HasValue || !Enum.IsDefined(stage)
+            || stage == RendererPerfConstructionStage.Cold && _operation != 0
             || (stage == RendererPerfConstructionStage.Warmup) != (frameIndex < 0))
             throw new InvalidOperationException("Invalid construction frame boundary.");
         _stage = stage; _frame = frameIndex;
@@ -106,39 +109,40 @@ internal sealed partial class RendererPerfConstructionCapture
     }
     internal int Shader(string vertex, string? fragment, GpuBackendKind backend) => Start(RendererPerfFactoryKind.Shader, () =>
     {
-        long bytes = RendererPerfConstructionAdmission.Text(vertex, 1048576);
-        if (fragment is not null) bytes = checked(bytes + RendererPerfConstructionAdmission.Text(fragment, 1048576));
-        _admission.Reserve(bytes, fragment is null ? 39 : backend == GpuBackendKind.Direct3D11Native ? 67 : 70, 0);
-        int id = _shaderCount++;
-        _shaders[id] = new(id, fragment is null ? [new("compute", "main", vertex, 0, 0, 0)]
-            : [new("vertex", "main", vertex, 0, 0, 0), new(backend == GpuBackendKind.Direct3D11Native ? "pixel" : "fragment", "main", fragment, 0, 0, 0)]);
-        return id;
+        vertex = _content.Source(vertex);
+        if (fragment is not null) fragment = _content.Source(fragment);
+        int id = _shaderCount;
+        _shaders[id] = _content.Shader(new(id, fragment is null ? [new("compute", "main", vertex, 0, 0, 0)]
+            : [new("vertex", "main", vertex, 0, 0, 0), new(backend == GpuBackendKind.Direct3D11Native ? "pixel" : "fragment", "main", fragment, 0, 0, 0)]));
+        _shaderCount++; return id;
     });
     internal int Layout(GpuResourceLayoutDescription d) => Start(RendererPerfFactoryKind.Layout, () =>
     {
-        _admission.Reserve(0, RendererPerfConstructionAdmission.Layout(d), 0);
-        int id = _layoutCount++; _layouts[id] = new(id, [.. d.Elements]); return id;
+        _ = RendererPerfConstructionAdmission.Layout(d);
+        int id = _layoutCount;
+        _layouts[id] = _content.Layout(new(id, [.. d.Elements])); _layoutCount++; return id;
     });
     internal int Graphics(GpuPipelineDescription d) => Start(RendererPerfFactoryKind.GraphicsPipeline, () =>
     {
-        long bytes = RendererPerfConstructionAdmission.Graphics(d);
+        _ = RendererPerfConstructionAdmission.Graphics(d);
         int shader = Find(d.ShaderSet, RendererPerfFactoryKind.Shader);
-        _admission.Reserve(0, checked(bytes + 81 + RendererPerfConstructionAdmission.Digest(MissingCode)), 0);
         var layouts = LayoutIds(d.ResourceLayouts);
-        int id = _recipeCount++;
-        _recipes[id] = new(id, RendererPerfPipelineKind.Graphics, shader, layouts,
+        int id = _recipeCount;
+        _recipes[id] = _content.Pipeline(new(id, RendererPerfPipelineKind.Graphics, shader, layouts,
             new(d.BlendFactor, [.. d.BlendAttachments], d.DepthStencil, d.Rasterizer, d.Topology,
                 [.. d.VertexLayouts.Select(v => new RendererPerfVertexRecipe(v.Stride, v.InstanceStepRate, [.. v.Elements]))],
-                d.Outputs.Depth, [.. d.Outputs.Colour], d.Outputs.SampleCount), MissingCode, "");
+                d.Outputs.Depth, [.. d.Outputs.Colour], d.Outputs.SampleCount), MissingCode, ""), _shaders, _layouts);
+        _recipeCount++;
         return id;
     });
     internal int Compute(GpuComputePipelineDescription d) => Start(RendererPerfFactoryKind.ComputePipeline, () =>
     {
         RendererPerfConstructionAdmission.Count(d.ResourceLayouts.Length, 32, "layout sets");
         int shader = Find(d.Shader, RendererPerfFactoryKind.Shader);
-        _admission.Reserve(0, checked(85 + 4L * d.ResourceLayouts.Length + RendererPerfConstructionAdmission.Digest(MissingCode)), 0);
         var layouts = LayoutIds(d.ResourceLayouts);
-        int id = _recipeCount++; _recipes[id] = new(id, RendererPerfPipelineKind.Compute, shader, layouts, null, MissingCode, "");
+        int id = _recipeCount;
+        _recipes[id] = _content.Pipeline(new(id, RendererPerfPipelineKind.Compute, shader, layouts, null, MissingCode, ""), _shaders, _layouts);
+        _recipeCount++;
         return id;
     });
     static readonly GpuDiagnosticDigest MissingCode = new(null, "khaozengine.pipeline-code-generation/1", GpuDiagnosticStatus.Invalid,
@@ -169,19 +173,18 @@ internal sealed partial class RendererPerfConstructionCapture
                 if (resource is not IGpuPipelineConstructionDiagnostics diagnostics)
                     throw new RendererPerfConstructionRefusalException("Successful pipeline has no construction witness.");
                 var witness = diagnostics.ConstructionIdentity;
-                _admission.Reserve(0, checked(RendererPerfConstructionAdmission.Digest(witness.CodeGenerationSha256) - RendererPerfConstructionAdmission.Digest(MissingCode)),
-                    checked(33 + (_frame.HasValue ? 4 : 0) + RendererPerfConstructionAdmission.Witness(witness)));
+                _admission.Reserve(0, 0, checked(33 + (_frame.HasValue ? 4 : 0) + RendererPerfConstructionAdmission.Witness(witness)));
                 witness = witness with { Stages = [.. witness.Stages] };
                 var recipe = _recipes[e.InputId]!;
-                _recipes[e.InputId] = recipe with { CodeGenerationSha256 = witness.CodeGenerationSha256 };
+                _recipes[e.InputId] = _content.Pipeline(recipe with { CodeGenerationSha256 = witness.CodeGenerationSha256 }, _shaders, _layouts);
                 output = _occurrenceCount++;
                 _occurrences[output] = new(output, e.OperationOrdinal, _creationOrdinals[(int)e.Kind] - 1,
-                    _stage, _frame, recipe.Kind, recipe.Id, witness, 0);
+                    _stage, _frame, recipe.Kind, e.InputId, witness, 0);
             }
             else if (e.Kind == RendererPerfFactoryKind.Shader && resource is IGpuComputeShader computeShader)
             {
                 var shader = _shaders[e.InputId]!;
-                _shaders[e.InputId] = shader with { Stages = [shader.Stages[0] with { LocalX = computeShader.ThreadGroupSizeX, LocalY = computeShader.ThreadGroupSizeY, LocalZ = computeShader.ThreadGroupSizeZ }] };
+                _shaders[e.InputId] = _content.Shader(shader with { Id = e.InputId, Stages = [shader.Stages[0] with { LocalX = computeShader.ThreadGroupSizeX, LocalY = computeShader.ThreadGroupSizeY, LocalZ = computeShader.ThreadGroupSizeZ }] });
             }
             if (_nativeCount == _native.Length) throw new RendererPerfConstructionRefusalException("Native association capacity exceeded.");
             for (int i = 0; i < _nativeCount; i++)

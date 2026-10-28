@@ -89,7 +89,7 @@ internal sealed partial class WaterRenderer
     }
     void PackBounded(int firstSlot, ReadOnlySpan<BoundedWaterDraw> draws, Matrix4x4 vp, Vector3 lightDirection,
         Color lightColor, Vector3 eye, WaterSettings settings, SkySettings sky, float time, Vector3 origin,
-        OceanMaps ocean, ShoreMaps shore, bool atmosphere)
+        OceanMaps ocean, ShoreMaps shore, bool atmosphere, uint columnNoisePhase)
     {
         if (draws.IsEmpty) return;
         EnsureBoundedPipeline();
@@ -111,7 +111,7 @@ internal sealed partial class WaterRenderer
             var effective = draw.Look.ResolveInto(_effective, settings);
             var maps = effective.WaveSource == WaterWaveSource.FftOcean ? ocean : default;
             var ubo = PackUbo(GpuClip.Correct(vp, _gd.Capabilities), vp, lightDirection, lightColor, eye, effective, sky,
-                time, maps, origin, shore, localToRender.M42 + draws[i].LocalSurfaceY * localToRender.M22, atmosphere);
+                time, maps, origin, shore, localToRender.M42 + draws[i].LocalSurfaceY * localToRender.M22, atmosphere, columnNoisePhase);
             PackSlot(firstSlot + i, in ubo);
         }
     }

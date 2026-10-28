@@ -72,7 +72,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         CopyTextureSubresource = 18,
         /// <summary><see cref="IGpuCommandList.GenerateMipmaps"/>.</summary>
         GenerateMipmaps = 19,
-        /// <summary><see cref="IGpuCommandList.ResolveTexture"/>.</summary>
+        /// <summary><see cref="IGpuCommandList.ResolveTexture(IGpuTexture, IGpuTexture)"/>.</summary>
         ResolveTexture = 20,
         /// <summary><see cref="IGpuCommandList.SetComputePipeline"/>.</summary>
         SetComputePipeline = 21,

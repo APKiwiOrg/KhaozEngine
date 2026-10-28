@@ -109,9 +109,11 @@ internal static class RendererPerfReportJson
         }
         if (report.Assessment.ValidForPromotion)
             Require(report.Blocks.All(b => b.Errors.IsEmpty && b.Warmup.Concat(b.Measured).All(Promotable))
-                && report.Controls.All(c => c.Warmup.Concat(c.Measured).All(Promotable)),
+                && report.Controls.All(c => RendererPerfControlTiming.Promotable(c, report.Identity.TimestampPeriodNs)),
                 "Publication", "Invalid GPU queries, frame failures or incomplete pass timing cannot support promotion.");
         RendererPerfExecutionEvidence.Validate(report);
+        Require(!report.Assessment.ValidForPromotion || report.GpuClock.State == RendererPerfGpuClockState.Verified,
+            RendererPerfGpuClockPolicy.Reason, report.GpuClock.Reason ?? "Paid promotion requires verified graphics-clock telemetry.");
         ValidateNative(report);
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var sidecar in report.Sidecars)
@@ -238,6 +240,9 @@ internal static class RendererPerfReportJson
     static void Duration(RendererPerfMetric metric, ulong? elapsedTicks, double? periodNs, string scope)
     {
         Metric(metric);
+        if (metric.Status == RendererPerfMetricStatus.BelowResolution && elapsedTicks is { } ticks)
+            Require(ticks == 0 && metric.Unit == "ns" && periodNs is > 0 && double.IsFinite(periodNs.Value),
+                "Sample", $"{scope} below-resolution GPU duration must retain zero elapsed ticks and a finite positive period.");
         if (metric.Status != RendererPerfMetricStatus.Available) return;
         Require(metric.Unit == "ns" && elapsedTicks != null && periodNs != null
             && double.IsFinite(periodNs.Value) && periodNs > 0,

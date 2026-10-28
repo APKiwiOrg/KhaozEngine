@@ -11,6 +11,15 @@ completion. Shader compilation, seed uploads and readbacks are outside frame bra
 production host clear and End tail remain in each raw outer duration. Attachment initialization is
 also retained. Neither cost is silently subtracted to manufacture a shader-only time.
 
+Before allocating control resources, the workload checks each whole storage binding against
+`GpuCapabilities.MaxStorageBufferRangeBytes`. A missing or insufficient limit refuses with the control
+ID, required bytes and device limit. Control 7 needs 128 MiB per buffer, control 8 needs 32 MiB,
+control 9 needs a 256 KiB input and 2 MiB output, and control 10 needs 256 KiB per buffer.
+Controls 4 through 6 bind individual 4-byte buffers, even when 36 outputs are allocated.
+The other controls have no storage-buffer bindings. No buffer or readback is reduced to fit.
+Control 7 fixes the same workload on every leg at the portable 128 MiB storage range advertised by
+lavapipe and guaranteed by Direct3D 11 for WARP. It remains four times control 8's stream size.
+
 | Control | Fixed work | Retention evidence |
 | --- | --- | --- |
 | 1 | Empty production frame, RGBA8 display target | Full cleared image |
@@ -19,7 +28,7 @@ also retained. Neither cost is silently subtracted to manufacture a shader-only 
 | 4 | One 1-thread dispatch, one input word and observable output word | Seed plus one |
 | 5 | 36 dispatches, each reading the previous output | All 36 incremented outputs |
 | 6 | The same 36 dispatches with independent outputs and a common read-only seed | All 36 seed-plus-one outputs |
-| 7 | 256 MiB input and 256 MiB output, local size 256, 1024 by 256 groups | Every XOR-transformed word |
+| 7 | 128 MiB input and 128 MiB output, local size 256, 1024 by 128 groups, portable storage range | Every XOR-transformed word |
 | 8 | Matched 32 MiB input and output, local size 256, 1024 by 32 groups | Every XOR-transformed word |
 | 9 | 65,536 invocations, eight independent FP32 accumulators, 64 FMA steps | Every accumulator, 128 retained vector FMA instructions |
 | 10 | 65,536 invocations, 64 serial divide/root pairs | Every result, 64 retained divides and roots |
@@ -30,8 +39,9 @@ The matched chain comparison is combined dispatch/dependency overhead. It is not
 measurement. The workload uses the seam's native resource-ordering implementation without extra
 submissions or explicit barrier calls.
 
-The streaming numerator includes reads plus writes. FMA counts two FP32 operations per lane. Divide
-and root work has its own instruction class and cannot borrow an FP32 FMA rate. Definitions retain
+The streaming numerator includes reads plus writes, 256 MiB per control 7 frame and 64 MiB per control 8 frame.
+FMA counts two FP32 operations per lane. Divide and root work has its own instruction class and cannot
+borrow an FP32 FMA rate. Definitions retain
 dispatch groups, local sizes, formats, samples, dimensions, seeds, serial edges and source/compiler
 artifact hashes. Exact shader bytes use LF on all checkouts. Final output hashes describe the actual
 checked outputs and remain separate from the work definition digest.

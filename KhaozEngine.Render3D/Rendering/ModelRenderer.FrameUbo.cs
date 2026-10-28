@@ -17,6 +17,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed partial class ModelRenderer
     {
+        internal IGpuBuffer SharedFrameUniforms => _ubo;
+
         /// <summary>Upload the per-frame uniforms once per frame, before the instanced draws. <paramref name="lights"/>
         /// is the host's complete per-frame point-light list and its count is written into <c>Params.y</c>. An empty
         /// span leaves the shader's point-light loop unentered, so the render is bit-identical to the key+fill path.

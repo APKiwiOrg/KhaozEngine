@@ -12,11 +12,23 @@ specialized creation, failures, repeats, unused pipelines and bind membership. I
 mutable inputs before forwarding each original call once. Native returned objects remain on the
 recording path. Detached recipes survive disposal. A manual renderer list cannot prove completeness.
 
-Recipe hashing and deduplication run outside measured spans. A digest collision requires value
-comparison, and source equality alone cannot merge recipes. Every occurrence retains the logical key
+Capture interns exact stage sources and immutable shader, layout and pipeline descriptors by content
+hash. Equal hashes require equal values. Sources and descriptors consume their logical byte allowance
+once, while each factory event and production witness still consumes evidence allowance. Fresh
+operations recreate the same pipelines, so charging their source text again would reject a legitimate
+full schedule. The source pool preserves exact UTF-8 without normalization. Temporary unresolved
+shader and pipeline descriptors remain charged while retained by capture.
+
+Final recipe hashing and graph remapping run at freeze outside measured spans. Source equality alone
+cannot merge recipes. Every occurrence retains the logical key
 `(operationOrdinal, kind, creationOrdinal)`. Cross-run matching uses those keys rather than a positional
 unique-recipe index. Changed source/artifact bytes are informative only after each run proves its own
 production/replay correspondence and equal logical membership, layouts, code generation and settings.
+
+Conditioning occurrences retain the `Cold` stage and their counted nonnegative frame indices. Only
+the conditioning operation permits indexed cold occurrences. Cold setup outside a frame has no
+frame index. Negative warm-up occurrences retain `Warmup`. Session resource guards, construction
+capture and strict correspondence apply the same frame classes.
 
 Measured first creation remains charged to its raw frame and refuses steady-state promotion. There
 is no observer-cost subtraction, hidden capacity growth or move into warm-up. Bind membership uses
@@ -77,13 +89,20 @@ conversion. These are refusal envelopes, not evidence that a native workload fit
 | Owner | Bound |
 | --- | --- |
 | Construction | 43 operations, 256 pipeline and 1024 total factory attempts per operation, 1024 unique recipes. Pilot uses its actual nine operations. |
-| Retained logical encoding | 64 MiB split into 32 MiB sources, 16 MiB descriptors and 16 MiB events/occurrences/witnesses. Repeated occurrences still count. |
+| Retained logical encoding | 64 MiB split into 32 MiB distinct sources, 16 MiB distinct descriptors and 16 MiB events/occurrences/witnesses. Source hashes and descriptor keys count in descriptors. Every repeated event and witness still counts. |
 | Graphs | 32 layout sets, 128 elements/set, 32 vertex streams, 64 elements/stream, eight output/blend attachments, 1024 UTF-8 bytes/name, 1 MiB/stage source. |
 | Options | 64 entries/table, 256 UTF-8 bytes/key and 4096/value. Four maximal escaped tables need 6,717,440 encoded bytes. |
 | Vulkan hard safety | 64 executables, 256 statistics/executable, 16,384 total statistics, four enumeration attempts and 256-byte native name/description fields. |
 | D3D11 | Two stages of 30 fixed reflection statistics, 4096-byte Creator/description bounds and 16,384-byte raw flags. |
 | Publication | Root at most 268,435,456 bytes and depth 32. Root plus new compiler sidecars fits that same byte cap. |
 | Completion | 16,777,216-byte reserve, including two 32-byte accounting slots. |
+
+Compiler inventory/2 writes one first-reference-ordered source table of SHA-256 and exact text.
+Shader stages reference those hashes. Shader and layout tables contain distinct descriptors in
+first-factory order, and every factory event references its descriptor. Freeze remaps all graph and
+occurrence references without dropping repetitions. Readers reject inventory/1 without migration,
+changed source hashes, foreign references, unused or duplicate table rows and noncanonical order.
+The offline verifier and baseline publisher use this same codec and correspondence gate.
 
 PrepareCollection measures the encoded retained root, inventory and completion shape before optional
 replay. One read reservation is outstanding at a time. Reserve the exact frozen request before graph
@@ -114,8 +133,10 @@ contract is in the living performance reference.
 
 One RendererPerfUnitBudget owns the original ColdStart, absolute deadline and cancellation through
 production, cleanup, freeze, replay, publication, verification and stamping. Full schedule remains
-16,944 frames over 43 operations. Pilot/full deadlines remain 600/1500 seconds, individual frame limit
-10,000 ms and job caps 12/35 minutes. Collection adds no frame, calibration, query block or profiler.
+16,944 frames over 43 operations. Pilot/full deadlines remain 600/1500 seconds. Only conditioning
+frame 0 uses the explicit bounded cold-frame limit. Every other frame retains its steady limit.
+The [living performance reference](../RENDERER-PERFORMANCE.md#evidence-and-authorization) owns the
+per-class frame and job caps. Collection adds no frame, calibration, query block or profiler.
 
 Dispose all production owners before replay and all diagnostic graphs/context before certification.
 Check budget before and after safe native/file boundaries. Native compiler/query/disposal calls are

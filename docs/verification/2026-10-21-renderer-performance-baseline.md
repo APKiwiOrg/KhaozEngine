@@ -491,6 +491,291 @@ admission, manifest, authorization, build logs, measurement log and TRX. The mea
 runner, USD 0. The approval is consumed and authorizes no retry. Another run needs a corrected map and
 fresh owner approval.
 
+## Free lavapipe rehearsal, attempt 2
+
+The workload and trusted workflow are `57a7123c97b155f7e08bd424cd45ff38ebab2c6c`. Authorization
+`62d6d346ea4ec394b96145d3b8c7da34380822b8` has that workload as its sole parent on
+`feature/renderer-rehearsal-linux-2`. Its unit is `rehearsal-linux` with the `rehearsal` preset, and its
+exact manifest SHA-256 is `d2f14c8994f9cf194d7c41204a0c4fb0ae2fd7cb195476a254f377ff4dfa5f43`.
+
+The second rehearsal approval was consumed by
+[run 40291069760](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40291069760), attempt 1,
+on 2026-10-26 UTC. Runtime admission passed with the exact approved 15-entry environment map.
+Native admission passed on software `llvmpipe (LLVM 20.1.2, 256 bits)`, with 64 timestamp bits and a
+1 ns period, on image `Linux/ubuntu24/20261023.334.3`.
+
+The fixed measurement fact failed after 26.19 seconds with "First pipeline creation occurred during a
+measured frame." `RendererPerfConstructionCapture` sets the failure at line 91 and exposes it at
+line 30, then `RendererPerfVerdict.RequireSuccess` surfaces it at line 19. The partial report retains
+only conditioning frame 0, sequence 0, with about 4.77 seconds CPU and 5.96 seconds GPU. Completed
+blocks were 0/2 and controls 0/6. Publication state is `failed`.
+
+Artifact `renderer-perf-linux-vulkan`, ID `12635448735`, is 519,054 compressed bytes. GitHub reports
+archive SHA-256 `c59f457da8d3d2055596607effab6971a2e89c9c73f274bc798019f3837ccdbc`. It retains the
+partial JSON and Markdown report, compiler inventory, frozen layouts, runtime and native admission,
+telemetry, measurement log and TRX beside the preparation inputs and build logs. The measurement TRX
+SHA-256 is `33d3fc0c909f0186197d534322cae04b66b4432e3b30e6c408276dfd5f23f6a8`.
+
+Job `121466145236` ran from 08:16:30 to 08:20:56 UTC, 266 seconds, on a free standard runner,
+USD 0. No measured baseline or performance acceptance was produced. The approval is consumed and
+authorizes no retry. Another run needs a corrected workload, independently reviewed preparation and
+fresh owner approval.
+
+## Software rehearsals, round 3
+
+The workload and trusted workflow are `764ee6287dd87f84bf219f187873aa478e5ad824`, with main CI green.
+
+| Unit | B | Run, job | Job window UTC | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| `rehearsal-linux` | `9cd69d8f750baedd8e7b18eb5f2baaed2c583c31` | 40414693565, 121894123000 | 22:44:39 to 23:12:19 | 12695874082, 3,165,123, `sha256:f698e37efc86bbf6f83352260e04ffcbe423d64eca1d60344cede37431988109` | `47d3a4b39dded525eea836bcbc4253beff5108217247bc8ff280db962bd2560b` |
+| `rehearsal-windows` | `41a3f6cf177866389ef3eb0cc6845460962095a1` | 40414697088, 121894193057 | 22:44:48 to 22:48:43 | 12696100058, 9,073, `sha256:4da98567bff4e20ed30546670e726d5325fe17c76c46ffebee9dcf0d723e50cf` | `3d0dffc05cf621c88a2b37b8fefb7860198cd5632ecdc096e6c7e74017ef8201` |
+| `rehearsal-full-windows` | `496e0e91d01732244bd44f34442619e1a5b32681` | 40414704044, 121894194607 | 22:44:49 to 22:48:28 | 12695970450, 10,092, `sha256:7b3a2b19e30858300e5be581a2a211c1e8a206126f548f64883feecdb60f4239` | `c1fd73a65f70bdf62a129bae7873ab5e1b90609f95f517f1a5cd8f0db81593a1` |
+
+The Linux pilot completed and certified with compiler collection `Complete` and all 1,260 frames. Native
+admission was software `llvmpipe (LLVM 20.1.2, 256 bits)`. Promotion is false with only
+`SoftwareRehearsalNotPerformanceEvidence`. Trusted `VerifyRehearsal` passed. The measurement step ran from
+22:50:47 to 23:12:08 UTC. Evidence is under `/tmp/khaozengine-renderer-rehearsal-3/artifact-linux/linux-vulkan/`,
+including `rehearsal-linux.json`.
+
+Both WARP units refused at runtime admission before device creation. The standard Windows image exports
+`DOTNET_MULTILEVEL_LOOKUP=0`, `DOTNET_NOLOGO=1` and `DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1`, and all nine declared
+entries matched. Evidence is under `/tmp/khaozengine-renderer-rehearsal-3/artifact-windows/` and
+`/tmp/khaozengine-renderer-rehearsal-3/artifact-full-windows/`.
+
+`rehearsal-full-linux` ([run 40414700520](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40414700520))
+failed with "Construction source byte capacity exceeded." B `87c7aabe4acf5d75525eb7149ddce7b15a98edf8` has the
+stated workload as its sole parent and adds only `tools/Renderer.Perf.Tests/authorized/rehearsal-full-linux.json`,
+confirmed with `git show --stat` and parent/path checks. Job `121894185487` ran from 2026-10-26 22:44:48 to
+2026-10-27 02:03:54 UTC. The measurement step ran from 2026-10-26 22:48:44 to 2026-10-27 02:03:47 UTC.
+Artifact `renderer-perf-linux-vulkan`, ID `12704635930`, remains available at 16,891,760 bytes with digest
+`sha256:704095dfa460e85cd9b02635598487025999e721213d6608d647213ff5fc9db2`. The TRX SHA-256 is
+`411110cbc04ef3f4587828c96c1b5a90c134c0200312eb0989eae95ad5a8c0cc`.
+
+Runtime admission passed with all 15 environment entries. Native admission selected software
+`llvmpipe (LLVM 20.1.2, 256 bits)`. The partial report is `failed`, with 1,200 conditioning frames,
+17/30 complete blocks, one partial block and 0/12 controls, 8,817 retained frames in all. Its last retained
+raw frame is 0 in the warm-up portion of `S4/TotalOnly/1`. The failure record does not name the failing frame
+or compiler stage. Compiler collection is `incomplete`, "Cold collection has not completed." Promotion is
+false with `SoftwareRehearsalNotPerformanceEvidence` and "Construction source byte capacity exceeded."
+
+Each attempt consumed the owner's standing free-run approval for that reviewed state. Cost was USD 0 on standard
+runners.
+
+## Fifth authorized Linux pilot, attempt 5
+
+The workload and trusted workload are `764ee6287dd87f84bf219f187873aa478e5ad824`. Authorization
+`4f7ee4cfadd6d6bb3e0b05f33013c7e447e2b899` has that workload as its sole parent on
+`feature/renderer-pilot-linux-5`. Its exact manifest SHA-256 is
+`9dfdb24072ce0699636a8366f1f9a89da9bb498346a81efec2b4506780faa663`. The unit is `pilot-linux` with the `pilot`
+preset.
+
+The fifth pilot approval was consumed by
+[run 40420458329](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40420458329), attempt 1, job
+`121913480573`, from 23:33:03 to 23:37:34 UTC. The measurement step ran from 23:36:33 to 23:37:25 UTC. Trusted paid
+`Verify` passed.
+
+Artifact `renderer-perf-linux-vulkan`, ID `12697419177`, is 3,052,972 bytes. GitHub reports digest
+`sha256:558f6f210556b5ec0bd32eb6272b73ad350a8871aff2f7794793b2e05e437509`. The measurement TRX SHA-256 is
+`216a8ead72a7ae84a33e638f078487f60ea50b1f199a0c0f60659b2a2f9c8c0f`. Evidence is under
+`/tmp/khaozengine-renderer-pilot-5/artifact/linux-vulkan/`, including `pilot-linux.json`, `native-admission.json`,
+`runtime-admission.json`, the compiler inventory and telemetry.
+
+Publication completed and certified. `ValidForPromotion` is true with no reasons. Compiler collection is `Complete`.
+Native admission recorded a Tesla T4, vendor `0x10de`, device `0x1eb8`, not software, 64-bit timestamps with a 1 ns
+period, image `Linux/Linux/20261013.76.1` and driver
+`VkPhysicalDeviceProperties.driverVersion=2475425856`. All 1,260 frames completed.
+
+These are recorded pilot values, not a baseline. The S3 blocks each retained 128 measured frames:
+
+| Unit | Measured GPU frame median | Measured CPU frame median |
+| --- | ---: | ---: |
+| S3 TotalOnly | 8,115,584 ns | 1,026,105 ns |
+| S3 PerPass | 7,475,264 ns | 1,515,810 ns |
+
+The six controls each retained 64 measured frames. Control 7 is the portable 128 MiB stream.
+
+| Control | Measured GPU frame median |
+| ---: | ---: |
+| 1 | 10,480 ns |
+| 4 | 10,304 ns |
+| 5 | 64,800 ns |
+| 7 | 955,360 ns |
+| 9 | 32,768 ns |
+| 11 | 120,976 ns |
+
+The usage API showed no GPU line for 2026-10-26 or 2026-10-27 shortly after the run because it lags. The billed
+figure is pending confirmation. The 4 minute 31 second job window is at most 5 billed minutes at USD 0.052, or
+USD 0.26, inside the USD 0.624 cap. Campaign spend before this attempt was USD 0.884 of the USD 10 envelope.
+
+The approval is consumed and authorizes no retry or full unit. This is a promotable pilot unit, not the published
+baseline. The full units and the Windows leg remain separate approvals.
+
+## Software rehearsals, round 4
+
+The workload is `764ee6287dd87f84bf219f187873aa478e5ad824`. The trusted workflow is
+`5a25ea21676a188eadba3fd01644883476bf37f7`.
+
+For every B below, `git show --stat` and parent/path checks confirmed the stated workload is its sole parent
+and its only change adds `tools/Renderer.Perf.Tests/authorized/<unit>.json`. Each artifact manifest matches
+those committed bytes and the manifest SHA-256 in `authorization.json`. The round 3 full-Linux manifest also
+matches its B.
+
+| Unit | B | Run, job | Job window UTC | Measurement window UTC |
+| --- | --- | --- | --- | --- |
+| `rehearsal-windows` | `fb9f9c51e0ed070fa0e23ac402d93efdf4db5e2e` | [40419879039](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40419879039), 121911532542 | 2026-10-26 23:27:55 to 2026-10-26 23:32:36 | 2026-10-26 23:32:24 to 2026-10-26 23:32:27 |
+| `rehearsal-full-windows` | `585d5ac7a5c00995d8ce48891b23cfe7e5189ea8` | [40419884372](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40419884372), 121911595951 | 2026-10-26 23:28:17 to 2026-10-26 23:33:33 | 2026-10-26 23:33:20 to 2026-10-26 23:33:24 |
+
+| Unit | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- |
+| `rehearsal-windows` | 12697332402, 9,758, `sha256:86e1b1d1134ba4ef40ab8478cca2dfceca2b5de17c74837568ca22b847312760` | `c2504eb9e95ee8dc724999e3da39d890d0d5face5d0fda4da71d1400be7a5994` |
+| `rehearsal-full-windows` | 12696992814, 10,778, `sha256:8b015b700d6cd3271c32cc15c2bf4542e77becba46f02c566fd88c8fe321a3fd` | `0c475110acfac4e657a5160a63b0990211ed6227054c66cc8d83140b09ea4fbd` |
+
+Both approved WARP units passed runtime admission with the exact 12-entry environment map, then refused
+before device creation with "The approved recipe, settings, shader, geometry or asset bytes changed."
+Their failure records contain no frame, known native facts or stages. No native adapter, completed block,
+control, compiler collection, publication state or promotion assessment was produced.
+
+Windows checkout converted multiline C# shader literals to CRLF, changing the exact source bytes from the
+LF export. Commit `4baa6b6f976c8916fcee5dab493b07c5b80efc7b` pinned the source providers and fragments to
+`text eol=lf`, added `RendererPerfIdentityCheckoutTests` and staged 21.15.1. Each attempt consumed the
+owner's standing free-run approval for that reviewed state and cost USD 0 on a standard runner.
+
+## Software rehearsals, round 5
+
+The workload is `4baa6b6f976c8916fcee5dab493b07c5b80efc7b`. The trusted workflow is
+`0af218d5b5492c43ec2918c9d3b5fa9f82d83da3`.
+
+| Unit | B | Run, job | Job window UTC | Measurement window UTC |
+| --- | --- | --- | --- | --- |
+| `rehearsal-windows` | `72be8796833e19a4bb13e21b7a286d5c30d26353` | [40432873073](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40432873073), 121954703433 | 2026-10-27 01:30:06 to 2026-10-27 01:52:31 | 2026-10-27 01:34:19 to 2026-10-27 01:52:19 |
+| `rehearsal-full-windows` | `350a109e7dec666621dd07c679e3a45e9d92d5f0` | [40432876411](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40432876411), 121954676738 | 2026-10-27 01:30:01 to 2026-10-27 04:14:24 | 2026-10-27 01:33:36 to 2026-10-27 04:14:15 |
+
+| Unit | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- |
+| `rehearsal-windows` | 12704055691, 2,829,514, `sha256:a02fbced1a47359813146d2ede552e0a6e4f10419262b52ce2b7279e90e2fb73` | `f1b16792bb8c7db9a88c6432872a0ee1e0e3c8407dd974e364187eb205c50619` |
+| `rehearsal-full-windows` | 12709058972, 14,624,420, `sha256:e36d119cd484c1059058160fe8e7e4e0fa4845e304fa011b938551ce70034d5b` | `c68004ffcea2bd8881237cca48811d3ac6a4dd7f5a612dfe3196a03e1f53e5eb` |
+
+Both units passed runtime admission with all 12 environment entries and native admission on software
+`Microsoft Basic Render Driver` (WARP), vendor `0x1414`, device `0x008c`, driver
+`DXGI driver=000a000065f48370`, with 64-bit timestamps and a 100 ns period.
+
+`rehearsal-windows` completed with all 300 conditioning frames, 2/2 blocks and 6/6 controls, 1,260 retained
+frames. Compiler collection is `complete` and trusted `VerifyRehearsal` passed. Publication is `completed`.
+Promotion is false with only `SoftwareRehearsalNotPerformanceEvidence`.
+
+`rehearsal-full-windows` failed with "Construction source byte capacity exceeded." It retained all 1,200
+conditioning frames, 17/30 complete blocks, one partial block and 0/12 controls, 8,817 frames in all.
+The partial block contains only raw warm-up frame 0 of `S4/TotalOnly/1`. The failure record does not name
+the failing frame or compiler stage. Publication is `failed`. Compiler collection is `incomplete`,
+"Cold collection has not completed." Promotion is false with `SoftwareRehearsalNotPerformanceEvidence`
+and "Construction source byte capacity exceeded."
+
+The same refusal ended round 3's lavapipe full unit. Commit `b7a3b0193fdea396e9b4fce66fb8c5af4c3470e5`
+pooled exact construction content and introduced compiler inventory schema 2, replacing repeated source
+payloads with a shared source table. Each attempt consumed the owner's standing free-run approval for
+that reviewed state and cost USD 0 on a standard runner. These are correctness rehearsals.
+
+## First authorized Windows pilot, attempt 1
+
+The unit is `pilot-windows` with the `pilot` preset. Workload `4baa6b6f976c8916fcee5dab493b07c5b80efc7b`
+was authorized by B `1cf997812f57c93c2c7f6d75b10d35ee23a5de7e`. The trusted workflow is
+`8ff20c4fc95bacc69217632a15babc5f77a83dd7`. Its exact manifest SHA-256 is
+`f85a3045de0613df5e2b4e302b0241c6f93893e22ce7db6befe6b2977abfb79c`.
+
+[Run 40435928569](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40435928569), attempt 1,
+job `121964605577`, ran from 2026-10-27 02:03:49 to 02:18:06 UTC and was cancelled during setup.
+The job annotation is "The job has exceeded the maximum execution time of 12m0s". The build step ran
+from 02:12:26 to 02:16:25 UTC and was cancelled. The measurement step was skipped at 02:16:25 UTC.
+
+Artifact `renderer-perf-windows-d3d11`, ID `12704433774`, is 4,294 bytes with digest
+`sha256:1487341f9c2f89e7de7514058e5ac886d02cffe9edb6792e394a1995c41ce166`. It contains only authorization,
+manifest and build log. No measurement TRX or failure record exists. There was no runtime or native
+admission, observed adapter, frame, block, control, compiler collection, publication state or promotion
+assessment.
+
+The 14 minute 17 second job window billed 15 minutes at USD 0.102 per minute, USD 1.53, exceeding the old
+USD 1.224 unit cap. The owner then set a 20-minute Windows pilot job cap, a three-minute cleanup allowance
+in every paid unit's billed-minute and cost cap, and a USD 12 campaign envelope. The policy was introduced
+in `2c066e9d0aafd38518c8f37c5dc64d4900f05e74` and is included in the reviewed state
+`e3cdb5c8447869a64f8b0792c8a8093c78620ee8`. This attempt consumed its own one-attempt owner approval
+and authorizes no retry.
+
+## Software rehearsals, round 6
+
+The workload and trusted workflow are `e3cdb5c8447869a64f8b0792c8a8093c78620ee8`. This state includes
+construction content pooling, compiler inventory schema 2 and the all-controls rehearsal class.
+
+| Unit | B | Run, job | Job window UTC | Measurement window UTC |
+| --- | --- | --- | --- | --- |
+| `rehearsal-controls-linux` | `31f5c1dd078fc7686b6d47a1e9c8e560c2156f36` | [40454052974](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40454052974), 122023285848 | 2026-10-27 05:13:41 to 2026-10-27 05:19:02 | 2026-10-27 05:17:48 to 2026-10-27 05:18:55 |
+| `rehearsal-controls-windows` | `f8026639c8b2ece5e417d1603cf972c38ed1e458` | [40454056501](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40454056501), 122023308349 | 2026-10-27 05:13:45 to 2026-10-27 05:20:48 | 2026-10-27 05:18:25 to 2026-10-27 05:20:35 |
+| `rehearsal-full-linux` | `a149ff0fe3ba76b7f21167fd4ccba43de9822b8d` | [40454059287](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40454059287), 122023291021 | 2026-10-27 05:13:42 to 2026-10-27 10:26:47 | 2026-10-27 05:17:29 to 2026-10-27 10:26:03 |
+| `rehearsal-full-windows` | `4871e46023d5039c369f255c7c36e5571c4e6267` | [40454063091](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40454063091), 122023292163 | 2026-10-27 05:13:42 to 2026-10-27 09:54:09 | 2026-10-27 05:17:08 to 2026-10-27 09:53:43 |
+
+| Unit | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- |
+| `rehearsal-controls-linux` | 12711153183, 1,195,550, `sha256:abcbeffe977d1fe82a3f33d819b1adf3f304ecaf4895a5ec890aac90c5658c2f` | `aeb31dd098d8205c8f2e481ac55540014fa633e3494a9a40782a904f54c921f5` |
+| `rehearsal-controls-windows` | 12711467950, 1,111,937, `sha256:90231ed58f5d3f813a6113ac4f8af2c05083e8183231a1dc8a6b7a1ae9db40ab` | `e49dce3888e4ea5a360b8e0cf82c9422468624ba3e73490ec4e3127fc77d65b7` |
+| `rehearsal-full-linux` | 12726071295, 25,871,245, `sha256:46739f69becff9b9557e40689f0c16ec7b8b308e3f43dce657f132e4768bb3f1` | `2a8a36f48ee6e1ec57cae7dc54344974bf5773c0a876643f2cc51f215863c3f2` |
+| `rehearsal-full-windows` | 12724416400, 18,517,520, `sha256:a415025b0b3824c79667b3f8621840c5745d2ce5f56b79949d74e2fba0bd7624` | `01bb21fb490990deb65714f74022e61bd254bb312726ea6a42752026fcf577d8` |
+
+All four units passed runtime admission with the exact approved maps, 15 entries on Linux and 12 on Windows.
+Linux native admission selected software `llvmpipe (LLVM 20.1.2, 256 bits)`, vendor `0x10005`, device `0x0000`,
+driver `VkPhysicalDeviceProperties.driverVersion=104865800`, with 64-bit timestamps and a 1 ns period.
+Windows selected software `Microsoft Basic Render Driver` (WARP), vendor `0x1414`, device `0x008c`, driver
+`DXGI driver=000a000065f48370`, with 64-bit timestamps and a 100 ns period.
+
+Each all-controls unit completed 3 conditioning frames, 0/0 scene blocks and 12/12 controls, 2,307 retained
+frames. Each full unit completed 1,200 conditioning frames, 30/30 blocks and 12/12 controls, all 16,944
+retained frames. All four publications are `completed`, compiler collections are `complete`, schema 2
+inventories are complete and trusted `VerifyRehearsal` passed. Promotion is false for every unit with only
+`SoftwareRehearsalNotPerformanceEvidence`.
+
+Each attempt consumed the owner's standing free-run approval for that reviewed state and cost USD 0 on
+a standard runner. These establish software correctness for the recorded schedules and no hardware baseline.
+
+## Second authorized Windows pilot, attempt 2
+
+The unit is `pilot-windows` with the `pilot` preset. The workload and trusted workflow are
+`e3cdb5c8447869a64f8b0792c8a8093c78620ee8`, authorized by B
+`b2a2fd5934ffac90167053887f2a6aafbbab9f40`. Its exact manifest SHA-256 is
+`1792338217371a59630bf788246155fa8442d527d792ff9d14874d5d43ae3a4b`.
+
+[Run 40454067253](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40454067253), attempt 1,
+job `122023305790`, ran from 2026-10-27 05:13:46 to 05:23:19 UTC. The measurement step ran from
+05:21:26 to 05:23:10 UTC and failed. Trusted paid verification was skipped.
+
+Artifact `renderer-perf-windows-d3d11`, ID `12711489209`, is 551,587 bytes with digest
+`sha256:67431463f29e22d726516450510b5bb409b188d21c30559309e2b38aee2a924c`. The measurement TRX SHA-256 is
+`74a737e5a0b1eb4e8e8c094625e247c98de92fc8d013ed3f93fbe11520198c04`.
+
+Runtime admission passed with the exact 10-entry partner environment map. Native admission selected
+`NVIDIA Tesla T4`, vendor `0x10de`, device `0x1eb8`, not software, driver `DXGI driver=00200000000f25d6`,
+image `Windows/Windows/20261013.37.1`, with 64-bit timestamps and a 1 ns period.
+
+The partial report refused with "FrameTimeout, including retained completion." Its only retained frame is
+conditioning raw frame 0, sequence 0, in `conditioning:S3/TotalOnly/0`. The immediate CPU interval is
+44,944.7103 ms. There is no recorded compiler stage. Publication is `failed`, with 0/2 blocks and 0/6
+controls. Compiler collection is `incomplete`, "Cold collection has not completed." Promotion is false
+with only "FrameTimeout, including retained completion."
+
+The 9 minute 33 second job window billed 10 minutes, USD 1.02 at USD 0.102 per minute, inside the updated
+USD 2.346 unit cap. GitHub's organization usage API groups GPU usage by day and SKU. Its 2026-10-27
+`Actions Windows GPU 4-core` line reports 25 minutes and USD 2.55 for both Windows pilots, rather than a
+separate line for each run. Confirmed campaign spend is USD 3.694 of the USD 12 envelope: Linux GPU
+USD 0.208, USD 0.676 and USD 0.26, plus that USD 2.55 Windows line. This attempt consumed its own
+one-attempt owner approval and authorizes no retry. No Windows performance result or published baseline
+was produced.
+
+## Cold first-frame limit
+
+Commits `d09795b2fabc49d92cd8c8f1d57a52f64bcdc77e` and `946d9052d2a52ca36ca5f108242ed0511f79ffc6`
+introduced `limits.coldFrameMilliseconds` and widened it to 120,000 ms. The exact first-frame scope,
+unchanged steady limits and reason live in the
+[cold-frame policy and rationale](../RENDERER-PERFORMANCE.md#evidence-and-authorization).
+The D3D11 cold compile cost remains open as [#1617](https://github.com/APKiwiOrg/KhaozEngine/issues/1617).
+These source changes grant no measurement, retry or full-unit approval.
+
 ## Outstanding native and preparation gates
 
 Accepted Tasks10/11 and the cold amendment implement optional D3D11, Vulkan and Metal diagnostics.

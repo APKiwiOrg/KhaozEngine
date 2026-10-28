@@ -47,20 +47,51 @@ Require (Test-Path -LiteralPath $manifestPath -PathType Leaf) 'Approved manifest
 Require ((Get-Item -LiteralPath $manifestPath).Length -le 65536) 'Manifest exceeds 64 KiB'
 $hash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
 Require ($hash -ceq $env:RENDERER_PERF_MANIFEST_SHA256) 'Manifest byte hash differs from the dispatch'
-$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -AsHashtable -Depth 32
-Require ($manifest.preset -cin @('pilot', 'full', 'rehearsal')) 'Unknown renderer preset'
-$rehearsal = $manifest.preset -ceq 'rehearsal'
-Require (!$rehearsal -or $env:LEGS -ceq 'linux-vulkan') 'Rehearsal admits only Linux Vulkan'
-$runner = if ($rehearsal) { 'ubuntu-24.04' } elseif ($env:LEGS -ceq 'linux-vulkan') { 'gpu-t4-linux' } else { 'gpu-t4-windows' }
+$manifestText = Get-Content -LiteralPath $manifestPath -Raw
+$manifest = $manifestText | ConvertFrom-Json -AsHashtable -Depth 32
+Require ($manifest.preset -cin @('pilot', 'full', 'rehearsal', 'rehearsal-full', 'rehearsal-controls')) 'Unknown renderer preset'
+$rehearsal = $manifest.preset -cin @('rehearsal', 'rehearsal-full', 'rehearsal-controls')
+$rehearsalPolicy = if ($rehearsal) {
+    switch -CaseSensitive ("$($manifest.preset)/$($env:LEGS)") {
+        'rehearsal/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 5400; minutes = 120 } }
+        'rehearsal/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 5400; minutes = 120 } }
+        'rehearsal-full/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 19800; minutes = 350 } }
+        'rehearsal-full/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 19800; minutes = 350 } }
+        'rehearsal-controls/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 5400; minutes = 120 } }
+        'rehearsal-controls/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 5400; minutes = 120 } }
+        default { throw 'No software rehearsal class admits this preset and leg' }
+    }
+} else { $null }
+$runner = if ($rehearsal) { $rehearsalPolicy.runner } elseif ($env:LEGS -ceq 'linux-vulkan') { 'gpu-t4-linux' } else { 'gpu-t4-windows' }
 $backend = if ($env:LEGS -ceq 'windows-d3d11') { 'd3d11' } else { 'vulkan' }
 Require ($manifest.schema -ceq 'khaozengine.renderer-perf-unit/1' -and $manifest.unitId -ceq $env:RENDERER_PERF_UNIT -and $manifest.workloadSha -ceq $env:RENDERER_PERF_WORKLOAD_SHA) 'Manifest identity differs from the dispatch'
 Require ($manifest.execution.leg -ceq $env:LEGS -and $manifest.execution.runner -ceq $runner -and $manifest.execution.backend -ceq $backend -and $manifest.execution.workflow -ceq 'gpu-hosted-bench.yml') 'Manifest execution differs from the selected leg'
-Require ($manifest.execution.adapterPolicy -ceq $(if ($rehearsal) { 'mesa-lavapipe-software' } else { 'nvidia-t4-hardware' }) -and $manifest.execution.completionPolicy -ceq 'retained-fence-batch-3/1') 'Manifest adapter or completion policy differs from the execution class'
-Require ($manifest.preset -cne 'pilot' -or $env:LEGS -cne 'windows-vulkan') 'Windows Vulkan has no initial pilot'
-$minutes = if ($rehearsal) { 120 } elseif ($manifest.preset -ceq 'pilot') { 12 } else { 35 }
-Require ($manifest.limits.jobMinutes -eq $minutes -and $manifest.budget.maximumBilledMinutes -eq $minutes) 'Preset job and billing caps disagree'
+Require ($manifest.execution.adapterPolicy -ceq $(if ($rehearsal) { $rehearsalPolicy.adapter } else { 'nvidia-t4-hardware' }) -and $manifest.execution.completionPolicy -ceq 'retained-fence-batch-3/1') 'Manifest adapter or completion policy differs from the execution class'
+# ConvertFrom-Json keeps the last duplicate key. Check the admitted clock's exact JSON identity first.
+$clockOptions = [System.Text.Json.JsonDocumentOptions]::new()
+$clockOptions.MaxDepth = 32
+$clockDocument = [System.Text.Json.JsonDocument]::Parse($manifestText, $clockOptions)
+try {
+    $executions = @($clockDocument.RootElement.EnumerateObject() | Where-Object { $_.Name -ieq 'execution' })
+    Require ($executions.Count -eq 1 -and $executions[0].Name -ceq 'execution') 'Manifest requires one exact execution object'
+    $clocks = @($executions[0].Value.EnumerateObject() | Where-Object { $_.Name -ieq 'lockedGraphicsClockMHz' })
+    Require ($clocks.Count -eq 1 -and $clocks[0].Name -ceq 'lockedGraphicsClockMHz') 'Manifest requires one exact graphics clock field, without duplicates'
+} finally { $clockDocument.Dispose() }
+Require ($manifest.execution.ContainsKey('lockedGraphicsClockMHz')) 'Manifest requires an explicit graphics clock policy'
+$lockedClock = $manifest.execution.lockedGraphicsClockMHz
 if ($rehearsal) {
-    Require ($manifest.limits.unitSeconds -eq 5400 -and $manifest.limits.frameMilliseconds -eq 60000) 'Rehearsal unit or frame limits differ'
+    Require ($null -eq $lockedClock) 'Software rehearsal requires a null graphics clock policy'
+} else {
+    Require ($lockedClock -is [long] -and $lockedClock -eq 1095) 'Paid T4 graphics clock must be an explicit 1095 MHz integer'
+}
+Require ($manifest.preset -cne 'pilot' -or $env:LEGS -cne 'windows-vulkan') 'Windows Vulkan has no initial pilot'
+# Windows full allows for the slow GRID setup and clock query seen in run 40599810511.
+$minutes = if ($rehearsal) { $rehearsalPolicy.minutes } elseif ($manifest.preset -ceq 'pilot') { if ($env:LEGS -ceq 'linux-vulkan') { 12 } else { 20 } } elseif ($env:LEGS -ceq 'linux-vulkan') { 35 } else { 50 }
+$billedMinutes = if ($rehearsal) { $minutes } else { $minutes + 3 } # Rounded-up cleanup overrun in run 40435928569.
+Require ($manifest.limits.jobMinutes -eq $minutes -and $manifest.budget.maximumBilledMinutes -eq $billedMinutes) 'Preset job and billing caps disagree'
+Require ($manifest.limits.coldFrameMilliseconds -is [long] -and $manifest.limits.coldFrameMilliseconds -eq 120000) 'Preset cold frame limit must be an explicit 120000 ms integer'
+if ($rehearsal) {
+    Require ($manifest.limits.unitSeconds -eq $rehearsalPolicy.unitSeconds -and $manifest.limits.frameMilliseconds -eq 60000) 'Rehearsal unit or frame limits differ'
     Require ($manifest.budget.ratePerMinute -eq 0 -and $manifest.budget.maximumCostUsd -eq 0 -and $manifest.budget.currency -ceq 'USD' -and $manifest.approval.campaignMaximumUsd -eq 0) 'Rehearsal requires zero USD cost and campaign budget'
     Require (![string]::IsNullOrWhiteSpace($manifest.approval.reference) -and ![string]::IsNullOrWhiteSpace($manifest.approval.purpose) -and ![string]::IsNullOrWhiteSpace($manifest.approval.campaignReference)) 'Rehearsal requires exact owner approval references'
 }
@@ -70,9 +101,9 @@ Require ($Mode -cne 'VerifyRehearsal' -or $rehearsal) 'Rehearsal Verify refuses 
 if ($Mode -ceq 'Select') {
     $nativeBackend = if ($backend -ceq 'd3d11') { 'direct3d11-native' } else { 'vulkan-native' }
     $class = if ($rehearsal) { 'rehearsal' } else { 'performance' }
-    $device = if ($rehearsal) { 'llvmpipe' } else { 'discrete' }
-    $d3d = if ($rehearsal) { '' } else { 'NVIDIA' }
-    $matrix = @{ include = @(@{ leg = $env:LEGS; runner = $runner; backend = $nativeBackend; jobMinutes = $minutes; executionClass = $class; vulkanDevice = $device; d3dAdapter = $d3d }) } | ConvertTo-Json -Compress -Depth 4
+    $device = if ($rehearsal) { if ($backend -ceq 'vulkan') { 'llvmpipe' } else { '' } } else { 'discrete' }
+    $d3d = if ($rehearsal) { if ($backend -ceq 'd3d11') { 'warp' } else { '' } } else { 'NVIDIA' }
+    $matrix = @{ include = @(@{ leg = $env:LEGS; runner = $runner; backend = $nativeBackend; jobMinutes = $minutes; executionClass = $class; vulkanDevice = $device; d3dAdapter = $d3d; lockedGraphicsClockMHz = $lockedClock }) } | ConvertTo-Json -Compress -Depth 4
     "matrix=$matrix"
     "jobMinutes=$minutes"
     exit 0
@@ -119,13 +150,15 @@ try {
         Require ($publication.GetProperty('state').GetString() -ceq 'completed' -and $publication.GetProperty('returnedByRun').GetBoolean() -and $publication.GetProperty('finalUnitPublished').GetBoolean() -and !$assessment.GetProperty('validForPromotion').GetBoolean()) 'Rehearsal requires completed non-promotable publication'
         Require ($reasons.GetArrayLength() -eq 1 -and $reasons[0].GetString() -ceq 'SoftwareRehearsalNotPerformanceEvidence' -and $root.GetProperty('compiler').GetProperty('state').GetString() -ceq 'complete') 'Rehearsal requires only its fixed non-promotion reason and Complete compiler collection'
     } else {
+        $gpuClock = $root.GetProperty('gpuClock')
+        Require ($gpuClock.GetProperty('state').GetString() -ceq 'verified' -and $gpuClock.GetProperty('lockedGraphicsClockMHz').GetInt32() -eq $manifest.execution.lockedGraphicsClockMHz -and $gpuClock.GetProperty('samples').GetInt32() -gt 0) 'GpuClockNotLocked. Final report lacks verified graphics-clock telemetry'
         Require ($publication.GetProperty('state').GetString() -ceq 'completed' -and $publication.GetProperty('returnedByRun').GetBoolean() -and $publication.GetProperty('finalUnitPublished').GetBoolean() -and $root.GetProperty('assessment').GetProperty('validForPromotion').GetBoolean()) 'Final report is unfinalized or invalid for promotion'
     }
     foreach ($pair in @(@('unitId', $env:RENDERER_PERF_UNIT), @('manifestSha256', $env:RENDERER_PERF_MANIFEST_SHA256), @('workloadSha', $env:RENDERER_PERF_WORKLOAD_SHA), @('authorizationSha', $authorization.authorizationSha), @('workflowSha', $env:GITHUB_WORKFLOW_SHA), @('runId', $env:GITHUB_RUN_ID), @('backend', $backend))) {
         Require ($identity.GetProperty($pair[0]).GetString() -ceq $pair[1]) "Final report $($pair[0]) differs from execution"
     }
     if ($rehearsal) {
-        Require ($identity.GetProperty('attempt').GetInt32() -eq 1 -and $identity.GetProperty('softwareAdapter').GetBoolean() -and $identity.GetProperty('backend').GetString() -ceq 'vulkan') 'Rehearsal requires actual first-attempt software Vulkan identity'
+        Require ($identity.GetProperty('attempt').GetInt32() -eq 1 -and $identity.GetProperty('softwareAdapter').GetBoolean() -and $identity.GetProperty('backend').GetString() -ceq $backend) 'Rehearsal requires actual first-attempt software identity on the approved leg'
     } else {
         Require ($identity.GetProperty('attempt').GetInt32() -eq 1 -and $identity.GetProperty('vendorId').GetUInt32() -eq 0x10de -and $identity.GetProperty('deviceId').GetUInt32() -eq 0x1eb8 -and !$identity.GetProperty('softwareAdapter').GetBoolean()) 'Final report lacks first-attempt native NVIDIA T4 identity'
     }

@@ -382,13 +382,19 @@ Windowing and input foundation for KhaozEngine.
   `ThresholdPixels` property names remain for compatibility. `TapPosition` stays in framebuffer pixels.
   `Advance` allocates nothing. Lifted from the reference consumer's
   `RightMouseGesture`. See docs/USING-KHAOZENGINE.md.
+- `PointerGesture.LivePendingTravel` opts one gesture into immediate motion while its tap decision is pending.
+  Default false. With a positive threshold, `DragDelta` carries each held frame's own `MouseDeltaPoints`, including
+  the crossing, with no replay or catch-up cap. The press frame and release frame deliver zero. The tap rule,
+  grace, press origin and suppression stay unchanged. A pending release still taps. The strict path rule retains
+  its existing press-frame threshold accounting. A nonpositive threshold keeps its immediate-drag behavior.
 - `PointerTapTolerance(DistancePoints, GraceSeconds, GraceDistancePoints)` with `CatchUpLimitPoints` - the opt-in tap
   rule for `PointerGesture(button, tapTolerance)`. It judges straight-line distance from the press point (the
   cursor where the press frame ended, so that frame's own delta never counts) instead of path length, with the wider
   `GraceDistancePoints` limit until `GraceSeconds` after the press, so a click that wobbles and comes back is still a
   tap. A gesture built on one advances with `Advance(input, uiBlocked, elapsedSeconds)`, and its two-argument
   `Advance` throws. `CatchUpLimitPoints` caps the catch-up step when the grace ending decided the press (the distance
-  was still within `GraceDistancePoints`), and zero drops it. The strict path rule stays the default. See
+  was still within `GraceDistancePoints`), and zero drops it. It has no effect with `LivePendingTravel`.
+  The strict path rule stays the default. See
   docs/USING-KHAOZENGINE.md.
 - `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame
   that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume), `DesignViewport`
@@ -414,9 +420,14 @@ Windowing and input foundation for KhaozEngine.
   `new AdaptiveViewport(referenceWidth, referenceHeight)` keeps its fixed height and reference-width floor, reports
   `ScaleMultiplier == 1` and throws `InvalidOperationException` when one is set. Neither mode touches the camera.
 - `UiViewport` (since 10.12.0) - a point-space viewport for DPI-aware UI, implementing `IDesignViewport`.
-  Authoring units are logical points and 1 point maps to `DpiScale` device pixels (no letterbox). `Width`/`Height`
-  track the logical window size, so the UI reflows as the window resizes rather than magnifying, and `ScaleX`/`ScaleY`
-  equal the DPI scale (stable per display, changing only on a monitor / OS-scale change, not on resize). It returns
+  One UI design point maps to `EffectiveScale` device pixels without letterboxing. `DpiScale` remains physical
+  OS scale. `ScaleMultiplier`, default 1, requests a user scale between 0.1 and 10 inclusive. Nonfinite and
+  out-of-range requests throw before changing the previous request. The next valid `Update` applies it to
+  canvas size, projection, pointer mapping and clipping together, so setting it during input handling cannot
+  remap that frame. `EffectiveScale` and both axis scales are physical DPI times the applied multiplier.
+  `Width`/`Height` are the rounded logical window size divided by that multiplier. `DesignBounds` retains
+  fractional coverage and `ContentBounds` remains the exact framebuffer. Bake UI fonts at `EffectiveScale`.
+  It returns
   `SnapsToDevicePixels = true`. Drive it with `UiViewport.Update(Frame frame)`, which carries the exact
   `Frame.DpiScale`, or `Update(int framebufferW, int framebufferH, int logicalW, int logicalH)`, which derives the
   scale from the two widths. Because it implements `IDesignViewport`

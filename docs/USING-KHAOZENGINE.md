@@ -1323,11 +1323,11 @@ owns no camera. Call `Advance(input, uiBlocked)` once a frame, then read:
 
 - `Phase`: `Idle`, `Pending` (pressed and still undecided) or `Dragging` (past the threshold, and a drag until the
   button comes up or a block arrives).
-- `DragDelta`: zero unless dragging, the frame's `MouseDeltaPoints` while dragging, and the whole pending movement
+- `DragDelta` by default: zero unless dragging, the frame's `MouseDeltaPoints` while dragging, and the whole pending movement
   replay on the frame the press crosses the threshold. All are window points.
 - `TapThisFrame` and `TapPosition`: a release while still pending is a tap, at the framebuffer position the press began.
 
-The rules:
+The default rules:
 
 - Travel is path length over the whole press, so slow movement still becomes a drag, and a wiggle that returns to
   its start is a drag rather than a tap.
@@ -1375,6 +1375,21 @@ gesture.Advance(input, uiBlocked, dt);   // the two-argument Advance throws on a
   `ArgumentException` otherwise. With a tolerance, `elapsedSeconds` must be finite and not negative, else
   `Advance` throws `ArgumentOutOfRangeException`. `TapTolerance` is null on a gesture built with a threshold, and its
   three-argument `Advance` neither uses nor checks the time, so it matches the two-argument one for any value.
+
+Set `LivePendingTravel = true` on an individual gesture to deliver motion while the tap decision is still pending.
+It defaults to false and works with either tap rule. With a positive threshold, each held frame after the press
+reports its own `MouseDeltaPoints` in `DragDelta`, both while pending and on the crossing. Nothing replays, and
+`CatchUpLimitPoints` has no effect. The press and release frames deliver zero. Tap decisions, grace, suppression
+and `TapPosition` stay unchanged, so a pending release still taps at the press origin. The strict path rule keeps
+its existing threshold accounting, including the press frame. A nonpositive threshold keeps its immediate-drag
+behavior.
+
+```csharp
+var gesture = new PointerGesture(MouseButton.Right, new PointerTapTolerance(6f, 0.2f, 10f))
+{
+    LivePendingTravel = true,
+};
+```
 
 It is lifted from the reference consumer's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
 them (see "Tap-or-drag gestures" in the follow camera chapter).
@@ -1712,6 +1727,41 @@ quality.Update(im, focused: nav.Focused == 2);   // Enter opens the dropdown; Up
 
 `KhaozEngine.Showcase`'s Settings dialog (`Room2DGui.cs`) is the runnable reference: enter the "2D & GUI" room, open the "Screens & dialogs" tab, launch the Settings dialog, and drive the volume slider + fullscreen toggle with the keyboard/gamepad (Up/Down between rows, Left/Right to adjust, Enter to flip, Esc to back out) or the pointer.
 
+**Bounded `Dropdown` popups** - set `PopupViewport` in the same logical coordinates as `TriggerBounds`
+before update and draw. The popup fits below, flips above when that fits, or uses the side with more space
+and scrolls. Horizontal placement and width clamp to the viewport without moving the trigger or shrinking
+option text. Opening reveals the current selection. Keyboard highlight movement, including wrap, reveals
+the target row. Wheel scrolling persists across idle updates.
+
+```csharp
+var resolution = new Dropdown(resolutionOptions, triggerBounds)
+{
+    PopupViewport = new Rect(0, 0, 400, 300),
+};
+// Each frame, after InputManager.Update and before parent content updates:
+resolution.Update(input, focused: resolutionFocused);
+parent.Update(input.Pointer, resolution.WheelConsumed ? input.State.WithoutScroll() : input.State);
+// Draw the trigger with normal content, then draw the popup after the parent's clip has ended.
+resolution.Draw(batch, white, font);
+resolution.DrawOverlay(batch, white, font, input.Pointer);
+```
+
+`PopupBounds` is the actual list rectangle, excluding the trigger. `FirstVisibleIndex` and
+`VisibleOptionCount` identify intersecting rows, including partial edge rows. Bounded `OptionBounds(i)`
+is the visible, hit-testable part of the row and returns the empty default rectangle for a fully offscreen
+row. Drawing, pointer reservation and selection use this same resolved geometry. A row press is cancelled
+when scrolling, popup reflow or a pointer-coordinate mapping change intervenes before release. Returning
+to the original geometry does not revive that press. Same-frame taps still select visible options.
+
+The additive `Update(Pointer, float wheelDelta)` scrolls upward for positive deltas. `Update(Pointer)`
+remains a zero-wheel call. `WheelConsumed` resets on each update and claims nonzero wheel input only while
+a bounded popup is open and the pointer is inside it, including at a scroll limit. Update the popup first
+and withhold consumed wheel input from parent content as above. Bounded `Update(InputManager, ...)` reads
+keyboard/gamepad navigation from a scroll-free snapshot, so a wheel event never also moves the highlight,
+and a wheel outside the popup remains available to parent content. Simultaneous keyboard/gamepad input
+still works. Leaving `PopupViewport` null preserves the original unbounded placement, `OptionBounds` and
+InputManager wheel-as-menu navigation.
+
 **Overlay chrome on the core widgets (opt-in, 9.21.0)** - `ScrollablePanel`, `Dropdown`, and `Tooltip` carry
 opt-in "panel overlay" behaviours for bottom-sheet-style UI. Every knob defaults to a no-op, so a widget you
 already use is unchanged until you set one.
@@ -2012,6 +2062,45 @@ DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
 What stays in the GAME: the palette values it assigns to `GuiTheme`, the metric numbers if the default shape is
 wrong for it, which taps it swallows through `BlockRegion`, each window's natural-bounds rule, the grip rect,
 and whatever fills the strip, content and footer bands.
+
+### Saved HUD layout
+
+`HudLayout` and `HudLayoutEditor` in `KhaozEngine.Gui` provide movable HUD regions without owning the
+game's presentation or storage. A `HudLayoutPosition(CenterX, CenterY)` stores a normalized center from
+0 to 1 as serializable properties. The caller supplies each region's current default rectangle and a
+canvas extent in the same coordinates as its `Pointer` and drawing pass.
+
+`HudLayout.Resolve(defaultBounds, canvas, savedPosition)` uses a valid saved center or the default, then
+clamps the complete rectangle. Its size remains caller-owned. An oversized region keeps its top-left
+reachable. A zero or invalid canvas extent is treated as zero, allowing initial layout before the first
+sized window frame. `FromBounds(bounds, canvas)` captures a normalized center and requires a positive
+finite canvas. Neither method changes stored settings. This preserves the intended position when a
+resize or user-scale change temporarily clamps a region against an edge.
+
+For an edit mode, register `HudLayoutRegion(Id, DefaultBounds)` entries in draw order. Identifiers must
+be unique and stable. Include hidden regions if the game wants to paint editable ghosts for them.
+
+```csharp
+var editor = new HudLayoutEditor();
+editor.Begin(savedPositions);   // copies valid entries, including unknown future region ids
+editor.Update(pointer, regions, canvas);
+Rect bounds = editor.Resolve("status", statusDefaultBounds, canvas);
+// Draw and hit-test this same rectangle. The caller supplies real or ghost content.
+Dictionary<string, HudLayoutPosition> updatedPositions = editor.Commit();
+// Persist updatedPositions through the consumer's existing settings owner.
+```
+
+Only a fresh unconsumed press can capture a region. The last drawn region under it wins. Capture follows
+the pointer outside the region, consumes the whole gesture through release, and does not apply travel
+that happened before the press. Clamping does not accumulate invisible drag distance. If the canvas or
+the pointer's captured transform changes during capture, that frame rebases the gesture without treating
+coordinate remapping as travel. This includes a DPI change that leaves the logical canvas size unchanged.
+
+`Reset(regionIds)` removes only those overrides from the draft, leaving unknown future entries alone
+when the consumer supplies its known ids. `Cancel()` discards the draft and is safe on repeated close or
+disconnect paths. `Commit()` returns a separate dictionary and ends editing. Reset and Commit require an
+active session. The editor does not persist, draw a modal scrim, reserve unrelated pointer regions or
+consume keyboard input. The caller owns those policies, along with labels and Done/Cancel controls.
 
 ### Overlapping windows (`WindowStack`, 21.3.0)
 
@@ -3996,18 +4085,37 @@ half-lit edges). The fix is to draw the UI in **logical points at native DPI** i
 canvas, then snap to whole device pixels. The game world stays letterboxed in its `DesignViewport`; only the UI
 layer is decoupled.
 
-**`UiViewport` (`KhaozEngine.Windowing`)** is a point-space `IDesignViewport` where 1 logical point = `DpiScale`
-device pixels, with no letterbox. Its `Width`/`Height` track the logical window, so the UI reflows on resize
-rather than scaling. Drive it once per frame with `uiViewport.Update(frame)`. `Frame.DpiScale` is the window's
-OS content scale, so a Windows display at 150% gives 1.5 even though its window coordinates are pixels, and a
-resize never perturbs the scale.
+**`UiViewport` (`KhaozEngine.Windowing`)** is a point-space `IDesignViewport` without letterboxing.
+`DpiScale` is the physical OS content scale. `ScaleMultiplier`, default 1, requests a user scale from 0.1
+through 10 inclusive. Invalid requests throw before replacing the last good value. The next valid `Update`
+applies the request to projection, pointer mapping, clipping and layout together. A request made during a
+frame does not alter that frame's transform. `EffectiveScale` is the applied DPI times user multiplier,
+also exposed as `ScaleX`/`ScaleY`. `Width`/`Height` divide the logical window size by the multiplier and round
+for integer layout consumers. `DesignBounds` keeps exact fractional coverage and `ContentBounds` is the
+complete framebuffer. Drive it once per frame with `uiViewport.Update(frame)`. Physical DPI remains stable
+on resize. This does not change the game viewport or camera.
 
 **`DpiFont` (`KhaozEngine.Render2D`)** authors at a logical `pixelHeight`, and each frame you call
-`font.For(frame.DpiScale)` to get a `SpriteFont` baked for the current DPI, drawn 1:1 in the point-space pass. It
-re-bakes the atlas only when the DPI scale changes. Create one via `surface.LoadDpiFont(...)` /
+`font.For(uiViewport.EffectiveScale)` to get a `SpriteFont` baked for the applied UI density, drawn 1:1 in
+the point-space pass. It re-bakes only when that density changes, from OS DPI or a user-scale update.
+Create one via `surface.LoadDpiFont(...)` /
 `surface.LoadDefaultDpiFont(...)`. Pass `cacheSlots` &gt; 1 when the same face is drawn at several scales in one
 pass and each must be texel-exact (e.g. a boot title + smaller label): each `For(scale * dpiScale)` stays baked
 instead of thrashing a single slot.
+
+**Retained UI fonts.** `DpiFont.Bind(Func<float>)` returns a stable borrowed `SpriteFont` for controls that
+keep their font reference. Bind to the frame's effective UI density and pass that view to the controls.
+Each measurement or text draw resolves current glyphs, metrics and atlas. Text drawing uses one resolved
+font snapshot for the whole operation. The callback must return a finite positive density and should not
+change during a frame. The first use bakes lazily, and values below 1 keep the minimum bake density of 1.
+Dispose the `DpiFont` after the controls stop using it. Disposing the view does not dispose the owner.
+A disposed owner rejects For, Bind and any later use of its views.
+
+```csharp
+DpiFont owner = surface.LoadDefaultDpiFont(16f);
+SpriteFont retained = owner.Bind(() => uiViewport.EffectiveScale);
+// Pass retained to controls. Keep owner alive and dispose it when those controls are finished.
+```
 
 **Device-pixel snapping.** Inside a point-space `Begin`, `SpriteBatch.SnapRect` / `SnapLength` and the
 `DeviceScale` / `DeviceOffset` accessors snap coordinates to whole device pixels (they are inert outside a
@@ -4024,7 +4132,7 @@ it. `minHeight` holds a desired resting scale (e.g. couple it to camera zoom), `
 edge seams. It is the rect form of the scalar `Cover`.
 
 **With `KhaozEngine.Game`.** Override `GameApp.OnDrawUi(SpriteBatch)`, a second pass that runs after `OnDraw2D`
-with the batch already in `Begin(Ui)`. Draw crisp UI there with `DpiFont.For(Ui.DpiScale)` and hit-test with
+with the batch already in `Begin(Ui)`. Draw crisp UI there with `DpiFont.For(Ui.EffectiveScale)` and hit-test with
 `UiPointer`. `OnDraw2D` stays the design-space game field, so the world layer is unchanged. Scenes get the same
 split: `GameScene.OnDrawUi` plus `Manager.UiViewport` / `Manager.UiPointer`.
 
@@ -4034,7 +4142,7 @@ DpiFont _title = null!;   // Surface2D.LoadDefaultDpiFont(40f) in OnLoad
 
 protected override void OnDrawUi(SpriteBatch batch)
 {
-    SpriteFont f = _title.For(Ui.DpiScale);
+    SpriteFont f = _title.For(Ui.EffectiveScale);
     batch.DrawString(f, "Menu", new Vector2(40, 40), color);   // crisp at any DPI
 }
 ```
@@ -5011,6 +5119,50 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `Shadows.ResolveFor(caps)` **degrades `ShadowMap` down to `Blob`** (never a crash), reporting
     `ShadowResolution.Degraded`/`Reason`. Validate a menu choice with `Shadows.ResolveFor(AppWindow.Capabilities)` and
     read `.Effective` for the tier that will actually run - the same `ResolveFor`-clamps-a-request pattern as AA.
+    - **Underwater key light.** Every lit receiver inside an opted-in water volume selects the lowest surface
+      above it, keeping submission order on ties. Rectangle minima and `FloorY` are inclusive, rectangle maxima
+      and the surface are exclusive. For receiver `P` at depth `h`, Snell refraction at the still surface uses
+      the constant index `1.333`. With in-water travel direction `t`, the path is
+      `L = h / cos(theta_water) = h / -t.y` and the surface entry is `E = P - t * L`.
+      The entry selects its own cascade, with `P`'s geometric normal offset and slope bias.
+      Key diffuse and specular receive the body's `exp(-attenuation * L)` even with shadows disabled.
+      Attenuation is the resolved `AbsorptionPerMetre` for legacy bodies or the extinction derived from
+      `WaterColor` and `Clarity` for `WaterColumnLight` bodies.
+      Ambient, indirect, fill, point lights, emissive and fog keep their values. Underwater sunlight models
+      the direct sun path. The surface handles the view path through legacy depth grading or the opted-in
+      column composite. Key-only attenuation reduces shadow contrast against unchanged ambient.
+
+      Ordinary outward CCW opaque meshes with orientation-preserving transforms retain their sun-facing near
+      face in the atlas on every backend, with clockwise fronts culled. The glTF loader preserves that winding.
+      A straddling floater's above-water face therefore shadows the entry lookup. Four jittered depth slices
+      from `E` to `P` find fully submerged rocks and cave roofs. Each fetched texel reconstructs the stored
+      caster's height on its own light ray, counting only heights below the surface and within the slice band.
+      Non-horizontal slices share unbiased world-height boundaries along `E` to `P`. Cascade-specific normal
+      offsets and widening affect only tap reconstruction, keeping thin roofs covered across far-to-near
+      cascade transitions. The final slice ends on the receiver's
+      geometric plane with its normal offset and depth bias, avoiding upslope self-shadow. Reconstruction
+      divides by squared cascade basis lengths, and the signed final-plane test divides by neither light
+      elevation nor plane slope, keeping the march finite even at horizontal light. Slice lookups blend
+      cascades, with the outer fade applied once at the real receiver so a roof near the atlas border cannot
+      brighten a covered cave floor. The within-slice displacement error is bounded by its vertical span times
+      `tan(theta_air) - tan(theta_water)`, apart from atlas quantization and bias. One caster per atlas texel
+      means a nearer above-water caster can hide a submerged caster in the same light texel from the march.
+
+      The entry kernel uses exactly 16 point comparisons at every radius before cascade blending, matching
+      the dry bilinear kernel at zero widening. In each selected cascade the radius is
+      `min(8, 1 + L * UnderwaterPenumbraPerMetre / texelWorld)`. Positions and weights morph into a centred,
+      stratified equal-weight pattern over the first texel of widening, with noise-driven rotation and jitter
+      growing from zero. Entry taps compare the stored caster's height with the original biased dry tap's
+      height on the horizontal entry plane at the actual snapped and clamped texel. The inverse orthographic
+      basis's Y coefficients use squared basis lengths as denominators, without a reciprocal of light
+      elevation or an unbounded depth gradient near horizontal light. Exactly horizontal rays use the
+      downward-light height limit. Equal heights keep the ordinary depth comparison, including when a tiny
+      height coefficient underflows. This preserves the original bias and zero-widening result and prevents
+      outer rays from passing above shallow casters. A separate dry/disc
+      blend would double the comparisons over shallow water, where most submerged pixels are. The march
+      spreads its four rays with the same radius and keeps one comparison per slice. As depth tends to zero,
+      entry, bias, transmittance and kernel meet the dry path. Non-positive shadow strength still exports key
+      visibility of exactly one.
     - **Cascade knobs** (on `ShadowSettings`): `ShadowCascadeCount` (default `3`, clamped `1..4` by `ResolvedCascadeCount`)
       cascades, each fitted to its own camera-frustum slice. Cascade 0 stays `ShadowNearDistance` tight for crisp near
       shadows (so `ShadowCascadeCount == 1` is the pre-cascade single map plus the edge fade). The rest grow to
@@ -5806,17 +5958,37 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   ripple normal on top, a camera-distance detail fade, per-channel Beer-Lambert depth grading of the body colour, a
   fresnel blend toward the reflected sky, a GGX sun glint with distance/footprint roughness widening,
   procedural whitecap and shoreline foam, and a depth-driven shore fade at the waterline.
-  **No refraction, no screen-space reflections, no caustics, no submerged view** - the reflection is the
+  **No bent image lookup, no screen-space reflections, no caustics, no submerged view** - the reflection is the
   sky only (the legacy gradient or the enabled atmosphere's sky-view LUT, with a CPU mirror through
   `AtmosphereModel`). Feed the returning camera-aware `SunCycle.Apply` horizon to `Post.Water.HorizonColor`.
   Issue #54 records probes/SSR as not planned at the current bar. This is a stylized LDR surface, not a
-  physically accurate one.
+  physically accurate one. Underwater sunlight is separately opt-in per water body. How submerged receivers are lit
+  is described under key shadows.
   - **Request** (per-frame, WHERE to draw): call `scene.DrawWater(new WaterPlane(centerX, surfaceY, centerZ,
     halfExtentX, halfExtentZ))` once per body of water each frame (several lakes/ponds queue one `WaterPlane` each).
     No call this frame means the water pass never runs - existing scenes stay byte-stable, matching the `Sky`/`Bloom`
     opt-in convention. Cleared every `Begin()` like the decal/shadow-blob queues.
+  - **Water volume** (`WaterPlane.FloorY`, default `null` = unbounded below): pass the optional trailing constructor
+    argument when the body has a lowest world Y under the plane rectangle. Receivers below it are outside the body.
+    The floor is a conservative slab, not exact local containment, so a dry space inside the slab under a higher part
+    of the bed can still count as submerged. The submerged-caster march keeps the bed's key shadow over that
+    space, preserving a dry cave's darkness. `DrawWater` refuses a non-finite floor or one above `SurfaceY`.
+    Render-origin rebasing carries it with the plane, and stacked bodies resolve to the nearest surface above a receiver.
+  - **Underwater volume uploads** expose `scene.WaterVolumeClusters` for the resolved opt-in records and
+    cluster references. The `16 x 9 x 24` point-light camera grid holds at most 4096 water records per frame,
+    48 bytes each (three `uvec4`), with 32 indices per cluster. Overflowed clusters scan all retained records.
+    Water-only frames prepare the grid, and a failed point-light assignment leaves its water uniforms intact.
+    `ClusterCamera.w` carries the independent record count. Zero skips the entire water query without a buffer
+    read or upload, so a frame with no opted-in water renders exactly as before. Every lit program reads
+    `WaterVolumes` at appended set 0 binding 15 for rigid, foliage and CPU-skinned, 7 for GPU-skinned, or 6 for
+    splat and tile ground. A layout gains a binding with its first shader reader because optimization removes
+    unread declarations and shifts Direct3D11 registers. Shaderc preserve-bindings stays unchanged.
+    Scene and standalone lit renderer construction require `GpuCapabilities.MaxFragmentStorageBuffers >= 3`
+    before GPU allocation, including when water is disabled. Lower reports throw `NotSupportedException`
+    naming `maxPerStageDescriptorStorageBuffers`. See the
+    [Render3D water reference](../KhaozEngine.Render3D/README.md) for packing, caps and diagnostics.
   - **Per-plane look** (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
-    identical**): a trailing optional constructor parameter, so every call site written before this existed still
+    identical**): the optional `look` constructor parameter, so every ordinary call written before this existed still
     compiles and still packs from the caller's own `Post.Water` object unchanged. Every field on `WaterLook`
     mirrors a `WaterSettings` field and is itself nullable, `null` inherits the scene and a value overrides it for
     this plane alone, leaving every other queued plane on the scene's look. That is what lets a calm inland lake
@@ -5828,12 +6000,14 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         SwellAmplitude = 0.04f,
         FoamStrength = 0f,
         SurfStrength = 0f,
-    }));
+        UnderwaterSunlight = true,
+    }, floorY: 0f));
     ```
-    **37 fields are overridable**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
-    (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars,
-    `ShoreFadeDistance`, and the
-    two depth-response strengths `ShoalingStrength`/`SurfStrength`. **What stays scene-wide, and cannot be put on
+    **Overridable fields**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
+    (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`UnderwaterSunlight`/`UnderwaterPenumbraPerMetre`/
+    `WaterColumnLight`/`WaterColor`/`Clarity`/`ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars,
+    `ShoreFadeDistance`, and the two depth-response strengths `ShoalingStrength`/`SurfStrength`.
+    **What stays scene-wide, and cannot be put on
     a look at all**: `SeaState` (one FFT bake - calling the producer twice a frame with two sea states does not
     make two oceans, it makes the one producer rebake on every call for both states and corrupts the persistent
     foam accumulator, whose contract is that one invocation owns each texel), `Bathymetry` (one depth texture),
@@ -5844,12 +6018,48 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     knobs (a plane wanting no surf sets `SurfStrength = 0`, which is the whole per-body need), and the sample-
     count quality knobs. Setting `WaveSource = WaterWaveSource.Procedural` on a look is the inland-body case: it
     takes the plane off the shared ocean entirely, so it loses the sea's swell and whitecaps, and (since shoaling
-    and breaking surf ride the same gate) its breaking surf too. Costs zero new UBO bytes (the payload stays 1088,
-    the slot stays 1280), zero new GPU resources and zero new pipelines - each plane already owned its own slot in
-    the water pass's uniform buffer, so an override is a different set of numbers written into a slot that was
+    and breaking surf ride the same gate) its breaking surf too. Look overrides add zero UBO bytes, per-plane
+    GPU resources or pipelines. The payload is 1136 bytes within the unchanged 1280-byte slot, binding range
+    and dynamic-offset stride. Each plane already owned its own slot in the water pass's uniform buffer,
+    so an override is a different set of numbers written into a slot that was
     being written anyway. Per-body sea states, bathymetry and grid modes stay deferred to
     [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275). Rationale, including why a per-plane sea state
     is refused rather than deferred: `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
+  - **Water-column authoring**: `WaterColumnLight` defaults to `false`, `WaterColor` defaults to neutral linear
+    RGB `(0.10, 0.13, 0.10, 1)` with alpha ignored, and `Clarity` defaults to `2` metres of vertical depth for
+    about 5% bed visibility when seen straight down. These are neutral authoring defaults, not tuned river values.
+    Each nullable `WaterLook` field inherits the scene, a value overrides it and an explicit `false` opts out.
+    `DrawWater` checks resolved inputs before enqueue when the column is enabled. Clarity must be finite and
+    at least 0.001 metres, and each RGB channel must be finite and in [0, 1]. A rejection throws
+    `ArgumentException` naming `Clarity` or `WaterColor` and leaves the queue unchanged. Disabled columns leave
+    these inputs unvalidated.
+    The column path bypasses `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`, `ShallowDepth` and `Opacity`.
+    Shore fade and foam keep their own settings. An enabled column also opts its plane into underwater
+    sunlight without changing `UnderwaterSunlight`. Its volume record carries extinction derived from
+    resolved `WaterColor` and `Clarity`, with mean extinction `3 / Clarity`, instead of legacy absorption.
+    Enabled planes also shadow glint and the sun-lit foam term through the scene's cascades, leaving foam's
+    ambient term unshadowed. Disabled planes keep the original surface shading.
+    Enabled columns refract the view direction for perspective and orthographic cameras and apply view-path
+    extinction, four shadowed sun samples, analytic unshadowed ambient single scattering and an H-function
+    multiple-scattering estimate scaled by mean sun visibility. The bed colour is the pre-water copy at the
+    original pixel, with no bent image lookup. The copy includes everything drawn before water, so farther water
+    seen through another column surface is omitted. Wholly submerged casters shadow the bed but not the column.
+    `FoamColor.a` scales foam coverage. Shore fade mixes toward the copied bed and enabled output has alpha 1.
+    Atmosphere fog applies only to water's own terms, avoiding a second fog pass over the bed. Sample noise
+    advances with the latched frame index only on the render that resolves temporal anti-aliasing, otherwise it
+    stays screen-fixed. The [pipeline reference](RENDER-PIPELINE.md#water-column-composite) records the displaced
+    crest integral, finite-depth approximation and shadow budget.
+    The copy's colour source (its single-sample destination, or the MSAA resolve target) is prepared before the
+    copy records. `PrepareFrame(width, height)` prepares it inside its one `device.water.prepare` root, ahead of
+    the water sets that bind it. `PrepareFrame()` prepares it at render after final sizing, with no device phase.
+    Render repeats the preparation on either form without a phase. It does device work only when legacy late
+    binding replaced the scene targets after preparation.
+    The [coefficient reference](../KhaozEngine.Render3D/README.md#water-column-coefficients) defines the
+    reference sun and sky, engine light units, extinction spread and energy-conserving albedo inversion.
+    `TileWaterLooks.River` carries the owner-selected linear RGB `(0.28, 0.30, 0.18)` and `Clarity = 1.5f`,
+    with `WaterColumnLight` left null. Set that nullable field on a consumer-owned look to opt in, preserving
+    the shared preset. Landing 1 is built and awaits the owner's measured-cost ruling before release.
+    [Landing 2's bent view](programs/water-optics-design.md) remains unbuilt.
   - **Independent optical bed** (`WaterPlane.Optics`, a `WaterOpticsBinding`, **default unbound = legacy scene
     depth**). An unbound plane grades its colour, shore foam and shore fade from the first opaque surface behind it,
     which can be a swimming creature, a bridge or a prop. A bound plane reads its own signed bed depth for those
@@ -5921,8 +6131,19 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     [TileWorld package reference](../KhaozEngine.TileWorld.Render3D/README.md#authored-optical-beds).
   - **Settings** (`Post.Water`, scene-wide look, lives alongside `Post.Sky` for the same reason - both are
     scene-appearance bags reached off `Post`). Grouped by what they do:
-    - *Body colour*: `DeepColor`/`ShallowColor`, graded by `AbsorptionPerMetre` (per-channel 1/metre coefficients;
-      all-zero falls back to the legacy two-stop blend over `ShallowDepth`), plus `Opacity`.
+    - *Body colour*: `DeepColor`/`ShallowColor`, graded by `AbsorptionPerMetre` (per-channel 1/metre coefficients,
+      all-zero falls back to the legacy two-stop blend over `ShallowDepth`), plus `Opacity`. The resolved absorption
+      also drives underwater sunlight for bodies without `WaterColumnLight`, where all-zero absorption means
+      no attenuation.
+    - *Underwater sunlight*: either `UnderwaterSunlight` or `WaterColumnLight` opts in (both scene defaults `false`),
+      with `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
+      The penumbra value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or
+      unbound. The water refractive index is the fixed constant `1.333`, not a setting. A frame with no opted-in water
+      renders exactly as before. The receiver's own body supplies the light path, using its still-water plane
+      even for FFT waves. The entry can lie beyond the rectangle, where a bank can shadow it. The surface uses
+      legacy depth tint unless `WaterColumnLight` selects the composite. See **Underwater key light** under
+      shadows for the march, widening and single-caster atlas limit. The nullable `WaterLook` fields inherit
+      these settings per plane.
     - *Reflection*: `SkyReflectionStrength` (0 = the flat `HorizonColor`, 1 = the sky along the reflected ray) and
       `SkyReflectionSunStrength` (how much of the sky's disc + halo the reflection carries).
     - *Swell*: `SwellAmplitude` (0 = flat plane), `SwellWavelength`, `SwellDirectionDegrees`, `SwellSpreadDegrees`,
@@ -6154,8 +6375,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     same unresolved ripple detail, and the sum put the far lobe at about twice the surface's slope variance. Now
     the lobe carries exactly that variance until the floor takes over, and 1.12 to 1.17 times it on the floor.
     `VarianceToRoughness = 0` leaves the lobe on the floor alone, the 14.24.0 lobe.
-  - **Depth grading**: the plane's depth source drives per-channel Beer-Lambert transmittance
-    (`exp(-AbsorptionPerMetre * depth)`), blending `ShallowColor` down into `DeepColor`. Because red is absorbed
+  - **Legacy depth grading** (`WaterColumnLight` disabled): the plane's depth source drives per-channel
+    Beer-Lambert transmittance (`exp(-AbsorptionPerMetre * depth)`), blending `ShallowColor` down into
+    `DeepColor`. Because red is absorbed
     several times faster than blue, the ramp bends through green-teal instead of running straight down the line
     between two colours, which is what keeps the midtones clean. An all-zero `AbsorptionPerMetre` restores the
     14.22.0 two-stop smoothstep over `ShallowDepth`. Keep both distinct from `ShoreFadeDistance`: the colour band
@@ -8189,10 +8411,13 @@ With either set, `OrbitButton` is ignored. `UiBlocked` is a field the game sets 
 `Update` advances each set gesture once with its `dt`, which times a gesture built on a `PointerTapTolerance`, so
 pass the real frame time. `UpdateInput(input, elapsedSeconds)` is `Update` without `AdvanceTarget` and `AdvanceBoom`,
 for a game that reads camera input early in its frame and advances those camera clocks itself after the subject
-moves. Pass it the real frame time too, since a zero freezes the tolerance's grace. The camera orbits only while a
-gesture drags, and by one delta a frame, so each mouse movement turns it once however many buttons are held. A
-gesture that crosses its threshold with no orbit since its press began applies its `DragDelta`, the replay of its
-pending travel, with `LookGesture` first when both cross together. Otherwise the frame's `MouseDeltaPoints` applies.
+moves. Pass it the real frame time too, since a zero freezes the tolerance's grace. The camera orbits while a
+gesture drags and also by a live gesture's `DragDelta` while pending. It applies at most one delta a frame however
+many buttons are held. Live motion takes precedence over a default crossing's replay. Without live motion, a
+default gesture that crosses its threshold with no orbit since its press began applies its pending replay, with
+`LookGesture` first when both cross together. After any prior orbit, it applies only the
+frame's `MouseDeltaPoints`. Live gestures always supply their own frame delta, including the crossing, so motion
+already delivered is never replayed. A newly pressed live gesture cannot swallow the other gesture's motion.
 Gesture replay and continuing motion are in window points before and during capture. Speed, invert and sign are as
 for the orbit button, and scroll zoom, target damping and boom recovery run unchanged. With neither gesture set,
 `Update` keeps the original orbit button path and its legacy `MouseDelta` units.
@@ -8203,11 +8428,14 @@ The controller reports three things:
 - `WantsPointerCapture` is true while either gesture drags. Forward it to `SetPointerCaptured` so the cursor hides
   and holds for the drag (see "Pointer capture" in the input chapter).
 - `OrbitTap` and `LookTap` report each gesture's tap after `Update` or `UpdateInput`, in the same frame, with the
-  press origin in that gesture's `TapPosition`. A tap counts only if the camera did not turn during that press,
-  its release frame included. The camera turns on every frame a gesture drags, even with no mouse movement. A
-  tapping gesture never dragged, so any turn came from the other one, and a both-buttons release is never a select
-  whichever button went down first. Read taps there rather than from `PointerGesture.TapThisFrame`, which knows
-  nothing of the other gesture.
+  press origin in that gesture's `TapPosition`. Its own live pending travel preserves the tap. A turn from the
+  other gesture voids it, including on the release frame. Both live gestures delivering motion together void both
+  taps, whichever button went down first. A simultaneous release of both gestures suppresses both taps when
+  either gesture is live, including completely stationary presses. Default-off stationary taps remain unchanged.
+  An active drag still invalidates the other gesture's tap on stationary
+  frames, preserving the existing handoff rule. Read taps here rather than from `PointerGesture.TapThisFrame`,
+  which knows nothing of the other gesture. Live pending look motion turns the camera alone. `TurnBodyActive`
+  and `WantsPointerCapture` still begin at the crossing.
 
 The WoW wiring puts orbit on the left button and look on the right. The game reads `TurnBodyActive` and hands it to
 `CharacterMovement` as `MoveCommand.FaceCamera`, with `Camera.Yaw` as `CameraYaw`. A local
@@ -8293,6 +8521,15 @@ the view keeps tilting up. `BoomProbeCount` is the cumulative count of probe cal
 var bounds = new TileObjectBoundsCache(resolver);   // the resolver the view draws with
 camera.BoomProbe = new TileWorldCameraProbe(view, bounds.TryGetBounds,
     archetype => archetype.Tags?.Contains("camera-blocker") == true);   // the game's rule and tag
+```
+
+What the boom passes through, such as trees and props, the camera can end up inside. `TileWorldView.CameraFade`
+fades the colour of whatever object the eye is inside and keeps its shadow (since 21.18.0, off by default). The
+README's camera inside fade section gives the rules.
+
+```csharp
+view.CameraFade = new TileCameraFadeOptions { Eligible = archetype => !blocks(archetype) };
+view.UpdateCameraFade(camera.Eye, dt);   // once a frame, after the camera settles and before view.Draw
 ```
 
 **Eased boom recovery (since 20.13.0, off by default).** `BoomRecoveryRate` (per second, default 0) eases the
@@ -9002,7 +9239,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.19.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9203,7 +9440,10 @@ Legacy proofs use dry medium. Contact proofs retain their ordinary water policy.
 one. Defaults are `1 / 30` seconds and 64 total core calls, with a 1 mm arrival proof tolerance that is not a gameplay epsilon.
 
 The profile checks the whole circular footprint and each surface's area tags. It uses raw radius-zero grid
-checks after the physical capsule proof, so the radius is not eroded twice. Grounded extraction respects
+checks after the physical capsule proof, so the radius is not eroded twice. Contact footprints keep surface reach
+and area restrictions but leave clearance to placement and swept-shell proofs. A neighbouring captured floor beneath
+a climbable slab does not reject the resting pose for that floor's low headroom. The candidate's own headroom and
+raw surface ownership band still apply. Legacy footprints retain captured headroom checks. Grounded extraction respects
 `MaxLayerCells` before dense arrays, emits only `NavLinkKind.Stair` links and never creates `Hop` links.
 `Space.Links` contains candidate Stair topology. Accepted links are a separate guarded graph used by
 `Planner` and `AllowsSegment`. The planner requires the exact profile radius and returns unsmoothed cell-centre
@@ -9440,7 +9680,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.19.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10239,7 +10479,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.19.0" />
 ```
 
 ```csharp
@@ -10624,6 +10864,14 @@ balance through the boundary. Labels are nonblank, preserved exactly and compare
 exclusive to the innermost label and completed children enter the parent once. Snapshots are detached,
 cumulative and immutable. Sample only the active top scope, or its frozen final result on the creating thread.
 Never carry a scope across `await`, `Task.Run` or a thread handoff. Results may be read on any thread.
+
+The six outer invocation counters separate NPC Hold and Step calls from authoritative
+`PlayerMovementSystem` per-entity Steps, each split by Legacy or Contact controller. NPC attribution uses
+requested tuning, never destinations or steering state. Player Steps include idle commands and rejected
+selected Steps, exclude skipped entities, and count only this authoritative system. Players have no outer
+Hold entry point here. The nested `HoldExplicit` fallback and direct `PlayerMoveSimulator` consumers such as
+client prediction add no outer invocations. The [counter contract](../KhaozEngine.Physics/README.md#support-query-measurement)
+names each identity and describes disabled recording.
 
 `SupportQueryMeasurement.Combine` adds disjoint completed measurements, coalescing repeated labels. It does
 not deduplicate parent/child overlap or repeated cumulative snapshots. Independent consumer threads need
@@ -17449,9 +17697,9 @@ Rules:
 ## Audio (`KhaozEngine.Audio`)
 
 `AudioSystem` over a cross-platform OpenAL (Silk.NET.OpenAL) backend. Streaming music (WAV/OGG/MP3,
-one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), SFX one-shots, and 3D positional audio
-(`PlaySfx`/`PlaySfx3D`/`SetListener`, a 16-voice pool, per-channel volume). `LoadContent(directory)` +
-`Update()` per frame.
+one track via `PlayMode`, `CurrentTrack`/`TrackChanged`), sixteen one-shot SFX sources and four separate
+protected-loop slots, with optional 3D positioning (`PlaySfx`/`PlaySfx3D`/`TryPlayLoop`/`SetListener`).
+`LoadContent(directory)` and `Update()` per frame.
 
 **Threading: main-thread-only, and it throws if you get it wrong.** An `AudioSystem` belongs to the thread that
 constructed it, normally the thread pumping the frame loop. Its registries are plain dictionaries, sets and lists
@@ -17462,9 +17710,11 @@ crossfade call, `Update`, `StopAllSfx`, `SetListener`, `SetRng`, `SetRotationPoo
 it is the wrong one. The comparison is a thread-local `int` read, so it costs the same in Release as in Debug and
 a background job cannot get a pass on a build where `Debug.Assert` has been compiled away. To play a sound in
 response to work on a worker thread (an ECS job under `ThreadPoolJobScheduler`, an async content load), record
-the request in your own structure and issue the call from the main thread on the next frame. `Dispose` is the one
-deliberate exemption: a process-exit handler or host teardown on another thread stays legal, since failing at the
-point where the state is about to be dropped buys nothing.
+the request in your own structure and issue the call from the main thread on the next frame. Loop starts, controls,
+`IsLoopActive` and `LoopCapacity` enforce the same owning-thread check before handle lookup or disposed-state handling.
+`Dispose` is the deliberate exemption, provided it does not race a live update or play call. It invalidates loop use
+before attempting SFX, music and context cleanup in that order, attempts every cleanup even after an exception, and
+rethrows the first failure.
 
 **Output device changes follow themselves, as long as `Update` runs.** The OpenAL backend opens the system default
 output, and `Update` checks it once a second (about 0.4 ms per check on macOS). When the default output changes, or
@@ -17474,6 +17724,10 @@ logged once through the OpenAL error log and retried: every second while the old
 backoff up to 30 seconds while the old device still plays, because each failed attempt briefly interrupts it. The
 check runs ahead of the music early-out, so an SFX-only game gets it too, but only if it calls `Update` every
 frame. The silent backends have no device and do nothing here.
+
+A resource-preserving reopen also keeps protected-loop identities and sources. A failed reopen neither frees
+capacity nor permits duplicate loops. This is logical resource ownership, not a promise of audible continuity
+through disconnects, which depends on the output and device extensions.
 
 **Music crossfade.** Switching tracks can fade the old one out and the new one in instead of a hard cut. Set
 `MusicCrossfadeDuration` (seconds, default `0` = hard cut, today's behavior) to make every track change
@@ -17521,14 +17775,53 @@ reports is harder to diagnose than an audible cut. `ISfxBackend.Play(..., priori
 member forwarding to the priority-free overload, so a game's own backend written before it keeps compiling and
 simply ignores the priority.
 
-**Releasing SFX.** `UnregisterSfx(name)` drops a sound from the registry and releases its buffer through
-`ISfxBackend.Unload(handle)`, returning whether a loaded buffer was actually freed. `UnregisterSfxes(names)`
-does a whole set and returns how many it released, which is the zone-scoped or level-scoped shape: load a
-zone's sounds on entry, release them on exit, instead of accumulating every sound the session ever touched.
-A released name stops resolving (`IsSfxLoaded` goes false and `PlaySfx` on it is a no-op) and can be
-registered again later, which reloads it. On the OpenAL backend the freed handle is reused by the next load.
-`Unload` is a default interface member with a no-op body, so a game's own `ISfxBackend` written before it
-keeps compiling and simply never frees anything.
+**Protected loops.** Register and load the same SFX key, then start a whole-buffer loop with
+`TryPlayLoop(in SfxLoopRequest)`. The stock OpenAL and null backends declare `LoopCapacity == 4`,
+separate from the unchanged sixteen-source one-shot pool. Ordinary effect pressure cannot steal loop
+sources. A full protected pool returns `Capacity` without changing existing playback. It does not borrow
+one-shot sources, expand, substitute a one-shot, queue a restart or silently reacquire a stopped loop.
+
+```csharp
+var result = audio.TryPlayLoop(new SfxLoopRequest("wind", Bus: "ambience", Volume: 0.6f, Position: pos));
+if (result.Status == SfxLoopStartStatus.Started)
+{
+    SfxLoopHandle handle = result.Handle;
+    audio.SetLoopPosition(handle, nextPos);
+    audio.SetLoopVolume(handle, 0.3f);
+    audio.StopLoop(handle);
+}
+```
+
+Every successful call starts a distinct loop. Omit `Position` for a flat, listener-relative loop.
+`SetLoopPosition` returns false for flat loops. Request volume must be finite and clamps to 0..1.
+Pitch must be finite and clamps to a minimum of 0.01. Blank keys and non-finite request values or
+positions throw argument errors. Missing keys and unknown buses share the existing bounded diagnostics,
+with unknown buses using the default mix.
+
+Start outcomes are `Started`, `Capacity`, `NotLoaded`, `Unsupported`, `BackendFailure` and `Disposed`.
+Only success carries a handle, and the default result is failure with an empty handle. Handles are opaque
+identities scoped to the admitting system. They retain no system, backend or native source. Copies refer
+to the same loop, and retaining or dropping a handle does not change playback. Default, foreign and
+expired handles cannot control another loop, including after numeric buffer reuse. `IsLoopActive`
+reports logical ownership, not audibility. The null backend enforces the same capacity and identity rules
+without creating a native context. Legacy backends report zero capacity and `Unsupported` for a valid
+loaded loop request. Disposed systems report zero capacity and reject loop operations.
+
+`StopLoop` succeeds only after confirmed stop and detach. Failure retains ownership for explicit retry.
+An uncertain failed start publishes no handle and quarantines its slot. Explicit unload, `StopAllSfx` or
+disposal can recover quarantine. `StopAllSfx` includes loops and leaves music alone. No timer retries
+failed starts or rebuilds stopped loops.
+
+**Releasing SFX.** `UnregisterSfx(name)` releases a loaded buffer and removes its registration. For a
+backend implementing `ISfxLoopBackend`, release is confirmed by `TryUnloadSfx(handle)` before the name,
+loaded mapping and warning state are removed. False or an exception returns false and retains the
+registration for deliberate retry. Partial cleanup expires confirmed stopped identities while preserving
+the remaining owners and buffer. Referencing loops and one-shots must stop and detach before buffer
+deletion. `UnregisterSfxes(names)` counts successful releases only. Unknown or registered-but-unloaded
+names are removed and return false. A released key can be registered again later. The OpenAL backend
+reuses freed numeric buffer slots without reviving old loop identities. Legacy backends keep the existing
+void `ISfxBackend.Unload` path, treating a normal return as success. Its default no-op body remains
+compatible but cannot confirm that a custom backend actually freed storage.
 
 **SFX buses.** Group sounds (UI, ambience, combat, and any game-defined others) under one volume without the
 game tracking individual voices. `DefineBus(id)` registers a bus (opaque identifier, not player-facing text),
@@ -17540,11 +17833,12 @@ one-time debug note (call `DefineBus` first). A newly defined bus starts at 1.0,
 its current volume. Music is unaffected: it stays on its own `master * music` (+ crossfade factor) path, so
 there is no "music bus" here.
 
-Note (a documented limitation): a bus volume change applies to sounds played AFTER the change, not to voices
-already playing on that bus. The `ISfxBackend` seam is fire-and-forget (`Play` returns no voice handle and
-exposes no per-voice gain setter), so a live per-voice re-gain would need a breaking seam change and is out of
-scope. SFX one-shots are short, so lowering a bus is heard on the next sound rather than mid-tail. (A future
-seam that returns a voice handle + per-voice gain setter is the upgrade path for live re-gain.)
+One-shots sample their mix at start. Changing a bus affects their next play and does not change an
+existing tail. Protected loops use `master * sfx * current bus * local loop volume` and refresh live gain
+before a mixer setter returns. `SetLoopVolume` replaces the local factor. Failed gain writes retain the
+desired value and get at most one refresh per normal `Update`, including the no-music path, without
+restart or reallocation. Existing volume setters clamp positive infinity to 1 and negative infinity to 0. A non-finite composed
+loop gain, including NaN, becomes zero. One-shot mixing keeps its existing behavior. Muting keeps the loop running and retains its slot.
 
 Bus volumes are game settings, like `MasterVolume` / `SfxVolume`: the game persists them however it persists
 its other audio settings (no built-in bus serialization).
@@ -17559,11 +17853,13 @@ audio.PlaySfx3D("wind", pos, bus: "ambience"); // master * sfx * 0.4 * volume
 audio.PlaySfx("beep");                         // no bus => default bus (1.0), unchanged from before
 ```
 
-`DefineBus(id, new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance))` also sets the curve for
-later positional one-shots. Reference distance must be positive, rolloff non-negative and maximum at least
-the reference distance. Values must be finite. `DefineBus` rejects `default(SfxAttenuation)`. The historical default is `(1, 1, 50)`. Existing bus volume
-is preserved, and non-positional sounds ignore attenuation. The new `ISfxBackend.Play` overload forwards
-to the existing priority overload unless a custom backend opts into the curve.
+`DefineBus(id, new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance))` sets the curve for
+later positional plays, including loops. A loop captures that immutable profile at start. Reference
+distance must be positive, rolloff non-negative and maximum at least the reference distance. Values must
+be finite. `DefineBus` rejects `default(SfxAttenuation)`. The historical default is `(1, 1, 50)`, and
+redefining a bus preserves its volume. Non-positional sounds ignore attenuation. The attenuation-aware
+`ISfxBackend.Play` overload still forwards to the existing priority overload unless a custom backend
+opts into the curve.
 
 **Authoring SFX assets (`ke-sfxbake`).** The `KhaozEngine.Sfx.Tool` dotnet tool bulk-generates and bakes a
 game's sound effects from a `sfx.manifest.jsonc` (prompt -> ElevenLabs sound-effects API -> ffmpeg/oggenc ->
@@ -18465,7 +18761,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.19.0" />
 ```
 
 ```csharp
@@ -18501,7 +18797,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.19.0" />
 ```
 
 ```csharp
@@ -18745,7 +19041,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.14.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.19.0" />
 ```
 
 ```csharp
@@ -19430,6 +19726,13 @@ capabilities needs a backend check, and in particular `MaxMsaaSampleCount` is as
 different answer would silently change what `AntiAliasing.ResolveFor` picks and therefore what the frame looks
 like. `DeviceName` is the DXGI adapter description exactly as the incumbent reports it, character for character,
 including any whitespace the vendor padded it with.
+
+`GpuCapabilities.MaxStorageBufferRangeBytes` additionally exposes the admitted whole storage-buffer
+binding size, or zero when unknown. Vulkan copies the selected physical device's `maxStorageBufferRange`.
+Direct3D 11 uses the smaller of its selected adapter's resource-size guarantee and the full raw-view
+limit. A WARP adapter with no dedicated VRAM admits 128 MiB. The backend's four-byte raw views cap
+larger adapters at 512 MiB per binding. Check the requested binding against this capability before
+constructing a fixed workload. It does not promise that current memory allocations will succeed.
 
 **One capability behaves differently on purpose: an out-of-range MSAA request THROWS.** Creating a texture whose
 `GpuTextureDescription.SampleCount` is above `GpuCapabilities.MaxMsaaSampleCount` raises an `ArgumentException`
@@ -23130,7 +23433,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.14.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.19.0" />
 </ItemGroup>
 ```
 
@@ -23176,10 +23479,11 @@ Dispose it (a `using`, an `OnUnload`, either) so the handshake file goes. The ho
 ordinary path, where `quit` closes the window and `Run` returns without anything being disposed, but a hard crash
 still leaves a file naming a dead port, so a bridge checks the file's `pid` is alive before trusting it.
 
-`Log` is the diagnostic hook, null and silent by default. It is called with a message, and an exception when there
-was one, whenever an accept loop or a connection ends for a reason other than shutdown: the accept loop dying takes
-the endpoint down for the whole run and the bridge sees only connection refused, which is exactly the failure worth
-one log line. It runs on a socket thread, so do not block in it.
+`Log` is the diagnostic hook, null and silent by default. It receives a message and an optional exception when a
+connection or acceptance ends for a reason other than shutdown. An accept that reports `SocketError.Interrupted`
+resumes while the listener is running. Other accept failures stop further acceptance for that host instance and
+are reported, while established clients keep their independent serving loops. Disposing the host stops acceptance
+quietly and closes those clients. The hook runs on a socket thread, so do not block in it. A throwing hook is contained.
 
 Two bounds sit ahead of the token check, because the token travels inside the request line. A line past
 `AutomationHost.MaxRequestLineBytes` (64 KiB) is refused and the connection closes, without the rest of it ever being
@@ -23741,15 +24045,18 @@ before the host's first clear, bind or upload. Register and retain through that 
 before touching the pool. Write every reserved marker in order, including skipped cached occurrences,
 and retain their `NotExecuted` status in the adapter. Arm the existing completed-End tail for the final
 index. Unexpected occurrences call `InvalidateBlock`, rather than changing the frozen layout. Submit once
-through the retained submission owner. After each caller-owned batch drain, call `PollCompleted` once,
-including for a final batch of one or two frames. Call `CompleteBlock` after the final harvest to refuse
+through the retained submission owner. After each caller-owned batch drain, call
+`AwaitAvailability(now, deadline)` with the unit clock and deadline, then `PollCompleted` once, including for a
+final batch of one or two frames. Call `CompleteBlock` after the final harvest to refuse
 missing identities. Duplicate identities, changed layouts or a full ring invalidate the block.
 
 Publication uses each sample's storage once and retains its fence until the callback returns successfully.
 Pending results after the drain, invalid or disjoint batches, bad periods or marker order, recording failures
 and callback failures quarantine their slots. Invalid results carry no usable ticks or period. Already
 published samples remain immutable, and other completed slots can still publish partial evidence. There is
-no ring-owned wait, flush, submit or retry. Dispose the submission owner before the ring. An early ring
+no ring-owned submit or retry. The only wait is a pool's own bounded query availability wait inside
+`AwaitAvailability`, which Direct3D 11 needs and
+[renderer performance](RENDERER-PERFORMANCE.md#evidence-and-authorization) describes. Dispose the submission owner before the ring. An early ring
 disposal frees unused pools immediately but retains quarantined pools until the owner's teardown releases
 their exact fences. This lifecycle is covered by headless parity cases against the coverage ring's retained
 submission behavior. Migrating the coverage adapter is a separate change.
@@ -23805,7 +24112,7 @@ The effect, copy and display owners add these keys. Every occurrence is zero unl
 | `startup.ocean-prime` | Cold row FFT on its own preparer command list, separate from the frame layout and steady summaries |
 | `water`, `ocean` | Parents only, with skipped subtrees when inactive |
 | `device.water.geometry`, `device.water.bathymetry` | CPU-only leaf owners through `BeginCpuPhase`/`EndCpuPhase` under `water`. Geometry setup includes initial flat/focused index uploads before ocean recording. After `PrepareFrame()`, the geometry leaf also sizes the plane UBO, and bathymetry texture updates follow ocean recording and still run when every surface is culled. A `PrepareFrame(width, height)` frame never opens `device.water.bathymetry` |
-| `device.water.prepare` | CPU-only root owner on every `PrepareFrame(width, height)` frame, with or without water, inside `cpu.water.prepare`. It owns the bathymetry update, UBO sizing, water resource set creation and retirement before recording. `PrepareFrame()` never opens it |
+| `device.water.prepare` | CPU-only root owner on every `PrepareFrame(width, height)` frame, with or without water, inside `cpu.water.prepare`. It opens once per frame and owns the water column colour source, the bathymetry update, UBO sizing, water resource set creation and retirement before recording. `PrepareFrame()` never opens it, and its frames prepare the column colour source at render with no device phase |
 | `ocean.uniforms`, `.next-row`, `.column` | Shared ocean parameter upload, next frame's row FFT, current frame's column FFT, in native recording order |
 | `ocean.mip-copy`, `ocean.mips` | Base-level seed copy per array layer (occurrence is layer), then the existing whole-chain mip-generation command |
 | `water.surface` | Surface uploads, route binds and all queued water draws, after FFT work |

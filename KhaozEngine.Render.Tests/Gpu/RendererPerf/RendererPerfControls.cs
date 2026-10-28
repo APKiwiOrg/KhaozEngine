@@ -10,7 +10,7 @@ internal sealed record RendererPerfControlFacts(int Id, string Name, int Dispatc
     long WriteBytes, long Operations, string InstructionClass, int Draws, string WorkSha256, int WarmupFrames = 64, int MeasuredFrames = 128)
 {
     internal uint GroupsX => Id is 7 or 8 or 9 or 10 ? 1024u : 1u;
-    internal uint GroupsY => Id == 7 ? 256u : Id == 8 ? 32u : 1u;
+    internal uint GroupsY => Id == 7 ? 128u : Id == 8 ? 32u : 1u;
     internal uint LocalX => Id is 7 or 8 ? 256u : Id is 9 or 10 ? 64u : 1u;
 }
 
@@ -25,7 +25,7 @@ internal static class RendererPerfControls
     internal static readonly ImmutableArray<GpuPixelFormat> MrtFormats = [GpuPixelFormat.R16G16B16A16Float,
         GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R32Float, GpuPixelFormat.R16G16Float];
     static readonly string[] Names = ["empty-frame", "empty-main-mrt", "empty-depth-only", "observable-dispatch",
-        "dependent-dispatch-36", "independent-dispatch-36", "storage-256-mib", "storage-32-mib",
+        "dependent-dispatch-36", "independent-dispatch-36", "storage-128-mib", "storage-32-mib",
         "fp32-independent-fma", "dependent-divide-root", "fullscreen-write", "fullscreen-blend-depth-8"];
     internal static RendererPerfControlFacts Definition(int id) => Definition(id, id is 9 or 10 ? ArithmeticSeeds : []);
     internal static RendererPerfControlFacts Definition(int id, ReadOnlySpan<float> arithmeticSeeds)
@@ -33,7 +33,7 @@ internal static class RendererPerfControls
         if (id < 1 || id > 12) throw new ArgumentOutOfRangeException(nameof(id));
         if (id is 9 or 10 && arithmeticSeeds.Length != ArithmeticInvocations)
             throw new ArgumentException("The work identity requires every uploaded arithmetic seed.", nameof(arithmeticSeeds));
-        long storage = id == 7 ? 256L * 1024 * 1024 : id == 8 ? 32L * 1024 * 1024 : 0;
+        long storage = id == 7 ? 128L * 1024 * 1024 : id == 8 ? 32L * 1024 * 1024 : 0;
         int dispatches = id is 5 or 6 ? 36 : id is >= 4 and <= 10 ? 1 : 0;
         long reads = storage != 0 ? storage : id is >= 4 and <= 6 ? dispatches * 4
             : id is 9 or 10 ? ArithmeticInvocations * 4 : id == 12 ? (long)Width * Height * 8 * 12 : 0;
@@ -89,7 +89,7 @@ internal static class RendererPerfControls
     }
     internal static string ValidateWords(int id, ReadOnlySpan<uint> words)
     {
-        int count = id is 5 or 6 ? 36 : id == 4 ? 1 : id == 7 ? 256 * 1024 * 1024 / 4 : id == 8 ? 32 * 1024 * 1024 / 4 : 0;
+        int count = id is 5 or 6 ? 36 : id == 4 ? 1 : id == 7 ? 128 * 1024 * 1024 / 4 : id == 8 ? 32 * 1024 * 1024 / 4 : 0;
         if (count == 0 || words.Length != count) throw new InvalidOperationException("The control output length differs from retained work.");
         for (int i = 0; i < words.Length; i++)
         {
@@ -110,11 +110,23 @@ internal static class RendererPerfControls
             || validation.Status != RendererPerfMetricStatus.Available || validation.Value != 1)
             throw new InvalidOperationException("Achieved rates require complete, identity-matched, checked control outputs.");
         foreach (var sample in report.Warmup.Concat(report.Measured))
-            if (sample.GpuFrame.Status != RendererPerfMetricStatus.Available || sample.GpuFrame.Unit != "ns"
-                || sample.GpuFrame.Value is not { } duration || !double.IsFinite(duration) || duration <= 0 || !sample.Errors.IsEmpty)
+            if (!(sample.GpuFrame.Status == RendererPerfMetricStatus.Available && sample.GpuFrame.Unit == "ns"
+                && sample.GpuFrame.Value is { } duration && double.IsFinite(duration) && duration > 0 && sample.Errors.IsEmpty)
+                && !RendererPerfControlTiming.AcceptsZero(sample, report.Control.Id, report.Warmup[0].GpuPeriodNs))
                 throw new InvalidOperationException("A control sample lacks valid native GPU duration evidence.");
-        double ns = report.Measured.Average(sample => sample.GpuFrame.Value!.Value);
         string source = $"retained logical work / reported whole-frame GPU mean, no overhead subtraction, work {facts.WorkSha256}, output {report.StateSha256}";
+        RendererPerfMetric NoRate(string unit) => new(null, unit, source, RendererPerfMetricStatus.Unsupported,
+            "A clear-only control supplies no matched rate work or complete numerical GPU duration. Below-resolution samples are never zero references.");
+        if (report.Measured.Any(sample => sample.GpuFrame.Status == RendererPerfMetricStatus.BelowResolution))
+        {
+            var distribution = RendererPerfAnalysis.Distribution([.. report.Measured.Select(sample => sample.GpuFrame)], report.Control.MeasuredFrames);
+            return ImmutableDictionary<string, RendererPerfMetric>.Empty
+                .Add("frame.meanNs", distribution.Mean)
+                .Add("bandwidth.bytesPerSecond", NoRate("bytes/s"))
+                .Add("operations.perSecond", NoRate("operations/s"))
+                .Add("fill.pixelsPerSecond", NoRate("pixels/s"));
+        }
+        double ns = report.Measured.Average(sample => sample.GpuFrame.Value!.Value);
         RendererPerfMetric Rate(double work, string unit, string kind) => work == 0
             ? new(null, unit, source, RendererPerfMetricStatus.Unsupported, "This control supplies no matched " + kind + " work.")
             : RendererPerfDriver.Value(work / ns * 1e9, unit, kind + ", " + source);

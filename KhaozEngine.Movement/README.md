@@ -273,6 +273,10 @@ Arrival uses a 1 mm proof tolerance. This is a bounded proof tolerance, not a ga
 Contact profiles keep raw axis surfaces as layer, area and candidate-link identity. Each surface gets a certified
 resting anchor within its own band, from raw feet minus `GroundedEpsilon` through raw feet plus `StepHeight`,
 below the next raw surface and inside captured headroom. Both raw and resting footprints must pass the area policy.
+Contact footprint checks keep captured surface reach and area restrictions, while placement and swept-shell proofs
+decide physical clearance. Headroom above a neighbouring captured floor beneath a low tread does not describe the
+body's clearance on that tread. The candidate's own captured headroom and raw surface ownership band still apply.
+Legacy footprints retain their captured headroom checks.
 The placement admission predicate requires an `Advanced`, grounded result with footing within the shared 3D 1 mm
 sphere. Its displacement guards are pinned by pure predicate tests. A Hold must stay within that sphere, and every
 directed edge and Stair proof must return grounded `Advanced` outcomes through the same wet binding. DryOnly omits
@@ -451,11 +455,17 @@ the CPU-time analysis and the updated Hollowmere extrapolation. Both are local s
 
 ### Labelled support-query capture
 
-The public `KhaozEngine.Physics.SupportQueryCapture.Begin(label)` enables structural measurement for a
-synchronous Contact build. Wrap `GroundNavigationBake.Create` or `BuildProfile` and the complete source/reuse
+The public `KhaozEngine.Physics.SupportQueryCapture.Begin(label)` enables structural measurement for
+synchronous movement and Contact builds. Wrap `GroundNavigationBake.Create` or `BuildProfile` and the complete source/reuse
 lifetime in the scope. `Snapshot()` returns immutable cumulative `SupportQueryMeasurement` evidence, and
 `Combine` reduces disjoint results. The [Physics example and scope contract](../KhaozEngine.Physics/README.md#support-query-measurement)
 show two body labels, exception restoration, exclusive nesting and thread/async restrictions.
+
+`NpcLegacyHolds`, `NpcContactHolds`, `NpcLegacySteps` and `NpcContactSteps` count the named
+`NpcGroundMovement` entry point, using its requested tuning's controller. A host can retain a destination
+while calling Hold, and Step counts even when steering requests no travel. Direct context steps do not
+add these outer invocations. Authoritative player-system Steps have separate counters. The
+[Physics contract](../KhaozEngine.Physics/README.md#support-query-measurement) defines all six populations.
 
 Parallel phases retain the build's captured label, including when caller labels later nest. Every started
 worker joins and contributes once in worker-index order before return or failure propagation. Unstarted workers

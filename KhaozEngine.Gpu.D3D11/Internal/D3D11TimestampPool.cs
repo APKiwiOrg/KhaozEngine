@@ -5,7 +5,7 @@ using KhaozEngine.Gpu.Internal;
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
     /// <summary>A fixed set of timestamp queries and one disjoint query, with one outstanding batch.</summary>
-    internal sealed class D3D11TimestampPool : IGpuTimestampPool
+    internal sealed class D3D11TimestampPool : IGpuTimestampPool, IGpuTimestampAvailabilityWait
     {
         readonly ID3D11TimestampApi _api;
         readonly D3D11FenceSubsystem _fences;
@@ -14,6 +14,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         readonly object[] _queries;
         readonly ulong[] _values;
         readonly object _disjoint;
+        readonly D3D11TimestampAvailability _availability;
         object? _recording;
         ulong _recordingId;
         bool _ended, _disposed;
@@ -42,6 +43,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 api.Destroy(_disjoint);
                 throw;
             }
+            _availability = new D3D11TimestampAvailability(api, fences, submitLock, _disjoint, _queries);
         }
 
         public uint Capacity { get; }
@@ -129,6 +131,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 tickPeriodNanoseconds = _period;
             }
             return _resolved.Value;
+        }
+
+        /// <summary>The retained-completion wait for this batch's queries. See <see cref="D3D11TimestampAvailability"/>.</summary>
+        public GpuTimestampAvailability AwaitAvailability(IGpuFence completion, Func<long> now, long deadline)
+        {
+            RequireLive();
+            ArgumentNullException.ThrowIfNull(completion);
+            if (!_ended) throw new InvalidOperationException("End a timestamp batch before awaiting its queries.");
+            if (completion is not D3D11GpuFence fence) throw new ArgumentException("Use this Direct3D 11 device's completion fence.", nameof(completion));
+            fence.RequireOwner(_fences);
+            return _availability.Await(fence, (int)_state.Count, now, deadline);
         }
 
         public void Dispose()

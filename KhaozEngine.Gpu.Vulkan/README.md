@@ -1693,6 +1693,10 @@ behind `SupportsShadowMaps`, and the smaller of the `maxColorAttachments` and `m
 behind `MaxColorAttachments`, since a fragment shader writes each attachment through its own output. So every rule
 that decides what the engine believes about the device is a plain `[Fact]` on a machine with no Vulkan loader.
 
+`MaxStorageBufferRangeBytes` also copies `VkPhysicalDeviceLimits.maxStorageBufferRange` from that selected
+physical-device read into the public capabilities. It bounds each whole storage descriptor independently,
+not the sum of allocations or the device's available memory. Zero means no limit was retained.
+
 **The parity bar was ZERO permitted differences, and it was stricter than the Direct3D 11 backend's for a reason
 rather than by preference.** That backend exempted `SupportsCompletionFences`, because Veldrid's Direct3D 11
 fence was a CPU-side submit receipt and the native one is real, so the incumbent's answer was a defect the native

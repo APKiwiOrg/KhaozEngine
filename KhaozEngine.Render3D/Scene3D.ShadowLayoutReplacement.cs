@@ -34,7 +34,7 @@ public sealed partial class Scene3D
             Post.Quality.Shadows,
             liveSets,
             CommitMaterialSets,
-            () => _shadowPassRendered = false);
+            InvalidateShadowDepthAndWaterBindings);
         return replaced ? ShadowLayoutReplacementResult.Replaced : ShadowLayoutReplacementResult.Failed;
     }
 

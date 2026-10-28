@@ -15,12 +15,11 @@ namespace KhaozEngine.Audio;
 /// all are busy it steals the LOWEST-priority voice still playing (<see cref="SfxVoicePool.Steal"/>), with the
 /// round-robin rotation as the tie-break.
 /// </summary>
-internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
+internal sealed partial class OpenAlSfxBackend : ISfxBackend
 {
     const int VoiceCount = 16;
-    readonly ILogger _logger;
-    readonly AlErrorLog _errors;
-    readonly AL _al;
+    readonly ISfxAlCommands _commands;
+    readonly SfxAlCommandBatch _native;
     readonly uint[] _voices = new uint[VoiceCount];
     // What each voice is currently playing, by voice index. Only read when every voice is busy, so a stale
     // entry left behind by a finished sound is never consulted: an idle voice is always preferred first.
@@ -32,15 +31,22 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
     public string Name => "OpenAL";
 
     public OpenAlSfxBackend(OpenAlContext context, ILogger? logger = null)
+        : this(new SilkSfxAlCommands(context.Al), logger) { }
+
+    internal OpenAlSfxBackend(ISfxAlCommands commands, ILogger? logger = null)
     {
-        _logger = logger ?? Log.For<OpenAlSfxBackend>();
-        _errors = new AlErrorLog(_logger);
-        _al = context.Al;
-        for (int i = 0; i < VoiceCount; i++) _voices[i] = _al.GenSource();
+        ArgumentNullException.ThrowIfNull(commands);
+        _commands = commands;
+        logger ??= Log.For<OpenAlSfxBackend>();
+        _native = new SfxAlCommandBatch(commands, logger);
+        _loopDevice = new OpenAlSfxLoopDevice(commands, _buffers, _native);
+        _loops = new SfxLoopPool(SfxLoopPool.StockCapacity, _loopDevice, logger);
+        for (int i = 0; i < VoiceCount; i++) _voices[i] = _commands.GenSource();
     }
 
     public int Load(string path)
     {
+        if (_disposed) return -1;
         try
         {
             using var decoder = PcmDecoders.Open(path);
@@ -57,10 +63,9 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
                 total += read;
             }
 
-            uint buffer = _al.GenBuffer();
-            fixed (short* p = data)
-                _al.BufferData(buffer, format, p, total * sizeof(short), decoder.SampleRate);
-            _errors.Check("SFX BufferData", _al.GetError());
+            uint buffer = _commands.GenBuffer();
+            _commands.BufferData(buffer, format, data.AsSpan(0, total), decoder.SampleRate);
+            _native.Check("SFX BufferData", _commands.GetError());
 
             // Take a slot an Unload freed before growing the list, so a zone-scoped load/unload cycle reuses
             // handles instead of walking the index up for the whole session.
@@ -71,29 +76,12 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
         }
         catch (Exception ex)
         {
-            _logger.Error("OpenAL: failed to load SFX " + path, ex);
+            _native.ReportException("load SFX " + path, ex);
             return -1;
         }
     }
 
-    public void Unload(int handle)
-    {
-        if (handle < 0 || handle >= _buffers.Count) return;
-        uint buffer = _buffers[handle];
-        if (buffer == 0) return;   // already released
-        // AL refuses to delete a buffer still attached to a source, so detach it from every voice holding it
-        // before freeing. Zeroing the slot leaves it for the next Load rather than stranding the index.
-        for (int i = 0; i < VoiceCount; i++)
-        {
-            _al.GetSourceProperty(_voices[i], GetSourceInteger.Buffer, out int bound);
-            if ((uint)bound != buffer) continue;
-            _al.SourceStop(_voices[i]);
-            _al.SetSourceProperty(_voices[i], SourceInteger.Buffer, 0);
-        }
-        _al.DeleteBuffer(buffer);
-        _errors.Check("SFX DeleteBuffer", _al.GetError());
-        _buffers[handle] = 0;
-    }
+    public void Unload(int handle) => TryUnloadSfx(handle);
 
     public void Play(int handle, float gain, float pitch, bool positional, Vector3 position)
         => Play(handle, gain, pitch, positional, position, SfxPriority.Normal);
@@ -110,7 +98,7 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
         SfxPriority priority,
         SfxAttenuation attenuation)
     {
-        if (handle < 0 || handle >= _buffers.Count) return;
+        if (_disposed || handle < 0 || handle >= _buffers.Count) return;
         uint bufferId = _buffers[handle];
         if (bufferId == 0) return;   // released by Unload; the handle is dead
 
@@ -118,28 +106,28 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
         _voicePriorities[voice] = priority;
         uint source = _voices[voice];
 
-        _al.SourceStop(source);
-        _al.SetSourceProperty(source, SourceInteger.Buffer, bufferId);
-        _al.SetSourceProperty(source, SourceFloat.Gain, gain);
-        _al.SetSourceProperty(source, SourceFloat.Pitch, MathF.Max(0.01f, pitch));
+        _commands.SourceStop(source);
+        _commands.BindBuffer(source, bufferId);
+        _commands.SetSourceProperty(source, SourceFloat.Gain, gain);
+        _commands.SetSourceProperty(source, SourceFloat.Pitch, MathF.Max(0.01f, pitch));
 
         if (positional)
         {
-            _al.SetSourceProperty(source, SourceBoolean.SourceRelative, false);
-            _al.SetSourceProperty(source, SourceVector3.Position, position);
-            _al.SetSourceProperty(source, SourceFloat.ReferenceDistance, attenuation.ReferenceDistance);
-            _al.SetSourceProperty(source, SourceFloat.RolloffFactor, attenuation.RolloffFactor);
-            _al.SetSourceProperty(source, SourceFloat.MaxDistance, attenuation.MaxDistance);
+            _commands.SetSourceProperty(source, SourceBoolean.SourceRelative, false);
+            _commands.SetSourceProperty(source, SourceVector3.Position, position);
+            _commands.SetSourceProperty(source, SourceFloat.ReferenceDistance, attenuation.ReferenceDistance);
+            _commands.SetSourceProperty(source, SourceFloat.RolloffFactor, attenuation.RolloffFactor);
+            _commands.SetSourceProperty(source, SourceFloat.MaxDistance, attenuation.MaxDistance);
         }
         else
         {
             // Relative to the listener at the origin: heard at full gain regardless of listener pose.
-            _al.SetSourceProperty(source, SourceBoolean.SourceRelative, true);
-            _al.SetSourceProperty(source, SourceVector3.Position, Vector3.Zero);
+            _commands.SetSourceProperty(source, SourceBoolean.SourceRelative, true);
+            _commands.SetSourceProperty(source, SourceVector3.Position, Vector3.Zero);
         }
 
-        _al.SourcePlay(source);
-        _errors.Check("SFX SourcePlay", _al.GetError());
+        _commands.SourcePlay(source);
+        _native.Check("SFX SourcePlay", _commands.GetError());
     }
 
     // Prefer a genuinely idle source. When every voice is busy, steal the LOWEST-priority one still playing
@@ -150,7 +138,7 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
     {
         for (int i = 0; i < VoiceCount; i++)
         {
-            _al.GetSourceProperty(_voices[i], GetSourceInteger.SourceState, out int state);
+            _commands.GetSourceProperty(_voices[i], GetSourceInteger.SourceState, out int state);
             if (state != (int)SourceState.Playing) return i;
         }
         return _pool.Steal(_voicePriorities);
@@ -158,26 +146,40 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
 
     public void SetListener(Vector3 position, Vector3 forward, Vector3 up)
     {
-        _al.SetListenerProperty(ListenerVector3.Position, position);
-        float* orientation = stackalloc float[6] { forward.X, forward.Y, forward.Z, up.X, up.Y, up.Z };
-        _al.SetListenerProperty(ListenerFloatArray.Orientation, orientation);
+        if (!_disposed) _commands.SetListener(position, forward, up);
     }
 
     public void StopAll()
     {
-        for (int i = 0; i < VoiceCount; i++) _al.SourceStop(_voices[i]);
+        if (_disposed) return;
+        _loops.StopAllLoops();
+        for (int i = 0; i < VoiceCount; i++)
+        {
+            uint source = _voices[i];
+            _native.TryRun("SFX stop all", () => _commands.SourceStop(source));
+        }
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        _loops.Dispose();
         for (int i = 0; i < VoiceCount; i++)
         {
-            if (_voices[i] != 0) { _al.SourceStop(_voices[i]); _al.DeleteSource(_voices[i]); }
+            uint source = _voices[i];
+            if (source == 0) continue;
+            _native.TryRun("SFX dispose stop", () => _commands.SourceStop(source));
+            if (_native.TryRun("SFX DeleteSource", () => _commands.DeleteSource(source))) _voices[i] = 0;
         }
-        foreach (uint b in _buffers) if (b != 0) _al.DeleteBuffer(b);
-        _buffers.Clear();
+        // A failed source deletion can leave a buffer attached. Keep buffers for context teardown rather
+        // than issuing unsafe deletes or allocating replacement sources after this terminal failure.
+        if (!_loopDevice.HasSources && !Array.Exists(_voices, source => source != 0))
+        {
+            foreach (uint buffer in _buffers)
+                if (buffer != 0) _native.TryRun("SFX dispose buffer", () => _commands.DeleteBuffer(buffer));
+            _buffers.Clear();
+        }
         // Does NOT dispose the shared context: AudioSystem owns it.
     }
 }

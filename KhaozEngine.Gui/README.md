@@ -693,7 +693,7 @@ chat.Draw(batch, white);
     in-progress edit it is tearing down. Typing accepts numpad (keypad) keys the same as the top-row keys - digits,
     dot, minus - and the FIRST keypad keystroke ends the select-all seed exactly like a top-row one (replace the
     seeded value, not append to it).
-  - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
+  - `Dropdown` - trigger + option list (opens below by default), two-phase draw (`Draw` trigger / `DrawOverlay` list last).
     `DropdownOption` is `(LocalizedText Content, int Value)`, so a settings selector (difficulty, display mode,
     quality) localizes through a `StringId` and a bare literal no longer compiles at that sink. `SelectedLabel` is
     the resolved string and `SelectedContent` the unresolved value.
@@ -702,6 +702,22 @@ chat.Draw(batch, white);
     label, text only: the rects, the row fills, the chevron and the hit-testing are unchanged. Pointer actions
     that open, close, select or dismiss consume their gesture, so controls behind the trigger or open list cannot
     act on the same release.
+    Set optional `PopupViewport` to the logical canvas rectangle before update and draw to keep the popup
+    inside it. The trigger stays fixed. The list prefers below when it fits, otherwise above when it fits,
+    otherwise the side with more room. Its width clamps to the canvas. Tall lists scroll by wheel without
+    shrinking text, with a scroll indicator and scissored rows. `PopupBounds` reports the resolved list,
+    `FirstVisibleIndex` and `VisibleOptionCount` report intersecting rows, including partial edge rows.
+    `OptionBounds(i)` reports only a row's visible hit area, or the empty default rectangle when fully
+    offscreen. Opening reveals the selection and keyboard navigation reveals the highlight. Idle updates
+    preserve wheel position. A press is cancelled if its row scrolls, layout changes or pointer coordinates
+    change before release, including when the original layout is restored later in the gesture.
+    `Update(pointer, wheelDelta)` adds wheel scrolling, with positive values scrolling up. `Update(pointer)`
+    remains available without wheel input. `WheelConsumed` resets on each update and is true for nonzero
+    wheel input over a bounded open popup, including at a scroll limit. Update the popup before parent
+    content and pass `input.State.WithoutScroll()` to the parent when this flag is true. The InputManager overload
+    routes bounded wheel input through the pointer path and keeps it out of keyboard/gamepad navigation,
+    even when the wheel is outside the popup. Real keyboard/gamepad input still works on a wheel frame.
+    A null `PopupViewport` preserves legacy geometry, option bounds and wheel-as-menu navigation.
   - `TabBar` - tab bar / segmented control with exactly one active tab. The original
     `IReadOnlyList<LocalizedText>` constructor keeps one row of evenly split tabs. The `TabBarItem` overload adds
     per-tab `Enabled` state. Disabled tabs use the style's disabled colours and swallow taps without changing the
@@ -950,6 +966,14 @@ chat.Draw(batch, white);
         closeHovered: pointer.IsPointerIn(close));
     DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
     ```
+  - `HudLayout` + `HudLayoutEditor` - saved HUD centers and an isolated edit draft. `HudLayoutPosition` stores
+    normalized center coordinates as serializable properties. `HudLayout.Resolve` combines a saved position
+    with the caller's current size and clamps the complete rectangle without rewriting the saved value.
+    `HudLayoutEditor.Begin` copies valid positions, `Update` captures one topmost region through `Pointer`,
+    `Reset` removes supplied overrides from the draft, `Commit` returns a copied dictionary, and `Cancel`
+    discards it. The caller supplies regions in draw order, including hidden ones it wants to show as ghosts,
+    and owns their drawing, localized labels, modal keyboard behavior and settings persistence. See
+    [Saved HUD layout](../docs/USING-KHAOZENGINE.md#saved-hud-layout).
   - `WindowStack` (since 21.3.0) - the z-order of overlapping non-modal windows. It raises a window on open and
     on press, updates open windows top to bottom with every window above occluded on the `Pointer`, and draws
     them bottom to top. Update it before any layer beneath reads the pointer, and draw tooltips and menus after

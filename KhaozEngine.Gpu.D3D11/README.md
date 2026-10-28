@@ -669,7 +669,13 @@ and reports exactly `1_000_000_000d / frequency`. Terminal results remain repeat
 Invalid samples never enter the GPU gate. Resolve never waits, maps, drains or flushes.
 
 Submit does not flush either. A headless loop reaches Ready only after a Present or caller drain hands
-work to the driver. The native correctness test drains once, outside the timestamp interval.
+work to the driver. A completed later fence does not make query data available, so the pool also implements the
+internal `IGpuTimestampAvailabilityWait`. After a caller drain it reads every query once with
+`D3D11_ASYNC_GETDATA_DONOTFLUSH`, then repeats flushing `GetData` with a null zero-byte destination on each
+unavailable query until all report S_OK or the caller's deadline passes. It holds the submit lock per round,
+spins without sleeping and returns the polls, ticks, per-query HRESULT runs and fence values as evidence. It
+reads no value, so `TryResolve` still decides the result. The renderer performance harness is its one caller,
+and [its completion policy](../docs/RENDERER-PERFORMANCE.md#evidence-and-authorization) owns the rule. The native correctness test drains once, outside the timestamp interval.
 Keep the pool alive through completion. Query release uses the same COM lifetime path as other submitted
 D3D11 resources, skips a dead device and adds no drain. Device errors use the existing loss latch.
 
@@ -1180,6 +1186,15 @@ DOWNWARD from 32 because the supported counts are not required to be contiguous,
 The depth format is the TYPELESS sibling on purpose: the incumbent's depth-flagged `D32_Float_S8_UInt` became
 `R32G8X24_Typeless` in its own `D3D11Formats.ToDxgiFormat` before it queried, so both backends asked the driver
 about the same DXGI format and the parity assertion was satisfiable by construction.
+
+`MaxStorageBufferRangeBytes` additionally retains the admitted size of a full raw storage-buffer view.
+The selected device's feature level and adapter's `DedicatedVideoMemory` determine the resource guarantee
+`min(max(128 MiB, dedicated bytes / 4), 2048 MiB)` at feature level 11 or higher. The backend binds storage
+through four-byte raw views, so the 2^27-element buffer limit also caps a binding at 512 MiB.
+The capability is the smaller bound. Zero means the required native facts are unavailable.
+Shared system memory does not count as dedicated VRAM. A zero-dedicated-memory WARP adapter admits
+128 MiB, even if a particular runtime might allow a larger allocation. This is a compatibility guarantee,
+not a current memory budget. See [Direct3D 11 resource limits](https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-resources-limits).
 
 `MaxMsaaSampleCount` was the member the parity assertion existed for, and that assertion went away with the
 incumbent in 18.0.0. A different answer changes what `AntiAliasing.ResolveFor` picks, which changes the field

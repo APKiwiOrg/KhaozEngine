@@ -644,6 +644,7 @@ public sealed class SkinnedTargetOutlineRendererTests
                 width, height);
         public void GenerateMipmaps(IGpuTexture texture) => _inner.GenerateMipmaps(texture);
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst) => _inner.ResolveTexture(src, dst);
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource) => _inner.ResolveTexture(src, dst, preserveSource);
         public void SetComputePipeline(IGpuComputePipeline p) => _inner.SetComputePipeline(p);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) =>
             _inner.SetComputeResourceSet(slot, set);

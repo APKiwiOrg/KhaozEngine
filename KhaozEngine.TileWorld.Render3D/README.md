@@ -239,6 +239,11 @@ contributes, one per rectangle of each body `TileWaterBodies.Collect` returns, i
   the rim it shares with its bank, minus `SurfaceDropMetres` (2 cm). So a bed dug 70 cm down does not move the
   surface, and the bank sits 2 cm proud of it and stays dry. A river that DESCENDS is authored as separate bodies
   with a drop between them, the way OSRS does it, because one component is one height.
+- **Volume floor on every emitted plane.** `TileWaterPlanes.Collect` sets `WaterPlane.FloorY` from the lowest
+  resolved bed corner under each rectangle, after expanding the rectangle outward to the 4-tile `Coarse4` grid,
+  then subtracting the `FloorMarginMetres` rounding margin (`0.0001 m`). It caps the result at the body's surface
+  when the snapped footprint has no submerged bed. This conservative slab is derived from the document rather than
+  the rendered mesh LOD, so the floor stays stable across LOD changes and per-plane look changes.
 - **Disjoint rectangles, not one box.** Each component's tile mask is cut into maximal axis-aligned rectangles
   (row runs merged upward while their span is identical), one `WaterPlane` each. Rectangles rather than one plane
   per TILE because the pass draws a fixed 97 by 97 grid per plane whatever it covers, so a straight 3-wide river
@@ -255,8 +260,12 @@ contributes, one per rectangle of each body `TileWaterBodies.Collect` returns, i
 
 `TileWaterLooks.River` is the shipped per-plane `WaterLook`: procedural waves off the shared FFT ocean, no swell,
 a small normal strength, no surf, foam only in a narrow shore band, silty colours and a 0.8 m `ShallowDepth` so a
-60 to 80 cm bed still darkens. It is modelled on the reference consumer's inland lake, and every value that differs from it
-differs because of SCALE (the sea's 1.6 m foam band and 2.5 m ripple wavelength would each consume a river whole).
+60 to 80 cm bed still darkens. Its legacy controls are modelled on the reference consumer's inland lake, with
+differences in scale (the sea's 1.6 m foam band and 2.5 m ripple wavelength would each consume a river whole).
+Its column inputs are linear RGB `WaterColor = (0.28, 0.30, 0.18)` and `Clarity = 1.5` m, chosen by the owner
+from synthetic daylight renders for a sunlit silty river close to the current tone, with an attached column
+shadow and physical depth fade. `WaterColumnLight` remains null, so consumers must explicitly opt in through
+their scene settings or a copied look. Grimhollow chooses its own final tuning at adoption.
 **It is one shared instance of a class of public fields, so do not mutate it**: copy it, or pass a look of your
 own through `TileWorldViewOptions.WaterLook`.
 
@@ -436,6 +445,42 @@ Cut branches cannot shorten the boom, including when its origin starts inside th
   camera calls once per computed eye. The probe reuses one hit list and one bounds delegate, so it allocates
   nothing after the hit list and model bounds cache have warmed. Object candidates walk resident region lists
   without iterator allocations. Not thread-safe, like the view it reads.
+
+### Camera inside fade (`TileWorldView.CameraFade`)
+
+A camera the world does not stop, through trees and props for instance, can end up inside a model and see nothing
+but its faces. Set `view.CameraFade = new TileCameraFadeOptions { Eligible = archetype => ... }` and call
+`view.UpdateCameraFade(eye, dt)` once a frame, after the camera has settled and before `Draw`. Every eligible
+object whose drawn triangles contain the eye fades out of colour over `FadeSeconds` (default 0.15 s) and fades
+back the same way once the eye leaves. Null, the default, turns it off and clears every fade, and a view with it
+off submits exactly what it did before. `Eligible` is the consumer's rule, because tags are game content.
+
+- **Inside.** An object contains the eye when the generalized winding number of any one of its shells there is at
+  least 0.5 in magnitude, which tolerates the open, overlapping and inside-out shells low-poly models are made of,
+  or
+  when its nearest triangle is within `ClipRadius` (default 0.25 m), the near plane slicing a face from just
+  outside. It keeps containing the eye until both fail by a further `ExitMargin` (default 0.15 m), so an eye
+  resting on a surface does not flicker the object. An eye under a canopy, inside the model's box but outside its
+  triangles, leaves it drawn.
+- **Candidates.** Gameplay-resident objects on every plane, around the eye, through the effective archetype, so
+  an override is tested as the mesh it draws. A point the applied interior cut removes from an opted-in archetype
+  is not inside it, the rule picking applies. Animated foliage is never a candidate, because the ground-cover path
+  it draws through does not honour the fade.
+- **Geometry.** The triangles come from the resolver the view was built with, the parts its props draw, flattened
+  once per archetype and grouped into shells, the triangles connected through shared corners welded by position.
+  Judged as one sum, a shell exported inside out would cancel a correctly wound one it overlaps. The broad-phase box is measured from the same vertices, so box and triangles agree. Only an
+  object whose box, grown by `ClipRadius + ExitMargin`, holds the eye is tested against its triangles, and
+  `CameraContainmentTests` counts those tests. After an archetype's first test the per-frame path allocates
+  nothing.
+- **Drawing.** Prop layers, ungrouped ground props and ungrouped roofs all honour the fade. A partly faded
+  placement queues its colour through the dissolve, without a shadow, and queues its shadow separately at the
+  ordinary floor, because the dissolve threshold also discards in the shadow pass and would thin the shadow. A
+  fully faded placement is shadow-only. A roof the roof rule hides stays hidden. In a prop layer a fade forces a
+  mixed merge back to resident individuals, and a merge with no resident individuals ignores the fade rather than
+  blanking every placement it carries. The target outline and the silhouette skip an object while it is faded.
+- **Seams.** A configured fade makes prop-layer clusters require visibility-aware submission, so an owner that
+  cannot honour it refuses at the first draw. `ITileWorldScene.DrawColourOnlyProps` defaults to drawing nothing,
+  so an older scene seam hides a fading prop rather than drawing it solid.
 
 ### Real meshes (`GltfMeshResolver`)
 

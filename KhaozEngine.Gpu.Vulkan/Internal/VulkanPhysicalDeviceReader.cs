@@ -42,6 +42,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// by the specification, which <see cref="GpuCapabilities.MaxColorAttachments"/> carries.</param>
     /// <param name="TimestampValidBits">The selected graphics queue family's counter width.</param>
     /// <param name="TimestampPeriodNanoseconds">The physical device's limits.timestampPeriod.</param>
+    /// <param name="MaxStorageBufferRangeBytes">The physical device's limits.maxStorageBufferRange.</param>
     internal readonly record struct VulkanPhysicalDeviceRead(
         VulkanDeviceFacts Facts,
         VulkanFeatureSupport Features,
@@ -55,7 +56,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         string ReportedDeviceName,
         uint MaxColorAttachments,
         int TimestampValidBits = 0,
-        double TimestampPeriodNanoseconds = 0d);
+        double TimestampPeriodNanoseconds = 0d,
+        uint MaxStorageBufferRangeBytes = 0);
 
     /// <summary>
     /// The one place a <c>VkPhysicalDevice</c> is turned into plain data, shared by the support probe and by
@@ -114,7 +116,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // Not asked, and not askable without a surface. The windowed clause is evaluated at swapchain
                 // creation (https://github.com/APKiwiOrg/KhaozEngine/issues/527) against the same requirement
                 // method with the flag set.
-                GraphicsFamilyPresents: false);
+                GraphicsFamilyPresents: false,
+                MaxPerStageDescriptorStorageBuffers: properties.Limits.MaxPerStageDescriptorStorageBuffers);
 
             return new VulkanPhysicalDeviceRead(
                 facts,
@@ -131,7 +134,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 reportedName,
                 VulkanCapabilityRead.ColorAttachmentLimit(properties.Limits.MaxColorAttachments,
                     properties.Limits.MaxFragmentOutputAttachments),
-                timestampValidBits, properties.Limits.TimestampPeriod);
+                timestampValidBits, properties.Limits.TimestampPeriod, properties.Limits.MaxStorageBufferRange);
         }
 
         /// <summary>

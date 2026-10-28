@@ -62,11 +62,20 @@ internal static class RendererPerfArtifactProducers
                 break;
             case "control-corpus.json":
                 var corpus = Read<ImmutableArray<RendererPerfControlShaderArtifact>>();
-                if (corpus.Length != 4 || corpus.Select(c => c.Name).Distinct(StringComparer.Ordinal).Count() != 4) Refuse();
+                if (corpus.Length != 6 || corpus.Select(c => c.Name).Distinct(StringComparer.Ordinal).Count() != 6) Refuse();
                 foreach (var c in corpus)
                 {
                     foreach (var hash in new[] { c.SourceSha256, c.SpirvSha256, c.HlslSha256, c.MslSha256 }) RendererPerfManifest.Hash(hash, 64);
-                    if (c.LocalX == 0 || c.Stores <= 0 || c.FmaInstructions < 0 || c.Divides < 0 || c.Roots < 0) Refuse();
+                    uint localX = c.Name switch
+                    {
+                        "chain.comp" => 1,
+                        "stream.comp" => 256,
+                        "fma.comp" or "dependent.comp" => 64,
+                        "fullscreen" or "depth-read" => 0,
+                        _ => uint.MaxValue
+                    };
+                    if (localX == uint.MaxValue || c.LocalX != localX || c.Stores <= 0
+                        || c.FmaInstructions < 0 || c.Divides < 0 || c.Roots < 0) Refuse();
                 }
                 break;
             case "control-definitions.json":
@@ -100,7 +109,7 @@ internal static class RendererPerfArtifactProducers
                 }
                 break;
             case "host-telemetry.jsonl":
-                RendererPerfHostTelemetry.Verify(bytes);
+                RendererPerfHostTelemetry.Verify(bytes, report);
                 break;
             case "work-models.json":
                 var models = Read<ImmutableArray<RendererPerfBlockModels>>();

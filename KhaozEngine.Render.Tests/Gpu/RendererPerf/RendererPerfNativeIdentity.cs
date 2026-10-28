@@ -19,7 +19,7 @@ internal static class RendererPerfNativeIdentity
     internal static RendererPerfNativeFacts Read(IGpuDevice device, RendererPerfExecutionClass executionClass = RendererPerfExecutionClass.Performance)
     {
         RendererPerfManifest.Require(device.Diagnostics.SoftwareAdapter == (executionClass == RendererPerfExecutionClass.Rehearsal) && device.Capabilities.SupportsTimestamps
-            && device.Capabilities.SupportsCompletionFences, "Admission", "Native hardware, timestamps and completion fences are required.");
+            && device.Capabilities.SupportsCompletionFences, "Admission", "The native adapter, timestamps and completion fences are required.");
         RendererPerfNativeFacts facts;
         if (device is VulkanGpuDevice vulkan)
         {
@@ -35,27 +35,30 @@ internal static class RendererPerfNativeIdentity
                 "vulkan-native", vulkan.TimestampSupport.ValidBits, vulkan.TimestampSupport.TickPeriodNanoseconds);
         }
         else if (OperatingSystem.IsWindows() && device is D3D11GpuDevice d3d)
-            facts = ReadD3D(d3d);
-        else throw new RendererPerfProtocolException("Admission", "Only the approved native T4 backends can enter this workload.");
+            facts = ReadD3D(d3d, executionClass);
+        else throw new RendererPerfProtocolException("Admission", "Only the approved native backends can enter this workload.");
         RendererPerfManifest.Require(RendererPerfAdapterPolicy.Matches(executionClass, device.Diagnostics.SoftwareAdapter,
             device.Backend == GpuBackendKind.VulkanNative ? "vulkan" : "d3d11", facts.Vendor, facts.Device)
             && facts.TimestampBits is >= 1 and <= 64
             && double.IsFinite(facts.TimestampPeriodNs) && facts.TimestampPeriodNs > 0,
-            "Admission", "Actual native vendor/device IDs or timestamp calibration do not identify the approved T4.");
+            "Admission", "Actual native adapter identity or timestamp calibration does not satisfy the execution class.");
         return facts;
     }
 
     [SupportedOSPlatform("windows")]
-    static RendererPerfNativeFacts ReadD3D(D3D11GpuDevice device)
+    static RendererPerfNativeFacts ReadD3D(D3D11GpuDevice device, RendererPerfExecutionClass executionClass)
     {
         var native = Field<ID3D11Device>(device, "_device");
         RendererPerfManifest.Require((native.CreationFlags & DeviceCreationFlags.Debug) == 0,
             "Admission", "The D3D11 debug layer cannot enter timed blocks.");
         using var dxgi = native.QueryInterface<IDXGIDevice>();
         using var adapter = dxgi.GetAdapter();
-        var description = adapter.Description;
-        RendererPerfManifest.Require(description.VendorId == 0x10de && description.DeviceId == 0x1eb8,
-            "Admission", "The selected DXGI adapter is not the approved T4. No clock probe was submitted.");
+        using var adapter1 = adapter.QueryInterface<IDXGIAdapter1>();
+        var description = adapter1.Description1;
+        bool software = (description.Flags & AdapterFlags.Software) != 0;
+        RendererPerfManifest.Require(RendererPerfAdapterPolicy.Matches(executionClass, software, "d3d11",
+            checked((uint)description.VendorId), checked((uint)description.DeviceId)),
+            "Admission", "The actual DXGI adapter does not satisfy the execution class. No clock probe was submitted.");
         // DXGI's driver-version query takes IDXGIDevice. A D3D11 interface returns Unsupported.
         // https://learn.microsoft.com/windows/win32/api/dxgi/nf-dxgi-idxgiadapter-checkinterfacesupport
         var result = adapter.CheckInterfaceSupport(typeof(IDXGIDevice).GUID, out long version);

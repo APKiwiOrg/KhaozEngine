@@ -4,10 +4,22 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.14.0
+## 21.19.0
 
 2026-10-28
 
+- Wait for Direct3D 11 timestamp query availability inside the renderer performance batch completion drain. A
+  completed later fence does not make Direct3D 11 query data available, and a WARP rehearsal refused when the last
+  frame of a drained batch still read S_FALSE. Each wait flushes `GetData` until every query reports ready, bounded
+  by the unit deadline, and is recorded as batch evidence. Vulkan is unchanged
+  (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1635).
+- Check out the water column and cascade selection shader sources with LF line endings on every host. A
+  Windows checkout compiled their multiline GLSL with CRLF, which changed the bytes of every lit and water
+  program there and the renderer performance shader identity.
+- Open `device.water.prepare` once per viewport-prepared frame when water column light is on. The column
+  colour source now prepares inside that one root, and `PrepareFrame()` frames prepare it at render with no
+  device phase, so an observer that refuses a repeated CPU phase no longer fails those frames
+  (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1633).
 - Preserve continuous native terrain material across patch and paint joins when a feathered overlay meets
   matching hard-filled material or an overlay over a different underlay, including validated surface-owner
   seams. Keep exposed-edge feather widths and cut-overlay boundaries without inventing outlines at diagonal gaps.
@@ -52,6 +64,108 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Preserve allocation-free input preflight and avoid product workspace on a header refusal.
 - Size prism validation arithmetic to active pieces, admit room domain copies before construction and settle
   uncovered polygon replacement capacity after its last overlap.
+
+## 21.18.0
+
+2026-10-28
+
+- Add opt-in water column light through `WaterColumnLight`, `WaterColor` and `Clarity` on `WaterSettings`
+  and nullable `WaterLook` overrides. Floaters cast attached column shadows that fade with physical clarity,
+  with an analytic multiple-scattering estimate and one extinction model shared with underwater sunlight.
+  Frames without opted-in water are unchanged, and non-water shaders compile byte-identical.
+- Tune the shared river look to linear RGB `(0.28, 0.30, 0.18)` and clarity `1.5` metres, leaving column
+  lighting off until the consumer explicitly opts in.
+- Add source-preserving MSAA resolve to `KhaozEngine.Gpu` for snapshots followed by more drawing into the
+  multisampled source. Metal uses store-and-resolve to retain every source sample.
+- Fit shadow cascades and cull their casters in render-relative coordinates so shadows remain correct far
+  from the world origin (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1618).
+- Add `TileWorldView.CameraFade`, off by default. While the camera eye is inside an eligible placed object's
+  drawn triangles, by generalized winding number or a near-plane clip radius with exit hysteresis, that object's
+  colour fades out over `FadeSeconds` and back once the eye leaves. Its shadow stays whole. Prop layers,
+  ungrouped ground props and roofs honour it, a roof the roof rule hides stays hidden, and the outline and
+  silhouette skip a faded object. `IPropClusterVisibility.ColourFade` and `ITileWorldScene.DrawColourOnlyProps`
+  are the new default members behind it.
+- Add `MeshContainment.WindingNumber` and `NearestDistanceSquared`, and `RayMath.ContainsObbY` and `ToObbLocalY`,
+  sharing the oriented-box transform `IntersectObbY` uses.
+
+## 21.17.0
+
+2026-10-28
+
+- Add user UI scaling to `UiViewport`, applied with DPI at a frame boundary so drawing, clipping and pointer
+  mapping agree. `EffectiveScale` supplies the font density and exact canvas bounds retain framebuffer coverage.
+- Add normalized saved HUD positions and a draft `HudLayoutEditor` with topmost drag capture, viewport and DPI
+  change handling, reset, commit and cancel. Consumers own region presentation and settings storage (#1275).
+- Add `DpiFont.Bind` for retained widgets to keep a stable font reference across density changes. The owner
+  retains atlas ownership and disposed font owners cannot be reused.
+- Add optional viewport constraints to dropdown popups, with upward placement, scrolling, clipped option
+  geometry and gesture identity preserved across scrolling or reflow (#1624).
+- Add opt-in live pending travel to `PointerGesture` through the init-only `LivePendingTravel` property, default
+  off. A live gesture delivers each held frame's own motion in `DragDelta` while its press is still undecided,
+  and replays nothing when it crosses into a drag, so the catch-up limit does not apply. The tap or drag
+  decision, grace, press origin and blocked-press rules are unchanged. `FollowCameraController` orbits by a live
+  gesture's pending motion, so the camera follows the mouse from the first motion of a press, and a press that
+  stays inside its tolerance still taps. Another gesture turning the camera voids the tap, and a simultaneous
+  release of both buttons taps neither when either gesture is live. `TurnBodyActive` and pointer capture still
+  start at the crossing (#1619).
+- Report automation connection errors before closing the affected socket, so diagnostics are recorded before
+  the peer observes EOF (Closes #1628).
+
+## 21.16.0
+
+2026-10-27
+
+- Keep Contact ground navigation connected beside climbable slab risers. Captured ground below a tread no longer
+  rejects the neighbouring resting anchor for its low headroom. Contact placement and swept-shell proofs still
+  enforce clearance, and raw layer, area, roof and climb limits remain enforced (Closes #1573).
+- Reconstruct canonical selection automatically when a Contact movement tick receives a carried state on
+  an unready null-hint query lease. Reacquiring per tick no longer stalls the second tick or discards buffered
+  jumps. Carried selections from another world are refused before reconstruction or producer queries.
+  Direct selected-space queries remain guarded, and real reconstruction failures keep their refusal outcomes
+  (Closes #1578).
+- Add six `SupportQueryCapture` counters for outer NPC Hold and Step invocations and authoritative
+  `PlayerMovementSystem` per-entity Steps, each split by Legacy and Contact controller. Idle and rejected
+  selected player Steps count once. Direct player simulators and nested held-result fallbacks add no
+  outer invocations (#1598).
+- Pin the multiline C# shader sources in Render3D, Render2D and Gpu to LF checkouts, so a Windows build compiles
+  the same shader bytes and renderer shader identities as Linux and macOS. A CRLF checkout previously changed the
+  hashed shader source and refused renderer performance units before device creation.
+- Resume automation accepts after `Interrupted` while the listener is running, and treat disposal as quiet
+  shutdown. Deterministic loopback tests cover terminal accept faults and established-client lifetimes separately.
+- Add four protected loop voices beside the sixteen one-shot sources, with opaque lifetime handles,
+  live volume and position controls, and explicit capacity refusal. Failed cleanup retains ownership and
+  registration for deliberate retry, and legacy SFX backends remain compatible (Closes #817).
+- Keep buoyant swimmers on walkable rising beds while the water is still too deep for land footing.
+  Contact clips onto the bed without changing swim hysteresis or climb pacing, then lands normally when
+  the seated bed clears the existing swim exit line. A refused bank lift or ceiling clearance that would
+  leave the swimmer below the certified bed blocks and holds the original pose for the tick (Closes #1606).
+
+## 21.15.0
+
+2026-10-27
+
+- Add opt-in underwater sunlight through `WaterSettings.UnderwaterSunlight` and
+  `UnderwaterPenumbraPerMetre`, with nullable per-body `WaterLook` overrides. Every lit receiver refracts
+  key-shadow lookup at the still-water surface, attenuates key diffuse and specular along the in-water path,
+  preserves submerged-caster shadows and widens the penumbra with a fixed comparison budget. Frames without
+  opted-in water are unchanged. Ambient, fill, point lights, emissive and fog retain their values (Closes #1588).
+- Add optional `WaterPlane.FloorY` to bound each body's submerged volume. TileWorld emits conservative floors
+  from the lowest consumed bed corners, including coarse LOD support, so bodies stacked at different heights
+  do not light receivers below their floors.
+- Add `GpuCapabilities.MaxFragmentStorageBuffers`. Scene and standalone lit renderer creation refuse reports
+  below three before GPU allocation, naming `maxPerStageDescriptorStorageBuffers`.
+- Append optional `float? floorY = null` to the public `WaterPlane` constructor and `TileWaterPlanes.ToPlane`.
+  Ordinary source calls still compile, but the binary signatures change. Rebuild consumers and update delegate
+  bindings that require the previous parameter lists.
+- Retain selected-device storage-buffer ranges in GPU capabilities. Vulkan reports its native descriptor
+  limit. Direct3D 11 intersects the adapter-dependent resource guarantee with the full raw-view limit.
+  Renderer controls refuse incompatible whole-buffer bindings before constructing control resources.
+- Certify the complete six-record renderer control shader corpus, including both graphics pairs.
+
+## 21.14.0
+
+2026-10-26
+
 - Retire replaced cascade and point-shadow atlases, receiver sets, MRT targets and pipelines, post bindings
   and temporal display targets behind GPU completion without a device idle wait in the scene frame.
   Cached depth bindings for decals, particles, distortion and water follow the same queue.
@@ -151,8 +265,6 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-23
 
-- Compile independent Direct3D 11 shader programs concurrently on bounded workers, joining at first use
-  without changing shader bytecode. Keep compile diagnostics internal (#1545).
 - Keep individual and merged HLOD colour, shadow and selected-outline coverage complementary throughout the
   distance band. Roof layers use the same split for visible and hidden geometry, while exit fades remain ordinary.
 - Preserve flat material colour seams when source meshes are flattened for HLOD, including small colour

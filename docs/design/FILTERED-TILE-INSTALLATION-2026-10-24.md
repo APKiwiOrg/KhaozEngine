@@ -232,8 +232,11 @@ Begin is its only entry point. All result constructors are internal.
 `PushedPlacements`, `MediumResolves`, `MaximumMediumRetries`, `GroundSegments`, `SlideSegments`, `AirSegments`,
 `WaterSegments`, `RoundedReads` and `MediumHandoffs`, matching the internal route fields.
 
-Move the existing `SupportQueryCounter` enum into its own file and make it public. Pin explicit values 0 through
-41 in its present order, from `Find` through `InitialHoldReuseHits`. Do not expose a Count sentinel. This includes
+`SupportQueryCounter` is public in its own file. Explicit values 0 through 41 retain their original order,
+from `Find` through `InitialHoldReuseHits`. Values 42 through 47 append `NpcLegacyHolds`, `NpcContactHolds`,
+`NpcLegacySteps`, `NpcContactSteps`, `PlayerLegacySteps` and `PlayerContactSteps`. The
+[Physics counter contract](../../KhaozEngine.Physics/README.md#support-query-measurement) defines their outer
+entry points and the authoritative player population. There is no Count sentinel. The original range includes
 all existing proposal/volume/static/mesh/member/extrema/join work, refusals, analytic samples, bindings, physics
 and movement leases, producer pins, ground/medium/mode work, world forms, footprint operands/certificates,
 Find memo, footprint reuse, EdgeSteps and initial Hold reuse. New counters append values. Never renumber or

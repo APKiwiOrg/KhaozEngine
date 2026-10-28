@@ -41,8 +41,9 @@ public sealed class RendererPerfWorkflowTrustTests
     [Theory]
     [InlineData("pilot", "linux-vulkan", "gpu-t4-linux", 12)]
     [InlineData("full", "linux-vulkan", "gpu-t4-linux", 35)]
-    [InlineData("full", "windows-vulkan", "gpu-t4-windows", 35)]
-    [InlineData("pilot", "windows-d3d11", "gpu-t4-windows", 12)]
+    [InlineData("full", "windows-vulkan", "gpu-t4-windows", 50)]
+    [InlineData("full", "windows-d3d11", "gpu-t4-windows", 50)]
+    [InlineData("pilot", "windows-d3d11", "gpu-t4-windows", 20)]
     public void Requested_admission_and_selector_cannot_change_allocation(string preset, string leg, string runner, int minutes)
     {
         using var workspace = new AdmissionWorkspace();
@@ -52,7 +53,7 @@ public sealed class RendererPerfWorkflowTrustTests
         fixture.Manifest["execution"]!["runner"] = runner;
         fixture.Manifest["execution"]!["backend"] = leg == "windows-d3d11" ? "d3d11" : "vulkan";
         fixture.Manifest["limits"]!["jobMinutes"] = minutes;
-        fixture.Manifest["budget"]!["maximumBilledMinutes"] = minutes;
+        fixture.Manifest["budget"]!["maximumBilledMinutes"] = minutes + 3;
         fixture.Environment["LEGS"] = leg;
         fixture.SaveManifest();
         fixture.Git("add", "--", "tools/Renderer.Perf.Tests/authorized/pilot-linux.json");

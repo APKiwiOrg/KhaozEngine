@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
@@ -5,14 +6,14 @@ using System.Numerics;
 namespace KhaozEngine.Audio;
 
 /// <summary>
-/// The SFX registry half of <see cref="AudioSystem"/>: which one-shot sounds exist by content name, the
+/// The SFX registry half of <see cref="AudioSystem"/>: which sounds exist by content name, the
 /// name -&gt; backend handle map behind them, and the priority-stating play overloads. Priority-free playback
 /// and volume stay in the main file, the bus mixer in <c>AudioSystem.Buses.cs</c>.
 /// </summary>
 public sealed partial class AudioSystem
 {
     /// <summary>
-    /// Registers a one-shot SFX by content name (no extension). If content is already loaded, it is
+    /// Registers an SFX for one-shots or loops by content name (no extension). If content is already loaded, it is
     /// eager-loaded now (mirrors <see cref="RegisterTrack"/>); otherwise it loads in <see cref="LoadContent"/>.
     /// Idempotent.
     /// </summary>
@@ -31,17 +32,44 @@ public sealed partial class AudioSystem
     }
 
     /// <summary>
-    /// Drops <paramref name="name"/> from the registry and releases its buffer through
-    /// <see cref="ISfxBackend.Unload"/>. Returns true when a loaded buffer was actually released. The name can
-    /// be registered again later, which reloads it. Without this a loaded SFX lived for the rest of the
-    /// process, so a zone-scoped or level-scoped sound set only ever grew.
+    /// Releases a loaded buffer and removes <paramref name="name"/> from the registry. A loop-capable
+    /// backend must confirm release through <see cref="ISfxLoopBackend.TryUnloadSfx"/>. Failure retains the
+    /// registration for an explicit retry, even when some loops were already stopped. Legacy backends
+    /// retain their void <see cref="ISfxBackend.Unload"/> path. Returns false for an unloaded name.
+    /// A successfully removed name can be registered again later, which reloads it.
     /// </summary>
     public bool UnregisterSfx(string name)
     {
         EnsureOwningThread();
+        if (!_sfx.TryGetValue(name, out int handle))
+        {
+            _sfxNames.Remove(name);
+            return false;
+        }
+
+        var loopBackend = _sfxBackend as ISfxLoopBackend;
+        if (loopBackend is not null)
+        {
+            try
+            {
+                if (!loopBackend.TryUnloadSfx(handle)) return false;
+            }
+            catch (Exception exception)
+            {
+                try { _logger.Warn($"unloading SFX '{name}' failed.", exception); }
+                catch { /* Diagnostics cannot turn retained ownership into a thrown cleanup result. */ }
+                return false;
+            }
+            finally
+            {
+                // Cleanup can end some identities while retaining the buffer and its remaining loops.
+                ReconcileLoopMix();
+            }
+        }
+
         _sfxNames.Remove(name);
-        if (!_sfx.Remove(name, out int handle)) return false;
-        _sfxBackend.Unload(handle);
+        _sfx.Remove(name);
+        if (loopBackend is null) _sfxBackend.Unload(handle);
         // Forget the warn-once record too, so a later re-register that fails still says so once.
         _warnedSfx.Remove(name);
         return true;

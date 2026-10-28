@@ -45,7 +45,7 @@ namespace KhaozEngine.Gpu
         public GpuTextureUsage Usage { get; }
         /// <summary>MSAA sample count (1 = single-sample, the default). &gt; 1 makes a multisampled render target for
         /// MSAA; such a texture cannot be sampled directly (resolve it to a single-sample texture with
-        /// <see cref="IGpuCommandList.ResolveTexture"/> first) and must have <see cref="MipLevels"/> == 1. Select a
+        /// <see cref="IGpuCommandList.ResolveTexture(IGpuTexture, IGpuTexture)"/> first) and must have <see cref="MipLevels"/> == 1. Select a
         /// request from <see cref="GpuCapabilities.SupportedMsaaSampleCounts"/>. Must be a power of two.</summary>
         public uint SampleCount { get; }
 

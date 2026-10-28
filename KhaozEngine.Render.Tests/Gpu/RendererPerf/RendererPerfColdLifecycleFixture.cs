@@ -23,7 +23,8 @@ internal sealed class RendererPerfColdLifecycleFixture : IDisposable
     internal long Now = 100;
     internal int CreatedSessions, Frames;
     internal Action<string>? Boundary;
-    internal Func<IGpuDevice, RendererPerfBlock, IRenderPassObserver, IRendererPerfNativeWork>? WorkFactory;
+    internal Func<IGpuDevice, RendererPerfBlock, IRenderPassObserver, IRendererPerfNativeWork?>? WorkFactory;
+    internal Func<RendererPerfBlock, RendererPerfPassDefinition[]>? PassDefinitions;
     internal Func<IGpuDevice, RendererPerfRunIdentity>? Identify;
     internal Action<RendererPerfNativeSession>? SessionCreated;
     internal RendererPerfColdLifecycleFixture(RendererPerfReport? template = null)
@@ -53,7 +54,7 @@ internal sealed class RendererPerfColdLifecycleFixture : IDisposable
             {
                 int ordinal = CreatedSessions++;
                 var info = new RendererPerfSessionInfo(Template.Identity, true, true, null, ImmutableDictionary<string, RendererPerfMetric>.Empty);
-                var session = new RendererPerfNativeSession(device, info, block, [], unitClock,
+                var session = new RendererPerfNativeSession(device, info, block, PassDefinitions?.Invoke(block) ?? [], unitClock,
                     (wrapped, observer) => WorkFactory?.Invoke(wrapped, block, observer) ?? new Work(this, wrapped, block),
                     capture: capture, operationOrdinal: ordinal, executionClass: manifest.ExecutionClass);
                 SessionCreated?.Invoke(session);
@@ -145,7 +146,7 @@ internal sealed class RendererPerfColdLifecycleFixture : IDisposable
         public IGpuFramebuffer Target { get; }
         public Color ClearColor => new(0, 0, 0, 1);
         public string ControlStateSha256 => new('b', 64);
-        public RendererPerfRecipeReport? Recipe => _owner.Template.Manifest.Recipes.FirstOrDefault(r => r.SceneId == _block.SceneId) is { } recipe
+        public RendererPerfRecipeReport? Recipe => _owner.Template.Manifest.Recipes.FirstOrDefault(r => r.SceneId == (_block.SceneId == "conditioning:S3" ? "S3" : _block.SceneId)) is { } recipe
             ? new(recipe, "injected native operations", new('b', 64), ImmutableDictionary<string, long>.Empty,
                 ImmutableDictionary<string, long>.Empty, ImmutableDictionary<string, RendererPerfMetric>.Empty) : null;
         public void PrepareCold(int firstFrameIndex) { }

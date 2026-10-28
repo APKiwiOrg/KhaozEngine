@@ -100,7 +100,7 @@ this doc cannot silently drift apart.
 | Content validation | `KhaozEngine.Catalog` (`IContentValidator`, one member, `Validate(type, candidate, findings)`, ACCUMULATING into the caller's collection rather than throwing or returning at the first problem, because an operator fixing content wants every finding at once) | the engine's own `ContentValidator` runs the cross-cutting sweep and its `KEC` finding codes. A per-TYPE validator is registered beside the codec, so a game type's own rule is checked by the same pass and reported in the same report. Null is legal and means the schema checks alone | (no extra dep) |
 | Content validation against the PREVIOUS version | `KhaozEngine.Catalog` (`IContentHistoryValidator : IContentValidator`, one extra member, `Validate(candidate, previous, rules, findings)`, with the same PURE and ACCUMULATING contract. It exists because the plain seam carries no way to hand over the version a candidate is BASED on, so a change-shaped check reached from a publish saw the same null a boot does and was silently dead code) | reached ONLY by pass 6, the item-instances band, which is engine code and trusted. Pass 6 falls back to the plain seam for a band registration that does not implement it, and the GAME band never reaches this overload at all: a game validator is untrusted code and the previous snapshot is not something the engine hands it | (no extra dep) |
 | Content strings under the game's own | `KhaozEngine.Catalog` (`ContentStringFallback`, a `delegate bool (string key, out string value)`, handed to `ContentStringCatalog`'s constructor) | **game-side**, and a DELEGATE rather than an interface because `IStringCatalog` lives in `KhaozEngine.App` and `KhaozEngine.Catalog` depends on `Primitives` alone. `ContentStringCatalog` matches `IStringCatalog`'s member shape without the implements clause for exactly that reason, so a game wires it in as the catalog `LocalizationManager` hands out and a key the pack does not carry falls through to the shipped resources | (no extra dep) |
-| Audio | `KhaozEngine.Audio` (`IMusicBackend`, `ISfxBackend`, `Null*` no-op defaults) | (in-package) `OpenAlMusicBackend` / `OpenAlSfxBackend` | Silk.NET.OpenAL (+ NLayer mp3 / NVorbis ogg decode, contained) |
+| Audio | `KhaozEngine.Audio` (`IMusicBackend`, `ISfxBackend`, optional `ISfxLoopBackend`, `Null*` silent defaults) | (in-package) `OpenAlMusicBackend` / `OpenAlSfxBackend` | Silk.NET.OpenAL (+ NLayer mp3 / NVorbis ogg decode, contained) |
 | Server-status fetch | `KhaozEngine.ServerStatus` (`IServerStatusSource`, `ServerStatusReport` wire contract, `ServerStatusClient`, `ServerStatusEvaluator`) | (in-package) `HttpServerStatusSource`, a fake source in tests | System.Net.Http (BCL `HttpClient`, contained in `HttpServerStatusSource`) |
 | Server heartbeat (liveness) | `KhaozEngine.ServerStatus` (`IServerHeartbeatSink`, `ServerHeartbeat`, `Null`/`InMemory` reference sinks, `ServerHeartbeatService`) | **game-side** (the one-table upsert against the status DB), no engine backend package | Microsoft.Data.SqlClient / any - in the game, never the engine |
 | Bug report delivery | `KhaozEngine.BugReports` (`IBugReportSink`: one `SubmitAsync` returning a `BugReportSubmitResult` of Sent, Queued or Rejected for every delivery outcome, with only the caller's own cancellation thrown. `BugReportSubmitter` treats a sink that throws or returns nothing as a failed send and keeps its bundle in `BugReportOfflineQueue`) | (in-package) `HttpRelaySink` (the relay intake over the engine's `HttpRetry`) and `LocalFolderSink` (a folder plus the rendered viewer page, for development), a fake sink in tests | none. System.Net.Http (BCL `HttpClient`, supplied by the caller and contained in `HttpRelaySink`) |
@@ -778,6 +778,10 @@ skew across versions.
 Consumers instead use public `SupportQueryCapture` and immutable `SupportQueryMeasurement` in Physics,
 with `SupportQueryCounter`, `SupportQueryMetrics`, `SupportQueryRouteMetrics` and `SupportProofReuseMetrics`.
 These wrap the same recorder without exposing mutable thread state or granting consumer friend access.
+Physics also grants `InternalsVisibleTo` to NetWorld solely so `PlayerMovementSystem` records its per-entity
+outer Steps through the existing internal recorder. Movement records its own NPC Hold and Step entry points.
+The six controller-specific counters retain the same thread-local gates and worker reduction. The grant
+adds no public recording API and no package dependency.
 The existing worker bridge carries labels and lifetime completeness and merges once after join. Disabled
 workers restore state without allocating or materializing widened records. The
 [public contract](../KhaozEngine.Physics/README.md#support-query-measurement) owns scope, reduction and
@@ -2372,7 +2376,7 @@ To swap or add a backend for a seam that already has the separate-package split:
 | Map document physics | `../KhaozEngine.MapDoc.Physics/MapAssetShapes.cs`, reading `../KhaozEngine.Physics/PropCollisionFormat.cs` resources from `../KhaozEngine.MapDoc/Assets/MapAssetClosure.cs` | any `IPhysicsWorld`, `../KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs` in its tests |
 | Server ban list | `../KhaozEngine.Netcode/IBanStore.cs`, `InMemoryBanStore.cs` (forwarded from `../KhaozEngine.NetWorld/TypeForwards.cs`) | `../KhaozEngine.NetWorld/WorldStoreBanStore.cs`, `../KhaozEngine.Accounts/AccountBanStore.cs` |
 | Admin HTTP endpoint | `../KhaozEngine.Netcode/IAdminControllable.cs` (seam, forwarded from `../KhaozEngine.NetWorld/TypeForwards.cs`) | `../KhaozEngine.Server.Admin/` (Kestrel, ASP.NET Core), over `ServerAdmin` and any head: `WorldServer`, `ShardedWorldServer`, `../KhaozEngine.TileWorld.Netcode/TileWorldServer.Admin.cs` |
-| Audio | `../KhaozEngine.Audio/IMusicBackend.cs`, `ISfxBackend.cs`, `Null*Backend.cs` | `../KhaozEngine.Audio/OpenAl*Backend.cs` |
+| Audio | `../KhaozEngine.Audio/IMusicBackend.cs`, `ISfxBackend.cs`, `ISfxLoopBackend.cs`, `SfxLoop.cs`, `SfxLoopPool.cs`, `Null*Backend.cs` | `../KhaozEngine.Audio/OpenAl*Backend.cs`, `OpenAlSfxCommands.cs` |
 | Server-status fetch | `../KhaozEngine.ServerStatus/IServerStatusSource.cs`, `ServerStatusReport.cs`, `ServerStatusClient.cs`, `ServerStatusEvaluator.cs` | `../KhaozEngine.ServerStatus/HttpServerStatusSource.cs` (contains `HttpClient`) |
 | Server heartbeat | `../KhaozEngine.ServerStatus/ServerHeartbeat.cs` (`IServerHeartbeatSink`, `Null`/`InMemory` sinks), `ServerHeartbeatService.cs` | game-side SQL upsert (not in the engine) |
 | Bug report delivery | `../KhaozEngine.BugReports/Sinks/IBugReportSink.cs`, `BugReportSubmission.cs`, `BugReportSubmitter.cs`, `BugReportOfflineQueue.cs` | `../KhaozEngine.BugReports/Sinks/HttpRelaySink.cs` (contains `HttpClient`), `LocalFolderSink.cs` |
@@ -2396,6 +2400,18 @@ The edge is acyclic because `Netcode` depends on `Netcode.Abstractions` and has 
 `ISfxBackend.Play` gains an attenuation-aware overload taking `SfxAttenuation`. Its default interface body
 forwards to the existing priority overload. Custom backends retain their behavior until they consume the
 curve, while the OpenAL backend applies it to positional voices.
+
+`ISfxLoopBackend` is an optional companion to `ISfxBackend`, which gains no new abstract members or
+changed signatures. It provides protected-loop admission, controls, logical ownership queries and
+outcome-bearing `TryUnloadSfx`. Legacy backends keep their existing one-shot and void-unload paths.
+New loop calls on them return `Unsupported` without a one-shot fallback.
+
+The device-free `SfxLoopPool` owns the sole bounded admission and generation policy. Stock OpenAL
+and null backends expose four protected slots, separate from the unchanged sixteen-source one-shot pool.
+`AudioSystem` keeps mixer metadata keyed by backend identity and does not choose slots or make a second
+admission decision. The null backend uses an inert device with the same logical lifetime rules. Native
+commands stay behind the internal OpenAL adapter, and native source names never enter public handles.
+Custom companion backends must preserve identity expiry, bounded capacity and honest unload outcomes.
 
 
 ### Shared host utilities

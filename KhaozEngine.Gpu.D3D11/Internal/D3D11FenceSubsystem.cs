@@ -127,6 +127,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>The device's liveness, read through the hook. Fences read it before anything else.</summary>
         internal bool IsDeviceDead => _liveness.IsDead;
 
+        /// <summary>The timeline value the most recent live drain signalled and waited for, or zero before the
+        /// first one. The timestamp availability wait records it beside the completed value it observed.</summary>
+        internal ulong LastDrainTarget { get; private set; }
+
         /// <summary>The drains of the frame that has ENDED. Rolled by <see cref="BeginFrame"/>. This is the M2
         /// measurement.</summary>
         internal D3D11DrainStats LastFrameDrain => _lastFrame;
@@ -353,6 +357,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             {
                 _issued = _timeline.Signal();
                 target = _issued;
+                LastDrainTarget = target;
                 _timeline.Flush();
             }
 

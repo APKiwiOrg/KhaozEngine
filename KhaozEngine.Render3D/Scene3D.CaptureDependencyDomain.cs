@@ -11,7 +11,7 @@ public sealed partial class Scene3D
         int count = Math.Min(domain.Centres.Count, _model.ShadowMap.CascadeCount);
         for (int i = 0; i < count; i++)
         {
-            FitCascade(i, -domain.DirectionToLight, domain.Centres[i], domain.Radii[i], _model.ShadowMap.Resolution);
+            FitCascade(i, -domain.DirectionToLight, ToRender(domain.Centres[i]), domain.Radii[i], _model.ShadowMap.Resolution);
             _cascadeRadii[i] = domain.Radii[i];
         }
         _cascadeCount = count; return count;

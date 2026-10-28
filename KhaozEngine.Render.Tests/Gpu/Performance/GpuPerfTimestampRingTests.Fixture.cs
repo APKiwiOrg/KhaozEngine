@@ -15,8 +15,15 @@ public sealed partial class GpuPerfTimestampRingTests
         internal readonly GpuPerfTimestampResult?[] Results;
         internal readonly int[] Publications;
         internal Action<int, GpuPerfTimestampResult>? OnPublish { get; set; }
-        internal Rig(uint markerCount = 2, int sampleCapacity = 12)
+        internal Rig(uint markerCount = 2, int sampleCapacity = 12, int? notReadyPolls = null)
         {
+            if (notReadyPolls is { } polls)
+                Device.PoolFactory = capacity =>
+                {
+                    var pool = new GpuPerfTimestampAwaitTestPool(capacity, polls) { Owners = Device.Fences };
+                    Device.Pools.Add(pool);
+                    return pool;
+                };
             Results = new GpuPerfTimestampResult?[sampleCapacity];
             Publications = new int[sampleCapacity];
             Submission = new(Device);

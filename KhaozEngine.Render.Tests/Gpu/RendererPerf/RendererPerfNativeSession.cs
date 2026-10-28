@@ -24,9 +24,11 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
     readonly Action<Frame> _prepare, _record;
     readonly Func<ImmutableDictionary<string, RendererPerfMetric>>? _telemetry;
     readonly RendererPerfStartupReport _startup;
+    readonly long _completionDeadline;
     int _next, _consumed, _frameIndex;
     bool _disposed;
     RendererPerfCpuSpan? _drain, _harvest;
+    ImmutableDictionary<string, RendererPerfMetric> _completion = ImmutableDictionary<string, RendererPerfMetric>.Empty;
     string? _failure;
 
     internal RendererPerfNativeSession(IGpuDevice device, RendererPerfSessionInfo info,
@@ -34,12 +36,14 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         Func<IGpuDevice, IRenderPassObserver, IRendererPerfNativeWork> createWork,
         Func<ImmutableDictionary<string, RendererPerfMetric>>? telemetry = null,
         RendererPerfConstructionCapture? capture = null, int operationOrdinal = 0,
-        RendererPerfExecutionClass executionClass = RendererPerfExecutionClass.Performance)
+        RendererPerfExecutionClass executionClass = RendererPerfExecutionClass.Performance,
+        long completionDeadline = long.MaxValue)
     {
         RendererPerfAdmission.Device(device, info, executionClass);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(clock.Frequency);
         long coldStart = info.Startup?.Wall.StartTicks ?? clock.Now();
         _native = device; _info = info; _block = block; _clock = clock; _telemetry = telemetry;
+        _completionDeadline = completionDeadline;
         int count = checked(block.WarmupFrames + block.MeasuredFrames);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(count);
         _results = new GpuPerfTimestampResult?[count];
@@ -101,8 +105,10 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_next == _results.Length || _next - _consumed >= 3 || frameIndex != _next - _block.WarmupFrames)
             throw new InvalidOperationException("The fixed frame count, sequence or three-frame pacing was violated.");
+        bool conditioning = _block.SceneId.StartsWith("conditioning:", StringComparison.Ordinal);
         if (_capture?.Failure is { } captureFailure) throw new InvalidOperationException(captureFailure);
-        _capture?.EnterFrame(frameIndex < 0 ? RendererPerfConstructionStage.Warmup : RendererPerfConstructionStage.Measured, frameIndex);
+        _capture?.EnterFrame(conditioning ? RendererPerfConstructionStage.Cold
+            : frameIndex < 0 ? RendererPerfConstructionStage.Warmup : RendererPerfConstructionStage.Measured, frameIndex);
         try
         {
             _frameIndex = frameIndex;
@@ -129,7 +135,6 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
             {
                 if (_recorder.ReadCounter(_next, RendererPerfCounter.Submissions) != 1)
                     _recorder.Fail("An unexpected production submission occurred, including preparation.");
-                bool conditioning = _block.SceneId.StartsWith("conditioning:", StringComparison.Ordinal);
                 if (_recorder.ReadCounter(_next, RendererPerfCounter.WaitForIdleCalls) != 0)
                     _recorder.Fail("An unexpected production wait occurred.");
                 if (frameIndex >= 0 && !conditioning && _recorder.ReadCounter(_next, RendererPerfCounter.ResourceCreations) != 0)
@@ -180,12 +185,20 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         for (int i = 0; i < samples.Length; i++)
             if (samples[i].FrameId != _consumed + i) throw new InvalidOperationException("A foreign or duplicated frame entered harvest.");
         _drain = _harvest = null;
+        _completion = ImmutableDictionary<string, RendererPerfMetric>.Empty;
         long start = _clock.Now();
         var failures = ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
         try { _native.WaitForIdle(); }
         catch (Exception error) { _failure ??= error is GpuDiagnosticFailureException transport ? transport.Failures[0].Error.Message : error.Message; RendererPerfFailures.Add(failures, "renderer.batch.complete", error); }
+        bool fenceDrained = failures.Count == 0;
+        // Query availability is retained completion on backends whose data trails the fence, so the drain span covers it.
+        if (fenceDrained)
+        {
+            try { _completion = RendererPerfCompletionEvidence.Metrics(_ring.AwaitAvailability(_clock.Now, _completionDeadline), _consumed); }
+            catch (Exception error) { RendererPerfFailures.Add(failures, "renderer.batch.complete", error); }
+        }
         long drained = _clock.Now();
-        if (failures.Count == 0)
+        if (fenceDrained)
         {
             _drain = new("batch.completionDrain", null, start, drained);
             try { _ring.PollCompleted(); }
@@ -227,7 +240,8 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
         Failure = _failure ?? _ring.Failure ?? _native.Diagnostics.DeviceLossReason ?? _capture?.Failure,
         Drain = _drain,
         Harvest = _harvest,
-        Startup = _startup
+        Startup = _startup,
+        Completion = _completion
     };
 
     public void Dispose()

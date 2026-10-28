@@ -6,11 +6,12 @@ namespace KhaozEngine.Render2D
     /// <summary>
     /// A logical-size font that stays crisp under HiDPI by baking its atlas at the live device-pixel scale and
     /// re-baking only when that scale changes. Author UI at a logical <c>pixelHeight</c> (points); each frame call
-    /// <see cref="For"/> with the current DPI scale (device px per logical point, e.g. <c>Frame.DpiScale</c>) and
+    /// <see cref="For"/> with the current effective UI scale (device px per design point, e.g.
+    /// <c>UiViewport.EffectiveScale</c>) and
     /// draw the returned <see cref="SpriteFont"/> 1:1 in a point-space batch - the glyph atlas is baked at
     /// <c>pixelHeight * dpiScale</c> so it maps texel-for-texel onto the framebuffer. Because the DPI scale is
-    /// stable for a given display (it changes on a monitor / OS-scale change, not on window resize), the atlas is
-    /// re-baked only on those rare changes, not every frame or resize.
+    /// stable for a given display, the atlas is re-baked only on a DPI or user-scale change, not every frame
+    /// or resize.
     /// <para>
     /// Build one via <c>Render2DSurface.LoadDpiFont(...)</c> or <c>Render2DSnapshot.LoadDpiFont(...)</c>. Dispose it
     /// (it owns the baked <see cref="SpriteFont"/>s).
@@ -26,6 +27,7 @@ namespace KhaozEngine.Render2D
     public sealed class DpiFont : IDisposable
     {
         readonly DpiRebakeCache<SpriteFont> _cache;
+        bool _disposed;
 
         /// <summary>The logical (point) pixel height the font is authored at; the DPI scale multiplies it at bake time.</summary>
         public float PixelHeight { get; }
@@ -42,7 +44,36 @@ namespace KhaozEngine.Render2D
         /// Scales below 1 are clamped (the atlas is never baked below the logical density). Draw the result 1:1 in a
         /// point-space batch. With <c>cacheSlots</c> &gt; 1 several scales stay baked at once (LRU eviction).
         /// </summary>
-        public SpriteFont For(float dpiScale) => _cache.For(dpiScale < 1f ? 1f : dpiScale);
+        public SpriteFont For(float dpiScale)
+        {
+            ThrowIfDisposed();
+            return _cache.For(dpiScale < 1f ? 1f : dpiScale);
+        }
+
+        /// <summary>
+        /// A stable font view for retained controls. It resolves the current effective UI density lazily
+        /// when measuring or drawing, so controls keep their font reference across DPI and user-scale changes.
+        /// The density provider must return a finite positive value and should be stable for a frame.
+        /// </summary>
+        /// <remarks>
+        /// This DpiFont owns the cached atlases. Disposing the borrowed view does not dispose its owner.
+        /// Dispose the DpiFont when its views are no longer used. Several bindings with different live
+        /// densities should use enough cache slots to retain those atlases together.
+        /// </remarks>
+        public SpriteFont Bind(Func<float> effectiveScale)
+        {
+            ArgumentNullException.ThrowIfNull(effectiveScale);
+            ThrowIfDisposed();
+            return SpriteFont.CreateBound(() =>
+            {
+                ThrowIfDisposed();
+                float density = effectiveScale();
+                if (!float.IsFinite(density) || density <= 0f)
+                    throw new ArgumentOutOfRangeException(nameof(effectiveScale), density,
+                        "Font density must be finite and positive.");
+                return For(density);
+            });
+        }
 
         /// <summary>The scale of the MOST RECENTLY requested cached font (0 before the first <see cref="For"/>).</summary>
         public float BakedDpiScale => _cache.Key;
@@ -53,7 +84,17 @@ namespace KhaozEngine.Render2D
         /// <summary>How many distinct scales are baked and live right now (&lt;= <c>cacheSlots</c>). For tests / diagnostics.</summary>
         public int LiveCount => _cache.LiveCount;
 
-        public void Dispose() => _cache.Dispose();
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _cache.Dispose();
+        }
+
+        void ThrowIfDisposed()
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(DpiFont));
+        }
     }
 
     /// <summary>

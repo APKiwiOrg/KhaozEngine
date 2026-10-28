@@ -14,6 +14,11 @@ internal sealed partial class WaterRenderer
     PreparedPlane[] _preparedPlanes = Array.Empty<PreparedPlane>();
     IGpuResourceSet[] _planeSets = Array.Empty<IGpuResourceSet>();
     IGpuBuffer? _boundUbo;
+    IGpuTexture? _boundColumnAtlas;
+    IGpuSampler? _boundColumnSampler;
+    IGpuBuffer? _boundColumnFrame;
+    IGpuTexture? _boundColumnColor;
+    int _boundColumnColorGeneration;
     bool _opticsPrepared;
     // Whether the last viewport preparation queued bound water. Such a frame stays strict even if recording
     // later sees no bound plane.
@@ -60,11 +65,35 @@ internal sealed partial class WaterRenderer
         _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout,
             _bathymetry.Texture, _bathymetry.Sampler, _ocean.Map, _ocean.Sampler,
             targets.DepthColorTex, _gd.PointSampler, new GpuBufferRange(_ubo!, 0, SlotBytes),
-            _atmosphere.Uniforms, _atmosphere.SkyView, _atmosphere.SkySampler, optics, _gd.PointSampler));
+            _atmosphere.Uniforms, _atmosphere.SkyView, _atmosphere.SkySampler, optics, _gd.PointSampler,
+            ColumnShadows.ShadowAtlas, ColumnShadows.ShadowSampler, ColumnShadows.FrameUniforms,
+            ColumnShadows.SceneColor, ColumnShadows.ColorSampler));
 
     bool TargetsMatch(RenderResources targets) => ReferenceEquals(_bound, targets)
         && _boundGen == targets.Generation && ReferenceEquals(_boundUbo, _ubo)
-        && ReferenceEquals(_boundMap, _ocean.Map) && ReferenceEquals(_boundBathy, _bathymetry.Texture);
+        && ReferenceEquals(_boundMap, _ocean.Map) && ReferenceEquals(_boundBathy, _bathymetry.Texture)
+        && ReferenceEquals(_boundColumnAtlas, ColumnShadows.ShadowAtlas)
+        && ReferenceEquals(_boundColumnSampler, ColumnShadows.ShadowSampler)
+        && ReferenceEquals(_boundColumnFrame, ColumnShadows.FrameUniforms)
+        && ReferenceEquals(_boundColumnColor, ColumnShadows.SceneColor)
+        && _boundColumnColorGeneration == ColumnShadows.ColorGeneration;
+
+    static GpuResourceLayoutElement[] AppendColumnShadowLayout(GpuResourceLayoutElement[] prefix)
+    {
+        Array.Resize(ref prefix, prefix.Length + 5);
+        prefix[^5] = new("ColumnShadowAtlas", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment);
+        prefix[^4] = new("ColumnShadowSampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment);
+        prefix[^3] = new("WaterLitFrame", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment);
+        prefix[^2] = new("ColumnSceneColor", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment);
+        prefix[^1] = new("ColumnColorSampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment);
+        return prefix;
+    }
+
+    internal void InvalidateColumnShadowBindings()
+    {
+        RetireWaterSets();
+        _opticsPrepared = false;
+    }
 
     void RetireWaterSets()
     {
@@ -103,6 +132,11 @@ internal sealed partial class WaterRenderer
             _boundUbo = _ubo;
             _boundMap = _ocean.Map;
             _boundBathy = _bathymetry.Texture;
+            _boundColumnAtlas = ColumnShadows.ShadowAtlas;
+            _boundColumnSampler = ColumnShadows.ShadowSampler;
+            _boundColumnFrame = ColumnShadows.FrameUniforms;
+            _boundColumnColor = ColumnShadows.SceneColor;
+            _boundColumnColorGeneration = ColumnShadows.ColorGeneration;
         }
         _set ??= CreateWaterSet(targets, _bathymetry.NeutralTexture);
     }
@@ -121,6 +155,15 @@ internal sealed partial class WaterRenderer
         int boundedCount = 0)
     {
         using var device = Profiling?.Cpu("device.water.prepare") ?? default;
+        PrepareOpticsFrameCore(targets, frame, absolute, boundedCount);
+    }
+
+    /// <summary>The optics body with no phase of its own. <see cref="Scene3D"/> calls it inside the one
+    /// <c>device.water.prepare</c> root it opens around the column colour source, which the sets created here bind.
+    /// A CPU phase id opens at most once per frame, so the body cannot reopen it.</summary>
+    internal void PrepareOpticsFrameCore(RenderResources targets, in FramePrepare frame, ReadOnlySpan<WaterPlane> absolute,
+        int boundedCount = 0)
+    {
         _opticsPrepared = false;
         _preparedBound = AnyBound(frame.WaterPlanes);
         RetryWaterOutputReplacement();

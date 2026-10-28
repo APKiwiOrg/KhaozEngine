@@ -34,7 +34,7 @@ public sealed partial class Scene3D
                 if (src is null) continue;
 
                 var (visibleMain, visibleShadow) = ClassifySkinnedVisibility(entry.Bounds, it.World, FrustumCulling,
-                    camFrustum, shadowMapActive && it.CastsShadows, _shadowFrustums.AsSpan(0, shadowCascadeCount));
+                    camFrustum, shadowMapActive && it.CastsShadows, _shadowFrustums.AsSpan(0, shadowCascadeCount), _frameOrigin);
                 visibleMain &= !it.ShadowOnly;
                 PointShadowCasterSphere pointSphere = PointShadowCasterSphere.FromRestBounds(
                     entry.Bounds, it.World, SkinnedCullSafetyFactor);
@@ -65,7 +65,7 @@ public sealed partial class Scene3D
                     _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
                         entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count,
                         ToRender(it.World), it.Tint, emissive, specParams, dissolveParams, it.DissolveComplement,
-                        visibleMain, dissolving, shadowKind, pointSphere, it.Motion));   // reduced after the absolute classify
+                        visibleMain, dissolving, shadowKind, pointSphere, it.Motion));   // reduced after visibility classification
                 }
                 else
                 {
@@ -75,7 +75,7 @@ public sealed partial class Scene3D
                         _cpuSkinnedVerts.Add(SkinningMath.SkinVertex(src[v], palette));
                     _cpuSkinnedInstances.Add(new ModelRenderer.InstanceData
                     {
-                        Model = ToRender(it.World),   // reduced AFTER the absolute visibility classification above
+                        Model = ToRender(it.World),   // reduced AFTER visibility classification above
                         Tint = it.Tint,
                         Emissive = emissive,
                         SpecParams = specParams,

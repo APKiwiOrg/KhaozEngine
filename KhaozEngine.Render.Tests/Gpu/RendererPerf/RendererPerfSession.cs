@@ -21,7 +21,8 @@ internal sealed record RendererPerfSessionInfo(RendererPerfRunIdentity Identity,
     bool CompletionFences, RendererPerfRecipeReport? Recipe,
     ImmutableDictionary<string, RendererPerfMetric> Telemetry, string? Failure = null,
     string? ControlStateSha256 = null, RendererPerfMemoryReport? Memory = null,
-    RendererPerfCpuSpan? Drain = null, RendererPerfCpuSpan? Harvest = null, RendererPerfStartupReport? Startup = null);
+    RendererPerfCpuSpan? Drain = null, RendererPerfCpuSpan? Harvest = null, RendererPerfStartupReport? Startup = null,
+    ImmutableDictionary<string, RendererPerfMetric>? Completion = null);
 
 // The factory supplies a cold, frozen pass layout. No native discovery frames are allowed.
 internal interface IRendererPerfNativeWork : IDisposable

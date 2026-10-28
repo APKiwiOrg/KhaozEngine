@@ -27,10 +27,10 @@ namespace KhaozEngine.Tests.Gpu
         readonly FakeGpuResourceFactory _factory;
 
         internal FakeGpuDevice(GpuBackendKind backend = GpuBackendKind.Vulkan, bool supportsShadowMaps = true,
-            int maxColorAttachments = 8, int maxMsaaSampleCount = 1)
+            int maxColorAttachments = 8, int maxMsaaSampleCount = 1, GpuCapabilities? capabilityOverride = null)
         {
             Backend = backend;
-            Capabilities = new GpuCapabilities(
+            Capabilities = capabilityOverride ?? new GpuCapabilities(
                 clipSpaceYInverted: false, depthRangeZeroToOne: true, deviceName: "FakeGpuDevice",
                 samplerAnisotropy: false, samplerLodBias: false, maxMsaaSampleCount: maxMsaaSampleCount,
                 supportsShadowMaps: supportsShadowMaps, supportsCompute: false, supportsCompletionFences: false)
@@ -134,6 +134,8 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every graphics pipeline request with the GLSL source carried by its real shader-set handle.</summary>
         internal List<FakeGraphicsPipelineRequest> GraphicsPipelines { get; } = new();
+        internal int SamplerCreateCount { get; private set; }
+        internal int ResourceLayoutCreateCount { get; private set; }
 
         /// <summary>How many of <see cref="ResourceSets"/> have been disposed.</summary>
         internal int DisposedResourceSetCount
@@ -173,7 +175,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (ThrowOnBufferCreate == Buffers.Count + 1)
                 throw new InvalidOperationException("planned buffer creation failure");
-            var b = new FakeBuffer(d.SizeInBytes);
+            var b = new FakeBuffer(d.SizeInBytes, d.StructureByteStride, d.Usage);
             Buffers.Add(b);
             return b;
         }
@@ -205,13 +207,21 @@ namespace KhaozEngine.Tests.Gpu
             return framebuffer;
         }
 
-        public IGpuSampler CreateSampler(in GpuSamplerDescription d) => new FakeSampler();
-        public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => new FakeResourceLayout(d);
+        public IGpuSampler CreateSampler(in GpuSamplerDescription d)
+        {
+            SamplerCreateCount++;
+            return new FakeSampler();
+        }
+        public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d)
+        {
+            ResourceLayoutCreateCount++;
+            return new FakeResourceLayout(d);
+        }
         public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d)
         {
             if (ThrowOnResourceSetCreate == ResourceSets.Count + 1)
                 throw new InvalidOperationException("planned resource-set creation failure");
-            var set = new FakeResourceSet(d.Resources);
+            var set = new FakeResourceSet(d.Resources, d.Layout);
             ResourceSets.Add(set);
             return set;
         }
@@ -268,8 +278,15 @@ namespace KhaozEngine.Tests.Gpu
 
     internal sealed class FakeBuffer : IGpuBuffer
     {
-        internal FakeBuffer(uint sizeInBytes) => SizeInBytes = sizeInBytes;
+        internal FakeBuffer(uint sizeInBytes, uint structureByteStride = 0, GpuBufferUsage usage = default)
+        {
+            SizeInBytes = sizeInBytes;
+            StructureByteStride = structureByteStride;
+            Usage = usage;
+        }
         public uint SizeInBytes { get; }
+        internal uint StructureByteStride { get; }
+        internal GpuBufferUsage Usage { get; }
 
         /// <summary>Whether the owner freed this handle, the same one thing <see cref="FakeTexture"/> records and
         /// for the same reason: it is what pins the frame a retired buffer is actually destroyed on.</summary>
@@ -355,8 +372,13 @@ namespace KhaozEngine.Tests.Gpu
     internal sealed class FakeResourceSet : IGpuResourceSet
     {
         // Default empty for the tests that hand a set straight to a backend and never ask what is in it.
-        internal FakeResourceSet(IGpuBindableResource[]? resources = null) =>
+        internal FakeResourceSet(IGpuBindableResource[]? resources = null, IGpuResourceLayout? layout = null)
+        {
             Resources = resources ?? Array.Empty<IGpuBindableResource>();
+            Layout = layout;
+        }
+
+        internal IGpuResourceLayout? Layout { get; }
 
         /// <summary>What was bound into this set, in binding order. Kept because a set outlives the handles in
         /// it: see <see cref="FakeGpuResourceFactory.LiveSetsNamingAFreedTexture"/>.</summary>
@@ -441,6 +463,7 @@ namespace KhaozEngine.Tests.Gpu
         /// never asks for a generation pass.</summary>
         internal List<IGpuTexture> MipGenerations { get; } = new();
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { }
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource) { }
         public void SetComputePipeline(IGpuComputePipeline p) { }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) { }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) { }

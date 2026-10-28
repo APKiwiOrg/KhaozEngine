@@ -64,12 +64,33 @@ public static class RayMath
         // actual intersection on the cheap axis-aligned path.
         float cos = MathF.Cos(-yaw);
         float sin = MathF.Sin(-yaw);
-        Vector3 ro = origin - center;
-        var localOrigin = new Vector3(ro.X * cos + ro.Z * sin, ro.Y, -ro.X * sin + ro.Z * cos);
-        var localDirection = new Vector3(
-            direction.X * cos + direction.Z * sin, direction.Y, -direction.X * sin + direction.Z * cos);
+        Vector3 localOrigin = UnrotateY(origin - center, cos, sin);
+        Vector3 localDirection = UnrotateY(direction, cos, sin);
         return IntersectSlabs(localOrigin, localDirection, min, max, out tNear, out tFar);
     }
+
+    /// <summary>Carries a world point into the frame of a box anchored at <paramref name="center"/> and yawed by
+    /// <paramref name="yaw"/> radians about world Y: untranslate, then unrotate. The same transform
+    /// <see cref="IntersectObbY(Vector3, Vector3, Vector3, float, Vector3, Vector3, out float, out float)"/> applies
+    /// to a ray, so a point and a ray agree about which side of a face they are on.</summary>
+    public static Vector3 ToObbLocalY(Vector3 point, Vector3 center, float yaw)
+        => UnrotateY(point - center, MathF.Cos(-yaw), MathF.Sin(-yaw));
+
+    /// <summary>Whether <paramref name="point"/> lies inside a box that is axis-aligned in its own frame and yawed
+    /// about world Y, with every face pushed out by <paramref name="inflate"/> metres. The frame is
+    /// <see cref="ToObbLocalY"/>'s. Faces count as inside, and a NaN component never does.</summary>
+    public static bool ContainsObbY(Vector3 point, Vector3 center, float yaw, Vector3 min, Vector3 max, float inflate)
+    {
+        Vector3 local = ToObbLocalY(point, center, yaw);
+        var pad = new Vector3(inflate);
+        Vector3 lo = min - pad;
+        Vector3 hi = max + pad;
+        return local.X >= lo.X && local.X <= hi.X && local.Y >= lo.Y && local.Y <= hi.Y
+            && local.Z >= lo.Z && local.Z <= hi.Z;
+    }
+
+    static Vector3 UnrotateY(Vector3 v, float cos, float sin) =>
+        new(v.X * cos + v.Z * sin, v.Y, -v.X * sin + v.Z * cos);
 
     private static bool SlabAxis(float origin, float direction, float min, float max, ref float near, ref float far)
     {

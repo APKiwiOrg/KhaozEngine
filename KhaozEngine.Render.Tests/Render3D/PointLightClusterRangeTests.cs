@@ -19,9 +19,11 @@ public sealed class PointLightClusterRangeTests
     public void ASmallLightInViewBuildsAndTestsOnlyItsOwnCluster()
     {
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
         ModelRenderer.PointLightData[] lights = [Light(new Vector3(1f, 0.5f, -1.5f), 0.1f)];
 
-        builder.Build(lights, Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builderGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         // The 32 by 18 by 24 ortho frustum makes each cell 2 by 2 by 1, and this sphere sits well inside (8, 4, 0).
         // The brute-force builder built 3,456 plane sets and ran 3,456 sphere tests for it.
@@ -37,9 +39,11 @@ public sealed class PointLightClusterRangeTests
     public void ALightWhollyOutsideTheFrustumIsCulledBeforeAnyClusterIsBuilt(float x, float y, float z)
     {
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
         ModelRenderer.PointLightData[] lights = [Light(new Vector3(x, y, z), 1f)];
 
-        builder.Build(lights, Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builderGrid.TryPrepare(Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         Assert.Equal(0f, builder.Depth.W);
         Assert.Equal(0, builder.PlaneSetsBuilt);
@@ -57,9 +61,11 @@ public sealed class PointLightClusterRangeTests
         ModelRenderer.PointLightData[] lights = [Light(new Vector3(0f, 0f, -50f), 1f)];
         var oracle = new PointLightClusterOracle();
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
 
         oracle.Build(lights, TinyNear, Vector3.Zero, Forward, TinyNear, Vector3.Zero);
-        builder.Build(lights, TinyNear, Vector3.Zero, Forward, TinyNear, Vector3.Zero);
+        builderGrid.TryPrepare(TinyNear, Vector3.Zero, Forward, TinyNear, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         Assert.Equal(-1f, oracle.Depth.W);
         Assert.Equal(1f, builder.Depth.W);
@@ -76,9 +82,11 @@ public sealed class PointLightClusterRangeTests
         ModelRenderer.PointLightData[] lights = [Light(new Vector3(0f, 0f, -1f), 2f)];
         var oracle = new PointLightClusterOracle();
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
 
         oracle.Build(lights, TinyNear, Vector3.Zero, Forward, TinyNear, Vector3.Zero);
-        builder.Build(lights, TinyNear, Vector3.Zero, Forward, TinyNear, Vector3.Zero);
+        builderGrid.TryPrepare(TinyNear, Vector3.Zero, Forward, TinyNear, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         Assert.Equal(-1f, oracle.Depth.W);
         PointLightClusterImage.AssertSameAssignment(oracle, builder, "a light reaching the degenerate first slice");
@@ -107,9 +115,11 @@ public sealed class PointLightClusterRangeTests
         ModelRenderer.PointLightData[] lights = [Light(center, radius)];
         var oracle = new PointLightClusterOracle();
         var builder = new PointLightClusterBuilder();
+        var builderGrid = new ClusterFrameGrid();
 
         oracle.Build(lights, viewProjection, eye, direction, projection, Vector3.Zero);
-        builder.Build(lights, viewProjection, eye, direction, projection, Vector3.Zero);
+        builderGrid.TryPrepare(viewProjection, eye, direction, projection, Vector3.Zero);
+        builder.Build(lights, builderGrid, Vector3.Zero);
 
         Assert.Equal(1f, builder.Depth.W);
         Assert.Equal(0, builder.OverflowedClusters);

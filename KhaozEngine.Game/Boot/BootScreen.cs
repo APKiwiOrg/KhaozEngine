@@ -177,14 +177,14 @@ namespace KhaozEngine.Game
 
             // Lay out in the point space of the batch the host began (the DPI-aware UiViewport), NOT the device-pixel
             // FrameWidth/FrameHeight: those are the framebuffer size (2x logical on Retina), which would push the
-            // centered content off-screen through the point-to-device scale. The UiViewport carries the logical size
-            // and the DPI scale the renderer bakes text at. Fall back to FrameWidth/Height (== logical at 1x) for a
+            // centered content off-screen through the point-to-device scale. The UiViewport carries the canvas
+            // and effective density the renderer bakes text at. Fall back to FrameWidth/Height (== logical at 1x) for a
             // host that draws the boot screen without a point-space viewport.
             UiViewport? ui = Manager.UiViewport;
             var bounds = ui is not null
-                ? new Rect(0f, 0f, ui.Width, ui.Height)
+                ? ui.DesignBounds
                 : new Rect(0f, 0f, Manager.FrameWidth, Manager.FrameHeight);
-            float dpiScale = ui?.DpiScale ?? 1f;
+            float dpiScale = ui?.EffectiveScale ?? 1f;
             Pointer pointer = Manager.UiPointer ?? _fallbackPointer;
 
             _gui.Begin(batch, pointer);

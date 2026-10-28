@@ -83,7 +83,11 @@ public sealed class AtmosphereRendererTests
         var fragmentBytes = SpirvFrontEnd.ToSpirv(fragment, GpuShaderStages.Fragment, program);
         var pair = SpirvCrossCompile.VertexFragmentToMsl(vertexBytes, fragmentBytes, program);
         var elements = pair.Reflection.ResourceLayouts[0].Elements;
-        Assert.Equal(prefix + 3 + (program == "Water" ? 2 : prefix == 11 ? 1 : 0), elements.Length);
+        bool waterReceiver = program is "Model" or "ModelDissolve" or "Foliage" or "SkinnedModel"
+            or "SkinnedModelDissolve" or "Splat" or "TileGround";
+        Assert.Equal(prefix + 3 + (program == "Water" ? 7 : prefix == 11 ? 1 : 0)
+            + (waterReceiver ? 1 : 0), elements.Length);
+        if (waterReceiver) Assert.Equal(GpuResourceKind.StructuredBufferReadOnly, elements[^1].Kind);
         Assert.Equal(new[] { GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly,
             GpuResourceKind.Sampler }, elements.Skip(prefix).Take(3).Select(e => e.Kind));
         Assert.All(elements.Skip(prefix), e => Assert.Equal(GpuShaderStages.Fragment, e.Stages));
@@ -198,17 +202,18 @@ public sealed class AtmosphereRendererTests
             model.EnsureSkinnedMainCapacity(1);
             var frameSets = factory.ResourceSets.Where(set => !set.Disposed
                 && set.Resources[0] is IGpuBuffer buffer && buffer.SizeInBytes == ModelRenderer.UboBytes).ToArray();
-            Assert.Equal(new[] { 6, 6, 7, 15 }, frameSets.Select(set => set.Resources.Length).OrderBy(n => n));
-            FakeResourceSet rigid = Assert.Single(frameSets, set => set.Resources.Length == 15);
+            Assert.Equal(new[] { 7, 7, 8, 16 }, frameSets.Select(set => set.Resources.Length).OrderBy(n => n));
+            FakeResourceSet rigid = Assert.Single(frameSets, set => set.Resources.Length == 16);
             uniforms = Assert.IsType<FakeBuffer>(rigid.Resources[11]);
             sky = Assert.IsType<FakeTexture>(rigid.Resources[12]);
             Assert.Equal(AtmosphereRenderer.UboBytes, uniforms.SizeInBytes);
             Assert.All(frameSets, set =>
             {
-                int atmosphereStart = set.Resources.Length == 15 ? 11 : set.Resources.Length - 3;
+                int atmosphereStart = set.Resources.Length == 16 ? 11 : set.Resources.Length - 4;
                 Assert.Same(uniforms, set.Resources[atmosphereStart]);
                 Assert.Same(sky, set.Resources[atmosphereStart + 1]);
                 Assert.Same(rigid.Resources[13], set.Resources[atmosphereStart + 2]);
+                Assert.Same(rigid.Resources[15], set.Resources[^1]);
             });
         }
         Assert.True(uniforms.Disposed);
@@ -224,6 +229,7 @@ public sealed class AtmosphereRendererTests
         using var retired = GpuRetireQueue.CreateFrameCounted(device, GpuRetireQueue.DefaultFrameDelay);
         using (var model = new ModelRenderer(device, ModelTargets.Base, 64, 1, retired, atmosphere))
         {
+            FakeBuffer water = Assert.Single(factory.Buffers, b => b.SizeInBytes == 652800);
             IGpuResourceSet rigid = model.CreateMaterialSet();
             IGpuResourceSet skinned = model.CreateSkinnedMaterialSet();
             model.EnsureSkinnedMainCapacity(1);
@@ -250,14 +256,15 @@ public sealed class AtmosphereRendererTests
             {
                 var frameSets = factory.ResourceSets.Where(set => !set.Disposed
                     && set.Resources.Contains(model.PointLightBuffer)).ToArray();
-                Assert.Equal(retainedSkinnedSet ? new[] { 6, 6, 7, 7, 15, 15 } : new[] { 6, 6, 7, 15, 15 },
+                Assert.Equal(retainedSkinnedSet ? new[] { 7, 7, 8, 8, 16, 16 } : new[] { 7, 7, 8, 16, 16 },
                     frameSets.Select(set => set.Resources.Length).OrderBy(n => n));
                 Assert.All(frameSets, set =>
                 {
-                    int atmosphereStart = set.Resources.Length == 15 ? 11 : set.Resources.Length - 3;
+                    int atmosphereStart = set.Resources.Length == 16 ? 11 : set.Resources.Length - 4;
                     Assert.Same(atmosphere.Uniforms, set.Resources[atmosphereStart]);
                     Assert.Same(atmosphere.SkyView, set.Resources[atmosphereStart + 1]);
                     Assert.Same(atmosphere.SkySampler, set.Resources[atmosphereStart + 2]);
+                    Assert.Same(water, set.Resources[^1]);
                 });
                 var material = Assert.IsType<FakeResourceSet>(skinned);
                 Assert.Equal(8, material.Resources.Length);

@@ -18,11 +18,13 @@ internal sealed partial class RendererPerfConstructionFixture : IGpuDevice, IGpu
     readonly GpuPerfTimestampTestDevice _inner = new();
     readonly FakeGpuResourceFactory _resources = new();
     internal int FactoryAttempts, ShaderAttempts, LayoutAttempts, GraphicsAttempts, ComputeAttempts, CompilerReads;
+    internal int TextureAttempts;
     internal Exception? FactoryFailure;
     internal IGpuPipeline? LastGraphicsBind;
     internal IGpuComputePipeline? LastComputeBind;
     internal Action<string>? Trace;
-    internal GpuCapabilities Features = new(false, true, "NVIDIA T4", supportsCompute: true, supportsCompletionFences: true) { SupportsTimestamps = true };
+    internal GpuCapabilities Features = new(false, true, "NVIDIA T4", supportsCompute: true, supportsCompletionFences: true)
+    { SupportsTimestamps = true, MaxStorageBufferRangeBytes = 536870912 };
     internal bool Software;
     internal int Submissions => _inner.Submissions;
     internal int Waits => _inner.Waits;
@@ -48,6 +50,7 @@ internal sealed partial class RendererPerfConstructionFixture : IGpuDevice, IGpu
     public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => new SubmissionTestBuffer(d.SizeInBytes, d.Usage);
     public IGpuTexture CreateTexture(in GpuTextureDescription d)
     {
+        TextureAttempts++;
         var texture = _resources.CreateTexture(d);
         if (texture is FakeTexture fake) fake.OnDispose = () => ColdAction?.Invoke("dispose.texture");
         return texture;
@@ -114,6 +117,7 @@ internal sealed partial class RendererPerfConstructionFixture : IGpuDevice, IGpu
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height) { Native.CopyTextureSubresource(src, srcMipLevel, srcArrayLayer, dst, dstMipLevel, dstArrayLayer, width, height); }
         public void GenerateMipmaps(IGpuTexture texture) { Native.GenerateMipmaps(texture); }
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { Native.ResolveTexture(src, dst); }
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource) { Native.ResolveTexture(src, dst, preserveSource); }
         public void SetComputePipeline(IGpuComputePipeline p) { owner.LastComputeBind = p; Native.SetComputePipeline(p); }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) { Native.SetComputeResourceSet(slot, set); }
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) { Native.SetComputeResourceSet(slot, set, dynamicOffset); }

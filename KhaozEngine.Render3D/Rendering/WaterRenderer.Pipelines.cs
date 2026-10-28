@@ -24,7 +24,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         static IGpuResourceLayout CreateWaterLayout(IGpuResourceFactory f)
         {
-            return f.CreateResourceLayout(new GpuResourceLayoutDescription(AppendOpticsLayout(AtmosphereBindings.AppendLayout(
+            return f.CreateResourceLayout(new GpuResourceLayoutDescription(AppendColumnShadowLayout(AppendOpticsLayout(AtmosphereBindings.AppendLayout(
                 // ORDER WAS LOAD-BEARING, and not for the usual reason. Veldrid numbered a backend's resource slots
                 // with one counter PER KIND over this whole list, binding each element to the stages in its mask,
                 // while the cross-compiler numbered each stage DENSELY over only the bindings that stage declares.
@@ -50,7 +50,7 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 // Dynamic-offset UBO read by BOTH stages (the vertex shader only needs ViewProj, folded into the
                 // same buffer under the one-UBO-per-set rule #604 retired, and left folded).
-                new GpuResourceLayoutElement("Water", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true)))));
+                new GpuResourceLayoutElement("Water", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true))))));
         }
 
         WaterProgram CreateWaterProgram(GpuOutputDescription outputs, bool clipmap, bool triangle)

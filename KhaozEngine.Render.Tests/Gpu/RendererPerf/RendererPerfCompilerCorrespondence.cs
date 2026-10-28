@@ -22,7 +22,7 @@ internal static class RendererPerfCompilerCorrespondence
         RendererPerfCompilerEvidence c, ImmutableArray<string>.Builder reasons)
     {
         void Require(bool condition, string reason) { if (!condition) reasons.Add(reason); }
-        Require(i.Schema == "khaozengine.renderer-compiler-inventory/1", "Unknown compiler inventory schema.");
+        Require(i.Schema == RendererPerfCompilerJson.Schema, "Unknown compiler inventory schema.");
         Require(i.Complete && i.Reason is null && i.Counts.OmittedFactoryEvents == 0, "Construction inventory is incomplete.");
         Require(c.State == RendererPerfCollectionState.Complete && c.Reason is null && c.Errors.IsEmpty, "Compiler collection is incomplete.");
         Require(i.Operations.Length is > 0 and <= 43 && i.Operations.All(s => !string.IsNullOrWhiteSpace(s))
@@ -75,7 +75,8 @@ internal static class RendererPerfCompilerCorrespondence
         {
             Require((uint)o.OperationOrdinal < (uint)i.Operations.Length && o.CreationOrdinal >= 0 && Enum.IsDefined(o.Kind)
                 && roles.Add((o.OperationOrdinal, o.Kind, o.CreationOrdinal)) && o.BindCount >= 0
-                && Enum.IsDefined(o.Stage) && (o.Stage == RendererPerfConstructionStage.Cold ? o.FrameIndex is null
+                && Enum.IsDefined(o.Stage) && (o.Stage == RendererPerfConstructionStage.Cold
+                    ? o.FrameIndex is null || o.OperationOrdinal == 0 && o.FrameIndex >= 0 && i.Operations[0] == "conditioning:S3/TotalOnly/0"
                     : o.FrameIndex is { } f && (o.Stage == RendererPerfConstructionStage.Warmup) == (f < 0)), "Occurrence role or frame membership is invalid.");
             Require(o.Stage != RendererPerfConstructionStage.Measured, "Measured first pipeline creation refuses steady-state promotion.");
             Require(outputs.Contains(o.Id) && (uint)o.RecipeId < (uint)i.Recipes.Length, "Occurrence has no successful factory association.");

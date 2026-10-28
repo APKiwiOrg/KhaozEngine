@@ -82,19 +82,27 @@ namespace KhaozEngine.Render3D
         }
 
         // Optical bindings resolve inside the same preparer phase, after the legacy preparers they depend on.
+        // The no-argument form prepares the column colour source at render instead, after final sizing.
         void PrepareSubsystems(bool optics)
         {
             using var phase = ProfileCpu("cpu.water.prepare");
             EnsurePointLightCapacity();
+            ValidateWaterColumnInputs();
+            BindWaterColumnShadows(_water);
             HarvestTemporalCounts();   // an armed temporal count request: its one readback, here before any recording
             var frame = new FramePrepare(Post.Water, WaterDemandPlanes(), EffectTimeSeconds);
             IFramePreparer[] preparers = _preparers ??= new IFramePreparer[] { _water };
             for (int i = 0; i < preparers.Length; i++) preparers[i].PrepareFrame(frame);
-            if (optics)
-            {
-                var opticalFrame = new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds);
-                _water.PrepareOpticsFrame(_res, opticalFrame, CollectionsMarshal.AsSpan(_waterPlanes), _boundedWater.Count);
-            }
+            if (optics) PrepareWaterOptics(new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds));
+        }
+
+        // The frame's one device.water.prepare root owns the column colour source and the optics sets that bind it,
+        // so the source is ready before any set is created. A CPU phase id opens at most once per frame.
+        void PrepareWaterOptics(in FramePrepare frame)
+        {
+            using var device = _water.Profiling?.Cpu("device.water.prepare") ?? default;
+            PrepareWaterColumnColor();
+            _water.PrepareOpticsFrameCore(_res, frame, CollectionsMarshal.AsSpan(_waterPlanes), _boundedWater.Count);
         }
 
         bool _waterViewportPrepared;
@@ -140,6 +148,8 @@ namespace KhaozEngine.Render3D
         {
             if (HasBoundWater()) VerifyPreparedWaterTargets(width, height);
             EnsureSize(width, height);
+            ValidateWaterColumnInputs();
+            PrepareWaterColumnColor();
         }
     }
 }

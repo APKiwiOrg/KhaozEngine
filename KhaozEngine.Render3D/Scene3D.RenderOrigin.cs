@@ -14,12 +14,12 @@ namespace KhaozEngine.Render3D
     /// Camera-relative rendering: the half of <see cref="Scene3D"/> that owns the render origin and every
     /// world-to-render-frame reduction. See <c>docs/design/FLOATING-ORIGIN-DESIGN-2026-07-27.md</c> for the why.
     /// <para>
-    /// ONE rule governs the whole file: <b>the subtraction happens where data is built for the GPU, and nowhere
-    /// else.</b> Every submission queue stays ABSOLUTE, so every CPU-side spatial computation (frustum culling, the
-    /// terrain identity fast path, shadow-caster classification, cascade fitting, the four transparency sorts) runs
-    /// on absolute inputs and is byte-identical to the pre-floating-origin engine. Only the copy that reaches the
-    /// GPU is relative. A site that forgets the reduction renders visibly displaced at range, which is loud. A cull
-    /// that silently ran in the wrong space is not.
+    /// Every submission queue stays ABSOLUTE. Frustum culling, the terrain identity fast path and the four
+    /// transparency sorts still test those absolute inputs, and GPU-bound copies subtract the frame origin.
+    /// Shadow cascade fitting and caster evaluation instead use the render frame: caster tests reduce their
+    /// absolute bounds before the light-space dot products, avoiding cancellation against a large translation.
+    /// A site that forgets a GPU reduction renders visibly displaced at range, which is loud. A cull that silently
+    /// ran in the wrong space is not.
     /// </para>
     /// <para>
     /// Five queues are the deliberate exception and reduce AT SUBMISSION rather than on a GPU-bound copy: the
@@ -51,9 +51,8 @@ namespace KhaozEngine.Render3D
         readonly List<WaterPlane> _waterPlanesRelative = new();
         readonly List<DistortionSprite> _distortionRelative = new();
         readonly List<TrailSample> _trailSamplesRelative = new();
-        // Per-cascade ABSOLUTE fit matrices, beside the render-relative ones in _cascadeCpuVps. The CPU
-        // caster-visibility test extracts its frustums from these, so caster classification stays in absolute space
-        // against absolute bounds and is byte-identical to the pre-release engine.
+        // Absolute diagnostic views of the render-relative cascade fit, beside _cascadeCpuVps. Caster tests
+        // use the relative fit and reduce absolute bounds before evaluating it, preserving local precision.
         readonly Matrix4x4[] _cascadeCpuVpsAbsolute = new Matrix4x4[ShadowSettings.MaxCascades];
 
         /// <summary>
@@ -264,8 +263,9 @@ namespace KhaozEngine.Render3D
                 WaterOpticsBinding optics = p.Optics;
                 if (optics.IsBound)
                     optics = new WaterOpticsBinding(optics.Field, optics.Origin - _frameOrigin, optics.Size);
+                float? floorY = p.FloorY.HasValue ? (float)((double)p.FloorY.Value - _frameOrigin.Y) : null;
                 _waterPlanesRelative.Add(new WaterPlane(p.CenterX - _frameOrigin.X, p.SurfaceY - _frameOrigin.Y,
-                    p.CenterZ - _frameOrigin.Z, p.HalfExtentX, p.HalfExtentZ, p.Look, optics));
+                    p.CenterZ - _frameOrigin.Z, p.HalfExtentX, p.HalfExtentZ, p.Look, optics, floorY));
             }
             return CollectionsMarshal.AsSpan(_waterPlanesRelative);
         }
@@ -335,23 +335,6 @@ namespace KhaozEngine.Render3D
             if (!linearIsIdentity) return false;
             translation = new Vector3(m.M41, m.M42, m.M43);
             return true;
-        }
-
-        /// <summary>
-        /// Build the render-relative cascade matrix beside the absolute fitted one. The dirty check that decides
-        /// whether the shadow atlas can be reused compares <see cref="_cascadeCpuVps"/> frame to frame, so it is
-        /// these RELATIVE matrices it sees: an origin step changes them by the step and forces the depth pass to
-        /// re-render, which is what stops the atlas being reused against a frame it was not baked for. The rotation is unchanged and
-        /// only the focus moves, so the ortho extents and the texel world size are identical. The light-space texel
-        /// snap is not origin-invariant, so a shadow edge can jump by one texel for the one frame an origin steps
-        /// (accepted and documented in the design doc, section 9).
-        /// </summary>
-        void FitCascade(int i, Vector3 lightDir, Vector3 center, float radius, int resolution)
-        {
-            _cascadeCpuVpsAbsolute[i] = Internal.ShadowMapMath.BuildLightViewProj(lightDir, center, radius, resolution);
-            _cascadeCpuVps[i] = _frameOriginActive
-                ? Internal.ShadowMapMath.BuildLightViewProj(lightDir, ToRender(center), radius, resolution)
-                : _cascadeCpuVpsAbsolute[i];
         }
     }
 }

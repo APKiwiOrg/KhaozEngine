@@ -16,6 +16,10 @@ namespace KhaozEngine.Tests.Gpu
         internal ulong Frequency = 10_000_000;
         internal bool Disjoint = false;
         internal int Unavailable = -1;
+        // Every GetData on a query, availability or data read, returns S_FALSE this many times before S_OK.
+        internal int NotReadyReads;
+        internal readonly List<(object Query, bool Flush)> Availability = new();
+        readonly Dictionary<object, int> _reads = new();
         int _next;
         public object CreateTimestamp() => _next++;
         public object CreateDisjoint() => "disjoint";
@@ -25,14 +29,25 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (Record) Calls.Add($"Read({query})");
             value = (int)query == 0 ? 100ul : 125ul;
-            return (int)query != Unavailable;
+            return Reached(query) && (int)query != Unavailable;
         }
         public bool TryReadDisjoint(object query, out ulong frequency, out bool disjoint)
         {
             if (Record) Calls.Add("Read(disjoint)");
             frequency = Frequency;
             disjoint = Disjoint;
-            return Unavailable != -2;
+            return Reached(query) && Unavailable != -2;
+        }
+        public int ReadAvailability(object query, bool flush)
+        {
+            Availability.Add((query, flush));
+            return Reached(query) ? 0 : 1;
+        }
+        bool Reached(object query)
+        {
+            _reads.TryGetValue(query, out int reads);
+            _reads[query] = reads + 1;
+            return reads >= NotReadyReads;
         }
         public void Destroy(object query) => Destroyed.Add(query);
     }
@@ -59,6 +74,7 @@ namespace KhaozEngine.Tests.Gpu
         public int GetData(object query, Span<byte> data, uint flags)
         {
             Reads.Add((data.Length, flags));
+            if (data.IsEmpty) return Failure;
             BinaryPrimitives.WriteUInt64LittleEndian(data, (int)query == 3 ? Frequency : 125ul);
             if ((int)query == 3) BinaryPrimitives.WriteInt32LittleEndian(data[8..], Disjoint ? 1 : 0);
             return Failure;

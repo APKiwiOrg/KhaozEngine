@@ -135,7 +135,7 @@ public class SupportQueryWorkerRestorationTests
         {
             error = Record.Exception(() =>
             {
-                var counts = new long[42];
+                var counts = new long[48];
                 counts[0] = 17;
                 var saved = SupportQueryDiagnostics.ThreadState.Fresh(true) with
                 {
@@ -157,6 +157,7 @@ public class SupportQueryWorkerRestorationTests
                     Assert.Equal("player", SupportQueryDiagnostics.MeasurementLabel);
                     Assert.Null(SupportQueryCaptureTests.State().Find);
                     SupportQueryDiagnostics.Record(SupportQueryCounter.Find, 3);
+                    for (int i = 42; i < 48; i++) SupportQueryDiagnostics.Record((SupportQueryCounter)i);
                     throw new InvalidOperationException("worker failure");
                 }
                 catch (InvalidOperationException) { }
@@ -175,6 +176,7 @@ public class SupportQueryWorkerRestorationTests
         child.Dispose();
         WorkerDiagnostics.Merge([record]);
         Assert.Equal(3, capture.Snapshot().ByLabel["player"][SupportQueryCounter.Find]);
+        for (int i = 42; i < 48; i++) Assert.Equal(1, capture.Snapshot().ByLabel["player"][(SupportQueryCounter)i]);
         Assert.Equal(0, capture.Snapshot().ByLabel["preflight"][SupportQueryCounter.Find]);
     }
 

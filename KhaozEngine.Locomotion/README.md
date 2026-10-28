@@ -53,6 +53,15 @@ The served query domain includes exterior footprint, signal look-ahead and verti
 independently of commands or replay length.
 `CreateOrdinaryScope(frame)` returns the same cold scope for that frame. Capture the ordinary boundary
 before acquisition, acquire with `TryAcquire`, then use the binding's tick, placement or continuation doors.
+Fresh per-tick acquisition is supported. Pass the previous accepted `FramedMovementState` unchanged to
+`Step` or `StepTowards` on the new lease. Tick entry validates its frame and carried selection, then
+reconstructs canonical selection if the null-hint lease is unready and uses that returned selection.
+Carried selections from another world return `EnvironmentInvalid` before reconstruction or producer queries.
+Real reconstruction failures still refuse the tick. Already-ready held leases and known-hint leases
+keep their selected-state path without another reconstruction.
+Direct selected-space queries still require a successful `RebuildSelection` on each fresh null-hint lease,
+or the automatic reconstruction performed by a successful tick. Explicit reconstruction and null-selection
+tick input remain supported. Holding a lease across ticks excludes physical writes until disposal.
 Ground residency holes return Unresolved when a query needs them. Support enumeration always refuses.
 
 `IMovementWaterField` supplies point and complete capsule-path water evidence for a body in physics-local
@@ -645,7 +654,8 @@ return `MovementStepResult`. Publish its pure framed state before disposing the 
 world commands share the existing direction and facing rules and one internal leased entry.
 `Advanced` and `Blocked` are distinct from unresolved/invalid environment, placement refusal and
 frame mismatch. A refusal holds the recorded pose/frame, clears per-tick effects and consumes the
-jump buffer. Cold state rebuilds canonical selection through the existing null-hint witness.
+jump buffer. Tick entry reconstructs missing selection, or a valid carried selection on an unready
+null-hint lease, through the same immutable witness before querying movement.
 
 Land support stays geometric. The published body uses one vertical 0.001 m placement offset,
 proved before shell and full-body medium queries. The tuning's selected `FootRadiusFraction` follows
@@ -710,12 +720,17 @@ controller. Accepted timed substeps hand the remaining time, climb budget, carry
 binding between land, swimming and water-origin flight. Swimming supplies vertical dynamics, while
 shared shell motion and footprint placement prove travel and landings. Commitments, facing, ground
 signals and land jumps resolve once for the whole tick. An exhausted eight-segment guard holds the
-whole input. Submerged bed contacts clip descent without granting land footing. Certified walkable
+whole input. Submerged walkable bed contacts clip descent and banks rising above the feet without granting
+land footing. A fluid floor seats on its surface without spending the land climb budget. Certified walkable
 or steep support at the axis remains a floor for later water segments that start at or below it,
 including an unraised rejected seat. Those segments clip downward velocity without sinking farther.
+A buoyant floor's published feet must clear the whole certified bed interval at the final axis after
+clearance and centre mapping. A clearance push or refused seat that cannot satisfy this condition
+blocks and holds the original pose for the tick. Land placement keeps its intentional paced leg lag.
 A swimming segment seeks footing whatever the sign of its buoyant vertical speed, because a waterline
-settle can approach rest from below forever. Rising, it lands only on walkable support above its highest
-feet that grants footing, so a body reaches a rising bank, while a bed it rises off seats nothing.
+settle can approach rest from below forever. Rising, it contacts only walkable support above its highest
+feet, so a bed it rises off seats nothing. A bank deeper than the seated swim exit line keeps the body
+Swimming/Surface on the bed. Once that same depth test allows footing, the body lands Grounded/None.
 The existing legacy swimming path is unchanged. The generic fixtures do not establish native
 producer acceptance or a playable consumer feature.
 

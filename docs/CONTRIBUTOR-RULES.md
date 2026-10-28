@@ -115,7 +115,10 @@ Unrelated roots never acquire the renderer verifier prerequisite.
 
 Renderer workflow contract tests parse checkout text through `RendererPerfWorkflowText`, which accepts
 LF and CRLF before extracting jobs or embedded commands. Exact-byte inputs keep their LF rules in
-`.gitattributes`, including renderer control shaders and authorized manifests. Fixture directories use
+`.gitattributes`, including renderer control shaders and authorized manifests. A verbatim or raw C#
+literal takes its file's checkout line endings, so a test file whose multiline literals are compared
+byte for byte with an LF-pinned source is pinned too and joins the `RendererPerfIdentityCheckoutTests`
+inventory described in [`RENDERER-PERFORMANCE.md`](RENDERER-PERFORMANCE.md). Fixture directories use
 `RendererPerfFixtureDirectory` to clear read-only regular files such as Git objects and remove directory
 links nonrecursively. Cleanup never follows reparse points or changes their targets' attributes.
 Windows selector fixtures resolve the console Bash from the same Git installation's `--exec-path`,
@@ -150,6 +153,10 @@ Never repeat tests in a loop or add CPU load on the dev Mac, which also hosts th
 Flake hunts and stress proofs run through `.github/workflows/stress-test.yml`, a caller of the org's shared
 workflow in `APKiwiOrg/ci-workflows`, on a GitHub-hosted runner, and only with the owner's explicit
 permission first. See that repository's README for its inputs.
+
+The non-gating hosted CPU rebase diagnostic is scheduled against main and dispatched against any ref. Its
+measurement, fixed 3x verdict and deterministic suite split are documented in
+[`RENDERER-PERFORMANCE.md`](RENDERER-PERFORMANCE.md#hosted-physics-rebase-diagnostic).
 
 The engine's GPU matrix uses hosted `metal-native`, `direct3d11-native` and `vulkan-native` legs.
 Goldens are backend-family artifacts. A new or changed golden must be baked by the relevant CI leg.

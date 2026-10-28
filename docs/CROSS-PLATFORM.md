@@ -276,9 +276,21 @@ own SHA, treating the requested checkout only as manifest and git data. Its trus
 runner allowlist selects one job with the validated preset cap before allocating a GPU runner.
 Partial renderer inputs also refuse ordinary and coverage allocation. Those modes otherwise retain
 their existing selection and execution. The renderer job uses the same trusted revision for repeated
-authorization and final evidence checks, enforces a 12-minute pilot
-or 35-minute full cap and retains the existing pinned PowerShell bootstrap, GRID setup, NVIDIA
-adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
+authorization and final evidence checks, applies the per-leg paid caps and cleanup-aware billing
+model in the [renderer reference](RENDERER-PERFORMANCE.md#evidence-and-authorization), and retains
+the existing pinned PowerShell bootstrap, GRID setup, NVIDIA adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
+
+After the GPU and driver steps, paid renderer jobs invoke the trusted graphics-clock setup before
+building or measuring. Linux enables persistence and uses `sudo nvidia-smi`. Windows uses the elevated
+runner shell after GRID installation. Setup retains the full command output, the driver-returned
+minimum and maximum lock range, a fresh current-clock readback and a clock/performance/power dump.
+A failed command, unsupported lock, changed range or malformed readback writes typed
+`GpuClockNotLocked` evidence and stops before measurement. The pre-build current clock is retained
+without asserting a held measurement clock while no workload is active. The renderer clock policy
+checks every retained observation during conditioning, scene blocks and controls. An always-run cleanup resets GPU clocks
+before artifact upload, retaining reset output even after setup or measurement failure. Software
+rehearsals skip both steps. The [renderer clock policy](RENDERER-PERFORMANCE.md#drift-perturbation-and-validity)
+owns the selected clock, telemetry admission and rationale. The existing preset job caps still apply.
 
 The outside-solution `tools/Renderer.Perf.Tests` project exposes one fixed fact,
 `Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit`, category `RendererPerformance`.
@@ -310,6 +322,9 @@ before index 0. Temporal recipes still require valid history on every measured f
 Every conditioning, warm-up and measured frame requires zero logical `WaitForIdleCalls`, exactly one
 logical production submission and no device loss. Conditioning and negative warm-up indices permit
 cold resource creation, retained in raw counters. Measured frames require zero logical resource creations.
+Construction capture retains conditioning creations as `Cold` with their nonnegative counted frame
+indices. Only the conditioning operation permits these indexed cold occurrences. Setup outside a
+frame has no index, negative indices are `Warmup`, and measured pipeline creation still refuses.
 Shadow and MRT replacement uses deferred completion retirement. The scene shares the host frame's
 completion fence, without an extra retirement submission or hidden rendered priming frame. The batch
 completion drain and validation readback stay outside frame brackets. Headless proofs do not establish
@@ -368,39 +383,64 @@ profilers, consumer fit, optimization and release remain separate decisions.
 
 ### Free software renderer rehearsal
 
-The `rehearsal` renderer preset uses the same `gpu-hosted-bench.yml` and one fixed
-`Measure_authorized_unit` fact on the standard hosted `ubuntu-24.04` runner. It is a correctness-only
-Linux Vulkan pilot. The [renderer reference](RENDERER-PERFORMANCE.md#software-correctness-rehearsal)
-owns its schedule, separate limits, non-promotion reason, diagnostic drift and evidence boundary.
-`pilot` and `full` remain paid hardware performance presets with their existing T4 runner labels,
-NVIDIA ICD mapping and strict promotion verdict.
+The `rehearsal`, `rehearsal-full` and `rehearsal-controls` renderer presets use the same `gpu-hosted-bench.yml` and one
+fixed `Measure_authorized_unit` fact. The [renderer reference](RENDERER-PERFORMANCE.md#software-correctness-rehearsal)
+owns their exact pilot, full and all-controls schedules, separate limits, non-promotion reason, diagnostic drift and
+evidence boundary. The trusted selector admits only these standard hosted software mappings for
+every schedule:
 
-The owner must approve the exact rehearsal workload, unchanged 1,260-frame schedule, limits and
-zero-USD budget before a new authorization commit exists. Authorization B has sole parent A and adds
-only `tools/Renderer.Perf.Tests/authorized/<unit>.json`. Select `linux-vulkan` with the default filter,
-B's immutable SHA and the three renderer inputs. Reuse of an approval or a workflow rerun refuses.
-The trusted CPU selector derives execution class from the validated preset, never the unit name or
-approval purpose. It refuses a rehearsal on paid labels, performance on the standard label, a
-hardware adapter policy on rehearsal, or nonzero rehearsal cost.
+| Leg | Pinned runner image family | Backend selector | Adapter policy | Device selection |
+| --- | --- | --- | --- | --- |
+| `linux-vulkan` | `ubuntu-24.04` | `vulkan-native` | `mesa-lavapipe-software` | `KE_VULKAN_DEVICE=llvmpipe` |
+| `windows-d3d11` | `windows-2025-vs2026` | `direct3d11-native` | `microsoft-warp-software` | `KE_D3D11_ADAPTER=warp` |
 
-The trusted checkout repeats authorization on the selected host. The isolated SDK, exact runtime and
-environment admission, Release builds, production workloads, compiler replay, publication and
-always-on upload are shared with performance execution. Rehearsal alone installs Mesa Vulkan and
-looks up `/lvp_icd[^/]*\.json$` in `dpkg -L mesa-vulkan-drivers`, failing if absent. Both
-`VK_DRIVER_FILES` and `VK_ICD_FILENAMES` point at that discovered file. `KE_VULKAN_DEVICE=llvmpipe`
-and `KE_VULKAN_REQUIRED=1` select the software backend. The D3D adapter variable is empty. Validation
-layers remain off. The approved runtime map includes these actual effective values and the isolated
-.NET host/root values. The standard image also exports `DOTNET_MULTILEVEL_LOOKUP=0`, `DOTNET_NOLOGO=1`
-and `DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1`, which the T4 partner image does not, so the rehearsal map
-declares them as image facts. Any image or ICD path drift requires corrected approval rather than ignoring
-environment entries.
+`windows-vulkan` has no software rehearsal class. `pilot` and `full` remain paid hardware performance
+presets with their existing T4 runner labels, NVIDIA ICD mapping and strict promotion verdict. An
+image-family pin still permits image revisions, so runtime inheritance must be established separately.
 
-The trusted `VerifyRehearsal` mode requires one passed test with zero skips, completed publication,
-actual software Vulkan identity, Complete compiler collection, the fixed sole non-promotion reason
-and managed directory certification. `Verify` retains the paid promotion and native T4 requirements
-and refuses rehearsal reports. Each mode refuses the other manifest class. Successful software
-execution is never performance evidence and does not authorize the next paid pilot. No T4 image,
-NVIDIA driver, physical clocks or paid budget is certified by this run.
+The owner must approve the exact rehearsal workload, leg, schedule, limits and zero-USD budget before
+a new authorization commit exists. A proposal or implementation is not permission to run.
+Authorization B has sole parent A and adds only `tools/Renderer.Perf.Tests/authorized/<unit>.json`.
+Select the approved leg with the default filter, B's immutable SHA and the three renderer inputs.
+Reuse of an approval or a workflow rerun refuses. The trusted CPU selector derives the execution
+class from the validated preset and binds its schedule, leg, runner, software policy and caps. It
+never derives class from the unit name or approval purpose. Paid labels, opposite-leg software
+policies, floating `windows-latest`, cross-schedule limits and nonzero rehearsal cost refuse.
+
+Every preset requires the explicit `limits.coldFrameMilliseconds` value of 120,000 ms from the
+[renderer frame-limit contract](RENDERER-PERFORMANCE.md#evidence-and-authorization). The same bounded
+rule applies only to conditioning frame 0 on every leg and execution class. Later fresh sessions
+keep their existing steady limit. Neither the unit deadline nor the hosted job cap is extended.
+
+The trusted checkout repeats authorization on the selected host. The isolated checksum-pinned SDK,
+exact runtime/environment admission, Release builds, production workloads, compiler replay,
+publication and always-on upload are shared with performance execution. Windows WARP skips GRID
+bootstrap and uses the same pinned Windows SDK ZIP. Its Vulkan device selector is empty. Validation
+layers remain off on both software legs.
+
+Linux rehearsal installs Mesa Vulkan and looks up `/lvp_icd[^/]*\.json$` in
+`dpkg -L mesa-vulkan-drivers`, failing if absent. Both `VK_DRIVER_FILES` and `VK_ICD_FILENAMES` point
+at that discovered file, and `KE_VULKAN_REQUIRED=1` requires Vulkan. The D3D adapter variable is empty.
+The approved runtime map includes those effective values and the isolated .NET host/root values.
+The observed standard Ubuntu map also includes `DOTNET_MULTILEVEL_LOOKUP=0`, `DOTNET_NOLOGO=1` and
+`DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1`, which the T4 partner image lacked.
+
+Windows needs its own exact testhost map. Standard-image Windows runs
+[40414697088](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40414697088) and
+[40414704044](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40414704044) observed twelve entries,
+including the same three standard-image .NET entries and the isolated `D:\a\_temp\renderer-dotnet`
+root. Linux observed fifteen entries, including the required Vulkan and ICD selectors. These observed
+standard-image maps do not establish partner-image inheritance. Any image,
+SDK-root or ICD path drift requires corrected approval rather than ignored environment entries.
+
+The trusted `VerifyRehearsal` mode accepts only the approved software leg and requires one passed
+test with zero skips, completed publication, actual software Vulkan or D3D11 identity, Complete
+compiler collection, the fixed sole non-promotion reason and managed directory certification.
+`Verify` retains the paid promotion and native T4 requirements and refuses every rehearsal report.
+The all-controls preset uses this same matrix, fixed fact, native control workloads, managed verifier
+and upload path. It adds no alternate entrypoint or paid allocation. Each mode refuses the other
+execution class. Successful software execution is never performance evidence and does not authorize
+a paid pilot.
 
 ## CI matrix (`.github/workflows/cross-platform-gpu.yml`)
 

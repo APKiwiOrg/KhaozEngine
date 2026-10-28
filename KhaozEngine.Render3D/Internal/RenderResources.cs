@@ -19,7 +19,7 @@ namespace KhaozEngine.Render3D.Internal
     /// <remarks>
     /// Under MSAA (<see cref="SampleCount"/> &gt; 1) the model pass renders into a MULTISAMPLED MRT
     /// (<see cref="MsColor"/> / <see cref="MsNormal"/> / <see cref="MsDepthColor"/> + a multisampled
-    /// <see cref="DepthStencil"/>); those are resolved (<see cref="IGpuCommandList.ResolveTexture"/>) into the
+    /// <see cref="DepthStencil"/>); those are resolved (<see cref="IGpuCommandList.ResolveTexture(IGpuTexture, IGpuTexture)"/>) into the
     /// single-sample <see cref="ColorTex"/> / <see cref="NormalTex"/> / <see cref="DepthColorTex"/> the post chain
     /// samples. Single-sample (the default) leaves <c>Ms*</c> null and <see cref="ColorTex"/> etc. ARE the MRT
     /// attachments - byte-identical to the pre-MSAA path.

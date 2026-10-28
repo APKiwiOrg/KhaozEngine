@@ -118,7 +118,7 @@ layout(set=0, binding=0) uniform U {
     vec4 IndirectParams;
     vec4 IrradianceSH[9];
 };
-" + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
+" + PointLightBufferGlsl + PointLightClusterBufferGlsl + WaterVolumesAt6Glsl + @"
 // The material's own uniforms, written ONCE at load and never re-uploaded. Declared here and NOT in SplatVert,
 // because the vertex stage reads none of them (SplatParamsData is the C# mirror of this block, 112 bytes).
 layout(set=1, binding=0) uniform SplatParams {

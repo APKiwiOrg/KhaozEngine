@@ -72,14 +72,13 @@ namespace KhaozEngine.Tests.Gpu
                 [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
                     StructRO("PointLightClusters", GpuShaderStages.Fragment), T("Albedo"), T("NormalMap"),
                     T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"),
-                    T("PointShadowTransientMap")), T("InteriorCut")],
-                "b0 t0 t1 t2 t3 t4 s0 t5 s1 t6 t7 b1 t8 s2 t9"),
-            // The only shipped layout with TWO uniform buffers in it, since #604 unfolded the skinned pipeline's
-            // combined block into a shared frame block and a per-draw one.
+                    T("PointShadowTransientMap")), T("InteriorCut"), StructRO("WaterVolumes", GpuShaderStages.Fragment)],
+                "b0 t0 t1 t2 t3 t4 s0 t5 s1 t6 t7 b1 t8 s2 t9 t10"),
+            // Shared frame, per-draw vertex block, atmosphere and the appended water reader.
             ("ModelRenderer._skinnedMainLayout",
-                new[] { U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
-                    StructRO("PointLightClusters", GpuShaderStages.Fragment), U("VBlock", dynamic: true) },
-                "b0 t0 t1 b1"),
+                [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                    StructRO("PointLightClusters", GpuShaderStages.Fragment), U("VBlock", dynamic: true)),
+                    StructRO("WaterVolumes", GpuShaderStages.Fragment)], "b0 t0 t1 b1 b2 t2 s0 t3"),
             ("ModelRenderer._skinnedFragLayout",
                 new[] { T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"),
                     S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap") },
@@ -93,8 +92,9 @@ namespace KhaozEngine.Tests.Gpu
             ("SkinnedMotionPalette.Layout", new[] { U("MotionFrame"), U("PrevPalette", dynamic: true) }, "b0 b1"),
             // The splat pass's two, also since #604: the shared frame block on its own, then the material.
             ("ModelRenderer._splatFrameLayout",
-                new[] { U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
-                    StructRO("PointLightClusters", GpuShaderStages.Fragment) }, "b0 t0 t1"),
+                [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                    StructRO("PointLightClusters", GpuShaderStages.Fragment)),
+                    StructRO("WaterVolumes", GpuShaderStages.Fragment)], "b0 t0 t1 b1 t2 s0 t3"),
             ("ModelRenderer._splatMaterialLayout",
                 new[] { U("SplatParams"), T("AlbedoArray"), T("NormalArray"), S("Sampler"), T("ShadowMap"),
                     S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap") },
@@ -102,8 +102,9 @@ namespace KhaozEngine.Tests.Gpu
             // And the tile-ground pass's two, the same split at #727. One albedo array where the splat material
             // has two, so its shadow map lands a t lower.
             ("ModelRenderer._tileGroundFrameLayout",
-                new[] { U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
-                    StructRO("PointLightClusters", GpuShaderStages.Fragment) }, "b0 t0 t1"),
+                [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                    StructRO("PointLightClusters", GpuShaderStages.Fragment)),
+                    StructRO("WaterVolumes", GpuShaderStages.Fragment)], "b0 t0 t1 b1 t2 s0 t3"),
             ("ModelRenderer._tileGroundMaterialLayout",
                 new[] { U("TileGroundParams"), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                     T("PointShadowMap"), T("PointShadowTransientMap") },
@@ -177,8 +178,8 @@ namespace KhaozEngine.Tests.Gpu
             ("WaterRenderer._layout",
                 new[] { T("BathyTex"), S("BathySamp"), T("OceanMap"), S("OceanSamp"), T("DepthTex"), S("Samp"),
                     U("Water", dynamic: true), U("Atmosphere"), T("AtmoSkyView"), S("AtmoSkySampler"),
-                    T("OpticsTex"), S("OpticsSamp") },
-                "t0 s0 t1 s1 t2 s2 b0 b1 t3 s3 t4 s4"),
+                    T("OpticsTex"), S("OpticsSamp"), T("ColumnShadowAtlas"), S("ColumnShadowSampler"), U("WaterLitFrame") },
+                "t0 s0 t1 s1 t2 s2 b0 b1 t3 s3 t4 s4 t5 s5 b2"),
         };
 
         /// <summary>
@@ -322,10 +323,11 @@ namespace KhaozEngine.Tests.Gpu
 
             // The skinned model pass: the shared frame block and the per-draw header at set 0, the material
             // textures and samplers at set 1, the shared per-caster bone palette at set 2 since #407. Three sets,
-            // and the b file accumulates across all three, so the palette lands at b2.
+            // and atmosphere adds a third uniform in set 0, so the palette lands at b3.
             using var skinnedMain = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
-                U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
-                StructRO("PointLightClusters", GpuShaderStages.Fragment), U("VBlock", dynamic: true)));
+                [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                StructRO("PointLightClusters", GpuShaderStages.Fragment), U("VBlock", dynamic: true)),
+                StructRO("WaterVolumes", GpuShaderStages.Fragment)]));
             using var skinnedFrag = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                 T("PointShadowMap"), T("PointShadowTransientMap")));
@@ -333,9 +335,9 @@ namespace KhaozEngine.Tests.Gpu
                 U("Palette", dynamic: true)));
             D3D11ResourceLayout[] skinned = { skinnedMain, skinnedFrag, bonePalette };
 
-            Assert.Equal("b0 t0 t1 b1", Absolute(skinned, 0));
-            Assert.Equal("t2 t3 t4 s0 t5 s1 t6 t7", Absolute(skinned, 1));
-            Assert.Equal("b2", Absolute(skinned, 2));
+            Assert.Equal("b0 t0 t1 b1 b2 t2 s0 t3", Absolute(skinned, 0));
+            Assert.Equal("t4 t5 t6 s1 t7 s2 t8 t9", Absolute(skinned, 1));
+            Assert.Equal("b3", Absolute(skinned, 2));
 
             // The skinned DEPTH pass takes the SAME palette layout object at a different slot, where the base in
             // front of it is one buffer instead of two. That is the property a per-layout base would get wrong: a
@@ -348,73 +350,74 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("b1", Absolute(depth, 1));
 
             // The splat pass, which is where a shipped pipeline really does accumulate a base ACROSS its sets: set
-            // 0 is the shared frame block at b0 and set 1's own params buffer lands at b1 because of it.
+            // 0 carries frame b0 and atmosphere b1, so set 1's own params buffer lands at b2.
             using var splatFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
-                U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
-                StructRO("PointLightClusters", GpuShaderStages.Fragment)));
+                [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                StructRO("PointLightClusters", GpuShaderStages.Fragment)), StructRO("WaterVolumes", GpuShaderStages.Fragment)]));
             using var splatMaterial = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 U("SplatParams"), T("AlbedoArray"), T("NormalArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                 T("PointShadowMap"), T("PointShadowTransientMap")));
             D3D11ResourceLayout[] splat = { splatFrame, splatMaterial };
 
-            Assert.Equal("b0 t0 t1", Absolute(splat, 0));
-            Assert.Equal("b1 t2 t3 s0 t4 s1 t5 t6", Absolute(splat, 1));
+            Assert.Equal("b0 t0 t1 b1 t2 s0 t3", Absolute(splat, 0));
+            Assert.Equal("b2 t4 t5 s1 t6 s2 t7 t8", Absolute(splat, 1));
 
             // The tile-ground pass, the second shipped case of that same b accumulation since #727. Asserted
             // separately rather than treated as the splat shape again, because its material set carries one albedo
             // array instead of two and the t and s files therefore flatten differently.
             using var groundFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
-                U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
-                StructRO("PointLightClusters", GpuShaderStages.Fragment)));
+                [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                StructRO("PointLightClusters", GpuShaderStages.Fragment)), StructRO("WaterVolumes", GpuShaderStages.Fragment)]));
             using var groundMaterial = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 U("TileGroundParams"), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                 T("PointShadowMap"), T("PointShadowTransientMap")));
             D3D11ResourceLayout[] ground = { groundFrame, groundMaterial };
 
-            Assert.Equal("b0 t0 t1", Absolute(ground, 0));
-            Assert.Equal("b1 t2 s0 t3 s1 t4 t5", Absolute(ground, 1));
+            Assert.Equal("b0 t0 t1 b1 t2 s0 t3", Absolute(ground, 0));
+            Assert.Equal("b2 t4 s1 t5 s2 t6 t7", Absolute(ground, 1));
 
             // The rigid temporal variant: the model layout at set 0 and the motion set at set 1, so the motion block is
-            // b1 and the previous transforms follow the model layout's eight t registers.
+            // b2 and the previous transforms follow the model layout's eleven t registers.
             using var model = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
-                U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                [.. AtmosphereBindings.AppendLayout(U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
                 StructRO("PointLightClusters", GpuShaderStages.Fragment), T("Albedo"), T("NormalMap"), T("RoughnessMap"),
-                S("Sampler"), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")));
+                S("Sampler"), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
+                T("InteriorCut"), StructRO("WaterVolumes", GpuShaderStages.Fragment)]));
             using var rigidMotion = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 U("MotionFrame"), StructRO("PreviousInstanceTransforms", GpuShaderStages.Vertex)));
             D3D11ResourceLayout[] rigid = { model, rigidMotion };
 
-            Assert.Equal("b1 t8", Absolute(rigid, 1));
+            Assert.Equal("b2 t11", Absolute(rigid, 1));
 
             // The skinned temporal variant: the three skinned sets, then the motion set at set 3, whose two uniform
-            // buffers continue the b file after the palette's b2.
+            // buffers continue the b file after the palette's b3.
             using var skinnedMotion = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 U("MotionFrame"), U("PrevPalette", dynamic: true)));
             D3D11ResourceLayout[] skinnedTemporal = { skinnedMain, skinnedFrag, bonePalette, skinnedMotion };
 
-            Assert.Equal("b3 b4", Absolute(skinnedTemporal, 3));
+            Assert.Equal("b4 b5", Absolute(skinnedTemporal, 3));
 
             // The foliage temporal variant: the model layout, the foliage block at set 1 and the motion block alone at
             // set 2, so the two blocks continue the b file after the frame block. Read off the emitted HLSL, whose
-            // vertex stage names the foliage block b1 and the motion block b2.
+            // vertex stage names the foliage block b2 and the motion block b3.
             using var foliage = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("Foliage", dynamic: true)));
             using var motionFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("MotionFrame")));
             D3D11ResourceLayout[] foliageTemporal = { model, foliage, motionFrame };
 
-            Assert.Equal("b1", Absolute(foliageTemporal, 1));
-            Assert.Equal("b2", Absolute(foliageTemporal, 2));
+            Assert.Equal("b2", Absolute(foliageTemporal, 1));
+            Assert.Equal("b3", Absolute(foliageTemporal, 2));
 
             // The two ground temporal variants: each ground pass's frame and material sets, then the motion block alone
             // at set 2, so it continues the b file after the material's params block and the two sets keep the base
             // pass's registers. Read off the emitted HLSL: both vertex stages name the frame block b0 and the motion
-            // block b2, and both fragment stages name exactly the registers of their base program.
+            // block b3, and both fragment stages name exactly the registers of their base program.
             D3D11ResourceLayout[] splatTemporal = { splatFrame, splatMaterial, motionFrame };
             D3D11ResourceLayout[] groundTemporal = { groundFrame, groundMaterial, motionFrame };
 
-            Assert.Equal("b1 t2 t3 s0 t4 s1 t5 t6", Absolute(splatTemporal, 1));
-            Assert.Equal("b2", Absolute(splatTemporal, 2));
-            Assert.Equal("b1 t2 s0 t3 s1 t4 t5", Absolute(groundTemporal, 1));
-            Assert.Equal("b2", Absolute(groundTemporal, 2));
+            Assert.Equal("b2 t4 t5 s1 t6 s2 t7 t8", Absolute(splatTemporal, 1));
+            Assert.Equal("b3", Absolute(splatTemporal, 2));
+            Assert.Equal("b2 t4 s1 t5 s2 t6 t7", Absolute(groundTemporal, 1));
+            Assert.Equal("b3", Absolute(groundTemporal, 2));
 
             // The temporal resolve's debug view: the resolve's own layout at set 0, so the view re-evaluates the
             // resolve over the set it bound, and the view's mode block alone at set 1, which continues the b file

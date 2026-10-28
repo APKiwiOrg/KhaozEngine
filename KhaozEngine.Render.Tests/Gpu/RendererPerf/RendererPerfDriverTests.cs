@@ -35,8 +35,22 @@ public sealed class RendererPerfDriverTests
             Assert.Equal(192, b.Warmup.Concat(b.Measured).Select(f => f.FrameId).Distinct().Count());
         });
         Assert.Equal(1260, report.Batches.Sum(b => b.Count));
-        Assert.All(report.Batches, b => Assert.Equal(900, b.Telemetry["clock.observedMHz"].Value));
+        Assert.All(report.Batches, b => Assert.Equal(1095, b.Telemetry["clock.observedMHz"].Value));
         Assert.Equal(9, rig.Disposals);
+        _ = RendererPerfReportJson.Serialize(report);
+    }
+
+    [Fact]
+    public void Batch_completion_evidence_is_retained_beside_its_batch_telemetry()
+    {
+        var rig = new DriverRig { CompletionEvidence = true };
+        RendererPerfReport report = rig.Run();
+        Assert.True(report.Publication.FinalUnitPublished);
+        Assert.All(report.Batches, b =>
+        {
+            Assert.Equal(b.FirstFrame + b.Count, b.Telemetry["completion.queryWait.0.polls"].Value);
+            Assert.Equal(1095, b.Telemetry["clock.observedMHz"].Value);
+        });
         _ = RendererPerfReportJson.Serialize(report);
     }
 
@@ -194,11 +208,20 @@ public sealed class RendererPerfDriverTests
         internal readonly List<(RendererPerfReport Report, bool Final)> Writes = [];
         internal bool Outlier, Drift, Enabled = true;
         internal string? Fault;
-        internal int Disposals, ClockCalls;
+        internal int Disposals, ClockCalls, InfoBoundary, ObservedClock = 1095;
         internal long Tick;
         internal long FirstBatchFrameTicks = 1, FirstDrainTicks = 1, ColdReadbackTicks;
-        internal bool ObserveMemory;
+        internal Func<RendererPerfBlock, int, long>? FrameTicks;
+        internal Func<RendererPerfBlock, RendererPerfFrameSample, RendererPerfFrameSample>? RetainFrame;
+        internal bool ObserveMemory, CompletionEvidence;
         internal RendererPerfClock Clock => new(() => { ClockCalls++; return Tick; }, 1000);
+        internal RendererPerfExecutionResult Execute()
+            => RendererPerfDriver.Execute(Template.Manifest, Template.Identity, (m, b, c) =>
+            {
+                Created.Add(b);
+                return new Session(this, b, Template.Identity);
+            }, new(Clock, Tick, checked(Tick + Template.Manifest.Limits.UnitSeconds * 1000L), default));
+
         internal RendererPerfReport Run(RendererPerfRunIdentity? identity = null)
         {
             var publication = new RendererPerfPublicationWriter((report, final) =>
@@ -231,8 +254,8 @@ public sealed class RendererPerfDriverTests
                 _pending++;
                 if (_pending > 3) throw new InvalidOperationException("Undrained batch.");
                 long start = rig.Tick;
-                rig.Tick += rig.Fault == "frame-timeout" ? 10001
-                    : rig.Created.Count == 1 && _next < 3 ? rig.FirstBatchFrameTicks : 1;
+                rig.Tick += rig.FrameTicks?.Invoke(block, _next) ?? (rig.Fault == "frame-timeout" ? 10001
+                    : rig.Created.Count == 1 && _next < 3 ? rig.FirstBatchFrameTicks : 1);
                 ulong duration = rig.Drift && frameIndex >= 64 ? 120UL : 100UL;
                 if (rig.Fault == "gpu-timeout") duration = 10000000001;
                 bool slow = rig.Outlier && block.SceneId == "S3" && frameIndex == 17;
@@ -258,6 +281,8 @@ public sealed class RendererPerfDriverTests
                     throw new InvalidOperationException("second drain failed");
                 _drain = new("batch.completionDrain", null, start, rig.Tick);
                 _harvest = new("batch.harvest", null, rig.Tick, rig.Tick);
+                if (rig.RetainFrame is { } retain)
+                    for (int i = 0; i < samples.Length; i++) samples[i] = retain(block, samples[i]);
                 if (rig.Created.Count == 1 && _next == block.MeasuredFrames) rig.Tick += rig.ColdReadbackTicks;
             }
             public RendererPerfSessionInfo ReadInfo()
@@ -266,15 +291,18 @@ public sealed class RendererPerfDriverTests
                 if (rig.Fault == "second-observation" && block.Layout == RendererPerfLayout.PerPass && _next == 6)
                     throw new InvalidOperationException("second observation failed");
                 return new(identity, rig.Enabled, true,
-                    rig.Template.Manifest.Recipes.FirstOrDefault(r => r.SceneId == block.SceneId) is { } recipe
+                    rig.Template.Manifest.Recipes.FirstOrDefault(r => r.SceneId == (block.SceneId == "conditioning:S3" ? "S3" : block.SceneId)) is { } recipe
                         ? new(recipe, "public primitives", new string('b', 64), ImmutableDictionary<string, long>.Empty,
                             ImmutableDictionary<string, long>.Empty, ImmutableDictionary<string, RendererPerfMetric>.Empty) : null,
-                    ImmutableDictionary<string, RendererPerfMetric>.Empty.Add("clock.observedMHz", Value(900, "MHz")),
+                    RendererPerfGpuClockAssessmentTests.Telemetry(rig.ObservedClock, 0).SetItem("clock.observedAtTicks",
+                        Value(rig.InfoBoundary++ / 64 * 64 + 1, "ticks")),
                     ControlStateSha256: block.SceneId.StartsWith("control:", StringComparison.Ordinal) ? new string('b', 64) : null,
                     Memory: rig.ObserveMemory ? new([], ImmutableDictionary<string, RendererPerfMetric>.Empty
                         .Add("process.workingSet.bytes", Value(rig.Created.Count == 1 && _next == 3 ? 9000 : 100, "bytes"))
                         .Add("managed.live.bytes", Value(rig.Created.Count == 1 && _next == 3 ? 6000 : 50, "bytes"))) : null,
                     Drain: _drain, Harvest: _harvest,
+                    Completion: rig.CompletionEvidence && _next > 0
+                        ? ImmutableDictionary<string, RendererPerfMetric>.Empty.Add("completion.queryWait.0.polls", Value(_next, "count")) : null,
                     Startup: rig.Fault == "startup-timeout" ? new(block.SceneId, new("startup.cold", null, -601000, 0), 1000,
                         ImmutableDictionary<string, RendererPerfMetric>.Empty) : null);
             }

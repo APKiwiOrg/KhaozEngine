@@ -31,14 +31,16 @@ public sealed partial class TileWorldPropClusters
             if (!_presentationSnapshots.TryGetValue(key,
                 out SortedDictionary<long, TilePropLayerSnapshot>? generations)) return true;
 
-            PropClusterVisibilityDecision decision = PropClusterVisibilityDecision.Resolve(key, state, _roofVisibility);
+            PropClusterVisibilityDecision decision = PropClusterVisibilityDecision.Resolve(key, state, _visibility);
             state = decision.State;
             MeshOutlineGroup group = _scene.BeginMeshOutline(color, widthPixels, occlusion);
             if (state.DrawsIndividuals
                 && generations.TryGetValue(state.IndividualSourceGeneration, out TilePropLayerSnapshot? individual))
             {
                 int individualIndex = IndexOf(individual.ObjectIds, objectId);
-                if (individualIndex >= 0 && decision.DrawsIndividualColour(key, individualIndex, _roofVisibility))
+                // An outline around an object whose colour is fading out would float where the object was.
+                if (individualIndex >= 0 && decision.DrawsIndividualColour(key, individualIndex, _visibility)
+                    && decision.IndividualColourFade(key, individualIndex, _visibility) <= 0f)
                     DrawIndividualOutline(group, individual, individualIndex, focus,
                         state.IndividualDissolveFloor);
             }

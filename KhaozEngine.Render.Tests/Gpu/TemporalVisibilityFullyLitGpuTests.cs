@@ -87,8 +87,9 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
         // stay off for one jitter cycle first and the field shimmers at every preset. Shadows then go on and off over
         // two frames, where both fixtures run the check and the visibility moves. On the last frame the selected
         // fixture skips the decision and runs the program without the gate. The visibility is fully lit there and on
-        // the frame before, so the gate finds no change and both images still agree exactly. The warm-up frames skip
-        // the decision the same way.
+        // the frame before, so the gate finds no change and both images still agree. WARP's separately compiled
+        // Shimmer images use the history oracle's software colour bound. Every other image remains byte-exact.
+        // The warm-up frames skip the decision the same way.
         int shadowsOn = 6 + TemporalJitter.PhaseCount(TemporalSettings.DisplayOverInternal(preset));
         int last = shadowsOn + 2;
         SceneDebugView[] cycle = [SceneDebugView.History, SceneDebugView.Disocclusion, SceneDebugView.Reactive];
@@ -100,7 +101,18 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
             selected.Scene.RequestTemporalCounts();
             checkedFx.Scene.RequestTemporalCounts();
             byte[] selectedImage = selected.Frame(drawA), checkedImage = checkedFx.Frame(drawB);
-            TemporalHistorySample.Exact(frame, "debug image", selectedImage, checkedImage);
+            if (selected.Scene.DebugView == SceneDebugView.Shimmer && TemporalDeviceClass.IsWarp(selected.Device))
+            {
+                Assert.Equal(selectedImage.Length, checkedImage.Length);
+                var difference = new TemporalFullyLitHistoryOracle.Difference();
+                for (int i = 0; i < selectedImage.Length; i++)
+                    difference.Add(selectedImage[i] / 255f, checkedImage[i] / 255f, selectedImage[i], checkedImage[i],
+                        $"f{frame} ({i / 4 % 160},{i / 4 / 160}) c{i % 4}", half: false);
+                output.WriteLine($"frame {frame} WARP Shimmer debug image: {difference}");
+                Assert.True(TemporalSoftwareCompileDivergenceRule.Allows(difference.Worst, difference.Count,
+                    difference.Compared), $"frame {frame}: Shimmer debug image exceeds the software colour bound: {difference}");
+            }
+            else TemporalHistorySample.Exact(frame, "debug image", selectedImage, checkedImage);
             if (frame == last)
             {
                 // Two blank Shimmer images would also agree, so both must mark the field's shimmering texels.

@@ -4,32 +4,12 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.19.0
+## 21.20.0
 
 2026-10-29
 
 - Initialize the shared neutral water colour texture when publishing a native water domain. The first draw
   and later frames upload no resource data.
-
-- Add authenticated `RuntimeStaticChange.Set` and `Remove` batches through `OrdinaryMovementRegistration`.
-  Existing Contact and Legacy views observe real blockers and support without rebuilding their bindings.
-  Fixed authored identity and extent stay unchanged, live revisions authenticate each publication, and raw edits
-  still refuse. Hosts apply matching batches before their effective ticks and reconstruct historical physics for
-  replay. Authored navigation stays unaware, so actual travel can latch route stall. Authored bake entry points
-  refuse attached runtime statics and Contact builds refuse changes between reads (#1637).
-
-- Wait for Direct3D 11 timestamp query availability inside the renderer performance batch completion drain. A
-  completed later fence does not make Direct3D 11 query data available, and a WARP rehearsal refused when the last
-  frame of a drained batch still read S_FALSE. Each wait flushes `GetData` until every query reports ready, bounded
-  by the unit deadline, and is recorded as batch evidence. Vulkan is unchanged
-  (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1635).
-- Check out the water column and cascade selection shader sources with LF line endings on every host. A
-  Windows checkout compiled their multiline GLSL with CRLF, which changed the bytes of every lit and water
-  program there and the renderer performance shader identity.
-- Open `device.water.prepare` once per viewport-prepared frame when water column light is on. The column
-  colour source now prepares inside that one root, and `PrepareFrame()` frames prepare it at render with no
-  device phase, so an observer that refuses a repeated CPU phase no longer fails those frames
-  (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1633).
 - Preserve continuous native terrain material across patch and paint joins when a feathered overlay meets
   matching hard-filled material or an overlay over a different underlay, including validated surface-owner
   seams. Keep exposed-edge feather widths and cut-overlay boundaries without inventing outlines at diagonal gaps.
@@ -74,6 +54,30 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Preserve allocation-free input preflight and avoid product workspace on a header refusal.
 - Size prism validation arithmetic to active pieces, admit room domain copies before construction and settle
   uncovered polygon replacement capacity after its last overlap.
+
+## 21.19.0
+
+2026-10-29
+
+- Add authenticated `RuntimeStaticChange.Set` and `Remove` batches through `OrdinaryMovementRegistration`.
+  Existing Contact and Legacy views observe real blockers and support without rebuilding their bindings.
+  Fixed authored identity and extent stay unchanged, live revisions authenticate each publication, and raw edits
+  still refuse. Hosts apply matching batches before their effective ticks and reconstruct historical physics for
+  replay. Authored navigation stays unaware, so actual travel can latch route stall. Authored bake entry points
+  refuse attached runtime statics and Contact builds refuse changes between reads (#1637).
+
+- Wait for Direct3D 11 timestamp query availability inside the renderer performance batch completion drain. A
+  completed later fence does not make Direct3D 11 query data available, and a WARP rehearsal refused when the last
+  frame of a drained batch still read S_FALSE. Each wait flushes `GetData` until every query reports ready, bounded
+  by the unit deadline, and is recorded as batch evidence. Vulkan is unchanged
+  (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1635).
+- Check out the water column and cascade selection shader sources with LF line endings on every host. A
+  Windows checkout compiled their multiline GLSL with CRLF, which changed the bytes of every lit and water
+  program there and the renderer performance shader identity.
+- Open `device.water.prepare` once per viewport-prepared frame when water column light is on. The column
+  colour source now prepares inside that one root, and `PrepareFrame()` frames prepare it at render with no
+  device phase, so an observer that refuses a repeated CPU phase no longer fails those frames
+  (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1633).
 
 ## 21.18.0
 

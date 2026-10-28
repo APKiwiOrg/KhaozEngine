@@ -14,7 +14,7 @@
     <!-- The one shared version for the whole engine. Every packable package sets
          <Version>$(KhaozEngineVersion)</Version> in its csproj, so bumping it here releases them all
          together. This is the version the doc-version guard checks. -->
-    <KhaozEngineVersion>21.19.0</KhaozEngineVersion>
+    <KhaozEngineVersion>21.20.0</KhaozEngineVersion>
     <Authors>APKiwi</Authors>
     <Company>Khaoz</Company>
     <PackageProjectUrl>https://github.com/APKiwiOrg/KhaozEngine</PackageProjectUrl>

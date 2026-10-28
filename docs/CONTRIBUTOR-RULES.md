@@ -154,7 +154,7 @@ Flake hunts and stress proofs run through `.github/workflows/stress-test.yml`, a
 workflow in `APKiwiOrg/ci-workflows`, on a GitHub-hosted runner, and only with the owner's explicit
 permission first. See that repository's README for its inputs.
 
-The non-gating hosted CPU rebase diagnostic is scheduled against main and manually dispatched. Its
+The non-gating hosted CPU rebase diagnostic is scheduled against main and dispatched against any ref. Its
 measurement, fixed 3x verdict and deterministic suite split are documented in
 [`RENDERER-PERFORMANCE.md`](RENDERER-PERFORMANCE.md#hosted-physics-rebase-diagnostic).
 

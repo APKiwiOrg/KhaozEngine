@@ -9,9 +9,10 @@ The hosted CPU physics rebase diagnostic below carries its own fixed limit.
 ## Hosted physics rebase diagnostic
 
 The separate `physics-rebase-perf.yml` CPU lane runs on `main` every Monday at 04:37 UTC and on
-`workflow_dispatch`. It uses only GitHub-hosted `ubuntu-24.04`, follows the isolated hosted bench pattern,
-and is outside the solution, push/PR workflows and merge/release gates. It needs no GPU or paid runner.
-The controller can dispatch it after merge with `gh workflow run physics-rebase-perf.yml`.
+`workflow_dispatch` against the ref it is started on. It checks out its event's own commit, so the summary
+always describes the commit the run names. It uses only GitHub-hosted `ubuntu-24.04`, follows the isolated
+hosted bench pattern, and is outside the solution, push/PR workflows and merge/release gates. It needs no
+GPU or paid runner. Dispatch it with `gh workflow run physics-rebase-perf.yml --ref <branch>`.
 
 `tools/Physics.Rebase.Perf.Tests` shares the warmed resident fixture with the deterministic Game.Tests guards:
 25 terrain meshes, 2,000 prop statics and 200 dynamics. It retains five interleaved samples, each one step

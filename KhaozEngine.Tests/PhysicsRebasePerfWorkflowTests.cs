@@ -17,7 +17,8 @@ public sealed class PhysicsRebasePerfWorkflowTests
         Assert.Contains("schedule:", workflow);
         Assert.Contains("cron:", workflow);
         Assert.Contains("runs-on: ubuntu-24.04", workflow);
-        Assert.Contains("ref: main", workflow);
+        // Checkout takes no ref key, so every run measures the commit its own event selected.
+        Assert.DoesNotMatch(@"(?m)^\s*ref:", workflow);
         Assert.DoesNotContain("self-hosted", workflow);
         Assert.DoesNotContain("pull_request:", workflow);
         Assert.DoesNotContain("push:", workflow);

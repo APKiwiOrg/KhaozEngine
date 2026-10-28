@@ -15,9 +15,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
+      # Checkout takes no explicit ref. The run measures the commit its event selected, so a dispatch measures the ref it was started on
+      # and a schedule measures main, and the summary always describes the run's own commit.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:

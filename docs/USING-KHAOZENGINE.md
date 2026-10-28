@@ -6007,6 +6007,11 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     advances with the latched frame index only on the render that resolves temporal anti-aliasing, otherwise it
     stays screen-fixed. The [pipeline reference](RENDER-PIPELINE.md#water-column-composite) records the displaced
     crest integral, finite-depth approximation and shadow budget.
+    The copy's colour source (its single-sample destination, or the MSAA resolve target) is prepared before the
+    copy records. `PrepareFrame(width, height)` prepares it inside its one `device.water.prepare` root, ahead of
+    the water sets that bind it. `PrepareFrame()` prepares it at render after final sizing, with no device phase.
+    Render repeats the preparation on either form without a phase. It does device work only when legacy late
+    binding replaced the scene targets after preparation.
     The [coefficient reference](../KhaozEngine.Render3D/README.md#water-column-coefficients) defines the
     reference sun and sky, engine light units, extinction spread and energy-conserving albedo inversion.
     `TileWaterLooks.River` carries the owner-selected linear RGB `(0.28, 0.30, 0.18)` and `Clarity = 1.5f`,
@@ -24024,7 +24029,7 @@ The effect, copy and display owners add these keys. Every occurrence is zero unl
 | `startup.ocean-prime` | Cold row FFT on its own preparer command list, separate from the frame layout and steady summaries |
 | `water`, `ocean` | Parents only, with skipped subtrees when inactive |
 | `device.water.geometry`, `device.water.bathymetry` | CPU-only leaf owners through `BeginCpuPhase`/`EndCpuPhase` under `water`. Geometry setup includes initial flat/focused index uploads before ocean recording. After `PrepareFrame()`, the geometry leaf also sizes the plane UBO, and bathymetry texture updates follow ocean recording and still run when every surface is culled. A `PrepareFrame(width, height)` frame never opens `device.water.bathymetry` |
-| `device.water.prepare` | CPU-only root owner on every `PrepareFrame(width, height)` frame, with or without water, inside `cpu.water.prepare`. It owns the bathymetry update, UBO sizing, water resource set creation and retirement before recording. `PrepareFrame()` never opens it |
+| `device.water.prepare` | CPU-only root owner on every `PrepareFrame(width, height)` frame, with or without water, inside `cpu.water.prepare`. It opens once per frame and owns the water column colour source, the bathymetry update, UBO sizing, water resource set creation and retirement before recording. `PrepareFrame()` never opens it, and its frames prepare the column colour source at render with no device phase |
 | `ocean.uniforms`, `.next-row`, `.column` | Shared ocean parameter upload, next frame's row FFT, current frame's column FFT, in native recording order |
 | `ocean.mip-copy`, `ocean.mips` | Base-level seed copy per array layer (occurrence is layer), then the existing whole-chain mip-generation command |
 | `water.surface` | Surface uploads, route binds and all queued water draws, after FFT work |

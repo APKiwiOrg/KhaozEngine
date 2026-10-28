@@ -14,7 +14,8 @@ public sealed partial class Scene3D
     /// <summary>Diagnostics for the pre-water colour source of the latest rendered frame. Begin preserves it.</summary>
     public WaterColumnDiagnostics WaterColumnLightDiagnostics { get; private set; }
 
-    void PrepareWaterColumnInputs()
+    // Authoring checks and the opted-in count, with no device work. Runs at preparation and again at render.
+    void ValidateWaterColumnInputs()
     {
         _waterColumnOptedInPlanes = 0;
         foreach (WaterPlane plane in _waterPlanes)
@@ -24,8 +25,13 @@ public sealed partial class Scene3D
             WaterColumnValidation.Validate(effective);
             if (effective.WaterColumnLight) _waterColumnOptedInPlanes++;
         }
+    }
+
+    // Opens no phase. The viewport form runs it inside its device.water.prepare root and the no-argument form first
+    // runs it at render. Render repeats it on either form, a no-op unless late-bound targets changed since.
+    void PrepareWaterColumnColor()
+    {
         if (_waterColumnOptedInPlanes == 0 && _waterColumnColor is null) return;
-        using var device = _water.Profiling?.Cpu("device.water.prepare") ?? default;
         (_waterColumnColor ??= new WaterColumnColorSource(_gd, _retired)).Prepare(_res, _waterColumnOptedInPlanes > 0);
         _water.ColumnShadows.SetColor(_waterColumnColor.Texture, _waterColumnColor.Generation);
     }

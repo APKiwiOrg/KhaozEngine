@@ -8,6 +8,8 @@ internal sealed record RendererPerfScheduledRecipe(int Scene, string Version, st
     internal string SceneId => $"S{Scene}";
 }
 
+internal sealed record RendererPerfProfilePair(int BaselineScene, int CandidateScene, string Label);
+
 // One admitted preset. A manifest must reproduce this schedule exactly, so the table is the single
 // source of every preset's scenes, frame counts, controls, conditioning scene and hosted legs.
 internal sealed record RendererPerfSchedule(string Preset, RendererPerfExecutionClass ExecutionClass,
@@ -15,6 +17,7 @@ internal sealed record RendererPerfSchedule(string Preset, RendererPerfExecution
     ImmutableArray<int> ControlIds, int ControlWarmupFrames, int ControlMeasuredFrames, int ConditioningFrames,
     int ConditioningScene, int TotalFrames, ImmutableArray<string> Legs)
 {
+    internal ImmutableArray<RendererPerfProfilePair> ProfilePairs { get; init; } = [];
     internal string ConditioningSceneId => $"S{ConditioningScene}";
     internal string ConditioningBlockId => "conditioning:" + ConditioningSceneId;
     internal string ConditioningOperation => ConditioningBlockId + "/TotalOnly/0";
@@ -56,6 +59,11 @@ internal static class RendererPerfSchedules
     static readonly ImmutableArray<RendererPerfScheduledRecipe> V1Pilot = [V1Recipes[3]];
     static readonly ImmutableArray<RendererPerfScheduledRecipe> WaterOpticsV2Recipes =
         [.. RendererPerfWaterOptics.RecipeIds.Select((id, scene) => new RendererPerfScheduledRecipe(scene, id + "/1", "renderer-full-native-1080/1"))];
+    static readonly ImmutableArray<RendererPerfProfilePair> WaterOpticsV2Pairs =
+    [
+        new(0, 1, "village OFF to M2 ON"), new(1, 2, "village M2 ON to M5 ON"),
+        new(3, 4, "outdoors OFF to M2 ON"), new(4, 5, "outdoors M2 ON to M5 ON")
+    ];
 
     static RendererPerfSchedule V1PilotSchedule(string preset, RendererPerfExecutionClass executionClass)
         => new(preset, executionClass, V1Pilot, 1, 64, 128, PilotControls, 32, 64, 300, 3, 1260, PilotLegs);
@@ -71,11 +79,11 @@ internal static class RendererPerfSchedules
         // A short conditioning session still carries the cold first frame and the S3 recipe facts without scene blocks.
         new("rehearsal-controls", RendererPerfExecutionClass.Rehearsal, V1Pilot, 0, 0, 0, AllControls, 64, 128, 3, 3, 2307, AllLegs),
         new("water-optics-v2", RendererPerfExecutionClass.Performance, WaterOpticsV2Recipes,
-            3, 192, 256, AllControls, 64, 128, 1200, 5, 19632, PilotLegs),
+            3, 192, 256, AllControls, 64, 128, 1200, 5, 19632, PilotLegs) { ProfilePairs = WaterOpticsV2Pairs },
         new("rehearsal-water-optics-v2", RendererPerfExecutionClass.Rehearsal, WaterOpticsV2Recipes,
-            3, 64, 128, AllControls, 32, 64, 300, 5, 8364, ["linux-vulkan"]),
+            3, 64, 128, AllControls, 32, 64, 300, 5, 8364, ["linux-vulkan"]) { ProfilePairs = WaterOpticsV2Pairs },
         new("rehearsal-water-optics-v2-full", RendererPerfExecutionClass.Rehearsal, WaterOpticsV2Recipes,
-            3, 192, 256, AllControls, 64, 128, 1200, 5, 19632, ["windows-d3d11"]),
+            3, 192, 256, AllControls, 64, 128, 1200, 5, 19632, ["windows-d3d11"]) { ProfilePairs = WaterOpticsV2Pairs },
     ];
 
     internal static ImmutableArray<string> Presets { get; } = [.. Table.Select(s => s.Preset)];

@@ -1,6 +1,8 @@
 # Golden grids are machine-generated LF text; a CRLF checkout (Windows autocrlf) breaks the
 # byte-identity contract between the committed files and GoldenGrid.Serialize output.
 KhaozEngine.Render.Tests/Gpu/goldens/*.txt text eol=lf
+# Synthetic renderer profile publication goldens preserve exact UTF-8 output bytes.
+KhaozEngine.Render.Tests/Fixtures/renderer-profiles/*.expected.txt text eol=lf
 KhaozEngine.MapDoc.Tests/Fixtures/FormatFour/** text eol=lf
 # Support certification fixtures are pinned by SHA-256 over their bytes, so a CRLF checkout breaks them.
 KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.json text eol=lf

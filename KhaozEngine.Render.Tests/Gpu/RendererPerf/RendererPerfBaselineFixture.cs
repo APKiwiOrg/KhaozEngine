@@ -14,6 +14,7 @@ public sealed class RendererPerfBaselineFixture : IDisposable
 {
     internal string Root { get; } = Environment.GetEnvironmentVariable("KE_RENDERER_BASELINE_EVIDENCE") ?? Path.Combine(Path.GetTempPath(), "renderer-baseline-" + Guid.NewGuid().ToString("N"));
     readonly RendererPerfBaselineLeg _linux, _windows;
+    ImmutableArray<RendererPerfBaselineLeg> _profiles;
     public RendererPerfBaselineFixture()
     {
         _linux = Create("linux-vulkan", "full-linux", "full", 17);
@@ -21,18 +22,25 @@ public sealed class RendererPerfBaselineFixture : IDisposable
     }
     internal string Output() => Path.Combine(Root, Guid.NewGuid().ToString("N"));
     internal RendererPerfBaselineRequest Request() => new("khaozengine.renderer-baseline-request/1", Output(), [_linux, _windows]);
+    internal ImmutableArray<RendererPerfBaselineLeg> ProfileLegs()
+        => _profiles.IsDefault ? _profiles = [Create("linux-vulkan", "profiles-linux", "water-optics-v2", 38),
+            Create("windows-d3d11", "profiles-windows", "water-optics-v2", 53)] : _profiles;
     internal RendererPerfBaselineLeg Variant(string fault)
         => Create("linux-vulkan", fault, fault == "pilot" ? "pilot" : fault == "rehearsal" ? "rehearsal" : "full", 17, fault);
 
     internal RendererPerfBaselineLeg Censored(string leg)
         => Create(leg, "censored-" + leg, "full", 17, "censored");
 
-    RendererPerfBaselineLeg Create(string leg, string unit, string preset, int billed, string? fault = null)
+    internal RendererPerfBaselineLeg Create(string leg, string unit, string preset, int billed, string? fault = null)
     {
-        bool rehearsal = preset == "rehearsal";
-        var report = RendererPerfAnalysisFixture.Report(preset == "full");
-        var manifestJson = rehearsal ? RendererPerfRehearsalManifestTests.ManifestJson() : RendererPerfProtocolTests.ManifestJson(preset, leg);
+        bool rehearsal = preset.StartsWith("rehearsal", StringComparison.Ordinal);
+        bool profiles = preset.Contains("water-optics-v2", StringComparison.Ordinal);
+        var report = profiles ? RendererPerfProfileFixture.Report(preset, leg) : RendererPerfAnalysisFixture.Report(preset == "full");
+        var manifestJson = profiles ? RendererPerfWaterOpticsPresetTests.ManifestJson(preset, leg)
+            : rehearsal ? RendererPerfRehearsalManifestTests.ManifestJson() : RendererPerfProtocolTests.ManifestJson(preset, leg);
         manifestJson["unitId"] = unit;
+        if (fault == "workload") manifestJson["workloadSha"] = new string('d', 40);
+        if (fault == "baseline-source") manifestJson["baselineMainSha"] = new string('e', 40);
         if (fault == "censored")
             foreach (var control in manifestJson["controls"]!.AsArray())
                 if (control!["id"]!.GetValue<int>() is >= 1 and <= 3)
@@ -46,6 +54,8 @@ public sealed class RendererPerfBaselineFixture : IDisposable
             {
                 UnitId = unit,
                 ManifestSha256 = RendererPerfRecipe.Hash(manifestBytes),
+                WorkloadSha = manifest.WorkloadSha,
+                BaselineMainSha = manifest.BaselineMainSha,
                 Backend = manifest.Execution.Backend,
                 Os = leg == "linux-vulkan" ? "Linux" : "Windows",
                 SoftwareAdapter = rehearsal,
@@ -60,7 +70,7 @@ public sealed class RendererPerfBaselineFixture : IDisposable
                 WorkModels = [RendererPerfFloorModelTests.Model(1, 1, 0) with { PassId = "opaque" }],
                 Reasons = rehearsal ? [RendererPerfRehearsalPolicy.Reason] : fault == "failed-promotion" ? ["held failed promotion"] : []
             },
-            Blocks = [.. report.Blocks.Select(b => b.Block.Layout == RendererPerfLayout.TotalOnly ? b : b with
+            Blocks = [.. report.Blocks.Select(b => profiles || b.Block.Layout == RendererPerfLayout.TotalOnly ? b : b with
             {
                 Measured = [.. b.Measured.Select(f => f with
                 { Passes = [new("opaque", 0, null, null, 1, 2, 40, RendererPerfAnalysisFixture.Value(40), false)] })]
@@ -68,7 +78,7 @@ public sealed class RendererPerfBaselineFixture : IDisposable
         };
         if (fault == "censored") report = RendererPerfControlTimingFixture.Execute(report);
         if (fault == "failed-publication") report = RendererPerfAnalysisFixture.Failed(report);
-        Assert.Equal(preset == "full" ? 16944 : 1260, RendererPerfCompactReportTests.Frames(report).Count());
+        Assert.Equal(manifest.TotalFrameCount, RendererPerfCompactReportTests.Frames(report).Count());
         using var capture = new RendererPerfCompilerPublicationFixture(report);
         var inventory = capture.Inventory;
         bool windows = leg == "windows-d3d11" || fault == "native-compiler";

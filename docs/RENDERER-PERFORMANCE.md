@@ -407,7 +407,8 @@ ordinary CI and the native GPU matrix use this same build owner, including nativ
 that select Render.Tests. Process tests refuse a missing executable.
 
 The directory-verification mode of the outside-solution `tools/Renderer.Perf.Verify` console takes
-exactly directory and report filename. Its `publish` mode is described under Publishing a baseline.
+exactly directory and report filename. Its `publish` and `publish-profiles` modes are described under
+Publishing a baseline.
 It performs no backend registration, device creation or measurement. Exit zero means directory
 verification succeeded. The trusted workflow invokes its built DLL after independent execution
 identity checks, then verifies received files again rather than accepting parsed JSON alone.
@@ -704,3 +705,36 @@ which remains evidence of that failed publication rather than permission to over
 Store reviewed summaries under `docs/performance/renderer/` with the original received artifacts
 retained in their workflow run. The publisher does not commit files or dispatch follow-up work.
 No measured baseline is checked in until an eligible full pair exists.
+
+For a received `water-optics-v2` pair, use the same offline verifier with the profile request schema
+`khaozengine.renderer-profile-request/1` and the same request fields:
+
+```sh
+dotnet tools/Renderer.Perf.Verify/bin/Release/net10.0/Renderer.Perf.Verify.dll publish-profiles --request request.json
+```
+
+Profile publication shares baseline directory verification, native identity admission and promotion
+checks. It accepts only the paid `water-optics-v2` preset, one Linux Vulkan and one Windows D3D11 leg
+with shared workload and baseline source. Rehearsals and v1 presets refuse. Supplied actual billed
+minutes must fit the preset's 38-minute Linux and 53-minute Windows caps. Cost checks use decimal USD
+and the preset's USD 7.382 campaign maximum. The request remains bounded to 1 MiB. Publication does not
+change the raw report's 256 MiB accounting or any operation, frame or byte limit.
+
+Each leg keeps its verified `<leg>-<unitId>.md` summary. The pair also writes
+`profiles-<linuxUnitId>-<windowsUnitId>.md` and `index-<linuxUnitId>-<windowsUnitId>.md`, using format
+`khaozengine.renderer-profiles/1` for these two views. All four files use exclusive creation after
+both legs pass admission. Existing files refuse before writes. The same UTF-8, LF, invariant-number
+and deterministic-ordering rules apply. `NotProfile` replaces `NotFull` for a wrong preset.
+
+Profile deltas compare S0 to S1 (village OFF to M2 ON), S1 to S2 (village M2 ON to M5 ON), S3 to S4
+(outdoors OFF to M2 ON) and S4 to S5 (outdoors M2 ON to M5 ON), within each unit. Each layout retains
+all three iterations and a combined descriptive row. Every shared metric has candidate-minus-baseline
+mean, median, nearest-rank p95 and p99 deltas and a relative mean percent. Unavailable values retain
+their causes. A zero baseline mean has no percentage. The Markdown shows `gpu.frame` first, followed
+by each named pass, with separate backend series and no significance or regression-budget claim.
+
+The M5 colour copy runs outside any named pass, so its cost appears only in `gpu.frame`, as tracked
+in [#1636](https://github.com/APKiwiOrg/KhaozEngine/issues/1636). The profile comparison API also works
+on rehearsal summaries for offline inspection. Only publication enforces performance class, preset
+and billing admission. The checked-in `renderer-profiles` goldens contain synthetic fixture data,
+with LF checkout attributes, and are not measured campaign results.

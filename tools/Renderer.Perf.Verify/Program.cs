@@ -2,10 +2,11 @@ using System;
 using KhaozEngine.Tests.Gpu.RendererPerf;
 using KhaozEngine.Gpu;
 
-bool publish = args.Length == 3 && args[0] == "publish" && args[1] == "--request";
+bool profiles = args.Length == 3 && args[0] == "publish-profiles" && args[1] == "--request";
+bool publish = profiles || args.Length == 3 && args[0] == "publish" && args[1] == "--request";
 if (!publish && args.Length != 2)
 {
-    Console.Error.WriteLine("Expected evidence directory and report filename, or publish --request and request filename.");
+    Console.Error.WriteLine("Expected evidence directory and report filename, or publish/publish-profiles --request and request filename.");
     return 2;
 }
 try
@@ -13,11 +14,12 @@ try
     RequireNoProviders();
     if (publish)
     {
-        _ = RendererPerfBaselinePublisher.PublishFile(args[2]);
+        _ = profiles ? RendererPerfProfilePublisher.PublishFile(args[2]) : RendererPerfBaselinePublisher.PublishFile(args[2]);
     }
     else _ = RendererPerfArtifactVerification.Verify(args[0], args[1]);
     RequireNoProviders();
-    Console.WriteLine(publish ? "Published immutable baseline files with no GPU providers registered."
+    Console.WriteLine(profiles ? "Published immutable profile files with no GPU providers registered."
+        : publish ? "Published immutable baseline files with no GPU providers registered."
         : "Verified renderer artifacts with no GPU providers registered.");
     return 0;
 }

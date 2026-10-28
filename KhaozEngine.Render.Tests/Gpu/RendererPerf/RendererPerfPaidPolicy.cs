@@ -8,6 +8,8 @@ internal static class RendererPerfPaidPolicy
     internal const int CleanupAllowanceMinutes = 3;
     // Run 40599806485 held 1,200 MHz but hit the 70 W software power cap. 1,095 MHz leaves headroom.
     internal const int LockedGraphicsClockMHz = 1095;
+    // The owner's envelope for every paid pilot and full unit, including attempts already billed.
+    internal const decimal CampaignMaximumUsd = 22m;
 
     internal static void Validate(RendererPerfManifest manifest)
     {
@@ -28,7 +30,8 @@ internal static class RendererPerfPaidPolicy
             "Preset", "Billed minutes, rate, currency or cost cap differs from the preset.");
         Require(Text(manifest.Approval.Reference) && Text(manifest.Approval.Purpose) && Text(manifest.Approval.CampaignReference)
             && manifest.Approval.CampaignMaximumUsd >= manifest.Budget.MaximumCostUsd
-            && manifest.Approval.CampaignMaximumUsd <= 18m, "Approval",
-            "Exact owner approval and campaign references with a sufficient cap of at most USD 18 are required. A manifest does not grant consent.");
+            && manifest.Approval.CampaignMaximumUsd <= CampaignMaximumUsd, "Approval",
+            "Exact owner approval and campaign references with a sufficient cap of at most USD "
+            + CampaignMaximumUsd.ToString(System.Globalization.CultureInfo.InvariantCulture) + " are required. A manifest does not grant consent.");
     }
 }

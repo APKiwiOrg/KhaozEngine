@@ -22,7 +22,7 @@ public sealed class RendererPerfPaidBudgetTests
         Assert.Equal(new RendererPerfLimits(seconds, 10000, 120000, minutes), manifest.Limits);
         Assert.Equal(new RendererPerfBudget(billed, (decimal)rate, "USD", (decimal)cost), manifest.Budget);
         Assert.Equal(preset == "pilot" ? 1260 : 16944, manifest.TotalFrameCount);
-        Assert.Equal(18m, manifest.Approval.CampaignMaximumUsd);
+        Assert.Equal(22m, manifest.Approval.CampaignMaximumUsd);
         using var fixture = new RendererPerfWorkflowContractTests.WorkflowFixture();
         fixture.Manifest = json;
         fixture.Manifest["workloadSha"] = fixture.Workload;
@@ -57,7 +57,7 @@ public sealed class RendererPerfPaidBudgetTests
             ("budget", "currency", JsonValue.Create("NZD")),
             ("budget", "maximumCostUsd", JsonValue.Create((decimal)cost - 0.001m)),
             ("budget", "maximumCostUsd", JsonValue.Create((decimal)cost + 0.001m)),
-            ("approval", "campaignMaximumUsd", JsonValue.Create(18.01m)),
+            ("approval", "campaignMaximumUsd", JsonValue.Create(22.01m)),
             ("approval", "campaignMaximumUsd", JsonValue.Create((decimal)cost - 0.001m)),
             ("approval", "reference", JsonValue.Create(" ")),
             ("approval", "purpose", JsonValue.Create(" ")),
@@ -102,7 +102,7 @@ public sealed class RendererPerfPaidBudgetTests
         json["limits"]!["jobMinutes"] = minutes;
         json["budget"]!["maximumBilledMinutes"] = billed;
         json["budget"]!["maximumCostUsd"] = cost;
-        json["approval"]!["campaignMaximumUsd"] = 18;
+        json["approval"]!["campaignMaximumUsd"] = 22;
         return json;
     }
 }

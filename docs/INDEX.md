@@ -256,4 +256,8 @@ backlog here: a follow-up recorded only in a design doc is invisible to the ledg
   `scripts/tests/version-push-guard.test.sh`. Non-packable test projects may import literal props paths
   within `test-shared/` when the committed XML proves those files contain only false packability,
   compile items and assembly attributes. Unknown or conditional XML stays version-bearing, and both
-  ends of the changed range are checked. `git push --no-verify` is the deliberate exception.
+  ends of the changed range are checked. The root `.gitattributes` is judged by its changed lines,
+  because checkout attributes change the bytes of the files they match, as the 21.19.0 LF pin on shader
+  sources did. A line confined to a carved-out folder or a non-packable test project rides, and a pattern
+  without a folder or with a glob, quote or escape in its first folder counts as shipped.
+  `git push --no-verify` is the deliberate exception.

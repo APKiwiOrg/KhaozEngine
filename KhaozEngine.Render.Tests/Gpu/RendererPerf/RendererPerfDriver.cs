@@ -191,7 +191,9 @@ internal static class RendererPerfDriver
                                     }
                                     _memory.Observe(operation, "batch", first, clock.Now(), clock.Frequency, batchInfo?.Memory, observationFailure);
                                     _batches.Add(new($"{block.SceneId}/{block.Layout}/{block.Iteration}", first, recorded - first,
-                                        batchStart, clock.Now(), clock.Frequency, batchInfo?.Drain, batchInfo?.Harvest, batchInfo?.Telemetry ?? ImmutableDictionary<string, RendererPerfMetric>.Empty));
+                                        batchStart, clock.Now(), clock.Frequency, batchInfo?.Drain, batchInfo?.Harvest,
+                                        (batchInfo?.Telemetry ?? ImmutableDictionary<string, RendererPerfMetric>.Empty)
+                                            .SetItems(batchInfo?.Completion ?? ImmutableDictionary<string, RendererPerfMetric>.Empty)));
                                 }
                                 if (_failure is null)
                                 {

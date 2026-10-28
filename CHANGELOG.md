@@ -8,6 +8,11 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-28
 
+- Wait for Direct3D 11 timestamp query availability inside the renderer performance batch completion drain. A
+  completed later fence does not make Direct3D 11 query data available, and a WARP rehearsal refused when the last
+  frame of a drained batch still read S_FALSE. Each wait flushes `GetData` until every query reports ready, bounded
+  by the unit deadline, and is recorded as batch evidence. Vulkan is unchanged
+  (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1635).
 - Check out the water column and cascade selection shader sources with LF line endings on every host. A
   Windows checkout compiled their multiline GLSL with CRLF, which changed the bytes of every lit and water
   program there and the renderer performance shader identity.

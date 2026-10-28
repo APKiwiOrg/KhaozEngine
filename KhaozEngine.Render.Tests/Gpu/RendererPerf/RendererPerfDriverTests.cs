@@ -41,6 +41,20 @@ public sealed class RendererPerfDriverTests
     }
 
     [Fact]
+    public void Batch_completion_evidence_is_retained_beside_its_batch_telemetry()
+    {
+        var rig = new DriverRig { CompletionEvidence = true };
+        RendererPerfReport report = rig.Run();
+        Assert.True(report.Publication.FinalUnitPublished);
+        Assert.All(report.Batches, b =>
+        {
+            Assert.Equal(b.FirstFrame + b.Count, b.Telemetry["completion.queryWait.0.polls"].Value);
+            Assert.Equal(1095, b.Telemetry["clock.observedMHz"].Value);
+        });
+        _ = RendererPerfReportJson.Serialize(report);
+    }
+
+    [Fact]
     public void Keeps_outliers_gc_and_first_block()
     {
         var rig = new DriverRig { Outlier = true };
@@ -199,7 +213,7 @@ public sealed class RendererPerfDriverTests
         internal long FirstBatchFrameTicks = 1, FirstDrainTicks = 1, ColdReadbackTicks;
         internal Func<RendererPerfBlock, int, long>? FrameTicks;
         internal Func<RendererPerfBlock, RendererPerfFrameSample, RendererPerfFrameSample>? RetainFrame;
-        internal bool ObserveMemory;
+        internal bool ObserveMemory, CompletionEvidence;
         internal RendererPerfClock Clock => new(() => { ClockCalls++; return Tick; }, 1000);
         internal RendererPerfExecutionResult Execute()
             => RendererPerfDriver.Execute(Template.Manifest, Template.Identity, (m, b, c) =>
@@ -287,6 +301,8 @@ public sealed class RendererPerfDriverTests
                         .Add("process.workingSet.bytes", Value(rig.Created.Count == 1 && _next == 3 ? 9000 : 100, "bytes"))
                         .Add("managed.live.bytes", Value(rig.Created.Count == 1 && _next == 3 ? 6000 : 50, "bytes"))) : null,
                     Drain: _drain, Harvest: _harvest,
+                    Completion: rig.CompletionEvidence && _next > 0
+                        ? ImmutableDictionary<string, RendererPerfMetric>.Empty.Add("completion.queryWait.0.polls", Value(_next, "count")) : null,
                     Startup: rig.Fault == "startup-timeout" ? new(block.SceneId, new("startup.cold", null, -601000, 0), 1000,
                         ImmutableDictionary<string, RendererPerfMetric>.Empty) : null);
             }

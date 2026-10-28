@@ -669,7 +669,13 @@ and reports exactly `1_000_000_000d / frequency`. Terminal results remain repeat
 Invalid samples never enter the GPU gate. Resolve never waits, maps, drains or flushes.
 
 Submit does not flush either. A headless loop reaches Ready only after a Present or caller drain hands
-work to the driver. The native correctness test drains once, outside the timestamp interval.
+work to the driver. A completed later fence does not make query data available, so the pool also implements the
+internal `IGpuTimestampAvailabilityWait`. After a caller drain it reads every query once with
+`D3D11_ASYNC_GETDATA_DONOTFLUSH`, then repeats flushing `GetData` with a null zero-byte destination on each
+unavailable query until all report S_OK or the caller's deadline passes. It holds the submit lock per round,
+spins without sleeping and returns the polls, ticks, per-query HRESULT runs and fence values as evidence. It
+reads no value, so `TryResolve` still decides the result. The renderer performance harness is its one caller,
+and [its completion policy](../docs/RENDERER-PERFORMANCE.md#evidence-and-authorization) owns the rule. The native correctness test drains once, outside the timestamp interval.
 Keep the pool alive through completion. Query release uses the same COM lifetime path as other submitted
 D3D11 resources, skips a dead device and adds no drain. Device errors use the existing loss latch.
 

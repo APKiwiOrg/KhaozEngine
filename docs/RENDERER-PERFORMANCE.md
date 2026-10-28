@@ -103,6 +103,23 @@ creations. Cold creation remains visible in raw counters and outside measured di
 submissions, completion backpressure and native allocations remain separate backend diagnostics.
 The one batch completion drain and final validation readback occur outside frame brackets.
 
+On Direct3D 11 the batch completion drain also waits for query availability, because a completed later fence
+does not make Direct3D 11 query data available. The free WARP full rehearsal
+[run 40628799283](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40628799283) refused at `S4/TotalOnly/0`
+when the last frame of a drained batch still read S_FALSE, although its final timestamp and disjoint ends came
+before the drained fence in stream order and were flushed. After the fence drain, every pending slot reads its
+disjoint and timestamp queries once without flushing, then repeats flushing `GetData` on each unavailable query
+until all return S_OK, bounded by the unit deadline. The drain span includes this wait. The wait never reads or
+substitutes a value, so a query still unavailable at the bound keeps the strict Pending refusal and disjoint data
+stays Invalid. Vulkan query results are available at fence completion, so Vulkan pools have no wait and record
+nothing.
+
+Each wait is batch telemetry under `completion.queryWait.<ordinal>.`, where the ordinal is the frame's position in
+its batch: `ready`, `polls`, `elapsedTicks`, `fenceTarget`, `fenceCompleted` and `drainTarget`, then
+`<query>.notReady` and `<query>.finalHresult` for `disjoint` and each `timestamp.<index>`. `polls` counts flushing
+rounds, so an already available batch records zero. A query's HRESULT sequence is `notReady` S_FALSE reads, the
+first of them non-flushing, followed by `finalHresult`. A failing HRESULT throws and refuses instead.
+
 Construction capture records conditioning pipelines as `Cold` with their counted nonnegative frame
 indices. Cold setup outside frame brackets has no frame index. Only the conditioning operation may
 have counted `Cold` occurrences. Negative indices remain `Warmup`, and creation at measured indices

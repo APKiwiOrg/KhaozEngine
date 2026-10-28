@@ -137,8 +137,21 @@ Hosted timing, allocation and world-bake acceptance gates still require their se
   lacks the optional interface remains valid for legacy callers and cannot promise an explicit lease.
 - **`IPhysicsStaticGeometrySource.StaticGeometryGeneration`** - optional installer provenance marker.
   Bepu and its restricted views expose the existing static-support version. Static installation and
-  removal advance it before mutation. Steps, dynamics, constraints and pure rebases preserve it.
+  live removal each advance it exactly once, before mutation. Removing a missing static preserves it.
+  Failed installation may conservatively advance it. Steps, dynamics, constraints and pure rebases preserve it.
   This marker does not replace the read lease's current `GeometryGeneration`.
+- **`IPhysicsStaticMutationSource` / `IPhysicsStaticMutationLease`** - optional exclusive writer intervals
+  over a complete physics owner. `AcquireStaticMutationLease()` captures the exact owner and origin without
+  advancing either geometry generation. Other readers and writers wait until disposal. The acquiring thread
+  can compose ordinary `AddStatic` and `RemoveStatic` calls with its own metadata publication, then call
+  `AssertCurrent()` before releasing the interval. `StaticGeometryGeneration` reads the live static revision
+  inside that interval. Static edits retain their normal revision and cache invalidation hooks.
+  Acquisition from a read interval, nested mutation leases and explicit query read leases inside the writer
+  are refused before any write. The lease is synchronous and thread-affine. Wrong-thread use or disposal
+  refuses without releasing the holder. Same-thread disposal is idempotent and releases even if currentness
+  fails because the origin changed or the owner was disposed. This is exclusion, with no automatic rollback
+  of geometry or metadata on failure. Keep it in a `using` scope. Borrowed query views expose their owner's
+  read capabilities, never this mutation capability. Backends need not implement this optional interface.
 - **`IPhysicsCapsuleContacts` / `QueryCapsuleContacts`** - optional complete contact constraints in the
   current physics frame. Supply a finite nonnegative separation margin and caller-owned span. Normals
   point away from the contacted body, separation is positive outside and negative inside. Contacts retain

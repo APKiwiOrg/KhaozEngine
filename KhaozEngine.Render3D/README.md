@@ -927,7 +927,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Fog applies to water's own radiance without fogging the copied bed twice. Temporal sample noise advances only
   on the render that resolves temporal anti-aliasing. See [the pipeline](../docs/RENDER-PIPELINE.md#water-column-composite)
   for the displaced-surface integral, finite-depth approximation and shadow budget.
-  The viewport form prepares the copy's destination inside its one `device.water.prepare` root, before the water
+  The viewport form prepares the colour source inside its one `device.water.prepare` root, before the water
   sets that bind it. The no-argument form prepares it at render after final sizing and opens no device phase.
   Render repeats the preparation without a phase, which does device work only when late-bound targets changed.
 

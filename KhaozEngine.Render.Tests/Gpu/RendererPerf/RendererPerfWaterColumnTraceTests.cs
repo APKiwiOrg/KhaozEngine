@@ -32,7 +32,7 @@ public sealed class RendererPerfWaterColumnTraceTests
     {
         using var rig = new WaterRig();
         rig.Scene.Post.Water.WaterColumnLight = true;
-        // The first frame creates the colour source at render, the second reuses it.
+        // Both the frame that creates the colour source and the frame that reuses it stay outside the root.
         for (int frame = 0; frame < 2; frame++)
         {
             var observer = new GeometryObserver(rig.Commands);
@@ -80,9 +80,32 @@ public sealed class RendererPerfWaterColumnTraceTests
             recorder.ReadCounter(0, RendererPerfCounter.TextureCreations, prepare));
     }
 
-    static RendererPerfPassDefinition[] Discover(bool bound)
+    [Fact]
+    public void No_argument_form_creates_the_colour_source_once_without_an_owner()
     {
-        using var discovery = new WaterRig(viewport: true, bound: bound);
+        var definitions = Discover(bound: false, viewport: false);
+        var recorder = new RendererPerfRecorder(2, RendererPerfLayout.PerPass, definitions, () => 0, 1000);
+        using var recorded = new WaterRig(recorder: recorder);
+        recorded.Frame(); recorded.Frame();
+        var adapter = new RendererPerfPassObserver(recorder, RendererPerfLayout.PerPass, definitions);
+        recorded.Scene.PassObserver = adapter;
+        recorded.Scene.Post.Water.WaterColumnLight = true;
+        for (int frame = 0; frame < 2; frame++)
+        {
+            recorder.BeginFrame(frame, frame, frame); adapter.BeginFrame();
+            recorded.Frame(list: RendererPerfCommandList.Wrap(recorded.Commands, recorder));
+            recorder.EndFrame();
+        }
+        // The placeholder and the single-sample copy destination appear on the first opted-in frame, with no device
+        // phase to own them, and the second frame reuses both.
+        Assert.Equal(2, recorder.ReadCounter(0, RendererPerfCounter.TextureCreations));
+        Assert.Equal(2, recorder.ReadCounter(0, RendererPerfCounter.TextureCreations, 0));
+        Assert.Equal(0, recorder.ReadCounter(1, RendererPerfCounter.TextureCreations));
+    }
+
+    static RendererPerfPassDefinition[] Discover(bool bound, bool viewport = true)
+    {
+        using var discovery = new WaterRig(viewport: viewport, bound: bound);
         discovery.Frame(); discovery.Frame();
         var observer = new PostTraceObserver(discovery.Commands);
         discovery.Scene.PassObserver = observer;

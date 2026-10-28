@@ -114,6 +114,7 @@ namespace KhaozEngine.Render3D
             Vector2 jitter = jittered ? TemporalJitter.Offset(_frameIndex, phaseCount) : Vector2.Zero;
             _currentFrameView = new FrameView(view, cam.Projection, viewProjection, FrameAbsoluteViewProjection(),
                 _frameOrigin, _res.Width, _res.Height, _frameIndex, jitter);
+            if (_shadowProbeActive) _shadowInputObservation.ObserveView(in _currentFrameView);
             PrepareInteriorCut();
             // History moves on a frame's first render only. A second render inside the same frame (an offscreen
             // capture, possibly at another size) latches matrices for its own viewport but keeps the frame's index,

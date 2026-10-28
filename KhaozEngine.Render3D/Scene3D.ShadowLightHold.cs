@@ -58,7 +58,8 @@ namespace KhaozEngine.Render3D
         /// </remarks>
         Vector3 HeldLightDirection(ReadOnlySpan<float> splits, int count, float camNear, float camFar, float range, int res)
         {
-            Vector3 live = Vector3.Normalize(Post.LightDirection);
+            Vector3 raw = Post.LightDirection;
+            Vector3 live = Vector3.Normalize(raw);
             float budget = Post.Quality.Shadows.ShadowLightHoldTexels;
             // Disabled, or nothing held yet (the first shadow frame, which must fit from the live sun anyway). The
             // early-out also keeps the disabled path off the radius walk below, so 0 costs nothing as well as
@@ -67,12 +68,14 @@ namespace KhaozEngine.Render3D
             {
                 _heldLightDir = live;
                 _hasHeldLightDir = true;
+                if (_shadowProbeActive) _shadowInputObservation.ObserveLight(raw, live, live);
                 return live;
             }
             if (Internal.ShadowLightHold.ShouldAdopt(_heldLightDir, live,
                     MinCascadeRadius(splits, count, camNear, camFar, range), res,
                     Post.Quality.Shadows.ShadowLightHoldCasterHeight, budget))
                 _heldLightDir = live;
+            if (_shadowProbeActive) _shadowInputObservation.ObserveLight(raw, live, _heldLightDir);
             return _heldLightDir;
         }
 

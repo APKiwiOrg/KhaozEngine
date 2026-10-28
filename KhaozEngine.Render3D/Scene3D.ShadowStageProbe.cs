@@ -25,6 +25,7 @@ public sealed partial class Scene3D
         _shadowProbeCounts = default;
         _shadowProbeTicks = new ShadowStageProbeTicks { Frequency = _shadowProbeFrequency };
         _shadowProbeClockValid = true;
+        _shadowInputObservation.Reset(request);
         if (_shadowProbeActive) _shadowProbeConfiguration = ShadowProbeConfiguration();
     }
 
@@ -36,7 +37,8 @@ public sealed partial class Scene3D
             var snapshot = new ShadowStageProbeSnapshot(_shadowProbeRequest,
                 _shadowProbeClockValid ? ShadowStageProbeStatus.Valid : ShadowStageProbeStatus.InvalidClock,
                 _shadowProbeConfiguration, _shadowProbeCounts,
-                _shadowProbeRequest.Mode == ShadowStageProbeMode.Timings ? _shadowProbeTicks : null);
+                _shadowProbeRequest.Mode == ShadowStageProbeMode.Timings ? _shadowProbeTicks : null,
+                _shadowInputObservation.Finish());
             frame.PublishShadowStageSnapshot(in snapshot);
         }
         finally { CancelShadowStageProbe(); }
@@ -46,6 +48,7 @@ public sealed partial class Scene3D
     {
         _shadowProbeActive = false;
         _shadowProbeRequest = default;
+        _shadowInputObservation = default;
     }
 
     internal void SetShadowStageProbeClock(Func<long> reader, long frequency)
@@ -74,7 +77,11 @@ public sealed partial class Scene3D
 
     long BeginShadowProbePrefix()
     {
-        if (_shadowProbeActive) _shadowProbeConfiguration = ShadowProbeConfiguration();
+        if (_shadowProbeActive)
+        {
+            _shadowProbeConfiguration = ShadowProbeConfiguration();
+            _shadowInputObservation.BeginPrefix(_frameIndex, EffectTimeSeconds);
+        }
         return ShadowProbeTimestamp();
     }
 

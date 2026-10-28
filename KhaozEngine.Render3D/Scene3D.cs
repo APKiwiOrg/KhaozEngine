@@ -1371,7 +1371,7 @@ namespace KhaozEngine.Render3D
             // frustum-slice fit no single cascade bounds the rest, so the caster-visibility test unions ALL cascades'
             // frustums (extracted here), and a degenerate camera (count 0) drops shadows for the frame.
             long shadowProbeFitStart = ShadowProbeTimestamp();
-            bool shadowMapActive = Post.Quality.Shadows.ResolveFor(_gd.Capabilities).Effective == ShadowMode.ShadowMap;
+            bool shadowMapActive = ShadowProbeMapActive();
             int shadowCascadeCount = 0;
             if (shadowMapActive)
             {

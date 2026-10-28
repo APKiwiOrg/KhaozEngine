@@ -92,6 +92,7 @@ namespace KhaozEngine.Render3D
             else
                 _model.ClearShadowUniforms();
 
+            if (_shadowProbeActive) _shadowInputObservation.ObserveDecision(in _lastShadowPassDiagnostics);
             return shadowDepthMs;
         }
     }

@@ -70,6 +70,7 @@ public sealed class ShadowStageProbeCallbackTests
                 Assert.Equal(1, frame.PreparePhaseSubmissionCount);
                 Assert.Equal(1, frame.PreparePhaseCompositeCount);
                 Assert.NotNull(frame.CompletedShadowStageCallback.Snapshot);
+                Assert.True(frame.CompletedShadowStageCallback.Snapshot.Value.Inputs?.Complete);
                 Assert.False(frame.CompletedShadowStageCallback.Completed);
                 recorder.Observe(.016, 1016, window, default, frame.CompletedShadowStageCallback);
                 await recorder.Publication;
@@ -82,6 +83,51 @@ public sealed class ShadowStageProbeCallbackTests
             finally { frame.DisposeSubmission(); }
         }
         finally { Directory.Delete(directory, true); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LegacyAndSplitCallbacksPublishOnlyAfterSuccessfulComposition(bool split)
+    {
+        using var gpu = new FakeGpuDevice(GpuBackendKind.MetalNative);
+        using var output = new PostChainRig.Output(gpu, 32, 24);
+        using var device = new FrameOutputDevice(gpu, output);
+        using var scene = new Scene3D(device, output.Framebuffer.Outputs);
+        using var prepared = new PreparePhaseSceneSubmission(device, scene);
+        using var commands = device.Factory.CreateCommandList();
+        using var taps = new FrameCaptureTaps(device, null);
+        var frame = new Frame { Commands = commands, Width = 32, Height = 24 };
+        try
+        {
+            var request = new ShadowStageProbeRequest(Guid.NewGuid(), 1, ShadowStageProbeMode.Counts);
+            frame.BeginShadowStageCallback(request);
+            RendererFramePolicy.Run(frame, true, device, commands, Color.Black, f =>
+            {
+                scene.ConfigureShadowStageProbe(f.ShadowStageRequest);
+                scene.Begin(); scene.EffectTimeSeconds = 12.5f; scene.PrepareFrame();
+                if (split) prepared.Prepare(f);
+                Assert.Null(frame.CompletedShadowStageCallback.Snapshot);
+            }, f => Render3DSurface.RecordSceneOutput(scene, f, split ? prepared : null, output.Framebuffer), taps, true);
+            frame.CompleteShadowStageCallback();
+            var saved = frame.CompletedShadowStageCallback.Snapshot!.Value.Inputs!.Value;
+            Assert.True(saved.Complete);
+            Assert.Equal(request, saved.Request);
+            Assert.Equal(12.5f, saved.PrefixEffectTimeSeconds);
+            frame.BeginShadowStageCallback(request with { Sequence = 2 });
+            frame.RenderSuppressed = true;
+            RendererFramePolicy.Run(frame, false, device, commands, Color.Black,
+                f =>
+                {
+                    scene.ConfigureShadowStageProbe(f.ShadowStageRequest);
+                    scene.Begin(); scene.PrepareFrame();
+                    if (split) prepared.Prepare(f);
+                }, _ => { }, taps, true);
+            frame.CompleteShadowStageCallback();
+            Assert.Null(frame.CompletedShadowStageCallback.Snapshot);
+            Assert.True(saved.Complete);
+        }
+        finally { frame.DisposeSubmission(); }
     }
 
     sealed class Tap(string phase, Exception original) : IFrameCaptureTap

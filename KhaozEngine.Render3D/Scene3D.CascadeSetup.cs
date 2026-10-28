@@ -29,10 +29,13 @@ namespace KhaozEngine.Render3D
             if (!Internal.ShadowMapMath.FrustumCornersWorld(_currentFrameView.AbsoluteViewProjection, _frustumCornersScratch))
             {
                 _cascadeCount = 0;
+                if (_shadowProbeActive)
+                    _shadowInputObservation.ObserveUnavailable(KhaozEngine.Windowing.ShadowInputAvailability.Degenerate);
                 return 0;
             }
             Vector3 eye = ActiveCamera.Eye;
             Vector3 fwd = ActiveCamera.Forward;
+            if (_shadowProbeActive) _shadowInputObservation.ObserveCamera(eye, fwd);
             // View depths of the near/far planes read off the unprojected corners (camera-type-agnostic: no
             // reliance on perspective-projection matrix fields, so iso/ortho cameras fit identically).
             Vector3 nearC = (_frustumCornersScratch[0] + _frustumCornersScratch[1] + _frustumCornersScratch[2] + _frustumCornersScratch[3]) * 0.25f;
@@ -46,10 +49,12 @@ namespace KhaozEngine.Render3D
             Span<float> splits = stackalloc float[ShadowSettings.MaxCascades];
             Internal.ShadowMapMath.FillCascadeSplits(splits, count, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
             Vector3 lightDir = HeldLightDirection(splits, count, camNear, camFar, range, res);
+            Span<float> observedSplits = stackalloc float[ShadowSettings.MaxCascades];
             float prev = camNear;
             for (int i = 0; i < count; i++)
             {
                 float d = Math.Clamp(splits[i], camNear, camFar);
+                if (_shadowProbeActive) observedSplits[i] = d;
                 Internal.ShadowMapMath.SliceBoundingSphere(_frustumCornersScratch,
                     (prev - camNear) / range, (d - camNear) / range, out Vector3 center, out float radius);
                 FitCascade(i, lightDir, center, radius, res);
@@ -57,6 +62,8 @@ namespace KhaozEngine.Render3D
                 prev = MathF.Max(d, prev);
             }
             _cascadeCount = count;
+            if (_shadowProbeActive)
+                _shadowInputObservation.ObserveFits(count, res, observedSplits, _cascadeCpuVpsAbsolute);
             return count;
         }
 

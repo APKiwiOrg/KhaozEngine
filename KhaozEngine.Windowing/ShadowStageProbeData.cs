@@ -7,7 +7,7 @@ public enum ShadowStageProbeMode { Off = 0, Counts = 1, Timings = 2 }
 public enum ShadowStageProbeStatus
 {
     Off, Valid, IncompleteCallback, MissingProducer, NotRendered, DuplicateProducer,
-    IdentityMismatch, ModeMismatch, InvalidClock, ConfigurationChanged,
+    IdentityMismatch, ModeMismatch, InvalidClock, ConfigurationChanged, InvalidInputs,
 }
 public enum ShadowStageFoliageBuildOrigin { None, Signature, RowPreparation, RowRecording }
 
@@ -20,7 +20,7 @@ public readonly record struct ShadowStageProbeConfiguration(bool HudTiming, int 
 
 public readonly record struct ShadowStageProbeSnapshot(ShadowStageProbeRequest Request,
     ShadowStageProbeStatus Status, ShadowStageProbeConfiguration Configuration,
-    ShadowStageProbeCounts? Counters, ShadowStageProbeTicks? Timings);
+    ShadowStageProbeCounts? Counters, ShadowStageProbeTicks? Timings, ShadowStageProbeInputs? Inputs = null);
 
 internal readonly record struct ShadowStageCallbackResult(ShadowStageProbeRequest Request,
     bool Completed, int ProducerCount, ShadowStageProbeSnapshot? Snapshot);

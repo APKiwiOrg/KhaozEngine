@@ -154,6 +154,8 @@ namespace KhaozEngine.Tests.Gpu
                     oracle.Report(n, "production split vs D split", ps, ds);
                 }
                 if (!softwareVulkan) TemporalHistorySample.Exact(n, "production entries colour", a, b);
+                if (!state.AsSpan().SequenceEqual(other))
+                    output.WriteLine($"frame {n}: production entry colour differences before the state failure: {colour}");
                 TemporalHistorySample.Exact(n, "production entries state", state, other);
                 for (int i = 0; i < state.Length; i += 4)
                 {

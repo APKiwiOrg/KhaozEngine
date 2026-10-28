@@ -46,7 +46,18 @@ internal sealed record TemporalHistorySample(float[] Colour, float[] State, byte
     }
 
     internal static void Exact(int frame, string what, float[] a, float[] b)
-        => Exact(frame, what, MemoryMarshal.AsBytes(a.AsSpan()), MemoryMarshal.AsBytes(b.AsSpan()));
+    {
+        ReadOnlySpan<byte> left = MemoryMarshal.AsBytes(a.AsSpan()), right = MemoryMarshal.AsBytes(b.AsSpan());
+        if (left.SequenceEqual(right)) return;
+        int first = 0;
+        while (first < Math.Min(left.Length, right.Length) && left[first] == right[first]) first++;
+        int value = first / sizeof(float);
+        string detail = value < Math.Min(a.Length, b.Length)
+            ? $"float {value}, {a[value]:R} (0x{BitConverter.SingleToUInt32Bits(a[value]):X8}) vs "
+                + $"{b[value]:R} (0x{BitConverter.SingleToUInt32Bits(b[value]):X8})"
+            : "different lengths";
+        Assert.Fail($"frame {frame}: {what} differs at byte {first} (lengths {left.Length}, {right.Length}), {detail}");
+    }
 
     internal static void Exact(int frame, string what, TemporalHistorySample a, TemporalHistorySample b)
     {

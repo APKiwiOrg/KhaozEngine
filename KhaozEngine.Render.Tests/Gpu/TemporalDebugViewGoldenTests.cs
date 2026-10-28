@@ -9,7 +9,8 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// The History, Disocclusion and Reactive debug views over one scene: a grey wall, a keyed red box that holds
-    /// still for 16 frames then moves right at 3 display pixels a frame, and a bright particle cloud to the right.
+    /// still for 16 frames then moves right at 3 display pixels a frame, and a bright particle cloud to the right. The
+    /// Shimmer view has its own scene, <see cref="FenceScene"/>'s still thin bars over the flat wall.
     /// Each view has a golden and a metric the golden grid cannot see, and each test prints its measured metric.
     /// </summary>
     public sealed class TemporalDebugViewGoldenTests(ITestOutputHelper output)
@@ -168,6 +169,81 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(inside >= 0.5, $"the particle cloud's core must read reactive, got {inside:0.00}");
             Assert.True(wall <= 0.01, "the still wall must not read reactive");
             GoldenCompare.AssertOrUpdate("temporal_debug_reactive", img, W, H);
+        }
+
+        const int FenceFrames = 64;
+
+        // The still fence over the flat wall under the Shimmer view, converged for FenceFrames frames. A cut, when
+        // asked, comes after them and one more frame renders, whose image is returned. Otherwise the last converged
+        // frame's image is returned.
+        static byte[] RunFence(bool cut, out byte[] beforeCut, out TemporalResetReason reset)
+        {
+            var fence = new FenceScene(W, H);
+            using var fx = new TemporalFixture(W, H, s =>
+            {
+                fence.Stage.Setup(s, AntiAliasing.Temporal);
+                s.DebugView = SceneDebugView.Shimmer;
+            });
+            byte[] last = Array.Empty<byte>();
+            for (int n = 0; n < FenceFrames; n++)
+                last = fx.Frame((s, _) => fence.DrawOverWall(s, 0f));
+            beforeCut = last;
+            if (cut)
+            {
+                fx.Scene.CameraCut();
+                last = fx.Frame((s, _) => fence.DrawOverWall(s, 0f));
+            }
+            reset = fx.Scene.TemporalHistory.LastReset;
+            return last;
+        }
+
+        // The Shimmer view's tint over the grey dimmed scene: blue less red is 0.85 of the score in 8-bit units
+        // (TemporalDebugMainGlsl), and the grey context alone reads 0.
+        static int BlueExcess(byte[] rgba, int x, int y)
+        {
+            int i = (y * W + x) * 4;
+            return rgba[i + 2] - rgba[i];
+        }
+
+        static int MaxBlueExcess(byte[] rgba, PixelRect region)
+        {
+            int max = int.MinValue;
+            for (int y = region.Y0; y < region.Y1; y++)
+                for (int x = region.X0; x < region.X1; x++)
+                    max = Math.Max(max, BlueExcess(rgba, x, y));
+            return max;
+        }
+
+        // The fence's middle band, well inside the bars, and the flat wall above and below them. The bars reach about
+        // 63 rows either side of the middle (FenceScene).
+        static readonly PixelRect FenceBand = new(W / 8, H / 2 - 40, W * 7 / 8, H / 2 + 40);
+        static readonly PixelRect WallAbove = new(8, 4, W - 8, 20), WallBelow = new(8, H - 20, W - 8, H - 4);
+
+        [GpuFact]
+        public void ShimmerMarksTheStillFenceAndLeavesTheFlatWallDark()
+        {
+            byte[] img = RunFence(cut: false, out _, out _);
+            double fence = Share(img, FenceBand, (r, _, b) => b - r >= 64);
+            int wall = Math.Max(MaxBlueExcess(img, WallAbove), MaxBlueExcess(img, WallBelow));
+            output.WriteLine($"Shimmer: fence band {FenceBand} tinted share {fence:0.000}, "
+                + $"flat wall max blue excess {wall}");
+            Assert.True(fence >= 0.03, $"the still fence's bars must read as shimmering, tinted share {fence:0.000}");
+            Assert.True(wall <= 2, $"the flat wall must carry no shimmer tint, max blue excess {wall}");
+            GoldenCompare.AssertOrUpdate("temporal_debug_shimmer", img, W, H);
+        }
+
+        [GpuFact]
+        public void A_cut_shows_no_shimmer_on_its_first_frame()
+        {
+            byte[] img = RunFence(cut: true, out byte[] beforeCut, out TemporalResetReason reset);
+            double before = Share(beforeCut, FenceBand, (r, _, b) => b - r >= 64);
+            int maxBlueExcess = MaxBlueExcess(img, new PixelRect(0, 0, W, H));
+            output.WriteLine($"Cut: tinted share before {before:0.000}, max blue excess after {maxBlueExcess}, "
+                + $"{reset}");
+            Assert.True(before >= 0.03,
+                $"the fence must read as shimmering before the cut, tinted share {before:0.000}");
+            Assert.Equal(TemporalResetReason.CameraCutRequested, reset);
+            Assert.True(maxBlueExcess <= 2, "no pixel may carry a shimmer tint on the frame after a cut");
         }
 
         // The frame's last image and, inside the same frame, a later render at the display size into a scratch target,

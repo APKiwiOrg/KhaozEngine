@@ -5,15 +5,15 @@ namespace KhaozEngine.Render3D.Internal
     /// rather than a second derivation that could drift from it.</summary>
     internal static partial class ShaderSources
     {
-        // ---- The History, Disocclusion and Reactive debug views: one fullscreen pass over the final target that
-        //      replaces the image. Set 0 is the resolve's own layout and the set this frame's resolve bound, set 1 one
-        //      immutable mode block per view. The display pixel is taken upright from vUv, the orientation
+        // ---- The History, Disocclusion, Reactive and Shimmer debug views: one fullscreen pass over the final target
+        //      that replaces the image. Set 0 is the resolve's own layout and the set this frame's resolve bound, set 1
+        //      one immutable mode block per view. The display pixel is taken upright from vUv, the orientation
         //      TargetOutlineCompositeFrag reads a same-size target in. ----
         public const string TemporalDebugFrag = "#version 450\n" + TemporalFullPrecisionGlsl + TemporalResolveCoreGlsl
             + TemporalDebugMainGlsl;
 
         internal const string TemporalDebugMainGlsl = @"
-// Mode.x is the SceneDebugView value: 2 History, 3 Disocclusion, 4 Reactive.
+// Mode.x is the SceneDebugView value: 2 History, 3 Disocclusion, 4 Reactive, 5 Shimmer.
 layout(set=1, binding=0) uniform DebugView { vec4 Mode; };
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
@@ -24,14 +24,16 @@ void main() {
     float l = dot(max(t.color, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722));
     vec3 context = vec3(0.35 * l / (1.0 + l));   // the scene, dimmed, so each overlay reads against it
     int mode = int(Mode.x + 0.5);
-    vec3 c;
+    vec3 c = context;   // a mode no view sets shows the dimmed scene alone
     if (mode == 2) {
         c = vec3(clamp(t.confidence, 0.0, 1.0));   // the weight stored for the next frame: black fresh, white full
         if (t.stability >= 0.5) c = mix(c, vec3(0.1, 0.95, 0.25), 0.6);   // held by thin feature retention
     } else if (mode == 3) {
         c = t.disocclusion >= 0.5 ? vec3(1.0, 0.1, 0.1) : context;
-    } else {
+    } else if (mode == 4) {
         c = mix(context, vec3(1.0, 0.85, 0.1), clamp(t.reactive, 0.0, 1.0));
+    } else if (mode == 5) {
+        c = mix(context, vec3(0.15, 0.55, 1.0), clamp(t.shimmer, 0.0, 1.0));
     }
     oColor = vec4(c, 1.0);
 }";

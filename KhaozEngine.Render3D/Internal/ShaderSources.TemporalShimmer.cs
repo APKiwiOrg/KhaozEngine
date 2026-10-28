@@ -37,8 +37,9 @@ vec2 temporalShimmerStep(vec2 record, float lumaChange) {
 // mean, as a still feature the jitter shows and misses does, and falling toward 0 as drift follows swing under a
 // one-way change. None below ShimmerFloor of swing (noise), on a pixel moving ShimmerStillPixels or more, on reactive
 // content, and on a frame whose change exceeds ShimmerChangeBand swings, which is real however much the pixel
-// shimmers. Its inputs come from a history and record that passed the finite check, so none is NaN. The negated
-// comparisons would score a NaN none on most compilers, but FXC may fold them, so they are no guarantee of it.
+// shimmers. drift and swing come from a record that passed the finite check, and the other inputs are bounded or
+// clamped, so none is NaN. The negated comparisons would score a NaN none on most compilers, but FXC may fold them, so
+// they are no guarantee of it.
 float temporalShimmerScore(float drift, float swing, float lumaChange, float motionPixels, float reactive) {
     if (!(swing >= ShimmerFloor) || !(motionPixels < ShimmerStillPixels) || !(reactive <= 0.0)
         || !(abs(lumaChange) <= ShimmerChangeBand * swing)) return 0.0;

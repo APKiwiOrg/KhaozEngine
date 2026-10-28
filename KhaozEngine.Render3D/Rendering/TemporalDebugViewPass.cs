@@ -6,7 +6,7 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>
-    /// The History, Disocclusion and Reactive debug views (<see cref="ShaderSources.TemporalDebugFrag"/>): one
+    /// The History, Disocclusion, Reactive and Shimmer debug views (<see cref="ShaderSources.TemporalDebugFrag"/>): one
     /// fullscreen pass over the final target, bound to the set the resolve used this frame plus an immutable mode
     /// block per view. The mode blocks are written once at construction through the device-level
     /// <c>IGpuDevice.UpdateBuffer</c>, which reaches every copy of a ring-backed uniform buffer, so drawing a view
@@ -20,12 +20,12 @@ namespace KhaozEngine.Render3D.Rendering
 
         static readonly SceneDebugView[] Views =
         {
-            SceneDebugView.History, SceneDebugView.Disocclusion, SceneDebugView.Reactive,
+            SceneDebugView.History, SceneDebugView.Disocclusion, SceneDebugView.Reactive, SceneDebugView.Shimmer,
         };
 
         readonly IGpuResourceLayout _modeLayout;
-        readonly IGpuBuffer[] _modeBuffers = new IGpuBuffer[3];
-        readonly IGpuResourceSet[] _modeSets = new IGpuResourceSet[3];
+        readonly IGpuBuffer[] _modeBuffers = new IGpuBuffer[4];
+        readonly IGpuResourceSet[] _modeSets = new IGpuResourceSet[4];
         readonly TemporalVisibilityPipelinePair _programs;
 
         public TemporalDebugViewPass(IGpuDevice gd, IGpuResourceLayout resolveLayout,
@@ -55,6 +55,7 @@ namespace KhaozEngine.Render3D.Rendering
                 SceneDebugView.History => 0,
                 SceneDebugView.Disocclusion => 1,
                 SceneDebugView.Reactive => 2,
+                SceneDebugView.Shimmer => 3,
                 _ => -1,
             };
             if (slot < 0) return;

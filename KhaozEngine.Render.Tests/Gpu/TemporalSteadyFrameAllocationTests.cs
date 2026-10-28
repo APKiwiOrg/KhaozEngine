@@ -32,6 +32,10 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(SceneDebugView.History, false, 1)]
         [InlineData(SceneDebugView.History, true, 0)]
         [InlineData(SceneDebugView.History, true, 1)]
+        [InlineData(SceneDebugView.Shimmer, false, 0)]
+        [InlineData(SceneDebugView.Shimmer, false, 1)]
+        [InlineData(SceneDebugView.Shimmer, true, 0)]
+        [InlineData(SceneDebugView.Shimmer, true, 1)]
         public void ASteadyTemporalFrameAllocatesNothing(SceneDebugView view, bool bloom, int choice)
         {
             using var device = new FakeGpuDevice();

@@ -7,7 +7,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D;
 
 /// <summary><c>Scene3D.DebugView</c>: <see cref="SceneDebugView.None"/> by default, and only
-/// <see cref="SceneDebugView.MotionVectors"/> turns temporal rendering on while it is set. The three resolve views take
+/// <see cref="SceneDebugView.MotionVectors"/> turns temporal rendering on while it is set. The four resolve views take
 /// effect only under temporal anti-aliasing (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, sections 5 and
 /// 6). A frame fixes its temporal state at its first render, so a requester changed after that render takes effect on
 /// the next frame.</summary>
@@ -57,6 +57,7 @@ public sealed class SceneDebugViewTests
     [InlineData(SceneDebugView.History)]
     [InlineData(SceneDebugView.Disocclusion)]
     [InlineData(SceneDebugView.Reactive)]
+    [InlineData(SceneDebugView.Shimmer)]
     public void AResolveViewTurnsNothingOnOutsideTemporalAntiAliasing(SceneDebugView debugView)
     {
         using var rig = new HeadlessSceneRig();
@@ -72,7 +73,7 @@ public sealed class SceneDebugViewTests
 
     [Theory]
     [InlineData(-1)]
-    [InlineData(5)]
+    [InlineData(6)]
     public void AnUndefinedViewIsRefusedAndTheSettingIsKept(int value)
     {
         using var rig = new HeadlessSceneRig();

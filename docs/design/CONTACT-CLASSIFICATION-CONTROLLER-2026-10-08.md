@@ -61,6 +61,14 @@ These carry over unchanged from the 2026-08-02 design and #438.
 - Wade and swim behave as today. NPCs keep sharing the core through `StepTowards`.
 - The player is never a Bepu rigid body. The physics world stays a statics query oracle on this path.
 
+Runtime statics use `OrdinaryMovementRegistration.ApplyRuntimeStatics`, which publishes real geometry and its
+canonical owner provenance under one physical writer between movement reads. Authored provenance and semantic
+identity remain fixed. Each runtime publication is immutable, but its root and live registration revision can
+advance between ticks. Existing selected queries provide blocking, support, placement and swimming clearance
+without another collision layer. Raw source edits still refuse authentication. Hosts schedule matching batches
+before the same ticks and reconstruct the baseline and history for replay. Authored navigation remains unaware,
+so route stall policy observes actual travel. See the [Locomotion contract](../../KhaozEngine.Locomotion/README.md#runtime-statics).
+
 ## Owner rulings, 2026-10-08
 
 - Replace the whole `StepCore` pipeline, not only contact resolution.

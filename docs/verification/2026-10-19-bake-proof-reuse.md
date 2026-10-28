@@ -524,8 +524,9 @@ without it retain their original callbacks, including call-count-sensitive value
 Neither the property nor the captured reuse policy enters navigation identity or baked bytes.
 
 Each original same-layer source owns one successful numeric Hold memo. Profile and provider
-snapshot tokens bind immutable composition, footprint, registration, selected view and producer
-identities. The key compares all state and effective tuning fields by exact bits, logical scope,
+snapshot tokens bind immutable composition, footprint, authored registration, its captured live revision,
+selected view and producer identities. Runtime registration publications are immutable, but a changed root and
+revision refuse the build. The key compares all state and effective tuning fields by exact bits, logical scope,
 frame, lease basis, original raw source address, dt and step budget. A small internal MoveState
 accessor exposes private speed-scale storage bits, since the public addition can erase a signed
 zero or round a small bias. The state itself is copied by assignment, including private storage.

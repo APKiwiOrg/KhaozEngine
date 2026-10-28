@@ -86,6 +86,7 @@
   <Project Path="KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
   <Project Path="KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
   <Project Path="KhaozEngine.Physics.HeadlessLoaderTests/KhaozEngine.Physics.HeadlessLoaderTests.csproj" />
+  <Project Path="KhaozEngine.Physics.Tests/KhaozEngine.Physics.Tests.csproj" />
   <Project Path="KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
   <Project Path="KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
   <Project Path="KhaozEngine.Progression/KhaozEngine.Progression.csproj" />

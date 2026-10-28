@@ -9618,8 +9618,8 @@ document stays unedited, `TileMediumSampler` and the registration from `TileColl
 are not endorsed yet. The [Movement README](../KhaozEngine.Movement/README.md#parallel-contact-bake) names each
 method.
 
-The build snapshots the physics basis and the environment producer identity, and refuses the whole build with
-`InvalidOperationException` when either changes. A failing build throws the exception the serial build would have thrown
+The build snapshots the physics basis, live registration revision and environment producer identity. Any change
+refuses the whole build with `InvalidOperationException`. A failing build throws the exception the serial build would have thrown
 first, publishes nothing and leaves the caller's world and views usable. On a 576-column fixture, degree 12 spends 0.85
 to 0.93 of the serial CPU time per proof, about 8 to 10 times faster on a 12-core machine the bake has to itself.
 Wall-clock speedup on a shared machine follows each worker's CPU share, so bake contact navigation with the machine
@@ -9647,7 +9647,8 @@ Only the first successful initial Hold's numeric state, frame, outcome and feet 
 Each edge retains its prechecks, current-basis authentication, consumed slice zero, travel and
 Euclidean 1 mm arrival rule. Rejected, admission and Stair Holds are never shared. No selection,
 binding, support or interval evidence survives. Provider or water changes still refuse the
-build, including after its last hit. Reference evaluation bypasses both Hold and completed-footprint
+build, including after its last hit. Registration revision changes also refuse it, including an add followed by
+removal. Reference evaluation bypasses both Hold and completed-footprint
 reuse. These execution choices do not enter bake identity or alter the complete serialized file.
 See the [Movement contract](../KhaozEngine.Movement/README.md#contact-source-proof-reuse).
 
@@ -10194,6 +10195,37 @@ A `RimPass` corresponds to an opening in the play area (or the bounds is simply 
 gate/zone-transition content exists - those are later). The 3D World room in `KhaozEngine.Showcase` uses this bounded preset:
 held inside by the mountains, out through the +Z pass. The circular rim is the MVP; a
 rect/polygon rim and gravity/jump are named follow-ups (prop/building collision shipped, see below).
+
+### Authenticated runtime statics (`KhaozEngine.Locomotion`)
+
+Keep the installer's `OrdinaryMovementRegistration` and reserve possible runtime geometry in its fixed extent
+before creating bindings. Between movement reads, apply one complete owner-keyed batch for the effective tick:
+
+```csharp
+var owner = new MovementSupportKey(registration.WorldId, "barricade");
+registration.ApplyRuntimeStatics([
+    RuntimeStaticChange.Set(owner, new BoxShape(new Vector3(0.2f, 1f, 3f)), Pose.At(absoluteCentre))
+]);
+// At a later tick, after all movement reads finish.
+registration.ApplyRuntimeStatics([RuntimeStaticChange.Remove(owner)]);
+```
+
+Set deep-copies descriptors and replaces that owner's stationary shape. Its pose is absolute, including with a
+nonzero physics origin. Every admitted shape blocks and supplies support through existing Contact and Legacy
+views. Duplicate owners and absent removes refuse before editing. Bepu's complete owner supplies the required
+optional static-mutation lease. A source without the certified read and writer capabilities refuses this API.
+
+Authored identity, exclusions and installation `GeometryGeneration` stay fixed. Live `Generation` advances once
+per successful nonempty batch. Raw writes remain Unresolved, and a failure after a possible source edit requires
+rebuilding the installation. Match initial construction, shape bits and tick history on both heads. Replay must
+reconstruct historical blocker state before each movement read. The engine adds no event transport or rollback
+timeline. See [runtime static batches](../KhaozEngine.Locomotion/README.md#runtime-statics).
+
+Authored navigation stays unchanged, including its serialized bytes and identity. An unaware route can reach a
+runtime wall and `RouteStallOptions` can latch `Blocked` from actual travel. Remove the wall through the same
+registration and explicitly reset the follower to resume. Bake from an authored-only installation, or finish the
+bake before admitting runtime edits. Capture and profile construction refuse attached live runtime entries, and
+Contact builds refuse a revision change even when an add and removal leave the same active set.
 
 ### Movement medium + wading (`MovementMedium`, `KhaozEngine.Locomotion`)
 

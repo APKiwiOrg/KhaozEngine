@@ -17,6 +17,7 @@ internal sealed class QueryGate
         internal int Reads;
         internal int Writes;
         internal object? Lease;
+        internal object? StaticMutationLease;
         internal QueryScratch? Scratch;
     }
 

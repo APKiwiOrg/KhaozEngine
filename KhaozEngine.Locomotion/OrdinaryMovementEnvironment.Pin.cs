@@ -5,7 +5,7 @@ using KhaozEngine.Physics;
 
 namespace KhaozEngine.Locomotion;
 
-/// <summary>Non-owning environment evidence within the caller's live physical read interval.</summary>
+/// <summary>Non-owning evidence for one physical read and runtime registration publication.</summary>
 internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, IMovementContactSupportPin
 {
     readonly OrdinaryMovementEnvironment _owner;

@@ -56,6 +56,9 @@ public static class MapWorldBuilder
         bool completeEffective = effective is not null && (document.Prefabs is not null || document.NativeResourceTransforms is not null ||
             resolved.Placements.Any(p => assets.GetAsset(p.AssetId).SupportResourceIds.Count != 0));
         MapScopedSurfaces surfaces = effective?.CompleteView() ?? MapScopedSurfaces.CompleteView(new MapSurfaceSet());
+        // Coverage and terrain need every surface. A view the declared profile could not complete refuses here.
+        if (surfaces.Status != MapAcquireStatus.Complete)
+            throw new MapDocumentException($"Native world surfaces {surfaces.Status}: {surfaces.Detail}");
         if (completeEffective)
         {
             // Coverage refines under the same declared profile the resolution used.

@@ -82,6 +82,16 @@ public sealed class MapResolveLimitsWorldTests
         Assert.Single(world.Markers);
     }
 
+    [Fact]
+    public void IncompleteCompleteView_RefusesAsCapacityBeforeCoverage()
+    {
+        // At the default 256 candidate patches the 289-patch complete view is incomplete. The build refuses as a document
+        // capacity failure, never by handing a partial view to coverage or terrain.
+        MarkerFixture fixture = MarkerFixtures.ContextGrid();
+        var error = Assert.Throws<MapDocumentException>(() => Build(fixture, MarkerFixtures.Options()));
+        Assert.Contains("Native world surfaces CapacityExceeded", error.Message, StringComparison.Ordinal);
+    }
+
     static (string SnapshotId, WorldFrame Frame, int QueryPolicyVersion, bool Complete) Witness(MapReadWitness witness) =>
         (witness.SnapshotId, witness.Frame, witness.QueryPolicyVersion, witness.Complete);
 

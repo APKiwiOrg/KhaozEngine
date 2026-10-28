@@ -118,7 +118,7 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
         fixture.SaveManifest();
         var result = fixture.Run("Select");
         Assert.NotEqual(0, result.Code);
-        Assert.Contains($"Manifest {section}.{name} must be an exact USD decimal", result.Output, StringComparison.Ordinal);
+        Assert.Contains($"Manifest field {section}.{name} ", result.Output, StringComparison.Ordinal);
         Assert.DoesNotContain("matrix=", result.Output, StringComparison.Ordinal);
     }
 

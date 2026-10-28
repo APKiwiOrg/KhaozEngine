@@ -5,6 +5,125 @@ Set-StrictMode -Version Latest
 function Require([bool]$Condition, [string]$Reason) {
     if (!$Condition) { throw $Reason }
 }
+# Verified against the managed record constructors by the workflow field parity fact.
+# Record|exact JSON field|kind (with nested record where needed)|nullability. Every field is required.
+$manifestFieldTable = @'
+RendererPerfManifest|schema|string|non-null
+RendererPerfManifest|unitId|string|non-null
+RendererPerfManifest|preset|string|non-null
+RendererPerfManifest|workloadSha|string|non-null
+RendererPerfManifest|baselineMainSha|string|non-null
+RendererPerfManifest|recipes|array:RendererPerfRecipeIdentity|non-null
+RendererPerfManifest|blocks|array:RendererPerfBlock|non-null
+RendererPerfManifest|controls|array:RendererPerfControl|non-null
+RendererPerfManifest|conditioningFrames|integer|non-null
+RendererPerfManifest|batchSize|integer|non-null
+RendererPerfManifest|maximumScopeOccurrences|integer|non-null
+RendererPerfManifest|runtime|object:RendererPerfRuntimePolicy|non-null
+RendererPerfManifest|execution|object:RendererPerfExecutionPolicy|non-null
+RendererPerfManifest|limits|object:RendererPerfLimits|non-null
+RendererPerfManifest|budget|object:RendererPerfBudget|non-null
+RendererPerfManifest|approval|object:RendererPerfApproval|non-null
+RendererPerfRecipeIdentity|sceneId|string|non-null
+RendererPerfRecipeIdentity|version|string|non-null
+RendererPerfRecipeIdentity|profile|string|non-null
+RendererPerfRecipeIdentity|recipeSha256|string|non-null
+RendererPerfRecipeIdentity|settingsSha256|string|non-null
+RendererPerfRecipeIdentity|shaderSha256|string|non-null
+RendererPerfRecipeIdentity|geometrySha256|string|non-null
+RendererPerfRecipeIdentity|assetSha256|string|non-null
+RendererPerfBlock|sceneId|string|non-null
+RendererPerfBlock|layout|enum-string|non-null
+RendererPerfBlock|iteration|integer|non-null
+RendererPerfBlock|warmupFrames|integer|non-null
+RendererPerfBlock|measuredFrames|integer|non-null
+RendererPerfControl|id|integer|non-null
+RendererPerfControl|version|string|non-null
+RendererPerfControl|workSha256|string|non-null
+RendererPerfControl|warmupFrames|integer|non-null
+RendererPerfControl|measuredFrames|integer|non-null
+RendererPerfRuntimePolicy|configuration|string|non-null
+RendererPerfRuntimePolicy|runtimeVersion|string|non-null
+RendererPerfRuntimePolicy|environment|string-map|non-null
+RendererPerfRuntimePolicy|gcMode|string|non-null
+RendererPerfRuntimePolicy|tieredCompilation|boolean|non-null
+RendererPerfExecutionPolicy|backend|string|non-null
+RendererPerfExecutionPolicy|adapterPolicy|string|non-null
+RendererPerfExecutionPolicy|runner|string|non-null
+RendererPerfExecutionPolicy|workflow|string|non-null
+RendererPerfExecutionPolicy|leg|string|non-null
+RendererPerfExecutionPolicy|completionPolicy|string|non-null
+RendererPerfExecutionPolicy|lockedGraphicsClockMHz|integer|nullable
+RendererPerfLimits|unitSeconds|integer|non-null
+RendererPerfLimits|frameMilliseconds|integer|non-null
+RendererPerfLimits|coldFrameMilliseconds|integer|non-null
+RendererPerfLimits|jobMinutes|integer|non-null
+RendererPerfBudget|maximumBilledMinutes|integer|non-null
+RendererPerfBudget|ratePerMinute|decimal|non-null
+RendererPerfBudget|currency|string|non-null
+RendererPerfBudget|maximumCostUsd|decimal|non-null
+RendererPerfApproval|reference|string|non-null
+RendererPerfApproval|purpose|string|non-null
+RendererPerfApproval|campaignReference|string|non-null
+RendererPerfApproval|campaignMaximumUsd|decimal|non-null
+'@
+$manifestFields = [System.Collections.Hashtable]::new([System.StringComparer]::Ordinal)
+foreach ($row in $manifestFieldTable -split '\r?\n') {
+    $type, $name, $kind, $nullable = $row.Split('|')
+    if (!$manifestFields.ContainsKey($type)) {
+        $manifestFields.Add($type, [System.Collections.Hashtable]::new([System.StringComparer]::Ordinal))
+    }
+    $manifestFields[$type].Add($name, @($kind, $nullable))
+}
+function Manifest-FieldPath([string]$Path, [string]$Name) {
+    if ($Path -eq '') { return $Name }
+    return "$Path.$Name"
+}
+function Assert-ManifestObject([object]$Value, [string]$Type, [string]$Path) {
+    $objectPath = if ($Path -eq '') { '$' } else { $Path }
+    Require ($Value -is [hashtable]) "Manifest field $objectPath is unknown, missing, null or of the wrong kind"
+    $fields = $manifestFields[$Type]
+    foreach ($entry in $Value.GetEnumerator()) {
+        $fieldPath = Manifest-FieldPath $Path $entry.Key
+        Require ($fields.ContainsKey($entry.Key)) "Manifest field $fieldPath is unknown, missing, null or of the wrong kind"
+    }
+    foreach ($field in $fields.GetEnumerator()) {
+        $fieldPath = Manifest-FieldPath $Path $field.Key
+        Require ($Value.ContainsKey($field.Key)) "Manifest field $fieldPath is unknown, missing, null or of the wrong kind"
+        Assert-ManifestField $Value[$field.Key] $field.Value[0] ($field.Value[1] -ceq 'nullable') $fieldPath
+    }
+}
+function Assert-ManifestField([object]$Value, [string]$Kind, [bool]$Nullable, [string]$Path) {
+    $reason = "Manifest field $Path is unknown, missing, null or of the wrong kind"
+    if ($null -eq $Value) {
+        Require $Nullable $reason
+        return
+    }
+    switch -CaseSensitive ($Kind) {
+        string { Require ($Value -is [string]) $reason }
+        integer { Require ($Value -is [long] -and $Value -ge [int]::MinValue -and $Value -le [int]::MaxValue) $reason }
+        decimal { Require ($Value -is [long] -or $Value -is [decimal]) $reason }
+        boolean { Require ($Value -is [bool]) $reason }
+        enum-string { Require ($Value -is [string]) $reason }
+        string-map {
+            Require ($Value -is [hashtable]) $reason
+            foreach ($entry in $Value.GetEnumerator()) {
+                Assert-ManifestField $entry.Value 'string' $false (Manifest-FieldPath $Path $entry.Key)
+            }
+        }
+        default {
+            $container, $type = $Kind.Split(':')
+            if ($container -ceq 'object') {
+                Assert-ManifestObject $Value $type $Path
+            } elseif ($container -ceq 'array') {
+                Require ($Value -is [object[]]) $reason
+                for ($index = 0; $index -lt $Value.Length; $index++) {
+                    Assert-ManifestObject $Value[$index] $type "$Path[$index]"
+                }
+            } else { throw $reason }
+        }
+    }
+}
 # ConvertFrom-Json keeps the last duplicate, ignores key case and reads doubles that round exact caps.
 # Match the managed reader with unique ordinal names and exact integer or decimal numbers throughout.
 function Read-ManifestValue([System.Text.Json.JsonElement]$Element) {
@@ -44,7 +163,9 @@ function Read-Manifest([string]$Text) {
     $options.MaxDepth = 32
     $document = [System.Text.Json.JsonDocument]::Parse($Text, $options)
     try {
-        return Read-ManifestValue $document.RootElement
+        $value = Read-ManifestValue $document.RootElement
+        Assert-ManifestObject $value 'RendererPerfManifest' ''
+        return $value
     } finally {
         $document.Dispose()
     }

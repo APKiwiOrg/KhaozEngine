@@ -11,28 +11,32 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 internal static class RendererPerfCompilerCorrespondence
 {
     internal static ImmutableArray<string> Validate(RendererPerfCompilerInventory inventory,
-        ImmutableArray<GpuPipelineCompilerReport> pipelines, RendererPerfCompilerEvidence compiler)
+        ImmutableArray<GpuPipelineCompilerReport> pipelines, RendererPerfCompilerEvidence compiler,
+        int maximumOperations, string conditioningOperation)
     {
         var reasons = ImmutableArray.CreateBuilder<string>();
-        try { Check(inventory, pipelines, compiler, reasons); }
+        try { Check(inventory, pipelines, compiler, maximumOperations, conditioningOperation, reasons); }
         catch (Exception error) { reasons.Add("Malformed compiler correspondence evidence: " + error.Message); }
         return reasons.ToImmutable();
     }
     static void Check(RendererPerfCompilerInventory i, ImmutableArray<GpuPipelineCompilerReport> pipelines,
-        RendererPerfCompilerEvidence c, ImmutableArray<string>.Builder reasons)
+        RendererPerfCompilerEvidence c, int maximumOperations, string conditioningOperation, ImmutableArray<string>.Builder reasons)
     {
         void Require(bool condition, string reason) { if (!condition) reasons.Add(reason); }
         Require(i.Schema == RendererPerfCompilerJson.Schema, "Unknown compiler inventory schema.");
         Require(i.Complete && i.Reason is null && i.Counts.OmittedFactoryEvents == 0, "Construction inventory is incomplete.");
         Require(c.State == RendererPerfCollectionState.Complete && c.Reason is null && c.Errors.IsEmpty, "Compiler collection is incomplete.");
-        Require(i.Operations.Length is > 0 and <= 43 && i.Operations.All(s => !string.IsNullOrWhiteSpace(s))
+        Require(i.Operations.Length > 0 && i.Operations.Length <= maximumOperations && i.Operations.All(s => !string.IsNullOrWhiteSpace(s))
             && i.Operations.Distinct(StringComparer.Ordinal).Count() == i.Operations.Length, "Operation membership is invalid.");
+        Require(!i.Operations.IsEmpty && i.Operations[0] == conditioningOperation, "Conditioning operation differs from the admitted schedule.");
         Require(i.Shaders.Select(s => s.Id).SequenceEqual(Enumerable.Range(0, i.Shaders.Length))
             && i.Layouts.Select(l => l.Id).SequenceEqual(Enumerable.Range(0, i.Layouts.Length))
             && i.Recipes.Select(r => r.Id).SequenceEqual(Enumerable.Range(0, i.Recipes.Length))
             && i.Occurrences.Select(o => o.Id).SequenceEqual(Enumerable.Range(0, i.Occurrences.Length)), "Inventory IDs are not dense first occurrences.");
-        Require(i.Recipes.Length <= 1024 && i.FactoryEvents.Length <= 44032 && i.Occurrences.Length <= 11008, "Inventory count capacity exceeded.");
-        RendererPerfConstructionInventoryChecks.Validate(i, reasons);
+        Require(i.Recipes.Length <= RendererPerfConstructionAdmission.UniqueRecipes
+            && i.FactoryEvents.Length <= checked(maximumOperations * RendererPerfConstructionAdmission.FactoriesPerOperation)
+            && i.Occurrences.Length <= checked(maximumOperations * RendererPerfConstructionAdmission.PipelinesPerOperation), "Inventory count capacity exceeded.");
+        RendererPerfConstructionInventoryChecks.Validate(i, reasons, maximumOperations);
         var eventRoles = new HashSet<(int, int)>();
         var outputs = new HashSet<int>();
         var successes = new int[2]; var attempts = new int[2];
@@ -76,7 +80,7 @@ internal static class RendererPerfCompilerCorrespondence
             Require((uint)o.OperationOrdinal < (uint)i.Operations.Length && o.CreationOrdinal >= 0 && Enum.IsDefined(o.Kind)
                 && roles.Add((o.OperationOrdinal, o.Kind, o.CreationOrdinal)) && o.BindCount >= 0
                 && Enum.IsDefined(o.Stage) && (o.Stage == RendererPerfConstructionStage.Cold
-                    ? o.FrameIndex is null || o.OperationOrdinal == 0 && o.FrameIndex >= 0 && i.Operations[0].StartsWith("conditioning:", StringComparison.Ordinal)
+                    ? o.FrameIndex is null || o.OperationOrdinal == 0 && o.FrameIndex >= 0 && i.Operations[0] == conditioningOperation
                     : o.FrameIndex is { } f && (o.Stage == RendererPerfConstructionStage.Warmup) == (f < 0)), "Occurrence role or frame membership is invalid.");
             Require(o.Stage != RendererPerfConstructionStage.Measured, "Measured first pipeline creation refuses steady-state promotion.");
             Require(outputs.Contains(o.Id) && (uint)o.RecipeId < (uint)i.Recipes.Length, "Occurrence has no successful factory association.");

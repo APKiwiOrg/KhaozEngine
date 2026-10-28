@@ -277,7 +277,8 @@ public sealed class RendererPerfDriverTests
                 if (rig.Fault == "second-observation" && block.Layout == RendererPerfLayout.PerPass && _next == 6)
                     throw new InvalidOperationException("second observation failed");
                 return new(identity, rig.Enabled, true,
-                    rig.Template.Manifest.Recipes.FirstOrDefault(r => r.SceneId == (block.SceneId == "conditioning:S3" ? "S3" : block.SceneId)) is { } recipe
+                    rig.Template.Manifest.Recipes.FirstOrDefault(r => r.SceneId == (block.SceneId == rig.Template.Manifest.Schedule.ConditioningBlockId
+                        ? rig.Template.Manifest.Schedule.ConditioningSceneId : block.SceneId)) is { } recipe
                         ? new(recipe, "public primitives", new string('b', 64), ImmutableDictionary<string, long>.Empty,
                             ImmutableDictionary<string, long>.Empty, ImmutableDictionary<string, RendererPerfMetric>.Empty) : null,
                     RendererPerfGpuClockAssessmentTests.Telemetry(rig.ObservedClock, 0).SetItem("clock.observedAtTicks",

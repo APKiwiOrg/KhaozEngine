@@ -10,6 +10,14 @@ internal static class RendererPerfPaidPolicy
     internal const int LockedGraphicsClockMHz = 1095;
     // The owner's envelope for every paid pilot and full unit, including attempts already billed.
     internal const decimal CampaignMaximumUsd = 22m;
+    internal const decimal WaterOpticsV2CampaignMaximumUsd = 7.382m;
+
+    internal static decimal CampaignMaximumFor(string preset) => preset switch
+    {
+        "pilot" or "full" => CampaignMaximumUsd,
+        "water-optics-v2" => WaterOpticsV2CampaignMaximumUsd,
+        _ => throw new RendererPerfProtocolException("Preset", "Unknown paid renderer preset.")
+    };
 
     internal static void Validate(RendererPerfManifest manifest)
     {
@@ -26,12 +34,13 @@ internal static class RendererPerfPaidPolicy
             "Preset", "Unit, steady frame, cold frame or job deadline differs from the preset.");
         int billedMinutes = minutes + CleanupAllowanceMinutes;
         decimal rate = linux ? 0.052m : 0.102m;
+        decimal campaignMaximum = CampaignMaximumFor(manifest.Preset);
         Require(manifest.Budget == new RendererPerfBudget(billedMinutes, rate, "USD", billedMinutes * rate),
             "Preset", "Billed minutes, rate, currency or cost cap differs from the preset.");
         Require(Text(manifest.Approval.Reference) && Text(manifest.Approval.Purpose) && Text(manifest.Approval.CampaignReference)
             && manifest.Approval.CampaignMaximumUsd >= manifest.Budget.MaximumCostUsd
-            && manifest.Approval.CampaignMaximumUsd <= CampaignMaximumUsd, "Approval",
+            && manifest.Approval.CampaignMaximumUsd <= campaignMaximum, "Approval",
             "Exact owner approval and campaign references with a sufficient cap of at most USD "
-            + CampaignMaximumUsd.ToString(System.Globalization.CultureInfo.InvariantCulture) + " are required. A manifest does not grant consent.");
+            + campaignMaximum.ToString(System.Globalization.CultureInfo.InvariantCulture) + " are required. A manifest does not grant consent.");
     }
 }

@@ -71,8 +71,21 @@ public sealed class RendererPerfScheduleTests
     }
 
     [Fact]
-    public void Presets_list_the_v1_table_in_order()
-        => Assert.Equal(["pilot", "full", "rehearsal", "rehearsal-full", "rehearsal-controls"], RendererPerfSchedules.Presets.AsEnumerable());
+    public void Presets_keep_v1_order_and_append_the_v2_campaign()
+        => Assert.Equal(["pilot", "full", "rehearsal", "rehearsal-full", "rehearsal-controls", "water-optics-v2",
+            "rehearsal-water-optics-v2", "rehearsal-water-optics-v2-full"], RendererPerfSchedules.Presets.AsEnumerable());
+
+    [Fact]
+    public void Every_total_literal_reconciles_with_its_expanded_schedule()
+    {
+        foreach (string preset in RendererPerfSchedules.Presets)
+        {
+            var schedule = RendererPerfSchedules.For(preset);
+            Assert.Equal(schedule.TotalFrames, schedule.ConditioningFrames
+                + schedule.Blocks().Sum(b => b.WarmupFrames + b.MeasuredFrames)
+                + schedule.ControlIds.Length * (schedule.ControlWarmupFrames + schedule.ControlMeasuredFrames));
+        }
+    }
 
     [Fact]
     public void Unknown_preset_refuses()
@@ -91,8 +104,14 @@ public sealed class RendererPerfScheduleTests
     {
         Assert.Equal("village", RendererPerfRecipe.IdFromVersion("village/1"));
         Assert.Equal("water-optics-v2/village/off", RendererPerfRecipe.IdFromVersion("water-optics-v2/village/off/1"));
-        Assert.Throws<RendererPerfProtocolException>(() => RendererPerfRecipe.IdFromVersion("village"));
     }
+
+    [Theory]
+    [InlineData("village")]
+    [InlineData("/1")]
+    [InlineData("village/")]
+    public void Recipe_version_requires_an_id_and_revision(string version)
+        => Assert.Equal("Identity", Assert.Throws<RendererPerfProtocolException>(() => RendererPerfRecipe.IdFromVersion(version)).Code);
 
     [Theory]
     [InlineData("full", 43)]

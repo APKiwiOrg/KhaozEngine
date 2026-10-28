@@ -9,8 +9,8 @@ retains the design rationale. This document records no measured baseline or perf
 
 `tools/Renderer.Perf.Tests` is outside the solution. Its one opt-in performance fact is not an ordinary
 headless test. Every native measurement or load run needs separate owner approval naming the workload,
-leg, frame counts, duration and spending cap. A paid manifest's campaign cap is at most USD 22, the owner's
-envelope for every paid pilot and full unit including attempts already billed, and each unit's own cost cap must
+leg, frame counts, duration and spending cap. The v1 paid manifest's campaign cap is at most USD 22, the owner's
+envelope for every v1 paid pilot and full unit including attempts already billed, and each unit's own cost cap must
 fit inside it. The owner raised it from USD 18 after the locked
 [Linux full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599806485) refused and the locked
 [Windows full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599810511) was cancelled. Both
@@ -26,7 +26,8 @@ exactly. An unknown preset, including a differently cased one, is refused with t
 anything reads a schedule. Blocks expand in one order for every entry: each iteration rotates the scene
 order by one, and a scene runs TotalOnly first when its scene number plus the iteration is even, or always
 when the entry has one scene. Conditioning runs as `conditioning:S<n>` for the entry's conditioning scene,
-which is S3 for every current preset. A recipe version is `<id>/<revision>`, and the recipe ID is
+which is S3 for v1 and S5 for the water optics campaign. Compiler correspondence requires that exact
+conditioning operation, including its TotalOnly layout and iteration 0. A recipe version is `<id>/<revision>`, and the recipe ID is
 everything before the last `/`. `RendererPerfV1IdentityGoldenTests` pins the bytes of the five v1 recipe
 files and their recipe, settings, geometry, asset and per-platform sequence digests, so a new entry cannot
 move them.
@@ -176,9 +177,54 @@ Both warmed all-feature traces and cold MSAA/blob retirement traces are required
 The [integration verification record](verification/2026-10-21-renderer-performance-baseline.md) separates
 those proofs from outstanding native acceptance and diagnostic collection work.
 
+## Water optics campaign
+
+`water-optics-v2` is a separate paid campaign with a maximum of USD 7.382, beside the unchanged USD 22
+v1 envelope. It admits one Linux Vulkan T4 attempt and one Windows D3D11 T4 attempt. Windows Vulkan,
+software adapters and standard software runners refuse paid admission. Each attempt still needs the
+exact owner authorization described above. Implementation and a valid manifest grant no dispatch
+consent. There is no automatic retry or transfer of unused v1 budget.
+
+The six recipes use `renderer-full-native-1080/1`. S0 to S2 are the village under OFF, M2 ON and M5 ON,
+and S3 to S5 are outdoors in the same profile order. OFF disables both underwater sunlight and water
+column light. M2 ON enables underwater sunlight, and M5 ON enables both. All profiles fix linear
+water RGB `(0.28, 0.30, 0.18)`, alpha 1, clarity 1.5 and underwater penumbra per metre 0.03. The explicit
+absorption is the extinction derived from that color and clarity, with alpha 0, so both opt-ins use
+matching direct-light absorption. The nested recipe IDs live under `water-optics-v2/` and leave the
+five v1 recipes and their identities unchanged.
+
+| Preset | Admitted leg and adapter | Conditioning | Scene blocks | Controls | Total frames |
+| --- | --- | --- | --- | --- | ---: |
+| `water-optics-v2` | Linux Vulkan or Windows D3D11, NVIDIA T4 hardware | 1,200 S5 frames | 36, each 192 warm-up plus 256 measured | 1 to 12, each 64 plus 128 | 19,632 |
+| `rehearsal-water-optics-v2` | Linux Vulkan, lavapipe on `ubuntu-24.04` | 300 S5 frames | 36, each 64 warm-up plus 128 measured | 1 to 12, each 32 plus 64 | 8,364 |
+| `rehearsal-water-optics-v2-full` | Windows D3D11, WARP on `windows-2025-vs2026` | 1,200 S5 frames | 36, each 192 warm-up plus 256 measured | 1 to 12, each 64 plus 128 | 19,632 |
+
+Every v2 schedule uses three rotated iterations and the alternating layout order described above.
+Conditioning runs `conditioning:S5/TotalOnly/0` on outdoors M5 ON to warm both opt-in pipelines and
+the FFT kernels. Its first frame alone receives the cold limit. All three schedules admit 49
+operations, comprising conditioning, 36 scene blocks and twelve controls. Construction storage and
+compiler correspondence follow the admitted schedule's exact operation bound. Manifest-free inventory
+decoding uses the table's largest bound, then admission and verification enforce the selected one.
+The v1 full schedules retain 43 operations, pilots nine and all-controls rehearsal thirteen.
+
+Paid v2 limits equal the full limits: 1,500 unit seconds, 10,000 steady-frame milliseconds,
+120,000 cold-frame milliseconds and a 1,095 MHz graphics clock. Linux has a 35-minute job cap and
+38 maximum billed minutes at USD 0.052 per minute, or USD 1.976. Windows has a 50-minute job cap and
+53 maximum billed minutes at USD 0.102 per minute, or USD 5.406. Their sum is the USD 7.382 campaign
+maximum. A manifest cap must cover its unit budget and cannot exceed that campaign maximum.
+
+Both v2 rehearsals keep the existing zero-budget and zero-campaign-maximum rule, with full rehearsal
+limits of 19,800 unit seconds, 60,000 steady-frame milliseconds, 120,000 cold-frame milliseconds and
+350 job minutes. They retain the same correctness and non-promotion rules as v1 rehearsals. The
+shorter Linux schedule exercises all 49 operations because the v1 full lavapipe rehearsal took
+5 hours 13 minutes, leaving insufficient room for 19,632 frames in a six-hour hosted job. WARP keeps
+the paid schedule, estimated at about 5.4 hours from its v1 full rehearsal's 4 hours 41 minutes.
+These estimates do not establish completion or authorize either rehearsal.
+
 ## Software correctness rehearsal
 
-The `rehearsal`, `rehearsal-full` and `rehearsal-controls` presets in
+The v1 `rehearsal`, `rehearsal-full` and `rehearsal-controls` presets, and the two
+[water optics rehearsals](#water-optics-campaign), in
 `khaozengine.renderer-perf-unit/1` select an explicit correctness execution class and schedule. Neither the unit name nor approval purpose
 selects a class. All use the production entrypoint, driver, concrete native session, scene/control
 workloads, compiler replay, publication and directory certification. Performance presets retain their
@@ -206,7 +252,7 @@ scene rehearsal remains selectable with its finite cap, but its complete schedul
 the hosted six-hour job. The all-controls schedule exercises the six additional full-only control
 shapes without making full-scene completion a prerequisite or claiming scene coverage.
 
-An explicit allowlist binds every schedule to `linux-vulkan` with `mesa-lavapipe-software` or
+An explicit allowlist binds each v1 schedule to `linux-vulkan` with `mesa-lavapipe-software` or
 `windows-d3d11` with `microsoft-warp-software`. The pinned standard runners and bootstrap belong to
 [CROSS-PLATFORM.md](CROSS-PLATFORM.md#free-software-renderer-rehearsal). Actual Vulkan CPU-class or Mesa
 llvmpipe software identity is required on Linux. Windows requires the actual DXGI software adapter

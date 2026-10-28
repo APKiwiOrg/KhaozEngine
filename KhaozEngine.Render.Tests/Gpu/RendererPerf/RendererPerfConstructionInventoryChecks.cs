@@ -8,13 +8,15 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 internal static class RendererPerfConstructionInventoryChecks
 {
-    internal static void Validate(RendererPerfCompilerInventory i, ImmutableArray<string>.Builder reasons)
+    internal static void Validate(RendererPerfCompilerInventory i, ImmutableArray<string>.Builder reasons, int maximumOperations)
     {
-        RendererPerfConstructionAdmission.Count(i.Operations.Length, 43, "operations");
-        RendererPerfConstructionAdmission.Count(i.FactoryEvents.Length, 44032, "factory attempts");
-        RendererPerfConstructionAdmission.Count(i.Shaders.Length, 44032, "shaders");
-        RendererPerfConstructionAdmission.Count(i.Layouts.Length, 44032, "layouts");
-        RendererPerfConstructionAdmission.Count(i.Occurrences.Length, 11008, "pipeline occurrences");
+        int factories = checked(maximumOperations * RendererPerfConstructionAdmission.FactoriesPerOperation);
+        int pipelines = checked(maximumOperations * RendererPerfConstructionAdmission.PipelinesPerOperation);
+        RendererPerfConstructionAdmission.Count(i.Operations.Length, maximumOperations, "operations");
+        RendererPerfConstructionAdmission.Count(i.FactoryEvents.Length, factories, "factory attempts");
+        RendererPerfConstructionAdmission.Count(i.Shaders.Length, factories, "shaders");
+        RendererPerfConstructionAdmission.Count(i.Layouts.Length, factories, "layouts");
+        RendererPerfConstructionAdmission.Count(i.Occurrences.Length, pipelines, "pipeline occurrences");
         RendererPerfConstructionAdmission.Count(i.Recipes.Length, 1024, "unique recipes");
         var budget = new RendererPerfConstructionAdmission();
         var content = new RendererPerfConstructionContent(budget);

@@ -61,7 +61,7 @@ internal sealed partial class RendererPerfPublicationWriter : IRendererPerfUnitP
             _preparationAttempted = true;
             budget.Check("renderer.publication.prepare.before");
             if (!report.Pipelines.IsEmpty) throw new InvalidOperationException("Precollection report already contains native results.");
-            RendererPerfCompilerJson.Validate(inventory);
+            RendererPerfCompilerJson.Validate(inventory, report.Manifest.Schedule.Operations);
             if (directory is not null) Produce("work-models.json", RendererPerfArtifactProducers.Schema("work-models.json"),
                 RendererPerfArtifactProducers.WorkModels(report), budget);
             _prepared = Attach(prepare?.Invoke(report) ?? report, inventory, budget, prepareCollection: true);

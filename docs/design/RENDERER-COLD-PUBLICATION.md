@@ -88,7 +88,7 @@ conversion. These are refusal envelopes, not evidence that a native workload fit
 
 | Owner | Bound |
 | --- | --- |
-| Construction | 43 operations, 256 pipeline and 1024 total factory attempts per operation, 1024 unique recipes. Pilot uses its actual nine operations. |
+| Construction | The admitted schedule's exact operation count: nine for v1 pilot, 43 for v1 full, thirteen for all-controls rehearsal and 49 for each water optics v2 preset. Each operation retains at most 256 pipeline and 1024 total factory attempts, with 1024 unique recipes per unit. |
 | Retained logical encoding | 64 MiB split into 32 MiB distinct sources, 16 MiB distinct descriptors and 16 MiB events/occurrences/witnesses. Source hashes and descriptor keys count in descriptors. Every repeated event and witness still counts. |
 | Graphs | 32 layout sets, 128 elements/set, 32 vertex streams, 64 elements/stream, eight output/blend attachments, 1024 UTF-8 bytes/name, 1 MiB/stage source. |
 | Options | 64 entries/table, 256 UTF-8 bytes/key and 4096/value. Four maximal escaped tables need 6,717,440 encoded bytes. |
@@ -102,7 +102,11 @@ Shader stages reference those hashes. Shader and layout tables contain distinct 
 first-factory order, and every factory event references its descriptor. Freeze remaps all graph and
 occurrence references without dropping repetitions. Readers reject inventory/1 without migration,
 changed source hashes, foreign references, unused or duplicate table rows and noncanonical order.
-The offline verifier and baseline publisher use this same codec and correspondence gate.
+The offline verifier and baseline publisher use this same codec and correspondence gate. Manifest-free
+decoding bounds counts by the largest schedule in the table, then collection, publication and
+verification apply the admitted schedule's exact capacity. Source-table capacity is twice its factory
+capacity because a shader factory can retain two stages. Correspondence requires operation 0 to equal
+the schedule's exact conditioning operation, including scene, layout and iteration.
 
 PrepareCollection measures the encoded retained root, inventory and completion shape before optional
 replay. One read reservation is outstanding at a time. Reserve the exact frozen request before graph
@@ -132,8 +136,10 @@ contract is in the living performance reference.
 ## One lifecycle, CP-6 and CP-8
 
 One RendererPerfUnitBudget owns the original ColdStart, absolute deadline and cancellation through
-production, cleanup, freeze, replay, publication, verification and stamping. Full schedule remains
-16,944 frames over 43 operations. Pilot/full deadlines remain 600/1500 seconds. Only conditioning
+production, cleanup, freeze, replay, publication, verification and stamping. The v1 full schedule remains
+16,944 frames over 43 operations. Water optics v2 adds six scenes, 36 blocks and twelve controls over
+49 operations, with 19,632 paid/full-WARP frames or 8,364 shorter lavapipe frames. Its conditioning
+scene is S5, while v1 keeps S3. Paid pilot/full deadlines remain 600/1500 seconds. Only conditioning
 frame 0 uses the explicit bounded cold-frame limit. Every other frame retains its steady limit.
 The [living performance reference](../RENDERER-PERFORMANCE.md#evidence-and-authorization) owns the
 per-class frame and job caps. Collection adds no frame, calibration, query block or profiler.

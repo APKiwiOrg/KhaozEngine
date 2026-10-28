@@ -172,13 +172,14 @@ public sealed partial class RendererPerfColdLifecycleTests
         using var context = new GpuDeviceContext(diagnostic, null, null,
             new(GpuBackendKind.VulkanNative, GpuBackendSource.UserPreference, null), true);
         int commits = 0;
-        var cold = RendererPerfColdCollector.Collect(inventory, context, production.Configuration,
+        var cold = RendererPerfColdCollector.Collect(inventory, RendererPerfSchedules.For("pilot"), context, production.Configuration,
             new(new(() => 0, 1000), 0, 1000, default), backend => RendererPerfCompilerReadContract.ForAvailable(backend, 1048576),
             (reservation, bytes) => { Assert.True(bytes > 0 && bytes <= reservation.MaximumEncodedBytes); commits++; });
         Assert.Empty(cold.Failures); Assert.Equal(1, commits);
         Assert.Equal(RendererPerfCollectionState.Complete, cold.Compiler.State);
         Assert.Equal(1, diagnostic.GraphicsAttempts); Assert.Equal(0, diagnostic.ComputeAttempts);
-        Assert.Empty(RendererPerfCompilerCorrespondence.Validate(inventory, cold.Pipelines, cold.Compiler));
+        Assert.Empty(RendererPerfCompilerCorrespondence.Validate(inventory, cold.Pipelines, cold.Compiler,
+            RendererPerfSchedules.For("pilot").Operations, RendererPerfSchedules.For("pilot").ConditioningOperation));
     }
 
     [Theory]

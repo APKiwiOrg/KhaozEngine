@@ -19,15 +19,27 @@ public sealed class RendererPerfColdLimitPolicyTests
         }
     }
 
+    // Classes is also the v1 selector fixture inventory. C# admission is extended before that selector.
+    public static IEnumerable<object[]> AdmittedClasses()
+    {
+        foreach (var entry in Classes()) yield return entry;
+        yield return ["water-optics-v2", "linux-vulkan"];
+        yield return ["water-optics-v2", "windows-d3d11"];
+        yield return ["rehearsal-water-optics-v2", "linux-vulkan"];
+        yield return ["rehearsal-water-optics-v2-full", "windows-d3d11"];
+    }
+
     internal static JsonObject ManifestJson(string preset, string leg) => preset switch
     {
         "rehearsal-controls" => RendererPerfRehearsalControlsTests.ManifestJson(leg),
         "rehearsal" or "rehearsal-full" => RendererPerfRehearsalClassesTests.ManifestJson(preset, leg),
+        "water-optics-v2" or "rehearsal-water-optics-v2" or "rehearsal-water-optics-v2-full"
+            => RendererPerfWaterOpticsPresetTests.ManifestJson(preset, leg),
         _ => RendererPerfProtocolTests.ManifestJson(preset, leg)
     };
 
     [Theory]
-    [MemberData(nameof(Classes))]
+    [MemberData(nameof(AdmittedClasses))]
     public void Every_preset_requires_the_same_bounded_cold_limit(string preset, string leg)
     {
         JsonObject json = ManifestJson(preset, leg);

@@ -54,6 +54,8 @@ internal static class RendererPerfSchedules
         new(4, "effects-ui/1", "renderer-full-native-1080/1"),
     ];
     static readonly ImmutableArray<RendererPerfScheduledRecipe> V1Pilot = [V1Recipes[3]];
+    static readonly ImmutableArray<RendererPerfScheduledRecipe> WaterOpticsV2Recipes =
+        [.. RendererPerfWaterOptics.RecipeIds.Select((id, scene) => new RendererPerfScheduledRecipe(scene, id + "/1", "renderer-full-native-1080/1"))];
 
     static RendererPerfSchedule V1PilotSchedule(string preset, RendererPerfExecutionClass executionClass)
         => new(preset, executionClass, V1Pilot, 1, 64, 128, PilotControls, 32, 64, 300, 3, 1260, PilotLegs);
@@ -68,9 +70,17 @@ internal static class RendererPerfSchedules
         V1FullSchedule("rehearsal-full", RendererPerfExecutionClass.Rehearsal),
         // A short conditioning session still carries the cold first frame and the S3 recipe facts without scene blocks.
         new("rehearsal-controls", RendererPerfExecutionClass.Rehearsal, V1Pilot, 0, 0, 0, AllControls, 64, 128, 3, 3, 2307, AllLegs),
+        new("water-optics-v2", RendererPerfExecutionClass.Performance, WaterOpticsV2Recipes,
+            3, 192, 256, AllControls, 64, 128, 1200, 5, 19632, PilotLegs),
+        new("rehearsal-water-optics-v2", RendererPerfExecutionClass.Rehearsal, WaterOpticsV2Recipes,
+            3, 64, 128, AllControls, 32, 64, 300, 5, 8364, ["linux-vulkan"]),
+        new("rehearsal-water-optics-v2-full", RendererPerfExecutionClass.Rehearsal, WaterOpticsV2Recipes,
+            3, 192, 256, AllControls, 64, 128, 1200, 5, 19632, ["windows-d3d11"]),
     ];
 
     internal static ImmutableArray<string> Presets { get; } = [.. Table.Select(s => s.Preset)];
+    // Only manifest-free decoding uses this envelope. Admission retains the selected schedule's exact bound.
+    internal static int MaximumOperations { get; } = Table.Max(s => s.Operations);
 
     internal static RendererPerfSchedule For(string preset)
         => Table.FirstOrDefault(s => s.Preset == preset)

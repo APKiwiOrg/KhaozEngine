@@ -100,7 +100,8 @@ public sealed class RendererPerfSceneScheduleTests(ITestOutputHelper output)
             && o.Stage == RendererPerfConstructionStage.Warmup);
         Assert.DoesNotContain(inventory.Occurrences, o => o.Stage == RendererPerfConstructionStage.Measured);
         Assert.Equal(RendererPerfCollectionState.Complete, report.Compiler.State);
-        Assert.Empty(RendererPerfCompilerCorrespondence.Validate(inventory, report.Pipelines, report.Compiler));
+        Assert.Empty(RendererPerfCompilerCorrespondence.Validate(inventory, report.Pipelines, report.Compiler,
+            report.Manifest.Schedule.Operations, report.Manifest.Schedule.ConditioningOperation));
     }
 
     sealed class CountingScene(RendererPerfSceneWorkload work, Action<int> count) : IRendererPerfNativeWork

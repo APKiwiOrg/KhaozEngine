@@ -76,7 +76,7 @@ public sealed partial class RendererPerfConstructionTests
     public void Pure_correspondence_accepts_synthetic_complete_and_truthful_unsupported_cases(bool unsupported)
     {
         var x = Correspondence(unsupported);
-        Assert.Empty(RendererPerfCompilerCorrespondence.Validate(x.Inventory, x.Pipelines, x.Compiler));
+        Assert.Empty(RendererPerfCompilerCorrespondence.Validate(x.Inventory, x.Pipelines, x.Compiler, 9, "conditioning:S3/TotalOnly/0"));
         Assert.Equal(new[] { 0, 1 }, x.Compiler.Results[0].OccurrenceIds);
         Assert.Equal(new[] { 0, 0, 1 }, x.Inventory.Occurrences.Select(o => o.RecipeId));
         _output.WriteLine("synthetic configuration only unsupported={0} occurrences=3 recipes=2 reports=2", unsupported);
@@ -123,7 +123,7 @@ public sealed partial class RendererPerfConstructionTests
                     }
                 }); break;
         }
-        Assert.NotEmpty(RendererPerfCompilerCorrespondence.Validate(i, p, c));
+        Assert.NotEmpty(RendererPerfCompilerCorrespondence.Validate(i, p, c, 9, "conditioning:S3/TotalOnly/0"));
     }
 
     [Theory]
@@ -189,7 +189,7 @@ public sealed partial class RendererPerfConstructionTests
             _ => d
         };
         c = c with { Diagnostic = d };
-        Assert.NotEmpty(RendererPerfCompilerCorrespondence.Validate(i, p, c));
+        Assert.NotEmpty(RendererPerfCompilerCorrespondence.Validate(i, p, c, 9, "conditioning:S3/TotalOnly/0"));
     }
     [Theory]
     [InlineData("colour")]
@@ -224,7 +224,7 @@ public sealed partial class RendererPerfConstructionTests
     public void Detached_state_tampering_cannot_be_hidden_by_rehashing_the_recipe(string field)
     {
         var (i, p, c) = Correspondence(graphics: true);
-        Assert.Empty(RendererPerfCompilerCorrespondence.Validate(i, p, c));
+        Assert.Empty(RendererPerfCompilerCorrespondence.Validate(i, p, c, 9, "conditioning:S3/TotalOnly/0"));
         var r = i.Recipes[0]; var g = r.Graphics!; var v = g.VertexLayouts[0];
         g = field switch
         {
@@ -280,7 +280,7 @@ public sealed partial class RendererPerfConstructionTests
         r = r with { Graphics = g };
         r = r with { RecipeSha256 = RendererPerfConstructionEncoding.Digest(r, i.Shaders, i.Layouts) };
         i = i with { Recipes = [r] };
-        Assert.NotEmpty(RendererPerfCompilerCorrespondence.Validate(i, p, c));
+        Assert.NotEmpty(RendererPerfCompilerCorrespondence.Validate(i, p, c, 9, "conditioning:S3/TotalOnly/0"));
     }
 
     [Fact]
@@ -294,7 +294,7 @@ public sealed partial class RendererPerfConstructionTests
             { DiagnosticConfigurationSha256 = GpuDiagnosticIdentityEncoding.Configuration(c.Production!) } })]
         };
         p = [.. p.Select(row => row with { Identity = row.Identity with { DiagnosticConfigurationSha256 = GpuDiagnosticIdentityEncoding.Configuration(c.Diagnostic!) } })];
-        Assert.Contains(RendererPerfCompilerCorrespondence.Validate(i, p, c), reason => reason.Contains("not-applicable", StringComparison.Ordinal));
+        Assert.Contains(RendererPerfCompilerCorrespondence.Validate(i, p, c, 9, "conditioning:S3/TotalOnly/0"), reason => reason.Contains("not-applicable", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -342,7 +342,7 @@ public sealed partial class RendererPerfConstructionTests
                 i = i with { Recipes = i.Recipes.SetItem(0, recipe) };
             }
         }
-        Assert.NotEmpty(RendererPerfCompilerCorrespondence.Validate(i, p, c));
+        Assert.NotEmpty(RendererPerfCompilerCorrespondence.Validate(i, p, c, 9, "conditioning:S3/TotalOnly/0"));
     }
 
 }

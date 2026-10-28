@@ -30,3 +30,28 @@ hosted `cross-platform-gpu` failure, review that portable inputs match, commit t
 entry and run the complete matrix again. Never accept missing entries or copy a digest
 from another family without measuring it. Keep GPU caches enabled and the render filter
 empty for the full gate. The public engine repository uses hosted runners only.
+
+## Water optics v2 recipes
+
+The `water-optics-v2` recipes measure the opt-in water optics. Their ids contain slashes, so
+`water-optics-v2/village/off` freezes at `recipes/water-optics-v2/village/off.json`.
+`RendererPerfRecipe.IdFromVersion` keeps everything before the last `/` of a version as the id.
+`RendererPerfWaterOptics.RecipeIds` lists the six in scene order, the village pool under `off`, `m2-on`
+and `m5-on`, then the outdoors pool under the same three profiles.
+
+The three profiles of one scene share geometry, assets and sequence. Their settings differ only in
+`UnderwaterSunlight` and `WaterColumnLight`. Each pool is 1.5 m deep with a sloping bed, rocks resting
+on the bed, wholly submerged casters and floaters straddling the surface. The wave clearance is the
+wave source's amplitude bound plus 0.15 m. The outdoors pool shortens the v1 fetch to 0.25 km, because
+the v1 sea state peaks near 2.6 m and leaves no room for submerged casters. Both cameras target the
+shoreline centre and frame the pool so its surface covers about half of every measured frame.
+
+The v2 cameras cull part of the land, so their `Expected` block records it. Terrain visibility comes from
+the engine's main-pass rule (`Scene3D.IntersectsMainPass`) and is constant over the sequence. Rigid
+visibility moves by a few draws as the camera drifts, so it is a range over all 256 sequence frames. The
+range narrows and widens the frustum by 0.1 percent, so a draw at the frame edge cannot make the authored
+counts differ between platforms. v1 recipes frame all their content and keep their original block.
+
+The six files were frozen on `osx-arm64`. Their `linux-x64` and `win-x64` families come from a hosted
+`cross-platform-gpu` run, as for any new family. Until then the frozen recipe theory and every test that
+constructs these recipes with verification fail on Linux and Windows.

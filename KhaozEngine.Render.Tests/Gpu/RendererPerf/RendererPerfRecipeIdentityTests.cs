@@ -16,6 +16,12 @@ public sealed class RendererPerfRecipeIdentityTests
     [InlineData("crowd")]
     [InlineData("outdoors")]
     [InlineData("effects-ui")]
+    [InlineData("water-optics-v2/village/off")]
+    [InlineData("water-optics-v2/village/m2-on")]
+    [InlineData("water-optics-v2/village/m5-on")]
+    [InlineData("water-optics-v2/outdoors/off")]
+    [InlineData("water-optics-v2/outdoors/m2-on")]
+    [InlineData("water-optics-v2/outdoors/m5-on")]
     public void Frozen_recipe_matches_the_running_platform_family(string id)
     {
         using var recipe = RendererPerfRecipe.Create(id);

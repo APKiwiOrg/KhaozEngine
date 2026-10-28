@@ -9,8 +9,9 @@ using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
-/// <summary>Retained cutout shrubs, an analytic river and a two-cascade FFT ocean.</summary>
-internal sealed class RendererPerfOutdoorsScene : RendererPerfVillageScene
+/// <summary>Retained cutout shrubs, an analytic river and a two-cascade FFT ocean. Subclasses replace the water
+/// planes and keep the foliage, the FFT settings and the point lights.</summary>
+internal class RendererPerfOutdoorsScene : RendererPerfVillageScene
 {
     readonly GltfMesh _shrub = FoliageShadowGpuScene.ShrubMesh();
     readonly RendererPerfTexture _cutout = new(8, 8, RendererPerfUiScene.ColorPixels(0), TextureMipPolicy.Full);
@@ -31,19 +32,22 @@ internal sealed class RendererPerfOutdoorsScene : RendererPerfVillageScene
         WindSpatialFrequency = .35f,
         WindFadeBladePixels = 0f,
     };
-    readonly WaterPlane[] _water =
-    [
-        new(0f, .25f, -8f, 16f, 1.5f, new WaterLook { WaveSource = WaterWaveSource.Procedural, SwellAmplitude = .08f }),
-        new(0f, .25f, 16f, 16f, 8f),
-    ];
+    readonly WaterPlane[] _water;
     readonly RendererPerfPoint[] _points =
     [
         new(new(-8f, 3f, -4f), Color.White, 32f, 3f, default),
         new(new(8f, 3f, 4f), Color.White, 32f, 3f, default),
     ];
     FoliageBatch? _batch;
-    internal RendererPerfOutdoorsScene() : base("outdoors", 4, 0, 0)
+    internal RendererPerfOutdoorsScene() : this("outdoors",
+    [
+        new(0f, .25f, -8f, 16f, 1.5f, new WaterLook { WaveSource = WaterWaveSource.Procedural, SwellAmplitude = .08f }),
+        new(0f, .25f, 16f, 16f, 8f),
+    ])
+    { }
+    protected RendererPerfOutdoorsScene(string id, WaterPlane[] water) : base(id, 4, 0, 0)
     {
+        _water = water;
         var motion = new FoliageMotionProfile(.3f, .15f, .4f, .035f);
         _instances = Enumerable.Range(0, 4096).Select(i =>
         {
@@ -55,7 +59,9 @@ internal sealed class RendererPerfOutdoorsScene : RendererPerfVillageScene
         }).ToArray();
     }
     protected override int Foliage => 4096;
-    protected override int Water => 2;
+    protected override int Water => _water.Length;
+    protected virtual RendererPerfClipmapSchedule ClipmapSchedule => new(new(33, 1, 1), new(224, 1, 1), 2, 2, 4);
+    protected virtual string WaterRoute => "analytic-river-and-fft-ocean-clipmaps";
     protected override RendererPerfRecipeSchedule Schedule => base.Schedule with
     {
         DirectionalCache = "recomputed-displaced-foliage",
@@ -63,11 +69,11 @@ internal sealed class RendererPerfOutdoorsScene : RendererPerfVillageScene
         {
             FoliagePatches = 64,
             FoliageInstances = 4096,
-            WaterPlanes = 2,
+            WaterPlanes = _water.Length,
             OceanDispatches = 2,
             OceanMipCopies = 4,
             OceanPrime = "first-warmup-only",
-            Clipmap = new(new(33, 1, 1), new(224, 1, 1), 2, 2, 4)
+            Clipmap = ClipmapSchedule
         },
     };
     protected override object Geometry => new
@@ -97,7 +103,7 @@ internal sealed class RendererPerfOutdoorsScene : RendererPerfVillageScene
             NativePatches = 64,
             InstancesPerPatch = 64,
             CutoutShadows = true,
-            Water = "analytic-river-and-fft-ocean-clipmaps",
+            Water = WaterRoute,
             OceanDispatches = 2,
             OceanMipCopies = 4,
             OceanPrime = "first-warmup-only",
@@ -121,7 +127,8 @@ internal sealed class RendererPerfOutdoorsScene : RendererPerfVillageScene
         post.Water.ClipmapRingCells = 32;
         post.Water.ClipmapLevels = 4;
     }
-    long[][][] BuildClipmapStates()
+    // Per sequence index and plane, the snapped clipmap indices the camera focus selects.
+    protected long[][][] BuildClipmapStates()
     {
         WaterSettings settings = Settings().Water;
         return Enumerable.Range(0, Period).Select(index =>

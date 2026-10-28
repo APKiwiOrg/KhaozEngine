@@ -82,7 +82,7 @@ $lockedClock = $manifest.execution.lockedGraphicsClockMHz
 if ($rehearsal) {
     Require ($null -eq $lockedClock) 'Software rehearsal requires a null graphics clock policy'
 } else {
-    Require ($lockedClock -is [long] -and $lockedClock -eq 1200) 'Paid T4 graphics clock must be an explicit 1200 MHz integer'
+    Require ($lockedClock -is [long] -and $lockedClock -eq 1095) 'Paid T4 graphics clock must be an explicit 1095 MHz integer'
 }
 Require ($manifest.preset -cne 'pilot' -or $env:LEGS -cne 'windows-vulkan') 'Windows Vulkan has no initial pilot'
 $minutes = if ($rehearsal) { $rehearsalPolicy.minutes } elseif ($manifest.preset -ceq 'pilot') { if ($env:LEGS -ceq 'linux-vulkan') { 12 } else { 20 } } else { 35 }

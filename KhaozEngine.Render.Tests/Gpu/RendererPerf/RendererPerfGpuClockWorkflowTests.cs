@@ -42,7 +42,7 @@ public sealed class RendererPerfGpuClockWorkflowTests
         var result = fixture.Execute("pwsh", ["-NoProfile", "-File", Path.Combine(fixture.Directory, "clock-test.ps1"), "Lock"]);
         Assert.Equal(accepted, result.Code == 0);
         string commands = File.ReadAllText(Path.Combine(fixture.Reports, "commands.txt"));
-        Assert.Contains("--lock-gpu-clocks=1200,1200", commands, StringComparison.Ordinal);
+        Assert.Contains("--lock-gpu-clocks=1095,1095", commands, StringComparison.Ordinal);
         Assert.Equal(platform == "Linux", commands.Contains("sudo ", StringComparison.Ordinal));
         Assert.Equal(platform == "Linux", commands.Contains("--persistence-mode=1", StringComparison.Ordinal));
         string log = File.ReadAllText(Path.Combine(fixture.Reports, "gpu-clock-lock.log"));
@@ -52,14 +52,28 @@ public sealed class RendererPerfGpuClockWorkflowTests
             string evidence = File.ReadAllText(Path.Combine(fixture.Reports, "gpu-clock-lock.json"));
             var decoded = System.Text.Json.Nodes.JsonNode.Parse(evidence)!;
             Assert.Equal("applied", decoded["state"]!.GetValue<string>());
-            Assert.Equal(fault == "observed" ? 1185 : 1200, decoded["observedGraphicsClockMHz"]!.GetValue<int>());
-            Assert.Contains("1200", evidence, StringComparison.Ordinal);
+            Assert.Equal(fault == "observed" ? 1080 : 1095, decoded["observedGraphicsClockMHz"]!.GetValue<int>());
+            Assert.Contains("1095", evidence, StringComparison.Ordinal);
             Assert.Contains("gpuClkMax", log, StringComparison.Ordinal);
         }
         else Assert.Contains("GpuClockNotLocked", result.Output, StringComparison.Ordinal);
         var reset = fixture.Execute("pwsh", ["-NoProfile", "-File", Path.Combine(fixture.Directory, "clock-test.ps1"), "Reset"]);
         Assert.True(reset.Code == 0, reset.Output);
         Assert.Contains("--reset-gpu-clocks", File.ReadAllText(Path.Combine(fixture.Reports, "commands.txt")), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("1200")]
+    [InlineData("1215")]
+    [InlineData("")]
+    public void Clock_setup_refuses_any_matrix_clock_except_the_paid_lock_before_nvidia_smi(string clock)
+    {
+        using var fixture = Fixture("Linux", "ok");
+        fixture.Environment["RENDERER_PERF_LOCKED_GRAPHICS_CLOCK_MHZ"] = clock;
+        var result = fixture.Execute("pwsh", ["-NoProfile", "-File", Path.Combine(fixture.Directory, "clock-test.ps1"), "Lock"]);
+        Assert.NotEqual(0, result.Code);
+        Assert.Contains("GpuClockNotLocked", result.Output, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(fixture.Reports, "commands.txt")));
     }
 
     [Fact]
@@ -77,7 +91,7 @@ public sealed class RendererPerfGpuClockWorkflowTests
         var fixture = new RendererPerfWorkflowContractTests.WorkflowFixture();
         fixture.Environment["RUNNER_OS"] = platform;
         fixture.Environment["RENDERER_PERF_EXECUTION_CLASS"] = "performance";
-        fixture.Environment["RENDERER_PERF_LOCKED_GRAPHICS_CLOCK_MHZ"] = "1200";
+        fixture.Environment["RENDERER_PERF_LOCKED_GRAPHICS_CLOCK_MHZ"] = "1095";
         fixture.Environment["CLOCK_FAULT"] = fault;
         fixture.Environment["CLOCK_SCRIPT"] = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../../scripts/renderer-perf-gpu-clock.ps1"));
         File.WriteAllText(Path.Combine(fixture.Directory, "clock-test.ps1"), """
@@ -94,10 +108,10 @@ public sealed class RendererPerfGpuClockWorkflowTests
                 if ($args[0] -like '--lock-gpu-clocks=*') {
                     if ($env:CLOCK_FAULT -eq 'exit') { $global:LASTEXITCODE = 9 }
                     if ($env:CLOCK_FAULT -eq 'unsupported') { 'Setting locked GPU clocks is Not Supported'; return }
-                    if ($env:CLOCK_FAULT -eq 'range') { 'GPU clocks set to "(gpuClkMin 1215, gpuClkMax 1215)" for GPU 00000000:00:00.0'; return }
-                    'GPU clocks set to "(gpuClkMin 1200, gpuClkMax 1200)" for GPU 00000000:00:00.0'
+                    if ($env:CLOCK_FAULT -eq 'range') { 'GPU clocks set to "(gpuClkMin 1110, gpuClkMax 1110)" for GPU 00000000:00:00.0'; return }
+                    'GPU clocks set to "(gpuClkMin 1095, gpuClkMax 1095)" for GPU 00000000:00:00.0'
                 } elseif ($args[0] -like '--query-gpu=*') {
-                    if ($env:CLOCK_FAULT -eq 'observed') { '1185, 1590' } else { '1200, 1590' }
+                    if ($env:CLOCK_FAULT -eq 'observed') { '1080, 1590' } else { '1095, 1590' }
                 } else { 'NVIDIA driver full output retained' }
             }
             & $env:CLOCK_SCRIPT -Mode $Mode

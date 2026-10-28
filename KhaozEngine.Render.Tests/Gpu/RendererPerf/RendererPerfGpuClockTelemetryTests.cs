@@ -29,9 +29,9 @@ public sealed class RendererPerfGpuClockTelemetryTests
         var report = RendererPerfGpuClockAssessmentTests.WithClocks(RendererPerfAnalysisFixture.Report());
         string raw = fault switch
         {
-            "clock" => "0x1EB810DE, 590.48.01, N/A, 1185, P0, 100, 60, 65, 0x0, 5001, 1590",
-            "power" => "0x1EB810DE, 590.48.01, N/A, 1200, P0, 100, 60, 65, 0x4, 5001, 1590",
-            _ => "0x1EB810DE, 590.48.01, N/A, 1200, P0, 100, 60, 65, 0x0, 5001, 1590"
+            "clock" => "0x1EB810DE, 590.48.01, N/A, 1080, P0, 100, 60, 65, 0x0, 5001, 1590",
+            "power" => "0x1EB810DE, 590.48.01, N/A, 1095, P0, 100, 60, 65, 0x4, 5001, 1590",
+            _ => "0x1EB810DE, 590.48.01, N/A, 1095, P0, 100, 60, 65, 0x0, 5001, 1590"
         };
         string rows = string.Concat(Enumerable.Range(0, fault == "missing-row" ? 6 : 7)
             .Select(i => Row(i * 64, raw, fault == "failure" ? "sampler failed" : null)));
@@ -49,7 +49,7 @@ public sealed class RendererPerfGpuClockTelemetryTests
         atTicks = boundary + 1,
         frequency = 1000,
         query = Query,
-        raw = raw ?? "0x1EB810DE, 590.48.01, Requested functionality has been deprecated, 1200, P0, 100, 60, 65, 0x0000000000000002, 5001, 1590",
+        raw = raw ?? "0x1EB810DE, 590.48.01, Requested functionality has been deprecated, 1095, P0, 100, 60, 65, 0x0000000000000002, 5001, 1590",
         failure
     }, RendererPerfManifest.JsonOptions) + "\n";
 }

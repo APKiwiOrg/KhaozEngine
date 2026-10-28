@@ -438,16 +438,20 @@ Clock/work drift uses the existing protocol rule. Flag a change above 5 percent 
 last64, or between corresponding iteration means and the first retained iteration mean. Such
 evidence cannot be promoted as a stable baseline. Keep slow and GC frames.
 
-Paid T4 units lock the graphics clock at 1,200 MHz. The unlocked
+Paid T4 units lock the graphics clock at 1,095 MHz on every preset and leg. The unlocked
 [Linux full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40572172000) and
 [Windows full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40572176659) completed every
 conditioning frame, block and control without frame errors, then refused promotion with
 `ClockOrWorkDrift`. Their telemetry alternated between idle clocks and software power capping at
 70 W. Loaded graphics clocks reached about 1,290 to 1,455 MHz at the cap, while lighter work boosted
-higher or dropped to idle. The selected 1,200 MHz is a supported-step candidate divisible by 15 and
-below that observed loaded range, leaving power headroom instead of relying on variable boost.
-This evidence motivates the lock. It does not prove that the hosted drivers can hold it. Fresh,
-separately approved pilots on each leg must establish that before the separately approved full pair.
+higher or dropped to idle. That motivated a lock below the loaded range instead of variable boost.
+The [locked Linux full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599806485) then
+applied a 1,200 MHz lock, completed all 30 blocks and 12 controls with a worst drift of 1.03 percent
+and no `ClockOrWorkDrift`, and refused only `GpuClockNotLocked`. One of its 90 samples reported
+software power cap (`0x4`) at a held 1,200 MHz while averaging 54.4 W. The lock moved to 1,095 MHz
+for more power headroom below the 70 W cap. It is a T4 graphics clock already observed in this
+program's telemetry and a multiple of 15 MHz. The throttle policy below is unchanged and still
+refuses `0x4` at the locked clock. No measured unit has held 1,095 MHz yet.
 
 `GpuClockNotLocked` is independent of the unchanged drift rule. Every retained conditioning, scene
 and control batch must carry the identified host observation from the fixed sampler. Any observed

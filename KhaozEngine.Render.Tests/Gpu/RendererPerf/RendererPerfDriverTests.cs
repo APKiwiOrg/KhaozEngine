@@ -35,7 +35,7 @@ public sealed class RendererPerfDriverTests
             Assert.Equal(192, b.Warmup.Concat(b.Measured).Select(f => f.FrameId).Distinct().Count());
         });
         Assert.Equal(1260, report.Batches.Sum(b => b.Count));
-        Assert.All(report.Batches, b => Assert.Equal(1200, b.Telemetry["clock.observedMHz"].Value));
+        Assert.All(report.Batches, b => Assert.Equal(1095, b.Telemetry["clock.observedMHz"].Value));
         Assert.Equal(9, rig.Disposals);
         _ = RendererPerfReportJson.Serialize(report);
     }
@@ -194,7 +194,7 @@ public sealed class RendererPerfDriverTests
         internal readonly List<(RendererPerfReport Report, bool Final)> Writes = [];
         internal bool Outlier, Drift, Enabled = true;
         internal string? Fault;
-        internal int Disposals, ClockCalls, InfoBoundary, ObservedClock = 1200;
+        internal int Disposals, ClockCalls, InfoBoundary, ObservedClock = 1095;
         internal long Tick;
         internal long FirstBatchFrameTicks = 1, FirstDrainTicks = 1, ColdReadbackTicks;
         internal Func<RendererPerfBlock, int, long>? FrameTicks;

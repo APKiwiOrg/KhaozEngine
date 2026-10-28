@@ -42,7 +42,7 @@ try {
         $evidence.state = 'reset'
         $evidence.code = $null
     } else {
-        if ($env:RENDERER_PERF_LOCKED_GRAPHICS_CLOCK_MHZ -cne '1200') { throw 'The trusted matrix must supply the fixed paid graphics clock' }
+        if ($env:RENDERER_PERF_LOCKED_GRAPHICS_CLOCK_MHZ -cne '1095') { throw 'The trusted matrix must supply the fixed paid graphics clock' }
         $clock = [int]$env:RENDERER_PERF_LOCKED_GRAPHICS_CLOCK_MHZ
         $evidence.requestedGraphicsClockMHz = $clock
         if ($env:RUNNER_OS -ceq 'Linux') { $null = Invoke-Nvidia @('--persistence-mode=1') $true }

@@ -6,7 +6,8 @@ internal static class RendererPerfPaidPolicy
 {
     // Run 40435928569 lasted 14m17s after a 12-minute cap. Round its 2m17s overrun up.
     internal const int CleanupAllowanceMinutes = 3;
-    internal const int LockedGraphicsClockMHz = 1200;
+    // Run 40599806485 held 1,200 MHz but hit the 70 W software power cap. 1,095 MHz leaves headroom.
+    internal const int LockedGraphicsClockMHz = 1095;
 
     internal static void Validate(RendererPerfManifest manifest)
     {

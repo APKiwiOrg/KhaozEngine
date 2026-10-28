@@ -10,17 +10,18 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 public sealed class RendererPerfGpuClockAssessmentTests
 {
     [Theory]
-    [InlineData("conditioning:S3/TotalOnly/0", 1185, 0)]
-    [InlineData("S3/TotalOnly/0", 1215, 0)]
+    [InlineData("conditioning:S3/TotalOnly/0", 1080, 0)]
+    [InlineData("S3/TotalOnly/0", 1110, 0)]
+    [InlineData("S3/TotalOnly/0", 1200, 0)]
     [InlineData("control:11/TotalOnly/0", 300, 1)]
-    [InlineData("S3/PerPass/0", 1200, 4)]
-    [InlineData("S3/PerPass/0", 1200, 8)]
-    [InlineData("S3/PerPass/0", 1200, 16)]
-    [InlineData("S3/PerPass/0", 1200, 32)]
-    [InlineData("S3/PerPass/0", 1200, 64)]
-    [InlineData("S3/PerPass/0", 1200, 128)]
-    [InlineData("S3/PerPass/0", 1200, 256)]
-    [InlineData("S3/PerPass/0", 1200, 512)]
+    [InlineData("S3/PerPass/0", 1095, 4)]
+    [InlineData("S3/PerPass/0", 1095, 8)]
+    [InlineData("S3/PerPass/0", 1095, 16)]
+    [InlineData("S3/PerPass/0", 1095, 32)]
+    [InlineData("S3/PerPass/0", 1095, 64)]
+    [InlineData("S3/PerPass/0", 1095, 128)]
+    [InlineData("S3/PerPass/0", 1095, 256)]
+    [InlineData("S3/PerPass/0", 1095, 512)]
     public void Promotion_refuses_any_unheld_clock_or_external_limiter(string operation, int clock, int flags)
     {
         var report = RendererPerfAnalysisFixture.Report();
@@ -39,10 +40,10 @@ public sealed class RendererPerfGpuClockAssessmentTests
     public void Idle_and_application_setting_flags_are_allowed_only_at_the_exact_clock(int flags)
     {
         var report = RendererPerfAnalysisFixture.Report();
-        report = WithClocks(report, 1200, flags);
+        report = WithClocks(report, 1095, flags);
         byte[] bytes = RendererPerfReportJson.Serialize(report);
         var root = JsonNode.Parse(bytes)!;
-        Assert.Equal(1200, root["gpuClock"]!["lockedGraphicsClockMHz"]!.GetValue<int>());
+        Assert.Equal(1095, root["gpuClock"]!["lockedGraphicsClockMHz"]!.GetValue<int>());
         Assert.Equal("verified", root["gpuClock"]!["state"]!.GetValue<string>());
         Assert.Equal(7, root["gpuClock"]!["samples"]!.GetValue<int>());
         root["gpuClock"]!["samples"] = 8;
@@ -56,7 +57,7 @@ public sealed class RendererPerfGpuClockAssessmentTests
     public void Missing_telemetry_never_certifies_a_held_lock(string key)
     {
         var report = RendererPerfAnalysisFixture.Report();
-        report = report with { Batches = report.Batches.SetItem(0, report.Batches[0] with { Telemetry = Telemetry(1200, 0).Remove(key) }) };
+        report = report with { Batches = report.Batches.SetItem(0, report.Batches[0] with { Telemetry = Telemetry(1095, 0).Remove(key) }) };
         Assert.Equal("GpuClockNotLocked", Assert.Throws<RendererPerfProtocolException>(() => RendererPerfReportJson.Serialize(report)).Code);
     }
 
@@ -85,10 +86,10 @@ public sealed class RendererPerfGpuClockAssessmentTests
         Assert.Equal(1260, rig.Frames.Count);
         var summary = RendererPerfAnalysis.Analyze(report);
         Assert.Contains("GpuClockNotLocked", summary.Reasons);
-        Assert.Contains("Locked graphics clock 1200 MHz. Verification Refused", RendererPerfAnalysis.Markdown(summary), StringComparison.Ordinal);
+        Assert.Contains("Locked graphics clock 1095 MHz. Verification Refused", RendererPerfAnalysis.Markdown(summary), StringComparison.Ordinal);
     }
 
-    internal static RendererPerfReport WithClocks(RendererPerfReport report, int clock = 1200, int flags = 0)
+    internal static RendererPerfReport WithClocks(RendererPerfReport report, int clock = 1095, int flags = 0)
     {
         int boundary = 0;
         string? previous = null;

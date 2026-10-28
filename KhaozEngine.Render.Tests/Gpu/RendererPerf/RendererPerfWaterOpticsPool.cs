@@ -82,22 +82,30 @@ internal sealed class RendererPerfWaterOpticsPool
     /// <see cref="FloorY"/> at the far edge.</summary>
     internal float BedY(float z) => ShoreBedY + (FloorY - ShoreBedY) * Math.Clamp((z - ShoreZ) / (FarZ - ShoreZ), 0f, 1f);
 
-    /// <summary>The FFT sea state's peak vertical displacement in metres, derived because the engine exposes no
-    /// bound. With no onshore focus and no bathymetry the vertex stage sums one tap per cascade at full weight, so
-    /// the surface height is a zero-mean Gaussian field whose variance is the summed cascade height variance m0,
-    /// the same sum the ocean producer turns into its significant height. The peak is that significant height,
-    /// 4 sqrt(m0), a crest four standard deviations high, which a Gaussian sea exceeds at a point with
-    /// probability about 3e-5. The 0.15 m margin above it adds several more deviations for these pools.</summary>
-    internal static float FftPeakDisplacement(WaterSeaState sea)
+    /// <summary>A guaranteed bound, in metres, on the FFT surface's vertical displacement at any time and position.
+    /// Each cascade's height is the unnormalized inverse transform of h~(k, t) = h0(k) e^(-i w t) + conj(h0(-k))
+    /// e^(i w t), so its magnitude never exceeds the sum over every mode of |h0(k)| + |h0(-k)|, the two halves
+    /// the bake stores per texel. Bilinear and mip sampling only average texels. With no onshore focus and no
+    /// bathymetry the vertex stage adds one full-weight tap per cascade with shoaling exactly 1, so the surface
+    /// height is bounded by the sum over cascades. The significant height 4 sqrt(m0) is not a bound.</summary>
+    internal static float FftDisplacementBound(WaterSettings water)
     {
-        ArgumentNullException.ThrowIfNull(sea);
+        ArgumentNullException.ThrowIfNull(water);
+        WaterSeaState sea = water.SeaState;
         if (sea.OnshoreFocusStrength != 0f) throw new InvalidOperationException("Onshore focus reweights the cascade taps.");
+        if (water.Bathymetry is not null) throw new InvalidOperationException("Shoaling rescales the cascade taps.");
         int n = sea.CascadeResolution;
         var h0 = new Vector4[n * n];
-        float variance = 0f;
+        double bound = 0d;
         for (int cascade = 0; cascade < sea.CascadeCount; cascade++)
-            variance += OceanSpectrum.BuildInitialSpectrum(sea, cascade, n, h0).HeightVariance;
-        return WaterShoaling.SignificantHeight(variance);
+        {
+            OceanSpectrum.BuildInitialSpectrum(sea, cascade, n, h0);
+            foreach (Vector4 mode in h0)
+                bound += Math.Sqrt((double)mode.X * mode.X + (double)mode.Y * mode.Y)
+                    + Math.Sqrt((double)mode.Z * mode.Z + (double)mode.W * mode.W);
+        }
+        // Round up so the float bound never sits below the exact sum.
+        return MathF.BitIncrement((float)bound);
     }
 
     internal object Geometry => new

@@ -35,13 +35,15 @@ internal static class RendererPerfMainPassVisibility
         int min = int.MaxValue, max = 0;
         foreach (Matrix4x4 viewProjection in viewProjections)
         {
-            min = Math.Min(min, Visible(draws, Scaled(viewProjection, 1f + Tolerance)));
-            max = Math.Max(max, Visible(draws, Scaled(viewProjection, 1f - Tolerance)));
+            min = Math.Min(min, Visible(draws, Narrowed(viewProjection)));
+            max = Math.Max(max, Visible(draws, Widened(viewProjection)));
         }
         return new(min, max);
     }
 
-    // Scales clip x and y about the frame centre. Above 1 narrows the frustum, below 1 widens it.
-    static Matrix4x4 Scaled(Matrix4x4 viewProjection, float scale) =>
-        viewProjection * Matrix4x4.CreateScale(scale, scale, 1f);
+    // Scale clip x and y about the frame centre, narrowing or widening the frustum by the tolerance.
+    internal static Matrix4x4 Narrowed(Matrix4x4 viewProjection) =>
+        viewProjection * Matrix4x4.CreateScale(1f + Tolerance, 1f + Tolerance, 1f);
+    internal static Matrix4x4 Widened(Matrix4x4 viewProjection) =>
+        viewProjection * Matrix4x4.CreateScale(1f - Tolerance, 1f - Tolerance, 1f);
 }

@@ -41,14 +41,18 @@ and `m5-on`, then the outdoors pool under the same three profiles.
 
 The three profiles of one scene share geometry, assets and sequence. Their settings differ only in
 `UnderwaterSunlight` and `WaterColumnLight`. Each pool is 1.5 m deep with a sloping bed, rocks resting
-on the bed, wholly submerged casters and floaters straddling the surface. The wave clearance is the
-wave source's amplitude bound plus 0.15 m. The outdoors pool shortens the v1 fetch to 0.25 km, because
-the v1 sea state peaks near 2.6 m and leaves no room for submerged casters. Both cameras target the
+on the bed, wholly submerged casters and floaters straddling the surface. The wave clearance is a
+guaranteed bound on the surface height plus 0.15 m. The procedural bound is `SwellAmplitude`, which the
+swell components share exactly. The FFT bound sums the absolute amplitude of every mode of the 256-point
+field. The v1 sea state's bound exceeds 30 m, so the outdoors pool shortens the fetch to 20 m, which bounds
+the surface at 0.0955 m. Tests check both bounds against the engine's own surface heights. Both cameras target the
 shoreline centre and frame the pool so its surface covers about half of every measured frame.
 
 The v2 cameras cull part of the land, so their `Expected` block records it. Terrain visibility comes from
 the engine's main-pass rule (`Scene3D.IntersectsMainPass`) and is constant over the sequence. Rigid
-visibility moves by a few draws as the camera drifts, so it is a range over all 256 sequence frames. The
+draws and foliage patches move by a few as the camera drifts, so they are ranges over all 256 sequence
+frames. Foliage keeps its intended instance count and adds the patches tested, submitted and culled and
+the candidate instances. The
 range narrows and widens the frustum by 0.1 percent, so a draw at the frame edge cannot make the authored
 counts differ between platforms. v1 recipes frame all their content and keep their original block.
 

@@ -8,10 +8,12 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 /// optics pool beyond the terrain's +z edge.</summary>
 internal sealed class RendererPerfWaterOpticsOutdoorsScene : RendererPerfOutdoorsScene, IRendererPerfWaterOpticsScene
 {
-    // The v1 sea state peaks at 2.58 m (its significant height), which leaves no room for wholly submerged
-    // casters in a 1.5 m column. Cutting the fetch from 120 km to 0.25 km keeps the v1 wind, direction, cascades
-    // and 256-point kernels and peaks at 0.078 m, close to the village swell. v1 outdoors keeps its sea state.
-    const float FetchKilometres = .25f;
+    // Clearance needs a guaranteed bound on the surface height (RendererPerfWaterOpticsPool.FftDisplacementBound),
+    // not a statistic. The v1 sea state's bound exceeds 30 m, and even a 0.25 km fetch leaves 4.85 m, so no
+    // submerged caster fits a 1.5 m column. A 20 m fetch, shorter than this 32 m pool, keeps the v1 wind,
+    // direction, cascades and 256-point kernels and bounds the surface at 0.0955 m, close to the village swell.
+    // v1 outdoors keeps its sea state.
+    const float FetchKilometres = .02f;
     // Frames the pool so its surface covers about half of every measured frame.
     const float OrthoSize = 17f;
     // This pool is half the village pool's width and its closer frame shows only the near half of it, where
@@ -36,14 +38,15 @@ internal sealed class RendererPerfWaterOpticsOutdoorsScene : RendererPerfOutdoor
     protected override object Geometry => new { Rigid = base.Geometry, Pool = Pool.Geometry };
     protected override object ExpectedCounts => RendererPerfWaterOpticsExpected.Create(
         [.. RigidBounds().Where(draw => draw.Ground)], [.. RigidBounds().Concat(Pool.RigidBounds())],
-        Buildings, Props, Foliage, Water, [.. MeasuredIndices.Select(index => Frame(index).ViewProjection)]);
+        FoliageVisibility(), Buildings, Props, Foliage, Water,
+        [.. MeasuredIndices.Select(index => (Frame(index).Target, Frame(index).ViewProjection))]);
 
     static RendererPerfWaterOpticsPool CreatePool()
     {
-        var sea = new WaterSeaState();
-        ConfigureSea(sea);
+        var water = new WaterSettings();
+        ConfigureSea(water.SeaState);
         // The terrain spans -16 to 16 on x and z. The FFT plane keeps the scene's sea state, so no look.
-        return new RendererPerfWaterOpticsPool(-16f, 16f, 16f, 48f, RendererPerfWaterOpticsPool.FftPeakDisplacement(sea),
+        return new RendererPerfWaterOpticsPool(-16f, 16f, 16f, 48f, RendererPerfWaterOpticsPool.FftDisplacementBound(water),
             null, Seed, PropScale);
     }
 

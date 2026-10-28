@@ -59,6 +59,7 @@ internal class RendererPerfOutdoorsScene : RendererPerfVillageScene
         }).ToArray();
     }
     protected override int Foliage => 4096;
+    internal RendererPerfFoliageVisibility FoliageVisibility() => new(_instances, _shrub, PatchSize, _wind);
     protected override int Water => _water.Length;
     protected virtual RendererPerfClipmapSchedule ClipmapSchedule => new(new(33, 1, 1), new(224, 1, 1), 2, 2, 4);
     protected virtual string WaterRoute => "analytic-river-and-fft-ocean-clipmaps";

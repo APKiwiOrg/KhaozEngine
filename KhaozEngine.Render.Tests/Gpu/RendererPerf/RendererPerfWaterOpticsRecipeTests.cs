@@ -118,7 +118,7 @@ public sealed class RendererPerfWaterOpticsRecipeTests
         // The wave clearance is the active wave source's amplitude bound plus 0.15 m.
         float bound = id.Contains("/village/", StringComparison.Ordinal)
             ? pool.Plane.Look!.SwellAmplitude!.Value
-            : RendererPerfWaterOpticsPool.FftPeakDisplacement(scene.WaterSettings.SeaState);
+            : RendererPerfWaterOpticsPool.FftDisplacementBound(scene.WaterSettings);
         Assert.Equal(bound, pool.WaveBound);
         Assert.Equal(bound + .15f, pool.Clearance, 6);
         float clearTop = pool.Plane.SurfaceY - pool.Clearance;
@@ -173,6 +173,52 @@ public sealed class RendererPerfWaterOpticsRecipeTests
             }
     }
 
+    // The procedural bound, checked against the engine's CPU mirror of the swell shader (GerstnerWaves) over the
+    // whole pool at every effect time of the block sequence.
+    [Fact]
+    public void Procedural_surface_stays_within_its_bound()
+    {
+        using var recipe = RendererPerfRecipe.Create(
+            RendererPerfWaterOptics.RecipeId("village", RendererPerfWaterOpticsProfile.Off), verifyFrozen: false);
+        var scene = (IRendererPerfWaterOpticsScene)recipe;
+        WaterPlane plane = scene.Pool.Plane;
+        WaterSettings effective = plane.Look!.ResolveInto(new WaterSettings(), scene.WaterSettings);
+        Assert.Equal(WaterWaveSource.Procedural, effective.WaveSource);
+        var components = new GerstnerWaves.Component[GerstnerWaves.MaxComponents];
+        float highest = 0f;
+        foreach (float time in BlockTimes())
+            for (int ix = 0; ix <= 64; ix++)
+                for (int iz = 0; iz <= 32; iz++)
+                {
+                    float x = plane.CenterX - plane.HalfExtentX + 2f * plane.HalfExtentX * ix / 64f;
+                    float z = plane.CenterZ - plane.HalfExtentZ + 2f * plane.HalfExtentZ * iz / 32f;
+                    float height = MathF.Abs(GerstnerWaves.EvaluateSettings(effective, x, z, time, components).Offset.Y);
+                    highest = MathF.Max(highest, height);
+                }
+        Assert.True(highest <= scene.Pool.WaveBound, $"The swell reaches {highest} m, above its {scene.Pool.WaveBound} m bound.");
+        Assert.True(highest > scene.Pool.WaveBound * .5f, $"The swell peaks at only {highest} m, so the sampling missed it.");
+    }
+
+    // The FFT bound, checked against the engine's produced height maps on a real device at every effect time of the
+    // block sequence. The vertex stage sums one bilinear tap per cascade, so the surface never exceeds the sum of
+    // the cascades' largest texel heights.
+    [GpuFact]
+    public void Fft_surface_stays_within_its_bound()
+    {
+        using var recipe = RendererPerfRecipe.Create(
+            RendererPerfWaterOptics.RecipeId("outdoors", RendererPerfWaterOpticsProfile.Off), verifyFrozen: false);
+        var scene = (IRendererPerfWaterOpticsScene)recipe;
+        WaterSettings water = scene.WaterSettings;
+        Assert.Equal(WaterWaveSource.FftOcean, water.WaveSource);
+        Assert.Null(scene.Pool.Plane.Look);
+        float highest = RendererPerfOceanHeights.Peak(water, BlockTimes());
+        Assert.True(highest <= scene.Pool.WaveBound, $"The FFT surface reaches {highest} m, above its {scene.Pool.WaveBound} m bound.");
+        Assert.True(highest > 0f, "The FFT surface is flat, so the producer did not run.");
+    }
+
+    static float[] BlockTimes() => [.. Enumerable.Range(RendererPerfRecipe.WarmupIndices[0], 192 + RendererPerfRecipe.Period)
+        .Select(ordinal => ordinal * RendererPerfRecipe.Dt)];
+
     [Theory]
     [InlineData("village")]
     [InlineData("outdoors")]
@@ -213,6 +259,9 @@ public sealed class RendererPerfWaterOpticsRecipeTests
         Assert.True(Read("TerrainCulled") > 0, "The v2 camera culls part of the terrain.");
         Assert.Equal(terrain.Length, Read("TerrainVisible") + Read("TerrainCulled"));
         Assert.Equal(rigid.Length, Read("RigidIntended"));
+        RendererPerfFoliageVisibility? foliage = (recipe as RendererPerfOutdoorsScene)?.FoliageVisibility();
+        Assert.Equal(foliage?.Patches ?? 0, Read("FoliagePatchesTested"));
+        if (foliage is not null) Assert.True(Read("FoliagePatchesCulledMin") > 0, "The v2 camera culls foliage patches.");
         using var rig = new HeadlessSceneRig();
         recipe.ResetBlock(rig.Scene);
         foreach (int index in RendererPerfRecipe.WarmupIndices.Concat(RendererPerfRecipe.MeasuredIndices))
@@ -225,6 +274,14 @@ public sealed class RendererPerfWaterOpticsRecipeTests
             Assert.InRange(rig.Scene.DrawnInstances, Read("RigidVisibleMin"), Read("RigidVisibleMax"));
             Assert.InRange(rig.Scene.CulledInstances, Read("RigidCulledMin"), Read("RigidCulledMax"));
             Assert.Equal(Read("TerrainVisible"), RendererPerfMainPassVisibility.Visible(terrain, viewProjection));
+            FoliageFrameStats stats = rig.Scene.LastFoliageStats;
+            var (patches, candidates) = foliage?.Submitted(recipe.Frame(index).Target, viewProjection) ?? (0, 0);
+            Assert.Equal(Read("FoliagePatchesTested"), stats.TestedPatches);
+            Assert.Equal(patches, stats.SubmittedPatches);
+            Assert.Equal(candidates, stats.CandidateInstances);
+            Assert.InRange(stats.SubmittedPatches, Read("FoliagePatchesSubmittedMin"), Read("FoliagePatchesSubmittedMax"));
+            Assert.InRange(stats.TestedPatches - stats.SubmittedPatches, Read("FoliagePatchesCulledMin"), Read("FoliagePatchesCulledMax"));
+            Assert.InRange(stats.CandidateInstances, Read("FoliageCandidatesMin"), Read("FoliageCandidatesMax"));
         }
     }
 

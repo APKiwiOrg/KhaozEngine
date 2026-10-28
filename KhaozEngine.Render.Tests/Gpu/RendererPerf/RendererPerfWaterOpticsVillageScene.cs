@@ -8,6 +8,8 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 internal sealed class RendererPerfWaterOpticsVillageScene : RendererPerfVillageScene, IRendererPerfWaterOpticsScene
 {
     // The village terrain spans -32 to 32 on x and z.
+    // A guaranteed bound on the procedural surface height: the swell splits SwellAmplitude across its components
+    // in proportion to wavelength, so the vertical offset is a sum of sines whose amplitudes total exactly this.
     const float SwellAmplitude = .08f;
     // Frames the pool so its surface covers about half of every measured frame.
     const float OrthoSize = 30f;
@@ -29,7 +31,8 @@ internal sealed class RendererPerfWaterOpticsVillageScene : RendererPerfVillageS
     protected override object Geometry => new { Rigid = base.Geometry, Pool = Pool.Geometry };
     protected override object ExpectedCounts => RendererPerfWaterOpticsExpected.Create(
         [.. RigidBounds().Where(draw => draw.Ground)], [.. RigidBounds().Concat(Pool.RigidBounds())],
-        Buildings, Props, Foliage, Water, [.. MeasuredIndices.Select(index => Frame(index).ViewProjection)]);
+        null, Buildings, Props, Foliage, Water,
+        [.. MeasuredIndices.Select(index => (Frame(index).Target, Frame(index).ViewProjection))]);
 
     protected override void ConfigureSettings(PixelPostProcessSettings post)
     {

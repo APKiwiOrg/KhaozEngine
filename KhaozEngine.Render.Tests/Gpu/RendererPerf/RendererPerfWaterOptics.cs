@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -76,17 +77,22 @@ internal interface IRendererPerfWaterOpticsScene
 }
 
 /// <summary>The frozen Expected block of a v2 recipe. The v1 fields keep their meaning, with terrain visibility
-/// from the engine's culling rule because the v2 cameras frame the pool and cull part of the land. Rigid
-/// visibility moves by a few draws as the camera drifts, so it is a range over the whole sequence.</summary>
+/// from the engine's culling rule because the v2 cameras frame the pool and cull part of the land. Rigid draws and
+/// foliage patches move by a few as the camera drifts, so they are ranges over the whole sequence. Foliage keeps
+/// its intended instance count and adds the patches tested, submitted and culled and the candidate instances.</summary>
 internal static class RendererPerfWaterOpticsExpected
 {
     internal static object Create(IReadOnlyList<RendererPerfRigidBounds> terrain, IReadOnlyList<RendererPerfRigidBounds> rigid,
-        int buildings, int props, int foliage, int water, IReadOnlyList<Matrix4x4> viewProjections)
+        RendererPerfFoliageVisibility? foliage, int buildings, int props, int foliageInstances, int water,
+        IReadOnlyList<(Vector3 Focus, Matrix4x4 ViewProjection)> frames)
     {
+        Matrix4x4[] viewProjections = [.. frames.Select(frame => frame.ViewProjection)];
         RendererPerfVisibleRange visibleTerrain = RendererPerfMainPassVisibility.Range(terrain, viewProjections);
         if (visibleTerrain.Min != visibleTerrain.Max)
             throw new InvalidOperationException("The v2 terrain visibility changes within the frame sequence.");
         RendererPerfVisibleRange visibleRigid = RendererPerfMainPassVisibility.Range(rigid, viewProjections);
+        int patches = foliage?.Patches ?? 0;
+        var (submitted, candidates) = foliage?.Range(frames) ?? (new(0, 0), new(0, 0));
         return new
         {
             TerrainIntended = terrain.Count,
@@ -98,7 +104,7 @@ internal static class RendererPerfWaterOpticsExpected
             ActorIntended = 0,
             ActorVisible = 0,
             ActorCulled = 0,
-            Foliage = foliage,
+            Foliage = foliageInstances,
             Water = water,
             Effects = 0,
             Ui = 0,
@@ -107,7 +113,14 @@ internal static class RendererPerfWaterOpticsExpected
             RigidVisibleMax = visibleRigid.Max,
             RigidCulledMin = rigid.Count - visibleRigid.Max,
             RigidCulledMax = rigid.Count - visibleRigid.Min,
-            Culling = "engine-main-pass-rule-over-all-sequence-frames",
+            FoliagePatchesTested = patches,
+            FoliagePatchesSubmittedMin = submitted.Min,
+            FoliagePatchesSubmittedMax = submitted.Max,
+            FoliagePatchesCulledMin = patches - submitted.Max,
+            FoliagePatchesCulledMax = patches - submitted.Min,
+            FoliageCandidatesMin = candidates.Min,
+            FoliageCandidatesMax = candidates.Max,
+            Culling = "engine-main-pass-rules-over-all-sequence-frames",
         };
     }
 }

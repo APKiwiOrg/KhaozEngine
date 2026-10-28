@@ -59,8 +59,7 @@ internal static class RuntimeStaticBounds
                 Box offset = Box.Point(child.Position).Add(centre.Transform(child.Orientation));
                 return Place(Points(hull.Points).Subtract(centre), offset, child.Orientation, root);
             case TriangleMeshShape mesh:
-                geometry = Points(mesh.Vertices);
-                break;
+                return CaptureMesh(mesh, child, root);
             default:
                 throw new NotSupportedException("The runtime static bounds are not supported.");
         }
@@ -76,6 +75,24 @@ internal static class RuntimeStaticBounds
         return native.Union(Place(geometry, position, child.Orientation, root));
     }
 
+    static Box CaptureMesh(TriangleMeshShape mesh, Pose child, Pose root)
+    {
+        Box? result = null;
+        for (int i = 0; i < mesh.Indices.Length; i += 3)
+        {
+            Vector3 a = mesh.Vertices[mesh.Indices[i]], b = mesh.Vertices[mesh.Indices[i + 1]], c = mesh.Vertices[mesh.Indices[i + 2]];
+            Box raw = Place(Points([a, b, c]), Box.Point(child.Position), child.Orientation, root);
+            // Native mesh sweeps recenter each referenced triangle with this rounded graph.
+            // Keep the subtracted vertices and composed centroid pose as a second representation.
+            Vector3 centre = (a + b + c) * (1f / 3f);
+            Box offset = Box.Point(child.Position).Add(Box.Point(centre).Transform(child.Orientation));
+            Box native = Place(Points([a - centre, b - centre, c - centre]), offset, child.Orientation, root);
+            Box triangle = raw.Union(native);
+            result = result.HasValue ? result.Value.Union(triangle) : triangle;
+        }
+        return result!.Value;
+    }
+
     static Box Place(Box geometry, Box childPosition, Quaternion childOrientation, Pose root)
     {
         Box position = childPosition.Transform(root.Orientation).Add(Box.Point(root.Position));
@@ -83,7 +100,7 @@ internal static class RuntimeStaticBounds
         return geometry.Transform(orientation).Add(position);
     }
 
-    static Box Points(Vector3[] points)
+    static Box Points(ReadOnlySpan<Vector3> points)
     {
         Vector3 min = points[0], max = min;
         foreach (Vector3 point in points) { min = Vector3.Min(min, point); max = Vector3.Max(max, point); }

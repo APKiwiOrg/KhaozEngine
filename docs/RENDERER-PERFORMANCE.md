@@ -687,4 +687,6 @@ which remains evidence of that failed publication rather than permission to over
 
 Store reviewed summaries under `docs/performance/renderer/` with the original received artifacts
 retained in their workflow run. The publisher does not commit files or dispatch follow-up work.
-No measured baseline is checked in until an eligible full pair exists.
+The first eligible pair is published in [docs/performance/renderer/](performance/renderer/index-full-linux-full-windows.md):
+Tesla T4 Linux Vulkan and Windows D3D11 full units at workload `2243d40a7`, with the graphics clock locked at 1,095 MHz.
+The [verification record](verification/2026-10-21-renderer-performance-baseline.md) lists every attempt that led to it.

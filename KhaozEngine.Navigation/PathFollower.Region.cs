@@ -14,7 +14,9 @@ public sealed partial class PathFollower
     /// waypoints retain the configured radius and layer checks. An exhausted Partial route holds at
     /// zero motion until the shared replan cooldown permits another query. Reaching the retained
     /// Complete endpoint outside the region also makes a replan due, even for anchor drift within
-    /// tolerance. Existing region waypoints advance before this decision so an eligible exhausted
+    /// tolerance. Exact XZ exhaustion of that endpoint refreshes immediately through the cooldown,
+    /// since the obsolete route has no remaining travel. Proximity alone still respects the cooldown.
+    /// Existing region waypoints advance before this decision so an eligible exhausted
     /// Partial replans in the same tick. Each tick queries at most once. A freshly exhausted Partial
     /// with no cooldown returns Unreachable at zero motion and retries on the next tick.
     /// Switching between point and region calls clears the previous route and cooldown. Call
@@ -68,7 +70,10 @@ public sealed partial class PathFollower
             || regionAtTerminal
             || DistanceToActiveCorridor(posXz) > _config.CorridorTolerance;
 
-        bool replanned = needsPlan && _cooldown == 0f;
+        // A Complete endpoint outside current membership cannot steer anywhere once its XZ is exhausted.
+        // Holding that obsolete endpoint through the cooldown can trip a moving goal's stall window.
+        bool exhaustedRegion = regionAtTerminal && _path!.Waypoints[_index].Position == posXz;
+        bool replanned = needsPlan && (_cooldown == 0f || exhaustedRegion);
         if (replanned)
         {
             _path = region is not null

@@ -9098,6 +9098,10 @@ radius and layer checks. Call `Reset` when the predicate, region shape, traversa
 identity changes, or after a teleport or caller cancellation. Switching between point and region overloads
 clears the old route and cooldown.
 
+An exhausted Complete region endpoint outside current membership refreshes immediately at its exact XZ
+position, even while the replan cooldown is positive. The obsolete route has no remaining travel. Being
+near the endpoint still keeps the cooldown, as does an exhausted Partial route. Each tick queries at most once.
+
 ```csharp
 var follower = new PathFollower(planner, config: null, space: space);   // one per agent, PathFollowConfig.Default
 
@@ -9139,8 +9143,9 @@ Partial corridor that is exhausted while the cooldown is positive returns `PathF
 with zero direction. A fresh exhausted Partial with zero cooldown returns `Unreachable` with zero direction
 and retries on the next tick. Existing region corridors advance before query eligibility, so an eligible
 partial refresh can happen on the same tick that the cooldown reaches zero. A reached Complete endpoint
-outside membership makes replanning due even when anchor drift is within tolerance. Each tick issues at
-most one query. `WaitingForPath` is appended after existing enum members, and point following never returns
+outside membership makes replanning due even when anchor drift is within tolerance. Exact XZ exhaustion
+refreshes that Complete route immediately through the cooldown. Each tick issues at most one query.
+`WaitingForPath` is appended after existing enum members, and point following never returns
 it. Shared configuration, cooldown, drift, layer, and Hop behavior remain in force.
 
 ### Read the committed corridor (debug overlays, logging)
@@ -9183,7 +9188,8 @@ cell. `PathFollowConfig` tunes the follower itself: `AcceptRadius` (default 0.6,
 as arrived, so a goal on the floor above routes through the planner instead of arriving on XZ proximity),
 `GoalRetargetTolerance` (default 1.5, how far the goal may drift before a replan is due),
 `CorridorTolerance` (default 2.5, how far the agent may stray off the planned corridor before a replan is
-due), and `ReplanCooldownSeconds` (default 0.5, minimum time between replans). See the
+due), and `ReplanCooldownSeconds` (default 0.5, minimum time between ordinary replans, with immediate
+refresh for an exhausted Complete region endpoint outside membership). See the
 `KhaozEngine.Navigation` package README for the clearance convention, the planner's documented heuristic
 limitations, and the full config surface.
 
@@ -9761,6 +9767,8 @@ near-field shortcut keeps the detour. Area or graph guards apply to direct appro
 exhausted partial route waiting on cooldown, an unreachable or refused route, or an unsupported Hop route holds
 with zero input. A valid partial corridor still requests bounded travel until it is exhausted.
 Target translation follows the follower's configured drift and replan cooldown while the route remains valid.
+At an exhausted Complete endpoint outside current range, the follower immediately refreshes the obsolete
+route instead of holding at its own position.
 
 The profile must match the tuning's radius, half-height, slope and step. Walk and run pace, climb pace and
 effect scale may differ. The game owns nominal ranges, target validity, target identity, cancellation and the

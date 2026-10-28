@@ -122,8 +122,8 @@ public sealed class PathFollowConfig
     /// The default 0.8 matches <see cref="VerticalAcceptTolerance"/>, so any height change big enough that the
     /// arrival check would no longer call the agent and the goal co-located is also big enough to replan for,
     /// while ordinary ground variation under a goal walking level ground is not.
-    /// <see cref="ReplanCooldownSeconds"/> still gates how often a due replan actually reaches the planner, so
-    /// a goal that bobs vertically cannot spam it.
+    /// <see cref="ReplanCooldownSeconds"/> gates due replans while the route still has travel, so
+    /// a goal that bobs vertically cannot spam it along a usable corridor.
     /// </para>
     /// Set it to <see cref="float.PositiveInfinity"/> for a purely horizontal retarget trigger.
     /// </summary>
@@ -134,7 +134,8 @@ public sealed class PathFollowConfig
     public float CorridorTolerance { get; init; } = 2.5f;
 
     /// <summary>Minimum time (seconds) between replans, so a persistently unreachable goal or a jittery
-    /// corridor breach does not spam the planner every tick.</summary>
+    /// corridor breach does not spam the planner every tick. A Complete region route exhausted at its
+    /// exact endpoint outside current membership refreshes immediately, at most once per tick.</summary>
     public float ReplanCooldownSeconds { get; init; } = 0.5f;
 
     /// <summary>Search budget handed to <see cref="IPathPlanner.FindPath"/> on every replan.</summary>

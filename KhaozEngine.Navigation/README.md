@@ -448,7 +448,8 @@ resets the old route and cooldown.
   retarget trigger.
 - **`CorridorTolerance`** (default 2.5) - how far the agent may stray from the planned corridor before a
   replan is due.
-- **`ReplanCooldownSeconds`** (default 0.5) - minimum time between replans.
+- **`ReplanCooldownSeconds`** (default 0.5) - minimum time between ordinary replans. An exhausted
+  Complete region endpoint outside current membership refreshes immediately, at most once per tick.
 - **`Budget`** (default `PathQueryBudget.Default`) - handed to `IPathPlanner.FindPath` on every replan.
 - **`ConsumePassedCollinearWaypoints`** (default false) - also advance past an active waypoint the agent has passed
   rather than landed on, when it is a collinear pass-through on the agent's layer and the feet sit at or beyond it on
@@ -469,8 +470,10 @@ exhausted while the cooldown is positive returns `PathFollowState.WaitingForPath
 The fresh exhausted-Partial case with zero cooldown returns `Unreachable` with zero direction and retries
 on the next tick. Existing region corridors are advanced before query eligibility, so an eligible partial
 refresh can happen on the same tick that the cooldown reaches zero. A reached `Complete` endpoint outside
-region membership makes replanning due, even when anchor drift is within tolerance. Each tick issues at
-most one query. `WaitingForPath` is appended after the existing enum members, and point following never
+region membership makes replanning due, even when anchor drift is within tolerance. At the endpoint's
+exact XZ position, the obsolete Complete route refreshes immediately through the cooldown because it
+has no remaining travel. Proximity alone keeps the cooldown, as does an exhausted Partial route.
+Each tick issues at most one query. `WaitingForPath` is appended after the existing enum members, and point following never
 returns it. Shared configuration, cooldown, drift, layer, and `Hop` behavior remain in force.
 
 When the active waypoint is a `NavWaypointKind.Hop` landing, ground steering is suspended instead: the

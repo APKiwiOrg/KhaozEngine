@@ -40,7 +40,7 @@ namespace KhaozEngine.Tests.Gpu
             using var rig = new Rig(W, H, W, H, ndc);
             rig.BeginFrame();
             rig.Fill(Grey(W, H, (_, _) => Q(0.3f)), Grey(W, H, (_, _) => Q(0.3f)), Pairs(W, H, (x, y) => motion[y * W + x]));
-            rig.FillHistory(Grey(W, H, (_, _) => Q(0.3f)), Pairs(W, H, (_, _) => new Vector2(Q(Stored / Max), 0f)),
+            rig.FillHistory(Grey(W, H, (_, _) => Q(0.3f)), States(W, H, (_, _) => new Vector2(Q(Stored / Max), 0f)),
                 (x, _) => x >= CoverFrom ? 1f : wall);
             rig.Resolve(u);
 
@@ -57,7 +57,7 @@ namespace KhaozEngine.Tests.Gpu
                     Vector2 previous = (new Vector2(x + 0.5f, y + 0.5f) / size - m) * size;
                     if (previous.X < 0.25f || previous.X > W - 0.25f) continue;
                     float cap = MotionCap((m * size).Length());
-                    float confidence = state[(y * W + x) * 2];
+                    float confidence = state[(y * W + x) * 4];
                     if (previous.X - 0.5f >= CoverFrom + 0.25f)
                     {
                         Assert.True(MathF.Abs(1f / Max - confidence) < 1e-3f, $"covered ({x}, {y}) kept {confidence * Max}");
@@ -111,7 +111,7 @@ namespace KhaozEngine.Tests.Gpu
                 }
             // The pixel right of the glint read its history, or the fact would prove nothing.
             float cap = MotionCap((motion[At(G, G)] * N).Length());
-            Assert.Equal(MathF.Min(Q(3f / Max) * Max + 1f, cap) / Max, state[At(G + 1, G) * 2], 1e-3);
+            Assert.Equal(MathF.Min(Q(3f / Max) * Max + 1f, cap) / Max, state[At(G + 1, G) * 4], 1e-3);
         }
 
         [GpuFact]
@@ -135,7 +135,7 @@ namespace KhaozEngine.Tests.Gpu
                 for (int i = 0; i < color.Length; i++)
                     Assert.True(float.IsFinite(color[i]), $"frame {frame}: colour channel {i % 4} of pixel {i / 4} is {color[i]}");
                 for (int i = 0; i < state.Length; i++)
-                    Assert.True(float.IsFinite(state[i]), $"frame {frame}: state channel {i % 2} of pixel {i / 2} is {state[i]}");
+                    Assert.True(float.IsFinite(state[i]), $"frame {frame}: state channel {i % 4} of pixel {i / 4} is {state[i]}");
                 if (frame == 0)
                     Assert.True(color[At(4, 4) * 4] > 100f, $"the reset frame shows the infinite texel at {color[At(4, 4) * 4]}");
             }
@@ -181,7 +181,7 @@ namespace KhaozEngine.Tests.Gpu
                     float clipped = mean + TemporalResolveTuning.GammaMoving * deviation + 1.0e-5f;
                     float c = Weighted(Ramp(x));
                     Assert.Equal(Unweighted(clipped + (c - clipped) / (accumulated + 1f)), color[At(x, y) * 4], 1e-3);
-                    Assert.Equal((accumulated + 1f) / Max, state[At(x, y) * 2], 1e-3);
+                    Assert.Equal((accumulated + 1f) / Max, state[At(x, y) * 4], 1e-3);
                 }
         }
     }

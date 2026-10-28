@@ -86,7 +86,7 @@ internal sealed class TemporalHistoryDifference
         Assert.Equal(stateA.Length, stateB.Length);
         var difference = new TemporalHistoryDifference();
         for (int i = 0; i < a.Length; i++) difference.Colour[i % 4].Add(i, a[i], b[i]);
-        for (int i = 0; i < stateA.Length; i += 2)
+        for (int i = 0; i < stateA.Length; i += 4)
         {
             difference.Confidence.Add(i, stateA[i], stateB[i]);
             difference.Locks.Add(i + 1, stateA[i + 1], stateB[i + 1]);

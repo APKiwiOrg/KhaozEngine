@@ -108,7 +108,29 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         private protected static float[] Motion(Func<int, int, Vector2> value) => Pairs(N, N, value);
-        private protected static float[] State(Func<int, int, Vector2> value) => Pairs(N, N, value);
+        private protected static float[] State(Func<int, int, Vector2> value) => States(N, N, value);
+
+        // The history state holds four channels a display pixel: the confidence and the stored lock, then the shimmer
+        // record's drift and swing. These two leave the record empty.
+        private protected static float[] States(int width, int height, Func<int, int, Vector2> value)
+            => StateWithRecord(width, height, (x, y) =>
+            {
+                Vector2 p = value(x, y);
+                return new Vector4(p.X, p.Y, 0f, 0f);
+            });
+
+        private protected static float[] StateWithRecord(int width, int height, Func<int, int, Vector4> value)
+        {
+            var v = new float[width * height * 4];
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    Vector4 p = value(x, y);
+                    int i = (y * width + x) * 4;
+                    v[i] = p.X; v[i + 1] = p.Y; v[i + 2] = p.Z; v[i + 3] = p.W;
+                }
+            return v;
+        }
 
         private protected static float[] Pairs(int width, int height, Func<int, int, Vector2> value)
         {

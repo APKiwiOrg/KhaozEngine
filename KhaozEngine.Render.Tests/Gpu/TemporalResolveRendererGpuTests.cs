@@ -29,8 +29,8 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     Assert.Equal(Ramp(x), color[At(x, y) * 4], 1e-3);
                     Assert.Equal(1f, color[At(x, y) * 4 + 3], 1e-3);
-                    Assert.Equal(1f / Max, state[At(x, y) * 2], 1e-3);
-                    Assert.Equal(0f, state[At(x, y) * 2 + 1], 1e-3);
+                    Assert.Equal(1f / Max, state[At(x, y) * 4], 1e-3);
+                    Assert.Equal(0f, state[At(x, y) * 4 + 1], 1e-3);
                     if (x == 0) Assert.Equal(TemporalResolveTuning.BackgroundLinearDepth, depth[At(x, y)]);
                     else Assert.Equal(SceneLinear, depth[At(x, y)], 4);
                 }
@@ -109,7 +109,7 @@ namespace KhaozEngine.Tests.Gpu
                     Assert.InRange(previous.Y - y, 0.9f, 1.2f);
                     float h = Weighted(Plane(previous.X, previous.Y) - HistoryBelow), c = Weighted(Q(Plane(x, y)));
                     Assert.Equal(Unweighted(h + (c - h) / (accumulated + 1f)), color[At(x, y) * 4], 1e-3);
-                    Assert.Equal((accumulated + 1f) / Max, state[At(x, y) * 2], 1e-3);
+                    Assert.Equal((accumulated + 1f) / Max, state[At(x, y) * 4], 1e-3);
                 }
         }
 
@@ -141,7 +141,7 @@ namespace KhaozEngine.Tests.Gpu
                 // The largest difference in the 3x3 is the brightest column, x + 1.
                 float reactive = Math.Clamp(Weighted(Ramp(x + 1)) * TemporalResolveTuning.ReactiveGain, 0f, 1f);
                 float accumulated = Q(3f / Max) * Max * (1f - reactive * TemporalResolveTuning.ReactiveStrength);
-                Assert.Equal((accumulated + 1f) / Max, state[At(x, 4) * 2], 1e-3);
+                Assert.Equal((accumulated + 1f) / Max, state[At(x, 4) * 4], 1e-3);
             }
         }
 
@@ -161,7 +161,7 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     var (expected, sampleWeight) = Reconstruct(spot, x, y, jitter);
                     Assert.Equal(expected, color[At(x, y) * 4], 1e-3);
-                    Assert.Equal(sampleWeight / Max, state[At(x, y) * 2], 1e-3);
+                    Assert.Equal(sampleWeight / Max, state[At(x, y) * 4], 1e-3);
                 }
         }
 
@@ -182,8 +182,8 @@ namespace KhaozEngine.Tests.Gpu
             rig.Resolve(Uniforms(historyValid: true));
 
             float[] state = rig.ReadState();
-            Assert.Equal((Q(5f / Max) * Max + 1f) / Max, state[At(3, 4) * 2], 1e-3);
-            Assert.Equal(1f / Max, state[At(1, 4) * 2], 1e-3);
+            Assert.Equal((Q(5f / Max) * Max + 1f) / Max, state[At(3, 4) * 4], 1e-3);
+            Assert.Equal(1f / Max, state[At(1, 4) * 4], 1e-3);
         }
 
         [GpuFact]
@@ -200,21 +200,21 @@ namespace KhaozEngine.Tests.Gpu
             rig.Fill(flat, flat, zero);
             rig.FillHistory(flat, State((_, _) => new Vector2(Q(3f / Max), 0f)), SceneLinear);
             rig.Resolve(Uniforms(historyValid: true));
-            Assert.Equal((Q(3f / Max) * Max + 1f) / Max, rig.ReadState()[At(4, 4) * 2], 1e-3);
+            Assert.Equal((Q(3f / Max) * Max + 1f) / Max, rig.ReadState()[At(4, 4) * 4], 1e-3);
 
             Assert.True(rig.ResizeDisplay(D, D));
             rig.BeginFrame();
             rig.Fill(flat, flat, zero);
-            rig.FillHistory(Grey(D, D, (_, _) => Q(0.3f)), Pairs(D, D, (_, _) => new Vector2(Q(5f / Max), 0f)), SceneLinear);
+            rig.FillHistory(Grey(D, D, (_, _) => Q(0.3f)), States(D, D, (_, _) => new Vector2(Q(5f / Max), 0f)), SceneLinear);
             rig.Resolve(TemporalResolveMath.BuildUniforms(Still, Still, Vector2.Zero, N, N, D, D, historyValid: true));
 
             // Upscaled by two with no jitter, every display pixel centre sits a quarter texel from its nearest sample on
             // each axis, half a display pixel, so each frame is worth Lanczos2(0.5) squared.
             float sampleWeight = TemporalResolveMath.Lanczos2(0.5f) * TemporalResolveMath.Lanczos2(0.5f);
             float[] state = rig.ReadState();
-            Assert.Equal(D * D * 2, state.Length);
+            Assert.Equal(D * D * 4, state.Length);
             for (int i = 0; i < D * D; i++)
-                Assert.Equal((Q(5f / Max) * Max + sampleWeight) / Max, state[i * 2], 1e-3);
+                Assert.Equal((Q(5f / Max) * Max + sampleWeight) / Max, state[i * 4], 1e-3);
         }
 
         static void AssertInteriorBlend(Rig rig, Func<int, float> history, float accumulated)
@@ -226,7 +226,7 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     float h = Weighted(history(x)), c = Weighted(Ramp(x));
                     Assert.Equal(Unweighted(h + (c - h) * weight), color[At(x, y) * 4], 1e-3);
-                    Assert.Equal((accumulated + 1f) / Max, state[At(x, y) * 2], 1e-3);
+                    Assert.Equal((accumulated + 1f) / Max, state[At(x, y) * 4], 1e-3);
                 }
         }
 
@@ -237,7 +237,7 @@ namespace KhaozEngine.Tests.Gpu
                 for (int x = 2; x < N - 2; x++)
                 {
                     Assert.Equal(Ramp(x), color[At(x, y) * 4], 1e-3);
-                    Assert.Equal(1f / Max, state[At(x, y) * 2], 1e-3);
+                    Assert.Equal(1f / Max, state[At(x, y) * 4], 1e-3);
                 }
         }
 

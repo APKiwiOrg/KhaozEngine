@@ -4911,11 +4911,11 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   `Quality` and 0.10 to 0.16 ms at `Native`, and on the T4 it takes about 0.09 to 0.14 ms and 0.3 ms
   (`TemporalOutlineCostPerfGpuTests`). A steady frame allocates nothing, with temporal anti-aliasing on or off.
 - **Memory.** At a 3456x2234 display on `Quality` (2304x1489 internal) with HDR on, temporal anti-aliasing holds
-  212.7 MB of history (two display-size RGBA16F colours and two RG16F confidence targets, and two internal-size
+  274.5 MB of history (two display-size RGBA16F colours and two RGBA16F confidence targets, and two internal-size
   R32F previous depths), 82.3 MB of the resolve's internal-size working targets (24 bytes a texel), 154.4 MB of
   display-size post targets (a ping pair and, with bloom on, a half-size bloom pair), a 27.4 MB internal-size copy
   of the opaque image and a 13.7 MB internal-size motion target. The R8 lit visibility and two R8 histories add
-  10.3 MB there, plus a 16-byte previous-jitter buffer, about 501 MB in all (10^6 bytes a MB), excluding alignment,
+  10.3 MB there, plus a 16-byte previous-jitter buffer, about 563 MB in all (10^6 bytes a MB), excluding alignment,
   retirement overlap and an optional fully lit fallback. Visibility costs three bytes per internal texel and
   allocates only while needed. A visibility-only MSAA layout also owns a matched multisampled R8 attachment
   and explicitly resolves it before sampling. The edge

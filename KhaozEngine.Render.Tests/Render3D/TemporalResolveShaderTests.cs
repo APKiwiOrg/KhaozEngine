@@ -571,8 +571,8 @@ namespace KhaozEngine.Tests.Render3D
                 + ShaderSources.TemporalResolveCoreGlsl, frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=0) out vec4 oColor;", frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=1) out vec4 oState;", frag, StringComparison.Ordinal);
-            Assert.Contains("oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), 0.0, 1.0);", frag,
-                StringComparison.Ordinal);
+            Assert.Contains("oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), p.drift, p.swing);",
+                frag, StringComparison.Ordinal);
             Assert.Contains("temporalResolvePixel(ivec2(gl_FragCoord.xy))", frag, StringComparison.Ordinal);
         }
 

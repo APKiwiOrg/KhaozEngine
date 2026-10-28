@@ -94,12 +94,12 @@ namespace KhaozEngine.Tests.Gpu
             using var rig = new Rig(W, H, W, H, ndc);
             rig.BeginFrame();
             rig.Fill(Grey(W, H, (_, _) => grey), Grey(W, H, (_, _) => grey), Pairs(W, H, motion));
-            rig.FillHistory(Grey(W, H, (_, _) => grey), Pairs(W, H, (x, y) => new Vector2(Q(Stored / Max), mark(x, y))),
+            rig.FillHistory(Grey(W, H, (_, _) => grey), States(W, H, (x, y) => new Vector2(Q(Stored / Max), mark(x, y))),
                 wall);
             rig.Resolve(u);
             return rig.ReadState();
         }
 
-        static float Confidence(float[] state, (int X, int Y) pixel) => state[(pixel.Y * W + pixel.X) * 2];
+        static float Confidence(float[] state, (int X, int Y) pixel) => state[(pixel.Y * W + pixel.X) * 4];
     }
 }

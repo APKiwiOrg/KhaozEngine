@@ -147,7 +147,7 @@ namespace KhaozEngine.Tests.Gpu
             int held = 0;
             for (int y = path.Y0; y < path.Y1; y++)
                 for (int x = path.X0; x < path.X1; x++)
-                    if (state[(y * W + x) * 2 + 1] >= 1f / TemporalResolveTuning.LockHoldGain) held++;
+                    if (state[(y * W + x) * 4 + 1] >= 1f / TemporalResolveTuning.LockHoldGain) held++;
             return path.Area == 0 ? double.NaN : (double)held / path.Area;
         }
     }

@@ -36,11 +36,13 @@ namespace KhaozEngine.Tests.Gpu
                         history.ResolveFramebuffer(i).Outputs.Colour);
                     Assert.Null(history.ResolveFramebuffer(i).Outputs.Depth);
                     Assert.Equal(new[] { TemporalFormats.PreviousDepth }, history.PreviousDepthFramebuffer(i).Outputs.Colour);
-                    bytes += Bytes(history.Color(i)) + Bytes(history.Confidence(i)) + Bytes(history.PreviousDepth(i));
+                    bytes += Bytes(history.Color(i), TemporalFormats.HistoryColorBytesPerPixel)
+                        + Bytes(history.Confidence(i), TemporalFormats.HistoryConfidenceBytesPerPixel)
+                        + Bytes(history.PreviousDepth(i), TemporalFormats.PreviousDepthBytesPerPixel);
                 }
                 Assert.NotSame(history.Color(0), history.Color(1));
                 // The six textures the accessors return match the figure's formula. That figure is what
-                // TemporalFormatsTests pins at 213 MB for Quality.
+                // TemporalFormatsTests pins at 275 MB for Quality.
                 Assert.Equal(TemporalFormats.HistoryBytes(96, 54, 64, 36), bytes);
 
                 Assert.False(history.EnsureTargets(gd, 96, 54, 64, 36));
@@ -89,13 +91,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, retired.PendingCount);
         }
 
-        static long Bytes(IGpuTexture texture) => (long)texture.Width * texture.Height * texture.Format switch
-        {
-            TemporalFormats.HistoryColor => TemporalFormats.HistoryColorBytesPerPixel,
-            TemporalFormats.HistoryConfidence => TemporalFormats.HistoryConfidenceBytesPerPixel,
-            TemporalFormats.PreviousDepth => TemporalFormats.PreviousDepthBytesPerPixel,
-            _ => throw new ArgumentOutOfRangeException(nameof(texture), texture.Format, "not a history format"),
-        };
+        // The colour and confidence targets share a format, so each texture's size comes with the figure's own term.
+        // AssertTexture has already held every texture to its format.
+        static long Bytes(IGpuTexture texture, int bytesPerPixel) => (long)texture.Width * texture.Height * bytesPerPixel;
 
         static void AssertTexture(IGpuTexture texture, uint width, uint height, GpuPixelFormat format)
         {

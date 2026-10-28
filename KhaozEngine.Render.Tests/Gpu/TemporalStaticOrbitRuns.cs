@@ -132,12 +132,12 @@ namespace KhaozEngine.Tests.Gpu
                     float[] state = TemporalTextureIo.Read(fx.Device, history.Confidence(history.WriteIndex));
                     if (n < Warm)
                     {
-                        for (int i = 1; i < state.Length; i += 2)
+                        for (int i = 1; i < state.Length; i += 4)
                             if (state[i] < -2.5f) warmBand++;
                         continue;
                     }
                     steps[n - Warm] = stepped;
-                    for (int i = 1; i < state.Length; i += 2)
+                    for (int i = 1; i < state.Length; i += 4)
                     {
                         if (state[i] < -2.5f) band[n - Warm]++;
                         if (state[i] < -0.5f) moved[n - Warm]++;

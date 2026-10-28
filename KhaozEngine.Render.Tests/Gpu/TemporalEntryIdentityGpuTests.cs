@@ -155,7 +155,7 @@ namespace KhaozEngine.Tests.Gpu
                 }
                 if (!softwareVulkan) TemporalHistorySample.Exact(n, "production entries colour", a, b);
                 TemporalHistorySample.Exact(n, "production entries state", state, other);
-                for (int i = 0; i < state.Length; i += 2)
+                for (int i = 0; i < state.Length; i += 4)
                 {
                     confidence.Add(n, state[i], other[i]);
                     if (state[i] == TemporalResolveTuning.MovingShareConfidence) movingShare++;
@@ -233,7 +233,7 @@ namespace KhaozEngine.Tests.Gpu
             byte[] previous = [];
             Vector2 previousJitter = default;
             int rises = 0, falls = 0;
-            int pixel = (display / 2 * display + display / 4) * 2;
+            int pixel = (display / 2 * display + display / 4) * 4;
             for (int frame = 0; frame < edges.Length; frame++)
             {
                 byte[] bytes = Enumerable.Range(0, N * N).Select(i => i % N >= edges[frame] ? (byte)255 : (byte)0).ToArray();
@@ -247,7 +247,7 @@ namespace KhaozEngine.Tests.Gpu
                     rig.BeginFrame();
                     if (frame > 0)
                         rig.FillHistory(Grey(display, display, (_, _) => 0.4f),
-                            Pairs(display, display, (_, _) => Vector2.One), SceneLinear);
+                            States(display, display, (_, _) => Vector2.One), SceneLinear);
                     rig.Resolve(uniforms, signal);
                     Assert.Equal(outline, rig.OutlineBuilt);
                     if (outline)
@@ -273,7 +273,7 @@ namespace KhaozEngine.Tests.Gpu
                 unlocked.BeginFrame();
                 if (frame > 0)
                     unlocked.FillHistory(Grey(display, display, (_, _) => 0.4f),
-                        Pairs(display, display, (_, _) => new Vector2(1, 0)), SceneLinear);
+                        States(display, display, (_, _) => new Vector2(1, 0)), SceneLinear);
                 unlocked.Resolve(uniforms);
                 unlocked.History.MarkValidAfterFrame();
                 TemporalHistorySample pf = TemporalHistorySample.Read(fused), ps = TemporalHistorySample.Read(split);
@@ -301,7 +301,7 @@ namespace KhaozEngine.Tests.Gpu
                     Assert.Equal(1, state[pixel]);
                     Assert.Equal(1, unlocked.ReadState()[pixel]);
                     float[] colour = fused.ReadColor(), retained = unlocked.ReadColor();
-                    for (int c = 0; c < 4; c++) Assert.Equal(retained[pixel * 2 + c], colour[pixel * 2 + c]);
+                    for (int c = 0; c < 4; c++) Assert.Equal(retained[pixel + c], colour[pixel + c]);
                     if (edges[frame] == 8) falls++;
                     else rises++;
                     output.WriteLine($"  frame {frame}: confidence {state[pixel]:R}, lock {state[pixel + 1]:R}");

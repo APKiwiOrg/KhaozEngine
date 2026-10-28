@@ -203,9 +203,9 @@ public sealed class TemporalVisibilityCostDecompositionCostPerfGpuTests(ITestOut
                 // The stored lock also marks moved, band and followed pixels as -1, -3 or -5 minus the lock, so the
                 // boxes' own drifting pixels store -1 with a zero lock. Decode it as temporalStoredLock does.
                 int nonzero = 0;
-                for (int i = 1; i < state.Length; i += 2)
+                for (int i = 1; i < state.Length; i += 4)
                     if (BitConverter.SingleToUInt32Bits(StoredLock(state[i])) != 0u) nonzero++;
-                output.WriteLine($"    {label} {nonzero} locks without positive-zero bits of {state.Length / 2}");
+                output.WriteLine($"    {label} {nonzero} locks without positive-zero bits of {state.Length / 4}");
                 if (!field) Assert.Equal(0, nonzero);
             }
         }

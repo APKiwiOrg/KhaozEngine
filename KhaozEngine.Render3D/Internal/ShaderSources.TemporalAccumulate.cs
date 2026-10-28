@@ -8,14 +8,15 @@ namespace KhaozEngine.Render3D.Internal
     /// the split's second pass (<see cref="TemporalAccumulateFrag"/>) after reading its first pass's targets.
     /// <para>A program that includes it declares <c>SceneColor</c>, <c>SceneDepth</c>, <c>MotionTex</c>,
     /// <c>PrevDepth</c>, <c>HistoryColor</c>, <c>HistoryConfidence</c>, <c>LinearClamp</c> and the <c>Resolve</c>
-    /// block, and includes <see cref="TemporalPrepareGlsl"/> before it.</para>
+    /// block, and includes <see cref="TemporalPrepareGlsl"/> and <see cref="TemporalShimmerGlsl"/> before it.</para>
     /// </summary>
     internal static partial class ShaderSources
     {
         internal const string TemporalAccumulateGlsl = @"
+// drift and swing are the shimmer record (TemporalShimmerGlsl) the history state stores, shimmer the score read from it.
 struct TemporalPixel {
     vec3 color; float confidence; float stability; float moved; float disocclusion; float reactive; float clip;
-    float alpha;
+    float alpha; float drift; float swing; float shimmer;
 };
 
 // sinc(x) * sinc(x / 2) on |x| < 2, mirrored by TemporalResolveMath.Lanczos2.
@@ -305,8 +306,10 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // a moving sub-texel feature lost its hold. At a texel centre only that texel carries weight, so a still lock
     // reads back unchanged and never spreads. carriedMoved is whether any texel that carries weight stored the lock
     // of a moving surface (temporalStoreLock), carriedBand whether any stored that of a band pixel, and
-    // carriedFollowed whether that was the followed surface's own.
+    // carriedFollowed whether that was the followed surface's own. The shimmer record in blue and alpha is blended by
+    // the same weights.
     vec2 fetchedState = vec2(0.0);
+    vec2 fetchedRecord = vec2(0.0);
     bool carriedMoved = false;
     bool carriedBand = false;
     bool carriedFollowed = false;
@@ -315,13 +318,13 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         ivec2 stateBase = ivec2(floor(statePosition));
         vec2 stateFraction = statePosition - vec2(stateBase);
         ivec2 lastState = ivec2(displaySize) - ivec2(1);
-        vec2 s00 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase, ivec2(0), lastState), 0).rg;
-        vec2 s10 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
-            clamp(stateBase + ivec2(1, 0), ivec2(0), lastState), 0).rg;
-        vec2 s01 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
-            clamp(stateBase + ivec2(0, 1), ivec2(0), lastState), 0).rg;
-        vec2 s11 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
-            clamp(stateBase + ivec2(1, 1), ivec2(0), lastState), 0).rg;
+        vec4 s00 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase, ivec2(0), lastState), 0);
+        vec4 s10 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
+            clamp(stateBase + ivec2(1, 0), ivec2(0), lastState), 0);
+        vec4 s01 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
+            clamp(stateBase + ivec2(0, 1), ivec2(0), lastState), 0);
+        vec4 s11 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
+            clamp(stateBase + ivec2(1, 1), ivec2(0), lastState), 0);
         vec2 g = 1.0 - stateFraction;
         vec4 bilinear = vec4(g.x * g.y, stateFraction.x * g.y, g.x * stateFraction.y,
             stateFraction.x * stateFraction.y);
@@ -340,6 +343,8 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         s11.y = temporalStoredLock(s11.y);
         fetchedState = vec2(dot(bilinear, vec4(s00.x, s10.x, s01.x, s11.x)),
             max(max(carried.x * s00.y, carried.y * s10.y), max(carried.z * s01.y, carried.w * s11.y)));
+        fetchedRecord = vec2(dot(bilinear, vec4(s00.z, s10.z, s01.z, s11.z)),
+            dot(bilinear, vec4(s00.w, s10.w, s01.w, s11.w)));
     }
 
     // Step 3: disocclusion, one-sided. A pixel expects the depth of the surface it reprojected, and a stored depth
@@ -419,17 +424,23 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     bool useHistory = historyValid && onScreen && !disoccluded;
     vec4 history = vec4(0.0);
     vec2 historyState = vec2(0.0);
+    vec2 historyRecord = vec2(0.0);
     if (useHistory) {
         vec4 fetched = sampleHistoryCatmullRom(previousUv, displaySize);
         bool finite = all(greaterThan(fetched, vec4(-HalfMax))) && all(lessThan(fetched, vec4(HalfMax)))
-            && all(greaterThan(fetchedState, vec2(-HalfMax))) && all(lessThan(fetchedState, vec2(HalfMax)));
+            && all(greaterThan(fetchedState, vec2(-HalfMax))) && all(lessThan(fetchedState, vec2(HalfMax)))
+            && all(greaterThan(fetchedRecord, vec2(-HalfMax))) && all(lessThan(fetchedRecord, vec2(HalfMax)));
         if (finite) {
             history = max(fetched, vec4(0.0));
             historyState = clamp(fetchedState, vec2(0.0), vec2(1.0));
+            historyRecord = fetchedRecord;
         } else {
             useHistory = false;
         }
     }
+    // The history in the clip's space, and this frame's luma less it, the change the shimmer record averages.
+    vec3 historyYcc = rgbToYCoCg(toWeighted(history.rgb));
+    float lumaChange = current.x - historyYcc.x;
 
     // Step 8, first half: the accumulated sample weight, capped lower as motion grows and cut by reactive content.
     float motionCap = mix(MaxAccumulation, MovingAccumulation,
@@ -482,7 +493,6 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     float gamma = mix(GammaStill, GammaMoving, clamp(motionPixels / GammaMotionPixels, 0.0, 1.0));
     vec3 boxMin = mean - gamma * deviation;
     vec3 boxMax = mean + gamma * deviation;
-    vec3 historyYcc = rgbToYCoCg(toWeighted(history.rgb));
     vec3 boxCentre = 0.5 * (boxMin + boxMax);
     vec3 boxExtent = 0.5 * (boxMax - boxMin) + vec3(1.0e-5);
     vec3 fromCentre = historyYcc - boxCentre;
@@ -543,6 +553,8 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     }
     if (released || visibilityReleased) hold = 0.0;
     if (released) accumulated = 0.0;
+    // The shimmer record steps where the pixel kept its history and its shading, and starts empty elsewhere.
+    vec2 shimmerRecord = useHistory && !released ? temporalShimmerStep(historyRecord, lumaChange) : vec2(0.0);
     excess.x *= 1.0 - hold;
     float clipScale = max(excess.x, max(excess.y, excess.z));
     vec3 clipped = clipScale > 1.0 ? boxCentre + fromCentre / clipScale : historyYcc;
@@ -614,6 +626,9 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     result.disocclusion = historyValid && (!onScreen || disoccluded) ? 1.0 : 0.0;
     result.reactive = reactive;
     result.clip = useHistory && clipScale > 1.0 && length(clipped - historyYcc) > ClipFlagMinimumMove ? 1.0 : 0.0;
+    result.drift = shimmerRecord.x;
+    result.swing = shimmerRecord.y;
+    result.shimmer = 0.0;
     return result;
 }
 ";

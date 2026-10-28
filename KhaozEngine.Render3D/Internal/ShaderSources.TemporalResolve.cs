@@ -124,7 +124,7 @@ layout(set=0, binding=7) uniform sampler LinearClamp;
 // The members are TemporalResolveUniforms.GlslMembers, documented on the struct's fields.
 layout(set=0, binding=8) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
 " + TemporalResolveVisibilityBindingsGlsl + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalVisibilityMaskGlsl + TemporalVisibilityGlsl
-            + TemporalNarrowBothGlsl + TemporalPrepareGlsl + TemporalAccumulateGlsl + @"
+            + TemporalNarrowBothGlsl + TemporalPrepareGlsl + TemporalShimmerGlsl + TemporalAccumulateGlsl + @"
 // The fused entry point: one display pixel, its 3x3 read from the scene's inputs and prepared inline
 // (temporalWeighted, temporalReactiveDifference, temporalDilate, temporalVisibilityCurrentBit), gathered
 // (temporalGather), its centre texel's surface prepared (temporalPrepareSurface), and the accumulation
@@ -194,7 +194,7 @@ layout(location=1) out vec4 oState;
 void main() {
     TemporalPixel p = temporalResolvePixel(ivec2(gl_FragCoord.xy));
     oColor = vec4(p.color, p.alpha + vUv.x * 1.0e-30);   // the vUv read changes no output, see the class summary
-    oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), 0.0, 1.0);
+    oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), p.drift, p.swing);
 }";
 
         // ---- The depth store: this frame's linear view depth for next frame's disocclusion test ----

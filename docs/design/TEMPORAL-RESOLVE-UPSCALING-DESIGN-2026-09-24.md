@@ -228,9 +228,10 @@ Implementation review established the contract amendments below.
 1. A fifth preset, `UltraPerformance` at 1/3 per axis (72 jitter phases), and `UpscaleRatio` from 0.33 to 1.0. At a
    3456x2234 display even `Performance` shades more pixels than a fixed 1600x900 target, so the frame-time line needs a
    cheaper preset.
-2. History colour is RGBA16F with RG16F confidence and stability, not R11G11B10, which is not a seam format, is not a
-   guaranteed Vulkan render target, and whose mantissa stalls a 1/16 blend. At a 3456x2234 display on `Quality` the
-   history holds about 213 MB, plus about 155 MB of display-size post targets, against risk 2's estimate.
+2. History colour is RGBA16F with RGBA16F confidence, stability and the shimmer record (drift and swing), not
+   R11G11B10, which is not a seam format, is not a guaranteed Vulkan render target, and whose mantissa stalls a 1/16
+   blend. At a 3456x2234 display on `Quality` the history holds about 275 MB, plus about 155 MB of display-size post
+   targets, against risk 2's estimate.
 3. Previous depth is two linear view depth targets written by `TemporalDepthStoreFrag`, not a copy of the depth
    target.
 4. `PixelPostProcess` takes an `IPostChainTargets` interface so the chain runs at display size.
@@ -754,7 +755,7 @@ Implementation review established the contract amendments below.
 
     The split's targets hold 24 bytes an internal texel: Y, Co, Cg and the reactive difference at 8 in RGBA16F, the
     motion and flags at 8 in RGBA16F, and the expected depth and the edge motion at 4 each in R32F. At 3456x2234
-    Quality, 2304x1489 internal texels, that is 82.3 MB (10^6 bytes) beside the 212.7 MB the history and previous
+    Quality, 2304x1489 internal texels, that is 82.3 MB (10^6 bytes) beside the 274.5 MB the history and previous
     depth pairs hold. They live for one frame, so they have no pair. They are made at
     the history's internal size on the first frame that records the split, and a frame that records the fused entry
     point or no resolve retires them, so a device on the fused entry point holds none of them. The

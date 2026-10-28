@@ -341,15 +341,15 @@ namespace KhaozEngine.Tests.Gpu
                         if (BitConverter.SingleToInt32Bits(productionState[i]) != BitConverter.SingleToInt32Bits(mutantState[i]))
                             mutantDiffers++;
                     // Both exporting rigs decide as production does: every stored lock is production's.
-                    for (int p = 0; p < productionState.Length / 2; p++)
+                    for (int p = 0; p < productionState.Length / 4; p++)
                     {
-                        int locked = BitConverter.SingleToInt32Bits(productionState[p * 2 + 1]);
-                        if (locked != BitConverter.SingleToInt32Bits(exportedState[p * 2 + 1]))
-                            Assert.Fail($"frame {frame} pixel {p}: the path export stored lock {exportedState[p * 2 + 1]:R}, "
-                                + $"production {productionState[p * 2 + 1]:R}");
-                        if (locked != BitConverter.SingleToInt32Bits(keptState[p * 2 + 1]))
+                        int locked = BitConverter.SingleToInt32Bits(productionState[p * 4 + 1]);
+                        if (locked != BitConverter.SingleToInt32Bits(exportedState[p * 4 + 1]))
+                            Assert.Fail($"frame {frame} pixel {p}: the path export stored lock {exportedState[p * 4 + 1]:R}, "
+                                + $"production {productionState[p * 4 + 1]:R}");
+                        if (locked != BitConverter.SingleToInt32Bits(keptState[p * 4 + 1]))
                             Assert.Fail($"frame {frame} pixel {p}: the export keeping the decision stored lock "
-                                + $"{keptState[p * 2 + 1]:R}, production {productionState[p * 2 + 1]:R}");
+                                + $"{keptState[p * 4 + 1]:R}, production {productionState[p * 4 + 1]:R}");
                     }
                     float[] exportedColour = exported.ReadColor(), keptColour = kept.ReadColor();
                     for (int p = 0; p < exportedColour.Length / 4; p++)
@@ -471,7 +471,7 @@ namespace KhaozEngine.Tests.Gpu
                     visibility[i] = random.Next(10) == 0 ? (byte)random.Next(256) : lit ? (byte)255 : (byte)0;
                 }
             var historyColour = new float[dw * dh * 4];
-            var historyState = new float[dw * dh * 2];
+            var historyState = new float[dw * dh * 4];
             int zeroLocks = 0;
             for (int p = 0; p < dw * dh; p++)
             {
@@ -480,9 +480,9 @@ namespace KhaozEngine.Tests.Gpu
                 historyColour[p * 4 + 1] = grey;
                 historyColour[p * 4 + 2] = grey * 0.9f;
                 historyColour[p * 4 + 3] = 1f;
-                historyState[p * 2] = (float)random.NextDouble();
+                historyState[p * 4] = (float)random.NextDouble();
                 int lockKind = random.Next(3);
-                historyState[p * 2 + 1] = lockKind == 0 ? 0f : lockKind == 1 ? 1f : (float)random.NextDouble();
+                historyState[p * 4 + 1] = lockKind == 0 ? 0f : lockKind == 1 ? 1f : (float)random.NextDouble();
                 if (lockKind == 0) zeroLocks++;
             }
             return new Frame(colour, motion, ndc, visibility, historyColour, historyState, previousDepth, zeroLocks);
@@ -566,13 +566,13 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
             var historyColour = new float[dw * dh * 4];
-            var historyState = new float[dw * dh * 2];
+            var historyState = new float[dw * dh * 4];
             for (int p = 0; p < dw * dh; p++)
             {
                 (historyColour[p * 4], historyColour[p * 4 + 1], historyColour[p * 4 + 2], historyColour[p * 4 + 3])
                     = (0.5f, 0.5f, 0.5f, 1f);
-                historyState[p * 2] = 0.5f;
-                historyState[p * 2 + 1] = 1f;
+                historyState[p * 4] = 0.5f;
+                historyState[p * 4 + 1] = 1f;
             }
             return new Frame(colour, new float[w * h * 2], ndc, visibility, historyColour, historyState, previousDepth, 0,
                 edgeSites);

@@ -5,7 +5,7 @@ namespace KhaozEngine.Render3D.Internal
     /// <summary>
     /// THE TEMPORAL TARGET FORMATS of the resolve's history
     /// (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, section 3). Each is a seam member every backend
-    /// already renders and samples: half float RGBA is the HDR colour target, half float RG the distortion field,
+    /// already renders and samples: half float RGBA is the HDR colour target and the confidence and stability target,
     /// single float R the linear-depth MRT attachment.
     /// <para><b>WHY NOT R11G11B10 FLOAT FOR THE HISTORY COLOUR.</b> The seam has no such member, Vulkan does not
     /// guarantee it as a colour attachment, and its 6-bit and 5-bit mantissas stall a one-in-sixteen accumulation 12.5
@@ -23,14 +23,17 @@ namespace KhaozEngine.Render3D.Internal
         /// of a nearer surface that moved in the world, and minus five minus the lock on a pixel of that surface
         /// itself while the camera follows it (<see cref="TemporalResolveTuning.WorldMotionMetres"/>), so the next
         /// frame reads the lock back and knows a moving surface showed there, whether that history followed one, and
-        /// whether that surface's own pixels stored it. A frame with no valid history stores the lock plain.</summary>
-        public const GpuPixelFormat HistoryConfidence = GpuPixelFormat.R16G16Float;
+        /// whether that surface's own pixels stored it. A frame with no valid history stores the lock plain. Blue and
+        /// alpha hold the shimmer record (<see cref="ShaderSources.TemporalShimmerGlsl"/>): drift, the signed average of
+        /// this frame's luma less its reprojected history, and swing, the average of its size. A separate target would
+        /// add a third resolve attachment and renumber every resolve binding for the same memory.</summary>
+        public const GpuPixelFormat HistoryConfidence = GpuPixelFormat.R16G16B16A16Float;
 
         /// <summary>The two internal-resolution previous depth targets: linear view depth, background at 1e30.</summary>
         public const GpuPixelFormat PreviousDepth = GpuPixelFormat.R32Float;
 
         public const int HistoryColorBytesPerPixel = 8;
-        public const int HistoryConfidenceBytesPerPixel = 4;
+        public const int HistoryConfidenceBytesPerPixel = 8;
         public const int PreviousDepthBytesPerPixel = 4;
 
         /// <summary>What the history owner holds for a display and internal size: two colour and two confidence targets

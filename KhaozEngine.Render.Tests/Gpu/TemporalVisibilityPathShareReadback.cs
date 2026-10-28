@@ -50,8 +50,8 @@ internal static class TemporalVisibilityPathShareReadback
         paths.Add(exported);
         long lockDiffers = 0;
         for (int p = 0; p < pixels; p++)
-            if (BitConverter.SingleToInt32Bits(exportedState[p * 2 + 1])
-                != BitConverter.SingleToInt32Bits(productionState[p * 2 + 1]))
+            if (BitConverter.SingleToInt32Bits(exportedState[p * 4 + 1])
+                != BitConverter.SingleToInt32Bits(productionState[p * 4 + 1]))
                 lockDiffers++;
 
         string S(long n) => Share(n, pixels);

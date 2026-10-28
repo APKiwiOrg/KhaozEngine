@@ -80,9 +80,9 @@ internal sealed class TemporalFullyLitHistoryOracle(ITestOutputHelper output, bo
         Assert.Equal(a.Width, b.Width);
         Assert.Equal(a.InternalWidth, b.InternalWidth);
         Channel("colour", a.Colour, b.Colour, 2, 4);
-        Channel("confidence", a.State, b.State, 2, 2, offset: 0);
-        Channel("lock", a.State, b.State, 2, 2, offset: 1);
-        Channel("mark", a.State, b.State, 2, 2, offset: 1, mark: true);
+        Channel("confidence", a.State, b.State, 2, 4, offset: 0);
+        Channel("lock", a.State, b.State, 2, 4, offset: 1);
+        Channel("mark", a.State, b.State, 2, 4, offset: 1, mark: true);
         Channel("R8", a.Visibility, b.Visibility, 1, 1, width: a.InternalWidth);
         Channel("depth", a.Depth, b.Depth, 4, 1, width: a.InternalWidth);
         if (!entryComparison) _nvidia?.Compare(frame, pair, a.Sample(), b.Sample());

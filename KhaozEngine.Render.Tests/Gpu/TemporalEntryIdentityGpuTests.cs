@@ -22,16 +22,18 @@ namespace KhaozEngine.Tests.Gpu
     /// from a rule that decided otherwise. Through packHalf2x16 the values differed on every Vulkan device it ran on,
     /// and the locks with them, so both entries round in integer steps (<c>temporalHalf</c>). This fact is what shows
     /// they agree on a given backend: bit for bit on Metal, on a Tesla T4 on Direct3D 11 and Vulkan, and on WARP
-    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). On a software Vulkan device (Mesa llvmpipe) the colour
-    /// differs, since its compiler orders the two programs' arithmetic differently, while the confidence, the lock,
-    /// the mark, R8 and depth stay identical. There the fact holds those exact and the colour within
-    /// <see cref="TemporalSoftwareCompileDivergenceRule.AbsoluteBound"/> and
-    /// <see cref="TemporalSoftwareCompileDivergenceRule.DifferingShareBound"/> of the values compared. Everywhere else
-    /// stored colour, confidence, locks, R8 and depth are exact. Hardware NVIDIA Direct3D 11 additionally prints each
-    /// production entry and D's paired entries against D. Against D only the non-finite classes of colour and
+    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). On a software Vulkan device (Mesa llvmpipe) the colour,
+    /// drift and swing differ, since its compiler orders the two programs' arithmetic differently, while the
+    /// confidence, the lock, the mark, R8 and depth stay identical. There the fact holds those exact and the colour
+    /// within <see cref="TemporalSoftwareCompileDivergenceRule.AbsoluteBound"/> and
+    /// <see cref="TemporalSoftwareCompileDivergenceRule.DifferingShareBound"/> of the values compared. It holds drift
+    /// and swing within <see cref="TemporalSoftwareRecordDivergenceRule.HalfStepBound"/> half-float steps and
+    /// <see cref="TemporalSoftwareRecordDivergenceRule.DifferingShareBound"/> of each channel's values compared.
+    /// Everywhere else stored colour, confidence, locks, drift, swing, R8 and depth are exact. Hardware NVIDIA
+    /// Direct3D 11 additionally prints each production entry and D's paired entries against D. Against D only the non-finite classes of colour and
     /// confidence are asserted. The large-frame case (<c>TemporalEntryIdentityGpuTests.LargeFrames.cs</c>) holds both
     /// entries, and D prime's two, byte-identical across columns 512 and 1024 and row 512 under positive jitter,
-    /// under the same software Vulkan colour rule.
+    /// under the same software Vulkan colour rule and production-record rule.
     /// </summary>
     public sealed partial class TemporalEntryIdentityGpuTests(ITestOutputHelper output) : TemporalResolveGpuFacts
     {
@@ -45,7 +47,10 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(TemporalUpscale.Quality)]
         [InlineData(TemporalUpscale.Performance)]
         public void Both_entry_points_write_the_same_history_on_every_frame(TemporalUpscale preset)
-            => Compare(preset, outline: false);
+        {
+            var result = Compare(preset, outline: false);
+            result.State.AssertComplete(output, $"{preset} perspective outline False");
+        }
 
         /// <summary>With the edge outline on, both entry points read the outlined images the pass ahead of the
         /// resolve writes, so they still write the same history. The outline is magenta, a colour nothing else in the
@@ -54,12 +59,17 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void Both_entry_points_write_the_same_history_with_the_edge_outline_on()
         {
-            int without = Compare(TemporalUpscale.Quality, outline: false);
-            int with = Compare(TemporalUpscale.Quality, outline: true);
-            output.WriteLine($"  outline-coloured history pixels on the last frame: {with} with the outline, "
-                + $"{without} without");
-            Assert.True(with >= MinOutlinePixels && with >= OutlineOverControl * Math.Max(1, without),
-                $"the outline left {with} outline-coloured history pixels against {without} without it");
+            var without = Compare(TemporalUpscale.Quality, outline: false);
+            var with = Compare(TemporalUpscale.Quality, outline: true);
+            without.State.Report(output, "Quality perspective outline False");
+            with.State.Report(output, "Quality perspective outline True");
+            output.WriteLine($"  outline-coloured history pixels on the last frame: {with.OutlinePixels} with the outline, "
+                + $"{without.OutlinePixels} without");
+            Assert.True(with.OutlinePixels >= MinOutlinePixels
+                && with.OutlinePixels >= OutlineOverControl * Math.Max(1, without.OutlinePixels),
+                $"the outline left {with.OutlinePixels} outline-coloured history pixels against {without.OutlinePixels} without it");
+            without.State.AssertWithinBound("Quality perspective outline False");
+            with.State.AssertWithinBound("Quality perspective outline True");
         }
 
         // The outline's colour and how much of it the history must hold over the control. First estimates, printed.
@@ -69,9 +79,9 @@ namespace KhaozEngine.Tests.Gpu
         // A history pixel in the outline's colour: red and blue each well above green.
         static bool IsOutline(float[] rgba, int i) => rgba[i] > rgba[i + 1] + 0.3f && rgba[i + 2] > rgba[i + 1] + 0.3f;
 
-        // The walk forced to each entry point. Returns the outline-coloured pixels of the fused history the last frame
-        // wrote.
-        int Compare(TemporalUpscale preset, bool outline)
+        // The walk forced to each entry point. Return the last frame's outline count and record comparison, so the
+        // outline fact reports both walks before it asserts their record bounds.
+        (int OutlinePixels, TemporalEntryStateComparison State) Compare(TemporalUpscale preset, bool outline)
         {
             // A walk each, since a walk holds the meshes its scene loaded.
             var fusedWalk = new PerspectiveFollowLines(W, H, Speed, preset, BladeTexels);
@@ -83,6 +93,7 @@ namespace KhaozEngine.Tests.Gpu
             output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, {W}x{H} {preset}"
                 + (outline ? ", the edge outline on" : ""));
             bool softwareVulkan = TemporalDeviceClass.IsLavapipe(fused.Device);
+            var entryState = new TemporalEntryStateComparison(softwareVulkan);
             bool nvidia = TemporalDeviceClass.IsHardwareNvidiaD3D11(fused.Device);
             var oracle = nvidia ? new TemporalNvidiaHistoryOracle(output) : null;
             var dFusedWalk = new PerspectiveFollowLines(W, H, Speed, preset, BladeTexels);
@@ -154,9 +165,7 @@ namespace KhaozEngine.Tests.Gpu
                     oracle.Report(n, "production split vs D split", ps, ds);
                 }
                 if (!softwareVulkan) TemporalHistorySample.Exact(n, "production entries colour", a, b);
-                if (!state.AsSpan().SequenceEqual(other))
-                    output.WriteLine($"frame {n}: production entry colour differences before the state failure: {colour}");
-                TemporalHistorySample.Exact(n, "production entries state", state, other);
+                entryState.Compare(n, "production entries state", state, other);
                 for (int i = 0; i < state.Length; i += 4)
                 {
                     confidence.Add(n, state[i], other[i]);
@@ -191,11 +200,12 @@ namespace KhaozEngine.Tests.Gpu
                     + $"{TemporalSoftwareCompileDivergenceRule.DifferingShareBound:P2} of values):\n{differences}");
             }
             else Assert.True(colour.Values == 0, $"the entry points wrote different histories:\n{differences}");
+
             // The band reaches two internal texels beside the followed box, which this walk stores only while
             // upscaling.
             Assert.True(followed > 0 && (band > 0 || preset == TemporalUpscale.Native) && movingShare > 0,
                 $"the walk stored {band} band, {followed} followed marks and {movingShare} moving shares");
-            return outlinePixels;
+            return (outlinePixels, entryState);
         }
 
         // Uploaded shadow edges isolate the visibility response from shadow-map rasterization. The outlined row
@@ -213,6 +223,7 @@ namespace KhaozEngine.Tests.Gpu
             using var fused = new TemporalResolveRig(N, N, display, display, SceneNdc, outline ? settings : null);
             using var split = new TemporalResolveRig(N, N, display, display, SceneNdc, outline ? settings : null);
             using var unlocked = new TemporalResolveRig(N, N, display, display, SceneNdc, outline ? settings : null);
+            var entryState = new TemporalEntryStateComparison(TemporalDeviceClass.IsLavapipe(fused.Device));
             bool nvidia = TemporalDeviceClass.IsHardwareNvidiaD3D11(fused.Device);
             var oracle = nvidia ? new TemporalNvidiaHistoryOracle(output) : null;
             using var dFused = nvidia ? new TemporalResolveRig(N, N, display, display, SceneNdc,
@@ -286,7 +297,10 @@ namespace KhaozEngine.Tests.Gpu
                     oracle.Report(frame, "production fused vs D fused", pf, df);
                     oracle.Report(frame, "production split vs D split", ps, ds);
                 }
-                TemporalHistorySample.Exact(frame, "production entries", pf, ps);
+                TemporalHistorySample.Exact(frame, "production entries colour", pf.Colour, ps.Colour);
+                entryState.Compare(frame, "production entries state", pf.State, ps.State);
+                TemporalHistorySample.Exact(frame, "production entries R8", pf.Visibility, ps.Visibility);
+                TemporalHistorySample.Exact(frame, "production entries depth", pf.Depth, ps.Depth);
                 if (frame == 0)
                 {
                     Assert.InRange(fused.ReadState()[pixel], 0.01f, 0.15f);
@@ -311,6 +325,7 @@ namespace KhaozEngine.Tests.Gpu
                 previous = bytes;
                 previousJitter = jitter;
             }
+            entryState.AssertComplete(output, $"{preset} moving shadow {display} outline {outline}");
             Assert.Equal(2, rises);
             Assert.Equal(2, falls);
             output.WriteLine($"  {edges.Length} frames exact in colour and confidence, "

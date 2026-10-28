@@ -738,7 +738,12 @@ Implementation review established the contract amendments below.
     0.0439 at Performance, over 0.010, 0.052 and 0.118 percent of the values, since its compiler orders the two
     programs' arithmetic differently. So the fact holds the entry points bit for bit on hardware and on WARP, and on a
     software Vulkan device it holds the confidence, the lock and the mark identical and the colour within 0.0625 on at
-    most 0.25 percent of the values. A claim of identity on a backend holds as far as that fact passes there. The
+    most 0.25 percent of the values. The shimmer record's drift and swing derive from the same luma arithmetic, so
+    only on llvmpipe they take separate record-sized half-float-step and differing-share limits, owned by
+    `TemporalSoftwareRecordDivergenceRule` and measured over complete walks. They do not take the colour's absolute
+    bound. Confidence, lock, mark, R8 and depth remain exact. Drift and swing remain exact on Metal, WARP and hardware
+    Direct3D 11 and Vulkan. This avoids production precision restrictions on every GPU solely for a software
+    rasterizer's ordering. A claim of identity on a backend holds as far as that fact passes there. The
     per-frame hash over every temporal fact, 2931 fixtures and 63228 frames, was identical between the two entry points
     on Metal after the half-float rounding.
 
@@ -1291,7 +1296,8 @@ Implementation review established the contract amendments below.
     WARP keeps those same state channels exact but bounds colour and confidence separately by
     worst absolute difference 0.0625 and differing share 0.0025. TemporalSoftwareCompileDivergenceRule
     owns that constant pair. These rules do not change production fused/split identity, whose only
-    exception remains the existing llvmpipe colour rule. Saved atlas presence, requested shadow
+    exceptions are llvmpipe colour and the record-sized drift and swing rule above. Confidence, locks, marks, R8
+    and depth remain exact across production entries on every backend. Saved atlas presence, requested shadow
     mode and skipped shadow updates cannot certify a frame.
 
     **Capability policy.** Motion plus visibility requires five colour attachments. A device below five keeps the

@@ -69,16 +69,22 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
 
     /// <summary>Captures complete inputs under caller context and surface query allowances.</summary>
     public static MapFoliageContextResult Capture(MapDocument document, MapAssetClosure assets, MapFoliageContextLimits? limits,
-        MapQueryLimits? queryLimits)
+        MapQueryLimits? queryLimits) => Capture(document, assets, limits, queryLimits, null);
+
+    /// <summary>Captures complete inputs under caller context, surface query and prefab expansion allowances. A null
+    /// allowance keeps the engine default. The preflight's prefab count and the expansion both take
+    /// <paramref name="expansionLimits"/>.</summary>
+    public static MapFoliageContextResult Capture(MapDocument document, MapAssetClosure assets, MapFoliageContextLimits? limits,
+        MapQueryLimits? queryLimits, MapPrefabExpansionLimits? expansionLimits)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
         long expansions = MapPrefabResolver.ThreadExpansions, writes = MapFoliageJson.ThreadPayloadWrites;
-        MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, limits ?? new());
+        MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, limits ?? new(), expansionLimits);
         if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work) { Capacity = measure.Capacity };
         if (MapFoliageValidation.ValidateBound(document, assets).Count != 0) return new(MapFoliageStatus.Invalid, null, measure.Work);
         MapEffectiveResources resources;
-        try { resources = queryLimits is null ? MapPrefabResolver.Expand(document, assets) : MapPrefabResolver.ExpandWithLimits(document, assets, queryLimits); }
+        try { resources = MapPrefabResolver.Expand(document, assets, expansionLimits ?? new(), null, null, queryLimits); }
         catch (Exception error) when (Refusal(error) is { } status) { return new(status, null, Observed(measure.Work, expansions, writes)); }
         string baseline = resources.SourceFingerprint ?? Editing.MapDocumentEditFinalizer.BaseFingerprint(document);
         return Build(document, assets, resources, measure.Work, expansions, writes, baseline, queryLimits);
@@ -90,16 +96,18 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
     /// checks that the resources correspond to the document's placements and declared surfaces, then runs the context
     /// preflight again before staging. It is not a route to inject unrelated resources. <paramref name="baseline"/> is the
     /// document's fingerprint without foliage when the caller already computed it from exactly this document, so it is
-    /// not hashed again. A non-null <paramref name="queryLimits"/> caps every context acquisition, as in
+    /// not hashed again. The preflight's prefab count takes <paramref name="expansionLimits"/>. A non-null
+    /// <paramref name="queryLimits"/> caps every context acquisition, as in
     /// <see cref="Capture(MapDocument, MapAssetClosure, MapFoliageContextLimits?, MapQueryLimits?)"/>.</summary>
     internal static MapFoliageContextResult CaptureEffective(MapDocument document, MapAssetClosure assets, MapEffectiveResources resources,
-        MapFoliageContextLimits? limits = null, string? baseline = null, MapQueryLimits? queryLimits = null)
+        MapFoliageContextLimits? limits = null, string? baseline = null, MapQueryLimits? queryLimits = null,
+        MapPrefabExpansionLimits? expansionLimits = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(resources);
         long expansions = MapPrefabResolver.ThreadExpansions, writes = MapFoliageJson.ThreadPayloadWrites;
-        MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, limits ?? new());
+        MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, limits ?? new(), expansionLimits);
         if (measure.Status != MapFoliageStatus.Complete) return new(measure.Status, null, measure.Work) { Capacity = measure.Capacity };
         if (MapFoliageValidation.ValidateBound(document, assets).Count != 0 || !Corresponds(document, assets, resources))
             return new(MapFoliageStatus.Invalid, null, measure.Work);

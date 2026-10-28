@@ -58,7 +58,8 @@ public static class MapWorldBuilder
         MapScopedSurfaces surfaces = effective?.CompleteView() ?? MapScopedSurfaces.CompleteView(new MapSurfaceSet());
         if (completeEffective)
         {
-            var findings = MapSpaceCoverageValidator.Validate(surfaces);
+            // Coverage refines under the same declared profile the resolution used.
+            var findings = MapSpaceCoverageValidator.Validate(surfaces, options.Resolve.QueryLimits.Refinement ?? new());
             if (findings.Count != 0) throw new MapDocumentException(string.Join("\n", findings));
         }
         MapTerrainChunkSet terrain = MapTerrainPhysics.Compile(surfaces, options.Chunks);

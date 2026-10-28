@@ -75,7 +75,6 @@ internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionS
         {
             _source = source; _scope = scope;
             _workLimit = MapPageBudget.Ceiling(scope.Limits.MaxPageReads);
-            MapPageBudget.DeriveCeilings(this, scope.Limits, scope.Limits.MaxPageReads, _workLimit);
             var groups = source._nativePoses.GroupBy(p => p.Value).ToArray();
             var budget = scope.SharedBudget ?? new MapPageBudget(scope.Limits.MaxPageReads, source: scope.Limits);
             bool generated = source._generated.Surfaces.Count != 0;

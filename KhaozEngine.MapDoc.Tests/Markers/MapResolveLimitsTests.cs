@@ -2,12 +2,14 @@ using System;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.Tests.MapDoc.Foliage;
 using Xunit;
 using static KhaozEngine.Tests.CapacityDemandProbe;
 
@@ -29,18 +31,19 @@ public sealed class MapResolveLimitsTests
         Assert.Contains("Marker 'stacked-disabled' support status CapacityExceeded", error.Message, StringComparison.Ordinal);
         Assert.Contains("MaxPageMetadataChecks: requested 32770, allowance 32769", error.Message, StringComparison.Ordinal);
 
-        // The scaled ceiling reports itself and the caller's MaxPageReads, each refusing exactly where the gate does.
-        var refused = probe.Events.Where(e => Read<string>(e, "Site") == "MapPageBudget.MaxPageMetadataChecks.1" && Read<bool>(e, "Refused")).ToArray();
-        var ceiling = Assert.Single(refused, e => Read<string>(e, "LimitName") == "MaxPageMetadataChecks");
+        // The scaled ceiling refuses its 32,770th check, and the same check reports the caller's MaxPageReads in whole
+        // page reads, ceil(32769 / 1024) = 33 against 32, so the origin refuses exactly where the gate does.
+        var ceiling = Assert.Single(probe.Events, e => Read<string>(e, "Site") == "MapPageBudget.MaxPageMetadataChecks.1" && Read<bool>(e, "Refused"));
+        Assert.Equal("MaxPageMetadataChecks", Read<string>(ceiling, "LimitName"));
         Assert.Equal(32770m, Requested(ceiling));
         Assert.Equal(32769m, Read<decimal>(ceiling, "Allowance"));
-        var pages = Assert.Single(refused, e => Read<string>(e, "LimitName") == "MaxPageReads");
-        Assert.Equal(32769m / 1024m, Requested(pages));
-        Assert.Equal(32m, Read<decimal>(pages, "Allowance"));
+        var pages = Assert.Single(probe.Events, e => Read<string>(e, "Site") == "MapPageBudget.MaxPageMetadataChecks.2" && Read<bool>(e, "Refused"));
+        Assert.Equal("MaxPageReads", Read<string>(pages, "LimitName"));
+        Assert.Equal((0m, 33m, 32m), (Read<decimal>(pages, "CurrentDemand"), Read<decimal>(pages, "ProposedIncrement"), Read<decimal>(pages, "Allowance")));
         Assert.Equal(Read<long>(ceiling, "AdmissionId"), Read<long>(pages, "AdmissionId"));
-        // The last admitted check sits exactly on the caller's allowance.
-        Assert.Contains(probe.Events, e => Read<string>(e, "Site") == "MapPageBudget.MaxPageMetadataChecks.1" &&
-            Read<string>(e, "LimitName") == "MaxPageReads" && !Read<bool>(e, "Refused") && Requested(e) == 32m);
+        // The last admitted check needs exactly the caller's 32 page reads.
+        Assert.Contains(probe.Events, e => Read<string>(e, "Site") == "MapPageBudget.MaxPageMetadataChecks.2" &&
+            Read<long>(e, "AdmissionId") == Read<long>(ceiling, "AdmissionId") && !Read<bool>(e, "Refused") && Requested(e) == 32m);
     }
 
     [Fact]
@@ -55,8 +58,16 @@ public sealed class MapResolveLimitsTests
         Assert.Equal(3, MapEffectiveAnnotations.Markers(resolved.EffectiveResources!).Count);
         Assert.Equal(Markers(resolved.EffectiveResources!), Markers(edited));
         Assert.Equal(resolved.EffectiveResources!.AnnotationDigest, edited.AnnotationDigest);
-        Assert.Throws<MapDocumentException>(() => MapNativeResolution.ResolvePlacements(fixture.Document, fixture.Assets, MarkerFixtures.Options(), []));
-        Assert.Throws<MapDocumentException>(() => MapDocumentEditFinalizer.Expand(fixture.Document, fixture.Assets));
+        foreach (Action run in new Action[]
+        {
+            () => MapNativeResolution.ResolvePlacements(fixture.Document, fixture.Assets, MarkerFixtures.Options(), []),
+            () => MapDocumentEditFinalizer.Expand(fixture.Document, fixture.Assets),
+        })
+        {
+            var error = Assert.Throws<MapDocumentException>(run);
+            Assert.Contains("support status CapacityExceeded", error.Message, StringComparison.Ordinal);
+            Assert.Contains("MaxPageMetadataChecks: requested 32770", error.Message, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
@@ -127,10 +138,56 @@ public sealed class MapResolveLimitsTests
         Assert.Equal(a.EffectiveResources!.Digest, b.EffectiveResources!.Digest);
         Assert.Equal(a.EffectiveResources.AnnotationDigest, b.EffectiveResources.AnnotationDigest);
         Assert.Equal(Markers(a.EffectiveResources), Markers(b.EffectiveResources));
-        Assert.Equal(a.EffectiveResources.PlacementSupports.Select(s => (s.PlacementId, s.Support.WorldY, s.Support.Face)),
-            b.EffectiveResources.PlacementSupports.Select(s => (s.PlacementId, s.Support.WorldY, s.Support.Face)));
         Assert.Equal(MapNativeResolution.ResolvePlacements(fixture.Document, fixture.Assets, standard, ["seat"]).Select(p => p.Transform),
             MapNativeResolution.ResolvePlacements(fixture.Document, fixture.Assets, permissive, ["seat"]).Select(p => p.Transform));
+
+        // R-RES-1a. Every support answer is identical, and only the read witness, which names the request and its
+        // budgets, differs. A value-equal profile names the same request, so its witnesses are identical too.
+        MapResolvedDocument same = MapNativeResolution.Resolve(fixture.Document, fixture.Assets,
+            standard with { QueryLimits = new MapQueryLimits(), ExpansionLimits = new MapPrefabExpansionLimits() });
+        var (standardSupports, permissiveSupports, sameSupports) = (Supports(a), Supports(b), Supports(same));
+        Assert.Equal(4, standardSupports.Length);
+        Assert.Equal(standardSupports.Select(s => s.Content), permissiveSupports.Select(s => s.Content));
+        Assert.All(standardSupports.Zip(permissiveSupports), pair => Assert.NotEqual(pair.First.Witness, pair.Second.Witness));
+        Assert.Equal(standardSupports, sameSupports);
+        Assert.NotEqual(a.EffectiveResources.CompleteView().Witness.ScopeDigest, b.EffectiveResources.CompleteView().Witness.ScopeDigest);
+        Assert.Equal(a.EffectiveResources.CompleteView().Witness.ScopeDigest, same.EffectiveResources!.CompleteView().Witness.ScopeDigest);
+    }
+
+    [Fact]
+    public void PublicFinalize_ExpandsAndPreflightsUnderTheDeclaredProfile()
+    {
+        FoliageFixture f = FoliageFixtures.Dependents();
+        MapDocument candidate = MapDocumentFile.LoadText(MapDocumentFile.SaveText(f.Document));
+        candidate.Placements.Single(p => p.Id == FoliageFixtures.ShrubId).X = 8;
+        MapPrefabEditResult Prepared() => new(candidate, MapNativeWriteSet.PlacementsOnly,
+            new MapNativeEditEffects(null, null, [], [], [], [], MapNativeInvalidation.Placements));
+        MapPrefabEditResult standard = MapDocumentEditFinalizer.Finalize(f.Document, Prepared(), f.Assets, f.Assets);
+        MapPrefabEditResult declared = MapDocumentEditFinalizer.Finalize(f.Document, Prepared(), f.Assets, f.Assets,
+            new MapQueryLimits(MaxCandidatePatches: 1024, MaxPageReads: 4096), new MapPrefabExpansionLimits(MaxInstances: 131072));
+        Assert.NotEmpty(standard.Effects.FoliageChunks);
+        Assert.Equal(standard.Effects.FoliageChunks, declared.Effects.FoliageChunks);
+        Assert.Equal(standard.Effects.Describe(), declared.Effects.Describe());
+
+        // The foliage preflight counts prefab expansion under the declared profile, before any copy or expansion.
+        var tight = Assert.Throws<MapDocumentException>(() => MapDocumentEditFinalizer.Finalize(f.Document, Prepared(), f.Assets, f.Assets,
+            new MapQueryLimits(), new MapPrefabExpansionLimits(MaxPatches: 1)));
+        Assert.Equal("Foliage CapacityExceeded: the document exceeds the foliage context budget before any copy.", tight.Message);
+        // A tight query profile reaches each side's expansion.
+        var query = Assert.Throws<MapDocumentException>(() => MapDocumentEditFinalizer.Finalize(f.Document, Prepared(), f.Assets, f.Assets,
+            new MapQueryLimits(MaxCandidatePatches: 1), new MapPrefabExpansionLimits()));
+        Assert.Contains("CapacityExceeded", query.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FoliageCapture_TakesTheCallerExpansionProfile()
+    {
+        FoliageFixture f = FoliageFixtures.Dependents();
+        Assert.Equal(MapFoliageStatus.Complete, MapFoliageGenerationContext.Capture(f.Document, f.Assets).Status);
+        Assert.Equal(MapFoliageStatus.Complete,
+            MapFoliageGenerationContext.Capture(f.Document, f.Assets, null, null, new MapPrefabExpansionLimits(MaxInstances: 131072)).Status);
+        Assert.Equal(MapFoliageStatus.CapacityExceeded,
+            MapFoliageGenerationContext.Capture(f.Document, f.Assets, null, null, new MapPrefabExpansionLimits(MaxPatches: 1)).Status);
     }
 
     [Fact]
@@ -141,6 +198,15 @@ public sealed class MapResolveLimitsTests
     }
 
     static decimal Requested(object demand) => Read<decimal>(demand, "Requested");
+
+    // Every placement and marker support answer, split into its content and its request-naming witness digest.
+    static (string Id, object Content, string Witness)[] Supports(MapResolvedDocument resolved) =>
+        resolved.EffectiveResources!.PlacementSupports.Select(s => (s.PlacementId, s.Support))
+            .Concat(resolved.EffectiveResources.MarkerSupports.Select(s => (s.MarkerId, s.Support)))
+            .Select(p => (p.Item1, (object)(p.Support.Status, p.Support.Face, p.Support.WorldY, p.Support.Normal, p.Support.IsCaptureSupport,
+                p.Support.Compatibility, p.Support.SpaceId, p.Support.Via, p.Support.Detail, p.Support.Capacity, p.Support.Witness.SnapshotId,
+                p.Support.Witness.Frame, p.Support.Witness.QueryPolicyVersion, p.Support.Witness.Complete), p.Support.Witness.ScopedDigest))
+            .ToArray();
 
     static (string Id, MapExactPoint Position, MapMarkerHeightProvenance? Provenance)[] Markers(MapEffectiveResources resources) =>
         MapEffectiveAnnotations.Markers(resources).Select(m => (m.Id, m.Position, m.HeightProvenance)).ToArray();

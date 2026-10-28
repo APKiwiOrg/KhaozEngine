@@ -38,16 +38,19 @@ public sealed record MapFoliageContextMeasure(MapFoliageStatus Status, MapFoliag
 /// further 64 per number, and 6 times the UTF-16 length plus 2 for every string value and property name. A density
 /// chunk's token is canonical base64, which never escapes, so its 1368 characters are charged once each plus 2. Placements and paint targets count authored rows plus the
 /// prefab children that can produce them, an upper bound on what expansion yields. Surface patches are the released
-/// prefab preflight's patch count, taken under the released expansion limits.</summary>
+/// prefab preflight's patch count, taken under the caller's expansion limits.</summary>
 internal static class MapFoliageContextPreflight
 {
     const long ValueBytes = 8, NumberBytes = 64;
     static readonly int DensityTokenChars = 4 * ((MapFoliageChunk.ByteLength + 2) / 3);
 
-    internal static MapFoliageContextMeasure Measure(MapDocument document, MapAssetClosure assets, MapFoliageContextLimits limits) =>
-        Measure(document, assets, limits, document?.Foliage);
+    internal static MapFoliageContextMeasure Measure(MapDocument document, MapAssetClosure assets, MapFoliageContextLimits limits,
+        MapPrefabExpansionLimits? expansionLimits = null) => Measure(document, assets, limits, document?.Foliage, expansionLimits);
 
-    internal static MapFoliageContextMeasure Measure(MapDocument document, MapAssetClosure assets, MapFoliageContextLimits limits, MapFoliageSet? set)
+    /// <summary>Measures <paramref name="set"/> as the foliage of <paramref name="document"/>. The surface patch count is
+    /// the prefab preflight's under <paramref name="expansionLimits"/>, the engine default when null.</summary>
+    internal static MapFoliageContextMeasure Measure(MapDocument document, MapAssetClosure assets, MapFoliageContextLimits limits, MapFoliageSet? set,
+        MapPrefabExpansionLimits? expansionLimits = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
@@ -78,7 +81,7 @@ internal static class MapFoliageContextPreflight
         { Capacity = new(nameof(MapFoliageContextLimits.MaxPaintTargets), work.PaintTargets, limits.MaxPaintTargets) };
 
         MapPrefabExpansionWork expansion;
-        try { expansion = MapPrefabPreflight.Count(document, assets, new()); }
+        try { expansion = MapPrefabPreflight.Count(document, assets, expansionLimits ?? new()); }
         catch (MapDocumentException error)
         {
             bool capacity = error.Message.Contains("limit exceeded", StringComparison.Ordinal) ||

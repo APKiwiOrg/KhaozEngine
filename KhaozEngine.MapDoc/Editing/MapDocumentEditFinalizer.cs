@@ -43,7 +43,7 @@ public static class MapDocumentEditFinalizer
         ArgumentNullException.ThrowIfNull(beforeAssets);
         ArgumentNullException.ThrowIfNull(afterAssets);
         ArgumentNullException.ThrowIfNull(prepared.After);
-        Preflight(prepared.After, afterAssets);
+        Preflight(prepared.After, afterAssets, prepared.After.Foliage, expansionLimits);
         MapBoundDocumentValidation.Validate(prepared.After, afterAssets);
         return Complete(before, prepared, beforeAssets, afterAssets, queryLimits, expansionLimits);
     }
@@ -54,7 +54,7 @@ public static class MapDocumentEditFinalizer
         MapAssetClosure afterAssets, MapQueryLimits? queryLimits = null, MapPrefabExpansionLimits? expansionLimits = null)
     {
         MapDocument after = prepared.After;
-        Preflight(after, afterAssets);
+        Preflight(after, afterAssets, after.Foliage, expansionLimits);
         // Without foliage nothing is finalized, and released results carry no retained expansion.
         if (before.Foliage is null && after.Foliage is null) return prepared.Expansions is null ? prepared : prepared with { Expansions = null };
         // Each side's fingerprint without foliage is hashed once here and reused by its capture.
@@ -112,12 +112,15 @@ public static class MapDocumentEditFinalizer
     /// alone. A document without foliage is not measured, so released documents keep their behaviour.</summary>
     internal static void Preflight(MapDocument document, MapAssetClosure? assets) => Preflight(document, assets, document.Foliage);
 
-    /// <summary>Admits proposed foliage against the target's metadata and closure without a document copy.</summary>
-    internal static void Preflight(MapDocument document, MapAssetClosure? assets, MapFoliageSet? foliage)
+    /// <summary>Admits proposed foliage against the target's metadata and closure without a document copy. The prefab
+    /// count inside the measure takes <paramref name="expansionLimits"/>, the profile the expansion that follows uses,
+    /// and a null profile keeps the engine default.</summary>
+    internal static void Preflight(MapDocument document, MapAssetClosure? assets, MapFoliageSet? foliage,
+        MapPrefabExpansionLimits? expansionLimits = null)
     {
         if (foliage is null) return;
         if (assets is null) throw new MapDocumentException("Native foliage editing requires a verified asset closure.");
-        MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, new(), foliage);
+        MapFoliageContextMeasure measure = MapFoliageContextPreflight.Measure(document, assets, new(), foliage, expansionLimits);
         if (measure.Status != MapFoliageStatus.Complete)
             throw MapFoliageEditRefusal.Create(measure.Status, "the document exceeds the foliage context budget before any copy");
     }
@@ -132,7 +135,7 @@ public static class MapDocumentEditFinalizer
     internal static MapEffectiveResources Expand(MapDocument document, MapAssetClosure assets, MapQueryLimits queryLimits,
         MapPrefabExpansionLimits expansionLimits)
     {
-        Preflight(document, assets);
+        Preflight(document, assets, document.Foliage, expansionLimits);
         MapEffectiveResources resources = MapPrefabResolver.Expand(document, assets, expansionLimits, null, null, queryLimits);
         resources.SourceFingerprint ??= BaseFingerprint(document);
         return resources;

@@ -135,7 +135,11 @@ digest. A resolver 1 world also carries its `LegacySculptTiles` (`MapLegacySculp
 block digest and `LegacyTerrainIdentity`, so a consumer covers only the sculpt tiles a region touches.
 A resolver 2 build resolves under `options.Resolve.QueryLimits` and `ExpansionLimits`, the same caller profile scene
 residency takes, so a world whose support needs more than the default `MaxPageReads` builds once the caller declares
-it. The profile only decides where the build refuses and never enters `AuthoredHash` or `BuildHash`.
+it. Whole-view room coverage refines under `QueryLimits.Refinement`, the engine default when it is null. The profile
+only decides where the build refuses and never enters `AuthoredHash`, `BuildHash` or the annotation digest. The
+terrain and surface witnesses (`Terrain.Witness.ScopedDigest`, `Surfaces.Witness.ScopeDigest`) name the request,
+budgets included, so they differ between profiles and agree for value-equal ones. `MapWorldBuildOptions` equality
+includes the profile.
 
 Prefab and unpacked complete builds validate every effective room coverage finding even without water.
 Diagnostic expansion remains available for inspecting ambiguous membership. Independent coincident support floors

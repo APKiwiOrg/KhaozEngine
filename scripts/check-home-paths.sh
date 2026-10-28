@@ -1,8 +1,10 @@
 #!/bin/sh
 # Keep personal absolute home paths out of tracked text.
 # Default: inspect added staged lines, like check-dashes.sh. --tree: inspect all tracked text for CI.
-# Allow runner, Shared and angle-bracket placeholders. .home-paths-ignore holds exceptional pathspecs,
-# one per line, with blank lines and # comments ignored. Staged mode reads that list from the index.
+# Allow the hosted runner accounts (runner on Linux and macOS, runneradmin on Windows), Shared and
+# angle-bracket placeholders. Published renderer evidence records runner paths verbatim.
+# .home-paths-ignore holds exceptional pathspecs, one per line, with blank lines and # comments ignored.
+# Staged mode reads that list from the index.
 # Exit 0 clean, 1 on a violation, 2 on bad usage or a git error.
 set -eu
 
@@ -54,7 +56,7 @@ BEGIN { pattern = ENVIRON["CHECK_HOME_PATTERN"] }
       sub(/^[A-Za-z]:\\+[Uu][Ss][Ee][Rr][Ss]\\+/, "", name)
       sub(/[\/\\]+$/, "", name)
     }
-    if (name == "runner" || name == "Shared" || name ~ /^<[^>]+>$/) continue
+    if (name == "runner" || name == "runneradmin" || name == "Shared" || name ~ /^<[^>]+>$/) continue
     printf "check-home-paths: %s:%s: absolute home path %s\n", file, line, path
   }
 }'

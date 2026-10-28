@@ -24,6 +24,19 @@ internal sealed record TemporalHistorySample(float[] Colour, float[] State, byte
             TemporalTextureIo.Read(fx.Device, history.PreviousDepth(history.WriteIndex)));
     }
 
+    // D stores no shimmer record (TemporalVisibilityFrozenDLaterChanges). Against D a sample keeps each state texel's
+    // confidence and lock alone.
+    internal TemporalHistorySample WithoutShimmerRecord()
+    {
+        var state = new float[State.Length / 2];
+        for (int p = 0; p < State.Length / 4; p++)
+        {
+            state[p * 2] = State[p * 4];
+            state[p * 2 + 1] = State[p * 4 + 1];
+        }
+        return this with { State = state };
+    }
+
     internal static void Exact(int frame, string what, ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
     {
         if (a.SequenceEqual(b)) return;

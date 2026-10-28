@@ -317,9 +317,12 @@ namespace KhaozEngine.Tests.Gpu
                             entry == TemporalResolveEntry.Fused ? opposite : reference);
                         oracle.Compare(frame, $"production {entry} vs D {entry}", actual, reference);
                     }
-                    else TemporalHistorySample.Exact(frame, "production vs D", actual, reference);
+                    else TemporalHistorySample.Exact(frame, "production vs D", actual.WithoutShimmerRecord(),
+                        reference.WithoutShimmerRecord());
                     TemporalHistorySample shipped = TemporalHistorySample.Read(shippedD);
-                    if (metal) TemporalHistorySample.Exact(frame, "production vs shipped D", actual, shipped);
+                    if (metal)
+                        TemporalHistorySample.Exact(frame, "production vs shipped D", actual.WithoutShimmerRecord(),
+                            shipped.WithoutShimmerRecord());
                     else
                     {
                         TemporalHistoryDifference apart = TemporalHistoryDifference.Measure(actual.Colour, actual.State,
@@ -337,8 +340,10 @@ namespace KhaozEngine.Tests.Gpu
                             storedApart++;
                     float[] productionState = actual.State, mutantState = mutant.ReadState();
                     float[] exportedState = exported.ReadState(), keptState = kept.ReadState();
+                    // The mutant is D, which stores no shimmer record, so only confidence and lock count.
                     for (int i = 0; i < productionState.Length; i++)
-                        if (BitConverter.SingleToInt32Bits(productionState[i]) != BitConverter.SingleToInt32Bits(mutantState[i]))
+                        if (i % 4 < 2
+                            && BitConverter.SingleToInt32Bits(productionState[i]) != BitConverter.SingleToInt32Bits(mutantState[i]))
                             mutantDiffers++;
                     // Both exporting rigs decide as production does: every stored lock is production's.
                     for (int p = 0; p < productionState.Length / 4; p++)

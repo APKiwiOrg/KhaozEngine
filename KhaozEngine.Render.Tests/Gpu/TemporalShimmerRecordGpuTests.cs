@@ -19,6 +19,7 @@ namespace KhaozEngine.Tests.Gpu
 
         readonly record struct ShimmerRecord(float Drift, float Swing);
 
+        // Expected red until the shimmer clip lands: the unchanged clip strips the line's history between hits.
         [GpuFact]
         public void A_line_the_jitter_hits_once_per_cycle_builds_swing_without_drift()
         {

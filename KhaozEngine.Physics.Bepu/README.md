@@ -127,8 +127,10 @@ either value shifts the bit-exact result legitimately.
   body-local offsets at build time, so a uniform translate of both ends preserves every joint exactly.
   `Statics.ApplyDescription` is deliberately NOT used: its own doc says it forces every sleeping body whose bounds
   overlap the old or new collidable active, which would wake the world's whole sleeping population on every shift.
-  Cost is O(statics + bodies) pose writes plus refits on the calling thread, budgeted at less than one physics step
-  on the same world.
+  Cost is O(statics + bodies) pose writes plus refits on the calling thread. Ordinary tests enforce one refit
+  call per body and static, zero managed allocation and the safe static API. The separate
+  [hosted rebase diagnostic](../docs/RENDERER-PERFORMANCE.md#hosted-physics-rebase-diagnostic) fails above a
+  median 3x step ratio at the resident streaming scale, without gating merges on wall-clock noise.
 
 ## Exact completed-footprint reuse
 

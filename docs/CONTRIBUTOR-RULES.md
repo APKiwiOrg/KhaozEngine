@@ -154,6 +154,10 @@ Flake hunts and stress proofs run through `.github/workflows/stress-test.yml`, a
 workflow in `APKiwiOrg/ci-workflows`, on a GitHub-hosted runner, and only with the owner's explicit
 permission first. See that repository's README for its inputs.
 
+The non-gating hosted CPU rebase diagnostic is scheduled against main and manually dispatched. Its
+measurement, fixed 3x verdict and deterministic suite split are documented in
+[`RENDERER-PERFORMANCE.md`](RENDERER-PERFORMANCE.md#hosted-physics-rebase-diagnostic).
+
 The engine's GPU matrix uses hosted `metal-native`, `direct3d11-native` and `vulkan-native` legs.
 Goldens are backend-family artifacts. A new or changed golden must be baked by the relevant CI leg.
 Plain `dotnet test` skips GPU facts. A local GPU proof sets `KE_GPU_TESTS=1` and confirms zero skipped

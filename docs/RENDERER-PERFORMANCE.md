@@ -3,7 +3,29 @@
 This is the living contract for the internal renderer baseline, offline summaries and comparisons.
 [CROSS-PLATFORM.md](CROSS-PLATFORM.md#paid-hosted-renderer-performance-mode) owns hosted admission
 and execution. The [cold publication design](design/RENDERER-COLD-PUBLICATION.md)
-retains the design rationale. This document records no measured baseline or performance budget.
+retains the design rationale. The renderer sections record no measured baseline or performance budget.
+The hosted CPU physics rebase diagnostic below carries its own fixed limit.
+
+## Hosted physics rebase diagnostic
+
+The separate `physics-rebase-perf.yml` CPU lane runs on `main` every Monday at 04:37 UTC and on
+`workflow_dispatch`. It uses only GitHub-hosted `ubuntu-24.04`, follows the isolated hosted bench pattern,
+and is outside the solution, push/PR workflows and merge/release gates. It needs no GPU or paid runner.
+The controller can dispatch it after merge with `gh workflow run physics-rebase-perf.yml`.
+
+`tools/Physics.Rebase.Perf.Tests` shares the warmed resident fixture with the deterministic Game.Tests guards:
+25 terrain meshes, 2,000 prop statics and 200 dynamics. It retains five interleaved samples, each one step
+followed by two round-trip rebases, and takes the median of the five per-sample rebase/step ratios.
+Each rebase duration is half the pair's duration. The fact writes every paired sample and the median ratio
+to the job summary before asserting. A median above 3x fails that job and retains its TRX artifact.
+Exactly 3x passes. A missing, skipped or unmatched measurement also fails. There are no retries or extra samples.
+
+Ordinary Game.Tests keep zero managed allocation, structurally bounded engine refit call counts and the
+prohibition on `Statics.ApplyDescription`, whose overlap activation wakes sleepers. Identical final tree
+state and zero managed allocation cannot expose extra native tree visits within Bepu. Timing covers that
+remaining class without turning scheduler noise into a merge failure again ([#1512](https://github.com/APKiwiOrg/KhaozEngine/issues/1512)).
+The perf project refuses accidental execution outside its dedicated GitHub workflow. Local verification
+builds it and tests only the pure summary/verdict logic, never the timing workload.
 
 ## Evidence and authorization
 

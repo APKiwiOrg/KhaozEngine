@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <OutputType>Library</OutputType>
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <ProjectReference Include="../../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
+    <ProjectReference Include="../../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
+    <ProjectReference Include="../../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <Compile Include="../../test-shared/PhysicsRebaseResidentWorld.cs" Link="PhysicsRebaseResidentWorld.cs" />
+    <Compile Include="../../test-shared/PhysicsRebaseTiming.cs" Link="PhysicsRebaseTiming.cs" />
+  </ItemGroup>
+</Project>

@@ -776,46 +776,330 @@ unchanged steady limits and reason live in the
 The D3D11 cold compile cost remains open as [#1617](https://github.com/APKiwiOrg/KhaozEngine/issues/1617).
 These source changes grant no measurement, retry or full-unit approval.
 
+## Third authorized Windows pilot, attempt 3
+
+The workload and trusted workflow are `946d9052d2a52ca36ca5f108242ed0511f79ffc6`.
+
+| Unit | B | Run, job | Job window UTC | Measurement window UTC |
+| --- | --- | --- | --- | --- |
+| `pilot-windows` | `2f7dcd8902769dc53629402403c7d96dcdacaa13` | [40492789358](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40492789358), 122150817520 | 2026-10-27 11:00:26 to 2026-10-27 11:10:17 | 2026-10-27 11:08:07 to 2026-10-27 11:10:10 |
+
+| Unit | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- |
+| `pilot-windows` | 12729576723, 1,069,060, `sha256:23a3a80beefec8fc77e66d11ebaf1a5a2ac80826d026a048a78b816593b8ea49` | `e68c84e0539663b64f4a3b0a501fc05acae39a5de2b8fdf589a249417deb2bcd` |
+
+For every attempt recorded below, `git show --stat` and the parent/path checks confirm that B has
+the workload as its sole parent and adds only `tools/Renderer.Perf.Tests/authorized/<unit>.json`.
+Every workflow run is attempt 1. Windows paid native admission selected hardware `NVIDIA Tesla T4`,
+vendor `0x10de`, device `0x1eb8`, driver `DXGI driver=00200000000f25d6`, with 64-bit timestamps and
+a 1 ns period. This identity applies to every paid Windows attempt below.
+
+The cold first conditioning frame completed in 45,285.7709 ms, inside the widened limit. The unit
+retained all 300 conditioning frames and completed 2/2 scene blocks. Control 1, `empty-frame`,
+retained three warm-up frames, including zero-tick observations, then refused "Invalid GPU frame
+timing." during the control measurement. No control completed, 0/6. Publication is `failed`, compiler
+collection is `incomplete` with "Cold collection has not completed.", and promotion is false with
+only "Invalid GPU frame timing." Trusted paid verification was skipped. No clock lock was required
+or recorded. The 591-second job billed 10 minutes, USD 1.020.
+
+Correction `d06b93798`, included in `524bec557`, retains checked `BelowResolution` observations for
+clear-only controls 1 to 3. It preserves the null duration and validates the timestamp period,
+submission, clear counts, absence of other work and control output. It does not turn zero ticks into
+a numerical rate. State `3feb7b501` raised the campaign envelope to USD 14. Each paid attempt below
+consumed its own one-attempt owner approval and grants no retry or further dispatch.
+
+## Fourth authorized Windows pilot, attempt 4
+
+The workload and trusted workflow are `524bec557391d365057e3af112ede2986b7c2329`.
+
+| Unit | B | Run, job | Job window UTC | Measurement window UTC |
+| --- | --- | --- | --- | --- |
+| `pilot-windows` | `34d05fcef367aa8a0cfbc47212488de6c050c824` | [40516335540](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40516335540), 122231292241 | 2026-10-27 13:55:42 to 2026-10-27 14:06:02 | 2026-10-27 14:03:36 to 2026-10-27 14:05:45 |
+
+| Unit | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- |
+| `pilot-windows` | 12738929096, 1,742,042, `sha256:c23dd04dbf267daee02f2c8bea9160bf187eab05279e16118319a1492f6202d1` | `f0b6b1fe8649ddb6241bedf88b301228d92a076a6fd72e487abffaf63806215b` |
+
+The unit completed all 300 conditioning frames, 2/2 blocks and 6/6 controls, all 1,260 retained
+frames. Publication is `completed`, compiler collection is `complete` with a schema 2 inventory,
+and promotion is true with no refusal reason. Trusted paid `Verify` passed. No clock lock was
+required or recorded. The 620-second job billed 11 minutes, USD 1.122. This certifies the pilot,
+not a full baseline.
+
+## First authorized full pair, unlocked clocks
+
+The workload is `524bec557391d365057e3af112ede2986b7c2329`. The trusted workflow is `19677a6029ed738f0d55022a8e9c45d9cccac998`.
+
+| Unit | B | Run, job | Job window UTC | Measurement window UTC |
+| --- | --- | --- | --- | --- |
+| `full-linux` | `ed485e02e6a84fa575d423d648a5a5882f36d3ad` | [40572172000](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40572172000), 122429355184 | 2026-10-27 19:47:40 to 2026-10-27 19:57:38 | 2026-10-27 19:51:29 to 2026-10-27 19:57:29 |
+| `full-windows` | `543628c3ef64f6e8eae4ad07f59b3842aa1fcea9` | [40572176659](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40572176659), 122429280126 | 2026-10-27 19:47:32 to 2026-10-27 20:03:27 | 2026-10-27 19:55:33 to 2026-10-27 20:03:14 |
+
+| Unit | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- |
+| `full-linux` | 12767030679, 23,035,041, `sha256:bb966553af405a17fa7e4c6ac95aa03675ba9cee137b72715d6bdc83da20567e` | `9d458fe3f3591625f6aa0c2baff46bdd2b46847e893b7cef822cfe3739f71811` |
+| `full-windows` | 12767332099, 16,262,977, `sha256:9f0ddc3712de5685c84a8f457821834c005a24807e0a48f91c7e64dad7622303` | `970a8b639a2ca83c06e26b8220a7154de2bf917bea5df5fc1fdffa5b93af6239` |
+
+Linux native admission selected hardware `Tesla T4`, vendor `0x10de`, device `0x1eb8`, driver
+`VkPhysicalDeviceProperties.driverVersion=2475425856`, with 64-bit timestamps and a 1 ns period.
+This identity applies to every paid Linux attempt below. Windows retained the paid T4 identity above.
+
+Both units completed 1,200 conditioning frames, 30/30 blocks and 12/12 controls, all 16,944 frames
+per leg. Both publications are `completed` and compiler collections are `complete` with schema 2
+inventories. Promotion is false. Linux records six `ClockOrWorkDrift` reasons and Windows eight,
+identifying the affected scene/layout/iteration. The measurement test's terminal refusal is "The
+execution class did not satisfy its terminal evidence verdict." Trusted paid verification was skipped.
+
+Neither unit locked the GPU clock. Each retained 90 host samples. Linux observed graphics clocks
+from 300 to 1,590 MHz, 35 idle (`0x1`) and 55 software power-cap (`0x4`) samples. Windows observed
+the same clock range, 40 idle and 50 power-cap samples. Variable boost, power capping and idle clocks
+motivated the lock. Linux billed 10 minutes, USD 0.520, from 598 seconds. Windows billed 16 minutes,
+USD 1.632, from 955 seconds. These completed but unstable units did not publish a baseline.
+
+## Locked pilots at 1,200 MHz
+
+State `40c6db74b` required a 1,200 MHz graphics-clock lock and raised the campaign envelope to USD 18.
+The workload and trusted workflow are `40c6db74b338e3dabf47f2d9f2c9577478563589`.
+
+| Unit | B | Run, job | Job window UTC | Measurement window UTC |
+| --- | --- | --- | --- | --- |
+| `pilot-linux` | `bbb07749eebf4247096482908ad766e26d0ced95` | [40597397670](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40597397670), 122516875741 | 2026-10-27 22:47:29 to 2026-10-27 22:51:50 | 2026-10-27 22:50:46 to 2026-10-27 22:51:38 |
+| `pilot-windows` | `eb1289ff9be11b3cc842252acb6b99c8ca87465a` | [40597401810](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40597401810), 122516865068 | 2026-10-27 22:47:27 to 2026-10-27 22:57:58 | 2026-10-27 22:55:30 to 2026-10-27 22:57:39 |
+
+| Unit | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- |
+| `pilot-linux` | 12777650593, 2,063,906, `sha256:46fda555545f292cc276dd100405c3a4dc47de60f66127dda8e63a8114512d09` | `a1742509e6090238781d37503e1611279c507540898f898c3845aacb24d7049e` |
+| `pilot-windows` | 12777493367, 1,734,690, `sha256:4d7278ddefa0556ecf3cf84c8cb93a0c7859491d95e0318f5a5e6b17b0f71d3b` | `70e0ce8eb29ec48a90b06a155d4ac48dc1665576d8176a8983da8871151273c7` |
+
+Both native admissions selected the hardware T4 identities above. Each `gpu-clock-lock.json` records
+`applied`, requested/minimum/maximum/readback 1,200 MHz. Each report's `gpuClock` is `verified` with
+seven distinct samples at 1,200 MHz and no refusal reason.
+
+Both units completed 300 conditioning frames, 2/2 blocks and 6/6 controls, all 1,260 frames per leg.
+Publications are `completed`, compiler collections and schema 2 inventories are complete, promotion
+is true with no reasons, and trusted paid `Verify` passed on both legs. Linux billed 5 minutes,
+USD 0.260, from 261 seconds. Windows billed 11 minutes, USD 1.122, from 631 seconds. The pilots
+granted no authority to run a full unit.
+
+## First locked full pair at 1,200 MHz
+
+The workload and trusted workflow are `40c6db74b338e3dabf47f2d9f2c9577478563589`.
+
+| Unit | B | Run, job | Job window UTC | Measurement window UTC |
+| --- | --- | --- | --- | --- |
+| `full-linux` | `dfb8e4b81932ed39e7d9a9ded9058a808017fb93` | [40599806485](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599806485), 122524962580 | 2026-10-27 23:07:13 to 2026-10-27 23:17:10 | 2026-10-27 23:10:54 to 2026-10-27 23:17:02 |
+| `full-windows` | `afb3d376653df30f0e0d264d929777a1af74b21c` | [40599810511](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599810511), 122525013179 | 2026-10-27 23:07:20 to 2026-10-27 23:42:39 | 2026-10-27 23:38:36 to 2026-10-27 23:42:29 |
+
+| Unit | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- |
+| `full-linux` | 12778736978, 22,903,906, `sha256:53558b190d182fa1be697ee3b37d069ae2d78e73a02eb1a72752c6954eab6d26` | `a4242bb2899a951075cefa760830424ac8947a47f58552b83f4823b5b29a3db0` |
+| `full-windows` | 12779357666, 203,424, `sha256:605371668491b2bc4de5f05ac13b666c10ffe3ad6158c27180a8329c8f330f2a` | Not produced |
+
+Both native admissions selected the hardware T4 identities above. Both `gpu-clock-lock.json` files
+record `applied`, requested/minimum/maximum/readback 1,200 MHz.
+
+Linux completed 1,200 conditioning frames, 30/30 blocks and 12/12 controls, all 16,944 frames.
+Publication is `completed` and compiler collection is `complete` with a schema 2 inventory. The worst
+within-block or corresponding-iteration drift is 1.0339 percent, below the unchanged 5 percent rule.
+Promotion is false with only `GpuClockNotLocked`. The report's `gpuClock` is `refused` across 90
+samples. One sample at `S2/TotalOnly/2 batch 102` reported software power cap `0x4` while holding
+1,200 MHz, with 54.39 W power draw. Its exact reason is "S2/TotalOnly/2 batch 102: Throttle reasons
+are unavailable or include a power, thermal, hardware or external limiter." Trusted paid verification
+was skipped. The 597-second job billed 10 minutes, USD 0.520.
+
+Windows was cancelled at the 35-minute job cap. The annotation is "The job has exceeded the maximum
+execution time of 35m0s". GRID setup and the first clock query consumed about 31 minutes before
+measurement. Native admission and the applied lock survive, but no measurement TRX, report,
+completed-block/control counts, compiler inventory, terminal `gpuClock` assessment or promotion
+assessment was produced. Trusted verification was skipped. The 2,119-second job billed 36 minutes,
+USD 3.672.
+
+## Clock headroom and Windows setup allowance
+
+State `7667e78c7` lowered the required graphics clock to 1,095 MHz for power headroom, retained the
+strict power-cap refusal, raised the Windows full job cap to 50 minutes and the campaign envelope to
+USD 22. Linux full kept its 35-minute job cap. The 1,500-second measurement deadline and three-minute
+billed cleanup allowance stayed unchanged. These policy changes supplied no new run approval.
+
+## Software rehearsals, round 7
+
+The workload and trusted workflow are `7667e78c7d19af31188c30c59ed4493d8a7fa713`.
+
+| Unit | B | Run, job | Job window UTC | Measurement window UTC |
+| --- | --- | --- | --- | --- |
+| `rehearsal-full-windows` | `d9ca4c55e2bbc8fd514fe4697e4285b1e33208b7` | [40617677463](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40617677463), 122584034201 | 2026-10-28 01:53:48 to 2026-10-28 01:58:56 | 2026-10-28 01:58:43 to 2026-10-28 01:58:47 |
+| `rehearsal-full-linux` | `e14a15b5f2f4f37c5ce95661ea4291780d0fc5f5` | [40617674200](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40617674200), 122584020587 | 2026-10-28 01:53:44 to 2026-10-28 06:14:31 | 2026-10-28 01:57:42 to 2026-10-28 06:14:26 |
+
+| Unit | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- |
+| `rehearsal-full-windows` | 12786386417, 10,814, `sha256:d589e423f86b6ba81c62abe60143eb6e75f5bd2989ca555d8b222116cbf54383` | `53ea7d124e5db1c93e9d8aff580ce19e68a9ce131be4a4144ffb58a412c29b98` |
+| `rehearsal-full-linux` | 12795639734, 201,593, `sha256:aa04f9bdf73e9b95f0ab2f5d9b8b22bf67d2ac2f8c86069bb40bca1931817b9c` | Not produced |
+
+Windows refused during startup recipe identity admission, before native admission or any retained
+frame. Its `renderer-unit-failure/1` sidecar says "The approved recipe, settings, shader, geometry or
+asset bytes changed." The measurement TRX wraps this as "GPU diagnostic operation failed." No
+adapter identity, blocks, controls, compiler inventory, report publication or promotion assessment
+was produced. Four M5 GLSL providers lacked `text eol=lf`, so the Windows checkout changed hashed
+shader bytes. Correction `d10cef201` pinned `CascadeShadowSelectionSource.cs`,
+`WaterColumnShaderSource.cs`, `WaterColumnShadowSource.cs` and `WaterRefractionShaderSource.cs`,
+and rejected carriage returns in hashed shader strings. It was staged in `cad4d3433`.
+
+Linux native admission selected software `llvmpipe (LLVM 20.1.2, 256 bits)`, vendor `0x10005`, device
+`0x0000`, driver `VkPhysicalDeviceProperties.driverVersion=104865800`, with 64-bit timestamps and
+a 1 ns period. This identity applies to all lavapipe attempts below. The run was cancelled as
+superseded. Its annotations say "The run was canceled by @APKiwi." and "The operation was canceled."
+No TRX or report survived, so completed blocks, controls, compiler state and promotion are unavailable.
+Both trusted rehearsal checks were skipped. Neither software unit acquired a paid clock lock.
+
+Every software attempt below consumed the owner's standing free-run approval for its reviewed state
+and cost USD 0 on a standard runner. Cancellation or refusal grants no retry authority.
+
+## Software rehearsals, round 8
+
+The workload and trusted workflow are `cad4d343347d15ffe647ca32b90129c67b460ca0`.
+
+| Unit | B | Run, job | Job window UTC | Measurement window UTC |
+| --- | --- | --- | --- | --- |
+| `rehearsal-full-windows` | `d07386b9f577cb8dffdfedf2d78c14efa42e0bdf` | [40628799283](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40628799283), 122620163514 | 2026-10-28 03:49:16 to 2026-10-28 05:42:05 | 2026-10-28 03:53:57 to 2026-10-28 05:41:51 |
+| `rehearsal-full-linux` | `a7dcb96809a16df4aad7812e411b5a6bca76de2e` | [40628795563](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40628795563), 122620172594 | 2026-10-28 03:49:18 to 2026-10-28 08:18:44 | 2026-10-28 03:53:18 to 2026-10-28 08:18:39 |
+
+| Unit | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- |
+| `rehearsal-full-windows` | 12795067327, 3,346,516, `sha256:0edda5aaf43049244d00dffb271c656f85249c2f72b24fa70d7ccbd848864bff` | `f50cd60f4ba38529bdbf613fe0f9510163fbb36f3ff0609bd00238af02b74e15` |
+| `rehearsal-full-linux` | 12801197899, 201,620, `sha256:adf3686af2839ab732dcdecc267a5f96715e04aebd43344678acd5181468bab1` | Not produced |
+
+Windows native admission selected software `Microsoft Basic Render Driver` (WARP), vendor `0x1414`,
+device `0x008c`, driver `DXGI driver=000a000065f48370`, with 64-bit timestamps and a 100 ns period.
+This identity applies to the later WARP attempts. It retained 1,200 conditioning frames and 4,991
+frames in total. Eight of 30 blocks completed and a ninth was partial. No control completed, 0/12.
+It refused "Pending GPU timestamps remain after the batch drain." in `S4/TotalOnly/0`.
+Publication is `failed`, compiler collection is `incomplete` with "Cold collection has not
+completed.", and promotion is false with `SoftwareRehearsalNotPerformanceEvidence` and that refusal.
+`gpuClock` is `not-applicable`, with no lock or samples. Trusted rehearsal verification was skipped.
+
+Correction `9c74ce9d7`, included in `2243d40a7`, makes the D3D11 batch drain wait for query
+availability within the existing deadline. A later fence completing alone does not guarantee query
+data availability. It preserves strict resolution and pending refusal at the bound, and closes
+[#1635](https://github.com/APKiwiOrg/KhaozEngine/issues/1635).
+
+Linux selected the lavapipe identity above and was cancelled as superseded. Its annotations say "The
+run was canceled by @APKiwi." and "The operation was canceled." No TRX or report survived, so
+completed counts, compiler state, publication and promotion are unavailable. No clock lock was
+acquired and trusted rehearsal verification was skipped. Both runs cost USD 0.
+
+## Software rehearsals, round 9 and Windows controls gate
+
+The full rehearsals' workload and trusted workflow are `2243d40a7902044cb9dc4a44d11bd3f08f22a12a`.
+The later all-controls unit retains that workload with trusted workflow
+`a34a030bd3f58f93d6e27c3d4aa312f9550a0030`.
+
+| Unit | B | Run, job | Job window UTC | Measurement window UTC |
+| --- | --- | --- | --- | --- |
+| `rehearsal-full-linux` | `c77c477b69ad8b6384b8078f20ab883f43ae5ff9` | [40655819803](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40655819803), 122706652882 | 2026-10-28 08:18:48 to 2026-10-28 11:47:21 | 2026-10-28 08:21:50 to 2026-10-28 11:46:44 |
+| `rehearsal-full-windows` | `1b5725955ea5f079efe4d2aa9d49a213b652918a` | [40655823695](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40655823695), 122706665330 | 2026-10-28 08:18:52 to 2026-10-28 13:55:36 | 2026-10-28 08:23:47 to 2026-10-28 13:55:22 |
+| `rehearsal-controls-windows` | `05ef0297f939f7a5594db6c3b1c23e7625b26dbe` | [40701693185](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40701693185), 122863206436 | 2026-10-28 14:00:53 to 2026-10-28 14:08:02 | 2026-10-28 14:05:29 to 2026-10-28 14:07:49 |
+
+| Unit | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- |
+| `rehearsal-full-linux` | 12813092522, 26,254,529, `sha256:8298a3eb10b20e6fc477ab957d05bb3c8405f5ec0d9f318dbb0109ee90429b79` | `09956e9f1e5c7f16a8a35433f7c664e79ff86f8a1409ef606fd2f46c61422b13` |
+| `rehearsal-full-windows` | 12821203145, 8,379,070, `sha256:a24eea5ef81ca960e1566eef6c0d2f6e71a28f0e9f083ee488acf9d6b38cf58f` | `2e146299d51ee8bfc5e2fd4ca15ada0187ff60332617db0c92d0a0cd86f53f9f` |
+| `rehearsal-controls-windows` | 12821903717, 1,138,707, `sha256:68c75f43b7d6c8ad8b2fe84636a719cb66b4a5b8e01a494920b6b4783ebcd8ac` | `ba8532ff4e90e27df8fbf687b5e9a46ffcb494781b25a3cb54050f043a1cfb9f` |
+
+Linux selected the lavapipe identity above and completed 1,200 conditioning frames, 30/30 blocks and
+12/12 controls, all 16,944 frames. Publication is `completed`, compiler collection and schema 2
+inventory are complete, and trusted `VerifyRehearsal` passed. Promotion is false with only
+`SoftwareRehearsalNotPerformanceEvidence`.
+
+WARP full retained 1,200 conditioning frames and 24 block records. Twenty-three blocks completed,
+and `S3/TotalOnly/2` retained all 192 warm-up frames and 152 of 256 measured frames. No control
+completed, 0/12. The total is 11,848 retained frames. It refused "UnitTimeout at renderer.execute."
+at the 19,800-second rehearsal deadline. Publication is `failed`, with additional errors "UnitTimeout
+at renderer.production.memory.before." and "UnitTimeout at renderer.publication.before." Compiler
+collection is `incomplete` with "Cold collection has not completed." Promotion is false with
+`SoftwareRehearsalNotPerformanceEvidence` and the execution timeout. Trusted verification was skipped.
+
+Matching retained lit-block outer-pair means were 49.75 to 66.06 percent higher than round 5 at
+`4baa6b6f9`. This software-run comparison does not isolate a cause or establish a hardware regression.
+The slowdown since the M5 landing remains [#1640](https://github.com/APKiwiOrg/KhaozEngine/issues/1640).
+
+The WARP all-controls unit completed 3 conditioning frames, 0/0 scene blocks and 12/12 controls, all
+2,307 frames. Publication is `completed`, compiler collection and schema 2 inventory are complete,
+and trusted `VerifyRehearsal` passed. Promotion is false with only
+`SoftwareRehearsalNotPerformanceEvidence`. Under the owner's standing instruction, this all-controls
+pass served as the Windows gate for the paid pair. It does not certify the unfinished full WARP run.
+All three reports record `gpuClock` as `not-applicable`, zero samples and no lock. All cost USD 0.
+
+## Published full pair at 1,095 MHz
+
+The workload is `2243d40a7902044cb9dc4a44d11bd3f08f22a12a`. The trusted workflow is `a34a030bd3f58f93d6e27c3d4aa312f9550a0030`.
+
+| Unit | B | Run, job | Job window UTC | Measurement window UTC |
+| --- | --- | --- | --- | --- |
+| `full-linux` | `c0b89fb15cccef203627e88b382da7b2b610455e` | [40703489518](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40703489518), 122869556835 | 2026-10-28 14:11:57 to 2026-10-28 14:22:22 | 2026-10-28 14:15:21 to 2026-10-28 14:21:39 |
+| `full-windows` | `94b0d391dc2d3c1d5a7e436f48187820e09ed49a` | [40703494791](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40703494791), 122869644779 | 2026-10-28 14:39:03 to 2026-10-28 15:15:06 | 2026-10-28 15:05:42 to 2026-10-28 15:14:15 |
+
+| Unit | Artifact ID, bytes, digest | TRX SHA-256 |
+| --- | --- | --- |
+| `full-linux` | 12824000651, 22,873,842, `sha256:53654d5847f7ae5558bc26e4e6ca8b0f842bf7e69513ca1f45d14d74747033a2` | `6090175a7fab412cb5937f603abe5b5d60c161fb2f0322a696471c6e35a15cfa` |
+| `full-windows` | 12826334854, 16,453,321, `sha256:5a4ec51842683310e3214dcf0a1988f61e4218ddea313fc29a30bc0bee26bb72` | `5414fcde45ba848205adc754ee823fbff8ca30fd745fd512ad6d268efec0d5bf` |
+
+Both native admissions selected the hardware T4 identities above. Each `gpu-clock-lock.json` records
+`applied`, requested/minimum/maximum/readback 1,095 MHz. Each report's `gpuClock` is `verified` at
+1,095 MHz across 90 distinct samples with no refusal reason.
+
+Each unit completed 1,200 conditioning frames, 30/30 blocks and 12/12 controls, all 16,944 frames.
+Both publications are `completed`, returned by the run and final-unit published. Compiler collections
+and schema 2 inventories are complete. Both assessments are valid for promotion with no refusal
+reasons, and trusted paid `Verify` passed on both legs. These runs supply the published T4 baseline
+under [renderer performance summaries](../performance/renderer/). The received artifacts remain in
+their workflow runs. Three iterations establish repeatability within each job only.
+
+Linux's 625-second job billed 11 minutes, USD 0.572. Windows's 2,163-second job billed 37 minutes,
+USD 3.774, including its slow setup window. Each unit consumed its own owner-approved attempt.
+Publication grants no further dispatch, optimization, consumer adoption or release authority.
+
+## Confirmed campaign billing
+
+Each paid job bills its own full window rounded up to a whole minute, at USD 0.052 per minute on
+Linux or USD 0.102 on Windows. GitHub's organization usage API combines jobs into one line per UTC
+day and GPU SKU. Measurement-only elapsed or estimated cost is not the billed cost.
+
+| UTC day | Linux GPU minutes, USD | Windows GPU minutes, USD | Campaign reconciliation |
+| --- | --- | --- | --- |
+| 2026-10-24 | 4, 0.208 | 0, 0 | First Linux pilot |
+| 2026-10-25 | 13, 0.676 | 0, 0 | Linux pilots 2 to 4, rounded separately |
+| 2026-10-26 | 5, 0.260 | 0, 0 | Fifth Linux pilot |
+| 2026-10-27 | 25, 1.300 | 109, 11.118 | Linux 10 + 5 + 10, Windows 15 + 10 + 10 + 11 + 16 + 11 + 36 |
+| 2026-10-28 | 19, 0.988 | 123, 12.546 | Campaign Linux 11, Windows 37. Diagnostics Linux 8, Windows 86 |
+
+The 2026-10-28 lines include unrelated diagnostic `gpu-hosted-bench` runs
+[40694494700](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40694494700) and
+[40694489193](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40694489193), whose 8 Linux and
+86 Windows billed minutes are excluded from the renderer campaign.
+
+Confirmed campaign usage is 58 Linux minutes, USD 3.016, and 146 Windows minutes, USD 14.892,
+for **USD 17.908** of the USD 22 envelope. Both final full jobs are included in the posted daily lines.
+Free software rehearsals cost USD 0. Every paid attempt consumed its own owner approval. No unused
+campaign balance grants authority for another run.
+
 ## Outstanding native and preparation gates
 
-Accepted Tasks10/11 and the cold amendment implement optional D3D11, Vulkan and Metal diagnostics.
-Metal retains truthful source/configuration, cold counter/compute-limit and unified-memory provenance.
-It supplies no native compiler artifact, physical registers, spills, achieved occupancy or residency
-through this path. Shared typed identities do not turn Metal source into a primary artifact.
-The timed entrypoint supplies compiler metadata and invocations off through immutable instance
-settings. Actual construction is captured without changing native returns. After both device lifecycles,
-the typed publication path verifies registered inventory and noncompiler files before completion.
-Report/2 retains exact typed scalar and stage evidence, bounded read requests and actual byte commits.
-The root and combined root/compiler cap remain 256 MiB, depth 32 and two 32-byte accounting slots.
-The workflow and offline directory reader call the same managed verifier. Parse alone never certifies.
+The published pair proves within-job repeatability for its two exact T4 units. Independent-job and
+cross-device repeatability, a regression budget and matched reference rates for modeled excess
+remain unestablished. Unsupported native committed/resident/budget fields and achieved occupancy
+remain unavailable where the backend supplies none. Process observations do not replace them.
+Metal still supplies no primary native compiler artifact, physical registers, spills, achieved
+occupancy or residency through this diagnostics path.
 
-These are headless implementation boundaries. Native committed/resident/budget fields and achieved
-occupancy remain unsupported where unavailable. Process observations cannot replace them. Actual
-primary-backend correspondence, compiler payload admission and cold-stage cost still need the native
-gates below. No synthetic fixture closes the original consumer or armour acceptance.
+The failed-report [partial-write accounting gap #1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547)
+remains open. A failed measurement's partial write can occur after its elapsed/cost snapshot.
+Successful completed publications do not prove failed-final recovery or close that limit.
 
-The reconciled source was independently reviewed, integrated and pushed before the first pilot.
-Corrections still require review and verification before preparing another exact workload. Each pilot
-needs its own approval and sole-manifest authorization commit with exact
-workload/workflow/manifest/shader hashes and runtime identity. This record grants no further dispatch.
+The full WARP schedule remains uncertified after round 9's timeout. Its separate all-controls pass
+was the owner-accepted Windows preparation gate. The software lit-frame slowdown in
+[#1640](https://github.com/APKiwiOrg/KhaozEngine/issues/1640) and D3D11 cold construction cost in
+[#1617](https://github.com/APKiwiOrg/KhaozEngine/issues/1617) remain open. Neither the software
+comparison nor the current T4 pair establishes the cost of M5 against an earlier hardware workload.
 
-Later native evidence must verify selected T4 vendor/device/driver, all five scenes and required rows,
-actual counts, valid outer timestamps and End tails, completion pacing, clock telemetry, perturbation,
-compiler/control retention, output readbacks, model completeness, final sidecar availability and artifact
-sizes under the unchanged 256 MiB cap. Confirm two-stage publication completion/stamp and failed-final
-recovery on the native sink. Actual billed minutes and full-unit budgets come from those runs, not from
-synthetic fixtures. Full units need fresh approval after independent pilot review.
-
-The existing [partial-write accounting gap #1547](https://github.com/APKiwiOrg/KhaozEngine/issues/1547)
-remains open. #1546 closed after main integration. #1530 remains separate D1 portable-math work.
-Sidecar preparation is accounted, but a failed measurement's partial write can occur after
-its accounting snapshot. Headless success does not close or waive this limit. No optimization, consumer
-adoption, private content, Windows Vulkan expansion, release or other active lane is part of this proof.
-
-
-Cold publication correction uses the shared ordinary Release setup in
-[contributor rules](../CONTRIBUTOR-RULES.md#build-and-ci), including its outside-solution verifier
-prerequisite. The living [directory verification contract](../RENDERER-PERFORMANCE.md) owns
-platform file IDs, finite compatible-writer exclusion, final rehash and terminal publication failure ownership. macOS filesystem
-API tests are headless implementation evidence. Windows/Linux paths require their own execution
-proof. No native GPU, native deadline/cost, billed-minute or armour gate is closed by these tests.
+Original consumer and armour acceptance, optimization, consumer adoption, private content,
+Windows Vulkan expansion and release remain separate gates. This record grants no new run approval.

@@ -65,7 +65,9 @@ It validates and deep-copies all descriptor arrays and compound descendants when
 Cylinders retain base-aligned physics placement. Unsupported shape classes and mesh children inside compounds
 refuse. Rigid orientations retain their supplied bits. Cycles and nesting beyond 32 descriptor levels refuse.
 The batch checks conservative installed absolute bounds against the fixed `Extent`, including rounded local
-placement, compound composition and hull recentring. A bound that cannot be proved refuses before editing.
+placement, compound composition, unscaled native sphere/capsule radii, hull recentring and both raw and rounded
+recentred mesh triangles. A raw vertex envelope alone can miss a native triangle by one float ULP. A bound that
+cannot be proved refuses before editing.
 Reserve enough volume in the builder before constructing bindings. Tuning-expanded query margins do not
 enlarge this admission extent.
 

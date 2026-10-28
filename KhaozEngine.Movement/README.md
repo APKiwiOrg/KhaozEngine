@@ -198,6 +198,12 @@ Keep statics and the origin unchanged while constructing profiles. `Dispose` rel
 reference only. It never disposes statics, providers or the physics world. A built profile owns immutable
 captured columns and remains usable after the builder and its world are disposed.
 
+Bake from an authored-only installation, or finish capture and every profile before admitting runtime statics.
+`Capture` and profile preflight refuse a context whose movement registration has live runtime entries with
+`InvalidOperationException`. The bake never removes blockers or hides them with a handle filter. Contact basis
+checks refuse any geometry change between reads, including an add followed by removal. A bare Legacy context
+without registration still requires the caller to supply authored-only physics.
+
 ## Capsule checked ground profiles
 
 Build one immutable profile for a capsule geometry and an area policy:
@@ -419,10 +425,10 @@ profile before it builds any.
 delegate, water field, registration and area classifier) must answer as a deterministic function of its inputs over
 one fixed build snapshot, independent of call order and thread, and be safe for concurrent reads. Keep every
 underlying datum fixed through capture and build, as the serial bake already requires. The build captures the
-physics basis and the environment producer identity (physics source, registration, boundary, water field and its
-generation, extent) once, authenticates each worker's first lease against it and checks it again after every worker
-joins. Any difference refuses the whole build with `InvalidOperationException`, and so does a worker lease that
-meets a changed basis.
+physics basis and the environment producer identity (physics source, registration and its live revision, boundary,
+water field and its generation, extent) once, authenticates each worker's first lease against it and checks it again
+after every worker joins. Any difference refuses the whole build with `InvalidOperationException`, and so does a
+worker lease that meets a changed basis.
 
 These TileWorld providers were audited against the contract and are endorsed:
 
@@ -433,7 +439,8 @@ These TileWorld providers were audited against the contract and are endorsed:
 - `TileMediumSampler` as an `IMovementWaterField` (`SampleCentreWater`, `TraceWater`, `SemanticIdentity`,
   `Generation`, `Extent`) and through `MediumAt` and `MediumDelegate`.
 - The `OrdinaryMovementRegistration` from `TileColliderRegistration.CreateMovementRegistration` or
-  `CreateMovementRegistrationBuilder`, which is immutable once built.
+  `CreateMovementRegistrationBuilder`. Its authored provenance stays fixed. Every runtime publication is immutable,
+  but its root and live `Generation` can advance between movement reads. Runtime edits are forbidden during baking.
 
 MapDoc providers are not endorsed. MapDoc has no ordinary contact factory, and `MapWaterDomain` triangulation and
 `MapScopedSurfaces.Patch` hold unaudited state.
@@ -870,6 +877,13 @@ a window of 1 to 65,535 ticks and a finite positive travel, validated with the s
 - The ring holds `WindowTicks + 1` samples, allocated once by the constructor, and a warmed tick allocates nothing.
 
 Both adapters treat `Blocked` as idle, so a caller maps it to its own give-up rule.
+
+`OrdinaryMovementRegistration.ApplyRuntimeStatics` changes live collision and support without changing the
+authored graph, planner, routes, profile compatibility, `NavBakeSources`, `NavBakeIdentity` or KENB bytes. A route
+can still lead through a runtime wall while the body travels toward it and collision stops it. `Stall` measures
+that actual displacement and latches `Blocked`. After sanctioned removal, call `MoveToRange.Reset` to resume a
+latched follower. Dropping a route, replanning or returning home remains the caller's policy. No runtime navigation
+overlay or automatic detour is supplied.
 
 A body crossing between wading and swimming can hold `Suspended` for a tick while the core lands it. The aquatic
 profile's own limits, including the deepest-contact clearance limit and the bank edge budget, are described under

@@ -75,6 +75,33 @@ public sealed class RendererPerfAnalysisTests
         Assert.Equal(2, row.Metrics["counter.logical.unattributed.Draws"].Mean.Value);
     }
 
+    // Phases copied from paid T4 frames that tile the CPU interval exactly. Per-segment nanosecond rounding once made
+    // these read as a negative gap and refused an otherwise sound baseline.
+    [Theory]
+    [InlineData(1_000_000_000L, new[] { 1042, 191, 1012, 310, 291, 70, 210, 7585, 5571, 420, 91, 330, 51, 340, 50, 131, 69, 211, 60, 201, 290, 471, 30429, 4689, 371, 8316, 360, 551, 1213 })]
+    [InlineData(10_000_000L, new[] { 2, 2, 8, 2, 2, 1, 2, 12, 47, 2, 1, 3, 3, 1, 1, 2, 2, 1, 4, 39, 2, 2, 481, 5, 3, 14 })]
+    public void Exactly_tiled_cpu_frames_have_a_zero_partition_gap(long frequency, int[] durations)
+    {
+        long start = 3285012111926;
+        var phases = ImmutableArray.CreateBuilder<RendererPerfCpuSpan>(durations.Length);
+        long cursor = start;
+        for (int i = 0; i < durations.Length; i++)
+        {
+            phases.Add(new("phase" + i, null, cursor, cursor + durations[i]));
+            cursor += durations[i];
+        }
+        var report = Map(Report(), (_, f) => f with
+        {
+            CpuStartTicks = start,
+            CpuEndTicks = cursor,
+            CpuFrequency = frequency,
+            CpuPhases = phases.ToImmutable()
+        });
+        var summary = VerifiedAnalyze(report);
+        Assert.All(summary.Blocks, row => Assert.Equal(0, row.Metrics["cpu.partitionGap"].Mean.Value));
+        Assert.DoesNotContain(summary.Reasons, reason => reason.Contains("Invalid CPU partition", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Partial_publication_preserves_failure_and_cannot_be_promoted()
     {

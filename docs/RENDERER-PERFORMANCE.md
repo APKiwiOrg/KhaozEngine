@@ -588,6 +588,9 @@ Unsupported or unmatched controls retain a reason rather than supplying a fabric
 Measured control CPU partitions follow the same validity rule as scene partitions. Overlapping
 segments retain their diagnostic phase values and context, revoke promotion and refuse numerical
 comparison deltas.
+Partition validity is decided in exact clock ticks and only the reported gap is converted to nanoseconds.
+The paid T4 pair tiled its CPU frames exactly, and per-segment nanosecond rounding read those frames as a
+negative gap and refused publication.
 
 ## Comparing evidence
 

@@ -6,7 +6,14 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.19.0
 
-2026-10-28
+2026-10-29
+
+- Add authenticated `RuntimeStaticChange.Set` and `Remove` batches through `OrdinaryMovementRegistration`.
+  Existing Contact and Legacy views observe real blockers and support without rebuilding their bindings.
+  Fixed authored identity and extent stay unchanged, live revisions authenticate each publication, and raw edits
+  still refuse. Hosts apply matching batches before their effective ticks and reconstruct historical physics for
+  replay. Authored navigation stays unaware, so actual travel can latch route stall. Authored bake entry points
+  refuse attached runtime statics and Contact builds refuse changes between reads (#1637).
 
 - Wait for Direct3D 11 timestamp query availability inside the renderer performance batch completion drain. A
   completed later fence does not make Direct3D 11 query data available, and a WARP rehearsal refused when the last

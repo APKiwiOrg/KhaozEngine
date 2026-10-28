@@ -128,6 +128,29 @@ ground columns have no analytic missing-column fallback. `GroundMoveContext` kee
 checks at step boundaries. The view does not change collision math, geometry or query layers. Physical-only
 unified terrain through `PhysicsGroundProbe` remains a separate valid path.
 
+**Runtime statics use the movement registration.** Apply `RuntimeStaticChange.Set` or `Remove` batches between
+movement reads. The complete owner must expose certified reads and `IPhysicsStaticMutationSource`. Geometry and
+canonical provenance publish inside its exclusive writer interval, so existing Contact and Legacy selected views
+observe the same real statics. Shell sweeps, overlap recovery, placement, footprint support, ground signals and
+swimming solid clearance retain their ordinary static queries. Runtime tops supply support under baked-static rules.
+Reserve their whole absolute volume in the registration's fixed extent at setup. For example:
+
+```csharp
+var owner = new MovementSupportKey(registration.WorldId, "gate");
+registration.ApplyRuntimeStatics([
+    RuntimeStaticChange.Set(owner, new BoxShape(new Vector3(0.2f, 1f, 3f)), Pose.At(absoluteCentre))
+]);
+// At a later tick, after the previous movement read has ended.
+registration.ApplyRuntimeStatics([RuntimeStaticChange.Remove(owner)]);
+```
+
+`Generation` is the live registration revision. `GeometryGeneration`, authored digest, extent and exclusions keep
+their installation values. Raw static writes still make Contact reads Unresolved and cannot be accepted by a later
+batch. A failure after a possible source edit poisons the installation until the host rebuilds it. Hosts reproduce
+the same baseline and tick history during prediction and replay. Existing authored navigation remains unaware of
+these blockers, so a routed body can hit a wall and stall. Bake before runtime edits or use a separate authored-only
+installation. See [runtime static batches](../KhaozEngine.Locomotion/README.md#runtime-statics).
+
 **A dynamic body replicated to clients (server-authoritative, no client-side prediction of the body):**
 
 ```mermaid

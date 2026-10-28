@@ -51,7 +51,8 @@ public sealed partial class PhysicsNavBake
     /// argument and before any worker exists. Also when a stable legacy scope lacks
     /// <see cref="KhaozEngine.Physics.IPhysicsQueryLeaseSource"/> on its exact source or selected view.</exception>
     /// <exception cref="InvalidOperationException">The build snapshot changed during a parallel contact build,
-    /// a stable legacy scope's owner or captured basis differs, or its backend refuses a nested explicit lease.</exception>
+    /// the context has live runtime statics, a stable legacy scope's owner or captured basis differs, or its backend
+    /// refuses a nested explicit lease.</exception>
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions? options,
         NavBakeExecution? execution)
     {
@@ -166,6 +167,7 @@ public sealed partial class PhysicsNavBake
         ArgumentNullException.ThrowIfNull(options);
         EffectiveMovementBindingKind kind = new NavBakeProfile("", tuning, areas) { Aquatic = options.Aquatic }.ResolveKind();
         GroundMoveContext context = Context;
+        RequireAuthoredStatics(context);
         if (kind == EffectiveMovementBindingKind.OrdinaryContact)
         {
             PhysicsNavCaptureBasis basis = Basis

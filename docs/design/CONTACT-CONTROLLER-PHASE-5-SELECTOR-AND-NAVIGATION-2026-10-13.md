@@ -148,11 +148,15 @@ analytic ground delegates, a `MovementBoundary` and an optional `IMovementWaterF
 - **Space.** One per world, `MovementSpaceKey(worldId, "ordinary")`. `RebuildSelection` returns it with no support.
 - **Registration.** A public `OrdinaryMovementRegistration`, built by whoever installs the statics, maps each installed
   static handle and feature range to a canonical owner `MovementSupportKey`, with explicit aliasing (several pieces,
-  one owner) and explicit exclusions, captured per physics geometry generation. Owner names come from provenance,
+  one owner) and explicit exclusions, captured under the installation read lease. Owner names come from provenance,
   never from handle values, so identical handles in separate cell worlds stay distinct and partitioned copies share
   an owner. A missing, excluded, ambiguous or stale registration makes `BindContactSupport` return Unresolved, as
   4b-8 requires. `TileWorldColliders` builds one: one owner per region's ground and one per placed collider
-  provenance.
+  provenance. Authored entries, exclusions, extent, semantic digest and installation `GeometryGeneration` remain
+  fixed. `ApplyRuntimeStatics` publishes immutable runtime provenance and the expected static revision inside the
+  source's exclusive mutation interval. Live `Generation` advances once per successful nonempty batch. Existing
+  bindings reacquire against that revision. Raw static writes, independent registrations and partial failures are
+  never silently accepted. A possibly edited failed installation must be rebuilt.
 - **Analytic ground.** Owner `MovementSupportKey(worldId, "analytic-ground")`. Facts are scoped to the served domain
   (P5A-5), which is the witnessed query region of every lease, never to one request's reach band, so every request at one axis within an interval gets the
   same answer and the workspace's analytic cache stays consistent. When the delegate's height at the axis lies inside
@@ -180,7 +184,8 @@ instead of a per-tick plan:
   every installed static, the analytic ground's height range and the water field's extent. `TileWorldColliders`
   derives it from the tile document. A sharded cell declares its cell world's extent. The client's served domain is
   its physics island's horizontal extent with the same vertical extent, so a client never claims data it does not
-  hold.
+  hold. Reserve possible runtime static volume in this declaration before binding. Sanctioned batches cannot
+  enlarge the extent or rely on the tuning-expanded served domain for containment.
 - **Margins.** The domain is the declared extent expanded horizontally by the capsule, the foot disc, the support band,
   the `GroundSignals` look-ahead of three capsule radii and the footprint admission bounds (computed with
   `SupportFootprintBounds`), and vertically by the jump apex over the highest geometry plus body height above, and by

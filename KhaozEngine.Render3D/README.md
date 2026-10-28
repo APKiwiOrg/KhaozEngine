@@ -1816,7 +1816,9 @@ not remain in that inventory. The original complete peak is still reserved befor
 
 `SceneResourceAccess(scene)` resolves published mesh handles through `MeshOf` and submits rigid descriptors
 through `DrawResourceAnchored`. It replaces only the mesh. Water uses the same published mesh and its retained
-original domain. `SceneGroundMaterialData` binds terrain through the shared tile-ground material and mesh path.
+original domain. Publishing a native water domain also initializes the renderer's shared neutral colour texture,
+so the first draw and later frames upload no resource data. Frame uniforms remain dynamic.
+`SceneGroundMaterialData` binds terrain through the shared tile-ground material and mesh path.
 An empty light registration owns no mesh bytes and never resolves as a mesh. Unready, released, foreign-scene
 and non-mesh handles refuse. A mesh returned by `MeshOf` is borrowed, so release it through `ReleaseResource`.
 Cancellation before publication retains its unsettled reservation until actual destruction behind the scene's

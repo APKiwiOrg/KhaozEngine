@@ -46,6 +46,38 @@ public sealed class NativeResourceUploadWaterTests
         Assert.Equal(bytes, host.Device.UploadBytes);
         host.Scene.ReleaseResource(handle);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PublishedWater_RepeatedFramesDoNotUploadResourceData(bool viewportPrepared)
+    {
+        using var host = new NativeUploadTestScene();
+        var scene = host.Scene;
+        var handle = NativeResourceUploadTests.Publish(scene, NativeWaterUploadProof.Input());
+        var surface = NativeWaterUploadProof.Surface(new SceneResourceAccess(scene).MeshOf(handle));
+        long bytes = host.Device.UploadBytes;
+        int textureWrites = host.Device.TextureWrites;
+
+        DrawFrame();
+        long firstBytes = host.Device.UploadBytes;
+        int firstTextureWrites = host.Device.TextureWrites;
+        DrawFrame();
+        Assert.Equal((textureWrites, textureWrites), (firstTextureWrites, host.Device.TextureWrites));
+        Assert.Equal((bytes, bytes), (firstBytes, host.Device.UploadBytes));
+        scene.ReleaseResource(handle);
+
+        void DrawFrame()
+        {
+            scene.Begin();
+            scene.DrawWater(surface);
+            using var commands = host.Device.Factory.CreateCommandList();
+            if (viewportPrepared) scene.PrepareFrame(64, 48);
+            else scene.PrepareFrame();
+            host.Record(commands);
+            host.Device.Submit(commands);
+        }
+    }
 }
 
 internal static class NativeWaterUploadProof

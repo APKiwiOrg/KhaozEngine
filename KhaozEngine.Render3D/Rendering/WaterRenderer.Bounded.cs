@@ -54,8 +54,12 @@ internal sealed partial class WaterRenderer
         try { _gd.UpdateBuffer(buffer, 0, bytes); _boundedDomains.Add(handle, new(buffer)); }
         catch { buffer.Dispose(); throw; }
     }
-    internal void RegisterPublishedDomain(MeshHandle handle, IGpuBuffer buffer) =>
+    internal void RegisterPublishedDomain(MeshHandle handle, IGpuBuffer buffer)
+    {
+        // The shared fallback is immutable resource data. Initialize it before publication can admit draws.
+        _ = ColumnShadows.SceneColor;
         _boundedDomains.Add(handle, new(buffer, false));
+    }
     internal bool HasBoundedDomain(MeshHandle handle) => _boundedDomains.ContainsKey(handle);
     internal void ForgetBoundedDomain(MeshHandle handle)
     {

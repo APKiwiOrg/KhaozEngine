@@ -8,6 +8,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-29
 
+- Initialize the shared neutral water colour texture when publishing a native water domain. The first draw
+  and later frames upload no resource data.
+
 - Add authenticated `RuntimeStaticChange.Set` and `Remove` batches through `OrdinaryMovementRegistration`.
   Existing Contact and Legacy views observe real blockers and support without rebuilding their bindings.
   Fixed authored identity and extent stay unchanged, live revisions authenticate each publication, and raw edits

@@ -36,8 +36,7 @@ internal static class RuntimeStaticBounds
         switch (shape)
         {
             case SphereShape sphere:
-                geometry = Box.Symmetric(new(sphere.Radius));
-                break;
+                return PlaceRounded(Box.Symmetric(new(sphere.Radius)), Box.Point(Vector3.Zero), sphere.Radius, child, root);
             case BoxShape box:
                 geometry = Box.Symmetric(box.HalfExtents);
                 break;
@@ -45,7 +44,8 @@ internal static class RuntimeStaticBounds
                 Range height = Range.Enclose(-(double)capsule.Length * 0.5 - capsule.Radius,
                     (double)capsule.Length * 0.5 + capsule.Radius);
                 geometry = new(new(-capsule.Radius, capsule.Radius), height, new(-capsule.Radius, capsule.Radius));
-                break;
+                Range segment = Range.Enclose(-(double)capsule.Length * 0.5, (double)capsule.Length * 0.5);
+                return PlaceRounded(geometry, new(new(0, 0), segment, new(0, 0)), capsule.Radius, child, root);
             case CylinderShape cylinder:
                 // ShapeFactory adds the base lift to the rounded flattened child pose.
                 child = new(child.Position + Vector3.Transform(new(0, cylinder.Length * 0.5f, 0), child.Orientation), child.Orientation);
@@ -65,6 +65,15 @@ internal static class RuntimeStaticBounds
                 throw new NotSupportedException("The runtime static bounds are not supported.");
         }
         return Place(geometry, Box.Point(child.Position), child.Orientation, root);
+    }
+
+    static Box PlaceRounded(Box geometry, Box segment, float radius, Pose child, Pose root)
+    {
+        // Native sphere and capsule radii do not rotate or contract. Retain the represented
+        // affine query geometry too, since an admitted quaternion need not be exactly orthogonal.
+        Box position = Box.Point(child.Position);
+        Box native = Place(segment, position, child.Orientation, root).Add(Box.Symmetric(new(radius)));
+        return native.Union(Place(geometry, position, child.Orientation, root));
     }
 
     static Box Place(Box geometry, Box childPosition, Quaternion childOrientation, Pose root)

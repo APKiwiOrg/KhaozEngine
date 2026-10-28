@@ -206,7 +206,9 @@ their portions outside the padded window. Clip dependencies do not become draw m
 `NativeMapWater.Prepare(water, look, settings)` resolves every inherited `WaterLook` field against the caller's
 scene `WaterSettings` through the renderer's `WaterLook.ResolveInto` rule. It freezes that explicit effective
 look and prepares typed `MapWaterResource` registrations plus `MapWaterFrame` submissions. Later changes to
-the look or scene settings require preparation again. `MapWaterRenderBatch` exposes the canonical cell inventory,
+the look or scene settings require preparation again. Underwater sunlight, penumbra, column lighting, water
+colour and clarity retain nullable overrides in frozen policies and resolve explicitly for prepared water.
+`MapWaterRenderBatch` exposes the canonical cell inventory,
 retained bytes and preparation charge. Register once per resource generation, then call `Record` for each
 frame. Closed water has no draw. Meshes deduplicate vertices within their canonical cells and retain an
 original-domain clip payload, so displaced fragments cannot fill dry notches.

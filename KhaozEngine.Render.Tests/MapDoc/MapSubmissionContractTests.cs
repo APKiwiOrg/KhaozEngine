@@ -159,7 +159,7 @@ public sealed class MapSubmissionContractTests
         foreach (var field in typeof(WaterLook).GetFields())
         {
             Type type = Nullable.GetUnderlyingType(field.FieldType)!;
-            object value = type == typeof(float) ? .04f : type == typeof(int) ? 3 :
+            object value = type == typeof(float) ? .04f : type == typeof(int) ? 3 : type == typeof(bool) ? true :
                 type == typeof(Color) ? new Color(.1f, .2f, .3f) : WaterWaveSource.Procedural;
             field.SetValue(mutable, value);
         }

@@ -83,6 +83,11 @@ public sealed class NativeMapWaterTests
             Opacity = .8f,
             DeepColor = new(.1f, .2f, .3f, .4f),
             RippleComponents = 7,
+            UnderwaterSunlight = true,
+            UnderwaterPenumbraPerMetre = .08f,
+            WaterColumnLight = true,
+            WaterColor = new(.2f, .3f, .4f),
+            Clarity = 3.5f,
             FoamStrength = .2f
         };
         var look = new WaterLook { SwellAmplitude = .09f, Opacity = .5f, FoamStrength = .7f };
@@ -90,6 +95,7 @@ public sealed class NativeMapWaterTests
         double padding = NativeMapWater.RequiredMotionPadding(look, settings);
         var batch = NativeMapWater.Prepare(Water("water-notch", padding), look, settings);
         settings.SwellWavelength = 100; settings.DeepColor = Color.White; settings.RippleComponents = 1;
+        settings.WaterColumnLight = false; settings.Clarity = 99;
         look.SwellAmplitude = 4; look.Opacity = 1;
         var effective = Assert.Single(Draw(batch).Draws).Water!.Value.Look.ToWaterLook();
         Assert.Equal(.09f, effective.SwellAmplitude); Assert.Equal(6, effective.SwellWavelength);
@@ -123,6 +129,11 @@ public sealed class NativeMapWaterTests
             SurfStrength = 0,
             AbsorptionPerMetre = new(.2f, .3f, .4f, 0),
             GlintRoughness = .4f,
+            UnderwaterSunlight = false,
+            UnderwaterPenumbraPerMetre = .12f,
+            WaterColumnLight = false,
+            WaterColor = new(.7f, .2f, .3f),
+            Clarity = 2.5f,
             FoamColor = new(.8f, .7f, .6f, 1)
         };
         var rendererEffective = look.ResolveInto(new WaterSettings(), settings);

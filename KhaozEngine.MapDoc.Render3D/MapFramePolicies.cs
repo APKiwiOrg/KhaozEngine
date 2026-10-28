@@ -26,6 +26,11 @@ public sealed record MapFrozenWaterLook
     public Color? DeepColor { get; }
     public Color? ShallowColor { get; }
     public Color? AbsorptionPerMetre { get; }
+    public bool? UnderwaterSunlight { get; }
+    public float? UnderwaterPenumbraPerMetre { get; }
+    public bool? WaterColumnLight { get; }
+    public Color? WaterColor { get; }
+    public float? Clarity { get; }
     public float? ShallowDepth { get; }
     public float? Opacity { get; }
     public float? SwellAmplitude { get; }
@@ -65,6 +70,11 @@ public sealed record MapFrozenWaterLook
         DeepColor = look.DeepColor;
         ShallowColor = look.ShallowColor;
         AbsorptionPerMetre = look.AbsorptionPerMetre;
+        UnderwaterSunlight = look.UnderwaterSunlight;
+        UnderwaterPenumbraPerMetre = look.UnderwaterPenumbraPerMetre;
+        WaterColumnLight = look.WaterColumnLight;
+        WaterColor = look.WaterColor;
+        Clarity = look.Clarity;
         ShallowDepth = look.ShallowDepth;
         Opacity = look.Opacity;
         SwellAmplitude = look.SwellAmplitude;
@@ -108,6 +118,11 @@ public sealed record MapFrozenWaterLook
         DeepColor = DeepColor,
         ShallowColor = ShallowColor,
         AbsorptionPerMetre = AbsorptionPerMetre,
+        UnderwaterSunlight = UnderwaterSunlight,
+        UnderwaterPenumbraPerMetre = UnderwaterPenumbraPerMetre,
+        WaterColumnLight = WaterColumnLight,
+        WaterColor = WaterColor,
+        Clarity = Clarity,
         ShallowDepth = ShallowDepth,
         Opacity = Opacity,
         SwellAmplitude = SwellAmplitude,

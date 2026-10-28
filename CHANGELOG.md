@@ -6,7 +6,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.19.0
 
-2026-10-28
+2026-10-29
 
 - Wait for Direct3D 11 timestamp query availability inside the renderer performance batch completion drain. A
   completed later fence does not make Direct3D 11 query data available, and a WARP rehearsal refused when the last

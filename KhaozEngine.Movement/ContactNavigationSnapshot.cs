@@ -6,14 +6,16 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Movement;
 
 /// <summary>The one basis a stable contact build works over: physics geometry and origin, the navigation frame, the
-/// selected query view and the environment producers every worker binding reads. The registration and boundary are
-/// fixed by the context, so their identity cannot drift. Every worker authenticates its first lease against the
-/// snapshot, and the build checks it again after every worker joins and before anything is published.</summary>
+/// selected query view and the environment producers every worker binding reads. The context fixes the boundary and
+/// authored registration identity. The live registration revision is captured separately. Every worker authenticates
+/// its first lease against the snapshot, and the build checks it again after every worker joins and before anything
+/// is published.</summary>
 internal sealed class ContactNavigationSnapshot
 {
     readonly IPhysicsWorld _physics;
     readonly IPhysicsWorldQueryView _view;
     readonly OrdinaryMovementRegistration _registration;
+    readonly long _registrationGeneration;
     readonly IMovementWaterField? _water;
     readonly long _waterGeneration;
     readonly string? _waterIdentity;
@@ -28,6 +30,7 @@ internal sealed class ContactNavigationSnapshot
         _physics = context.Physics!;
         _view = context.MovementQueries!;
         _registration = context.MovementRegistration!;
+        _registrationGeneration = _registration.Generation;
         _water = context.MovementWaterField;
         _waterGeneration = _water?.Generation ?? 0;
         _waterIdentity = _water?.SemanticIdentity;
@@ -66,8 +69,9 @@ internal sealed class ContactNavigationSnapshot
             throw Changed();
     }
 
-    bool ProducersCurrent() => _water is null || _water.Generation == _waterGeneration &&
-        string.Equals(_water.SemanticIdentity, _waterIdentity, StringComparison.Ordinal) && Same(_water.Extent, _waterExtent);
+    bool ProducersCurrent() => _registration.Generation == _registrationGeneration && !_registration.HasRuntimeStatics &&
+        (_water is null || _water.Generation == _waterGeneration &&
+        string.Equals(_water.SemanticIdentity, _waterIdentity, StringComparison.Ordinal) && Same(_water.Extent, _waterExtent));
 
     static bool Same(MovementWaterExtent a, MovementWaterExtent? b) => b is { } extent &&
         Same(a.Minimum, extent.Minimum) && Same(a.Maximum, extent.Maximum);

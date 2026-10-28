@@ -62,6 +62,9 @@ internal sealed partial class MapComposedSurfaceSource
 
         void AdmitMetadata()
         {
+            if (DemandDiagnostics.IsObserved)
+                foreach (var (origin, increment, over, saturated) in MapPageBudget.PageDemand(_scope.Limits, _scope.Limits.MaxPageReads, _metadata))
+                    DemandDiagnostics.Check(this, "MapComposedSurfaceSource.Admission.MaxPageMetadataChecks.2", origin.LimitName, origin.Consumed, increment, origin.Allowance, over, CapacityDemandLifetime.Cumulative, origin.Identity, saturated);
             if (DemandDiagnostics.Check(this, "MapComposedSurfaceSource.Admission.MaxPageMetadataChecks.1", "MaxPageMetadataChecks", _metadata, 1, _workLimit, _metadata >= _workLimit, CapacityDemandLifetime.Cumulative)) throw new MapSurfaceCapacityException();
             MetadataInspecting?.Invoke();
             _metadata++;
@@ -69,6 +72,9 @@ internal sealed partial class MapComposedSurfaceSource
 
         void AdmitRange()
         {
+            if (DemandDiagnostics.IsObserved)
+                foreach (var (origin, increment, over, saturated) in MapPageBudget.PageDemand(_scope.Limits, _scope.Limits.MaxPageReads, _ranges))
+                    DemandDiagnostics.Check(this, "MapComposedSurfaceSource.Admission.MaxPageRangeOperations.2", origin.LimitName, origin.Consumed, increment, origin.Allowance, over, CapacityDemandLifetime.Cumulative, origin.Identity, saturated);
             if (DemandDiagnostics.Check(this, "MapComposedSurfaceSource.Admission.MaxPageRangeOperations.1", "MaxPageRangeOperations", _ranges, 1, _workLimit, _ranges >= _workLimit, CapacityDemandLifetime.Cumulative)) throw new MapSurfaceCapacityException();
             RangeAdding?.Invoke();
             _ranges++;

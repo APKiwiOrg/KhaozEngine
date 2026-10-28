@@ -4,6 +4,7 @@ using System.Linq;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Storage;
 
 namespace KhaozEngine.MapDoc.Editing;
 
@@ -15,20 +16,27 @@ internal sealed record MapEditExpansions(MapEffectiveResources? Before, MapEffec
 /// <summary>One side of a finalized edit: the document fingerprint and verified closure it was captured from, its
 /// effective resources and, once a row needed it, its foliage context. Never serialized. A side is reused only when a
 /// later caller presents the same fingerprint and closure hash, never by document bytes alone. A side may also carry the
-/// fingerprint without foliage its creator computed from the same document, which its capture then reuses.</summary>
+/// fingerprint without foliage its creator computed from the same document, which its capture then reuses. A side it
+/// expands or captures itself takes its caller's query and expansion profile, and a null member keeps the engine default.
+/// The profile only decides where expansion refuses, so a reused side never depends on it.</summary>
 internal sealed class MapDocumentFinalizationSide
 {
     readonly Func<MapEffectiveResources>? _source;
     readonly string? _baseline;
+    readonly MapQueryLimits? _queryLimits;
+    readonly MapPrefabExpansionLimits? _expansionLimits;
 
     internal MapDocumentFinalizationSide(string fingerprint, MapAssetClosure assets, MapEffectiveResources? resources,
-        Func<MapEffectiveResources>? source = null, string? baseline = null)
+        Func<MapEffectiveResources>? source = null, string? baseline = null, MapQueryLimits? queryLimits = null,
+        MapPrefabExpansionLimits? expansionLimits = null)
     {
         Fingerprint = fingerprint;
         Assets = assets;
         Resources = resources;
         _source = source;
         _baseline = baseline;
+        _queryLimits = queryLimits;
+        _expansionLimits = expansionLimits;
     }
 
     internal string Fingerprint { get; }
@@ -41,13 +49,14 @@ internal sealed class MapDocumentFinalizationSide
 
     /// <summary>The side's resources, expanded at most once, after the context preflight admits the document.</summary>
     internal MapEffectiveResources ResourcesFor(MapDocument document) =>
-        Resources ??= _source?.Invoke() ?? MapDocumentEditFinalizer.Expand(document, Assets);
+        Resources ??= _source?.Invoke() ?? MapDocumentEditFinalizer.Expand(document, Assets, _queryLimits ?? new(), _expansionLimits ?? new());
 
     /// <summary>The side's foliage context, captured at most once from exactly the document this side fingerprints.</summary>
     internal MapFoliageGenerationContext Capture(MapDocument document)
     {
         if (Context is { } context) return context;
-        MapFoliageContextResult result = MapFoliageGenerationContext.CaptureEffective(document, Assets, ResourcesFor(document), baseline: _baseline);
+        MapFoliageContextResult result = MapFoliageGenerationContext.CaptureEffective(document, Assets, ResourcesFor(document), baseline: _baseline,
+            queryLimits: _queryLimits, expansionLimits: _expansionLimits);
         if (result.Status != MapFoliageStatus.Complete || result.Context is null)
             throw MapFoliageEditRefusal.Create(result.Status, "the foliage generation context refused this document");
         return Context = result.Context;

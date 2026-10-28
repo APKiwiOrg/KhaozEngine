@@ -182,7 +182,11 @@ The source contract below also lists helper expressions whose runtime limit name
 | `SupportCandidateBuffer` | `MapSupportQuery` |
 
 `MaxPageMetadataChecks` and `MaxPageRangeOperations` are representation ceilings scaled from
-`MaxPageReads` as `1 + 4 * 256 * MaxPageReads`, not profile fields. This table lists each site under the
+`MaxPageReads` as `1 + 4 * 256 * MaxPageReads`, not profile fields. A page budget taken from a query profile, and the
+composed surface ceiling, also report each check against every origin of the caller's `MaxPageReads` in whole page
+reads, at their `.2` sites. A check that brings the count to `m + 1` needs `ceil(m / 1024)` page reads, which the
+ceiling admits exactly when it fits, so each origin refuses exactly where the ceiling does. A storage budget with no
+query profile reports only the ceiling. This table lists each site under the
 limit it compares directly. The derived allowances above also publish their origin names at those sites. The accessor pre-check before an accessor's role is known compares
 against the larger of `MaxVertices` and `MaxIndices`, a maximum rather than a minimum, so it reports that one field.
 
@@ -343,7 +347,9 @@ representation and throttle gates. It does not claim every site is reached by ev
 | KhaozEngine.MapDoc/Spaces/MapSpaceMembershipScratch.cs | `"MapSpaceMembershipScratch.MaxRecordReads.1"` | `"MaxRecordReads"` |
 | KhaozEngine.MapDoc/Storage/MapBoundAcquisition.cs | `"MapBoundAcquisition.MaxCandidatePatches.1"` | `"MaxCandidatePatches"` |
 | KhaozEngine.MapDoc/Storage/MapComposedSurfaceSource.Admission.cs | `"MapComposedSurfaceSource.Admission.MaxPageMetadataChecks.1"` | `"MaxPageMetadataChecks"` |
+| KhaozEngine.MapDoc/Storage/MapComposedSurfaceSource.Admission.cs | `"MapComposedSurfaceSource.Admission.MaxPageMetadataChecks.2"` | `origin.LimitName` |
 | KhaozEngine.MapDoc/Storage/MapComposedSurfaceSource.Admission.cs | `"MapComposedSurfaceSource.Admission.MaxPageRangeOperations.1"` | `"MaxPageRangeOperations"` |
+| KhaozEngine.MapDoc/Storage/MapComposedSurfaceSource.Admission.cs | `"MapComposedSurfaceSource.Admission.MaxPageRangeOperations.2"` | `origin.LimitName` |
 | KhaozEngine.MapDoc/Storage/MapComposedSurfaceSource.Admission.cs | `"MapComposedSurfaceSource.Admission.MaxPageReads.1"` | `"MaxPageReads"` |
 | KhaozEngine.MapDoc/Storage/MapComposedSurfaceSource.cs | `"MapComposedSurfaceSource.MaxCandidatePatches.1"` | `"MaxCandidatePatches"` |
 | KhaozEngine.MapDoc/Storage/MapDocumentSurfaceSource.cs | `"MapDocumentSurfaceSource.MaxCandidatePatches.1"` | `"MaxCandidatePatches"` |
@@ -356,7 +362,9 @@ representation and throttle gates. It does not claim every site is reached by ev
 | KhaozEngine.MapDoc/Storage/MapEffectiveSurfaceSource.cs | `"MapEffectiveSurfaceSource.MaxCandidatePatches.1"` | `"MaxCandidatePatches"` |
 | KhaozEngine.MapDoc/Storage/MapEffectiveSurfaceSource.cs | `"MapEffectiveSurfaceSource.MaxRecordReads.1"` | `"MaxRecordReads"` |
 | KhaozEngine.MapDoc/Storage/MapPageBudget.cs | `"MapPageBudget.MaxPageMetadataChecks.1"` | `"MaxPageMetadataChecks"` |
+| KhaozEngine.MapDoc/Storage/MapPageBudget.cs | `"MapPageBudget.MaxPageMetadataChecks.2"` | `origin.LimitName` |
 | KhaozEngine.MapDoc/Storage/MapPageBudget.cs | `"MapPageBudget.MaxPageRangeOperations.1"` | `"MaxPageRangeOperations"` |
+| KhaozEngine.MapDoc/Storage/MapPageBudget.cs | `"MapPageBudget.MaxPageRangeOperations.2"` | `origin.LimitName` |
 | KhaozEngine.MapDoc/Storage/MapPageBudget.cs | `"MapPageBudget.MaxPageReads.1"` | `"MaxPageReads"` |
 | KhaozEngine.MapDoc/Storage/MapPageBudget.cs | `"MapPageBudget.MaxPageReads.2"` | `"MaxPageReads"` |
 | KhaozEngine.MapDoc/Storage/MapScopedAcquisition.cs | `"MapScopedAcquisition.MaxCandidatePatches.1"` | `"MaxCandidatePatches"` |

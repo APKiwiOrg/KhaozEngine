@@ -86,7 +86,8 @@ public sealed partial class QueryService
                 p.Transform.YawRadians, p.Transform.Scale, !seated.Contains(p.PlacementId), p.Tags.ToArray()))
             .ToArray();
         MapSupportResult Sample(float x, float z) =>
-            MapNativePointReadout.SurfaceAt(resources, new MapExactXz(MapExactValue.FromSingle(x), MapExactValue.FromSingle(z)), surfaceId!);
+            MapNativePointReadout.SurfaceAt(resources, new MapExactXz(MapExactValue.FromSingle(x), MapExactValue.FromSingle(z)), surfaceId!,
+                NativeDocumentService.SessionOptionsV2.QueryLimits);
         var npcSupports = spawns.Select(s => Sample(s.X, s.Z)).ToArray();
         var startSupports = players.Select(s => Sample(s.X, s.Z)).ToArray();
         string[] refused = spawns.Select((s, i) => (Kind: "Spawn", s.Id, Support: npcSupports[i]))

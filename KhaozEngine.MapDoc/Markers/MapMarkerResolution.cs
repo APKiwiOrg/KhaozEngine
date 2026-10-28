@@ -31,17 +31,10 @@ internal static class MapMarkerResolution
     internal sealed record Resolution(IReadOnlyList<MapLocalMarkerDoc> Intent, IReadOnlyList<MapEffectiveMarker> Markers,
         IReadOnlyList<MapMarkerSupport> Supports);
 
-    internal static IReadOnlyList<MapEffectiveMarker> Resolve(IReadOnlyList<MapMarkerCandidate> candidates, IMapSurfaceSource surfaces,
-        IReadOnlyList<string> assetSha256, out IReadOnlyList<MapMarkerSupport> supports)
-    {
-        var resolution = Resolve(candidates, surfaces, assetSha256, new MapQueryLimits());
-        supports = resolution.Supports;
-        return resolution.Markers;
-    }
-
     /// <summary>Every row in ordinal ID order, with the effective building-intent entry of each marker. That entry keeps
     /// its authored canonical encoding in world space: transformed XZ and yaw, a composed explicit height, and for a
-    /// Support height Position.Y +0 with the binding taken through its frame once.</summary>
+    /// Support height Position.Y +0 with the binding taken through its frame once. Every support query takes the caller's
+    /// <paramref name="limits"/>.</summary>
     internal static Resolution Resolve(IReadOnlyList<MapMarkerCandidate> candidates, IMapSurfaceSource surfaces,
         IReadOnlyList<string> assetSha256, MapQueryLimits limits)
     {

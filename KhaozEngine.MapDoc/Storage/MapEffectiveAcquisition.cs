@@ -29,7 +29,7 @@ internal sealed class MapEffectiveAcquisition
     {
         _session = session;
         _context = context;
-        _boundBudget = new(scope.Limits.MaxPageReads);
+        _boundBudget = new(scope.Limits.MaxPageReads, source: scope.Limits);
         _scope = scope;
         _work = work;
         _snapshot = session.SnapshotId;

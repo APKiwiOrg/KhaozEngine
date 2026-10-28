@@ -56,14 +56,19 @@ internal sealed class TemporalEntryStateComparison(bool softwareVulkan)
     internal void AssertWithinBound(string pair)
     {
         if (!softwareVulkan) return;
-        Assert.True(Allowed(Drift) && Allowed(Swing),
-            $"{pair}: software Vulkan record left its bound ({TemporalSoftwareRecordDivergenceRule.HalfStepBound} "
-            + $"half steps, {TemporalSoftwareRecordDivergenceRule.DifferingShareBound:P3} of values). "
-            + $"Drift {Drift}. Swing {Swing}");
+        Assert.True(Allowed(Drift, TemporalSoftwareRecordDivergenceRule.DriftHalfStepBound,
+                TemporalSoftwareRecordDivergenceRule.DriftDifferingShareBound)
+            && Allowed(Swing, TemporalSoftwareRecordDivergenceRule.SwingHalfStepBound,
+                TemporalSoftwareRecordDivergenceRule.SwingDifferingShareBound),
+            $"{pair}: software Vulkan record left its bound. Drift bound "
+            + $"{TemporalSoftwareRecordDivergenceRule.DriftHalfStepBound} half steps, "
+            + $"{TemporalSoftwareRecordDivergenceRule.DriftDifferingShareBound:P3} of values: {Drift}. Swing bound "
+            + $"{TemporalSoftwareRecordDivergenceRule.SwingHalfStepBound} half steps, "
+            + $"{TemporalSoftwareRecordDivergenceRule.SwingDifferingShareBound:P3} of values: {Swing}");
 
-        static bool Allowed(RecordChannel difference) => TemporalSoftwareRecordDivergenceRule.Allows(
-            difference.WorstHalfSteps, difference.Differing, difference.Compared,
-            TemporalSoftwareRecordDivergenceRule.HalfStepBound, TemporalSoftwareRecordDivergenceRule.DifferingShareBound);
+        static bool Allowed(RecordChannel difference, int stepBound, double shareBound)
+            => TemporalSoftwareRecordDivergenceRule.Allows(difference.WorstHalfSteps, difference.Differing,
+                difference.Compared, stepBound, shareBound);
     }
 
     internal sealed class RecordChannel
@@ -97,9 +102,11 @@ internal sealed class TemporalEntryStateComparison(bool softwareVulkan)
 
 internal static class TemporalSoftwareRecordDivergenceRule
 {
-    // Calibration gate. Keep exact until the complete hosted walks supply record-sized bounds.
-    internal const int HalfStepBound = 0;
-    internal const double DifferingShareBound = 0;
+    // Complete llvmpipe walks in run 40681282977 measured drift 7240 half steps on 0.5269458912% of samples,
+    // swing 387 on 0.2882667824%. Add 25%, then round upward to 100 steps and 0.01 percentage point.
+    // Drift crosses zero at its worst pair, so swing keeps its own much smaller step limit.
+    internal const int DriftHalfStepBound = 9100, SwingHalfStepBound = 500;
+    internal const double DriftDifferingShareBound = 0.0066, SwingDifferingShareBound = 0.0037;
 
     internal static bool Allows(int worstHalfSteps, long differing, long compared, int stepBound, double shareBound)
         => worstHalfSteps >= 0 && worstHalfSteps < int.MaxValue && worstHalfSteps <= stepBound

@@ -55,5 +55,29 @@ public sealed class TemporalSoftwareRecordDivergenceTests
         Assert.Equal(2, comparison.Swing.Compared);
     }
 
+    [Fact]
+    public void MeasuredSoftwareRecordVariationKeepsItsOwnBound()
+    {
+        // The complete llvmpipe walk's worst drift and swing pairs, in sparse populations below its measured shares.
+        float[] a = new float[1000 * 4], b = new float[1000 * 4];
+        for (int i = 0; i < 5; i++)
+        {
+            a[i * 4 + 2] = -0.00023114681f;
+            b[i * 4 + 2] = 0.0005745888f;
+        }
+        for (int i = 0; i < 2; i++)
+        {
+            a[i * 4 + 3] = 0.012275696f;
+            b[i * 4 + 3] = 0.0152282715f;
+        }
+        var comparison = new TemporalEntryStateComparison(softwareVulkan: true);
+        comparison.Compare(47, "measured llvmpipe witness", a, b);
+        Assert.Equal(7240, comparison.Drift.WorstHalfSteps);
+        Assert.Equal(387, comparison.Swing.WorstHalfSteps);
+        Assert.Equal(0.005, comparison.Drift.Share, 12);
+        Assert.Equal(0.002, comparison.Swing.Share, 12);
+        comparison.AssertWithinBound("measured llvmpipe witness");
+    }
+
     static float Half(int bits) => (float)BitConverter.UInt16BitsToHalf((ushort)bits);
 }

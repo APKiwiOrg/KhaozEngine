@@ -27,8 +27,8 @@ namespace KhaozEngine.Tests.Gpu
     /// confidence, the lock, the mark, R8 and depth stay identical. There the fact holds those exact and the colour
     /// within <see cref="TemporalSoftwareCompileDivergenceRule.AbsoluteBound"/> and
     /// <see cref="TemporalSoftwareCompileDivergenceRule.DifferingShareBound"/> of the values compared. It holds drift
-    /// and swing within <see cref="TemporalSoftwareRecordDivergenceRule.HalfStepBound"/> half-float steps and
-    /// <see cref="TemporalSoftwareRecordDivergenceRule.DifferingShareBound"/> of each channel's values compared.
+    /// and swing within the per-channel half-float-step and differing-share bounds in
+    /// <see cref="TemporalSoftwareRecordDivergenceRule"/> over each channel's values compared.
     /// Everywhere else stored colour, confidence, locks, drift, swing, R8 and depth are exact. Hardware NVIDIA
     /// Direct3D 11 additionally prints each production entry and D's paired entries against D. Against D only the non-finite classes of colour and
     /// confidence are asserted. The large-frame case (<c>TemporalEntryIdentityGpuTests.LargeFrames.cs</c>) holds both

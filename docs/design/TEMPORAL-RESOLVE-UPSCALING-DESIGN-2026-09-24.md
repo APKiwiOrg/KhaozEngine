@@ -740,8 +740,10 @@ Implementation review established the contract amendments below.
     software Vulkan device it holds the confidence, the lock and the mark identical and the colour within 0.0625 on at
     most 0.25 percent of the values. The shimmer record's drift and swing derive from the same luma arithmetic, so
     only on llvmpipe they take separate record-sized half-float-step and differing-share limits, owned by
-    `TemporalSoftwareRecordDivergenceRule` and measured over complete walks. They do not take the colour's absolute
-    bound. Confidence, lock, mark, R8 and depth remain exact. Drift and swing remain exact on Metal, WARP and hardware
+    `TemporalSoftwareRecordDivergenceRule` and measured over complete walks. Each channel's limits add 25% to its
+    measured worst half-step distance and differing share, rounded upward to 100 steps and 0.01 percentage point.
+    Drift crosses zero at its worst pair, so swing keeps its own smaller step limit. They do not take the colour's
+    absolute bound. Confidence, lock, mark, R8 and depth remain exact. Drift and swing remain exact on Metal, WARP and hardware
     Direct3D 11 and Vulkan. This avoids production precision restrictions on every GPU solely for a software
     rasterizer's ordering. A claim of identity on a backend holds as far as that fact passes there. The
     per-frame hash over every temporal fact, 2931 fixtures and 63228 frames, was identical between the two entry points

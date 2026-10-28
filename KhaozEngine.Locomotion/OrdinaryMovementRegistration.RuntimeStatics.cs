@@ -66,12 +66,14 @@ public sealed partial class OrdinaryMovementRegistration
         _ = checked(old.ExpectedStaticRevision + writes);
         long accepted = old.ExpectedStaticRevision;
         var poisoned = new OrdinaryRuntimeStaticState(old);
+        bool returnedEdit = false;
         try
         {
             foreach (RuntimeStaticChange change in batch)
                 if (old.Owners.TryGetValue(change.Owner, out Entry entry))
                 {
                     SourceWorld.RemoveStatic(entry.Handle);
+                    returnedEdit = true;
                     CheckWrite(writer, origin, ref accepted);
                     next.Remove(change.Owner);
                     liveHandles.Remove(entry.Handle);
@@ -81,6 +83,7 @@ public sealed partial class OrdinaryMovementRegistration
                 RuntimeStaticChange change = batch[i];
                 if (change.Kind != RuntimeStaticChangeKind.Set) continue;
                 StaticHandle handle = SourceWorld.AddStatic(change.Shape!, poses[i], change.Material);
+                returnedEdit = true;
                 CheckWrite(writer, origin, ref accepted);
                 if (handle.Value < 0 || _entries.ContainsKey(handle) || _exclusions.Contains(handle) || !liveHandles.Add(handle))
                     throw new InvalidOperationException("A source static write returned an invalid or aliased handle.");
@@ -98,7 +101,8 @@ public sealed partial class OrdinaryMovementRegistration
             try
             {
                 writer.AssertCurrent();
-                unchanged = accepted == old.ExpectedStaticRevision && writer.Origin == origin &&
+                // A returned edit cannot be treated as untouched when the backend fails its revision contract.
+                unchanged = !returnedEdit && accepted == old.ExpectedStaticRevision && writer.Origin == origin &&
                     writer.StaticGeometryGeneration == old.ExpectedStaticRevision;
             }
             finally

@@ -4870,8 +4870,10 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   opaque drew or nothing moved. The screen overlays drawn after the post chain (target outlines, fills, lines,
   billboards and the screen transition) still draw over it. `History` (black just after a reset and where a pixel's
   shading changed, white at the full history, green where thin feature retention holds a pixel's lock),
-  `Disocclusion` (red where history was rejected) and `Reactive` (yellow where transparent content lowered the
-  history weight) show the resolve's own decisions and take effect only under `AntiAliasing.Temporal`.
+  `Disocclusion` (red where history was rejected), `Reactive` (yellow where transparent content lowered the
+  history weight) and `Shimmer` (blue where a still pixel only swings with the jitter, so the resolve widens its luma
+  clip and keeps longer history) show the resolve's own decisions and take effect only under
+  `AntiAliasing.Temporal`.
 - **Diagnostics.** `scene.LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, the keyed
   rigid and skinned draws and key collisions, whether history was valid and why it was last reset, the internal and
   display sizes, the preset and the effective `UpscaleRatio`. `LastReset` is a `TemporalResetReason`: `None`,

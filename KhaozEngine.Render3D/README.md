@@ -107,8 +107,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   rendering foundations. Each render draws from one latched view and the previous frame's view is kept, rebased
   across the one-cell steps the automatic render origin takes. Nothing changes until something asks for temporal
   rendering: `AntiAliasing.Temporal` (the anti-aliasing bullet below), or `SceneDebugView.MotionVectors` as a
-  development aid. The `History`, `Disocclusion` and `Reactive` views show the resolve's decisions and take effect
-  only under `AntiAliasing.Temporal`. Call `CameraCut()` on a teleport, a loading screen or a cutscene cut.
+  development aid. The `History`, `Disocclusion`, `Reactive` and `Shimmer` views show the resolve's decisions and
+  take effect only under `AntiAliasing.Temporal`. `Shimmer` tints blue the still pixels the resolve scores as only
+  swinging with the jitter, which take a wider luma clip and longer history. Call `CameraCut()` on a teleport, a loading screen or a cutscene cut.
   A camera that moves further than `Post.Temporal.CutDistanceMetres` (16 m) or turns more than
   `Post.Temporal.CutAngleDegrees` (60 degrees) in one frame is a cut automatically, and so is a render origin jump the
   previous view cannot be rebased across. See docs/USING-KHAOZENGINE.md.

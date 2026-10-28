@@ -24,8 +24,8 @@ namespace KhaozEngine.Render3D.Rendering
         };
 
         readonly IGpuResourceLayout _modeLayout;
-        readonly IGpuBuffer[] _modeBuffers = new IGpuBuffer[4];
-        readonly IGpuResourceSet[] _modeSets = new IGpuResourceSet[4];
+        readonly IGpuBuffer[] _modeBuffers = new IGpuBuffer[Views.Length];
+        readonly IGpuResourceSet[] _modeSets = new IGpuResourceSet[Views.Length];
         readonly TemporalVisibilityPipelinePair _programs;
 
         public TemporalDebugViewPass(IGpuDevice gd, IGpuResourceLayout resolveLayout,

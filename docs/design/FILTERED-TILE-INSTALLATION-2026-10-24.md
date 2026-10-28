@@ -124,19 +124,21 @@ other statics. This work does not change extent construction or ordinary domain 
 
 Use `OrdinaryMovementRegistration.Builder.Build(IPhysicsQueryLease)` unchanged. The engine captures the
 registration after installation and any deliberate supplemental statics, under a fresh lease of that exact
-source. `SourceWorld`, `GeometryGeneration`, `Generation`, selected owner entries and exclusions form an
-immutable registration snapshot. Editing a retained callback closure or continuing to edit a builder cannot
-alter a built registration.
+source. `SourceWorld`, installation `GeometryGeneration`, authored owner entries and exclusions form a fixed
+snapshot. Editing a retained callback closure or continuing to edit a builder cannot alter that authored snapshot.
+`Generation` is the live registration revision. `ApplyRuntimeStatics` publishes a separate immutable runtime map
+and the accepted static revision under the complete source's exclusive writer, then advances it once per nonempty batch.
 
 A lease from another physical source is Invalid even when world ids and integer handle values match.
-A static-geometry mutation makes the previous snapshot Unresolved. Bepu's existing static-generation
+A raw static-geometry mutation makes the registration Unresolved. Bepu's existing static-generation
 authentication intentionally survives simulation ticks and origin rebases. Sources without a separate static
 generation retain the existing stricter read-generation rule. Do not replace these rules with equality against
 an installation-time geometry generation or silently refresh an old registration.
 
 No installation-wide freeze is added. A consumer may create a new snapshot after deliberate changes using
-the existing builder workflow. Mutating source statics after publishing a snapshot requires rebuilding the
-environment before reuse. Local removal continues to prohibit new movement registration after any selected
+the existing builder workflow. Sanctioned runtime batches retain existing bindings and stay inside the fixed
+declared extent. Raw edits after publishing require rebuilding the environment before reuse. Local removal
+continues to prohibit new movement registration after any selected
 handle has been removed. Removing an empty installation has no physical generation effect.
 
 Dispose movement contexts and query views before the registration, and dispose the caller-owned source last.

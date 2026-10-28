@@ -57,14 +57,16 @@ public sealed partial class PhysicsNavBake : IDisposable
     /// <exception cref="ArgumentException">The context has no physics, or the options sample water and the context has
     /// no medium.</exception>
     /// <exception cref="InvalidOperationException">The physics basis changes during capture, or water sampling
-    /// needs a medium delegate for a contact water field.</exception>
+    /// needs a medium delegate for a contact water field, or the context has live runtime statics.</exception>
     public static PhysicsNavBake Capture(GroundMoveContext context, PhysicsNavBakeOptions options, NavAreaClassifier classify)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(classify);
+        RequireAuthoredStatics(context);
         IPhysicsWorld world = context.Physics ?? throw new ArgumentException("Capture requires a physics world.", nameof(context));
         PhysicsNavCaptureBasis? basis = PhysicsNavCaptureBasis.Capture(world);
+        RequireAuthoredStatics(context);
         Vector3 origin = basis?.Origin ?? world.Origin;
         if (!float.IsFinite(origin.X) || !float.IsFinite(origin.Y) || !float.IsFinite(origin.Z))
             throw new InvalidOperationException("The physics origin must be finite.");
@@ -145,5 +147,12 @@ public sealed partial class PhysicsNavBake : IDisposable
     {
         if (world.Origin != origin)
             throw new InvalidOperationException("The physics origin changed after capture began.");
+    }
+
+    private static void RequireAuthoredStatics(GroundMoveContext context)
+    {
+        if (context.MovementRegistration?.HasRuntimeStatics == true)
+            throw new InvalidOperationException("Authored navigation cannot capture or build profiles with live runtime statics. " +
+                "Use an authored-only installation or bake before admitting runtime changes.");
     }
 }

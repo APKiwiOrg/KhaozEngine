@@ -29,6 +29,7 @@ KhaozEngine.Render.Tests/Gpu/TemporalVisibilityFrozenD.cs text eol=lf
 KhaozEngine.Render.Tests/Gpu/TemporalVisibilityFrozenDMask.cs text eol=lf
 KhaozEngine.Render.Tests/Gpu/TemporalLockReleaseProbe.cs text eol=lf
 KhaozEngine.Render.Tests/Render3D/PointShadowFilterShaderTests.cs text eol=lf
+KhaozEngine.Render.Tests/Gpu/WaterPipelineEmissionTests.cs text eol=lf
 # Renderer approvals bind the same exact UTF-8 bytes on every hosted checkout.
 tools/Renderer.Perf.Tests/authorized/*.json text eol=lf
 # Tile installation compatibility fixtures are compared byte for byte.

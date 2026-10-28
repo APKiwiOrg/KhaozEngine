@@ -1124,9 +1124,9 @@ and single-world servers, are disposable. A single head releases its movement vi
 physics or transport. Public explicit environments and views remain caller-owned.
 
 Ordinary scopes are constant per binding and frame. `BeginExplicitRead` opens both leased kinds and returns
-null only for Legacy. Hold one read through a replay batch and publication. Exact corrected bases validate
-without settlement, and unavailable bases remain deferred. Ordinary frame descriptors use the actual physics
-origin, including Y, and advance their epoch when the frame or origin changes. Player states retain their planar
+null only for Legacy. Hold one read through a replay batch with unchanged physics and its publication. Exact
+corrected bases validate without settlement, and unavailable bases remain deferred. Ordinary frame descriptors use
+the actual physics origin, including Y, and advance their epoch when the frame or origin changes. Player states retain their planar
 frame stamp and absolute Y. `SamplerSpace.Frame` ground delegates receive the original physics-local axis and
 return local heights directly. `SamplerSpace.World` retains the dry adapter's rounded absolute translation.
 The registration's analytic height range stays absolute. The playable boundary is captured once per frame
@@ -1135,6 +1135,13 @@ and physics origin, classify their exact double sum against absolute geometry, a
 and contact columns for local conversion. Missing analytic data refuses only queries needing that data.
 Wire generation 14, codecs and persistence payloads remain unchanged. Public explicit reads remain borrowed,
 use their supplied scope and water policy, and retain the 0.001 m resting offset.
+
+Hosts synchronize `registration.ApplyRuntimeStatics` batches before their effective movement tick on both heads,
+after all previous reads end. Use matching canonical owners, shape and pose bits, origins, initial static
+installation order and tick-indexed history. Replay reconstructs physics from that baseline and ordered history,
+applying historical changes before each replayed read. End the read before applying the next batch. Today's
+blocker set or an arbitrary inverse diff does not restore static-tree history or tie ordering. This API supplies
+physical edits, with no event transport, rollback timeline or `ClientPrediction` hook. Wire layouts are unchanged.
 
 Phase 5a is released in 20.37.0. The [allocation and local cost proof](../docs/verification/2026-10-13-contact-controller-phase5a-cost.md)
 records one cold/warm read-and-step pair per row, including the production ordinary pin and player read scope.

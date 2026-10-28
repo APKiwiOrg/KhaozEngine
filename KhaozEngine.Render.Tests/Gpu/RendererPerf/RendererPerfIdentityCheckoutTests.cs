@@ -34,6 +34,7 @@ public sealed class RendererPerfIdentityCheckoutTests
             "KhaozEngine.Render.Tests/Render3D/PointShadowFilterShaderTests.cs",
             "KhaozEngine.Render.Tests/Fixtures/renderer-profiles/profiles.expected.txt",
             "KhaozEngine.Render.Tests/Fixtures/renderer-profiles/index.expected.txt",
+            "KhaozEngine.Render.Tests/Gpu/WaterPipelineEmissionTests.cs",
             .. checkout.Git("ls-files", "-z", "--",
                 "KhaozEngine.Render.Tests/Gpu/RendererPerf/controls/*.glsl",
                 "tools/Renderer.Perf.Tests/authorized/*.json").Split('\0', StringSplitOptions.RemoveEmptyEntries)];

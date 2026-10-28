@@ -100,10 +100,15 @@ server tick needs. A per-thread world copy would duplicate world construction an
   over one fixed build snapshot, independent of call order and thread, and be safe for concurrent reads. The caller
   keeps every underlying datum fixed through capture and build, as it must today.
 - **Snapshot.** Before any work, the build captures the physics basis and the environment producer identity (physics
-  source, registration, boundary, water field and its generation, extent) once. It then constructs every worker's
-  source and proof binding through `GroundMoveContext.CreateNavigationBinding` and authenticates each worker's first
+  source, registration and its live revision, boundary, water field and its generation, extent) once. It then constructs
+  every worker's source and proof binding through `GroundMoveContext.CreateNavigationBinding` and authenticates each worker's first
   pin against the common snapshot. Only then does work start. After all workers join, the snapshot is checked again
   before anything is published. Any difference refuses the whole build. Worker-local lease basis checks stay.
+- **Runtime statics.** The registration's authored provenance is fixed and each runtime publication is immutable,
+  while its root and live revision can change between movement reads. Capture and profile preflight refuse live
+  runtime entries. Worker admission and final publication recheck the captured registration revision and absence
+  of runtime entries. Any sanctioned edit during the build refuses it, even when add-then-remove restores the active
+  set. The physical basis also remains fixed. No blocker disposal or transient handle filtering is part of baking.
 - **Frame.** The navigation frame is captured once into the snapshot. `NavigationFrame` stops writing context state on
   read, and every caller reads the snapshot or a pure computation.
 - **Sharing.** Workers share only immutable inputs: captured columns, the footprint, the snapshot and the options. The

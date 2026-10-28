@@ -107,11 +107,9 @@ namespace KhaozEngine.Tests.Gpu
                     + "GLSL. Remove a recaptured program from the list.");
                 return;
             }
-            Assert.True(stale.Count == 0, string.Join("\n", stale) + "\nRecapture: on a diagnostic branch, set "
-                + VisibilityDxbcDumpFactAttribute.EnvironmentVariable + "=1 on the Windows FXC step of cross-platform-gpu.yml "
-                + "so D3D11FxcValidationTests.DumpVisibilityDisassembly runs, dispatch it there with "
-                + "legs=direct3d11-native, take each stale fixture's DXBC|name|D or DXBC|name|S lines from the log, "
-                + "carriage returns removed, gzip them over the fixture and store the new hash beside it.");
+            Assert.True(stale.Count == 0, string.Join("\n", stale) + "\nRecapture: push the branch, dispatch "
+                + "cross-platform-gpu.yml on it with legs=direct3d11-native and dumpDxbc=true, then run "
+                + "scripts/recapture-taa-dxbc.py <run-id> --write once the run completes.");
         }
 
         [Theory]

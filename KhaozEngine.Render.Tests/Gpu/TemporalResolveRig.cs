@@ -112,8 +112,10 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Record and run one resolve and depth store. The store takes the resolve's own depth
         /// parameters, which is what <see cref="TemporalResolveMath.BuildDepthStore"/> gives for the same
-        /// projection.</summary>
-        public void Resolve(in TemporalResolveUniforms uniforms, IGpuTexture? visibility = null)
+        /// projection. <paramref name="afterResolve"/> records into the same recording after the resolve, as a debug
+        /// view draws over the set and uniforms the resolve bound.</summary>
+        public void Resolve(in TemporalResolveUniforms uniforms, IGpuTexture? visibility = null,
+            Action<IGpuCommandList>? afterResolve = null)
         {
             _renderer.BindInputs(new TemporalResolveInputs(_outlineTargets?.PingA ?? _scene,
                 _outlineTargets?.PingB ?? _opaque, _depth, _motion, visibility), _history);
@@ -129,6 +131,7 @@ namespace KhaozEngine.Tests.Gpu
                     _outlinePost.RunTemporalOutline(cl, _outlineTargets!, _opaque, _outlineRetired!);
                 }
                 _renderer.Run(cl, _history);
+                afterResolve?.Invoke(cl);
             }
             _gd.Submit(cl);
             _gd.WaitForIdle();

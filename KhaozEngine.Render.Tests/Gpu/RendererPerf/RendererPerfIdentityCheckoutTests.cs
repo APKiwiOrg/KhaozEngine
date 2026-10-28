@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Xunit;
 
@@ -19,6 +20,10 @@ public sealed class RendererPerfIdentityCheckoutTests
         string[] inputs = [.. sources,
             "KhaozEngine.Render3D/Internal/OceanComputeShaders.cs",
             "KhaozEngine.Render3D/Internal/TemporalResolveUniforms.cs",
+            "KhaozEngine.Render3D/Internal/CascadeShadowSelectionSource.cs",
+            "KhaozEngine.Render3D/Internal/WaterColumnShaderSource.cs",
+            "KhaozEngine.Render3D/Internal/WaterColumnShadowSource.cs",
+            "KhaozEngine.Render3D/Internal/WaterRefractionShaderSource.cs",
             "KhaozEngine.Render2D/SpriteBatch.cs",
             "KhaozEngine.Render2D/MaskedSpriteShader.cs",
             "KhaozEngine.Gpu/GpuScaledCopy.cs",
@@ -42,6 +47,17 @@ public sealed class RendererPerfIdentityCheckoutTests
                 failures.Add(attributes[i] + ": " + attributes[i + 1] + "=" + attributes[i + 2]);
         }
         Assert.True(failures.Count == 0, "Exact renderer identity inputs must use text eol=lf:\n" + string.Join("\n", failures));
+    }
+
+    [Fact]
+    public void Hashed_shader_sources_carry_no_carriage_returns()
+    {
+        // A multiline verbatim literal compiles with its checkout's line endings. On a Windows autocrlf checkout an
+        // unpinned provider reaches ShaderSha256 as CRLF, so this fails there even when the inventory above misses it.
+        string[] withCarriageReturns = [.. RendererPerfExecutable.ShaderSourcesByName()
+            .Where(source => source.Value.Contains('\r')).Select(source => source.Key)];
+        Assert.True(withCarriageReturns.Length == 0, "Pin these shader providers with text eol=lf:\n"
+            + string.Join("\n", withCarriageReturns));
     }
 
     static string Root([CallerFilePath] string source = "") =>

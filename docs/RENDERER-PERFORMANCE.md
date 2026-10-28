@@ -76,6 +76,10 @@ providers, ocean templates, temporal uniform declarations, sprite shaders and sc
 therefore use `text eol=lf` in `.gitattributes`, alongside embedded control shaders and approvals.
 Normalizing only the hash would hide source changes and detach the identity from the compiler input.
 New exact-byte providers must join the attributes and `RendererPerfIdentityCheckoutTests` inventory.
+That class also refuses any string hashed into `ShaderSha256` that carries a carriage return, so a provider
+missing from the inventory still fails on a Windows checkout. `NonWaterShaderSourceEqualityTests` normalizes
+line endings and cannot catch it. Four unpinned water and cascade providers once moved the Windows identity of
+every lit program, and a WARP rehearsal refused at startup.
 So must a test file whose multiline literals are frozen copies of those sources, or snippets compared
 with, spliced into or hashed with them, such as `TemporalVisibilityFrozenD` and
 `PointShadowFilterShaderTests`. Unpinned, Windows compares CRLF test text against LF shipped text.

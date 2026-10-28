@@ -4,6 +4,14 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.19.0
+
+2026-10-28
+
+- Check out the water column and cascade selection shader sources with LF line endings on every host. A
+  Windows checkout compiled their multiline GLSL with CRLF, which changed the bytes of every lit and water
+  program there and the renderer performance shader identity.
+
 ## 21.18.0
 
 2026-10-28

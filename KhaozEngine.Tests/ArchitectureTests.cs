@@ -541,10 +541,11 @@ public partial class ArchitectureTests
         HashSet<string> actual = graph["KhaozEngine.Render3D"].ProjectRefs.Select(Short).ToHashSet(StringComparer.Ordinal);
 
         // Render3D talks to simulation only through dependency-free seams (Collision, Physics), never a backend.
-        // Ecs is not in the set: the ECS binder lives in the Render3D.Ecs arm (#199).
+        // Ecs is not in the set: the ECS binder lives in the Render3D.Ecs arm (#199). Diagnostics is a pure .NET leaf
+        // with no references of its own, used for count-only capacity demand at the decode gates.
         var allowed = new HashSet<string>(StringComparer.Ordinal)
         {
-            "Windowing", "Gpu", "Primitives", "Render2D", "Collision", "Physics",
+            "Windowing", "Gpu", "Primitives", "Render2D", "Collision", "Physics", "Diagnostics",
         };
         string[] extra = actual.Where(a => !allowed.Contains(a)).OrderBy(a => a, StringComparer.Ordinal).ToArray();
         bool withinSeams = extra.Length == 0;

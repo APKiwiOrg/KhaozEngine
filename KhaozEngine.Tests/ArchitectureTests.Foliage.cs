@@ -21,9 +21,10 @@ public partial class ArchitectureTests
     {
         IReadOnlyDictionary<string, Project> graph = LoadGraph();
         // Foliage payloads, contexts, generation, comparison, edits and effects all live in MapDoc. Its direct production
-        // edges and their whole transitive closure reach none of the forbidden packages.
+        // edges and their whole transitive closure reach none of the forbidden packages. Diagnostics is a reference-free
+        // leaf that carries count-only capacity demand.
         string[] direct = graph["KhaozEngine.MapDoc"].ProjectRefs.Select(Short).Order(StringComparer.Ordinal).ToArray();
-        Assert.Equal(["Content", "Primitives", "Serialization", "Terrain"], direct);
+        Assert.Equal(["Content", "Diagnostics", "Primitives", "Serialization", "Terrain"], direct);
         string[] closure = TransitiveClosure("KhaozEngine.MapDoc", graph).Select(Short).ToArray();
         Assert.Contains("Terrain", closure);
         Assert.DoesNotContain(closure, name => FoliageForbidden.Any(prefix => name.StartsWith(prefix, StringComparison.Ordinal)));

@@ -466,9 +466,13 @@ the gameplay ring only) that is order 25 terrain statics, a few thousand prop st
 dynamics. At Bepu's measured refit cost that is single-digit milliseconds, once every ten seconds or more,
 on a head that is already doing a full physics step every tick.
 
-**The budget, stated as an acceptance condition rather than an estimate:** a rebase must cost less than one
-tick's physics step on the same world. Section 12 test 8b measures it and fails if it does not. If a consumer
-exceeds it, the two levers are bounding the ring (the streaming radius is already a config knob) or
+**The budget is split between deterministic acceptance and a hosted timing diagnostic.** Section 12 test 8b
+gates one engine refit call per body and static, zero managed allocation and no `Statics.ApplyDescription`.
+It cannot count extra native tree visits inside Bepu. The separate
+[hosted rebase lane](../RENDERER-PERFORMANCE.md#hosted-physics-rebase-diagnostic) fails its own job above a
+median 3x step ratio from five interleaved samples on the same world, and never gates merges. The old
+`Rebase < Step` gate and its later isolated 3x form both failed on scheduler noise (#1512).
+If a consumer exceeds the diagnostic bound, the two levers are bounding the ring (the streaming radius is already a config knob) or
 amortizing the refit across ticks, and the second one is a real design change that is explicitly NOT in this
 program (filed).
 
@@ -2052,9 +2056,11 @@ measures the difference of two errors. The double reference removes the ambiguit
    100 km destination and attributed it to the destination magnitude. Rebase the same stack into a 136 m
    frame and assert the drift is at least an order of magnitude smaller, which converts an inference into a
    measurement.
-8b. **The rebase cost budget.** Build a world at the reference consumer's resident scale (order 25 terrain statics, 2,000
-   prop statics, 200 dynamics), time one `Rebase` and one `Step`, assert `Rebase < Step`. The budget from
-   section 5, as a test rather than an estimate.
+8b. **The rebase cost budget.** At the resident scale (25 terrain meshes, 2,000 prop statics, 200 dynamics),
+   gate zero managed allocation over two warmed rebases. Pin the engine loops and refit call sites so each body
+   and static gets exactly one refit, and prohibit `Statics.ApplyDescription`. Separately, the hosted perf job
+   reports five interleaved step/rebase ratios and fails above a median 3x. Native Bepu traversal cost remains
+   observable only through that non-gating timing diagnostic. See section 5 for the split and rationale.
 9. **Constraints survive.** A hinge and a slider, one end a world anchor, `Rebase`, assert the joint still
    holds and the anchor moved with it.
 10. **Statics move.** Raycast down onto a static, `Rebase`, raycast at the translated coordinate, assert the
@@ -2256,8 +2262,8 @@ wrong twice about the same subsystem should say which parts it was wrong about.
 - **Contact-preserving dynamic-body handoff between per-cell physics worlds.** A dynamic crossing a cell
   boundary is removed from one world and added to another, losing its contact cache (section 5). Bounded and
   accepted for release 3.
-- **Amortized rebase.** Section 5's budget requires one rebase to cost less than one physics step. If a
-  consumer's resident collider population exceeds that, the refit needs to be spread across ticks, which is a
+- **Amortized rebase.** If a consumer exceeds section 5's hosted rebase diagnostic bound, bounding the resident
+  collider population or spreading the refit across ticks are the options. Amortization is a
   real design change and is not in this program.
 - **The two duplicated grid conversions.** `Replication/InterestGrid.cs:72` privately re-implements
   `Sharding/CellCoord.cs:38`'s `floor(v / cellSize)` rather than calling it, and `Terrain/ChunkGrid.cs:15` is

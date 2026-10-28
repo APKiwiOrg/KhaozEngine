@@ -153,13 +153,13 @@ internal static class RendererPerfEntrypoint
                 var control = approved.Controls.Single(c => c.Id == id);
                 return new RendererPerfNativeSession(device, info, block, [], unitClock,
                     (wrapped, _) => RendererPerfControls.Create(wrapped, control), telemetry.Read,
-                    capture, operationOrdinal++, approved.ExecutionClass);
+                    capture, operationOrdinal++, approved.ExecutionClass, budget.Deadline);
             }
             string scene = conditioning ? schedule.ConditioningSceneId : block.SceneId;
             var recipe = approved.Recipes.Single(r => r.SceneId == scene);
             return new RendererPerfNativeSession(device, info, block, layouts[scene], unitClock,
                 (wrapped, observer) => new RendererPerfSceneWorkload(wrapped, observer, recipe), telemetry.Read,
-                capture, operationOrdinal++, approved.ExecutionClass);
+                capture, operationOrdinal++, approved.ExecutionClass, budget.Deadline);
         }
         void Write<T>(string name, T value)
         {

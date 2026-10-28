@@ -37,7 +37,7 @@ Rows are in the order the milestones run.
 | M9 Wet banks above the waterline, free to run alongside | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1612 | Owner approves its design |
 | M10 Underwater camera view | later, when Grimhollow schedules diving or swimming | https://github.com/APKiwiOrg/KhaozEngine/issues/1613 | Owner approves its design |
 | M4 Native R8b optical adapter | waiting on the R8a native renderer | https://github.com/APKiwiOrg/KhaozEngine/issues/1300 | None beyond the normal GPU gate |
-| Adoption in Grimhollow | Grimhollow pins v21.17.0 with ducks shadowless. v21.18.0 is ready to adopt: opt the river in through WaterColumnLight, which the shared River look leaves null, then restore the duck shadow | https://github.com/APKiwiOrg/Grimhollow/issues/651 | Grimhollow owner |
+| Adoption in Grimhollow | Grimhollow pins v21.18.0 with ducks still shadowless. Next it opts the river in through WaterColumnLight, which the shared River look leaves null, then restores the duck shadow. Attaching a render pass observer with the column lit needs v21.19.0 for https://github.com/APKiwiOrg/KhaozEngine/issues/1633 | https://github.com/APKiwiOrg/Grimhollow/issues/651 | Grimhollow owner |
 
 ## Decisions in force
 
@@ -87,6 +87,6 @@ Rows are in the order the milestones run.
 
 Build the water-optics-v2 recipes for the approved #1602 run with the renderer performance program, run it
 within its cap, then bring the measured cost to the owner.
-Grimhollow adopts v21.18.0, opts the river in and restores the duck shadow under
+Grimhollow, now on v21.18.0, opts the river in and restores the duck shadow under
 https://github.com/APKiwiOrg/Grimhollow/issues/651. [Landing 2](water-optics-design.md) remains unbuilt and
 touches no renderer performance file, so it can run alongside the #1602 work.

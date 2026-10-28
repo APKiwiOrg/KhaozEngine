@@ -134,9 +134,17 @@ public sealed class RendererPerfFrameBoundaryTests
         internal readonly List<string> Trace = [];
         internal long Tick, PresentEnd;
         internal readonly RendererPerfNativeSession Session;
-        internal BoundaryRig(bool detailed, bool extraPrepare = false, int count = 1)
+        internal BoundaryRig(bool detailed, bool extraPrepare = false, int count = 1, int? notReadyPolls = null,
+            long completionDeadline = long.MaxValue)
         {
             Device.Features = new(false, true, "NVIDIA T4", supportsCompletionFences: true) { SupportsTimestamps = true };
+            if (notReadyPolls is { } polls)
+                Device.PoolFactory = capacity =>
+                {
+                    var pool = new GpuPerfTimestampAwaitTestPool(capacity, polls) { Owners = Device.Fences, OnPoll = () => Tick += 7 };
+                    Device.Pools.Add(pool);
+                    return pool;
+                };
             Device.Trace = op =>
             {
                 Trace.Add(op);
@@ -148,7 +156,8 @@ public sealed class RendererPerfFrameBoundaryTests
             RendererPerfRunIdentity identity = RendererPerfProtocolTests.CompleteReport().Identity with { TimestampPeriodNs = 2.5 };
             Session = new(Device, new(identity, true, true, null, ImmutableDictionary<string, RendererPerfMetric>.Empty),
                 new("S0", detailed ? RendererPerfLayout.PerPass : RendererPerfLayout.TotalOnly, 0, 0, count), definitions,
-                new(() => Tick, 1000), (device, observer) => new Work(this, device, observer, extraPrepare));
+                new(() => Tick, 1000), (device, observer) => new Work(this, device, observer, extraPrepare),
+                completionDeadline: completionDeadline);
             Trace.Clear();
         }
         public void Dispose() { Session.Dispose(); Device.Dispose(); }

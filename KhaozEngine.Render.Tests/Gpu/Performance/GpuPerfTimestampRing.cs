@@ -2,6 +2,7 @@ using System;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Tests.Gpu.Performance;
 
@@ -110,10 +111,36 @@ internal sealed class GpuPerfTimestampRing : IGpuFrameCompletionConsumer, IGpuFr
         return true;
     }
 
+    // Part of the caller's batch completion, after its fence drain and before PollCompleted. Only pools whose query
+    // data can trail their fence wait, bounded by the caller's deadline. A failed wait quarantines only its slot.
+    internal ImmutableArray<(int SampleId, GpuTimestampAvailability Wait)> AwaitAvailability(Func<long> now, long deadline)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(now);
+        var waits = ImmutableArray.CreateBuilder<(int SampleId, GpuTimestampAvailability Wait)>();
+        ImmutableArray<GpuDiagnosticFailure>.Builder? failures = null;
+        foreach (var slot in _slots)
+        {
+            if (slot.State != State.Pending || slot.Pool is not IGpuTimestampAvailabilityWait availability) continue;
+            try { waits.Add((slot.SampleId, availability.AwaitAvailability(slot.Fence!, now, deadline))); }
+            catch (Exception failure)
+            {
+                slot.State = State.Quarantined;
+                Refuse("GPU timestamp resolution or publication failed.");
+                failures ??= ImmutableArray.CreateBuilder<GpuDiagnosticFailure>();
+                if (failure is GpuDiagnosticFailureException transport) failures.AddRange(transport.Failures);
+                else failures.Add(new("renderer.batch.complete", failure));
+            }
+        }
+        if (failures is not null) throw new GpuDiagnosticFailureException(failures.ToImmutable());
+        waits.Sort((a, b) => a.SampleId.CompareTo(b.SampleId));
+        return waits.ToImmutable();
+    }
+
     internal void PollCompleted()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        // The caller harvests once after its existing batch drain. This ring adds no completion policy.
+        // The caller harvests once after its batch drain and AwaitAvailability. This ring adds no completion policy.
         ImmutableArray<GpuDiagnosticFailure>.Builder? failures = null;
         foreach (var slot in _slots)
         {

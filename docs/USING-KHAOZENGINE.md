@@ -23965,15 +23965,18 @@ before the host's first clear, bind or upload. Register and retain through that 
 before touching the pool. Write every reserved marker in order, including skipped cached occurrences,
 and retain their `NotExecuted` status in the adapter. Arm the existing completed-End tail for the final
 index. Unexpected occurrences call `InvalidateBlock`, rather than changing the frozen layout. Submit once
-through the retained submission owner. After each caller-owned batch drain, call `PollCompleted` once,
-including for a final batch of one or two frames. Call `CompleteBlock` after the final harvest to refuse
+through the retained submission owner. After each caller-owned batch drain, call
+`AwaitAvailability(now, deadline)` with the unit clock and deadline, then `PollCompleted` once, including for a
+final batch of one or two frames. Call `CompleteBlock` after the final harvest to refuse
 missing identities. Duplicate identities, changed layouts or a full ring invalidate the block.
 
 Publication uses each sample's storage once and retains its fence until the callback returns successfully.
 Pending results after the drain, invalid or disjoint batches, bad periods or marker order, recording failures
 and callback failures quarantine their slots. Invalid results carry no usable ticks or period. Already
 published samples remain immutable, and other completed slots can still publish partial evidence. There is
-no ring-owned wait, flush, submit or retry. Dispose the submission owner before the ring. An early ring
+no ring-owned submit or retry. The only wait is a pool's own bounded query availability wait inside
+`AwaitAvailability`, which Direct3D 11 needs and
+[renderer performance](RENDERER-PERFORMANCE.md#evidence-and-authorization) describes. Dispose the submission owner before the ring. An early ring
 disposal frees unused pools immediately but retains quarantined pools until the owner's teardown releases
 their exact fences. This lifecycle is covered by headless parity cases against the coverage ring's retained
 submission behavior. Migrating the coverage adapter is a separate change.

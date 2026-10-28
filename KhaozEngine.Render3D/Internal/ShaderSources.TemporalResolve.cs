@@ -112,7 +112,7 @@ const float ShimmerFloor = 0.03125;
 const float ShimmerStillPixels = 0.25;
 const float ShimmerChangeBand = 3.0;
 const float ShimmerClipGain = 0.35;
-const float MaxStillAccumulation = 31.0;
+const float MaxStillAccumulation = 63.0;
 const float VisibilityShimmerGate = 0.1;
 ";
 

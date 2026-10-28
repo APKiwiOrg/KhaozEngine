@@ -151,7 +151,7 @@ struct TemporalPixel {
 const float ShimmerStillPixels = 0.25;
 const float ShimmerChangeBand = 3.0;
 const float ShimmerClipGain = 0.35;
-const float MaxStillAccumulation = 31.0;
+const float MaxStillAccumulation = 63.0;
 const float VisibilityShimmerGate = 0.1;
 ",
         @"");
@@ -198,12 +198,15 @@ const float VisibilityShimmerGate = 0.1;
     float shimmer = temporalShimmerScore(shimmerRecord.x, shimmerRecord.y, lumaChange, motionPixels, reactive);
 #ifdef TemporalShimmerVisibility
     // Where the exported key-shadow visibility moved since last frame a shadow is passing, which is real however the
-    // luma alternates, so the pixel scores none (temporalShimmerVisibilityChanged). Read only where the score holds.
-    if (shimmer > 0.0 && temporalShimmerVisibilityChanged(uv, centreTexel, previousUv)) shimmer = 0.0;
+    // luma alternates, so the pixel scores none: where the visibility release fired on its 3x3, or where the centre
+    // texel's own visibility moved (temporalShimmerVisibilityChanged), read only where the score holds and no release
+    // fired. A shadow reaching a neighbour column first releases the lock before the centre texel changes.
+    if (shimmer > 0.0 && (visibilityReleased || temporalShimmerVisibilityChanged(uv, centreTexel, previousUv)))
+        shimmer = 0.0;
 #endif
 
     // Step 8, first half, done: a still pixel that only shimmers carries up to MaxStillAccumulation, so its current
-    // weight's floor and the sawtooth each jitter hit leaves fall about two times lower. A score of none keeps the
+    // weight's floor and the sawtooth each jitter hit leaves fall about four times lower. A score of none keeps the
     // motion cap exactly, so a one-way change accumulates as before. Cut by reactive content, and dropped where the
     // shading release fired.
     float cap = mix(motionCap, MaxStillAccumulation, shimmer);
@@ -247,7 +250,7 @@ const float VisibilityShimmerGate = 0.1;
 
     /// <summary>The current weight's floor on a still shimmering pixel.</summary>
     internal static readonly Undo CurrentWeightFloor = new(nameof(CurrentWeightFloor),
-        @"    // sampleWeight / (MaxAccumulation + sampleWeight), about one in sixteen, or toward one in 32 on a still pixel that
+        @"    // sampleWeight / (MaxAccumulation + sampleWeight), about one in sixteen, or toward one in 64 on a still pixel that
     // only shimmers, raised wherever reactive content or a disocclusion removed accumulated weight.
 ",
         @"    // sampleWeight / (MaxAccumulation + sampleWeight), about one in sixteen, raised wherever reactive content or a

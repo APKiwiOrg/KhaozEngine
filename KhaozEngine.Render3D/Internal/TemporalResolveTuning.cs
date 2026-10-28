@@ -507,18 +507,21 @@ namespace KhaozEngine.Render3D.Internal
         /// pixel's history inside its own shimmer survives the frames the jitter misses the feature, while history past
         /// that band clips as before. The shading release keeps the unwidened box. A locked pixel's hold already frees
         /// its luma from the clip in part, and the reach adds to what the hold keeps, so a wider band holds a passing
-        /// line's history too: a line drifting a fifth of a texel a frame at Native left 0.107 of its contrast behind
-        /// at 1.5, 1.0 and 0.5, against 0.098 here and 0.053 with no band. Here a still line the jitter hits once a
-        /// cycle keeps a mean of 0.104 of its 0.125 coverage at Native and 0.106 at Quality, against 0.042 and 0.030
-        /// with no band, and its drift averages 0.16 of its swing over a cycle. At 0.5 it kept 0.123, but a shadow
-        /// creeping over it erred 0.1323 at Quality, past its guard of 0.1317.</summary>
+        /// line's history too. That trail binds the gain: a line drifting a fifth of a texel a frame at Native left
+        /// 0.107 of its contrast behind at 1.5, 1.0 and 0.5, past its bound of 0.1, against 0.098 here and 0.053 with
+        /// no band. Here a still line the jitter hits once a cycle keeps a mean of 0.104 of its 0.125 coverage at
+        /// Native and 0.106 at Quality, against 0.042 and 0.030 with no band, and its drift averages 0.16 of its
+        /// swing over a cycle. At 0.5 it kept 0.123 and 0.131, and a shadow creeping over it stayed inside its
+        /// guard.</summary>
         public const float ShimmerClipGain = 0.35f;
         /// <summary>Step 8. The accumulated weight's cap rises from <see cref="MaxAccumulation"/> toward this with the
-        /// score, so a still shimmering pixel's current weight falls to about one in 32 and its per-cycle sawtooth
+        /// score, so a still shimmering pixel's current weight falls to about one in 64 and its per-cycle sawtooth
         /// shrinks. Stored confidence stays weight over <see cref="MaxAccumulation"/> and may reach this over it, and
-        /// readers that need a share clamp it to 1. At 63 the still line, record and trail facts measured the same and
-        /// the textured grain within 1e-7, since their windows rarely carry a pixel past 31 samples.</summary>
-        public const float MaxStillAccumulation = 31f;
+        /// readers that need a share clamp it to 1. Against 31 it steadies the still step, Native's largest frame
+        /// change 0.0085 of contrast against 0.0156, keeps the still line, record, trail and textured grain facts, and
+        /// holds the Native textured tail behind a shadow retreating 8 pixels a frame to 1.8e-8 above design D's,
+        /// inside that fact's tolerance of 5e-7.</summary>
+        public const float MaxStillAccumulation = 63f;
         /// <summary>Steps 5 and 8. Where the key-shadow visibility the scene exports at the centre texel lies more
         /// than this from last frame's at the same surface point, the pixel scores none, so a shadow passing over a
         /// surface that already shimmers clips and accumulates as before. Programs without exported visibility (the

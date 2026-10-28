@@ -37,7 +37,8 @@ vec2 temporalShimmerStep(vec2 record, float lumaChange) {
 // mean, as a still feature the jitter shows and misses does, and falling toward 0 as drift follows swing under a
 // one-way change. None below ShimmerFloor of swing (noise), on a pixel moving ShimmerStillPixels or more, on reactive
 // content, and on a frame whose change exceeds ShimmerChangeBand swings, which is real however much the pixel
-// shimmers. Comparisons are negated so a value that is not a number scores none.
+// shimmers. Its inputs come from a history and record that passed the finite check, so none is NaN. The negated
+// comparisons would score a NaN none on most compilers, but FXC may fold them, so they are no guarantee of it.
 float temporalShimmerScore(float drift, float swing, float lumaChange, float motionPixels, float reactive) {
     if (!(swing >= ShimmerFloor) || !(motionPixels < ShimmerStillPixels) || !(reactive <= 0.0)
         || !(abs(lumaChange) <= ShimmerChangeBand * swing)) return 0.0;
@@ -59,7 +60,7 @@ float temporalShimmerScore(float drift, float swing, float lumaChange, float mot
 // Whether the visibility exported at the centre texel lies more than VisibilityShimmerGate from last frame's at the
 // same surface point, the centre texel's own term of temporalVisibilityChange: one texel fetch and one bilinear sample,
 // with no depth qualification, since a miss only keeps a score the luma record allowed. False until a previous
-// visibility exists (PreviousJitter.z). A value that is not a number reads as changed.
+// visibility exists (PreviousJitter.z). The R8 visibility targets cannot hold a NaN.
 bool temporalShimmerVisibilityChanged(vec2 uv, ivec2 centre, vec2 previousUv) {
     if (!(PreviousJitter.z > 0.5)) return false;
     float current = texelFetch(sampler2D(KeyShadowVisibility, LinearClamp), centre, 0).r;

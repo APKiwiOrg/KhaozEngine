@@ -88,7 +88,7 @@ namespace KhaozEngine.Tests.Render3D
             { "const float ShimmerStillPixels = 0.25;", TemporalResolveTuning.ShimmerStillPixels, 0.25f },
             { "const float ShimmerChangeBand = 3.0;", TemporalResolveTuning.ShimmerChangeBand, 3f },
             { "const float ShimmerClipGain = 0.35;", TemporalResolveTuning.ShimmerClipGain, 0.35f },
-            { "const float MaxStillAccumulation = 31.0;", TemporalResolveTuning.MaxStillAccumulation, 31f },
+            { "const float MaxStillAccumulation = 63.0;", TemporalResolveTuning.MaxStillAccumulation, 63f },
             { "const float VisibilityShimmerGate = 0.1;", TemporalResolveTuning.VisibilityShimmerGate, 0.1f },
         };
 

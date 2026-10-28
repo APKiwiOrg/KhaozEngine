@@ -39,7 +39,8 @@ remainder themselves. The effective admission predicate remains unchanged.
 
 Derived limit copies carry their provenance inside the engine. The internal `CapacityDemandDiagnostics.Derive`,
 `Origins` and `Inherit` record, flatten and copy the originating fields of a derived allowance, and only
-`KhaozEngine.MapDoc` and `KhaozEngine.MapDoc.Render3D` have friend access to them, so no caller can attach
+`KhaozEngine.MapDoc`, `KhaozEngine.MapDoc.Render3D` and, for synthetic provenance rows, `KhaozEngine.MapDoc.Tests`
+have friend access to them, so no caller can attach
 provenance to an engine-held record or change another collector's stream. A gate passes the derived object as
 `allowanceSource`. An origin's `Scale` converts one derived unit into its own units, so a gate demand `d` is
 reported as `Consumed + Scale * d`. Provenance is recorded only while an observer is subscribed, so subscribe

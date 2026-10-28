@@ -263,5 +263,6 @@ and shared allowances. Operation identities distinguish nested acquisitions and 
 Checks and operation scopes allocate nothing without a subscriber, including first use. Observer failures
 cannot alter admission. A gate whose allowance is a remainder or minimum names its derived limits object as
 `allowanceSource` and then publishes one event per originating field. Recording that provenance is internal, with
-friend access only for `KhaozEngine.MapDoc` and `KhaozEngine.MapDoc.Render3D`. See [capacity demand](../docs/CAPACITY-DEMAND.md) for collection, lifetimes,
+friend access only for `KhaozEngine.MapDoc`, `KhaozEngine.MapDoc.Render3D` and, for synthetic provenance rows,
+`KhaozEngine.MapDoc.Tests`. See [capacity demand](../docs/CAPACITY-DEMAND.md) for collection, lifetimes,
 derived allowances, profile sizing and the per-limit enforcement-site map.

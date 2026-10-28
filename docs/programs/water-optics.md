@@ -75,7 +75,7 @@ Rows are in the order the milestones run.
   performance files, so they are coordinated with the renderer performance lanes.
 - Each milestone's design goes to the owner for approval before implementation.
 - The owner approved the M5 ON village and outdoors run on
-  https://github.com/APKiwiOrg/KhaozEngine/issues/1602 with a USD 5.852 cap. M5 Landing 1 is released only after
+  https://github.com/APKiwiOrg/KhaozEngine/issues/1602 with its own campaign maximum and a USD 7.382 cap. M5 Landing 1 is released only after
   the owner rules on its measured cost. Its water-optics-v2 recipes touch the renderer performance files, so
   they are built in coordination with that program.
 - M4 starts only when the R8a native renderer prepares and submits bounded water on main.

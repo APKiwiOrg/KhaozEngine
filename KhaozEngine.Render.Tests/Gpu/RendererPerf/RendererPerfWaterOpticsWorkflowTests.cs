@@ -30,7 +30,7 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
 
     [Theory]
     [InlineData("rehearsal-water-optics-v2", "linux-vulkan", "ubuntu-24.04", "mesa-lavapipe-software")]
-    [InlineData("rehearsal-water-optics-v2-full", "windows-d3d11", "windows-2025-vs2026", "microsoft-warp-software")]
+    [InlineData("rehearsal-water-optics-v2-single", "windows-d3d11", "windows-2025-vs2026", "microsoft-warp-software")]
     public void Select_routes_the_v2_rehearsals(string preset, string leg, string runner, string adapter)
     {
         using var workspace = new RendererPerfWorkflowTrustTests.AdmissionWorkspace();
@@ -58,8 +58,8 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
     [Theory]
     [InlineData("rehearsal-water-optics-v2", "windows-d3d11")]
     [InlineData("rehearsal-water-optics-v2", "windows-vulkan")]
-    [InlineData("rehearsal-water-optics-v2-full", "linux-vulkan")]
-    [InlineData("rehearsal-water-optics-v2-full", "windows-vulkan")]
+    [InlineData("rehearsal-water-optics-v2-single", "linux-vulkan")]
+    [InlineData("rehearsal-water-optics-v2-single", "windows-vulkan")]
     public void Select_refuses_other_v2_rehearsal_legs(string preset, string leg)
     {
         using var fixture = new RendererPerfWorkflowContractTests.WorkflowFixture();
@@ -67,6 +67,19 @@ public sealed class RendererPerfWaterOpticsWorkflowTests
         var result = fixture.Run("Select");
         Assert.NotEqual(0, result.Code);
         Assert.Contains("No software rehearsal class admits this preset and leg", result.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("matrix=", result.Output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Select_refuses_the_retired_full_water_optics_rehearsal_as_unknown()
+    {
+        using var fixture = new RendererPerfWorkflowContractTests.WorkflowFixture();
+        Prepare(fixture, "rehearsal-water-optics-v2-single", "windows-d3d11");
+        fixture.Manifest["preset"] = "rehearsal-water-optics-v2-" + "full";
+        fixture.SaveManifest();
+        var result = fixture.Run("Select");
+        Assert.NotEqual(0, result.Code);
+        Assert.Contains("Unknown renderer preset", result.Output, StringComparison.Ordinal);
         Assert.DoesNotContain("matrix=", result.Output, StringComparison.Ordinal);
     }
 

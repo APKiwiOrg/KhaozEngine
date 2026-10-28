@@ -237,12 +237,14 @@ five v1 recipes and their identities unchanged.
 | --- | --- | --- | --- | --- | ---: |
 | `water-optics-v2` | Linux Vulkan or Windows D3D11, NVIDIA T4 hardware | 1,200 S5 frames | 36, each 192 warm-up plus 256 measured | 1 to 12, each 64 plus 128 | 19,632 |
 | `rehearsal-water-optics-v2` | Linux Vulkan, lavapipe on `ubuntu-24.04` | 300 S5 frames | 36, each 64 warm-up plus 128 measured | 1 to 12, each 32 plus 64 | 8,364 |
-| `rehearsal-water-optics-v2-full` | Windows D3D11, WARP on `windows-2025-vs2026` | 1,200 S5 frames | 36, each 192 warm-up plus 256 measured | 1 to 12, each 64 plus 128 | 19,632 |
+| `rehearsal-water-optics-v2-single` | Windows D3D11, WARP on `windows-2025-vs2026` | 300 S5 frames | 12, each 32 warm-up plus 64 measured | 1 to 12, each 32 plus 64 | 2,604 |
 
-Every v2 schedule uses three rotated iterations and the alternating layout order described above.
-Conditioning runs `conditioning:S5/TotalOnly/0` on outdoors M5 ON to warm both opt-in pipelines and
-the FFT kernels. Its first frame alone receives the cold limit. All three schedules admit 49
-operations, comprising conditioning, 36 scene blocks and twelve controls. Construction storage and
+Paid v2 and the lavapipe rehearsal use three rotated iterations and the alternating layout order
+described above. WARP uses only the first iteration, retaining all six recipes in S0 to S5 order and
+both layouts. Conditioning runs `conditioning:S5/TotalOnly/0` on outdoors M5 ON to warm both opt-in
+pipelines and the FFT kernels. Its first frame alone receives the cold limit. Paid v2 and lavapipe
+admit 49 operations, comprising conditioning, 36 scene blocks and twelve controls. WARP admits 25 operations,
+comprising conditioning, twelve scene blocks and twelve controls. Construction storage and
 compiler correspondence follow the admitted schedule's exact operation bound. Manifest-free inventory
 decoding uses the table's largest bound, then admission and verification enforce the selected one.
 The v1 full schedules retain 43 operations, pilots nine and all-controls rehearsal thirteen.
@@ -257,9 +259,16 @@ Both v2 rehearsals keep the existing zero-budget and zero-campaign-maximum rule,
 limits of 19,800 unit seconds, 60,000 steady-frame milliseconds, 120,000 cold-frame milliseconds and
 350 job minutes. They retain the same correctness and non-promotion rules as v1 rehearsals. The
 shorter Linux schedule exercises all 49 operations because the v1 full lavapipe rehearsal took
-5 hours 13 minutes, leaving insufficient room for 19,632 frames in a six-hour hosted job. WARP keeps
-the paid schedule, estimated at about 5.4 hours from its v1 full rehearsal's 4 hours 41 minutes.
-These estimates do not establish completion or authorize either rehearsal.
+5 hours 13 minutes, leaving insufficient room for 19,632 frames in a six-hour hosted job. Since M5,
+lit WARP frames run 50 to 65 percent slower ([#1640](https://github.com/APKiwiOrg/KhaozEngine/issues/1640)),
+so the paid frame count would need eight hours or more. WARP therefore runs one iteration. Its
+2,604 frames at a worst case near 3.8 seconds per frame take about 9,900 seconds, within the
+19,800-second unit deadline and 350-minute job cap.
+
+Together the rehearsals cover every recipe, profile, layout and control on both backends. WARP
+covers the S5 cold frame on D3D11, while lavapipe exercises the complete 49-operation publication
+end to end. The campaign size gate scales the lavapipe rehearsal's measured bytes to the paid
+19,632 frames. These estimates do not establish completion or authorize either rehearsal.
 
 ## Software correctness rehearsal
 
@@ -527,8 +536,8 @@ The synthetic tests pin those independently calculated values.
 
 Combined distributions pool measured frames only within the same scene and layout. They are
 descriptive. `IterationMeans` retains each iteration mean in iteration order as a separate replicate.
-The three iterations in one process describe repeatability inside one job. Correlated frames are
-never independent experiments, and neither pooled p99 nor three means establish statistical
+Repeated iterations in one process describe repeatability inside one job. Correlated frames are
+never independent experiments, and neither pooled p99 nor iteration means establish statistical
 significance, fleet variance or a tail guarantee.
 
 CPU duration is the exact integer tick difference divided by that sample's frequency, times 1e9.
@@ -768,7 +777,8 @@ and deterministic-ordering rules apply. `NotProfile` replaces `NotFull` for a wr
 
 Profile deltas compare S0 to S1 (village OFF to M2 ON), S1 to S2 (village M2 ON to M5 ON), S3 to S4
 (outdoors OFF to M2 ON) and S4 to S5 (outdoors M2 ON to M5 ON), within each unit. Each layout retains
-all three iterations and a combined descriptive row. Every shared metric has candidate-minus-baseline
+its admitted iterations and a combined descriptive row, with one iteration for the WARP rehearsal
+and three for paid v2 and lavapipe. Every shared metric has candidate-minus-baseline
 mean, median, nearest-rank p95 and p99 deltas and a relative mean percent. Unavailable values retain
 their causes. A zero baseline mean has no percentage. The Markdown shows `gpu.frame` first, followed
 by each named pass, with separate backend series and no significance or regression-budget claim.

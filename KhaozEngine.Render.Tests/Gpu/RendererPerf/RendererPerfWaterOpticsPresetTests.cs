@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -24,7 +23,8 @@ public sealed class RendererPerfWaterOpticsPresetTests
     {
         JsonObject json = RendererPerfProtocolTests.ManifestJson("full", leg);
         bool rehearsal = preset.StartsWith("rehearsal-", StringComparison.Ordinal);
-        bool shortened = preset == "rehearsal-water-optics-v2";
+        bool single = preset == "rehearsal-water-optics-v2-single";
+        bool shortened = preset == "rehearsal-water-optics-v2" || single;
         json["preset"] = preset;
         json["conditioningFrames"] = shortened ? 300 : 1200;
         var recipes = new JsonArray();
@@ -37,14 +37,14 @@ public sealed class RendererPerfWaterOpticsPresetTests
         }
         json["recipes"] = recipes;
         var blocks = new JsonArray();
-        foreach (string entry in BlockOrder)
+        foreach (string entry in single ? BlockOrder.Take(12) : BlockOrder)
         {
             string[] fields = entry.Split('/');
             blocks.Add(new JsonObject
             {
                 ["sceneId"] = fields[0], ["iteration"] = int.Parse(fields[1], System.Globalization.CultureInfo.InvariantCulture),
                 ["layout"] = fields[2] == "TotalOnly" ? "total-only" : "per-pass",
-                ["warmupFrames"] = shortened ? 64 : 192, ["measuredFrames"] = shortened ? 128 : 256
+                ["warmupFrames"] = single ? 32 : shortened ? 64 : 192, ["measuredFrames"] = single ? 64 : shortened ? 128 : 256
             });
         }
         json["blocks"] = blocks;
@@ -89,32 +89,29 @@ public sealed class RendererPerfWaterOpticsPresetTests
     }
 
     [Theory]
-    [InlineData("rehearsal-water-optics-v2", "linux-vulkan", 8364, 300, 64, 128, 32, 64)]
-    [InlineData("rehearsal-water-optics-v2-full", "windows-d3d11", 19632, 1200, 192, 256, 64, 128)]
-    public void Rehearsal_schedules_reconcile(string preset, string leg, int total, int conditioning,
-        int warmup, int measured, int controlWarmup, int controlMeasured)
+    [InlineData("rehearsal-water-optics-v2", "linux-vulkan", 8364, 3, 64, 128)]
+    [InlineData("rehearsal-water-optics-v2-single", "windows-d3d11", 2604, 1, 32, 64)]
+    public void Rehearsal_schedules_reconcile(string preset, string leg, int total, int iterations, int warmup, int measured)
     {
         var manifest = RendererPerfRehearsalManifestTests.Parse(ManifestJson(preset, leg));
         Assert.Equal(total, manifest.TotalFrameCount);
-        Assert.Equal(conditioning, manifest.ConditioningFrames);
-        Assert.Equal(BlockOrder, manifest.Blocks.Select(b => $"{b.SceneId}/{b.Iteration}/{b.Layout}"));
+        Assert.Equal(300, manifest.ConditioningFrames);
+        Assert.Equal(total, manifest.Schedule.TotalFrames);
+        Assert.Equal(iterations, manifest.Schedule.Iterations);
+        Assert.Equal(BlockOrder.Take(iterations * 12), manifest.Blocks.Select(b => $"{b.SceneId}/{b.Iteration}/{b.Layout}"));
         Assert.All(manifest.Blocks, b => Assert.Equal((warmup, measured), (b.WarmupFrames, b.MeasuredFrames)));
         Assert.Equal(Enumerable.Range(1, 12), manifest.Controls.Select(c => c.Id));
-        Assert.All(manifest.Controls, c => Assert.Equal((controlWarmup, controlMeasured), (c.WarmupFrames, c.MeasuredFrames)));
-        Assert.Equal(49, manifest.Schedule.Operations);
+        Assert.All(manifest.Controls, c => Assert.Equal((32, 64), (c.WarmupFrames, c.MeasuredFrames)));
+        Assert.Equal(iterations == 1 ? 25 : 49, manifest.Schedule.Operations);
         Assert.Equal("conditioning:S5/TotalOnly/0", manifest.Schedule.ConditioningOperation);
-        if (total == 19632)
-        {
-            var paid = RendererPerfRehearsalManifestTests.Parse(ManifestJson());
-            Assert.Equal(paid.Blocks, manifest.Blocks, EqualityComparer<RendererPerfBlock>.Default);
-            Assert.Equal(paid.Controls, manifest.Controls, EqualityComparer<RendererPerfControl>.Default);
-            Assert.Equal(paid.Recipes, manifest.Recipes, EqualityComparer<RendererPerfRecipeIdentity>.Default);
-        }
+        Assert.Equal(RendererPerfWaterOptics.RecipeIds.Select(id => id + "/1"), manifest.Recipes.Select(r => r.Version));
+        Assert.Equal(Enumerable.Range(0, 6), manifest.Schedule.Recipes.Select(r => r.Scene));
+        Assert.All(manifest.Recipes, r => Assert.Equal("renderer-full-native-1080/1", r.Profile));
     }
 
     [Theory]
     [InlineData("rehearsal-water-optics-v2", "linux-vulkan", "windows-d3d11")]
-    [InlineData("rehearsal-water-optics-v2-full", "windows-d3d11", "linux-vulkan")]
+    [InlineData("rehearsal-water-optics-v2-single", "windows-d3d11", "linux-vulkan")]
     public void Rehearsal_classes_are_leg_specific(string preset, string leg, string refusedLeg)
     {
         var manifest = RendererPerfRehearsalManifestTests.Parse(ManifestJson(preset, leg));
@@ -122,12 +119,26 @@ public sealed class RendererPerfWaterOpticsPresetTests
         Assert.Equal(new RendererPerfLimits(19800, 60000, 120000, 350), manifest.Limits);
         Assert.Equal(new RendererPerfBudget(350, 0, "USD", 0), manifest.Budget);
         Assert.Equal(0, manifest.Approval.CampaignMaximumUsd);
+        Assert.Equal(leg == "linux-vulkan" ? "ubuntu-24.04" : "windows-2025-vs2026", manifest.Execution.Runner);
+        Assert.Equal(leg == "linux-vulkan" ? "mesa-lavapipe-software" : "microsoft-warp-software", manifest.Execution.AdapterPolicy);
+        Assert.Null(manifest.Execution.LockedGraphicsClockMHz);
         Assert.Equal(new[] { leg }, manifest.Schedule.Legs);
         Assert.Equal("Preset", Assert.Throws<RendererPerfProtocolException>(() =>
             RendererPerfRehearsalManifestTests.Parse(ManifestJson(preset, refusedLeg))).Code);
         var json = ManifestJson(preset, leg);
         json["approval"]!["campaignMaximumUsd"] = .001m;
         Assert.Equal("Approval", Assert.Throws<RendererPerfProtocolException>(() => RendererPerfRehearsalManifestTests.Parse(json)).Code);
+    }
+
+    [Fact]
+    public void Retired_full_water_optics_rehearsal_is_unknown()
+    {
+        string retired = "rehearsal-water-optics-v2-" + "full";
+        var json = ManifestJson("rehearsal-water-optics-v2-single", "windows-d3d11");
+        json["preset"] = retired;
+        var error = Assert.Throws<RendererPerfProtocolException>(() => RendererPerfRehearsalManifestTests.Parse(json));
+        Assert.Equal("Preset", error.Code);
+        Assert.Equal("Unknown renderer preset.", error.Message);
     }
 
     [Theory]
@@ -185,34 +196,41 @@ public sealed class RendererPerfWaterOpticsPresetTests
     }
 
     [Theory]
-    [InlineData("water-optics-v2", "linux-vulkan")]
-    [InlineData("rehearsal-water-optics-v2", "linux-vulkan")]
-    [InlineData("rehearsal-water-optics-v2-full", "windows-d3d11")]
-    public void Capacity_follows_the_admitted_schedule(string preset, string leg)
+    [InlineData("water-optics-v2", "linux-vulkan", 49)]
+    [InlineData("rehearsal-water-optics-v2", "linux-vulkan", 49)]
+    [InlineData("rehearsal-water-optics-v2-single", "windows-d3d11", 25)]
+    public void Capacity_follows_the_admitted_schedule(string preset, string leg, int operations)
     {
         var manifest = RendererPerfRehearsalManifestTests.Parse(ManifestJson(preset, leg));
         var capture = new RendererPerfConstructionCapture(manifest);
-        for (int operation = 0; operation < 49; operation++)
+        for (int operation = 0; operation < operations; operation++)
         {
             capture.BeginOperation(operation);
             capture.EndOperation();
         }
+        Assert.Throws<InvalidOperationException>(() => capture.BeginOperation(operations));
         var inventory = capture.Freeze();
         Assert.True(inventory.Complete, inventory.Reason);
-        Assert.Equal(49, inventory.Operations.Length);
+        Assert.Equal(operations, inventory.Operations.Length);
         Assert.Equal("conditioning:S5/TotalOnly/0", inventory.Operations[0]);
         Assert.Equal("control:12/TotalOnly/0", inventory.Operations[^1]);
         byte[] encoded = RendererPerfCompilerJson.Serialize(inventory, RendererPerfReportJson.MaximumBytes);
-        Assert.Equal(49, RendererPerfCompilerJson.Parse(encoded, RendererPerfReportJson.MaximumBytes).Operations.Length);
+        Assert.Equal(operations, RendererPerfCompilerJson.Parse(encoded, RendererPerfReportJson.MaximumBytes).Operations.Length);
         Assert.ThrowsAny<ArgumentException>(() => new RendererPerfConstructionCapture(manifest with { Blocks = manifest.Blocks.Add(manifest.Blocks[0]) }));
         var oversized = inventory with { Operations = inventory.Operations.Add("foreign/TotalOnly/0") };
-        byte[] oversizedBytes = JsonSerializer.SerializeToUtf8Bytes(oversized, RendererPerfCompilerJson.Options);
-        Assert.Throws<JsonException>(() => RendererPerfCompilerJson.Parse(oversizedBytes, RendererPerfReportJson.MaximumBytes));
+        var file = new RendererPerfCompilerFile(RendererPerfCompilerJson.Schema, manifest.UnitId,
+            new string('a', 64), manifest.WorkloadSha, inventory);
+        byte[] fileBytes = JsonSerializer.SerializeToUtf8Bytes(file, RendererPerfCompilerJson.Options);
+        Assert.Equal(operations, RendererPerfCompilerJson.ReadFile(fileBytes, RendererPerfReportJson.MaximumBytes,
+            manifest.Schedule.Operations).Inventory.Operations.Length);
+        byte[] oversizedBytes = JsonSerializer.SerializeToUtf8Bytes(file with { Inventory = oversized }, RendererPerfCompilerJson.Options);
+        Assert.Throws<JsonException>(() => RendererPerfCompilerJson.ReadFile(oversizedBytes, RendererPerfReportJson.MaximumBytes,
+            manifest.Schedule.Operations));
     }
 
     [Theory]
     [InlineData("rehearsal-water-optics-v2", "linux-vulkan", "gpu-t4-linux")]
-    [InlineData("rehearsal-water-optics-v2-full", "windows-d3d11", "gpu-t4-windows")]
+    [InlineData("rehearsal-water-optics-v2-single", "windows-d3d11", "gpu-t4-windows")]
     public void V2_rehearsal_refuses_hardware_and_nonzero_cost(string preset, string leg, string runner)
     {
         var original = ManifestJson(preset, leg);

@@ -404,9 +404,9 @@ admits only these standard hosted software mappings for each admitted schedule a
 | `windows-d3d11` | `windows-2025-vs2026` | `direct3d11-native` | `microsoft-warp-software` | `KE_D3D11_ADAPTER=warp` |
 
 The v1 rehearsals admit both mappings. `rehearsal-water-optics-v2` admits only Linux lavapipe, and
-`rehearsal-water-optics-v2-full` admits only Windows D3D11 WARP. Both v2 rehearsals emit `rehearsal`,
-require a null graphics clock, and retain the full rehearsal limits of 19,800 unit seconds and 350
-job minutes. Their budgets and campaign maximums remain exactly zero. The
+`rehearsal-water-optics-v2-single` admits only Windows D3D11 WARP for one iteration. Both v2
+rehearsals emit `rehearsal`, require a null graphics clock, and retain the full rehearsal limits of
+19,800 unit seconds and 350 job minutes. Their budgets and campaign maximums remain exactly zero. The
 [water optics contract](RENDERER-PERFORMANCE.md#water-optics-campaign) owns their separate frame counts.
 
 `windows-vulkan` has no software rehearsal class. Paid presets retain their T4 runner labels,

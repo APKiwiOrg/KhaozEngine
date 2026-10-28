@@ -26,7 +26,7 @@ public sealed class RendererPerfColdLimitPolicyTests
     {
         "rehearsal-controls" => RendererPerfRehearsalControlsTests.ManifestJson(leg),
         "rehearsal" or "rehearsal-full" => RendererPerfRehearsalClassesTests.ManifestJson(preset, leg),
-        "water-optics-v2" or "rehearsal-water-optics-v2" or "rehearsal-water-optics-v2-full"
+        "water-optics-v2" or "rehearsal-water-optics-v2" or "rehearsal-water-optics-v2-single"
             => RendererPerfWaterOpticsPresetTests.ManifestJson(preset, leg),
         _ => RendererPerfProtocolTests.ManifestJson(preset, leg)
     };

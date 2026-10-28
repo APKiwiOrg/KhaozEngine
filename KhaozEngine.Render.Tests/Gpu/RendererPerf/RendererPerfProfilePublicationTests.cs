@@ -18,6 +18,29 @@ public sealed class RendererPerfProfilePublicationTests : IClassFixture<Renderer
     RendererPerfProfileRequest Request() => new("khaozengine.renderer-profile-request/1", _fixture.Output(), _fixture.ProfileLegs());
 
     [Fact]
+    public void Single_rehearsal_compares_every_profile_pair_in_both_layouts()
+    {
+        var rehearsal = _fixture.Create("windows-d3d11", "profile-single-rehearsal", "rehearsal-water-optics-v2-single", 1);
+        var summary = RendererPerfAnalysis.ReadDirectory(rehearsal.Directory, rehearsal.ReportName);
+        Assert.False(summary.PromotionEligible);
+        var rows = RendererPerfProfileComparison.Compare(summary);
+        Assert.Equal(16, rows.Length);
+        foreach (var (baseline, candidate, label) in new[]
+        {
+            ("S0", "S1", "village OFF to M2 ON"), ("S1", "S2", "village M2 ON to M5 ON"),
+            ("S3", "S4", "outdoors OFF to M2 ON"), ("S4", "S5", "outdoors M2 ON to M5 ON")
+        })
+            foreach (var layout in new[] { RendererPerfLayout.TotalOnly, RendererPerfLayout.PerPass })
+                foreach (int? iteration in new int?[] { 0, null })
+                {
+                    var row = Assert.Single(rows, r => r.BaselineSceneId == baseline && r.CandidateSceneId == candidate
+                        && r.Layout == layout && r.Iteration == iteration);
+                    Assert.Equal(label, row.Label);
+                    Assert.Equal(108.5, row.Deltas["gpu.frame"].Mean.Value);
+                }
+    }
+
+    [Fact]
     public void Deltas_pair_profiles_inside_one_unit()
     {
         var summary = RendererPerfAnalysis.Analyze(RendererPerfProfileFixture.Report());

@@ -82,8 +82,8 @@ internal static class RendererPerfSchedules
             3, 192, 256, AllControls, 64, 128, 1200, 5, 19632, PilotLegs) { ProfilePairs = WaterOpticsV2Pairs },
         new("rehearsal-water-optics-v2", RendererPerfExecutionClass.Rehearsal, WaterOpticsV2Recipes,
             3, 64, 128, AllControls, 32, 64, 300, 5, 8364, ["linux-vulkan"]) { ProfilePairs = WaterOpticsV2Pairs },
-        new("rehearsal-water-optics-v2-full", RendererPerfExecutionClass.Rehearsal, WaterOpticsV2Recipes,
-            3, 192, 256, AllControls, 64, 128, 1200, 5, 19632, ["windows-d3d11"]) { ProfilePairs = WaterOpticsV2Pairs },
+        new("rehearsal-water-optics-v2-single", RendererPerfExecutionClass.Rehearsal, WaterOpticsV2Recipes,
+            1, 32, 64, AllControls, 32, 64, 300, 5, 2604, ["windows-d3d11"]) { ProfilePairs = WaterOpticsV2Pairs },
     ];
 
     internal static ImmutableArray<string> Presets { get; } = [.. Table.Select(s => s.Preset)];

@@ -32,7 +32,7 @@ runner is allocated. The cap must cover `budget.maximumCostUsd` and stay at or b
 v2, or USD 22 for v1 `pilot` and `full`. The
 [water optics contract](../../../docs/RENDERER-PERFORMANCE.md#water-optics-campaign) owns the schedules.
 `rehearsal-water-optics-v2` selects only Linux lavapipe on `ubuntu-24.04`, while
-`rehearsal-water-optics-v2-full` selects only Windows D3D11 WARP on `windows-2025-vs2026`. Both retain
+`rehearsal-water-optics-v2-single` selects only Windows D3D11 WARP on `windows-2025-vs2026`. Both retain
 19,800 unit seconds and 350 job minutes, with zero unit cost and zero campaign maximum. Opposite
 legs and Windows Vulkan refuse these v2 rehearsals.
 

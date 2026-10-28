@@ -88,7 +88,7 @@ conversion. These are refusal envelopes, not evidence that a native workload fit
 
 | Owner | Bound |
 | --- | --- |
-| Construction | The admitted schedule's exact operation count: nine for v1 pilot, 43 for v1 full, thirteen for all-controls rehearsal and 49 for each water optics v2 preset. Each operation retains at most 256 pipeline and 1024 total factory attempts, with 1024 unique recipes per unit. |
+| Construction | The admitted schedule's exact operation count: nine for v1 pilot, 43 for v1 full, thirteen for all-controls rehearsal, 49 for paid water optics v2 and its lavapipe rehearsal, and 25 for its single-iteration WARP rehearsal. Each operation retains at most 256 pipeline and 1024 total factory attempts, with 1024 unique recipes per unit. |
 | Retained logical encoding | 64 MiB split into 32 MiB distinct sources, 16 MiB distinct descriptors and 16 MiB events/occurrences/witnesses. Source hashes and descriptor keys count in descriptors. Every repeated event and witness still counts. |
 | Graphs | 32 layout sets, 128 elements/set, 32 vertex streams, 64 elements/stream, eight output/blend attachments, 1024 UTF-8 bytes/name, 1 MiB/stage source. |
 | Options | 64 entries/table, 256 UTF-8 bytes/key and 4096/value. Four maximal escaped tables need 6,717,440 encoded bytes. |
@@ -137,10 +137,12 @@ contract is in the living performance reference.
 
 One RendererPerfUnitBudget owns the original ColdStart, absolute deadline and cancellation through
 production, cleanup, freeze, replay, publication, verification and stamping. The v1 full schedule remains
-16,944 frames over 43 operations. Water optics v2 adds six scenes, 36 blocks and twelve controls over
-49 operations, with 19,632 paid/full-WARP frames or 8,364 shorter lavapipe frames. Its conditioning
-scene is S5, while v1 keeps S3. Paid pilot/full deadlines remain 600/1500 seconds. Only conditioning
-frame 0 uses the explicit bounded cold-frame limit. Every other frame retains its steady limit.
+16,944 frames over 43 operations. Paid water optics v2 and its lavapipe rehearsal run six scenes,
+36 blocks and twelve controls over 49 operations, with 19,632 paid frames or 8,364 lavapipe frames.
+The single-iteration WARP rehearsal retains all six scenes in twelve blocks and twelve controls,
+with 2,604 frames over 25 operations. V2 conditioning uses S5, while v1 keeps S3. Paid pilot/full
+deadlines remain 600/1500 seconds. Only conditioning frame 0 uses the explicit bounded cold-frame
+limit. Every other frame retains its steady limit.
 The [living performance reference](../RENDERER-PERFORMANCE.md#evidence-and-authorization) owns the
 per-class frame and job caps. Collection adds no frame, calibration, query block or profiler.
 

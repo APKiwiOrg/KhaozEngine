@@ -10,7 +10,7 @@ public sealed class RendererPerfRehearsalClassesTests
 {
     internal static JsonObject ManifestJson(string preset, string leg)
     {
-        if (preset is "rehearsal-water-optics-v2" or "rehearsal-water-optics-v2-full")
+        if (preset is "rehearsal-water-optics-v2" or "rehearsal-water-optics-v2-single")
             return RendererPerfWaterOpticsPresetTests.ManifestJson(preset, leg);
         bool full = preset == "rehearsal-full";
         JsonObject json = RendererPerfProtocolTests.ManifestJson(full ? "full" : "pilot", leg);
@@ -37,7 +37,7 @@ public sealed class RendererPerfRehearsalClassesTests
     public void Each_software_class_keeps_its_exact_schedule_and_limits(string preset, string leg)
     {
         var manifest = RendererPerfRehearsalManifestTests.Parse(ManifestJson(preset, leg));
-        bool waterOptics = preset is "rehearsal-water-optics-v2" or "rehearsal-water-optics-v2-full";
+        bool waterOptics = preset is "rehearsal-water-optics-v2" or "rehearsal-water-optics-v2-single";
         bool full = preset == "rehearsal-full";
         var expected = waterOptics
             ? RendererPerfSchedules.For(preset)

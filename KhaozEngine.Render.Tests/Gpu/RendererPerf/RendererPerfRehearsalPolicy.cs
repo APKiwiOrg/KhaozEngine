@@ -28,7 +28,7 @@ internal static class RendererPerfRehearsalPolicy
         new("rehearsal-controls", Linux, ControlsLimits),
         new("rehearsal-controls", Windows, ControlsLimits),
         new("rehearsal-water-optics-v2", Linux, FullLimits),
-        new("rehearsal-water-optics-v2-full", Windows, FullLimits)
+        new("rehearsal-water-optics-v2-single", Windows, FullLimits)
     ];
 
     internal static RendererPerfRehearsalClass Class(RendererPerfManifest manifest)

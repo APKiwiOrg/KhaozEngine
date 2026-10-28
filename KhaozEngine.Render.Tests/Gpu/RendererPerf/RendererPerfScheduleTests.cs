@@ -73,7 +73,7 @@ public sealed class RendererPerfScheduleTests
     [Fact]
     public void Presets_keep_v1_order_and_append_the_v2_campaign()
         => Assert.Equal(["pilot", "full", "rehearsal", "rehearsal-full", "rehearsal-controls", "water-optics-v2",
-            "rehearsal-water-optics-v2", "rehearsal-water-optics-v2-full"], RendererPerfSchedules.Presets.AsEnumerable());
+            "rehearsal-water-optics-v2", "rehearsal-water-optics-v2-single"], RendererPerfSchedules.Presets.AsEnumerable());
 
     [Fact]
     public void Every_total_literal_reconciles_with_its_expanded_schedule()

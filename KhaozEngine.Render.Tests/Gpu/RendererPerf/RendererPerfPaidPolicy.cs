@@ -18,7 +18,8 @@ internal static class RendererPerfPaidPolicy
             && execution.AdapterPolicy == "nvidia-t4-hardware" && execution.Workflow == "gpu-hosted-bench.yml"
             && execution.CompletionPolicy == "retained-fence-batch-3/1"
             && execution.LockedGraphicsClockMHz == LockedGraphicsClockMHz, "Preset", "Backend, hardware, runner, workflow or completion policy differs from the preset.");
-        int minutes = pilot ? (linux ? 12 : 20) : 35;
+        // Run 40599810511 spent 31 minutes in GRID setup and the first clock query before measuring.
+        int minutes = pilot ? (linux ? 12 : 20) : linux ? 35 : 50;
         Require(manifest.Limits == new RendererPerfLimits(pilot ? 600 : 1500, 10000, 120000, minutes),
             "Preset", "Unit, steady frame, cold frame or job deadline differs from the preset.");
         int billedMinutes = minutes + CleanupAllowanceMinutes;

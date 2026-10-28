@@ -174,8 +174,8 @@ public sealed class RendererPerfProtocolTests
     [InlineData("pilot", "linux-vulkan", 1260, 0.780)]
     [InlineData("pilot", "windows-d3d11", 1260, 2.346)]
     [InlineData("full", "linux-vulkan", 16944, 1.976)]
-    [InlineData("full", "windows-d3d11", 16944, 3.876)]
-    [InlineData("full", "windows-vulkan", 16944, 3.876)]
+    [InlineData("full", "windows-d3d11", 16944, 5.406)]
+    [InlineData("full", "windows-vulkan", 16944, 5.406)]
     public void Round_trips_exact_scene_and_block_order(string preset, string leg, int frames, double maximumCost)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(ManifestJson(preset, leg).ToJsonString());
@@ -573,9 +573,9 @@ public sealed class RendererPerfProtocolTests
         {
             root["conditioningFrames"] = 1200;
             root["limits"]!["unitSeconds"] = 1500;
-            root["limits"]!["jobMinutes"] = 35;
-            root["budget"]!["maximumBilledMinutes"] = 38;
-            root["budget"]!["maximumCostUsd"] = leg == "linux-vulkan" ? 1.976m : 3.876m;
+            root["limits"]!["jobMinutes"] = leg == "linux-vulkan" ? 35 : 50;
+            root["budget"]!["maximumBilledMinutes"] = leg == "linux-vulkan" ? 38 : 53;
+            root["budget"]!["maximumCostUsd"] = leg == "linux-vulkan" ? 1.976m : 5.406m;
         }
         if (leg != "linux-vulkan")
         {

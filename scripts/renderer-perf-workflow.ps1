@@ -85,7 +85,8 @@ if ($rehearsal) {
     Require ($lockedClock -is [long] -and $lockedClock -eq 1095) 'Paid T4 graphics clock must be an explicit 1095 MHz integer'
 }
 Require ($manifest.preset -cne 'pilot' -or $env:LEGS -cne 'windows-vulkan') 'Windows Vulkan has no initial pilot'
-$minutes = if ($rehearsal) { $rehearsalPolicy.minutes } elseif ($manifest.preset -ceq 'pilot') { if ($env:LEGS -ceq 'linux-vulkan') { 12 } else { 20 } } else { 35 }
+# Windows full allows for the slow GRID setup and clock query seen in run 40599810511.
+$minutes = if ($rehearsal) { $rehearsalPolicy.minutes } elseif ($manifest.preset -ceq 'pilot') { if ($env:LEGS -ceq 'linux-vulkan') { 12 } else { 20 } } elseif ($env:LEGS -ceq 'linux-vulkan') { 35 } else { 50 }
 $billedMinutes = if ($rehearsal) { $minutes } else { $minutes + 3 } # Rounded-up cleanup overrun in run 40435928569.
 Require ($manifest.limits.jobMinutes -eq $minutes -and $manifest.budget.maximumBilledMinutes -eq $billedMinutes) 'Preset job and billing caps disagree'
 Require ($manifest.limits.coldFrameMilliseconds -is [long] -and $manifest.limits.coldFrameMilliseconds -eq 120000) 'Preset cold frame limit must be an explicit 120000 ms integer'

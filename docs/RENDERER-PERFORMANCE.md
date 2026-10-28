@@ -23,7 +23,14 @@ job cap also covers external setup and builds.
 | Linux Vulkan pilot | 600 | 10,000 | 120,000 | 12 | 15 | 0.052 | 0.780 |
 | Windows D3D11 pilot | 600 | 10,000 | 120,000 | 20 | 23 | 0.102 | 2.346 |
 | Linux Vulkan full | 1,500 | 10,000 | 120,000 | 35 | 38 | 0.052 | 1.976 |
-| Windows D3D11 or Vulkan full | 1,500 | 10,000 | 120,000 | 35 | 38 | 0.102 | 3.876 |
+| Windows D3D11 or Vulkan full | 1,500 | 10,000 | 120,000 | 50 | 53 | 0.102 | 5.406 |
+
+The Windows full job cap is 50 minutes because external setup on that runner varies widely. In the
+[locked Windows full unit](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40599810511) the GRID
+driver step took 14 minutes 19 seconds against 2 minutes 51 seconds in the locked pilot, and the first
+`nvidia-smi` calls of the clock lock step blocked about 10 minutes against under a second in the pilot.
+Measurement began 31 minutes in and the former 35-minute cap cancelled the job. The unit deadline, frame
+limits, rate and cleanup allowance are unchanged, so the larger cap only absorbs setup time.
 
 The strict manifest requires both `limits.frameMilliseconds` and `limits.coldFrameMilliseconds`.
 Only conditioning frame 0 uses the cold limit, for its immediate CPU interval, retained CPU interval

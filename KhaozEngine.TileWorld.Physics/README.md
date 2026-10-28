@@ -248,6 +248,9 @@ bounding the loaded regions is first moved just inside it, so the floor carries 
 tile with no ground (no underlay, `TileSettings.NoDraw`, or a missing region inside the rectangle) they answer the
 document's lattice height, `TileWorldDocument.HeightAt`, with a straight up normal. They never answer NaN.
 
+Triangle heights interpolate differences from one lattice vertex. A level triangle keeps that exact lattice
+height, so certified support and the water field use the same bed boundary.
+
 `MediumAt` is in water only when the point is over a water body and `feetY` is below that body's surface, so a body
 standing on a deck above a river is dry. The surface is the body's rim less `TileWaterBodies.SurfaceDropMetres`. An
 in-water answer is always built through the `MovementMedium` constructor and leaves the wade speed to the tuning.

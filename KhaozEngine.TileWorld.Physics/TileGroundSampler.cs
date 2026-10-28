@@ -153,7 +153,8 @@ public sealed class TileGroundSampler
     // One ground triangle in metres relative to its tile's corner, and a point's weights on it.
     readonly record struct GroundTriangle(Vector3 A, Vector3 B, Vector3 C, Vector3 Weights)
     {
-        public float Height => Weights.X * A.Y + Weights.Y * B.Y + Weights.Z * C.Y;
+        // Anchor at a lattice vertex so a level triangle retains its exact height, including at a water bed.
+        public float Height => A.Y + Weights.Y * (B.Y - A.Y) + Weights.Z * (C.Y - A.Y);
 
         // Lattice triangles are never vertical, so the cross product always has a Y to orient by.
         public Vector3 Normal

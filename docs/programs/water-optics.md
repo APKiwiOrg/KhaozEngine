@@ -71,22 +71,23 @@ Rows are in the order the milestones run.
 
 ## Open questions and owner gates
 
-- The M2 native performance run needs the owner's separate approval naming its workload and cap, once the
-  workloads in https://github.com/APKiwiOrg/KhaozEngine/issues/1602 exist. Those recipes touch the renderer
-  performance files, so they are coordinated with the renderer performance lanes.
 - Each milestone's design goes to the owner for approval before implementation.
-- The owner approved the M5 ON village and outdoors run on
-  https://github.com/APKiwiOrg/KhaozEngine/issues/1602 with its own campaign maximum and a USD 7.382 cap.
-  Landing 1 shipped in v21.18.0 ahead of that run, so the run measures the released code. The owner rules on
-  its cost, and per WO-D10 it lands before M3 ships. Its water-optics-v2 recipes touch the renderer
-  performance files, so they are built after that program's clock-headroom change reaches main, and that
-  program reviews their admission before any paid dispatch.
+- The owner approved the water-optics-v2 run on https://github.com/APKiwiOrg/KhaozEngine/issues/1602 with
+  its own campaign maximum and a USD 7.382 cap. It measures OFF, M2 ON and M5 ON profiles of the village and
+  outdoors pools at the released code and publishes the OFF to M2 and M2 to M5 deltas, so it covers M2's
+  native run too. The owner rules on its cost, and per WO-D10 it lands before M3 ships. The presets, the
+  [rehearsals](../RENDERER-PERFORMANCE.md#water-optics-campaign) and the profile publication are built, and
+  the renderer performance program approved their admission. Its two free software rehearsals need the
+  owner's approval, and no paid unit goes out until https://github.com/APKiwiOrg/KhaozEngine/issues/1644 runs
+  managed admission in the free legs job.
+- On T4 hardware M5 adds no measurable cost to frames that do not opt in. The 41 to 66% WARP slowdown is
+  specific to the software rasterizer (https://github.com/APKiwiOrg/KhaozEngine/issues/1640).
 - M4 starts only when the R8a native renderer prepares and submits bounded water on main.
 
 ## Next step
 
-Build the water-optics-v2 recipes for the approved #1602 run with the renderer performance program, run it
-within its cap, then bring the measured cost to the owner.
+Run the two free water-optics-v2 rehearsals once the owner approves them, land #1644, then dispatch each
+paid leg once within the USD 7.382 cap, publish the profile deltas and bring the measured cost to the owner.
 Grimhollow, now on v21.18.0, opts the river in and restores the duck shadow under
 https://github.com/APKiwiOrg/Grimhollow/issues/651. [Landing 2](water-optics-design.md) remains unbuilt and
 touches no renderer performance file, so it can run alongside the #1602 work.

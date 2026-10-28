@@ -2,7 +2,9 @@
 
 Never merge this archive into main. It is an experimental comparison of recording storage at 3 and 6,
 with unchanged rendering, ownership, submission, presentation and capture policies. Assembly and file
-versions stay 21.13.0.0. Runtime reports stay schema 4. The independent review, full frozen-solution
+versions stay 21.13.0.0. This legacy comparison uses schema 4 evidence. The current producer emits
+[schema 5 input observations](mac-frame-input-diagnostics-probe.md) for a separate stability purpose.
+Old captures and their archived helpers remain immutable. The independent review, full frozen-solution
 acceptance, archive push, immutable client preparation and human capture handoffs belong to the coordinator.
 
 ## Device configuration
@@ -29,7 +31,7 @@ blocks. Total process or GPU memory does not necessarily double. More capacity c
 or move waiting to a drawable or another gate. No image-quality or graphics-settings change is allowed.
 
 Enabled devices emit one `KE_METAL_RECORDING_CAPACITY_V1 ` JSON startup line after successful
-configuration. Its schema version is 1, independent of runtime schema 4. It contains `probe`,
+configuration. Its schema version is 1, independent of the runtime report schema. It contains `probe`,
 `baseFrames`, `selectedRecordingSlots`, `actualRecordingSlots`, `requestedDrawableCount`,
 `actualDrawableCount`, `drawableReadback`, `retirementPolicyCap`, `uncommittedDiagnosticBound`,
 `deviceIdentity`, `deviceName`, `assemblyName`, `assemblyVersion`, `assemblyMvid` and
@@ -48,7 +50,7 @@ recording slots 3 or 6, counts mode, ring observation and prepare split enabled.
 the software cap is 0, and the actual framebuffer is 1668 by 1029. The collector validates the observed
 fields across the whole window. An argument or startup intent alone never establishes treatment.
 
-The generic schema-4 collector remains available as described in
+The legacy schema-4 reader and collection path remain available as described in
 [the recording-wait contract](mac-frame-ring-wait-probe.md). For this comparison, its paired opt-in is
 `--expected-recording-slots {3,6}` and `--startup-log`. The startup log must be the owned process log
 inside the capture directory. Exactly one matching startup line is selected. Its complete original
@@ -68,10 +70,12 @@ The preparation manifest additionally records `frozenEngineBase` and uses the fr
 `7ae1e83d18a0cafe4d3b079b0dc3a399de390b4f`. The actual `probeCommit` is the new accepted archive
 commit, and every replacement informational version identifies that commit. `replacements` supplies
 the Metal assembly MVID, version and SHA-256 used to audit the startup line. Its `sourceHashes` must
-include the committed `analyze.py`, `collect.py`, `capacity.py` and `archive.py` paths under
+include the committed `analyze.py`, `collect.py`, `capacity.py`, `archive.py` and `inputs.py` paths under
 `scripts/mac-frame-ring-waits/`. The collector records exact `helperHashes`, checks them against those
 committed source declarations before triggering and again after collection, and compares them across
-the pair. Existing payload,
+the pair. Historical schema-4 proofs retain their original four-helper inventory. Current collection
+uses the canonical five-helper inventory. Stability-purpose evidence is refused by the legacy
+comparison entry points. Existing payload,
 source, process, mapped-DLL, trigger-consumption, focus and callback-completion audits still apply.
 
 This comparison requires the named `worldSelection` descriptor returned by

@@ -72,9 +72,9 @@ Scalar native receipt bookkeeping exists in this archive even when capture is of
 
 The ticket must match epoch, sequence, role, device, list and unchecked prior attempt plus one. Duplicate declarations, roles, completion acknowledgements, late tickets, absent capabilities and observation faults remain explicit. Receipts are provisional until the success endpoint after render, End, submit, AfterSubmit, present and pacing. A submitted prefix cannot acknowledge a callback that later fails. Recording disposal and original application exceptions retain their existing behavior.
 
-## Schema 4
+## Legacy schema 4 and current schema 5
 
-The schema is exactly 4. All schema-3 cadence, shadow-stage, public counter and assembly identity fields remain. The old archive helpers and capture files remain historical inputs. The new helpers reject schema 3 and unknown schema versions.
+Schema 4 is the legacy ring-wait report. The current producer emits [schema 5](mac-frame-input-diagnostics-probe.md), which retains these ring, cadence, shadow-stage, public counter and assembly identity fields and adds value-owned prefix inputs. Schema 5 analysis requires the declared input-stability purpose. Old archive helpers and capture files remain immutable historical inputs, without observed camera or light values. The readers reject schema 3 and unknown schema versions.
 
 The added fields are:
 

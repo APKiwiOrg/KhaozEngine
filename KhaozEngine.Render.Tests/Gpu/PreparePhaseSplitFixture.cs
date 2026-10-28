@@ -73,7 +73,7 @@ public sealed class PreparePhaseSplitFixture : IDisposable
     internal byte[][] Render(bool split, bool transparent, bool temporal, bool geometry, bool hdr,
         SceneDebugView debugView = SceneDebugView.None, bool resize = false, ScreenTransitionStyle? transitionStyle = null,
         BillboardBlend? atmosphereBillboards = null, ShadowStageProbeMode probeMode = ShadowStageProbeMode.Off,
-        bool pointShadows = false, bool ringWaitProbe = false)
+        bool pointShadows = false, bool ringWaitProbe = false, ShadowMode? directionalMode = null)
     {
         EnsureScene();
         IGpuDevice gpu = _gpu!.GpuDevice;
@@ -83,6 +83,7 @@ public sealed class PreparePhaseSplitFixture : IDisposable
         device.Submits = device.Presents = 0;
         scene.CameraCut();
         scene.DebugView = debugView;
+        if (directionalMode.HasValue) scene.Post.Quality.Shadows.Mode = directionalMode.Value;
         scene.Post.Atmosphere.Enabled = atmosphereBillboards.HasValue;
         scene.Post.Atmosphere.WorldUnitsPerKilometre = 1;
         scene.Post.Atmosphere.AerialDistanceScale = 20;

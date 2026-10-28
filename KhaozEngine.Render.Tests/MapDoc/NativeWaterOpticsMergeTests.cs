@@ -14,9 +14,11 @@ namespace KhaozEngine.Tests.MapDoc;
 public sealed class NativeWaterOpticsMergeTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ViewportPreparationReservesNativeSlotsBeforeCreatingOpticalBindings(bool bound)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void ViewportPreparationReservesNativeSlotsBeforeCreatingOpticalBindings(bool bound, bool column)
     {
         using var fixture = NativeSceneFixtures.Create("water-notch");
         var source = NativeSceneFixtures.Open(fixture, false).Acquire(
@@ -43,9 +45,10 @@ public sealed class NativeWaterOpticsMergeTests
         scene.DrawWater(new WaterPlane(0f, 0f, 0f, 5f, optics: optics));
         for (int i = 0; i < 5; i++)
             scene.DrawWater(new WaterSurfaceMesh(mesh, new(i * 10, 0, 0), Matrix4x4.Identity,
-                new WaterLook { SwellAmplitude = 0f }));
+                new WaterLook { SwellAmplitude = 0f, WaterColumnLight = column }));
         scene.PrepareFrame(128, 96);
-        var waterSets = factory.ResourceSets.Where(s => s.Resources.Length == 12).ToArray();
+        var waterSets = factory.ResourceSets.Where(s => s.Resources.Length ==
+            VulkanDescriptorLimitTests.ShippedLayouts["Water"].Elements.Length).ToArray();
         Assert.NotEmpty(waterSets);
         Assert.All(waterSets, set =>
         {
@@ -57,5 +60,7 @@ public sealed class NativeWaterOpticsMergeTests
         using var target = factory.CreateFramebuffer(null, scene.ResolvedDepthTarget);
         scene.RenderInternal(commands, 128, 96, target);
         Assert.All(waterSets, set => Assert.False(set.Disposed));
+        Assert.Equal(new WaterColumnDiagnostics(column ? 5 : 0, column,
+            column ? WaterColumnCopyPath.SingleSampleCopy : WaterColumnCopyPath.None), scene.WaterColumnLightDiagnostics);
     }
 }

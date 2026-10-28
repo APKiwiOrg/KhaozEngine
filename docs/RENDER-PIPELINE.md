@@ -227,8 +227,8 @@ the current resources again, and atlas, sampler and frame-buffer identity indepe
 
 ## Water column scene colour
 
-When any queued plane effectively enables `WaterColumnLight`, the scene captures colour after sky and ground
-decals and before every water draw, including legacy water in the same queue. This source includes opaque
+When any queued legacy plane or bounded native surface effectively enables `WaterColumnLight`, the scene captures
+colour after sky and ground decals and before every water draw, including legacy water in the same queue. This source includes opaque
 geometry, textured billboards, beams, trails, translucent overlays, silhouettes, sky and ground decals.
 It contains no water. A water surface seen through another column-lit surface therefore shows the scene
 behind it with the farther water omitted.

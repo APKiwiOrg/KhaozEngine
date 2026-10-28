@@ -106,6 +106,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   anchor. The renderer retains that anchor through grouping, shadows and previous-frame motion, reducing it
   against the render origin in binary64 before one binary32 rounding. This avoids an absolute float translation
   for geometry already authored in local coordinates. CPU culling still uses an approximate absolute matrix.
+  Frozen capture shadow domains keep absolute receiver and caster bounds, with their centres reduced into the
+  render frame before cascade fitting. Finite capture caster eligibility still tests the absolute bounds.
   `AddLightAnchored(localPosition, anchor, colour, radius, intensity, shadow)` likewise retains a local light
   through receiver buffers, cluster classification and point-shadow binding. Shadow exclusion box corners use
   the same anchor-local space. Existing absolute light overloads remain unchanged.
@@ -937,6 +939,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   The viewport form prepares the colour source inside its one `device.water.prepare` root, before the water
   sets that bind it. The no-argument form prepares it at render after final sizing and opens no device phase.
   Render repeats the preparation without a phase, which does device work only when late-bound targets changed.
+  Bounded native surfaces participate in the same column-light validation, colour copy and temporal noise phase.
 
   `TileWaterLooks.River` supplies the owner-selected linear RGB `(0.28, 0.30, 0.18)` and `Clarity = 1.5f`,
   with `WaterColumnLight` left null. See [the TileWorld reference](../KhaozEngine.TileWorld.Render3D/README.md)

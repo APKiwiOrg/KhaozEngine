@@ -18,7 +18,7 @@ public sealed partial class Scene3D
     void ValidateWaterColumnInputs()
     {
         _waterColumnOptedInPlanes = 0;
-        foreach (WaterPlane plane in _waterPlanes)
+        foreach (WaterPlane plane in WaterDemandPlanes())
         {
             WaterSettings effective = plane.Look?.ResolveInto(_waterColumnScratch, Post.Water) ?? Post.Water;
             // Unbound water retains late-bound authoring, including on planes culled before UBO packing.

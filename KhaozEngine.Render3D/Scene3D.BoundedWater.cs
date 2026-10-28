@@ -73,7 +73,7 @@ public sealed partial class Scene3D
         }
         _water.Draw(cl, _res, RelativeWaterPlanes(), vp, displayVp, Post.LightDirection, Post.LightColor, eye,
             Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin, Post.Atmosphere.Enabled, CollectionsMarshal.AsSpan(_boundedWaterDraws),
-            Internal.WaterColumnPacking.NoisePhase(_currentFrameView.FrameIndex, _resolveThisRender));
+            WaterColumnPacking.NoisePhase(_currentFrameView.FrameIndex, _resolveThisRender));
         _frameStats.DrawCalls += (_waterPlanes.Count > 0 ? 1 : 0) + _boundedWater.Count;
         if (EnableTiming) waterSyncMs = (float)_water.LastOceanCost.StallMs;
     }

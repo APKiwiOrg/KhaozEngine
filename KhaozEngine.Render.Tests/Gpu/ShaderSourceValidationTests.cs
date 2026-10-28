@@ -34,8 +34,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <item>FullscreenVert+TransitionSolidFrag/TransitionCrossfadeFrag (TransitionRenderer), ModelVert+ModelDissolveFrag (CharDissolve)</item>
     /// <item>FullscreenVert+MotionVectorsViewFrag (MotionVectorsView, the MotionVectors debug view)</item>
     /// <item>FullscreenVert+TemporalSharpenFrag (TemporalSharpenPass)</item>
-    /// <item>FullscreenVert+TemporalDebugFrag (TemporalDebugViewPass, the History, Disocclusion and Reactive debug
-    /// views)</item>
+    /// <item>FullscreenVert+TemporalDebugFrag (TemporalDebugViewPass, the History, Disocclusion, Reactive and Shimmer
+    /// debug views)</item>
     /// <item>FullscreenVert+TemporalProbeFrag (TemporalCountProbe, the on-request temporal counts)</item>
     /// <item>FullscreenVert+TemporalPrepareFrag and FullscreenVert+TemporalAccumulateFrag (TemporalSplitResolve, the
     /// resolve's split entry point)</item>

@@ -82,18 +82,29 @@ public sealed class TemporalVisibilityFullyLitGpuTests(ITestOutputHelper output)
         var drawA = TemporalResolveCostPerfGpuTests.FieldScene(a);
         var drawB = TemporalResolveCostPerfGpuTests.FieldScene(b);
         var oracle = Oracle(selected.Device);
-        SceneDebugView[] views = [SceneDebugView.History, SceneDebugView.Disocclusion, SceneDebugView.Reactive];
-        for (int frame = 0; frame < 6; frame++)
+        // Frames 0 to 5 cycle History, Disocclusion and Reactive. Shimmer, whose score reads the shadow gate only in
+        // the checked program, takes frames 6 to 8: shadows on at frame 6 and off at frame 7, where both fixtures run
+        // the check and the visibility moves, then frame 8, where the selected fixture skips the decision and runs the
+        // program without the gate. The visibility is fully lit on frame 8 and the frame before, so the gate finds no
+        // change there and both images still agree exactly.
+        SceneDebugView[] views =
+        [
+            SceneDebugView.History, SceneDebugView.Disocclusion, SceneDebugView.Reactive,
+            SceneDebugView.History, SceneDebugView.Disocclusion, SceneDebugView.Reactive,
+            SceneDebugView.Shimmer, SceneDebugView.Shimmer, SceneDebugView.Shimmer,
+        ];
+        for (int frame = 0; frame < views.Length; frame++)
         {
             selected.Scene.Post.Quality.Shadows.Mode = checkedFx.Scene.Post.Quality.Shadows.Mode
-                = frame == 3 ? ShadowMode.ShadowMap : ShadowMode.Off;
-            selected.Scene.DebugView = checkedFx.Scene.DebugView = views[frame % views.Length];
+                = frame is 3 or 6 ? ShadowMode.ShadowMap : ShadowMode.Off;
+            selected.Scene.DebugView = checkedFx.Scene.DebugView = views[frame];
             selected.Scene.RequestTemporalCounts();
             checkedFx.Scene.RequestTemporalCounts();
             TemporalHistorySample.Exact(frame, "debug image", selected.Frame(drawA), checkedFx.Frame(drawB));
             oracle.Report(frame, "debug and counts", TemporalFullyLitHistoryOracle.Snapshot.Read(selected),
                 TemporalFullyLitHistoryOracle.Snapshot.Read(checkedFx));
-            Assert.Equal(frame is 1 or 2 or 5, selected.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped);
+            Assert.Equal(frame is 1 or 2 or 5 or 8,
+                selected.Scene.TemporalResolveRendererForTests!.LastVisibilityDecisionSkipped);
             Assert.Equal(selected.Scene.LastTemporalDiagnostics.DisoccludedPixels, checkedFx.Scene.LastTemporalDiagnostics.DisoccludedPixels);
             Assert.Equal(selected.Scene.LastTemporalDiagnostics.ReactivePixels, checkedFx.Scene.LastTemporalDiagnostics.ReactivePixels);
             Assert.Equal(selected.Scene.LastTemporalDiagnostics.ClippedPixels, checkedFx.Scene.LastTemporalDiagnostics.ClippedPixels);

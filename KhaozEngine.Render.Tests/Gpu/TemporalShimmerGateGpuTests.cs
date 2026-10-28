@@ -28,9 +28,7 @@ namespace KhaozEngine.Tests.Gpu
         // it, so the mean moves by 3 x 64 / 255 / 9, about 0.084, under the release threshold. A full shadow moves it
         // by a third, past the threshold.
         const byte Lit = 255, Stepped = 191, Shadowed = 0;
-        // The view's tint over the grey dimmed scene: blue less red is 0.85 of the score in 8-bit units
-        // (TemporalDebugMainGlsl), and the grey context alone reads 0.
-        const int Tinted = 64, Untinted = 2;
+        const int Tinted = ShimmerViewTint.Tinted, Untinted = ShimmerViewTint.Untinted;
 
         // The production call site of the gate, and the text a control without the gate puts in its place.
         const string GateCall = "temporalShimmerVisibilityChanged(uv, centreTexel, previousUv)";
@@ -112,11 +110,7 @@ namespace KhaozEngine.Tests.Gpu
         static int[] BlueExcess(byte[] rgba, int column)
         {
             var excess = new int[H - 2];
-            for (int y = 1; y < H - 1; y++)
-            {
-                int i = (y * W + column) * 4;
-                excess[y - 1] = rgba[i + 2] - rgba[i];
-            }
+            for (int y = 1; y < H - 1; y++) excess[y - 1] = ShimmerViewTint.BlueExcess(rgba, W, column, y);
             return excess;
         }
     }

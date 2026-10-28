@@ -195,7 +195,8 @@ namespace KhaozEngine.Tests.Gpu
             // Render3D temporal resolve and its depth store, sharing FullscreenVert.
             yield return new("TemporalResolve", ShaderSources.FullscreenVert, ShaderSources.TemporalResolveFrag);
             yield return new("TemporalDepthStore", ShaderSources.FullscreenVert, ShaderSources.TemporalDepthStoreFrag);
-            // The resolve's History, Disocclusion and Reactive debug views, one program over the resolve's own core.
+            // The resolve's History, Disocclusion, Reactive and Shimmer debug views, one program over the resolve's own
+            // core.
             yield return new("TemporalDebugView", ShaderSources.FullscreenVert, ShaderSources.TemporalDebugFrag);
             // The on-request count probe, the same core sampled on a coarse grid.
             yield return new("TemporalCountProbe", ShaderSources.FullscreenVert, ShaderSources.TemporalProbeFrag);

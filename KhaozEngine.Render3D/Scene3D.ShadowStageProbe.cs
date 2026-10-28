@@ -48,7 +48,6 @@ public sealed partial class Scene3D
     {
         _shadowProbeActive = false;
         _shadowProbeRequest = default;
-        _shadowInputObservation = default;
     }
 
     internal void SetShadowStageProbeClock(Func<long> reader, long frequency)

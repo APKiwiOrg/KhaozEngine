@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using KhaozEngine.Windowing;
 using Xunit;
 
@@ -8,10 +9,15 @@ public sealed class ShadowStageProbeFrameTests
 {
     internal static readonly Guid Epoch = new("ef8c9483-14d4-4e87-8ed1-b2b02942d711");
     internal static ShadowStageProbeRequest Request(long sequence = 1, ShadowStageProbeMode mode = ShadowStageProbeMode.Counts) => new(Epoch, sequence, mode);
+    internal static ShadowStageProbeInputs Inputs(ShadowStageProbeRequest request) => new(request, request.Sequence,
+        1, 1, 1, 0, 0, 1, ShadowInputAvailability.Disabled, 17,
+        new(Matrix4x4.Identity, Matrix4x4.Identity, Matrix4x4.Identity, Matrix4x4.Identity,
+            Vector3.Zero, 1591, 1027, Vector2.Zero), default, default, default, default);
     internal static ShadowStageProbeSnapshot Payload(ShadowStageProbeRequest request, int count = 7,
         ShadowStageProbeConfiguration configuration = default) => new(request, ShadowStageProbeStatus.Valid, configuration,
             request.Mode == ShadowStageProbeMode.Off ? null : new ShadowStageProbeCounts { StaticRequests = count },
-            request.Mode == ShadowStageProbeMode.Timings ? new ShadowStageProbeTicks { Frequency = 1000, ScenePrefix = 4, TimestampReads = 2 } : null);
+            request.Mode == ShadowStageProbeMode.Timings ? new ShadowStageProbeTicks { Frequency = 1000, ScenePrefix = 4, TimestampReads = 2 } : null,
+            request.Mode == ShadowStageProbeMode.Off ? null : Inputs(request));
 
     [Fact]
     public void Publication_is_value_owned_and_requires_the_callback_success_acknowledgement()

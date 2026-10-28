@@ -106,6 +106,31 @@ public sealed class ShadowInputObservationTests
         Assert.True(f.Render(ShadowStageProbeMode.Counts).Inputs!.Value.Complete);
     }
 
+    [Theory]
+    [InlineData("active")]
+    [InlineData("cancelled")]
+    [InlineData("off")]
+    public void ReconfiguringTheSameRequestCannotEraseAnEarlierPrefix(string between)
+    {
+        using var f = new ShadowStageProbeFixture(directional: true);
+        var request = new ShadowStageProbeRequest(Guid.NewGuid(), 7, ShadowStageProbeMode.Counts);
+        f.Frame.BeginShadowStageCallback(request);
+        for (int i = 0; i < 2; i++)
+        {
+            f.Scene.ConfigureShadowStageProbe(request);
+            f.Scene.Begin(); f.Scene.PrepareFrame();
+            f.Commands.Begin();
+            f.Scene.RenderInternal(f.Commands, 32, 24, f.Target);
+            f.Commands.End();
+            if (i == 0 && between == "cancelled") f.Scene.CancelShadowStageProbe();
+            if (i == 0 && between == "off") f.Scene.ConfigureShadowStageProbe(default);
+        }
+        f.Scene.PublishShadowStageProbe(f.Frame);
+        var input = f.Frame.CompletedShadowStageCallback.Snapshot!.Value.Inputs!.Value;
+        Assert.Equal(2, input.PrefixCount);
+        Assert.False(input.Complete);
+    }
+
     [Fact]
     public void DisabledThenActiveDoesNotReuseFits()
     {

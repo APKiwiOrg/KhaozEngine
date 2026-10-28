@@ -61,6 +61,8 @@ internal sealed partial class FrameDiagnosticsRecorder
         if (snapshot.Status != ShadowStageProbeStatus.Valid) return snapshot.Status;
         if (snapshot.Timings is { } timings && timings.Frequency != _frequency)
             return ShadowStageProbeStatus.InvalidClock;
+        if (snapshot.Inputs is not { } inputs || inputs.Request != expected || !inputs.Complete)
+            return ShadowStageProbeStatus.InvalidInputs;
         if (_shadowConfiguration is { } configuration && snapshot.Configuration != configuration)
             return ShadowStageProbeStatus.ConfigurationChanged;
         _shadowConfiguration ??= snapshot.Configuration;

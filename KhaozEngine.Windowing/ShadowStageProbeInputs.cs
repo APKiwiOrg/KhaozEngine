@@ -1,4 +1,6 @@
+using System;
 using System.Numerics;
+using System.Text.Json.Serialization;
 
 namespace KhaozEngine.Windowing;
 
@@ -17,16 +19,22 @@ public readonly record struct ShadowInputDecision(bool Active, bool Rendered, bo
     bool HadPrevious, bool AnySkinnedCaster, bool SkinnedCastersCleared, bool ResolutionChanged,
     bool LightMatrixChanged, bool CasterDataChanged, int SkinnedCasterCount, int CascadeCount);
 
+[JsonConverter(typeof(FrameDiagnosticsInputSerialization))]
 public readonly record struct ShadowStageProbeInputs(ShadowStageProbeRequest Request, long SceneFrameIndex,
     int PrefixCount, int ViewCount, int CascadeObservationCount, int CameraCount, int LightCount,
     int DecisionCount, ShadowInputAvailability Availability, float PrefixEffectTimeSeconds,
     ShadowInputView View, ShadowInputCamera Camera, ShadowInputLight Light, ShadowInputFits Fits,
     ShadowInputDecision Decision)
 {
-    public bool Complete => PrefixCount == 1 && ViewCount == 1 && CascadeObservationCount == 1
+    public bool Complete => Request.Epoch != Guid.Empty && Request.Sequence > 0
+        && Request.Mode is ShadowStageProbeMode.Counts or ShadowStageProbeMode.Timings
+        && SceneFrameIndex > 0 && View.Width > 0 && View.Height > 0
+        && PrefixCount == 1 && ViewCount == 1 && CascadeObservationCount == 1
         && DecisionCount == 1 && (Availability == ShadowInputAvailability.Active
             ? CameraCount == 1 && LightCount == 1 && Fits.Count is >= 1 and <= 4
                 && Fits.Resolution > 0 && Decision.Active && Decision.CascadeCount == Fits.Count
+                && Decision.Rendered != Decision.Skipped
             : Availability is ShadowInputAvailability.Disabled or ShadowInputAvailability.Degenerate
-                && CameraCount == 0 && LightCount == 0 && Fits == default && !Decision.Active);
+                && CameraCount == 0 && LightCount == 0 && Fits == default && Camera == default
+                && Light == default && Decision == default);
 }

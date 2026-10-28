@@ -62,7 +62,7 @@ public sealed partial class RecordingWaitProbeRecorderTests : IDisposable
         await recorder.Publication; Assert.Null(recorder.Failure);
         using var json = JsonDocument.Parse(File.ReadAllText(Pathname));
         var report = json.RootElement;
-        Assert.Equal(4, report.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(5, report.GetProperty("schemaVersion").GetInt32());
         var rows = report.GetProperty("samples");
         Assert.Equal(1, rows[0].GetProperty("recordingWait").GetProperty("callback").GetProperty("request").GetProperty("sequence").GetInt64());
         Assert.Equal(2, rows[1].GetProperty("recordingWait").GetProperty("callback").GetProperty("request").GetProperty("sequence").GetInt64());

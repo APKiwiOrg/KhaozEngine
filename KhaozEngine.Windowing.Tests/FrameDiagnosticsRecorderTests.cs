@@ -318,7 +318,7 @@ public sealed class FrameDiagnosticsRecorderTests : IDisposable
         Assert.True(recorder.Publication.IsCompletedSuccessfully);
         Assert.Null(recorder.Failure);
         using var json = JsonDocument.Parse(File.ReadAllText(ResultPath));
-        Assert.Equal(4, json.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(5, json.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal(Environment.ProcessId, json.RootElement.GetProperty("processId").GetInt32());
         Assert.Equal(1000, json.RootElement.GetProperty("stopwatchFrequency").GetInt64());
         Assert.Contains("KhaozEngine.Windowing", json.RootElement.GetProperty("engineAssembly").GetString());

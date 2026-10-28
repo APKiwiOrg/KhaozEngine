@@ -19,6 +19,7 @@ internal sealed class ShadowStageProbeFixture : IDisposable
     internal readonly MeshHandle Mesh;
     internal readonly Frame Frame = new();
     internal readonly RecordingGpuCommandList Commands;
+    long _sequence;
     internal ShadowStageProbeFixture(bool directional = false)
     {
         _texture = Device.Factory.CreateTexture(GpuTextureDescription.Texture2D(32, 24,
@@ -35,7 +36,7 @@ internal sealed class ShadowStageProbeFixture : IDisposable
         FoliageBatch? foliage = null, bool staticLight = true, bool dynamicLight = true, bool duplicate = false,
         Action<Scene3D>? extraQueue = null, FoliageRenderSettings? foliageSettings = null)
     {
-        var request = new ShadowStageProbeRequest(new Guid("c49950ca-e4a6-493d-a146-ac14c91061dc"), 1, mode);
+        var request = new ShadowStageProbeRequest(new Guid("c49950ca-e4a6-493d-a146-ac14c91061dc"), ++_sequence, mode);
         Frame.BeginShadowStageCallback(request);
         Scene.ConfigureShadowStageProbe(request);
         Scene.Begin();

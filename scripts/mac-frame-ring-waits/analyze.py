@@ -42,7 +42,7 @@ def _analyse_context(report, mode, pid):
     def close(a, b):
         return math.isfinite(a) and math.isfinite(b) and math.isclose(a, b, rel_tol=1e-10, abs_tol=1e-9)
 
-    check(report['schemaVersion'] == 4, 'schemaVersion must be 4')
+    check(report['schemaVersion'] in (4,5), 'schemaVersion must be legacy 4 or purpose-bound 5')
     check(report['processId'] == pid, 'processId mismatch')
     check(report['shadowStages']['mode'] == mode, 'shadow mode mismatch')
     check(mode in (1, 2), 'comparison requires counts or timings')
@@ -265,7 +265,8 @@ def typed_fields(value, ints='', longs='', flags='', other=(), enums=None, int_l
 
 def _schema_types(report, mode, pid):
     integer(mode,1,2); integer(pid,2,INT_MAX)
-    integer(report['schemaVersion'],4,4); integer(report['processId'],2,INT_MAX)
+    integer(report['schemaVersion'],4,5); integer(report['processId'],2,INT_MAX)
+    shadow_status_max = 10 if report['schemaVersion'] == 5 else 9
     integer(report['sampleCount'],1,4096); integer(report['stopwatchFrequency'],1)
 
     def window(value):
@@ -283,11 +284,11 @@ def _schema_types(report, mode, pid):
         window(sample['completedFrameWindow']); window(sample['boundaryWindow']); counters(sample['counters'])
         shadow=sample['shadowStage']; callback=shadow['callback']
         boolean_fields(callback,SHADOW_CALLBACK_FLAGS)
-        integer(shadow['status'],0,9); request(shadow['request']); request(callback['request'])
+        integer(shadow['status'],0,shadow_status_max); request(shadow['request']); request(callback['request'])
         integer(callback['producerCount'],0,INT_MAX)
         snapshot=callback['snapshot']
         if snapshot is not None:
-            request(snapshot['request']); integer(snapshot['status'],0,9)
+            request(snapshot['request']); integer(snapshot['status'],0,shadow_status_max)
             typed_fields(snapshot['configuration'],CONFIG_INTS,flags=CONFIG_FLAGS,int_low=-INT_MAX-1)
             counts=snapshot['counters']
             if counts is not None:
@@ -319,7 +320,7 @@ def _schema_types(report, mode, pid):
     boolean_fields(stages,SHADOW_SUMMARY_FLAGS)
     integer(stages['mode'],0,2); integer_fields(stages,'validRows invalidRows',0,4096)
     for row in stages['coverage']:
-        integer(row['status'],0,9); integer(row['rows'],0,4096)
+        integer(row['status'],0,shadow_status_max); integer(row['rows'],0,4096)
     for row in stages['timings']:
         integer(row['sampleCount'],0,4096)
     # Ring contributions/remainders and coverage summaries use exact() against bounded,
@@ -537,18 +538,31 @@ def _identity_audit(report, proof, pid):
 
 def analyse(report, mode, pid, proof=None, *, expected_recording_slots=None):
     try:
-        if type(report.get('schemaVersion')) is not int or report['schemaVersion'] != 4:
-            raise ValueError('Only schema 4 is supported')
+        import inputs
+        schema = integer(report['schemaVersion'],4,5)
+        contract = None
+        if schema == 5:
+            if type(proof) is not dict or proof.get('purpose') != inputs.PURPOSE:
+                raise ValueError('Schema 5 requires the declared input-stability purpose and collection proof')
+            contract = inputs.validate_contract(proof['inputContract'])
+            if type(expected_recording_slots) is not int or expected_recording_slots != contract['recordingSlots']:
+                raise ValueError('Stability recording-slot expectation differs')
+        elif proof is not None and (proof.get('purpose') is not None or 'inputContract' in proof):
+            raise ValueError('Legacy schema 4 has no observed inputs and cannot claim a stability purpose')
         _schema_types(report,mode,pid)
         context = _analyse_context(report,mode,pid)
         ring = _ring_audit(report)
         errors = context['errors'] + ring.pop('errors')
         if proof is not None:
             errors.extend(_identity_audit(report,proof,pid))
+        input_result = None
+        if contract is not None:
+            input_result = inputs.audit_observations(report,contract)
+            errors.extend(input_result['integrity']['errors'])
         capacity_result = None
         if expected_recording_slots is not None:
             from capacity import audit_treatment
-            capacity_result = audit_treatment(report,proof,expected_recording_slots)
+            capacity_result = audit_treatment(report,proof,expected_recording_slots,input_contract=contract)
             errors.extend(capacity_result['errors'])
         full = not errors and ring['fullyAttributed'] and proof is not None
         if capacity_result is not None and capacity_result['status'] != 'valid': full = False
@@ -556,7 +570,8 @@ def analyse(report, mode, pid, proof=None, *, expected_recording_slots=None):
                     processId=pid, sampleCount=report['sampleCount'], durationSeconds=report['durationSeconds'],
                     framesPerSecond=context['framesPerSecond'], identityAudited=proof is not None,
                     **{**ring, 'fullyAttributed':full},
-                    **({'capacity':capacity_result} if capacity_result is not None else {}),
+                    **({'treatment' if contract else 'capacity':capacity_result} if capacity_result is not None else {}),
+                    **({'inputStability':input_result} if input_result is not None else {'inputObservationStatus':'legacy-unavailable'}),
                     limits=['Counted CPU ring waits only. No GPU completion or physical presentation claim.',
                             'Whole-window reconciliation and interval coverage are independent.',
                             'Different workloads establish neither overhead nor speedup.'])

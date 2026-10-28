@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import PurePosixPath
 import re
+from inputs import HELPER_FILES, LEGACY_HELPER_FILES, PURPOSE, validate_contract
 
 ENGINE_BASE = '7ae1e83d18a0cafe4d3b079b0dc3a399de390b4f'
 GAME_BASE = 'f45462a87441c18682f7c2309ef2f048c4abebb0'
@@ -18,7 +19,7 @@ POLICY_FIELDS = set(('schemaVersion probe baseFrames selectedRecordingSlots actu
                      'requestedDrawableCount actualDrawableCount drawableReadback retirementPolicyCap '
                      'uncommittedDiagnosticBound deviceIdentity deviceName assemblyName assemblyVersion '
                      'assemblyMvid assemblyInformationalVersion').split())
-HELPERS = {'analyze.py','collect.py','capacity.py','archive.py'}
+HELPERS = set(LEGACY_HELPER_FILES)
 WINDOW_FIELDS = ('width','height','focused','minimized','renderSuppressed','effectiveBaseCapHz','vsync',
                  'rendererInitializesSwapchain','preparePhaseSplitActive')
 
@@ -55,7 +56,13 @@ def validate_world_selection(value, game_commit):
 def validate_world_manifest(manifest):
     try:
         expected=validate_world_selection(manifest['worldSelection'],manifest['gameCommit'])
-        if manifest['frozenEngineBase']!=ENGINE_BASE: raise ValueError('Frozen engine base differs')
+        if manifest.get('purpose') is not None:
+            if manifest['purpose'] != PURPOSE: raise ValueError('Frozen world purpose differs')
+            expected_base = validate_contract(manifest['inputContract'])['engineBase']
+        else:
+            if 'inputContract' in manifest: raise ValueError('Input contract requires its declared purpose')
+            expected_base = ENGINE_BASE
+        if manifest['frozenEngineBase']!=expected_base: raise ValueError('Frozen engine base differs')
         world=manifest['world']
         if len(world)!=40 or input_fingerprint(world)!=WORLD_INPUT_SHA256:
             raise ValueError('Frozen Hollowmere directory inventory differs')
@@ -134,19 +141,29 @@ def validate_startup(selected, metal, expected_slots, probe_commit):
     return policy
 
 
-def audit_treatment(report, proof, expected_slots):
+def audit_treatment(report, proof, expected_slots, *, input_contract=None):
     from analyze import guid, integer
     errors = []; policy = None
     def check(condition,message):
         if not condition: errors.append(message)
     try:
         slots = validate_expectation(expected_slots)
+        if input_contract is not None:
+            contract = validate_contract(input_contract)
+            check(proof['purpose'] == PURPOSE and validate_contract(proof['inputContract']) == contract,
+                  'Stability purpose or preparation contract differs')
+            check(integer(report['schemaVersion'],5,5) == 5 and slots == 3, 'Stability treatment differs')
+        else:
+            contract = None
+            check(integer(report['schemaVersion'],4,4) == 4 and proof.get('purpose') is None
+                  and 'inputContract' not in proof, 'Legacy capacity entry point refuses stability-purpose evidence')
         check(validate_expectation(proof['expectedRecordingSlots']) == slots,'Collection expectation differs')
         metal = proof['metalAssembly']
         policy = validate_startup(proof['startupProof'],metal,slots,proof['probeCommit'])
         device = guid(policy['deviceIdentity'])
         check(re.fullmatch('[0-9a-f]{40}',proof['probeCommit']) is not None,'Invalid probe commit')
-        check(proof['frozenEngineBase']==ENGINE_BASE and proof['gameCommit']==GAME_BASE,'Frozen source base differs')
+        check(proof['frozenEngineBase']==(contract['engineBase'] if contract else ENGINE_BASE)
+              and proof['gameCommit']==GAME_BASE,'Frozen source base differs')
         validate_world_selection(proof['worldSelection'],proof['gameCommit'])
         check(report['engineCodeIdentity']['informationalVersion']=='21.13.0+'+proof['probeCommit'],
               'Recorder source identity differs')
@@ -155,7 +172,8 @@ def audit_treatment(report, proof, expected_slots):
         check(bool(paths) and len(paths)==len(set(paths))
               and all(re.fullmatch('[0-9a-f]{64}',row['sha256']) for row in sources),'Source hash inventory invalid')
         helpers=proof['helperHashes']
-        check(type(helpers) is dict and set(helpers)==HELPERS,'Helper identity inventory differs')
+        allowed_helpers = (set(HELPER_FILES),) if contract else (HELPERS, set(HELPER_FILES))
+        check(type(helpers) is dict and set(helpers) in allowed_helpers,'Helper identity inventory differs')
         source_hashes={row['path']:row['sha256'] for row in sources}
         check(all(type(value) is str and re.fullmatch('[0-9a-f]{64}',value)
                   and source_hashes.get('scripts/mac-frame-ring-waits/'+name)==value
@@ -176,7 +194,8 @@ def audit_treatment(report, proof, expected_slots):
                 if observation['status']==2 and observation['receipt'] is not None: receipts.append(observation['receipt'])
                 else: complete=False
         for window in windows:
-            check(integer(window['width'])==1668 and integer(window['height'])==1029,'Actual framebuffer differs')
+            width, height = (contract['framebufferWidth'], contract['framebufferHeight']) if contract else (1668,1029)
+            check(integer(window['width'])==width and integer(window['height'])==height,'Actual framebuffer differs')
             check(window['focused'] is True and window['minimized'] is False and window['renderSuppressed'] is False,
                   'Actual window is not active and focused')
             check(window['vsync'] is True and integer(window['effectiveBaseCapHz'])==0,'Actual VSync/software cap differs')
@@ -220,6 +239,11 @@ def _run_context(report, proof, slots):
 
 
 def compare_runs(control_report, control_proof, candidate_report, candidate_proof):
+    if any(type(report.get('schemaVersion')) is not int or report['schemaVersion'] != 4
+           for report in (control_report, candidate_report)) or any(
+               proof.get('purpose') is not None or 'inputContract' in proof for proof in (control_proof, candidate_proof)):
+        return dict(comparable=False, differences=['Legacy capacity comparison refuses stability-purpose evidence'],
+                    control=None, candidate=None, observedFramesPerSecondDifference=None)
     control=_run_context(control_report,control_proof,3);candidate=_run_context(candidate_report,candidate_proof,6)
     differences=[]
     for name,run in [('control',control),('candidate',candidate)]:

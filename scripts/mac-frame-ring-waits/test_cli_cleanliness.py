@@ -10,13 +10,14 @@ import tempfile
 import unittest
 
 from test_capacity import capacity_fixture
+from inputs import HELPER_FILES
 
 
 class CliCleanlinessTests(unittest.TestCase):
     def copy_helpers(self, root):
         helpers = root / 'helpers'
         helpers.mkdir()
-        for name in ('analyze.py', 'collect.py', 'capacity.py', 'archive.py'):
+        for name in HELPER_FILES:
             shutil.copy2(Path(__file__).with_name(name), helpers / name)
         return helpers
 
@@ -31,7 +32,7 @@ class CliCleanlinessTests(unittest.TestCase):
 
     def assert_source_untouched(self, helpers):
         self.assertEqual(
-            {'analyze.py', 'collect.py', 'capacity.py', 'archive.py'},
+            set(HELPER_FILES),
             {str(path.relative_to(helpers)) for path in helpers.rglob('*')},
             'The command created files in the frozen helper source directory',
         )

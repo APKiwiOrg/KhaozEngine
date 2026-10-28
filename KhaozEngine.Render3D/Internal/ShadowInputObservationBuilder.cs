@@ -9,7 +9,14 @@ internal struct ShadowInputObservationBuilder
 {
     ShadowStageProbeInputs _value;
 
-    internal void Reset(ShadowStageProbeRequest request) => _value = default(ShadowStageProbeInputs) with { Request = request };
+    internal void Reset(ShadowStageProbeRequest request)
+    {
+        // Off and cancellation cannot make an earlier attempt with this identity disappear.
+        if (request.Epoch == Guid.Empty || request.Sequence <= 0
+            || request.Mode is not (ShadowStageProbeMode.Counts or ShadowStageProbeMode.Timings)) return;
+        if (_value.Request.Epoch == request.Epoch && _value.Request.Sequence == request.Sequence) return;
+        _value = default(ShadowStageProbeInputs) with { Request = request };
+    }
 
     internal void BeginPrefix(long sceneFrameIndex, float effectTimeSeconds)
     {
@@ -21,8 +28,11 @@ internal struct ShadowInputObservationBuilder
     internal void ObserveView(in FrameView view)
     {
         if (_value.ViewCount == 0)
-            _value = _value with { View = new(view.View, view.Projection, view.ViewProjection,
-                view.AbsoluteViewProjection, view.RenderOrigin, view.Width, view.Height, view.JitterPixels) };
+            _value = _value with
+            {
+                View = new(view.View, view.Projection, view.ViewProjection,
+                view.AbsoluteViewProjection, view.RenderOrigin, view.Width, view.Height, view.JitterPixels)
+            };
         _value = _value with { ViewCount = _value.ViewCount + 1 };
     }
 
@@ -64,10 +74,13 @@ internal struct ShadowInputObservationBuilder
     internal void ObserveDecision(in ShadowPassDiagnostics decision)
     {
         if (_value.DecisionCount == 0)
-            _value = _value with { Decision = new(decision.Active, decision.Rendered, decision.Skipped,
+            _value = _value with
+            {
+                Decision = new(decision.Active, decision.Rendered, decision.Skipped,
                 decision.HadPrevious, decision.AnySkinnedCaster, decision.SkinnedCastersCleared,
                 decision.ResolutionChanged, decision.LightMatrixChanged, decision.CasterDataChanged,
-                decision.SkinnedCasterCount, decision.CascadeCount) };
+                decision.SkinnedCasterCount, decision.CascadeCount)
+            };
         _value = _value with { DecisionCount = _value.DecisionCount + 1 };
     }
 

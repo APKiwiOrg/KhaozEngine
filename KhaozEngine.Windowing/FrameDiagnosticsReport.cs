@@ -22,7 +22,7 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
         var samples = new FrameDiagnosticsSample[count];
         Array.Copy(buffer, samples, count);
         var engine = typeof(FrameDiagnosticsRecorder).Assembly;
-        return new FrameDiagnosticsReport(4, Environment.ProcessId,
+        return new FrameDiagnosticsReport(5, Environment.ProcessId,
             Assembly.GetEntryAssembly()?.FullName ?? "unknown", engine.FullName + " MVID=" + engine.ManifestModule.ModuleVersionId,
             frequency, (end.Timestamp - baseline.Timestamp) / (double)frequency, count, reason, baseline, end, samples,
             FrameDiagnosticsSummary.Create(baseline, end, samples, reason == "capacity", count == buffer.Length),

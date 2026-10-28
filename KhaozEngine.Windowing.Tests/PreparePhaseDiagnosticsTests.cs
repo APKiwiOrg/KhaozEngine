@@ -33,7 +33,7 @@ public sealed class PreparePhaseDiagnosticsTests : IDisposable
         var end = new FrameDiagnosticsBoundary(2000, endWindow, default);
         FrameDiagnosticsSample[] samples = [new(1000, 2000, 1, 1, startWindow, endWindow, default)];
         var report = FrameDiagnosticsReport.Create(1000, start, end, samples, 1, "duration");
-        Assert.Equal(4, report.SchemaVersion);
+        Assert.Equal(5, report.SchemaVersion);
         Assert.Equal(expected, report.Summary.AllPreparePhaseSubmissionsPaired);
     }
 

@@ -1,4 +1,4 @@
-"""Collect one already-running, human-readied schema-4 window. No launch or retry."""
+"""Collect one human-readied legacy or purpose-bound stability window. No launch or retry."""
 import argparse
 from contextlib import contextmanager
 import datetime
@@ -19,9 +19,9 @@ if __name__ == '__main__':
     sys.dont_write_bytecode = True
 
 from analyze import INT_MAX, REQUIRED_CLOSURE, analyse, guid, integer
+from inputs import HELPER_FILES, PURPOSE, validate_contract
 
 CAPACITY_WORK_ROOT = Path('/tmp').resolve()/'grimhollow-mac-frame-performance'
-HELPER_FILES = ('analyze.py','collect.py','capacity.py','archive.py')
 
 REQUIRED_EDGES = {
     'KhaozEngine.Gpu': set(),
@@ -82,6 +82,14 @@ def validate_preparation(manifest):
     try:
         m=manifest
         require(m['status']=='prepared-and-audited', 'Preparation has not been audited')
+        if m.get('purpose') is not None:
+            require(m['purpose']==PURPOSE,'Preparation purpose differs')
+            validate_contract(m['inputContract'])
+            declared={row['path'] for row in m['sourceHashes']}
+            require({'scripts/mac-frame-ring-waits/'+name for name in HELPER_FILES} <= declared,
+                    'Stability preparation omits helper source identity')
+        else:
+            require('inputContract' not in m,'Input contract requires a declared purpose')
         for key in ('probeCommit','gameCommit'):
             require(re.fullmatch('[0-9a-f]{40}',m[key]) is not None, 'Missing exact code commit')
         require(integer(m['runtimeFileCount'],644,644)==644 and integer(m['contentFileCount'],395,395)==395,
@@ -245,6 +253,7 @@ def archive_outcome(args,root,preparation,result,metadata,audit_path,record,*,me
         claim_path=result.with_suffix('.archive-claim.json')
         receipt_path=result.with_suffix('.archive-receipt.json')
         sources=dict(probeCommit=record.get('probeCommit'),gameCommit=record.get('gameCommit'),
+                     purpose=record.get('purpose'),inputContract=record.get('inputContract'),
                      frozenEngineBase=record.get('frozenEngineBase'),sourceHashes=record.get('sourceHashes'),
                      helperHashes=record.get('helperHashes'),actualHelperHashes=helper_hashes(),
                      metalAssembly=record.get('metalAssembly'),codeIdentities=record.get('codeIdentities'),
@@ -319,11 +328,14 @@ def main():
     parser.add_argument('--expected-recording-slots',type=int,choices=[3,6])
     parser.add_argument('--startup-log',type=Path)
     parser.add_argument('--run-id')
+    parser.add_argument('--purpose',choices=[PURPOSE])
     args=parser.parse_args()
     require((args.expected_recording_slots is None)==(args.startup_log is None),
             'Recording-slot expectation and owned startup log are a paired opt-in')
     require(args.expected_recording_slots is None or args.mode=='counts','Capacity comparison requires counts mode')
     require((args.expected_recording_slots is None)==(args.run_id is None),'Capacity mode requires an archival run identifier')
+    require(args.purpose is None or args.expected_recording_slots==3 and args.mode=='counts',
+            'Input stability requires slots 3, counts and archival evidence')
     if args.expected_recording_slots is not None:
         import archive
         archive.destination_for('0'*40,args.run_id)
@@ -381,13 +393,17 @@ def main():
         preparation_raw=read_regular_bytes(preparation)
         manifest=json.loads(preparation_raw)
         validate_preparation(manifest)
+        require(manifest.get('purpose')==args.purpose,'CLI purpose and immutable preparation differ')
+        if args.purpose is not None:
+            record.update(purpose=args.purpose,inputContract=validate_contract(manifest['inputContract']))
         client=Path(manifest['client']).resolve(strict=True)
         require(client==root/'client','Preparation does not own this client directory')
         record.update(preparationSha256=hashlib.sha256(preparation_raw).hexdigest(),probeCommit=manifest['probeCommit'],gameCommit=manifest['gameCommit'],
                       requiredClosure=sorted(REQUIRED_CLOSURE),codeIdentities=dict(app=manifest['appCodeIdentity'],engine=manifest['engineCodeIdentity']))
         if args.expected_recording_slots is not None:
             from capacity import ENGINE_BASE, GAME_BASE, select_startup, validate_startup, validate_world_manifest
-            require(manifest['frozenEngineBase']==ENGINE_BASE and manifest['gameCommit']==GAME_BASE,'Frozen capacity source differs')
+            expected_base = record['inputContract']['engineBase'] if args.purpose else ENGINE_BASE
+            require(manifest['frozenEngineBase']==expected_base and manifest['gameCommit']==GAME_BASE,'Frozen probe source differs')
             validate_world_manifest(manifest)
             startup_path=canonical_owned(args.startup_log,root)
             require(startup_path.parent==root and not args.startup_log.is_symlink(),'Startup log must be owned and direct')
@@ -398,7 +414,7 @@ def main():
             declared_sources={row['path']:row['sha256'] for row in manifest['sourceHashes']}
             require(all(declared_sources.get('scripts/mac-frame-ring-waits/'+name)==value
                         for name,value in record['helperHashes'].items()),'Committed helper source identity differs')
-            record.update(expectedRecordingSlots=args.expected_recording_slots,frozenEngineBase=ENGINE_BASE,
+            record.update(expectedRecordingSlots=args.expected_recording_slots,frozenEngineBase=expected_base,
                           startupProof=selected,metalAssembly={k:metal[k] for k in
                           ('name','mvid','assemblyVersion','informationalVersion','sha256')})
         record['processBefore']=identity(pid,client)

@@ -1554,3 +1554,12 @@ excess demand rather than continuing work to count the rest.
 constructors still refuse partial documents. No scoped consumer constructs a partial `MapDocument`
 and passes it to a complete builder. Foliage motion and all-LOD/light bounds remain cosmetic and do
 not widen navigation heights. See the [render contract](../KhaozEngine.MapDoc.Render3D/README.md).
+
+## Evaluated capacity demand
+
+`KhaozEngine.Diagnostics.CapacityDemandDiagnostics.Observe` subscribes to count-only `CapacityDemand`
+records for evaluated gates on success and refusal. Admission identities distinguish independent counters
+and shared allowances. Operation identities distinguish nested acquisitions and windows within one build.
+Checks and operation scopes allocate nothing without a subscriber, including first use. Observer failures
+cannot alter admission. See [capacity demand](../docs/CAPACITY-DEMAND.md) for collection, lifetimes,
+profile sizing and the per-limit enforcement-site map.

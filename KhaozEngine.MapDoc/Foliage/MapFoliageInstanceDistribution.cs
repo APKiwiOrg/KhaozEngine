@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using KhaozEngine.Terrain;
 
@@ -22,7 +24,7 @@ public static partial class MapFoliageDistribution
             var area = Rectangle(layer, chunk);
             context.RequireChunk(layer, chunk);
             var range = MapFoliageLatticeRange.Of(area.MinX, area.MinZ, area.MaxX, area.MaxZ, layer.Spacing);
-            if (range.Count > admitted.MaxCandidates) throw Refuse(MapFoliageStatus.CapacityExceeded, "chunk candidates");
+            if (DemandDiagnostics.Check(context, "MapFoliageInstanceDistribution.MaxCandidates.1", "MaxCandidates", 0, (decimal)range.Count, admitted.MaxCandidates, range.Count > admitted.MaxCandidates, CapacityDemandLifetime.Cumulative, allowanceSource: admitted)) throw Refuse(MapFoliageStatus.CapacityExceeded, "chunk candidates");
             instances = new(layer.Id, layer.Policy, chunk, admitted);
             var evaluation = new Evaluation(context, layer, admitted, meter);
             Scan(evaluation, range, area, static _ => true, null, instances);

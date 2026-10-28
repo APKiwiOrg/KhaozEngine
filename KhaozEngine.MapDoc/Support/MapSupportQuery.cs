@@ -1,3 +1,5 @@
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using KhaozEngine.Diagnostics;
 using System;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
@@ -39,7 +41,7 @@ public sealed class MapSupportQuery
             MapSupportSelection.Candidate candidate = outcome.Candidates[i];
             buffer[i] = new(candidate.Face.Key, candidate.SpaceId!, candidate.Height.ToSingle(), candidate.Face.Normal, candidate.Via);
         }
-        return new(outcome.Candidates.Count > buffer.Length ? MapSupportStatus.CapacityExceeded : outcome.Result.Status,
+        return new(DemandDiagnostics.Check(this, "MapSupportQuery.SupportCandidateBuffer.1", "SupportCandidateBuffer", 0, outcome.Candidates.Count, buffer.Length, outcome.Candidates.Count > buffer.Length, CapacityDemandLifetime.Inventory) ? MapSupportStatus.CapacityExceeded : outcome.Result.Status,
             count, outcome.Candidates.Count, _prepared.View.ReadWitness);
     }
 }

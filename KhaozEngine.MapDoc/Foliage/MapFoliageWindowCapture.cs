@@ -1,3 +1,6 @@
+using KhaozEngine.Diagnostics;
+using KhaozEngine.Primitives;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,7 +11,6 @@ using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
-using KhaozEngine.Primitives;
 using Bounds = KhaozEngine.MapDoc.Foliage.MapFoliageGenerationContext.Bounds;
 using SpatialIndex = KhaozEngine.MapDoc.Foliage.MapFoliageGenerationContext.SpatialIndex;
 
@@ -44,7 +46,7 @@ internal static class MapFoliageWindowCapture
                 foreach (var key in MapFoliageWindowChunks.Discover(layer, source.Data.Assets, b))
                 {
                     work = work with { ChunkDescriptors = checked(work.ChunkDescriptors + 1) };
-                    if (work.ChunkDescriptors > limits.MaxChunkDescriptors) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxChunkDescriptors), work.ChunkDescriptors, limits.MaxChunkDescriptors);
+                    if (DemandDiagnostics.Check(source, "MapFoliageWindowCapture.MaxChunkDescriptors.1", "MaxChunkDescriptors", work.ChunkDescriptors - 1, 1, limits.MaxChunkDescriptors, work.ChunkDescriptors > limits.MaxChunkDescriptors, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) throw new MapSceneCapacityException(nameof(MapFoliageContextLimits.MaxChunkDescriptors), work.ChunkDescriptors, limits.MaxChunkDescriptors);
                     admission.ReserveBytes(128);
                     chunks.Add((layer, key));
                     if (MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, key))) continue;

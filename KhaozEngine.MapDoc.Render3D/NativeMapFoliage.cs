@@ -1,3 +1,5 @@
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using KhaozEngine.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -64,7 +66,7 @@ public static class NativeMapFoliage
             {
                 // Known off-raster owners have no geometry and must not populate the generation cache.
                 if (MapFoliageDistribution.KnownOffRaster(layer, MapFoliageDistribution.Rectangle(layer, key))) continue;
-                if (samples.Count >= ceilings.MaxSelectedResources) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)samples.Count + 1, ceilings.MaxSelectedResources);
+                if (DemandDiagnostics.Check(admission, "NativeMapFoliage.MaxSelectedResources.1", "MaxSelectedResources", samples.Count, 1, ceilings.MaxSelectedResources, samples.Count >= ceilings.MaxSelectedResources, CapacityDemandLifetime.Inventory, allowanceSource: ceilings)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)samples.Count + 1, ceilings.MaxSelectedResources);
                 long available = admission.RemainingPreparedBytes;
                 // Bound retention and support scratch by the active composite and current window, not source defaults.
                 var limits = requested with
@@ -75,10 +77,11 @@ public static class NativeMapFoliage
                     MaxQueryRetainedBytes = Math.Min(declared?.MaxQueryRetainedBytes ?? long.MaxValue, available),
                     ChargePreparation = bytes => MapFoliageGenerationAdmission.Charge(admission, bytes),
                 };
+                if (DemandDiagnostics.IsObserved) DeriveChunk(limits, declared, requested, admission, count);
                 var reader = cache.Acquire(layer.Id, key, limits, admission, retainSamples, requested.MaxQueryRetainedBytes);
                 var batch = readers.Add(reader);
                 count += batch.Count;
-                if (count > sampleLimit) throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQuerySamples), count, sampleLimit);
+                if (DemandDiagnostics.Check(admission, "NativeMapFoliage.MaxQuerySamples.1", "MaxQuerySamples", 0, count, sampleLimit, count > sampleLimit, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQuerySamples), count, sampleLimit);
                 samples.Add(reader);
             }
         }
@@ -86,6 +89,23 @@ public static class NativeMapFoliage
         var result = AssembleCore(scene, assets, policy, routing, samples.Select(s => new AssemblyInput(null, s)).ToArray());
         readers.Transfer();
         return result;
+    }
+
+    // Each chunk copy is bounded by the declared foliage profile and by the scene's remaining scopes, faces and bytes.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static void DeriveChunk(MapFoliageLimits limits, MapFoliageLimits? declared, MapFoliageLimits requested, MapSceneAdmission admission, long count)
+    {
+        CapacityDemandOrigin[] Declared(string name, long value) => declared is null ? [] : MapDemandOrigins.Of(declared, name, value);
+        var bytes = admission.PreparedByteOrigins();
+        MapDemandOrigins.Derive(limits, nameof(MapFoliageLimits.MaxPrepareScopes),
+            Declared(nameof(MapFoliageLimits.MaxPrepareScopes), declared?.MaxPrepareScopes ?? 0), admission.PatchScopeOrigins());
+        // One prepared face costs 2560 prepared bytes in this copy's face ceiling.
+        MapDemandOrigins.Derive(limits, nameof(MapFoliageLimits.MaxFaces), Declared(nameof(MapFoliageLimits.MaxFaces), declared?.MaxFaces ?? 0),
+            admission.PreparedFaceOrigins(), bytes.Select(o => o with { Scale = o.Scale * 2560 }));
+        MapDemandOrigins.Derive(limits, nameof(MapFoliageLimits.MaxQuerySamples),
+            MapDemandOrigins.Of(requested, nameof(MapFoliageLimits.MaxQuerySamples), requested.MaxQuerySamples, count));
+        MapDemandOrigins.Derive(limits, nameof(MapFoliageLimits.MaxQueryRetainedBytes),
+            Declared(nameof(MapFoliageLimits.MaxQueryRetainedBytes), declared?.MaxQueryRetainedBytes ?? 0), bytes);
     }
 
     // Assembly is separate from distribution. It is also the single adapter for already retained generated rows.

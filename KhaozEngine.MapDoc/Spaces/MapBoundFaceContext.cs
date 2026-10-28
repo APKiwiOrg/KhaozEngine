@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -66,7 +68,7 @@ internal sealed class MapBoundFaceContext
 
     internal static MapBoundFaceContext? PrepareBounds(MapScopedSurfaces view, IEnumerable<MapBoundFaceDemand> demands,
         int maxPatches, long maxFaces, MapBoundFaceWork? work, out string? refusal, MapBoundPreparation? preparation = null,
-        Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeOpeningFaces = null)
+        Func<MapValidatedSurfacePatch, MapSlotCellMask, MapCompiledPatch>? compile = null, Action<long>? chargeOpeningFaces = null, MapCapacityDemandOrigin? faceOrigin = null)
     {
         ArgumentNullException.ThrowIfNull(view);
         using var admitted = (Scene.MapSceneAdmission.Current ?? view.Scope.SceneAdmission)?.Enter();
@@ -100,6 +102,7 @@ internal sealed class MapBoundFaceContext
             }
             bool freshCell = !entry.Contains(demand.SlotCell);
             long faces = freshCell ? MapSurfaceCompiler.CountFaces(entry.Surface, entry.Patch, demand.SlotCell) : 0;
+            long physicalFaces = faces;
             entry.PhysicalFaces = checked(entry.PhysicalFaces + faces);
             PendingOpening? requested = null;
             MapHorizontalOpening? opening = null;
@@ -119,7 +122,12 @@ internal sealed class MapBoundFaceContext
             try { count = checked(count + faces); }
             catch (OverflowException) { refusal = "context faces"; continue; }
             if (work is not null) work.ContextFacesCounted = count;
-            if (count > maxFaces || entry.PhysicalFaces > MapSurfaceCompiler.MaxFacesPerPatch)
+            bool exceeded = count > maxFaces;
+            if (faceOrigin is { } origin)
+                origin.Report(preparation, "MapBoundFaceContext.MaxContextFaces.1", count, CapacityDemandLifetime.Inventory);
+            else DemandDiagnostics.Check(preparation, "MapBoundFaceContext.MaxContextFaces.1", "MaxContextFaces", 0, count, maxFaces, exceeded, CapacityDemandLifetime.Inventory,
+                allowanceSource: preparation is { } contextPreparation && contextPreparation.Limits.MaxContextFaces == maxFaces ? contextPreparation.Limits : null);
+            if (exceeded || DemandDiagnostics.Check(preparation, "MapBoundFaceContext.MaxFacesPerPatch", "MaxFacesPerPatch", entry.PhysicalFaces - physicalFaces, physicalFaces, MapSurfaceCompiler.MaxFacesPerPatch, entry.PhysicalFaces > MapSurfaceCompiler.MaxFacesPerPatch, CapacityDemandLifetime.Inventory))
             { refusal = "context faces"; continue; }
             entry.Add(demand.SlotCell);
             if (freshOpeningCell)

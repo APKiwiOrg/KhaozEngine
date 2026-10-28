@@ -89,6 +89,7 @@ public sealed class MapScopedSurfaces
             Limits = scope.Limits with { },
             SceneAdmission = admission,
         };
+        Scene.MapDemandOrigins.Inherit(request.Limits, scope.Limits);
         string[] assets = assetSha256.ToArray();
         foreach (string asset in assets) MapSurfaceStorageLayout.RequireDigest(asset);
         if (queryPolicyVersion < 1 || buildPolicyVersion < 1) throw new ArgumentOutOfRangeException(nameof(queryPolicyVersion), "invalid acquisition policy version");

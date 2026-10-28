@@ -1,3 +1,5 @@
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using KhaozEngine.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -171,8 +173,9 @@ public static class NativeMapTerrain
                 {
                     var needed = coverage[face.Face.Key].SelectMany(p => LayerIds(p.Paint)).Distinct().Order().ToArray();
                     if (needed.Length == 0) continue;
-                    if (needed.Length > maximum) throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "One canonical terrain face exceeds material-set capacity.");
-                    if (current < 0 || sets[current].Union(needed).Count() > maximum)
+                    if (DemandDiagnostics.Check(admission, "NativeMapTerrain.MaxMaterials", "MaxMaterials", 0, needed.Length, maximum, needed.Length > maximum, CapacityDemandLifetime.Inventory)) throw new MapRenderAssetRefusal(MapRenderAssetStatus.CapacityExceeded, "One canonical terrain face exceeds material-set capacity.");
+                    int union = current < 0 ? 0 : sets[current].Union(needed).Count();
+                    if (current < 0 || DemandDiagnostics.Check(admission, "NativeMapTerrain.MaterialUnion", "MaxMaterials", sets[current].Count, union - sets[current].Count, maximum, union > maximum, CapacityDemandLifetime.Inventory))
                     {
                         admission.ReserveBytes(128);
                         current = sets.Count;

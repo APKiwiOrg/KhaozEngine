@@ -1,3 +1,5 @@
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using KhaozEngine.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -31,15 +33,15 @@ public static class MapCaptureDependencies
                 if (b.MaxX <= b.MinX || b.MaxZ <= b.MinZ) return;
                 var scope = Scope(request.Scope, b);
                 if (scopes.Any(s => s.Digest == scope.Digest)) return;
-                if (scopes.Count == 256) throw new MapSceneCapacityException("MaxCaptureScopes", (long)scopes.Count + 1, 256);
+                if (DemandDiagnostics.Check(request, "MapCaptureDependencies.AddScope", "MaxCaptureScopes", scopes.Count, 1, 256, scopes.Count == 256, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException("MaxCaptureScopes", (long)scopes.Count + 1, 256);
                 foreach (var key in request.Source.Data.Index.Query(b, out _, maxResources))
-                    if (keys.Add(key) && keys.Count > maxResources) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), keys.Count, maxResources);
+                    if (keys.Add(key) && DemandDiagnostics.Check(request, "MapCaptureDependencies.MaxSelectedResources", "MaxSelectedResources", 0, keys.Count, maxResources, keys.Count > maxResources, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), keys.Count, maxResources);
                 scopes.Add(scope);
             }
             var draw = request.Scope.DrawBounds;
             // Compute the finite work count before stepping in world coordinates.
             double columns = Math.Ceiling((draw.MaxX - draw.MinX) / 64), rows = Math.Ceiling((draw.MaxZ - draw.MinZ) / 64);
-            if (columns < 1 || rows < 1 || columns * rows > 256) throw new MapSceneCapacityException("MaxCaptureScopes", (long)Math.Min(long.MaxValue, columns * rows), 256);
+            if (DemandDiagnostics.Check(request, "MapCaptureDependencies.ScopeGrid", "MaxCaptureScopes", 0, (decimal)Math.Min(long.MaxValue, columns * rows), 256, columns < 1 || rows < 1 || columns * rows > 256, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException("MaxCaptureScopes", (long)Math.Min(long.MaxValue, columns * rows), 256);
             for (int row = 0; row < (int)rows; row++)
                 for (int column = 0; column < (int)columns; column++)
                 {
@@ -68,7 +70,7 @@ public static class MapCaptureDependencies
                 foreach (var key in request.Source.Data.Index.Query(r, out _, maxResources, k => k.Kind == "Light"))
                 {
                     if (lightCandidates.Contains(key)) continue;
-                    if (lightCandidates.Count == 256) throw new MapSceneCapacityException("MaxCaptureLights", lightCandidates.Count + 1, 256);
+                    if (DemandDiagnostics.Check(request, "MapCaptureDependencies.MaxCaptureLights", "MaxCaptureLights", lightCandidates.Count, 1, 256, lightCandidates.Count == 256, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException("MaxCaptureLights", lightCandidates.Count + 1, 256);
                     MapPreparationCollections.Set(lightCandidates, lightInventory, ref candidateBytes, 40);
                     lightCandidates.Add(key);
                     var bounds = request.Source.Data.MetadataByKey[key].Bounds;

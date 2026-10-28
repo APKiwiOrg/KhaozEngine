@@ -72,7 +72,7 @@ What draws, plays and lays out a frame, plus the game loop and headless screensh
 | Package | What it gives you | Depends on | Carried by |
 |---|---|---|---|
 | [KhaozEngine.Render2D](../KhaozEngine.Render2D/README.md) | Sprites, fonts, text layout, cameras, primitives and offscreen capture. | Windowing, Gpu, Primitives, Imaging | Game2D, Game3D |
-| [KhaozEngine.Render3D](../KhaozEngine.Render3D/README.md) | Mesh rendering, animation, materials, lighting, shadows, cameras, water and visual effects. | Windowing, Gpu, Render2D, Collision, Physics, Primitives | Game3D |
+| [KhaozEngine.Render3D](../KhaozEngine.Render3D/README.md) | Mesh rendering, animation, materials, lighting, shadows, cameras, water and visual effects. | Windowing, Gpu, Render2D, Collision, Physics, Primitives, Diagnostics | Game3D |
 | [KhaozEngine.Render3D.Ecs](../KhaozEngine.Render3D.Ecs/README.md) | Components and a scene binder for drawing entities with 3D transforms, meshes and materials. | Ecs, Render3D | Game3D |
 | [KhaozEngine.Gui](../KhaozEngine.Gui/README.md) | Immediate-mode controls, retained widgets, screen stacks, menus, notifications and editor tools. | App, Windowing, Render2D, Updates, Diagnostics, Netcode | Game2D, Game3D |
 | [KhaozEngine.Audio](../KhaozEngine.Audio/README.md) | Streaming music, sound effects, positional audio, volume buses and output-device recovery. | Diagnostics, Primitives | Game2D, Game3D |
@@ -102,7 +102,7 @@ Terrain, tile worlds, native maps, navigation, physics and character movement.
 | [KhaozEngine.TileWorld.WorldMap](../KhaozEngine.TileWorld.WorldMap/README.md) | Tile-world terrain, water, footprints and markers exposed as a north-up world map source. | WorldMap, TileWorld | Opt-in |
 | [KhaozEngine.WorldMap](../KhaozEngine.WorldMap/README.md) | Stylized world map images, contours, symbols, feature anchors and chunk caching for authored worlds. | Primitives | Opt-in |
 | [KhaozEngine.WorldMap.Gui](../KhaozEngine.WorldMap.Gui/README.md) | Pannable, zoomable world map widget with background builds, budgeted uploads, labels, icons and live markers. | WorldMap, Gui | Opt-in |
-| [KhaozEngine.MapDoc](../KhaozEngine.MapDoc/README.md) | Versioned map documents with terrain, prefabs, interiors, markers, bounded water and cosmetic foliage. | Primitives, Serialization, Content, Terrain | Every umbrella |
+| [KhaozEngine.MapDoc](../KhaozEngine.MapDoc/README.md) | Versioned map documents with terrain, prefabs, interiors, markers, bounded water and cosmetic foliage. | Primitives, Diagnostics, Serialization, Content, Terrain | Every umbrella |
 | [KhaozEngine.MapDoc.Physics](../KhaozEngine.MapDoc.Physics/README.md) | Static colliders, physical queries and residency identities for native map documents. | MapDoc, Physics, Movement, Locomotion | Opt-in |
 | [KhaozEngine.MapDoc.Render3D](../KhaozEngine.MapDoc.Render3D/README.md) | Native map drawing, snapshots, selected decode, extent proofs, atomic residency and four roof channels. | MapDoc, Render3D, Terrain.Render3D | Opt-in |
 | [KhaozEngine.MapEditor](../KhaozEngine.MapEditor/README.md) | In-engine map authoring with viewport tools, property editing, undo, redo, settings and prefab workflows. | Dungeon, MapDoc, Gui, Persistence, Terrain.Render3D, Render3D, Game, Game.Render3D | Opt-in |

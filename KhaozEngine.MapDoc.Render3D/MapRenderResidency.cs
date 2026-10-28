@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -132,7 +134,7 @@ public sealed partial class MapRenderResidency : IDisposable
         if (!ReferenceEquals(state.Source.Data.Assets, state.Closure) || state.Source.ClosureHash != state.Closure.Hash || state.Extents.ClosureHash != state.Closure.Hash ||
             state.Source.RenderExtentsDigest != state.Extents.Digest || state.Source.WithRenderExtents(state.Extents).Source is null)
             throw new MapRenderAssetRefusal(MapRenderAssetStatus.Invalid, "Replacement requires the exact complete proof-bound source and closure.");
-        if (state.Windows.Count > _budgets.MaxActiveWindows)
+        if (DemandDiagnostics.Check(this, "MapRenderResidency.MaxActiveWindows.1", "MaxActiveWindows", 0, state.Windows.Count, _budgets.MaxActiveWindows, state.Windows.Count > _budgets.MaxActiveWindows, CapacityDemandLifetime.Inventory, allowanceSource: _budgets))
             throw new MapSceneCapacityException(nameof(MapRenderBudgets.MaxActiveWindows), state.Windows.Count, _budgets.MaxActiveWindows);
         foreach (var window in state.Windows) window.Validate();
         foreach (string id in state.Policy.MaterialResourceIds.Concat(state.Policy.TerrainMaterials.Values)) state.Closure.GetResource(id);
@@ -156,19 +158,33 @@ public sealed partial class MapRenderResidency : IDisposable
         pending.SourceCharge = sourceCharge;
         pending.Job = _queue.Enqueue(1, bytes, token => Build(pending, bytes, charge, token), charge);
     }
+    // The build reservation is the smaller of the queue and scene byte ceilings. Its plan-window share never binds before
+    // a window does, because each window reports MaxPlanBytes itself and the build charges only inside windows.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    void DeriveBuild(MapSceneLimits buildLimits, string name, MapSceneLimits declared)
+    {
+        CapacityDemandOrigin[] origins = [.. MapDemandOrigins.Of(declared, nameof(MapSceneLimits.MaxPreparedBytes), declared.MaxPreparedBytes),
+            new(nameof(MapRenderBudgets.MaxQueuedBytes), 0, _budgets.MaxQueuedBytes, _budgets)];
+        MapDemandOrigins.Derive(buildLimits, nameof(MapSceneLimits.MaxPreparedBytes), origins);
+        if (name != nameof(MapSceneLimits.MaxPreparedBytes)) MapDemandOrigins.Derive(buildLimits, name, origins);
+    }
     MapRenderPlan[] Build(Pending pending, long bytes, MapRenderAdmission.CpuLease charge, CancellationToken token)
     {
         var plans = new List<MapRenderPlan>();
         var seenScopes = new HashSet<string>(StringComparer.Ordinal);
         var source = pending.State.Source;
-        var admission = new MapSceneAdmission(source.Data.Limits with { MaxPreparedBytes = Math.Min(bytes, source.Data.Limits.MaxPreparedBytes) },
-            preparationLimitName: bytes < source.Data.Limits.MaxPreparedBytes && bytes == _budgets.MaxQueuedBytes ? nameof(MapRenderBudgets.MaxQueuedBytes) : nameof(MapSceneLimits.MaxPreparedBytes));
+        var buildLimits = source.Data.Limits with { MaxPreparedBytes = Math.Min(bytes, source.Data.Limits.MaxPreparedBytes) };
+        string buildName = bytes < source.Data.Limits.MaxPreparedBytes && bytes == _budgets.MaxQueuedBytes ? nameof(MapRenderBudgets.MaxQueuedBytes) : nameof(MapSceneLimits.MaxPreparedBytes);
+        if (DemandDiagnostics.IsObserved) DeriveBuild(buildLimits, buildName, source.Data.Limits);
+        var admission = new MapSceneAdmission(buildLimits, preparationLimitName: buildName);
+        using var buildDemandScope = DemandDiagnostics.Enter(admission, "MapRenderResidency.Build");
         using var activation = admission.Enter();
         try
         {
             foreach (var scope in pending.State.Windows)
             {
                 token.ThrowIfCancellationRequested();
+                using var demandScope = DemandDiagnostics.Enter(admission, "MapRenderResidency.Window");
                 using var window = admission.LimitPreparation(_budgets.MaxPlanBytes, nameof(MapRenderBudgets.MaxPlanBytes));
                 string scopeDigest = scope.Digest;
                 if (!seenScopes.Add(scopeDigest)) continue;
@@ -219,6 +235,7 @@ public sealed partial class MapRenderResidency : IDisposable
             }
             token.ThrowIfCancellationRequested();
             charge.ReduceTo(MapRenderPreparationInventory.Bytes(plans));
+            admission.ReportRetained();
             return plans.ToArray();
         }
         catch { foreach (var plan in plans) plan.Dispose(); throw; }
@@ -243,7 +260,7 @@ public sealed partial class MapRenderResidency : IDisposable
         foreach (var (id, resource) in pending.Resources)
         {
             if (pending.Owners.ContainsKey(id) || pending.Uploads.ContainsKey(id)) continue;
-            if (applies >= _budgets.MaxAppliesPerUpdate) break;
+            if (DemandDiagnostics.Check(this, "MapRenderResidency.Applies", nameof(MapRenderBudgets.MaxAppliesPerUpdate), applies, 1, _budgets.MaxAppliesPerUpdate, applies >= _budgets.MaxAppliesPerUpdate, allowanceSource: _budgets)) break;
             Fence(pending);
             if (Device is IMapRenderUploadDependencies dependencies && !dependencies.CanBeginUpload(resource)) continue;
             var demand = Device.MeasureUpload(resource);
@@ -261,7 +278,7 @@ public sealed partial class MapRenderResidency : IDisposable
         {
             Fence(pending);
             long written = upload.Advance(available);
-            if (written < 0 || written > available) throw new InvalidOperationException("Device exceeded its incremental upload allowance.");
+            if (DemandDiagnostics.Check(this, "MapRenderResidency.UploadBytes", nameof(MapRenderBudgets.MaxUploadBytesPerUpdate), _budgets.MaxUploadBytesPerUpdate - available, written, _budgets.MaxUploadBytesPerUpdate, written < 0 || written > available, allowanceSource: _budgets)) throw new InvalidOperationException("Device exceeded its incremental upload allowance.");
             available -= written; Lifetime.Uploaded(written);
             _ = upload.Ready;
         }
@@ -351,7 +368,7 @@ public sealed partial class MapRenderResidency : IDisposable
         }
     }
     void DrainRetirement()
-    { for (int i = 0; i < _budgets.MaxDisposalsPerUpdate && _retired.TryDequeue(out var owner); i++) Device.Release(owner.Handle); }
+    { for (int i = 0; !DemandDiagnostics.Check(this, "MapRenderResidency.Disposals", nameof(MapRenderBudgets.MaxDisposalsPerUpdate), i, 1, _budgets.MaxDisposalsPerUpdate, i >= _budgets.MaxDisposalsPerUpdate, allowanceSource: _budgets) && _retired.TryDequeue(out var owner); i++) Device.Release(owner.Handle); }
     void PendingCapacity(MapSceneCapacity capacity)
     {
         if (_transition.Capacity != capacity)

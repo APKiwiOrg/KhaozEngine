@@ -1115,6 +1115,18 @@ It independently enumerates scoped source foliage generations and rows, then che
 maps and required writes. CPU guards do not instantiate a device. Snapshot diagnostics and backend
 evidence use the actual sink, retaining ID-derived static light keys and explicit foliage focus.
 
+## Capacity demand provenance: friend access, not public surface
+
+`KhaozEngine.Diagnostics` publishes evaluated capacity demand through `CapacityDemandDiagnostics.Observe`,
+`Enter`, `Check` and the `CapacityDemand` record. The provenance that turns a remainder or minimum allowance back
+into its originating profile fields, `Derive`, `Inherit`, `Origins` and `CapacityDemandOrigin`, is internal.
+`KhaozEngine.Diagnostics` grants `InternalsVisibleTo` to `KhaozEngine.MapDoc` and `KhaozEngine.MapDoc.Render3D`,
+the only assemblies that derive limit copies, and to `KhaozEngine.MapDoc.Tests`, whose derived-origin rows build
+synthetic provenance through MapDoc's internal helpers. `KhaozEngine.Render3D` and `KhaozEngine.Render2D` pass a derived
+record as the public `allowanceSource` argument and need no grant. Provenance is keyed by object identity and
+changes every subscribed collector's stream, so a public recorder would let any caller re-attribute an
+engine-held record process-wide, and `Origins` would hand out the internal identity objects.
+
 ## Content catalog package edges
 
 The family is seven packages, and every edge is forward and acyclic. `KhaozEngine.Catalog`, the read side, adds

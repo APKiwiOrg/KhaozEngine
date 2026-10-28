@@ -1,3 +1,4 @@
+using KhaozEngine.Diagnostics;
 using System;
 using System.Collections.Generic;
 
@@ -23,7 +24,7 @@ internal sealed class MapPreparationWindowAttribution(object origin)
                     binding = current;
             }
             if (windows.Count == 0) return null;
-            if (binding is not null && bytes > binding.Remaining)
+            if (binding is not null && CapacityDemandDiagnostics.Check(binding, "MapPreparationWindowAttribution.Acquire", binding.LimitName, binding.Total, bytes, binding.Allowance, bytes > binding.Remaining, CapacityDemandLifetime.Transient))
                 throw new MapSceneCapacityException(binding.RefuseReference(bytes,
                     windows[0], windows[^1].Parent, _views.Keys));
             var covered = new List<(object Key, View Value)>();

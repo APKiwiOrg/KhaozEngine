@@ -15,5 +15,8 @@
   <ItemGroup>
     <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../test-shared/CapacityDemandProbe.cs" Link="Shared/CapacityDemandProbe.cs" />
+  </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

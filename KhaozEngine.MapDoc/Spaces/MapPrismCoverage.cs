@@ -48,7 +48,7 @@ public static class MapPrismCoverage
             if (partition.Status != MapRefinementStatus.Complete) throw MapOccupiedPartitions.Refusal(partition.Status, partition.Detail);
             MapPrismValidationWorkspace.ReleasePartitionIndexes();
             var raw = partition.Pieces;
-            var work = new MapWaterWorkBudget(limits.MaxPairChecks);
+            var work = new MapWaterWorkBudget(limits.MaxPairChecks, compile: false, source: limits);
             MapPrismValidationWorkspace.Reserve(checked(512L + 256L * raw.Count));
             var bounds = raw.Select(p => MapWaterPolygons.Bounds.Of(p.Polygon)).ToArray();
             // Exact bounds broad phases. A parent or peer piece whose bounds do not overlap shares no positive area, so

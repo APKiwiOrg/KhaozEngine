@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Scene;
@@ -15,6 +17,7 @@ internal sealed class MapRenderUploadPreflight
     internal static MapRenderUploadPreflight Measure(IEnumerable<SceneUploadCapacity> capacities, MapRenderBudgets budgets,
         int references, int recordingCapacity)
     {
+        using var demandScope = DemandDiagnostics.Enter(capacities, "MapRenderUploadPreflight.Measure");
         decimal retained = 0, owned = 0, cpu = 0, staging = 0;
         foreach (var capacity in capacities)
         {
@@ -41,9 +44,9 @@ internal sealed class MapRenderUploadPreflight
         ResidentCapacity(nameof(MapRenderBudgets.MaxResidentGpuBytes), lifetime.GpuBytes + _gpu, _budgets.MaxResidentGpuBytes, mayWait) ??
         ResidentCapacity(nameof(MapRenderBudgets.MaxResidentCpuBytes), lifetime.CpuBytes + _cpu, _budgets.MaxResidentCpuBytes, mayWait);
 
-    static MapSceneCapacity? ResidentCapacity(string name, decimal requested, long allowance, bool mayWait)
+    MapSceneCapacity? ResidentCapacity(string name, decimal requested, long allowance, bool mayWait)
     {
-        if (requested <= allowance) return null;
+        if (!DemandDiagnostics.Check(this, "MapRenderUploadPreflight.ResidentCapacity.1", name, 0, requested, allowance, !(requested <= allowance), CapacityDemandLifetime.Transient)) return null;
         var capacity = new MapSceneCapacity(name, requested, allowance);
         if (!mayWait) throw new MapSceneCapacityException(name, requested, allowance);
         return capacity;
@@ -51,6 +54,6 @@ internal sealed class MapRenderUploadPreflight
 
     static void RequireCapacity(string name, decimal requested, long allowance)
     {
-        if (requested > allowance) throw new MapSceneCapacityException(name, requested, allowance);
+        if (DemandDiagnostics.Check(null, "MapRenderUploadPreflight.3288.1", name, 0, requested, allowance, requested > allowance, CapacityDemandLifetime.Transient)) throw new MapSceneCapacityException(name, requested, allowance);
     }
 }

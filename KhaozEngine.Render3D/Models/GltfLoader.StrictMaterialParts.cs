@@ -43,7 +43,7 @@ public static partial class GltfLoader
             if (bytes is null) throw new GltfDecodeRefusal(GltfDecodeStatus.Invalid, "Referenced material image is unavailable.");
             try
             {
-                ImageRgba image = ImageRgba.DecodeBounded(bytes.Value.Span, budget.Limits.MaxPeakBytes, budget.Limits.MaxImagePixels);
+                ImageRgba image = ImageRgba.DecodeBounded(bytes.Value.Span, budget.Limits.MaxPeakBytes, budget.Limits.MaxImagePixels, budget.Limits);
                 return new(image.Pixels, image.Width, image.Height);
             }
             catch (ImageDecodeRefusal ex) { throw new GltfDecodeRefusal((GltfDecodeStatus)ex.Status, ex.Message); }

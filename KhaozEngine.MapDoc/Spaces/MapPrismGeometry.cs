@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Linq;
 using KhaozEngine.MapDoc.Editing;
@@ -18,7 +20,8 @@ public static class MapPrismGeometry
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(domain);
         RequirePayload(domain);
-        if (pointBudget && Cost(domain) > view.Scope.Limits.MaxInspectedFaces) throw new MapDocumentException("capacity exceeded: prism vertices");
+        long cost = pointBudget ? Cost(domain) : 0;
+        if (pointBudget && DemandDiagnostics.Check(domain, "MapPrismGeometry.MaxInspectedFaces.1", "MaxInspectedFaces", 0, cost, view.Scope.Limits.MaxInspectedFaces, cost > view.Scope.Limits.MaxInspectedFaces, CapacityDemandLifetime.Cumulative, allowanceSource: view.Scope.Limits)) throw new MapDocumentException("capacity exceeded: prism vertices");
         var local = MapWaterDomain.Compile(domain.Footprint);
         var kernel = view.EffectiveContext?.Transform(MapPrefabChildKind.Record, domain.Id);
         if (kernel is null) return local;

@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -45,7 +47,7 @@ public sealed class MapFoliageRenderCache
             void Check(long bytes)
             {
                 long current = checked(RetainedBytes + temporary);
-                if (bytes > allowance - current)
+                if (DemandDiagnostics.Check(this, "MapFoliageRenderCache.MaxQueryRetainedBytes.1", "MaxQueryRetainedBytes", current, bytes, allowance, bytes > allowance - current, CapacityDemandLifetime.Transient))
                     throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQueryRetainedBytes), (decimal)current + bytes, allowance);
             }
             void Take(long bytes)
@@ -66,6 +68,14 @@ public sealed class MapFoliageRenderCache
                     AllocateInstances = Take,
                     ReleaseInstances = Give,
                 };
+                if (DemandDiagnostics.IsObserved)
+                {
+                    // The copy is bounded by its own retained ceiling and by the aggregate allowance this cache already retains.
+                    MapDemandOrigins.Derive(bounded, nameof(MapFoliageLimits.MaxQueryRetainedBytes),
+                        MapDemandOrigins.Of(limits, nameof(MapFoliageLimits.MaxQueryRetainedBytes), limits.MaxQueryRetainedBytes),
+                        [new(nameof(MapFoliageLimits.MaxQueryRetainedBytes), RetainedBytes, allowance, this)]);
+                    MapDemandOrigins.InheritFoliage(bounded, limits, nameof(MapFoliageLimits.MaxQueryRetainedBytes));
+                }
                 _generationCalls++;
                 var batch = MapFoliageDistribution.GenerateInstances(_context, layer, chunk, bounded);
                 if (batch.Status != MapFoliageStatus.Complete)
@@ -140,7 +150,7 @@ public sealed class MapFoliageRenderCache
             void Check(long bytes)
             {
                 long current = RetainedBytes;
-                if (bytes > allowance - current)
+                if (DemandDiagnostics.Check(this, "MapFoliageRenderCache.MaxQueryRetainedBytes.2", "MaxQueryRetainedBytes", current, bytes, allowance, bytes > allowance - current, CapacityDemandLifetime.Transient))
                     throw new MapSceneCapacityException(nameof(MapFoliageLimits.MaxQueryRetainedBytes), (decimal)current + bytes, allowance);
             }
             EnsureStorage(_owners.Count, admission, retain, Check);

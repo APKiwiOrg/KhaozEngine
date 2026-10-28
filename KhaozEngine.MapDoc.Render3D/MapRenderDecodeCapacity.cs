@@ -35,8 +35,18 @@ internal sealed class MapRenderDecodeAllowance
             : scene.PreparedByteCapacity(0);
         if (declared is not null && declared.MaxPeakBytes <= bytes)
             _bound = new(nameof(GltfDecodeLimits.MaxPeakBytes), 0, declared.MaxPeakBytes);
-        Budget = new((declared ?? new()) with { MaxPeakBytes = Math.Min(bytes, declared?.MaxPeakBytes ?? long.MaxValue) });
+        var budget = (declared ?? new()) with { MaxPeakBytes = Math.Min(bytes, declared?.MaxPeakBytes ?? long.MaxValue) };
+        if (KhaozEngine.Diagnostics.CapacityDemandDiagnostics.IsObserved) Derive(budget, scene, residency, limits, declared, cpu);
+        Budget = new(budget);
     }
+
+    // The decode allowance is the least of the scene's remaining preparation, residency CPU and the declared decode peak.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static void Derive(GltfDecodeLimits budget, MapSceneAdmission scene, MapRenderAdmission residency, MapRenderBudgets limits,
+        GltfDecodeLimits? declared, long cpu) =>
+        MapDemandOrigins.Derive(budget, nameof(GltfDecodeLimits.MaxPeakBytes), scene.PreparedByteOrigins(),
+            [new(nameof(MapRenderBudgets.MaxResidentCpuBytes), limits.MaxResidentCpuBytes - cpu, limits.MaxResidentCpuBytes, residency)],
+            declared is null ? [] : MapDemandOrigins.Of(declared, nameof(GltfDecodeLimits.MaxPeakBytes), declared.MaxPeakBytes));
     internal MapSceneCapacity Resolve(MapSceneCapacity capacity) => capacity.LimitName == nameof(GltfDecodeLimits.MaxPeakBytes)
         ? new(_bound.LimitName, _bound.Requested + capacity.Requested, _bound.Allowance) : capacity;
 }

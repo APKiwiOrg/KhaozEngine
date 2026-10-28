@@ -2,6 +2,16 @@ using System;
 
 namespace KhaozEngine.MapDoc.Scene;
 
+/// <param name="MaxTiles">Demand sites: MapSceneSource. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxMetadataRows">Demand sites: MapSceneMetadataReader, MapSceneSource. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxMemberships">Demand sites: MapSceneMetadataReader. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxMembershipsPerResource">Demand sites: MapSceneMetadataReader. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxScannedBytes">Demand sites: MapSceneMetadataReader. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxMetadataBytes">Demand sites: MapSceneMetadataReader, MapSceneSource. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxSelectedResources">Demand sites: MapCaptureDependencies, MapSceneAcquisition, MapSceneAdmission, MapSceneSpatialIndex, NativeMapFoliage. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxPatchScopes">Demand sites: MapSceneAdmission. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxPreparedFaces">Demand sites: MapRoofEvaluationBuffer, MapSceneAdmission. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxPreparedBytes">Demand sites: MapPreparationLedger.Demand, MapRoofEvaluationBuffer, MapSceneAdmission. See docs/CAPACITY-DEMAND.md.</param>
 public sealed record MapSceneLimits(int MaxTiles = 65536, int MaxMetadataRows = 65536, int MaxMemberships = 262144,
     int MaxMembershipsPerResource = 4096, long MaxScannedBytes = 134217728, long MaxMetadataBytes = 67108864,
     int MaxSelectedResources = 4096, int MaxPatchScopes = 256, int MaxPreparedFaces = 262144, long MaxPreparedBytes = 67108864)

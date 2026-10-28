@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -210,9 +212,10 @@ internal static class MapEffectiveGeometry
     internal static MapWideCellRefinement RefinePolygonWide(IReadOnlyList<MapBoundFace> lower, IReadOnlyList<MapBoundFace>? upper,
         IReadOnlyList<MapWideXz> boundary, MapRefinementLimits limits, MapRefinementWork? work = null, MapWaterWorkBudget? budget = null)
     {
+        using var demandScope = DemandDiagnostics.Enter(lower, "MapEffectiveGeometry.RefinePolygon");
         try
         {
-            if (lower.Count > limits.MaxSourceFacesPerBound || upper?.Count > limits.MaxSourceFacesPerBound)
+            if (DemandDiagnostics.Check(limits, "MapEffectiveGeometry.MaxSourceFacesPerBound.1", "MaxSourceFacesPerBound", 0, lower.Count, limits.MaxSourceFacesPerBound, lower.Count > limits.MaxSourceFacesPerBound, CapacityDemandLifetime.Cumulative, allowanceSource: limits) || DemandDiagnostics.Check(limits, "MapEffectiveGeometry.MaxSourceFacesPerBound.2", "MaxSourceFacesPerBound", 0, upper?.Count ?? 0, limits.MaxSourceFacesPerBound, upper?.Count > limits.MaxSourceFacesPerBound, CapacityDemandLifetime.Cumulative, allowanceSource: limits))
                 return MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "source faces");
             var clip = boundary.ToList();
             if (AreaWide(clip).Sign == 0) return MapWideCellRefinement.Failure(MapRefinementStatus.Invalid, "cell");
@@ -222,7 +225,7 @@ internal static class MapEffectiveGeometry
             long pairs = upper is null ? 0 : checked((long)bottom.Count * top.Count);
             budget?.Charge(pairs);
             if (work is not null) work.ChargedPairs = pairs;
-            if (pairs > limits.MaxPairChecks) return MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "pair checks");
+            if (DemandDiagnostics.Check(limits, "MapEffectiveGeometry.MaxPairChecks.1", "MaxPairChecks", 0, pairs, limits.MaxPairChecks, pairs > limits.MaxPairChecks, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) return MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "pair checks");
             var vertices = new SortedSet<MapWideXz>();
             var faces = new List<MapWideRefinementFace>();
             MapWideRational? separation = null;
@@ -258,13 +261,13 @@ internal static class MapEffectiveGeometry
             }
             bool Emit(WideFace lo, WideFace? hi, IReadOnlyList<MapWideXz> polygon)
             {
-                if (faces.Count >= limits.MaxRefinementFaces) return false;
+                if (DemandDiagnostics.Check(limits, "MapEffectiveGeometry.MaxRefinementFaces.1", "MaxRefinementFaces", faces.Count, 1, limits.MaxRefinementFaces, faces.Count >= limits.MaxRefinementFaces, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) return false;
                 var points = new List<MapWideXz>();
                 MapWideRational? faceSeparation = null;
                 foreach (var wide in polygon)
                 {
                     var point = wide;
-                    if (!vertices.Contains(point) && vertices.Count >= limits.MaxRefinementVertices) return false;
+                    if (!vertices.Contains(point) && DemandDiagnostics.Check(limits, "MapEffectiveGeometry.MaxRefinementVertices.1", "MaxRefinementVertices", vertices.Count, 1, limits.MaxRefinementVertices, vertices.Count >= limits.MaxRefinementVertices, CapacityDemandLifetime.Cumulative, allowanceSource: limits)) return false;
                     vertices.Add(point); points.Add(point);
                     if (hi is not null)
                     {

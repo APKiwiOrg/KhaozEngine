@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -143,7 +145,7 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
         }
         void Reserve(MapPatchKey key)
         {
-            if (!_reserved.Contains(key) && _reserved.Count >= _scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
+            if (!_reserved.Contains(key) && DemandDiagnostics.Check(this, "MapEffectiveSurfaceSource.MaxCandidatePatches.1", "MaxCandidatePatches", _reserved.Count, 1, _scope.Limits.MaxCandidatePatches, _reserved.Count >= _scope.Limits.MaxCandidatePatches, CapacityDemandLifetime.Inventory, allowanceSource: _scope.Limits)) throw new MapSurfaceCapacityException();
             _scope.SceneAdmission?.BeforeResource(Scene.MapSceneAcquisition.PatchKey(key));
             _reserved.Add(key);
         }
@@ -159,7 +161,7 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
             if (_served.Add(key) && _source.EffectiveContext.Surfaces.Patches.TryGetValue(key, out var patch))
             {
                 long next = checked(_recordsCharged + patch.Records.Count);
-                if (next > _scope.Limits.MaxRecordReads) throw new MapSurfaceCapacityException();
+                if (DemandDiagnostics.Check(this, "MapEffectiveSurfaceSource.MaxRecordReads.1", "MaxRecordReads", 0, next, _scope.Limits.MaxRecordReads, next > _scope.Limits.MaxRecordReads, CapacityDemandLifetime.Cumulative, allowanceSource: _scope.Limits)) throw new MapSurfaceCapacityException();
                 _recordsCharged = next;
             }
             Scene.MapSceneAdmission.Current?.BeforePayload(0);

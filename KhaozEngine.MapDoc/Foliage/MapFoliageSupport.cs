@@ -1,3 +1,6 @@
+using KhaozEngine.Diagnostics;
+using KhaozEngine.Primitives;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -9,7 +12,6 @@ using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
-using KhaozEngine.Primitives;
 
 namespace KhaozEngine.MapDoc.Foliage;
 
@@ -72,7 +74,7 @@ public static class MapFoliageSupport
         try { scope = Scope(layer, chunk, context.SupportFloorsFor(layer, chunk), context.Transforms, context.QueryLimits); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException or ArgumentException)
         { return MapPreparedFoliageSupport.Refused(layer, chunk, MapFoliageStatus.NotRepresentable, NoWork, "chunk scope is not representable"); }
-        if (limits.MaxPrepareScopes < 1)
+        if (DemandDiagnostics.Check(context, "MapFoliageSupport.MaxPrepareScopes.1", "MaxPrepareScopes", 0, 1, limits.MaxPrepareScopes, limits.MaxPrepareScopes < 1, CapacityDemandLifetime.Cumulative, allowanceSource: limits))
             return MapPreparedFoliageSupport.Refused(layer, chunk, MapFoliageStatus.CapacityExceeded, NoWork, "prepare scopes");
         MapScopedSurfaces view;
         IReadOnlyDictionary<string, MapPaintRegionSet> paint;

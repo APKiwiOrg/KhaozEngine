@@ -92,6 +92,16 @@ public sealed class MapBuildingIntent(int PayloadVersion, IReadOnlyList<MapRoofL
 }
 
 /// <summary>Finite codec ceilings. Effective per-instance expansion charges are a separate preflight.</summary>
+/// <param name="MaxInstances">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxChildren">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxReferenceEdges">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxPatches">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxRecords">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxGeometryElements">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxBindings">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxOverrides">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxTransfers">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxPayloadBytes">Demand sites: MapPrefabPreflight. See docs/CAPACITY-DEMAND.md.</param>
 public sealed record MapPrefabExpansionLimits(int MaxInstances = 65536, int MaxChildren = 1048576,
     int MaxReferenceEdges = 262144, int MaxPatches = 1048576, int MaxRecords = 4194304,
     int MaxGeometryElements = 16777216, int MaxBindings = 2097152, int MaxOverrides = 1048576,

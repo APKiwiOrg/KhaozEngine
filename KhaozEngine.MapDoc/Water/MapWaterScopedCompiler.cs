@@ -1,3 +1,5 @@
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
+using KhaozEngine.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -128,7 +130,7 @@ public static class MapWaterScopedCompiler
                             var triangles = MapWaterCellGeometry.Union(kind.SelectMany(r => r.Triangles).ToArray(), compiled.SurfaceY, pairs, admission,
                                 checked((int)(MaxEmittedVertices - vertices)));
                             vertices = checked(vertices + 3L * triangles.Count);
-                            if (vertices > MaxEmittedVertices) throw new MapWaterCapacityException("water emitted vertices");
+                            if (DemandDiagnostics.Check(scene, "MapWaterScopedCompiler.MaxEmittedVertices.1", "MaxEmittedVertices", 0, vertices, MaxEmittedVertices, vertices > MaxEmittedVertices, CapacityDemandLifetime.Inventory)) throw new MapWaterCapacityException("water emitted vertices");
                             regions.Add(new(group.Key.SpaceId, kind.Key, triangles) { Fragment = kind.First().Fragment });
                         }
                         var id = new MapSceneResourceKey("WaterCell", CellId(key));
@@ -222,7 +224,7 @@ public static class MapWaterScopedCompiler
             long z0 = Floor(bounds.Min.Z.ToDouble() / size), z1 = Ceiling(bounds.Max.Z.ToDouble() / size);
             long count = checked((x1 - x0) * (z1 - z0));
             candidates = checked(candidates + count);
-            if (candidates > MaxCells) throw new MapWaterCapacityException("water candidate cells");
+            if (DemandDiagnostics.Check(result, "MapWaterScopedCompiler.MaxCells.1", "MaxCells", 0, candidates, MaxCells, candidates > MaxCells, CapacityDemandLifetime.Cumulative)) throw new MapWaterCapacityException("water candidate cells");
             admission.ReserveBytes(checked(count * 128)); pairs.Charge(count);
             for (long z = z0; z < z1; z++)
                 for (long x = x0; x < x1; x++)
@@ -232,7 +234,7 @@ public static class MapWaterScopedCompiler
                     int tx0 = checked((int)Floor(minX / tileSize)), tx1 = checked((int)Ceiling(maxX / tileSize));
                     int tz0 = checked((int)Floor(minZ / tileSize)), tz1 = checked((int)Ceiling(maxZ / tileSize));
                     long owners = checked(((long)tx1 - tx0) * ((long)tz1 - tz0));
-                    if (owners > MaxCells - result.Count) throw new MapWaterCapacityException("water storage cells");
+                    if (DemandDiagnostics.Check(result, "MapWaterScopedCompiler.MaxCells.2", "MaxCells", result.Count, owners, MaxCells, owners > MaxCells - result.Count, CapacityDemandLifetime.Inventory)) throw new MapWaterCapacityException("water storage cells");
                     pairs.Charge(owners); admission.ReserveBytes(checked(owners * 128));
                     for (int tz = tz0; tz < tz1; tz++)
                         for (int tx = tx0; tx < tx1; tx++)

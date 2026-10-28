@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -11,6 +13,9 @@ using KhaozEngine.Terrain;
 namespace KhaozEngine.MapDoc.Render3D;
 
 public enum MapRenderAssetStatus { Complete, Missing, Stale, Unsupported, Invalid, CapacityExceeded, NotRepresentable }
+/// <param name="MaxDecodedBytes">Demand sites: MapRenderAssetAllowance, MapRenderAssets. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxParts">Demand sites: MapRenderAssetAllowance, MapRenderAssets. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxLods">Demand sites: MapRenderAssets. See docs/CAPACITY-DEMAND.md.</param>
 public sealed record MapRenderAssetLimits(long MaxDecodedBytes = 268435456, int MaxParts = 4096, int MaxLods = 16);
 public sealed record MapRenderAssetResult(MapRenderAssetStatus Status, MapRenderAssets? Assets, string? Detail)
 {
@@ -91,7 +96,7 @@ public sealed class MapRenderAssets : IDisposable
                     throw new MapRenderAssetRefusal(MapRenderAssetStatus.Stale, "Selected asset has no current extent proof.");
                 foreach (string materialId in asset.MaterialResourceIds) MapRenderMaterials.ReadDefinition(closure, materialId, budget);
                 string[] resources = new[] { asset.MeshResourceId }.Concat(asset.LodResourceIds).ToArray();
-                if (resources.Length > limits.MaxLods) throw MapRenderDecodeCapacity.Refuse(nameof(MapRenderAssetLimits.MaxLods), resources.Length, limits.MaxLods);
+                if (DemandDiagnostics.Check(budget, "MapRenderAssets.MaxLods.1", "MaxLods", 0, resources.Length, limits.MaxLods, resources.Length > limits.MaxLods, CapacityDemandLifetime.Inventory, allowanceSource: limits)) throw MapRenderDecodeCapacity.Refuse(nameof(MapRenderAssetLimits.MaxLods), resources.Length, limits.MaxLods);
                 var lods = new List<MapRenderLod>();
                 for (int lod = 0; lod < resources.Length; lod++)
                 {
@@ -102,8 +107,8 @@ public sealed class MapRenderAssets : IDisposable
                     var demand = GltfDecodeAdmission.Measure(closure.BorrowVerifiedResourceBytes(resourceId), budget);
                     if (!demand.Allowed) throw demand.Capacity is { } capacity
                         ? MapRenderDecodeCapacity.Refuse(MapRenderDecodeCapacity.Convert(capacity)) : Capacity();
-                    if (demand.OwnedBytes > limits.MaxDecodedBytes - owned) throw MapRenderDecodeCapacity.Refuse(nameof(MapRenderAssetLimits.MaxDecodedBytes), (decimal)owned + demand.OwnedBytes, limits.MaxDecodedBytes);
-                    if (demand.PartCount > limits.MaxParts - partCount) throw MapRenderDecodeCapacity.Refuse(nameof(MapRenderAssetLimits.MaxParts), (long)partCount + demand.PartCount, limits.MaxParts);
+                    if (DemandDiagnostics.Check(budget, "MapRenderAssets.MaxDecodedBytes.1", "MaxDecodedBytes", owned, demand.OwnedBytes, limits.MaxDecodedBytes, demand.OwnedBytes > limits.MaxDecodedBytes - owned, CapacityDemandLifetime.Inventory, allowanceSource: limits)) throw MapRenderDecodeCapacity.Refuse(nameof(MapRenderAssetLimits.MaxDecodedBytes), (decimal)owned + demand.OwnedBytes, limits.MaxDecodedBytes);
+                    if (DemandDiagnostics.Check(budget, "MapRenderAssets.MaxParts.1", "MaxParts", partCount, demand.PartCount, limits.MaxParts, demand.PartCount > limits.MaxParts - partCount, CapacityDemandLifetime.Inventory, allowanceSource: limits)) throw MapRenderDecodeCapacity.Refuse(nameof(MapRenderAssetLimits.MaxParts), (long)partCount + demand.PartCount, limits.MaxParts);
                     var parts = NativeMapAssetLoader.LoadParts(asset, closure, budget, lod == 0 ? null : resourceId);
                     owned = checked(owned + demand.OwnedBytes); partCount = checked(partCount + parts.Count);
                     MapRenderDecodeCapacity.Reserve(budget, 0, demand.OwnedBytes);

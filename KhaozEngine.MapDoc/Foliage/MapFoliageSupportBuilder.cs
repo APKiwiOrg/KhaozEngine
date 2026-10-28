@@ -1,8 +1,11 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Scene;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
@@ -61,7 +64,9 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         MapFoliageCandidateSupport? candidates = null;
         try
         {
-            candidates = MapFoliageCandidateSupport.Create(view, _support, grids, binding, min, max, limits.MaxFaces - _faces + PhysicalFaces(), out _, ReusePhysical, RetainContextFaces);
+            long consumed = _faces - PhysicalFaces();
+            candidates = MapFoliageCandidateSupport.Create(view, _support, grids, binding, min, max, limits.MaxFaces - consumed,
+                out _, ReusePhysical, RetainContextFaces, new("MaxFaces", consumed, limits.MaxFaces, limits));
         }
         catch (MapFoliageRefusal refusal) { throw new MapFoliageRefusal(refusal.Status, Work(), refusal.Message); }
 
@@ -150,7 +155,28 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
         MapCellRect range = MapEffectiveGeometry.CellRange(view, surface.Id, min, max);
         // One cell of margin on every side absorbs the released float floor at the rectangle's edges.
         long x0 = checked(range.MinX - 1), z0 = checked(range.MinZ - 1), x1 = checked(range.MaxXExclusive + 1), z1 = checked(range.MaxZExclusive + 1);
-        if (((double)x1 - x0) * ((double)z1 - z0) > 4.0 * limits.MaxFaces + 64)
+        double cellArea = ((double)x1 - x0) * ((double)z1 - z0);
+        bool refused = cellArea > 4.0 * limits.MaxFaces + 64;
+        if (DemandDiagnostics.IsObserved)
+        {
+            // The cell ceiling 4 * MaxFaces + 64 admits exactly the grids needing at most MaxFaces faces, ceil((cells - 64) / 4).
+            // Each origin of a derived MaxFaces compares that face demand in its own field's units, so it refuses exactly
+            // when the floor of its remaining allowance is below the demand, as the gate does.
+            decimal faces;
+            bool saturated = false;
+            try { faces = Math.Max(0, Math.Ceiling((((decimal)x1 - x0) * ((decimal)z1 - z0) - 64) / 4)); }
+            catch (OverflowException) { faces = decimal.MaxValue; saturated = true; }
+            foreach (var origin in MapDemandOrigins.Of(limits, "MaxFaces", limits.MaxFaces))
+            {
+                decimal increment;
+                bool over, wide = saturated;
+                try { increment = origin.Scale * faces; over = wide || origin.Consumed + increment > origin.Allowance; }
+                catch (OverflowException) { increment = decimal.MaxValue; over = true; wide = true; }
+                DemandDiagnostics.Check(this, "MapFoliageSupportBuilder.MaxFaces.1", origin.LimitName, origin.Consumed, increment, origin.Allowance, over,
+                    CapacityDemandLifetime.Transient, origin.Identity, wide);
+            }
+        }
+        if (refused)
             throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, Work(), "support cells");
         var lattice = new MapFoliageLattice(view, surface, layer.Policy.NormalBoundaryHeight);
         var byPatch = new Dictionary<MapPatchKey, List<(long X, long Z)>>();
@@ -170,7 +196,11 @@ internal sealed class MapFoliageSupportBuilder(MapScopedSurfaces view, IReadOnly
             var validated = new MapValidatedSurfacePatch(surface, patch);
             var mask = MapSlotCellMask.Of(cells.Select(c => MapLowerCellClassifier.SlotCell(c.X, c.Z)));
             long count = MapFoliageTriangles.CountFaces(validated, mask);
-            if (checked(_faces + count) > limits.MaxFaces)
+            bool faceRefused = checked(_faces + count) > limits.MaxFaces;
+            if (DemandDiagnostics.IsObserved)
+                new MapCapacityDemandOrigin("MaxFaces", _faces, limits.MaxFaces, limits)
+                    .Report(this, "MapFoliageSupportBuilder.MaxFaces.2", count, CapacityDemandLifetime.Cumulative);
+            if (faceRefused)
                 throw new MapFoliageRefusal(MapFoliageStatus.CapacityExceeded, Work(), "prepared faces");
             // One 1280-byte charge per unique face covers both holds: this grid's record and the membership context's
             // reused hold of the same face (its transformed copy, bound face and index entries). ReusePhysical charges

@@ -50,6 +50,14 @@ public sealed record MapWaterWork(int Pieces, int PieceVertices, int FootprintRe
 /// <see cref="MaxBoundCells"/> caps the cumulative sum of bound-lattice slot and cell candidates for bound reads and
 /// region sweeps. Empty, absent, skipped and face-free candidates count too. Negative limits, including members of
 /// <see cref="Reads"/>, throw <see cref="ArgumentOutOfRangeException"/> at compile entry, naming the limit.</summary>
+/// <param name="MaxPieces">Demand sites: MapWaterWorkBudget and MapWaterWorkMeter. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxPieceVertices">Demand sites: MapWaterWorkBudget and MapWaterWorkMeter. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxFootprintCells">Demand sites: MapWaterWorkBudget and MapWaterWorkMeter. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxBoundFaces">Demand sites: MapWaterWorkBudget and MapWaterWorkMeter. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxPairChecks">Demand sites: MapWaterWorkBudget and MapWaterWorkMeter. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxTriangles">Demand sites: MapWaterWorkMeter.ChargeEmit. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="Reads">Refinement demand sites: MapBoundPreparation, MapBoundFaceContext and MapEffectiveGeometry.</param>
+/// <param name="MaxBoundCells">Demand site: MapWaterWorkMeter.ChargeTraversal. See docs/CAPACITY-DEMAND.md.</param>
 public sealed record MapWaterCompileLimits(int MaxPieces = MapWaterDomain.MaxPieces,
     int MaxPieceVertices = MapWaterDomain.MaxPieceVertices, int MaxFootprintCells = 4_194_304, int MaxBoundFaces = 1_048_576,
     int MaxPairChecks = (int)MapWaterDomain.MaxPairChecks, int MaxTriangles = 1_048_576, MapRefinementLimits? Reads = null,

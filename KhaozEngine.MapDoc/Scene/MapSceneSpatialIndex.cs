@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,7 +27,7 @@ internal sealed class MapSceneSpatialIndex
                 foreach (var row in rows)
                     if (Touches(row.Bounds, bounds) && (accepts is null || accepts(row.Key)))
                     {
-                        if (result.Count >= maxResources) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)result.Count + 1, maxResources);
+                        if (DemandDiagnostics.Check(result, "MapSceneSpatialIndex.MaxSelectedResources.1", "MaxSelectedResources", result.Count, 1, maxResources, result.Count >= maxResources, CapacityDemandLifetime.Inventory)) throw new MapSceneCapacityException(nameof(MapSceneLimits.MaxSelectedResources), (long)result.Count + 1, maxResources);
                         result.Add(row.Key);
                     }
             }

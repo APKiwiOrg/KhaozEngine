@@ -1,7 +1,14 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 
 namespace KhaozEngine.Render3D;
 
+/// <param name="MaxPeakBytes">Demand sites: GltfDecodeAdmission, GltfDecodeBudget, ImageRgba. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxVertices">Demand sites: GltfDecodeAdmission. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxIndices">Demand sites: GltfDecodeAdmission. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxImagePixels">Demand sites: GltfDecodeAdmission, ImageRgba, MapRenderMaterials. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxImages">Demand sites: GltfDecodeAdmission, MapRenderMaterials. See docs/CAPACITY-DEMAND.md.</param>
 public sealed record GltfDecodeLimits(long MaxPeakBytes = 33554432, int MaxVertices = 1048576,
     int MaxIndices = 3145728, int MaxImagePixels = 4194304, int MaxImages = 256);
 
@@ -14,6 +21,7 @@ public sealed class GltfDecodeBudget
         internal long Owned, Temporary, Peak;
     }
     readonly Shared _shared;
+    internal object DemandIdentity => _shared;
     IGltfDecodeReservationObserver? _observer;
     internal bool Observe(IGltfDecodeReservationObserver observer)
     {
@@ -52,7 +60,7 @@ public sealed class GltfDecodeBudget
         {
             capacity = null;
             long remaining = Limits.MaxPeakBytes - _shared.Owned - _shared.Temporary;
-            if (ownedBytes > remaining || temporaryBytes > remaining - ownedBytes)
+            if (DemandDiagnostics.Check(_shared, "GltfDecodeBudget.MaxPeakBytes.1", "MaxPeakBytes", (decimal)_shared.Owned + _shared.Temporary, (decimal)ownedBytes + temporaryBytes, Limits.MaxPeakBytes, ownedBytes > remaining || temporaryBytes > remaining - ownedBytes, CapacityDemandLifetime.Transient, allowanceSource: Limits))
             { capacity = PeakCapacity((decimal)ownedBytes + temporaryBytes); return false; }
             _observer?.Reserve(checked(ownedBytes + temporaryBytes));
             _shared.Owned += ownedBytes;

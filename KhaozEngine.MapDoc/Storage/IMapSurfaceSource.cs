@@ -17,6 +17,12 @@ public sealed record MapPatchRead(MapPatchKey Key, MapPatchStatus Status, MapSur
 /// PagesRead on results reports only newly decoded pages, so cached and captured calls can report zero
 /// while exhausting their traversal or bookkeeping limit. MaxCandidatePatches still bounds patch output.
 /// </remarks>
+/// <param name="MaxCandidatePatches">Demand sites: MapBoundAcquisition, MapBoundPreparation (query-derived context allowance), MapComposedSurfaceSource, MapDocumentSurfaceSource, MapEffectiveAcquisition, MapEffectiveSurfaceSource, MapFoliageCandidateSupport (via bound preparation), MapScopedAcquisition, MapSpaceMembershipScratch, MapSurfaceQuery, MapSurfaceSessionState. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxInspectedFaces">Demand sites: MapBoundFaceContext (query-derived face allowance), MapPrismGeometry, MapSpaceMembership, MapSpaceMembershipScratch. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxSupportIntersections">Demand sites: MapSupportSelection. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxPageReads">Demand sites: MapComposedSurfaceSource.Admission, MapPageBudget. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxRecordReads">Demand sites: MapEffectiveAcquisition, MapEffectiveSurfaceSource, MapOccupiedPartitions, MapScopedAcquisition, MapSpaceMembership, MapSpaceMembershipScratch. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxRecordDepth">Demand sites: MapEffectiveAcquisition, MapMembershipPointKernel, MapOccupiedPartitions, MapScopedAcquisition. See docs/CAPACITY-DEMAND.md.</param>
 public sealed record MapQueryLimits(int MaxCandidatePatches = 256, int MaxInspectedFaces = 4096,
     int MaxSupportIntersections = 64, int MaxPageReads = 32, int MaxRecordReads = 64, int MaxRecordDepth = 8)
 {

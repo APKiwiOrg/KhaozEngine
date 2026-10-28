@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,6 +19,7 @@ internal sealed class MapBoundPreparation
     readonly Dictionary<MapPatchKey, MapValidatedSurfacePatch> _validated = new();
     readonly MapBoundFaceContext? _context;
     internal MapWaterWorkMeter? WaterMeter { get; }
+    internal MapRefinementLimits Limits => _limits;
 
     internal MapBoundPreparation(MapScopedSurfaces view, MapRefinementLimits limits, MapBoundFaceWork? work, MapWaterWorkMeter? meter = null)
     {
@@ -58,6 +61,7 @@ internal sealed class MapBoundPreparation
 
     internal Plan Bound(MapSpaceFootprint footprint, MapBoundRef bound, MapExactXz min, MapExactXz max)
     {
+        using var demandScope = DemandDiagnostics.Enter(this, "MapBoundPreparation.Bound");
         if (bound != footprint.Lower && bound != footprint.Upper)
             throw new ArgumentException("bound must belong to footprint", nameof(bound));
         if (bound.Kind == MapBoundKind.OpenTop) throw new ArgumentException("open top has no bound faces", nameof(bound));
@@ -106,7 +110,7 @@ internal sealed class MapBoundPreparation
             if (WaterMeter is not null && ValidatedPatch(surface, patch) is null) return Failure(MapRefinementStatus.CapacityExceeded, Refusal);
             count = checked(count + faces);
             if (_work is not null) _work.BoundFacesCounted += faces;
-            if (count > _limits.MaxSourceFacesPerBound) return Failure(MapRefinementStatus.CapacityExceeded, "source faces");
+            if (DemandDiagnostics.Check(this, "MapBoundPreparation.MaxSourceFacesPerBound.1", "MaxSourceFacesPerBound", 0, count, _limits.MaxSourceFacesPerBound, count > _limits.MaxSourceFacesPerBound, CapacityDemandLifetime.Cumulative, allowanceSource: _limits)) return Failure(MapRefinementStatus.CapacityExceeded, "source faces");
             if (faces != 0) demands.Add(new(key, slot));
         }
         return new(MapRefinementStatus.Complete, demands.AsReadOnly(), compatibility.AsReadOnly(), null, null);
@@ -138,7 +142,7 @@ internal sealed class MapBoundPreparation
             WaterMeter?.CountFaces(!lower, faces);
             count = checked(count + faces);
             if (_work is not null) _work.BoundFacesCounted += faces;
-            if (count > _limits.MaxSourceFacesPerBound) return Failure(MapRefinementStatus.CapacityExceeded, "source faces");
+            if (DemandDiagnostics.Check(this, "MapBoundPreparation.MaxSourceFacesPerBound.2", "MaxSourceFacesPerBound", 0, count, _limits.MaxSourceFacesPerBound, count > _limits.MaxSourceFacesPerBound, CapacityDemandLifetime.Cumulative, allowanceSource: _limits)) return Failure(MapRefinementStatus.CapacityExceeded, "source faces");
             demands.Add(new(opening.Patch, slot));
         }
         return new(MapRefinementStatus.Complete, demands.AsReadOnly(), Array.Empty<MapLegacyCellTag>(), reference, null);
@@ -149,7 +153,7 @@ internal sealed class MapBoundPreparation
         try
         {
             long count = checked(checked(range.MaxXExclusive - range.MinX) * checked(range.MaxZExclusive - range.MinZ));
-            return count <= _limits.MaxSourceFacesPerBound;
+            return !DemandDiagnostics.Check(this, "MapBoundPreparation.MaxSourceFacesPerBound.3", "MaxSourceFacesPerBound", 0, count, _limits.MaxSourceFacesPerBound, !(count <= _limits.MaxSourceFacesPerBound), CapacityDemandLifetime.Cumulative, allowanceSource: _limits);
         }
         catch (OverflowException) { return false; }
     }
@@ -169,7 +173,9 @@ internal sealed class MapBoundPreparation
     {
         if (_context is not null) return _context.ValidatedPatch(patch.Key);
         if (_validated.TryGetValue(patch.Key, out MapValidatedSurfacePatch? validated)) return validated;
-        if (_validated.Count >= _limits.MaxContextPatches)
+        // A query-derived context ceiling publishes its originating query and refinement fields.
+        bool exceeded = DemandDiagnostics.Check(this, "MapBoundPreparation.MaxContextPatches.1", "MaxContextPatches", _validated.Count, 1, _limits.MaxContextPatches, _validated.Count >= _limits.MaxContextPatches, CapacityDemandLifetime.Inventory, allowanceSource: _limits);
+        if (exceeded)
         {
             Refusal = "context patches";
             return null;

@@ -300,6 +300,8 @@ public sealed class NativeMapTerrainTests
         var payloads = Record(batch).Resources.Select(r => Assert.IsType<MapTerrainResource>(r.Payload)).ToArray();
         Assert.Equal(new[] { TileGroundMaterialConfig.MaxMaterials, 1 }, payloads.Select(p => p.Materials.Layers.Count));
         Assert.Equal(Enumerable.Range(10, 65).Select(i => (ushort)i), payloads.SelectMany(p => p.Materials.Layers.Select(l => l.MaterialId)));
+        using var split = NativeMapTerrain.Prepare(Acquire(fixture), input, mapping, maxMaterials: 1);
+        Assert.Equal(65, Record(split).Resources.Count);
         using var feather = Fixture("terrain-feather", closure);
         Assert.Equal(MapRenderAssetStatus.CapacityExceeded, Assert.Throws<MapRenderAssetRefusal>(() =>
             NativeMapTerrain.Prepare(Acquire(feather), input, mapping, maxMaterials: 1)).Status);

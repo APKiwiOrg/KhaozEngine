@@ -82,13 +82,13 @@ internal sealed class MapFoliageInputKernel : IMapFoliageInputs
         if (_queryLimits is { } cap)
         {
             var l = scope.Limits;
-            scope = scope with
-            {
-                Limits = new(Math.Min(l.MaxCandidatePatches, cap.MaxCandidatePatches), Math.Min(l.MaxInspectedFaces, cap.MaxInspectedFaces),
+            var limits = new MapQueryLimits(Math.Min(l.MaxCandidatePatches, cap.MaxCandidatePatches), Math.Min(l.MaxInspectedFaces, cap.MaxInspectedFaces),
                 Math.Min(l.MaxSupportIntersections, cap.MaxSupportIntersections), Math.Min(l.MaxPageReads, cap.MaxPageReads),
                 Math.Min(l.MaxRecordReads, cap.MaxRecordReads), Math.Min(l.MaxRecordDepth, cap.MaxRecordDepth))
-                { Refinement = l.Refinement is { } reads && cap.Refinement is { } maximum ? reads.Intersect(maximum) : l.Refinement ?? cap.Refinement }
-            };
+            { Refinement = l.Refinement is { } reads && cap.Refinement is { } maximum ? reads.Intersect(maximum) : l.Refinement ?? cap.Refinement };
+            // Each intersected field keeps both originating profiles for evaluated demand, without changing the minimum.
+            Scene.MapDemandOrigins.Intersect(limits, l, cap);
+            scope = scope with { Limits = limits };
         }
         return _retainedSource is null ? Resources.Acquire(scope) : MapScopedSurfaces.Acquire(_retainedSource, scope, new[] { Resources.Digest },
             MapScopedSurfaces.EffectiveQueryPolicyVersion, MapScopedSurfaces.EffectiveBuildPolicyVersion);

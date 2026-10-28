@@ -13,6 +13,19 @@ public enum MapFoliageStatus { Complete, MissingSupport, Unavailable, PartialRes
 /// Comparison charges candidates, change rows and reconciliation bytes per lattice block. A prepared face is charged
 /// 1280 bytes once: that covers the support grid's record and the membership context's reused hold of the same face.
 /// Context construction has its own <see cref="MapFoliageContextLimits"/>.</summary>
+/// <param name="MaxCandidates">Demand sites: MapFoliageDistribution, MapFoliageGenerationAdmission, MapFoliageInstanceDistribution. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxSamples">Demand sites: MapFoliageDistribution, MapFoliageInstanceBuilder. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxPrepareScopes">Demand sites: MapFoliageOwners, MapFoliageSupport. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxFaces">Demand sites: MapBoundFaceContext (foliage origin), MapFoliageSupportBuilder. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxRuleCandidates">Demand sites: MapFoliageClearance. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxMaskCandidates">Demand sites: MapFoliageClearance. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxQueryChunks">Demand sites: MapFoliageDistribution. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxQuerySamples">Demand sites: MapFoliageInstanceBuilder, MapFoliageRetentionBudget, NativeMapFoliage. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxQueryRetainedBytes">Demand sites: MapFoliageColumnBudget, MapFoliageGenerationAdmission, MapFoliageRenderCache, MapFoliageRetentionBudget. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxDifferentialCandidates">Demand sites: MapFoliageDifferential. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxChangeRows">Demand sites: MapFoliageDifferential. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxComparisonPreparedChunks">Demand sites: MapFoliageDistribution. See docs/CAPACITY-DEMAND.md.</param>
+/// <param name="MaxComparisonRetainedBytes">Demand sites: MapFoliageDistribution. See docs/CAPACITY-DEMAND.md.</param>
 public sealed record MapFoliageLimits(int MaxCandidates = 4_000_000, int MaxSamples = 262_144, int MaxPrepareScopes = 256,
     int MaxFaces = 262_144, int MaxRuleCandidates = 4096, int MaxMaskCandidates = 4096, int MaxQueryChunks = 64,
     long MaxQuerySamples = 262_144, long MaxQueryRetainedBytes = 67_108_864, long MaxDifferentialCandidates = 64_000_000,

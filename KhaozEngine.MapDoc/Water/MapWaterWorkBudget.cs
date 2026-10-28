@@ -1,3 +1,5 @@
+using KhaozEngine.Diagnostics;
+using DemandDiagnostics = KhaozEngine.Diagnostics.CapacityDemandDiagnostics;
 using System;
 using System.Numerics;
 using KhaozEngine.MapDoc.Scene;
@@ -16,13 +18,15 @@ internal sealed class MapWaterWorkBudget
 
     /// <summary>A compile budget throws <see cref="MapWaterCapacityException"/> instead, which prepared containment
     /// propagates, so the compile refuses with its limit rather than reporting the overrun as unverified.</summary>
-    internal MapWaterWorkBudget(long limit, bool compile, MapWaterWorkBudget? parent = null)
+    internal MapWaterWorkBudget(long limit, bool compile, MapWaterWorkBudget? parent = null, object? source = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(limit);
         Limit = limit;
         _compile = compile;
         _parent = parent;
+        _source = source;
     }
+    readonly object? _source;
 
     public long Limit { get; }
     public long Charged { get; private set; }
@@ -34,7 +38,7 @@ internal sealed class MapWaterWorkBudget
     {
         Charged += checks;
         _parent?.Charge(checks);
-        if (Charged <= Limit) return;
+        if (!DemandDiagnostics.Check(this, "MapWaterWorkBudget.MaxPairChecks.1", "MaxPairChecks", Charged - checks, checks, Limit, !(Charged <= Limit), CapacityDemandLifetime.Cumulative, allowanceSource: _source)) return;
         if (_compile) throw new MapWaterCapacityException(MapWaterWorkMeter.PairChecks, new(nameof(MapWaterCompileLimits.MaxPairChecks), Charged, Limit));
         throw new MapDocumentException($"domain work exceeds {Limit} pair checks");
     }
@@ -107,7 +111,7 @@ internal sealed class MapWaterWorkMeter
     {
         long pieces = (long)(domain.Rects?.Count ?? 0) + (domain.Rings?.Count ?? 0);
         int nextPieces = (int)Math.Min(pieces, int.MaxValue);
-        if (pieces > _limits.MaxPieces)
+        if (DemandDiagnostics.Check(this, "MapWaterWorkBudget.MaxPieces.1", "MaxPieces", 0, pieces, _limits.MaxPieces, pieces > _limits.MaxPieces, CapacityDemandLifetime.Inventory, allowanceSource: _limits))
         {
             PieceCount = nextPieces;
             throw new MapWaterCapacityException(Pieces, new(nameof(MapWaterCompileLimits.MaxPieces), pieces, _limits.MaxPieces));
@@ -115,7 +119,7 @@ internal sealed class MapWaterWorkMeter
         long vertices = 4L * (domain.Rects?.Count ?? 0);
         foreach (MapWaterRing ring in domain.Rings ?? Array.Empty<MapWaterRing>()) vertices += ring?.Vertices?.Count ?? 0;
         int nextVertices = (int)Math.Min(vertices, int.MaxValue);
-        if (vertices > _limits.MaxPieceVertices)
+        if (DemandDiagnostics.Check(this, "MapWaterWorkBudget.MaxPieceVertices.1", "MaxPieceVertices", 0, vertices, _limits.MaxPieceVertices, vertices > _limits.MaxPieceVertices, CapacityDemandLifetime.Inventory, allowanceSource: _limits))
         {
             PieceCount = nextPieces; VertexCount = nextVertices;
             throw new MapWaterCapacityException(PieceVertices, new(nameof(MapWaterCompileLimits.MaxPieceVertices), vertices, _limits.MaxPieceVertices));
@@ -139,7 +143,16 @@ internal sealed class MapWaterWorkMeter
     {
         var nextSlots = _boundSlots + slots;
         var nextCells = _boundCells + cells;
-        if (nextSlots + nextCells > _limits.MaxBoundCells)
+        bool exceeded = nextSlots + nextCells > _limits.MaxBoundCells;
+        if (DemandDiagnostics.IsObserved)
+        {
+            var total = nextSlots + nextCells;
+            decimal current = (decimal)BigInteger.Min(_boundSlots + _boundCells, new BigInteger(decimal.MaxValue));
+            decimal requested = (decimal)BigInteger.Min(total, new BigInteger(decimal.MaxValue));
+            DemandDiagnostics.Check(this, "MapWaterWorkMeter.Traversal", nameof(MapWaterCompileLimits.MaxBoundCells),
+                current, requested - current, _limits.MaxBoundCells, exceeded, saturated: total > new BigInteger(decimal.MaxValue), allowanceSource: _limits);
+        }
+        if (exceeded)
         {
             // Released water-limit diagnostics retain attempted demand. Scene refusals publish no new counts.
             _boundSlots = nextSlots; _boundCells = nextCells;
@@ -154,7 +167,7 @@ internal sealed class MapWaterWorkMeter
     internal void ChargeRead(long faces)
     {
         long nextFaces = checked(_boundFaces + faces);
-        if (nextFaces > _limits.MaxBoundFaces)
+        if (DemandDiagnostics.Check(this, "MapWaterWorkBudget.MaxBoundFaces.1", "MaxBoundFaces", _boundFaces, faces, _limits.MaxBoundFaces, nextFaces > _limits.MaxBoundFaces, CapacityDemandLifetime.Cumulative, allowanceSource: _limits))
         {
             _boundFaces = nextFaces;
             throw new MapWaterCapacityException(BoundFaces, new(nameof(MapWaterCompileLimits.MaxBoundFaces), nextFaces, _limits.MaxBoundFaces));
@@ -178,10 +191,10 @@ internal sealed class MapWaterWorkMeter
         TriangleCount = next;
     }
 
-    static int Charge(int current, int amount, int limit, string detail, string name)
+    int Charge(int current, int amount, int limit, string detail, string name)
     {
         long total = (long)current + amount;
-        if (total > limit) throw new MapWaterCapacityException(detail, new(name, total, limit));
+        if (DemandDiagnostics.Check(this, "MapWaterWorkBudget.name.1", name, current, amount, limit, total > limit, CapacityDemandLifetime.Cumulative)) throw new MapWaterCapacityException(detail, new(name, total, limit));
         return (int)total;
     }
 }

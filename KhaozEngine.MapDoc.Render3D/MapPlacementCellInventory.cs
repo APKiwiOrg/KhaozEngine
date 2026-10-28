@@ -29,6 +29,7 @@ internal sealed class MapPlacementCellInventory : IDisposable
         int selectedCount = scene.Placements.Count(p => routing.Entries[p.PlacementId] == MapPlacementRoute.Cluster);
         if (selectedCount == 0) return new(new());
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
+        using var demandScope = KhaozEngine.Diagnostics.CapacityDemandDiagnostics.Enter(admission, "MapPlacementCellInventory");
         using var activation = admission.Enter();
         using var preparation = admission.BeginPreparation();
         admission.ReserveBytes(checked(512L + 128L * selectedCount + 64L * scene.CapturedBuildingIntent.Roofs.Count +
@@ -54,6 +55,7 @@ internal sealed class MapPlacementCellInventory : IDisposable
         var layer = routing.ClusterLayer(key.LayerId)
             ?? throw new MapDocumentException("Native cluster has no matching caller layer.");
         var admission = MapSceneAdmission.Current ?? new MapSceneAdmission(scene.Source.Data.Limits);
+        using var demandScope = KhaozEngine.Diagnostics.CapacityDemandDiagnostics.Enter(admission, "MapPlacementCellInventory");
         using var activation = admission.Enter();
         using var preparation = admission.BeginPreparation();
         admission.ReserveBytes(512);

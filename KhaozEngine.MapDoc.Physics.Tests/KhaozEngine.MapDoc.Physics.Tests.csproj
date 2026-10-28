@@ -21,5 +21,6 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../KhaozEngine.MapDoc.Tests/**/*Fixtures.cs" Link="MapDocFixtures/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../test-shared/CapacityDemandProbe.cs" Link="Shared/CapacityDemandProbe.cs" />
   </ItemGroup>
 </Project>

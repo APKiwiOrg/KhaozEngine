@@ -20,7 +20,7 @@ public static class MapResolverV2
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(surfaces);
         string hash = MapAuthoredIdentityV2.Compute(document, assets, options);
-        var effective = MapPrefabResolver.Expand(document, assets, new(), null, surfaces);
+        var effective = MapPrefabResolver.Expand(document, assets, options.ExpansionLimits, null, surfaces, options.QueryLimits);
         var resolved = new MapResolvedDocument(effective.Placements, assets, MapResolvedBounds.Of(document.PlayableBounds!),
             MapResolvedBounds.Of(document.Bounds), hash, effective);
         return new(resolved, effective.PlacementSupports);
@@ -89,10 +89,12 @@ public static class MapResolverV2
 
     /// <summary>Resolves <paramref name="placements"/>, which belong to <paramref name="document"/>, in the given order
     /// exactly as <see cref="Resolve"/> resolves them, without the authored hash and without resolving any other
-    /// placement. The document's surfaces are captured only when a placement takes its height from support.</summary>
+    /// placement. The document's surfaces are captured only when a placement takes its height from support, and each
+    /// support scope takes <paramref name="limits"/>.</summary>
     internal static IReadOnlyList<MapResolvedPlacement> ResolvePlacements(MapDocument document, MapAssetClosure assets,
-        IReadOnlyList<MapPlacement> placements)
+        IReadOnlyList<MapPlacement> placements, MapQueryLimits limits)
     {
+        ArgumentNullException.ThrowIfNull(limits);
         IMapSurfaceSource? surfaces = null;
         var resolved = new MapResolvedPlacement[placements.Count];
         for (int i = 0; i < resolved.Length; i++)
@@ -100,7 +102,7 @@ public static class MapResolverV2
             MapPlacement placement = placements[i];
             MapSupportBinding? binding = placement.Y is null ? RequireBinding(placement) : null;
             resolved[i] = MapResolver.ResolveOne(placement, (id, x, z) =>
-                SupportHeight(id, binding!, x, z, surfaces ??= MapDocumentSurfaceSource.Capture(document), assets, null));
+                SupportHeight(id, binding!, x, z, surfaces ??= MapDocumentSurfaceSource.Capture(document), assets, limits, null));
         }
         return Array.AsReadOnly(resolved);
     }
@@ -117,15 +119,15 @@ public static class MapResolverV2
     }
 
     static float SupportHeight(string id, MapSupportBinding binding, float x, float z, IMapSurfaceSource surfaces,
-        MapAssetClosure assets, List<MapPlacementSupport>? supports)
+        MapAssetClosure assets, MapQueryLimits limits, List<MapPlacementSupport>? supports)
     {
-        try { return SelectHeight(id, binding, x, z, surfaces, assets, supports); }
+        try { return SelectHeight(id, binding, x, z, surfaces, assets, limits, supports); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         { throw new MapDocumentException($"Placement '{id}' support status NotRepresentable: overflow."); }
     }
 
     static float SelectHeight(string id, MapSupportBinding binding, float x, float z, IMapSurfaceSource surfaces,
-        MapAssetClosure assets, List<MapPlacementSupport>? supports)
+        MapAssetClosure assets, MapQueryLimits limits, List<MapPlacementSupport>? supports)
     {
         WorldFrame frame = WorldFrame.Nearest(x, z);
         // Subtract integer anchors exactly before the one local float conversion.
@@ -133,7 +135,7 @@ public static class MapResolverV2
         float localZ = MapExactValue.FromSingle(z).Subtract(new((long)frame.Z * (long)WorldFrame.Grid, 1)).ToSingle();
         var point = new MapFramePoint(frame, new(localX, binding.ReferenceY ?? 0, localZ));
         var scope = new MapSurfaceScope(frame, new Vector2(localX - 2, localZ - 2), new Vector2(localX + 2, localZ + 2),
-            null, null, Enum.GetValues<MapSurfaceRole>(), null, new MapQueryLimits());
+            null, null, Enum.GetValues<MapSurfaceRole>(), null, limits);
         MapScopedSurfaces scoped = MapScopedSurfaces.Acquire(surfaces, scope, assets.Roots.Select(a => a.Sha256).ToArray());
         var query = new MapSupportQuery(scoped);
         MapSupportResult support = binding.Kind == MapSupportBindingKind.Surface

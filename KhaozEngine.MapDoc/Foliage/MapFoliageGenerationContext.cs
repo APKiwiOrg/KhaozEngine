@@ -90,9 +90,10 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
     /// checks that the resources correspond to the document's placements and declared surfaces, then runs the context
     /// preflight again before staging. It is not a route to inject unrelated resources. <paramref name="baseline"/> is the
     /// document's fingerprint without foliage when the caller already computed it from exactly this document, so it is
-    /// not hashed again.</summary>
+    /// not hashed again. A non-null <paramref name="queryLimits"/> caps every context acquisition, as in
+    /// <see cref="Capture(MapDocument, MapAssetClosure, MapFoliageContextLimits?, MapQueryLimits?)"/>.</summary>
     internal static MapFoliageContextResult CaptureEffective(MapDocument document, MapAssetClosure assets, MapEffectiveResources resources,
-        MapFoliageContextLimits? limits = null, string? baseline = null)
+        MapFoliageContextLimits? limits = null, string? baseline = null, MapQueryLimits? queryLimits = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
@@ -108,7 +109,7 @@ public sealed class MapFoliageGenerationContext : IMapFoliageInputs
         if (!string.Equals(resources.ClosureHash, assets.Hash, StringComparison.Ordinal) ||
             (resources.SourceFingerprint is { } recorded ? !string.Equals(recorded, baseline, StringComparison.Ordinal) : document.Foliage is not null))
             return new(MapFoliageStatus.Invalid, null, measure.Work);
-        return Build(document, assets, resources, measure.Work, expansions, writes, baseline);
+        return Build(document, assets, resources, measure.Work, expansions, writes, baseline, queryLimits);
     }
 
     /// <summary>Acquires a chunk scope from the captured effective resources.</summary>

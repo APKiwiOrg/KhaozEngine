@@ -133,6 +133,9 @@ terrain chunk, its triangle owners. `BuildHash` (domain `kemap/built-world/1`) c
 version, consumer policy, interaction policy, chunk policy, legacy terrain identity and every placement and chunk
 digest. A resolver 1 world also carries its `LegacySculptTiles` (`MapLegacySculptTile`), sculpt cell size, terrain
 block digest and `LegacyTerrainIdentity`, so a consumer covers only the sculpt tiles a region touches.
+A resolver 2 build resolves under `options.Resolve.QueryLimits` and `ExpansionLimits`, the same caller profile scene
+residency takes, so a world whose support needs more than the default `MaxPageReads` builds once the caller declares
+it. The profile only decides where the build refuses and never enters `AuthoredHash` or `BuildHash`.
 
 Prefab and unpacked complete builds validate every effective room coverage finding even without water.
 Diagnostic expansion remains available for inspecting ambiguous membership. Independent coincident support floors

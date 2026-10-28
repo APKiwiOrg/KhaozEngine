@@ -22,6 +22,11 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Expose count-only evaluated capacity demand across native scene preparation, nested queries, multi-window residency,
   refinement, foliage and asset decoding through `CapacityDemandDiagnostics`, without changing admission. Remainder
   and minimum allowances report each originating profile field with its consumed baseline and original ceiling.
+- Resolve native resolver-2 documents under the caller's query and prefab expansion profile. `MapResolveOptions`
+  carries `QueryLimits` and `ExpansionLimits`, defaulting to the engine profile and never entering authored identity,
+  so `MapWorldBuilder`, `MapNativeResolution` and marker support build what scene residency builds under the same
+  profile. `MapNativePointReadout.SurfaceAt` and `MapDocumentEditFinalizer.Finalize` gain profile overloads, and page
+  metadata and range ceilings report their originating `MaxPageReads` (Closes #1632).
 - Bound native scene upload batches with caller limits `MaxInFlightUploadCpuBytes` (256 MiB) and
   `MaxInFlightUploadStagingGpuBytes` (128 MiB). Release each resource's transient CPU at device completion,
   before atomic window publication, and refuse windows whose retained uploads and in-flight allowance cannot fit.

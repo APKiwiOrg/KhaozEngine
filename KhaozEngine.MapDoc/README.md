@@ -26,8 +26,12 @@ need no synthetic builder options and never resolve relative resource paths impl
 closure passed in, for binding and resource lookup without a second load. `MapNativeResolution.Resolve(document,
 assets, options, legacySupportHeight)` routes a native document to its resolver by identity: `(1, 1)` resolves with
 `MapResolver` over the caller's legacy support height and `(1, 2)` with `MapResolverV2` over the document's own
-surfaces. Options with a different resolver version refuse. This package loads no meshes and has no render
-dependency. `KhaozEngine.Terrain.Render3D` owns the one-way `MapAssetManifestAdapter` and `NativeMapAssetLoader`,
+surfaces. Options with a different resolver version refuse. Resolver 2 resolves under the options' `QueryLimits` and
+`ExpansionLimits`, which default to the engine's default profile. The profile only decides where resolution refuses,
+so it never enters an authored hash, a resolver identity check or option matching. Prefab expansion, placement seats,
+marker support, paint and complete views all take it, as does `MapNativeResolution.ResolvePlacements`, so a world
+whose support needs more than the default `MaxPageReads` resolves under the profile scene residency uses. This package
+loads no meshes and has no render dependency. `KhaozEngine.Terrain.Render3D` owns the one-way `MapAssetManifestAdapter` and `NativeMapAssetLoader`,
 which loads a native mesh with its source units applied once.
 
 `KhaozEngine.MapDoc.Identity.MapLegacyTerrainDigest` identifies a resolver 1 document's analytic terrain in two
@@ -853,7 +857,8 @@ null when none match. The engine never guesses a role. `MapMarkerConsumerOptions
 the caller's `MapMarkerConsumerRoles` and the one Surface owner for unadopted legacy spawns. Nothing is defaulted.
 
 `MapNativePointReadout.SurfaceAt(resources, point, surfaceId)` samples the named Surface owner at an exact XZ through
-the shared seat query, with no reference height and the default scoped budgets. Every status stays typed, and only
+the shared seat query, with no reference height and the default scoped budgets. The overload with `MapQueryLimits`
+takes the caller's budgets, normally the profile the resources were resolved under. Every status stays typed, and only
 Supported carries a height. An exact overflow returns a typed NotRepresentable result with an incomplete witness. It
 never falls back to another floor, a zero height or the analytic field.
 
@@ -1051,7 +1056,8 @@ has zero weight on that boundary. Refusal is atomic and allocates no accepted hi
 Complete document transactions use public `MapDocumentEditFinalizer`, shared by pure consumers, MapEditor commands,
 callbacks and wire paths. `MapNativeInvalidation.Foliage` is 256 and never adds Physics, Nav or Residency.
 `Finalize(before, prepared, assets)` uses one closure. Its four-argument overload takes separate before/after closures
-for an asset switch. Both admit the proposed foliage context against its target closure before expansion or stamp reuse,
+for an asset switch, and the six-argument overload also takes the caller's `MapQueryLimits` and
+`MapPrefabExpansionLimits` for each side's expansion and foliage context capture. All admit the proposed foliage context against its target closure before expansion or stamp reuse,
 including whole-layer and chunkless changes, then validate the candidate and preserve every other effect and write.
 `MapFoliageEffects.Describe(before, after, oldContext, newContext, trigger)` returns
 `MapFoliageEffectSet(Chunks, Layers)`, with contexts captured from those exact snapshots and closures.

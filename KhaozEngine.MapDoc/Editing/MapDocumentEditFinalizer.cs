@@ -5,6 +5,7 @@ using System.Text.Json;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Storage;
 
 namespace KhaozEngine.MapDoc.Editing;
 
@@ -22,7 +23,20 @@ public static class MapDocumentEditFinalizer
 
     /// <summary>Finalizes an edit that switches closures, reading each side against its own verified closure.</summary>
     public static MapPrefabEditResult Finalize(MapDocument before, MapPrefabEditResult prepared, MapAssetClosure beforeAssets,
-        MapAssetClosure afterAssets)
+        MapAssetClosure afterAssets) => FinalizeUnder(before, prepared, beforeAssets, afterAssets, null, null);
+
+    /// <summary>Finalizes as the closure-switching overload does, expanding each side and capturing its foliage context
+    /// under the caller's query and prefab expansion profile. The profile only decides where finalization refuses.</summary>
+    public static MapPrefabEditResult Finalize(MapDocument before, MapPrefabEditResult prepared, MapAssetClosure beforeAssets,
+        MapAssetClosure afterAssets, MapQueryLimits queryLimits, MapPrefabExpansionLimits expansionLimits)
+    {
+        ArgumentNullException.ThrowIfNull(queryLimits);
+        ArgumentNullException.ThrowIfNull(expansionLimits);
+        return FinalizeUnder(before, prepared, beforeAssets, afterAssets, queryLimits, expansionLimits);
+    }
+
+    static MapPrefabEditResult FinalizeUnder(MapDocument before, MapPrefabEditResult prepared, MapAssetClosure beforeAssets,
+        MapAssetClosure afterAssets, MapQueryLimits? queryLimits, MapPrefabExpansionLimits? expansionLimits)
     {
         ArgumentNullException.ThrowIfNull(before);
         ArgumentNullException.ThrowIfNull(prepared);
@@ -31,12 +45,13 @@ public static class MapDocumentEditFinalizer
         ArgumentNullException.ThrowIfNull(prepared.After);
         Preflight(prepared.After, afterAssets);
         MapBoundDocumentValidation.Validate(prepared.After, afterAssets);
-        return Complete(before, prepared, beforeAssets, afterAssets);
+        return Complete(before, prepared, beforeAssets, afterAssets, queryLimits, expansionLimits);
     }
 
-    /// <summary>Finalizes a result whose after document its preparer already validated.</summary>
+    /// <summary>Finalizes a result whose after document its preparer already validated. A side it expands takes the
+    /// given profile, and a null member keeps the engine default.</summary>
     internal static MapPrefabEditResult Complete(MapDocument before, MapPrefabEditResult prepared, MapAssetClosure beforeAssets,
-        MapAssetClosure afterAssets)
+        MapAssetClosure afterAssets, MapQueryLimits? queryLimits = null, MapPrefabExpansionLimits? expansionLimits = null)
     {
         MapDocument after = prepared.After;
         Preflight(after, afterAssets);
@@ -53,9 +68,9 @@ public static class MapDocumentEditFinalizer
         // One shared expansion serves both sides only when they bind the same closure.
         bool shared = expansions?.Shared == true && string.Equals(beforeAssets.Hash, afterAssets.Hash, StringComparison.Ordinal);
         var sideA = new MapDocumentFinalizationSide(fa, beforeAssets, shared ? expansions!.Before ?? expansions.After : expansions?.Before,
-            baseline: ba);
+            baseline: ba, queryLimits: queryLimits, expansionLimits: expansionLimits);
         var sideB = new MapDocumentFinalizationSide(fb, afterAssets, shared ? expansions!.After ?? expansions.Before : expansions?.After,
-            shared ? () => sideA.ResourcesFor(before) : null, bb);
+            shared ? () => sideA.ResourcesFor(before) : null, bb, queryLimits, expansionLimits);
         var (rows, layers) = MapFoliageDependents.Describe(before, after, () => sideA.Capture(before), () => sideB.Capture(after), shared);
         var stamp = new MapDocumentFinalizationStamp(sideA, sideB, rows, layers);
         return new(after, writes, Channel(prepared.Effects, stamp)) { Stamp = stamp };
@@ -109,10 +124,16 @@ public static class MapDocumentEditFinalizer
 
     /// <summary>One expansion of a document whose context demand the preflight first admits, with its provenance
     /// recorded even when the document holds no foliage, since a foliage-only edit shares it with its other side.</summary>
-    internal static MapEffectiveResources Expand(MapDocument document, MapAssetClosure assets)
+    internal static MapEffectiveResources Expand(MapDocument document, MapAssetClosure assets) =>
+        Expand(document, assets, new MapQueryLimits(), new MapPrefabExpansionLimits());
+
+    /// <summary>The expansion of <see cref="Expand(MapDocument, MapAssetClosure)"/> under the caller's query and
+    /// prefab expansion profile.</summary>
+    internal static MapEffectiveResources Expand(MapDocument document, MapAssetClosure assets, MapQueryLimits queryLimits,
+        MapPrefabExpansionLimits expansionLimits)
     {
         Preflight(document, assets);
-        MapEffectiveResources resources = MapPrefabResolver.Expand(document, assets);
+        MapEffectiveResources resources = MapPrefabResolver.Expand(document, assets, expansionLimits, null, null, queryLimits);
         resources.SourceFingerprint ??= BaseFingerprint(document);
         return resources;
     }

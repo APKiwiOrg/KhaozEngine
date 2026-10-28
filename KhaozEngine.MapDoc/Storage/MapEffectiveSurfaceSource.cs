@@ -115,7 +115,7 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
         public IReadOnlyList<MapPatchKey> ReservedPatchKeys => Array.AsReadOnly(_reserved.ToArray());
         internal Acquisition(MapEffectiveSurfaceSource source, MapSurfaceScope scope)
         {
-            scope.Validate(); _source = source; _scope = scope; _budget = scope.SharedBudget?.Share() ?? new(scope.Limits.MaxPageReads);
+            scope.Validate(); _source = source; _scope = scope; _budget = scope.SharedBudget?.Share() ?? new(scope.Limits.MaxPageReads, source: scope.Limits);
         }
         public bool TryGetSurface(string surfaceId, out MapSurfaceRef? surface)
         {

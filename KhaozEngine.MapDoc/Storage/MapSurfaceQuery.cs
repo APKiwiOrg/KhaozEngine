@@ -17,7 +17,7 @@ internal static class MapSurfaceQuery
     {
         ArgumentNullException.ThrowIfNull(scope);
         scope.Validate();
-        var budget = sharedBudget ?? new MapPageBudget(scope.Limits.MaxPageReads);
+        var budget = sharedBudget ?? new MapPageBudget(scope.Limits.MaxPageReads, source: scope.Limits);
         try { return FindCore(source, index, scope, directory, page, payload, budget, null); }
         catch (MapSurfaceCapacityException error) { return Capacity(source, scope, budget) with { Capacity = error.Capacity, Diagnostic = error.Diagnostic }; }
         catch (Exception ex) when (ex is MapExactOverflowException or OverflowException)

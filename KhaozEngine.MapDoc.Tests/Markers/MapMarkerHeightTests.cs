@@ -152,7 +152,8 @@ public sealed class MapMarkerHeightTests
         var source = MapDocumentSurfaceSource.Capture(fixture.Document);
         string[] sha = fixture.Assets.Roots.Select(r => r.Sha256).ToArray();
 
-        var markers = MapMarkerResolution.Resolve(candidates, source, sha, out var supports);
+        var resolution = MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits());
+        var (markers, supports) = (resolution.Markers, resolution.Supports);
         Assert.Equal(MapEffectiveAnnotations.Markers(MarkerFixtures.Effective(fixture)).Select(m => (m.Position, m.HeightProvenance)),
             markers.Select(m => (m.Position, m.HeightProvenance)));
         // Each per-point scope holds the eight stacked floor and eight ceiling patches, so sixteen is the exact limit.

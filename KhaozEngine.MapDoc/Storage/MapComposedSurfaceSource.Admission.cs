@@ -62,14 +62,14 @@ internal sealed partial class MapComposedSurfaceSource
 
         void AdmitMetadata()
         {
-            if (DemandDiagnostics.Check(this, "MapComposedSurfaceSource.Admission.MaxPageMetadataChecks.1", "MaxPageMetadataChecks", _metadata, 1, _workLimit, _metadata >= _workLimit, CapacityDemandLifetime.Cumulative)) throw new MapSurfaceCapacityException();
+            if (DemandDiagnostics.Check(this, "MapComposedSurfaceSource.Admission.MaxPageMetadataChecks.1", "MaxPageMetadataChecks", _metadata, 1, _workLimit, _metadata >= _workLimit, CapacityDemandLifetime.Cumulative, allowanceSource: this)) throw new MapSurfaceCapacityException();
             MetadataInspecting?.Invoke();
             _metadata++;
         }
 
         void AdmitRange()
         {
-            if (DemandDiagnostics.Check(this, "MapComposedSurfaceSource.Admission.MaxPageRangeOperations.1", "MaxPageRangeOperations", _ranges, 1, _workLimit, _ranges >= _workLimit, CapacityDemandLifetime.Cumulative)) throw new MapSurfaceCapacityException();
+            if (DemandDiagnostics.Check(this, "MapComposedSurfaceSource.Admission.MaxPageRangeOperations.1", "MaxPageRangeOperations", _ranges, 1, _workLimit, _ranges >= _workLimit, CapacityDemandLifetime.Cumulative, allowanceSource: this)) throw new MapSurfaceCapacityException();
             RangeAdding?.Invoke();
             _ranges++;
         }

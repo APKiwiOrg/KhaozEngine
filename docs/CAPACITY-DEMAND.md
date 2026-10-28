@@ -182,7 +182,10 @@ The source contract below also lists helper expressions whose runtime limit name
 | `SupportCandidateBuffer` | `MapSupportQuery` |
 
 `MaxPageMetadataChecks` and `MaxPageRangeOperations` are representation ceilings scaled from
-`MaxPageReads` as `1 + 4 * 256 * MaxPageReads`, not profile fields. This table lists each site under the
+`MaxPageReads` as `1 + 4 * 256 * MaxPageReads`, not profile fields. A page budget taken from a query profile, and the
+composed surface ceiling, report each ceiling with two origins: the ceiling itself, and the caller's `MaxPageReads`
+at `Scale` 1/1024 with a consumed baseline of -1/1024 for the one free check, so the page-read origin refuses exactly
+where the ceiling does. A storage budget with no query profile reports only the ceiling. This table lists each site under the
 limit it compares directly. The derived allowances above also publish their origin names at those sites. The accessor pre-check before an accessor's role is known compares
 against the larger of `MaxVertices` and `MaxIndices`, a maximum rather than a minimum, so it reports that one field.
 

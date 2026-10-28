@@ -16,7 +16,8 @@ public static class MapNativeResolution
 {
     /// <summary>Resolves <paramref name="document"/> against <paramref name="assets"/>. Identity (1, 1) requires
     /// resolver-1 <paramref name="options"/> and <paramref name="legacySupportHeight"/>. Identity (1, 2) requires
-    /// resolver-2 options and ignores <paramref name="legacySupportHeight"/>. Throws
+    /// resolver-2 options, resolves under their query and expansion profile and ignores
+    /// <paramref name="legacySupportHeight"/>. Throws
     /// <see cref="MapDocumentException"/> for any other identity, a resolver version that does not match the
     /// identity, a missing legacy support height and every refusal of the chosen resolver.</summary>
     public static MapResolvedDocument Resolve(MapDocument document, MapAssetClosure assets, MapResolveOptions options,
@@ -36,8 +37,9 @@ public static class MapNativeResolution
 
     /// <summary>Resolves only the placements of <paramref name="document"/> named by <paramref name="placementIds"/>, in
     /// ordinal ID order, each exactly as <see cref="Resolve"/> resolves it, without the authored hash and without
-    /// resolving any other placement. Refuses as <see cref="Resolve"/> does for the identity, the options and the
-    /// legacy support height, and throws <see cref="MapDocumentException"/> for an ID the document does not hold.</summary>
+    /// resolving any other placement, under the resolver-2 profile of <paramref name="options"/>. Refuses as
+    /// <see cref="Resolve"/> does for the identity, the options and the legacy support height, and throws
+    /// <see cref="MapDocumentException"/> for an ID the document does not hold.</summary>
     internal static IReadOnlyList<MapResolvedPlacement> ResolvePlacements(MapDocument document, MapAssetClosure assets,
         MapResolveOptions options, IEnumerable<string> placementIds, Func<float, float, float>? legacySupportHeight = null)
     {
@@ -49,7 +51,7 @@ public static class MapNativeResolution
         var ids = new SortedSet<string>(placementIds, StringComparer.Ordinal);
         if (resolver == 2 && (document.Prefabs is not null || document.NativeResourceTransforms is not null))
         {
-            var effective = MapPrefabResolver.Expand(document, assets);
+            var effective = MapPrefabResolver.Expand(document, assets, options.ExpansionLimits, null, null, options.QueryLimits);
             return ids.Select(id => effective.Placements.FirstOrDefault(p => p.PlacementId == id)
                 ?? throw new MapDocumentException($"No placement with id '{id}'.")).ToArray();
         }
@@ -60,7 +62,7 @@ public static class MapNativeResolution
         foreach (string id in ids)
             selected.Add(byId.TryGetValue(id, out MapPlacement? placement)
                 ? placement : throw new MapDocumentException($"No placement with id '{id}'."));
-        if (resolver == 2) return MapResolverV2.ResolvePlacements(document, assets, selected);
+        if (resolver == 2) return MapResolverV2.ResolvePlacements(document, assets, selected, options.QueryLimits);
         if (legacySupportHeight is null)
             throw new MapDocumentException(
                 "Native resolver identity (1, 1) places unbound placements on the analytic terrain and requires a legacy support height.");

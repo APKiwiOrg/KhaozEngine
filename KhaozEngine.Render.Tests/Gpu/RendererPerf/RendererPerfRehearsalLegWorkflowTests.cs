@@ -36,7 +36,7 @@ public sealed class RendererPerfRehearsalLegWorkflowTests
         Assert.Equal(leg == "linux-vulkan" ? "vulkan-native" : "direct3d11-native", row["backend"]!.GetValue<string>());
         Assert.Equal(leg == "linux-vulkan" ? "llvmpipe" : "", row["vulkanDevice"]!.GetValue<string>());
         Assert.Equal(leg == "windows-d3d11" ? "warp" : "", row["d3dAdapter"]!.GetValue<string>());
-        Assert.Equal(preset == "rehearsal-full" ? 350 : 120, row["jobMinutes"]!.GetValue<int>());
+        Assert.Equal(preset == "rehearsal" ? 120 : 350, row["jobMinutes"]!.GetValue<int>());
     }
 
     [Theory]
@@ -58,11 +58,11 @@ public sealed class RendererPerfRehearsalLegWorkflowTests
         fixture.SaveManifest();
         Assert.NotEqual(0, fixture.Run("Select").Code);
         fixture.Manifest = original.DeepClone().AsObject();
-        fixture.Manifest["limits"]!["unitSeconds"] = preset == "rehearsal-full" ? 5400 : 19800;
+        fixture.Manifest["limits"]!["unitSeconds"] = preset == "rehearsal" ? 19800 : 5400;
         fixture.SaveManifest();
         Assert.NotEqual(0, fixture.Run("Select").Code);
         fixture.Manifest = original.DeepClone().AsObject();
-        fixture.Manifest["limits"]!["jobMinutes"] = preset == "rehearsal-full" ? 120 : 350;
+        fixture.Manifest["limits"]!["jobMinutes"] = preset == "rehearsal" ? 350 : 120;
         fixture.SaveManifest();
         Assert.NotEqual(0, fixture.Run("Select").Code);
     }

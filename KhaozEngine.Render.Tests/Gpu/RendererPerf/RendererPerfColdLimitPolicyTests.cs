@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json.Nodes;
 using Xunit;
@@ -9,25 +10,17 @@ public sealed class RendererPerfColdLimitPolicyTests
 {
     public static IEnumerable<object[]> Classes()
     {
-        foreach (string leg in new[] { "linux-vulkan", "windows-d3d11", "windows-vulkan" })
+        foreach (string preset in RendererPerfSchedules.Presets)
         {
-            if (leg != "windows-vulkan") yield return ["pilot", leg];
-            yield return ["full", leg];
-            if (leg == "windows-vulkan") continue;
-            foreach (string preset in new[] { "rehearsal", "rehearsal-full", "rehearsal-controls" })
-                yield return [preset, leg];
+            var schedule = RendererPerfSchedules.For(preset);
+            foreach (string leg in schedule.Legs)
+                if (schedule.ExecutionClass == RendererPerfExecutionClass.Performance || leg != "windows-vulkan")
+                    yield return [preset, leg];
         }
     }
 
-    // Classes is also the v1 selector fixture inventory. C# admission is extended before that selector.
-    public static IEnumerable<object[]> AdmittedClasses()
-    {
-        foreach (var entry in Classes()) yield return entry;
-        yield return ["water-optics-v2", "linux-vulkan"];
-        yield return ["water-optics-v2", "windows-d3d11"];
-        yield return ["rehearsal-water-optics-v2", "linux-vulkan"];
-        yield return ["rehearsal-water-optics-v2-full", "windows-d3d11"];
-    }
+    public static IEnumerable<object[]> SoftwareClasses() => Classes().Where(entry =>
+        RendererPerfSchedules.For((string)entry[0]).ExecutionClass == RendererPerfExecutionClass.Rehearsal);
 
     internal static JsonObject ManifestJson(string preset, string leg) => preset switch
     {
@@ -39,7 +32,7 @@ public sealed class RendererPerfColdLimitPolicyTests
     };
 
     [Theory]
-    [MemberData(nameof(AdmittedClasses))]
+    [MemberData(nameof(Classes))]
     public void Every_preset_requires_the_same_bounded_cold_limit(string preset, string leg)
     {
         JsonObject json = ManifestJson(preset, leg);

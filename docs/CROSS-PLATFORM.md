@@ -280,6 +280,14 @@ authorization and final evidence checks, applies the per-leg paid caps and clean
 model in the [renderer reference](RENDERER-PERFORMANCE.md#evidence-and-authorization), and retains
 the existing pinned PowerShell bootstrap, GRID setup, NVIDIA adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
 
+The paid presets are `pilot`, `full` and `water-optics-v2`. The v2 campaign uses the full T4 runner
+caps: `gpu-t4-linux` for `linux-vulkan` with 35 job minutes, or `gpu-t4-windows` for
+`windows-d3d11` with 50. Both require the 1,095 MHz clock and emit the `performance` execution class.
+Windows Vulkan refuses v2 admission. Before any paid runner is allocated, the trusted `legs` job
+requires every paid manifest's `approval.campaignMaximumUsd` to cover `budget.maximumCostUsd` without
+exceeding its campaign envelope. The [renderer reference](RENDERER-PERFORMANCE.md#water-optics-campaign)
+owns the v2 USD 7.382 maximum and exact schedules. The v1 `pilot` and `full` maximum stays USD 22.
+
 After the GPU and driver steps, paid renderer jobs invoke the trusted graphics-clock setup before
 building or measuring. Linux enables persistence and uses `sudo nvidia-smi`. Windows uses the elevated
 runner shell after GRID installation. Setup retains the full command output, the driver-returned
@@ -383,19 +391,25 @@ profilers, consumer fit, optimization and release remain separate decisions.
 
 ### Free software renderer rehearsal
 
-The `rehearsal`, `rehearsal-full` and `rehearsal-controls` renderer presets use the same `gpu-hosted-bench.yml` and one
-fixed `Measure_authorized_unit` fact. The [renderer reference](RENDERER-PERFORMANCE.md#software-correctness-rehearsal)
-owns their exact pilot, full and all-controls schedules, separate limits, non-promotion reason, diagnostic drift and
-evidence boundary. The trusted selector admits only these standard hosted software mappings for
-every schedule:
+The v1 `rehearsal`, `rehearsal-full` and `rehearsal-controls` presets and both water optics rehearsals
+use the same `gpu-hosted-bench.yml` and one fixed `Measure_authorized_unit` fact. The
+[renderer reference](RENDERER-PERFORMANCE.md#software-correctness-rehearsal) owns their exact schedules,
+separate limits, non-promotion reason, diagnostic drift and evidence boundary. The trusted selector
+admits only these standard hosted software mappings for each admitted schedule and leg:
 
 | Leg | Pinned runner image family | Backend selector | Adapter policy | Device selection |
 | --- | --- | --- | --- | --- |
 | `linux-vulkan` | `ubuntu-24.04` | `vulkan-native` | `mesa-lavapipe-software` | `KE_VULKAN_DEVICE=llvmpipe` |
 | `windows-d3d11` | `windows-2025-vs2026` | `direct3d11-native` | `microsoft-warp-software` | `KE_D3D11_ADAPTER=warp` |
 
-`windows-vulkan` has no software rehearsal class. `pilot` and `full` remain paid hardware performance
-presets with their existing T4 runner labels, NVIDIA ICD mapping and strict promotion verdict. An
+The v1 rehearsals admit both mappings. `rehearsal-water-optics-v2` admits only Linux lavapipe, and
+`rehearsal-water-optics-v2-full` admits only Windows D3D11 WARP. Both v2 rehearsals emit `rehearsal`,
+require a null graphics clock, and retain the full rehearsal limits of 19,800 unit seconds and 350
+job minutes. Their budgets and campaign maximums remain exactly zero. The
+[water optics contract](RENDERER-PERFORMANCE.md#water-optics-campaign) owns their separate frame counts.
+
+`windows-vulkan` has no software rehearsal class. Paid presets retain their T4 runner labels,
+NVIDIA ICD mapping and strict promotion verdict. An
 image-family pin still permits image revisions, so runtime inheritance must be established separately.
 
 The owner must approve the exact rehearsal workload, leg, schedule, limits and zero-USD budget before

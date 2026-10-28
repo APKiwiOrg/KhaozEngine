@@ -49,8 +49,8 @@ $hash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLower
 Require ($hash -ceq $env:RENDERER_PERF_MANIFEST_SHA256) 'Manifest byte hash differs from the dispatch'
 $manifestText = Get-Content -LiteralPath $manifestPath -Raw
 $manifest = $manifestText | ConvertFrom-Json -AsHashtable -Depth 32
-Require ($manifest.preset -cin @('pilot', 'full', 'rehearsal', 'rehearsal-full', 'rehearsal-controls')) 'Unknown renderer preset'
-$rehearsal = $manifest.preset -cin @('rehearsal', 'rehearsal-full', 'rehearsal-controls')
+Require ($manifest.preset -cin @('pilot', 'full', 'rehearsal', 'rehearsal-full', 'rehearsal-controls', 'water-optics-v2', 'rehearsal-water-optics-v2', 'rehearsal-water-optics-v2-full')) 'Unknown renderer preset'
+$rehearsal = $manifest.preset -cin @('rehearsal', 'rehearsal-full', 'rehearsal-controls', 'rehearsal-water-optics-v2', 'rehearsal-water-optics-v2-full')
 $rehearsalPolicy = if ($rehearsal) {
     switch -CaseSensitive ("$($manifest.preset)/$($env:LEGS)") {
         'rehearsal/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 5400; minutes = 120 } }
@@ -59,6 +59,8 @@ $rehearsalPolicy = if ($rehearsal) {
         'rehearsal-full/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 19800; minutes = 350 } }
         'rehearsal-controls/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 5400; minutes = 120 } }
         'rehearsal-controls/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 5400; minutes = 120 } }
+        'rehearsal-water-optics-v2/linux-vulkan' { @{ runner = 'ubuntu-24.04'; adapter = 'mesa-lavapipe-software'; unitSeconds = 19800; minutes = 350 } }
+        'rehearsal-water-optics-v2-full/windows-d3d11' { @{ runner = 'windows-2025-vs2026'; adapter = 'microsoft-warp-software'; unitSeconds = 19800; minutes = 350 } }
         default { throw 'No software rehearsal class admits this preset and leg' }
     }
 } else { $null }
@@ -85,6 +87,9 @@ if ($rehearsal) {
     Require ($lockedClock -is [long] -and $lockedClock -eq 1095) 'Paid T4 graphics clock must be an explicit 1095 MHz integer'
 }
 Require ($manifest.preset -cne 'pilot' -or $env:LEGS -cne 'windows-vulkan') 'Windows Vulkan has no initial pilot'
+Require ($manifest.preset -cne 'water-optics-v2' -or $env:LEGS -cne 'windows-vulkan') 'Windows Vulkan is not an approved leg for the water-optics-v2 campaign.'
+$campaignMaximumUsd = [decimal]22
+$waterOpticsV2CampaignMaximumUsd = [decimal]7.382
 # Windows full allows for the slow GRID setup and clock query seen in run 40599810511.
 $minutes = if ($rehearsal) { $rehearsalPolicy.minutes } elseif ($manifest.preset -ceq 'pilot') { if ($env:LEGS -ceq 'linux-vulkan') { 12 } else { 20 } } elseif ($env:LEGS -ceq 'linux-vulkan') { 35 } else { 50 }
 $billedMinutes = if ($rehearsal) { $minutes } else { $minutes + 3 } # Rounded-up cleanup overrun in run 40435928569.
@@ -94,6 +99,9 @@ if ($rehearsal) {
     Require ($manifest.limits.unitSeconds -eq $rehearsalPolicy.unitSeconds -and $manifest.limits.frameMilliseconds -eq 60000) 'Rehearsal unit or frame limits differ'
     Require ($manifest.budget.ratePerMinute -eq 0 -and $manifest.budget.maximumCostUsd -eq 0 -and $manifest.budget.currency -ceq 'USD' -and $manifest.approval.campaignMaximumUsd -eq 0) 'Rehearsal requires zero USD cost and campaign budget'
     Require (![string]::IsNullOrWhiteSpace($manifest.approval.reference) -and ![string]::IsNullOrWhiteSpace($manifest.approval.purpose) -and ![string]::IsNullOrWhiteSpace($manifest.approval.campaignReference)) 'Rehearsal requires exact owner approval references'
+} else {
+    $campaignMaximum = if ($manifest.preset -ceq 'water-optics-v2') { $waterOpticsV2CampaignMaximumUsd } else { $campaignMaximumUsd }
+    Require ([decimal]$manifest.approval.campaignMaximumUsd -ge [decimal]$manifest.budget.maximumCostUsd -and [decimal]$manifest.approval.campaignMaximumUsd -le $campaignMaximum) 'Paid campaign cap must cover the unit budget and stay within the preset maximum'
 }
 Require ($Mode -cne 'Verify' -or !$rehearsal) 'Paid Verify refuses rehearsal evidence'
 Require ($Mode -cne 'VerifyRehearsal' -or $rehearsal) 'Rehearsal Verify refuses performance evidence'

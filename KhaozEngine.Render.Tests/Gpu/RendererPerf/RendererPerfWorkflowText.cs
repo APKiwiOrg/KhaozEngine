@@ -9,6 +9,12 @@ internal sealed class RendererPerfWorkflowText(string text)
 
     internal string Job(string name) => _text.Split("  " + name + ":\n", 2)[1];
 
+    internal static string Selector([CallerFilePath] string source = "")
+    {
+        string repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../.."));
+        return File.ReadAllText(Path.Combine(repo, "scripts/renderer-perf-workflow.ps1")).ReplaceLineEndings("\n");
+    }
+
     internal static RendererPerfWorkflowText Read([CallerFilePath] string source = "")
     {
         string repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../.."));

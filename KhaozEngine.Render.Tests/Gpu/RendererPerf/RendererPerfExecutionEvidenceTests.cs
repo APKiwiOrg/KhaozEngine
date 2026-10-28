@@ -50,7 +50,7 @@ public sealed class RendererPerfExecutionEvidenceTests
                     new("batch.completionDrain", null, 5, 7), new("batch.harvest", null, 7, 10),
                     ImmutableDictionary<string, RendererPerfMetric>.Empty));
         }
-        Add("conditioning:S3/TotalOnly/0", conditioning.Length);
+        Add(report.Manifest.Schedule.ConditioningOperation, conditioning.Length);
         foreach (var block in report.Blocks)
             Add($"{block.Block.SceneId}/{block.Block.Layout}/{block.Block.Iteration}", block.Warmup.Length + block.Measured.Length);
         foreach (var control in report.Controls)

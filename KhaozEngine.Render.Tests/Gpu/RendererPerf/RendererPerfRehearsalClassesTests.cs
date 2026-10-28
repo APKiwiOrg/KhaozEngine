@@ -28,23 +28,12 @@ public sealed class RendererPerfRehearsalClassesTests
         return json;
     }
 
-    public static IEnumerable<object[]> Classes()
-    {
-        foreach (string preset in new[] { "rehearsal", "rehearsal-full" })
-            foreach (string leg in new[] { "linux-vulkan", "windows-d3d11" })
-                yield return [preset, leg];
-    }
-
-    // Existing selector and execution fixtures share Classes. V2 policy coverage has its own inventory.
-    public static IEnumerable<object[]> AdmittedClasses()
-    {
-        foreach (var entry in Classes()) yield return entry;
-        yield return ["rehearsal-water-optics-v2", "linux-vulkan"];
-        yield return ["rehearsal-water-optics-v2-full", "windows-d3d11"];
-    }
+    // Controls-only fixtures are separate. Scene rehearsals share the complete admitted inventory.
+    public static IEnumerable<object[]> Classes() => RendererPerfColdLimitPolicyTests.SoftwareClasses()
+        .Where(entry => RendererPerfSchedules.For((string)entry[0]).Iterations > 0);
 
     [Theory]
-    [MemberData(nameof(AdmittedClasses))]
+    [MemberData(nameof(Classes))]
     public void Each_software_class_keeps_its_exact_schedule_and_limits(string preset, string leg)
     {
         var manifest = RendererPerfRehearsalManifestTests.Parse(ManifestJson(preset, leg));
@@ -73,7 +62,7 @@ public sealed class RendererPerfRehearsalClassesTests
     }
 
     [Theory]
-    [MemberData(nameof(AdmittedClasses))]
+    [MemberData(nameof(Classes))]
     public void Cross_leg_schedule_and_performance_values_are_refused(string preset, string leg)
     {
         JsonObject original = ManifestJson(preset, leg);

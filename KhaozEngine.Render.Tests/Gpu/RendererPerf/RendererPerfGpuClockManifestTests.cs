@@ -53,12 +53,10 @@ public sealed class RendererPerfGpuClockManifestTests
     }
 
     [Theory]
-    [InlineData("rehearsal")]
-    [InlineData("rehearsal-full")]
-    [InlineData("rehearsal-controls")]
-    public void Software_classes_refuse_a_hardware_clock(string preset)
+    [MemberData(nameof(RendererPerfColdLimitPolicyTests.SoftwareClasses), MemberType = typeof(RendererPerfColdLimitPolicyTests))]
+    public void Software_classes_refuse_a_hardware_clock(string preset, string leg)
     {
-        JsonObject json = RendererPerfColdLimitPolicyTests.ManifestJson(preset, "linux-vulkan");
+        JsonObject json = RendererPerfColdLimitPolicyTests.ManifestJson(preset, leg);
         json["execution"]!["lockedGraphicsClockMHz"] = 1095;
         Assert.Equal("Preset", Assert.Throws<RendererPerfProtocolException>(() => RendererPerfRehearsalManifestTests.Parse(json)).Code);
     }

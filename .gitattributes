@@ -21,6 +21,7 @@ KhaozEngine.Gpu/GpuScaledCopy.cs text eol=lf
 # them, take the same pin. Otherwise a Windows checkout compares CRLF test text against LF shipped text.
 KhaozEngine.Render.Tests/Gpu/TemporalVisibilityFrozenD.cs text eol=lf
 KhaozEngine.Render.Tests/Gpu/TemporalVisibilityFrozenDMask.cs text eol=lf
+KhaozEngine.Render.Tests/Gpu/TemporalVisibilityFrozenDLaterChanges.cs text eol=lf
 KhaozEngine.Render.Tests/Gpu/TemporalLockReleaseProbe.cs text eol=lf
 KhaozEngine.Render.Tests/Render3D/PointShadowFilterShaderTests.cs text eol=lf
 # Renderer approvals bind the same exact UTF-8 bytes on every hosted checkout.

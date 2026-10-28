@@ -11,6 +11,10 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Check out the water column and cascade selection shader sources with LF line endings on every host. A
   Windows checkout compiled their multiline GLSL with CRLF, which changed the bytes of every lit and water
   program there and the renderer performance shader identity.
+- Open `device.water.prepare` once per viewport-prepared frame when water column light is on. The column
+  colour source now prepares inside that one root, and `PrepareFrame()` frames prepare it at render with no
+  device phase, so an observer that refuses a repeated CPU phase no longer fails those frames
+  (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1633).
 
 ## 21.18.0
 

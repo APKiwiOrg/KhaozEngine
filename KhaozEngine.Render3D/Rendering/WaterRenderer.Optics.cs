@@ -154,6 +154,14 @@ internal sealed partial class WaterRenderer
     internal void PrepareOpticsFrame(RenderResources targets, in FramePrepare frame, ReadOnlySpan<WaterPlane> absolute)
     {
         using var device = Profiling?.Cpu("device.water.prepare") ?? default;
+        PrepareOpticsFrameCore(targets, frame, absolute);
+    }
+
+    /// <summary>The optics body with no phase of its own. <see cref="Scene3D"/> calls it inside the one
+    /// <c>device.water.prepare</c> root it opens around the column colour source, which the sets created here bind.
+    /// A CPU phase id opens at most once per frame, so the body cannot reopen it.</summary>
+    internal void PrepareOpticsFrameCore(RenderResources targets, in FramePrepare frame, ReadOnlySpan<WaterPlane> absolute)
+    {
         _opticsPrepared = false;
         _preparedBound = AnyBound(frame.WaterPlanes);
         RetryWaterOutputReplacement();

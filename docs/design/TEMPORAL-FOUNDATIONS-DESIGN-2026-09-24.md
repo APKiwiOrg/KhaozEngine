@@ -4,7 +4,7 @@ Status: implemented for staged 20.16.0, with the temporal resolve.
 Date: 2026-09-24.
 Issue: [#1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149).
 Consumer: Grimhollow, through its adoption of the temporal resolve
-([`TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md`](TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md)).
+([`TEMPORAL-RESOLVE.md`](TEMPORAL-RESOLVE.md)).
 
 ## Outcome
 
@@ -116,7 +116,7 @@ The frame index advances once per `Begin`. A second render in the same frame, su
 its own matrices for its viewport with the same frame index and jitter, and leaves the history, the previous view and
 the diagnostics untouched (amendment 4 below). A frame that runs the temporal resolve is the exception on jitter: its
 later renders are unjittered
-([resolve design amendment 14](TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md#plan-amendments)).
+([resolve design amendment 14](TEMPORAL-RESOLVE.md#plan-amendments)).
 
 A new internal `TemporalHistory` owns every cross-frame target: the resolve's colour history now, and motion blur or
 reflection history later. It lives outside `RenderResources`, so the rebuilds that already happen there, a

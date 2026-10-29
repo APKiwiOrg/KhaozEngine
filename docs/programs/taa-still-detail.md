@@ -9,7 +9,7 @@ steps, smear, lag or sparkle. The owner bar is "No flicker you notice, especiall
 ## Links
 
 - Roadmap: https://github.com/APKiwiOrg/KhaozEngine/issues/1620
-- Docs changed: [temporal resolve and upscaling](../design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md),
+- Docs changed: [temporal resolve](../design/TEMPORAL-RESOLVE.md),
   [temporal foundations](../design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md),
   [Render3D](../../KhaozEngine.Render3D/README.md), [backend verification](../CROSS-PLATFORM.md).
 - Ray-tracing direction: https://github.com/APKiwiOrg/KhaozEngine/issues/1558
@@ -18,67 +18,79 @@ steps, smear, lag or sparkle. The owner bar is "No flicker you notice, especiall
 
 | Milestone | Status | Issue | Owner gate |
 | --- | --- | --- | --- |
-| M0 Baseline and harness, failing facts, private-package probe and DXBC regeneration route | open | https://github.com/APKiwiOrg/KhaozEngine/issues/1620 | none |
-| M1 Shimmer record, wider luma clip and longer still history, classifier feasibility first | open | https://github.com/APKiwiOrg/KhaozEngine/issues/1620 | clip review before landing |
-| M2 Visibility release gate with static shadow detail and existing design D bounds | open | https://github.com/APKiwiOrg/KhaozEngine/issues/1620 | clip review before landing |
-| M3 Shadow following under TAA and moving-sun comparison | open | https://github.com/APKiwiOrg/KhaozEngine/issues/1620 | clip review before landing |
+| M0 Baseline, settled harness, failing facts and DXBC regeneration route | done | https://github.com/APKiwiOrg/KhaozEngine/issues/1620 | none |
+| M1 Shimmer record, wider luma clip, longer still history and still-only chroma floor | done | https://github.com/APKiwiOrg/KhaozEngine/issues/1620 | accepted |
+| M2 Quality tile-groove class and visibility release gate with static shadow detail | open | https://github.com/APKiwiOrg/KhaozEngine/issues/1620 | clip review before landing |
+| M3 Shadow following under TAA, re-justified against settled moving-sun captures | open | https://github.com/APKiwiOrg/KhaozEngine/issues/1620 | clip review before landing |
 | M4 Cross-backend verification, fixtures, hashes, goldens, cost and consumer adoption | open | https://github.com/APKiwiOrg/KhaozEngine/issues/1620 | clips, cost, release approval |
 
 ## Decisions in force
 
-- TSD-D1: Owner ruling, 2026-10-28. TAA is the balanced baseline. Another anti-aliasing mode is
-  never a workaround. Judge every result with TAA.
-- TSD-D2: Owner ruling, 2026-10-28. Distinguish jitter shimmer from real change through reusable
-  temporal statistics, rather than individual content fixes. Prefer temporal stability over crispness.
-- TSD-D3: Owner ruling, 2026-10-28. Shadow stepping is in scope. Under TAA, shadows follow the sun
-  every frame. Cross-fade shadow steps only if per-frame wobble requires the fallback.
-- TSD-D4: Owner ruling, 2026-10-28. Keep temporal statistics extensible for a future denoiser and
-  keep shading and visibility source-agnostic. Isolate shadow-map behavior in the raster path that
-  remains the ray-tracing fallback. Ray and path tracing are later work.
-- TSD-D5: Owner ruling, 2026-10-28. Build shared engine foundations properly. The owner reviews
-  baseline and candidate clips side by side before any engine release.
-- TSD-D6: Assert the new GPU facts at Native and Quality, report Balanced, and preserve every
-  existing temporal fact, including design D shadow bounds except TSD-D9, ghosting, trails, cuts, disocclusion,
-  convergence and byte identity with TAA off.
-- TSD-D7: M1 starts with the classifier feasibility gate. A creeping shadow over a shimmering
-  receiver must release as promptly as over a plain receiver. Keeping still detail must not hide
-  real lighting change.
-- TSD-D8: A shallow coloured step with nearly equal nonzero weighted Cg is the engine eave
-  reproduction. Independently rounded binary16 RGB history can exceed a nearly degenerate chroma
-  interval and make the radial clip move already valid luma. A broader step lock must not hide it.
-- TSD-D9: Owner ruling, 2026-10-29. Adopt the precision-safe chroma floor at four binary16 steps,
-  only where the shimmer score's `motionPixels < ShimmerStillPixels` test identifies a still pixel.
-  Moving pixels retain the existing clip. Moving shadows over still receivers still take the floor.
-  Accept only Native S 8 px advancing textured tail / 1 px tail, Native S 8 px retreating absolute
-  textured tail, and Native MS 2 leading textured rim error at their measured costs. The resolve design
-  amendment owns the exact parameters. Backend-specific costs must stay within 10 percent of original
-  design D bounds. Every other bound stays fixed. M1 remains held for the owner look gate.
-- TSD-D10: Controller ruling, 2026-10-29. The random-frame visibility resolve A/B compares against D
-  with the approved still-pixel precision floor and every other later change undone. Still receivers
-  otherwise reproduce the precision flash the floor removes. The pure frozen D oracle stays exact,
-  including all source and compiled pins. No comparison bound changes.
+- TSD-D1: TAA is the balanced baseline. Judge every result with TAA. Another anti-aliasing mode is
+  never a workaround.
+- TSD-D2: Distinguish jitter shimmer from real change through reusable temporal statistics rather
+  than content-specific fixes. Prefer temporal stability over crispness.
+- TSD-D3: Shadow stepping remains in scope, but M3 must first establish the remaining defect against
+  settled moving-sun series. Per-frame following is the intended response. Cross-fade shadow steps
+  only if measured per-frame wobble requires the fallback.
+- TSD-D4: Keep temporal statistics extensible for a future denoiser, shading and visibility
+  source-agnostic, and shadow-map behavior in the raster fallback. Ray and path tracing are later work.
+- TSD-D5: The owner reviews baseline and candidate clips side by side before release.
+- TSD-D6: New GPU facts assert Native and Quality and report Balanced. Preserve ghosting, trails,
+  cuts, disocclusion, convergence, byte identity with TAA off and every design D bound except TSD-D9.
+- TSD-D7: M2's visibility gate must release a creeping shadow over a shimmering receiver as promptly
+  as over a plain receiver. Retaining still detail must not hide real lighting change.
+- TSD-D8: The eave reproduction is a shallow coloured step with nearly equal nonzero weighted Cg.
+  Binary16 RGB rounding can exceed a narrow chroma interval and radial clipping then displaces valid
+  luma. A broader ridge lock would hide the precision defect. The resolve doc owns the mechanism.
+- TSD-D9: The accepted chroma floor is four binary16 steps, gated only by
+  `motionPixels < ShimmerStillPixels`. Moving pixels keep their original coupled clip. Moving shadows
+  on still receivers take the floor. Only three Native comparisons have approved relaxed parameters,
+  fixed at their per-backend measured costs and below 10% above original design D maxima. The resolve
+  doc owns their exact parameters and allowances. All other bounds and frozen D pins stay fixed.
 
-- TSD-D11: Controller ruling, 2026-10-29. Recalibrate only llvmpipe's drift and swing differing-share
-  limits for the precision floor, using Task 7's measured worst share plus 25%, rounded upward to
-  0.01 percentage point. The limits are 1.02% drift and 0.51% swing. Worst-step limits stay 9100 and
-  500. Existing state and every other backend's record exactness remain fixed. This is a software
-  arithmetic calibration, separate from design D and owner quality bounds.
+  | Backend | S 8 advancing textured tail | S 8 retreating absolute textured tail | MS 2 leading textured rim error |
+  | --- | ---: | ---: | ---: |
+  | Metal | 0.0048147733644628068 | 0.0075811204355064089 | 0.0033272893526233162 |
+  | WARP | 0.0048029692039415813 | 0.0075851271194769688 | 0.0033009816161715068 |
+  | lavapipe | 0.0047991955092875314 | 0.007607862248485424 | 0.0032617354307037131 |
+
+  These are final accepted-M1 measurements, not replacement maxima. All three final rim errors are
+  below their original maxima. The earlier accepted Metal and WARP rim allowances remain fixed.
+- TSD-D10: The random-frame visibility A/B compares production with D carrying the same approved
+  still-pixel floor, with every other later change undone and D's shading-release extent retained.
+  Floorless D reproduces the precision flash on a still receiver. The separate pure D oracle and all
+  26 source and compiled facts stay exact. No comparison bound changes.
+- TSD-D11: Only llvmpipe's drift and swing differing-share limits are calibrated for its arithmetic
+  ordering. Measured worst share plus 25%, rounded upward to 0.01 percentage point, gives 1.02% drift
+  and 0.51% swing. Worst-step limits remain 9100 and 500. Confidence, lock, mark, R8 and depth stay
+  exact everywhere. Drift and swing stay exact on Metal, WARP and hardware Direct3D 11 and Vulkan.
+- TSD-D12: Offline captures call `TileWorldView.SettleForCapture` before temporal pre-roll. A dirty
+  region flush alone leaves asynchronous prop and HLOD arrivals to alter TAA history. The apparent
+  church regression and F2 whole-frame event were capture artefacts. Settled repeats are byte exact.
+  Judge moving-sun changes against event-free series and the same FXAA control. Exclude a whole-frame
+  event above 100,000 luma pops and the following seven pairs. No such event remains in the settled
+  series, so all 119 frame pairs remain.
+- TSD-D13: Owner acceptance, 2026-10-29. M1 passed the combined look gate. Its remaining Quality
+  tile-groove and far-outline pulses join M2 as the next milestone. Native roof detail meets the
+  accepted target. Quality meets the large-pulse target but still misses the lower threshold target.
+  The floor adds no history target. The shimmer record costs 8 bytes per display pixel.
 
 ## Open questions and owner gates
 
-- Prove the unchanged private-package probe reproduces the baseline and establish the DXBC fixture
-  regeneration route before changing resolve code.
-- The owner reviews still-sun and moving-sun baseline and candidate clips at Native and Quality,
-  at the owner's window size, before M1 to M3 land.
-- M4 requires Metal, D3D11, Vulkan, WARP and lavapipe verification, CI fixture and golden updates,
-  resolve and shadow GPU time on Metal and hosted Windows, and the memory delta alongside the clips.
-- The owner decides whether per-frame shadow wobble needs the cross-fade fallback and explicitly
-  approves the engine release after the clip and cost review.
-- F1: on the unchanged resolve a locked thin feature lags a slow light ramp, because the lock's hold
-  keeps its old luma out of the clip, which matters for moving sun shadows. Candidate fix, decided
-  after the shimmer record lands: release the hold where the shimmer record shows one-signed drift.
+- M2 must characterize the remaining Quality tile-groove and far-outline pulses and prove its
+  visibility release gate against static shadow detail, with all unchanged design D bounds.
+- Re-justify M3 against the settled moving-sun baseline before choosing a following change. The
+  accepted M1 improves whole-frame counts while roof counts remain slightly above the baseline.
+- M4 requires Metal, D3D11, Vulkan, WARP and lavapipe verification and cost alongside the clips.
+  Wall-clock upper bounds include the motion target, opaque copy and display post chain. They do not
+  isolate the causal cost of M1 or establish GPU timestamp cost. Missing hosted cost legs stay unmeasured.
+- The owner decides whether measured per-frame shadow wobble needs cross-fade and starts any release.
+- F1 remains a lead for M2. A locked thin feature can lag a slow light ramp because its hold keeps old
+  luma outside the clip. Validate one-signed-drift release against the settled harness before design.
 
 ## Next step
 
-Finish the precision-safe chroma floor verification across Metal, Direct3D 11 and Vulkan, including
-compiled fixtures and temporal goldens. The owner reviews the candidate clips before M1 lands.
+Characterize the Quality tile-groove class and design M2's visibility release gate, retaining static
+shadow detail and the fixed design D bounds. Re-justify M3 against settled moving-sun captures before
+changing shadow following. M1 integration and any release remain with the controller and owner.

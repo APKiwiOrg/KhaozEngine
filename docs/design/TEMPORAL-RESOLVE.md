@@ -1,8 +1,7 @@
 # Temporal resolve and upscaling
 
-Status: implemented with the temporal foundations in 20.16.0. Amendment 35 stages the key-shadow visibility
-contract in 21.11.0. Release and consumer adoption remain separate gates.
-Date: 2026-09-24.
+Status: implemented, including key-shadow visibility release and still-detail stabilization.
+Release and consumer adoption remain separate gates.
 Issue: [#1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149).
 Builds on: [`TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md`](TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md), the shared
 temporal foundations, approved.
@@ -102,7 +101,8 @@ jitter. Outputs: the display-resolution colour and the new history. Missing visi
    (amendment 26).
 5. **Neighbourhood clipping.** Convert to YCoCg and build a variance box, mean plus or minus gamma times the standard
    deviation, over the 3x3 internal neighbourhood. Clip the history towards the box centre, not a clamp to its
-   corners, which keeps colour. Gamma widens where the pixel's motion is small and tightens as it grows, so a still or
+   corners, which keeps colour. The shimmer record widens the final luma box and the still-pixel chroma
+   precision floor prevents channel-rounding noise from moving valid luma, as described below. Gamma widens where the pixel's motion is small and tightens as it grows, so a still or
    slowly moving view keeps more history. That is the stability-first choice. Beside a fast narrow moving feature,
    the feature's share of a pixel's own history takes its current colour, save the share a held lock keeps
    (amendment 23).
@@ -124,16 +124,120 @@ jitter. Outputs: the display-resolution colour and the new history. Missing visi
 8. **Accumulation.** Blend the clipped history and the reconstructed current sample in a luma-weighted space, dividing
    by one plus luma before and restoring after, so a bright firefly cannot ghost. The current weight follows the
    accumulated sample count stored as history confidence, from one on a reset down to a floor of about one in
-   sixteen, raised by the reconstruction weight of step 4, the reactive estimate and disocclusion, and reset where
+   sixteen, or one in 64 where the still-pixel shimmer score allows the longer history. It is raised by the
+   reconstruction weight of step 4, the reactive estimate and disocclusion, and reset where
    the independent colour-based shading rule detects a change (amendments 33 and 34). Key-shadow visibility release
    alone does not reset that weight or the display reconstruction share (amendment 35).
 
-History is a display-resolution colour target and a confidence and stability target, double-buffered in the
-foundations' `TemporalHistory`. Colour uses R11G11B10 float where all three backends can render and sample it, and
-RGBA16F otherwise. Amendment 2 records which. The previous frame's depth is an internal-resolution R32F copy kept by
-the same owner. Two internal-resolution R8 visibility histories follow that owner's read/write indices and
-target generation. A separate 16-byte buffer carries previous jitter and readiness without changing the 256-byte
-resolve uniform contract. Amendment 35 specifies the copy, invalidation and retirement rules.
+History is a display-resolution RGBA16F colour target and a display-resolution RGBA16F state target,
+both double-buffered in the foundations' `TemporalHistory`. State holds confidence, the thin-feature lock
+and motion mark, and the shimmer record's drift and swing. The previous frame's depth is an
+internal-resolution R32F copy kept by the same owner. Two internal-resolution R8 visibility histories
+follow that owner's read/write indices and target generation. A separate 16-byte buffer carries previous
+jitter and readiness without changing the 256-byte resolve uniform contract. Amendment 35 specifies the
+copy, invalidation and retirement rules.
+
+## Shimmer record
+
+The record distinguishes alternating jitter error from persistent lighting change. Before clipping and
+blending, `lumaChange` is the current reconstruction's weighted-YCoCg luma minus its reprojected history
+luma. Drift averages this signed difference and swing averages its absolute value. Both use an
+exponential rate of one over the jitter phase count, so the window spans about one jitter cycle at each
+preset. The count is 8 at Native and `ceil(8 * displayOverInternal^2)` below Native, capped at 128 and a
+ratio of 4. A still thin feature appears and disappears with jitter, giving swing with little drift.
+One-way lighting change makes the absolute drift approach swing.
+
+The prior record is bilinearly reprojected with the existing four state texels. Finite state is required.
+The record starts empty when history is unavailable, off screen, disoccluded or dropped by the
+colour-based shading release. Cuts, resizes and other history invalidations therefore cannot seed it
+from uninitialized storage. Drift and swing occupy blue and alpha of the existing state targets.
+Growing each state target from RG16F to RGBA16F costs exactly **8 bytes per display pixel** across the
+pair, or 28.125 MiB at 2560x1440. There is no additional attachment. The chroma floor adds no memory.
+
+The score is `clamp(1 - abs(drift) / max(swing, ShimmerFloor), 0, 1)`, evaluated after the record steps.
+It is zero unless swing reaches the floor, motion is below the still limit, reactive input is zero and
+this frame's absolute change is at most the configured number of swings. Where exported key-shadow
+visibility changes, either through the existing depth-qualified neighbourhood release or the centre
+texel comparison at the reprojected surface point, the score is also zero. The centre check reads only
+while the score is positive and the neighbourhood has not released. It has no depth qualification,
+because a miss only retains the luma record's score. A shadow crossing an already shimmering receiver
+must not be mistaken for jitter.
+
+| Constant | Value | Purpose |
+| --- | ---: | --- |
+| `ShimmerFloor` | 1/32 | Ignore small weighted-luma noise before classifying shimmer. |
+| `ShimmerStillPixels` | 0.25 display pixel | Keep moving pixels on the original response and clip. |
+| `ShimmerChangeBand` | 3 | Reject abrupt real changes larger than three swings. |
+| `VisibilityShimmerGate` | 0.1 | Suppress shimmer retention where key-shadow visibility changes. |
+| `ShimmerClipGain` | 0.35 | Extend each luma face by score times swing times this gain. |
+| `MaxStillAccumulation` | 63 | Allow approximately one-in-64 current weight at full score. |
+| `ChromaPrecisionFloorSteps` | 4 | Cover binary16 RGB rounding in nearly degenerate chroma intervals. |
+
+**Clip set and release set.** Shading release judges the original, unwidened variance box. Only the
+final clip uses luma bounds extended by `ShimmerClipGain * score * swing` on both sides. This keeps
+jitter-missed detail without letting the widened interval hide real shading change. Chroma receives
+the precision floor below, independently of the score. The accumulated-weight cap interpolates from
+the existing motion cap to 63 with the score. Zero score retains the original cap exactly, while full
+score lowers the current sample's sawtooth by roughly four times. Reactive content still reduces
+accumulation, and shading release still clears it. Lock classification and its release gates do not
+change. `SceneDebugView.Shimmer` overlays blue in proportion to the final score against the dimmed
+scene, under TAA only. Untinted pixels can still receive the chroma floor because it uses the still test.
+
+### Still-pixel chroma precision
+
+The final radial clip floors only its Co and Cg half-widths on still pixels. The still test is `motionPixels < ShimmerStillPixels`,
+using the same display-pixel motion as the shimmer score in `temporalAccumulatePixel`. Moving pixels
+retain the existing coupled clip to discard stale colour. A shadow moving over a still receiver does
+not move that receiver's pixel, so it still takes the floor. Binary16 RGB history can carry independent
+channel-rounding errors larger than a nearly degenerate weighted-chroma interval. A radial correction toward the
+neighbourhood centre then moves already valid luma by far more than the chroma error. A shallow
+coloured step with nearly equal nonzero Cg reproduces the eave failure without overlapping geometry.
+The ridge lock correctly stays quiet on this monotone step, so extending its lock would hide the
+precision defect and risk holding real lighting changes.
+
+Let `u` be binary16 binade spacing at the largest nonnegative RGB history component, with a
+`2^-24` subnormal minimum. Let `L` be Rec.709 history luma and `C` be weighted Co or Cg. Each
+chroma half-width is at least `ChromaPrecisionFloorSteps * u * (1 + abs(C)) / max(1 + L - u, 1e-4)`.
+`ChromaPrecisionFloorSteps` is 4. Each chroma row's absolute coefficients sum to one. The denominator
+accounts for the weighting change caused by RGB rounding. The luma box, shimmer band,
+history cap, release gates and hold interpolation remain. The floor adds scalar and vector arithmetic,
+with no texture fetch, texture allocation or history memory. Its frozen-D undo restores the exact
+original clip and removes its tuning declaration before comparing shipped-D source and compiled pins.
+
+The random-frame visibility resolve A/B fact uses a separate D oracle with this approved still-pixel
+floor. Its still receivers reproduce the floorless precision flash, so colour equality requires both
+sides to use the approved clip. This oracle undoes every other post-D change,
+preserves D's shading-release extent, and restores only the final clip plus its floor and still-gate
+constants. The pure frozen D oracle, source hashes and compiled counts remain unchanged.
+
+The owner accepted these three measured Native moving-shadow costs for the precision-safe chroma
+floor. Only the named comparison changes. Original design D limits remain on every other comparison.
+
+| Metal comparison | Original enforced maximum | Accepted parameter | Accepted maximum |
+| --- | ---: | ---: | ---: |
+| S 8 px advancing textured tail / 1 px tail | 1.5 times slow tail | multiplier 1.610798383033032 | 0.004814773364463 at slow tail 0.0029890602170812297 |
+| S 8 px retreating absolute textured tail | 0.007221576276167364 | baseline 0.007580620435507 | 0.007581120435507 |
+| MS 2 leading textured rim error | 0.00352495 | baseline 0.003235554347737 | 0.003559659782511 |
+
+The absolute-tail allowance remains `0.0000005`. The rim uses `(baseline + 0.0000005) * 1.1`,
+with reference, temporal-error and other fields unchanged. The advancing multiplier applies only to
+Native S 8 px advancing. Backend-specific values may rise only to that backend's measured cost and
+only within 10 percent of its original design D bound. Any other failing design D comparison or any
+increase above that ceiling requires a new owner ruling. The approved limits are fixed independently
+of later milestones.
+
+WARP and lavapipe use their own measured costs under the same ruling. Only these software parameters
+change. Lavapipe's Native MS 2 leading textured rim
+error `0.00352189149420995` stays below its original `0.00359095` maximum, so its baseline remains
+`0.003264`. All increases below are less than 10 percent of the corresponding original D maximum.
+
+| Software comparison | Original enforced maximum | Accepted parameter | Accepted maximum |
+| --- | ---: | ---: | ---: |
+| WARP S 8 px advancing textured tail / 1 px tail | 1.5 times slow tail | multiplier 1.605790596957714 | 0.004802969203942 at slow tail 0.0029910308436487004 |
+| WARP S 8 px retreating absolute textured tail | 0.007223297931709032 | baseline 0.007584627119477 | 0.007585127119477 |
+| WARP MS 2 leading textured rim error | 0.00350955 | baseline 0.003238986111211 | 0.003563434722332 |
+| lavapipe S 8 px advancing textured tail / 1 px tail | 1.5 times slow tail | multiplier 1.570065765107464 | 0.004799195509288 at slow tail 0.0030566843860575796 |
+| lavapipe S 8 px retreating absolute textured tail | 0.007246004857927269 | baseline 0.007607362248486 | 0.007607862248486 |
 
 ## 4. Sharpening
 
@@ -158,7 +262,7 @@ unchanged.
   `Post.Temporal.MipBiasOffset`, beside the foundations' cut thresholds.
 - `Scene3D.LastTemporalDiagnostics` gains the internal and display sizes, the preset, and per-frame counts of
   disoccluded, reactive and clipped pixels, sampled on a coarse grid so reading them costs nothing measurable.
-- `Scene3D.DebugView` gains `History`, `Disocclusion` and `Reactive`.
+- `Scene3D.DebugView` includes `History`, `Disocclusion`, `Reactive` and `Shimmer`.
 
 ## 7. Testing and acceptance
 
@@ -1273,7 +1377,8 @@ Implementation review established the contract amendments below.
     `CopyTexture` once per resolving frame to store current visibility into the write index. The read texture
     remains unchanged for debug/count re-evaluation. Both entries use the same helper, inputs and reduction order.
     Stored visibility bytes, jitter and state decisions are exact across entries. Hardware and WARP colour remain
-    exact. Only the pre-existing software-Vulkan colour exception remains. The shared carried-lock precision
+    exact. Software Vulkan retains the colour exception and the separately calibrated drift and swing
+    limits described in amendment 23. The shared carried-lock precision
     boundary repairs #1501 without changing half-rounding or adding an entry-specific rule.
 
     Save jitter only after the copy is recorded. The 16-byte visibility buffer leaves the 256-byte resolve buffer
@@ -1374,57 +1479,3 @@ Implementation review established the contract amendments below.
     records optimized FXC behavior and explicit finite qualification. Earlier red results remain in those records
     with their original scope. Vulkan zero-message counts without a debug messenger do not prove validation coverage.
     This batch's GPU timing and bandwidth cost remain unmeasured and need the separate owner-approved benchmark.
-
-36. Precision-safe chroma extent in the history clip, owner ruling 2026-10-29. The final radial clip
-    floors only its Co and Cg half-widths on still pixels. The still test is `motionPixels < ShimmerStillPixels`,
-    using the same display-pixel motion as the shimmer score in `temporalAccumulatePixel`. Moving pixels
-    retain the existing coupled clip to discard stale colour. A shadow moving over a still receiver does
-    not move that receiver's pixel, so it still takes the floor. Binary16 RGB history can carry independent
-    channel-rounding errors larger than a nearly degenerate weighted-chroma interval. A radial correction toward the
-    neighbourhood centre then moves already valid luma by far more than the chroma error. A shallow
-    coloured step with nearly equal nonzero Cg reproduces the eave failure without overlapping geometry.
-    The ridge lock correctly stays quiet on this monotone step, so extending its lock would hide the
-    precision defect and risk holding real lighting changes.
-
-    Let `u` be binary16 binade spacing at the largest nonnegative RGB history component, with a
-    `2^-24` subnormal minimum. Let `L` be Rec.709 history luma and `C` be weighted Co or Cg. Each
-    chroma half-width is at least `ChromaPrecisionFloorSteps * u * (1 + abs(C)) / max(1 + L - u, 1e-4)`.
-    `ChromaPrecisionFloorSteps` is 4. Each chroma row's absolute coefficients sum to one. The denominator
-    accounts for the weighting change caused by RGB rounding. The existing luma box, M1 shimmer band,
-    history cap, release gates and hold interpolation remain. The floor adds scalar and vector arithmetic,
-    with no texture fetch, texture allocation or history memory. Its frozen-D undo restores the exact
-    original clip and removes its tuning declaration before comparing shipped-D source and compiled pins.
-
-    The random-frame visibility resolve A/B fact uses a separate D oracle with this approved still-pixel
-    floor (owner ruling 2026-10-29). Its still receivers reproduce the floorless precision flash, so colour
-    equality requires both sides to use the approved clip. This oracle undoes every other post-D change,
-    preserves D's shading-release extent, and restores only the final clip plus its floor and still-gate
-    constants. The pure frozen D oracle, source hashes and compiled counts remain unchanged.
-
-    The owner accepted these three measured Native moving-shadow costs for the precision-safe chroma
-    floor. Only the named comparison changes. Original design D limits remain on every other comparison.
-
-    | Metal comparison | Original enforced maximum | Accepted parameter | Accepted maximum |
-    | --- | ---: | ---: | ---: |
-    | S 8 px advancing textured tail / 1 px tail | 1.5 times slow tail | multiplier 1.610798383033032 | 0.004814773364463 at slow tail 0.0029890602170812297 |
-    | S 8 px retreating absolute textured tail | 0.007221576276167364 | baseline 0.007580620435507 | 0.007581120435507 |
-    | MS 2 leading textured rim error | 0.00352495 | baseline 0.003235554347737 | 0.003559659782511 |
-
-    The absolute-tail allowance remains `0.0000005`. The rim uses `(baseline + 0.0000005) * 1.1`,
-    with reference, temporal-error and other fields unchanged. The advancing multiplier applies only to
-    Native S 8 px advancing. Backend-specific values may rise only to that backend's measured cost and
-    only within 10 percent of its original design D bound. Any other failing design D comparison or any
-    increase above that ceiling requires a new owner ruling. The owner look gate still holds M1.
-
-    WARP and lavapipe use their own measured costs under the same ruling, captured in the
-    [focused backend proof](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40810561929). Only these software parameters change. Lavapipe's Native MS 2 leading textured rim
-    error `0.00352189149420995` stays below its original `0.00359095` maximum, so its baseline remains
-    `0.003264`. All increases below are less than 10 percent of the corresponding original D maximum.
-
-    | Software comparison | Original enforced maximum | Accepted parameter | Accepted maximum |
-    | --- | ---: | ---: | ---: |
-    | WARP S 8 px advancing textured tail / 1 px tail | 1.5 times slow tail | multiplier 1.605790596957714 | 0.004802969203942 at slow tail 0.0029910308436487004 |
-    | WARP S 8 px retreating absolute textured tail | 0.007223297931709032 | baseline 0.007584627119477 | 0.007585127119477 |
-    | WARP MS 2 leading textured rim error | 0.00350955 | baseline 0.003238986111211 | 0.003563434722332 |
-    | lavapipe S 8 px advancing textured tail / 1 px tail | 1.5 times slow tail | multiplier 1.570065765107464 | 0.004799195509288 at slow tail 0.0030566843860575796 |
-    | lavapipe S 8 px retreating absolute textured tail | 0.007246004857927269 | baseline 0.007607362248486 | 0.007607862248486 |

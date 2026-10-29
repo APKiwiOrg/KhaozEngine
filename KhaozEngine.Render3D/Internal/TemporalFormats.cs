@@ -4,7 +4,7 @@ namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
     /// THE TEMPORAL TARGET FORMATS of the resolve's history
-    /// (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, section 3). Each is a seam member every backend
+    /// (docs/design/TEMPORAL-RESOLVE.md, section 3). Each is a seam member every backend
     /// already renders and samples: half float RGBA is the HDR colour target and the confidence and stability target,
     /// single float R the linear-depth MRT attachment.
     /// <para><b>WHY NOT R11G11B10 FLOAT FOR THE HISTORY COLOUR.</b> The seam has no such member, Vulkan does not

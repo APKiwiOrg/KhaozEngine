@@ -6,7 +6,7 @@ using KhaozEngine.Render3D.Rendering;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// The temporal resolve's frame wiring (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, sections 1 and
+    /// The temporal resolve's frame wiring (docs/design/TEMPORAL-RESOLVE.md, sections 1 and
     /// 2). <see cref="AntiAliasing.Temporal"/> turns temporal rendering on, sizes the internal target as a fraction of the
     /// display, and sets the jitter cycle from the display over internal scale. It also owns the resolve's renderer and
     /// display targets, runs the resolve, and reorders the background ahead of the transparent model-pass writers while
@@ -183,7 +183,7 @@ namespace KhaozEngine.Render3D
         /// background, copy the lit colour for the reactive estimate, and rebind the model target for the writers that
         /// follow. The background moves up because the copy must hold the sky, and the sky's Equal depth test and
         /// override blend would otherwise paint over any transparent drawn before it
-        /// (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, section 1).
+        /// (docs/design/TEMPORAL-RESOLVE.md, section 1).
         /// </summary>
         void CaptureOpaqueForTemporal(IGpuCommandList cl)
         {

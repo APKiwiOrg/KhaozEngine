@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Gpu;
 /// the device's frame boundary (<see cref="IGpuDevice.Present"/>, headless here).
 /// The internal size follows the display size (<see cref="RenderScale.MatchViewport"/>), the render origin is pinned at
 /// zero until a test moves it, and the camera looks at the world origin. The temporal resolve's acceptance scenes
-/// render through it (TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24, section 7).
+/// render through it (TEMPORAL-RESOLVE, section 7).
 /// </summary>
 public sealed class TemporalFixture : IDisposable
 {

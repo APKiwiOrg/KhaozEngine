@@ -9521,6 +9521,7 @@ public sealed class GroundNavigationBake
 public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilter Areas)
 {
     public bool Aquatic { get; init; } // default false
+    public float MaxDropMetres { get; init; } // default 0
 }
 public sealed record NavBakeExpectation(PhysicsNavBakeOptions Options, NavBakeSources Sources,
     IReadOnlyList<NavBakeProfile> Profiles);
@@ -9703,8 +9704,8 @@ Round 2 D adds the driver layer in the same opt-in package. Keep the package ref
 It observes the mover's current capsule against the target's exact capsule, box or point shape with zero client
 tolerance. `MoveState.Position` is the mover's capsule centre. Navigation receives feet, using the mover's own
 half-height, and a capsule target uses its own half-height. The tick validates and evaluates current reach, then
-`Suspended` takes precedence over `InRange` for an airborne or committed body. A swimming body is not grounded, so
-it is suspended too unless the driver opts into swim steering. Following and Dropping can carry nonzero
+`Suspended` takes precedence over `InRange` for an unrelated airborne body or a committed body. A swimming body is
+not grounded, so it is suspended too unless the driver opts into swim steering. Following and Dropping can carry nonzero
 `WorldDirection`. An active proved Contact Drop owns its airborne traversal.
 `WaitingForPath`, `Unreachable` and `UnsupportedTransition` hold with zero input. A `Hop` waypoint is an
 unsupported transition for this ground driver. `MoveToRange` returns `Blocked` under the opt-in
@@ -9779,9 +9780,10 @@ keeps full pace along a straight route run. It aims past a collinear pass-throug
 travel and has the follower consume the waypoints it passed (`PathFollowConfig.ConsumePassedCollinearWaypoints`), while
 every corner, reversal, layer change, hop, waypoint 0 and final waypoint is still landed on. `SteerWhileSwimming`
 steers a swimming body on an aquatic profile, and the `GroundNavigation` constructor refuses it with
-`ArgumentException` naming `options` for a profile that is not aquatic. Airborne and committed bodies stay
-`Suspended`. A swimmer is also `Suspended` while it settles, until the medium at its feet is water and its feet lie
-within `max(StepHeight, 1 mm)` of its float line. A settled swimmer travels at `SwimSpeed x max(0, zone scale) x
+`ArgumentException` naming `options` for a profile that is not aquatic. Unrelated airborne bodies and committed
+bodies stay `Suspended`. An active proved Contact Drop owns its flight. A swimmer is also `Suspended` while it
+settles, until the medium at its feet is water and its feet lie within `max(StepHeight, 1 mm)` of its float line.
+A settled swimmer travels at `SwimSpeed x max(0, zone scale) x
 SpeedScale x dt` on a swim tick, so it lands on waypoints, and a step whose prediction is airborne and not swimming
 is refused.
 

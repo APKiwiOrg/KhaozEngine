@@ -777,9 +777,10 @@ regression pin, with no controller fix or claim about every terrain sampler. #13
 body's capsule and the target's observed shape to decide whether the body is in range. The mover's
 `MoveState.Position` is its capsule centre. Navigation and route waypoints use the mover's own feet, and a
 capsule target supplies its own feet from its own half-height. Reach has zero tolerance in this API. The tick
-validates and evaluates current reach, then an airborne or committed body reports `Suspended` in preference to
-`InRange`, with zero requested input. A swimming body is not grounded, so it is suspended too unless the driver opts
-into swim steering. `InRange` means the supplied current body already passes
+validates and evaluates current reach, then an unrelated airborne body or a committed body reports `Suspended` in
+preference to `InRange`, with zero requested input. An active proved Contact Drop owns its airborne traversal.
+A swimming body is not grounded, so it is suspended too unless the driver opts into swim steering.
+`InRange` means the supplied current body already passes
 `ReachGeometry.Within`, never that a waypoint or predicted endpoint would.
 
 The public driver surface is:
@@ -875,7 +876,8 @@ step the guard refuses falls back to the active waypoint. A caller can also turn
 `ArgumentException` naming `options` when the profile is not aquatic. The planner constructor trusts its caller.
 With the option:
 
-- An airborne body that is not swimming, and a committed body, stay `Suspended` before `InRange`, as without it.
+- An unrelated airborne body that is not swimming, and a committed body, stay `Suspended` before `InRange`.
+  An active proved Contact Drop owns its airborne traversal.
 - A swimming body is also `Suspended` before `InRange` while it settles: when the context has no medium, the medium at
   its feet is not water, or its feet lie farther than `max(StepHeight, 1 mm)` from its float line
   `WaterSurfaceY - SwimSurfaceSubmersionFraction x 2 x CapsuleHalfHeight`. A body that fell into deep water holds

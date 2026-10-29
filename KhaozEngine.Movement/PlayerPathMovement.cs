@@ -7,7 +7,7 @@ namespace KhaozEngine.Movement;
 /// <summary>Converts world range steering to ordinary precise player movement commands.</summary>
 public static class PlayerPathMovement
 {
-    /// <summary>Projects Following input into the camera basis, preserving magnitudes up to one.
+    /// <summary>Projects Following or Dropping input into the camera basis, preserving magnitudes up to one.
     /// Other statuses and nonfinite yaw or direction request idle motion. Invalid yaw is stored as zero.
     /// Run remains caller-owned, with no jump or camera-facing request.</summary>
     public static MoveCommand Command(in RangeSteering steering, bool run, float cameraYaw)
@@ -15,7 +15,7 @@ public static class PlayerPathMovement
         bool validYaw = float.IsFinite(cameraYaw);
         Vector2 direction = steering.WorldDirection;
         Vector2 move = Vector2.Zero;
-        if (steering.Status == RangeMoveStatus.Following && validYaw &&
+        if ((steering.Status is RangeMoveStatus.Following or RangeMoveStatus.Dropping) && validYaw &&
             float.IsFinite(direction.X) && float.IsFinite(direction.Y))
         {
             double x = direction.X, z = direction.Y;

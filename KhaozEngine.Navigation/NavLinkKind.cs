@@ -15,4 +15,8 @@ public enum NavLinkKind
     /// within a jump budget, joined across a blocked rim. Its landing waypoint is marked <see cref="NavWaypointKind.Hop"/>
     /// and the follower surfaces <see cref="PathFollowState.Hopping"/>.</summary>
     Hop,
+
+    /// <summary>A one-way, unpowered walk-off and fall to lower support, certified for the baked profile.
+    /// The landing retains both physical endpoints and requires supported completion by its movement host.</summary>
+    Drop = 2,
 }

@@ -229,6 +229,7 @@ public sealed record GroundProfileOptions
 {
     public static GroundProfileOptions Default { get; }
     public bool Aquatic { get; init; } // default false
+    public float MaxDropMetres { get; init; } // default zero
 }
 ```
 
@@ -242,6 +243,7 @@ public sealed class GroundNavigation
     public float AgentRadius { get; }
     public float AgentHeight { get; }
     public bool Aquatic { get; }
+    public float MaxDropMetres { get; }
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
     public void Validate(EffectiveMovementBinding binding);
     public void Validate(in MoveTuning tuning);
@@ -267,7 +269,7 @@ that resolves Legacy or OrdinaryContact from tuning, but cannot detect a public 
 throws `NotSupportedException` naming #1389. A different binding kind or retained input throws `ArgumentException`.
 Legacy graphs compare radius, half-height, slope and step, plus swim fractions for aquatic graphs. Contact graphs
 compare every retained tuning field, controller, foot fraction, placement offset and effective water policy.
-`WalkSpeed`, `RunSpeed` and `AirMomentum` may differ because proofs normalize them. Numeric runtime comparisons
+`WalkSpeed`, `RunSpeed` and `AirMomentum` may differ only for zero-allowance profiles, whose supported proofs normalize them. Positive `MaxDropMetres` validates their actual values. Numeric runtime comparisons
 use value equality, so +0 and -0 are compatible. File identity and load comparisons remain bitwise.
 
 Legacy directed proofs use unit walk and run pace, dry medium, grounded state, no jump, no airborne momentum and
@@ -296,7 +298,7 @@ and route straightening use resting heights, with surface fallback for legacy gr
 The profile filters the whole circular footprint against captured columns and their area tags. A centre point
 or bounding square is not enough. It uses raw radius-zero grid checks because the capsule was already checked
 by the physical hold and directed core proof, so the radius is not eroded twice. The grounded bake allocates
-within `MaxLayerCells`, produces only `Stair` links, and never generates `Hop` links. Candidate links in
+within `MaxLayerCells` and produces Stair seams. Contact profiles with positive `MaxDropMetres` additionally prove one-way Drop links. It never generates Hop links. Candidate links in
 `Space.Links` are separate from the accepted links retained by the guarded planner. `Planner` and
 `AllowsSegment` use the accepted graph and exact profile radius, and routes keep unsmoothed cell-centre
 waypoints. `MoveToRange` straightens them under `RouteApproachOptions.StraightenRoutes`.
@@ -329,6 +331,38 @@ arrival tolerance and drop out of the graph, and at runtime `MoveToRange` can st
 slope. This is open as [#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265)
 and is not fixed in this release. Check routes over sloped physics ground in the game's own world.
 
+### Unpowered Contact Drop routes
+
+Set finite nonnegative `GroundProfileOptions.MaxDropMetres` or `NavBakeProfile.MaxDropMetres` per body profile.
+Zero preserves existing topology and identity. Positive allowance requires an OrdinaryContact ground profile,
+independently of manual falls and fall damage. The local candidate horizon is `1 + ceil(2 * radius / cellSize)`.
+Only the nearest eligible lower admitted surface is considered in a direction without a supported ordinary exit.
+Both usable walk/run modes must prove an unpowered fall, supported target arrival and post-landing Hold within
+the existing total edge duration. Full tuning includes actual pace and momentum. First landing, unwalkable contact
+and any selected swimming mode are retained even when a tick ends dry and grounded. Supported wading is allowed.
+
+Each fall certifies known eligible columns across the projected capsule corridor and composes that certificate with
+the original play-area boundary. Air feet can stand above lower support only during the named transition. Ordinary
+`AllowsSegment` remains supported-only. A forbidden surface, insufficient clearance, missing column or unsupported
+landing cannot borrow permission from a lower allowed surface. Unknown evidence refuses the bake, not one edge.
+
+`MoveToRange` aligns on real support at the physical source, then previews the actual body, momentum, SpeedScale,
+run mode, timestep and current Contact environment before departure. The slice bound is the floor of baked duration
+divided by dt and includes both Holds. Preview never publishes movement or arrival. Changed actual motion, controls
+or read identity cannot reuse that preview. Flight suspends on a mismatch and replans once supported. A known obstruction is Blocked.
+Unavailable evidence suspends or follows the existing environment error contract. The active fall requests Dropping
+input through both built-in host adapters and is excluded from airborne ground-stall accounting. Completion requires
+the supplied body's actual supported non-swimming target cell/layer and shared 3D arrival sphere, then a supported
+Hold. Unexpected actual support replans there. Reset cancels route ownership while gravity and collision continue.
+Commitments, buffered jumps and unrelated airborne bodies stay Suspended. No jump or direct fallback is introduced.
+Player hosts pass the tick's `PlayerPathInput` to `Tick` and use its `Command` for actual movement. The preview and
+continuation check execute that exact camera-relative command, including its fractional axis and rounding. The
+overload without this input retains NPC world-space execution. Body, run mode, timestep and environment checks
+remain exact. Camera yaw may change between ticks when the same input value is used for preview and submission.
+The follower cooldown advances once per active Drop tick, including suspended flight and supported completion.
+After acknowledgement the latest goal can replan in that landing tick before the old route's next transition.
+See [Contact Drop links](../docs/design/CONTACT-DROP-LINKS.md) for costs, follower acknowledgement and storage reasons.
+
 ### Parallel contact bake
 
 ```csharp
@@ -344,7 +378,7 @@ A null execution or a degree of 1 runs the serial build, and the existing `Build
 a null execution. Execution options are not part of `PhysicsNavBakeOptions` or the bake identity. Every degree
 produces the same graphs, resting heights and file bytes.
 
-Above degree 1 an ordinary contact profile proves admissions, edges and Stair links on up to
+Above degree 1 an ordinary contact profile proves admissions, edges, Stair links and enabled Drop links on up to
 `MaxDegreeOfParallelism` worker threads. Each phase splits its rows into `min(rows, workers * 4)` contiguous bands,
 workers claim bands in ascending order, and the build never starts more workers than bands. Layering stays serial.
 Legacy profiles always build serially, including in an all-legacy bake above degree 1.
@@ -550,6 +584,7 @@ public sealed class NavBakeSources
 public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilter Areas)
 {
     public bool Aquatic { get; init; } // default false
+    public float MaxDropMetres { get; init; } // default zero
 }
 
 public sealed record NavBakeExpectation(PhysicsNavBakeOptions Options, NavBakeSources Sources,
@@ -577,14 +612,24 @@ public sealed class GroundNavigationBake
 }
 ```
 
-`Create` builds every profile through `capture.BuildProfile` with its `Aquatic` flag while the capture is live, so each
+`Create` builds every profile through `capture.BuildProfile` with its `Aquatic` and `MaxDropMetres` options while the capture is live, so each
 profile is exactly the fresh build. The `execution` overload builds profiles one after another and passes the setting to
 each contact profile, as [Parallel contact bake](#parallel-contact-bake) describes. An aquatic profile from a capture
 without `SampleWater` is refused there.
-`WriteTo` writes a little-endian `KENB` file. All-Legacy sets retain format 1 and their exact bytes. Any contact
-profile selects format 2 for the whole set, including mixed contact ground and legacy aquatic profiles. Format 2
-adds each profile's effective kind, foot fraction, water policy and zero placement offset to the identity. Only
-OrdinaryContact layers append one resting float per open cell after that layer's exits, in clear-bit order. Legacy
+`WriteTo` writes a little-endian `KENB` file. Format selection is explicit and old layouts stay frozen.
+
+| Format | Selection | Profile identity and candidate recipe |
+| --- | --- | --- |
+| 1 | All profiles are Legacy with zero Drop allowance | Original supported tuning and Stair recipe |
+| 2 | Contact exists and every Drop allowance is zero | Format 1 plus effective kind, foot fraction, water policy and zero placement offset |
+| 3 | Any profile has positive `MaxDropMetres` | Format 2 plus f32 allowance, f32 walk speed, f32 run speed and u8 air momentum per profile. Ordered Stair candidates precede Drop candidates |
+
+In format 3, disabled profiles encode those four appended values as 0, 1, 1 and false. Enabled profiles
+retain their actual flight inputs. The 13 added identity bytes per profile change neither the layer layout
+nor the meaning of format 1/2 acceptance bits. Drop candidates regenerate from admitted nodes, physical
+resting heights and directed ordinary exits without physics. Stored acceptance remains an ordered bitset,
+with no endpoint or trajectory samples. A loader counts candidates before allocating their endpoint array.
+Only OrdinaryContact layers append one resting float per open cell after that layer's exits, in clear-bit order. Legacy
 layers keep the format 1 layout, store no resting section and get their resting height from the raw surface at runtime.
 Load restores resting heights only for contact layers. Two writes of one bake
 are byte-identical. A loaded profile is a `GroundNavigation` like any other, and its `Space`, graph, columns, `AllowsSegment` and `Planner`
@@ -597,8 +642,9 @@ unique. A bake needs at least one source and 1 to 256 profiles, and `MaxSurfaces
 `Add` takes an exact 32-byte digest, and `AddHashOf` digests content with SHA-256.
 
 The identity covers the engine version, every capture option including `SampleWater`, the caller's labelled source
-digests, and each profile's name, area filter, `Aquatic` flag and every `MoveTuning` field except `WalkSpeed`,
-`RunSpeed` and `AirMomentum`, which the probe overwrites. So a bake sampled differently, or a profile baked aquatic
+digests, and each profile's name, area filter, `Aquatic` flag and retained `MoveTuning` fields. Supported
+proofs normalize `WalkSpeed`, `RunSpeed` and `AirMomentum`. Positive `MaxDropMetres` additionally retains
+those real flight inputs and checks them during runtime compatibility validation. So a bake sampled differently, or a profile baked aquatic
 against a ground expectation, is refused as stale and never loads as the other kind. The identity is canonical, so
 equal inputs give equal bytes in any insertion order and on any architecture. A bake is valid only for the engine
 version that wrote it.
@@ -731,9 +777,10 @@ regression pin, with no controller fix or claim about every terrain sampler. #13
 body's capsule and the target's observed shape to decide whether the body is in range. The mover's
 `MoveState.Position` is its capsule centre. Navigation and route waypoints use the mover's own feet, and a
 capsule target supplies its own feet from its own half-height. Reach has zero tolerance in this API. The tick
-validates and evaluates current reach, then an airborne or committed body reports `Suspended` in preference to
-`InRange`, with zero requested input. A swimming body is not grounded, so it is suspended too unless the driver opts
-into swim steering. `InRange` means the supplied current body already passes
+validates and evaluates current reach, then an unrelated airborne body or a committed body reports `Suspended` in
+preference to `InRange`, with zero requested input. An active proved Contact Drop owns its airborne traversal.
+A swimming body is not grounded, so it is suspended too unless the driver opts into swim steering.
+`InRange` means the supplied current body already passes
 `ReachGeometry.Within`, never that a waypoint or predicted endpoint would.
 
 The public driver surface is:
@@ -741,7 +788,7 @@ The public driver surface is:
 ```csharp
 public enum RangeMoveStatus
 {
-    Following, InRange, WaitingForPath, Unreachable, UnsupportedTransition, Suspended, Blocked,
+    Following, InRange, WaitingForPath, Unreachable, UnsupportedTransition, Suspended, Blocked, Dropping,
 }
 
 public readonly record struct RangeSteering(Vector2 WorldDirection, RangeMoveStatus Status);
@@ -756,6 +803,8 @@ public sealed class MoveToRange
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow, RouteApproachOptions options);
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context);
+    public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
+        float range, bool run, float dt, GroundMoveContext context, PlayerPathInput input);
     public void Reset();
 }
 
@@ -787,11 +836,18 @@ public static class PlayerPathMovement
 {
     public static MoveCommand Command(in RangeSteering steering, bool run, float cameraYaw);
 }
+
+public readonly record struct PlayerPathInput
+{
+    public PlayerPathInput(float cameraYaw); // finite yaw, default is zero
+    public float CameraYaw { get; }
+    public MoveCommand Command(in RangeSteering steering, bool run);
+}
 ```
 
-`MoveToRange` returns `Blocked` only under `RouteApproachOptions.Stall`, described below. The route-free
-`DirectMoveToRange` described below always runs its own stall window. Both adapters treat every status other than
-`Following` as idle.
+`MoveToRange` returns `Blocked` under `RouteApproachOptions.Stall` or a known live Drop launch obstruction.
+The route-free `DirectMoveToRange` always runs its own stall window. Both adapters transmit Following and Dropping
+input, and treat the other statuses as idle.
 
 `MoveToRange` copies the supplied `PathFollowConfig` and clamps `AcceptRadius` to at most `0.00001f`,
 including when the supplied value is zero. Its near-ring preflight resolves copies of `MoveState` through the
@@ -824,7 +880,8 @@ step the guard refuses falls back to the active waypoint. A caller can also turn
 `ArgumentException` naming `options` when the profile is not aquatic. The planner constructor trusts its caller.
 With the option:
 
-- An airborne body that is not swimming, and a committed body, stay `Suspended` before `InRange`, as without it.
+- An unrelated airborne body that is not swimming, and a committed body, stay `Suspended` before `InRange`.
+  An active proved Contact Drop owns its airborne traversal.
 - A swimming body is also `Suspended` before `InRange` while it settles: when the context has no medium, the medium at
   its feet is not water, or its feet lie farther than `max(StepHeight, 1 mm)` from its float line
   `WaterSurfaceY - SwimSurfaceSubmersionFraction x 2 x CapsuleHalfHeight`. A body that fell into deep water holds
@@ -947,7 +1004,7 @@ MovementBody targetBody = gameTarget.BodySnapshot;
 ReachTarget target = ReachTarget.Capsule(in targetBody);
 RangeSteering steering = follower.Tick(
     in npcState, in npcTuning, in target, gameNpc.NominalRange, gameNpc.Run, dt, context);
-MoveState next = steering.Status == RangeMoveStatus.Following
+MoveState next = steering.Status is RangeMoveStatus.Following or RangeMoveStatus.Dropping
     ? NpcGroundMovement.Step(in npcState, in steering, gameNpc.Run, dt, in npcTuning, context)
     : NpcGroundMovement.Hold(in npcState, dt, in npcTuning, context);
 npcState = next;
@@ -1013,11 +1070,11 @@ else
     ReachTarget target = gameTarget.CurrentShapeSnapshot;
     bool observedReach = ReachGeometry.Within(
         in bodyShape, in target, gameTarget.NominalRange);
+    var input = new PlayerPathInput(gameCamera.Yaw);
     RangeSteering steering = follower.Tick(
         in body, in playerTuning, in target, gameTarget.NominalRange,
-        gameTarget.Run, dt, gamePlayerGroundContext);
-    command = PlayerPathMovement.Command(
-        in steering, gameTarget.Run, gameCamera.Yaw);
+        gameTarget.Run, dt, gamePlayerGroundContext, input);
+    command = input.Command(in steering, gameTarget.Run);
 }
 
 client.SendInput(in command); // exactly one normal submission per simulation tick

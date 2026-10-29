@@ -166,11 +166,11 @@ public sealed partial class GridPathPlanner
     // priority for the whole query when any admitted link makes the spatial lower bound uncertain.
     bool RegionLinksPreserveDistance()
     {
-        foreach (KeyValuePair<int, List<(int ToId, float CostMeters)>> source in _linkEdges)
+        foreach (KeyValuePair<int, List<PlannerLink>> source in _linkEdges)
         {
             (int layer, int x, int z) = Decode(source.Key);
             Vector2 from = _space.Layers[layer].CellCenter(x, z);
-            foreach ((int targetId, float cost) in source.Value)
+            foreach ((int targetId, float cost, _) in source.Value)
             {
                 (int targetLayer, int tx, int tz) = Decode(targetId);
                 if (targetLayer != layer || !float.IsFinite(cost) ||

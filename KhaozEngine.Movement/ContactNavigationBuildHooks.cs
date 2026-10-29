@@ -15,6 +15,8 @@ internal sealed class ContactNavigationBuildHooks
     internal Action<int>? WorkerPinned { get; init; }
     internal Action<ContactNavigationPhase, int>? BandCompleted { get; init; }
     internal Action<int>? Releasing { get; init; }
+    internal Action<ContactDropCandidateMeasurement>? DropCandidate { get; init; }
+    internal Action<ContactDropStepObservation>? DropStep { get; init; }
     internal bool DisableFootprintReuse { get; init; }
     internal bool DisableInitialHoldReuse { get; init; }
 

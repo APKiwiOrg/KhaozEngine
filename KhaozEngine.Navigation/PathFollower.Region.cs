@@ -12,7 +12,7 @@ public sealed partial class PathFollower
 
     /// <summary>
     /// Follows a route to <paramref name="goal"/> using actual feet membership for arrival. The last
-    /// Complete waypoint remains active until membership, regardless of AcceptRadius. Intermediate
+    /// Complete walk waypoint remains active until membership, regardless of AcceptRadius. Intermediate
     /// waypoints retain the configured radius and layer checks. An exhausted Partial route holds at
     /// zero motion until the shared replan cooldown permits another query. Reaching the retained
     /// Complete endpoint outside the region also makes a replan due, even for anchor drift within
@@ -20,6 +20,8 @@ public sealed partial class PathFollower
     /// reached under the configured waypoint radius and layer checks. Exact coordinate equality is
     /// not required, since movement can round differently from the grid's cell centres.
     /// A fresh query already terminal at its start keeps the ordinary cooldown until it leaves that state.
+    /// A Drop locks traversal before these checks. Supported acknowledgement of a final Complete Drop
+    /// is also a reached-terminal witness, so a stale route can refresh on the next tick before cooldown.
     /// Existing region waypoints advance before this decision so an eligible exhausted
     /// Partial replans in the same tick. Each tick queries at most once. A freshly exhausted Partial
     /// with no cooldown returns Unreachable at zero motion and retries on the next tick.
@@ -41,6 +43,11 @@ public sealed partial class PathFollower
 
     PathFollowOutput TickCore(Vector3 position, Vector3 goal, float agentRadius, float dt, NavGoalRegion? region)
     {
+        if (_drop is not null)
+        {
+            AdvanceDropTime(dt);
+            return DropOutput();
+        }
         bool followingRegion = region is not null;
         if (_followingRegion != followingRegion)
         {
@@ -57,7 +64,7 @@ public sealed partial class PathFollower
             ? region.Contains(position)
             : Vector2.Distance(posXz, goalXz) <= _config.AcceptRadius
                 && MathF.Abs(position.Y - goal.Y) <= _config.VerticalAcceptTolerance;
-        if (arrived)
+        if (arrived && !HasPendingDrop())
             return Arrive();
 
         // A reached Complete endpoint belongs only to the point intent that was queried. Retain it
@@ -134,6 +141,7 @@ public sealed partial class PathFollower
             return new PathFollowOutput { WorldDir = towardGoal, State = PathFollowState.Following, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
         }
 
+        if (TryDrop(out PathFollowOutput dropping)) return dropping;
         NavWaypoint active = waypoints[_index];
         if (active.Kind == NavWaypointKind.Hop)
         {
@@ -155,7 +163,8 @@ public sealed partial class PathFollower
     }
 
     // Returns true at a reached Complete endpoint without consuming it when requested, so arrival
-    // can validate current region membership or the point intent before retiring the route.
+    // can validate current region membership or the point intent before retiring the route. A final
+    // Drop's supported acknowledgement preserves that witness after consuming its landing marker.
     bool AdvanceReachedWaypoints(Vector3 position, Vector2 posXz, bool retainCompleteTerminal)
     {
         if (_path is null || _path.Status == NavPathStatus.Unreachable)
@@ -164,6 +173,7 @@ public sealed partial class PathFollower
         IReadOnlyList<NavWaypoint> waypoints = _path.Waypoints;
         int? agentLayer = _space?.LayerAt(position);
         while (_index < waypoints.Count
+            && waypoints[_index].Kind != NavWaypointKind.Drop
             && ((Vector2.Distance(posXz, waypoints[_index].Position) <= _config.AcceptRadius
                     && (agentLayer is null || waypoints[_index].Layer == agentLayer.Value))
                 || (_config.ConsumePassedCollinearWaypoints && PassedActive(posXz, agentLayer))))
@@ -173,6 +183,8 @@ public sealed partial class PathFollower
             _index++;
         }
 
-        return false;
+        return retainCompleteTerminal && _path.Status == NavPathStatus.Complete
+            && _index == waypoints.Count && _index > 0
+            && waypoints[_index - 1].Kind == NavWaypointKind.Drop;
     }
 }

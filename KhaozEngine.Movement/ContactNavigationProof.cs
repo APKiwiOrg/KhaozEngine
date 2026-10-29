@@ -24,14 +24,14 @@ internal sealed partial class ContactNavigationProof : IDisposable
     MovementQueryLeaseId? _leaseBasis;
 
     internal ContactNavigationProof(PhysicsNavBake bake, GroundMoveContext context, EffectiveMovementBinding source,
-        NavAreaFootprint footprint, ContactNavigationReusePolicy? reuse = null)
+        NavAreaFootprint footprint, ContactNavigationReusePolicy? reuse = null, float maxDropMetres = 0)
     {
         _bake = bake;
         _context = context;
         _reuse = reuse ?? ContactNavigationReusePolicy.Capture();
         _basis = bake.Basis ?? throw new InvalidOperationException(
             "Contact navigation requires a capture from an IPhysicsQueryLeaseSource.");
-        _snapshot = _reuse.InitialHolds ? ContactNavigationSnapshot.Capture(bake, context) : null;
+        _snapshot = _reuse.InitialHolds || maxDropMetres > 0 ? ContactNavigationSnapshot.Capture(bake, context) : null;
         if (_snapshot is null) _basis.AssertCurrent();
         try
         {
@@ -42,6 +42,7 @@ internal sealed partial class ContactNavigationProof : IDisposable
             ContactNavigationEnvelope.Validate(bake, source.Tuning, _scope);
             using var queries = Acquire(new(bake.Options.MinX, 0, bake.Options.MinZ));
             _snapshot?.Authenticate(queries);
+            PrepareDrops(source, maxDropMetres);
         }
         catch { _proof?.Dispose(); throw; }
     }
@@ -49,7 +50,7 @@ internal sealed partial class ContactNavigationProof : IDisposable
     /// <summary>A parallel worker's proof over <paramref name="snapshot"/>. The build validated the envelope once.
     /// The first lease is authenticated against the snapshot before any work starts.</summary>
     internal ContactNavigationProof(PhysicsNavBake bake, ContactNavigationSnapshot snapshot,
-        EffectiveMovementBinding source, NavAreaFootprint footprint, ContactNavigationReusePolicy reuse)
+        EffectiveMovementBinding source, NavAreaFootprint footprint, ContactNavigationReusePolicy reuse, float maxDropMetres = 0)
     {
         _bake = bake;
         _basis = snapshot.Basis;
@@ -63,6 +64,7 @@ internal sealed partial class ContactNavigationProof : IDisposable
             _footprint = footprint;
             using var queries = Acquire(new(bake.Options.MinX, 0, bake.Options.MinZ));
             snapshot.Authenticate(queries);
+            PrepareDrops(source, maxDropMetres);
         }
         catch { _proof?.Dispose(); throw; }
     }
@@ -223,6 +225,10 @@ internal sealed partial class ContactNavigationProof : IDisposable
     public void Dispose()
     {
         try { _sourceScope?.Dispose(); }
-        finally { _proof.Dispose(); }
+        finally
+        {
+            try { _drop?.Dispose(); }
+            finally { _proof.Dispose(); }
+        }
     }
 }

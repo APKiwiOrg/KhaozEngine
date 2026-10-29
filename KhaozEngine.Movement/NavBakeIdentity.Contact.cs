@@ -10,6 +10,8 @@ internal static partial class NavBakeIdentity
     internal static ushort FormatFor(IReadOnlyList<NavBakeProfile> profiles)
     {
         foreach (NavBakeProfile profile in profiles)
+            if (profile.MaxDropMetres > 0) return DropFormatVersion;
+        foreach (NavBakeProfile profile in profiles)
             if (profile.Tuning.Controller == MovementControllerKind.Contact) return ContactFormatVersion;
         return FormatVersion;
     }

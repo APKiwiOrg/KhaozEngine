@@ -4,6 +4,13 @@ namespace KhaozEngine.Movement;
 /// exactly as the two-argument <c>BuildProfile</c> overload does.</summary>
 public sealed record GroundProfileOptions
 {
+    private float _maxDropMetres;
+
+    /// <summary>Maximum certified descent below launch support, in metres. Finite and nonnegative.
+    /// Zero disables Drop generation and preserves the existing ground identity. Positive values require
+    /// non-aquatic OrdinaryContact navigation. This grants route topology, not a manual fall or damage limit.</summary>
+    public float MaxDropMetres { get => _maxDropMetres; init => _maxDropMetres = value == 0 ? 0 : value; }
+
     /// <summary>A ground profile.</summary>
     public static GroundProfileOptions Default { get; } = new();
 

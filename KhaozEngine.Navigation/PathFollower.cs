@@ -35,6 +35,10 @@ public enum PathFollowState
     /// intent, or a region query's partial corridor is exhausted. Steering is zero until the next
     /// cooldown-gated replan.</summary>
     WaitingForPath,
+
+    /// <summary>An unpowered Drop owns traversal until the host acknowledges supported landing.
+    /// Ordinary steering is zero and the physical source and landing remain fixed.</summary>
+    Dropping,
 }
 
 /// <summary>
@@ -50,6 +54,9 @@ public readonly struct PathFollowOutput
     /// waypoint with no horizontal offset. Zero in other states. Feeds
     /// <c>CharacterMovement.StepTowards</c> directly, or an intermediate avoidance pass first.</summary>
     public Vector2 WorldDir { get; init; }
+
+    /// <summary>The fixed certified endpoints while Dropping. Null in every other state.</summary>
+    public NavDropTraversal? DropTraversal { get; init; }
 
     /// <summary>Where the follower stands this tick.</summary>
     public PathFollowState State { get; init; }
@@ -230,7 +237,8 @@ public sealed partial class PathFollower
     public int ActiveWaypointIndex => ActivePath is null ? 0 : _index;
 
     /// <summary>
-    /// Advances the follower by <paramref name="dt"/> seconds toward <paramref name="goal"/> from
+    /// An active Drop drains cooldown but retains its immutable endpoints until CompleteDrop or Reset,
+    /// before arrival, proximity, goal drift or corridor checks. Otherwise advances toward <paramref name="goal"/> from
     /// <paramref name="position"/>, replanning through the <see cref="IPathPlanner"/> as needed. Position
     /// and goal are world space. Steering and every distance measure work in XZ. Y is read by the arrival
     /// check in step 2, the planned point intent, and, when the follower was given a <see cref="NavSpace"/>,
@@ -239,14 +247,15 @@ public sealed partial class PathFollower
     /// <item>Drains the replan cooldown by <paramref name="dt"/>.</item>
     /// <item>Returns <see cref="PathFollowState.Arrived"/> immediately if already within
     /// <see cref="PathFollowConfig.AcceptRadius"/> of the goal in XZ AND within
-    /// <see cref="PathFollowConfig.VerticalAcceptTolerance"/> of it in Y, clearing any stored path. A goal
+    /// <see cref="PathFollowConfig.VerticalAcceptTolerance"/> of it in Y with no pending Drop, clearing any stored path. A goal
     /// that clears the XZ radius but not the vertical tolerance (another floor, a ledge) falls through to
     /// the steps below instead, so the layer-aware planner is the one that decides how to reach it.</item>
     /// <item>Advances reached waypoints of an existing Complete route under the configured radius and
     /// layer checks. A reached terminal returns <see cref="PathFollowState.Arrived"/> only when the
     /// queried point intent still matches the current goal in X, Y and Z. This preserves completion at
     /// a planner-selected snapped endpoint. Otherwise the obsolete terminal makes a replan due, even
-    /// for drift below the retarget tolerances. A replan is also due with no stored path, a fully consumed
+    /// for drift below the retarget tolerances. Supported acknowledgement of a final Complete Drop
+    /// preserves this terminal witness after its marker is consumed. A replan is also due with no stored path, a fully consumed
     /// path, goal drift past <see cref="PathFollowConfig.GoalRetargetTolerance"/> in XZ or past
     /// <see cref="PathFollowConfig.GoalRetargetVerticalTolerance"/> in Y from where it was planned, or
     /// agent drift past <see cref="PathFollowConfig.CorridorTolerance"/> from the corridor segment
@@ -283,7 +292,7 @@ public sealed partial class PathFollower
     public PathFollowOutput Tick(Vector3 position, Vector3 goal, float agentRadius, float dt)
         => TickCore(position, goal, agentRadius, dt, region: null);
 
-    /// <summary>Clears all stored path state (path, index, cooldown, plan origin and goal, height
+    /// <summary>Clears all stored path state, including an active Drop (path, index, cooldown, plan origin and goal, height
     /// included), as if this follower had just been constructed. The next tick plans fresh
     /// with no cooldown wait.</summary>
     public void Reset()
@@ -296,6 +305,7 @@ public sealed partial class PathFollower
         _planOriginXz = Vector2.Zero;
         _followingRegion = false;
         _freshRegionTerminal = false;
+        _drop = null;
     }
 
     /// <summary>Point-to-segment distance from <paramref name="posXz"/> to the corridor leading to the

@@ -215,12 +215,16 @@ Contact proofs step the proof binding with `StepTowards` and read every `Movemen
 - The Hold is the first slice of the edge budget. The bake options own timing and budget.
 - Any outcome other than `Advanced` at the Hold or at any slice refuses the edge. An unchanged pose is never evidence
   that a query succeeded. No prefix of a refused proof is published.
-- Every slice passes the footprint's surface reach and area predicate and stays grounded.
+- Every ordinary-edge and Stair slice passes the supported footprint's surface reach and area predicate and stays grounded.
 - Arrival is the shared 3D 1 mm sphere around the target anchor with the body grounded.
 - Edges step the wet proof binding, so the WadeOnly wall and the swim threshold shape them as at runtime.
 - Stair links use the same proof between anchors.
 
-Legacy proofs are unchanged.
+Legacy proofs are unchanged. Positive `MaxDropMetres` adds a separate full-tuning Drop phase after ordinary exits
+and Stair proofs. It certifies an unpowered fall through the actual controller, the first supported target landing
+and a final Hold, using the same total duration. A composed corridor admits flight without relaxing ordinary ground
+footprints or the original play-area boundary. Selected swimming history, including same-tick entry and dry exit,
+refuses a Drop. Supported wading stays eligible. [Contact Drop links](CONTACT-DROP-LINKS.md) owns the current contract.
 
 ### P5B-8 Explicit grounded arrival
 
@@ -232,16 +236,20 @@ test moves with it.
 ### P5B-9 KENB format 2
 
 An all-legacy bake writes format 1, byte for byte as today, pinned by a full-file golden for a small all-legacy fixture
-under the golden engine string. Any contact profile makes the bake format 2.
+under the golden engine string. Contact with zero allowance selects format 2. Any positive `MaxDropMetres` selects
+format 3, which appends allowance, WalkSpeed, RunSpeed and AirMomentum, exactly 13 bytes per profile, and uses
+ordered Stair-plus-Drop acceptance bits. Disabled profiles encode canonical `0, 1, 1, false`. Formats 1 and 2 remain frozen.
 
 | Stored file | Expected profiles | Same engine | Other engine |
 | --- | --- | --- | --- |
 | Format 1 | All legacy | Existing comparison, Loaded if equal | EngineChanged |
 | Format 1 | Any contact | ProfilesChanged | EngineChanged |
 | Format 2 | All legacy | ProfilesChanged | EngineChanged |
-| Format 2 | Any contact | Format 2 comparison, Loaded if equal | EngineChanged |
+| Format 2 | Contact, all allowances zero | Format 2 comparison, Loaded if equal | EngineChanged |
+| Format 1 or 2 | Any positive allowance | ProfilesChanged | EngineChanged |
+| Format 3 | Matching enabled and disabled profiles | Format 3 comparison, Loaded if equal | EngineChanged |
 
-Decoding is format directed. Versions other than 1 and 2 and nonzero flags stay `UnsupportedFormat`. A malformed
+Decoding is format directed. Versions other than 1, 2 and 3 and nonzero flags stay `UnsupportedFormat`. A malformed
 identity in a supported format stays `Corrupt`. Expectation refusals follow P5B-2 and happen before the stream is read.
 Inside one format the order stays engine, options, sources, profiles.
 
@@ -271,6 +279,11 @@ applied after the total. Legacy profiles in a mixed bake add nothing. Before rea
 reader requires `9 * open` remaining bytes, where a legacy layer requires `5 * open`. A loaded contact graph is rebuilt
 from its stored layers, resting heights and the shared columns, never recaptured, and rewriting it reproduces its
 bytes.
+
+Format 3 retains these Contact resting fields. It additionally bounds the Drop bitset by at most eight candidates
+per admitted source, counts regenerated candidates before allocating endpoints and refuses malformed or truncated
+bits. Enabled profile runtime validation retains actual WalkSpeed, RunSpeed and AirMomentum. Disabled profiles keep
+the normalized supported-proof behavior. EngineChanged retains priority over an allowance mismatch.
 
 ### P5B-10 Runtime graph compatibility
 
@@ -347,7 +360,7 @@ exactly as today.
 - The hop endpoint documentation in `PathFollower` names `RestingHeightAt` for physical Y.
 - A test pins the classification per call site, so a new caller has to choose.
 
-Fresh contact graphs set resting heights from admission. Loaded ones read them from format 2. Both therefore hand region
+Fresh contact graphs set resting heights from admission. Loaded ones read them from formats 2 and 3. Both therefore hand region
 predicates, `Resolve` and the follower the pose the body actually holds.
 
 ## Acceptance

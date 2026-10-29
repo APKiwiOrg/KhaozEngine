@@ -724,10 +724,13 @@ stay blocked, with no analytic ground fallback.
 `NavLayerBaker.BakeGroundedLayered` and physical hold and directed-edge proofs. The overload with
 `GroundProfileOptions { Aquatic = true }` composes a derived float view over the water `SampleWater` captured, and
 proves float edges with swim steps through the same context and its existing physics penetration query, so it adds
-no reference. `GroundNavigation` exposes `Space`, `Planner`, `AgentRadius`, `AgentHeight`, `Aquatic` and
-`AllowsSegment`. The profile matches capsule radius,
+no reference. `GroundNavigation` exposes `Space`, `Planner`, `AgentRadius`, `AgentHeight`, `Aquatic`,
+`MaxDropMetres` and `AllowsSegment`. The profile matches capsule radius,
 half-height, slope and step exactly, uses raw radius-zero grid checks after physical footprint admission,
-retains only accepted Stair links for guarded queries, and does not generate Hop links. The returned profile
+retains accepted Stair links and independently opted-in Contact Drop links for guarded queries, and does not
+generate Hop links. Navigation retains data-only edge identity and Drop acknowledgement, with no Locomotion
+reference. Movement owns actual fall proofs, live launch preview and supported completion. Its internal walk-only
+query keeps ordinary segment admission separate from the public graph-edge union. The returned profile
 owns pure data and outlives the builder and its caller-owned physics world. This edge keeps Navigation and
 Physics free of a reverse Movement reference.
 

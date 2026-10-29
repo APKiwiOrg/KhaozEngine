@@ -31,7 +31,7 @@ public class SupportQueryMeasurementReductionTests
         foreach (var counter in Enum.GetValues<SupportQueryCounter>()) Assert.Equal(0, empty.Total[counter]);
         Assert.True(empty.Total.ProofReuse.HasCompleteLifetimes);
         Assert.Throws<ArgumentOutOfRangeException>(() => empty.Total[(SupportQueryCounter)(-1)]);
-        Assert.Throws<ArgumentOutOfRangeException>(() => empty.Total[(SupportQueryCounter)48]);
+        Assert.Throws<ArgumentOutOfRangeException>(() => empty.Total[(SupportQueryCounter)52]);
         Assert.Throws<ArgumentNullException>(() => SupportQueryMeasurement.Combine(null!));
         Assert.Throws<ArgumentNullException>(() => SupportQueryMeasurement.Combine([a, null!]));
         Assert.Equal(1, a.Total[SupportQueryCounter.Find]);
@@ -42,7 +42,7 @@ public class SupportQueryMeasurementReductionTests
     {
         using (var capture = SupportQueryCapture.Begin("overflow"))
         {
-            long[] counts = new long[48];
+            long[] counts = new long[Enum.GetValues<SupportQueryCounter>().Length];
             counts[0] = long.MaxValue;
             SupportQueryDiagnostics.Exchange(SupportQueryCaptureTests.State() with { Counts = counts });
             Assert.Throws<OverflowException>(() => SupportQueryDiagnostics.Record(SupportQueryCounter.Find));
@@ -56,7 +56,7 @@ public class SupportQueryMeasurementReductionTests
         Assert.Throws<OverflowException>(() => SupportQueryMeasurement.Combine([huge, small]));
         Assert.Equal(long.MaxValue, huge.Total[SupportQueryCounter.Find]);
         using var parent = SupportQueryCapture.Begin("same");
-        SupportQueryDiagnostics.Exchange(SupportQueryCaptureTests.State() with { Counts = Enumerable.Repeat(long.MaxValue, 48).ToArray() });
+        SupportQueryDiagnostics.Exchange(SupportQueryCaptureTests.State() with { Counts = Enumerable.Repeat(long.MaxValue, Enum.GetValues<SupportQueryCounter>().Length).ToArray() });
         using (SupportQueryCapture.Begin("same")) SupportQueryDiagnostics.Record(SupportQueryCounter.Find);
         Assert.Throws<OverflowException>(() => parent.Dispose());
         Assert.NotEqual("same", SupportQueryCaptureTests.State().MeasurementLabel);
@@ -70,7 +70,7 @@ public class SupportQueryMeasurementReductionTests
             using var capture = SupportQueryCapture.Begin(label);
             SupportQueryDiagnostics.Exchange(SupportQueryCaptureTests.State() with
             {
-                Counts = Enumerable.Repeat(count, 48).ToArray(),
+                Counts = Enumerable.Repeat(count, Enum.GetValues<SupportQueryCounter>().Length).ToArray(),
                 Routes = new(count, count, count, keys, count, count, count, count, count, count),
                 Retention = new(0, 0, keys, bytes),
                 HasCompleteLifetimes = complete,
@@ -82,7 +82,7 @@ public class SupportQueryMeasurementReductionTests
     }
 
     static SupportQueryCounts Counts(long value) => (SupportQueryCounts)typeof(SupportQueryCounts).GetConstructors().Single()
-        .Invoke(Enumerable.Repeat((object)value, 48).ToArray());
+        .Invoke(Enumerable.Repeat((object)value, Enum.GetValues<SupportQueryCounter>().Length).ToArray());
 
     static void Equal(SupportQueryMeasurement expected, SupportQueryMeasurement actual)
     {

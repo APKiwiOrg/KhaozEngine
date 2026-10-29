@@ -43,6 +43,8 @@ public sealed partial class GroundNavigationBake
         foreach (GroundNavigation profile in profiles)
             if (profile.Identity.Kind == EffectiveMovementBindingKind.OrdinaryContact)
                 _formatVersion = NavBakeIdentity.ContactFormatVersion;
+        foreach (GroundNavigation profile in profiles)
+            if (profile.MaxDropMetres > 0) _formatVersion = NavBakeIdentity.DropFormatVersion;
         _byName = new Dictionary<string, GroundNavigation>(names.Length, StringComparer.Ordinal);
         for (int i = 0; i < names.Length; i++) _byName.Add(names[i], profiles[i]);
         ProfileNames = Array.AsReadOnly(names);
@@ -108,8 +110,10 @@ public sealed partial class GroundNavigationBake
         {
             NavBakeProfile profile = sorted[i];
             GroundNavigation navigation = capture.BuildProfile(profile.Tuning, profile.Areas,
-                new GroundProfileOptions { Aquatic = profile.Aquatic }, execution);
-            IReadOnlyList<NavLink> regenerated = NavLayerLinks.GenerateGrounded(navigation.Space.Layers, profile.Tuning.StepHeight);
+                new GroundProfileOptions { Aquatic = profile.Aquatic, MaxDropMetres = profile.MaxDropMetres }, execution);
+            IEnumerable<NavLink> regenerated = profile.MaxDropMetres > 0
+                ? ContactDropTopology.Enumerate(navigation.Space.Layers, navigation.Graph.Layers, profile.Tuning, profile.MaxDropMetres)
+                : NavLayerLinks.GenerateGrounded(navigation.Space.Layers, profile.Tuning.StepHeight);
             if (!SameLinks(regenerated, navigation.Space.Links))
                 throw new InvalidOperationException(
                     $"Profile '{profile.Name}' candidate links differ from the list regenerated from its grids.");
@@ -143,11 +147,13 @@ public sealed partial class GroundNavigationBake
         return sorted;
     }
 
-    private static bool SameLinks(IReadOnlyList<NavLink> a, IReadOnlyList<NavLink> b)
+    private static bool SameLinks(IEnumerable<NavLink> a, IReadOnlyList<NavLink> b)
     {
-        if (a.Count != b.Count) return false;
-        for (int i = 0; i < a.Count; i++)
-            if (a[i] != b[i]) return false;
-        return true;
+        int next = 0;
+        foreach (NavLink link in a)
+        {
+            if (next >= b.Count || link != b[next++]) return false;
+        }
+        return next == b.Count;
     }
 }

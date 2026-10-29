@@ -17,7 +17,7 @@ public sealed partial class GroundNavigation
     {
     }
 
-    internal GroundNavigation(NavTraversalGraph graph, in MoveTuning tuning, NavAreaFootprint footprint, bool aquatic)
+    internal GroundNavigation(NavTraversalGraph graph, in MoveTuning tuning, NavAreaFootprint footprint, bool aquatic, float maxDropMetres = 0)
     {
         Graph = graph;
         _tuning = new ProfileTuning(tuning.CapsuleRadius, tuning.CapsuleHalfHeight, tuning.MaxSlopeRadians, tuning.StepHeight);
@@ -25,14 +25,19 @@ public sealed partial class GroundNavigation
             tuning.SwimSurfaceSubmersionFraction);
         _footprint = footprint;
         Aquatic = aquatic;
-        Identity = new(new NavBakeProfile("", tuning, footprint.Areas) { Aquatic = aquatic }.ResolveKind(), tuning);
+        MaxDropMetres = maxDropMetres == 0 ? 0 : maxDropMetres;
+        Identity = new(new NavBakeProfile("", tuning, footprint.Areas) { Aquatic = aquatic, MaxDropMetres = MaxDropMetres }.ResolveKind(), tuning, MaxDropMetres);
         Planner = new ProfilePlanner(this, new GridPathPlanner(graph.Space, graph));
     }
 
     /// <summary>True when the profile was baked aquatic, with float nodes where its body rests while swimming.</summary>
     public bool Aquatic { get; }
 
-    /// <summary>The graph-owned source topology. Candidate Stair links are filtered by the planner's graph.</summary>
+    /// <summary>The baked unpowered descent permission in metres. Zero disables Drop topology.
+    /// This is a profile permission, independent of manual falling and fall damage.</summary>
+    public float MaxDropMetres { get; }
+
+    /// <summary>The graph-owned source topology. Candidate links are filtered by the planner's graph.</summary>
     public NavSpace Space => Graph.Space;
 
     /// <summary>Guarded region and point search with exact radius matching and unsmoothed cell-center routes.
@@ -62,7 +67,7 @@ public sealed partial class GroundNavigation
         if (!Resolve(fromFeet, out Node from) || !Resolve(toFeet, out Node to) ||
             !_footprint.AcceptsSegment(fromFeet, toFeet)) return false;
         if (from.Layer != to.Layer)
-            return Graph.CanTraverse(from.Layer, from.X, from.Z, to.Layer, to.X, to.Z);
+            return Graph.CanWalk(from.Layer, from.X, from.Z, to.Layer, to.X, to.Z);
         NavGrid grid = Space.Layers[from.Layer];
         int x = from.X, z = from.Z;
         double dx = (double)toFeet.X - fromFeet.X, dz = (double)toFeet.Z - fromFeet.Z;
@@ -76,7 +81,7 @@ public sealed partial class GroundNavigation
             int nx = x, nz = z;
             if (nextX <= nextZ) nx += sx;
             if (nextZ <= nextX) nz += sz;
-            if (!Graph.CanTraverse(from.Layer, x, z, from.Layer, nx, nz)) return false;
+            if (!Graph.CanWalk(from.Layer, x, z, from.Layer, nx, nz)) return false;
             if (nx != x) nextX = nx == to.X ? double.PositiveInfinity : nextX + strideX;
             if (nz != z) nextZ = nz == to.Z ? double.PositiveInfinity : nextZ + strideZ;
             x = nx;

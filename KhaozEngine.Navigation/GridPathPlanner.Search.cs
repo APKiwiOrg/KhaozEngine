@@ -35,7 +35,7 @@ public sealed partial class GridPathPlanner
         NavGrid goalGrid = _space.Layers[goalLayer];
         (int goalX, int goalZ) = goalGrid.CellOf(goalPoint.X, goalPoint.Y);
         return RunSearch(scratch, startLayer, startPoint,
-            new PointGoal(goalLayer, goalX, goalZ, goalGrid.CellSize), goalPoint, agentRadius, budget);
+            new PointGoal(goalLayer, goalX, goalZ, goalGrid.CellSize, !_hasDrops || PointLinksPreserveOctile()), goalPoint, agentRadius, budget);
     }
 
     /// <summary>What one search is looking for. A struct implementation keeps the per-node calls free of
@@ -52,14 +52,14 @@ public sealed partial class GridPathPlanner
     }
 
     /// <summary>A point query's goal cell, ordered by <see cref="Heuristic"/>.</summary>
-    readonly struct PointGoal(int goalLayer, int goalX, int goalZ, float goalCellSize) : ISearchGoal
+    readonly struct PointGoal(int goalLayer, int goalX, int goalZ, float goalCellSize, bool spatialBound) : ISearchGoal
     {
         public bool IsGoal(int layer, int x, int z) => layer == goalLayer && x == goalX && z == goalZ;
 
         public float Priority(int layer, int x, int z)
-            => Heuristic(layer, x, z, goalLayer, goalX, goalZ, goalCellSize);
+            => spatialBound ? Heuristic(layer, x, z, goalLayer, goalX, goalZ, goalCellSize) : 0f;
 
-        public double Progress(int layer, int x, int z) => Priority(layer, x, z);
+        public double Progress(int layer, int x, int z) => Heuristic(layer, x, z, goalLayer, goalX, goalZ, goalCellSize);
     }
 
     // Priority must bound remaining route cost. Progress only chooses a partial endpoint, so region
@@ -127,7 +127,7 @@ public sealed partial class GridPathPlanner
                 int nx = cx + NeighborDx[i];
                 int nz = cz + NeighborDz[i];
                 if (!grid.InBounds(nx, nz) || Blocks(layer, agentRadius, nx, nz) ||
-                    !CanTraverse(layer, cx, cz, layer, nx, nz))
+                    !(_traversal?.CanWalkNeighbor(layer, cx, cz, nx, nz) ?? true))
                 {
                     continue;
                 }
@@ -158,9 +158,9 @@ public sealed partial class GridPathPlanner
             // meters cost (a Stair one cell of the source layer, a Hop the knob's multiple). The source
             // endpoint is passable by construction (it is a reached search node). The far endpoint must
             // still fit the agent on its own layer, else the link is not traversable.
-            if (_linkEdges.TryGetValue(current, out List<(int ToId, float CostMeters)>? links))
+            if (_linkEdges.TryGetValue(current, out List<PlannerLink>? links))
             {
-                foreach ((int targetId, float costMeters) in links)
+                foreach ((int targetId, float costMeters, NavLinkKind kind) in links)
                 {
                     if (scratch.IsClosed(targetId))
                     {
@@ -176,7 +176,7 @@ public sealed partial class GridPathPlanner
                     float tentative = gCurrent + costMeters;
                     if (tentative < scratch.GScore(targetId))
                     {
-                        scratch.Relax(targetId, tentative, current);
+                        scratch.Relax(targetId, tentative, current, kind);
                         float f = tentative + goal.Priority(tLayer, tx, tz);
                         open.Enqueue(targetId, (f, seq++));
                     }
@@ -193,24 +193,9 @@ public sealed partial class GridPathPlanner
         return Reconstruct(scratch, closestNode, reachedGoal, goalPoint, agentRadius);
     }
 
-    /// <summary>
-    /// Walks the scratch's parents back from <paramref name="target"/> to the start, then
-    /// emits its validated cell edges for guarded and region queries. Legacy point queries
-    /// string-pull the chain into world-space waypoints. The chain is split into same-layer runs at
-    /// every link crossing (any edge that is not an in-layer 8-neighbor step). Within a run the pull is
-    /// greedy: the anchor starts at the run's first cell, and each step keeps the farthest later cell
-    /// still in clear <see cref="SearchScratch.HasLineOfSight"/> from the anchor, emits it, and re-anchors there. A
-    /// run's first cell is never emitted by the pull itself, so the start cell is dropped (matching the
-    /// line-of-sight fast path). Both link endpoints are always emitted: a run's last cell falls out of
-    /// the pull, and the next run's first cell (the link's far endpoint) is emitted explicitly before
-    /// its pull begins, keeping the pair adjacent and un-smoothed. When that boundary edge is a
-    /// <see cref="NavLinkKind.Hop"/> (looked up in the hop-edge set by the two chain node ids), the emitted
-    /// landing carries <see cref="NavWaypointKind.Hop"/>, a stair crossing emits a Walk landing. On a
-    /// completed path the final waypoint is moved to <paramref name="goalPoint"/> to honor the exact-goal
-    /// rule, preserving its kind so a hop landing that is also the goal stays a hop. A
-    /// single-cell chain that reached the goal returns exactly that one exact-goal waypoint rather than
-    /// indexing an empty list.
-    /// </summary>
+    /// <summary>Reconstructs the selected incoming edges. Guarded and region queries retain cell centers.
+    /// Legacy point queries string-pull only ordinary runs. Drop source and landing anchors are mandatory,
+    /// including the first edge. Exact-goal adjustment appends a Walk after a final Drop when needed.</summary>
     NavPath Reconstruct(SearchScratch scratch, int target, bool reachedGoal, Vector2? goalPoint, float agentRadius)
     {
         List<int> chain = scratch.Chain;
@@ -235,11 +220,9 @@ public sealed partial class GridPathPlanner
         int runStart = 0;
         while (runStart < count)
         {
-            // A run is the maximal same-layer span of 8-neighbor steps starting at runStart. It ends
-            // where the next edge is a link crossing (a different layer, or a same-layer jump wider
-            // than one cell, which only a link can produce).
+            // Runs contain ordinary selected exits only. An adjacent special link is still a boundary.
             int runEnd = runStart;
-            while (runEnd + 1 < count && IsGridStep(cells[runEnd], cells[runEnd + 1]))
+            while (runEnd + 1 < count && scratch.Incoming(chain[runEnd + 1]) is null)
             {
                 runEnd++;
             }
@@ -247,20 +230,19 @@ public sealed partial class GridPathPlanner
             int layer = cells[runStart].Layer;
             NavGrid grid = _space.Layers[layer];
 
-            // A run after a link crossing opens with its first cell: the link's far endpoint, always a
-            // waypoint so the crossing is never smoothed over. When that boundary edge is a hop, the landing
-            // carries NavWaypointKind.Hop so the follower surfaces the jump. The boundary is the directed
-            // edge the search traversed (cameFrom[chain[runStart]] == chain[runStart - 1]), so the hop set
-            // lookup is by that exact directed node-id pair. A stair crossing emits a Walk landing as before.
+            // A selected link starts a new run. Its actual incoming kind determines the landing marker.
             if (!firstRun)
             {
                 Vector2 landing = grid.CellCenter(cells[runStart].Cx, cells[runStart].Cz);
-                bool isHop = _hopEdges.Contains((chain[runStart - 1], chain[runStart]));
+                NavWaypointKind kind = WaypointKind(scratch.Incoming(chain[runStart]));
                 waypoints.Add(new NavWaypoint(landing, layer)
                 {
-                    Kind = isHop ? NavWaypointKind.Hop : NavWaypointKind.Walk,
+                    Kind = kind,
                 });
             }
+
+            if (firstRun && runEnd == runStart && count > 1 && scratch.Incoming(chain[1]) == NavLinkKind.Drop)
+                waypoints.Add(new NavWaypoint(grid.CellCenter(cells[runStart].Cx, cells[runStart].Cz), layer));
 
             int anchor = runStart;
             while (anchor < runEnd)
@@ -291,7 +273,12 @@ public sealed partial class GridPathPlanner
             {
                 // Move the final waypoint to the exact goal while keeping its Layer and Kind, so a hop
                 // landing that is also the goal stays NavWaypointKind.Hop.
-                waypoints[^1] = waypoints[^1] with { Position = goalPoint.Value };
+                if (waypoints[^1].Kind == NavWaypointKind.Drop)
+                {
+                    if (waypoints[^1].Position != goalPoint.Value)
+                        waypoints.Add(new NavWaypoint(goalPoint.Value, waypoints[^1].Layer));
+                }
+                else waypoints[^1] = waypoints[^1] with { Position = goalPoint.Value };
             }
             else
             {
@@ -303,25 +290,6 @@ public sealed partial class GridPathPlanner
         }
 
         return new NavPath(reachedGoal ? NavPathStatus.Complete : NavPathStatus.Partial, waypoints.ToArray());
-    }
-
-    /// <summary>True when the step from <paramref name="a"/> to <paramref name="b"/> is an in-layer
-    /// 8-neighbor move (same layer, Chebyshev distance exactly one). Anything else in a reconstructed
-    /// chain is a link crossing, since within a layer A* only ever steps to an adjacent cell. Same-layer
-    /// links joining Chebyshev-adjacent cells are indistinguishable from grid steps and get smoothed like
-    /// one. No shipped adapter emits such links (DungeonNav stairs always cross layers). An adapter that
-    /// emits a same-layer diagonally adjacent link should prefer orthogonally adjacent cells, a smoothed
-    /// diagonal link segment is corner-checked by the line walk on only one of the two companion cells,
-    /// not both like a real diagonal grid step.</summary>
-    static bool IsGridStep((int Layer, int Cx, int Cz) a, (int Layer, int Cx, int Cz) b)
-    {
-        if (a.Layer != b.Layer)
-        {
-            return false;
-        }
-        int dx = Math.Abs(a.Cx - b.Cx);
-        int dz = Math.Abs(a.Cz - b.Cz);
-        return dx <= 1 && dz <= 1 && (dx != 0 || dz != 0);
     }
 
     /// <summary>Decodes a flat node id into its layer index and grid cell (cx, cz), inverting the

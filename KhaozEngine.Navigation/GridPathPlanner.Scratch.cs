@@ -41,6 +41,7 @@ public sealed partial class GridPathPlanner
     {
         readonly float[] _gScore;
         readonly int[] _cameFrom;
+        readonly NavLinkKind?[] _incoming;
         readonly int[] _stamp;
         int _generation;
 
@@ -56,6 +57,7 @@ public sealed partial class GridPathPlanner
         {
             _gScore = new float[totalNodes];
             _cameFrom = new int[totalNodes];
+            _incoming = new NavLinkKind?[totalNodes];
             _stamp = new int[totalNodes];
             _memberBoxes = new MemberBox[layerCount];
             MemberLayers = new bool[layerCount];
@@ -96,11 +98,14 @@ public sealed partial class GridPathPlanner
 
         public int CameFrom(int id) => _cameFrom[id];
 
+        public NavLinkKind? Incoming(int id) => _incoming[id];
+
         /// <summary>Records an improved route into an open node.</summary>
-        public void Relax(int id, float gScore, int cameFrom)
+        public void Relax(int id, float gScore, int cameFrom, NavLinkKind? kind = null)
         {
             _gScore[id] = gScore;
             _cameFrom[id] = cameFrom;
+            _incoming[id] = kind;
             _stamp[id] = _generation;
         }
 

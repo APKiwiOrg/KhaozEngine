@@ -369,6 +369,8 @@ internal static partial class GroundCore
                     _moveRise += (double)placement.Feet.Y - FeetY;
                     FeetY = placement.Feet.Y;
                     Support = placement.Support;
+                    if (Support.Status == SupportStatus.Walkable)
+                        _queries.RecordAcceptedSupport(new(Axis.X, Support.Height, Axis.Y));
                     if (!_slide && seat.Outcome == SeatOutcome.Seated)
                     {
                         AccountDiscrete(seat.DiscreteStep);

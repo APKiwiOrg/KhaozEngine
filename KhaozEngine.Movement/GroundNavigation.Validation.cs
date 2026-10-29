@@ -46,6 +46,7 @@ public sealed partial class GroundNavigation
         }
         MoveTuning runtime = tuning with { Water = water };
         string? difference = NavBakeIdentity.FirstRuntimeDifference(Identity.Tuning, runtime);
+        if (MaxDropMetres > 0) difference ??= NavBakeIdentity.FirstDropRuntimeDifference(Identity.Tuning, runtime);
         if (difference is not null) throw new ArgumentException($"Movement {difference}.", parameter);
         if (placementOffset != Identity.PlacementOffset)
             throw new ArgumentException("Movement PlacementOffset must equal the baked profile's.", parameter);

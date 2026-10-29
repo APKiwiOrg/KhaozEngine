@@ -29,7 +29,7 @@ Rows are in the order the milestones run.
 | --- | --- | --- | --- |
 | M1 Authored beds at the world manifest edge | shipped in v21.14.0 | https://github.com/APKiwiOrg/KhaozEngine/issues/1586 | none |
 | M2 Underwater sunlight for submerged receivers | shipped in v21.15.0 | https://github.com/APKiwiOrg/KhaozEngine/issues/1588 | none, its native run landed per WO-D21 |
-| M5 Water column light and shadow, with a bent view of the bed | Landing 1 shipped in v21.18.0. Landing 2 bent view not built | https://github.com/APKiwiOrg/KhaozEngine/issues/1608 | Owner approves Landing 2 |
+| M5 Water column light and shadow, with a bent view of the bed | Landing 1 shipped in v21.18.0. Landing 2 bent view not built | https://github.com/APKiwiOrg/KhaozEngine/issues/1608 | Owner rules on Landing 2's measured cost before it ships |
 | M6 Scene reflections in water | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1609 | Owner approves its design |
 | M7 River flow for procedural water | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1610 | Owner approves its design |
 | M3 Underwater caustics | design decisions taken, document not written | https://github.com/APKiwiOrg/KhaozEngine/issues/1604 | Owner approves its design, rules on its measured cost |

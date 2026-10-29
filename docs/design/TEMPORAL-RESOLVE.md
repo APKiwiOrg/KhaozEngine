@@ -143,8 +143,8 @@ The record distinguishes alternating jitter error from persistent lighting chang
 blending, `lumaChange` is the current reconstruction's weighted-YCoCg luma minus its reprojected history
 luma. Drift averages this signed difference and swing averages its absolute value. Both use an
 exponential rate of one over the jitter phase count, so the window spans about one jitter cycle at each
-preset. The count is 8 at Native and `ceil(8 * displayOverInternal^2)` below Native, capped at 128 and a
-ratio of 4. A still thin feature appears and disappears with jitter, giving swing with little drift.
+preset. The count is 8 at a 1:1 resolution and `ceil(8 * displayOverInternal^2)` when upscaling, capped
+at 128 and a ratio of 4. A render-size cap can make even the Native preset upscale. A still thin feature appears and disappears with jitter, giving swing with little drift.
 One-way lighting change makes the absolute drift approach swing.
 
 The prior record is bilinearly reprojected with the existing four state texels. Finite state is required.

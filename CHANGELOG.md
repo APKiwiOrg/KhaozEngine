@@ -4,6 +4,22 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.21.0
+
+2026-10-29
+
+- Add baked one-way Contact `Drop` links with certified fall routes and supported landing completion. Each
+  navigation profile opts in through `MaxDropMetres`, which defaults to zero. Only drop-enabled profiles use
+  KENB format 3. Player hosts supply `PlayerPathInput` for authenticated Drop execution (#1645).
+- Keep the follower replan cooldown for fresh no-progress results and refresh stale reached terminals once.
+  Point routes validate the current goal before reporting `Arrived`, and deferred path queries report
+  `WaitingForPath` with zero steering (#1646).
+- Refresh a due route before committing a one-way Drop, and reconsider changed goals during grounded
+  preparation before physical launch. Active unsupported flight retains its committed Drop route.
+- Share captured drawn ground triangles between Contact support and water beds, preserving exact bed
+  membership on level and sloped terrain. Supported pose publication checks combined frame and capsule
+  conversion precision and refuses unrepresentable poses within the existing precision contract (#1647).
+
 ## 21.20.0
 
 2026-10-29

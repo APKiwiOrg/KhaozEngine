@@ -19,6 +19,7 @@ public sealed partial class OrdinaryMovementEnvironment : IMovementEnvironmentPr
     internal MovementSpaceKey Space { get; }
     internal MovementSupportKey AnalyticOwner { get; }
     readonly MoveTuning _tuning;
+    internal float CapsuleHalfHeight => _tuning.CapsuleHalfHeight;
     readonly MovementBoundary _boundary;
     readonly string[] _resources;
     readonly string? _waterSemanticIdentity;

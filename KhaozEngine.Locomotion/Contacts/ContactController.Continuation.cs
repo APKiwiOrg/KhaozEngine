@@ -24,7 +24,7 @@ internal static partial class ContactController
         internal bool Completed { get; init; }
         internal double UnroundedX { get; init; }
         internal double UnroundedZ { get; init; }
-        internal Vector3 PublishedCentre => Queries.BodyCentre(Feet);
+        internal Vector3 PublishedCentre => Queries.SupportedBodyCentre(Feet, Support);
     }
 
     // Each receiving mode uses the exact remainder, carry and climb budget of the accepted segment. The dry

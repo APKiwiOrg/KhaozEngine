@@ -40,6 +40,10 @@ centre minus half height would fall below support. Settling and tick publication
 the dry Contact path. World-to-frame analytic support conversion also rounds upward when its exact translated
 height would fall below the original world bed. The public explicit composition retains its checked placement offset and the same
 non-penetration guarantee. Water membership continues to compare exact feet with the represented bed.
+Every supported conversion checks its final numerical displacement against the existing coverage precision
+budget, including the exact world-to-frame residual and any final upward increment. The explicit composition's
+fixed placement offset remains separate from that numerical error. An unrepresentable pose is unresolved
+and holds the input pose and velocity through the normal refusal path. It is never clamped into admission.
 The static installer publishes fixed authored provenance in `OrdinaryMovementRegistration` under its source read lease,
 with a finite `OrdinaryMovementExtent`, inclusive feature ranges and authored `MovementSupportKey` owners.
 Several pieces may alias one owner. Ambiguous, missing, excluded and stale features refuse binding.

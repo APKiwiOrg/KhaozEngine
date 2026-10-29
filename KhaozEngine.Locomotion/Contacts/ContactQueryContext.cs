@@ -21,6 +21,8 @@ internal readonly struct ContactQueryContext
     internal Vector3 KernelFeet(Vector3 centre, in MoveTuning tuning) => _leased is { } leased
         ? leased.KernelFeet(centre, tuning) : _dry.KernelFeet(centre, tuning);
     internal Vector3 BodyCentre(Vector3 feet) => _leased is { } leased ? leased.BodyCentre(feet) : _dry.BodyCentre(feet);
+    internal Vector3 SupportedBodyCentre(Vector3 feet, in SupportSample support) => _leased is { } leased
+        ? leased.SupportedBodyCentre(feet, support) : _dry.BodyCentre(feet);
     internal void CheckDryMedium(Vector3 feet)
     {
         if (_leased is null) _dry.CheckMedium(feet);

@@ -14,10 +14,12 @@ public readonly record struct MovementAnalyticGround
     public MovementSpaceKey Space { get; }
     public string? TraversedLinkId { get; }
     public MovementQueryIdentity Identity { get; }
+    internal Contacts.SupportHeightTranslation HeightTranslation { get; init; }
     public bool IsValid => float.IsFinite(Axis.X) && float.IsFinite(Axis.Y) && float.IsFinite(Height) &&
         MovementEnvironmentValidation.Unit(Normal) && Owner.IsValid && Space.IsValid && Identity.IsValid &&
         string.Equals(Owner.WorldId, Space.WorldId, StringComparison.Ordinal) &&
-        (TraversedLinkId is null || MovementEnvironmentValidation.Name(TraversedLinkId));
+        (TraversedLinkId is null || MovementEnvironmentValidation.Name(TraversedLinkId)) &&
+        HeightTranslation.IsValid && (HeightTranslation == default || HeightTranslation.LocalHeight == Height);
 
     public MovementAnalyticGround(Vector2 axis, float height, Vector3 normal, MovementSupportKey owner,
         MovementSpaceKey space, string? traversedLinkId, MovementQueryIdentity identity)
@@ -29,6 +31,7 @@ public readonly record struct MovementAnalyticGround
         Space = space;
         TraversedLinkId = traversedLinkId;
         Identity = identity;
+        HeightTranslation = default;
         MovementEnvironmentValidation.Require(IsValid, nameof(axis));
     }
 }

@@ -143,7 +143,14 @@ internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, 
             return MovementAvailability.Unresolved;
         Vector3 normal = _owner.GroundNormal?.Invoke(x, z) ?? Vector3.UnitY;
         if (!MovementEnvironmentValidation.Unit(normal)) return MovementAvailability.Unresolved;
-        ground = new(axis, local, normal, _owner.AnalyticOwner, _owner.Space, null, _owner.Identity);
+        var translation = localGround ? default : new Contacts.SupportHeightTranslation(local, origin.Y, height);
+        try
+        {
+            _ = Contacts.SupportedCapsulePose.Centre(local, _owner.CapsuleHalfHeight, translation: translation);
+        }
+        catch (Contacts.ContactQueryFailure) { return MovementAvailability.Unresolved; }
+        ground = new(axis, local, normal, _owner.AnalyticOwner, _owner.Space, null, _owner.Identity)
+        { HeightTranslation = translation };
         return MovementAvailability.Known;
     }
 

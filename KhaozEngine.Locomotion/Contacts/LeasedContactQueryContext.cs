@@ -72,6 +72,19 @@ internal sealed partial class LeasedContactQueryContext
             Mapped((double)centre.Y - tuning.CapsuleHalfHeight - _composition.PlacementOffset), centre.Z);
     internal Vector3 BodyCentre(Vector3 feet) =>
         new(feet.X, SupportedCapsulePose.Centre(feet.Y, _tuning.CapsuleHalfHeight, _composition.PlacementOffset), feet.Z);
+    internal Vector3 SupportedBodyCentre(Vector3 feet, in SupportSample support)
+    {
+        SupportHeightTranslation translation = default;
+        if (support.Static is null && support.Status is SupportStatus.Walkable or SupportStatus.Steep)
+        {
+            if (!_lease.Workspace.TryGetAnalytic(_selection.Space, new(feet.X, feet.Z), out var fact) ||
+                fact is not { } ground || ground.Height != support.Height)
+                throw new ContactQueryFailure(MovementAvailability.Unresolved);
+            translation = ground.HeightTranslation;
+        }
+        return new(feet.X, SupportedCapsulePose.Centre(feet.Y, _tuning.CapsuleHalfHeight,
+            _composition.PlacementOffset, translation), feet.Z);
+    }
     internal float HeightAt(Vector3 feet) => Analytic(feet)?.Height ?? float.NaN;
     internal Vector3? NormalAt(Vector3 feet) => Analytic(feet)?.Normal;
 

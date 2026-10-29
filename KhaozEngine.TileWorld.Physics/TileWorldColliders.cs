@@ -127,8 +127,8 @@ public sealed partial class TileWorldColliders
         TileColliderBuilder.AddWalkSurfaces(document, catalogs, placed, options.WalkSurfaceThickness, colliders, provenance);
 
         TileCollider[] ordered = colliders.ToArray();
-        var medium = new TileMediumSampler(document, catalogs, regions, worldId);
         var captured = new TileMovementSnapshot(document, regions);
+        var medium = new TileMediumSampler(document, catalogs, regions, worldId, captured);
         TileColliderProvenance[] owners = provenance.ToArray();
         return new TileWorldColliders(ordered, HashOf(ordered), new TileGroundSampler(document, regions), medium,
             owners, worldId, captured, DescribeExtent(document, regions, owners, captured, medium));

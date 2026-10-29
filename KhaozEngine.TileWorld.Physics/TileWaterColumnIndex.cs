@@ -51,12 +51,30 @@ internal sealed class TileWaterColumnIndex
     internal int FindContaining(in MovementBodyQuery body, Vector3 origin) =>
         _nodes.Length == 0 ? -1 : FindContaining(0, body, origin);
 
+    internal int Collect(in TileWaterPathBounds bounds, Span<int> columns)
+    {
+        int count = 0;
+        return _nodes.Length == 0 || Collect(0, bounds, columns, ref count) ? count : -1;
+    }
+
+    bool Collect(int index, in TileWaterPathBounds bounds, Span<int> columns, ref int count)
+    {
+        Node node = _nodes[index];
+        if (!bounds.Meets(node.Minimum, node.Maximum)) return true;
+        if (node.Column < 0)
+            return Collect(node.Left, bounds, columns, ref count) && Collect(node.Right, bounds, columns, ref count);
+        if (count == columns.Length) return false;
+        columns[count++] = node.Column;
+        return true;
+    }
+
     int FindContaining(int index, in MovementBodyQuery body, Vector3 origin)
     {
         Node node = _nodes[index];
         // Every ancestor encloses the actual rounded leaf bounds. Exact comparisons prune only outside that
         // enclosure, so every containing column reaches a leaf regardless of float tile-address spacing.
-        // Membership is X [minimum, maximum), Z (minimum, maximum] and feet [bed, surface).
+        // Candidate membership is X [minimum, maximum), Z (minimum, maximum] and feet below surface.
+        // The captured drawn triangle supplies the final lower boundary.
         if (!Contains(node.Minimum, node.Maximum, body, origin)) return -1;
         if (node.Column >= 0) return node.Column;
         int left = FindContaining(node.Left, body, origin);
@@ -71,7 +89,6 @@ internal sealed class TileWaterColumnIndex
             TileWaterArithmetic.Sign(centre.X, origin.X, -max.X) < 0 &&
             TileWaterArithmetic.Sign(centre.Z, origin.Z, -min.Z) > 0 &&
             TileWaterArithmetic.Sign(centre.Z, origin.Z, -max.Z) <= 0 &&
-            TileWaterArithmetic.Sign(centre.Y, origin.Y, half, -min.Y) >= 0 &&
             TileWaterArithmetic.Sign(centre.Y, origin.Y, half, -max.Y) < 0;
     }
 

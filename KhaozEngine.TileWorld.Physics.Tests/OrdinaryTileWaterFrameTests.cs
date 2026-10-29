@@ -36,7 +36,7 @@ public class OrdinaryTileWaterFrameTests
         Vector3 rounded = centre + origin;
         bool roundedWet = rounded.X >= tileX && rounded.X < tileX + 1 && rounded.Z > -(tileZ + 1) && rounded.Z <= -tileZ;
         Assert.NotEqual(exact, roundedWet);
-        using var scene = new FramedTileScene(tileX, tileZ, origin);
+        using var scene = new FramedTileScene(tileX, tileZ, origin, rimAlongX: !onX);
         using var lease = scene.Acquire();
         Assert.Equal(MovementAvailability.Known, lease.RebuildSelection(scene.State(centre), out var selection));
         var point = lease.SampleCentreWater(new(centre, 0.25f, 0.75f, selection.Space, null));
@@ -141,13 +141,18 @@ public class OrdinaryTileWaterFrameTests
         internal EffectiveMovementBinding Binding { get; }
         internal MovementFrameDescriptor Frame { get; }
 
-        internal FramedTileScene(int tileX, int tileZ, Vector3 origin)
+        internal FramedTileScene(int tileX, int tileZ, Vector3 origin, bool rimAlongX = false)
         {
             var region = RegionCoord.Of(tileX, tileZ);
             var doc = TileWorldPhysicsTestData.FlatWorld(region);
+            for (int z = region.OriginZ; z < region.OriginZ + TileRegion.Size; z++)
+                for (int x = region.OriginX; x < region.OriginX + TileRegion.Size; x++)
+                    doc.SetCornerHeightCm(x, z, 0, -400);
             doc.SetUnderlay(tileX, tileZ, 0, TileWorldPhysicsTestData.Water);
-            doc.SetCornerHeightCm(tileX, tileZ, 0, -400);
-            doc.SetCornerHeightCm(tileX + 1, tileZ, 0, 2);
+            // The connected rim is on the untested axis, preserving both original faces under test.
+            int rimX = tileX + (rimAlongX ? 1 : 0), rimZ = tileZ + (rimAlongX ? 0 : 1);
+            doc.SetUnderlay(rimX, rimZ, 0, TileWorldPhysicsTestData.Water);
+            doc.SetCornerHeightCm(rimX + 1, rimZ + 1, 0, 2);
             var colliders = TileWorldColliders.Build(doc, TileWorldPhysicsTestData.Catalogs(), "water-world");
             _installed = colliders.AddTo(_physics);
             _physics.Rebase(origin);

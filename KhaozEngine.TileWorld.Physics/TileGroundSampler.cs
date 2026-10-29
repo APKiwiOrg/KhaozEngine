@@ -32,31 +32,16 @@ public sealed class TileGroundSampler
     const int Plane = 0;
 
     readonly TileWorldDocument _document;
+    readonly CapturedTileGround? _captured;
     readonly float _tileSize;
-    readonly bool _bounded;
-    // The loaded rectangle in tile coordinates, the far edges pulled to the last float inside it.
-    readonly float _minX, _maxX, _minZ, _maxZ;
+    readonly TileGroundBounds _bounds;
 
-    internal TileGroundSampler(TileWorldDocument document, RegionCoord[] regions)
+    internal TileGroundSampler(TileWorldDocument document, RegionCoord[] regions, CapturedTileGround? captured = null)
     {
         _document = document;
+        _captured = captured;
         _tileSize = document.TileSize;
-        if (regions.Length > 0)
-        {
-            int minRx = int.MaxValue, maxRx = int.MinValue, minRz = int.MaxValue, maxRz = int.MinValue;
-            foreach (RegionCoord region in regions)
-            {
-                minRx = Math.Min(minRx, region.Rx);
-                maxRx = Math.Max(maxRx, region.Rx);
-                minRz = Math.Min(minRz, region.Rz);
-                maxRz = Math.Max(maxRz, region.Rz);
-            }
-            _bounded = true;
-            _minX = (float)minRx * TileRegion.Size;
-            _minZ = (float)minRz * TileRegion.Size;
-            _maxX = MathF.BitDecrement((float)(maxRx + 1L) * TileRegion.Size);
-            _maxZ = MathF.BitDecrement((float)(maxRz + 1L) * TileRegion.Size);
-        }
+        _bounds = new(regions);
         HeightDelegate = HeightAt;
         NormalDelegate = NormalAt;
     }
@@ -73,8 +58,8 @@ public sealed class TileGroundSampler
     public float HeightAt(float worldX, float worldZ)
     {
         if (!TryLoadedTile(worldX, worldZ, out float tileX, out float tileZ)) return 0f;
-        return TryTriangle(tileX, tileZ, out GroundTriangle triangle)
-            ? triangle.Height
+        return TryTriangle(tileX, tileZ, out DrawnGroundTriangle triangle, out Vector3 weights)
+            ? triangle.Height(weights)
             : _document.HeightAt(TileWorldSpace.WorldX(tileX, _tileSize), TileWorldSpace.WorldZ(tileZ, _tileSize), Plane);
     }
 
@@ -85,85 +70,34 @@ public sealed class TileGroundSampler
     public Vector3 NormalAt(float worldX, float worldZ)
     {
         if (!TryLoadedTile(worldX, worldZ, out float tileX, out float tileZ)) return Vector3.UnitY;
-        return TryTriangle(tileX, tileZ, out GroundTriangle triangle) ? triangle.Normal : Vector3.UnitY;
+        return TryTriangle(tileX, tileZ, out DrawnGroundTriangle triangle, out _) ? triangle.Normal : Vector3.UnitY;
     }
 
     // The point in tile coordinates, clamped into the loaded rectangle. False, before any document read, when there
     // is no rectangle or the point is NaN, which the clamp passes through.
-    bool TryLoadedTile(float worldX, float worldZ, out float tileX, out float tileZ)
-    {
-        tileX = Math.Clamp(TileWorldSpace.TileX(worldX, _tileSize), _minX, _maxX);
-        tileZ = Math.Clamp(TileWorldSpace.TileZ(worldZ, _tileSize), _minZ, _maxZ);
-        return _bounded && float.IsFinite(tileX) && float.IsFinite(tileZ);
-    }
+    internal bool TryLoadedTile(float worldX, float worldZ, out float tileX, out float tileZ) =>
+        _bounds.TryMap(worldX, worldZ, _tileSize, out tileX, out tileZ);
 
     // The ground triangle under a tile-space point, chosen among its tile's triangles as the one whose smallest
     // barycentric weight is largest, so a point on a shared edge takes either neighbour and float error never leaves
     // it with none. False when the tile draws no ground.
-    bool TryTriangle(float tileX, float tileZ, out GroundTriangle triangle)
+    internal bool TryDrawnHeight(float worldX, float worldZ, out float height)
     {
-        int x = (int)MathF.Floor(tileX), z = (int)MathF.Floor(tileZ);
-        Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
-        if (!TileGroundTriangles.TryDescribe(_document, x, z, Plane, out TileGroundCell cell, triangles))
-        {
-            triangle = default;
-            return false;
-        }
-
-        var local = new Vector2(tileX - x, tileZ - z);
-        int best = 0;
-        Vector3 weights = default;
-        float bestMin = float.NegativeInfinity;
-        for (int i = 0; i < cell.TriangleCount; i++)
-        {
-            Vector3 w = Weights(local, TileTriangulation.Local(triangles[i].A), TileTriangulation.Local(triangles[i].B),
-                                TileTriangulation.Local(triangles[i].C));
-            float min = MathF.Min(w.X, MathF.Min(w.Y, w.Z));
-            if (min > bestMin)
-            {
-                bestMin = min;
-                best = i;
-                weights = w;
-            }
-        }
-
-        // Placed relative to the tile's own corner, so the normal's edge vectors stay exact however far out the tile
-        // is. A lattice height does not depend on the origin, so the heights are the ones the ground mesh holds.
-        TileLatticeTriangle t = triangles[best];
-        triangle = new GroundTriangle(
-            TileGroundTriangles.LatticePosition(_document, x, z, Plane, t.A, x, z),
-            TileGroundTriangles.LatticePosition(_document, x, z, Plane, t.B, x, z),
-            TileGroundTriangles.LatticePosition(_document, x, z, Plane, t.C, x, z),
-            weights);
+        height = 0;
+        if (!TryLoadedTile(worldX, worldZ, out float tileX, out float tileZ) ||
+            !TryTriangle(tileX, tileZ, out var triangle, out var weights)) return false;
+        height = triangle.Height(weights);
         return true;
     }
 
-    // Barycentric weights of p on the tile-local triangle (a, b, c). Lattice triangles always have area in plan, so
-    // the determinant is never zero. Tile-local coordinates and metre positions relative to the tile's corner differ
-    // only by scale and a flip of z, so the weights hold for both.
-    static Vector3 Weights(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
+    bool TryTriangle(float tileX, float tileZ, out DrawnGroundTriangle triangle, out Vector3 weights)
     {
-        Vector2 ab = b - a, ac = c - a, ap = p - a;
-        float determinant = ab.X * ac.Y - ac.X * ab.Y;
-        float wb = (ap.X * ac.Y - ac.X * ap.Y) / determinant;
-        float wc = (ab.X * ap.Y - ap.X * ab.Y) / determinant;
-        return new Vector3(1f - wb - wc, wb, wc);
-    }
-
-    // One ground triangle in metres relative to its tile's corner, and a point's weights on it.
-    readonly record struct GroundTriangle(Vector3 A, Vector3 B, Vector3 C, Vector3 Weights)
-    {
-        // Anchor at a lattice vertex so a level triangle retains its exact height, including at a water bed.
-        public float Height => A.Y + Weights.Y * (B.Y - A.Y) + Weights.Z * (C.Y - A.Y);
-
-        // Lattice triangles are never vertical, so the cross product always has a Y to orient by.
-        public Vector3 Normal
-        {
-            get
-            {
-                Vector3 n = Vector3.Cross(B - A, C - A);
-                return Vector3.Normalize(n.Y < 0f ? -n : n);
-            }
-        }
+        int x = (int)MathF.Floor(tileX), z = (int)MathF.Floor(tileZ);
+        Span<DrawnGroundTriangle> scratch = stackalloc DrawnGroundTriangle[TileTriangulation.MaxTriangles];
+        ReadOnlySpan<DrawnGroundTriangle> triangles = _captured is { } captured ? captured.Triangles(x, z)
+            : scratch[..DrawnGroundTriangle.Describe(_document, x, z, scratch)];
+        int selected = DrawnGroundTriangle.Select(triangles, new(tileX - x, tileZ - z), out weights);
+        triangle = selected >= 0 ? triangles[selected] : default;
+        return selected >= 0;
     }
 }

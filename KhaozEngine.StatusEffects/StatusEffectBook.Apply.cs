@@ -12,7 +12,9 @@ public sealed partial class StatusEffectBook
     /// fresh with one stack and a new periodic anchor. A later Advance(now) does not repeat events.
     /// Swapping Apply and Advance at the same tick preserves effect entries and the event multiset
     /// when no mutation intervenes. Cross-actor event interleaving follows call order since Apply
-    /// settles only its target actor.
+    /// settles only its target actor. Settling runs before the definition lookup and the capacity check,
+    /// so a call that returns UnknownDefinition or ActorFull, or throws because the end tick would not fit,
+    /// may already have raised the same settle events that Advance(now) would raise for the actor.
     /// </summary>
     public StatusEffectApplyResult Apply(long actor, StatusEffectId effect, long now, long source = 0,
         int? durationTicks = null, int magnitude = 0)

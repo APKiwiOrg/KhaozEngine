@@ -27693,9 +27693,10 @@ The owner captures the entity's full registered component set, sends a `Migrate`
 any prior ghost of it) and acks; the owner releases it. The entity keeps its `NetId` across the move, and the
 destination cell is created if needed. The in-process link usually completes the whole handshake within the call.
 A destination that defers admission, or a networked link, keeps the entity `Migrating` on the source until the
-ack arrives. During that gap `OwnerCount` is 0, `TryGetOwner` finds nothing and `IsInHandoff(netId)` is true, so
-code that writes state by owner retries rather than treating the entity as gone. It is never double-simulated and
-never permanently lost. Game systems must treat `Migrating` entities as frozen, like `Ghost`s.
+ack arrives. Until the destination adopts it, `OwnerCount` is 0 and `TryGetOwner` finds nothing.
+`IsInHandoff(netId)` stays true until the source releases its frozen copy on the ack, so code that writes state by
+owner retries while no owner exists rather than treating the entity as gone. It is never double-simulated and never
+permanently lost. Game systems must treat `Migrating` entities as frozen, like `Ghost`s.
 
 **Client home-cell serving (Phase 3D).** Each client is served its entire area-of-interest from a single **home
 cell** - the cell that owns its player. Because of the invariant **overlap margin >= interest radius**, that cell

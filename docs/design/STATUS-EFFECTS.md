@@ -34,9 +34,9 @@ modifier totals into stat sources, but neither package knows how one channel aff
 ## Stable refresh windows and periodic cadence
 
 `PerActor` definitions have one instance per effect id. `PerSource` definitions key by effect id and
-source id, allowing independent bleeds from different sources. Reapplication increases stacks up to
-`MaxStacks`, with 1 meaning refresh only. Source and event magnitude take the latest application's
-values. Channel contributions remain the definition's integer `Value` multiplied by stack count.
+source id, allowing independent bleeds from different sources. Reapplication of a live instance
+increases stacks up to `MaxStacks`, with 1 meaning refresh only. Source and event magnitude take the
+latest application's values. Channel contributions remain the definition's integer `Value` multiplied by stack count.
 
 A refresh restarts the presented window at `now` but chooses
 `EndTick = max(previous EndTick, now + duration)`. A short reapplication cannot erase a longer
@@ -47,6 +47,16 @@ repeated refresh from indefinitely postponing the next bleed tick or changing it
 the effect. A periodic tick exactly at the end fires before expiry. Actors step in ascending id order
 and instances in application order. Notifications retain their due tick even when a step catches up
 several periods. Determinism depends on the same calls and tick inputs, not wall-clock timing.
+
+`Apply` settles all of its target actor's instances at `now` using that same application-order
+traversal before matching an instance or checking capacity. Each instance raises due periodic ticks
+through `min(now, EndTick)`, then expires at `EndTick` if due. Settlement notifications precede the
+new application or refresh, so a periodic tick due at `now` uses the old stacks, source and magnitude.
+An application at or after expiry opens a fresh one-stack window anchored at `now`. It cannot revive
+old stacks or generate periodic events in the inactive gap. A later `Advance(now)` adds no duplicate
+events. Without intervening mutation, swapping these two calls at the same tick preserves effect
+entries and the event multiset. Cross-actor interleaving follows call order because `Apply` settles
+only its target actor and does not change the last advanced tick.
 
 ## Events after the step
 

@@ -6,6 +6,9 @@ namespace KhaozEngine.StatusEffects;
 /// <summary>
 /// Single-threaded authority for transient timed effects. Drain notifications after a step before
 /// responding with further changes. The book never invokes gameplay callbacks.
+/// The catalog must keep each id's definition the same for this book's lifetime. Each instance
+/// retains its captured definition for scope matching, reapplication, periodic events and modifiers,
+/// even if a custom catalog later returns a different definition object.
 /// </summary>
 public sealed partial class StatusEffectBook
 {

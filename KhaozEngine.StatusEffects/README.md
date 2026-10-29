@@ -12,6 +12,10 @@ formulas. A haste, a damage-taken reduction and a bleed are game content, not en
 
 `StatusEffectCatalog` implements `IStatusEffectCatalog` and rejects duplicate ids. Build the same catalog
 on the server and clients. A `StatusEffectDefinition` copies its modifier lines into an immutable array.
+Custom catalogs must keep each id's definition the same for the lifetime of any book using them.
+Each instance captures its definition, which governs scope matching, stack cap, default duration,
+window rules, periodic cadence, modifiers and visibility. If a custom provider returns a different
+definition object, reapplication still uses the matched instance's captured rules without throwing.
 
 | Definition field | Contract |
 |---|---|
@@ -29,9 +33,9 @@ on the server and clients. A `StatusEffectDefinition` copies its modifier lines 
 1 to 255. Actor id 0 is invalid. `Apply` returns `Applied`, `Stacked`, `Refreshed`, `UnknownDefinition`
 or `ActorFull`. Invalid arguments and an end tick outside the `long` range throw.
 
-Reapplying an instance adds a stack up to the cap and replaces its source and event magnitude. It sets
-`StartTick = now` and `EndTick = max(previous EndTick, now + duration)`, so a refresh never shortens
-an existing window. The original periodic anchor survives a refresh, keeping a bleed's cadence stable.
+Reapplying a live instance adds a stack up to the cap and replaces its source and event magnitude.
+It sets `StartTick = now` and `EndTick = max(previous EndTick, now + duration)`, so a refresh never
+shortens an existing window. The original periodic anchor survives a refresh, keeping a bleed's cadence stable.
 `Magnitude` is game-owned event data. It does not scale modifier lines and is not replicated.
 
 ## Stepping and events
@@ -43,6 +47,15 @@ runs at a lower cadence. `Apply` and `Advance` reject a tick before the last `Ad
 `Advance(now)` visits actors in ascending id order and instances in application order. It catches up
 every periodic tick due through `min(now, EndTick)`, then expires the instance. A periodic tick exactly
 at `EndTick` fires before expiry. The same call sequence produces the same event order.
+
+`Apply(actor, effect, now)` first settles every instance of that actor by the same rules, before
+matching an instance or checking capacity. Each instance's due periodic events precede its expiry,
+and all settlement events precede the application or refresh. A tick due at `now` uses the previous
+stacks, source and magnitude. Reapplying at or after `EndTick` starts a fresh one-stack window and
+periodic anchor, with no periodic events in the inactive gap. A later `Advance(now)` repeats nothing.
+With no intervening mutation, swapping `Apply` and `Advance` at the same tick preserves effect entries
+and the event multiset. `Apply` settles only its target actor, so cross-actor event interleaving follows
+call order. It does not change the last advanced tick.
 
 Drain events after the step. The book queues notifications and never calls a gameplay handler, so
 handlers may `Clear` or `Apply` safely. Their new events wait for a later drain. `DrainEvents` appends

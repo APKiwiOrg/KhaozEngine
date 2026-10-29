@@ -13,7 +13,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   preserving genuine movement, correction offsets and nonfinite behavior (Closes #1651).
 
 - Add `KhaozEngine.StatusEffects`, a dependency-free book of transient timed effects on actors with scoped
-  stacking, non-shortening refresh, periodic events, expiry and integer modifier totals. Games supply
+  stacking, non-shortening refresh, periodic events, expiry and integer modifier totals. Apply settles
+  due events and expiry before reapplication or capacity checks. Games supply
   definitions, ticks and gameplay responses, and clients build countdown rows from effect windows.
 - Add `KhaozEngine.StatusEffects.Netcode`, which projects shown effects into immutable replicated
   snapshots that migrate without persistence. Deferred ownership publication retries current state after

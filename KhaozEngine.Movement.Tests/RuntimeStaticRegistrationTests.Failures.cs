@@ -119,12 +119,14 @@ public class RuntimeStaticFailureTests
         {
             try { registration.ApplyRuntimeStatics([RuntimeStaticRegistrationTests.Wall()]); }
             catch (Exception error) { firstFailure = error; }
-        }) { IsBackground = true };
+        })
+        { IsBackground = true };
         var second = new Thread(() =>
         {
             try { registration.ApplyRuntimeStatics([RuntimeStaticChange.Remove(new("world", "wall"))]); }
             catch (Exception error) { secondFailure = error; }
-        }) { IsBackground = true };
+        })
+        { IsBackground = true };
         first.Start();
         try
         {

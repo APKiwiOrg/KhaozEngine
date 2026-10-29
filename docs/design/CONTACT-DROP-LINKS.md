@@ -54,6 +54,9 @@ Progress remains separate, so this does not turn a useful partial approach into 
 collinear logic, goal membership or goal drift. While locked the follower does not replan or change its landing.
 The host calls `CompleteDrop()` only after its controller witnesses supported arrival. It advances one transition
 and throws when no Drop is active. `Reset()` is explicit cancellation. Hop's geometric lunge contract is unchanged.
+`MoveToRange` advances the locked follower's cooldown exactly once per active tick, including suspended flight and
+the supported completion tick. Route selection after acknowledgement spends no additional elapsed time, so an
+expired cooldown lets the current goal replace the old route before its next transition in that landing tick.
 
 ## Range execution and hosts
 

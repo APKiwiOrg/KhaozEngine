@@ -37,7 +37,7 @@ public sealed partial class PathFollower
     {
         if (_drop is not null)
         {
-            _cooldown = MathF.Max(0f, _cooldown - dt);
+            AdvanceDropTime(dt);
             return DropOutput();
         }
         bool followingRegion = region is not null;

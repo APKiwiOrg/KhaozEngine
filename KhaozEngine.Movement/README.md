@@ -359,6 +359,8 @@ Player hosts pass the tick's `PlayerPathInput` to `Tick` and use its `Command` f
 continuation check execute that exact camera-relative command, including its fractional axis and rounding. The
 overload without this input retains NPC world-space execution. Body, run mode, timestep and environment checks
 remain exact. Camera yaw may change between ticks when the same input value is used for preview and submission.
+The follower cooldown advances once per active Drop tick, including suspended flight and supported completion.
+After acknowledgement the latest goal can replan in that landing tick before the old route's next transition.
 See [Contact Drop links](../docs/design/CONTACT-DROP-LINKS.md) for costs, follower acknowledgement and storage reasons.
 
 ### Parallel contact bake

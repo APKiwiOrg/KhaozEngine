@@ -7,6 +7,14 @@ public sealed partial class PathFollower
 {
     NavDropTraversal? _drop;
 
+    /// <summary>Advances the active lock's clock without selecting a route or changing its landing.
+    /// A wrapper that resumes following in this tick must pass zero elapsed time to that selection.</summary>
+    internal void AdvanceDropTime(float dt)
+    {
+        if (_drop is null) throw new InvalidOperationException("No active Drop to advance.");
+        _cooldown = MathF.Max(0f, _cooldown - dt);
+    }
+
     /// <summary>Acknowledges the active Drop's supported landing. The host must verify actual non-swimming
     /// support at the named landing with its movement controller. Advances exactly this transition and permits
     /// subsequent goal retargeting. Navigation itself reads no physics.</summary>

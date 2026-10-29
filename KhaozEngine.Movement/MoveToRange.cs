@@ -88,6 +88,13 @@ public sealed partial class MoveToRange
         MovementBody shape = Body(body, tuning);
         bool within = ReachGeometry.Within(shape, target, range);
         bool swims = _options.SteerWhileSwimming && body.Swimming;
+        float followerDt = dt;
+        if (_drop is not null)
+        {
+            // Spend this tick once, including suspended flight and supported completion.
+            _follower.AdvanceDropTime(dt);
+            followerDt = 0f;
+        }
         if ((!body.Grounded && !swims && _drop is null) || body.Commitment.IsActive || body.JumpBufferRemaining > 0)
             return Hold(RangeMoveStatus.Suspended);
         if (swims && Settling(body, tuning, context)) return Hold(RangeMoveStatus.Suspended);
@@ -103,7 +110,7 @@ public sealed partial class MoveToRange
 
         if (_stalled) return Hold(RangeMoveStatus.Blocked);
         Vector3 feet = Feet(body, tuning);
-        PathFollowOutput route = _follower.Tick(feet, goal, tuning.CapsuleRadius, dt);
+        PathFollowOutput route = _follower.Tick(feet, goal, tuning.CapsuleRadius, followerDt);
         if (route.State == PathFollowState.Dropping)
         {
             if (_navigation is null || _navigation.MaxDropMetres == 0 || route.DropTraversal is not { } traversal)

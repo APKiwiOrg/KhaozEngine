@@ -9,7 +9,8 @@ Start here. Living references, current design rationale and open program tracker
   superseded reasoning in place. Git history retains earlier designs.
 - **Program trackers** ([`programs/`](programs/README.md)) hold remaining milestones and decisions until
   the program is done. Current trackers are [physical atmosphere and night sky](programs/atmosphere.md),
-  [indirect diffuse](programs/indirect-diffuse.md) and [AAA VFX](programs/aaa-vfx.md).
+  [indirect diffuse](programs/indirect-diffuse.md), [AAA VFX](programs/aaa-vfx.md) and
+  [forced movement](programs/forced-movement.md).
   Specs, plans and execution ledgers stay in ignored local scratch.
 
 ## Living docs

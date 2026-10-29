@@ -1,8 +1,13 @@
 using System.IO;
 using System.Numerics;
+using System.Linq;
+using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 using KhaozEngine.TileWorld;
 
 namespace KhaozEngine.Tests.MapDocOracle;
@@ -24,8 +29,29 @@ internal static partial class ShippedSceneGuardFixtures
              "supportName":"ground","heightMode":"Support","heightRule":"terrain","yaw":0.125,"enabled":true,"archetype":null}]}
             """);
         File.WriteAllText(Path.Combine(root, "scene-marker-rows.json"), """
-            {"schemaVersion":1,"markers":[{"sourceName":"arrival","x":1,"z":1,"plane":0,"regionX":0,"regionZ":0,"supportName":"ground","spaceId":null,"parents":[]}]}
+            {"schemaVersion":1,"markers":[{"sourceName":"arrival","x":1,"z":1,"plane":0,"regionX":0,"regionZ":0,"supportName":"ground","spaceId":null,"parents":[],"sceneSpaceId":null,"sceneParents":[]}]}
             """);
+        if (variant is "marker-scene-room" or "marker-wrong-scene-room" or "marker-wrong-scene-parent")
+        {
+            var patch = native.Surfaces.Patches.Values.First(); var key = patch.Key;
+            patch.Records.Add(new MapSpaceDoc("scene-exterior", MapSpaceKind.Exterior, null, null, [], [], [], []));
+            patch.Records.Add(new MapSpaceDoc("scene-room", MapSpaceKind.Room, new("scene-exterior", key), null, [], [], [], []));
+            patch.Records.Add(new MapSpaceFootprint("scene-exterior-domain", new("scene-exterior", key), key, [65],
+                new(MapBoundKind.SupportFloor, "plane-0", null), new(MapBoundKind.OpenTop, null, null)));
+            native.BuildingIntent = new(1, [], [], [], [marker]) { Storeys = [new(1, "scene-storey", "Scene floor", null)] };
+            patch.Records.Add(new MapPrismDomain("scene-room-domain", 1, new("scene-room", key), new("scene-exterior", key), "", "scene-storey",
+                new(MapLatticeFrame.ImportedMetreCentimetre, new[] { new MapWaterRect(1, 1, 2, 2) }, []), 0, 4));
+            var rows = JsonNode.Parse(File.ReadAllText(Path.Combine(root, "scene-marker-rows.json")))!;
+            rows["markers"]![0]!["sceneSpaceId"] = variant == "marker-wrong-scene-room" ? "wrong-room" : "scene-room";
+            rows["markers"]![0]!["sceneParents"] = new JsonArray(variant == "marker-wrong-scene-parent" ? "wrong-parent" : "scene-exterior");
+            File.WriteAllText(Path.Combine(root, "scene-marker-rows.json"), rows.ToJsonString());
+        }
+        if (variant.StartsWith("marker-missing-", System.StringComparison.Ordinal))
+        {
+            var rows = JsonNode.Parse(File.ReadAllText(Path.Combine(root, "scene-marker-rows.json")))!;
+            rows["markers"]![0]!.AsObject().Remove(variant["marker-missing-".Length..]);
+            File.WriteAllText(Path.Combine(root, "scene-marker-rows.json"), rows.ToJsonString());
+        }
         File.WriteAllText(Path.Combine(root, "scene-marker-comparison.json"), """
             {"schemaVersion":1,"nativeDocumentPath":"marker-scaffold.json","roleManifestPath":"scene-marker-roles.json","markerManifestPath":"scene-marker-rows.json",
              "expectations":{"total":1,"playerStart":1,"spawn":0,"landmark":0,"label":0,"negativeX":0,"supportBound":1,"enabled":1}}

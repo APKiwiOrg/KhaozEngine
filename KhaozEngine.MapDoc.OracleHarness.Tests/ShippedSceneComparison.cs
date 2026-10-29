@@ -64,7 +64,7 @@ internal static partial class ShippedSceneComparison
                 var source = bound.Source!;
                 var policy = inputs.NativePolicy.Native(closure, manifest);
                 var windows = manifest.Windows.ToDictionary(w => w.Id, w => ShippedSceneInputs.Scope(w, manifest.Limits?.Queries), StringComparer.Ordinal);
-                var completeWindows = new Dictionary<string, IReadOnlyDictionary<MapRenderKey, string>>(StringComparer.Ordinal);
+                var completeWindows = new Dictionary<string, IReadOnlyDictionary<MapRenderKey, SceneStreamResource>>(StringComparer.Ordinal);
                 foreach (var window in manifest.Windows)
                 {
                     var acquired = source.Acquire(windows[window.Id]);
@@ -77,7 +77,7 @@ internal static partial class ShippedSceneComparison
                     var plan = residency.AcceptedPlans.Single();
                     ShippedSceneMarkers.Plan(inputs, plan, report);
                     var inventory = new MapDrawRecorder(); plan.Register(inventory);
-                    completeWindows.Add(window.Id, inventory.Snapshot().Resources.ToDictionary(r => r.Reference.Key, Fingerprint));
+                    completeWindows.Add(window.Id, inventory.Snapshot().Resources.ToDictionary(r => r.Reference.Key, SceneStreamComparison.Capture));
                     CompareSource(expected, inputs, plan, report);
                     var terrain = ShippedSceneSourceChecks.Terrain(inputs, plan, report, out var terrainFaces);
                     var foliage = LegacySceneRecorder.RecordFoliage(inputs, scene.Scope);
@@ -260,9 +260,10 @@ internal static partial class ShippedSceneComparison
         if (ok) return;
         var counts = Details.GetOrCreateValue(report);
         counts.TryGetValue(category, out int count); counts[category] = count + 1;
-        report.Check(category, false, count < 16 ? JsonSerializer.Serialize(detail, ShippedScenePolicy.Json) : "{}");
+        report.Check(category, false, JsonSerializer.Serialize(detail, ShippedScenePolicy.Json), retainDetail: count < 16);
     }
     internal static string Fingerprint(MapPreparedResource resource) => Hash(new { resource.Reference.Key, resource.Bounds, payload = PayloadValue(resource.Payload) });
+    internal static string PayloadFingerprint(MapPreparedResource resource) => Hash(PayloadValue(resource.Payload));
     static object MeshValue(GltfMesh mesh) => new { mesh.Vertices, mesh.Indices32 };
     static object PayloadValue(MapResourcePayload payload) => payload switch
     {
@@ -314,7 +315,7 @@ internal static partial class ShippedSceneComparison
         }
         return new(plan.Scene.Scope.Surfaces.Frame, observer, p.RoofMode, p.TimeSeconds, p.WindSeed, focus);
     }
-    static void Stream(MapSceneSource source, MapAssetClosure closure, MapAssetExtentProofSet proof, MapRenderPolicy policy, ShippedSceneInputs inputs, IReadOnlyDictionary<string, IReadOnlyDictionary<MapRenderKey, string>> completeWindows, PrivateOracleReport report)
+    static void Stream(MapSceneSource source, MapAssetClosure closure, MapAssetExtentProofSet proof, MapRenderPolicy policy, ShippedSceneInputs inputs, IReadOnlyDictionary<string, IReadOnlyDictionary<MapRenderKey, SceneStreamResource>> completeWindows, PrivateOracleReport report)
     {
         var scheduler = new SceneOracleScheduler(); var device = new SceneOracleDevice();
         var active = new Dictionary<string, MapSceneScope>(StringComparer.Ordinal);
@@ -325,16 +326,18 @@ internal static partial class ShippedSceneComparison
             if (step.Operation == "Unload") active.Remove(step.WindowId);
             else active[step.WindowId] = ShippedSceneInputs.Scope(inputs.Manifest.Windows.Single(w => w.Id == step.WindowId), inputs.Manifest.Limits?.Queries);
             residency.SetWindows(active.Values.ToArray()); Complete(residency, scheduler);
-            foreach (var plan in residency.AcceptedPlans) ShippedSceneMarkers.Plan(inputs, plan, report);
+            foreach (var plan in residency.AcceptedPlans)
+            {
+                ShippedSceneMarkers.Plan(inputs, plan, report);
+                var inventory = new MapDrawRecorder(); plan.Register(inventory);
+                foreach (var window in active.Where(p => p.Value.Digest == plan.Key.ScopeDigest))
+                    SceneStreamComparison.Window(completeWindows[window.Key], inventory.Snapshot().Resources, report);
+            }
             var recorder = new MapDrawRecorder(); var point = ShippedSceneInputs.Point(0, 0, 0);
             residency.Record(new(default, point, KhaozEngine.MapDoc.Interiors.MapRoofMode.AlwaysVisible, 0, 0, point), recorder);
             var set = recorder.Snapshot();
             Check(report, "scene-stream-union", active.Values.Select(s => s.Digest).ToHashSet(StringComparer.Ordinal).SetEquals(residency.AcceptedPlans.Select(p => p.Key.ScopeDigest)), new { step.Operation });
-            var expectedUnion = active.Keys.SelectMany(id => completeWindows[id]).GroupBy(p => p.Key).ToDictionary(g => g.Key, g => g.First().Value);
-            var actualUnion = set.Resources.GroupBy(r => r.Reference.Key).ToDictionary(g => g.Key, g => Fingerprint(g.First()));
-            Check(report, "scene-stream-union", expectedUnion.Count == actualUnion.Count && expectedUnion.All(p => actualUnion.TryGetValue(p.Key, out var fingerprint) && fingerprint == p.Value), new { step.Operation, expected = expectedUnion.Count, actual = actualUnion.Count });
-            foreach (var group in set.Resources.GroupBy(r => r.Reference.Key))
-                Check(report, "scene-stream-union", group.All(r => PayloadEqual(r.Payload, group.First().Payload) && Bits(r.Bounds, group.First().Bounds)), new { key = group.Key });
+            SceneStreamComparison.Union(active.Keys.SelectMany(id => completeWindows[id].Values), set.Resources, report);
             Check(report, "scene-generation", set.Draws.All(d => device.Live.Values.Any(r => r.Reference.Key == d.Resource.Key && PayloadEqual(r.Payload, set.Resources.Single(r => r.Reference == d.Resource).Payload))), new { step.Operation });
             Check(report, "scene-completeness", residency.InspectReadiness().Transition.AcceptedWitness?.CompleteForScope == true, new { step.Operation });
         }

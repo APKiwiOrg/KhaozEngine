@@ -21,17 +21,24 @@ namespace KhaozEngine.Tests.MapDocOracle;
 [UnsupportedOSPlatform("windows")]
 internal static partial class ShippedSceneGuardFixtures
 {
-    static void AddFoliageSource(TileWorldDocument world, int width = 4) => world.SetFoliageLayer(new TileFoliageLayer("source-cover", 0, 0, -4, 1, width, 4,
-        Enumerable.Range(0, width * 4).Select(i => i % width < 4 ? (byte)255 : (byte)0).ToArray(), 23, 1, 1, 1, 0,
+    static void AddFoliageSource(TileWorldDocument world, int width = 4, bool fullWidth = false) => world.SetFoliageLayer(new TileFoliageLayer("source-cover", 0, 0, -4, 1, width, 4,
+        Enumerable.Range(0, width * 4).Select(i => fullWidth || i % width < 4 ? (byte)255 : (byte)0).ToArray(), 23, 1, 1, 1, 0,
         [new TileFoliageArchetype("column", 1), new TileFoliageArchetype("reed", 1)], [1],
         excludeIndoors: false, excludeSolidObjects: false, doorClearance: 0, edgeFade: 0));
-    static void AddFoliageNative(MapDocument native, string root, int width = 4)
+    static void AddFoliageNative(MapDocument native, string root, int width = 4, bool fullWidth = false)
     {
         var density = new byte[1024];
-        for (int z = 0; z < 4; z++) for (int x = 0; x < 4; x++) density[z * 32 + x] = 255;
+        for (int z = 0; z < 4; z++) for (int x = 0; x < (fullWidth ? 32 : 4); x++) density[z * 32 + x] = 255;
+        var chunks = new List<MapFoliageChunk> { new(new(0, 0), density) };
+        if (fullWidth)
+        {
+            var adjacent = new byte[1024];
+            for (int z = 0; z < 4; z++) for (int x = 0; x < 4; x++) adjacent[z * 32 + x] = 255;
+            chunks.Add(new(new(1, 0), adjacent));
+        }
         native.Foliage = new(1, [new(1, "native-cover", new(MapSupportBindingKind.Surface, "plane-0", null, null, null, null),
             0, -4, 1, width, 4, MapRowDirection.PositiveZ, 23, 1, 1, 1, 0, [new("native-column", 1), new("native-reed", 1)], [1],
-            [new(1, "paint", MapFoliageMaterialKind.Ordinary)], new("legacy-tile", 1, 0), false, false, 0, 0, [new("plane-0", 0)], [], [], [], [new(new(0, 0), density)])]);
+            [new(1, "paint", MapFoliageMaterialKind.Ordinary)], new("legacy-tile", 1, 0), false, false, 0, 0, [new("plane-0", 0)], [], [], [], chunks)]);
         var manifest = JsonNode.Parse("""
             {"schemaVersion":1,"generator":{"path":"generator/build-scaffold.py","helpers":["generator/helper.py"]},
              "layers":[{"sourceLayerId":"source-cover","nativeLayerId":"native-cover","support":{"kind":"Surface","surfaceId":"plane-0"},

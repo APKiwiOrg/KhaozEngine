@@ -59,15 +59,15 @@ internal static partial class ShippedMarkerComparison
                 : support is null && provenance is { Face: null, SpaceId: null, Via: null, WorldY: null }, new { marker.Id });
             var correspondence = inputs.Correspondences[point.Source.Name];
             var membership = MapMarkerSpaces.Query(view, marker);
-            evidence.Check("marker-space", membership.Status == (correspondence.SpaceId is null ? MapMembershipStatus.Outside : MapMembershipStatus.Resolved) &&
-                membership.SpaceId == correspondence.SpaceId && membership.ParentSpaceIds.SequenceEqual(correspondence.Parents),
+            evidence.Check("marker-space", membership.Status == (correspondence.SceneSpaceId is null ? MapMembershipStatus.Outside : MapMembershipStatus.Resolved) &&
+                membership.SpaceId == correspondence.SceneSpaceId && membership.ParentSpaceIds.SequenceEqual(correspondence.SceneParents),
                 new
                 {
                     marker.Id,
-                    expected = correspondence.SpaceId,
+                    expected = correspondence.SceneSpaceId,
                     status = membership.Status.ToString(),
                     membership.SpaceId,
-                    expectedParents = correspondence.Parents,
+                    expectedParents = correspondence.SceneParents,
                     parents = membership.ParentSpaceIds,
                     membership.Detail
                 });

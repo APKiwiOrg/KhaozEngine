@@ -19,7 +19,11 @@ internal sealed record MarkerRoleRule(string SourceName, string Id, string Role,
     double OffsetX, double OffsetZ, string SupportName, MapMarkerHeightMode HeightMode, string HeightRule,
     double Yaw, bool Enabled, string? Archetype);
 internal sealed record MarkerCorrespondence(string SourceName, int X, int Z, int Plane, int RegionX, int RegionZ,
-    string SupportName, string? SpaceId, IReadOnlyList<string> Parents);
+    string SupportName, string? SpaceId, IReadOnlyList<string> Parents)
+{
+    internal string? SceneSpaceId { get; init; }
+    internal IReadOnlyList<string> SceneParents { get; init; } = [];
+}
 internal sealed record MarkerSupportRule(string Name, MapSupportBinding Binding, string SourceKind, int Plane, long? ObjectId);
 
 /// <summary>Closed, snapshotted comparison input. No loader searches outside the attested extraction.</summary>
@@ -47,7 +51,7 @@ internal sealed class ShippedMarkerInputs
 
     internal static ShippedMarkerInputs Read(PrivateOracleInputs inputs) => Read(inputs, inputs.Provenance.Comparison);
 
-    internal static ShippedMarkerInputs Read(PrivateOracleInputs inputs, JsonElement comparison)
+    internal static ShippedMarkerInputs Read(PrivateOracleInputs inputs, JsonElement comparison, bool scene = false)
     {
         UniqueMembers(comparison);
         Shape(comparison, "schemaVersion", "nativeDocumentPath", "roleManifestPath", "markerManifestPath", "expectations");
@@ -84,7 +88,7 @@ internal sealed class ShippedMarkerInputs
         var markerJson = source.Json(Text(comparison, "markerManifestPath"));
         Shape(markerJson, "schemaVersion", "markers");
         Schema(markerJson);
-        var correspondences = ReadCorrespondences(markerJson);
+        var correspondences = ReadCorrespondences(markerJson, scene);
         string[] names = sourceMarkers.Select(m => m.Name).Order(StringComparer.Ordinal).ToArray();
         Require(names.SequenceEqual(roles.Keys.Order(StringComparer.Ordinal)) && names.SequenceEqual(correspondences.Keys.Order(StringComparer.Ordinal)),
             "incomplete or extra marker correspondence");
@@ -219,16 +223,21 @@ internal sealed class ShippedMarkerInputs
         return result;
     }
 
-    static Dictionary<string, MarkerCorrespondence> ReadCorrespondences(JsonElement manifest)
+    static Dictionary<string, MarkerCorrespondence> ReadCorrespondences(JsonElement manifest, bool scene)
     {
         var result = new Dictionary<string, MarkerCorrespondence>(StringComparer.Ordinal);
         foreach (var row in Array(manifest, "markers"))
         {
-            Shape(row, "sourceName", "x", "z", "plane", "regionX", "regionZ", "supportName", "spaceId", "parents");
+            string[] fields = ["sourceName", "x", "z", "plane", "regionX", "regionZ", "supportName", "spaceId", "parents"];
+            Shape(row, scene ? fields.Concat(["sceneSpaceId", "sceneParents"]).ToArray() : fields);
             string name = Text(row, "sourceName");
             Require(result.TryAdd(name, new(name, row.GetProperty("x").GetInt32(), row.GetProperty("z").GetInt32(), row.GetProperty("plane").GetInt32(),
                 row.GetProperty("regionX").GetInt32(), row.GetProperty("regionZ").GetInt32(), Text(row, "supportName"), NullableText(row, "spaceId"),
-                System.Array.AsReadOnly(Strings(row, "parents", true)))), "duplicate marker correspondence");
+                System.Array.AsReadOnly(Strings(row, "parents", true)))
+            {
+                SceneSpaceId = scene ? NullableText(row, "sceneSpaceId") : null,
+                SceneParents = scene ? System.Array.AsReadOnly(Strings(row, "sceneParents", true)) : [],
+            }), "duplicate marker correspondence");
         }
         return result;
     }

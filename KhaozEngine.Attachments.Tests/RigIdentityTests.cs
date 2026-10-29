@@ -65,6 +65,29 @@ public class RigIdentityTests
         Assert.Equal(expected, Identity(body));
     }
 
+    [Fact]
+    public void Required_quantization_of_only_texture_coordinates_does_not_change_fit()
+    {
+        var body = new SkinnedAttachmentGlbFixture();
+        string before = Identity(body);
+        int uv = AddAccessor(body, "VEC2", 5122, 3, new byte[] { 0, 0, 0, 0, 255, 127, 0, 0, 0, 0, 255, 127 });
+        body.Accessors[uv]!["normalized"] = true;
+        Attributes(body)["TEXCOORD_0"] = uv;
+        body.Root["extensionsUsed"] = new JsonArray("KHR_mesh_quantization");
+        body.Root["extensionsRequired"] = new JsonArray("KHR_mesh_quantization");
+        Assert.Equal(before, Identity(body));
+    }
+
+    [Fact]
+    public void Quantized_fit_positions_are_still_refused()
+    {
+        var body = new SkinnedAttachmentGlbFixture();
+        body.Accessors[0]!["componentType"] = 5122;
+        body.Root["extensionsUsed"] = new JsonArray("KHR_mesh_quantization");
+        body.Root["extensionsRequired"] = new JsonArray("KHR_mesh_quantization");
+        Assert.Throws<InvalidDataException>(() => Identity(body));
+    }
+
     [Theory]
     [InlineData("name")]
     [InlineData("order")]

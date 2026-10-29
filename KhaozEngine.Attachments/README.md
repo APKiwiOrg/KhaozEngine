@@ -111,6 +111,8 @@ Animations, materials, images, textures, UVs, tangents, vertex colors, accessor 
 unskinned meshes, unrelated nodes and unused bytes do not contribute. Image URIs are never read.
 Adding, removing or retiming clips leaves the identity unchanged. Morph targets and weights,
 compressed geometry and unsupported accessor encodings are refused rather than omitted.
+Encoding refusal is scoped to covered primitives and accessors. Required extensions affecting only
+ignored appearance or animation data do not change fit identity.
 Bad containers, hierarchy, names, references, accessor ranges and nonfinite fit data throw
 `InvalidDataException` with `sourceName` context. Invalid source-name arguments throw
 `ArgumentException`. The rigid and skinned attachment validation APIs keep their existing policies,

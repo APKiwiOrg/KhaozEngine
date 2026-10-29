@@ -16,7 +16,6 @@ internal static class RigIdentity
             throw new InvalidDataException("Rig identity requires exactly one embedded buffer.");
         if (skins.ValueKind != JsonValueKind.Array || skins.GetArrayLength() != 1 || skins[0].ValueKind != JsonValueKind.Object)
             throw new InvalidDataException("Rig identity requires exactly one skin.");
-        RefuseExtensions(root);
         var accessors = new AttachmentGlbAccessors(root, binary, refuseCompression: true);
         JsonElement skin = skins[0];
         int jointCount = AttachmentGlb.ValidateSkin(root, skin, accessors, int.MaxValue);
@@ -184,14 +183,4 @@ internal static class RigIdentity
         }
     }
 
-    static void RefuseExtensions(JsonElement root)
-    {
-        if (root.TryGetProperty("extensionsRequired", out JsonElement required))
-        {
-            if (required.ValueKind != JsonValueKind.Array) throw new InvalidDataException("extensionsRequired must be an array.");
-            foreach (JsonElement name in required.EnumerateArray())
-                if (name.ValueKind != JsonValueKind.String || name.GetString() is "KHR_draco_mesh_compression" or "EXT_meshopt_compression" or "KHR_meshopt_compression" or "KHR_mesh_quantization")
-                    throw new InvalidDataException("Required geometry encoding is not supported by rig-v1.");
-        }
-    }
 }

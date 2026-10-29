@@ -58,6 +58,12 @@ steps, smear, lag or sparkle. The owner bar is "No flicker you notice, especiall
   otherwise reproduce the precision flash the floor removes. The pure frozen D oracle stays exact,
   including all source and compiled pins. No comparison bound changes.
 
+- TSD-D11: Controller ruling, 2026-10-29. Recalibrate only llvmpipe's drift and swing differing-share
+  limits for the precision floor, using Task 7's measured worst share plus 25%, rounded upward to
+  0.01 percentage point. The limits are 1.02% drift and 0.51% swing. Worst-step limits stay 9100 and
+  500. Existing state and every other backend's record exactness remain fixed. This is a software
+  arithmetic calibration, separate from design D and owner quality bounds.
+
 ## Open questions and owner gates
 
 - Prove the unchanged private-package probe reproduces the baseline and establish the DXBC fixture

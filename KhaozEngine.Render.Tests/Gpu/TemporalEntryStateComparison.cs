@@ -102,11 +102,12 @@ internal sealed class TemporalEntryStateComparison(bool softwareVulkan)
 
 internal static class TemporalSoftwareRecordDivergenceRule
 {
-    // Complete llvmpipe walks in run 40681282977 measured drift 7240 half steps on 0.5269458912% of samples,
-    // swing 387 on 0.2882667824%. Add 25%, then round upward to 100 steps and 0.01 percentage point.
-    // Drift crosses zero at its worst pair, so swing keeps its own much smaller step limit.
+    // Precision-floor run 40828595987, Native perspective outline False: drift differs on 0.809280960648148%
+    // of samples, swing on 0.4017650462962963%. Task 7's margin adds 25%, then rounds upward to 0.01 percentage
+    // point, giving 1.02% drift and 0.51% swing. Step limits retain run 40681282977's calibration: 7240 and 387
+    // measured steps plus 25%, rounded upward to 100 steps. Drift crosses zero at its worst pair.
     internal const int DriftHalfStepBound = 9100, SwingHalfStepBound = 500;
-    internal const double DriftDifferingShareBound = 0.0066, SwingDifferingShareBound = 0.0037;
+    internal const double DriftDifferingShareBound = 0.0102, SwingDifferingShareBound = 0.0051;
 
     internal static bool Allows(int worstHalfSteps, long differing, long compared, int stepBound, double shareBound)
         => worstHalfSteps >= 0 && worstHalfSteps < int.MaxValue && worstHalfSteps <= stepBound

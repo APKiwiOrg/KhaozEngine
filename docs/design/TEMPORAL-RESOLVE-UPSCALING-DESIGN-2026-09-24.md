@@ -742,7 +742,10 @@ Implementation review established the contract amendments below.
     only on llvmpipe they take separate record-sized half-float-step and differing-share limits, owned by
     `TemporalSoftwareRecordDivergenceRule` and measured over complete walks. Each channel's limits add 25% to its
     measured worst half-step distance and differing share, rounded upward to 100 steps and 0.01 percentage point.
-    Drift crosses zero at its worst pair, so swing keeps its own smaller step limit. They do not take the colour's
+    The precision-floor Native perspective outline False walk measured shares of 0.809280960648148% drift and
+    0.4017650462962963% swing. The same margin gives share limits of 1.02% and 0.51%. The existing worst-step
+    limits remain 9100 drift and 500 swing. Drift crosses zero at its worst pair, so swing keeps its own smaller
+    step limit. They do not take the colour's
     absolute bound. Confidence, lock, mark, R8 and depth remain exact. Drift and swing remain exact on Metal, WARP and hardware
     Direct3D 11 and Vulkan. This avoids production precision restrictions on every GPU solely for a software
     rasterizer's ordering. A claim of identity on a backend holds as far as that fact passes there. The

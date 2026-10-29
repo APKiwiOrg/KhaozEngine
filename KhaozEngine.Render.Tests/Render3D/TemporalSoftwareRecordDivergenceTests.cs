@@ -58,25 +58,40 @@ public sealed class TemporalSoftwareRecordDivergenceTests
     [Fact]
     public void MeasuredSoftwareRecordVariationKeepsItsOwnBound()
     {
-        // The complete llvmpipe walk's worst drift and swing pairs, in sparse populations below its measured shares.
+        // The precision-floor walk's worst pairs, in sparse populations below its measured differing shares.
         float[] a = new float[1000 * 4], b = new float[1000 * 4];
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 8; i++)
         {
-            a[i * 4 + 2] = -0.00023114681f;
-            b[i * 4 + 2] = 0.0005745888f;
+            a[i * 4 + 2] = -0.00056409836f;
+            b[i * 4 + 2] = 0.00024414062f;
         }
-        for (int i = 0; i < 2; i++)
+        for (int i = 0; i < 4; i++)
         {
-            a[i * 4 + 3] = 0.012275696f;
-            b[i * 4 + 3] = 0.0152282715f;
+            a[i * 4 + 3] = 0.0045204163f;
+            b[i * 4 + 3] = 0.0059051514f;
         }
         var comparison = new TemporalEntryStateComparison(softwareVulkan: true);
         comparison.Compare(47, "measured llvmpipe witness", a, b);
-        Assert.Equal(7240, comparison.Drift.WorstHalfSteps);
-        Assert.Equal(387, comparison.Swing.WorstHalfSteps);
-        Assert.Equal(0.005, comparison.Drift.Share, 12);
-        Assert.Equal(0.002, comparison.Swing.Share, 12);
+        Assert.Equal(7327, comparison.Drift.WorstHalfSteps);
+        Assert.Equal(363, comparison.Swing.WorstHalfSteps);
+        Assert.Equal(0.008, comparison.Drift.Share, 12);
+        Assert.Equal(0.004, comparison.Swing.Share, 12);
         comparison.AssertWithinBound("measured llvmpipe witness");
+    }
+
+    [Theory]
+    [InlineData(true, 102, 9100)]
+    [InlineData(false, 51, 500)]
+    public void CalibratedRecordBoundsAcceptTheirLimitAndRejectTheNextSampleOrStep(bool drift, long differing,
+        int steps)
+    {
+        int stepBound = drift ? TemporalSoftwareRecordDivergenceRule.DriftHalfStepBound
+            : TemporalSoftwareRecordDivergenceRule.SwingHalfStepBound;
+        double shareBound = drift ? TemporalSoftwareRecordDivergenceRule.DriftDifferingShareBound
+            : TemporalSoftwareRecordDivergenceRule.SwingDifferingShareBound;
+        Assert.True(TemporalSoftwareRecordDivergenceRule.Allows(steps, differing, 10_000, stepBound, shareBound));
+        Assert.False(TemporalSoftwareRecordDivergenceRule.Allows(steps, differing + 1, 10_000, stepBound, shareBound));
+        Assert.False(TemporalSoftwareRecordDivergenceRule.Allows(steps + 1, differing, 10_000, stepBound, shareBound));
     }
 
     static float Half(int bits) => (float)BitConverter.UInt16BitsToHalf((ushort)bits);

@@ -78,15 +78,16 @@ Rows are in the order the milestones run.
   native run too. The owner rules on its cost, and per WO-D10 it lands before M3 ships. The presets, the
   [rehearsals](../RENDERER-PERFORMANCE.md#water-optics-campaign) and the profile publication are built, and
   the renderer performance program approved their admission. Its two free software rehearsals need the
-  owner's approval, and no paid unit goes out until https://github.com/APKiwiOrg/KhaozEngine/issues/1644 runs
-  managed admission in the free legs job.
+  owner's approval. The free legs job now runs trusted managed manifest admission before emitting the
+  paid matrix. The renderer performance owner reviews that trusted-path change before integration.
 - On T4 hardware M5 adds no measurable cost to frames that do not opt in. The 41 to 66% WARP slowdown is
   specific to the software rasterizer (https://github.com/APKiwiOrg/KhaozEngine/issues/1640).
 - M4 starts only when the R8a native renderer prepares and submits bounded water on main.
 
 ## Next step
 
-Run the two free water-optics-v2 rehearsals once the owner approves them, land #1644, then dispatch each
+Complete the renderer performance owner's admission review, run the two free water-optics-v2 rehearsals
+once the owner approves them, then dispatch each
 paid leg once within the USD 7.382 cap, publish the profile deltas and bring the measured cost to the owner.
 Grimhollow, now on v21.18.0, opts the river in and restores the duck shadow under
 https://github.com/APKiwiOrg/Grimhollow/issues/651. [Landing 2](water-optics-design.md) remains unbuilt and

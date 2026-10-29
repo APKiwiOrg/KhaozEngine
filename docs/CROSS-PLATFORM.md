@@ -288,14 +288,17 @@ reads manifests with exact property names, no duplicate fields or null array ent
 or decimal numbers. A field table verified against the managed record constructors checks every
 object's complete field set, value kinds and nullability, including record arrays and the string-valued
 runtime environment map. Unknown names, case variants beside exact names, missing fields and wrong
-types refuse before routing. The free job checks structure, routing, the job and billed minutes, the
-cold frame limit, the clock, the complete paid budget's rate, USD currency and exact cost, the campaign
-cap and non-blank approval references. It does not check the schedule, recipe identities or other hashes,
-runtime values, batch size, enum values or the paid unit and steady frame limits. It reads the manifest as
-text, so it also accepts a UTF-8 byte order mark. Managed admission on the runner refuses all of these, so
-a manifest that fails only one of them still reaches a paid runner. Running managed admission in the free
-job is tracked in [#1644](https://github.com/APKiwiOrg/KhaozEngine/issues/1644), and no paid unit of any
-preset is dispatched until it lands. Every paid manifest's
+types refuse before routing. The free job keeps these PowerShell checks as its outer guard, builds
+`tools/Renderer.Perf.Verify` in `renderer-perf-trusted` at `github.workflow_sha`, then runs its `admit`
+command on the requested checkout and the selector's authorization directory. It reads the exact
+manifest bytes and repeats managed parsing, schedule and recipe identity format checks, runtime policy,
+batch and enum checks, paid or rehearsal deadlines and budgets, byte-hash and independent authorization
+checks. Empty schedules, malformed hashes, Debug runtime policy, invalid pacing, enum values, paid unit
+or steady frame limits and a UTF-8 byte order mark all refuse before the separate matrix step.
+That step requires successful admission, so no paid runner is allocated on a refusal.
+Observed runtime and native identity, source-root ownership and live recipe construction still run on
+the selected runner, as described in the [renderer reference](RENDERER-PERFORMANCE.md#evidence-and-authorization).
+Every paid manifest's
 `approval.campaignMaximumUsd` must cover `budget.maximumCostUsd` without exceeding its campaign
 envelope. The [renderer reference](RENDERER-PERFORMANCE.md#water-optics-campaign)
 owns the v2 USD 7.382 maximum and exact schedules. The v1 `pilot` and `full` maximum stays USD 22.

@@ -101,15 +101,19 @@ public sealed class RendererPerfWorkflowTrustTests
                 else
                 {
                     Assert.Contains("ref: ${{ github.workflow_sha }}", step, StringComparison.Ordinal);
-                    Directory.CreateDirectory(Path.Combine(destination, "scripts"));
-                    File.Copy(Path.Combine(repo, "scripts/renderer-perf-workflow.ps1"), Path.Combine(destination, "scripts/renderer-perf-workflow.ps1"));
+                    Directory.CreateDirectory(_root);
+                    if (OperatingSystem.IsWindows()) RendererPerfHostProcess.Run("cmd", "/c", "mklink", "/J", destination, repo);
+                    else Directory.CreateSymbolicLink(destination, repo);
                 }
             }
             Fixture = new(requested, hostileAdmission: true);
-            Fixture.Environment["GITHUB_WORKSPACE"] = _root;
+            Fixture.Environment["GITHUB_WORKSPACE"] = Path.GetDirectoryName(Path.GetFullPath(Fixture.Git("rev-parse", "--show-toplevel").Trim()))!;
             Fixture.Environment["GITHUB_OUTPUT"] = Output;
-            string run = legs.Split("        run: |\n", 2)[1];
-            _selector = string.Join('\n', run.TrimEnd().Split('\n').Select(s => s.Length >= 10 ? s[10..] : s));
+            _selector = string.Join('\n', legs.Split("      - ")
+                .Where(step => step.StartsWith("id: renderer-admission\n", StringComparison.Ordinal)
+                    || step.StartsWith("id: pick\n", StringComparison.Ordinal))
+                .Select(step => step.Split("        run: |\n", 2)[1])
+                .Select(run => string.Join('\n', run.TrimEnd().Split('\n').Select(s => s.Length >= 10 ? s[10..] : s))));
         }
         internal (int Code, string Output) Select()
         {

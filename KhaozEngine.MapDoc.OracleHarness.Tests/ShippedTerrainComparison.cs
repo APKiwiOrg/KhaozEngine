@@ -199,11 +199,12 @@ internal static class ShippedTerrainComparison
     }
 
     // The released plane-0 movement triangle: among the tile's drawn triangles, the one whose smallest barycentric
-    // weight is largest, its height interpolated from lattice positions placed relative to the tile corner. This and
-    // Weights copy TileGroundSampler.TryTriangle and TileGroundSampler.Weights in KhaozEngine.TileWorld.Physics and
-    // must change with them. They cannot be called directly because both are private to the sampler, which also
-    // clamps into the rectangle it was built over, and the harness does not reference the physics package.
-    static bool TryMovementHeight(TileWorldDocument document, float tileX, float tileZ, out float height)
+    // weight is largest, its height anchored at the first lattice vertex, interpolated from height differences
+    // and bounded by that triangle's exact vertex range.
+    // This and Weights copy the runtime sampler's private triangle selection and evaluation. The sampler also clamps
+    // into its loaded rectangle, while this comparison addresses the named tile directly. Exact arithmetic parity
+    // is pinned by ShippedTerrainSamplingParityTests, separately from the geometric SupportTolerance comparison.
+    internal static bool TryMovementHeight(TileWorldDocument document, float tileX, float tileZ, out float height)
     {
         int x = (int)MathF.Floor(tileX), z = (int)MathF.Floor(tileZ);
         Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
@@ -230,7 +231,8 @@ internal static class ShippedTerrainComparison
         Vector3 a = TileGroundTriangles.LatticePosition(document, x, z, 0, t.A, x, z);
         Vector3 b = TileGroundTriangles.LatticePosition(document, x, z, 0, t.B, x, z);
         Vector3 c = TileGroundTriangles.LatticePosition(document, x, z, 0, t.C, x, z);
-        height = weights.X * a.Y + weights.Y * b.Y + weights.Z * c.Y;
+        height = a.Y + weights.Y * (b.Y - a.Y) + weights.Z * (c.Y - a.Y);
+        height = Math.Clamp(height, MathF.Min(a.Y, MathF.Min(b.Y, c.Y)), MathF.Max(a.Y, MathF.Max(b.Y, c.Y)));
         return true;
     }
 

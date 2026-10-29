@@ -31,11 +31,12 @@ public sealed partial class TileMediumSampler : IMovementWaterField
     {
     }
 
-    internal TileMediumSampler(TileWorldDocument document, TileWorldCatalogs catalogs, RegionCoord[] regions, string worldId)
+    internal TileMediumSampler(TileWorldDocument document, TileWorldCatalogs catalogs, RegionCoord[] regions, string worldId,
+        TileMovementSnapshot? captured = null)
     {
         if (string.IsNullOrWhiteSpace(worldId)) throw new ArgumentException("A movement world identity is required.", nameof(worldId));
         _tileSize = document.TileSize;
-        _field = new FieldSnapshot(document, catalogs, regions, worldId);
+        _field = new FieldSnapshot(document, catalogs, regions, worldId, captured ?? new(document, regions));
         foreach (RegionCoord region in regions)
             foreach (TileWaterBody body in TileWaterBodies.Collect(document, catalogs, region, Plane))
                 foreach (TileRect rect in body.Rects)

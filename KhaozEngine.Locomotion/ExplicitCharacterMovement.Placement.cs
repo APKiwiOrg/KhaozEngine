@@ -33,7 +33,7 @@ public static partial class ExplicitCharacterMovement
                         tuning.StepHeight, tuning.GroundedEpsilon, out binding);
                     if (final.Status != SupportStatus.Walkable || binding is null)
                         return Hold(state, MovementStepOutcome.EnvironmentUnresolved);
-                    candidate = contact.BodyCentre(seated);
+                    candidate = contact.SupportedBodyCentre(seated, final);
                 }
             }
             MovementWaterPoint point = contact.SampleMedium(contact.KernelFeet(candidate, tuning))!.Value;
@@ -95,7 +95,11 @@ public static partial class ExplicitCharacterMovement
                     tuning.GroundedEpsilon, out var found);
                 bool wasSwimming = state.State.Swimming || state.State.WaterExcursion == WaterExcursionState.Surface;
                 if (support.Status == SupportStatus.Walkable &&
-                    FootingAllowed(point, wasSwimming, state.State.Position.Y, tuning, water)) binding = found;
+                    FootingAllowed(point, wasSwimming, state.State.Position.Y, tuning, water))
+                {
+                    _ = contact.SupportedBodyCentre(feet, support);
+                    binding = found;
+                }
                 if (binding is { } owner && owner.Space != point.Space)
                     return Hold(state, MovementStepOutcome.EnvironmentInvalid);
             }

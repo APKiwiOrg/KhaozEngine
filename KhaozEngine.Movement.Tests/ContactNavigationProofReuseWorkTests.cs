@@ -21,14 +21,16 @@ public sealed class ContactNavigationProofReuseWorkTests(ContactNavigationProofR
 
     internal static readonly IReadOnlyDictionary<string, Target> Targets = new Dictionary<string, Target>
     {
-        ["low-lip-bank"] = new(8108, 2386, 4032, 328, 12200, 4092),
+        // Directed supported-pose rounding (#1647 I2) changed exact memo operands. Semantic parity holds.
+        ["low-lip-bank"] = new(8108, 2356, 4032, 328, 12200, 4092),
         ["deck-over-ground"] = new(16024, 7944, 8064, 656, 24208, 8184),
         ["wade-only-pool"] = new(24752, 12308, 12416, 548, 37276, 12524),
         ["rebased-origin"] = new(8108, 3940, 4032, 328, 12200, 4092),
         ["mixed-legacy-contact"] = new(8012, 3972, 4032, 328, 12104, 4092),
         ["stair-accepted-refused"] = new(4116, 1259, 1686, 17, 5827, 1711),
         ["multi-layer-row-bands"] = new(10379, 5286, 6076, 80, 20612, 10233),
-        ["wide-lip-576"] = new(69532, 29234, 34992, 2888, 104984, 35452),
+        // Directed supported-pose rounding (#1647 I2) changed exact memo operands. Semantic parity holds.
+        ["wide-lip-576"] = new(69532, 29144, 34992, 2888, 104984, 35452),
         ["single-flat"] = new(5, 0, 0, 0, 6, 1),
     };
 

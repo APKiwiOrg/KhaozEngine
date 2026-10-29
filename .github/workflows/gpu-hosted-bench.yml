@@ -94,7 +94,6 @@ jobs:
       RENDERER_PERF_MANIFEST_SHA256: ${{ inputs.renderer-perf-manifest-sha256 }}
       RENDERER_PERF_WORKLOAD_SHA: ${{ inputs.renderer-perf-workload-sha }}
       TESTED_REF: ${{ inputs.ref }}
-      KE_RENDERER_PERF_REPORTS: ${{ runner.temp }}/renderer-admission
       WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
       LC_ALL: C
     steps:
@@ -129,6 +128,9 @@ jobs:
         name: Admit exact renderer manifest bytes before allocation
         if: inputs.renderer-perf-unit != '' || inputs.renderer-perf-manifest-sha256 != '' || inputs.renderer-perf-workload-sha != ''
         shell: bash
+        # The runner context is not available in job-level env, so each step that reads the reports path sets it.
+        env:
+          KE_RENDERER_PERF_REPORTS: ${{ runner.temp }}/renderer-admission
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/renderer-perf-requested"
@@ -139,6 +141,8 @@ jobs:
       - id: pick
         if: success() && ((inputs.renderer-perf-unit == '' && inputs.renderer-perf-manifest-sha256 == '' && inputs.renderer-perf-workload-sha == '') || steps.renderer-admission.outcome == 'success')
         shell: bash
+        env:
+          KE_RENDERER_PERF_REPORTS: ${{ runner.temp }}/renderer-admission
         run: |
           if [ -n "$RENDERER_PERF_UNIT$RENDERER_PERF_MANIFEST_SHA256$RENDERER_PERF_WORKLOAD_SHA" ]; then
             cd "$GITHUB_WORKSPACE/renderer-perf-requested"

@@ -70,6 +70,7 @@
     <ProjectReference Include="../KhaozEngine.Server.Admin/KhaozEngine.Server.Admin.csproj" />
     <ProjectReference Include="../KhaozEngine.ServerStatus/KhaozEngine.ServerStatus.csproj" />
     <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
+    <ProjectReference Include="../KhaozEngine.StatusEffects.Netcode/KhaozEngine.StatusEffects.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <ProjectReference Include="../KhaozEngine.Social/KhaozEngine.Social.csproj" />
     <ProjectReference Include="../KhaozEngine.Social.Discord/KhaozEngine.Social.Discord.csproj" />

@@ -4890,6 +4890,9 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   than five colour attachments. Both paths write the same history: bit for bit on Apple, NVIDIA under Direct3D 11
   and Vulkan, and WARP, and on a software Vulkan device (llvmpipe) with the same confidence, thin-feature lock and
   motion marks and the colour within 0.0625 on at most 0.25 percent of the values (`TemporalEntryIdentityGpuTests`).
+  The shimmer record is also exact except on llvmpipe, where drift allows 9100 half-float steps on at most
+  1.02% of values and swing allows 500 steps on at most 0.51%. Those separate limits cover its arithmetic
+  ordering, with measured worst shares plus 25%, rounded upward to 0.01 percentage point.
   Visibility bytes, previous jitter and release decisions are exact on both paths, including software Vulkan.
   Both use the same R8 history pair and copy current visibility to the write index once after a resolving render.
   Repeated renders and debug/count evaluation retain the original read history and jitter. Visibility follows
@@ -4899,8 +4902,13 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   `KE_TEMPORAL_RESOLVE=fused` or `KE_TEMPORAL_RESOLVE=split` forces one path for every scene the process creates,
   still subject to the attachment limit, to tell a fault in one path from the other on a player's machine. It is a
   diagnostic, read once, and not a setting a game ships with.
-- **Cost.** The following timings predate the visibility resources and comparison. Their incremental GPU cost has
-  not been measured. Against anti-aliasing off at the same internal size, the resolve and the sharpen together measured at most
+- **Cost.** With still-detail stabilization, the split path on an Apple M2 Max at 2560x1440 measures
+  2.118 to 2.594 ms at `Native` and 2.055 to 2.397 ms at `Quality`. Paired changes against the concurrent
+  main renderer are +0.117 to +0.220 ms. These are single-run wall-clock upper bounds, including the motion
+  target, opaque copy and display-size post chain. Shared-host noise and other renderer changes prevent
+  attributing that delta solely to shimmer retention. The earlier timings below predate the visibility
+  resources and shimmer record. Their incremental GPU timestamp cost remains unmeasured. Against anti-aliasing
+  off at the same internal size, the resolve and the sharpen together measured at most
   about 1.8 to 2.2 ms at `Quality` and 1.9 to 2.5 ms at `Native` at a 2560x1440 display on an Apple M2 Max, and about
   1.8 to 2.4 ms at `Quality` and 2.1 to 3.1 ms at `Native` on an NVIDIA Tesla T4 under Direct3D 11 and Vulkan. At a
   3456x2234 display the M2 Max measured about 3.5 to 4.3 ms at `Quality` and 4.0 to 5.0 ms at `Native`. The low end is
@@ -4914,7 +4922,9 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   (`TemporalOutlineCostPerfGpuTests`). A steady frame allocates nothing, with temporal anti-aliasing on or off.
 - **Memory.** At a 3456x2234 display on `Quality` (2304x1489 internal) with HDR on, temporal anti-aliasing holds
   274.5 MB of history (two display-size RGBA16F colours and two RGBA16F confidence targets, and two internal-size
-  R32F previous depths), 82.3 MB of the resolve's internal-size working targets (24 bytes a texel), 154.4 MB of
+  R32F previous depths). The shimmer record accounts for 8 additional bytes per display pixel across the
+  state pair, or 58.9043 MiB there, without a new attachment. The chroma floor adds no memory. The resolve holds
+  82.3 MB of internal-size working targets (24 bytes a texel), 154.4 MB of
   display-size post targets (a ping pair and, with bloom on, a half-size bloom pair), a 27.4 MB internal-size copy
   of the opaque image and a 13.7 MB internal-size motion target. The R8 lit visibility and two R8 histories add
   10.3 MB there, plus a 16-byte previous-jitter buffer, about 563 MB in all (10^6 bytes a MB), excluding alignment,
@@ -9199,7 +9209,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.20.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.20.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9641,7 +9651,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.20.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.20.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10471,7 +10481,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.20.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.20.1" />
 ```
 
 ```csharp
@@ -18718,7 +18728,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.20.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.20.1" />
 ```
 
 ```csharp
@@ -18754,7 +18764,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.20.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.20.1" />
 ```
 
 ```csharp
@@ -18998,7 +19008,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.20.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.20.1" />
 ```
 
 ```csharp
@@ -23525,7 +23535,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.20.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.20.1" />
 </ItemGroup>
 ```
 

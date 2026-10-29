@@ -311,8 +311,8 @@ public partial class ArchitectureTests
                 "App", "Catalog", "Catalog.GameTypes", "CodeHealth.Analyzers", "Collision", "Content", "Determinism",
                 "Diagnostics", "Dungeon", "Ecs", "Http", "Identity", "ItemInstances", "Items", "Locomotion",
                 "MapDoc", "Navigation", "Objectives", "Persistence", "Physics", "Platform", "Primitives",
-                "Progression", "SegmentRig", "Serialization", "ServerStatus", "Skills", "Social", "Stats", "Terrain",
-                "TileWorld", "TileWorld.Editing", "Updates",
+                "Progression", "SegmentRig", "Serialization", "ServerStatus", "Skills", "Social", "Stats", "StatusEffects",
+                "Terrain", "TileWorld", "TileWorld.Editing", "Updates",
             }
         },
         {
@@ -339,7 +339,7 @@ public partial class ArchitectureTests
             new[]
             {
                 "Foundation", "Netcode", "Netcode.Abstractions", "Netcode.LiteNetLib", "Simulation",
-                "Replication", "WorldStore", "ItemInstances.Journal", "Catalog.Authoring", "Catalog.Netcode",
+                "Replication", "StatusEffects.Netcode", "WorldStore", "ItemInstances.Journal", "Catalog.Authoring", "Catalog.Netcode",
                 "Sharding", "NetWorld", "TileWorld.Netcode", "Physics", "CodeHealth.Analyzers",
             }
         },

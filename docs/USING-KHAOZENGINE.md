@@ -9197,7 +9197,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.19.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.19.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9639,7 +9639,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.19.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.19.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10469,7 +10469,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.19.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.19.1" />
 ```
 
 ```csharp
@@ -14547,6 +14547,9 @@ held, or a predicting client is corrected back to the held position on each snap
   prediction, the clock accumulates and caps as before. Either overload consumes the pending prediction on a
   valid positive frame. Invalid frame times preserve it, ordinary reconciliation preserves it, and reset,
   transition reset, reseed and hard snap clear it. Remote timing and correction decay are unchanged.
+  At finite presentation phases, each unchanged finite planar coordinate stays exact before correction
+  offsets are applied, including when the other coordinate moves. Reconciliation and quiet reseeding use
+  the same interpolation. Genuine correction offsets still apply and decay normally.
   A frame time that is not a finite positive number of seconds (negative, zero, infinite, or not a number) is
   treated as zero and advances nothing, on both `WorldClient.AdvancePresentation` and the underlying
   `ClientPrediction.AdvancePresentation`. Both clocks accumulate, so a broken frame clock redraws the previous
@@ -18713,7 +18716,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.19.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.19.1" />
 ```
 
 ```csharp
@@ -18749,7 +18752,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.19.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.19.1" />
 ```
 
 ```csharp
@@ -18993,7 +18996,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.19.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.19.1" />
 ```
 
 ```csharp
@@ -23385,7 +23388,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.19.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.19.1" />
 </ItemGroup>
 ```
 

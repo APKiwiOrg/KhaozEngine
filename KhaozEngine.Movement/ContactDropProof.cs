@@ -133,7 +133,7 @@ internal sealed class ContactDropProof : IDisposable
         MovementStepResult result = _binding.StepTowards(unselected, input, run, _options.EdgeProbeSeconds, queries, boundary);
         queries.AssertCurrent();
         _hooks?.DropStep?.Invoke(new(source, Feet(result), run, hold, result.Outcome, result.State.State.Grounded,
-            result.State.State.CommandedVelocity));
+            result.State.State.CommandedVelocity) { UnwalkableSupport = result.ContactUnwalkableSupport });
         if (result.Outcome is MovementStepOutcome.EnvironmentInvalid or MovementStepOutcome.EnvironmentUnresolved or MovementStepOutcome.FrameMismatch)
             throw new InvalidOperationException($"Contact Drop step returned {result.Outcome}.");
         return result;

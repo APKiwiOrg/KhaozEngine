@@ -18,7 +18,8 @@ internal sealed class ContactDropFixture : IDisposable
 
     internal ContactDropFixture(float height = 4, MoveTuning? tuning = null,
         PhysicsNavBakeOptions? options = null, IMovementWaterField? water = null,
-        Action<BepuPhysicsWorld, OrdinaryMovementRegistration.Builder>? install = null)
+        Action<BepuPhysicsWorld, OrdinaryMovementRegistration.Builder>? install = null,
+        MovementBoundary? boundary = null)
     {
         MoveTuning body = tuning ?? Tuning;
         Scene = new(body, (x, _) => x < 0 ? height : 0,
@@ -28,8 +29,9 @@ internal sealed class ContactDropFixture : IDisposable
                 ContactNavigationFixture.Box(world, builder, "floor", new(-8, -1, -8), new(8, 0, 8));
                 ContactNavigationFixture.Box(world, builder, "ledge", new(-8, 0, -8), new(0, height, 8));
                 install?.Invoke(world, builder);
-            });
-        Context = ContactNavigationFixture.Context(Scene, water);
+            }, boundary: boundary);
+        Context = new(Scene.Height, Scene.Normal, Scene.Physics, null, null, null, water, Scene.Registration,
+            boundary ?? MovementBoundary.Rectangle(-20, -20, 20, 20));
         Capture = PhysicsNavBake.Capture(Context, options ?? Options, _ => 0);
     }
 

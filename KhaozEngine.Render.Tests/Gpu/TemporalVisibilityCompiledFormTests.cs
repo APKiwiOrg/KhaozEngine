@@ -59,7 +59,8 @@ void main() {
 
         /// <summary>Program, whether it is rewritten to D, then its OpImageFetch, OpImageGather and OpLoopMerge
         /// counts. The D rows are D's baseline at 583a3ae7b.</summary>
-        // Shipped pins include the precision-safe chroma floor. It adds arithmetic without adding a texture read.
+        // Shipped pins include the precision-safe chroma floor gated by the shimmer still-pixel test.
+        // The gate changes arithmetic control flow without adding a texture read, so fetch counts stay fixed.
         public static TheoryData<string, bool, int, int, int> Counts => new()
         {
             { nameof(ShaderSources.TemporalAccumulateFrag), false, 31, 12, 14 },

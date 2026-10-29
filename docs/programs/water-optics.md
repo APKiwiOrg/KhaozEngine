@@ -72,27 +72,19 @@ Rows are in the order the milestones run.
 ## Open questions and owner gates
 
 - Each milestone's design goes to the owner for approval before implementation.
-- The owner approved the water-optics-v2 run on https://github.com/APKiwiOrg/KhaozEngine/issues/1602 with
-  its own campaign maximum and a USD 7.382 cap. It measures OFF, M2 ON and M5 ON profiles of the village and
-  outdoors pools at the released code and publishes the OFF to M2 and M2 to M5 deltas, so it covers M2's
-  native run too. The owner rules on its cost, and per WO-D10 it lands before M3 ships. The presets, the
-  [rehearsals](../RENDERER-PERFORMANCE.md#water-optics-campaign) and the profile publication are built, and
-  the renderer performance program approved their admission. Both owner-approved free rehearsals passed at
-  b2fb9d2b3: lavapipe ran all 36 blocks and 12 controls in 3.8 h, WARP all 12 blocks and 12 controls in
-  1.5 h with a 38.6 s first frame of the 120 s limit. Lavapipe's measured bytes scale to about 95 MB for the
-  paid 19,632 frames, against 256 MiB. The
-  free legs job now runs trusted managed manifest admission before emitting the paid matrix. The renderer
-  performance owner reviews that trusted-path change and proves it with two free dispatches before any
-  paid unit goes out.
+- The owner approved the water-optics-v2 run on https://github.com/APKiwiOrg/KhaozEngine/issues/1602 with a
+  USD 7.382 cap. It measured OFF, M2 ON and M5 ON village and outdoors pools at the released code, covering
+  M2's native run too, so per WO-D10 it has landed before M3. Both paid T4 legs were promotable at
+  4d5914ea2 for USD 2.870 at list price. Per the [profile deltas](../performance/water-optics/profiles-water-optics-v2-linux-water-optics-v2-windows.md),
+  M2 adds 1.5 to 1.8 ms in the opaque passes and M5 0.7 to 1.1 ms in the water surface pass. The owner rules
+  on that cost.
 - On T4 hardware M5 adds no measurable cost to frames that do not opt in. The 41 to 66% WARP slowdown is
   specific to the software rasterizer (https://github.com/APKiwiOrg/KhaozEngine/issues/1640).
 - M4 starts only when the R8a native renderer prepares and submits bounded water on main.
 
 ## Next step
 
-Land the free admission change once the renderer performance owner approves it and its two free proofs
-pass, then dispatch each paid leg once within the USD 7.382 cap, publish the profile deltas and bring the
-measured cost to the owner.
+The owner rules on the measured M2 and M5 cost, then the M3 caustics design goes to the owner.
 Grimhollow, now on v21.18.0, opts the river in and restores the duck shadow under
 https://github.com/APKiwiOrg/Grimhollow/issues/651. [Landing 2](water-optics-design.md) remains unbuilt and
-touches no renderer performance file, so it can run alongside the #1602 work.
+touches no renderer performance file, so it can start at any time.

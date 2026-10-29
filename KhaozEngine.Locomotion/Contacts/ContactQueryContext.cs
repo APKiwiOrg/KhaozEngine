@@ -86,7 +86,7 @@ internal readonly struct DryContactQueryContext(Func<float, float, float>? heigh
     internal bool HasShell => world is not null;
     internal Vector3 KernelFeet(Vector3 centre, in MoveTuning knobs) =>
         new(centre.X, centre.Y - knobs.CapsuleHalfHeight, centre.Z);
-    internal Vector3 BodyCentre(Vector3 feet) => new(feet.X, feet.Y + _halfHeight, feet.Z);
+    internal Vector3 BodyCentre(Vector3 feet) => new(feet.X, SupportedCapsulePose.Centre(feet.Y, _halfHeight), feet.Z);
     internal void CheckMedium(Vector3 feet)
     {
         if (medium is not null && medium(feet.X, feet.Z, feet.Y).InWater)

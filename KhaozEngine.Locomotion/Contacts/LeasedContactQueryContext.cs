@@ -71,8 +71,7 @@ internal sealed partial class LeasedContactQueryContext
         new(centre.X, _composition.PlacementOffset == 0 ? centre.Y - tuning.CapsuleHalfHeight :
             Mapped((double)centre.Y - tuning.CapsuleHalfHeight - _composition.PlacementOffset), centre.Z);
     internal Vector3 BodyCentre(Vector3 feet) =>
-        new(feet.X, _composition.PlacementOffset == 0 ? _composition.RestingFeet(feet.Y + _tuning.CapsuleHalfHeight) :
-            Mapped(_composition.RestingFeet((double)feet.Y + _tuning.CapsuleHalfHeight)), feet.Z);
+        new(feet.X, SupportedCapsulePose.Centre(feet.Y, _tuning.CapsuleHalfHeight, _composition.PlacementOffset), feet.Z);
     internal float HeightAt(Vector3 feet) => Analytic(feet)?.Height ?? float.NaN;
     internal Vector3? NormalAt(Vector3 feet) => Analytic(feet)?.Normal;
 

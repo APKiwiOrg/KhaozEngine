@@ -11,7 +11,7 @@ public class PathFollowerTerminalReplanTests
     [InlineData(-1)]
     [InlineData(0)]
     [InlineData(1)]
-    public void OnlyExactExhaustionRefreshesAnObsoleteCompleteRouteBeforeCooldown(int phase)
+    public void ReachedTerminalRefreshesAnObsoleteCompleteRouteAcrossFloatPhases(int phase)
     {
         var planner = new AnchorPlanner();
         var follower = new PathFollower(planner);
@@ -27,19 +27,16 @@ public class PathFollowerTerminalReplanTests
 
         PathFollowOutput output = follower.Tick(endpoint with { Z = z }, moved, 0.3f, 1f / 30f);
 
-        Assert.Equal(phase == 0 ? 2 : 1, planner.Calls);
+        Assert.Equal(2, planner.Calls);
         Assert.Equal(PathFollowState.Following, output.State);
-        Assert.Equal(phase == -1 ? Vector2.UnitY : -Vector2.UnitY, output.WorldDir);
-        Assert.Equal(phase == 0 ? new Vector2(20.625f, -31.125f) : new Vector2(20.625f, -30.125f), output.ActiveWaypoint);
+        Assert.Equal(-Vector2.UnitY, output.WorldDir);
+        Assert.Equal(new Vector2(20.625f, -31.125f), output.ActiveWaypoint);
 
-        if (phase != 0)
-        {
-            PathFollowOutput exhausted = follower.Tick(endpoint, moved, 0.3f, 1f / 30f);
-            Assert.Equal(2, planner.Calls);
-            Assert.Equal(PathFollowState.Following, exhausted.State);
-            Assert.Equal(-Vector2.UnitY, exhausted.WorldDir);
-            Assert.Equal(new Vector2(20.625f, -31.125f), exhausted.ActiveWaypoint);
-        }
+        PathFollowOutput cooling = follower.Tick(endpoint with { Z = z }, moved, 0.3f, 1f / 30f);
+        Assert.Equal(2, planner.Calls);
+        Assert.Equal(PathFollowState.Following, cooling.State);
+        Assert.Equal(-Vector2.UnitY, cooling.WorldDir);
+        Assert.Equal(new Vector2(20.625f, -31.125f), cooling.ActiveWaypoint);
     }
 
     static NavGoalRegion Region(Vector3 anchor) => new(anchor, 0f, feet => feet == anchor);

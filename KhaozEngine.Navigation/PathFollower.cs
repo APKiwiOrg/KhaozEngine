@@ -134,8 +134,9 @@ public sealed class PathFollowConfig
     public float CorridorTolerance { get; init; } = 2.5f;
 
     /// <summary>Minimum time (seconds) between replans, so a persistently unreachable goal or a jittery
-    /// corridor breach does not spam the planner every tick. A Complete region route exhausted at its
-    /// exact endpoint outside current membership refreshes immediately, at most once per tick.</summary>
+    /// corridor breach does not spam the planner every tick. A previously nonterminal Complete region
+    /// route refreshes immediately on reaching its endpoint outside current membership. A fresh terminal
+    /// result keeps the cooldown. Each tick queries at most once.</summary>
     public float ReplanCooldownSeconds { get; init; } = 0.5f;
 
     /// <summary>Search budget handed to <see cref="IPathPlanner.FindPath"/> on every replan.</summary>

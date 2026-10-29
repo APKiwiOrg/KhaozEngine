@@ -802,8 +802,9 @@ follower uses `GroundNavigation` or an equivalent guarded planner, so an area or
 partial route waiting on cooldown, an unreachable or refused route, or a `Hop` waypoint returns zero requested
 input and never becomes an unrestricted press. A valid partial corridor still requests bounded travel until it is
 exhausted. A blocked near-field shortcut keeps the detour. Target translation follows the follower's configured
-drift and replan cooldown while the route remains valid. At an exhausted Complete endpoint outside current
-range, the follower refreshes the obsolete route immediately instead of holding at its own position.
+drift and replan cooldown while the route remains valid. A previously nonterminal Complete route refreshes
+when the follower reaches its old terminal outside current range, using the configured arrival radius and
+layer checks. Physics rebasing need not produce the waypoint's exact coordinates.
 A fresh Complete result already terminal when queried keeps the ordinary cooldown, including after
 replacing a stale route, so an unchanged no-progress start-cell result cannot query again every tick.
 

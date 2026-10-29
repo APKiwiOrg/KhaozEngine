@@ -296,7 +296,7 @@ decisions without making legacy point queries inherit guarded semantics.
 | B3.3 | Cross-layer or underpriced same-layer links disable the spatial lower-bound priority. Dijkstra ordering costs more expansions but preserves admissibility. |
 | B3.4, B3.5 | Member discovery uses the conservative anchor/extent bound and finite-safe double distance arithmetic. Bounds reduce discovery work without changing actual predicate membership, and wide differences avoid float overflow. |
 | B4.2 | A retained waypoint with zero XZ offset stays finite and Following until true membership or replanning. Same XZ on another floor is not arrival. |
-| B4.3 | A reached Complete endpoint outside membership makes replanning due. Exact XZ exhaustion refreshes the obsolete route through the cooldown, so a moving target cannot leave it holding at its own endpoint. Proximity alone keeps the cooldown. A fresh result already terminal at query time keeps the ordinary cooldown, including after a stale-route refresh, until it leaves terminal state. |
+| B4.3 | A reached Complete endpoint outside membership makes replanning due. A previously nonterminal corridor refreshes under the follower's configured arrival radius and layer checks, without exact coordinate equality. A fresh result already terminal at query time keeps the ordinary cooldown, including after a stale-route refresh, until it leaves terminal state. Region membership remains the only Arrived witness. |
 | B4.4 | Advance the existing region corridor before query eligibility. Exhausted Partial waits with zero input during cooldown. A fresh exhausted Partial at zero cooldown returns Unreachable for that tick, then permits the next query, never a same-tick query loop. |
 
 ## 5. Physics bake and game-owned area masks

@@ -448,8 +448,9 @@ resets the old route and cooldown.
   retarget trigger.
 - **`CorridorTolerance`** (default 2.5) - how far the agent may stray from the planned corridor before a
   replan is due.
-- **`ReplanCooldownSeconds`** (default 0.5) - minimum time between ordinary replans. An exhausted
-  Complete region endpoint outside current membership refreshes immediately, at most once per tick.
+- **`ReplanCooldownSeconds`** (default 0.5) - minimum time between ordinary replans. A previously
+  nonterminal Complete region route refreshes immediately on reaching its terminal outside membership,
+  at most once per tick.
   A fresh query already terminal at its start keeps the ordinary cooldown.
 - **`Budget`** (default `PathQueryBudget.Default`) - handed to `IPathPlanner.FindPath` on every replan.
 - **`ConsumePassedCollinearWaypoints`** (default false) - also advance past an active waypoint the agent has passed
@@ -471,9 +472,10 @@ exhausted while the cooldown is positive returns `PathFollowState.WaitingForPath
 The fresh exhausted-Partial case with zero cooldown returns `Unreachable` with zero direction and retries
 on the next tick. Existing region corridors are advanced before query eligibility, so an eligible partial
 refresh can happen on the same tick that the cooldown reaches zero. A reached `Complete` endpoint outside
-region membership makes replanning due, even when anchor drift is within tolerance. At the endpoint's
-exact XZ position, the obsolete Complete route refreshes immediately through the cooldown because it
-has no remaining travel. Proximity alone keeps the cooldown, as does an exhausted Partial route.
+region membership makes replanning due, even when anchor drift is within tolerance. A corridor not
+terminal when queried refreshes immediately when its terminal is reached under the configured waypoint
+radius and layer checks. It needs no exact coordinate equality, so rebased motion can retire an old
+endpoint even when it rounds differently from the grid's cell centre. Exhausted Partial routes keep the cooldown.
 A fresh Complete result already terminal at query time also keeps the cooldown. Replacing a stale route
 does not authorize another immediate query of a fresh start-cell result on the next tick. Leaving the
 terminal state makes the corridor eligible for a later stale-terminal refresh again.

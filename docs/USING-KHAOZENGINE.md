@@ -9098,9 +9098,10 @@ radius and layer checks. Call `Reset` when the predicate, region shape, traversa
 identity changes, or after a teleport or caller cancellation. Switching between point and region overloads
 clears the old route and cooldown.
 
-An exhausted Complete region endpoint outside current membership refreshes immediately at its exact XZ
-position, even while the replan cooldown is positive. The obsolete route has no remaining travel. Being
-near the endpoint still keeps the cooldown, as does an exhausted Partial route. Each tick queries at most once.
+A previously nonterminal Complete region corridor refreshes immediately when its old terminal is reached
+outside current membership under the configured waypoint radius and layer checks, even while cooldown is
+positive. Exact coordinate equality is not required. An exhausted Partial route keeps the cooldown.
+Each tick queries at most once.
 A fresh Complete result already terminal at query time keeps the ordinary cooldown, including after
 replacing a stale route. Leaving terminal state makes a later stale-terminal refresh eligible again.
 
@@ -9145,8 +9146,9 @@ Partial corridor that is exhausted while the cooldown is positive returns `PathF
 with zero direction. A fresh exhausted Partial with zero cooldown returns `Unreachable` with zero direction
 and retries on the next tick. Existing region corridors advance before query eligibility, so an eligible
 partial refresh can happen on the same tick that the cooldown reaches zero. A reached Complete endpoint
-outside membership makes replanning due even when anchor drift is within tolerance. Exact XZ exhaustion
-refreshes that Complete route immediately through the cooldown. Each tick issues at most one query.
+outside membership makes replanning due even when anchor drift is within tolerance. A previously
+nonterminal Complete corridor refreshes at the reached terminal under its radius and layer checks,
+without requiring exact coordinate equality. Each tick issues at most one query.
 A fresh query already terminal at its start keeps the ordinary cooldown.
 `WaitingForPath` is appended after existing enum members, and point following never returns
 it. Shared configuration, cooldown, drift, layer, and Hop behavior remain in force.
@@ -9770,8 +9772,8 @@ near-field shortcut keeps the detour. Area or graph guards apply to direct appro
 exhausted partial route waiting on cooldown, an unreachable or refused route, or an unsupported Hop route holds
 with zero input. A valid partial corridor still requests bounded travel until it is exhausted.
 Target translation follows the follower's configured drift and replan cooldown while the route remains valid.
-At an exhausted Complete endpoint outside current range, the follower immediately refreshes the obsolete
-route instead of holding at its own position.
+A previously nonterminal Complete corridor refreshes at its reached terminal outside current range under
+the configured arrival radius and layer checks. Physics rebasing need not reproduce the waypoint's exact coordinates.
 A fresh Complete result already terminal when queried keeps the ordinary cooldown, so a no-progress
 start-cell result cannot repeat the query every tick.
 

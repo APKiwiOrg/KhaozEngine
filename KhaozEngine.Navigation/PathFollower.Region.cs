@@ -16,8 +16,9 @@ public sealed partial class PathFollower
     /// waypoints retain the configured radius and layer checks. An exhausted Partial route holds at
     /// zero motion until the shared replan cooldown permits another query. Reaching the retained
     /// Complete endpoint outside the region also makes a replan due, even for anchor drift within
-    /// tolerance. Exact XZ exhaustion of that endpoint refreshes immediately through the cooldown,
-    /// since the obsolete route has no remaining travel. Proximity alone still respects the cooldown.
+    /// tolerance. A corridor not terminal when queried refreshes immediately when its terminal is
+    /// reached under the configured waypoint radius and layer checks. Exact coordinate equality is
+    /// not required, since movement can round differently from the grid's cell centres.
     /// A fresh query already terminal at its start keeps the ordinary cooldown until it leaves that state.
     /// Existing region waypoints advance before this decision so an eligible exhausted
     /// Partial replans in the same tick. Each tick queries at most once. A freshly exhausted Partial
@@ -75,10 +76,10 @@ public sealed partial class PathFollower
             || regionAtTerminal
             || DistanceToActiveCorridor(posXz) > _config.CorridorTolerance;
 
-        // A Complete endpoint outside current membership cannot steer anywhere once its XZ is exhausted.
-        // Holding that obsolete endpoint through the cooldown can trip a moving goal's stall window.
-        bool exhaustedRegion = regionAtTerminal && !_freshRegionTerminal && _path!.Waypoints[_index].Position == posXz;
-        bool replanned = needsPlan && (_cooldown == 0f || exhaustedRegion);
+        // Reaching a previously nonterminal corridor outside membership needs a refresh. Reuse its
+        // radius and layer checks, since movement need not reproduce the waypoint's coordinate bits.
+        bool staleRegionTerminal = regionAtTerminal && !_freshRegionTerminal;
+        bool replanned = needsPlan && (_cooldown == 0f || staleRegionTerminal);
         if (replanned)
         {
             _path = region is not null

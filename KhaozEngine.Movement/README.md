@@ -577,14 +577,24 @@ public sealed class GroundNavigationBake
 }
 ```
 
-`Create` builds every profile through `capture.BuildProfile` with its `Aquatic` flag while the capture is live, so each
+`Create` builds every profile through `capture.BuildProfile` with its `Aquatic` and `MaxDropMetres` options while the capture is live, so each
 profile is exactly the fresh build. The `execution` overload builds profiles one after another and passes the setting to
 each contact profile, as [Parallel contact bake](#parallel-contact-bake) describes. An aquatic profile from a capture
 without `SampleWater` is refused there.
-`WriteTo` writes a little-endian `KENB` file. All-Legacy sets retain format 1 and their exact bytes. Any contact
-profile selects format 2 for the whole set, including mixed contact ground and legacy aquatic profiles. Format 2
-adds each profile's effective kind, foot fraction, water policy and zero placement offset to the identity. Only
-OrdinaryContact layers append one resting float per open cell after that layer's exits, in clear-bit order. Legacy
+`WriteTo` writes a little-endian `KENB` file. Format selection is explicit and old layouts stay frozen.
+
+| Format | Selection | Profile identity and candidate recipe |
+| --- | --- | --- |
+| 1 | All profiles are Legacy with zero Drop allowance | Original supported tuning and Stair recipe |
+| 2 | Contact exists and every Drop allowance is zero | Format 1 plus effective kind, foot fraction, water policy and zero placement offset |
+| 3 | Any profile has positive `MaxDropMetres` | Format 2 plus f32 allowance, f32 walk speed, f32 run speed and u8 air momentum per profile. Ordered Stair candidates precede Drop candidates |
+
+In format 3, disabled profiles encode those four appended values as 0, 1, 1 and false. Enabled profiles
+retain their actual flight inputs. The 13 added identity bytes per profile change neither the layer layout
+nor the meaning of format 1/2 acceptance bits. Drop candidates regenerate from admitted nodes, physical
+resting heights and directed ordinary exits without physics. Stored acceptance remains an ordered bitset,
+with no endpoint or trajectory samples. A loader counts candidates before allocating their endpoint array.
+Only OrdinaryContact layers append one resting float per open cell after that layer's exits, in clear-bit order. Legacy
 layers keep the format 1 layout, store no resting section and get their resting height from the raw surface at runtime.
 Load restores resting heights only for contact layers. Two writes of one bake
 are byte-identical. A loaded profile is a `GroundNavigation` like any other, and its `Space`, graph, columns, `AllowsSegment` and `Planner`
@@ -597,8 +607,9 @@ unique. A bake needs at least one source and 1 to 256 profiles, and `MaxSurfaces
 `Add` takes an exact 32-byte digest, and `AddHashOf` digests content with SHA-256.
 
 The identity covers the engine version, every capture option including `SampleWater`, the caller's labelled source
-digests, and each profile's name, area filter, `Aquatic` flag and every `MoveTuning` field except `WalkSpeed`,
-`RunSpeed` and `AirMomentum`, which the probe overwrites. So a bake sampled differently, or a profile baked aquatic
+digests, and each profile's name, area filter, `Aquatic` flag and retained `MoveTuning` fields. Supported
+proofs normalize `WalkSpeed`, `RunSpeed` and `AirMomentum`. Positive `MaxDropMetres` additionally retains
+those real flight inputs and checks them during runtime compatibility validation. So a bake sampled differently, or a profile baked aquatic
 against a ground expectation, is refused as stale and never loads as the other kind. The identity is canonical, so
 equal inputs give equal bytes in any insertion order and on any architecture. A bake is valid only for the engine
 version that wrote it.

@@ -22,6 +22,9 @@ internal static partial class ContactController
         internal bool DescendingAtContact { get; init; }
         internal bool LastWasWalking { get; init; }
         internal bool Completed { get; init; }
+        internal bool AirLanded { get; init; }
+        internal bool UnwalkableSupport { get; init; }
+        internal Vector3? FirstAirLandingFeet { get; init; }
         internal double UnroundedX { get; init; }
         internal double UnroundedZ { get; init; }
         internal Vector3 PublishedCentre => Queries.BodyCentre(Feet);
@@ -93,6 +96,7 @@ internal static partial class ContactController
                     Mode = grounded ? Mode.Ground : step.Footing == GroundFooting.Steep ? Mode.Slide : Mode.Air,
                     DescendingAtContact = false,
                     LastWasWalking = step.Footing == GroundFooting.Walkable,
+                    UnwalkableSupport = tick.UnwalkableSupport || step.Footing == GroundFooting.Steep,
                 };
                 lagRecorded = true;
                 remaining = step.RemainingTime;
@@ -120,6 +124,7 @@ internal static partial class ContactController
                     Supported = slide.Outcome != SlideOutcome.Airborne,
                     FallSpeed = slide.Outcome == SlideOutcome.Landed ? -slide.ImpactSpeed :
                         slide.Outcome == SlideOutcome.Wedged ? slide.IntegratedVerticalVelocity : tick.FallSpeed,
+                    UnwalkableSupport = true,
                     Mode = grounded ? Mode.Ground : slide.Outcome == SlideOutcome.Airborne ? Mode.Air : Mode.Slide,
                     DescendingAtContact = false,
                     LastWasWalking = false,
@@ -154,6 +159,9 @@ internal static partial class ContactController
                     Grounded = grounded,
                     Supported = air.Outcome != AirOutcome.Airborne,
                     FallSpeed = grounded ? -air.FallSpeedAtContact : tick.FallSpeed,
+                    AirLanded = tick.AirLanded || !waterSegment && grounded,
+                    FirstAirLandingFeet = tick.FirstAirLandingFeet ?? (!waterSegment && grounded ? air.Feet : null),
+                    UnwalkableSupport = tick.UnwalkableSupport || air.Outcome == AirOutcome.Sliding,
                     Mode = grounded ? Mode.Ground : air.Outcome == AirOutcome.Sliding ? Mode.Slide : Mode.Air,
                     DescendingAtContact = air.DescendingAtContact,
                     LastWasWalking = false,

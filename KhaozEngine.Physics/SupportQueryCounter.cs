@@ -77,4 +77,12 @@ public enum SupportQueryCounter
     /// <summary>Authoritative PlayerMovementSystem per-entity Steps with Contact tuning, including idle and rejected Steps.
     /// Direct PlayerMoveSimulator consumers, including prediction, do not count.</summary>
     PlayerContactSteps = 47,
+    /// <summary>Directed Drop candidates reaching the dedicated fall proof phase.</summary>
+    DropCandidates = 48,
+    /// <summary>Usable walking modes attempted by full-tuning Drop proofs.</summary>
+    DropWalkProofs = 49,
+    /// <summary>Usable running modes attempted by full-tuning Drop proofs.</summary>
+    DropRunProofs = 50,
+    /// <summary>Real Contact fall-proof movement slices, including initial and post-landing Holds.</summary>
+    DropSteps = 51,
 }

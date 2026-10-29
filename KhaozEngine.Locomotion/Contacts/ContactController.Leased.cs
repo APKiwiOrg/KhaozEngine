@@ -104,7 +104,13 @@ internal static partial class ContactController
             if (!MovementFrameRebinding.TryRebind(framed, framed.Frame, out _))
                 return HoldLeased(state, MovementStepOutcome.EnvironmentUnresolved);
             queries.AssertCurrent();
-            return new(framed, leased.Outcome);
+            return new(framed, leased.Outcome)
+            {
+                ContactAirLanded = continuation.AirLanded,
+                ContactWalkableSupport = next.Grounded && continuation.Support.Status == SupportStatus.Walkable,
+                ContactUnwalkableSupport = continuation.UnwalkableSupport,
+                ContactFirstAirLandingFeet = continuation.FirstAirLandingFeet,
+            };
         }
         catch (ContactQueryFailure failure) { return HoldLeased(state, failure.Outcome); }
         catch (InvalidOperationException) { return HoldLeased(state, MovementStepOutcome.EnvironmentUnresolved); }

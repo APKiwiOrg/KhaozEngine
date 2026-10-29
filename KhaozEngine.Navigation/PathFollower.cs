@@ -33,6 +33,10 @@ public enum PathFollowState
     /// <summary>A region query's partial corridor is exhausted. Steering is zero until the next
     /// cooldown-gated replan. Point following never returns this state.</summary>
     WaitingForPath,
+
+    /// <summary>An unpowered Drop owns traversal until the host acknowledges supported landing.
+    /// Ordinary steering is zero and the physical source and landing remain fixed.</summary>
+    Dropping,
 }
 
 /// <summary>

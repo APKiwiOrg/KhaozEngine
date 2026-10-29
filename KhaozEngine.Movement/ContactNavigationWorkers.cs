@@ -9,7 +9,7 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Movement;
 
 /// <summary>The phases of a parallel contact build that run on workers, in serial order.</summary>
-internal enum ContactNavigationPhase { Admission, Edges, Links }
+internal enum ContactNavigationPhase { Admission, Edges, Links, Drops }
 
 /// <summary>A parallel contact build's workers. Setup runs on the calling thread: the snapshot, then each worker's
 /// source and proof binding with its first pin, in worker order. A phase splits its rows into contiguous bands, up to
@@ -50,7 +50,7 @@ internal sealed class ContactNavigationWorkers
     /// workers, never more than <paramref name="rows"/>. A setup failure releases every worker built so far.</summary>
     internal static ContactNavigationWorkers Create(PhysicsNavBake bake, GroundMoveContext context,
         EffectiveMovementBinding source, NavAreaFootprint footprint, int degree, int rows,
-        ContactNavigationReusePolicy reuse)
+        ContactNavigationReusePolicy reuse, float maxDropMetres = 0)
     {
         var snapshot = ContactNavigationSnapshot.Capture(bake, context);
         ContactNavigationEnvelope.Validate(bake, source.Tuning, source.CreateOrdinaryScope(snapshot.Frame));
@@ -61,7 +61,7 @@ internal sealed class ContactNavigationWorkers
             for (int worker = 0; worker < workers.Count; worker++)
             {
                 workers._sources[worker] = context.CreateNavigationBinding(source.Tuning);
-                workers._proofs[worker] = new ContactNavigationProof(bake, snapshot, workers._sources[worker]!, footprint, reuse);
+                workers._proofs[worker] = new ContactNavigationProof(bake, snapshot, workers._sources[worker]!, footprint, reuse, maxDropMetres);
                 workers._observers[worker] = workers._diagnostics.Observer(worker);
                 workers._hooks?.WorkerPinned?.Invoke(worker);
             }

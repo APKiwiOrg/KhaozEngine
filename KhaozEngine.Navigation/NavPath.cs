@@ -17,6 +17,10 @@ public enum NavWaypointKind
     /// <summary>The landing of a <see cref="NavLinkKind.Hop"/> link. The follower returns
     /// <see cref="PathFollowState.Hopping"/> while steering toward it and suspends ground steering.</summary>
     Hop,
+
+    /// <summary>The certified landing of a directed <see cref="NavLinkKind.Drop"/>. Its source and landing
+    /// are mandatory physical anchors. Proximity alone cannot acknowledge supported completion.</summary>
+    Drop = 2,
 }
 
 /// <summary>

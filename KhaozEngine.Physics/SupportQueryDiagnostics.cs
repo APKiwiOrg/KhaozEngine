@@ -90,7 +90,7 @@ internal static partial class SupportQueryDiagnostics
         t_enabled = enabled;
     }
 
-    const int CounterCount = 48;
+    const int CounterCount = 52;
 
     /// <summary>Every thread-local counter, observation and callback of one thread.</summary>
     internal readonly record struct ThreadState(bool Enabled, long[]? Counts, Action? Begin, Action? End,
@@ -197,7 +197,11 @@ internal static partial class SupportQueryDiagnostics
             c[44],
             c[45],
             c[46],
-            c[47]);
+            c[47],
+            c[48],
+            c[49],
+            c[50],
+            c[51]);
     }
 
     internal static void SetGroundSubstepObserver(Action? begin, Action? end)

@@ -50,7 +50,11 @@ internal readonly record struct SupportQueryCounts(
     long NpcLegacySteps,
     long NpcContactSteps,
     long PlayerLegacySteps,
-    long PlayerContactSteps)
+    long PlayerContactSteps,
+    long DropCandidates = 0,
+    long DropWalkProofs = 0,
+    long DropRunProofs = 0,
+    long DropSteps = 0)
 {
     internal long this[SupportQueryCounter counter] => counter switch
     {
@@ -102,6 +106,10 @@ internal readonly record struct SupportQueryCounts(
         SupportQueryCounter.NpcContactSteps => NpcContactSteps,
         SupportQueryCounter.PlayerLegacySteps => PlayerLegacySteps,
         SupportQueryCounter.PlayerContactSteps => PlayerContactSteps,
+        SupportQueryCounter.DropCandidates => DropCandidates,
+        SupportQueryCounter.DropWalkProofs => DropWalkProofs,
+        SupportQueryCounter.DropRunProofs => DropRunProofs,
+        SupportQueryCounter.DropSteps => DropSteps,
         _ => throw new ArgumentOutOfRangeException(nameof(counter)),
     };
 
@@ -153,7 +161,11 @@ internal readonly record struct SupportQueryCounts(
         checked(a.NpcLegacySteps + b.NpcLegacySteps),
         checked(a.NpcContactSteps + b.NpcContactSteps),
         checked(a.PlayerLegacySteps + b.PlayerLegacySteps),
-        checked(a.PlayerContactSteps + b.PlayerContactSteps));
+        checked(a.PlayerContactSteps + b.PlayerContactSteps),
+        checked(a.DropCandidates + b.DropCandidates),
+        checked(a.DropWalkProofs + b.DropWalkProofs),
+        checked(a.DropRunProofs + b.DropRunProofs),
+        checked(a.DropSteps + b.DropSteps));
 
     public static SupportQueryCounts operator -(SupportQueryCounts a, SupportQueryCounts b) => new(
         checked(a.Find - b.Find),
@@ -203,5 +215,9 @@ internal readonly record struct SupportQueryCounts(
         checked(a.NpcLegacySteps - b.NpcLegacySteps),
         checked(a.NpcContactSteps - b.NpcContactSteps),
         checked(a.PlayerLegacySteps - b.PlayerLegacySteps),
-        checked(a.PlayerContactSteps - b.PlayerContactSteps));
+        checked(a.PlayerContactSteps - b.PlayerContactSteps),
+        checked(a.DropCandidates - b.DropCandidates),
+        checked(a.DropWalkProofs - b.DropWalkProofs),
+        checked(a.DropRunProofs - b.DropRunProofs),
+        checked(a.DropSteps - b.DropSteps));
 }

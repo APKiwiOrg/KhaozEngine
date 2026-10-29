@@ -47,6 +47,15 @@ internal readonly struct ContactQueryContext
     internal CapsuleContactResult QueryShellContacts(CapsuleShape shape, Vector3 centre, Span<CapsuleContact> contacts) =>
         _leased is { } leased ? leased.QueryShellContacts(shape, centre, contacts) : _dry.QueryShellContacts(shape, centre, contacts);
     internal bool AcceptSegment(Vector3 from, Vector3 to) => _leased?.AcceptSegment(from, to) ?? true;
+    internal bool AcceptRouteSegment(Vector3 from, Vector3 to) => _leased?.AcceptRouteSegment(from, to) ?? true;
+    internal void RecordAcceptedSupport(Vector3 feet) => _leased?.RecordAcceptedSupport(feet);
+    internal bool BeginAirRoute(out int prior)
+    {
+        prior = 0;
+        return _leased?.BeginAirRoute(out prior) ?? false;
+    }
+    internal void EndAirRoute(int prior) => _leased?.EndAirRoute(prior);
+    internal bool AcceptResolvedRouteSegment(Vector3 from, Vector3 to) => _leased?.AcceptResolvedRouteSegment(from, to) ?? true;
     internal bool ConstrainGroundDescent(Vector3 from, Vector3 to, Vector3 supportNormal,
         float footRadius, float cosMaxSlope, out Vector2 move)
     {

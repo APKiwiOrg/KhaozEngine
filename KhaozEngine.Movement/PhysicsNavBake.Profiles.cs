@@ -70,12 +70,12 @@ public sealed partial class PhysicsNavBake
         {
             RequireConcurrentReads(context);
             return BuildContactProfileInParallel(context, source!, tuning, footprint, height,
-                Options.MaxSurfacesPerColumn, degree, reuse);
+                Options.MaxSurfacesPerColumn, degree, reuse, options!.MaxDropMetres);
         }
         using LegacyNavigationReadScope? stable = kind == EffectiveMovementBindingKind.Legacy &&
             execution?.UseStableLegacyReadScope == true ? LegacyNavigationReadScope.Acquire(context, Basis, Origin) : null;
         using ContactNavigationProof? contact = kind == EffectiveMovementBindingKind.OrdinaryContact
-            ? new(this, context, source!, footprint, reuse) : null;
+            ? new(this, context, source!, footprint, reuse, options!.MaxDropMetres) : null;
         var sources = new ContactNavigationSources();
         var candidates = new CandidateColumns(this, context, tuning, footprint, columns, contact, sources);
         // A swim-deep column with no surface below the water gains one surface.
@@ -144,11 +144,18 @@ public sealed partial class PhysicsNavBake
                 Prove(context, tuning, Feet(fromGrid, link.FromX, link.FromZ), fromFloats,
                     Feet(toGrid, link.ToX, link.ToZ), toFloats, footprint)) links.Add(link);
         }
+        if (options!.MaxDropMetres > 0)
+        {
+            var drops = ContactDropCandidates.Generate(space.Layers, layers, tuning, options.MaxDropMetres);
+            space = new NavSpace(space.Layers, [.. space.Links, .. drops]);
+            foreach (NavLink drop in drops)
+                if (contact!.TryDrop(space, drop)) links.Add(drop);
+        }
         _ = Context;
         contact?.AssertCurrent();
         stable?.AssertCurrent();
         var graph = new NavTraversalGraph(space, tuning.CapsuleRadius, height, layers, links);
-        return new GroundNavigation(graph, tuning, footprint, aquatic);
+        return new GroundNavigation(graph, tuning, footprint, aquatic, options!.MaxDropMetres);
     }
 
     /// <summary>Runs every profile's argument checks in order, then the concurrent-read capability check, before any
@@ -157,7 +164,7 @@ public sealed partial class PhysicsNavBake
     internal void CheckProfiles(IReadOnlyList<NavBakeProfile> profiles)
     {
         foreach (NavBakeProfile profile in profiles)
-            CheckProfile(profile.Tuning, profile.Areas, new GroundProfileOptions { Aquatic = profile.Aquatic }).Dispose();
+            CheckProfile(profile.Tuning, profile.Areas, new GroundProfileOptions { Aquatic = profile.Aquatic, MaxDropMetres = profile.MaxDropMetres }).Dispose();
         RequireConcurrentReads(Context);
     }
 
@@ -165,7 +172,7 @@ public sealed partial class PhysicsNavBake
     private ProfileCheck CheckProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions? options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        EffectiveMovementBindingKind kind = new NavBakeProfile("", tuning, areas) { Aquatic = options.Aquatic }.ResolveKind();
+        EffectiveMovementBindingKind kind = new NavBakeProfile("", tuning, areas) { Aquatic = options.Aquatic, MaxDropMetres = options.MaxDropMetres }.ResolveKind();
         GroundMoveContext context = Context;
         RequireAuthoredStatics(context);
         if (kind == EffectiveMovementBindingKind.OrdinaryContact)

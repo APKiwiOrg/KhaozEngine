@@ -88,62 +88,14 @@ internal static class RendererPerfComparison
                 if (aFrames.Length != bFrames.Length || !aFrames.Zip(bFrames).All(pair => Shape(pair.First).SequenceEqual(Shape(pair.Second))))
                     reasons.Add("Incompatible pass layout, marker or parent ownership.");
             }
-            var deltas = ImmutableDictionary.CreateBuilder<string, RendererPerfDelta>(StringComparer.Ordinal);
-            var gapReasons = new List<string>();
-            foreach (string name in (a?.Metrics.Keys ?? []).Concat(b?.Metrics.Keys ?? []).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
-            {
-                var left = a?.Metrics.GetValueOrDefault(name);
-                var right = b?.Metrics.GetValueOrDefault(name);
-                string? refusal = reasons.Count == 0 ? null : string.Join(" ", reasons);
-                var refusalState = RendererPerfMetricStatus.ModelIncomplete;
-                if (refusal is null && name.StartsWith("gap.", StringComparison.Ordinal))
-                {
-                    string prefix = name[..name.LastIndexOf('.')];
-                    var modelA = a?.Metrics.GetValueOrDefault(prefix + ".excess")?.Mean;
-                    var modelB = b?.Metrics.GetValueOrDefault(prefix + ".excess")?.Mean;
-                    if (modelA?.Status != RendererPerfMetricStatus.Available || modelB?.Status != RendererPerfMetricStatus.Available)
-                    {
-                        refusal = string.Join(" ", new[] { "Incomplete or invalid references cannot supply gap deltas.", modelA?.Reason, modelB?.Reason }
-                            .Where(r => r is not null));
-                        if (modelA?.Status == RendererPerfMetricStatus.Invalid || modelB?.Status == RendererPerfMetricStatus.Invalid)
-                            refusalState = RendererPerfMetricStatus.Invalid;
-                    }
-                    else if (modelA.Source != modelB.Source)
-                    {
-                        refusal = $"Unmatched reference/model provenance for {prefix}. Baseline {modelA.Source}. Candidate {modelB.Source}.";
-                        gapReasons.Add(refusal);
-                    }
-                }
-                RendererPerfMetric Delta(RendererPerfMetric? x, RendererPerfMetric? y)
-                    => Difference(x, y, refusal, refusalState);
-                var mean = Delta(left?.Mean, right?.Mean);
-                RendererPerfMetric percentage = mean.Value is { } delta && left!.Mean.Value != 0
-                    ? Available(100 * (delta / left.Mean.Value!.Value), "percent", "candidate minus baseline mean / baseline mean * 100")
-                    : Unavailable("percent", "relative mean delta", mean.Reason ?? "The baseline mean is zero, so percentage is undefined.", mean.Status == RendererPerfMetricStatus.Available
-                        ? RendererPerfMetricStatus.ModelIncomplete : mean.Status);
-                deltas.Add(name, new(mean, Delta(left?.Median, right?.Median), Delta(left?.P95, right?.P95), Delta(left?.P99, right?.P99), percentage));
-            }
+            var deltas = RendererPerfDeltaArithmetic.Compare(a?.Metrics, b?.Metrics,
+                (a?.Metrics.Keys ?? []).Concat(b?.Metrics.Keys ?? []),
+                reasons.Count == 0 ? null : string.Join(" ", reasons), out var gapReasons);
             // A gap mismatch does not invalidate independently matched frame or counter evidence.
             var rowReasons = reasons.Concat(gapReasons).Distinct(StringComparer.Ordinal).ToImmutableArray();
-            rows.Add(new(key.SceneId, key.Layout, key.Iteration, rowReasons.IsEmpty, rowReasons, deltas.ToImmutable()));
+            rows.Add(new(key.SceneId, key.Layout, key.Iteration, rowReasons.IsEmpty, rowReasons, deltas));
         }
         return rows.ToImmutable();
-    }
-
-    static RendererPerfMetric Difference(RendererPerfMetric? baseline, RendererPerfMetric? candidate, string? refusal,
-        RendererPerfMetricStatus refusalState)
-    {
-        string unit = baseline?.Unit ?? candidate?.Unit ?? "unknown";
-        const string source = "candidate minus baseline";
-        if (refusal is not null) return Unavailable(unit, source, refusal, refusalState);
-        if (baseline is null || candidate is null) return Unavailable(unit, source, "The metric is missing from baseline or candidate.");
-        if (baseline.Status != RendererPerfMetricStatus.Available || candidate.Status != RendererPerfMetricStatus.Available)
-            return Unavailable(unit, source, string.Join(" ", new[] { baseline.Reason, candidate.Reason }.Where(r => r is not null)),
-                baseline.Status == RendererPerfMetricStatus.Invalid || candidate.Status == RendererPerfMetricStatus.Invalid
-                    ? RendererPerfMetricStatus.Invalid : RendererPerfMetricStatus.ModelIncomplete);
-        if (baseline.Unit != candidate.Unit || baseline.Source != candidate.Source)
-            return Unavailable(unit, source, "Metric unit or source provenance differs.");
-        return Available(candidate.Value!.Value - baseline.Value!.Value, unit, source);
     }
 
     static ImmutableArray<RendererPerfIdentityDifference> Differences(RendererPerfReport baseline, RendererPerfReport candidate,

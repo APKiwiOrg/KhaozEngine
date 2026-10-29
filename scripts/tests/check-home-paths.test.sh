@@ -58,6 +58,7 @@ fresh
 {
   printf '/%s/%s/work\n' Users runner Users Shared Users '<you>' home runner home '<name>'
   printf '%s\\%s\\%s\\work\n' 'C:' Users runner 'C:' Users Shared 'C:' Users '<name>'
+  printf '%s\\%s\\%s\\work\n' 'C:' Users runneradmin
   printf -- '-%s-%s-project\n' Users runner Users Shared Users '<name>'
   printf '~/project/file\nrelative/project/file\n'
 } > allowed.txt

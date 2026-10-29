@@ -4,6 +4,71 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.20.0
+
+2026-10-29
+
+- Keep unchanged finite planar prediction coordinates exact at finite presentation phases, including when the
+  other coordinate moves. Rendering, reconciliation and quiet reseeding share the same interpolation while
+  preserving genuine movement, correction offsets and nonfinite behavior (Closes #1651).
+
+- Add `KhaozEngine.StatusEffects`, a dependency-free book of transient timed effects on actors with scoped
+  stacking, non-shortening refresh, periodic events, expiry and integer modifier totals. Apply settles
+  due events and expiry before reapplication or capacity checks. Games supply
+  definitions, ticks and gameplay responses, and clients build countdown rows from effect windows.
+- Add `KhaozEngine.StatusEffects.Netcode`, which projects shown effects into immutable replicated
+  snapshots that migrate without persistence. Deferred ownership publication retries current state after
+  cell handoff, while confirmed disappearance forgets the actor.
+- Add `ShardHost.IsInHandoff(long netId)` to distinguish a live frozen handoff source from disappearance
+  when deferred admission or a delayed link temporarily leaves no current owner.
+
+## 21.19.0
+
+2026-10-29
+
+- Add authenticated `RuntimeStaticChange.Set` and `Remove` batches through `OrdinaryMovementRegistration`.
+  Existing Contact and Legacy views observe real blockers and support without rebuilding their bindings.
+  Fixed authored identity and extent stay unchanged, live revisions authenticate each publication, and raw edits
+  still refuse. Hosts apply matching batches before their effective ticks and reconstruct historical physics for
+  replay. Authored navigation stays unaware, so actual travel can latch route stall. Authored bake entry points
+  refuse attached runtime statics and Contact builds refuse changes between reads (#1637).
+
+- Wait for Direct3D 11 timestamp query availability inside the renderer performance batch completion drain. A
+  completed later fence does not make Direct3D 11 query data available, and a WARP rehearsal refused when the last
+  frame of a drained batch still read S_FALSE. Each wait flushes `GetData` until every query reports ready, bounded
+  by the unit deadline, and is recorded as batch evidence. Vulkan is unchanged
+  (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1635).
+- Check out the water column and cascade selection shader sources with LF line endings on every host. A
+  Windows checkout compiled their multiline GLSL with CRLF, which changed the bytes of every lit and water
+  program there and the renderer performance shader identity.
+- Open `device.water.prepare` once per viewport-prepared frame when water column light is on. The column
+  colour source now prepares inside that one root, and `PrepareFrame()` frames prepare it at render with no
+  device phase, so an observer that refuses a repeated CPU phase no longer fails those frames
+  (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1633).
+
+## 21.18.0
+
+2026-10-28
+
+- Add opt-in water column light through `WaterColumnLight`, `WaterColor` and `Clarity` on `WaterSettings`
+  and nullable `WaterLook` overrides. Floaters cast attached column shadows that fade with physical clarity,
+  with an analytic multiple-scattering estimate and one extinction model shared with underwater sunlight.
+  Frames without opted-in water are unchanged, and non-water shaders compile byte-identical.
+- Tune the shared river look to linear RGB `(0.28, 0.30, 0.18)` and clarity `1.5` metres, leaving column
+  lighting off until the consumer explicitly opts in.
+- Add source-preserving MSAA resolve to `KhaozEngine.Gpu` for snapshots followed by more drawing into the
+  multisampled source. Metal uses store-and-resolve to retain every source sample.
+- Fit shadow cascades and cull their casters in render-relative coordinates so shadows remain correct far
+  from the world origin (Closes https://github.com/APKiwiOrg/KhaozEngine/issues/1618).
+- Add `TileWorldView.CameraFade`, off by default. While the camera eye is inside an eligible placed object's
+  drawn triangles, by generalized winding number or a near-plane clip radius with exit hysteresis, that object's
+  colour fades out over `FadeSeconds` and back once the eye leaves. Its shadow stays whole. Prop layers,
+  ungrouped ground props and roofs honour it, a roof the roof rule hides stays hidden, and the outline and
+  silhouette skip a faded object. `IPropClusterVisibility.ColourFade` and `ITileWorldScene.DrawColourOnlyProps`
+  are the new default members behind it.
+- Add `MeshContainment.WindingNumber` and `NearestDistanceSquared`, and `RayMath.ContainsObbY` and `ToObbLocalY`,
+  sharing the oriented-box transform `IntersectObbY` uses.
+
 ## 21.17.0
 
 2026-10-28

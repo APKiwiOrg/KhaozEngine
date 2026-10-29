@@ -280,6 +280,41 @@ authorization and final evidence checks, applies the per-leg paid caps and clean
 model in the [renderer reference](RENDERER-PERFORMANCE.md#evidence-and-authorization), and retains
 the existing pinned PowerShell bootstrap, GRID setup, NVIDIA adapter selection and NVIDIA-only Linux Vulkan ICD safeguards.
 
+The paid presets are `pilot`, `full` and `water-optics-v2`. The v2 campaign uses the full T4 runner
+caps: `gpu-t4-linux` for `linux-vulkan` with 35 job minutes, or `gpu-t4-windows` for
+`windows-d3d11` with 50. Both require the 1,095 MHz clock and emit the `performance` execution class.
+Windows Vulkan refuses v2 admission. Before any paid runner is allocated, the trusted `legs` job
+reads manifests with exact property names, no duplicate fields or null array entries, and exact integer
+or decimal numbers. A field table verified against the managed record constructors checks every
+object's complete field set, value kinds and nullability, including record arrays and the string-valued
+runtime environment map. Unknown names, case variants beside exact names, missing fields and wrong
+types refuse before routing. The free job keeps these PowerShell checks as its outer guard, builds
+`tools/Renderer.Perf.Verify` in `renderer-perf-trusted` at `github.workflow_sha`, then runs its `admit`
+command on the requested checkout and the selector's authorization directory. It reads the exact
+manifest bytes and repeats managed parsing, schedule and recipe identity format checks, runtime policy,
+batch and enum checks, paid or rehearsal deadlines and budgets, byte-hash and independent authorization
+checks. Empty schedules, malformed hashes, Debug runtime policy, invalid pacing, enum values, paid unit
+or steady frame limits and a UTF-8 byte order mark all refuse before the separate matrix step.
+That step requires successful admission, so no paid runner is allocated on a refusal.
+Observed runtime and native identity, source-root ownership and live recipe construction still run on
+the selected runner, as described in the [renderer reference](RENDERER-PERFORMANCE.md#evidence-and-authorization).
+Every paid manifest's
+`approval.campaignMaximumUsd` must cover `budget.maximumCostUsd` without exceeding its campaign
+envelope. The [renderer reference](RENDERER-PERFORMANCE.md#water-optics-campaign)
+owns the v2 USD 7.382 maximum and exact schedules. The v1 `pilot` and `full` maximum stays USD 22.
+
+After the GPU and driver steps, paid renderer jobs invoke the trusted graphics-clock setup before
+building or measuring. Linux enables persistence and uses `sudo nvidia-smi`. Windows uses the elevated
+runner shell after GRID installation. Setup retains the full command output, the driver-returned
+minimum and maximum lock range, a fresh current-clock readback and a clock/performance/power dump.
+A failed command, unsupported lock, changed range or malformed readback writes typed
+`GpuClockNotLocked` evidence and stops before measurement. The pre-build current clock is retained
+without asserting a held measurement clock while no workload is active. The renderer clock policy
+checks every retained observation during conditioning, scene blocks and controls. An always-run cleanup resets GPU clocks
+before artifact upload, retaining reset output even after setup or measurement failure. Software
+rehearsals skip both steps. The [renderer clock policy](RENDERER-PERFORMANCE.md#drift-perturbation-and-validity)
+owns the selected clock, telemetry admission and rationale. The existing preset job caps still apply.
+
 The outside-solution `tools/Renderer.Perf.Tests` project exposes one fixed fact,
 `Renderer.Perf.Tests.RendererPerfTests.Measure_authorized_unit`, category `RendererPerformance`.
 The workflow explicitly passes `KE_RENDERER_PERF_UNIT` and `KE_RENDERER_PERF_REPORTS`. The entrypoint
@@ -371,24 +406,32 @@ profilers, consumer fit, optimization and release remain separate decisions.
 
 ### Free software renderer rehearsal
 
-The `rehearsal`, `rehearsal-full` and `rehearsal-controls` renderer presets use the same `gpu-hosted-bench.yml` and one
-fixed `Measure_authorized_unit` fact. The [renderer reference](RENDERER-PERFORMANCE.md#software-correctness-rehearsal)
-owns their exact pilot, full and all-controls schedules, separate limits, non-promotion reason, diagnostic drift and
-evidence boundary. The trusted selector admits only these standard hosted software mappings for
-every schedule:
+The v1 `rehearsal`, `rehearsal-full` and `rehearsal-controls` presets and both water optics rehearsals
+use the same `gpu-hosted-bench.yml` and one fixed `Measure_authorized_unit` fact. The
+[renderer reference](RENDERER-PERFORMANCE.md#software-correctness-rehearsal) owns their exact schedules,
+separate limits, non-promotion reason, diagnostic drift and evidence boundary. The trusted selector
+admits only these standard hosted software mappings for each admitted schedule and leg:
 
 | Leg | Pinned runner image family | Backend selector | Adapter policy | Device selection |
 | --- | --- | --- | --- | --- |
 | `linux-vulkan` | `ubuntu-24.04` | `vulkan-native` | `mesa-lavapipe-software` | `KE_VULKAN_DEVICE=llvmpipe` |
 | `windows-d3d11` | `windows-2025-vs2026` | `direct3d11-native` | `microsoft-warp-software` | `KE_D3D11_ADAPTER=warp` |
 
-`windows-vulkan` has no software rehearsal class. `pilot` and `full` remain paid hardware performance
-presets with their existing T4 runner labels, NVIDIA ICD mapping and strict promotion verdict. An
+The v1 rehearsals admit both mappings. `rehearsal-water-optics-v2` admits only Linux lavapipe, and
+`rehearsal-water-optics-v2-single` admits only Windows D3D11 WARP for one iteration. Both v2
+rehearsals emit `rehearsal`, require a null graphics clock, and retain the full rehearsal limits of
+19,800 unit seconds and 350 job minutes. Their budgets and campaign maximums remain exactly zero. The
+[water optics contract](RENDERER-PERFORMANCE.md#water-optics-campaign) owns their separate frame counts.
+
+`windows-vulkan` has no software rehearsal class. Paid presets retain their T4 runner labels,
+NVIDIA ICD mapping and strict promotion verdict. An
 image-family pin still permits image revisions, so runtime inheritance must be established separately.
 
 The owner must approve the exact rehearsal workload, leg, schedule, limits and zero-USD budget before
 a new authorization commit exists. A proposal or implementation is not permission to run.
 Authorization B has sole parent A and adds only `tools/Renderer.Perf.Tests/authorized/<unit>.json`.
+Every authorization diff passes `--ignore-submodules=none`, because a workload `.gitmodules` entry with
+`ignore = all` would otherwise hide an added gitlink from that check.
 Select the approved leg with the default filter, B's immutable SHA and the three renderer inputs.
 Reuse of an approval or a workflow rerun refuses. The trusted CPU selector derives the execution
 class from the validated preset and binds its schedule, leg, runner, software policy and caps. It

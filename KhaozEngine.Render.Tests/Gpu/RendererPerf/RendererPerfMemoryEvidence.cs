@@ -45,7 +45,7 @@ internal sealed class RendererPerfMemoryEvidence
         Require(observations.Length <= report.Batches.Length + operations + 1, "Metric", "Memory observation capacity was exceeded.");
         var identities = new HashSet<(string, string, int?)>();
         var operationIds = new HashSet<string>(report.Batches.Select(b => b.Operation), StringComparer.Ordinal)
-        { "conditioning:S3/TotalOnly/0", "unit" };
+        { report.Manifest.Schedule.ConditioningOperation, "unit" };
         operationIds.UnionWith(report.Blocks.Select(b => $"{b.Block.SceneId}/{b.Block.Layout}/{b.Block.Iteration}"));
         operationIds.UnionWith(report.Controls.Select(c => $"control:{c.Control.Id}/TotalOnly/0"));
         foreach (var observation in observations)

@@ -121,6 +121,7 @@ internal static class RendererPerfAnalysis
             reasons.Add(report.Publication.OriginalFailure ?? "Final completed publication is unavailable.");
         reasons.AddRange(report.Publication.Errors);
         RendererPerfDriverAssessment.Drift(report.Blocks, reasons);
+        if (report.GpuClock.State == RendererPerfGpuClockState.Refused) reasons.Add(RendererPerfGpuClockPolicy.Reason);
         var blocks = new List<RendererPerfBlockSummary>();
         var values = new Dictionary<RendererPerfBlock, ImmutableArray<ImmutableDictionary<string, RendererPerfMetric>>>();
         foreach (var block in report.Blocks)
@@ -204,10 +205,12 @@ internal static class RendererPerfAnalysis
                 "ns", "sum of exclusive CPU segments for " + phase.Key));
         var ordered = frame.CpuPhases.OrderBy(p => p.StartTicks).ThenBy(p => p.EndTicks).ToArray();
         bool overlap = ordered.Zip(ordered.Skip(1)).Any(p => p.First.EndTicks > p.Second.StartTicks);
-        double gap = metrics["cpu.frame"].Value!.Value - frame.CpuPhases.Sum(p => Nanoseconds(p.StartTicks, p.EndTicks, frame.CpuFrequency));
-        metrics.Add("cpu.partitionGap", overlap || gap < 0
+        // Validity is decided in exact ticks. Subtracting per-segment nanoseconds rounds an exactly tiled frame below zero.
+        long gapTicks = unchecked((long)((ulong)frame.CpuEndTicks - (ulong)frame.CpuStartTicks));
+        foreach (var phase in frame.CpuPhases) gapTicks = checked(gapTicks - unchecked((long)((ulong)phase.EndTicks - (ulong)phase.StartTicks)));
+        metrics.Add("cpu.partitionGap", overlap || gapTicks < 0
             ? Unavailable("ns", "CPU partition", "Invalid CPU partition with overlapping segments or negative gap.", RendererPerfMetricStatus.Invalid)
-            : Available(gap, "ns", "CPU wall minus exclusive retained segments"));
+            : Available(Nanoseconds(0, gapTicks, frame.CpuFrequency), "ns", "CPU wall minus exclusive retained segments"));
         if (metrics["cpu.partitionGap"].Status == RendererPerfMetricStatus.Invalid)
             reasons.Add($"Invalid CPU partition in {block.SceneId}/{block.Layout}/{block.Iteration}, frame {frame.FrameId}.");
         return metrics.ToImmutable();

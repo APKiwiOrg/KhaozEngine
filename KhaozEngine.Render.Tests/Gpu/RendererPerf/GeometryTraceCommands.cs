@@ -83,6 +83,7 @@ internal sealed class GeometryTraceCommands(IGpuCommandList inner) : IGpuCommand
     { Note("copy-subresources", a, b, ((ulong)am << 32) | al, ((ulong)bm << 32) | bl, w, h); inner.CopyTextureSubresource(a, am, al, b, bm, bl, w, h); }
     public void GenerateMipmaps(IGpuTexture texture) { Note("mips", texture); inner.GenerateMipmaps(texture); }
     public void ResolveTexture(IGpuTexture a, IGpuTexture b) { Note("resolve", a, b); inner.ResolveTexture(a, b); }
+    public void ResolveTexture(IGpuTexture a, IGpuTexture b, bool preserveSource) { Note(preserveSource ? "resolve-preserve" : "resolve", a, b); inner.ResolveTexture(a, b, preserveSource); }
     public void SetComputePipeline(IGpuComputePipeline pipeline) { Note("compute", pipeline); inner.SetComputePipeline(pipeline); }
     public void SetComputeResourceSet(uint slot, IGpuResourceSet set) { Note("compute-set", set, x: slot); inner.SetComputeResourceSet(slot, set); }
     public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint offset) { Note("compute-set-offset", set, x: slot, y: offset); inner.SetComputeResourceSet(slot, set, offset); }

@@ -19,6 +19,8 @@ Pulls in:
   so the server is wire-ready out of the box, not loopback-only.
 - `KhaozEngine.Simulation` - `FixedTickHost`, the deterministic fixed-timestep accumulator.
 - `KhaozEngine.Replication` - authoritative ECS replication (snapshots, deltas, interest).
+- `KhaozEngine.StatusEffects.Netcode` - shown status effect snapshots and handoff-aware publication,
+  replicated and migrated without persistence. The pure book arrives through `Foundation`.
 - `KhaozEngine.WorldStore` - dependency-free checkpoint and durable-mutation seams. It includes `IWorldStore`,
   `IMutationJournalStore`, both in-memory reference stores, immutable journal values, checked recovery, and the
   bounded `MutationJournalExecutor`.

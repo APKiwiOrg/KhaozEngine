@@ -41,18 +41,18 @@ public sealed class RendererPerfWorkflowTrustTests
     [Theory]
     [InlineData("pilot", "linux-vulkan", "gpu-t4-linux", 12)]
     [InlineData("full", "linux-vulkan", "gpu-t4-linux", 35)]
-    [InlineData("full", "windows-vulkan", "gpu-t4-windows", 35)]
+    [InlineData("full", "windows-vulkan", "gpu-t4-windows", 50)]
+    [InlineData("full", "windows-d3d11", "gpu-t4-windows", 50)]
     [InlineData("pilot", "windows-d3d11", "gpu-t4-windows", 20)]
+    [InlineData("water-optics-v2", "linux-vulkan", "gpu-t4-linux", 35)]
+    [InlineData("water-optics-v2", "windows-d3d11", "gpu-t4-windows", 50)]
     public void Requested_admission_and_selector_cannot_change_allocation(string preset, string leg, string runner, int minutes)
     {
         using var workspace = new AdmissionWorkspace();
         var fixture = workspace.Fixture;
-        fixture.Manifest["preset"] = preset;
-        fixture.Manifest["execution"]!["leg"] = leg;
-        fixture.Manifest["execution"]!["runner"] = runner;
-        fixture.Manifest["execution"]!["backend"] = leg == "windows-d3d11" ? "d3d11" : "vulkan";
-        fixture.Manifest["limits"]!["jobMinutes"] = minutes;
-        fixture.Manifest["budget"]!["maximumBilledMinutes"] = minutes + 3;
+        fixture.Manifest = RendererPerfColdLimitPolicyTests.ManifestJson(preset, leg);
+        fixture.Manifest["workloadSha"] = fixture.Workload;
+        RendererPerfRehearsalManifestTests.Parse(fixture.Manifest);
         fixture.Environment["LEGS"] = leg;
         fixture.SaveManifest();
         fixture.Git("add", "--", "tools/Renderer.Perf.Tests/authorized/pilot-linux.json");
@@ -81,7 +81,7 @@ public sealed class RendererPerfWorkflowTrustTests
         Assert.False(File.Exists(workspace.Output) && File.ReadAllText(workspace.Output).Contains("matrix=", StringComparison.Ordinal));
     }
 
-    sealed class AdmissionWorkspace : IDisposable
+    internal sealed class AdmissionWorkspace : IDisposable
     {
         readonly string _root = Path.Combine(Path.GetTempPath(), "khaozengine-renderer-perf-task-13-fix-r1", Guid.NewGuid().ToString("N"));
         internal readonly RendererPerfWorkflowContractTests.WorkflowFixture Fixture;
@@ -101,15 +101,19 @@ public sealed class RendererPerfWorkflowTrustTests
                 else
                 {
                     Assert.Contains("ref: ${{ github.workflow_sha }}", step, StringComparison.Ordinal);
-                    Directory.CreateDirectory(Path.Combine(destination, "scripts"));
-                    File.Copy(Path.Combine(repo, "scripts/renderer-perf-workflow.ps1"), Path.Combine(destination, "scripts/renderer-perf-workflow.ps1"));
+                    Directory.CreateDirectory(_root);
+                    if (OperatingSystem.IsWindows()) RendererPerfHostProcess.Run("cmd", "/c", "mklink", "/J", destination, repo);
+                    else Directory.CreateSymbolicLink(destination, repo);
                 }
             }
             Fixture = new(requested, hostileAdmission: true);
-            Fixture.Environment["GITHUB_WORKSPACE"] = _root;
+            Fixture.Environment["GITHUB_WORKSPACE"] = Path.GetDirectoryName(Path.GetFullPath(Fixture.Git("rev-parse", "--show-toplevel").Trim()))!;
             Fixture.Environment["GITHUB_OUTPUT"] = Output;
-            string run = legs.Split("        run: |\n", 2)[1];
-            _selector = string.Join('\n', run.TrimEnd().Split('\n').Select(s => s.Length >= 10 ? s[10..] : s));
+            _selector = string.Join('\n', legs.Split("      - ")
+                .Where(step => step.StartsWith("id: renderer-admission\n", StringComparison.Ordinal)
+                    || step.StartsWith("id: pick\n", StringComparison.Ordinal))
+                .Select(step => step.Split("        run: |\n", 2)[1])
+                .Select(run => string.Join('\n', run.TrimEnd().Split('\n').Select(s => s.Length >= 10 ? s[10..] : s))));
         }
         internal (int Code, string Output) Select()
         {

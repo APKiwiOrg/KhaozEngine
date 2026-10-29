@@ -17,4 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Items/KhaozEngine.Items.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../test-shared/PhysicsRebaseTiming.cs" Link="PhysicsRebaseTiming.cs" />
+  </ItemGroup>
 </Project>

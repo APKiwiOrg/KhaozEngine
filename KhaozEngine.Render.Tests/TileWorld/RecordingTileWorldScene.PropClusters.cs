@@ -17,6 +17,7 @@ public sealed partial class RecordingTileWorldScene
     public List<(MeshHandle Handle, float Dissolve)> ClusterMergedDraws { get; } = new();
     public List<(IReadOnlyList<PropPlacement> Placements, float DissolveFloor)> ClusterPropDraws { get; } = new();
     public List<(IReadOnlyList<PropPlacement> Placements, float DissolveFloor)> ClusterShadowPropDraws { get; } = new();
+    public List<(IReadOnlyList<PropPlacement> Placements, float DissolveFloor)> ClusterColourOnlyPropDraws { get; } = new();
     public List<(MeshHandle Handle, float Dissolve, bool Complement)> ClusterShadowMergedDraws { get; } = new();
     public int LiveClusterMeshCount => _liveClusterMeshes.Count;
     public int ClusterDrawPasses { get; private set; }
@@ -96,6 +97,14 @@ public sealed partial class RecordingTileWorldScene
         {
             var submitted = InRange(placements, layer, focus);
             if (submitted.Count > 0) _scene.ClusterShadowPropDraws.Add((submitted, dissolveFloor));
+            return submitted.Count;
+        }
+
+        public int DrawColourOnlyProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
+            float dissolveFloor)
+        {
+            var submitted = InRange(placements, layer, focus);
+            if (submitted.Count > 0) _scene.ClusterColourOnlyPropDraws.Add((submitted, dissolveFloor));
             return submitted.Count;
         }
 

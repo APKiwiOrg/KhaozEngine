@@ -58,7 +58,7 @@ internal static class RendererPerfDriver
         {
             if (budget is not null) { _start = budget.ColdStart; _deadline = budget.Deadline; _started = true; }
             // Construct and admit the first session before reading any clock.
-            var conditioning = new RendererPerfBlock("conditioning:S3", RendererPerfLayout.TotalOnly, 0, 0, manifest.ConditioningFrames);
+            var conditioning = new RendererPerfBlock(manifest.Schedule.ConditioningBlockId, RendererPerfLayout.TotalOnly, 0, 0, manifest.ConditioningFrames);
             Execute(conditioning, (warm, measured, info, errors) =>
             {
                 _conditioning = measured;
@@ -94,6 +94,9 @@ internal static class RendererPerfDriver
                 metrics = metrics.Add("rehearsal.clockOrWorkDrift.blocks", Value(drift.Count, "count", "diagnostic five-percent drift rule"));
             }
             else RendererPerfDriverAssessment.Drift(_blocks, _reasons);
+            if (manifest.ExecutionClass == RendererPerfExecutionClass.Performance
+                && RendererPerfGpuClockPolicy.Assess(manifest, _batches).State != RendererPerfGpuClockState.Verified)
+                _reasons.Add(RendererPerfGpuClockPolicy.Reason);
             if (_failure is null && manifest.Recipes.Any(r => !_recipes.ContainsKey(r.SceneId))) Record("renderer.execute", new InvalidOperationException("Recipe construction evidence is incomplete."));
             if (_failure is not null) _reasons.Add(_failure);
             var elapsed = Value(_started ? (clock.Now() - _start) * 1000d / clock.Frequency : 0, "ms", "unit monotonic clock");
@@ -114,7 +117,8 @@ internal static class RendererPerfDriver
         void Execute(RendererPerfBlock block, Action<ImmutableArray<RendererPerfFrameSample>, ImmutableArray<RendererPerfFrameSample>, RendererPerfSessionInfo?, ImmutableArray<string>> retain,
             int controlId = 0)
         {
-            int FrameLimit(int frameId) => block.SceneId == "conditioning:S3" && frameId == 0
+            bool conditioning = block.SceneId == manifest.Schedule.ConditioningBlockId;
+            int FrameLimit(int frameId) => conditioning && frameId == 0
                 ? manifest.Limits.ColdFrameMilliseconds : manifest.Limits.FrameMilliseconds;
             IRendererPerfSession? session = null;
             RendererPerfSessionInfo? info = null;
@@ -188,7 +192,9 @@ internal static class RendererPerfDriver
                                     }
                                     _memory.Observe(operation, "batch", first, clock.Now(), clock.Frequency, batchInfo?.Memory, observationFailure);
                                     _batches.Add(new($"{block.SceneId}/{block.Layout}/{block.Iteration}", first, recorded - first,
-                                        batchStart, clock.Now(), clock.Frequency, batchInfo?.Drain, batchInfo?.Harvest, batchInfo?.Telemetry ?? ImmutableDictionary<string, RendererPerfMetric>.Empty));
+                                        batchStart, clock.Now(), clock.Frequency, batchInfo?.Drain, batchInfo?.Harvest,
+                                        (batchInfo?.Telemetry ?? ImmutableDictionary<string, RendererPerfMetric>.Empty)
+                                            .SetItems(batchInfo?.Completion ?? ImmutableDictionary<string, RendererPerfMetric>.Empty)));
                                 }
                                 if (_failure is null)
                                 {

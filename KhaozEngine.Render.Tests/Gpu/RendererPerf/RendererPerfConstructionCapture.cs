@@ -12,11 +12,11 @@ internal sealed partial class RendererPerfConstructionCapture
     readonly ImmutableArray<string> _operations;
     readonly RendererPerfConstructionAdmission _admission = new();
     readonly RendererPerfConstructionContent _content;
-    readonly RendererPerfShaderRecipe?[] _shaders = new RendererPerfShaderRecipe[RendererPerfConstructionAdmission.FactoryAttempts];
-    readonly RendererPerfLayoutRecipe?[] _layouts = new RendererPerfLayoutRecipe[RendererPerfConstructionAdmission.FactoryAttempts];
-    readonly RendererPerfPipelineRecipe?[] _recipes = new RendererPerfPipelineRecipe[RendererPerfConstructionAdmission.PipelineAttempts];
-    readonly RendererPerfFactoryEvent?[] _events = new RendererPerfFactoryEvent[RendererPerfConstructionAdmission.FactoryAttempts];
-    readonly RendererPerfPipelineOccurrence?[] _occurrences = new RendererPerfPipelineOccurrence[RendererPerfConstructionAdmission.PipelineAttempts];
+    readonly RendererPerfShaderRecipe?[] _shaders;
+    readonly RendererPerfLayoutRecipe?[] _layouts;
+    readonly RendererPerfPipelineRecipe?[] _recipes;
+    readonly RendererPerfFactoryEvent?[] _events;
+    readonly RendererPerfPipelineOccurrence?[] _occurrences;
     readonly object?[] _native = new object[RendererPerfConstructionAdmission.FactoriesPerOperation];
     readonly int[] _nativeIds = new int[RendererPerfConstructionAdmission.FactoriesPerOperation];
     readonly RendererPerfFactoryKind[] _nativeKinds = new RendererPerfFactoryKind[RendererPerfConstructionAdmission.FactoriesPerOperation];
@@ -32,13 +32,22 @@ internal sealed partial class RendererPerfConstructionCapture
 
     internal RendererPerfConstructionCapture(RendererPerfManifest manifest)
     {
+        var schedule = manifest.Schedule;
+        RendererPerfConstructionAdmission.Count(checked(1 + manifest.Blocks.Length + manifest.Controls.Length), schedule.Operations, "operations");
+        int factoryAttempts = checked(schedule.Operations * RendererPerfConstructionAdmission.FactoriesPerOperation);
+        int pipelineAttempts = checked(schedule.Operations * RendererPerfConstructionAdmission.PipelinesPerOperation);
+        _shaders = new RendererPerfShaderRecipe[factoryAttempts];
+        _layouts = new RendererPerfLayoutRecipe[factoryAttempts];
+        _recipes = new RendererPerfPipelineRecipe[pipelineAttempts];
+        _events = new RendererPerfFactoryEvent[factoryAttempts];
+        _occurrences = new RendererPerfPipelineOccurrence[pipelineAttempts];
+        _binds = new long[pipelineAttempts];
         _content = new(_admission);
-        RendererPerfConstructionAdmission.Count(checked(1 + manifest.Blocks.Length + manifest.Controls.Length), 43, "operations");
         var operations = ImmutableArray.CreateBuilder<string>();
-        operations.Add("conditioning:S3/TotalOnly/0");
+        operations.Add(schedule.ConditioningOperation);
         foreach (var b in manifest.Blocks) operations.Add($"{b.SceneId}/{b.Layout}/{b.Iteration}");
         foreach (var c in manifest.Controls) operations.Add($"control:{c.Id}/TotalOnly/0");
-        RendererPerfConstructionAdmission.Count(operations.Count, 43, "operations");
+        RendererPerfConstructionAdmission.Count(operations.Count, schedule.Operations, "operations");
         _operations = operations.ToImmutable();
         _admission.Reserve(0, 0, checked(94 + RendererPerfConstructionAdmission.CauseReserveBytes + RendererPerfConstructionAdmission.Text(RendererPerfCompilerJson.Schema) + _operations.Sum(s => RendererPerfConstructionAdmission.Text(s))));
     }
@@ -219,5 +228,5 @@ internal sealed partial class RendererPerfConstructionCapture
     }
     readonly int[] _forwarded = new int[4];
     internal void Forwarded(RendererPerfFactoryKind kind) => _forwarded[(int)kind] = checked(_forwarded[(int)kind] + 1);
-    readonly long[] _binds = new long[RendererPerfConstructionAdmission.PipelineAttempts];
+    readonly long[] _binds;
 }

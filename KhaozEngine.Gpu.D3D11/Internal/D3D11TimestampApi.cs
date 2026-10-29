@@ -78,6 +78,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             return ready;
         }
 
+        public int ReadAvailability(object query, bool flush)
+        {
+            // A null destination of zero bytes asks only for status. Flags 0 lets GetData flush the immediate context.
+            RequireLive();
+            int result = _queries.GetData(query, Span<byte>.Empty, flush ? 0u : 1u);
+            _loss?.Check(result, "timestamp GetData");
+            RequireLive();
+            if (result < 0) throw new InvalidOperationException($"Direct3D 11 timestamp GetData failed (0x{result:X8}).");
+            return result;
+        }
+
         bool Read(object query, Span<byte> data)
         {
             RequireLive();

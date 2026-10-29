@@ -57,6 +57,12 @@ public static class TileWaterLooks
         // river into whatever blue the scene's sea uses over the 80 cm this look calls deep.
         DeepColor = new Color(0.10f, 0.13f, 0.10f, 0.90f),
 
+        // A sunlit silty river, chosen by the owner from synthetic daylight renders as the closest to the
+        // current river tone while keeping the attached column shadow and physical depth fade. These inputs
+        // leave column lighting inherited, so consumers still opt in explicitly.
+        WaterColor = new Color(0.28f, 0.30f, 0.18f),
+        Clarity = 1.5f,
+
         // The sea blends over 2.5 m, which a river never reaches, so an inherited value would leave the whole
         // body at its shallow colour and perfectly flat in tone. 0.8 m is the deepest a carved bed usually gets.
         ShallowDepth = 0.8f,

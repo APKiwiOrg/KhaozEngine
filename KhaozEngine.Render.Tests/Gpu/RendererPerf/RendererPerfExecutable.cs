@@ -16,7 +16,7 @@ internal static class RendererPerfExecutable
     internal static string ShaderSha256 => RendererPerfRecipe.Digest(Sources.Value);
     internal static IReadOnlyDictionary<string, string> ShaderHashes => Sources.Value;
 
-    static SortedDictionary<string, string> ShaderSourcesByName()
+    internal static SortedDictionary<string, string> ShaderSourcesByName()
     {
         var result = new SortedDictionary<string, string>(StringComparer.Ordinal);
         foreach (var type in new[] { typeof(ShaderSources), typeof(SpriteBatch) })
@@ -39,7 +39,7 @@ internal static class RendererPerfExecutable
     {
         foreach (var expected in manifest.Recipes)
         {
-            using var recipe = RendererPerfRecipe.Create(expected.Version.Split('/')[0]);
+            using var recipe = RendererPerfRecipe.Create(RendererPerfRecipe.IdFromVersion(expected.Version));
             var f = recipe.Facts;
             var actual = new RendererPerfRecipeIdentity(expected.SceneId, f.Id + "/" + f.Version, f.Profile,
                 f.RecipeSha256, f.SettingsSha256, ShaderSha256, f.GeometrySha256, f.AssetSha256);

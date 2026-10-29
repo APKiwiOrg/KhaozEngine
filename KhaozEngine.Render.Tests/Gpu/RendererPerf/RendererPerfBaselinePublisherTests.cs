@@ -46,18 +46,7 @@ public sealed class RendererPerfBaselinePublisherTests : IClassFixture<RendererP
             Assert.Contains("manifestSha256", text);
             Assert.Contains("workflowSha", text);
             var leg = request.Legs.Single(l => name.StartsWith(l.Leg, StringComparison.Ordinal));
-            string rootHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(leg.Directory, leg.ReportName))));
-            Assert.Contains("\"reportSha256\":\"" + rootHash + "\"", text);
-            // Wire ordering can vary between fixture processes. Hash each input independently.
-            string expected = Expected(leg.Leg).Replace("@REPORT_SHA256@", rootHash, StringComparison.Ordinal);
-            using var raw = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(leg.Directory, leg.ReportName)));
-            foreach (var sidecar in raw.RootElement.GetProperty("sidecars").EnumerateArray())
-            {
-                string path = sidecar.GetProperty("path").GetString()!;
-                string digest = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(leg.Directory, path))));
-                expected = expected.Replace("@SIDECAR_" + path + "@", digest, StringComparison.Ordinal);
-            }
-            Assert.Equal(Encoding.UTF8.GetBytes(expected), bytes);
+            AssertGolden(leg, bytes);
 
             var summary = RendererPerfAnalysis.ReadDirectory(leg.Directory, leg.ReportName);
             var s3 = summary.Combined.Single(row => row.SceneId == "S3" && row.Layout == RendererPerfLayout.PerPass);
@@ -73,6 +62,23 @@ public sealed class RendererPerfBaselinePublisherTests : IClassFixture<RendererP
         var again = request with { OutputDirectory = _fixture.Output(), Legs = [.. request.Legs.Reverse()] };
         Assert.Equal(paths.ToArray(), RendererPerfBaselinePublisher.Publish(again).ToArray());
         for (int i = 0; i < paths.Length; i++) Assert.Equal(original[i], File.ReadAllBytes(Path.Combine(again.OutputDirectory, paths[i])));
+    }
+
+    internal static void AssertGolden(RendererPerfBaselineLeg leg, byte[] bytes)
+    {
+        string text = Encoding.UTF8.GetString(bytes);
+        string rootHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(leg.Directory, leg.ReportName))));
+        Assert.Contains("\"reportSha256\":\"" + rootHash + "\"", text);
+        // Wire ordering can vary between fixture processes. Hash each input independently.
+        string expected = Expected(leg.Leg).Replace("@REPORT_SHA256@", rootHash, StringComparison.Ordinal);
+        using var raw = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(leg.Directory, leg.ReportName)));
+        foreach (var sidecar in raw.RootElement.GetProperty("sidecars").EnumerateArray())
+        {
+            string path = sidecar.GetProperty("path").GetString()!;
+            string digest = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(leg.Directory, path))));
+            expected = expected.Replace("@SIDECAR_" + path + "@", digest, StringComparison.Ordinal);
+        }
+        Assert.Equal(Encoding.UTF8.GetBytes(expected), bytes);
     }
 
     static string Expected(string leg, [System.Runtime.CompilerServices.CallerFilePath] string source = "")

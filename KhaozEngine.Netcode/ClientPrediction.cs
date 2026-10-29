@@ -151,7 +151,7 @@ public sealed class ClientPrediction<TState, TCommand>
         get
         {
             float frac = InterTickFraction;
-            Vector2 planar = Vector2.Lerp(previousPredictedPosition, predictedState.PredictionTarget, frac) + renderOffset;
+            Vector2 planar = InterpolatePlanarPresentation(previousPredictedPosition, predictedState.PredictionTarget, frac) + renderOffset;
             float vertical = Lerp(previousPredictedVertical, predictedState.Vertical, frac) + verticalRenderOffset;
             if (!settings.InterpolateYaw || !predictedState.HasYaw)
             {
@@ -255,7 +255,7 @@ public sealed class ClientPrediction<TState, TCommand>
         // frame-invariant, which is what lets it be re-anchored across the frame change at all.
         float frac = InterTickFraction;
         Vector2 renderedAbsolute = predictedState.FrameAnchor
-            + Vector2.Lerp(previousPredictedPosition, predictedState.PredictionTarget, frac) + renderOffset;
+            + InterpolatePlanarPresentation(previousPredictedPosition, predictedState.PredictionTarget, frac) + renderOffset;
         float renderedVertical = Lerp(previousPredictedVertical, predictedState.Vertical, frac) + verticalRenderOffset;
 
         predictedState = basis;
@@ -371,7 +371,7 @@ public sealed class ClientPrediction<TState, TCommand>
         Vector2 oldPlanar = predictedState.Position;
         Vector2 oldPredictionTarget = predictedState.PredictionTarget;
         float oldVertical = predictedState.Vertical;
-        Vector2 renderedPlanar = Vector2.Lerp(previousPredictedPosition, oldPredictionTarget, frac) + renderOffset;
+        Vector2 renderedPlanar = InterpolatePlanarPresentation(previousPredictedPosition, oldPredictionTarget, frac) + renderOffset;
         float renderedVertical = Lerp(previousPredictedVertical, oldVertical, frac) + verticalRenderOffset;
 
         while (pendingCommands.Count > 0 && pendingCommands.Keys[0] <= lastAcknowledgedSeq)
@@ -448,7 +448,7 @@ public sealed class ClientPrediction<TState, TCommand>
             previousPredictedPosition += planarRebase;
             previousPredictedVertical += verticalRebase;
             renderOffset = renderedPlanar
-                - Vector2.Lerp(previousPredictedPosition, predictedState.PredictionTarget, frac);
+                - InterpolatePlanarPresentation(previousPredictedPosition, predictedState.PredictionTarget, frac);
             verticalRenderOffset = renderedVertical - Lerp(previousPredictedVertical, predictedState.Vertical, frac);
             // Both axes' offsets just jumped discontinuously (re-anchored to preserve rendered continuity against the
             // new target), so their carried smoothing velocity is stale. Zero both: keeping it lets the decay's
@@ -564,6 +564,19 @@ public sealed class ClientPrediction<TState, TCommand>
             verticalRenderOffset = 0f;
             verticalRenderOffsetVelocity = 0f;
         }
+    }
+
+    private static Vector2 InterpolatePlanarPresentation(Vector2 from, Vector2 to, float amount)
+    {
+        Vector2 result = Vector2.Lerp(from, to, amount);
+        // Equal endpoints can round away from their shared value. Preserve each stationary coordinate
+        // without changing moving coordinates, nonfinite arithmetic or the caller's correction offsets.
+        if (float.IsFinite(amount))
+        {
+            if (from.X == to.X && float.IsFinite(to.X)) result.X = to.X;
+            if (from.Y == to.Y && float.IsFinite(to.Y)) result.Y = to.Y;
+        }
+        return result;
     }
 
     private static float Lerp(float a, float b, float t) => a + (b - a) * t;

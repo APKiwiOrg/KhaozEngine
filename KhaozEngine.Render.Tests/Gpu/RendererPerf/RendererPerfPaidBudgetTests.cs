@@ -12,8 +12,8 @@ public sealed class RendererPerfPaidBudgetTests
     [InlineData("pilot", "linux-vulkan", 600, 12, 15, 0.052, 0.780)]
     [InlineData("pilot", "windows-d3d11", 600, 20, 23, 0.102, 2.346)]
     [InlineData("full", "linux-vulkan", 1500, 35, 38, 0.052, 1.976)]
-    [InlineData("full", "windows-d3d11", 1500, 35, 38, 0.102, 3.876)]
-    [InlineData("full", "windows-vulkan", 1500, 35, 38, 0.102, 3.876)]
+    [InlineData("full", "windows-d3d11", 1500, 50, 53, 0.102, 5.406)]
+    [InlineData("full", "windows-vulkan", 1500, 50, 53, 0.102, 5.406)]
     public void Paid_caps_include_cleanup_without_extending_unit_or_frame_deadlines(string preset, string leg,
         int seconds, int minutes, int billed, double rate, double cost)
     {
@@ -22,7 +22,7 @@ public sealed class RendererPerfPaidBudgetTests
         Assert.Equal(new RendererPerfLimits(seconds, 10000, 120000, minutes), manifest.Limits);
         Assert.Equal(new RendererPerfBudget(billed, (decimal)rate, "USD", (decimal)cost), manifest.Budget);
         Assert.Equal(preset == "pilot" ? 1260 : 16944, manifest.TotalFrameCount);
-        Assert.Equal(14m, manifest.Approval.CampaignMaximumUsd);
+        Assert.Equal(22m, manifest.Approval.CampaignMaximumUsd);
         using var fixture = new RendererPerfWorkflowContractTests.WorkflowFixture();
         fixture.Manifest = json;
         fixture.Manifest["workloadSha"] = fixture.Workload;
@@ -41,8 +41,8 @@ public sealed class RendererPerfPaidBudgetTests
     [InlineData("pilot", "linux-vulkan", 12, 15, 0.780)]
     [InlineData("pilot", "windows-d3d11", 20, 23, 2.346)]
     [InlineData("full", "linux-vulkan", 35, 38, 1.976)]
-    [InlineData("full", "windows-d3d11", 35, 38, 3.876)]
-    [InlineData("full", "windows-vulkan", 35, 38, 3.876)]
+    [InlineData("full", "windows-d3d11", 50, 53, 5.406)]
+    [InlineData("full", "windows-vulkan", 50, 53, 5.406)]
     public void Paid_validator_refuses_changed_caps_costs_and_approval(string preset, string leg, int minutes, int billed, double cost)
     {
         JsonObject original = ManifestJson(preset, leg, minutes, billed, (decimal)cost);
@@ -57,7 +57,7 @@ public sealed class RendererPerfPaidBudgetTests
             ("budget", "currency", JsonValue.Create("NZD")),
             ("budget", "maximumCostUsd", JsonValue.Create((decimal)cost - 0.001m)),
             ("budget", "maximumCostUsd", JsonValue.Create((decimal)cost + 0.001m)),
-            ("approval", "campaignMaximumUsd", JsonValue.Create(14.01m)),
+            ("approval", "campaignMaximumUsd", JsonValue.Create(22.01m)),
             ("approval", "campaignMaximumUsd", JsonValue.Create((decimal)cost - 0.001m)),
             ("approval", "reference", JsonValue.Create(" ")),
             ("approval", "purpose", JsonValue.Create(" ")),
@@ -81,13 +81,28 @@ public sealed class RendererPerfPaidBudgetTests
         Assert.NotEqual(0, fixture.Run("Select").Code);
     }
 
+    [Theory]
+    [InlineData("windows-d3d11")]
+    [InlineData("windows-vulkan")]
+    public void Windows_full_refuses_the_former_35_minute_cap(string leg)
+    {
+        JsonObject json = ManifestJson("full", leg, 35, 38, 3.876m);
+        Assert.Equal("Preset", Assert.Throws<RendererPerfProtocolException>(() => RendererPerfRehearsalManifestTests.Parse(json)).Code);
+        using var fixture = new RendererPerfWorkflowContractTests.WorkflowFixture();
+        fixture.Manifest = json;
+        fixture.Manifest["workloadSha"] = fixture.Workload;
+        fixture.Environment["LEGS"] = leg;
+        fixture.SaveManifest();
+        Assert.NotEqual(0, fixture.Run("Select").Code);
+    }
+
     static JsonObject ManifestJson(string preset, string leg, int minutes, int billed, decimal cost)
     {
         var json = RendererPerfProtocolTests.ManifestJson(preset, leg);
         json["limits"]!["jobMinutes"] = minutes;
         json["budget"]!["maximumBilledMinutes"] = billed;
         json["budget"]!["maximumCostUsd"] = cost;
-        json["approval"]!["campaignMaximumUsd"] = 14;
+        json["approval"]!["campaignMaximumUsd"] = 22;
         return json;
     }
 }

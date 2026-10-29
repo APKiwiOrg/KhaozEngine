@@ -81,7 +81,7 @@ internal sealed class RendererPerfCompilerPublicationFixture : IDisposable
     {
         using var provider = new BackendProviderScope(GpuBackendKind.VulkanNative, new Provider(Diagnostic));
         using var context = GpuDeviceContext.CreateHeadless(GpuBackendKind.VulkanNative);
-        return RendererPerfColdCollector.Collect(Inventory, context, Report.Compiler.Production!, budget ?? Budget,
+        return RendererPerfColdCollector.Collect(Inventory, Report.Manifest.Schedule, context, Report.Compiler.Production!, budget ?? Budget,
             publication.ReserveReport, publication.CommitReportBytes);
     }
     internal RendererPerfPublicationResult Publish(RendererPerfPublicationWriter writer)

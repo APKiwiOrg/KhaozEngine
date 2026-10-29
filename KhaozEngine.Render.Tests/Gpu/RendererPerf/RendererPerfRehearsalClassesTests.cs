@@ -10,11 +10,14 @@ public sealed class RendererPerfRehearsalClassesTests
 {
     internal static JsonObject ManifestJson(string preset, string leg)
     {
+        if (preset is "rehearsal-water-optics-v2" or "rehearsal-water-optics-v2-single")
+            return RendererPerfWaterOpticsPresetTests.ManifestJson(preset, leg);
         bool full = preset == "rehearsal-full";
         JsonObject json = RendererPerfProtocolTests.ManifestJson(full ? "full" : "pilot", leg);
         json["preset"] = preset;
         json["execution"]!["runner"] = leg == "linux-vulkan" ? "ubuntu-24.04" : "windows-2025-vs2026";
         json["execution"]!["adapterPolicy"] = leg == "linux-vulkan" ? "mesa-lavapipe-software" : "microsoft-warp-software";
+        json["execution"]!["lockedGraphicsClockMHz"] = null;
         json["limits"]!["unitSeconds"] = full ? 19800 : 5400;
         json["limits"]!["frameMilliseconds"] = 60000;
         json["limits"]!["jobMinutes"] = full ? 350 : 120;
@@ -25,28 +28,37 @@ public sealed class RendererPerfRehearsalClassesTests
         return json;
     }
 
-    public static IEnumerable<object[]> Classes()
-    {
-        foreach (string preset in new[] { "rehearsal", "rehearsal-full" })
-            foreach (string leg in new[] { "linux-vulkan", "windows-d3d11" })
-                yield return [preset, leg];
-    }
+    // Controls-only fixtures are separate. Scene rehearsals share the complete admitted inventory.
+    public static IEnumerable<object[]> Classes() => RendererPerfColdLimitPolicyTests.SoftwareClasses()
+        .Where(entry => RendererPerfSchedules.For((string)entry[0]).Iterations > 0);
 
     [Theory]
     [MemberData(nameof(Classes))]
     public void Each_software_class_keeps_its_exact_schedule_and_limits(string preset, string leg)
     {
         var manifest = RendererPerfRehearsalManifestTests.Parse(ManifestJson(preset, leg));
+        bool waterOptics = preset is "rehearsal-water-optics-v2" or "rehearsal-water-optics-v2-single";
         bool full = preset == "rehearsal-full";
-        var paid = RendererPerfRehearsalManifestTests.Parse(RendererPerfProtocolTests.ManifestJson(full ? "full" : "pilot", leg));
+        var expected = waterOptics
+            ? RendererPerfSchedules.For(preset)
+            : RendererPerfRehearsalManifestTests.Parse(RendererPerfProtocolTests.ManifestJson(full ? "full" : "pilot", leg)).Schedule;
         Assert.Equal(RendererPerfExecutionClass.Rehearsal, manifest.ExecutionClass);
-        Assert.Equal(full ? 16944 : 1260, manifest.TotalFrameCount);
-        Assert.Equal(paid.ConditioningFrames, manifest.ConditioningFrames);
-        Assert.Equal(paid.Blocks, manifest.Blocks, EqualityComparer<RendererPerfBlock>.Default);
-        Assert.Equal(paid.Controls, manifest.Controls, EqualityComparer<RendererPerfControl>.Default);
-        Assert.Equal(paid.Recipes, manifest.Recipes, EqualityComparer<RendererPerfRecipeIdentity>.Default);
-        Assert.Equal(new RendererPerfLimits(full ? 19800 : 5400, 60000, 120000, full ? 350 : 120), manifest.Limits);
-        Assert.Equal(new RendererPerfBudget(full ? 350 : 120, 0, "USD", 0), manifest.Budget);
+        Assert.Equal(expected.TotalFrames, manifest.TotalFrameCount);
+        Assert.Equal(expected.ConditioningFrames, manifest.ConditioningFrames);
+        Assert.Equal(expected.Blocks(), manifest.Blocks, EqualityComparer<RendererPerfBlock>.Default);
+        Assert.Equal(expected.ControlIds, manifest.Controls.Select(c => c.Id));
+        Assert.All(manifest.Controls, c => Assert.Equal((expected.ControlWarmupFrames, expected.ControlMeasuredFrames), (c.WarmupFrames, c.MeasuredFrames)));
+        Assert.Equal(expected.Recipes.Select(r => (r.SceneId, r.Version, r.Profile)), manifest.Recipes.Select(r => (r.SceneId, r.Version, r.Profile)));
+        if (!waterOptics)
+        {
+            var paid = RendererPerfRehearsalManifestTests.Parse(RendererPerfProtocolTests.ManifestJson(full ? "full" : "pilot", leg));
+            Assert.Equal(full ? 16944 : 1260, manifest.TotalFrameCount);
+            Assert.Equal(paid.Blocks, manifest.Blocks, EqualityComparer<RendererPerfBlock>.Default);
+            Assert.Equal(paid.Controls, manifest.Controls, EqualityComparer<RendererPerfControl>.Default);
+            Assert.Equal(paid.Recipes, manifest.Recipes, EqualityComparer<RendererPerfRecipeIdentity>.Default);
+        }
+        Assert.Equal(new RendererPerfLimits(full || waterOptics ? 19800 : 5400, 60000, 120000, full || waterOptics ? 350 : 120), manifest.Limits);
+        Assert.Equal(new RendererPerfBudget(full || waterOptics ? 350 : 120, 0, "USD", 0), manifest.Budget);
     }
 
     [Theory]

@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 internal static class RendererPerfColdCollector
 {
-    internal static RendererPerfColdResult Collect(RendererPerfCompilerInventory inventory, GpuDeviceContext diagnostic,
+    internal static RendererPerfColdResult Collect(RendererPerfCompilerInventory inventory, RendererPerfSchedule schedule, GpuDeviceContext diagnostic,
         GpuEffectiveDiagnosticConfiguration production, RendererPerfUnitBudget budget,
         Func<GpuBackendKind, RendererPerfReadReservation?> reserveReport,
         Action<RendererPerfReadReservation, int> commitReportBytes)
@@ -121,7 +121,8 @@ internal static class RendererPerfColdCollector
             production, configuration, results.ToImmutable(), null, spans.ToImmutable(), []);
         if (failures.Count == 0)
         {
-            var reasons = RendererPerfCompilerCorrespondence.Validate(inventory, pipelines.ToImmutable(), compiler);
+            var reasons = RendererPerfCompilerCorrespondence.Validate(inventory, pipelines.ToImmutable(), compiler,
+                schedule.Operations, schedule.ConditioningOperation);
             if (!reasons.IsEmpty)
             {
                 failures.Add(new("renderer.graph.read", new InvalidOperationException(string.Join(" ", reasons))));

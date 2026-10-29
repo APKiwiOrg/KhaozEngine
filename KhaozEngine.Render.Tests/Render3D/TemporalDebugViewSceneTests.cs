@@ -244,6 +244,7 @@ public sealed class TemporalDebugViewSceneTests
                 width, height);
         public void GenerateMipmaps(IGpuTexture texture) => inner.GenerateMipmaps(texture);
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst) => inner.ResolveTexture(src, dst);
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource) => inner.ResolveTexture(src, dst, preserveSource);
         public void SetComputePipeline(IGpuComputePipeline p) => inner.SetComputePipeline(p);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) => inner.SetComputeResourceSet(slot, set);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) =>

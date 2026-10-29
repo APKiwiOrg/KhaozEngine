@@ -5085,10 +5085,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       the constant index `1.333`. With in-water travel direction `t`, the path is
       `L = h / cos(theta_water) = h / -t.y` and the surface entry is `E = P - t * L`.
       The entry selects its own cascade, with `P`'s geometric normal offset and slope bias.
-      Key diffuse and specular receive the body's `exp(-AbsorptionPerMetre * L)` even with shadows disabled.
-      Ambient, indirect, fill, point lights, emissive and fog keep their values. The water pass already tints
-      deep beds darker, so attenuating ambient too would double-darken them. Key-only attenuation reduces
-      shadow contrast with depth against unchanged ambient.
+      Key diffuse and specular receive the body's `exp(-attenuation * L)` even with shadows disabled.
+      Attenuation is the resolved `AbsorptionPerMetre` for legacy bodies or the extinction derived from
+      `WaterColor` and `Clarity` for `WaterColumnLight` bodies.
+      Ambient, indirect, fill, point lights, emissive and fog keep their values. Underwater sunlight models
+      the direct sun path. The surface handles the view path through legacy depth grading or the opted-in
+      column composite. Key-only attenuation reduces shadow contrast against unchanged ambient.
 
       Ordinary outward CCW opaque meshes with orientation-preserving transforms retain their sun-facing near
       face in the atlas on every backend, with clockwise fronts culled. The glTF loader preserves that winding.
@@ -5916,7 +5918,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   ripple normal on top, a camera-distance detail fade, per-channel Beer-Lambert depth grading of the body colour, a
   fresnel blend toward the reflected sky, a GGX sun glint with distance/footprint roughness widening,
   procedural whitecap and shoreline foam, and a depth-driven shore fade at the waterline.
-  **No view-ray refraction, no screen-space reflections, no caustics, no submerged view** - the reflection is the
+  **No bent image lookup, no screen-space reflections, no caustics, no submerged view** - the reflection is the
   sky only (the legacy gradient or the enabled atmosphere's sky-view LUT, with a CPU mirror through
   `AtmosphereModel`). Feed the returning camera-aware `SunCycle.Apply` horizon to `Post.Water.HorizonColor`.
   Issue #54 records probes/SSR as not planned at the current bar. This is a stylized LDR surface, not a
@@ -5963,8 +5965,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     ```
     **Overridable fields**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
     (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`UnderwaterSunlight`/`UnderwaterPenumbraPerMetre`/
-    `ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars, `ShoreFadeDistance`, and the
-    two depth-response strengths `ShoalingStrength`/`SurfStrength`. **What stays scene-wide, and cannot be put on
+    `WaterColumnLight`/`WaterColor`/`Clarity`/`ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars,
+    `ShoreFadeDistance`, and the two depth-response strengths `ShoalingStrength`/`SurfStrength`.
+    **What stays scene-wide, and cannot be put on
     a look at all**: `SeaState` (one FFT bake - calling the producer twice a frame with two sea states does not
     make two oceans, it makes the one producer rebake on every call for both states and corrupts the persistent
     foam accumulator, whose contract is that one invocation owns each texel), `Bathymetry` (one depth texture),
@@ -5975,12 +5978,48 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     knobs (a plane wanting no surf sets `SurfStrength = 0`, which is the whole per-body need), and the sample-
     count quality knobs. Setting `WaveSource = WaterWaveSource.Procedural` on a look is the inland-body case: it
     takes the plane off the shared ocean entirely, so it loses the sea's swell and whitecaps, and (since shoaling
-    and breaking surf ride the same gate) its breaking surf too. Costs zero new UBO bytes (the payload stays 1088,
-    the slot stays 1280), zero new GPU resources and zero new pipelines - each plane already owned its own slot in
-    the water pass's uniform buffer, so an override is a different set of numbers written into a slot that was
+    and breaking surf ride the same gate) its breaking surf too. Look overrides add zero UBO bytes, per-plane
+    GPU resources or pipelines. The payload is 1136 bytes within the unchanged 1280-byte slot, binding range
+    and dynamic-offset stride. Each plane already owned its own slot in the water pass's uniform buffer,
+    so an override is a different set of numbers written into a slot that was
     being written anyway. Per-body sea states, bathymetry and grid modes stay deferred to
     [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275). Rationale, including why a per-plane sea state
     is refused rather than deferred: `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
+  - **Water-column authoring**: `WaterColumnLight` defaults to `false`, `WaterColor` defaults to neutral linear
+    RGB `(0.10, 0.13, 0.10, 1)` with alpha ignored, and `Clarity` defaults to `2` metres of vertical depth for
+    about 5% bed visibility when seen straight down. These are neutral authoring defaults, not tuned river values.
+    Each nullable `WaterLook` field inherits the scene, a value overrides it and an explicit `false` opts out.
+    `DrawWater` checks resolved inputs before enqueue when the column is enabled. Clarity must be finite and
+    at least 0.001 metres, and each RGB channel must be finite and in [0, 1]. A rejection throws
+    `ArgumentException` naming `Clarity` or `WaterColor` and leaves the queue unchanged. Disabled columns leave
+    these inputs unvalidated.
+    The column path bypasses `AbsorptionPerMetre`, `ShallowColor`, `DeepColor`, `ShallowDepth` and `Opacity`.
+    Shore fade and foam keep their own settings. An enabled column also opts its plane into underwater
+    sunlight without changing `UnderwaterSunlight`. Its volume record carries extinction derived from
+    resolved `WaterColor` and `Clarity`, with mean extinction `3 / Clarity`, instead of legacy absorption.
+    Enabled planes also shadow glint and the sun-lit foam term through the scene's cascades, leaving foam's
+    ambient term unshadowed. Disabled planes keep the original surface shading.
+    Enabled columns refract the view direction for perspective and orthographic cameras and apply view-path
+    extinction, four shadowed sun samples, analytic unshadowed ambient single scattering and an H-function
+    multiple-scattering estimate scaled by mean sun visibility. The bed colour is the pre-water copy at the
+    original pixel, with no bent image lookup. The copy includes everything drawn before water, so farther water
+    seen through another column surface is omitted. Wholly submerged casters shadow the bed but not the column.
+    `FoamColor.a` scales foam coverage. Shore fade mixes toward the copied bed and enabled output has alpha 1.
+    Atmosphere fog applies only to water's own terms, avoiding a second fog pass over the bed. Sample noise
+    advances with the latched frame index only on the render that resolves temporal anti-aliasing, otherwise it
+    stays screen-fixed. The [pipeline reference](RENDER-PIPELINE.md#water-column-composite) records the displaced
+    crest integral, finite-depth approximation and shadow budget.
+    The copy's colour source (its single-sample destination, or the MSAA resolve target) is prepared before the
+    copy records. `PrepareFrame(width, height)` prepares it inside its one `device.water.prepare` root, ahead of
+    the water sets that bind it. `PrepareFrame()` prepares it at render after final sizing, with no device phase.
+    Render repeats the preparation on either form without a phase. It does device work only when legacy late
+    binding replaced the scene targets after preparation.
+    The [coefficient reference](../KhaozEngine.Render3D/README.md#water-column-coefficients) defines the
+    reference sun and sky, engine light units, extinction spread and energy-conserving albedo inversion.
+    `TileWaterLooks.River` carries the owner-selected linear RGB `(0.28, 0.30, 0.18)` and `Clarity = 1.5f`,
+    with `WaterColumnLight` left null. Set that nullable field on a consumer-owned look to opt in, preserving
+    the shared preset. Landing 1 is built and awaits the owner's measured-cost ruling before release.
+    [Landing 2's bent view](programs/water-optics-design.md) remains unbuilt.
   - **Independent optical bed** (`WaterPlane.Optics`, a `WaterOpticsBinding`, **default unbound = legacy scene
     depth**). An unbound plane grades its colour, shore foam and shore fade from the first opaque surface behind it,
     which can be a swimming creature, a bridge or a prop. A bound plane reads its own signed bed depth for those
@@ -6054,15 +6093,17 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     scene-appearance bags reached off `Post`). Grouped by what they do:
     - *Body colour*: `DeepColor`/`ShallowColor`, graded by `AbsorptionPerMetre` (per-channel 1/metre coefficients,
       all-zero falls back to the legacy two-stop blend over `ShallowDepth`), plus `Opacity`. The resolved absorption
-      also drives underwater sunlight, where all-zero absorption means no attenuation.
-    - *Underwater sunlight*: `UnderwaterSunlight` (scene default `false`) and
-      `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
+      also drives underwater sunlight for bodies without `WaterColumnLight`, where all-zero absorption means
+      no attenuation.
+    - *Underwater sunlight*: either `UnderwaterSunlight` or `WaterColumnLight` opts in (both scene defaults `false`),
+      with `UnderwaterPenumbraPerMetre` (scene default `0.03` metres of extra penumbra radius per metre of in-water path).
       The penumbra value must be finite and non-negative. It is available on any plane, procedural or FFT, bound or
       unbound. The water refractive index is the fixed constant `1.333`, not a setting. A frame with no opted-in water
       renders exactly as before. The receiver's own body supplies the light path, using its still-water plane
-      even for FFT waves. The entry can lie beyond the rectangle, where a bank can shadow it. The surface pass
-      keeps its existing depth tint. See **Underwater key light** under shadows for the march, widening and
-      single-caster atlas limit. The nullable `WaterLook` fields inherit these settings per plane.
+      even for FFT waves. The entry can lie beyond the rectangle, where a bank can shadow it. The surface uses
+      legacy depth tint unless `WaterColumnLight` selects the composite. See **Underwater key light** under
+      shadows for the march, widening and single-caster atlas limit. The nullable `WaterLook` fields inherit
+      these settings per plane.
     - *Reflection*: `SkyReflectionStrength` (0 = the flat `HorizonColor`, 1 = the sky along the reflected ray) and
       `SkyReflectionSunStrength` (how much of the sky's disc + halo the reflection carries).
     - *Swell*: `SwellAmplitude` (0 = flat plane), `SwellWavelength`, `SwellDirectionDegrees`, `SwellSpreadDegrees`,
@@ -6294,8 +6335,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     same unresolved ripple detail, and the sum put the far lobe at about twice the surface's slope variance. Now
     the lobe carries exactly that variance until the floor takes over, and 1.12 to 1.17 times it on the floor.
     `VarianceToRoughness = 0` leaves the lobe on the floor alone, the 14.24.0 lobe.
-  - **Depth grading**: the plane's depth source drives per-channel Beer-Lambert transmittance
-    (`exp(-AbsorptionPerMetre * depth)`), blending `ShallowColor` down into `DeepColor`. Because red is absorbed
+  - **Legacy depth grading** (`WaterColumnLight` disabled): the plane's depth source drives per-channel
+    Beer-Lambert transmittance (`exp(-AbsorptionPerMetre * depth)`), blending `ShallowColor` down into
+    `DeepColor`. Because red is absorbed
     several times faster than blue, the ramp bends through green-teal instead of running straight down the line
     between two colours, which is what keeps the midtones clean. An all-zero `AbsorptionPerMetre` restores the
     14.22.0 two-stop smoothstep over `ShallowDepth`. Keep both distinct from `ShoreFadeDistance`: the colour band
@@ -8441,6 +8483,15 @@ camera.BoomProbe = new TileWorldCameraProbe(view, bounds.TryGetBounds,
     archetype => archetype.Tags?.Contains("camera-blocker") == true);   // the game's rule and tag
 ```
 
+What the boom passes through, such as trees and props, the camera can end up inside. `TileWorldView.CameraFade`
+fades the colour of whatever object the eye is inside and keeps its shadow (since 21.18.0, off by default). The
+README's camera inside fade section gives the rules.
+
+```csharp
+view.CameraFade = new TileCameraFadeOptions { Eligible = archetype => !blocks(archetype) };
+view.UpdateCameraFade(camera.Eye, dt);   // once a frame, after the camera settles and before view.Draw
+```
+
 **Eased boom recovery (since 20.13.0, off by default).** `BoomRecoveryRate` (per second, default 0) eases the
 boom back out after an obstruction clears. A pull-in is always instant, because an eased pull-in would put the
 eye inside the occluder. The camera holds the metres the boom is short of its full length, and `AdvanceBoom(dt)`
@@ -9148,7 +9199,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.17.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.20.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9527,8 +9578,8 @@ document stays unedited, `TileMediumSampler` and the registration from `TileColl
 are not endorsed yet. The [Movement README](../KhaozEngine.Movement/README.md#parallel-contact-bake) names each
 method.
 
-The build snapshots the physics basis and the environment producer identity, and refuses the whole build with
-`InvalidOperationException` when either changes. A failing build throws the exception the serial build would have thrown
+The build snapshots the physics basis, live registration revision and environment producer identity. Any change
+refuses the whole build with `InvalidOperationException`. A failing build throws the exception the serial build would have thrown
 first, publishes nothing and leaves the caller's world and views usable. On a 576-column fixture, degree 12 spends 0.85
 to 0.93 of the serial CPU time per proof, about 8 to 10 times faster on a 12-core machine the bake has to itself.
 Wall-clock speedup on a shared machine follows each worker's CPU share, so bake contact navigation with the machine
@@ -9556,7 +9607,8 @@ Only the first successful initial Hold's numeric state, frame, outcome and feet 
 Each edge retains its prechecks, current-basis authentication, consumed slice zero, travel and
 Euclidean 1 mm arrival rule. Rejected, admission and Stair Holds are never shared. No selection,
 binding, support or interval evidence survives. Provider or water changes still refuse the
-build, including after its last hit. Reference evaluation bypasses both Hold and completed-footprint
+build, including after its last hit. Registration revision changes also refuse it, including an add followed by
+removal. Reference evaluation bypasses both Hold and completed-footprint
 reuse. These execution choices do not enter bake identity or alter the complete serialized file.
 See the [Movement contract](../KhaozEngine.Movement/README.md#contact-source-proof-reuse).
 
@@ -9589,7 +9641,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.17.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.20.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10104,6 +10156,37 @@ gate/zone-transition content exists - those are later). The 3D World room in `Kh
 held inside by the mountains, out through the +Z pass. The circular rim is the MVP; a
 rect/polygon rim and gravity/jump are named follow-ups (prop/building collision shipped, see below).
 
+### Authenticated runtime statics (`KhaozEngine.Locomotion`)
+
+Keep the installer's `OrdinaryMovementRegistration` and reserve possible runtime geometry in its fixed extent
+before creating bindings. Between movement reads, apply one complete owner-keyed batch for the effective tick:
+
+```csharp
+var owner = new MovementSupportKey(registration.WorldId, "barricade");
+registration.ApplyRuntimeStatics([
+    RuntimeStaticChange.Set(owner, new BoxShape(new Vector3(0.2f, 1f, 3f)), Pose.At(absoluteCentre))
+]);
+// At a later tick, after all movement reads finish.
+registration.ApplyRuntimeStatics([RuntimeStaticChange.Remove(owner)]);
+```
+
+Set deep-copies descriptors and replaces that owner's stationary shape. Its pose is absolute, including with a
+nonzero physics origin. Every admitted shape blocks and supplies support through existing Contact and Legacy
+views. Duplicate owners and absent removes refuse before editing. Bepu's complete owner supplies the required
+optional static-mutation lease. A source without the certified read and writer capabilities refuses this API.
+
+Authored identity, exclusions and installation `GeometryGeneration` stay fixed. Live `Generation` advances once
+per successful nonempty batch. Raw writes remain Unresolved, and a failure after a possible source edit requires
+rebuilding the installation. Match initial construction, shape bits and tick history on both heads. Replay must
+reconstruct historical blocker state before each movement read. The engine adds no event transport or rollback
+timeline. See [runtime static batches](../KhaozEngine.Locomotion/README.md#runtime-statics).
+
+Authored navigation stays unchanged, including its serialized bytes and identity. An unaware route can reach a
+runtime wall and `RouteStallOptions` can latch `Blocked` from actual travel. Remove the wall through the same
+registration and explicitly reset the follower to resume. Bake from an authored-only installation, or finish the
+bake before admitting runtime edits. Capture and profile construction refuse attached live runtime entries, and
+Contact builds refuse a revision change even when an add and removal leave the same active set.
+
 ### Movement medium + wading (`MovementMedium`, `KhaozEngine.Locomotion`)
 
 For leased ordinary contact movement, use `EffectiveMovementBinding.Ordinary` with an installer-authored
@@ -10388,7 +10471,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.17.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.20.0" />
 ```
 
 ```csharp
@@ -14466,6 +14549,9 @@ held, or a predicting client is corrected back to the held position on each snap
   prediction, the clock accumulates and caps as before. Either overload consumes the pending prediction on a
   valid positive frame. Invalid frame times preserve it, ordinary reconciliation preserves it, and reset,
   transition reset, reseed and hard snap clear it. Remote timing and correction decay are unchanged.
+  At finite presentation phases, each unchanged finite planar coordinate stays exact before correction
+  offsets are applied, including when the other coordinate moves. Reconciliation and quiet reseeding use
+  the same interpolation. Genuine correction offsets still apply and decay normally.
   A frame time that is not a finite positive number of seconds (negative, zero, infinite, or not a number) is
   treated as zero and advances nothing, on both `WorldClient.AdvancePresentation` and the underlying
   `ClientPrediction.AdvancePresentation`. Both clocks accumulate, so a broken frame clock redraws the previous
@@ -18632,7 +18718,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.17.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.20.0" />
 ```
 
 ```csharp
@@ -18668,7 +18754,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.17.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.20.0" />
 ```
 
 ```csharp
@@ -18912,7 +18998,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.17.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.20.0" />
 ```
 
 ```csharp
@@ -20705,10 +20791,145 @@ attack = stats.Value((int)Channel.Attack);   // back to exactly 10, bit for bit
 `GetBase`/`SetBase` read and write the per-channel base directly. `ClearSources` drops every source and
 leaves only the base. `CopyValuesTo(Span<float>)` reads every channel in one allocation-free call, for a
 stat-sheet screen or a per-frame HUD. **What stays game-side (the seam):** stat identity (the enum), balance
-numbers (which modifiers a sword grants), items and equipment slots, and the whole "buff" half (stacking
-rules, durations, expiry, diminishing returns), the same split `KhaozEngine.Locomotion` already draws for its
-per-entity speed scale: the engine owns the multiplier and its plumbing, the game owns duration, stacking,
-and what granted it.
+numbers (which modifiers a sword grants), items and equipment slots, and how timed modifier totals enter
+the formula. `KhaozEngine.StatusEffects` owns timed stacking, periodic events and expiry, independently
+of this float fold. The game maps its integer channels into stat sources or other formulas and owns
+diminishing returns and what grants an effect.
+
+---
+
+## Status effects
+
+`KhaozEngine.StatusEffects` supplies a pure `StatusEffectBook`, immutable definitions and a presentation
+helper through every umbrella. `KhaozEngine.StatusEffects.Netcode`, carried by `Server`, projects shown
+effects into `ActiveStatusEffects`. A client using only `Game2D` or `Game3D` references the adapter
+explicitly. The game owns channel meanings, units, content, modifier application, damage and death.
+The engine never applies a modifier to a game formula.
+
+### Catalog and registration
+
+Build the same catalog on server and clients. Use the same unused extension id in their registries,
+and pass those registries when constructing the NetWorld heads:
+
+```csharp
+using System.Collections.Generic;
+using KhaozEngine.NetWorld;
+using KhaozEngine.Replication;
+using KhaozEngine.StatusEffects;
+using KhaozEngine.StatusEffects.Netcode;
+
+const int MoveSpeedPercent = 1; // Game-defined channel and units.
+var haste = new StatusEffectDefinition(new(1), durationTicks: 90,
+    iconKey: "haste", modifiers: new[] { new StatusEffectModifier(MoveSpeedPercent, 25) });
+var bleed = new StatusEffectDefinition(new(2), durationTicks: 120,
+    scope: StatusEffectScope.PerSource, maxStacks: 3, periodTicks: 30,
+    polarity: StatusEffectPolarity.Harmful, iconKey: "bleed");
+var catalog = new StatusEffectCatalog(new[] { haste, bleed });
+
+ReplicationRegistry CreateRegistry() => MoveProtocol.CreateRegistry(registry =>
+    StatusEffectsReplication.Register(registry, ReplicationRegistry.FirstExtensionTypeId));
+```
+
+The example assumes that extension id is free. Registration uses `Replicate | Migrate` without
+`Persist`. Only shown instances are sent, with effect id, source, stacks, start tick and end tick.
+Hidden effects still contribute to server totals. Neither modifier lines nor periodic magnitude or
+anchor go on the wire. Counts and stacks are bounded to 255, and a book defaults to 32 instances per actor.
+
+### Server step and gameplay responses
+
+Given a `ShardedWorldServer server` built with `CreateRegistry()`, keep one book and projection for the
+host. `HandleEffectEvent` below is a game-supplied handler. A `Periodic` event's magnitude can drive
+bleed damage there. If damage kills the actor, that handler calls `book.Clear(effectEvent.Actor)`.
+The handler may also `Apply` another effect safely because events drain after the step.
+
+```csharp
+var book = new StatusEffectBook(catalog);
+var projection = new StatusEffectProjection(book, new ShardHostStatusEffectTarget(server.Host));
+var effectEvents = new List<StatusEffectEvent>();
+
+// Call on a validated ability use, in the same server tick domain as Advance.
+StatusEffectApplyResult ApplyHaste(long actor, long source) =>
+    book.Apply(actor, haste.Id, server.ServerTick, source);
+
+void ActorDiedOrDespawned(long actor) => book.Clear(actor);
+
+server.OnBeforeTick += _ =>
+{
+    book.Advance(server.ServerTick);
+    // Process validated ability uses here, for example ApplyHaste(actor, source).
+    effectEvents.Clear();
+    book.DrainEvents(effectEvents);
+    foreach (var effectEvent in effectEvents)
+        HandleEffectEvent(effectEvent);
+
+    // Fold totals into game formulas here, then publish the resulting shown windows.
+    projection.Publish();
+};
+```
+
+Handle `UnknownDefinition` and `ActorFull` results when validating an application. `PerActor` instances
+share one window per effect id. `PerSource` instances coexist by source. Reapplication of a live
+instance grows stacks to the cap, restarts `StartTick`, and sets
+`EndTick = max(previous EndTick, now + duration)`. Refresh never shortens a window or moves the periodic
+anchor. `Advance` catches up every due period, including a tick at the end before expiry. Events
+generated by handlers remain queued for a later drain.
+
+`Apply` settles its target actor's due periodic events and expiry before matching or checking capacity.
+Those events precede the application and use the old instance state. Reapplying at or after expiry
+starts a fresh window and periodic anchor. A later `Advance` at the same tick does not repeat events.
+
+Durations and periods use the tick the caller passes. For NetWorld that is `ServerTick`, normally
+30 Hz, even when game logic runs at a lower cadence. Do not substitute a render-frame count or a
+separate gameplay counter. `Apply` and `Advance` refuse a time before the last advanced tick.
+
+For a game-defined movement speed channel, fold a total into the game's formula and pass the result
+through `SetSpeedScale` for the relevant `PlayerRef`:
+
+```csharp
+int bonusPercent = book.ModifierTotal(actor, MoveSpeedPercent);
+float scale = 1f + bonusPercent / 100f;
+server.SetSpeedScale(player, scale); // actor and player identify the same game-owned actor.
+```
+
+`ModifierTotal` sums per-stack integer contributions exactly, including cancelling contributions.
+It throws `OverflowException` if the final sum cannot fit in an `int`. Use the `ulong` value from
+`ModifierVersion(actor)` to refold lazily, including the return to zero when no instances remain.
+Movement scales replicate in 1/16 steps. Finer precision remains an
+[open question](https://github.com/APKiwiOrg/KhaozEngine/issues/1652).
+
+Call `Publish` every tick after stepping and gameplay mutations. It drains changed actor ids and
+retries pending publications. The Sharding target first checks `TryGetOwner`, then `IsInHandoff`:
+`Published` completes the update, `Deferred` keeps it pending, and `Gone` silently forgets the actor.
+Deferred destination admission may leave zero owners while the frozen source survives. After adoption,
+the projection publishes current entries, including expiries during that gap, to the new owner.
+
+Effects are transient and never persisted. Clear on death and despawn, or `Forget` when the entity is
+already gone and no end events are needed. The projection's `Gone` backstop runs only for changed or
+pending actors, so it does not replace explicit teardown. Do not separately drain changed actor ids
+when a projection owns that drain.
+
+### Client countdown
+
+Enable `WorldClientConfig.ReceiveServerTick` when constructing the client. After polling, use the
+replicated end tick and the client's server tick estimate to calculate remaining time. The latest
+received sample is `LatestServerTick`. `RemoteRenderTick` follows the remote presentation timeline.
+Both are -1 until known. Between samples, the game may advance its estimate in that same tick domain.
+
+```csharp
+var barItems = new List<StatusEffectBarItem>();
+// Each presentation update, after client.Poll and any AdvancePresentation call:
+barItems.Clear();
+double nowTick = client.LatestServerTick; // Or RemoteRenderTick for remote actor presentation.
+if (nowTick >= 0 && client.TryGetComponent<ActiveStatusEffects>(actor, out var state))
+    StatusEffectBar.Build(state.Entries.AsSpan(), catalog, nowTick, barItems);
+```
+
+`Build` appends known, unexpired entries in input order. Each row has icon key, polarity, source,
+stacks, remaining ticks and a clamped fraction of the current duration window. The game supplies icons,
+localized labels and layout. No changing countdown is sent every tick. See the
+[core README](../KhaozEngine.StatusEffects/README.md),
+[adapter README](../KhaozEngine.StatusEffects.Netcode/README.md) and
+[design rationale](design/STATUS-EFFECTS.md) for the full contracts.
 
 ---
 
@@ -23304,7 +23525,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.17.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.20.0" />
 </ItemGroup>
 ```
 
@@ -23916,15 +24137,18 @@ before the host's first clear, bind or upload. Register and retain through that 
 before touching the pool. Write every reserved marker in order, including skipped cached occurrences,
 and retain their `NotExecuted` status in the adapter. Arm the existing completed-End tail for the final
 index. Unexpected occurrences call `InvalidateBlock`, rather than changing the frozen layout. Submit once
-through the retained submission owner. After each caller-owned batch drain, call `PollCompleted` once,
-including for a final batch of one or two frames. Call `CompleteBlock` after the final harvest to refuse
+through the retained submission owner. After each caller-owned batch drain, call
+`AwaitAvailability(now, deadline)` with the unit clock and deadline, then `PollCompleted` once, including for a
+final batch of one or two frames. Call `CompleteBlock` after the final harvest to refuse
 missing identities. Duplicate identities, changed layouts or a full ring invalidate the block.
 
 Publication uses each sample's storage once and retains its fence until the callback returns successfully.
 Pending results after the drain, invalid or disjoint batches, bad periods or marker order, recording failures
 and callback failures quarantine their slots. Invalid results carry no usable ticks or period. Already
 published samples remain immutable, and other completed slots can still publish partial evidence. There is
-no ring-owned wait, flush, submit or retry. Dispose the submission owner before the ring. An early ring
+no ring-owned submit or retry. The only wait is a pool's own bounded query availability wait inside
+`AwaitAvailability`, which Direct3D 11 needs and
+[renderer performance](RENDERER-PERFORMANCE.md#evidence-and-authorization) describes. Dispose the submission owner before the ring. An early ring
 disposal frees unused pools immediately but retains quarantined pools until the owner's teardown releases
 their exact fences. This lifecycle is covered by headless parity cases against the coverage ring's retained
 submission behavior. Migrating the coverage adapter is a separate change.
@@ -23980,7 +24204,7 @@ The effect, copy and display owners add these keys. Every occurrence is zero unl
 | `startup.ocean-prime` | Cold row FFT on its own preparer command list, separate from the frame layout and steady summaries |
 | `water`, `ocean` | Parents only, with skipped subtrees when inactive |
 | `device.water.geometry`, `device.water.bathymetry` | CPU-only leaf owners through `BeginCpuPhase`/`EndCpuPhase` under `water`. Geometry setup includes initial flat/focused index uploads before ocean recording. After `PrepareFrame()`, the geometry leaf also sizes the plane UBO, and bathymetry texture updates follow ocean recording and still run when every surface is culled. A `PrepareFrame(width, height)` frame never opens `device.water.bathymetry` |
-| `device.water.prepare` | CPU-only root owner on every `PrepareFrame(width, height)` frame, with or without water, inside `cpu.water.prepare`. It owns the bathymetry update, UBO sizing, water resource set creation and retirement before recording. `PrepareFrame()` never opens it |
+| `device.water.prepare` | CPU-only root owner on every `PrepareFrame(width, height)` frame, with or without water, inside `cpu.water.prepare`. It opens once per frame and owns the water column colour source, the bathymetry update, UBO sizing, water resource set creation and retirement before recording. `PrepareFrame()` never opens it, and its frames prepare the column colour source at render with no device phase |
 | `ocean.uniforms`, `.next-row`, `.column` | Shared ocean parameter upload, next frame's row FFT, current frame's column FFT, in native recording order |
 | `ocean.mip-copy`, `ocean.mips` | Base-level seed copy per array layer (occurrence is layer), then the existing whole-chain mip-generation command |
 | `water.surface` | Surface uploads, route binds and all queued water draws, after FFT work |
@@ -26834,16 +27058,16 @@ from every other player on the same server, for a bounded window, with the clien
 staying authoritative. That is what `SetSpeedScale` is, on both server heads:
 
 ```csharp
-// Server, on cast. The engine has no notion of duration - the game keeps the timer and calls again to end it.
+// Server, on cast. The game folds timed modifier totals before calling.
 server.SetSpeedScale(PlayerRef.Slot(slot), 5f);
 // ...later, on expiry:
 server.SetSpeedScale(PlayerRef.Slot(slot), 1f);
 ```
 
-**The engine owns the multiplier and its plumbing, nothing else.** Duration, stacking rules, what granted the
-boost, what it costs, what shows in the HUD and how it is balanced are all game content, exactly as
-`Teleport(PlayerRef, Vector3)` moves a player without owning any concept of why. If two effects are active at
-once, the product is yours to compute before you call.
+`SetSpeedScale` owns the movement multiplier and its plumbing. Use [StatusEffects](#status-effects)
+for timed stacking and expiry. The game defines what grants the boost, folds modifier totals into its
+own scale formula and calls the setter with the result. Content, costs, balance and HUD presentation
+remain game-owned. Return to `1f` when no speed modifiers remain.
 
 The call is queued to the host thread at the top of the next tick, so it is safe from any thread (an
 ability system, a game-message handler, an expiry timer). The sharded server retains the quantized desired
@@ -27455,23 +27679,26 @@ already exist (it never creates a neighbor), re-mirrors each sync (a moved owner
 leaves the border is despawned), and assumes globally-unique `NetId`s across cells.
 
 **Authority handoff (Phase 3C).** When an owned entity's position crosses into another cell, `ProcessHandoffs()`
-transfers authority with **exactly-once** semantics (never two owners, never zero):
+transfers authority with **exactly-once** semantics (never two owners, never double-simulated, never lost):
 
 ```csharp
 host.ProcessHandoffs();   // after Tick(); typically Tick -> ProcessHandoffs -> SyncGhosts each host step
 
 // who owns it now (and the owned entity):
 if (host.TryGetOwner(netId, out CellSim owner, out Entity owned)) { /* ... */ }
-int owners = host.OwnerCount(netId);   // == 1 for a live entity at every call boundary
+int owners = host.OwnerCount(netId);   // 1 once settled, 0 while a deferred handoff holds it frozen
+bool moving = host.IsInHandoff(netId); // true during that gap
 ```
 
 The owner captures the entity's full registered component set, sends a `Migrate` over `ICellLink`, and freezes it
 (`Migrating`, not simulated, not counted as an owner); the destination adopts it as a new owned entity (despawning
 any prior ghost of it) and acks; the owner releases it. The entity keeps its `NetId` across the move, and the
-destination cell is created if needed. The in-process link completes the whole handshake within the call (so the
-exactly-once invariant holds at every call boundary); a networked link would keep the entity `Migrating` on the
-source until the ack arrives - never double-simulated, never permanently lost. Game systems must treat
-`Migrating` entities as frozen, like `Ghost`s.
+destination cell is created if needed. The in-process link usually completes the whole handshake within the call.
+A destination that defers admission, or a networked link, keeps the entity `Migrating` on the source until the
+ack arrives. Until the destination adopts it, `OwnerCount` is 0 and `TryGetOwner` finds nothing.
+`IsInHandoff(netId)` stays true until the source releases its frozen copy on the ack, so code that writes state by
+owner retries while no owner exists rather than treating the entity as gone. It is never double-simulated and never
+permanently lost. Game systems must treat `Migrating` entities as frozen, like `Ghost`s.
 
 **Client home-cell serving (Phase 3D).** Each client is served its entire area-of-interest from a single **home
 cell** - the cell that owns its player. Because of the invariant **overlap margin >= interest radius**, that cell

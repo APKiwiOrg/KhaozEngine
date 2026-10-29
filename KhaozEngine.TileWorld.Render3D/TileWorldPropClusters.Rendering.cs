@@ -12,6 +12,7 @@ public sealed partial class TileWorldPropClusters
     readonly HashSet<PropClusterKey> _requestedClusters = new();
     float _tileSize;
     readonly TileRoofLayerVisibility _roofVisibility;
+    readonly TilePlacementVisibility _visibility;
 
     void InitializeRendering(float tileSize, TileWorldBuildQueueOptions? options, IChunkBuildDispatcher? dispatcher)
     {
@@ -63,7 +64,7 @@ public sealed partial class TileWorldPropClusters
     {
         if (_clusterOwner is null) return default;
         _roofVisibility.Rule = rule;
-        return _clusterOwner.DrawWithVisibility(focus, _roofVisibility);
+        return _clusterOwner.DrawWithVisibility(focus, _visibility);
     }
 
     internal void PrimeForCapture(RegionCoord focus) => _clusterBuilds?.PrimeHlod(focus);

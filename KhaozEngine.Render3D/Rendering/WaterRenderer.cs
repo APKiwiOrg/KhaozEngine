@@ -24,7 +24,7 @@ namespace KhaozEngine.Render3D.Rendering
         internal RenderPassProfiling? Profiling { set => _ocean.Profiling = value; get => _ocean.Profiling; }
 
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
-        /// (2 mat4 + 36 vec4 + three vec4[8] disc arrays; every member 16-byte aligned, so std140 needs no extra padding).</summary>
+        /// (2 mat4 + 39 vec4 + three vec4[8] disc arrays, every member 16-byte aligned, so std140 needs no extra padding).</summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct WaterUbo
         {
@@ -69,11 +69,14 @@ namespace KhaozEngine.Render3D.Rendering
             public SkyDiscVec4s SkyDiscHalo;  // x = halo strength, y = halo falloff, z = physical primary marker
             public Vector4 OpticsRect;     // relative minimum XZ and inverse extent
             public Vector4 OpticsParams;   // relative reference Y, mode (0, 1, 2), physical texture width, height
+            public Vector4 ColumnExtinction; // rgb = sigma_t, w = enabled
+            public Vector4 ColumnScattering; // rgb = sigma_s, w = 0
+            public Vector4 ColumnAlbedo;     // rgb = single-scattering albedo, w = noise phase
         }
 
         /// <summary>Byte size of <see cref="WaterUbo"/>, i.e. how much each slot actually uploads.
-        /// 2*64 (mat4) + (36 + 3*8)*16 (vec4) = 1088.</summary>
-        internal const uint PayloadBytes = 1088;
+        /// 2*64 (mat4) + (39 + 3*8)*16 (vec4) = 1136.</summary>
+        internal const uint PayloadBytes = 1136;
 
         /// <summary>
         /// Per-plane stride in the shared UBO AND the size of the bound range. Each plane's params occupy their OWN
@@ -94,7 +97,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// the raw payload size. UboLayoutTests guards it.
         /// </para>
         /// </summary>
-        internal const uint SlotBytes = 1280;   // Align256(1088)
+        internal const uint SlotBytes = 1280;   // Align256(1136)
 
         readonly IGpuDevice _gd;
         readonly AtmosphereBindings _atmosphere;
@@ -105,6 +108,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly GpuRetireQueue _retired;
         readonly bool _ownsRetired;
         internal WaterOpticsResources Optics { get; }
+        internal WaterColumnBindings ColumnShadows { get; }
         int _capacity;
         IGpuResourceSet? _set;
         RenderResources? _bound;
@@ -184,10 +188,12 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         public WaterRenderer(IGpuDevice gd, GpuOutputDescription colorOutput, GpuRetireQueue retired,
-            AtmosphereBindings? atmosphere = null)
+            AtmosphereBindings? atmosphere = null,
+            (IGpuTexture Atlas, IGpuSampler Sampler, IGpuBuffer FrameUniforms)? columnShadows = null)
         {
             _gd = gd;
             _retired = retired;
+            ColumnShadows = new WaterColumnBindings(gd, retired, columnShadows);
             Optics = new WaterOpticsResources(gd, retired);
             _atmosphere = atmosphere ?? new AtmosphereBindings(gd);
             _ownsAtmosphere = atmosphere is null;
@@ -241,7 +247,7 @@ namespace KhaozEngine.Render3D.Rendering
         public static WaterUbo PackUbo(Matrix4x4 clipViewProj, Matrix4x4 rawViewProj, Vector3 lightDirection,
             Color lightColor, Vector3 cameraPos, WaterSettings settings, SkySettings sky, float timeSeconds,
             in OceanMaps ocean, Vector3 renderOrigin = default, ShoreMaps shore = default,
-            float planeSurfaceY = 0f, bool atmosphereEnabled = false)
+            float planeSurfaceY = 0f, bool atmosphereEnabled = false, uint columnNoisePhase = 0)
         {
             Matrix4x4.Invert(rawViewProj, out var inv);
             Vector4 deep = settings.DeepColor;
@@ -271,7 +277,7 @@ namespace KhaozEngine.Render3D.Rendering
             float breakDepth = shoreLive
                 ? WaterShoaling.BreakDepth(ocean.SignificantHeight, settings.SurfBreakerIndex)
                 : 0f;
-            return new WaterUbo
+            var u = new WaterUbo
             {
                 ViewProj = clipViewProj,
                 InvViewProj = inv,
@@ -334,6 +340,8 @@ namespace KhaozEngine.Render3D.Rendering
                 SkyDiscDir = discDir,
                 SkyDiscHalo = discHalo,
             };
+            WaterColumnPacking.Pack(ref u, settings, columnNoisePhase);
+            return u;
         }
 
         /// <summary>The focus blend's sector ring: how many fixed lattice rotations the wanted heading is
@@ -485,7 +493,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void Draw(IGpuCommandList cl, RenderResources res, ReadOnlySpan<WaterPlane> planes,
             Matrix4x4 viewProj, Matrix4x4 cullViewProj, Vector3 lightDirection, Color lightColor, Vector3 cameraPos,
             WaterSettings settings, SkySettings sky, float timeSeconds, Vector3 renderOrigin = default,
-            bool atmosphereEnabled = false)
+            bool atmosphereEnabled = false, uint columnNoisePhase = 0)
         {
             if (planes.Length == 0) return;
             LastClipmapRebuilds = 0;
@@ -555,7 +563,7 @@ namespace KhaozEngine.Render3D.Rendering
                 // lake loses them without needing a flag of its own.
                 OceanMaps planeMaps = effective.WaveSource == WaterWaveSource.FftOcean ? oceanMaps : default;
                 var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, effective, sky, timeSeconds,
-                    planeMaps, renderOrigin, shore, planes[i].SurfaceY, atmosphereEnabled);
+                    planeMaps, renderOrigin, shore, planes[i].SurfaceY, atmosphereEnabled, columnNoisePhase);
                 PackOptics(ref u, planes[i]);
                 PackSlot(i, in u);
             }
@@ -641,6 +649,7 @@ namespace KhaozEngine.Render3D.Rendering
             _bathymetry.Dispose();
             _set?.Dispose();
             foreach (IGpuResourceSet set in _opticsSets.Values) set.Dispose();
+            ColumnShadows.Dispose();
             if (_ownsAtmosphere) _atmosphere.Dispose();
             DisposeWaterPrograms();
             _ubo?.Dispose();

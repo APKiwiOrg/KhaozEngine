@@ -313,6 +313,7 @@ public sealed class RendererPerfEffectsRecipeTests
         public void CopyTextureSubresource(IGpuTexture a, uint am, uint al, IGpuTexture b, uint bm, uint bl, uint w, uint h) => inner.CopyTextureSubresource(a, am, al, b, bm, bl, w, h);
         public void GenerateMipmaps(IGpuTexture texture) => inner.GenerateMipmaps(texture);
         public void ResolveTexture(IGpuTexture a, IGpuTexture b) => inner.ResolveTexture(a, b);
+        public void ResolveTexture(IGpuTexture a, IGpuTexture b, bool preserveSource) => inner.ResolveTexture(a, b, preserveSource);
         public void SetComputePipeline(IGpuComputePipeline pipeline) => inner.SetComputePipeline(pipeline);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set) => inner.SetComputeResourceSet(slot, set);
         public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint offset) => inner.SetComputeResourceSet(slot, set, offset);

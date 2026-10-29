@@ -32,6 +32,7 @@
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <!-- entity replication -->
     <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
+    <ProjectReference Include="../KhaozEngine.StatusEffects.Netcode/KhaozEngine.StatusEffects.Netcode.csproj" />
     <!-- world store: ONLY the dependency-free durable-state seam (IWorldStore + InMemoryWorldStore).
          The SQLite / SQL Server backends are deliberately NOT bundled here: pulling them in dragged
          Microsoft.Data.Sqlite -> SQLitePCLRaw (NU1903) + Microsoft.Data.SqlClient into every umbrella

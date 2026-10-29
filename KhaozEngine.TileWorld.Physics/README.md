@@ -61,6 +61,14 @@ The binding creates its movement view with ground handles excluded. Ground meshe
 complete physics world. Use `CreateMovementRegistrationBuilder(worldId, combinedExtent)` to retain tile owners
 and exclusions while adding other installed statics. Build that combined registration under a fresh source lease.
 
+Retain the returned `OrdinaryMovementRegistration` for `ApplyRuntimeStatics` batches between movement reads.
+Use `CreateMovementRegistrationBuilder(worldId, combinedExtent)` to reserve possible runtime height and width
+before binding, even for a flat tile world. The default tile extent does not reserve future walls automatically.
+Runtime Set poses are absolute world metres. Existing Contact and Legacy selected views include these real
+statics without rebuilding the tile document, authored colliders or `TileWorldHash`. Runtime entries never join
+`Handles`, `GroundHandles` or `ColliderIndices`. Sanctioned removal releases the runtime shape. Baked installation
+removal still owns only baked handles, and the complete physics world owns remaining runtime entries.
+
 The contact delegates capture terrain layers at build. Resident islands may share a declared bounding extent.
 An analytic query inside a non-resident hole answers unresolved, while physics and water remain available.
 Outside the loaded bounding rectangle, captured analytic terrain extends the nearest edge like the legacy sampler.
@@ -121,10 +129,11 @@ ground or everything is omitted. Analytic ground, water and resident coverage re
 ground enters `GroundHandles` and movement exclusions. `PhysicsNavBake.Capture` samples the installed physical
 set, so omitted ground supplies no capture floor even though the analytic sampler remains available.
 
-Keep the source alive and unchanged through contexts, leases and capture. The ordinary registration remains
-bound to its exact source. Equal handle values in another world cannot authenticate it. Static mutation
-invalidates published snapshots, while Bepu simulation steps and supported rebases preserve static provenance.
-Rebuild the ordinary environment after deliberate static changes. Removing any selected handle prohibits new
+Keep the source alive through contexts, leases and capture, and unchanged within each read interval. The ordinary
+registration remains bound to its exact source. Equal handle values in another world cannot authenticate it.
+Raw static mutation invalidates authentication. Sanctioned runtime batches publish their own provenance and live
+revision while retaining authored identity. Bepu steps and supported rebases preserve static provenance.
+Keep navigation capture authored-only and fixed throughout its reads. Removing any selected baked handle prohibits new
 movement registration from that installation. Dispose contexts and views before removing the registration,
 then dispose the source last. Rollback can still advance source generation history.
 

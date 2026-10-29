@@ -135,7 +135,7 @@ order. A signed edge reference is plus or minus `(lineOrdinal+1)`, selecting its
 
 `OpticsParams.y` becomes 0 for unbound, 1 for bilinear and 2 for triangle atlas. Its other components
 remain reference Y and physical texture dimensions. `OpticsRect` retains relative minimum and inverse
-extent. UBO payload remains 1088 bytes and slot range 1280 bytes. Mode 0 returns legacy depth before
+extent. UBO payload is 1136 bytes within the unchanged 1280-byte slot range. Mode 0 returns legacy depth before
 atlas reads. Mode 1 retains its four-fetch sampling and final-row convention.
 
 Mode 2 maps render-relative XZ to bounded local metres, selects a bin with an exact outer-edge
@@ -266,10 +266,11 @@ include the unchanged exact triangle helper and share one physical water-shading
 clipmap triangle programs prepare lazily and independently, before recording, from validated submitted
 payload kind and the same geometry classification used by drawing. Preparation has no frustum, so a
 submitted plane later culled may honestly cause compilation. The four internal programs preserve the
-vertex variants, bindings 10/11, 1088-byte payload, 1280-byte slot and public API.
+vertex variants, optical bindings 10/11, 1136-byte payload, 1280-byte slot and public API. The appended
+column resources and coefficients are described in the [water pipeline](../RENDER-PIPELINE.md#water-column-composite).
 The triangle fragment retains its scene-depth fetch with a source-local NaN invariant guard. Valid scene depth is
 finite, so physical depth math is unchanged. Without that read, triangle specialization eliminates
-bindings 4/5 and compacts HLSL registers against the fixed twelve-element resource layout.
+bindings 4/5 and compacts HLSL registers against the fixed seventeen-element water resource layout.
 
 Isolation is not compile-cost acceptance. Run 40114027066 produced real pixel DXBC with six successful
 phases per program. Default pixel FXC 1203.9132 ms and total 2040.2890 ms pass. Triangle pixel FXC

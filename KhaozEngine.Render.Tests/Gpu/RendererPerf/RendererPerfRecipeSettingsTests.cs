@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using Xunit;
 
@@ -22,6 +23,9 @@ public sealed class RendererPerfRecipeSettingsTests
         var legacy = JsonSerializer.SerializeToNode(settings, LegacyOptions)!.AsObject();
         legacy.Remove(nameof(WaterSettings.UnderwaterSunlight));
         legacy.Remove(nameof(WaterSettings.UnderwaterPenumbraPerMetre));
+        legacy.Remove(nameof(WaterSettings.WaterColumnLight));
+        legacy.Remove(nameof(WaterSettings.WaterColor));
+        legacy.Remove(nameof(WaterSettings.Clarity));
 
         Assert.Equal(legacy.ToJsonString(), JsonSerializer.Serialize(settings, RendererPerfRecipe.Json));
     }
@@ -33,8 +37,73 @@ public sealed class RendererPerfRecipeSettingsTests
         var legacy = JsonSerializer.SerializeToNode(look, LegacyOptions)!.AsObject();
         legacy.Remove(nameof(WaterLook.UnderwaterSunlight));
         legacy.Remove(nameof(WaterLook.UnderwaterPenumbraPerMetre));
+        legacy.Remove(nameof(WaterLook.WaterColumnLight));
+        legacy.Remove(nameof(WaterLook.WaterColor));
+        legacy.Remove(nameof(WaterLook.Clarity));
 
         Assert.Equal(legacy.ToJsonString(), JsonSerializer.Serialize(look, RendererPerfRecipe.Json));
+    }
+
+    [Fact]
+    public void ExplicitColumnLookFieldsAreInTheIdentity()
+    {
+        var color = new Color(0.10f, 0.13f, 0.10f, 1f);
+        var explicitLook = new WaterLook { WaterColumnLight = false, WaterColor = color, Clarity = 2f };
+        var explicitLookJson = JsonSerializer.SerializeToNode(explicitLook, RendererPerfRecipe.Json)!.AsObject();
+
+        Assert.False(explicitLookJson["WaterColumnLight"]!.GetValue<bool>());
+        var encodedColor = explicitLookJson["WaterColor"]!;
+        Assert.Equal(0.10f, encodedColor["R"]!.GetValue<float>());
+        Assert.Equal(0.13f, encodedColor["G"]!.GetValue<float>());
+        Assert.Equal(0.10f, encodedColor["B"]!.GetValue<float>());
+        Assert.Equal(1f, encodedColor["A"]!.GetValue<float>());
+        Assert.Equal(2f, explicitLookJson["Clarity"]!.GetValue<float>());
+        string inherited = RendererPerfRecipe.Digest(new WaterLook());
+        Assert.NotEqual(inherited, RendererPerfRecipe.Digest(explicitLook));
+        Assert.NotEqual(inherited, RendererPerfRecipe.Digest(new WaterLook { WaterColumnLight = false }));
+        Assert.NotEqual(inherited, RendererPerfRecipe.Digest(new WaterLook { WaterColumnLight = true }));
+        Assert.NotEqual(inherited, RendererPerfRecipe.Digest(new WaterLook { WaterColor = color }));
+        Assert.NotEqual(inherited, RendererPerfRecipe.Digest(new WaterLook { Clarity = 2f }));
+    }
+
+    [Fact]
+    public void Enabled_column_lighting_is_captured_in_the_identity()
+    {
+        var settings = new WaterSettings { WaterColumnLight = true };
+        var encoded = JsonSerializer.SerializeToNode(settings, RendererPerfRecipe.Json)!.AsObject();
+
+        Assert.True(encoded[nameof(WaterSettings.WaterColumnLight)]!.GetValue<bool>());
+        Assert.NotEqual(RendererPerfRecipe.Digest(new WaterSettings()), RendererPerfRecipe.Digest(settings));
+    }
+
+    [Theory]
+    [InlineData(0.2f, 0.13f, 0.10f, 1f)]
+    [InlineData(0.10f, 0.2f, 0.10f, 1f)]
+    [InlineData(0.10f, 0.13f, 0.2f, 1f)]
+    [InlineData(0.10f, 0.13f, 0.10f, 0f)]
+    public void A_nondefault_column_color_is_captured_in_the_identity(float red, float green, float blue, float alpha)
+    {
+        var settings = new WaterSettings { WaterColor = new Color(red, green, blue, alpha) };
+        var encoded = JsonSerializer.SerializeToNode(settings, RendererPerfRecipe.Json)!.AsObject();
+
+        var encodedColor = encoded[nameof(WaterSettings.WaterColor)]!;
+        Assert.Equal(red, encodedColor["R"]!.GetValue<float>());
+        Assert.Equal(green, encodedColor["G"]!.GetValue<float>());
+        Assert.Equal(blue, encodedColor["B"]!.GetValue<float>());
+        Assert.Equal(alpha, encodedColor["A"]!.GetValue<float>());
+        Assert.NotEqual(RendererPerfRecipe.Digest(new WaterSettings()), RendererPerfRecipe.Digest(settings));
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(4f)]
+    public void A_nondefault_clarity_is_captured_in_the_identity(float clarity)
+    {
+        var settings = new WaterSettings { Clarity = clarity };
+        var encoded = JsonSerializer.SerializeToNode(settings, RendererPerfRecipe.Json)!.AsObject();
+
+        Assert.Equal(clarity, encoded[nameof(WaterSettings.Clarity)]!.GetValue<float>());
+        Assert.NotEqual(RendererPerfRecipe.Digest(new WaterSettings()), RendererPerfRecipe.Digest(settings));
     }
 
     [Theory]

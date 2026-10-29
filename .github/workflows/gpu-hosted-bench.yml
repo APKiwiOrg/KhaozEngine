@@ -84,6 +84,18 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
+    env:
+      LEGS: ${{ inputs.legs }}
+      FILTER: ${{ inputs.filter }}
+      COVERAGE_PERF_UNIT: ${{ inputs.coverage-perf-unit }}
+      COVERAGE_PERF_MANIFEST_SHA256: ${{ inputs.coverage-perf-manifest-sha256 }}
+      COVERAGE_PERF_WORKLOAD_SHA: ${{ inputs.coverage-perf-workload-sha }}
+      RENDERER_PERF_UNIT: ${{ inputs.renderer-perf-unit }}
+      RENDERER_PERF_MANIFEST_SHA256: ${{ inputs.renderer-perf-manifest-sha256 }}
+      RENDERER_PERF_WORKLOAD_SHA: ${{ inputs.renderer-perf-workload-sha }}
+      TESTED_REF: ${{ inputs.ref }}
+      WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
+      LC_ALL: C
     steps:
       - name: Checkout trusted renderer admission implementation
         if: inputs.renderer-perf-unit != '' || inputs.renderer-perf-manifest-sha256 != '' || inputs.renderer-perf-workload-sha != ''
@@ -100,26 +112,41 @@ jobs:
           fetch-depth: 2
           path: renderer-perf-requested
           persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: inputs.renderer-perf-unit != '' || inputs.renderer-perf-manifest-sha256 != '' || inputs.renderer-perf-workload-sha != ''
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build trusted renderer admission verifier
+        if: inputs.renderer-perf-unit != '' || inputs.renderer-perf-manifest-sha256 != '' || inputs.renderer-perf-workload-sha != ''
+        working-directory: renderer-perf-trusted
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p local-feed
+          dotnet build tools/Renderer.Perf.Verify/Renderer.Perf.Verify.csproj -c Release
+      - id: renderer-admission
+        name: Admit exact renderer manifest bytes before allocation
+        if: inputs.renderer-perf-unit != '' || inputs.renderer-perf-manifest-sha256 != '' || inputs.renderer-perf-workload-sha != ''
+        shell: bash
+        # The runner context is not available in job-level env, so each step that reads the reports path sets it.
+        env:
+          KE_RENDERER_PERF_REPORTS: ${{ runner.temp }}/renderer-admission
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/renderer-perf-requested"
+          admission="$GITHUB_WORKSPACE/renderer-perf-trusted/scripts/renderer-perf-workflow.ps1"
+          pwsh -NoProfile -File "$admission" -Mode Authorize
+          verifier="$GITHUB_WORKSPACE/renderer-perf-trusted/tools/Renderer.Perf.Verify/bin/Release/net10.0/Renderer.Perf.Verify.dll"
+          dotnet "$verifier" admit "$GITHUB_WORKSPACE/renderer-perf-requested" "$KE_RENDERER_PERF_REPORTS"
       - id: pick
+        if: success() && ((inputs.renderer-perf-unit == '' && inputs.renderer-perf-manifest-sha256 == '' && inputs.renderer-perf-workload-sha == '') || steps.renderer-admission.outcome == 'success')
         shell: bash
         env:
-          LEGS: ${{ inputs.legs }}
-          FILTER: ${{ inputs.filter }}
-          COVERAGE_PERF_UNIT: ${{ inputs.coverage-perf-unit }}
-          COVERAGE_PERF_MANIFEST_SHA256: ${{ inputs.coverage-perf-manifest-sha256 }}
-          COVERAGE_PERF_WORKLOAD_SHA: ${{ inputs.coverage-perf-workload-sha }}
-          RENDERER_PERF_UNIT: ${{ inputs.renderer-perf-unit }}
-          RENDERER_PERF_MANIFEST_SHA256: ${{ inputs.renderer-perf-manifest-sha256 }}
-          RENDERER_PERF_WORKLOAD_SHA: ${{ inputs.renderer-perf-workload-sha }}
-          TESTED_REF: ${{ inputs.ref }}
           KE_RENDERER_PERF_REPORTS: ${{ runner.temp }}/renderer-admission
-          WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
-          LC_ALL: C
         run: |
           if [ -n "$RENDERER_PERF_UNIT$RENDERER_PERF_MANIFEST_SHA256$RENDERER_PERF_WORKLOAD_SHA" ]; then
             cd "$GITHUB_WORKSPACE/renderer-perf-requested"
             admission="$GITHUB_WORKSPACE/renderer-perf-trusted/scripts/renderer-perf-workflow.ps1"
-            pwsh -NoProfile -File "$admission" -Mode Authorize
             pwsh -NoProfile -File "$admission" -Mode Select >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -235,7 +262,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cannot read the authorization commit parents' }
           if ($parents.Count -ne 2 -or $parents[1] -cne $env:KE_COVERAGE_PERF_WORKLOAD_SHA) { throw 'Authorization commit must have exactly one parent, equal to coverage-perf-workload-sha' }
           $manifest = "tools/EquipmentCoverage.Perf.Tests/authorized/$($env:KE_COVERAGE_PERF_UNIT).json"
-          $changes = @(& git diff --name-status --no-renames $env:KE_COVERAGE_PERF_WORKLOAD_SHA HEAD)
+          $changes = @(& git diff --name-status --no-renames --ignore-submodules=none $env:KE_COVERAGE_PERF_WORKLOAD_SHA HEAD)
           if ($LASTEXITCODE -ne 0) { throw 'Cannot compare the authorization commit with its workload parent' }
           if ($changes.Count -ne 1 -or $changes[0] -cne "A`t$manifest") { throw "Authorization commit must add only $manifest" }
 
@@ -629,6 +656,16 @@ jobs:
           VK_DRIVER_FILES="$icd" VK_ICD_FILENAMES="$icd" vulkaninfo --summary 2>&1 | grep -E "deviceName|deviceType" || true
 
 
+      - name: Lock paid renderer GPU graphics clock
+        if: matrix.executionClass == 'performance'
+        shell: pwsh
+        env:
+          RENDERER_PERF_EXECUTION_CLASS: ${{ matrix.executionClass }}
+          RENDERER_PERF_LOCKED_GRAPHICS_CLOCK_MHZ: ${{ matrix.lockedGraphicsClockMHz }}
+        run: |
+          & (Join-Path $env:GITHUB_WORKSPACE 'renderer-perf-trusted/scripts/renderer-perf-gpu-clock.ps1') -Mode Lock
+          if ($LASTEXITCODE -ne 0) { throw 'GpuClockNotLocked. Paid graphics-clock setup refused before measurement' }
+
       - name: Build isolated renderer performance project
         shell: pwsh
         run: |
@@ -660,6 +697,16 @@ jobs:
         run: |
           & (Join-Path $env:GITHUB_WORKSPACE 'renderer-perf-trusted/scripts/renderer-perf-workflow.ps1') -Mode VerifyRehearsal
           if ($LASTEXITCODE -ne 0) { throw 'Renderer rehearsal correctness evidence was refused' }
+
+      - name: Reset paid renderer GPU graphics clock
+        if: always() && matrix.executionClass == 'performance'
+        shell: pwsh
+        env:
+          KE_RENDERER_PERF_REPORTS: ${{ runner.temp }}/renderer-perf/${{ matrix.leg }}
+          RENDERER_PERF_EXECUTION_CLASS: ${{ matrix.executionClass }}
+        run: |
+          & (Join-Path $env:GITHUB_WORKSPACE 'renderer-perf-trusted/scripts/renderer-perf-gpu-clock.ps1') -Mode Reset
+          if ($LASTEXITCODE -ne 0) { throw 'Paid graphics-clock reset failed, retain cleanup evidence' }
 
       - name: Upload renderer evidence including partial failures
         if: always()

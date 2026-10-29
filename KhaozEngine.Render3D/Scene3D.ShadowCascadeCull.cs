@@ -103,7 +103,8 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// Test every caster sphere against every cascade in ONE pass, writing a bitmask per instance (bit
         /// <c>c</c> set when the caster reaches cascade <c>c</c>). <paramref name="masks"/> must be at least as long
-        /// as <paramref name="spheres"/>.
+        /// as <paramref name="spheres"/>. Spheres stay absolute, while <paramref name="culls"/> use the render frame.
+        /// Subtract <paramref name="renderOrigin"/> once per caster before any cascade dot products.
         /// <para>
         /// One pass rather than one per cascade, for two reasons. The sphere array is the big buffer here (16 bytes
         /// times the caster count, hundreds of KB on an MMO frame) and walking it once instead of four times keeps
@@ -113,7 +114,7 @@ namespace KhaozEngine.Render3D
         /// </para>
         /// </summary>
         internal static void ComputeCascadeMasks(ReadOnlySpan<Vector4> spheres, ReadOnlySpan<ShadowCascadeCull> culls,
-            int count, Span<byte> masks)
+            int count, Span<byte> masks, Vector3 renderOrigin = default)
         {
             int n = Math.Min(spheres.Length, masks.Length);
             int c = Math.Min(count, culls.Length);
@@ -121,6 +122,8 @@ namespace KhaozEngine.Render3D
             {
                 Vector4 b = spheres[i];
                 var centre = new Vector3(b.X, b.Y, b.Z);
+                // Nearby absolute coordinates reduce exactly against the frame anchor. At zero, retain every bit.
+                if (renderOrigin != Vector3.Zero) centre -= renderOrigin;
                 int m = 0;
                 for (int k = 0; k < c; k++)
                     if (culls[k].Intersects(centre, b.W)) m |= 1 << k;
@@ -179,8 +182,8 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// Fill <see cref="_cascadeCasterSpans"/> for this frame's <paramref name="count"/> cascades from the full
         /// caster list in <c>_shadowCasterRunsScratch</c>. Called only on a dirty pass (a skipped frame reuses the
-        /// atlas and draws nothing, so it must not pay for this either). The cull runs against the ABSOLUTE cascade
-        /// fits, matching the absolute instance transforms the spheres were built from.
+        /// atlas and draws nothing, so it must not pay for this either). Reduce the absolute sphere centres into
+        /// the same render frame as the cascade fits, avoiding large translation terms in the cull dot products.
         /// </summary>
         void BuildCascadeCasterSpans(int count)
         {
@@ -195,9 +198,9 @@ namespace KhaozEngine.Render3D
                 Span<ShadowCascadeCull> culls = stackalloc ShadowCascadeCull[ShadowSettings.MaxCascades];
                 int resolution = _model.ShadowMap.Resolution;
                 for (int c = 0; c < count; c++)
-                    culls[c] = ShadowCascadeCull.FromLightViewProj(_cascadeCpuVpsAbsolute[c], resolution);
+                    culls[c] = ShadowCascadeCull.FromLightViewProj(_cascadeCpuVps[c], resolution);
                 ComputeCascadeMasks(CollectionsMarshal.AsSpan(_shadowCasterSpheres), culls, count,
-                    _shadowCasterMasks.AsSpan(0, instances));
+                    _shadowCasterMasks.AsSpan(0, instances), _frameOrigin);
             }
 
             for (int c = 0; c < count; c++)

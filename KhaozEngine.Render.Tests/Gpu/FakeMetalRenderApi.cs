@@ -32,8 +32,8 @@ namespace KhaozEngine.Tests.Gpu
             in MetalDepthAttachment depth)
             => Calls.CreateDescriptor(colour, in depth);
 
-        public IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination)
-            => Calls.CreateResolveDescriptor(source, destination);
+        public IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination, bool preserveSource)
+            => Calls.CreateResolveDescriptor(source, destination, preserveSource);
 
         public void ReleaseRenderPassDescriptor(IntPtr descriptor) => Calls.ReleaseDescriptor(descriptor);
 
@@ -107,6 +107,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every standalone resolve pass the recording asked for, source then destination.</summary>
         internal IReadOnlyList<(IntPtr Source, IntPtr Destination)> Resolves => _resolves;
+        internal List<bool> PreserveSources { get; } = new();
 
         /// <summary>What is still retained. MUST be 0 after every exit, including the one where the encoder came
         /// back nil.</summary>
@@ -152,9 +153,10 @@ namespace KhaozEngine.Tests.Gpu
             AfterRelease?.Invoke();
         }
 
-        internal IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination)
+        internal IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination, bool preserveSource)
         {
             _resolves.Add((source, destination));
+            PreserveSources.Add(preserveSource);
 
             if (NextCreateFails)
             {

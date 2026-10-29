@@ -563,8 +563,10 @@ namespace KhaozEngine.Tests.Gpu
         /// <c>vkCmdResolveImage</c> AT MIP 0 LAYER 0 (V-C6), outside a render pass instance, with both images
         /// transitioned to the transfer layouts.
         /// </summary>
-        [Fact]
-        public void AResolve_IsOneRegionAtMipZeroOutsideThePass()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void AResolve_IsOneRegionAtMipZeroOutsideThePass(bool preserveSource)
         {
             var fixture = new VulkanResourceFixture(maxMsaaSampleCount: 4);
             var owned = new List<IDisposable>();
@@ -581,7 +583,7 @@ namespace KhaozEngine.Tests.Gpu
                 using VulkanCommandList list = fixture.CreateList();
                 list.Begin();
 
-                list.ResolveTexture(multisampled, resolved);
+                list.ResolveTexture(multisampled, resolved, preserveSource);
 
                 Assert.Single(fixture.TransferSink.Resolves);
                 VulkanRecordedResolve resolve = fixture.TransferSink.Resolves[0];

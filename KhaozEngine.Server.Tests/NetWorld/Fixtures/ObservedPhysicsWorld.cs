@@ -6,7 +6,7 @@ using KhaozEngine.Physics.Bepu;
 namespace KhaozEngine.Tests.NetWorld.Fixtures;
 
 // Counts lifetimes while forwarding every geometry query to real Bepu certificates.
-internal sealed class ObservedPhysicsWorld : PhysicsForwarder, IPhysicsQueryLeaseSource,
+internal sealed partial class ObservedPhysicsWorld : PhysicsForwarder, IPhysicsQueryLeaseSource,
     IPhysicsStaticGeometrySource, IPhysicsCapsuleContacts, IPhysicsCapsuleSweep, IPhysicsSupportFootprint
 {
     internal BepuPhysicsWorld Backend { get; }

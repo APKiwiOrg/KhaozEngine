@@ -4,8 +4,7 @@ using static KhaozEngine.Tests.Gpu.RendererPerf.RendererPerfManifest;
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 internal enum RendererPerfExecutionClass { Performance, Rehearsal }
-internal enum RendererPerfRehearsalSchedule { Pilot, Full, Controls }
-internal sealed record RendererPerfRehearsalClass(string Preset, RendererPerfRehearsalSchedule Schedule,
+internal sealed record RendererPerfRehearsalClass(string Preset,
     RendererPerfExecutionPolicy Execution, RendererPerfLimits Limits);
 
 // Correctness-only policy. Performance presets retain their independent hardware and cost checks.
@@ -14,20 +13,22 @@ internal static class RendererPerfRehearsalPolicy
     internal const string Reason = "SoftwareRehearsalNotPerformanceEvidence";
 
     static readonly RendererPerfExecutionPolicy Linux = new("vulkan", "mesa-lavapipe-software",
-        "ubuntu-24.04", "gpu-hosted-bench.yml", "linux-vulkan", "retained-fence-batch-3/1");
+        "ubuntu-24.04", "gpu-hosted-bench.yml", "linux-vulkan", "retained-fence-batch-3/1", null);
     static readonly RendererPerfExecutionPolicy Windows = new("d3d11", "microsoft-warp-software",
-        "windows-2025-vs2026", "gpu-hosted-bench.yml", "windows-d3d11", "retained-fence-batch-3/1");
+        "windows-2025-vs2026", "gpu-hosted-bench.yml", "windows-d3d11", "retained-fence-batch-3/1", null);
     static readonly RendererPerfLimits PilotLimits = new(5400, 60000, 120000, 120);
     static readonly RendererPerfLimits FullLimits = new(19800, 60000, 120000, 350);
     static readonly RendererPerfLimits ControlsLimits = new(5400, 60000, 120000, 120);
     static readonly RendererPerfRehearsalClass[] Classes =
     [
-        new("rehearsal", RendererPerfRehearsalSchedule.Pilot, Linux, PilotLimits),
-        new("rehearsal", RendererPerfRehearsalSchedule.Pilot, Windows, PilotLimits),
-        new("rehearsal-full", RendererPerfRehearsalSchedule.Full, Linux, FullLimits),
-        new("rehearsal-full", RendererPerfRehearsalSchedule.Full, Windows, FullLimits),
-        new("rehearsal-controls", RendererPerfRehearsalSchedule.Controls, Linux, ControlsLimits),
-        new("rehearsal-controls", RendererPerfRehearsalSchedule.Controls, Windows, ControlsLimits)
+        new("rehearsal", Linux, PilotLimits),
+        new("rehearsal", Windows, PilotLimits),
+        new("rehearsal-full", Linux, FullLimits),
+        new("rehearsal-full", Windows, FullLimits),
+        new("rehearsal-controls", Linux, ControlsLimits),
+        new("rehearsal-controls", Windows, ControlsLimits),
+        new("rehearsal-water-optics-v2", Linux, FullLimits),
+        new("rehearsal-water-optics-v2-single", Windows, FullLimits)
     ];
 
     internal static RendererPerfRehearsalClass Class(RendererPerfManifest manifest)

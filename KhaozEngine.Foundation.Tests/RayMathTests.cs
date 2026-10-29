@@ -206,5 +206,40 @@ namespace KhaozEngine.Tests
             Assert.False(RayMath.IntersectAabb(new Vector3(0f, nan, 0f), new Vector3(1f, 1f, 1f), Min, Max, out _));
             Assert.False(RayMath.IntersectAabb(new Vector3(0f, 0f, nan), new Vector3(1f, 1f, 1f), Min, Max, out _));
         }
+
+        [Fact]
+        public void ContainsObbYHonoursYaw()
+        {
+            var min = new Vector3(-1f, 0f, -0.25f);
+            var max = new Vector3(1f, 2f, 0.25f);
+            var center = new Vector3(10f, 0f, 10f);
+            float yaw = MathF.PI / 2f;
+            Assert.True(RayMath.ContainsObbY(new Vector3(10f, 1f, 10.9f), center, yaw, min, max, 0f));
+            Assert.False(RayMath.ContainsObbY(new Vector3(10.9f, 1f, 10f), center, yaw, min, max, 0f));
+            Assert.False(RayMath.ContainsObbY(new Vector3(10.4f, 1f, 10f), center, yaw, min, max, 0f));
+            Assert.True(RayMath.ContainsObbY(new Vector3(10.4f, 1f, 10f), center, yaw, min, max, 0.3f));
+        }
+
+        [Fact]
+        public void ToObbLocalYMatchesIntersectObbY()
+        {
+            var min = new Vector3(-1f, 0f, -0.5f);
+            var max = new Vector3(1.5f, 2f, 0.5f);
+            var center = new Vector3(3f, 1f, -2f);
+            const float yaw = 0.7f;
+            var random = new Random(1234);
+            for (int i = 0; i < 64; i++)
+            {
+                var point = center + new Vector3(
+                    random.NextSingle() * 6f - 3f, random.NextSingle() * 4f - 1f, random.NextSingle() * 6f - 3f);
+                bool inside = RayMath.ContainsObbY(point, center, yaw, min, max, 0f);
+                bool entersAtZero = RayMath.IntersectObbY(point, Vector3.UnitX, center, yaw, min, max, out float t)
+                    && t == 0f;
+                Assert.Equal(entersAtZero, inside);
+                Vector3 local = RayMath.ToObbLocalY(point, center, yaw);
+                Assert.Equal(inside, local.X >= min.X && local.X <= max.X && local.Y >= min.Y && local.Y <= max.Y
+                    && local.Z >= min.Z && local.Z <= max.Z);
+            }
+        }
     }
 }

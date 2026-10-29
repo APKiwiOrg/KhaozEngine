@@ -7,6 +7,18 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 public sealed partial class RendererPerfConstructionTests
 {
     [Theory]
+    [InlineData("conditioning:S5/TotalOnly/0")]
+    [InlineData("conditioning:S3/PerPass/0")]
+    [InlineData("conditioning:S3/TotalOnly/1")]
+    [InlineData("S3/TotalOnly/0")]
+    public void Correspondence_requires_the_exact_admitted_conditioning_operation(string operation)
+    {
+        var x = Correspondence();
+        var inventory = x.Inventory with { Operations = [operation] };
+        Assert.NotEmpty(RendererPerfCompilerCorrespondence.Validate(inventory, x.Pipelines, x.Compiler, 9, "conditioning:S3/TotalOnly/0"));
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(299)]
@@ -39,7 +51,7 @@ public sealed partial class RendererPerfConstructionTests
         {
             Occurrences = [.. x.Inventory.Occurrences.Select(o => o with { FrameIndex = frameIndex })]
         };
-        Assert.Empty(RendererPerfCompilerCorrespondence.Validate(inventory, x.Pipelines, x.Compiler));
+        Assert.Empty(RendererPerfCompilerCorrespondence.Validate(inventory, x.Pipelines, x.Compiler, 9, "conditioning:S3/TotalOnly/0"));
     }
 
     [Fact]
@@ -60,6 +72,6 @@ public sealed partial class RendererPerfConstructionTests
             Operations = ["S3/TotalOnly/0"],
             Occurrences = [.. x.Inventory.Occurrences.Select(o => o with { FrameIndex = 0 })]
         };
-        Assert.NotEmpty(RendererPerfCompilerCorrespondence.Validate(inventory, x.Pipelines, x.Compiler));
+        Assert.NotEmpty(RendererPerfCompilerCorrespondence.Validate(inventory, x.Pipelines, x.Compiler, 9, "conditioning:S3/TotalOnly/0"));
     }
 }

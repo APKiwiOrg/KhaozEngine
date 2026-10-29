@@ -436,7 +436,7 @@ namespace KhaozEngine.Render3D
             _starfield = new Rendering.StarfieldRenderer(gd, _res.ColorDepthFB.Outputs);
             // Animated water draws into the same ColorDepthFB, AFTER the sky + decals (see RenderInternal). Default
             // off (no DrawWater request queued == the pass never runs, existing scenes byte-stable).
-            _water = new Rendering.WaterRenderer(gd, _res.ColorDepthFB.Outputs, _retired, _atmosphere.Bindings);
+            _water = CreateWaterRenderer(gd);
             // Depth-tested debug wire volumes draw into the same ColorDepthFB (lit colour + read-only scene depth)
             // after the water pass, before the post chain, so scene geometry occludes their buried parts.
             _depthLines = new Rendering.DepthLineRenderer(gd, _res.ColorDepthFB.Outputs);
@@ -1245,60 +1245,6 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Fit this frame's <see cref="ShadowSettings.ResolvedCascadeCount"/> cascades (CPU-authored, NOT
-        /// GPU-clip-corrected) into <see cref="_cascadeCpuVps"/> (render-relative) and
-        /// <see cref="_cascadeCpuVpsAbsolute"/> (the CPU caster test's, see <see cref="FitCascade"/>), and return the
-        /// count. Standard frustum-slice
-        /// CSM: the active camera's frustum is split along VIEW DEPTH (near plane, <see cref="ShadowSettings.ShadowNearDistance"/>,
-        /// ... , <see cref="ShadowSettings.ResolvedMaxDistance"/> via the practical split) and each cascade
-        /// frames its slice's bounding sphere, texel-snapped. Texel density therefore follows what is ON
-        /// SCREEN: a visible caster always samples from the tightest cascade covering its view depth, whatever
-        /// the camera is looking at (the old gaze-point focus made shadow sharpness depend on the camera's
-        /// look direction and jumped when the gaze ray left the ground plane). Factored out of
-        /// <see cref="RenderShadowDepthPass"/> so the same matrices drive the depth pass, the receiver tail
-        /// AND the caster-visibility test (which unions ALL cascades: under a slice fit no single cascade
-        /// bounds the rest). Returns 0 for a degenerate (non-invertible) camera, and the caller skips shadows
-        /// that frame.
-        /// </summary>
-        int ComputeShadowCascades()
-        {
-            var shadows = Post.Quality.Shadows;
-            // ABSOLUTE: the fit, the radii and the caster classification stay byte-identical at any render origin.
-            if (!Internal.ShadowMapMath.FrustumCornersWorld(_currentFrameView.AbsoluteViewProjection, _frustumCornersScratch))
-            {
-                _cascadeCount = 0;
-                return 0;
-            }
-            Vector3 eye = ActiveCamera.Eye;
-            Vector3 fwd = ActiveCamera.Forward;
-            // View depths of the near/far planes read off the unprojected corners (camera-type-agnostic: no
-            // reliance on perspective-projection matrix fields, so iso/ortho cameras fit identically).
-            Vector3 nearC = (_frustumCornersScratch[0] + _frustumCornersScratch[1] + _frustumCornersScratch[2] + _frustumCornersScratch[3]) * 0.25f;
-            Vector3 farC = (_frustumCornersScratch[4] + _frustumCornersScratch[5] + _frustumCornersScratch[6] + _frustumCornersScratch[7]) * 0.25f;
-            float camNear = Vector3.Dot(nearC - eye, fwd);
-            float camFar = Vector3.Dot(farC - eye, fwd);
-            float range = MathF.Max(camFar - camNear, 1e-3f);
-
-            int res = _model.ShadowMap.Resolution;         // the actual allocated per-cascade resolution (clamped)
-            int count = _model.ShadowMap.CascadeCount;     // the actual allocated cascade count (clamped)
-            Span<float> splits = stackalloc float[ShadowSettings.MaxCascades];
-            Internal.ShadowMapMath.FillCascadeSplits(splits, count, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
-            Vector3 lightDir = HeldLightDirection(splits, count, camNear, camFar, range, res);
-            float prev = camNear;
-            for (int i = 0; i < count; i++)
-            {
-                float d = Math.Clamp(splits[i], camNear, camFar);
-                Internal.ShadowMapMath.SliceBoundingSphere(_frustumCornersScratch,
-                    (prev - camNear) / range, (d - camNear) / range, out Vector3 center, out float radius);
-                FitCascade(i, lightDir, center, radius, res);
-                _cascadeRadii[i] = radius;
-                prev = MathF.Max(d, prev);
-            }
-            _cascadeCount = count;
-            return count;
-        }
-
-        /// <summary>
         /// Set this frame's RECEIVER shadow tail on the model/splat frame UBO from the fitted cascades in
         /// <see cref="_cascadeCpuVps"/>: GPU-clip-correct each cascade (the depth pass renders to texture, same
         /// convention as the model pass's ViewProj) into <see cref="_cascadeReceiverVps"/>, bake the atlas-column
@@ -1530,26 +1476,9 @@ namespace KhaozEngine.Render3D
                     // reject skinned pixels so decals stay off characters (#235) - and it reads its OWN UBO slot (#483).
                     _frameStats.DrawCalls += _decalRenderer.Draw(cl, _res, vp, EffectTimeSeconds, DecalQuality, Post.Hdr.Enabled, Rendering.GroundDecalRenderer.FramePass.Main, _frameOrigin, RelativeDecals(_decals));
 
-            // Animated water (Rendering gap #5): after the sky + ground decals, sampling the resolved scene depth
-            // (already valid via the ResolveDepthNormal call above the sky pass) for the shore fade. Depth test ON (so
-            // terrain/props above the surface occlude it) but depth WRITE off (so it never touches the normal/
-            // linear-depth MRT the outline pass reads below) - see Rendering.WaterRenderer / ShaderSources.WaterVert
-            // for the full reasoning. Fully skipped when nothing is queued, so a frame with no DrawWater call
-            // renders byte-identical to before this pass existed.
-            using (ProfilePass(cl, "water", executed: _waterPlanes.Count > 0))
-                if (_waterPlanes.Count > 0)
-                {
-                    _water.Draw(cl, _res, RelativeWaterPlanes(), vp, displayVp,
-                        Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin, Post.Atmosphere.Enabled);
-                    _frameStats.DrawCalls++;
-                    // The ocean FFT's remaining GPU drain (the one a frame pays to PRIME its cascades, since #398
-                    // ping-ponged the per-frame one away) is a Submit+WaitForIdle stall, not draw-call encode cost, so
-                    // it gets its own WaterSyncMs bucket (#374) rather than being misattributed to transparents. It no
-                    // longer lands INSIDE this bracket: since #423 the prime runs in PrepareFrame, before the frame's
-                    // list is even open, so there is nothing to carve out of transparentsMs - only to report. The water
-                    // renderer times that exact span with its own Stopwatch (OceanFftProducer.LastStallMs).
-                    if (EnableTiming) waterSyncMs = (float)_water.LastOceanCost.StallMs;
-                }
+            DrawWaterWithColumnInputs(cl, vp, displayVp, eye);
+            // FFT priming ran before recording. Report its Submit+WaitForIdle stall separately from encode cost.
+            if (EnableTiming && _waterPlanes.Count > 0) waterSyncMs = (float)_water.LastOceanCost.StallMs;
 
             // Modern particle sprites: after the sky + decals + water (so effects composite over water surfaces),
             // before the post chain, into ColorDepthFB with the depth test on (no write) so geometry occludes
@@ -2029,24 +1958,24 @@ namespace KhaozEngine.Render3D
         /// <paramref name="restBounds"/> transformed by its <paramref name="world"/> matrix, inflated by
         /// <see cref="SkinnedCullSafetyFactor"/>. <paramref name="cullMain"/> is <see cref="FrustumCulling"/> (off
         /// = always visible in the main pass, the rigid-instance parity path). <paramref name="shadowActive"/> is
-        /// whether the shadow-map tier is resolved this frame AND the draw casts (off = never a shadow caster). It is a shadow
-        /// caster when its inflated sphere intersects every lateral and far plane of ANY cascade in
-        /// <paramref name="shadowFrustums"/>. The near plane is excluded because depth clamping pancakes closer
+        /// whether the shadow-map tier is resolved this frame AND the draw casts (off = never a shadow caster).
+        /// Subtract <paramref name="shadowOrigin"/> before testing the sphere against the render-relative
+        /// <paramref name="shadowFrustums"/> union. The near plane is excluded because depth clamping pancakes closer
         /// casters onto it. Under the frustum-slice fit the cascades do not nest, so their union is tested. Returns
         /// (VisibleMain, VisibleShadow), the camera and key-light classification. <c>RenderInternal</c> also tests
-        /// eligible point-shadow requests before it decides whether to record and upload the draw. Pure
-        /// <see cref="MeshBounds"/> + <see cref="FrustumPlanes"/> arithmetic, no GPU, headless-testable.
+        /// eligible point-shadow requests before recording and uploading the draw. Pure headless-testable arithmetic.
         /// </summary>
         internal static (bool VisibleMain, bool VisibleShadow) ClassifySkinnedVisibility(
             in MeshBounds restBounds, in Matrix4x4 world,
             bool cullMain, in FrustumPlanes mainFrustum,
-            bool shadowActive, ReadOnlySpan<FrustumPlanes> shadowFrustums)
+            bool shadowActive, ReadOnlySpan<FrustumPlanes> shadowFrustums, Vector3 shadowOrigin = default)
         {
             if (!cullMain && !shadowActive) return (true, false);
             restBounds.WorldSphere(world, out Vector3 center, out float radius);
             float r = radius * SkinnedCullSafetyFactor;
             bool visibleMain = !cullMain || mainFrustum.IntersectsSphere(center, r);
             bool visibleShadow = false;
+            if (shadowOrigin != Vector3.Zero) center -= shadowOrigin;
             if (shadowActive)
                 for (int i = 0; i < shadowFrustums.Length && !visibleShadow; i++)
                     visibleShadow = shadowFrustums[i].IntersectsSphereExceptPlane(center, r, excludedPlane: 4);

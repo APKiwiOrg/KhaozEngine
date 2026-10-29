@@ -32,7 +32,7 @@ internal static class RendererPerfEntrypoint
             && authorization.WorkloadSha == Env("RENDERER_PERF_WORKLOAD_SHA"), "Dispatch hashes disagree with independent authorization facts.");
         string head = checkout.Git("rev-parse", "HEAD");
         string parents = checkout.Git("rev-list", "--parents", "-n", "1", "HEAD");
-        string changes = checkout.Git("diff", "--name-status", "--no-renames", authorization.WorkloadSha, "HEAD");
+        string changes = checkout.Git("diff", "--name-status", "--no-renames", "--ignore-submodules=none", authorization.WorkloadSha, "HEAD");
         Require(head == Env("TESTED_REF") && head == authorization.AuthorizationSha
             && parents == head + " " + authorization.WorkloadSha && changes == "A\t" + path,
             "Authorization must add only the manifest to its immutable workload parent.");
@@ -88,7 +88,7 @@ internal static class RendererPerfEntrypoint
                 budget.Check("renderer.startup.recipe.before");
                 string name = recipe.SceneId + "-recipe.json";
                 writer.Produce(name, RendererPerfArtifactProducers.Schema(name),
-                    File.ReadAllBytes(RendererPerfRecipe.RecipePath(recipe.Version.Split('/')[0])), budget);
+                    File.ReadAllBytes(RendererPerfRecipe.RecipePath(RendererPerfRecipe.IdFromVersion(recipe.Version))), budget);
                 budget.Check("renderer.startup.recipe.after");
             }
 
@@ -142,7 +142,8 @@ internal static class RendererPerfEntrypoint
         IRendererPerfSession CreateSession(IGpuDevice device, RendererPerfConstructionCapture capture,
             RendererPerfManifest approved, RendererPerfBlock block, RendererPerfClock unitClock)
         {
-            bool conditioning = block.SceneId == "conditioning:S3";
+            RendererPerfSchedule schedule = approved.Schedule;
+            bool conditioning = block.SceneId == schedule.ConditioningBlockId;
             var info = new RendererPerfSessionInfo(identity, true, true, null, ImmutableDictionary<string, RendererPerfMetric>.Empty,
                 Startup: conditioning ? new(block.SceneId, new("startup.admission", null, coldStart, coldStart), clock.Frequency,
                     ImmutableDictionary<string, RendererPerfMetric>.Empty) : null);
@@ -152,13 +153,13 @@ internal static class RendererPerfEntrypoint
                 var control = approved.Controls.Single(c => c.Id == id);
                 return new RendererPerfNativeSession(device, info, block, [], unitClock,
                     (wrapped, _) => RendererPerfControls.Create(wrapped, control), telemetry.Read,
-                    capture, operationOrdinal++, approved.ExecutionClass);
+                    capture, operationOrdinal++, approved.ExecutionClass, budget.Deadline);
             }
-            string scene = conditioning ? "S3" : block.SceneId;
+            string scene = conditioning ? schedule.ConditioningSceneId : block.SceneId;
             var recipe = approved.Recipes.Single(r => r.SceneId == scene);
             return new RendererPerfNativeSession(device, info, block, layouts[scene], unitClock,
                 (wrapped, observer) => new RendererPerfSceneWorkload(wrapped, observer, recipe), telemetry.Read,
-                capture, operationOrdinal++, approved.ExecutionClass);
+                capture, operationOrdinal++, approved.ExecutionClass, budget.Deadline);
         }
         void Write<T>(string name, T value)
         {

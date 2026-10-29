@@ -15,15 +15,19 @@ internal static class RendererPerfBaselineMarkdown
     internal static string Summary(RendererPerfBaselineLeg input, RendererPerfSummary summary)
     {
         var report = summary.Raw;
+        var gpuClock = report.GpuClock;
         var text = new StringBuilder("# Renderer baseline\n\nFormat khaozengine.renderer-baseline/1.\n\n");
         text.Append("Series ").Append(input.Leg).Append(". Unit ").Append(report.Identity.UnitId).Append(".\n\n")
             .Append("Run [").Append(input.RunUrl).Append("](").Append(input.RunUrl).Append("). Attempt ")
             .Append(report.Identity.Attempt.ToString(CultureInfo.InvariantCulture)).Append(".\n\nActual billed minutes ")
             .Append(input.BilledMinutes.ToString(CultureInfo.InvariantCulture)).Append(".\n\n");
+        text.Append("Locked graphics clock ").Append(gpuClock.LockedGraphicsClockMHz!.Value.ToString(CultureInfo.InvariantCulture))
+            .Append(" MHz. Verification ").Append(gpuClock.State).Append(". Samples ").Append(gpuClock.Samples).Append(".\n\n");
         text.Append("## Verified provenance\n\n```json\n").Append(Canonical(new
         {
             reportSha256 = summary.VerifiedArtifact!.ReportSha256,
             report.Manifest,
+            gpuClock,
             report.Identity,
             report.Recipes,
             report.Sidecars,

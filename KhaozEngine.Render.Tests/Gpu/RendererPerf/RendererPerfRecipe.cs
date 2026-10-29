@@ -118,6 +118,12 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             "crowd" => new RendererPerfCrowdScene(),
             "outdoors" => new RendererPerfOutdoorsScene(),
             "effects-ui" => new RendererPerfEffectsScene(),
+            "water-optics-v2/village/off" => new RendererPerfWaterOpticsVillageScene(RendererPerfWaterOpticsProfile.Off),
+            "water-optics-v2/village/m2-on" => new RendererPerfWaterOpticsVillageScene(RendererPerfWaterOpticsProfile.M2On),
+            "water-optics-v2/village/m5-on" => new RendererPerfWaterOpticsVillageScene(RendererPerfWaterOpticsProfile.M5On),
+            "water-optics-v2/outdoors/off" => new RendererPerfWaterOpticsOutdoorsScene(RendererPerfWaterOpticsProfile.Off),
+            "water-optics-v2/outdoors/m2-on" => new RendererPerfWaterOpticsOutdoorsScene(RendererPerfWaterOpticsProfile.M2On),
+            "water-optics-v2/outdoors/m5-on" => new RendererPerfWaterOpticsOutdoorsScene(RendererPerfWaterOpticsProfile.M5On),
             _ => throw new ArgumentOutOfRangeException(nameof(id)),
         };
         recipe.Freeze();
@@ -131,6 +137,14 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             throw;
         }
         return recipe;
+    }
+
+    // A recipe version is "<id>/<revision>" and the id itself may contain '/'.
+    internal static string IdFromVersion(string version)
+    {
+        int slash = version.LastIndexOf('/');
+        RendererPerfManifest.Require(slash > 0 && slash < version.Length - 1, "Identity", $"Recipe version '{version}' has no id and revision.");
+        return version[..slash];
     }
 
     internal static string RecipePath(string id, [CallerFilePath] string source = "") =>
@@ -157,7 +171,9 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         {
             float phase = _id == "empty" ? 0f : Phase(index);
             IsoCamera3D camera = Camera();
-            camera.Target = new Vector3(phase * .25f, 0f, phase * .125f);
+            // The drift offsets the authored target, so a v2 camera can target its pool's shoreline. Every v1
+            // recipe authors a zero target and 0 + offset is exact, so the v1 frames and bytes are unchanged.
+            camera.Target += new Vector3(phase * .25f, 0f, phase * .125f);
             camera.Azimuth += phase * .01f;
             Vector3 sun = post.LightDirection + new Vector3(phase * .02f, 0f, 0f);
             return new RendererPerfRecipeFrame(index, camera.Target, camera.Azimuth, sun,
@@ -211,22 +227,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             Reset = "fresh-scene-before-warmup",
             Frames = _frames,
             BlockFrames,
-            Expected = new
-            {
-                TerrainIntended = Terrain.Count,
-                TerrainSubmitted = Terrain.Count,
-                TerrainVisible = Terrain.Count,
-                TerrainCulled = 0,
-                BuildingComponents = Buildings,
-                PropInstances = Props,
-                ActorIntended = Actors,
-                ActorVisible = Actors,
-                ActorCulled = 0,
-                Foliage,
-                Water,
-                Effects,
-                Ui
-            },
+            Expected = ExpectedCounts,
             InitialClear = 1,
             FinalBlit = 1,
             Schedule = schedule,
@@ -291,6 +292,25 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
         scene.EffectTimeSeconds = _blockOrdinal++ * Dt;
         QueueContent(scene, frame.Index);
     }
+
+    // The v1 recipes frame all their content, so they declare everything visible. A recipe whose camera culls
+    // overrides this with counts from the engine's culling rule. Read after the frames freeze.
+    protected virtual object ExpectedCounts => new
+    {
+        TerrainIntended = Terrain.Count,
+        TerrainSubmitted = Terrain.Count,
+        TerrainVisible = Terrain.Count,
+        TerrainCulled = 0,
+        BuildingComponents = Buildings,
+        PropInstances = Props,
+        ActorIntended = Actors,
+        ActorVisible = Actors,
+        ActorCulled = 0,
+        Foliage,
+        Water,
+        Effects,
+        Ui
+    };
 
     protected virtual RendererPerfRecipeSchedule Schedule => new RendererPerfRecipeSchedule(_id == "empty" ? 0 : 4,
             Actors > 0 ? "recomputed-current-pose" : "reuse-identical-camera-and-sun",

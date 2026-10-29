@@ -115,6 +115,13 @@ internal class RendererPerfVillageScene : RendererPerfRecipe
         Draws = _draws,
     };
 
+    /// <summary>Every rigid draw with its recipe-local mesh bounds. Terrain comes first.</summary>
+    internal IEnumerable<RendererPerfRigidBounds> RigidBounds()
+    {
+        MeshBounds[] bounds = [.. _terrain.Concat(_props).Append(_box).Select(mesh => MeshBounds.FromVertices(mesh.Vertices))];
+        return _draws.Select(draw => new RendererPerfRigidBounds(bounds[draw.Mesh.Index], draw.World, draw.Mesh.Index < _terrain.Length));
+    }
+
     protected override void Load(Scene3D scene)
     {
         var material = scene.LoadSplatMaterial(_splat.Width, _splat.Height, _splat.Layers, _splat.TriplanarSharpness,

@@ -35,19 +35,19 @@ internal static partial class RendererPerfCompilerJson
     internal static RendererPerfCompilerInventory Parse(ReadOnlySpan<byte> utf8, int maximumBytes)
     {
         using var document = RendererPerfManifest.ReadDocument(utf8, maximumBytes);
-        Preflight(document.RootElement);
+        Preflight(document.RootElement, RendererPerfSchedules.MaximumOperations);
         var result = document.RootElement.Deserialize<RendererPerfCompilerInventory>(Options) ?? throw new JsonException("Missing inventory.");
         Validate(result);
         return result;
     }
-    internal static RendererPerfCompilerFile ReadFile(ReadOnlySpan<byte> utf8, int maximumBytes)
+    internal static RendererPerfCompilerFile ReadFile(ReadOnlySpan<byte> utf8, int maximumBytes, int maximumOperations)
     {
         using var document = RendererPerfManifest.ReadDocument(utf8, maximumBytes);
-        Preflight(document.RootElement.GetProperty("inventory"));
+        Preflight(document.RootElement.GetProperty("inventory"), maximumOperations);
         var result = document.RootElement.Deserialize<RendererPerfCompilerFile>(Options) ?? throw new JsonException("Missing compiler file.");
         if (result.Schema != Schema) throw new JsonException("Unknown compiler file schema.");
         RendererPerfManifest.Hash(result.ManifestSha256, 64); RendererPerfManifest.Hash(result.WorkloadSha, 40);
-        Validate(result.Inventory);
+        Validate(result.Inventory, maximumOperations);
         return result;
     }
     internal static byte[] Encode<T>(T value, int maximumBytes)
@@ -56,11 +56,11 @@ internal static partial class RendererPerfCompilerJson
         JsonSerializer.Serialize(stream, value, Options);
         return stream.ToArray();
     }
-    internal static void Validate(RendererPerfCompilerInventory inventory)
+    internal static void Validate(RendererPerfCompilerInventory inventory, int? maximumOperations = null)
     {
         if (inventory.Schema != Schema || inventory.Complete != (inventory.Reason is null)) throw new JsonException("Invalid inventory schema or completeness.");
         var reasons = ImmutableArray.CreateBuilder<string>();
-        RendererPerfConstructionInventoryChecks.Validate(inventory, reasons);
+        RendererPerfConstructionInventoryChecks.Validate(inventory, reasons, maximumOperations ?? RendererPerfSchedules.MaximumOperations);
         if (reasons.Count != 0) throw new JsonException(string.Join(" ", reasons));
         foreach (var recipe in inventory.Recipes)
             if (recipe.RecipeSha256 != RendererPerfConstructionEncoding.Digest(recipe, inventory.Shaders, inventory.Layouts))
@@ -68,11 +68,13 @@ internal static partial class RendererPerfCompilerJson
         foreach (var occurrence in inventory.Occurrences)
             RendererPerfCompilerValidation.Pipeline(new(occurrence.Production, KhaozEngine.Gpu.GpuDiagnosticStatus.Unsupported, "Construction witness only.", []));
     }
-    static void Preflight(JsonElement root)
+    static void Preflight(JsonElement root, int operations)
     {
         if (root.GetProperty("schema").GetString() != Schema) throw new JsonException("Unknown compiler inventory schema.");
-        foreach (var (name, maximum) in new[] { ("sources", 88064), ("operations", 43), ("factoryEvents", 44032), ("shaders", 44032),
-            ("layouts", 44032), ("recipes", 1024), ("occurrences", 11008) })
+        int factories = checked(operations * RendererPerfConstructionAdmission.FactoriesPerOperation);
+        int pipelines = checked(operations * RendererPerfConstructionAdmission.PipelinesPerOperation);
+        foreach (var (name, maximum) in new[] { ("sources", checked(factories * 2)), ("operations", operations), ("factoryEvents", factories), ("shaders", factories),
+            ("layouts", factories), ("recipes", RendererPerfConstructionAdmission.UniqueRecipes), ("occurrences", pipelines) })
             if (root.GetProperty(name).GetArrayLength() > maximum) throw new JsonException("Inventory count exceeds " + name + " capacity.");
     }
     sealed class BoundedStream(int maximum) : MemoryStream

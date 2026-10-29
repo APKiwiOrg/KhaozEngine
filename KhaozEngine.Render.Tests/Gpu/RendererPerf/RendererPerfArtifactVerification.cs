@@ -58,7 +58,7 @@ internal static class RendererPerfArtifactVerification
             if (expected.Kind == RendererPerfSidecarKind.CompilerInventory)
             {
                 if (inventory is not null || expected.Path != report.Compiler.InventoryPath) throw new InvalidOperationException("Duplicate or unassociated compiler inventory.");
-                var file = RendererPerfCompilerJson.ReadFile(bytes, checked((int)length));
+                var file = RendererPerfCompilerJson.ReadFile(bytes, checked((int)length), report.Manifest.Schedule.Operations);
                 if (file.UnitId != report.Identity.UnitId || file.ManifestSha256 != report.Identity.ManifestSha256 || file.WorkloadSha != report.Identity.WorkloadSha)
                     throw new InvalidOperationException("Compiler file belongs to another unit, manifest or workload.");
                 inventory = file.Inventory; inventoryBytes = length;
@@ -71,10 +71,11 @@ internal static class RendererPerfArtifactVerification
             budget?.Check("renderer.verify.sidecar.decode.after");
         }
         if (inventory is null || inventory.Recipes.IsEmpty || inventory.Occurrences.IsEmpty) throw new InvalidOperationException("Registered nonempty compiler inventory is missing.");
-        var operations = new[] { "conditioning:S3/TotalOnly/0" }.Concat(report.Manifest.Blocks.Select(b => $"{b.SceneId}/{b.Layout}/{b.Iteration}"))
+        var operations = new[] { report.Manifest.Schedule.ConditioningOperation }.Concat(report.Manifest.Blocks.Select(b => $"{b.SceneId}/{b.Layout}/{b.Iteration}"))
             .Concat(report.Manifest.Controls.Select(c => $"control:{c.Id}/TotalOnly/0"));
         if (!inventory.Operations.SequenceEqual(operations)) throw new InvalidOperationException("Inventory operation membership differs from the frozen manifest.");
-        var reasons = RendererPerfCompilerCorrespondence.Validate(inventory, report.Pipelines, report.Compiler);
+        var reasons = RendererPerfCompilerCorrespondence.Validate(inventory, report.Pipelines, report.Compiler,
+            report.Manifest.Schedule.Operations, report.Manifest.Schedule.ConditioningOperation);
         if (!reasons.IsEmpty) throw new InvalidOperationException(string.Join(" ", reasons));
         RendererPerfPublicationAccount.Verify(report, inventory, inventoryBytes);
         budget?.Check("renderer.verify.complete");

@@ -54,18 +54,26 @@ namespace KhaozEngine.Tests.Gpu
                 clipmap ? KhaozEngine.Render3D.Internal.ShaderSources.WaterClipmapVert
                     : KhaozEngine.Render3D.Internal.ShaderSources.WaterVert, source, "WaterOptics");
             GpuResourceLayoutElement[] elements = pair.Reflection.ResourceLayouts[0].Elements;
-            Assert.Equal(12, elements.Length);
+            Assert.Equal(17, elements.Length);
             // Reflected texture and sampler names may be empty. Binding position, kind and emitted register bind.
             Assert.Equal(new[] { GpuResourceKind.TextureReadOnly, GpuResourceKind.Sampler,
                 GpuResourceKind.TextureReadOnly, GpuResourceKind.Sampler, GpuResourceKind.TextureReadOnly,
                 GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer, GpuResourceKind.UniformBuffer,
                 GpuResourceKind.TextureReadOnly, GpuResourceKind.Sampler, GpuResourceKind.TextureReadOnly,
-                GpuResourceKind.Sampler }, elements.Select(e => e.Kind));
+                GpuResourceKind.Sampler, GpuResourceKind.TextureReadOnly, GpuResourceKind.Sampler,
+                GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly, GpuResourceKind.Sampler },
+                elements.Select(e => e.Kind));
+            Assert.All(elements[12..], e => Assert.Equal(GpuShaderStages.Fragment, e.Stages));
             var problems = new List<string>();
             Compare("WaterOptics", pair.Reflection, problems, pair.VertexSource, pair.FragmentSource);
             Assert.Empty(problems);
             Assert.Contains("register(t4)", pair.FragmentSource);
             Assert.Contains("register(s4)", pair.FragmentSource);
+            Assert.Contains("register(t5)", pair.FragmentSource);
+            Assert.Contains("register(s5)", pair.FragmentSource);
+            Assert.Contains("register(b2)", pair.FragmentSource);
+            Assert.Contains("register(t6)", pair.FragmentSource);
+            Assert.Contains("register(s6)", pair.FragmentSource);
         }
 
         [Fact]

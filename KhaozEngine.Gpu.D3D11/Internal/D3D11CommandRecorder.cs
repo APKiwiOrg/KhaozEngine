@@ -280,6 +280,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _emitter.GenerateMipmaps(texture);
         }
 
+        /// <summary>The native resolve already preserves the source for either preservation setting.</summary>
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource) => ResolveTexture(src, dst);
+
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst)
         {
             RequireRecording();

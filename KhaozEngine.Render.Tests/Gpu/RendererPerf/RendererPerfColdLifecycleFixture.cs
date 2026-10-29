@@ -146,7 +146,9 @@ internal sealed class RendererPerfColdLifecycleFixture : IDisposable
         public IGpuFramebuffer Target { get; }
         public Color ClearColor => new(0, 0, 0, 1);
         public string ControlStateSha256 => new('b', 64);
-        public RendererPerfRecipeReport? Recipe => _owner.Template.Manifest.Recipes.FirstOrDefault(r => r.SceneId == (_block.SceneId == "conditioning:S3" ? "S3" : _block.SceneId)) is { } recipe
+        string RecipeScene => _block.SceneId == _owner.Template.Manifest.Schedule.ConditioningBlockId
+            ? _owner.Template.Manifest.Schedule.ConditioningSceneId : _block.SceneId;
+        public RendererPerfRecipeReport? Recipe => _owner.Template.Manifest.Recipes.FirstOrDefault(r => r.SceneId == RecipeScene) is { } recipe
             ? new(recipe, "injected native operations", new('b', 64), ImmutableDictionary<string, long>.Empty,
                 ImmutableDictionary<string, long>.Empty, ImmutableDictionary<string, RendererPerfMetric>.Empty) : null;
         public void PrepareCold(int firstFrameIndex) { }

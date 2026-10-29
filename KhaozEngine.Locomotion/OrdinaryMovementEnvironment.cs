@@ -6,7 +6,8 @@ using KhaozEngine.Physics;
 
 namespace KhaozEngine.Locomotion;
 
-/// <summary>Certifies the resident ordinary world under its selected physical read interval.</summary>
+/// <summary>Certifies the resident ordinary world under its selected physical read interval.
+/// Identity retains authored provenance. Fresh pins include the registration's live runtime revision.</summary>
 public sealed partial class OrdinaryMovementEnvironment : IMovementEnvironmentProvider
 {
     internal IPhysicsWorldQueryView Physics { get; }

@@ -8,7 +8,8 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 internal static class RendererPerfSessionObservations
 {
     static readonly string[] TelemetryKeys = ["clock.requestedMHz", "clock.observedMHz", "clock.pstate",
-        "clock.utilizationPercent", "clock.temperatureC", "clock.powerWatts", "clock.throttlingReasons"];
+        "clock.utilizationPercent", "clock.temperatureC", "clock.powerWatts", "clock.throttlingReasons",
+        "clock.memoryMHz", "clock.maximumGraphicsMHz"];
 
     internal static ImmutableDictionary<string, RendererPerfMetric> Telemetry(ImmutableDictionary<string, RendererPerfMetric> supplied)
     {
@@ -20,7 +21,7 @@ internal static class RendererPerfSessionObservations
     }
     static string Unit(string key) => key switch
     {
-        "clock.requestedMHz" or "clock.observedMHz" => "MHz",
+        "clock.requestedMHz" or "clock.observedMHz" or "clock.memoryMHz" or "clock.maximumGraphicsMHz" => "MHz",
         "clock.utilizationPercent" => "percent",
         "clock.temperatureC" => "C",
         "clock.powerWatts" => "W",

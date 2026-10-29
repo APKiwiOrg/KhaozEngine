@@ -207,6 +207,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 VulkanTransferPlan.ResolveRegion(source.Width, source.Height, source.Plan.DepthStencil));
         }
 
+        /// <summary>The native resolve already preserves the source for either preservation setting.</summary>
+        public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource) => ResolveTexture(src, dst);
+
         // THE FOUR THINGS EVERY TEXTURE COPY DOES BEFORE ITS FIRST REGION: end the pass, put each side into its
         // transfer layout over exactly the range the copy touches, order a STAGING side, and answer the command
         // buffer every region names.

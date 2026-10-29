@@ -1,6 +1,8 @@
 # Golden grids are machine-generated LF text; a CRLF checkout (Windows autocrlf) breaks the
 # byte-identity contract between the committed files and GoldenGrid.Serialize output.
 KhaozEngine.Render.Tests/Gpu/goldens/*.txt text eol=lf
+# Synthetic renderer profile publication goldens preserve exact UTF-8 output bytes.
+KhaozEngine.Render.Tests/Fixtures/renderer-profiles/*.expected.txt text eol=lf
 KhaozEngine.MapDoc.Tests/Fixtures/FormatFour/** text eol=lf
 # Support certification fixtures are pinned by SHA-256 over their bytes, so a CRLF checkout breaks them.
 KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/*.json text eol=lf
@@ -14,6 +16,10 @@ KhaozEngine.Render.Tests/Gpu/RendererPerf/controls/*.glsl text eol=lf
 KhaozEngine.Render3D/Internal/ShaderSources*.cs text eol=lf
 KhaozEngine.Render3D/Internal/OceanComputeShaders.cs text eol=lf
 KhaozEngine.Render3D/Internal/TemporalResolveUniforms.cs text eol=lf
+KhaozEngine.Render3D/Internal/CascadeShadowSelectionSource.cs text eol=lf
+KhaozEngine.Render3D/Internal/WaterColumnShaderSource.cs text eol=lf
+KhaozEngine.Render3D/Internal/WaterColumnShadowSource.cs text eol=lf
+KhaozEngine.Render3D/Internal/WaterRefractionShaderSource.cs text eol=lf
 KhaozEngine.Render2D/SpriteBatch.cs text eol=lf
 KhaozEngine.Render2D/MaskedSpriteShader.cs text eol=lf
 KhaozEngine.Gpu/GpuScaledCopy.cs text eol=lf
@@ -24,6 +30,7 @@ KhaozEngine.Render.Tests/Gpu/TemporalVisibilityFrozenDMask.cs text eol=lf
 KhaozEngine.Render.Tests/Gpu/TemporalVisibilityFrozenDLaterChanges.cs text eol=lf
 KhaozEngine.Render.Tests/Gpu/TemporalLockReleaseProbe.cs text eol=lf
 KhaozEngine.Render.Tests/Render3D/PointShadowFilterShaderTests.cs text eol=lf
+KhaozEngine.Render.Tests/Gpu/WaterPipelineEmissionTests.cs text eol=lf
 # Renderer approvals bind the same exact UTF-8 bytes on every hosted checkout.
 tools/Renderer.Perf.Tests/authorized/*.json text eol=lf
 # Tile installation compatibility fixtures are compared byte for byte.

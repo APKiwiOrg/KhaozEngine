@@ -73,7 +73,7 @@ public sealed partial class TileWorldView
         TileWorldPropClusters.ValidatedLayers validated = TileWorldPropClusters.Validate(_catalogs, current);
         // Build the replacement before retiring the live resources, so a resolver failure keeps them intact.
         var replacement = new TileWorldPropClusters(_scene, _catalogs, _propLayerResolver, _propMeshes,
-            validated, _doc.TileSize, _propLayerQueueOptions, _propLayerDispatcher);
+            validated, _doc.TileSize, _propLayerQueueOptions, _propLayerDispatcher, _cameraFades);
         ResetInteriorCut();
         _propClusters.Dispose();
         _propClusters = replacement;

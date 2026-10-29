@@ -115,6 +115,8 @@ public sealed class RendererPerfWorkflowDotnetTests
         start.Environment["TEST_RUNTIME_EXIT"] = runtimeExit.ToString(System.Globalization.CultureInfo.InvariantCulture);
         start.Environment.Remove("KE_GPU_TESTS");
         start.Environment.Remove("KE_RENDERER_PERF_UNIT");
+        using var powerShellCache = new RendererPerfPowerShellCache();
+        powerShellCache.Apply(start);
         using var process = Process.Start(start)!;
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();

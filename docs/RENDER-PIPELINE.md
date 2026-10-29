@@ -186,12 +186,141 @@ and bound FFT water is refused until FFT has a certified displacement envelope. 
 plane, so geometry above the surface occludes it. The FFT shoaling and surf bathymetry is a separate scene-wide
 input. API detail lives in the [Render3D package reference](../KhaozEngine.Render3D/README.md).
 
+## Water surface shadows
+
+An underwater bed shadow is correctly displaced below a floater and cannot by itself tie shade to the
+waterline. The opted-in column supplies that attached shadow, fading with the same clarity as the bed.
+
+Shadow cascades fit from the frame's unjittered render-relative camera frustum and eye. Near and far
+depths, slice spheres and light-hold radii therefore avoid large absolute float coordinates for both
+perspective and orthographic cameras. Each light matrix is fitted and texel-snapped once in render space.
+Submission queues and caster bounds stay absolute. Rigid, skinned and foliage caster tests subtract the
+render origin before evaluating the relative cascade, preserving the atlas's local precision. Composing
+`T(-RenderOrigin) * relativeCascade` would restore large translation terms and can reject in-cascade casters
+through cancellation. Absolute matrices remain diagnostic views only. Origin zero bypasses the subtraction
+and preserves the original fitted bits and cull decisions.
+
+Water appends fragment bindings `12=ColumnShadowAtlas`, `13=ColumnShadowSampler` and `14=WaterLitFrame` after
+the optical bed resources. Scene water borrows the existing cascade atlas, its point-clamp sampler and the
+complete model frame buffer. The `WaterLitFrame` declaration preserves the 688-byte prefix with `LitPrefix[43]`,
+then four matrices (256 bytes) and three vectors at offsets 944, 960 and 976. Ambient is `LitPrefix[6].rgb`
+at offset 96. Water makes no additional frame-buffer uploads for any number of planes, and its per-plane
+slot remains 1280 bytes. Standalone water owns a neutral R32F texel containing 1 and a zero-strength 1024-byte
+frame buffer, initialized once. The padded range contains the complete 992-byte shader prefix.
+
+Water and lit receivers share parameter-only cascade projection, blend weights and coverage fade. Selection
+uses each lookup point's matrix coverage, both depth bounds, a two-texel margin and the existing normal,
+constant and slope biases. A surface lookup uses the existing bilinear comparison PCF. Column entry lookups
+use one point comparison, with one neighbouring-cascade comparison inside a blend band. The column march
+budget is four stratified samples, so the worst case is eight point comparisons plus the surface PCF lookup
+at `S`. Column entries use the refracted surface point rather than the below-surface receiver march. Casters
+wholly below the water do not shadow the column, while underwater receiver lighting can still darken the bed.
+Both paths share the refractive index `1.333`. Water adds no storage buffers, and the device minimum remains
+three fragment storage buffers.
+
+Only planes with `WaterColumnLight` enabled shadow glint and the sun-lit foam term. Foam uses
+`FoamColor.rgb * (ambient + LightColor.rgb * max(dot(N, Lsun), 0) * surfaceVisibility)`, leaving ambient
+unshadowed. Disabled columns retain the original glint and foam arithmetic. Disabled scene shadows return
+visibility 1. A committed shadow layout replacement invalidates and retires every bound and unbound water
+set before retiring the old atlas graph. Failed replacements preserve the current sets. Preparation borrows
+the current resources again, and atlas, sampler and frame-buffer identity independently invalidate stale sets.
+
+## Water column scene colour
+
+When any queued plane effectively enables `WaterColumnLight`, the scene captures colour after sky and ground
+decals and before every water draw, including legacy water in the same queue. This source includes opaque
+geometry, textured billboards, beams, trails, translucent overlays, silhouettes, sky and ground decals.
+It contains no water. A water surface seen through another column-lit surface therefore shows the scene
+behind it with the farther water omitted.
+
+MSAA frames resolve the actual `MsColor` attachment into the existing single-sample `ColorTex` before water
+with `preserveSource: true`. Every multisample survives for water to load and continue writing `MsColor`.
+Metal uses `StoreAndMultisampleResolve` for this early snapshot. The existing final colour resolve still runs
+after water and particles with its original store action.
+Single-sample frames copy only `ColorTex` mip zero into a separate, same-format, single-mip, single-sample
+texture. The earlier temporal opaque-only copy keeps its existing position and contents.
+
+Frames without effective opt-ins perform neither transfer and allocate no full-size column target. They expose
+a stable initialized 1x1 placeholder. Source identity, target generation, dimensions, format and sample count
+invalidate cached colour sources, including same-size HDR and MSAA changes. Replaced owned copies retire
+through the scene's completion queue. The source borrows MSAA resolve targets without owning them.
+
+`Scene3D.WaterColumnLightDiagnostics` reports `WaterColumnDiagnostics(OptedInPlanes, CopyRan, CopyPath)` for the
+latest rendered frame. `OptedInPlanes` counts queued effective opt-ins, including culled planes. `CopyPath` is
+`None`, `MsaaResolve` or `SingleSampleCopy`. An empty or disabled rendered frame resets all three fields.
+`Begin` and preparation alone preserve the previous rendered result.
+
+## Water column composite
+
+Enabled columns append fragment bindings `15=ColumnSceneColor` and `16=ColumnColorSampler`, with a point-clamp
+sampler and an initialized placeholder when off. Every water set carries both bindings. Source texture identity
+and source generation independently invalidate prepared sets, including bound optical beds.
+Scene water borrows the model's shadow atlas, sampler and frame uniforms at construction, without allocating
+or retiring standalone shadow fallbacks. Standalone water owns initialized neutral shadow and colour resources.
+Scene colour fallbacks and their sampler wait until the first water set needs them. The pre-water colour source is
+created only for the first opted-in column frame, so scenes and frames without water create or upload no column
+resources. Later replacements retain deferred retirement. The colour source is released in the existing water
+disposal stage, after its water sets, preserving the later scene disposal stages.
+
+Cascade projection, coverage and blend policy share C# GLSL text fragments with lit receivers. The refraction
+constant is shared separately from water's sun-travel function. Lit composition retains its original statements,
+identifiers, whitespace and ordering, so every non-water program keeps its pre-M5 shader emission.
+`NonWaterShaderSourceEqualityTests` pins all 248 non-water stage sources to main at `0af218d5b`, alongside the
+existing HLSL, MSL and SPIR-V emission pins. Only the four water programs' emission pins change for this landing.
+
+The first landing reads the copy at the original pixel with mip-zero `texelFetch`. It unprojects two depths
+through `InvViewProj` to recover the incident direction for perspective and orthographic cameras, then refracts
+through the upward surface normal with the shared index `1.333`. Vertical `opticalBedDepth` gives the path
+`d = h / mu`, where `mu` is the downward refracted view cosine. The virtual endpoint is `S + v*d`.
+Invalid homogeneous coordinates are rejected before division. Missing depth uses a finite far reconstruction,
+with its path capped at `8 * Clarity / max(mu, 0.0001)` as an asymptotic numerical limit, retaining the copied colour.
+Valid optical beds retain their exact depth-derived path.
+The colour and scene-depth lookups stay unoffset. Bent image lookup and foreground rejection remain
+unbuilt in [Landing 2](programs/water-optics-design.md). The copy permits per-channel extinction and
+shadowed in-scatter in one physical composite. A scalar alpha blend could not carry those channel weights
+or support the later bent lookup. The [coefficient reference](../KhaozEngine.Render3D/README.md#water-column-coefficients)
+defines reference-light calibration, extinction spread and energy conservation. Column opt-in also supplies
+those extinction coefficients to M2, so the copied bed already includes its direct sunlight's light path.
+
+Four samples share scalar-mean equal-integral strata while each RGB stratum integrates its own exponential
+weight exactly. Light depths use `h(s) = max(0, stillSurfaceY - S.y + mu*s)`, split exactly where a crest crosses
+the still-water plane. The CDF uses those same two segments. Entries have `E.y = max(X.y, stillSurfaceY)`,
+so an above-plane crest sample is its own entry. Small exponential integrals use a quadratic series.
+Sun single scattering and analytic, unshadowed sky single scattering use `sigma_s / 4` in engine light units.
+Four entries preserve spatial shadow support along the view path in clear and murky water, where a single
+weighted-mean lookup would place the whole shadow at one depth.
+The H-function estimate adds only multiple scattering, scaled by the four entries' mean visibility.
+Its finite-depth extension for each source is
+`exp(-sigma_t*h(0)/mu0) * (1-exp(-sigma_t*(d+(h(d)-h(0))/mu0)))`, with `mu0=1` for sky.
+This displaced-surface extension and the effective zenith sky source are approximations.
+Sun below the horizon contributes no sun scattering or glint. Ambient scattering remains.
+
+Interleaved gradient noise uses the latched `FrameView.FrameIndex % 64` only on the render that runs temporal
+anti-aliasing's resolve. Other renders use phase zero. The temporal reactive policy is unchanged.
+Reactive water weakens temporal history wherever its weighted luminance differs from the opaque copy.
+Convergence is therefore verified rather than assumed. `WaterColumnTemporalGpuTests` pins still-frame
+noise with temporal anti-aliasing on and off. Without temporal resolve, the noise stays screen-fixed.
+
+The copy already includes atmosphere fog and underwater sunlight's light-path extinction. With foam coverage
+`q = foam * clamp(FoamColor.a, 0, 1)`, the copied share is `W = (1-q)*(1-fresnel)*exp(-sigma_t*d)`.
+Water's own radiance includes in-scatter, reflection, shadowed glint and lit foam after Fresnel and coverage.
+The inside colour is `copiedBed*W + ownRadiance*fogT + fogColor*(1-fogT)*(1-W)`, mixed toward the copy by
+shore fade and written with alpha 1. The completed colour never passes through atmosphere fog again.
+Disabled columns retain the legacy body, opacity, alpha blend and fog arithmetic.
+As `d` tends to zero, transmission tends to one and in-scatter tends to zero, preserving the dry-bed
+waterline. Fogged-space composition is exact there. Its distance approximation is bounded by the fog
+change across the in-water path. Diagnostics and the absolute `WaterColumnGpuTests` cover copy demand,
+legacy parity, AA paths, transport, shadow attachment, shallow beds and reference colour without rebaking
+existing water goldens. Landing 1 awaits the owner's measured-cost ruling in
+[the program tracker](programs/water-optics.md) before release.
+
 ## Underwater lit receivers
 
 Underwater key lighting runs in every lit opaque receiver, independently of the water pass's depth sources.
 `WaterSettings.UnderwaterSunlight` defaults to false, with nullable `WaterLook` overrides for each procedural
-or FFT plane, bound or unbound. The query uses a render-relative slab bounded by the rectangle, still surface
-and optional `WaterPlane.FloorY`, with an unbounded floor when null. Rectangle minima and the floor are
+or FFT plane, bound or unbound. A plane also opts in when its resolved `WaterColumnLight` is true, without
+changing its `UnderwaterSunlight` setting. The query uses a render-relative slab bounded by the rectangle,
+still surface and optional `WaterPlane.FloorY`, with an unbounded floor when null. Rectangle minima and the floor are
 inclusive, maxima and the surface exclusive. Overlapping slabs choose the lowest surface above the receiver,
 keeping submission order on ties. A slab can conservatively include dry space beneath a locally higher bed.
 Only the key path changes there, and the bed's shadow keeps a cave dark. Exact local containment would need a
@@ -208,8 +337,9 @@ changing the camera-grid uniforms water reads. Point-light-only frames preserve 
 
 One storage buffer holds 3456 uint headers, 32 fixed uint index slots per cluster, then up to 4096 records in
 submission order. Each record is 48 bytes (three `uvec4`), holding rectangle min/max XZ, surface/floor Y,
-absorption RGB and penumbra per metre, all positions render-relative. Excess records are dropped from the tail.
-A cluster overflow scans all retained records, preserving correctness at greater query cost. Only the used
+attenuation RGB and penumbra per metre, all positions render-relative. The retained `AbsorptionPerMetre` member
+and its buffer offsets carry legacy absorption or derived extinction for a column body. Excess records are
+dropped from the tail. A cluster overflow scans all retained records, preserving correctness at greater query cost. Only the used
 buffer prefix uploads. `ClusterCamera.w` carries the record count independently of point lights. Empty and
 opted-out frames skip building and upload. A zero count skips shader buffer reads, leaving stale contents
 unreachable and the old dry frame unchanged.
@@ -232,10 +362,12 @@ For a submerged receiver `P` at depth `h`, Snell refraction uses the still-water
 without wave-displaced normals, and may lie beyond the rectangle where a bank can shadow it. The entry chooses
 its own cascade with `P`'s geometric normal offset and slope bias. Refraction reduces the in-water part of a
 floater's bed-shadow displacement from `h * tan(theta_air)` to `h * tan(theta_water)`. Key diffuse and specular multiply by
-`exp(-AbsorptionPerMetre * L)`, including with shadows disabled. Ambient, indirect, fill, point lights, emissive
-and fog retain their values. The water pass's existing vertical-depth tint already darkens the view of deep
-beds, so attenuating ambient too would double-darken them. Key-only attenuation lowers shadow contrast with
-depth against unchanged ambient.
+`exp(-attenuation * L)`, including with shadows disabled. For legacy bodies, attenuation is the resolved
+`AbsorptionPerMetre`. For `WaterColumnLight` bodies it is the extinction derived from resolved `WaterColor`
+and `Clarity`, with mean extinction `3 / Clarity`, ignoring legacy absorption. Ambient, indirect, fill,
+point lights, emissive and fog retain their values. Underwater sunlight models the direct sun path. The
+surface handles the view path through legacy vertical-depth tint or the opted-in column composite.
+Key-only attenuation lowers shadow contrast with depth against unchanged ambient.
 
 The opaque atlas retains the sun-facing near face of outward CCW meshes with orientation-preserving transforms
 on every backend, with clockwise fronts culled. The glTF loader preserves triangle order. A straddling floater's
@@ -287,8 +419,9 @@ comparisons before cascade blending. This comparison count is not a native timin
 As `h` tends to zero, `E` tends to `P` with the same bias, transmittance tends to one, the march tends to fully
 lit and the kernel matches the dry filter exactly. The waterline has no shading seam. Entry visibility and
 submerged visibility multiply before the existing strength, fade and blend policy. The scalar R8 key-visibility
-export remains valid, including exactly one for non-positive strength. Caustics, view-ray refraction,
-underwater view fog and light shafts are separate effects. This path does not change the water surface pass.
+export remains valid, including exactly one for non-positive strength. Caustics, underwater camera fog
+and light shafts are separate effects. Receiver lighting does not change the surface pass. Its opted-in
+refracted view path is described in [Water column composite](#water-column-composite).
 
 ## Where to look in the code
 

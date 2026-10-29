@@ -42,11 +42,11 @@ public sealed partial class Scene3D
     {
         using var pass = ProfilePass(cl, "shadow.cascade.foliage", cascade,
             executed: _foliageShadowDraws.Count > 0);
-        FrustumPlanes frustum = FrustumPlanes.Extract(_cascadeCpuVpsAbsolute[cascade]);
+        FrustumPlanes frustum = _shadowFrustums[cascade];
         foreach (FoliageDraw draw in _foliageShadowDraws)
         {
             if (!FoliageDrawValid(draw) || draw.Batch.Buffer is null ||
-                !FoliageShadowSelection.IntersectsCascade(draw.Bounds, frustum)) continue;
+                !FoliageShadowSelection.IntersectsCascade(draw.Bounds, frustum, _frameOrigin)) continue;
             Mesh mesh = _meshes[draw.Patch.Mesh.Index]!.Value;
             _foliageShadowRenderer!.Draw(cl, cascade, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
                 draw.Batch.Buffer, (uint)draw.Patch.Start, (uint)draw.Count, _model.FoliageSet, (uint)draw.UniformSlot,

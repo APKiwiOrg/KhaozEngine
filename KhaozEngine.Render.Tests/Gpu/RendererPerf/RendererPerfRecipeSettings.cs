@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json.Serialization.Metadata;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
@@ -25,17 +26,25 @@ internal static class RendererPerfRecipeSettings
             if (info.Type == typeof(WaterSettings))
             {
                 foreach (var property in info.Properties)
-                    if (property.Name == nameof(WaterSettings.UnderwaterSunlight))
+                    if (property.Name is nameof(WaterSettings.UnderwaterSunlight)
+                        or nameof(WaterSettings.WaterColumnLight))
                         property.ShouldSerialize = static (_, field) => field is true;
                     else if (property.Name == nameof(WaterSettings.UnderwaterPenumbraPerMetre))
                         property.ShouldSerialize = static (_, field) => field is float penumbra && penumbra != 0.03f;
+                    else if (property.Name == nameof(WaterSettings.WaterColor))
+                        property.ShouldSerialize = static (_, field) => field is Color color && color != new Color(0.10f, 0.13f, 0.10f, 1f);
+                    else if (property.Name == nameof(WaterSettings.Clarity))
+                        property.ShouldSerialize = static (_, field) => field is float clarity && clarity != 2f;
                 return;
             }
             if (info.Type == typeof(WaterLook))
             {
                 foreach (var property in info.Properties)
                     if (property.Name is nameof(WaterLook.UnderwaterSunlight)
-                        or nameof(WaterLook.UnderwaterPenumbraPerMetre))
+                        or nameof(WaterLook.UnderwaterPenumbraPerMetre)
+                        or nameof(WaterLook.WaterColumnLight)
+                        or nameof(WaterLook.WaterColor)
+                        or nameof(WaterLook.Clarity))
                         property.ShouldSerialize = static (_, field) => field is not null;
                 return;
             }

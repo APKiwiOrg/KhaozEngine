@@ -88,6 +88,23 @@ either value shifts the bit-exact result legitimately.
   including writes that later fail. Rejected leased mutations never advance it. This is a synchronous
   lifetime contract, not immutable geometry or permission to call a lease from another thread. Release it
   before any physics write.
+- **Static mutation leases** - only the complete owner implements `IPhysicsStaticMutationSource`.
+  `AcquireStaticMutationLease()` holds the existing exclusive writer gate across static edits and the
+  caller's metadata publication. Acquisition alone advances neither query nor static generation. Ordinary
+  `AddStatic` and `RemoveStatic` reenter the admitted writer and retain their existing support-cache and
+  certified-sweep evidence hooks, including recursive compound and mesh storage release. A successful add
+  or live removal advances the static revision exactly once. Missing removal preserves it, and a failed add
+  can conservatively advance it and invalidate sweep evidence.
+  The lease captures the exact owner and origin, while its `StaticGeometryGeneration` reads the live revision.
+  `AssertCurrent()` allows those static edits and refuses changed origin, disposed owner or expired interval.
+  Readers and other writers wait until the acquiring thread disposes the lease. Nested public mutation
+  leases and acquisition from a read interval refuse before writing. Explicit query read leases cannot
+  begin inside the writer, while ordinary same-thread queries remain available. Wrong-thread use and
+  disposal refuse without releasing the holder. Same-thread disposal is idempotent and releases even when
+  currentness fails. Use `using` to release on a composing failure. No geometry or metadata rollback occurs.
+  Restricted views retain their read capabilities and do not expose this mutation capability.
+  Deterministic results require matching initial static installation order, ordered edit history, origins,
+  backend and arithmetic configuration. The interval does not make differently constructed worlds equivalent.
 - **Capsule-feature certification** - the owner and its restricted views implement
   `IPhysicsCapsuleFeatures`. The query authenticates the lease as this owner's before entering the gate,
   reads the live static, and certifies boxes, convex hulls, compounds of those, and one-sided triangle meshes
@@ -127,8 +144,10 @@ either value shifts the bit-exact result legitimately.
   body-local offsets at build time, so a uniform translate of both ends preserves every joint exactly.
   `Statics.ApplyDescription` is deliberately NOT used: its own doc says it forces every sleeping body whose bounds
   overlap the old or new collidable active, which would wake the world's whole sleeping population on every shift.
-  Cost is O(statics + bodies) pose writes plus refits on the calling thread, budgeted at less than one physics step
-  on the same world.
+  Cost is O(statics + bodies) pose writes plus refits on the calling thread. Ordinary tests enforce one refit
+  call per body and static, zero managed allocation and the safe static API. The separate
+  [hosted rebase diagnostic](../docs/RENDERER-PERFORMANCE.md#hosted-physics-rebase-diagnostic) fails above a
+  median 3x step ratio at the resident streaming scale, without gating merges on wall-clock noise.
 
 ## Exact completed-footprint reuse
 

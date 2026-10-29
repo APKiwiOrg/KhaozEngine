@@ -6,8 +6,7 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 // Logical lengths count declared-width encoding, not managed heap or backend allocation size.
 internal sealed class RendererPerfConstructionAdmission
 {
-    internal const int Operations = 43, PipelinesPerOperation = 256, FactoriesPerOperation = 1024;
-    internal const int PipelineAttempts = Operations * PipelinesPerOperation, FactoryAttempts = Operations * FactoriesPerOperation;
+    internal const int PipelinesPerOperation = 256, FactoriesPerOperation = 1024;
     internal const int UniqueRecipes = 1024, CauseReserveBytes = 128;
     internal const long SourceBytes = 33554432, DescriptorBytes = 16777216, EvidenceBytes = 16777216, TotalBytes = 67108864;
     long _source, _descriptor, _evidence;

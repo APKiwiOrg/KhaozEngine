@@ -7,7 +7,7 @@ using KhaozEngine.Primitives;
 namespace KhaozEngine.Tests.Gpu.Performance;
 
 // Numeric native-boundary doubles. They never manufacture native proof or clock durations.
-internal sealed class GpuPerfTimestampTestPool(uint capacity) : IGpuTimestampPool
+internal class GpuPerfTimestampTestPool(uint capacity) : IGpuTimestampPool
 {
     public uint Capacity => capacity;
     internal int Begins, Resolves, Disposals;
@@ -60,6 +60,30 @@ internal sealed class GpuPerfTimestampTestPool(uint capacity) : IGpuTimestampPoo
         return GpuTimestampStatus.Ready;
     }
     public void Dispose() { Disposals++; OnDispose?.Invoke(); }
+}
+
+// A pool whose data trails its completion fence for a fixed number of flushing polls, as Direct3D 11 can.
+internal sealed class GpuPerfTimestampAwaitTestPool : GpuPerfTimestampTestPool, IGpuTimestampAvailabilityWait
+{
+    internal GpuPerfTimestampAwaitTestPool(uint capacity, int notReadyPolls) : base(capacity)
+    { NotReadyPolls = notReadyPolls; Hold = notReadyPolls > 0; }
+    internal int NotReadyPolls, Waits;
+    internal Exception? WaitFailure { get; set; }
+    internal Action? OnPoll { get; set; }
+    public GpuTimestampAvailability AwaitAvailability(IGpuFence completion, Func<long> now, long deadline)
+    {
+        Waits++;
+        if (WaitFailure is not null) throw WaitFailure;
+        long start = now();
+        if (!completion.Signaled) return new(false, 0, start, now(), 1, 0, 1, []);
+        int polls = 0;
+        while (Hold && now() < deadline)
+        {
+            OnPoll?.Invoke();
+            if (++polls >= NotReadyPolls) Hold = false;
+        }
+        return new(!Hold, polls, start, now(), 1, 1, 1, [new("timestamp.0", polls, Hold ? 1 : 0)]);
+    }
 }
 
 internal sealed class GpuPerfTimestampTestDevice : IGpuDevice, IGpuResourceFactory
@@ -176,6 +200,7 @@ internal sealed class GpuPerfTimestampTestCommands : IGpuCommandList, IGpuComman
     { }
     public void GenerateMipmaps(IGpuTexture texture) { }
     public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { }
+    public void ResolveTexture(IGpuTexture src, IGpuTexture dst, bool preserveSource) { }
     public void SetComputePipeline(IGpuComputePipeline p) { }
     public void SetComputeResourceSet(uint slot, IGpuResourceSet set) { }
     public void SetComputeResourceSet(uint slot, IGpuResourceSet set, uint dynamicOffset) { }

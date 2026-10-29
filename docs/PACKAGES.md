@@ -25,7 +25,7 @@ and the guard keeps that list matching the umbrella's csproj.
 |---|---|---|
 | [KhaozEngine.Game2D](../KhaozEngine.Game2D/README.md) | A desktop 2D game | Windowing, the three GPU backends, Render2D, Gui, Audio, Particles, Telegraphs, Game, Foundation and the analyzers |
 | [KhaozEngine.Game3D](../KhaozEngine.Game3D/README.md) | A desktop 3D game | Game2D plus Render3D and its 3D arms: Render3D.Ecs, Game.Render3D, Attachments.Render3D, Particles.Render3D, Telegraphs.Render3D, Terrain.Render3D and TileWorld.Render3D |
-| [KhaozEngine.Server](../KhaozEngine.Server/README.md) | A headless authoritative server or server tool | Foundation plus Netcode, Netcode.LiteNetLib, Simulation, Replication, Sharding, WorldStore, NetWorld, TileWorld.Netcode, ItemInstances.Journal, Catalog.Authoring and Catalog.Netcode, with no graphics |
+| [KhaozEngine.Server](../KhaozEngine.Server/README.md) | A headless authoritative server or server tool | Foundation plus Netcode, Netcode.LiteNetLib, Simulation, Replication, Sharding, WorldStore, NetWorld, TileWorld.Netcode, ItemInstances.Journal, Catalog.Authoring, Catalog.Netcode and StatusEffects.Netcode, with no graphics |
 | [KhaozEngine.Foundation](../KhaozEngine.Foundation/README.md) | A gameplay logic library or headless tool | The GPU-free core, world, gameplay and content packages, with no renderer, windowing or audio |
 
 A granular package can be referenced on its own or beside an umbrella, for example `Game2D` with
@@ -131,7 +131,8 @@ Content catalogs and the gameplay systems that read them.
 | [KhaozEngine.ItemInstances](../KhaozEngine.ItemInstances/README.md) | Provides per-item properties, identity, paged storage, replication, generation, crafting and integer stat evaluation. | Items, Catalog, Primitives, Diagnostics | Every umbrella |
 | [KhaozEngine.ItemInstances.Journal](../KhaozEngine.ItemInstances.Journal/README.md) | Loads paged item containers and commits ordered operations with replayable events and per-page projection writes. | ItemInstances, WorldStore | Server |
 | [KhaozEngine.Skills](../KhaozEngine.Skills/README.md) | Provides skill experience curves, parent awards, progression readouts, curve migration and save codecs. | None | Every umbrella |
-| [KhaozEngine.Stats](../KhaozEngine.Stats/README.md) | Computes stats from base values and removable equipment, skill or buff modifiers. | None | Every umbrella |
+| [KhaozEngine.Stats](../KhaozEngine.Stats/README.md) | Computes stats from base values and removable source-keyed modifiers. | None | Every umbrella |
+| [KhaozEngine.StatusEffects](../KhaozEngine.StatusEffects/README.md) | Tracks transient timed effects, scoped stacking, periodic events and integer modifier totals on actors. | None | Every umbrella |
 | [KhaozEngine.Progression](../KhaozEngine.Progression/README.md) | Schedules periodic wall-clock rewards with non-stacking availability and clock-step safety. | None | Every umbrella |
 | [KhaozEngine.Objectives](../KhaozEngine.Objectives/README.md) | Tracks achievements, quests and challenges through metrics, conditions and completion events. | App | Every umbrella |
 
@@ -146,6 +147,7 @@ Simulation, networking, replication and the authoritative server stack.
 | [KhaozEngine.Netcode](../KhaozEngine.Netcode/README.md) | Prediction, reconciliation, sessions, authentication and in-memory networking behind a transport-independent byte interface. | Netcode.Abstractions | Game2D, Game3D, Server |
 | [KhaozEngine.Netcode.LiteNetLib](../KhaozEngine.Netcode.LiteNetLib/README.md) | Reliable UDP transport and split-channel delivery through LiteNetLib. | Netcode (+ LiteNetLib) | Server |
 | [KhaozEngine.Replication](../KhaozEngine.Replication/README.md) | ECS snapshots, interest-filtered deltas and acknowledged state reconstruction for multiplayer worlds. | Ecs | Server |
+| [KhaozEngine.StatusEffects.Netcode](../KhaozEngine.StatusEffects.Netcode/README.md) | Publishes shown status effects with handoff retries, replication and migration without persistence. | StatusEffects, Replication, Sharding | Server |
 | [KhaozEngine.Sharding](../KhaozEngine.Sharding/README.md) | Partitions authoritative worlds into cells with border ghosts, authority handoffs, client interest and persistence snapshots. | Ecs, Simulation, Physics, Replication | Server |
 | [KhaozEngine.NetWorld](../KhaozEngine.NetWorld/README.md) | Authoritative continuous-world movement with client prediction, replication, persistence, administration and game-message channels. | Simulation, Locomotion, Physics, Netcode, Replication, Ecs, Sharding, WorldStore | Server |
 | [KhaozEngine.TileWorld.Netcode](../KhaozEngine.TileWorld.Netcode/README.md) | Authoritative tile-world movement with client prediction, actors, combat, ground items and persistence. | TileWorld, Netcode, Replication, Sharding, Simulation, WorldStore, Diagnostics | Server |

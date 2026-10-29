@@ -136,7 +136,7 @@ internal static class RendererPerfUnit
                     budget.Check("renderer.diagnostic.create.after");
                     if (diagnostic is not null)
                     {
-                        var cold = RendererPerfColdCollector.Collect(inventory, diagnostic, configuration, budget,
+                        var cold = RendererPerfColdCollector.Collect(inventory, manifest.Schedule, diagnostic, configuration, budget,
                             publication.ReserveReport, publication.CommitReportBytes);
                         report = report with { Compiler = cold.Compiler, Pipelines = cold.Pipelines };
                         failures.AddRange(cold.Failures);

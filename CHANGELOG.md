@@ -4,13 +4,22 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.19.1
+## 21.20.0
 
 2026-10-29
 
 - Keep unchanged finite planar prediction coordinates exact at finite presentation phases, including when the
   other coordinate moves. Rendering, reconciliation and quiet reseeding share the same interpolation while
   preserving genuine movement, correction offsets and nonfinite behavior (Closes #1651).
+
+- Add `KhaozEngine.StatusEffects`, a dependency-free book of transient timed effects on actors with scoped
+  stacking, non-shortening refresh, periodic events, expiry and integer modifier totals. Games supply
+  definitions, ticks and gameplay responses, and clients build countdown rows from effect windows.
+- Add `KhaozEngine.StatusEffects.Netcode`, which projects shown effects into immutable replicated
+  snapshots that migrate without persistence. Deferred ownership publication retries current state after
+  cell handoff, while confirmed disappearance forgets the actor.
+- Add `ShardHost.IsInHandoff(long netId)` to distinguish a live frozen handoff source from disappearance
+  when deferred admission or a delayed link temporarily leaves no current owner.
 
 ## 21.19.0
 

@@ -53,6 +53,10 @@ steps, smear, lag or sparkle. The owner bar is "No flicker you notice, especiall
   textured tail, and Native MS 2 leading textured rim error at their measured costs. The resolve design
   amendment owns the exact parameters. Backend-specific costs must stay within 10 percent of original
   design D bounds. Every other bound stays fixed. M1 remains held for the owner look gate.
+- TSD-D10: Controller ruling, 2026-10-29. The random-frame visibility resolve A/B compares against D
+  with the approved still-pixel precision floor and every other later change undone. Still receivers
+  otherwise reproduce the precision flash the floor removes. The pure frozen D oracle stays exact,
+  including all source and compiled pins. No comparison bound changes.
 
 ## Open questions and owner gates
 

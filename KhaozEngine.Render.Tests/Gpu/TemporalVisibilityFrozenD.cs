@@ -154,6 +154,14 @@ float temporalReleaseLock(float value, float motionPixels, float reactive, float
         return d.Replace(ShaderSources.TemporalLockReleaseGlsl, LockReleaseGlsl, StringComparison.Ordinal);
     }
 
+    /// <summary>D prime with only the owner-approved still-pixel precision floor restored (2026-10-29).</summary>
+    internal static string ToDWithPrecisionFloor(string program)
+        => TemporalVisibilityFrozenDLaterChanges.WithPrecisionFloor(ToD(program));
+
+    /// <summary>Shipped D with only the owner-approved still-pixel precision floor restored (2026-10-29).</summary>
+    internal static string ToShippedDWithPrecisionFloor(string program)
+        => TemporalVisibilityFrozenDLaterChanges.WithPrecisionFloor(ToShippedD(program));
+
     /// <summary>As <see cref="ToD"/> with the call site's text transformed first, for mutant controls that prove a
     /// rewrite reaches the compiled program.</summary>
     internal static string ToMutantD(string program, Func<string, string> callSite)

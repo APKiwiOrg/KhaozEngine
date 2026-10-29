@@ -66,6 +66,9 @@ namespace KhaozEngine.Tests.Gpu
         // (+, +), so each axis meets both signs where the tiles decide.
         internal static readonly int[] LargePhases = [0, 1, 3, 2, 5, 4];
 
+        /// <summary>D here carries the owner-approved precision floor (2026-10-29). Still receivers otherwise
+        /// reproduce the binary16 precision flash that the approved floor removes, so floorless colour equality
+        /// cannot hold. Every other post-D change is undone, and every visibility assertion stays exact.</summary>
         [GpuTheory]
         [InlineData(0, TemporalUpscale.Native)]
         [InlineData(0, TemporalUpscale.Quality)]
@@ -77,7 +80,7 @@ namespace KhaozEngine.Tests.Gpu
             var random = new Random(entry == TemporalResolveEntry.Fused ? 1709 : 2711);
             TemporalVisibilityProductionPaths paths = Run(entry, preset, Iw, Ih,
                 (frame, dw, dh) => MakeFrame(random, frame, dw, dh, SceneNdc, NdcDepth(Projection, 1.4f), SceneLinear,
-                    TemporalResolveMath.LinearDepth(NdcDepth(Projection, 1.4f), Depth)));
+                    TemporalResolveMath.LinearDepth(NdcDepth(Projection, 1.4f), Depth)), precisionFloor: true);
             // Floors under what the random frames give: a lock in two of three pixels, most centres off the border.
             Assert.True(paths.FastPath >= 50 && paths.RangeSkips >= 10 && paths.FastComputed >= 10,
                 $"frame {Frames - 1} (aggregate): the random frames reached too few production paths: {paths}");
@@ -230,19 +233,23 @@ namespace KhaozEngine.Tests.Gpu
         // tolerance-edge tiles' display pixels to edges.
         TemporalVisibilityProductionPaths Run(TemporalResolveEntry entry, TemporalUpscale preset, int iw, int ih,
             Func<int, int, int, Frame> makeFrame, EdgeOutcomes? edges = null, BinadeOutcomes? binade = null,
-            Func<int, int, Vector2>? jitterOf = null)
+            Func<int, int, Vector2>? jitterOf = null, bool precisionFloor = false)
         {
             int dw = preset == TemporalUpscale.Native ? iw : iw * 3 / 2, dh = preset == TemporalUpscale.Native ? ih : ih * 3 / 2;
+            Func<string, string> rewriteD = precisionFloor
+                ? TemporalVisibilityFrozenD.ToDWithPrecisionFloor : TemporalVisibilityFrozenD.ToD;
+            Func<string, string> rewriteShippedD = precisionFloor
+                ? TemporalVisibilityFrozenD.ToShippedDWithPrecisionFloor : TemporalVisibilityFrozenD.ToShippedD;
             int dRewrites = 0, mutantRewrites = 0;
             bool prepareRewritten = false;
             using var production = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc);
             bool nvidia = TemporalDeviceClass.IsHardwareNvidiaD3D11(production.Device);
             var oracle = nvidia ? new TemporalNvidiaHistoryOracle(output) : null;
             using var otherD = nvidia ? new TemporalResolveRig(iw, ih, dw, dh, SceneNdc,
-                fragmentSource: TemporalVisibilityFrozenD.ToD) : null;
+                fragmentSource: rewriteD) : null;
             using var d = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc, fragmentSource: source =>
             {
-                string rewritten = TemporalVisibilityFrozenD.ToD(source);
+                string rewritten = rewriteD(source);
                 if (!ReferenceEquals(rewritten, source)) dRewrites++;
                 if (source == ShaderSources.TemporalPrepareFrag && rewritten != source) prepareRewritten = true;
                 return rewritten;
@@ -251,6 +258,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 string rewritten = TemporalVisibilityFrozenD.ToMutantD(source, callSite => callSite.Replace(
                     "> VisibilityReleaseThreshold", "> 2.0", StringComparison.Ordinal));
+                if (precisionFloor) rewritten = TemporalVisibilityFrozenDLaterChanges.WithPrecisionFloor(rewritten);
                 if (!ReferenceEquals(rewritten, source)) mutantRewrites++;
                 return rewritten;
             });
@@ -259,7 +267,7 @@ namespace KhaozEngine.Tests.Gpu
             using var kept = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc,
                 fragmentSource: TemporalVisibilityProductionPaths.RewriteKeepingTheDecision);
             using var shippedD = new TemporalResolveRig(iw, ih, dw, dh, SceneNdc,
-                fragmentSource: TemporalVisibilityFrozenD.ToShippedD);
+                fragmentSource: rewriteShippedD);
             bool metal = production.Device.Backend == GpuBackendKind.MetalNative;
             TemporalResolveRig[] rigs = otherD is null ? [production, d, mutant, exported, kept, shippedD]
                 : [production, d, mutant, exported, kept, shippedD, otherD];

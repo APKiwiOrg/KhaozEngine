@@ -1392,6 +1392,12 @@ Implementation review established the contract amendments below.
     with no texture fetch, texture allocation or history memory. Its frozen-D undo restores the exact
     original clip and removes its tuning declaration before comparing shipped-D source and compiled pins.
 
+    The random-frame visibility resolve A/B fact uses a separate D oracle with this approved still-pixel
+    floor (owner ruling 2026-10-29). Its still receivers reproduce the floorless precision flash, so colour
+    equality requires both sides to use the approved clip. This oracle undoes every other post-D change,
+    preserves D's shading-release extent, and restores only the final clip plus its floor and still-gate
+    constants. The pure frozen D oracle, source hashes and compiled counts remain unchanged.
+
     The owner accepted these three measured Native moving-shadow costs for the precision-safe chroma
     floor. Only the named comparison changes. Original design D limits remain on every other comparison.
 

@@ -330,6 +330,26 @@ const float VisibilityShimmerGate = 0.1;
     /// production text it was written against.</summary>
     internal static readonly Change[] Changes = [PrecisionFloorTuning, PrecisionClipChange, ShimmerTuning, ShimmerScore, ShimmerRecord];
 
+    /// <summary>Adds only the owner-approved precision floor to an already restored D accumulation. The final
+    /// clip is rebuilt independently of D's shading-release excess, which must keep its original extent.</summary>
+    internal static string WithPrecisionFloor(string program)
+    {
+        const string finalClip = @"    excess.x *= 1.0 - hold;
+    float clipScale = max(excess.x, max(excess.y, excess.z));
+    vec3 clipped = clipScale > 1.0 ? boxCentre + fromCentre / clipScale : historyYcc;
+";
+        int clips = Count(program, finalClip);
+        if (clips == 0) return program;
+        if (clips != 1)
+            throw new InvalidOperationException($"the precision-floor D rewrite found {clips} final clips, one expected");
+        string stillGate = ScoreConstants.Production.Split('\n').Single(line =>
+            line.StartsWith("const float ShimmerStillPixels =", StringComparison.Ordinal));
+        string clip = PrecisionFloorConstant.Production + stillGate + "\n" + PrecisionClip.Production
+            .Replace("clipMin", "boxMin", StringComparison.Ordinal)
+            .Replace("clipMax", "boxMax", StringComparison.Ordinal);
+        return program.Replace(finalClip, clip, StringComparison.Ordinal);
+    }
+
     /// <summary>The program with every change in <see cref="Changes"/> undone. A program with none of a change's pieces
     /// keeps that change's text, and one with none at all comes back as the same instance.</summary>
     internal static string Restore(string program)

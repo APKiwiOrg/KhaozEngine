@@ -9231,7 +9231,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.19.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.20.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9731,7 +9731,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.19.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.20.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10576,7 +10576,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.19.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.20.0" />
 ```
 
 ```csharp
@@ -18823,7 +18823,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.19.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.20.0" />
 ```
 
 ```csharp
@@ -18859,7 +18859,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.19.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.20.0" />
 ```
 
 ```csharp
@@ -19103,7 +19103,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.19.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.20.0" />
 ```
 
 ```csharp
@@ -20896,10 +20896,145 @@ attack = stats.Value((int)Channel.Attack);   // back to exactly 10, bit for bit
 `GetBase`/`SetBase` read and write the per-channel base directly. `ClearSources` drops every source and
 leaves only the base. `CopyValuesTo(Span<float>)` reads every channel in one allocation-free call, for a
 stat-sheet screen or a per-frame HUD. **What stays game-side (the seam):** stat identity (the enum), balance
-numbers (which modifiers a sword grants), items and equipment slots, and the whole "buff" half (stacking
-rules, durations, expiry, diminishing returns), the same split `KhaozEngine.Locomotion` already draws for its
-per-entity speed scale: the engine owns the multiplier and its plumbing, the game owns duration, stacking,
-and what granted it.
+numbers (which modifiers a sword grants), items and equipment slots, and how timed modifier totals enter
+the formula. `KhaozEngine.StatusEffects` owns timed stacking, periodic events and expiry, independently
+of this float fold. The game maps its integer channels into stat sources or other formulas and owns
+diminishing returns and what grants an effect.
+
+---
+
+## Status effects
+
+`KhaozEngine.StatusEffects` supplies a pure `StatusEffectBook`, immutable definitions and a presentation
+helper through every umbrella. `KhaozEngine.StatusEffects.Netcode`, carried by `Server`, projects shown
+effects into `ActiveStatusEffects`. A client using only `Game2D` or `Game3D` references the adapter
+explicitly. The game owns channel meanings, units, content, modifier application, damage and death.
+The engine never applies a modifier to a game formula.
+
+### Catalog and registration
+
+Build the same catalog on server and clients. Use the same unused extension id in their registries,
+and pass those registries when constructing the NetWorld heads:
+
+```csharp
+using System.Collections.Generic;
+using KhaozEngine.NetWorld;
+using KhaozEngine.Replication;
+using KhaozEngine.StatusEffects;
+using KhaozEngine.StatusEffects.Netcode;
+
+const int MoveSpeedPercent = 1; // Game-defined channel and units.
+var haste = new StatusEffectDefinition(new(1), durationTicks: 90,
+    iconKey: "haste", modifiers: new[] { new StatusEffectModifier(MoveSpeedPercent, 25) });
+var bleed = new StatusEffectDefinition(new(2), durationTicks: 120,
+    scope: StatusEffectScope.PerSource, maxStacks: 3, periodTicks: 30,
+    polarity: StatusEffectPolarity.Harmful, iconKey: "bleed");
+var catalog = new StatusEffectCatalog(new[] { haste, bleed });
+
+ReplicationRegistry CreateRegistry() => MoveProtocol.CreateRegistry(registry =>
+    StatusEffectsReplication.Register(registry, ReplicationRegistry.FirstExtensionTypeId));
+```
+
+The example assumes that extension id is free. Registration uses `Replicate | Migrate` without
+`Persist`. Only shown instances are sent, with effect id, source, stacks, start tick and end tick.
+Hidden effects still contribute to server totals. Neither modifier lines nor periodic magnitude or
+anchor go on the wire. Counts and stacks are bounded to 255, and a book defaults to 32 instances per actor.
+
+### Server step and gameplay responses
+
+Given a `ShardedWorldServer server` built with `CreateRegistry()`, keep one book and projection for the
+host. `HandleEffectEvent` below is a game-supplied handler. A `Periodic` event's magnitude can drive
+bleed damage there. If damage kills the actor, that handler calls `book.Clear(effectEvent.Actor)`.
+The handler may also `Apply` another effect safely because events drain after the step.
+
+```csharp
+var book = new StatusEffectBook(catalog);
+var projection = new StatusEffectProjection(book, new ShardHostStatusEffectTarget(server.Host));
+var effectEvents = new List<StatusEffectEvent>();
+
+// Call on a validated ability use, in the same server tick domain as Advance.
+StatusEffectApplyResult ApplyHaste(long actor, long source) =>
+    book.Apply(actor, haste.Id, server.ServerTick, source);
+
+void ActorDiedOrDespawned(long actor) => book.Clear(actor);
+
+server.OnBeforeTick += _ =>
+{
+    book.Advance(server.ServerTick);
+    // Process validated ability uses here, for example ApplyHaste(actor, source).
+    effectEvents.Clear();
+    book.DrainEvents(effectEvents);
+    foreach (var effectEvent in effectEvents)
+        HandleEffectEvent(effectEvent);
+
+    // Fold totals into game formulas here, then publish the resulting shown windows.
+    projection.Publish();
+};
+```
+
+Handle `UnknownDefinition` and `ActorFull` results when validating an application. `PerActor` instances
+share one window per effect id. `PerSource` instances coexist by source. Reapplication of a live
+instance grows stacks to the cap, restarts `StartTick`, and sets
+`EndTick = max(previous EndTick, now + duration)`. Refresh never shortens a window or moves the periodic
+anchor. `Advance` catches up every due period, including a tick at the end before expiry. Events
+generated by handlers remain queued for a later drain.
+
+`Apply` settles its target actor's due periodic events and expiry before matching or checking capacity.
+Those events precede the application and use the old instance state. Reapplying at or after expiry
+starts a fresh window and periodic anchor. A later `Advance` at the same tick does not repeat events.
+
+Durations and periods use the tick the caller passes. For NetWorld that is `ServerTick`, normally
+30 Hz, even when game logic runs at a lower cadence. Do not substitute a render-frame count or a
+separate gameplay counter. `Apply` and `Advance` refuse a time before the last advanced tick.
+
+For a game-defined movement speed channel, fold a total into the game's formula and pass the result
+through `SetSpeedScale` for the relevant `PlayerRef`:
+
+```csharp
+int bonusPercent = book.ModifierTotal(actor, MoveSpeedPercent);
+float scale = 1f + bonusPercent / 100f;
+server.SetSpeedScale(player, scale); // actor and player identify the same game-owned actor.
+```
+
+`ModifierTotal` sums per-stack integer contributions exactly, including cancelling contributions.
+It throws `OverflowException` if the final sum cannot fit in an `int`. Use the `ulong` value from
+`ModifierVersion(actor)` to refold lazily, including the return to zero when no instances remain.
+Movement scales replicate in 1/16 steps. Finer precision remains an
+[open question](https://github.com/APKiwiOrg/KhaozEngine/issues/1652).
+
+Call `Publish` every tick after stepping and gameplay mutations. It drains changed actor ids and
+retries pending publications. The Sharding target first checks `TryGetOwner`, then `IsInHandoff`:
+`Published` completes the update, `Deferred` keeps it pending, and `Gone` silently forgets the actor.
+Deferred destination admission may leave zero owners while the frozen source survives. After adoption,
+the projection publishes current entries, including expiries during that gap, to the new owner.
+
+Effects are transient and never persisted. Clear on death and despawn, or `Forget` when the entity is
+already gone and no end events are needed. The projection's `Gone` backstop runs only for changed or
+pending actors, so it does not replace explicit teardown. Do not separately drain changed actor ids
+when a projection owns that drain.
+
+### Client countdown
+
+Enable `WorldClientConfig.ReceiveServerTick` when constructing the client. After polling, use the
+replicated end tick and the client's server tick estimate to calculate remaining time. The latest
+received sample is `LatestServerTick`. `RemoteRenderTick` follows the remote presentation timeline.
+Both are -1 until known. Between samples, the game may advance its estimate in that same tick domain.
+
+```csharp
+var barItems = new List<StatusEffectBarItem>();
+// Each presentation update, after client.Poll and any AdvancePresentation call:
+barItems.Clear();
+double nowTick = client.LatestServerTick; // Or RemoteRenderTick for remote actor presentation.
+if (nowTick >= 0 && client.TryGetComponent<ActiveStatusEffects>(actor, out var state))
+    StatusEffectBar.Build(state.Entries.AsSpan(), catalog, nowTick, barItems);
+```
+
+`Build` appends known, unexpired entries in input order. Each row has icon key, polarity, source,
+stacks, remaining ticks and a clamped fraction of the current duration window. The game supplies icons,
+localized labels and layout. No changing countdown is sent every tick. See the
+[core README](../KhaozEngine.StatusEffects/README.md),
+[adapter README](../KhaozEngine.StatusEffects.Netcode/README.md) and
+[design rationale](design/STATUS-EFFECTS.md) for the full contracts.
 
 ---
 
@@ -23495,7 +23630,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.19.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.20.0" />
 </ItemGroup>
 ```
 
@@ -27028,16 +27163,16 @@ from every other player on the same server, for a bounded window, with the clien
 staying authoritative. That is what `SetSpeedScale` is, on both server heads:
 
 ```csharp
-// Server, on cast. The engine has no notion of duration - the game keeps the timer and calls again to end it.
+// Server, on cast. The game folds timed modifier totals before calling.
 server.SetSpeedScale(PlayerRef.Slot(slot), 5f);
 // ...later, on expiry:
 server.SetSpeedScale(PlayerRef.Slot(slot), 1f);
 ```
 
-**The engine owns the multiplier and its plumbing, nothing else.** Duration, stacking rules, what granted the
-boost, what it costs, what shows in the HUD and how it is balanced are all game content, exactly as
-`Teleport(PlayerRef, Vector3)` moves a player without owning any concept of why. If two effects are active at
-once, the product is yours to compute before you call.
+`SetSpeedScale` owns the movement multiplier and its plumbing. Use [StatusEffects](#status-effects)
+for timed stacking and expiry. The game defines what grants the boost, folds modifier totals into its
+own scale formula and calls the setter with the result. Content, costs, balance and HUD presentation
+remain game-owned. Return to `1f` when no speed modifiers remain.
 
 The call is queued to the host thread at the top of the next tick, so it is safe from any thread (an
 ability system, a game-message handler, an expiry timer). The sharded server retains the quantized desired
@@ -27649,23 +27784,26 @@ already exist (it never creates a neighbor), re-mirrors each sync (a moved owner
 leaves the border is despawned), and assumes globally-unique `NetId`s across cells.
 
 **Authority handoff (Phase 3C).** When an owned entity's position crosses into another cell, `ProcessHandoffs()`
-transfers authority with **exactly-once** semantics (never two owners, never zero):
+transfers authority with **exactly-once** semantics (never two owners, never double-simulated, never lost):
 
 ```csharp
 host.ProcessHandoffs();   // after Tick(); typically Tick -> ProcessHandoffs -> SyncGhosts each host step
 
 // who owns it now (and the owned entity):
 if (host.TryGetOwner(netId, out CellSim owner, out Entity owned)) { /* ... */ }
-int owners = host.OwnerCount(netId);   // == 1 for a live entity at every call boundary
+int owners = host.OwnerCount(netId);   // 1 once settled, 0 while a deferred handoff holds it frozen
+bool moving = host.IsInHandoff(netId); // true during that gap
 ```
 
 The owner captures the entity's full registered component set, sends a `Migrate` over `ICellLink`, and freezes it
 (`Migrating`, not simulated, not counted as an owner); the destination adopts it as a new owned entity (despawning
 any prior ghost of it) and acks; the owner releases it. The entity keeps its `NetId` across the move, and the
-destination cell is created if needed. The in-process link completes the whole handshake within the call (so the
-exactly-once invariant holds at every call boundary); a networked link would keep the entity `Migrating` on the
-source until the ack arrives - never double-simulated, never permanently lost. Game systems must treat
-`Migrating` entities as frozen, like `Ghost`s.
+destination cell is created if needed. The in-process link usually completes the whole handshake within the call.
+A destination that defers admission, or a networked link, keeps the entity `Migrating` on the source until the
+ack arrives. Until the destination adopts it, `OwnerCount` is 0 and `TryGetOwner` finds nothing.
+`IsInHandoff(netId)` stays true until the source releases its frozen copy on the ack, so code that writes state by
+owner retries while no owner exists rather than treating the entity as gone. It is never double-simulated and never
+permanently lost. Game systems must treat `Migrating` entities as frozen, like `Ghost`s.
 
 **Client home-cell serving (Phase 3D).** Each client is served its entire area-of-interest from a single **home
 cell** - the cell that owns its player. Because of the invariant **overlap margin >= interest radius**, that cell

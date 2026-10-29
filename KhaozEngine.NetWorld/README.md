@@ -866,13 +866,13 @@ client predicting it and the server staying authoritative.
 server.SetSpeedScale(PlayerRef.Slot(slot), 5f);   // haste
 server.SetSpeedScale(PlayerRef.Slot(slot), 0.5f); // slow
 server.SetSpeedScale(PlayerRef.Slot(slot), 0f);   // root
-server.SetSpeedScale(PlayerRef.Slot(slot), 1f);   // back to normal - this is how a buff expires
+server.SetSpeedScale(PlayerRef.Slot(slot), 1f);   // back to normal when no speed modifiers remain
 ```
 
-**The engine owns the multiplier and its plumbing, not the buff.** There is no duration, no stacking, no expiry and
-no concept of what granted it: the game drives all of that and ends a boost by calling the setter again with `1f`,
-exactly as `Teleport` moves a player without owning any concept of why. Two effects at once are the caller's
-product to compute.
+`SetSpeedScale` owns the movement multiplier and its plumbing. Use
+[KhaozEngine.StatusEffects](../KhaozEngine.StatusEffects/README.md) for timed stacking and expiry.
+The game defines what grants each effect, folds modifier totals into its own scale formula and calls the
+setter with the result. Return to `1f` when no speed modifiers remain. Content, costs and balance stay game-owned.
 
 - **Where it lives.** `MoveState.SpeedScale` is what the step reads, and it replicates as `MovementState.SpeedScaleQ`.
   Both are needed: `PlayerMoveState.From` rebuilds the client's reconcile basis from the replicated components

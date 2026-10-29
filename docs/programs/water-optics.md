@@ -28,8 +28,8 @@ Rows are in the order the milestones run.
 | Milestone | Status | Issue | Owner gate |
 | --- | --- | --- | --- |
 | M1 Authored beds at the world manifest edge | shipped in v21.14.0 | https://github.com/APKiwiOrg/KhaozEngine/issues/1586 | none |
-| M2 Underwater sunlight for submerged receivers | shipped in v21.15.0 | https://github.com/APKiwiOrg/KhaozEngine/issues/1588 | Native performance run before M3 ships |
-| M5 Water column light and shadow, with a bent view of the bed | Landing 1 shipped in v21.18.0. Landing 2 bent view not built | https://github.com/APKiwiOrg/KhaozEngine/issues/1608 | Owner rules on the measured cost of the approved #1602 run |
+| M2 Underwater sunlight for submerged receivers | shipped in v21.15.0 | https://github.com/APKiwiOrg/KhaozEngine/issues/1588 | none, its native run landed per WO-D21 |
+| M5 Water column light and shadow, with a bent view of the bed | Landing 1 shipped in v21.18.0. Landing 2 bent view not built | https://github.com/APKiwiOrg/KhaozEngine/issues/1608 | Owner rules on Landing 2's measured cost before it ships |
 | M6 Scene reflections in water | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1609 | Owner approves its design |
 | M7 River flow for procedural water | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1610 | Owner approves its design |
 | M3 Underwater caustics | design decisions taken, document not written | https://github.com/APKiwiOrg/KhaozEngine/issues/1604 | Owner approves its design, rules on its measured cost |
@@ -37,16 +37,15 @@ Rows are in the order the milestones run.
 | M9 Wet banks above the waterline, free to run alongside | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1612 | Owner approves its design |
 | M10 Underwater camera view | later, when Grimhollow schedules diving or swimming | https://github.com/APKiwiOrg/KhaozEngine/issues/1613 | Owner approves its design |
 | M4 Native R8b optical adapter | waiting on the R8a native renderer | https://github.com/APKiwiOrg/KhaozEngine/issues/1300 | None beyond the normal GPU gate |
-| Adoption in Grimhollow | Grimhollow pins v21.18.0 with ducks still shadowless. Next it opts the river in through WaterColumnLight, which the shared River look leaves null, then restores the duck shadow. Attaching a render pass observer with the column lit needs v21.19.0 for https://github.com/APKiwiOrg/KhaozEngine/issues/1633 | https://github.com/APKiwiOrg/Grimhollow/issues/651 | Grimhollow owner |
+| Adoption in Grimhollow | Grimhollow pins v21.18.0 with ducks still shadowless. Next it adopts v21.19.0, which carries the pass observer fix from https://github.com/APKiwiOrg/KhaozEngine/issues/1633, opts the river in through WaterColumnLight, which the shared River look leaves null, then restores the duck shadow | https://github.com/APKiwiOrg/Grimhollow/issues/651 | Grimhollow owner |
 
 ## Decisions in force
 
 - WO-D6: Caustics are their own milestone and read M2's water volume records.
 - WO-D7: Public fixtures are synthetic. No Grimhollow image, model or source enters this repository.
-- WO-D10: M2 shipped on its cost analysis without a native performance run. It is off unless a body opts in,
-  and an opted-in submerged pixel costs a fixed 16 shadow comparisons and a four-slice march. The native run
-  with opted-in water follows https://github.com/APKiwiOrg/KhaozEngine/issues/1602 and must land before M3
-  ships, because caustics add cost to the same pixels.
+- WO-D10: M2 shipped on its cost analysis, then the native run on
+  https://github.com/APKiwiOrg/KhaozEngine/issues/1602 measured M2 and M5 before M3. Both stay off unless a body
+  opts in, and an opted-in submerged pixel costs a fixed 16 shadow comparisons and a four-slice march.
 - WO-D11: The milestone order is the table order. It ranks each milestone by how much it improves the river
   for what it costs, and by how much later work reuses it. M5's scene colour copy feeds M6, and M3's camera
   window feeds M8.
@@ -68,31 +67,22 @@ Rows are in the order the milestones run.
 - WO-D20: Remaining work preserves [non-water shader source identity](../RENDER-PIPELINE.md#water-column-composite).
   Byte-identical compiled non-water shaders and the off-path GPU facts prove that frames without opted-in
   water are unchanged. `NonWaterShaderSourceEqualityTests` keeps this constraint executable.
+- WO-D21: The owner accepted the measured cost on 2026-10-29. Per the
+  [profile deltas](../performance/water-optics/profiles-water-optics-v2-linux-water-optics-v2-windows.md), M2
+  adds 1.5 to 1.8 ms in the opaque passes and M5 0.7 to 1.1 ms in the water surface pass at 1080p on a T4.
+  Both stay opt-in as measured. Making M2 cheaper is https://github.com/APKiwiOrg/KhaozEngine/issues/1657 and
+  does not block M3.
 
 ## Open questions and owner gates
 
 - Each milestone's design goes to the owner for approval before implementation.
-- The owner approved the water-optics-v2 run on https://github.com/APKiwiOrg/KhaozEngine/issues/1602 with
-  its own campaign maximum and a USD 7.382 cap. It measures OFF, M2 ON and M5 ON profiles of the village and
-  outdoors pools at the released code and publishes the OFF to M2 and M2 to M5 deltas, so it covers M2's
-  native run too. The owner rules on its cost, and per WO-D10 it lands before M3 ships. The presets, the
-  [rehearsals](../RENDERER-PERFORMANCE.md#water-optics-campaign) and the profile publication are built, and
-  the renderer performance program approved their admission. Both owner-approved free rehearsals passed at
-  b2fb9d2b3: lavapipe ran all 36 blocks and 12 controls in 3.8 h, WARP all 12 blocks and 12 controls in
-  1.5 h with a 38.6 s first frame of the 120 s limit. Lavapipe's measured bytes scale to about 95 MB for the
-  paid 19,632 frames, against 256 MiB. The
-  free legs job now runs trusted managed manifest admission before emitting the paid matrix. The renderer
-  performance owner reviews that trusted-path change and proves it with two free dispatches before any
-  paid unit goes out.
 - On T4 hardware M5 adds no measurable cost to frames that do not opt in. The 41 to 66% WARP slowdown is
   specific to the software rasterizer (https://github.com/APKiwiOrg/KhaozEngine/issues/1640).
 - M4 starts only when the R8a native renderer prepares and submits bounded water on main.
 
 ## Next step
 
-Land the free admission change once the renderer performance owner approves it and its two free proofs
-pass, then dispatch each paid leg once within the USD 7.382 cap, publish the profile deltas and bring the
-measured cost to the owner.
+Write the M3 caustics design document for the owner's approval, from the WO-D15 and WO-D16 decisions.
 Grimhollow, now on v21.18.0, opts the river in and restores the duck shadow under
 https://github.com/APKiwiOrg/Grimhollow/issues/651. [Landing 2](water-optics-design.md) remains unbuilt and
-touches no renderer performance file, so it can run alongside the #1602 work.
+touches no renderer performance file, so it can start at any time.

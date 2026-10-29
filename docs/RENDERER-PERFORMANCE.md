@@ -290,7 +290,13 @@ so the paid frame count would need eight hours or more. WARP therefore runs one 
 Together the rehearsals cover every recipe, profile, layout and control on both backends. WARP
 covers the S5 cold frame on D3D11, while lavapipe exercises the complete 49-operation publication
 end to end. The campaign size gate scales the lavapipe rehearsal's measured bytes to the paid
-19,632 frames. These estimates do not establish completion or authorize either rehearsal.
+19,632 frames.
+
+The first campaign ran at workload `4d5914ea2`. Both rehearsals completed, and lavapipe's bytes scaled
+to about 95 MB against 256 MiB. Both paid units were promotable with the clock locked at 1,095 MHz,
+in 538 and 687 unit seconds, and billed 14 Linux and 21 Windows minutes, USD 2.870 at list price. The
+published pair is [docs/performance/water-optics/](performance/water-optics/index-water-optics-v2-linux-water-optics-v2-windows.md),
+and its profile deltas are the measured M2 and M5 cost.
 
 ## Software correctness rehearsal
 
@@ -777,8 +783,8 @@ creation. An existing summary or pair index refuses before writes, even for iden
 Keep earlier files and publish new units under new names. An I/O failure can leave partial output,
 which remains evidence of that failed publication rather than permission to overwrite it.
 
-Store reviewed summaries under `docs/performance/renderer/` with the original received artifacts
-retained in their workflow run. The publisher does not commit files or dispatch follow-up work.
+Store reviewed summaries under `docs/performance/renderer/`, and profile publications under
+`docs/performance/water-optics/`, with the original received artifacts retained in their workflow run. The publisher does not commit files or dispatch follow-up work.
 The first eligible pair is published in [docs/performance/renderer/](performance/renderer/index-full-linux-full-windows.md):
 Tesla T4 Linux Vulkan and Windows D3D11 full units at workload `2243d40a7`, with the graphics clock locked at 1,095 MHz.
 The [verification record](verification/2026-10-21-renderer-performance-baseline.md) lists every attempt that led to it.

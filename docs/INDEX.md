@@ -51,6 +51,7 @@ against the engine version line. A completed design keeps decisions that still e
 
 | Doc | The program | Status |
 |---|---|---|
+| [Status effects](design/STATUS-EFFECTS.md) | Actor-keyed timed effects, stable refresh and periodic cadence, transient replication and ownership-gap retries. | Implemented. Finer movement speed quantization remains open in [#1652](https://github.com/APKiwiOrg/KhaozEngine/issues/1652). |
 | [Per-body water optics](design/WATER-OBJECT-OPTICS-DESIGN-2026-10-24.md) | Independent bed depth for shoreline and submerged-object appearance, explicit coverage and resource lifetime, TileWorld preparation and the R8b handoff. | Implemented for 21.14.0. Consumer and native R8b handoff open. |
 | [Triangle-backed optical beds](design/WATER-OPTICS-TRIANGLE-AMENDMENT-2026-10-24.md) | Exact emitted-mesh optical depth, bounded triangle atlas and transactional source generations. | Implemented for 21.14.0. Consumer and native R8b handoff open. |
 | [Water optics R8b handoff](design/WATER-OPTICS-R8B-HANDOFF-2026-10-24.md) | What a native bounded-water owner carries to bind the neutral triangle field: handle, local mapping and exact datum, coverage witness, byte charges and source digest. | Open native R8b handoff. [#1300](https://github.com/APKiwiOrg/KhaozEngine/issues/1300). |

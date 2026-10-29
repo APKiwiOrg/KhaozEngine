@@ -417,8 +417,8 @@ public partial class ContactControllerTests
     }
 
     // A grounded tick is the ground core's tick at the banded gate, with the default settings' half-radius foot.
-    // Publish the least representable centre covering the core's exact feet (#1647 I2). No row changes footing
-    // with time left, so each is the core's whole tick. ModeChanges covers the rest of such a tick.
+    // Supported feet publish the least centre covering them. Unsupported feet retain nearest mapping (#1647 I2).
+    // No row changes footing with time left, so each is the core's whole tick. ModeChanges covers the rest.
     [Theory]
     [MemberData(nameof(ParityRows))]
     public void GroundParityWithTheGroundCore(string row, SceneVariant variant)
@@ -439,14 +439,19 @@ public partial class ContactControllerTests
         GroundStepResult core = g.Core(start, velocity * Dt, tuning, Banded);
         bool grounded = core.Footing is GroundFooting.Walkable or GroundFooting.Held;
         Assert.True(grounded || !(core.RemainingTime > 0), $"{row} changes footing with time left: {core}");
-        // These fixture sums are exact in binary64. The independent oracle rounds upward to binary32.
+        // These fixture sums are exact in binary64. Only supported publication rounds upward to binary32.
+        bool supported = (grounded || core.Footing == GroundFooting.Steep) &&
+            core.Support.Status is SupportStatus.Walkable or SupportStatus.Steep;
         double exactCentre = (double)core.Feet.Y + HalfHeight;
         float centre = (float)exactCentre;
-        if (centre < exactCentre) centre = MathF.BitIncrement(centre);
+        if (supported && centre < exactCentre) centre = MathF.BitIncrement(centre);
         var expected = new Vector3(core.Feet.X, centre, core.Feet.Z);
         Assert.True(BitsEqual(expected, result.Position), $"{row}: core {core}, controller {Show(result)}");
-        Assert.True((double)result.Position.Y - HalfHeight >= core.Feet.Y);
-        Assert.True((double)MathF.BitDecrement(result.Position.Y) - HalfHeight < core.Feet.Y);
+        if (supported)
+        {
+            Assert.True((double)result.Position.Y - HalfHeight >= core.Feet.Y);
+            Assert.True((double)MathF.BitDecrement(result.Position.Y) - HalfHeight < core.Feet.Y);
+        }
         Assert.Equal(grounded, result.Grounded);
         Assert.Equal(grounded, result.SupportGranted);
         Assert.Equal(0f, result.VerticalVelocity);

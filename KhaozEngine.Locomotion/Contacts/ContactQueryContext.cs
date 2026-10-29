@@ -22,7 +22,7 @@ internal readonly struct ContactQueryContext
         ? leased.KernelFeet(centre, tuning) : _dry.KernelFeet(centre, tuning);
     internal Vector3 BodyCentre(Vector3 feet) => _leased is { } leased ? leased.BodyCentre(feet) : _dry.BodyCentre(feet);
     internal Vector3 SupportedBodyCentre(Vector3 feet, in SupportSample support) => _leased is { } leased
-        ? leased.SupportedBodyCentre(feet, support) : _dry.BodyCentre(feet);
+        ? leased.SupportedBodyCentre(feet, support) : _dry.SupportedBodyCentre(feet);
     internal void CheckDryMedium(Vector3 feet)
     {
         if (_leased is null) _dry.CheckMedium(feet);
@@ -88,7 +88,9 @@ internal readonly struct DryContactQueryContext(Func<float, float, float>? heigh
     internal bool HasShell => world is not null;
     internal Vector3 KernelFeet(Vector3 centre, in MoveTuning knobs) =>
         new(centre.X, centre.Y - knobs.CapsuleHalfHeight, centre.Z);
-    internal Vector3 BodyCentre(Vector3 feet) => new(feet.X, SupportedCapsulePose.Centre(feet.Y, _halfHeight), feet.Z);
+    internal Vector3 BodyCentre(Vector3 feet) => new(feet.X, feet.Y + _halfHeight, feet.Z);
+    internal Vector3 SupportedBodyCentre(Vector3 feet) =>
+        new(feet.X, SupportedCapsulePose.Centre(feet.Y, _halfHeight), feet.Z);
     internal void CheckMedium(Vector3 feet)
     {
         if (medium is not null && medium(feet.X, feet.Z, feet.Y).InWater)

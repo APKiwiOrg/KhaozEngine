@@ -71,7 +71,8 @@ internal sealed partial class LeasedContactQueryContext
         new(centre.X, _composition.PlacementOffset == 0 ? centre.Y - tuning.CapsuleHalfHeight :
             Mapped((double)centre.Y - tuning.CapsuleHalfHeight - _composition.PlacementOffset), centre.Z);
     internal Vector3 BodyCentre(Vector3 feet) =>
-        new(feet.X, SupportedCapsulePose.Centre(feet.Y, _tuning.CapsuleHalfHeight, _composition.PlacementOffset), feet.Z);
+        new(feet.X, _composition.PlacementOffset == 0 ? feet.Y + _tuning.CapsuleHalfHeight :
+            Mapped(_composition.RestingFeet((double)feet.Y + _tuning.CapsuleHalfHeight)), feet.Z);
     internal Vector3 SupportedBodyCentre(Vector3 feet, in SupportSample support)
     {
         SupportHeightTranslation translation = default;

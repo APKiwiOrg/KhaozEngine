@@ -37,7 +37,8 @@ configuration as two selections.
 `EffectiveMovementBinding.Ordinary` composes the leased contact controller at zero placement offset.
 Contact converts geometric feet to a representable capsule centre with directed rounding whenever the exact
 centre minus half height would fall below support. Settling and tick publication share this producer, including
-the dry Contact path. The public explicit composition retains its checked placement offset and the same
+the dry Contact path. World-to-frame analytic support conversion also rounds upward when its exact translated
+height would fall below the original world bed. The public explicit composition retains its checked placement offset and the same
 non-penetration guarantee. Water membership continues to compare exact feet with the represented bed.
 The static installer publishes fixed authored provenance in `OrdinaryMovementRegistration` under its source read lease,
 with a finite `OrdinaryMovementExtent`, inclusive feature ranges and authored `MovementSupportKey` owners.

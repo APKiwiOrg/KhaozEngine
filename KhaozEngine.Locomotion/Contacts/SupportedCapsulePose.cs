@@ -5,6 +5,13 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// <summary>Publishes a representable capsule centre whose exact feet cover its geometric support.</summary>
 internal static class SupportedCapsulePose
 {
+    internal static float LocalSupport(float height, float origin)
+    {
+        float local = height - origin;
+        return float.IsFinite(local) && OrdinaryMovementEnvironment.ExactSign(local, origin, -height) < 0
+            ? MathF.BitIncrement(local) : local;
+    }
+
     internal static float Centre(float feet, float halfHeight, float placementOffset = 0)
     {
         double value = (double)feet + halfHeight + placementOffset;

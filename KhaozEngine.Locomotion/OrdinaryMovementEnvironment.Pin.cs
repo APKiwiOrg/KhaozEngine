@@ -129,12 +129,12 @@ internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, 
         Vector2 axis = new(request.Body.Centre.X, request.Body.Centre.Z);
         Vector3 origin = Frame.PhysicsOrigin;
         bool localGround = _owner.GroundSpace == OrdinaryGroundSpace.Frame;
-        // World delegates keep the dry adapter's rounded translation. Frame delegates keep the original operands.
+        // World horizontal delegates keep the dry adapter's rounded translation. Frame delegates keep the original operands.
         float x = localGround ? axis.X : axis.X + origin.X;
         float z = localGround ? axis.Y : axis.Y + origin.Z;
         float height = _owner.GroundHeight(x, z);
         if (!float.IsFinite(height)) return MovementAvailability.Unresolved;
-        float local = localGround ? height : height - origin.Y;
+        float local = localGround ? height : Contacts.SupportedCapsulePose.LocalSupport(height, origin.Y);
         if (local > Witness.Scope.EnvelopeMax.Y) return MovementAvailability.Unresolved;
         if (local < Witness.Scope.EnvelopeMin.Y) return MovementAvailability.Known;
         OrdinaryMovementExtent extent = _owner.Registration.Extent;

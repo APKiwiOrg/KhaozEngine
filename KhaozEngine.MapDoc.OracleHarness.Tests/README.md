@@ -905,8 +905,11 @@ When declared, the monolithic form also loads independently twice, supplying two
 into aggregates and retain bounded private discrepancy examples, never a full sample corpus.
 Every failed check contributes to a per-category `scene-failure-summary` record, even after the first
 16 detailed examples. Classifications carry resource kind, key class, differing field and count.
-Checks without a resource key use the scene-wide class and their check category as the field unless
-an explicit differing field is available. Totals include every failure without retaining every detail.
+Resource checks pass explicit kind, key class and differing-field metadata through `CheckResource`,
+including source comparisons without a render key. This metadata is counted independently of retained
+examples. Native rigid foliage parts use `model-part/<n>` and classify as `rigid-model-part`.
+Only checks covering the scene as a whole use the scene-wide fallback. Totals include every failure
+without retaining every detail.
 
 Before attestation, retain one non-attesting diagnostic draft with every discrepancy kind/count and
 bounded examples. A semantic rule difference needs a controller ruling, never a looser tolerance.

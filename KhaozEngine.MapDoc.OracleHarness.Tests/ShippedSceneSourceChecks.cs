@@ -63,7 +63,7 @@ internal static class ShippedSceneSourceChecks
                 if (found is not null)
                     foreach (var pair in new[] { (extent.BoundsInSourceUnits.Min, found.BoundsInSourceUnits.Min), (extent.BoundsInSourceUnits.Max, found.BoundsInSourceUnits.Max) })
                         same &= Vector3.Distance(pair.Item1 * extent.SourceUnitsToMetres, pair.Item2 * found.SourceUnitsToMetres) <= GeometryTolerance;
-                Check(report, "scene-foliage-bounds", same, new { model = extent.AssetId });
+                CheckResource(report, "scene-foliage-bounds", same, new { model = extent.AssetId }, MapRenderKind.Foliage, "model", "bounds");
             }
         var nativeOptions = System.Text.Json.JsonSerializer.SerializeToNode(b.Foliage, ShippedScenePolicy.Json);
         Check(report, "scene-policy", System.Text.Json.Nodes.JsonNode.DeepEquals(source, nativeOptions), new { policy = "foliage options" });
@@ -97,20 +97,20 @@ internal static class ShippedSceneSourceChecks
                     int x = (int)Math.Floor(((double)a.X + b.X + c.X) / 3), z = (int)Math.Floor(-((double)a.Z + b.Z + c.Z) / 3);
                     var matches = (faces.GetValueOrDefault((x, z)) ?? []).Where(f => SameTriangle(a, b, c, f.Triangle)).ToArray();
                     if (!whollyInside && matches.Length == 0) continue;
-                    Check(report, "scene-terrain", matches.Length == 1 && matches.All(f => Math.Abs(f.Face.Normal.X - normal.X) <= NormalTolerance && Math.Abs(f.Face.Normal.Y - normal.Y) <= NormalTolerance && Math.Abs(f.Face.Normal.Z - normal.Z) <= NormalTolerance), new { region, plane, triangle = i / 3 });
+                    CheckResource(report, "scene-terrain", matches.Length == 1 && matches.All(f => Math.Abs(f.Face.Normal.X - normal.X) <= NormalTolerance && Math.Abs(f.Face.Normal.Y - normal.Y) <= NormalTolerance && Math.Abs(f.Face.Normal.Z - normal.Z) <= NormalTolerance), new { region, plane, triangle = i / 3 }, MapRenderKind.Terrain, "face", "source-triangle");
                     foreach (var face in matches)
                     {
                         expectedFaces.Add(face.Face.Key, ShippedSceneTerrainCoverage.Source(inputs.World, a, b, c, x, z, plane));
                         var parts = partsByFace[face.Face.Key].ToArray();
-                        Check(report, "scene-terrain-frame", parts.Length > 0, new { face.Face.Key });
+                        CheckResource(report, "scene-terrain-frame", parts.Length > 0, new { face.Face.Key }, MapRenderKind.Terrain, "face", "registration");
                         foreach (var part in parts) required[part] = face.Anchor;
                         ushort underlay = inputs.World.GetUnderlay(x, z, plane), overlay = inputs.World.GetOverlay(x, z, plane);
-                        Check(report, "scene-terrain-material", face.Paint.Underlay == underlay && face.Paint.Overlay == overlay, new { region, plane, x, z });
+                        CheckResource(report, "scene-terrain-material", face.Paint.Underlay == underlay && face.Paint.Overlay == overlay, new { region, plane, x, z }, MapRenderKind.Terrain, "face", "paint-materials");
                     }
                 }
             }
         foreach (var resource in plan.Inventory.Terrain.Partitions)
-            Check(report, "scene-terrain-material", resource.Paint.Underlay == 0 || inputs.Manifest.Materials.Any(m => m.SourceMaterialId == resource.Paint.Underlay), new { resource.Face });
+            CheckResource(report, "scene-terrain-material", resource.Paint.Underlay == 0 || inputs.Manifest.Materials.Any(m => m.SourceMaterialId == resource.Paint.Underlay), new { resource.Face }, MapRenderKind.Terrain, "partition", "material-binding");
         foreach (var payload in registrations.Select(r => r.Payload).OfType<MapTerrainResource>())
             foreach (var layer in payload.Materials.Layers)
             {
@@ -124,7 +124,7 @@ internal static class ShippedSceneSourceChecks
                     same &= actual is { } image && image.Width == original.Width && image.Height == original.Height && image.Rgba.SequenceEqual(original.Pixels) && Bits(layer.Tint, Vector4.One);
                 }
                 else if (source is not null) same &= Bits(TileColors.Parse(source.Color), layer.Tint);
-                Check(report, "scene-terrain-material", same, new { layer.MaterialId });
+                CheckResource(report, "scene-terrain-material", same, new { layer.MaterialId }, MapRenderKind.Terrain, "material", "appearance");
             }
         return required;
     }
@@ -136,23 +136,27 @@ internal static class ShippedSceneSourceChecks
     internal static void ExplicitPlant(LegacyScenePlacement source, string owner, IReadOnlyList<MapPreparedResource> resources, ShippedSceneInputs inputs, PrivateOracleReport report)
     {
         var registration = resources.SingleOrDefault(r => r.Reference.Key.OwnerId == owner && r.Payload is MapFoliageResource);
-        Check(report, "scene-foliage", registration?.Payload is MapFoliageResource, new { owner });
+        CheckResource(report, "scene-foliage", registration?.Payload is MapFoliageResource, new { owner }, MapRenderKind.Foliage, "instances", "registration");
         if (registration?.Payload is not MapFoliageResource payload) return;
         if (payload.TransformSpace != MapFoliageTransformSpace.AnchorLocal)
-        { Check(report, "scene-foliage", false, new { owner }); return; }
+        { CheckResource(report, "scene-foliage", false, new { owner }, MapRenderKind.Foliage, "instances", "transform-space"); return; }
         var transforms = payload.AnchorLocalTransforms.ToArray();
-        Check(report, "scene-foliage", payload.TransformSpace == MapFoliageTransformSpace.AnchorLocal && transforms.Length == 1 && payload.ModelIndices.Length == 1 && payload.Models.Count == 1, new { owner });
+        CheckResource(report, "scene-foliage", payload.TransformSpace == MapFoliageTransformSpace.AnchorLocal && transforms.Length == 1 && payload.ModelIndices.Length == 1 && payload.Models.Count == 1, new { owner }, MapRenderKind.Foliage, "instances", "layout");
         if (transforms.Length != 1 || payload.Models.Count != 1) return;
         var world = transforms[0] * Matrix4x4.CreateTranslation((float)payload.Anchor.X, (float)payload.Anchor.Y, (float)payload.Anchor.Z);
-        Check(report, "scene-transform", MatrixNear(world, source.World), new { owner });
+        CheckResource(report, "scene-transform", MatrixNear(world, source.World), new { owner }, MapRenderKind.Foliage, "instances", "transform");
         var stable = GroundCoverModelPolicy.Resolve(inputs.SourcePolicy.Foliage, source.ArchetypeId);
-        Check(report, "scene-foliage-registration", Bits(stable.Motion, payload.Models[0].Motion) && stable.CastShadows == payload.Models[0].CastShadows, new { owner });
+        CheckResource(report, "scene-foliage-registration", Bits(stable.Motion, payload.Models[0].Motion) && stable.CastShadows == payload.Models[0].CastShadows, new { owner }, MapRenderKind.Foliage, "model", "policy");
         var parts = payload.Models[0].Parts;
-        Check(report, "scene-placement-part", parts.Count == source.Tiers[0].Count, new { owner });
+        CheckResource(report, "scene-placement-part", parts.Count == source.Tiers[0].Count, new { owner }, MapRenderKind.Foliage, "model", "part-count");
         for (int i = 0; i < Math.Min(parts.Count, source.Tiers[0].Count); i++)
         {
             var part = resources.SingleOrDefault(r => r.Reference == parts[i]);
-            Check(report, "scene-foliage-registration", part?.Payload is MapRigidResource mesh && MeshEqual(source.Tiers[0][i].Mesh, mesh.Mesh) && MapsEqual(source.Tiers[0][i].Maps, mesh.Maps), new { owner, part = i });
+            var key = new MapRenderKey(MapRenderKind.Foliage, payload.Models[0].ModelId, "model-part/" + i, 0);
+            CheckResource(report, "scene-foliage-registration", part?.Payload is MapRigidResource, new { owner, part = i }, key, "registration");
+            if (part?.Payload is not MapRigidResource mesh) continue;
+            CheckResource(report, "scene-foliage-registration", MeshEqual(source.Tiers[0][i].Mesh, mesh.Mesh), new { owner, part = i }, key, "mesh");
+            CheckResource(report, "scene-foliage-registration", MapsEqual(source.Tiers[0][i].Maps, mesh.Maps), new { owner, part = i }, key, "material-maps");
         }
     }
 
@@ -185,19 +189,19 @@ internal static class ShippedSceneSourceChecks
         {
             var mapping = inputs.Manifest.Water.SingleOrDefault(w => w.NativeBodyId == cell.Key.BodyId);
             bool bound = mapping is not null && bodies.TryGetValue(mapping.SourceBodyKey, out _);
-            Check(report, "scene-water", bound, new { cell.Key });
+            CheckResource(report, "scene-water", bound, new { cell.Key }, MapRenderKind.Water, "cell", "source-binding");
             if (!bound) continue;
             var body = bodies[mapping!.SourceBodyKey];
-            Check(report, "scene-water", Bits(cell.SurfaceY, body.SurfaceY) && mapping.NativeSpaceIds.Contains(cell.Key.SpaceId, StringComparer.Ordinal), new { cell.Key });
+            CheckResource(report, "scene-water", Bits(cell.SurfaceY, body.SurfaceY) && mapping.NativeSpaceIds.Contains(cell.Key.SpaceId, StringComparer.Ordinal), new { cell.Key }, MapRenderKind.Water, "cell", "surface-and-space");
             foreach (var region in cell.Regions)
             {
-                Check(report, "scene-water", region.Kind != MapWaterRegionKind.Unresolved, new { cell.Key, region.Kind });
+                CheckResource(report, "scene-water", region.Kind != MapWaterRegionKind.Unresolved, new { cell.Key, region.Kind }, MapRenderKind.Water, "cell", "region-kind");
                 foreach (var triangle in region.Triangles)
                 {
                     double x = (triangle.A.X.ToDouble() + triangle.B.X.ToDouble() + triangle.C.X.ToDouble()) / 3;
                     double z = -(triangle.A.Z.ToDouble() + triangle.B.Z.ToDouble() + triangle.C.Z.ToDouble()) / 3;
                     bool inside = body.Rects.Any(rect => x >= rect.X && x <= rect.X + rect.Width && z >= rect.Z && z <= rect.Z + rect.Height);
-                    Check(report, "scene-water", inside, new { cell.Key });
+                    CheckResource(report, "scene-water", inside, new { cell.Key }, MapRenderKind.Water, "cell", "region-coverage");
                 }
             }
         }

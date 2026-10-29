@@ -23,11 +23,11 @@ internal static class SceneStreamComparison
         foreach (var key in baseline.Keys.Union(rows.Keys))
         {
             bool one = baseline.ContainsKey(key) && rows.TryGetValue(key, out var found) && found.Length == 1;
-            Check(report, "scene-stream-union", one, new { key, differingField = "window-resource-count" });
+            CheckResource(report, "scene-stream-union", one, new { key, differingField = "window-resource-count" }, key, "window-resource-count");
             if (!one) continue;
             var expected = baseline[key]; var observed = Capture(rows[key][0]);
-            Check(report, "scene-stream-union", expected.Payload == observed.Payload, new { key, differingField = "window-payload" });
-            Check(report, "scene-stream-union", expected.Bounds == observed.Bounds, new { key, differingField = "window-bounds" });
+            CheckResource(report, "scene-stream-union", expected.Payload == observed.Payload, new { key, differingField = "window-payload" }, key, "window-payload");
+            CheckResource(report, "scene-stream-union", expected.Bounds == observed.Bounds, new { key, differingField = "window-bounds" }, key, "window-bounds");
         }
     }
 
@@ -38,7 +38,7 @@ internal static class SceneStreamComparison
         foreach (var key in expected.Keys.Union(observed.Keys))
         {
             bool present = expected.ContainsKey(key) && observed.ContainsKey(key);
-            Check(report, "scene-stream-union", present, new { key, differingField = "union-coverage" });
+            CheckResource(report, "scene-stream-union", present, new { key, differingField = "union-coverage" }, key, "union-coverage");
             if (!present) continue;
             foreach (var row in observed[key]) Compare(expected[key], row, report);
         }
@@ -47,8 +47,8 @@ internal static class SceneStreamComparison
     static void Compare(SceneStreamResource expected, SceneStreamResource actual, PrivateOracleReport report)
     {
         var key = expected.Key;
-        Check(report, "scene-stream-union", expected.Payload == actual.Payload, new { key, differingField = "payload" });
-        Check(report, "scene-stream-union", expected.RigidFoliage && actual.RigidFoliage || expected.Bounds == actual.Bounds,
-            new { key, differingField = "bounds" });
+        CheckResource(report, "scene-stream-union", expected.Payload == actual.Payload, new { key, differingField = "payload" }, key, "payload");
+        CheckResource(report, "scene-stream-union", expected.RigidFoliage && actual.RigidFoliage || expected.Bounds == actual.Bounds,
+            new { key, differingField = "bounds" }, key, "bounds");
     }
 }

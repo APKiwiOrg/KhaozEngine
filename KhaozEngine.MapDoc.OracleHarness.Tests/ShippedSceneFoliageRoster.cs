@@ -100,12 +100,12 @@ internal static partial class ShippedSceneFoliageRoster
     {
         var generations = actual.Generations.GroupBy(g => (g.LayerId, g.Chunk)).ToDictionary(g => g.Key, g => g.Count());
         var required = expected.ToDictionary(g => (g.Binding.Row.NativeLayerId, g.Chunk));
-        Check(report, "scene-foliage-key", generations.Count == required.Count && generations.All(g => g.Value == 1 && required.ContainsKey(g.Key)),
-            new { expected = required.Count, actual = generations.Count });
+        CheckResource(report, "scene-foliage-key", generations.Count == required.Count && generations.All(g => g.Value == 1 && required.ContainsKey(g.Key)),
+            new { expected = required.Count, actual = generations.Count }, MapRenderKind.Foliage, "generation-set", "inventory");
         var sourceRows = expected.SelectMany(g => g.Rows.Select(r => (Generation: g, Row: r))).ToDictionary(r => r.Row.Key);
         var ids = actual.Identities.GroupBy(k => k).ToDictionary(g => g.Key, g => g.Count());
-        Check(report, "scene-foliage-key", sourceRows.Count == actual.Identities.Count && ids.All(k => k.Value == 1 && sourceRows.ContainsKey(k.Key)),
-            new { expected = sourceRows.Count, actual = actual.Identities.Count });
+        CheckResource(report, "scene-foliage-key", sourceRows.Count == actual.Identities.Count && ids.All(k => k.Value == 1 && sourceRows.ContainsKey(k.Key)),
+            new { expected = sourceRows.Count, actual = actual.Identities.Count }, MapRenderKind.Foliage, "sample-set", "identities");
         var resources = actual.DrawSet.Resources;
         var originals = sourceRows.Values.Select(r => r.Row.Instance.ModelId).Distinct(StringComparer.Ordinal).ToDictionary(id => id,
             id => KhaozEngine.Render3D.GltfLoader.LoadPartsWithMaterials(inputs.OriginalMeshes[inputs.SourceModelPaths[id]], "attested source foliage model"));
@@ -115,20 +115,20 @@ internal static partial class ShippedSceneFoliageRoster
             var group = resources.Where(r => r.Reference.Key == generation.Key && r.Payload is MapFoliageResource).ToArray();
             var rowIds = actual.Identities.Where(k => sourceRows.TryGetValue(k, out var r) && ReferenceEquals(r.Generation, generation)).ToArray();
             bool complete = generations.ContainsKey((generation.Binding.Row.NativeLayerId, generation.Chunk)) && rowIds.Length == generation.Rows.Count;
-            Check(report, "scene-foliage-key", complete, new { generation.Owner, expected = generation.Rows.Count, actual = rowIds.Length });
+            CheckResource(report, "scene-foliage-key", complete, new { generation.Owner, expected = generation.Rows.Count, actual = rowIds.Length }, generation.Key, "sample-identities");
             if (generation.Rows.Count == 0)
             {
-                Check(report, "scene-foliage-key", group.Length == 0, new { generation.Owner });
+                CheckResource(report, "scene-foliage-key", group.Length == 0, new { generation.Owner }, generation.Key, "resource-count");
                 continue;
             }
-            Check(report, "scene-foliage-key", group.Length == 1, new { generation.Owner });
+            CheckResource(report, "scene-foliage-key", group.Length == 1, new { generation.Owner }, generation.Key, "resource-count");
             if (group.Length != 1) continue;
             var payload = (MapFoliageResource)group[0].Payload;
             if (payload.TransformSpace != MapFoliageTransformSpace.World)
-            { Check(report, "scene-foliage", false, new { generation.Owner }); continue; }
+            { CheckResource(report, "scene-foliage", false, new { generation.Owner }, generation.Key, "transform-space"); continue; }
             var transforms = payload.WorldTransforms.ToArray(); var indices = payload.ModelIndices.ToArray(); var ranks = payload.Ranks.ToArray();
-            Check(report, "scene-foliage-key", transforms.Length == generation.Rows.Count && rowIds.Length == transforms.Length,
-                new { generation.Owner, expected = generation.Rows.Count, actual = transforms.Length });
+            CheckResource(report, "scene-foliage-key", transforms.Length == generation.Rows.Count && rowIds.Length == transforms.Length,
+                new { generation.Owner, expected = generation.Rows.Count, actual = transforms.Length }, generation.Key, "row-count");
             MapBox3? bounds = null;
             foreach (var row in generation.Rows)
             {
@@ -136,11 +136,14 @@ internal static partial class ShippedSceneFoliageRoster
                 var next = ShippedSceneSourceChecks.Bounds(extent, row.Instance.Transform);
                 bounds = bounds?.Union(next) ?? next;
             }
-            Check(report, "scene-foliage-bounds", bounds is { } want && ShippedSceneSourceChecks.BoundsNear(want, group[0].Bounds), new { generation.Owner });
+            CheckResource(report, "scene-foliage-bounds", bounds is { } want && ShippedSceneSourceChecks.BoundsNear(want, group[0].Bounds), new { generation.Owner }, generation.Key, "bounds");
             for (int i = 0; i < Math.Min(transforms.Length, rowIds.Length); i++)
             {
                 var row = sourceRows[rowIds[i]].Row.Instance; var model = payload.Models[indices[i]];
-                Check(report, "scene-foliage", generation.Binding.Models[row.ModelId] == model.ModelId && Bits(row.Transform, transforms[i]) && Bits(row.ThinningRank, ranks[i]), new { generation.Owner, row = i });
+                CheckResource(report, "scene-foliage", generation.Binding.Models[row.ModelId] == model.ModelId,
+                    new { generation.Owner, row = i }, generation.Key, "model-binding");
+                CheckResource(report, "scene-foliage", Bits(row.Transform, transforms[i]), new { generation.Owner, row = i }, generation.Key, "transform");
+                CheckResource(report, "scene-foliage", Bits(row.ThinningRank, ranks[i]), new { generation.Owner, row = i }, generation.Key, "rank");
                 if (comparedModels.Add((row.ModelId, model))) CheckModel(inputs, row.ModelId, model, originals[row.ModelId], resources, report);
             }
         }
@@ -148,14 +151,18 @@ internal static partial class ShippedSceneFoliageRoster
     internal static void CheckModel(ShippedSceneInputs inputs, string sourceModel, MapFoliageModelBinding model,
         IReadOnlyList<KhaozEngine.Render3D.GltfMeshPart> parts, IReadOnlyList<MapPreparedResource> resources, PrivateOracleReport report)
     {
-        Check(report, "scene-foliage-registration", parts.Count == model.Parts.Count, new { model.ModelId });
+        CheckResource(report, "scene-foliage-registration", parts.Count == model.Parts.Count, new { model.ModelId }, MapRenderKind.Foliage, "model", "part-count");
         for (int i = 0; i < Math.Min(parts.Count, model.Parts.Count); i++)
         {
             var found = resources.Where(r => r.Reference == model.Parts[i]).ToArray();
-            Check(report, "scene-foliage-registration", model.Parts[i].Key == new MapRenderKey(MapRenderKind.Foliage, model.ModelId, "model-part/" + i, 0) && found.Length == 1 && found[0].Payload is MapRigidResource mesh &&
-                MeshEqual(parts[i].Mesh, mesh.Mesh) && MapsEqual(parts[i].Maps, mesh.Maps), new { model.ModelId, part = i });
+            var key = new MapRenderKey(MapRenderKind.Foliage, model.ModelId, "model-part/" + i, 0);
+            CheckResource(report, "scene-foliage-registration", model.Parts[i].Key == key && found.Length == 1 && found[0].Payload is MapRigidResource,
+                new { model.ModelId, part = i }, key, "registration");
+            if (found.Length != 1 || found[0].Payload is not MapRigidResource mesh) continue;
+            CheckResource(report, "scene-foliage-registration", MeshEqual(parts[i].Mesh, mesh.Mesh), new { model.ModelId, part = i }, key, "mesh");
+            CheckResource(report, "scene-foliage-registration", MapsEqual(parts[i].Maps, mesh.Maps), new { model.ModelId, part = i }, key, "material-maps");
         }
         var stable = GroundCoverModelPolicy.Resolve(inputs.SourcePolicy.Foliage, sourceModel);
-        Check(report, "scene-foliage-registration", Bits(stable.Motion, model.Motion) && stable.CastShadows == model.CastShadows, new { model.ModelId });
+        CheckResource(report, "scene-foliage-registration", Bits(stable.Motion, model.Motion) && stable.CastShadows == model.CastShadows, new { model.ModelId }, MapRenderKind.Foliage, "model", "policy");
     }
 }

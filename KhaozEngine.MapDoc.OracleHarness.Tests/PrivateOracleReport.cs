@@ -66,10 +66,10 @@ internal sealed class PrivateOracleReport : IDisposable
         _writer.WriteLine(JsonSerializer.Serialize(new { category, detail = detail.RootElement }));
     }
 
-    internal void Check(string category, bool ok, string detailJson, bool retainDetail = true)
+    internal void Check(string category, bool ok, string detailJson, bool retainDetail = true, SceneFailureClassification? classification = null)
     {
         if (ok) return;
-        _aggregation.Add(category, detailJson);
+        _aggregation.Add(category, detailJson, classification);
         Record(category, retainDetail ? detailJson : "{}");
         if (!_failed.TryGetValue(category, out int count)) _failureOrder.Add(category);
         _failed[category] = checked(count + 1);

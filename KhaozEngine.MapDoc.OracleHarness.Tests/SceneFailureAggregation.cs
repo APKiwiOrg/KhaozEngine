@@ -8,10 +8,16 @@ namespace KhaozEngine.Tests.MapDocOracle;
 /// <summary>Counts all failures independently of the bounded example payloads.</summary>
 internal sealed class SceneFailureAggregation
 {
-    readonly record struct Classification(string ResourceKind, string KeyClass, string DifferingField);
-    readonly Dictionary<string, Dictionary<Classification, int>> _categories = new(StringComparer.Ordinal);
+    readonly Dictionary<string, Dictionary<SceneFailureClassification, int>> _categories = new(StringComparer.Ordinal);
 
-    internal void Add(string category, string detailJson)
+    internal void Add(string category, string detailJson, SceneFailureClassification? classification = null)
+    {
+        var identity = classification ?? Infer(category, detailJson);
+        if (!_categories.TryGetValue(category, out var counts)) _categories.Add(category, counts = []);
+        counts.TryGetValue(identity, out int count); counts[identity] = checked(count + 1);
+    }
+
+    static SceneFailureClassification Infer(string category, string detailJson)
     {
         using var json = JsonDocument.Parse(detailJson);
         var detail = json.RootElement;
@@ -22,18 +28,10 @@ internal sealed class SceneFailureAggregation
             if (detail.TryGetProperty("key", out var key) && key.ValueKind == JsonValueKind.Object)
             {
                 if (key.TryGetProperty("kind", out var value)) kind = value.ToString();
-                if (key.TryGetProperty("partId", out var part)) keyClass = part.GetString() switch
-                {
-                    "hlod" => "proxy",
-                    "instances" => "instances",
-                    { } id when id.StartsWith("part/", StringComparison.Ordinal) => kind == "Foliage" ? "rigid-model-part" : "part",
-                    _ => "resource"
-                };
+                if (key.TryGetProperty("partId", out var part)) keyClass = SceneFailureClassification.Class(kind, part.GetString());
             }
         }
-        var classification = new Classification(kind, keyClass, field);
-        if (!_categories.TryGetValue(category, out var counts)) _categories.Add(category, counts = []);
-        counts.TryGetValue(classification, out int count); counts[classification] = checked(count + 1);
+        return new(kind, keyClass, field);
     }
 
     internal IEnumerable<string> Summaries() => _categories.OrderBy(p => p.Key, StringComparer.Ordinal).Select(category =>

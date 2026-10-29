@@ -38,7 +38,7 @@ internal static partial class ShippedSceneWaterCoverage
             foreach (var resource in actual.Resources.Where(r => r.Reference.Key.Kind == MapRenderKind.Water && r.Reference.Key.OwnerId == mapping.NativeBodyId))
             {
                 bool bound = resource.Payload is MapWaterResource && keys.TryGetValue(resource.Reference.Key, out _);
-                Check(report, "scene-water-geometry", bound, new { resource.Reference.Key });
+                CheckResource(report, "scene-water-geometry", bound, new { resource.Reference.Key }, resource.Reference.Key, "registration");
                 if (!bound) continue;
                 var cell = keys[resource.Reference.Key]; var payload = (MapWaterResource)resource.Payload;
                 foreach (var draw in actual.Draws.Where(d => d.Resource == resource.Reference))
@@ -48,7 +48,7 @@ internal static partial class ShippedSceneWaterCoverage
                     {
                         SceneSurfacePoint P(int n) => SceneSurfacePoint.World(mesh.Vertices[mesh.Indices32[n]].Position, draw);
                         var triangle = new SceneSurfaceTriangle(P(i), P(i + 1), P(i + 2));
-                        Check(report, "scene-water-geometry", triangle.Points.All(p => p.Finite && Math.Abs(p.Y - body.SurfaceY) <= GeometryTolerance), new { resource.Reference.Key });
+                        CheckResource(report, "scene-water-geometry", triangle.Points.All(p => p.Finite && Math.Abs(p.Y - body.SurfaceY) <= GeometryTolerance), new { resource.Reference.Key }, resource.Reference.Key, "height");
                         triangles.Add(triangle);
                     }
                     if (!submitted.TryGetValue(cell, out var rows)) submitted.Add(cell, rows = []);
@@ -61,12 +61,12 @@ internal static partial class ShippedSceneWaterCoverage
                     };
                     var clipExpected = Cells(body, scope, inputs.NativeTileSize).SelectMany(c => Domain(body, c, inputs.NativeTileSize)).ToArray();
                     bool decoded = DecodeClip(payload, draw, body.SurfaceY, out var clip);
-                    Check(report, "scene-water-clip", decoded && SceneSurfaceCoverage.Covers(clipExpected, clip), new { resource.Reference.Key });
+                    CheckResource(report, "scene-water-clip", decoded && SceneSurfaceCoverage.Covers(clipExpected, clip), new { resource.Reference.Key }, resource.Reference.Key, "clip");
                 }
             }
             foreach (var cell in expected.Union(submitted.Keys))
-                Check(report, "scene-water-geometry", SceneSurfaceCoverage.Covers(expected.Contains(cell) ? Domain(body, cell, inputs.NativeTileSize) : [],
-                    submitted.GetValueOrDefault(cell) ?? []), new { mapping.NativeBodyId, cell });
+                CheckResource(report, "scene-water-geometry", SceneSurfaceCoverage.Covers(expected.Contains(cell) ? Domain(body, cell, inputs.NativeTileSize) : [],
+                    submitted.GetValueOrDefault(cell) ?? []), new { mapping.NativeBodyId, cell }, MapRenderKind.Water, "cell", "coverage");
         }
     }
 

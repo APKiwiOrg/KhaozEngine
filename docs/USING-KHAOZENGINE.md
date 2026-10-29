@@ -27677,23 +27677,25 @@ already exist (it never creates a neighbor), re-mirrors each sync (a moved owner
 leaves the border is despawned), and assumes globally-unique `NetId`s across cells.
 
 **Authority handoff (Phase 3C).** When an owned entity's position crosses into another cell, `ProcessHandoffs()`
-transfers authority with **exactly-once** semantics (never two owners, never zero):
+transfers authority with **exactly-once** semantics (never two owners, never double-simulated, never lost):
 
 ```csharp
 host.ProcessHandoffs();   // after Tick(); typically Tick -> ProcessHandoffs -> SyncGhosts each host step
 
 // who owns it now (and the owned entity):
 if (host.TryGetOwner(netId, out CellSim owner, out Entity owned)) { /* ... */ }
-int owners = host.OwnerCount(netId);   // == 1 for a live entity at every call boundary
+int owners = host.OwnerCount(netId);   // 1 once settled, 0 while a deferred handoff holds it frozen
+bool moving = host.IsInHandoff(netId); // true during that gap
 ```
 
 The owner captures the entity's full registered component set, sends a `Migrate` over `ICellLink`, and freezes it
 (`Migrating`, not simulated, not counted as an owner); the destination adopts it as a new owned entity (despawning
 any prior ghost of it) and acks; the owner releases it. The entity keeps its `NetId` across the move, and the
-destination cell is created if needed. The in-process link completes the whole handshake within the call (so the
-exactly-once invariant holds at every call boundary); a networked link would keep the entity `Migrating` on the
-source until the ack arrives - never double-simulated, never permanently lost. Game systems must treat
-`Migrating` entities as frozen, like `Ghost`s.
+destination cell is created if needed. The in-process link usually completes the whole handshake within the call.
+A destination that defers admission, or a networked link, keeps the entity `Migrating` on the source until the
+ack arrives. During that gap `OwnerCount` is 0, `TryGetOwner` finds nothing and `IsInHandoff(netId)` is true, so
+code that writes state by owner retries rather than treating the entity as gone. It is never double-simulated and
+never permanently lost. Game systems must treat `Migrating` entities as frozen, like `Ghost`s.
 
 **Client home-cell serving (Phase 3D).** Each client is served its entire area-of-interest from a single **home
 cell** - the cell that owns its player. Because of the invariant **overlap margin >= interest radius**, that cell

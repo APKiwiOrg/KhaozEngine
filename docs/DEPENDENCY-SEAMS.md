@@ -1078,6 +1078,26 @@ OA9, both-head/storage proofs, real wire acceptance and hosted foliage-conforman
 context/completeness contract before streamed native generation. Actual rendering/residency and appearance, R9 input,
 R10 complete verbs and R11 actual import remain separate gates.
 
+## Status effect package edges
+
+The timed effect core has no engine runtime dependencies. The explicit adapter keeps ECS and server
+hosting out of the book:
+
+```
+KhaozEngine.Foundation -> KhaozEngine.StatusEffects          (umbrella membership, inherited by every umbrella)
+KhaozEngine.StatusEffects.Netcode -> KhaozEngine.StatusEffects (book, definitions and presentation entries)
+KhaozEngine.StatusEffects.Netcode -> KhaozEngine.Ecs          (ActiveStatusEffects implements IComponent)
+KhaozEngine.StatusEffects.Netcode -> KhaozEngine.Replication  (bounded component codec and channel flags)
+KhaozEngine.StatusEffects.Netcode -> KhaozEngine.Sharding     (current-owner publication and IsInHandoff)
+KhaozEngine.Server -> KhaozEngine.StatusEffects.Netcode       (server adapter umbrella membership)
+```
+
+`IStatusEffectProjectionTarget` is the adapter's publication seam. `ShardHostStatusEffectTarget` is its
+turn-key Sharding binding. It reports `Deferred` during a temporary ownership gap and `Gone` only when
+neither a live owner nor a frozen handoff source exists. The projection retries deferred actors' latest
+shown entries. The component replicates and migrates without persistence. Neither package references
+Stats, NetWorld, a renderer or a third-party backend. Games map modifier totals and choose the tick domain.
+
 ## Content catalog package edges
 
 The family is seven packages, and every edge is forward and acyclic. `KhaozEngine.Catalog`, the read side, adds

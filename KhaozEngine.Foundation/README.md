@@ -49,6 +49,7 @@ Pulls in:
 - `KhaozEngine.Social` - the provider-neutral rich presence, identity and join or invite seam.
 - `KhaozEngine.Skills` - the game-agnostic experience, level, award and skill-book kernel.
 - `KhaozEngine.Stats` - deterministic stat channels and source-keyed modifier folding.
+- `KhaozEngine.StatusEffects` - transient timed effects, scoped stacks, periodic events and integer totals.
 - `KhaozEngine.Terrain` - render-free analytic terrain field (height/normal/biome from `(x, z, seed)`).
 - `KhaozEngine.MapDoc` - the zone/map document format: load/save/validate/migrate a versioned JSON model
   (terrain with parametric features, scatter and companion layers, exclusion/override shapes, authored

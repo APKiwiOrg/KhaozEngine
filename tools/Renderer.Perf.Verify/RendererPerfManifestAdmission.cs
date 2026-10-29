@@ -21,7 +21,7 @@ internal static class RendererPerfManifestAdmission
         string workload = Env("RENDERER_PERF_WORKLOAD_SHA");
         Require(head == Env("TESTED_REF") && parents.Length == 2 && parents[0] == head
             && parents[1] == workload && head != workload
-            && checkout.Git("diff", "--name-status", "--no-renames", workload, "HEAD") == "A\t" + path,
+            && checkout.Git("diff", "--name-status", "--no-renames", "--ignore-submodules=none", workload, "HEAD") == "A\t" + path,
             "Authorization must add only the manifest to its immutable workload parent.");
         Require(Env("WORKFLOW_RUN_ATTEMPT") == "1", "Authorization requires attempt 1.");
         // Runner is an independent selector fact. Parse binds it to the preset's fixed hosted policy.

@@ -258,7 +258,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cannot read the authorization commit parents' }
           if ($parents.Count -ne 2 -or $parents[1] -cne $env:KE_COVERAGE_PERF_WORKLOAD_SHA) { throw 'Authorization commit must have exactly one parent, equal to coverage-perf-workload-sha' }
           $manifest = "tools/EquipmentCoverage.Perf.Tests/authorized/$($env:KE_COVERAGE_PERF_UNIT).json"
-          $changes = @(& git diff --name-status --no-renames $env:KE_COVERAGE_PERF_WORKLOAD_SHA HEAD)
+          $changes = @(& git diff --name-status --no-renames --ignore-submodules=none $env:KE_COVERAGE_PERF_WORKLOAD_SHA HEAD)
           if ($LASTEXITCODE -ne 0) { throw 'Cannot compare the authorization commit with its workload parent' }
           if ($changes.Count -ne 1 -or $changes[0] -cne "A`t$manifest") { throw "Authorization commit must add only $manifest" }
 

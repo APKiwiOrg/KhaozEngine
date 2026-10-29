@@ -96,6 +96,49 @@ public sealed class RendererPerfWorkflowFreeAdmissionTests
         Assert.Contains(field == "runner" ? "Dispatch leg, runner or workflow differs" : "Authorization facts disagree", result.Output, StringComparison.Ordinal);
     }
 
+    // A workload .gitmodules with ignore = all hides a gitlink from a plain diff, so every authorization
+    // diff must ignore the requested checkout's submodule policy.
+    [Fact]
+    public void Authorization_refuses_a_gitlink_hidden_by_workload_submodule_policy()
+    {
+        using var workspace = new RendererPerfWorkflowTrustTests.AdmissionWorkspace();
+        var fixture = workspace.Fixture;
+        Prepare(fixture, "water-optics-v2", "linux-vulkan");
+        fixture.Git("reset", "--quiet", "--hard", fixture.Workload);
+        File.WriteAllText(Path.Combine(fixture.Directory, ".gitmodules"),
+            "[submodule \"vendor/admission-hidden\"]\n\tpath = vendor/admission-hidden\n\turl = ./missing\n\tignore = all\n");
+        fixture.Git("add", "--", ".gitmodules");
+        fixture.Git("commit", "--quiet", "-m", "test(renderer-perf): workload hiding a submodule");
+        string workload = fixture.Git("rev-parse", "HEAD").Trim();
+        fixture.Manifest["workloadSha"] = workload;
+        fixture.Environment["RENDERER_PERF_WORKLOAD_SHA"] = workload;
+        Directory.CreateDirectory(Path.GetDirectoryName(fixture.ManifestPath)!);
+        fixture.SaveManifest();
+        fixture.Git("add", "--", "tools/Renderer.Perf.Tests/authorized/pilot-linux.json");
+        fixture.Git("commit", "--quiet", "-m", "test(renderer-perf): synthetic authorization");
+        fixture.Environment["TESTED_REF"] = fixture.Git("rev-parse", "HEAD").Trim();
+        fixture.Accept("Authorize", "authorizationSha");
+        fixture.Git("update-index", "--add", "--cacheinfo", "160000," + fixture.Workload + ",vendor/admission-hidden");
+        fixture.Git("commit", "--quiet", "--amend", "--no-edit");
+        string authorization = fixture.Git("rev-parse", "HEAD").Trim();
+        fixture.Environment["TESTED_REF"] = authorization;
+        string facts = Path.Combine(fixture.Reports, "authorization.json");
+        var supplied = JsonNode.Parse(File.ReadAllBytes(facts))!.AsObject();
+        supplied["authorizationSha"] = authorization;
+        File.WriteAllText(facts, supplied.ToJsonString());
+        Assert.Contains("vendor/admission-hidden", fixture.Git("diff", "--name-status", "--no-renames", "--ignore-submodules=none", workload, "HEAD"), StringComparison.Ordinal);
+
+        var authorize = fixture.Run("Authorize");
+        Assert.True(authorize.Code != 0, authorize.Output);
+        Assert.Contains("Authorization must add only", authorize.Output, StringComparison.Ordinal);
+        var admit = Admit(fixture);
+        Assert.True(admit.Code == 1, admit.Output);
+        Assert.Contains("Authorization must add only the manifest to its immutable workload parent.", admit.Output, StringComparison.Ordinal);
+        var select = workspace.Select();
+        Assert.True(select.Code != 0, select.Output);
+        Assert.False(File.Exists(workspace.Output) && File.ReadAllText(workspace.Output).Contains("matrix=", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Matrix_depends_on_trusted_free_admission_success()
     {

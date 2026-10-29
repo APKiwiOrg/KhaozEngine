@@ -430,6 +430,8 @@ image-family pin still permits image revisions, so runtime inheritance must be e
 The owner must approve the exact rehearsal workload, leg, schedule, limits and zero-USD budget before
 a new authorization commit exists. A proposal or implementation is not permission to run.
 Authorization B has sole parent A and adds only `tools/Renderer.Perf.Tests/authorized/<unit>.json`.
+Every authorization diff passes `--ignore-submodules=none`, because a workload `.gitmodules` entry with
+`ignore = all` would otherwise hide an added gitlink from that check.
 Select the approved leg with the default filter, B's immutable SHA and the three renderer inputs.
 Reuse of an approval or a workflow rerun refuses. The trusted CPU selector derives the execution
 class from the validated preset and binds its schedule, leg, runner, software policy and caps. It

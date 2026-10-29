@@ -32,7 +32,7 @@ internal static class RendererPerfEntrypoint
             && authorization.WorkloadSha == Env("RENDERER_PERF_WORKLOAD_SHA"), "Dispatch hashes disagree with independent authorization facts.");
         string head = checkout.Git("rev-parse", "HEAD");
         string parents = checkout.Git("rev-list", "--parents", "-n", "1", "HEAD");
-        string changes = checkout.Git("diff", "--name-status", "--no-renames", authorization.WorkloadSha, "HEAD");
+        string changes = checkout.Git("diff", "--name-status", "--no-renames", "--ignore-submodules=none", authorization.WorkloadSha, "HEAD");
         Require(head == Env("TESTED_REF") && head == authorization.AuthorizationSha
             && parents == head + " " + authorization.WorkloadSha && changes == "A\t" + path,
             "Authorization must add only the manifest to its immutable workload parent.");

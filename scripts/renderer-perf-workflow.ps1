@@ -180,7 +180,7 @@ function Read-Authorization {
     Require ($head -ceq $env:TESTED_REF) 'Checkout differs from the immutable tested ref'
     $parents = ((Git-Read @('rev-list', '--parents', '-n', '1', 'HEAD')) -join '') -split ' '
     Require ($parents.Count -eq 2 -and $parents[1] -ceq $env:RENDERER_PERF_WORKLOAD_SHA -and $head -cne $parents[1]) 'Authorization must have exactly the workload as its sole parent'
-    $changes = @(Git-Read @('diff', '--name-status', '--no-renames', $parents[1], 'HEAD'))
+    $changes = @(Git-Read @('diff', '--name-status', '--no-renames', '--ignore-submodules=none', $parents[1], 'HEAD'))
     Require ($changes.Count -eq 1 -and $changes[0] -ceq "A`t$manifestPath") "Authorization must add only $manifestPath"
     return [ordered]@{
         manifestSha256 = $env:RENDERER_PERF_MANIFEST_SHA256

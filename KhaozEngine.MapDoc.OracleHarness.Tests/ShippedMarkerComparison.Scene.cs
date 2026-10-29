@@ -61,8 +61,16 @@ internal static partial class ShippedMarkerComparison
             var membership = MapMarkerSpaces.Query(view, marker);
             evidence.Check("marker-space", membership.Status == (correspondence.SpaceId is null ? MapMembershipStatus.Outside : MapMembershipStatus.Resolved) &&
                 membership.SpaceId == correspondence.SpaceId && membership.ParentSpaceIds.SequenceEqual(correspondence.Parents),
-                new { marker.Id, expected = correspondence.SpaceId, status = membership.Status.ToString(), membership.SpaceId,
-                    expectedParents = correspondence.Parents, parents = membership.ParentSpaceIds, membership.Detail });
+                new
+                {
+                    marker.Id,
+                    expected = correspondence.SpaceId,
+                    status = membership.Status.ToString(),
+                    membership.SpaceId,
+                    expectedParents = correspondence.Parents,
+                    parents = membership.ParentSpaceIds,
+                    membership.Detail
+                });
         }
         return evidence.Report(1, expected.Count);
     }

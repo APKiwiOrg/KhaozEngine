@@ -1403,3 +1403,16 @@ Implementation review established the contract amendments below.
     Native S 8 px advancing. Backend-specific values may rise only to that backend's measured cost and
     only within 10 percent of its original design D bound. Any other failing design D comparison or any
     increase above that ceiling requires a new owner ruling. The owner look gate still holds M1.
+
+    WARP and lavapipe use their own measured costs under the same ruling, captured in the
+    [focused backend proof](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/40810561929). Only these software parameters change. Lavapipe's Native MS 2 leading textured rim
+    error `0.00352189149420995` stays below its original `0.00359095` maximum, so its baseline remains
+    `0.003264`. All increases below are less than 10 percent of the corresponding original D maximum.
+
+    | Software comparison | Original enforced maximum | Accepted parameter | Accepted maximum |
+    | --- | ---: | ---: | ---: |
+    | WARP S 8 px advancing textured tail / 1 px tail | 1.5 times slow tail | multiplier 1.605790596957714 | 0.004802969203942 at slow tail 0.0029910308436487004 |
+    | WARP S 8 px retreating absolute textured tail | 0.007223297931709032 | baseline 0.007584627119477 | 0.007585127119477 |
+    | WARP MS 2 leading textured rim error | 0.00350955 | baseline 0.003238986111211 | 0.003563434722332 |
+    | lavapipe S 8 px advancing textured tail / 1 px tail | 1.5 times slow tail | multiplier 1.570065765107464 | 0.004799195509288 at slow tail 0.0030566843860575796 |
+    | lavapipe S 8 px retreating absolute textured tail | 0.007246004857927269 | baseline 0.007607362248486 | 0.007607862248486 |

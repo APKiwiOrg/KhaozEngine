@@ -201,7 +201,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// It asserts the shading release on moving pixels and on carried locks (TEMPORAL-RESOLVE-UPSCALING-DESIGN
     /// amendment 34), checked after every case has printed. The S textured tail at 2, 4 and 8 is at most
-    /// <see cref="FastTailRatio"/> times the S tail at 1 of the same run, each way and at each preset. The M and MS
+    /// <see cref="FastTailRatio"/> times the S tail at 1 of the same run, each way and at each preset, except the
+    /// owner-accepted Native 8 px advancing ratio. The M and MS
     /// textured tail at 1 to 8 stands at most <see cref="MovingTailExcess"/> above the same run's textured control,
     /// whose error is the moving texture's own and grows with its speed as the pan's does. In those cases and C the
     /// textured band's output grain is at most <see cref="BandGrainRatio"/> times the reference's. And C's textured
@@ -227,8 +228,12 @@ namespace KhaozEngine.Tests.Gpu
             // Owner ruling 2026-10-29, precision-safe chroma floor. The measured retreating tail is
             // 0.007581120435506409, 4.98 percent above D's allowed maximum, before the unchanged allowance.
             [("hardware", "Native S 8.0 px retreating", "tail textured")] = 0.007580620435507,
-            [("WARP", "Native S 8.0 px retreating", "tail textured")] = 0.007222797931709032,
-            [("lavapipe", "Native S 8.0 px retreating", "tail textured")] = 0.007245504857927269
+            // Owner ruling 2026-10-29, precision-safe chroma floor. WARP measured 0.007585127119476969,
+            // 5.01 percent above D's maximum, with the unchanged allowance applied to this baseline.
+            [("WARP", "Native S 8.0 px retreating", "tail textured")] = 0.007584627119477,
+            // Owner ruling 2026-10-29, precision-safe chroma floor. Lavapipe measured 0.007607862248485424,
+            // 4.99 percent above D's maximum, with the unchanged allowance applied to this baseline.
+            [("lavapipe", "Native S 8.0 px retreating", "tail textured")] = 0.007607362248486
         };
 
         readonly record struct Case(string Name, TemporalUpscale Preset, MovingShadeKind Kind, float Shadow,
@@ -419,9 +424,18 @@ namespace KhaozEngine.Tests.Gpu
                                 + $"1 px denominator {measured[slow][region].Mean:R}, control {controls[slow][region].Mean:R}");
                         }
                     // Owner ruling 2026-10-29, precision-safe chroma floor. Only this Native advancing case
-                    // takes the measured 0.004814773364462807 / 0.0029890602170812297, 7.39 percent above D.
-                    double fastTailRatio = c.Name == "Native S 8.0 px advancing" && TemporalDeviceClass.Name == "hardware"
-                        ? 1.610798383033032 : FastTailRatio;
+                    // takes its measured per-driver ratio. Other speeds, directions and presets keep FastTailRatio.
+                    double fastTailRatio = c.Name == "Native S 8.0 px advancing"
+                        ? TemporalDeviceClass.Name switch
+                        {
+                            // Metal: 0.004814773364462807 / 0.0029890602170812297, 7.39 percent above D.
+                            "hardware" => 1.610798383033032,
+                            // WARP: 0.004802969203941581 / 0.0029910308436487004, 7.05 percent above D.
+                            "WARP" => 1.605790596957714,
+                            // Lavapipe: 0.0047991955092875314 / 0.0030566843860575796, 4.67 percent above D.
+                            "lavapipe" => 1.570065765107464,
+                            _ => FastTailRatio,
+                        } : FastTailRatio;
                     Check(tail <= fastTailRatio * slowTail,
                         $"{c.Name}: textured tail {tail:0.0000} above {fastTailRatio} times the 1 px tail {slowTail:0.0000}");
                 }

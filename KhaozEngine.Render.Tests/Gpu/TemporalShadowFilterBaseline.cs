@@ -95,7 +95,9 @@ internal static class TemporalShadowFilterBaseline
         [("WARP", "Native MS 1.0 trailing flat")] = new(0.000140, 0.000128, 0.000128, 0.000000),
         [("WARP", "Native MS 1.0 trailing textured")] = new(0.006349, 0.041608, 0.008373, 0.038644),
         [("WARP", "Native MS 2.0 leading flat")] = new(0.002446, 0.016088, 0.004184, 0.014041),
-        [("WARP", "Native MS 2.0 leading textured")] = new(0.003190, 0.064741, 0.005436, 0.062246),
+        // Owner ruling 2026-10-29, precision-safe chroma floor. WARP measured rim error 0.003563434722331854,
+        // 1.54 percent above D's maximum. Only error changes, with the same rounding allowance and 1.1 multiplier.
+        [("WARP", "Native MS 2.0 leading textured")] = new(0.003238986111211, 0.064741, 0.005436, 0.062246),
         [("WARP", "Native MS 2.0 trailing flat")] = new(0.000140, 0.000128, 0.000128, 0.000000),
         [("WARP", "Native MS 2.0 trailing textured")] = new(0.005350, 0.061407, 0.008063, 0.058529),
         [("WARP", "Quality M 0.5 leading flat")] = new(0.010531, 0.005862, 0.005862, 0.000000),

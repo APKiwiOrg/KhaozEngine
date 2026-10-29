@@ -33,7 +33,7 @@ internal sealed class ShippedSceneGuardFixture(string root, Dictionary<string, s
     internal string SourceRoot => environment["KHAOZ_R2_SHIPPED_SOURCE"]!;
     internal string ReportPath => environment["KHAOZ_R2_ORACLE_REPORT"]!;
     internal IReadOnlyList<string> FailureCategories() => File.ReadAllLines(ReportPath).Select(line =>
-        JsonDocument.Parse(line).RootElement.GetProperty("category").GetString()!).Where(c => c is not "scene-summary" and not "scene-buildings" and not "scene-markers").ToArray();
+        JsonDocument.Parse(line).RootElement.GetProperty("category").GetString()!).Where(c => c is not "scene-summary" and not "scene-buildings" and not "scene-markers" and not "scene-failure-summary").ToArray();
     public void Dispose() => Directory.Delete(root, true);
 }
 

@@ -250,10 +250,13 @@ The region follower reuses the existing replan, cooldown and layer-aware state. 
 checks region membership. It keeps the final waypoint until actual region entry, rather than consuming
 it merely because its default 0.6 m AcceptRadius was met. Consuming a partial corridor holds for the
 next replan instead of producing the point overload's current one-tick raw-goal press.
-The point overload is unchanged. Region calls require an `IRegionPathPlanner`, with a clear failure
+Region calls require an `IRegionPathPlanner`, with a clear failure
 for an unsupported planner rather than an implicit point-query fallback.
 Add a `PathFollowState.WaitingForPath` result for the region overload's exhausted partial corridor
-while a replan is gated by cooldown. The point overload never returns that new state. Do not infer
+while a replan is gated by cooldown. Point following also returns it when a query is deferred after route
+consumption or changing a failed intent. Point Complete endpoints witness arrival only for the same queried
+intent, including snapped endpoints. A previously useful route reaching an obsolete terminal refreshes
+immediately through the same query site. Fresh exhausted results keep the ordinary cooldown. Do not infer
 waiting from a zero waypoint, which can be a real world coordinate.
 
 ### Guarded graph

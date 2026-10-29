@@ -17,7 +17,8 @@ public enum PathFollowState
     /// arrives either by the arrival shortcut (within
     /// <see cref="PathFollowConfig.AcceptRadius"/> of the goal in XZ AND within
     /// <see cref="PathFollowConfig.VerticalAcceptTolerance"/> of it in Y) or by consuming a
-    /// <see cref="NavPathStatus.Complete"/> path to its end. The stored path was cleared.</summary>
+    /// <see cref="NavPathStatus.Complete"/> path to its end for the same point intent, including a
+    /// planner-selected snapped endpoint. The stored path was cleared.</summary>
     Arrived,
 
     /// <summary>The planner could not provide a usable route toward the goal. The follower keeps retrying, gated by
@@ -30,8 +31,9 @@ public enum PathFollowState
     /// resumes <see cref="Following"/> (or <see cref="Arrived"/>) once the agent reaches the landing.</summary>
     Hopping,
 
-    /// <summary>A region query's partial corridor is exhausted. Steering is zero until the next
-    /// cooldown-gated replan. Point following never returns this state.</summary>
+    /// <summary>A point query is deferred after consuming its route or changing a failed query's
+    /// intent, or a region query's partial corridor is exhausted. Steering is zero until the next
+    /// cooldown-gated replan.</summary>
     WaitingForPath,
 }
 
@@ -75,7 +77,7 @@ public sealed class PathFollowConfig
 {
     /// <summary>Distance (world units) at which an intermediate waypoint or point goal is reached.
     /// Measured in XZ, so point goals must also pass <see cref="VerticalAcceptTolerance"/>. Region arrival
-    /// and final Complete waypoints require actual membership instead.</summary>
+    /// requires actual membership, including at the final Complete waypoint.</summary>
     public float AcceptRadius { get; init; } = 0.6f;
 
     /// <summary>When true, the waypoint advance also consumes an active waypoint the agent has passed rather
@@ -134,9 +136,9 @@ public sealed class PathFollowConfig
     public float CorridorTolerance { get; init; } = 2.5f;
 
     /// <summary>Minimum time (seconds) between replans, so a persistently unreachable goal or a jittery
-    /// corridor breach does not spam the planner every tick. A previously nonterminal Complete region
-    /// route refreshes immediately on reaching its endpoint outside current membership. A fresh terminal
-    /// result keeps the cooldown. Each tick queries at most once.</summary>
+    /// corridor breach does not spam the planner every tick. A previously nonterminal Complete route
+    /// refreshes immediately on reaching its endpoint outside current region membership or after the
+    /// point intent changes. A fresh terminal result keeps the cooldown. Each tick queries at most once.</summary>
     public float ReplanCooldownSeconds { get; init; } = 0.5f;
 
     /// <summary>Search budget handed to <see cref="IPathPlanner.FindPath"/> on every replan.</summary>
@@ -203,7 +205,8 @@ public sealed partial class PathFollower
     /// <see cref="Reset"/>, once the goal is reached (<see cref="PathFollowState.Arrived"/>), while the
     /// goal is <see cref="PathFollowState.Unreachable"/> (the planner found no route), and for the
     /// gap after a fully consumed <see cref="NavPathStatus.Partial"/> path. Point following clears the
-    /// exhausted path and steers at the raw goal (<see cref="PathFollowState.Following"/>). Region following
+    /// exhausted Partial path and steers at the raw goal (<see cref="PathFollowState.Following"/>) for one
+    /// tick, then waits at zero motion if the next query is deferred. Region following
     /// holds at zero motion (<see cref="PathFollowState.WaitingForPath"/>) until a replan picks up a route. While a
     /// replan is merely due but still gated by <see cref="PathFollowConfig.ReplanCooldownSeconds"/>, this
     /// stays the previously committed path, so the reader always sees the route the agent is steering on,
@@ -230,8 +233,8 @@ public sealed partial class PathFollower
     /// Advances the follower by <paramref name="dt"/> seconds toward <paramref name="goal"/> from
     /// <paramref name="position"/>, replanning through the <see cref="IPathPlanner"/> as needed. Position
     /// and goal are world space. Steering and every distance measure work in XZ. Y is read by the arrival
-    /// check in step 2 and, when the follower was given a <see cref="NavSpace"/>, to resolve which layer the
-    /// agent is standing on for the waypoint advance in step 6. In order, each tick:
+    /// check in step 2, the planned point intent, and, when the follower was given a <see cref="NavSpace"/>,
+    /// to resolve which layer the agent is standing on for waypoint advance. In order, each tick:
     /// <list type="number">
     /// <item>Drains the replan cooldown by <paramref name="dt"/>.</item>
     /// <item>Returns <see cref="PathFollowState.Arrived"/> immediately if already within
@@ -239,22 +242,29 @@ public sealed partial class PathFollower
     /// <see cref="PathFollowConfig.VerticalAcceptTolerance"/> of it in Y, clearing any stored path. A goal
     /// that clears the XZ radius but not the vertical tolerance (another floor, a ledge) falls through to
     /// the steps below instead, so the layer-aware planner is the one that decides how to reach it.</item>
-    /// <item>Decides whether a replan is due: no stored path, the stored path is fully consumed, the goal
-    /// drifted past <see cref="PathFollowConfig.GoalRetargetTolerance"/> in XZ or past
-    /// <see cref="PathFollowConfig.GoalRetargetVerticalTolerance"/> in Y from where it was planned, or the
-    /// agent strayed past <see cref="PathFollowConfig.CorridorTolerance"/> from the corridor segment
+    /// <item>Advances reached waypoints of an existing Complete route under the configured radius and
+    /// layer checks. A reached terminal returns <see cref="PathFollowState.Arrived"/> only when the
+    /// queried point intent still matches the current goal in X, Y and Z. This preserves completion at
+    /// a planner-selected snapped endpoint. Otherwise the obsolete terminal makes a replan due, even
+    /// for drift below the retarget tolerances. A replan is also due with no stored path, a fully consumed
+    /// path, goal drift past <see cref="PathFollowConfig.GoalRetargetTolerance"/> in XZ or past
+    /// <see cref="PathFollowConfig.GoalRetargetVerticalTolerance"/> in Y from where it was planned, or
+    /// agent drift past <see cref="PathFollowConfig.CorridorTolerance"/> from the corridor segment
     /// leading to the active waypoint.</item>
-    /// <item>Replans when due and the cooldown has fully drained, then resets the cooldown.</item>
-    /// <item>Returns <see cref="PathFollowState.Unreachable"/> if there is no usable path (none stored,
-    /// or the planner reported <see cref="NavPathStatus.Unreachable"/>, or it has no waypoints). The
-    /// cooldown from step 4 naturally throttles retries on later ticks.</item>
+    /// <item>Replans when due and the cooldown has fully drained, or immediately for a previously useful
+    /// Complete route at its obsolete terminal, then resets the cooldown. Each tick queries at most once.
+    /// A fresh result already terminal when queried keeps the ordinary cooldown after consumption.</item>
+    /// <item>Returns <see cref="PathFollowState.WaitingForPath"/> at zero motion when a query is deferred
+    /// after route consumption or changing a failed point intent. Returns <see cref="PathFollowState.Unreachable"/>
+    /// when the current point query reported no usable route. The cooldown throttles retries.</item>
     /// <item>Advances past every waypoint already within <see cref="PathFollowConfig.AcceptRadius"/> AND, when
     /// the follower was given a <see cref="NavSpace"/>, on the same layer as the agent
     /// (<see cref="NavSpace.LayerAt"/>). A waypoint on another layer is one the agent has to climb to, which
     /// XZ proximity cannot witness, so the follower keeps steering at it until the agent actually gets there.
     /// With <see cref="PathFollowConfig.ConsumePassedCollinearWaypoints"/> it also advances past a collinear
     /// pass-through waypoint the agent has already passed. If that consumes the whole path: a
-    /// <see cref="NavPathStatus.Complete"/> path means the goal is reached (<see cref="PathFollowState.Arrived"/>).
+    /// <see cref="NavPathStatus.Complete"/> path means the queried current point intent is reached
+    /// (<see cref="PathFollowState.Arrived"/>).
     /// A <see cref="NavPathStatus.Partial"/> path clears itself and steers straight at the raw goal for this one
     /// tick, until the next tick's replan (once the cooldown allows) picks up a fresh route.</item>
     /// <item>Otherwise steers at the new active waypoint. If that waypoint is a

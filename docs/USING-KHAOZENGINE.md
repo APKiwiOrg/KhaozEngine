@@ -9085,6 +9085,15 @@ exhausted, the goal drifted in XZ past `GoalRetargetTolerance` or in Y past
 `GoalRetargetVerticalTolerance`, or the agent strayed off the planned corridor, each gated by a cooldown)
 and hands back a per-tick world-space direction:
 
+Point arrival uses current goal proximity in XZ and Y, or a reached Complete endpoint for the same queried
+point intent in X, Y and Z. A planner-selected snapped endpoint can therefore still complete an unchanged
+intent. Reaching a previously useful Complete route's obsolete endpoint makes the current query due
+immediately, even for goal drift below the retarget tolerances. It uses the configured radius and layer
+checks, without requiring coordinate bit equality. A fresh exhausted result keeps the ordinary cooldown,
+including after an immediate replacement. A deferred point query after route consumption or changing a
+failed intent returns `WaitingForPath` at zero motion, rather than inventing a current planner failure.
+Point Partial exhaustion keeps its one-tick raw-goal steer.
+
 Hand it the `NavSpace` too on a multi-layer world. That third argument is what lets the waypoint advance
 compare the layer a waypoint carries against the agent's own (`NavSpace.LayerAt`). Without it the advance is
 XZ-only, and a stair link's upper waypoint sits about one cell from its lower partner in XZ, inside
@@ -9130,8 +9139,9 @@ else if (output.State == PathFollowState.Hopping)
     agent = PlayLunge(agent, from, fromY, to, toY, dt);   // game-owned jump motion + animation
 }
 // Point Arrived: agent.Position is within AcceptRadius of the goal in XZ and within VerticalAcceptTolerance
-// of it in Y, output.WorldDir is zero.
+// of it in Y, or reached a Complete endpoint queried for that same point intent. WorldDir is zero.
 // Region Arrived: goal.Contains(agent.Position) is true. Unreachable: the planner found no usable route.
+// WaitingForPath: the next query is deferred. WorldDir is zero.
 ```
 
 The follower owns no hop timer: it re-emits `Hopping` every tick until the agent actually reaches the
@@ -9150,8 +9160,9 @@ outside membership makes replanning due even when anchor drift is within toleran
 nonterminal Complete corridor refreshes at the reached terminal under its radius and layer checks,
 without requiring exact coordinate equality. Each tick issues at most one query.
 A fresh query already terminal at its start keeps the ordinary cooldown.
-`WaitingForPath` is appended after existing enum members, and point following never returns
-it. Shared configuration, cooldown, drift, layer, and Hop behavior remain in force.
+`WaitingForPath` is appended after existing enum members. Point following also returns it for a deferred
+query after route consumption or changing a failed intent. Shared configuration, cooldown, drift, layer,
+and Hop behavior remain in force.
 
 ### Read the committed corridor (debug overlays, logging)
 
@@ -9178,7 +9189,8 @@ follower is currently steering toward. Both are allocation-free getters over exi
 untouched and there is zero cost when unused. `ActivePath` is `null` when the follower is following no
 corridor: before the first `Tick`, after `Reset`, once `Arrived`, while `Unreachable`, and while an
 exhausted region `NavPathStatus.Partial` is waiting for its cooldown or has just returned zero
-`Unreachable`. Its `ActiveWaypointIndex` is zero in those states. The point overload keeps its one-tick
+`Unreachable`. It is also null while a point query is deferred after route consumption or changing a
+failed intent. Its `ActiveWaypointIndex` is zero in those states. The point overload keeps its one-tick
 raw-goal steer after partial exhaustion. While a replan is due but still gated by `ReplanCooldownSeconds`,
 an existing path stays committed, so you always read the route the agent is steering on. When non-null it
 carries at least one waypoint and `ActiveWaypointIndex` is a valid index into its `Waypoints`.
@@ -9194,7 +9206,8 @@ as arrived, so a goal on the floor above routes through the planner instead of a
 `GoalRetargetTolerance` (default 1.5, how far the goal may drift before a replan is due),
 `CorridorTolerance` (default 2.5, how far the agent may stray off the planned corridor before a replan is
 due), and `ReplanCooldownSeconds` (default 0.5, minimum time between ordinary replans, with immediate
-refresh for an exhausted Complete region endpoint outside membership). See the
+refresh for a previously useful Complete route reaching an obsolete point endpoint or a region endpoint
+outside membership). Fresh exhausted results retain the cooldown. See the
 `KhaozEngine.Navigation` package README for the clearance convention, the planner's documented heuristic
 limitations, and the full config surface.
 

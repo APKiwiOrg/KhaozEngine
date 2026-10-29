@@ -52,8 +52,8 @@ public class PathFollowerFreshTerminalTests
         int[] expectedCalls = [1, 1, 1, 1, 2, 2, 2, 2, 3];
         PathFollowState[] expectedStates =
         [
-            PathFollowState.Arrived, PathFollowState.Unreachable, PathFollowState.Unreachable, PathFollowState.Unreachable,
-            PathFollowState.Arrived, PathFollowState.Unreachable, PathFollowState.Unreachable, PathFollowState.Unreachable,
+            PathFollowState.Arrived, PathFollowState.WaitingForPath, PathFollowState.WaitingForPath, PathFollowState.WaitingForPath,
+            PathFollowState.Arrived, PathFollowState.WaitingForPath, PathFollowState.WaitingForPath, PathFollowState.WaitingForPath,
             PathFollowState.Arrived,
         ];
         for (int tick = 0; tick < expectedCalls.Length; tick++)
@@ -66,22 +66,30 @@ public class PathFollowerFreshTerminalTests
         }
     }
 
-    [Fact]
-    public void PointTerminalConsumesReachedWaypointWithoutExactPosition()
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void PointTerminalRefreshesObsoleteIntentWithoutExactPosition(int phase)
     {
         NavSpace space = Space();
         var planner = new Recorder(new GridPathPlanner(space));
         var follower = new PathFollower(planner, space: space);
         Assert.Equal(PathFollowState.Following,
             follower.Tick(Endpoint + Vector3.UnitZ * 2f, Endpoint, 0.3f, Dt).State);
-        var nearEndpoint = Endpoint with { X = MathF.BitDecrement(Endpoint.X) };
+        var nearEndpoint = Endpoint with { X = phase < 0 ? MathF.BitDecrement(Endpoint.X) : phase > 0 ? MathF.BitIncrement(Endpoint.X) : Endpoint.X };
+        Vector3 currentGoal = Endpoint - Vector3.UnitZ;
 
-        PathFollowOutput output = follower.Tick(nearEndpoint, Endpoint - Vector3.UnitZ, 0.3f, Dt);
-
-        Assert.Equal(1, planner.Calls);
-        Assert.Equal(PathFollowState.Arrived, output.State);
-        Assert.Equal(Vector2.Zero, output.WorldDir);
-        Assert.Null(follower.ActivePath);
+        int[] expectedCalls = [2, 2, 2, 2, 2, 2, 2, 2, 2];
+        for (int tick = 0; tick < expectedCalls.Length; tick++)
+        {
+            PathFollowOutput output = follower.Tick(nearEndpoint, currentGoal, 0.3f, Dt);
+            Assert.Equal(PathFollowState.Following, output.State);
+            Assert.Equal(expectedCalls[tick], planner.Calls);
+            Assert.True(output.WorldDir.Y < 0f);
+            Assert.Equal(new Vector2(20.625f, -31.125f), output.ActiveWaypoint);
+            Assert.Equal(NavPathStatus.Complete, follower.ActivePath!.Status);
+        }
     }
 
     static NavSpace Space() => NavSpace.Single(NavGrid.FromSurfaces(40, 160, 0.25f, 16f, -48f,

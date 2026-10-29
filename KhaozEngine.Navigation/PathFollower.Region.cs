@@ -35,6 +35,11 @@ public sealed partial class PathFollower
 
     PathFollowOutput TickCore(Vector3 position, Vector3 goal, float agentRadius, float dt, NavGoalRegion? region)
     {
+        if (_drop is not null)
+        {
+            _cooldown = MathF.Max(0f, _cooldown - dt);
+            return DropOutput();
+        }
         bool followingRegion = region is not null;
         if (_followingRegion != followingRegion)
         {
@@ -51,7 +56,7 @@ public sealed partial class PathFollower
             ? region.Contains(position)
             : Vector2.Distance(posXz, goalXz) <= _config.AcceptRadius
                 && MathF.Abs(position.Y - goal.Y) <= _config.VerticalAcceptTolerance;
-        if (arrived)
+        if (arrived && !HasPendingDrop())
         {
             _path = null;
             _index = 0;
@@ -112,6 +117,7 @@ public sealed partial class PathFollower
             return new PathFollowOutput { WorldDir = towardGoal, State = PathFollowState.Following, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
         }
 
+        if (TryDrop(out PathFollowOutput dropping)) return dropping;
         NavWaypoint active = waypoints[_index];
         if (active.Kind == NavWaypointKind.Hop)
         {
@@ -134,6 +140,7 @@ public sealed partial class PathFollower
         IReadOnlyList<NavWaypoint> waypoints = _path.Waypoints;
         int? agentLayer = _space?.LayerAt(position);
         while (_index < waypoints.Count
+            && waypoints[_index].Kind != NavWaypointKind.Drop
             && ((Vector2.Distance(posXz, waypoints[_index].Position) <= _config.AcceptRadius
                     && (agentLayer is null || waypoints[_index].Layer == agentLayer.Value))
                 || (_config.ConsumePassedCollinearWaypoints && PassedActive(posXz, agentLayer))))

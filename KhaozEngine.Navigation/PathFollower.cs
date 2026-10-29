@@ -53,6 +53,9 @@ public readonly struct PathFollowOutput
     /// <c>CharacterMovement.StepTowards</c> directly, or an intermediate avoidance pass first.</summary>
     public Vector2 WorldDir { get; init; }
 
+    /// <summary>The fixed certified endpoints while Dropping. Null in every other state.</summary>
+    public NavDropTraversal? DropTraversal { get; init; }
+
     /// <summary>Where the follower stands this tick.</summary>
     public PathFollowState State { get; init; }
 
@@ -229,7 +232,8 @@ public sealed partial class PathFollower
     public int ActiveWaypointIndex => ActivePath is null ? 0 : _index;
 
     /// <summary>
-    /// Advances the follower by <paramref name="dt"/> seconds toward <paramref name="goal"/> from
+    /// An active Drop drains cooldown but retains its immutable endpoints until CompleteDrop or Reset,
+    /// before arrival, proximity, goal drift or corridor checks. Otherwise advances toward <paramref name="goal"/> from
     /// <paramref name="position"/>, replanning through the <see cref="IPathPlanner"/> as needed. Position
     /// and goal are world space. Steering and every distance measure work in XZ. Y is read by the arrival
     /// check in step 2 and, when the follower was given a <see cref="NavSpace"/>, to resolve which layer the
@@ -275,7 +279,7 @@ public sealed partial class PathFollower
     public PathFollowOutput Tick(Vector3 position, Vector3 goal, float agentRadius, float dt)
         => TickCore(position, goal, agentRadius, dt, region: null);
 
-    /// <summary>Clears all stored path state (path, index, cooldown, plan origin and goal, height
+    /// <summary>Clears all stored path state, including an active Drop (path, index, cooldown, plan origin and goal, height
     /// included), as if this follower had just been constructed. The next tick plans fresh
     /// with no cooldown wait.</summary>
     public void Reset()
@@ -287,6 +291,7 @@ public sealed partial class PathFollower
         _plannedGoalY = 0f;
         _planOriginXz = Vector2.Zero;
         _followingRegion = false;
+        _drop = null;
     }
 
     /// <summary>Point-to-segment distance from <paramref name="posXz"/> to the corridor leading to the

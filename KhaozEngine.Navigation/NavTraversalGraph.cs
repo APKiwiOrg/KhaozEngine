@@ -7,7 +7,7 @@ namespace KhaozEngine.Navigation;
 /// Immutable node and edge decisions baked for one agent profile. No live world queries are retained.
 /// Grid clearance is checked separately by the planner at radius zero, since the profile owns clearance.
 /// </summary>
-public sealed class NavTraversalGraph
+public sealed partial class NavTraversalGraph
 {
     readonly HashSet<(int FromLayer, int FromX, int FromZ, int ToLayer, int ToX, int ToZ)> _linkEdges = new();
 
@@ -70,6 +70,8 @@ public sealed class NavTraversalGraph
                 !IsNodePassable(link.ToLayer, link.ToX, link.ToZ) || !sourceLinks.Contains(link))
                 throw new ArgumentException("Accepted links must join accepted nodes and belong to the source space.", nameof(links));
             _linkEdges.Add((link.FromLayer, link.FromX, link.FromZ, link.ToLayer, link.ToX, link.ToZ));
+            if (link.Kind == NavLinkKind.Stair)
+                _stairEdges.Add((link.FromLayer, link.FromX, link.FromZ, link.ToLayer, link.ToX, link.ToZ));
         }
     }
 
@@ -82,14 +84,7 @@ public sealed class NavTraversalGraph
     {
         if (!IsNodePassable(fromLayer, fromX, fromZ) || !IsNodePassable(toLayer, toX, toZ)) return false;
         if (_linkEdges.Contains((fromLayer, fromX, fromZ, toLayer, toX, toZ))) return true;
-        if (fromLayer != toLayer) return false;
-        int dx = toX - fromX;
-        int dz = toZ - fromZ;
-        byte exits = Layers[fromLayer].ExitMask(fromX, fromZ);
-        for (int i = 0; i < 8; i++)
-            if (dx == NavTraversalLayer.NeighborX(i) && dz == NavTraversalLayer.NeighborZ(i))
-                return (exits & (1 << i)) != 0;
-        return false;
+        return CanWalk(fromLayer, fromX, fromZ, toLayer, toX, toZ);
     }
 
     static void ValidateExits(NavTraversalLayer layer)

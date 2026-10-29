@@ -11,6 +11,7 @@ namespace KhaozEngine.Movement;
 public sealed partial class MoveToRange
 {
     private readonly GroundNavigation? _navigation;
+    private ContactDropFollower? _drop;
     private readonly PathFollower _follower;
     private readonly RouteStraightener? _straightener;
     private readonly Func<Vector3, Vector3, bool> _allowsSegment;
@@ -62,8 +63,9 @@ public sealed partial class MoveToRange
     /// Input validation and current reach evaluation run before status selection. Suspended takes precedence over
     /// InRange for airborne or committed bodies, and for a settling swimmer under
     /// <see cref="RouteApproachOptions.SteerWhileSwimming"/>. InRange witnesses the current supplied capsule, never a
-    /// waypoint or a predicted destination. Range uses no tolerance. Blocked comes only from
-    /// <see cref="RouteApproachOptions.Stall"/>.</summary>
+    /// waypoint or a predicted destination. Range uses no tolerance. A certified Drop owns its airborne
+    /// traversal and completes only on actual supported arrival. Blocked comes from ground stall or a known
+    /// live Drop obstruction. Unavailable evidence never proves an unreachable edge.</summary>
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context)
     {
@@ -75,18 +77,30 @@ public sealed partial class MoveToRange
         MovementBody shape = Body(body, tuning);
         bool within = ReachGeometry.Within(shape, target, range);
         bool swims = _options.SteerWhileSwimming && body.Swimming;
-        if ((!body.Grounded && !swims) || body.Commitment.IsActive) return Hold(RangeMoveStatus.Suspended);
+        if ((!body.Grounded && !swims && _drop is null) || body.Commitment.IsActive || body.JumpBufferRemaining > 0)
+            return Hold(RangeMoveStatus.Suspended);
         if (swims && Settling(body, tuning, context)) return Hold(RangeMoveStatus.Suspended);
+        NavGoalRegion goal = Goal(tuning, target, range);
+        if (!body.Grounded && !swims && _drop is null) return Hold(RangeMoveStatus.Suspended);
+        if (_drop is not null && _stalled) return Hold(RangeMoveStatus.Blocked);
+        if (_drop is not null && TickDrop(body, tuning, run, dt, context, out RangeSteering dropping)) return dropping;
         if (within)
         {
             ClearStall();
             return Hold(RangeMoveStatus.InRange);
         }
 
-        NavGoalRegion goal = Goal(tuning, target, range);
         if (_stalled) return Hold(RangeMoveStatus.Blocked);
         Vector3 feet = Feet(body, tuning);
         PathFollowOutput route = _follower.Tick(feet, goal, tuning.CapsuleRadius, dt);
+        if (route.State == PathFollowState.Dropping)
+        {
+            if (_navigation is null || _navigation.MaxDropMetres == 0 || route.DropTraversal is not { } traversal)
+                return Hold(RangeMoveStatus.UnsupportedTransition);
+            _drop = new ContactDropFollower(_navigation, traversal);
+            if (TickDrop(body, tuning, run, dt, context, out dropping)) return dropping;
+            return Counted(body, Hold(RangeMoveStatus.Following));
+        }
         if (route.State == PathFollowState.Hopping) return Hold(RangeMoveStatus.UnsupportedTransition);
         if (route.State == PathFollowState.WaitingForPath) return Counted(body, Hold(RangeMoveStatus.WaitingForPath));
         if (route.State == PathFollowState.Unreachable) return Hold(RangeMoveStatus.Unreachable);
@@ -120,6 +134,7 @@ public sealed partial class MoveToRange
     public void Reset()
     {
         _follower.Reset();
+        _drop = null;
         _goal = null;
         ClearStall();
     }

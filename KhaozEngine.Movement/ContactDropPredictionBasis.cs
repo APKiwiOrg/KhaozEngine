@@ -10,6 +10,8 @@ internal sealed class ContactDropPredictionBasis
     MovementQueryLeaseId? _id;
     MovementQueryIdentity? _identity;
 
+    internal bool Matches(ContactDropPredictionBasis other) => _id == other._id && _identity == other._identity;
+
     internal void Authenticate(MovementQueryLease queries)
     {
         queries.AssertCurrent();

@@ -122,6 +122,9 @@ server tick needs. A per-thread world copy would duplicate world construction an
 - **Edges.** Cells split into row bands. Each worker writes only its own cells' exit bytes.
 - **Stair links.** Candidates are proved in parallel into a per-candidate result array, then emitted in the existing
   candidate order.
+- **Drop links.** Enabled profiles generate canonical candidates after ordinary exits and Stair decisions. Each
+  worker owns its full-tuning fall binding and attempt-local source session. Walk/run verdicts merge by candidate
+  index, with no trajectory or prefix reuse. See [Contact Drop links](CONTACT-DROP-LINKS.md).
 - **Bands.** The degree is a maximum. The build never creates more workers than bands and never schedules an empty
   band.
 - **Determinism.** Every column, edge and link result is a pure function of the snapshot and the world, with no
@@ -132,7 +135,8 @@ server tick needs. A per-thread world copy would duplicate world construction an
     Hold in sequence, with its anchor insertion at that position.
   - Layering and link generation follow.
   - Edges then run in layer, Z, X and `ProfileNeighbors` direction order.
-  - Stair links run last, in original candidate-array index order, skipped candidates included.
+  - Stair links follow ordinary exits, in original candidate-array index order, skipped candidates included.
+  - Enabled Drop links run last, in canonical source/direction order. Disabled profiles have no Drop phase.
 - **Failure selection.** Each work item carries its serial ordinal. Every item ends in success, refusal or failure, and
   failed items are never retried. When an item fails, the build atomically lowers a failure cutoff to that ordinal,
   stops scheduling items above it, and lets every unfinished item below it reach a terminal state. The failure with

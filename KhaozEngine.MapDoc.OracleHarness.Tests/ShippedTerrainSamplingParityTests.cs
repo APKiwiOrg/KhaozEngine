@@ -8,6 +8,23 @@ namespace KhaozEngine.Tests.MapDocOracle;
 [UnsupportedOSPlatform("windows")]
 public class ShippedTerrainSamplingParityTests
 {
+    [Fact]
+    public void OracleParityIncludesTheDrawnVertexRangeAtASeam()
+    {
+        var document = new TileWorldDocument();
+        document.GetOrCreateRegion(new(0, 0));
+        document.SetUnderlay(0, 0, 0, 1);
+        document.SetCornerHeightCm(0, 0, 0, 2);
+        var catalogs = TileWorldCatalogs.LoadJson(
+            """{"materials":[{"id":1,"name":"ground","kind":"Ground","color":"#112233"}],"archetypes":[]}""",
+            "terrain-seam-parity");
+        const float x = 0.8f, z = 0.19999998807907104f;
+        float actual = TileWorldColliders.Build(document, catalogs).Ground.HeightAt(x, -z);
+        Assert.True(ShippedTerrainComparison.TryMovementHeight(document, x, z, out float oracle));
+        Assert.Equal(0, oracle);
+        Assert.Equal(actual, oracle);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

@@ -199,7 +199,8 @@ internal static class ShippedTerrainComparison
     }
 
     // The released plane-0 movement triangle: among the tile's drawn triangles, the one whose smallest barycentric
-    // weight is largest, its height anchored at the first lattice vertex and interpolated from height differences.
+    // weight is largest, its height anchored at the first lattice vertex, interpolated from height differences
+    // and bounded by that triangle's exact vertex range.
     // This and Weights copy the runtime sampler's private triangle selection and evaluation. The sampler also clamps
     // into its loaded rectangle, while this comparison addresses the named tile directly. Exact arithmetic parity
     // is pinned by ShippedTerrainSamplingParityTests, separately from the geometric SupportTolerance comparison.
@@ -231,6 +232,7 @@ internal static class ShippedTerrainComparison
         Vector3 b = TileGroundTriangles.LatticePosition(document, x, z, 0, t.B, x, z);
         Vector3 c = TileGroundTriangles.LatticePosition(document, x, z, 0, t.C, x, z);
         height = a.Y + weights.Y * (b.Y - a.Y) + weights.Z * (c.Y - a.Y);
+        height = Math.Clamp(height, MathF.Min(a.Y, MathF.Min(b.Y, c.Y)), MathF.Max(a.Y, MathF.Max(b.Y, c.Y)));
         return true;
     }
 

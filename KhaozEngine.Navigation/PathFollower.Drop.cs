@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 
 namespace KhaozEngine.Navigation;
@@ -33,6 +34,19 @@ public sealed partial class PathFollower
         for (int i = _index; i < _path.Waypoints.Count; i++)
             if (_path.Waypoints[i].Kind == NavWaypointKind.Drop) return true;
         return false;
+    }
+
+    // Whether this tick's waypoint advance stops at an unlocked Drop. Reads without consuming, so a point
+    // Partial route keeps its consumption after query eligibility.
+    bool DropIsNext(Vector3 position, Vector2 posXz)
+    {
+        if (_path is null || _path.Status == NavPathStatus.Unreachable) return false;
+        IReadOnlyList<NavWaypoint> waypoints = _path.Waypoints;
+        int? agentLayer = _space?.LayerAt(position);
+        int index = _index;
+        while (index < waypoints.Count && waypoints[index].Kind != NavWaypointKind.Drop && Reached(index, posXz, agentLayer))
+            index++;
+        return index < waypoints.Count && waypoints[index].Kind == NavWaypointKind.Drop;
     }
 
     bool TryDrop(out PathFollowOutput output)

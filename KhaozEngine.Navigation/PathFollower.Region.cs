@@ -22,6 +22,9 @@ public sealed partial class PathFollower
     /// A fresh query already terminal at its start keeps the ordinary cooldown until it leaves that state.
     /// A Drop locks traversal before these checks. Supported acknowledgement of a final Complete Drop
     /// is also a reached-terminal witness, so a stale route can refresh on the next tick before cooldown.
+    /// Before the lock nothing is committed, so membership arrives even with a Drop still pending. A due
+    /// replan is immediate when the next transition is an unlocked Drop, so a one-way Drop never launches
+    /// on an obsolete route. A Drop next on the refreshed route locks in that tick under the ordinary cooldown.
     /// Existing region waypoints advance before this decision so an eligible exhausted
     /// Partial replans in the same tick. Each tick queries at most once. A freshly exhausted Partial
     /// with no cooldown returns Unreachable at zero motion and retries on the next tick.
@@ -60,11 +63,13 @@ public sealed partial class PathFollower
         _cooldown = MathF.Max(0f, _cooldown - dt);
 
         // Point arrival keeps both proximity checks. Region arrival uses only actual feet membership.
+        // An unlocked Drop commits nothing, so membership still arrives before it. Point proximity
+        // cannot tell a ledge above the goal from the goal, so a pending Drop keeps owning that route.
         bool arrived = region is not null
             ? region.Contains(position)
             : Vector2.Distance(posXz, goalXz) <= _config.AcceptRadius
                 && MathF.Abs(position.Y - goal.Y) <= _config.VerticalAcceptTolerance;
-        if (arrived && !HasPendingDrop())
+        if (arrived && (followingRegion || !HasPendingDrop()))
             return Arrive();
 
         // A reached Complete endpoint belongs only to the point intent that was queried. Retain it
@@ -86,8 +91,10 @@ public sealed partial class PathFollower
 
         // A useful corridor reaching an obsolete terminal needs one immediate refresh. A fresh
         // terminal region result stays protected. Point completion clears its route and keeps cooldown.
+        // A due query is also immediate before an unlocked one-way Drop, which must never launch on an
+        // obsolete route. The refreshed route locks any Drop that is next in this same tick.
         bool staleCompleteTerminal = completeAtTerminal && !_freshRegionTerminal;
-        bool replanned = needsPlan && (_cooldown == 0f || staleCompleteTerminal);
+        bool replanned = needsPlan && (_cooldown == 0f || staleCompleteTerminal || DropIsNext(position, posXz));
         if (replanned)
         {
             _path = region is not null
@@ -172,11 +179,8 @@ public sealed partial class PathFollower
 
         IReadOnlyList<NavWaypoint> waypoints = _path.Waypoints;
         int? agentLayer = _space?.LayerAt(position);
-        while (_index < waypoints.Count
-            && waypoints[_index].Kind != NavWaypointKind.Drop
-            && ((Vector2.Distance(posXz, waypoints[_index].Position) <= _config.AcceptRadius
-                    && (agentLayer is null || waypoints[_index].Layer == agentLayer.Value))
-                || (_config.ConsumePassedCollinearWaypoints && PassedActive(posXz, agentLayer))))
+        while (_index < waypoints.Count && waypoints[_index].Kind != NavWaypointKind.Drop
+            && Reached(_index, posXz, agentLayer))
         {
             if (retainCompleteTerminal && _path.Status == NavPathStatus.Complete && _index == waypoints.Count - 1)
                 return true;
@@ -186,5 +190,14 @@ public sealed partial class PathFollower
         return retainCompleteTerminal && _path.Status == NavPathStatus.Complete
             && _index == waypoints.Count && _index > 0
             && waypoints[_index - 1].Kind == NavWaypointKind.Drop;
+    }
+
+    // Whether the waypoint at index is reached under the configured radius, layer and passed-collinear checks.
+    bool Reached(int index, Vector2 posXz, int? agentLayer)
+    {
+        NavWaypoint waypoint = _path!.Waypoints[index];
+        return (Vector2.Distance(posXz, waypoint.Position) <= _config.AcceptRadius
+                && (agentLayer is null || waypoint.Layer == agentLayer.Value))
+            || (_config.ConsumePassedCollinearWaypoints && PassedWaypoint(index, posXz, agentLayer));
     }
 }

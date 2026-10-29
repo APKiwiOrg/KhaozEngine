@@ -1,5 +1,4 @@
 using System.Runtime.Versioning;
-using System.Text.Json;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDocOracle;
@@ -13,8 +12,8 @@ public sealed class ShippedMarkerComparisonTests
         var markers = ShippedMarkerInputs.Read(inputs);
         markers.RequireBoundImports();
         var comparison = ShippedMarkerComparison.Compare(markers);
-        // The full detail is written once. The parity check carries only its failure count.
+        // The composite retains its evidence, and every failed check keeps its typed classification.
         report.Record("markers", comparison.DetailJson);
-        report.Check("marker-parity", comparison.Failures.Count == 0, JsonSerializer.Serialize(new { failures = comparison.Failures.Count }));
+        report.CheckFailures("marker-parity", comparison.ClassifiedFailures);
     });
 }

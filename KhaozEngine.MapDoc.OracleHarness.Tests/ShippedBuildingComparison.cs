@@ -23,10 +23,10 @@ using Coordinates = KhaozEngine.Tests.MapDocOracle.ShippedBuildingGeometry.Point
 
 namespace KhaozEngine.Tests.MapDocOracle;
 
-internal sealed record ShippedBuildingReport(IReadOnlyList<string> Failures, string DetailJson);
+internal sealed record ShippedBuildingReport(IReadOnlyList<string> Failures, string DetailJson, IReadOnlyList<OracleComparisonFailure> ClassifiedFailures);
 
 /// <summary>Assertion-free comparison. All source-derived evidence is returned to the secure entry boundary.</summary>
-internal static class ShippedBuildingComparison
+internal static partial class ShippedBuildingComparison
 {
     const double VertexTolerance = 0.00001;
     const double NormalTolerance = 0.000001;
@@ -50,24 +50,25 @@ internal static class ShippedBuildingComparison
         {
             long sourceId = leaf.GetProperty("sourceId").GetInt64();
             TileObject source = sourceObjects[sourceId];
+            var resource = evidence.Resource(Array(comparison, "roofs").Any(r => r.GetProperty("leafId").GetInt64() == sourceId) ? "Roof" : "Placement", "placement");
             var native = first.Document.Placements.SingleOrDefault(p => p.NumericId == sourceId);
-            evidence.Check("numeric-leaf", native is not null && native.PlacementId == Text(leaf, "worldId"), new { sourceId, native });
+            resource.Check("numeric-leaf", native is not null && native.PlacementId == Text(leaf, "worldId"), new { sourceId, native });
             if (native is null) continue;
             var archetype = inputs.Catalogs.Archetype(source.ArchetypeId)!;
             var geometry = first.Placements.Single(p => p.PlacementId == native.PlacementId);
             var asset = inputs.Assets.GetAsset(native.AssetId);
-            evidence.Check("leaf-kind-asset", native.Kind == source.ArchetypeId && native.AssetId == Text(leaf, "assetId"), new { source, native.Kind, native.AssetId });
-            evidence.Check("ordered-tags", (source.Tags ?? []).SequenceEqual(native.Tags), new { sourceId, sourceTags = source.Tags, nativeTags = native.Tags });
+            resource.Check("leaf-kind-asset", native.Kind == source.ArchetypeId && native.AssetId == Text(leaf, "assetId"), new { source, native.Kind, native.AssetId });
+            resource.Check("ordered-tags", (source.Tags ?? []).SequenceEqual(native.Tags), new { sourceId, sourceTags = source.Tags, nativeTags = native.Tags });
             Vector3 position = TileObjectPlacement.AnchorPosition(inputs.World, archetype, source);
             float yaw = TileObjectPlacement.YawRadians(archetype, source.Rotation);
             var pose = geometry.EffectiveTransform;
-            evidence.Near("leaf-position", new[] { (double)position.X, position.Y, position.Z }, new[] { pose.X, pose.Y, pose.Z }, VertexTolerance, sourceId);
+            resource.Near("leaf-position", new[] { (double)position.X, position.Y, position.Z }, new[] { pose.X, pose.Y, pose.Z }, VertexTolerance, sourceId);
             // F-R9. Yaw is an angle. Scale stays a plain comparison.
-            evidence.Near("leaf-yaw-scale", new[] { 0d, 1d }, new[] { YawDifference(yaw, pose.YawRadians), pose.Scale }, NormalTolerance,
+            resource.Near("leaf-yaw-scale", new[] { 0d, 1d }, new[] { YawDifference(yaw, pose.YawRadians), pose.Scale }, NormalTolerance,
                 new { sourceId, sourceYaw = yaw, nativeYaw = pose.YawRadians });
-            evidence.Check("original-mesh", inputs.Bytes(Text(leaf, "meshPath")).SequenceEqual(inputs.Assets.GetResource(asset.MeshResourceId).Bytes.ToArray()), new { sourceId, asset.MeshResourceId });
+            resource.Check("original-mesh", inputs.Bytes(Text(leaf, "meshPath")).SequenceEqual(inputs.Assets.GetResource(asset.MeshResourceId).Bytes.ToArray()), new { sourceId, asset.MeshResourceId });
             var metadata = leaf.GetProperty("metadata");
-            evidence.Check("asset-metadata", asset.Source == Text(metadata, "source") && asset.License == Text(metadata, "license") &&
+            resource.Check("asset-metadata", asset.Source == Text(metadata, "source") && asset.License == Text(metadata, "license") &&
                 asset.Category == NullableText(metadata, "category") && asset.Textured == metadata.GetProperty("textured").GetBoolean() &&
                 asset.SourceUnitsToMetres == Number(metadata, "sourceUnitsToMetres") && BoundsEqual(asset.RenderBounds, metadata.GetProperty("renderBounds")) &&
                 BoundsEqual(asset.LodBounds, metadata.GetProperty("lodBounds")) && BoundsEqual(asset.LightBounds, metadata.GetProperty("lightBounds")), new { sourceId, asset.Source, asset.License, asset.Category, asset.Textured, asset.SourceUnitsToMetres, expected = metadata });
@@ -77,12 +78,12 @@ internal static class ShippedBuildingComparison
             var expected = sourceColliders.SelectMany(c => ShippedBuildingGeometry.Capture(c.Shape, p => Transform(c.Pose, p), n => Vector3.Transform(n, c.Pose.Orientation))).ToArray();
             var actual = geometry.Collider is null ? [] : ShippedBuildingGeometry.Capture(geometry.Collider,
                 p => Precise(pose, p), n => new MapResourceTransform(pose).Normal(n)).ToArray();
-            ShippedBuildingGeometry.Compare("physical-collider", expected, actual, sourceId, evidence.Check, evidence.Near);
+            ShippedBuildingGeometry.Compare("physical-collider", expected, actual, sourceId, resource.Check, resource.Near);
             var sourceSelectionPath = NullableText(leaf, "selectionPath");
             var shapes = MapAssetShapes.Read(inputs.Assets, native.AssetId);
             float units = Number(metadata, "sourceUnitsToMetres");
             if (sourceSelectionPath is null && expected.Length != 0)
-                evidence.Check("authored-selection", shapes.Selection is null, new { sourceId, shapes.SelectionSha256 });
+                resource.Check("authored-selection", shapes.Selection is null, new { sourceId, shapes.SelectionSha256 });
             else if (sourceSelectionPath is null)
             {
                 // F-R10. No source collider and no authored selection: the source picked this leaf by its model box, so
@@ -96,14 +97,14 @@ internal static class ShippedBuildingComparison
                     p => Precise(pose, p * units * (float)pose.Scale), n => new MapResourceTransform(pose).Normal(n)).ToArray();
                 var derivedFailures = new List<string>();
                 ShippedBuildingGeometry.Compare("derived-selection", derivedExpected, derivedActual, sourceId,
-                    (category, ok, detail) => { if (!ok) derivedFailures.Add(category); evidence.Check(category, ok, detail); }, evidence.Near);
-                evidence.Check("derived-selection", shapes.Selection is not null && derivedFailures.Count == 0,
+                    (category, ok, detail) => { if (!ok) derivedFailures.Add(category); resource.Check(category, ok, detail); }, resource.Near);
+                resource.Check("derived-selection", shapes.Selection is not null && derivedFailures.Count == 0,
                     new { sourceId, min, max, units, shapes.SelectionSha256, derivedFailures });
             }
             else
             {
                 byte[] original = inputs.Bytes(sourceSelectionPath);
-                evidence.Check("selection-bytes", asset.SelectionResourceId is not null &&
+                resource.Check("selection-bytes", asset.SelectionResourceId is not null &&
                     original.SequenceEqual(inputs.Assets.GetResource(asset.SelectionResourceId).Bytes.ToArray()), new { sourceId, sourceSelectionPath, asset.SelectionResourceId });
                 using var stream = new MemoryStream(original);
                 var sourceShape = PropCollisionFormat.Read(stream);
@@ -111,7 +112,7 @@ internal static class ShippedBuildingComparison
                     n => Vector3.TransformNormal(n, legacyMatrix)).ToArray();
                 var selectionActual = shapes.Selection is null ? [] : ShippedBuildingGeometry.Capture(shapes.Selection,
                     p => Precise(pose, p * units * (float)pose.Scale), n => new MapResourceTransform(pose).Normal(n)).ToArray();
-                ShippedBuildingGeometry.Compare("authored-selection", selectionExpected, selectionActual, sourceId, evidence.Check, evidence.Near);
+                ShippedBuildingGeometry.Compare("authored-selection", selectionExpected, selectionActual, sourceId, resource.Check, resource.Near);
             }
             evidence.Record("source-query-delta", ShippedBuildingPicking.Compare(inputs, leaf, source, archetype, geometry));
         }
@@ -132,20 +133,21 @@ internal static class ShippedBuildingComparison
     // preserving its semantic records. Geometry parity is checked before replacing any native floor bytes.
     static MapDocument Convert(ShippedBuildingInputs inputs, Evidence evidence)
     {
+        var terrain = evidence.Resource("Terrain", "partition");
         var document = MapDocumentFile.LoadText(MapDocumentFile.SaveText(inputs.NativeDocument));
         var floorGroups = Array(inputs.Comparison, "floors").GroupBy(f => (Region: RegionCoord.Of(f.GetProperty("x").GetInt32(), f.GetProperty("z").GetInt32()), Plane: f.GetProperty("plane").GetInt32()));
         foreach (var group in floorGroups)
         {
             var (surface, patch) = LegacyOracleConverter.ToNative(inputs.World, group.Key.Region, group.Key.Plane);
             if (!document.Surfaces.Patches.TryGetValue(patch.Key, out var candidate))
-            { evidence.Check("missing-native-floor", false, new { patch.Key }); continue; }
+            { terrain.Check("missing-native-floor", false, new { patch.Key }); continue; }
             var candidateSurface = document.Surfaces.Refs.Single(s => s.Id == surface.Id);
             var compiled = MapSurfaceCompiler.Compile(surface, patch);
             var candidateCompiled = MapSurfaceCompiler.Compile(candidateSurface, candidate);
             CompareGeometry("floor-vertices-normals", compiled.ExactVertices.Select(v => new Sample(false, v)).Concat(compiled.Faces.Select(f => new Sample(true, f.Normal))).ToArray(),
-                candidateCompiled.ExactVertices.Select(v => new Sample(false, v)).Concat(candidateCompiled.Faces.Select(f => new Sample(true, f.Normal))).ToArray(), evidence, patch.Key);
+                candidateCompiled.ExactVertices.Select(v => new Sample(false, v)).Concat(candidateCompiled.Faces.Select(f => new Sample(true, f.Normal))).ToArray(), terrain, patch.Key);
             var legacy = TileGroundTriangles.Build(inputs.World, group.Key.Region, group.Key.Plane);
-            evidence.Check("source-floor-face-count", legacy.Indices.Length / 3 == compiled.Faces.Count, new { patch.Key });
+            terrain.Check("source-floor-face-count", legacy.Indices.Length / 3 == compiled.Faces.Count, new { patch.Key });
             for (int i = 0; i < Math.Min(legacy.Indices.Length / 3, compiled.Faces.Count); i++)
             {
                 var face = compiled.Faces[i];
@@ -154,19 +156,19 @@ internal static class ShippedBuildingComparison
                 {
                     var old = legacy.Positions[legacy.Indices[i * 3 + v]];
                     var expected = new[] { group.Key.Region.OriginX + (double)old.X, old.Y, -group.Key.Region.OriginZ + (double)old.Z };
-                    evidence.Near("source-floor-vertex", expected, Components(compiled.ExactVertices[vertices[v]]), VertexTolerance, new { patch.Key, face = i, vertex = v });
+                    terrain.Near("source-floor-vertex", expected, Components(compiled.ExactVertices[vertices[v]]), VertexTolerance, new { patch.Key, face = i, vertex = v });
                 }
                 var normal = LegacyOracleConverter.LegacyNormal(legacy.Positions[legacy.Indices[i * 3]], legacy.Positions[legacy.Indices[i * 3 + 1]], legacy.Positions[legacy.Indices[i * 3 + 2]]);
-                evidence.Near("source-floor-normal", Components(normal), Components(face.Normal), NormalTolerance, new { patch.Key, face = i });
+                terrain.Near("source-floor-normal", Components(normal), Components(face.Normal), NormalTolerance, new { patch.Key, face = i });
             }
-            evidence.Check("floor-integers", LegacyOracleConverter.CellBytes(patch).SequenceEqual(LegacyOracleConverter.CellBytes(candidate)) &&
+            terrain.Check("floor-integers", LegacyOracleConverter.CellBytes(patch).SequenceEqual(LegacyOracleConverter.CellBytes(candidate)) &&
                 patch.Heights.SequenceEqual(candidate.Heights) && patch.Presence.SequenceEqual(candidate.Presence), new { patch.Key });
             foreach (var row in group)
             {
                 int x = row.GetProperty("x").GetInt32(), z = row.GetProperty("z").GetInt32();
                 int slot = (z - group.Key.Region.OriginZ) * TileRegion.Size + x - group.Key.Region.OriginX;
                 var cell = patch.Cells[slot];
-                evidence.Check("floor-material", cell.Underlay == row.GetProperty("underlay").GetUInt16() && cell.Overlay == row.GetProperty("overlay").GetUInt16(), new { row, cell });
+                terrain.Check("floor-material", cell.Underlay == row.GetProperty("underlay").GetUInt16() && cell.Overlay == row.GetProperty("overlay").GetUInt16(), new { row, cell });
 
             }
             patch.Records.AddRange(candidate.Records);
@@ -200,6 +202,7 @@ internal static class ShippedBuildingComparison
 
     static void CompareFloorPaint(ShippedBuildingInputs inputs, MapBuiltWorld world, Evidence evidence)
     {
+        var resource = evidence.Resource("Terrain", "partition");
         var resources = world.Document.EffectiveResources!;
         foreach (var floor in Array(inputs.Comparison, "floors"))
         {
@@ -210,7 +213,7 @@ internal static class ShippedBuildingComparison
             int slot = (z - region.OriginZ) * TileRegion.Size + x - region.OriginX;
             var paints = resources.PaintRegions.TryGetValue(surfaceId, out var compiled) ? compiled.Regions.Where(p => p.Face.Patch == patch && p.Face.Primitive == slot).ToArray() : [];
             string? id = NullableText(floor, "paintId");
-            evidence.Check("floor-paint", id is null ? paints.Length == 0 : paints.Length != 0 && paints.All(p => p.PaintId == id &&
+            resource.Check("floor-paint", id is null ? paints.Length == 0 : paints.Length != 0 && paints.All(p => p.PaintId == id &&
                 p.Material.Underlay == floor.GetProperty("underlay").GetUInt16() && p.Material.Overlay == floor.GetProperty("overlay").GetUInt16()), new { floor, paints });
             evidence.Record("floor-material-and-notch", new { floor, paints });
         }
@@ -229,12 +232,13 @@ internal static class ShippedBuildingComparison
             foreach (var leaf in leaves.Where(l => BuildingOf(l) == Text(building, "id")))
             {
                 var actual = objects[leaf.GetProperty("sourceId").GetInt64()];
+                var resource = evidence.Resource(Array(inputs.Comparison, "roofs").Any(r => r.GetProperty("leafId").GetInt64() == actual.Id) ? "Roof" : "Placement", "placement");
                 bool addition = !keys.TryGetValue(Text(leaf, "key"), out var key);
                 var nominal = addition ? null : sourcePrefab.Objects[key.GetProperty("objectIndex").GetInt32()];
                 bool furnitureDifference = nominal is null || nominal.ArchetypeId != actual.ArchetypeId ||
                     !(nominal.Tags ?? []).SequenceEqual(actual.Tags ?? []);
                 bool namedOverride = Array(building, "overrides").Any(o => Text(o, "key") == Text(leaf, "key") && Text(o, "kind") == "Placement");
-                evidence.Check("actual-furniture-override", !furnitureDifference || namedOverride, new { actual, nominal, namedOverride });
+                resource.Check("actual-furniture-override", !furnitureDifference || namedOverride, new { actual, nominal, namedOverride });
                 evidence.Record("actual-instance-membership", new { building = Text(building, "id"), leaf, nominal, furnitureDifference });
             }
         }
@@ -242,6 +246,10 @@ internal static class ShippedBuildingComparison
 
     static void CompareRoomsAndRoofs(ShippedBuildingInputs inputs, MapBuiltWorld world, MapBuiltWorld other, Evidence evidence)
     {
+        var roomsCheck = evidence.Resource("Space", "room");
+        var roofsCheck = evidence.Resource("Roof", "placement");
+        var groupsCheck = evidence.Resource("Roof", "group");
+        var membershipCheck = evidence.Resource("Space", "membership");
         var resources = world.Document.EffectiveResources!;
         var intent = resources.BuildingIntent;
         var rooms = Array(inputs.Comparison, "rooms");
@@ -253,13 +261,13 @@ internal static class ShippedBuildingComparison
         {
             string roomId = Text(room, "id");
             var domain = domains.SingleOrDefault(d => d.Space.Id == roomId);
-            evidence.Check("room-storey-owner", domain is not null && domain.InstanceId == Text(room, "buildingId") && domain.StoreyId == Text(room, "storeyId"), new { room, domain });
+            roomsCheck.Check("room-storey-owner", domain is not null && domain.InstanceId == Text(room, "buildingId") && domain.StoreyId == Text(room, "storeyId"), new { room, domain });
             foreach (var cell in Array(room, "cells"))
             {
                 var key = CellKey(cell);
                 Vector3 centre = new((key.X + 0.5f) * inputs.World.TileSize, key.Y, -(key.Z + 0.5f) * inputs.World.TileSize);
                 var actual = membership.Query(Frame(world.Surfaces, centre));
-                evidence.Check("room-cell-centre", actual.Status == MapMembershipStatus.Resolved && actual.SpaceId == roomId,
+                roomsCheck.Check("room-cell-centre", actual.Status == MapMembershipStatus.Resolved && actual.SpaceId == roomId,
                     new { cell, roomId, actual.Status, actual.SpaceId, actual.DomainKeys });
             }
         }
@@ -268,7 +276,7 @@ internal static class ShippedBuildingComparison
         foreach (var group in groups)
         {
             var actual = intent.RoofGroups.SingleOrDefault(g => g.Id == Text(group, "id"));
-            evidence.Check("explicit-concealment-group", actual is not null && Strings(group, "rooms").Order().SequenceEqual(actual.Rooms.Select(r => r.Id).Order()), new { group, actual });
+            groupsCheck.Check("explicit-concealment-group", actual is not null && Strings(group, "rooms").Order().SequenceEqual(actual.Rooms.Select(r => r.Id).Order()), new { group, actual });
         }
         var leaves = Array(inputs.Comparison, "leaves").ToDictionary(l => l.GetProperty("sourceId").GetInt64());
         var roofs = Array(inputs.Comparison, "roofs");
@@ -278,7 +286,7 @@ internal static class ShippedBuildingComparison
             string? linkId = NullableText(roof, "linkId");
             string worldId = Text(leaves[roof.GetProperty("leafId").GetInt64()], "worldId");
             var links = intent.RoofLinks.Where(l => l.Roof.Id == worldId).ToArray();
-            evidence.Check("roof-links", linkId is null ? links.Length == 0 : links.Length == 1 && links[0].Id == linkId &&
+            roofsCheck.Check("roof-links", linkId is null ? links.Length == 0 : links.Length == 1 && links[0].Id == linkId &&
                 links[0].AboveY == Number(roof, "aboveY") && Strings(roof, "rooms").Order().SequenceEqual(links[0].Rooms.Select(r => r.Id).Order()) &&
                 Strings(roof, "groups").Order().SequenceEqual(links[0].Groups.Select(r => r.Id).Order()), new { roof, links });
         }
@@ -289,15 +297,15 @@ internal static class ShippedBuildingComparison
             var actual = membership.Query(point);
             var second = new MapSpaceMembership(other.Surfaces).Query(Frame(other.Surfaces, position));
             string? expected = NullableText(probe, "spaceId"), source = NullableText(probe, "sourceSpaceId");
-            evidence.Check("membership-" + Text(probe, "kind"), actual.SpaceId == expected &&
+            membershipCheck.Check("membership-" + Text(probe, "kind"), actual.SpaceId == expected &&
                 actual.Status == (expected is null ? MapMembershipStatus.Outside : MapMembershipStatus.Resolved), new { probe, actual.Status, actual.SpaceId, actual.DomainKeys });
             if (source != expected)
             {
                 bool boundary = Text(probe, "kind") == "boundary";
-                evidence.Check("unexplained-membership-difference", boundary, new { probe, actual.SpaceId });
+                membershipCheck.Check("unexplained-membership-difference", boundary, new { probe, actual.SpaceId });
                 evidence.Record("boundary-change-awaits-r11", new { probe, oneOwnerPolicy = true, accepted = false });
             }
-            evidence.Check("head-membership", actual.Status == second.Status && actual.SpaceId == second.SpaceId &&
+            membershipCheck.Check("head-membership", actual.Status == second.Status && actual.SpaceId == second.SpaceId &&
                 actual.DomainKeys.SequenceEqual(second.DomainKeys) && actual.ParentSpaceIds.SequenceEqual(second.ParentSpaceIds), new { probe });
             var hidden = Ids(probe, "hiddenRoofIds").Select(id => Text(leaves[id], "worldId")).ToHashSet(StringComparer.Ordinal);
             var statics = world.Statics.Select(s => (s.OwnerId, s.Digest, s.Bounds, s.Position, s.Orientation)).ToArray();
@@ -307,7 +315,7 @@ internal static class ShippedBuildingComparison
                 foreach (var roof in policy.Roofs)
                 {
                     bool visible = mode == MapRoofMode.AlwaysVisible || mode == MapRoofMode.Auto && !hidden.Contains(roof.RoofPlacementId);
-                    evidence.Check("roof-policy", roof.ColourVisible == visible && roof.CastShadows && roof.CameraBoomBlocks == visible && roof.SkyPickingBlocks,
+                    roofsCheck.Check("roof-policy", roof.ColourVisible == visible && roof.CastShadows && roof.CameraBoomBlocks == visible && roof.SkyPickingBlocks,
                         new { probe, mode, roof, visible });
                 }
                 evidence.Check("roof-statics-unchanged", statics.SequenceEqual(world.Statics.Select(s => (s.OwnerId, s.Digest, s.Bounds, s.Position, s.Orientation))), new { probe, mode });
@@ -317,6 +325,7 @@ internal static class ShippedBuildingComparison
 
     static void CompareLights(ShippedBuildingInputs inputs, MapBuiltWorld world, Evidence evidence)
     {
+        var resource = evidence.Resource("Light", "light");
         // This public facade consumes the engine's shared LightFrame expansion. No copied owner-frame policy.
         var lights = MapEffectiveAnnotations.Lights(world.Document.EffectiveResources!);
         var expected = Array(inputs.Comparison, "lights");
@@ -326,11 +335,11 @@ internal static class ShippedBuildingComparison
         {
             var light = lights.SingleOrDefault(l => l.Id == Text(row, "id"));
             string owner = Text(leaves[row.GetProperty("ownerLeafId").GetInt64()], "worldId");
-            evidence.Check("light-owner", light is not null && light.OwnerPlacementId == owner && world.Placements.Any(p => p.PlacementId == owner), new { row, light, owner });
+            resource.Check("light-owner", light is not null && light.OwnerPlacementId == owner && world.Placements.Any(p => p.PlacementId == owner), new { row, light, owner });
             if (light is null) continue;
-            evidence.Near("light-position", Components(Vector(row.GetProperty("position"))), Components(light.Position), VertexTolerance, row);
-            evidence.Near("light-colour", Components(Vector(row.GetProperty("colour"))), Components(light.Colour), NormalTolerance, row);
-            evidence.Check("light-properties", light.Intensity == Number(row, "intensity") && light.Radius == Number(row, "radius") &&
+            resource.Near("light-position", Components(Vector(row.GetProperty("position"))), Components(light.Position), VertexTolerance, row);
+            resource.Near("light-colour", Components(Vector(row.GetProperty("colour"))), Components(light.Colour), NormalTolerance, row);
+            resource.Check("light-properties", light.Intensity == Number(row, "intensity") && light.Radius == Number(row, "radius") &&
                 light.CastShadows == row.GetProperty("castShadows").GetBoolean(), new { row, light });
             evidence.Record(row.GetProperty("dedicated").GetBoolean() ? "dedicated-light" : "emitting-prop", new { row, light });
         }
@@ -338,6 +347,7 @@ internal static class ShippedBuildingComparison
 
     static void CompareDoorways(ShippedBuildingInputs inputs, MapBuiltWorld world, Evidence evidence)
     {
+        var resource = evidence.Resource("Placement", "doorway");
         using var native = new BepuPhysicsWorld();
         using var registration = MapPhysicsRegistration.Register(world, native);
         var leaves = Array(inputs.Comparison, "leaves").ToDictionary(l => l.GetProperty("sourceId").GetInt64());
@@ -345,7 +355,7 @@ internal static class ShippedBuildingComparison
         {
             var ids = Ids(door, "leafIds");
             var shells = ids.Select(id => world.Placements.Single(p => p.PlacementId == Text(leaves[id], "worldId"))).ToArray();
-            evidence.Check("native-compound-door-shell", shells.Any(p => p.Collider is CompoundShape), new { door, shellIds = shells.Select(p => p.PlacementId) });
+            resource.Check("native-compound-door-shell", shells.Any(p => p.Collider is CompoundShape), new { door, shellIds = shells.Select(p => p.PlacementId) });
             using var source = new BepuPhysicsWorld();
             var colliders = TileWorldColliders.Build(SourceView(inputs.World, ids), inputs.Catalogs, inputs.CollisionOptions);
             foreach (var c in colliders.Colliders.Where(c => c.Kind is TileColliderKind.Wall or TileColliderKind.Object or TileColliderKind.WalkSurface)) source.AddStatic(c.Shape, c.Pose);
@@ -354,7 +364,7 @@ internal static class ShippedBuildingComparison
             {
                 var points = Array(door, name).Select(Vector).ToArray();
                 bool oldClear = Clear(source, capsule, points), newClear = Clear(native, capsule, points);
-                evidence.Check("doorway-" + name, oldClear == (name == "clear") && newClear == oldClear, new { door, oldClear, newClear, proof = "physical aperture only" });
+                resource.Check("doorway-" + name, oldClear == (name == "clear") && newClear == oldClear, new { door, oldClear, newClear, proof = "physical aperture only" });
             }
         }
     }
@@ -378,6 +388,7 @@ internal static class ShippedBuildingComparison
     // outside every instance, remain in the unlinked World roof inventory and stay visible under Auto at its own site.
     static void CompareStandaloneRoofs(ShippedBuildingInputs inputs, MapBuiltWorld world, Evidence evidence)
     {
+        var resource = evidence.Resource("Roof", "placement");
         var resources = world.Document.EffectiveResources!;
         var intent = resources.BuildingIntent;
         var objects = inputs.World.AllObjects().ToDictionary(o => o.Id);
@@ -386,15 +397,15 @@ internal static class ShippedBuildingComparison
             string worldId = Text(leaf, "worldId");
             var source = objects[leaf.GetProperty("sourceId").GetInt64()];
             var native = world.Document.Placements.SingleOrDefault(p => p.PlacementId == worldId);
-            evidence.Check("standalone-roof-placement", native is not null && native.NumericId == source.Id &&
+            resource.Check("standalone-roof-placement", native is not null && native.NumericId == source.Id &&
                 inputs.NativeDocument.Placements.Any(p => p.Id == worldId) &&
                 inputs.NativeDocument.Prefabs!.Instances.All(i => i.Bindings.Entries.All(b => b.WorldId != worldId)), new { worldId, native });
-            evidence.Check("standalone-roof-inventory", intent.Roofs.Contains(new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, worldId)) &&
+            resource.Check("standalone-roof-inventory", intent.Roofs.Contains(new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, worldId)) &&
                 intent.RoofLinks.All(l => l.Roof.Id != worldId), new { worldId, intent.Roofs });
             Vector3 site = TileObjectPlacement.AnchorPosition(inputs.World, inputs.Catalogs.Archetype(source.ArchetypeId)!, source);
             var auto = MapRoofPolicy.Evaluate(resources, world.Surfaces, Frame(world.Surfaces, site + new Vector3(0, 0.5f, 0)), MapRoofMode.Auto).Roofs
                 .SingleOrDefault(r => r.RoofPlacementId == worldId);
-            evidence.Check("standalone-roof-auto-visible", auto is not null && auto.ColourVisible && auto.CameraBoomBlocks, new { worldId, auto });
+            resource.Check("standalone-roof-auto-visible", auto is not null && auto.ColourVisible && auto.CameraBoomBlocks, new { worldId, auto });
         }
     }
 
@@ -448,7 +459,7 @@ internal static class ShippedBuildingComparison
         internal Sample(bool normal, Vector3 value) : this(normal, (Coordinates)value) { }
         internal Sample(bool normal, MapExactPoint value) : this(normal, new Coordinates(value.X.ToDouble(), value.Y.ToDouble(), value.Z.ToDouble())) { }
     }
-    static void CompareGeometry(string category, Sample[] expected, Sample[] actual, Evidence evidence, object owner)
+    static void CompareGeometry(string category, Sample[] expected, Sample[] actual, OracleResourceChecks evidence, object owner)
     {
         double Error(Sample a, Sample b) => Math.Max(Math.Abs(a.Value.X - b.Value.X),
             Math.Max(Math.Abs(a.Value.Y - b.Value.Y), Math.Abs(a.Value.Z - b.Value.Z)));
@@ -484,23 +495,4 @@ internal static class ShippedBuildingComparison
     internal static MapFramePoint Frame(MapScopedSurfaces view, Vector3 p) => new(view.Scope.Frame, view.Scope.Frame.ToLocal(p));
     static string? NullableText(JsonElement row, string name) => row.GetProperty(name).ValueKind == JsonValueKind.Null ? null : Text(row, name);
 
-    sealed class Evidence
-    {
-        readonly List<string> _failures = new();
-        readonly List<object> _records = new();
-        internal void Check(string category, bool ok, object detail)
-        { if (!ok) { _failures.Add(category); _records.Add(new { category, detail }); } }
-        internal void Record(string category, object detail) => _records.Add(new { category, detail });
-        internal void Near(string category, double[] expected, double[] actual, double tolerance, object owner)
-        {
-            for (int component = 0; component < expected.Length; component++)
-            {
-                double error = Math.Abs(expected[component] - actual[component]);
-                Check(category, double.IsFinite(error) && error <= tolerance,
-                    new { owner, component, expected = expected[component], actual = actual[component], error, tolerance });
-            }
-        }
-        internal ShippedBuildingReport Finish() => new(_failures.AsReadOnly(), JsonSerializer.Serialize(new { failures = _failures, records = _records },
-            new JsonSerializerOptions { IncludeFields = true }));
-    }
 }

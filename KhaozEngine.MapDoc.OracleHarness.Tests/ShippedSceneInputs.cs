@@ -163,7 +163,7 @@ internal sealed class ShippedSceneInputs
                     links[0].Groups.Select(r => r.Id).Order(StringComparer.Ordinal).SequenceEqual(ShippedSceneManifest.Strings(roof.GetProperty("groups")).Order(StringComparer.Ordinal)), "scene roof correspondence differs");
             }
         }
-        if (manifest.MarkerManifestPath is { } marker) result.Markers = ShippedMarkerInputs.Read(inputs, snapshot.Json(marker));
+        if (manifest.MarkerManifestPath is { } marker) result.Markers = ShippedMarkerInputs.Read(inputs, snapshot.Json(marker), scene: true);
         if (manifest.FoliageManifestPath is { } foliagePath)
         {
             var foliageManifest = ShippedFoliageManifest.Read(snapshot.Json(foliagePath));

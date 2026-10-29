@@ -33,7 +33,7 @@ internal sealed class ShippedSceneGuardFixture(string root, Dictionary<string, s
     internal string SourceRoot => environment["KHAOZ_R2_SHIPPED_SOURCE"]!;
     internal string ReportPath => environment["KHAOZ_R2_ORACLE_REPORT"]!;
     internal IReadOnlyList<string> FailureCategories() => File.ReadAllLines(ReportPath).Select(line =>
-        JsonDocument.Parse(line).RootElement.GetProperty("category").GetString()!).Where(c => c is not "scene-summary" and not "scene-buildings" and not "scene-markers").ToArray();
+        JsonDocument.Parse(line).RootElement.GetProperty("category").GetString()!).Where(c => c is not "scene-summary" and not "scene-buildings" and not "scene-markers" and not "scene-failure-summary").ToArray();
     public void Dispose() => Directory.Delete(root, true);
 }
 
@@ -91,7 +91,8 @@ internal static partial class ShippedSceneGuardFixtures
     }
     static JsonObject Write(string root, string variant)
     {
-        bool wideRaster = variant == "foliage-wide-raster";
+        bool streamFoliage = variant == "foliage-stream-aliases";
+        bool wideRaster = streamFoliage || variant == "foliage-wide-raster";
         if (wideRaster) variant = "foliage-valid";
         bool roofHlod = variant.StartsWith("roof-hlod", StringComparison.Ordinal);
         bool wrongNativeTileSize = variant == "roof-hlod-native-tile-size";
@@ -108,8 +109,10 @@ internal static partial class ShippedSceneGuardFixtures
         if (variant == "coincident-valid") world.AddObject("column", 2, 2, 0, 0);
         bool cover = variant == "foliage-valid", waterScene = variant == "water-valid", lightScene = variant.StartsWith("light-", StringComparison.Ordinal);
         bool featherOrigin = variant == "terrain-feather-origin", terrainPainted = featherOrigin || variant == "terrain-painted";
-        if (cover) AddFoliageSource(world, wideRaster ? 33 : 4);
+        if (cover) AddFoliageSource(world, streamFoliage ? 36 : wideRaster ? 33 : 4, streamFoliage);
         if (variant.StartsWith("marker-", StringComparison.Ordinal)) world.SetMarker("arrival", 1, 1, 0, ["first", "second"]);
+        if (variant == "marker-many-moved")
+            for (int i = 1; i < 24; i++) world.SetMarker("arrival-" + i, 1, 1, 0, ["first", "second"]);
         if (terrainPainted)
         {
             if (!featherOrigin) world.SetOverlay(1, 1, 0, 2);
@@ -220,7 +223,7 @@ internal static partial class ShippedSceneGuardFixtures
                 };
             }
         }
-        if (cover) AddFoliageNative(native, root, wideRaster ? 33 : 4);
+        if (cover) AddFoliageNative(native, root, streamFoliage ? 36 : wideRaster ? 33 : 4, streamFoliage);
         if (variant.StartsWith("marker-", StringComparison.Ordinal)) WriteSceneMarkers(root, native, variant);
         File.WriteAllText(Path.Combine(root, "native.json"), MapDocumentFile.SaveText(native)); MapDocumentFile.SaveTiled(native, Path.Combine(root, "native-tiled"));
         var foliage = new GroundCoverRenderOptions { UseGpuBatches = true, FadeMode = GroundCoverFadeMode.HeightScale };

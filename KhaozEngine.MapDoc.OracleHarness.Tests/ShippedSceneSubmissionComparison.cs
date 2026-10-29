@@ -20,23 +20,23 @@ internal static partial class ShippedSceneComparison
         {
             var wants = left.GetValueOrDefault(key) ?? [];
             var remaining = right.GetValueOrDefault(key) ?? [];
-            Check(report, FrameCategory(key.Kind), wants.Length == remaining.Count, new { key, expected = wants.Length, actual = remaining.Count });
+            CheckResource(report, FrameCategory(key.Kind), wants.Length == remaining.Count, new { key, expected = wants.Length, actual = remaining.Count }, key, "submission-count");
             foreach (var want in wants)
             {
                 if (remaining.Count != 0)
-                    Check(report, key.Kind == MapRenderKind.Roof ? "scene-roof-channel" : Category(key.Kind),
-                        remaining.Any(d => d.Channels == want.Draw.Channels), new { key });
+                    CheckResource(report, key.Kind == MapRenderKind.Roof ? "scene-roof-channel" : Category(key.Kind),
+                        remaining.Any(d => d.Channels == want.Draw.Channels), new { key }, key, "channels");
                 int match = remaining.FindIndex(d => d.Channels == want.Draw.Channels && PayloadMatches(want, d));
-                Check(report, FrameCategory(key.Kind), match >= 0, new { key });
+                CheckResource(report, FrameCategory(key.Kind), match >= 0, new { key }, key, "submission-match");
                 if (match < 0) continue;
                 var got = remaining[match]; remaining.RemoveAt(match);
-                Check(report, "scene-focus", SceneSubmissionGeometry.FocusEqual(want.Draw, got), new { key });
-                Check(report, "scene-rigid-frame", Bits(want.Draw.Rigid, got.Rigid), new { key });
-                Check(report, "scene-light-frame", SceneSubmissionGeometry.LightEqual(want.Draw, got), new { key });
-                Check(report, "scene-water-frame", Bits(want.Draw.Water, got.Water), new { key });
-                Check(report, "scene-foliage-frame", Bits(want.Draw.Foliage, got.Foliage), new { key });
+                CheckResource(report, "scene-focus", SceneSubmissionGeometry.FocusEqual(want.Draw, got), new { key }, key, "focus");
+                CheckResource(report, "scene-rigid-frame", Bits(want.Draw.Rigid, got.Rigid), new { key }, key, "rigid-frame");
+                CheckResource(report, "scene-light-frame", SceneSubmissionGeometry.LightEqual(want.Draw, got), new { key }, key, "light-frame");
+                CheckResource(report, "scene-water-frame", Bits(want.Draw.Water, got.Water), new { key }, key, "water-frame");
+                CheckResource(report, "scene-foliage-frame", Bits(want.Draw.Foliage, got.Foliage), new { key }, key, "foliage-frame");
             }
-            Check(report, FrameCategory(key.Kind), remaining.Count == 0, new { key, unmatched = remaining.Count });
+            CheckResource(report, FrameCategory(key.Kind), remaining.Count == 0, new { key, unmatched = remaining.Count }, key, "unmatched-submissions");
         }
         bool PayloadMatches(SceneExpectedSubmission want, MapDrawRecord got)
         {

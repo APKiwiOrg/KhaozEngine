@@ -81,53 +81,55 @@ internal static class ShippedTerrainComparison
 
     internal static void CompareRegion(ShippedRegion region, PrivateOracleReport report)
     {
+        var resource = OracleResourceChecks.ForReport(report, "Terrain", "surface");
         TileWorldDocument document = region.Document;
         RegionCoord coord = region.Coord;
-        report.Check("tile-size", document.TileSize == 1f, Json(new { coord.Rx, coord.Rz }));
-        report.Check("plane-count", document.PlaneCount == 4, Json(new { coord.Rx, coord.Rz, document.PlaneCount }));
+        resource.Check("tile-size", document.TileSize == 1f, new { coord.Rx, coord.Rz });
+        resource.Check("plane-count", document.PlaneCount == 4, new { coord.Rx, coord.Rz, document.PlaneCount });
         for (int plane = 0; plane < document.PlaneCount; plane++)
             ComparePlane(document, coord, plane, report);
 
         IReadOnlyList<string> seams = LegacyOracleConverter.SharedCornerMismatches(document, coord);
-        report.Check("seams", seams.Count == 0, Json(new { coord.Rx, coord.Rz, seams.Count, first = seams.Take(16) }));
+        resource.Check("seams", seams.Count == 0, new { coord.Rx, coord.Rz, seams.Count, first = seams.Take(16) });
         CompareSpikePoint(region, report);
     }
 
     static void ComparePlane(TileWorldDocument document, RegionCoord coord, int plane, PrivateOracleReport report)
     {
+        var resource = OracleResourceChecks.ForReport(report, "Terrain", "partition");
         TileRegion source = document.GetRegion(coord)!;
         bool derived = plane > 0 && source.Plane(plane).Heights is null;
         var (surface, patch) = LegacyOracleConverter.ToNative(document, coord, plane);
 
         int[] legacyCorners = LegacyOracleConverter.LegacyCorners(document, coord, plane);
         int cornerMismatches = legacyCorners.Where((h, i) => h != patch.Heights[i]).Count();
-        report.Check("corners", legacyCorners.Length == patch.Heights.Length && cornerMismatches == 0,
-            Json(new { coord.Rx, coord.Rz, plane, derived, cornerMismatches }));
+        resource.Check("corners", legacyCorners.Length == patch.Heights.Length && cornerMismatches == 0,
+            new { coord.Rx, coord.Rz, plane, derived, cornerMismatches });
 
         byte[] legacyBytes = LegacyOracleConverter.CellBytes(document, coord, plane);
         byte[] nativeBytes = LegacyOracleConverter.CellBytes(patch);
-        report.Check("cell-bytes", legacyBytes.AsSpan().SequenceEqual(nativeBytes),
-            Json(new { coord.Rx, coord.Rz, plane }));
-        report.Check("records", patch.Records.Count == 0, Json(new { coord.Rx, coord.Rz, plane, patch.Records.Count }));
+        resource.Check("cell-bytes", legacyBytes.AsSpan().SequenceEqual(nativeBytes),
+            new { coord.Rx, coord.Rz, plane });
+        resource.Check("records", patch.Records.Count == 0, new { coord.Rx, coord.Rz, plane, patch.Records.Count });
 
         MapCompiledPatch native = MapSurfaceCompiler.Compile(surface, patch);
         TileGroundMesh legacy = TileGroundTriangles.Build(document, coord, plane);
         int legacyTriangles = legacy.Indices.Length / 3;
         int supportFaces = native.Faces.Count(f => f.Role == MapFaceRole.SupportFloor);
         bool sameCount = legacyTriangles == native.Faces.Count && supportFaces == native.Faces.Count;
-        report.Check("triangle-count", sameCount,
-            Json(new { coord.Rx, coord.Rz, plane, legacyTriangles, nativeFaces = native.Faces.Count, supportFaces }));
+        resource.Check("triangle-count", sameCount,
+            new { coord.Rx, coord.Rz, plane, legacyTriangles, nativeFaces = native.Faces.Count, supportFaces });
 
         var (vertexError, normalError) = sameCount ? TriangleErrors(legacy, native) : (double.NaN, double.NaN);
-        report.Check("triangle-vertex", vertexError <= VertexTolerance,
-            Json(new { coord.Rx, coord.Rz, plane, maxVertexError = Finite(vertexError) }));
-        report.Check("triangle-normal", normalError <= NormalTolerance,
-            Json(new { coord.Rx, coord.Rz, plane, maxNormalError = Finite(normalError) }));
+        resource.Check("triangle-vertex", vertexError <= VertexTolerance,
+            new { coord.Rx, coord.Rz, plane, maxVertexError = Finite(vertexError) });
+        resource.Check("triangle-normal", normalError <= NormalTolerance,
+            new { coord.Rx, coord.Rz, plane, maxNormalError = Finite(normalError) });
 
         int[] legacyFallback = LegacyOracleConverter.FallbackCells(document, coord, plane).ToArray();
         int[] nativeFallback = native.LegacyFallbackCells.Select(c => c.SlotCell).ToArray();
-        report.Check("fallback", legacyFallback.AsSpan().SequenceEqual(nativeFallback),
-            Json(new { coord.Rx, coord.Rz, plane, legacy = legacyFallback.Length, native = nativeFallback.Length }));
+        resource.Check("fallback", legacyFallback.AsSpan().SequenceEqual(nativeFallback),
+            new { coord.Rx, coord.Rz, plane, legacy = legacyFallback.Length, native = nativeFallback.Length });
 
         report.Record("plane-summary", Json(new
         {
@@ -193,8 +195,8 @@ internal static class ShippedTerrainComparison
         MapExactValue? native = MapSurfaceCompiler.ExactHeight(surface, patch,
             MapExactValue.FromSingle(spike.WorldX), MapExactValue.FromSingle(spike.WorldZ));
         double error = native is { } height ? Math.Abs(height.ToDouble() - legacy) : double.NaN;
-        report.Check("spike-support", error <= SupportTolerance,
-            Json(new { drawable = true, legacy = Finite(legacy), native = native?.ToDouble(), error = Finite(error) }));
+        OracleResourceChecks.ForReport(report, "Terrain", "surface").Check("spike-support", error <= SupportTolerance,
+            new { drawable = true, legacy = Finite(legacy), native = native?.ToDouble(), error = Finite(error) });
         report.Record("spike-point", Json(new { owned = true, drawable = true, error = Finite(error) }));
     }
 

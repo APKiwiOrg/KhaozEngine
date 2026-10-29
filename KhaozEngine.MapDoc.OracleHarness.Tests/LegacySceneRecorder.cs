@@ -260,11 +260,19 @@ internal sealed class LegacyRecordingScene : ITileWorldScene, IPropClusterRender
     int IPropClusterRenderBackend.DrawShadowOnlyProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor) => DrawLayer(placements, layer, focus, dissolveFloor, true);
     public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement) => Merged(handle, layer, dissolve, complement, false);
     public void DrawShadowOnlyMerged(MeshHandle handle, PropLayer layer, float dissolve, bool complement) => Merged(handle, layer, dissolve, complement, true);
+    internal GltfMesh MergeProxy(IReadOnlyList<PropPlacement> placements, IReadOnlyDictionary<string, GltfMesh> meshes,
+        float weldCell, out long malformedCornersDropped)
+    {
+        if (weldCell > 0) return PropHlod.BuildMergedMeshMeasured(placements, meshes, weldCell, out malformedCornersDropped);
+        malformedCornersDropped = 0;
+        return SourceProxyGeometry.Build(placements, meshes, ClusterAnchor);
+    }
     void Merged(MeshHandle handle, PropLayer layer, float dissolve, bool complement, bool hidden)
     {
         var mesh = _meshes[handle]; var vertices = mesh.Vertices.ToArray();
         var offset = new Vector3((float)ClusterAnchor.X, (float)ClusterAnchor.Y, (float)ClusterAnchor.Z);
-        for (int i = 0; i < vertices.Length; i++) vertices[i].Position -= offset;
+        if (layer.HlodWeldCell > 0)
+            for (int i = 0; i < vertices.Length; i++) vertices[i].Position -= offset;
         Draws.Add(new(new(vertices, mesh.Indices32.ToArray()), Matrix4x4.CreateTranslation(offset), hidden,
             dissolve, complement ? 1 : 0, false, layer.CastsShadows, ClusterKey));
     }
@@ -273,7 +281,7 @@ internal sealed class LegacyRecordingScene : ITileWorldScene, IPropClusterRender
 internal sealed class LegacyClusterOwner : ITileWorldPropClusterOwner
 {
     readonly PropClusterRenderer _renderer;
-    internal LegacyClusterOwner(LegacyRecordingScene scene) => _renderer = new(scene, PropHlod.BuildMergedMeshMeasured, (_, error) => throw error);
+    internal LegacyClusterOwner(LegacyRecordingScene scene) => _renderer = new(scene, scene.MergeProxy, (_, error) => throw error);
     public PropClusterCpuBuild BuildCpu(PropClusterBuildRequest request) => _renderer.BuildCpu(request);
     public void Apply(PropClusterKey key, PropClusterCpuBuild build) => _renderer.Apply(key, build);
     public void Invalidate(PropClusterKey key) => _renderer.Invalidate(key);

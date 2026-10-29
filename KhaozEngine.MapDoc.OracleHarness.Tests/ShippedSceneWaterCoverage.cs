@@ -32,7 +32,7 @@ internal static partial class ShippedSceneWaterCoverage
                     for (int i = 0; i < bodies.Count; i++)
                         if (LegacyWaterConverter.BodyId(region, plane, i) == mapping.SourceBodyKey) source = new(mapping.SourceBodyKey, region, plane, i, bodies[i]);
                 }
-            if (source is null) { Check(report, "scene-water-area", false, new { mapping.SourceBodyKey }); continue; }
+            if (source is null) { CheckResource(report, "scene-water-area", false, new { mapping.SourceBodyKey }, MapRenderKind.Water, "body", "source-binding"); continue; }
             var expected = Cells(source.Body, plan.Scene.Scope, inputs.NativeTileSize);
             var actual = plan.Inventory.Water.Cells.Where(c => c.Key.BodyId == mapping.NativeBodyId)
                 .GroupBy(c => new Cell(c.Key.StorageOwner.X, c.Key.StorageOwner.Z, c.Key.X, c.Key.Z)).ToDictionary(g => g.Key, g => g.ToArray());
@@ -43,7 +43,7 @@ internal static partial class ShippedSceneWaterCoverage
                 double minZ = Math.Max(key.Z * 2d, key.TileZ * inputs.NativeTileSize), maxZ = Math.Min((key.Z + 1d) * 2, (key.TileZ + 1d) * inputs.NativeTileSize);
                 double want = expected.Contains(key) ? SourceArea(source, minX, minZ, maxX, maxZ) : 0;
                 double got = (actual.GetValueOrDefault(key) ?? []).SelectMany(c => c.Regions).Where(r => r.Kind == MapWaterRegionKind.FreeSurface).SelectMany(r => r.Triangles).Sum(Area);
-                Check(report, "scene-water-area", Math.Abs(want - got) <= GeometryTolerance, new { key, expected = want, actual = got });
+                CheckResource(report, "scene-water-area", Math.Abs(want - got) <= GeometryTolerance, new { key, expected = want, actual = got }, MapRenderKind.Water, "cell", "area");
                 total += got;
                 if (want > 0)
                     foreach (var cell in actual.GetValueOrDefault(key) ?? [])
@@ -53,12 +53,12 @@ internal static partial class ShippedSceneWaterCoverage
                         if (points.Length == 0) continue;
                         var renderKey = new MapRenderKey(MapRenderKind.Water, mapping.NativeBodyId, CellId(cell.Key), 0);
                         var anchor = new MapSubmissionAnchor(points.Min(p => p.X).Floor(), KhaozEngine.MapDoc.Surfaces.MapExactValue.FromSingle(cell.SurfaceY).Floor(), points.Min(p => p.Z).Floor());
-                        Check(report, "scene-water-frame", required.TryAdd(renderKey, anchor), new { renderKey });
+                        CheckResource(report, "scene-water-frame", required.TryAdd(renderKey, anchor), new { renderKey }, renderKey, "registration");
                     }
             }
             double drawn = recorder.Snapshot().Resources.Where(r => r.Reference.Key.Kind == MapRenderKind.Water && r.Reference.Key.OwnerId == mapping.NativeBodyId)
                 .Select(r => ((MapWaterResource)r.Payload).Mesh).Sum(MeshArea);
-            Check(report, "scene-water-closed", Math.Abs(drawn - total) <= GeometryTolerance, new { mapping.NativeBodyId, drawn, free = total });
+            CheckResource(report, "scene-water-closed", Math.Abs(drawn - total) <= GeometryTolerance, new { mapping.NativeBodyId, drawn, free = total }, MapRenderKind.Water, "body", "coverage");
         }
         return required;
     }

@@ -99,7 +99,7 @@ public sealed class ShippedMarkerInputGuardTests
         {
             compared = ShippedMarkerComparison.Compare(ShippedMarkerInputs.Read(i));
             report.Record("markers", compared.DetailJson);
-            report.Check("marker-parity", compared.Failures.Count == 0, compared.DetailJson);
+            report.CheckFailures("marker-parity", compared.ClassifiedFailures);
         }));
         Assert.NotNull(compared);
         Assert.Contains(category, compared.Failures);
@@ -154,7 +154,7 @@ public sealed class ShippedMarkerInputGuardTests
         {
             var inputs = ShippedMarkerInputs.Read(i);
             var compared = ShippedMarkerComparison.Compare(inputs);
-            report.Check("marker-parity", compared.Failures.Count == 0, compared.DetailJson);
+            report.CheckFailures("marker-parity", compared.ClassifiedFailures);
         }));
         Assert.True(failure is PrivateOracleInputException or PrivateOracleFailure, failure.GetType().Name);
         Assert.Null(failure.InnerException);

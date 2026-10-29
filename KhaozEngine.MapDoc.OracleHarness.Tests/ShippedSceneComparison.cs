@@ -36,13 +36,13 @@ internal static partial class ShippedSceneComparison
         {
             var result = ShippedBuildingComparison.Compare(buildings);
             report.Record("scene-buildings", result.DetailJson);
-            report.Check("scene-building", result.Failures.Count == 0, result.DetailJson);
+            report.CheckFailures("scene-building", result.ClassifiedFailures);
         }
         if (inputs.Markers is { } markers)
         {
             var result = ShippedMarkerComparison.Compare(markers);
             report.Record("scene-markers", result.DetailJson);
-            report.Check("scene-marker", result.Failures.Count == 0, result.DetailJson);
+            report.CheckFailures("scene-marker", result.ClassifiedFailures);
         }
         var heads = new Dictionary<(string Window, string Probe), string>();
         int compared = 0;
@@ -64,7 +64,7 @@ internal static partial class ShippedSceneComparison
                 var source = bound.Source!;
                 var policy = inputs.NativePolicy.Native(closure, manifest);
                 var windows = manifest.Windows.ToDictionary(w => w.Id, w => ShippedSceneInputs.Scope(w, manifest.Limits?.Queries), StringComparer.Ordinal);
-                var completeWindows = new Dictionary<string, IReadOnlyDictionary<MapRenderKey, string>>(StringComparer.Ordinal);
+                var completeWindows = new Dictionary<string, IReadOnlyDictionary<MapRenderKey, SceneStreamResource>>(StringComparer.Ordinal);
                 foreach (var window in manifest.Windows)
                 {
                     var acquired = source.Acquire(windows[window.Id]);
@@ -77,7 +77,7 @@ internal static partial class ShippedSceneComparison
                     var plan = residency.AcceptedPlans.Single();
                     ShippedSceneMarkers.Plan(inputs, plan, report);
                     var inventory = new MapDrawRecorder(); plan.Register(inventory);
-                    completeWindows.Add(window.Id, inventory.Snapshot().Resources.ToDictionary(r => r.Reference.Key, Fingerprint));
+                    completeWindows.Add(window.Id, inventory.Snapshot().Resources.ToDictionary(r => r.Reference.Key, SceneStreamComparison.Capture));
                     CompareSource(expected, inputs, plan, report);
                     var terrain = ShippedSceneSourceChecks.Terrain(inputs, plan, report, out var terrainFaces);
                     var foliage = LegacySceneRecorder.RecordFoliage(inputs, scene.Scope);
@@ -131,7 +131,7 @@ internal static partial class ShippedSceneComparison
             var scope = plan.Scene.Scope; var b = scope.DrawBounds; double pad = scope.MotionPaddingMetres + .0001;
             bool required = placement.Bounds.MaxX >= b.MinX - pad && placement.Bounds.MinX <= b.MaxX + pad && placement.Bounds.MaxZ >= b.MinZ - pad && placement.Bounds.MinZ <= b.MaxZ + pad;
             bool present = plan.Inventory.Placements.Inventory.Any(p => p.PlacementId == mapping.NativePlacementId);
-            Check(report, "scene-placement-scope", !required || plan.Scene.Placements.Any(p => p.PlacementId == mapping.NativePlacementId), new { mapping.SourceObjectId });
+            CheckResource(report, "scene-placement-scope", !required || plan.Scene.Placements.Any(p => p.PlacementId == mapping.NativePlacementId), new { mapping.SourceObjectId }, placement.Roof ? MapRenderKind.Roof : MapRenderKind.Placement, "placement", "scope");
             if (!present) continue;
             if (plan.Routing.Entries.TryGetValue(mapping.NativePlacementId, out var route) && route == MapPlacementRoute.Animated)
             {
@@ -143,11 +143,17 @@ internal static partial class ShippedSceneComparison
                 for (int part = 0; part < placement.Tiers[tier].Count; part++)
                 {
                     var rows = found.Where(r => r.Reference.Key.Lod == tier && r.Reference.Key.PartId == "part/" + part).ToArray();
-                    Check(report, "scene-placement-part", rows.Length == 1 && rows[0].Payload is MapRigidResource rigid &&
-                        MeshEqual(placement.Tiers[tier][part].Mesh, rigid.Mesh) && MapsEqual(placement.Tiers[tier][part].Maps, rigid.Maps), new { mapping.SourceObjectId, tier, part });
+                    var key = new MapRenderKey(placement.Roof ? MapRenderKind.Roof : MapRenderKind.Placement, mapping.NativePlacementId, "part/" + part, tier);
+                    CheckResource(report, "scene-placement-part", rows.Length == 1 && rows[0].Payload is MapRigidResource,
+                        new { mapping.SourceObjectId, tier, part }, key, "registration");
+                    if (rows.Length != 1 || rows[0].Payload is not MapRigidResource rigid) continue;
+                    CheckResource(report, "scene-placement-part", MeshEqual(placement.Tiers[tier][part].Mesh, rigid.Mesh),
+                        new { mapping.SourceObjectId, tier, part }, key, "mesh");
+                    CheckResource(report, "scene-placement-part", MapsEqual(placement.Tiers[tier][part].Maps, rigid.Maps),
+                        new { mapping.SourceObjectId, tier, part }, key, "material-maps");
                 }
             var actual = plan.Inventory.Placements.Inventory.Single(p => p.PlacementId == mapping.NativePlacementId);
-            Check(report, "scene-placement", actual.NumericId == mapping.SourceObjectId && actual.Kind == placement.ArchetypeId && actual.Tags.SequenceEqual(placement.Tags), new { mapping.SourceObjectId, actual.NumericId });
+            CheckResource(report, "scene-placement", actual.NumericId == mapping.SourceObjectId && actual.Kind == placement.ArchetypeId && actual.Tags.SequenceEqual(placement.Tags), new { mapping.SourceObjectId, actual.NumericId }, placement.Roof ? MapRenderKind.Roof : MapRenderKind.Placement, "placement", "metadata");
         }
         var canonical = plan.Inventory.Terrain.CanonicalFaces;
         // The source ground pipeline and native paint tessellation may triangulate differently. Area and each
@@ -155,7 +161,7 @@ internal static partial class ShippedSceneComparison
         double sourceArea = source.Ground.Sum(g => Area(g.Mesh));
         double nativeArea = canonical.Sum(f => TriangleArea(f.Triangle));
         if (plan.Scene.Witness.WholeWorldComplete || inputs.Manifest.Windows.Count == 1)
-            Check(report, "scene-terrain", Math.Abs(sourceArea - nativeArea) <= GeometryTolerance, new { sourceArea, nativeArea });
+            CheckResource(report, "scene-terrain", Math.Abs(sourceArea - nativeArea) <= GeometryTolerance, new { sourceArea, nativeArea }, MapRenderKind.Terrain, "surface", "area");
         foreach (var light in source.Lights)
         {
             var mapping = inputs.Manifest.Lights.Single(l => l.SourceObjectId == light.SourceObjectId && l.SourceProfileId == light.SourceProfileId);
@@ -164,11 +170,11 @@ internal static partial class ShippedSceneComparison
             var position = Vector3.Transform(light.Offset, owner.World);
             var b = plan.Scene.Scope.DrawBounds; double pad = plan.Scene.Scope.MotionPaddingMetres;
             bool required = position.X + light.Radius >= b.MinX - pad && position.X - light.Radius <= b.MaxX + pad && position.Z + light.Radius >= b.MinZ - pad && position.Z - light.Radius <= b.MaxZ + pad;
-            Check(report, "scene-light", !required || native is not null, new { mapping.NativeLightId });
+            CheckResource(report, "scene-light", !required || native is not null, new { mapping.NativeLightId }, MapRenderKind.Light, "light", "presence");
             if (native is null) continue;
-            Check(report, "scene-light", Near(position.X, native.Position.X.ToDouble()) && Near(position.Y, native.Position.Y.ToDouble()) && Near(position.Z, native.Position.Z.ToDouble()) &&
+            CheckResource(report, "scene-light", Near(position.X, native.Position.X.ToDouble()) && Near(position.Y, native.Position.Y.ToDouble()) && Near(position.Z, native.Position.Z.ToDouble()) &&
                 Bits(light.Colour, native.Colour) && Bits(light.Intensity, native.Intensity) && Bits(light.Radius, native.Radius) && light.CastShadows == native.CastShadows &&
-                SceneSubmissionGeometry.ExclusionEqual(light.ShadowExclusion, native.ShadowExclusion) && native.OwnerPlacementId == inputs.Manifest.Placements.Single(p => p.SourceObjectId == light.SourceObjectId).NativePlacementId, new { mapping.NativeLightId });
+                SceneSubmissionGeometry.ExclusionEqual(light.ShadowExclusion, native.ShadowExclusion) && native.OwnerPlacementId == inputs.Manifest.Placements.Single(p => p.SourceObjectId == light.SourceObjectId).NativePlacementId, new { mapping.NativeLightId }, MapRenderKind.Light, "light", "descriptor");
         }
     }
     internal static void CompareDrawSets(MapDrawSet expected, MapDrawSet actual, PrivateOracleReport report)
@@ -176,14 +182,15 @@ internal static partial class ShippedSceneComparison
         var expectedResources = expected.Resources.GroupBy(r => r.Reference.Key).ToDictionary(g => g.Key, g => g.ToArray());
         var actualResources = actual.Resources.GroupBy(r => r.Reference.Key).ToDictionary(g => g.Key, g => g.ToArray());
         foreach (var group in actualResources)
-            Check(report, "scene-resource-duplicate", group.Value.Length == 1, new { key = group.Key });
+            CheckResource(report, "scene-resource-duplicate", group.Value.Length == 1, new { key = group.Key }, group.Key, "resource-count");
         foreach (var key in expectedResources.Keys.Union(actualResources.Keys))
         {
             bool one = expectedResources.TryGetValue(key, out var a) && actualResources.TryGetValue(key, out var b) && a.Length == 1 && b.Length == 1;
-            Check(report, Category(key.Kind), one, new { key });
+            CheckResource(report, Category(key.Kind), one, new { key }, key, "registration");
             if (!one) continue;
             var left = expectedResources[key][0]; var right = actualResources[key][0];
-            Check(report, Category(key.Kind), Bits(left.Bounds, right.Bounds) && PayloadEqual(left.Payload, right.Payload), new { key });
+            CheckResource(report, Category(key.Kind), Bits(left.Bounds, right.Bounds), new { key }, key, "bounds");
+            CheckResource(report, Category(key.Kind), PayloadEqual(left.Payload, right.Payload), new { key }, key, "payload");
         }
         var submissions = expected.Draws.Select(draw => new SceneExpectedSubmission(draw,
             expected.Resources.Single(r => r.Reference == draw.Resource).Payload as MapRigidResource)).ToArray();
@@ -255,14 +262,15 @@ internal static partial class ShippedSceneComparison
         _ => "scene-marker"
     };
     static readonly System.Runtime.CompilerServices.ConditionalWeakTable<PrivateOracleReport, Dictionary<string, int>> Details = new();
-    internal static void Check(PrivateOracleReport report, string category, bool ok, object detail)
+    internal static void Check(PrivateOracleReport report, string category, bool ok, object detail, SceneFailureClassification? classification = null)
     {
         if (ok) return;
         var counts = Details.GetOrCreateValue(report);
         counts.TryGetValue(category, out int count); counts[category] = count + 1;
-        report.Check(category, false, count < 16 ? JsonSerializer.Serialize(detail, ShippedScenePolicy.Json) : "{}");
+        report.Check(category, false, JsonSerializer.Serialize(detail, ShippedScenePolicy.Json), retainDetail: count < 16, classification: classification);
     }
     internal static string Fingerprint(MapPreparedResource resource) => Hash(new { resource.Reference.Key, resource.Bounds, payload = PayloadValue(resource.Payload) });
+    internal static string PayloadFingerprint(MapPreparedResource resource) => Hash(PayloadValue(resource.Payload));
     static object MeshValue(GltfMesh mesh) => new { mesh.Vertices, mesh.Indices32 };
     static object PayloadValue(MapResourcePayload payload) => payload switch
     {
@@ -299,8 +307,8 @@ internal static partial class ShippedSceneComparison
             !witness.Required.Except(witness.Present.Concat(witness.KnownEmpty)).Any(), new { witness.CompleteForScope, required = witness.Required.Count, present = witness.Present.Count });
     internal static void CheckStamp(MapDrawSet set, MapResourceStamp stamp, PrivateOracleReport report)
     {
-        foreach (var resource in set.Resources) Check(report, "scene-generation", resource.Reference.Stamp == stamp, new { key = resource.Reference.Key });
-        foreach (var draw in set.Draws) Check(report, "scene-generation", draw.Resource.Stamp == stamp && set.Resources.Any(r => r.Reference == draw.Resource), new { key = draw.Resource.Key });
+        foreach (var resource in set.Resources) CheckResource(report, "scene-generation", resource.Reference.Stamp == stamp, new { key = resource.Reference.Key }, resource.Reference.Key, "stamp");
+        foreach (var draw in set.Draws) CheckResource(report, "scene-generation", draw.Resource.Stamp == stamp && set.Resources.Any(r => r.Reference == draw.Resource), new { key = draw.Resource.Key }, draw.Resource.Key, "stamp-or-registration");
     }
     static MapFrameState Frame(SceneProbe p, MapRenderPlan plan, MapSceneSource source, MapAssetClosure closure, MapRenderPolicy policy)
     {
@@ -314,7 +322,7 @@ internal static partial class ShippedSceneComparison
         }
         return new(plan.Scene.Scope.Surfaces.Frame, observer, p.RoofMode, p.TimeSeconds, p.WindSeed, focus);
     }
-    static void Stream(MapSceneSource source, MapAssetClosure closure, MapAssetExtentProofSet proof, MapRenderPolicy policy, ShippedSceneInputs inputs, IReadOnlyDictionary<string, IReadOnlyDictionary<MapRenderKey, string>> completeWindows, PrivateOracleReport report)
+    static void Stream(MapSceneSource source, MapAssetClosure closure, MapAssetExtentProofSet proof, MapRenderPolicy policy, ShippedSceneInputs inputs, IReadOnlyDictionary<string, IReadOnlyDictionary<MapRenderKey, SceneStreamResource>> completeWindows, PrivateOracleReport report)
     {
         var scheduler = new SceneOracleScheduler(); var device = new SceneOracleDevice();
         var active = new Dictionary<string, MapSceneScope>(StringComparer.Ordinal);
@@ -325,17 +333,22 @@ internal static partial class ShippedSceneComparison
             if (step.Operation == "Unload") active.Remove(step.WindowId);
             else active[step.WindowId] = ShippedSceneInputs.Scope(inputs.Manifest.Windows.Single(w => w.Id == step.WindowId), inputs.Manifest.Limits?.Queries);
             residency.SetWindows(active.Values.ToArray()); Complete(residency, scheduler);
-            foreach (var plan in residency.AcceptedPlans) ShippedSceneMarkers.Plan(inputs, plan, report);
+            foreach (var plan in residency.AcceptedPlans)
+            {
+                ShippedSceneMarkers.Plan(inputs, plan, report);
+                var inventory = new MapDrawRecorder(); plan.Register(inventory);
+                foreach (var window in active.Where(p => p.Value.Digest == plan.Key.ScopeDigest))
+                    SceneStreamComparison.Window(completeWindows[window.Key], inventory.Snapshot().Resources, report);
+            }
             var recorder = new MapDrawRecorder(); var point = ShippedSceneInputs.Point(0, 0, 0);
             residency.Record(new(default, point, KhaozEngine.MapDoc.Interiors.MapRoofMode.AlwaysVisible, 0, 0, point), recorder);
             var set = recorder.Snapshot();
             Check(report, "scene-stream-union", active.Values.Select(s => s.Digest).ToHashSet(StringComparer.Ordinal).SetEquals(residency.AcceptedPlans.Select(p => p.Key.ScopeDigest)), new { step.Operation });
-            var expectedUnion = active.Keys.SelectMany(id => completeWindows[id]).GroupBy(p => p.Key).ToDictionary(g => g.Key, g => g.First().Value);
-            var actualUnion = set.Resources.GroupBy(r => r.Reference.Key).ToDictionary(g => g.Key, g => Fingerprint(g.First()));
-            Check(report, "scene-stream-union", expectedUnion.Count == actualUnion.Count && expectedUnion.All(p => actualUnion.TryGetValue(p.Key, out var fingerprint) && fingerprint == p.Value), new { step.Operation, expected = expectedUnion.Count, actual = actualUnion.Count });
-            foreach (var group in set.Resources.GroupBy(r => r.Reference.Key))
-                Check(report, "scene-stream-union", group.All(r => PayloadEqual(r.Payload, group.First().Payload) && Bits(r.Bounds, group.First().Bounds)), new { key = group.Key });
-            Check(report, "scene-generation", set.Draws.All(d => device.Live.Values.Any(r => r.Reference.Key == d.Resource.Key && PayloadEqual(r.Payload, set.Resources.Single(r => r.Reference == d.Resource).Payload))), new { step.Operation });
+            SceneStreamComparison.Union(active.Keys.SelectMany(id => completeWindows[id].Values), set.Resources, report);
+            foreach (var draw in set.Draws)
+                CheckResource(report, "scene-generation", device.Live.Values.Any(r => r.Reference.Key == draw.Resource.Key &&
+                    PayloadEqual(r.Payload, set.Resources.Single(r => r.Reference == draw.Resource).Payload)),
+                    new { step.Operation, key = draw.Resource.Key }, draw.Resource.Key, "resident-payload");
             Check(report, "scene-completeness", residency.InspectReadiness().Transition.AcceptedWitness?.CompleteForScope == true, new { step.Operation });
         }
         Check(report, "scene-generation", device.Live.Count == 0 && residency.Lifetime.LiveHandles == 0, new { live = device.Live.Count });

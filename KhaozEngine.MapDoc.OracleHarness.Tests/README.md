@@ -760,6 +760,14 @@ lookup. The released file readers are followed by a complete source recheck. Mis
 
 ### Closed scene manifest, schema 1
 
+Each marker correspondence row in the linked marker manifest requires both membership pairs:
+`spaceId` (string or null) and ordered `parents` describe the standalone R6 document, while
+`sceneSpaceId` (string or null) and ordered `sceneParents` describe the combined scene. The scene
+head and plan checks read the scene pair. The linked scaffold check retains the standalone pair.
+Missing either pair refuses the closed scene input. Scene expectations come independently from
+source topology, including room parents and Outside status. Null is not translated or suppressed.
+Standalone R6 marker manifests retain their existing closed shape.
+
 Every object has exactly the named case-sensitive fields. Unknown, missing, duplicate and case-variant
 members refuse. The root may additionally declare the optional `limits` object below. All lists are required, including empty categories. String IDs are nonempty and ordinal.
 Paths are attested extraction-relative paths, without roots, drives, backslashes, dot segments or links.
@@ -879,13 +887,33 @@ one to one through augmenting paths, reassigning earlier matches when tolerance 
 Missing, duplicated, reversed or displaced triangles fail. Positions and normals use the geometric
 tolerances, while vertex colour, UVs, tangents and material maps remain exact. This does not waive
 changed triangulation or coverage.
-Other frame scalar bits remain exact. Streaming duplicates require identical payloads. Compare
+For a proxy layer with no weld cell, expected vertices are transformed independently from the source
+placement pose, units and mesh in binary64, then rounded once in the cluster's anchor-local frame.
+This avoids the legacy absolute-world binary32 rounding artifact without changing the 0.00001 m
+tolerance. Welded layers retain the binary32 `PropHlod` replay. Neither expectation reads native
+geometry or invokes native proxy construction. Topology, coverage, normals and exact attributes remain checked.
+Other frame scalar bits remain exact. Streaming duplicates require identical verified payloads.
+Rigid foliage model-part aliases use key plus inspected payload identity, matching residency. Their
+window-specific envelopes each compare exactly with that window's complete single-window baseline.
+Every other resource kind, including foliage instance resources, also requires equal alias bounds.
+Window resource counts, union coverage, instance rows and source sample identities remain checked. Compare
 canonical terrain/material/paint coverage independently of render-only triangulation order, every
 placement part/LOD/pose, selected/HLOD identities, full light owner/descriptors, four roof channels,
 water body/space/free regions/area/level with closed regions excluded, and foliage keys/matrices/ranks/
 padded bounds/model bindings. The complete tiled store loads and verifies independently for each head. It supplies two heads.
 When declared, the monolithic form also loads independently twice, supplying two additional parity heads. Stream successes
 into aggregates and retain bounded private discrepancy examples, never a full sample corpus.
+Every failed check contributes to a per-category `scene-failure-summary` record, even after the first
+16 detailed examples. Classifications carry resource kind, key class, differing field and count.
+Resource checks pass explicit kind, key class and differing-field metadata through `CheckResource`,
+including source comparisons without a render key. This metadata is counted independently of retained
+examples. Native rigid foliage parts use `model-part/<n>` and classify as `rigid-model-part`.
+Only checks covering the scene as a whole use the scene-wide fallback. Totals include every failure
+without retaining every detail.
+Marker and building composite results carry the classification of each failed resource check into
+the report, with one counted entry per failed check. Terrain checks attach their resource identity
+before reporting. Foliage tally groups preserve their full 64-bit counts and differing fields after
+the example bound, and standalone water failures are classified and counted individually.
 
 Before attestation, retain one non-attesting diagnostic draft with every discrepancy kind/count and
 bounded examples. A semantic rule difference needs a controller ruling, never a looser tolerance.

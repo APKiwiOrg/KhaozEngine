@@ -1,0 +1,159 @@
+{
+  "schema": "khaozengine.renderer-perf-unit/1",
+  "unitId": "proof-admit-refusal",
+  "preset": "rehearsal-controls",
+  "workloadSha": "b17e83f09e42d470fda9027ea877527eeb32c76e",
+  "baselineMainSha": "b17e83f09e42d470fda9027ea877527eeb32c76e",
+  "recipes": [
+    {
+      "sceneId": "S3",
+      "version": "crowd/1",
+      "profile": "renderer-full-native-1080/1",
+      "recipeSha256": "dd702040fa4f868a9377cbf09c4eb7ff0fc57d54adb856fac2fec3b4af180f0b",
+      "settingsSha256": "fa254848b4d8b245d5fdb16e6e7617d00f2c0e6ea22336f123ae2da0434cb2a2",
+      "shaderSha256": "7e2097450fe879ebf55386e00aaf6feac48e67a279db361f8f6a9248c8b0e622",
+      "geometrySha256": "90732a30384a0e9554ea017ce81a2c403c3b4a421f90035fe4a4b82b786df6e9",
+      "assetSha256": "99dc87de2047b8b4e06ed9a4aa8ace50f66267abc3ec134bc5acfdd7341eaa9b"
+    }
+  ],
+  "blocks": [],
+  "controls": [
+    {
+      "id": 1,
+      "version": "1",
+      "workSha256": "8ee116407cc935ea7ee1274b3153e95f161dec828ab5cabaac07149f06349e0f",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 2,
+      "version": "1",
+      "workSha256": "695fb77fc32b63d53c43570ffb0d051c6ee79fe86a445c1684edf9bc495a93ab",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 3,
+      "version": "1",
+      "workSha256": "372bedce1d87fbe81319cf46243642d48be332c8ce91f2bc86590a2f8109a47c",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 4,
+      "version": "1",
+      "workSha256": "d58660c9e1b986b4b5ed5b978bec4542fd762c24425cde4195120399c9653a61",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 5,
+      "version": "1",
+      "workSha256": "0d4897cffa0ef344422c9a49c31bac191ec1a2c6723b9766e6c8d67d8661d931",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 6,
+      "version": "1",
+      "workSha256": "2918b80903fb6e670c088b21a7844ebde5cc90a975d763ae746266bc1ad3329c",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 7,
+      "version": "1",
+      "workSha256": "e64795cdcae0233f37b8791bc43288851dabd87553a850c30da65514b1a90585",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 8,
+      "version": "1",
+      "workSha256": "b0228f6926f6738b3b17960b744a52c22eeedae5309749d2106765f138c3cd97",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 9,
+      "version": "1",
+      "workSha256": "de7287001199ce06c8f06862092343c1a5cf378c7a48049edbfc6844100f28f1",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 10,
+      "version": "1",
+      "workSha256": "ae5f82f4d6cdc2b44118f38670b02271728f519fbbb01c52145a141ff0bcbee0",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 11,
+      "version": "1",
+      "workSha256": "01adcb0b72aee7e82393c646ceb003ab9f390ae50416d6e94973d4285e33f097",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    },
+    {
+      "id": 12,
+      "version": "1",
+      "workSha256": "8c0915a2171ab4978253841e6e8e2dfd9103ad580ea79bdb81dd4d4dd12924ad",
+      "warmupFrames": 64,
+      "measuredFrames": 128
+    }
+  ],
+  "conditioningFrames": 3,
+  "batchSize": 0,
+  "maximumScopeOccurrences": 255,
+  "runtime": {
+    "configuration": "Release",
+    "runtimeVersion": "10.0.13",
+    "environment": {
+      "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+      "DOTNET_HOST_PATH": "/home/runner/work/_temp/renderer-dotnet/dotnet",
+      "DOTNET_ROOT": "/home/runner/work/_temp/renderer-dotnet",
+      "DOTNET_ROOT_X64": "/home/runner/work/_temp/renderer-dotnet",
+      "DOTNET_TieredCompilation": "1",
+      "DOTNET_gcServer": "0",
+      "KE_GPU_TESTS": "1",
+      "KE_GRAPHICS_BACKEND": "vulkan-native",
+      "KE_VULKAN_DEVICE": "llvmpipe",
+      "KE_VULKAN_REQUIRED": "1",
+      "VK_DRIVER_FILES": "/usr/share/vulkan/icd.d/lvp_icd.json",
+      "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/lvp_icd.json",
+      "DOTNET_MULTILEVEL_LOOKUP": "0",
+      "DOTNET_NOLOGO": "1",
+      "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1"
+    },
+    "gcMode": "workstation",
+    "tieredCompilation": true
+  },
+  "execution": {
+    "backend": "vulkan",
+    "adapterPolicy": "mesa-lavapipe-software",
+    "runner": "ubuntu-24.04",
+    "workflow": "gpu-hosted-bench.yml",
+    "leg": "linux-vulkan",
+    "completionPolicy": "retained-fence-batch-3/1",
+    "lockedGraphicsClockMHz": null
+  },
+  "limits": {
+    "unitSeconds": 5400,
+    "frameMilliseconds": 60000,
+    "coldFrameMilliseconds": 120000,
+    "jobMinutes": 120
+  },
+  "budget": {
+    "maximumBilledMinutes": 120,
+    "ratePerMinute": 0,
+    "currency": "USD",
+    "maximumCostUsd": 0
+  },
+  "approval": {
+    "reference": "T3 thread f6c16dd2-ab68-482e-bf6c-335ec5ad4582 standing owner approval of 2026-10-26 for free runs. Admission proof for #1644 at workload b17e83f09e42d470fda9027ea877527eeb32c76e: batchSize 0 must be refused by the free legs job before any renderer runner. Must never render.",
+    "purpose": "Prove the free legs job refuses a manifest the selector shape check admits. Never a measurement.",
+    "campaignReference": "T3 thread f6c16dd2-ab68-482e-bf6c-335ec5ad4582 standing owner approval of 2026-10-26 for free runs. Admission proof for #1644 at workload b17e83f09e42d470fda9027ea877527eeb32c76e: batchSize 0 must be refused by the free legs job before any renderer runner. Must never render.",
+    "campaignMaximumUsd": 0
+  }
+}

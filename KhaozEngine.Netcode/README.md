@@ -79,6 +79,10 @@ cadences. The one-argument overload retains its whole-frame accumulation behavio
 Reconciliation error and `PredictedHorizontalSpeed` still read `Position`, so the override changes presentation
 only.
 
+Each unchanged finite planar coordinate stays exact at finite presentation phases, even while the other
+coordinate moves. Correction offsets still apply and decay normally. Reconciliation and quiet reseeding use
+the same interpolation, so capturing or re-anchoring a stationary presentation does not add rounding movement.
+
 `RemainingPresentationMovement` reports the planar displacement still to travel in the current inter-tick
 interpolation, in state position units. It excludes reconciliation offsets and reaches zero at the endpoint.
 A non-hard-snap `Reconcile` translates both endpoints and preserves this movement. `Reset`, `ResetForTransition`,

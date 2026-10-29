@@ -41,86 +41,86 @@ internal sealed class ShadowCascadeBaseOracle
     sealed record ShadowMap(int Resolution, int CascadeCount);
     sealed record View(Matrix4x4 AbsoluteViewProjection);
 
-        int ComputeShadowCascades()
+    int ComputeShadowCascades()
+    {
+        var shadows = Post.Quality.Shadows;
+        // ABSOLUTE: the fit, the radii and the caster classification stay byte-identical at any render origin.
+        if (!ShadowMapMath.FrustumCornersWorld(_currentFrameView.AbsoluteViewProjection, _frustumCornersScratch))
         {
-            var shadows = Post.Quality.Shadows;
-            // ABSOLUTE: the fit, the radii and the caster classification stay byte-identical at any render origin.
-            if (!ShadowMapMath.FrustumCornersWorld(_currentFrameView.AbsoluteViewProjection, _frustumCornersScratch))
-            {
-                _cascadeCount = 0;
-                return 0;
-            }
-            Vector3 eye = ActiveCamera.Eye;
-            Vector3 fwd = ActiveCamera.Forward;
-            // View depths of the near/far planes read off the unprojected corners (camera-type-agnostic: no
-            // reliance on perspective-projection matrix fields, so iso/ortho cameras fit identically).
-            Vector3 nearC = (_frustumCornersScratch[0] + _frustumCornersScratch[1] + _frustumCornersScratch[2] + _frustumCornersScratch[3]) * 0.25f;
-            Vector3 farC = (_frustumCornersScratch[4] + _frustumCornersScratch[5] + _frustumCornersScratch[6] + _frustumCornersScratch[7]) * 0.25f;
-            float camNear = Vector3.Dot(nearC - eye, fwd);
-            float camFar = Vector3.Dot(farC - eye, fwd);
-            float range = MathF.Max(camFar - camNear, 1e-3f);
-
-            int res = _model.ShadowMap.Resolution;         // the actual allocated per-cascade resolution (clamped)
-            int count = _model.ShadowMap.CascadeCount;     // the actual allocated cascade count (clamped)
-            Span<float> splits = stackalloc float[ShadowSettings.MaxCascades];
-            ShadowMapMath.FillCascadeSplits(splits, count, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
-            Vector3 lightDir = HeldLightDirection(splits, count, camNear, camFar, range, res);
-            float prev = camNear;
-            for (int i = 0; i < count; i++)
-            {
-                float d = Math.Clamp(splits[i], camNear, camFar);
-                ShadowMapMath.SliceBoundingSphere(_frustumCornersScratch,
-                    (prev - camNear) / range, (d - camNear) / range, out Vector3 center, out float radius);
-                FitCascade(i, lightDir, center, radius, res);
-                _cascadeRadii[i] = radius;
-                prev = MathF.Max(d, prev);
-            }
-            _cascadeCount = count;
-            return count;
+            _cascadeCount = 0;
+            return 0;
         }
+        Vector3 eye = ActiveCamera.Eye;
+        Vector3 fwd = ActiveCamera.Forward;
+        // View depths of the near/far planes read off the unprojected corners (camera-type-agnostic: no
+        // reliance on perspective-projection matrix fields, so iso/ortho cameras fit identically).
+        Vector3 nearC = (_frustumCornersScratch[0] + _frustumCornersScratch[1] + _frustumCornersScratch[2] + _frustumCornersScratch[3]) * 0.25f;
+        Vector3 farC = (_frustumCornersScratch[4] + _frustumCornersScratch[5] + _frustumCornersScratch[6] + _frustumCornersScratch[7]) * 0.25f;
+        float camNear = Vector3.Dot(nearC - eye, fwd);
+        float camFar = Vector3.Dot(farC - eye, fwd);
+        float range = MathF.Max(camFar - camNear, 1e-3f);
 
-        Vector3 HeldLightDirection(ReadOnlySpan<float> splits, int count, float camNear, float camFar, float range, int res)
+        int res = _model.ShadowMap.Resolution;         // the actual allocated per-cascade resolution (clamped)
+        int count = _model.ShadowMap.CascadeCount;     // the actual allocated cascade count (clamped)
+        Span<float> splits = stackalloc float[ShadowSettings.MaxCascades];
+        ShadowMapMath.FillCascadeSplits(splits, count, shadows.ShadowNearDistance, shadows.ResolvedMaxDistance);
+        Vector3 lightDir = HeldLightDirection(splits, count, camNear, camFar, range, res);
+        float prev = camNear;
+        for (int i = 0; i < count; i++)
         {
-            Vector3 live = Vector3.Normalize(Post.LightDirection);
-            float budget = Post.Quality.Shadows.ShadowLightHoldTexels;
-            // Disabled, or nothing held yet (the first shadow frame, which must fit from the live sun anyway). The
-            // early-out also keeps the disabled path off the radius walk below, so 0 costs nothing as well as
-            // changing nothing.
-            if (!(budget > 0f) || !_hasHeldLightDir)
-            {
-                _heldLightDir = live;
-                _hasHeldLightDir = true;
-                return live;
-            }
-            if (ShadowLightHold.ShouldAdopt(_heldLightDir, live,
-                    MinCascadeRadius(splits, count, camNear, camFar, range), res,
-                    Post.Quality.Shadows.ShadowLightHoldCasterHeight, budget))
-                _heldLightDir = live;
-            return _heldLightDir;
+            float d = Math.Clamp(splits[i], camNear, camFar);
+            ShadowMapMath.SliceBoundingSphere(_frustumCornersScratch,
+                (prev - camNear) / range, (d - camNear) / range, out Vector3 center, out float radius);
+            FitCascade(i, lightDir, center, radius, res);
+            _cascadeRadii[i] = radius;
+            prev = MathF.Max(d, prev);
         }
+        _cascadeCount = count;
+        return count;
+    }
 
-        float MinCascadeRadius(ReadOnlySpan<float> splits, int count, float camNear, float camFar, float range)
+    Vector3 HeldLightDirection(ReadOnlySpan<float> splits, int count, float camNear, float camFar, float range, int res)
+    {
+        Vector3 live = Vector3.Normalize(Post.LightDirection);
+        float budget = Post.Quality.Shadows.ShadowLightHoldTexels;
+        // Disabled, or nothing held yet (the first shadow frame, which must fit from the live sun anyway). The
+        // early-out also keeps the disabled path off the radius walk below, so 0 costs nothing as well as
+        // changing nothing.
+        if (!(budget > 0f) || !_hasHeldLightDir)
         {
-            float min = float.MaxValue;
-            float prev = camNear;
-            for (int i = 0; i < count && i < splits.Length; i++)
-            {
-                float d = Math.Clamp(splits[i], camNear, camFar);
-                ShadowMapMath.SliceBoundingSphere(_frustumCornersScratch,
-                    (prev - camNear) / range, (d - camNear) / range, out _, out float radius);
-                min = MathF.Min(min, radius);
-                prev = MathF.Max(d, prev);
-            }
-            return min == float.MaxValue ? 0f : min;
+            _heldLightDir = live;
+            _hasHeldLightDir = true;
+            return live;
         }
+        if (ShadowLightHold.ShouldAdopt(_heldLightDir, live,
+                MinCascadeRadius(splits, count, camNear, camFar, range), res,
+                Post.Quality.Shadows.ShadowLightHoldCasterHeight, budget))
+            _heldLightDir = live;
+        return _heldLightDir;
+    }
 
-        void FitCascade(int i, Vector3 lightDir, Vector3 center, float radius, int resolution)
+    float MinCascadeRadius(ReadOnlySpan<float> splits, int count, float camNear, float camFar, float range)
+    {
+        float min = float.MaxValue;
+        float prev = camNear;
+        for (int i = 0; i < count && i < splits.Length; i++)
         {
-            _cascadeCpuVpsAbsolute[i] = ShadowMapMath.BuildLightViewProj(lightDir, center, radius, resolution);
-            _cascadeCpuVps[i] = _frameOriginActive
-                ? ShadowMapMath.BuildLightViewProj(lightDir, ToRender(center), radius, resolution)
-                : _cascadeCpuVpsAbsolute[i];
+            float d = Math.Clamp(splits[i], camNear, camFar);
+            ShadowMapMath.SliceBoundingSphere(_frustumCornersScratch,
+                (prev - camNear) / range, (d - camNear) / range, out _, out float radius);
+            min = MathF.Min(min, radius);
+            prev = MathF.Max(d, prev);
         }
+        return min == float.MaxValue ? 0f : min;
+    }
+
+    void FitCascade(int i, Vector3 lightDir, Vector3 center, float radius, int resolution)
+    {
+        _cascadeCpuVpsAbsolute[i] = ShadowMapMath.BuildLightViewProj(lightDir, center, radius, resolution);
+        _cascadeCpuVps[i] = _frameOriginActive
+            ? ShadowMapMath.BuildLightViewProj(lightDir, ToRender(center), radius, resolution)
+            : _cascadeCpuVpsAbsolute[i];
+    }
 
     internal static class ShadowMapMath
     {

@@ -42,9 +42,11 @@ public sealed class RendererPerfWaterOpticsPresetTests
             string[] fields = entry.Split('/');
             blocks.Add(new JsonObject
             {
-                ["sceneId"] = fields[0], ["iteration"] = int.Parse(fields[1], System.Globalization.CultureInfo.InvariantCulture),
+                ["sceneId"] = fields[0],
+                ["iteration"] = int.Parse(fields[1], System.Globalization.CultureInfo.InvariantCulture),
                 ["layout"] = fields[2] == "TotalOnly" ? "total-only" : "per-pass",
-                ["warmupFrames"] = single ? 32 : shortened ? 64 : 192, ["measuredFrames"] = single ? 64 : shortened ? 128 : 256
+                ["warmupFrames"] = single ? 32 : shortened ? 64 : 192,
+                ["measuredFrames"] = single ? 64 : shortened ? 128 : 256
             });
         }
         json["blocks"] = blocks;

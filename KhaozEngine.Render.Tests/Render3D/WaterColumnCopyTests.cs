@@ -68,8 +68,11 @@ public sealed class WaterColumnCopyTests
         h.Scene.DrawWater(new WaterPlane(0f, 1f, 0f, 2f, look: new WaterLook { WaterColumnLight = true }));
         h.Scene.DrawGroundDecal(new GroundDecal
         {
-            Shape = DecalShape.Circle, Center = Vector3.Zero, Size = new Vector4(2f),
-            FillColor = Color.White, FillFraction = 1f,
+            Shape = DecalShape.Circle,
+            Center = Vector3.Zero,
+            Size = new Vector4(2f),
+            FillColor = Color.White,
+            FillFraction = 1f,
         });
         h.Render();
 

@@ -417,8 +417,8 @@ public partial class ContactControllerTests
     }
 
     // A grounded tick is the ground core's tick at the banded gate, with the default settings' half-radius foot.
-    // Both run in this process, so the feet must agree to the bit. No row changes footing with time left, so each is
-    // the ground core's whole tick. The rows of ContactControllerTests.ModeChanges cover the rest of such a tick.
+    // Publish the least representable centre covering the core's exact feet (#1647 I2). No row changes footing
+    // with time left, so each is the core's whole tick. ModeChanges covers the rest of such a tick.
     [Theory]
     [MemberData(nameof(ParityRows))]
     public void GroundParityWithTheGroundCore(string row, SceneVariant variant)
@@ -439,8 +439,14 @@ public partial class ContactControllerTests
         GroundStepResult core = g.Core(start, velocity * Dt, tuning, Banded);
         bool grounded = core.Footing is GroundFooting.Walkable or GroundFooting.Held;
         Assert.True(grounded || !(core.RemainingTime > 0), $"{row} changes footing with time left: {core}");
-        var expected = new Vector3(core.Feet.X, core.Feet.Y + HalfHeight, core.Feet.Z);
+        // These fixture sums are exact in binary64. The independent oracle rounds upward to binary32.
+        double exactCentre = (double)core.Feet.Y + HalfHeight;
+        float centre = (float)exactCentre;
+        if (centre < exactCentre) centre = MathF.BitIncrement(centre);
+        var expected = new Vector3(core.Feet.X, centre, core.Feet.Z);
         Assert.True(BitsEqual(expected, result.Position), $"{row}: core {core}, controller {Show(result)}");
+        Assert.True((double)result.Position.Y - HalfHeight >= core.Feet.Y);
+        Assert.True((double)MathF.BitDecrement(result.Position.Y) - HalfHeight < core.Feet.Y);
         Assert.Equal(grounded, result.Grounded);
         Assert.Equal(grounded, result.SupportGranted);
         Assert.Equal(0f, result.VerticalVelocity);

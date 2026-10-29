@@ -293,14 +293,17 @@ const float VisibilityShimmerGate = 0.1;
     internal static readonly Undo PrecisionClip = new(nameof(PrecisionClip),
         @"    vec3 clipCentre = 0.5 * (clipMin + clipMax);
     vec3 clipExtent = 0.5 * (clipMax - clipMin) + vec3(1.0e-5);
-    // Binary16 spacing at the largest RGB channel bounds every channel's truncation error, including subnormals.
-    float largestHistory = max(history.r, max(history.g, history.b));
-    float halfStep = max(uintBitsToFloat(floatBitsToUint(largestHistory) & 0x7f800000u) / 1024.0,
-        0.000000059604644775390625);
-    // Each chroma row has unit absolute coefficient sum. Include the weighting denominator's rounding change.
-    float weightedStep = halfStep / max(1.0 + temporalLuma(history.rgb) - halfStep, 1.0e-4);
-    vec2 chromaFloor = ChromaPrecisionFloorSteps * weightedStep * (vec2(1.0) + abs(historyYcc.yz));
-    clipExtent.yz = max(clipExtent.yz, chromaFloor);
+    // Use the shimmer score's still-pixel test. Moving pixels need the coupled clip to discard stale colour.
+    if (motionPixels < ShimmerStillPixels) {
+        // Binary16 spacing at the largest RGB channel bounds every channel's truncation error, including subnormals.
+        float largestHistory = max(history.r, max(history.g, history.b));
+        float halfStep = max(uintBitsToFloat(floatBitsToUint(largestHistory) & 0x7f800000u) / 1024.0,
+            0.000000059604644775390625);
+        // Each chroma row has unit absolute coefficient sum. Include the weighting denominator's rounding change.
+        float weightedStep = halfStep / max(1.0 + temporalLuma(history.rgb) - halfStep, 1.0e-4);
+        vec2 chromaFloor = ChromaPrecisionFloorSteps * weightedStep * (vec2(1.0) + abs(historyYcc.yz));
+        clipExtent.yz = max(clipExtent.yz, chromaFloor);
+    }
     vec3 clipFrom = historyYcc - clipCentre;
     vec3 clipExcess = abs(clipFrom) / clipExtent;
     clipExcess.x *= 1.0 - hold;

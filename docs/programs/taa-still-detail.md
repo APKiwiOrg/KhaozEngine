@@ -46,7 +46,9 @@ steps, smear, lag or sparkle. The owner bar is "No flicker you notice, especiall
 - TSD-D8: A shallow coloured step with nearly equal nonzero weighted Cg is the engine eave
   reproduction. Independently rounded binary16 RGB history can exceed a nearly degenerate chroma
   interval and make the radial clip move already valid luma. A broader step lock must not hide it.
-- TSD-D9: Owner ruling, 2026-10-29. Adopt the precision-safe chroma floor at four binary16 steps.
+- TSD-D9: Owner ruling, 2026-10-29. Adopt the precision-safe chroma floor at four binary16 steps,
+  only where the shimmer score's `motionPixels < ShimmerStillPixels` test identifies a still pixel.
+  Moving pixels retain the existing clip. Moving shadows over still receivers still take the floor.
   Accept only Native S 8 px advancing textured tail / 1 px tail, Native S 8 px retreating absolute
   textured tail, and Native MS 2 leading textured rim error at their measured costs. The resolve design
   amendment owns the exact parameters. Backend-specific costs must stay within 10 percent of original

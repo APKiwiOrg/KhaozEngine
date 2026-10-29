@@ -1373,8 +1373,11 @@ Implementation review established the contract amendments below.
     This batch's GPU timing and bandwidth cost remain unmeasured and need the separate owner-approved benchmark.
 
 36. Precision-safe chroma extent in the history clip, owner ruling 2026-10-29. The final radial clip
-    floors only its Co and Cg half-widths. Binary16 RGB history can carry independent channel-rounding
-    errors larger than a nearly degenerate weighted-chroma interval. A radial correction toward the
+    floors only its Co and Cg half-widths on still pixels. The still test is `motionPixels < ShimmerStillPixels`,
+    using the same display-pixel motion as the shimmer score in `temporalAccumulatePixel`. Moving pixels
+    retain the existing coupled clip to discard stale colour. A shadow moving over a still receiver does
+    not move that receiver's pixel, so it still takes the floor. Binary16 RGB history can carry independent
+    channel-rounding errors larger than a nearly degenerate weighted-chroma interval. A radial correction toward the
     neighbourhood centre then moves already valid luma by far more than the chroma error. A shallow
     coloured step with nearly equal nonzero Cg reproduces the eave failure without overlapping geometry.
     The ridge lock correctly stays quiet on this monotone step, so extending its lock would hide the

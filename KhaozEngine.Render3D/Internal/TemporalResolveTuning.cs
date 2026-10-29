@@ -496,7 +496,8 @@ namespace KhaozEngine.Render3D.Internal
         /// 0.0072211, with or without <see cref="VisibilityShimmerGate"/>: the lag sits on frames after the edge has
         /// passed, where the visibility no longer changes. Before the chroma precision floor it measured D's own value.</summary>
         public const float ShimmerFloor = 1f / 32f;
-        /// <summary>Step 5. Minimum chroma half-width in binary16 RGB rounding steps, including the weighted-colour
+        /// <summary>Step 5. Minimum chroma half-width on a pixel moving less than <see cref="ShimmerStillPixels"/>,
+        /// in binary16 RGB rounding steps, including the weighted-colour
         /// denominator's change. Nearly flat chroma must tolerate stored RGB precision so radial clipping cannot
         /// turn a small chroma error into a large correction of already valid luma. The owner approved four steps
         /// on 2026-10-29 with the three measured Native moving-shadow costs.</summary>

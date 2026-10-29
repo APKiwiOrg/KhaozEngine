@@ -494,8 +494,13 @@ namespace KhaozEngine.Render3D.Internal
         /// this weighted luma scores none, and it floors the swing the drift is read against. At 1/256 a textured
         /// receiver behind a shadow retreating 8 pixels a frame at Native lagged 0.0072221 against design D's
         /// 0.0072211, with or without <see cref="VisibilityShimmerGate"/>: the lag sits on frames after the edge has
-        /// passed, where the visibility no longer changes. Here it measures D's own value.</summary>
+        /// passed, where the visibility no longer changes. Before the chroma precision floor it measured D's own value.</summary>
         public const float ShimmerFloor = 1f / 32f;
+        /// <summary>Step 5. Minimum chroma half-width in binary16 RGB rounding steps, including the weighted-colour
+        /// denominator's change. Nearly flat chroma must tolerate stored RGB precision so radial clipping cannot
+        /// turn a small chroma error into a large correction of already valid luma. The owner approved four steps
+        /// on 2026-10-29 with the three measured Native moving-shadow costs.</summary>
+        public const float ChromaPrecisionFloorSteps = 4f;
         /// <summary>Steps 5 and 8. A pixel moving this many display pixels a frame or more scores none: its history is
         /// resampled, so its change is not the jitter's alone.</summary>
         public const float ShimmerStillPixels = 0.25f;
@@ -519,8 +524,9 @@ namespace KhaozEngine.Render3D.Internal
         /// shrinks. Stored confidence stays weight over <see cref="MaxAccumulation"/> and may reach this over it, and
         /// readers that need a share clamp it to 1. Against 31 it steadies the still step, Native's largest frame
         /// change 0.0085 of contrast against 0.0156, keeps the still line, record, trail and textured grain facts, and
-        /// holds the Native textured tail behind a shadow retreating 8 pixels a frame to 1.8e-8 above design D's,
-        /// inside that fact's tolerance of 5e-7.</summary>
+        /// before the chroma precision floor it held the Native textured tail behind a shadow retreating 8 pixels a
+        /// frame to 1.8e-8 above design D's. The combined resolve accepts the measured cost documented on
+        /// <see cref="ChromaPrecisionFloorSteps"/>.</summary>
         public const float MaxStillAccumulation = 63f;
         /// <summary>Steps 5 and 8. Where the key-shadow visibility the scene exports at the centre texel lies more
         /// than this from last frame's at the same surface point, the pixel scores none, so a shadow passing over a

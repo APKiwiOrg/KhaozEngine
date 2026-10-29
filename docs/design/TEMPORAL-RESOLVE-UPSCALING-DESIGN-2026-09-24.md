@@ -1371,3 +1371,35 @@ Implementation review established the contract amendments below.
     records optimized FXC behavior and explicit finite qualification. Earlier red results remain in those records
     with their original scope. Vulkan zero-message counts without a debug messenger do not prove validation coverage.
     This batch's GPU timing and bandwidth cost remain unmeasured and need the separate owner-approved benchmark.
+
+36. Precision-safe chroma extent in the history clip, owner ruling 2026-10-29. The final radial clip
+    floors only its Co and Cg half-widths. Binary16 RGB history can carry independent channel-rounding
+    errors larger than a nearly degenerate weighted-chroma interval. A radial correction toward the
+    neighbourhood centre then moves already valid luma by far more than the chroma error. A shallow
+    coloured step with nearly equal nonzero Cg reproduces the eave failure without overlapping geometry.
+    The ridge lock correctly stays quiet on this monotone step, so extending its lock would hide the
+    precision defect and risk holding real lighting changes.
+
+    Let `u` be binary16 binade spacing at the largest nonnegative RGB history component, with a
+    `2^-24` subnormal minimum. Let `L` be Rec.709 history luma and `C` be weighted Co or Cg. Each
+    chroma half-width is at least `ChromaPrecisionFloorSteps * u * (1 + abs(C)) / max(1 + L - u, 1e-4)`.
+    `ChromaPrecisionFloorSteps` is 4. Each chroma row's absolute coefficients sum to one. The denominator
+    accounts for the weighting change caused by RGB rounding. The existing luma box, M1 shimmer band,
+    history cap, release gates and hold interpolation remain. The floor adds scalar and vector arithmetic,
+    with no texture fetch, texture allocation or history memory. Its frozen-D undo restores the exact
+    original clip and removes its tuning declaration before comparing shipped-D source and compiled pins.
+
+    The owner accepted these three measured Native moving-shadow costs for the precision-safe chroma
+    floor. Only the named comparison changes. Original design D limits remain on every other comparison.
+
+    | Metal comparison | Original enforced maximum | Accepted parameter | Accepted maximum |
+    | --- | ---: | ---: | ---: |
+    | S 8 px advancing textured tail / 1 px tail | 1.5 times slow tail | multiplier 1.610798383033032 | 0.004814773364463 at slow tail 0.0029890602170812297 |
+    | S 8 px retreating absolute textured tail | 0.007221576276167364 | baseline 0.007580620435507 | 0.007581120435507 |
+    | MS 2 leading textured rim error | 0.00352495 | baseline 0.003235554347737 | 0.003559659782511 |
+
+    The absolute-tail allowance remains `0.0000005`. The rim uses `(baseline + 0.0000005) * 1.1`,
+    with reference, temporal-error and other fields unchanged. The advancing multiplier applies only to
+    Native S 8 px advancing. Backend-specific values may rise only to that backend's measured cost and
+    only within 10 percent of its original design D bound. Any other failing design D comparison or any
+    increase above that ceiling requires a new owner ruling. The owner look gate still holds M1.

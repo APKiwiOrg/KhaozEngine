@@ -84,6 +84,7 @@ namespace KhaozEngine.Tests.Render3D
             },
             { "const float DisplayKernelMotionPixels = 2.0;", TemporalResolveTuning.DisplayKernelMotionPixels, 2f },
             { "const float DisplayKernelFullWeight = 0.25;", TemporalResolveTuning.DisplayKernelFullWeight, 0.25f },
+            { "const float ChromaPrecisionFloorSteps = 4.0;", TemporalResolveTuning.ChromaPrecisionFloorSteps, 4f },
             { "const float ShimmerFloor = 0.03125;", TemporalResolveTuning.ShimmerFloor, 1f / 32f },
             { "const float ShimmerStillPixels = 0.25;", TemporalResolveTuning.ShimmerStillPixels, 0.25f },
             { "const float ShimmerChangeBand = 3.0;", TemporalResolveTuning.ShimmerChangeBand, 3f },

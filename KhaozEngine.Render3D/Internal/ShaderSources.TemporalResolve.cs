@@ -108,6 +108,7 @@ const float MovingShareConfidence = 0.0;
 const float DisplayKernelConfidenceStart = 0.5;
 const float DisplayKernelMotionPixels = 2.0;
 const float DisplayKernelFullWeight = 0.25;
+const float ChromaPrecisionFloorSteps = 4.0;
 const float ShimmerFloor = 0.03125;
 const float ShimmerStillPixels = 0.25;
 const float ShimmerChangeBand = 3.0;

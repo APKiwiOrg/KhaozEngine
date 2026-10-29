@@ -38,15 +38,19 @@ steps, smear, lag or sparkle. The owner bar is "No flicker you notice, especiall
 - TSD-D5: Owner ruling, 2026-10-28. Build shared engine foundations properly. The owner reviews
   baseline and candidate clips side by side before any engine release.
 - TSD-D6: Assert the new GPU facts at Native and Quality, report Balanced, and preserve every
-  existing temporal fact, including design D shadow bounds, ghosting, trails, cuts, disocclusion,
+  existing temporal fact, including design D shadow bounds except TSD-D9, ghosting, trails, cuts, disocclusion,
   convergence and byte identity with TAA off.
 - TSD-D7: M1 starts with the classifier feasibility gate. A creeping shadow over a shimmering
   receiver must release as promptly as over a plain receiver. Keeping still detail must not hide
   real lighting change.
-- TSD-D8: The still eave class has no engine reproduction. Neither the resolve rig step nor a
-  full-scene eave with HDR, the sharpen and a perspective camera shimmers past 0.15 of contrast on
-  the unchanged resolve. It reaches M1 without an engine regression fact and is judged by M1's
-  real-content A/B. If M1 misses it, a follow-up task builds the reproduction and the fix.
+- TSD-D8: A shallow coloured step with nearly equal nonzero weighted Cg is the engine eave
+  reproduction. Independently rounded binary16 RGB history can exceed a nearly degenerate chroma
+  interval and make the radial clip move already valid luma. A broader step lock must not hide it.
+- TSD-D9: Owner ruling, 2026-10-29. Adopt the precision-safe chroma floor at four binary16 steps.
+  Accept only Native S 8 px advancing textured tail / 1 px tail, Native S 8 px retreating absolute
+  textured tail, and Native MS 2 leading textured rim error at their measured costs. The resolve design
+  amendment owns the exact parameters. Backend-specific costs must stay within 10 percent of original
+  design D bounds. Every other bound stays fixed. M1 remains held for the owner look gate.
 
 ## Open questions and owner gates
 
@@ -64,5 +68,5 @@ steps, smear, lag or sparkle. The owner bar is "No flicker you notice, especiall
 
 ## Next step
 
-Task 2 private-package route. Prove that an unchanged engine package reproduces the existing
-consumer baseline without merging the probe branch, and record the loaded renderer identity.
+Finish the precision-safe chroma floor verification across Metal, Direct3D 11 and Vulkan, including
+compiled fixtures and temporal goldens. The owner reviews the candidate clips before M1 lands.

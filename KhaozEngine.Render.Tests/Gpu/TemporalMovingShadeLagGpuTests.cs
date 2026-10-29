@@ -224,7 +224,9 @@ namespace KhaozEngine.Tests.Gpu
         // Each row is that driver's measured D cost. Paired controls remain in the run's output.
         static readonly Dictionary<(string Device, string Name, string Region), double> OwnerAcceptedTailBaseline = new()
         {
-            [("hardware", "Native S 8.0 px retreating", "tail textured")] = 0.007221076276167364,
+            // Owner ruling 2026-10-29, precision-safe chroma floor. The measured retreating tail is
+            // 0.007581120435506409, 4.98 percent above D's allowed maximum, before the unchanged allowance.
+            [("hardware", "Native S 8.0 px retreating", "tail textured")] = 0.007580620435507,
             [("WARP", "Native S 8.0 px retreating", "tail textured")] = 0.007222797931709032,
             [("lavapipe", "Native S 8.0 px retreating", "tail textured")] = 0.007245504857927269
         };
@@ -416,8 +418,12 @@ namespace KhaozEngine.Tests.Gpu
                                 $"{c.Name}: absolute {region} {actual:R} above baseline {baseline:R}, paired bilinear control {before:R}, "
                                 + $"1 px denominator {measured[slow][region].Mean:R}, control {controls[slow][region].Mean:R}");
                         }
-                    Check(tail <= FastTailRatio * slowTail,
-                        $"{c.Name}: textured tail {tail:0.0000} above {FastTailRatio} times the 1 px tail {slowTail:0.0000}");
+                    // Owner ruling 2026-10-29, precision-safe chroma floor. Only this Native advancing case
+                    // takes the measured 0.004814773364462807 / 0.0029890602170812297, 7.39 percent above D.
+                    double fastTailRatio = c.Name == "Native S 8.0 px advancing" && TemporalDeviceClass.Name == "hardware"
+                        ? 1.610798383033032 : FastTailRatio;
+                    Check(tail <= fastTailRatio * slowTail,
+                        $"{c.Name}: textured tail {tail:0.0000} above {fastTailRatio} times the 1 px tail {slowTail:0.0000}");
                 }
                 else if (c.Kind == MovingShadeKind.Object && c.Motion >= 1f)
                 {

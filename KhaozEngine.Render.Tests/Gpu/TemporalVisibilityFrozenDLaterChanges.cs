@@ -289,9 +289,43 @@ const float VisibilityShimmerGate = 0.1;
             HistoryInClipSpace, RecordStep, RecordResult],
         [RecordStore]);
 
+    /// <summary>The precision-safe clip, restored before the shimmer clip it replaces.</summary>
+    internal static readonly Undo PrecisionClip = new(nameof(PrecisionClip),
+        @"    vec3 clipCentre = 0.5 * (clipMin + clipMax);
+    vec3 clipExtent = 0.5 * (clipMax - clipMin) + vec3(1.0e-5);
+    // Binary16 spacing at the largest RGB channel bounds every channel's truncation error, including subnormals.
+    float largestHistory = max(history.r, max(history.g, history.b));
+    float halfStep = max(uintBitsToFloat(floatBitsToUint(largestHistory) & 0x7f800000u) / 1024.0,
+        0.000000059604644775390625);
+    // Each chroma row has unit absolute coefficient sum. Include the weighting denominator's rounding change.
+    float weightedStep = halfStep / max(1.0 + temporalLuma(history.rgb) - halfStep, 1.0e-4);
+    vec2 chromaFloor = ChromaPrecisionFloorSteps * weightedStep * (vec2(1.0) + abs(historyYcc.yz));
+    clipExtent.yz = max(clipExtent.yz, chromaFloor);
+    vec3 clipFrom = historyYcc - clipCentre;
+    vec3 clipExcess = abs(clipFrom) / clipExtent;
+    clipExcess.x *= 1.0 - hold;
+    float clipScale = max(clipExcess.x, max(clipExcess.y, clipExcess.z));
+    vec3 clipped = clipScale > 1.0 ? clipCentre + clipFrom / clipScale : historyYcc;
+",
+        @"    vec3 clipCentre = 0.5 * (clipMin + clipMax);
+    vec3 clipExtent = 0.5 * (clipMax - clipMin) + vec3(1.0e-5);
+    vec3 clipFrom = historyYcc - clipCentre;
+    vec3 clipExcess = abs(clipFrom) / clipExtent;
+    clipExcess.x *= 1.0 - hold;
+    float clipScale = max(clipExcess.x, max(clipExcess.y, clipExcess.z));
+    vec3 clipped = clipScale > 1.0 ? clipCentre + clipFrom / clipScale : historyYcc;
+");
+
+    internal static readonly Change PrecisionClipChange = new(nameof(PrecisionClipChange), [PrecisionClip], []);
+
+    // The preparing pass carries tuning without the clip, so its undo is an independent whole change.
+    internal static readonly Undo PrecisionFloorConstant = new(nameof(PrecisionFloorConstant),
+        "const float ChromaPrecisionFloorSteps = 4.0;\n", "");
+    internal static readonly Change PrecisionFloorTuning = new(nameof(PrecisionFloorTuning), [PrecisionFloorConstant], []);
+
     /// <summary>Every production change after D, undone in this order, the latest first, so each change finds the
     /// production text it was written against.</summary>
-    internal static readonly Change[] Changes = [ShimmerTuning, ShimmerScore, ShimmerRecord];
+    internal static readonly Change[] Changes = [PrecisionFloorTuning, PrecisionClipChange, ShimmerTuning, ShimmerScore, ShimmerRecord];
 
     /// <summary>The program with every change in <see cref="Changes"/> undone. A program with none of a change's pieces
     /// keeps that change's text, and one with none at all comes back as the same instance.</summary>

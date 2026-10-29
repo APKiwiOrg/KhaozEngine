@@ -1,0 +1,1 @@
+KhaozEngine.StatusEffects owns deterministic timed effects on actors, including scoped stacking, duration refresh, periodic events, expiry and integer modifier totals. Games supply the simulation clock, define modifier channels and content, and apply gameplay responses. The package has no engine runtime dependencies.

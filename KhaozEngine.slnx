@@ -95,6 +95,7 @@
   <Project Path="KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
   <Project Path="KhaozEngine.Skills/KhaozEngine.Skills.csproj" />
   <Project Path="KhaozEngine.Stats/KhaozEngine.Stats.csproj" />
+  <Project Path="KhaozEngine.StatusEffects/KhaozEngine.StatusEffects.csproj" />
   <Project Path="KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
   <Project Path="KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
   <Project Path="KhaozEngine.Sqlite/KhaozEngine.Sqlite.csproj" />

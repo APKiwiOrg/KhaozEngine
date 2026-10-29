@@ -44,6 +44,7 @@
     <ProjectReference Include="../KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
     <ProjectReference Include="../KhaozEngine.Skills/KhaozEngine.Skills.csproj" />
     <ProjectReference Include="../KhaozEngine.Stats/KhaozEngine.Stats.csproj" />
+    <ProjectReference Include="../KhaozEngine.StatusEffects/KhaozEngine.StatusEffects.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
     <ProjectReference Include="../KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.TileWorld.Editing/KhaozEngine.TileWorld.Editing.csproj" />

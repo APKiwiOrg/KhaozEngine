@@ -361,6 +361,8 @@ overload without this input retains NPC world-space execution. Body, run mode, t
 remain exact. Camera yaw may change between ticks when the same input value is used for preview and submission.
 The follower cooldown advances once per active Drop tick, including suspended flight and supported completion.
 After acknowledgement the latest goal can replan in that landing tick before the old route's next transition.
+A target that moves past retarget tolerance before launch refreshes the route on reaching the Drop source, even
+inside the cooldown, so the body never falls toward an obsolete landing.
 See [Contact Drop links](../docs/design/CONTACT-DROP-LINKS.md) for costs, follower acknowledgement and storage reasons.
 
 ### Parallel contact bake

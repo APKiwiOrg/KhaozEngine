@@ -52,6 +52,10 @@ Progress remains separate, so this does not turn a useful partial approach into 
 `NavDropTraversal(Link, StartFeet, LandingFeet)` retains cell, layer and physical anchor identity. A physical
 `NavSpace` and source waypoint are required. A Drop landing is never consumed by proximity, layer lookup, passed
 collinear logic, goal membership or goal drift. While locked the follower does not replan or change its landing.
+Before the lock nothing is committed. Region membership on the ledge is genuine arrival and retires the route
+without launching, while point proximity cannot witness the lower goal and stays refused. A replan due when the
+next transition is an unlocked Drop runs at once, ahead of cooldown, because a deferred walk is reversible and a
+launch is not. A Drop next on that refreshed route locks in the same tick under the ordinary cooldown.
 The host calls `CompleteDrop()` only after its controller witnesses supported arrival. It advances one transition
 and throws when no Drop is active. `Reset()` is explicit cancellation. Hop's geometric lunge contract is unchanged.
 The lock takes precedence over terminal refresh and point-intent checks. A supported acknowledgement of a final

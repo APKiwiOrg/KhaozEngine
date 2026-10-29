@@ -500,6 +500,11 @@ A `NavWaypointKind.Drop` landing locks the follower to `Dropping`, with zero `Wo
 cell/layer identity and physical resting heights. A supplied physical `NavSpace` and a preceding mandatory source
 are required, otherwise encountering the transition throws `InvalidOperationException`. XZ arrival, a broad accept
 radius, goal membership, corridor drift, passed-collinear logic and a moving goal cannot consume or replace it.
+Before the lock a pending Drop commits nothing. Region membership still reports `Arrived` on the ledge, while
+point proximity stays refused because XZ distance cannot tell a ledge above the goal from the goal. A replan
+that is due when the next transition is an unlocked Drop runs immediately, even while cooldown is positive, so
+the one-way Drop never launches on an obsolete route. A Drop next on the refreshed route locks in that tick,
+and the refreshed result keeps the ordinary cooldown.
 The host verifies supported landing and calls `CompleteDrop()`, which advances exactly one transition and throws
 without an active Drop. The lock takes precedence over stale-terminal refresh and point-intent revalidation,
 so neither can query from flight or report arrival at an obsolete landing. Cooldown still advances while locked.

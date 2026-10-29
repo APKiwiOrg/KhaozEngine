@@ -9147,7 +9147,9 @@ else if (output.State == PathFollowState.Hopping)
 This example drives geometric Hop links. For baked Contact Drop routes, use the built-in `MoveToRange` host path
 below. A direct follower host handles Dropping through `DropTraversal`, aligns at its physical source and calls
 `CompleteDrop()` only after actual supported non-swimming arrival. The marker remains locked while falling,
-through moving goals and proximity. This lock precedes stale-terminal refresh and point-intent checks while
+through moving goals and proximity. Before the lock, region membership still arrives and a replan due before
+the unlocked Drop runs at once, so the follower never launches on an obsolete route. This lock precedes
+stale-terminal refresh and point-intent checks while
 cooldown advances. Acknowledging a final Complete Drop preserves its reached-terminal witness, so the latest
 intent can refresh an obsolete route immediately on the next tick even before cooldown expires. A fresh
 terminal replacement keeps the ordinary cooldown. It requires the supplied physical NavSpace.

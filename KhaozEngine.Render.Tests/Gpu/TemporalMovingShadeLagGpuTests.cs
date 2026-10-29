@@ -221,7 +221,7 @@ namespace KhaozEngine.Tests.Gpu
         // at most 1.46 times the reference's.
         const double FastTailRatio = 1.5, MovingTailExcess = 0.0055, BandGrainRatio = 1.5, ControlTolerance = 0.1;
 
-        // Each row is that driver's measured D cost. Paired controls remain in the run's output.
+        // Each row is that driver's owner-accepted cost. Paired controls remain in the run's output.
         static readonly Dictionary<(string Device, string Name, string Region), double> OwnerAcceptedTailBaseline = new()
         {
             // Owner ruling 2026-10-29, precision-safe chroma floor. The measured retreating tail is

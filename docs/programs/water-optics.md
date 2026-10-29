@@ -28,7 +28,7 @@ Rows are in the order the milestones run.
 | Milestone | Status | Issue | Owner gate |
 | --- | --- | --- | --- |
 | M1 Authored beds at the world manifest edge | shipped in v21.14.0 | https://github.com/APKiwiOrg/KhaozEngine/issues/1586 | none |
-| M2 Underwater sunlight for submerged receivers | shipped in v21.15.0 | https://github.com/APKiwiOrg/KhaozEngine/issues/1588 | Native performance run before M3 ships |
+| M2 Underwater sunlight for submerged receivers | shipped in v21.15.0 | https://github.com/APKiwiOrg/KhaozEngine/issues/1588 | none, its native run landed per WO-D21 |
 | M5 Water column light and shadow, with a bent view of the bed | Landing 1 shipped in v21.18.0. Landing 2 bent view not built | https://github.com/APKiwiOrg/KhaozEngine/issues/1608 | Owner approves Landing 2 |
 | M6 Scene reflections in water | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1609 | Owner approves its design |
 | M7 River flow for procedural water | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1610 | Owner approves its design |
@@ -37,7 +37,7 @@ Rows are in the order the milestones run.
 | M9 Wet banks above the waterline, free to run alongside | design required | https://github.com/APKiwiOrg/KhaozEngine/issues/1612 | Owner approves its design |
 | M10 Underwater camera view | later, when Grimhollow schedules diving or swimming | https://github.com/APKiwiOrg/KhaozEngine/issues/1613 | Owner approves its design |
 | M4 Native R8b optical adapter | waiting on the R8a native renderer | https://github.com/APKiwiOrg/KhaozEngine/issues/1300 | None beyond the normal GPU gate |
-| Adoption in Grimhollow | Grimhollow pins v21.18.0 with ducks still shadowless. Next it opts the river in through WaterColumnLight, which the shared River look leaves null, then restores the duck shadow. Attaching a render pass observer with the column lit needs v21.19.0 for https://github.com/APKiwiOrg/KhaozEngine/issues/1633 | https://github.com/APKiwiOrg/Grimhollow/issues/651 | Grimhollow owner |
+| Adoption in Grimhollow | Grimhollow pins v21.18.0 with ducks still shadowless. Next it adopts v21.19.0, which carries the pass observer fix from https://github.com/APKiwiOrg/KhaozEngine/issues/1633, opts the river in through WaterColumnLight, which the shared River look leaves null, then restores the duck shadow | https://github.com/APKiwiOrg/Grimhollow/issues/651 | Grimhollow owner |
 
 ## Decisions in force
 

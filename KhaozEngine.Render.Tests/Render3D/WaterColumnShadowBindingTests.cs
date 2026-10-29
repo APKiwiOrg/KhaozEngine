@@ -35,7 +35,9 @@ public sealed class WaterColumnShadowBindingTests
         {
             Scene = new Scene3D(Device, new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm), new ShadowSettings
             {
-                Mode = ShadowMode.ShadowMap, ShadowMapResolution = 256, ShadowCascadeCount = 2,
+                Mode = ShadowMode.ShadowMap,
+                ShadowMapResolution = 256,
+                ShadowCascadeCount = 2,
             });
             Targets = (RenderResources)typeof(Scene3D).GetField("_res", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(Scene)!;

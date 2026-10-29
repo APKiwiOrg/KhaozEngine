@@ -157,13 +157,22 @@ public sealed class WaterColumnRiverScene : IDisposable
         shadows.ShadowConstantBias = shadows.ShadowSlopeBias = 0.00005f;
         scene.Post.Water = new WaterSettings
         {
-            UnderwaterSunlight = !s.DryReference, WaterColumnLight = false,
-            WaveSource = s.WaveSource, WaveScale = 0.8f, NormalStrength = s.Ripples && !s.ReferenceLight ? 0.05f : 0f,
-            SwellAmplitude = 0f, SwellSteepness = 0f, ShoalingStrength = 0f, SurfStrength = 0f,
+            UnderwaterSunlight = !s.DryReference,
+            WaterColumnLight = false,
+            WaveSource = s.WaveSource,
+            WaveScale = 0.8f,
+            NormalStrength = s.Ripples && !s.ReferenceLight ? 0.05f : 0f,
+            SwellAmplitude = 0f,
+            SwellSteepness = 0f,
+            ShoalingStrength = 0f,
+            SurfStrength = 0f,
             GlintStrength = s.ReferenceLight ? 0f : s.GlintStrength,
-            FoamStrength = s.ReferenceLight ? 0f : s.FoamStrength, FoamShoreWidth = 2f,
-            SkyReflectionStrength = 0f, HorizonColor = Color.Black,
-            ShoreFadeDistance = s.BedOnly ? float.MaxValue : 0f, Opacity = 0.5f,
+            FoamStrength = s.ReferenceLight ? 0f : s.FoamStrength,
+            FoamShoreWidth = 2f,
+            SkyReflectionStrength = 0f,
+            HorizonColor = Color.Black,
+            ShoreFadeDistance = s.BedOnly ? float.MaxValue : 0f,
+            Opacity = 0.5f,
             GridMode = WaterGridMode.Clipmap
         };
         if (s.WaveSource == WaterWaveSource.FftOcean)

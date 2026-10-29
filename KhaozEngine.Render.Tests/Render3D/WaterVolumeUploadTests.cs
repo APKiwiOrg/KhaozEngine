@@ -111,8 +111,10 @@ public sealed class WaterVolumeUploadTests
         h.Scene.Post.Water.UnderwaterPenumbraPerMetre = 0.04f;
         var column = new WaterLook
         {
-            WaterColumnLight = true, UnderwaterSunlight = false,
-            WaterColor = new Color(0.10f, 0.13f, 0.10f), Clarity = 2f,
+            WaterColumnLight = true,
+            UnderwaterSunlight = false,
+            WaterColor = new Color(0.10f, 0.13f, 0.10f),
+            Clarity = 2f,
             AbsorptionPerMetre = new Color(9f, 8f, 7f),
             WaveSource = fft ? WaterWaveSource.FftOcean : WaterWaveSource.Procedural,
         };
@@ -169,16 +171,20 @@ public sealed class WaterVolumeUploadTests
         h.Scene.Begin();
         h.Scene.DrawWater(new WaterPlane(1024f, 0f, 0f, 2f, look: new WaterLook
         {
-            WaterColor = Color.White, Clarity = 1f,
+            WaterColor = Color.White,
+            Clarity = 1f,
         }));
         h.Scene.DrawWater(new WaterPlane(1024f, 0f, 0f, 2f, look: new WaterLook
         {
-            WaterColumnLight = false, UnderwaterSunlight = false,
-            WaterColor = new Color(float.NaN, float.NaN, float.NaN), Clarity = float.NaN,
+            WaterColumnLight = false,
+            UnderwaterSunlight = false,
+            WaterColor = new Color(float.NaN, float.NaN, float.NaN),
+            Clarity = float.NaN,
         }));
         h.Scene.DrawWater(new WaterPlane(0f, 0f, 0f, 2f, look: new WaterLook
         {
-            WaterColumnLight = false, UnderwaterSunlight = true,
+            WaterColumnLight = false,
+            UnderwaterSunlight = true,
         }));
         h.Scene.DrawWater(new WaterPlane(0f, 1f, 0f, 2f));
 

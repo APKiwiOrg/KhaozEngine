@@ -79,11 +79,15 @@ public sealed class PreservingResolveGoldenTests(ITestOutputHelper output)
     static IGpuPipeline Pipeline(IGpuResourceFactory factory, IGpuFramebuffer framebuffer, IGpuShaderSet shaders) =>
         factory.CreateGraphicsPipeline(new GpuPipelineDescription
         {
-            ShaderSet = shaders, ResourceLayouts = [], VertexLayouts = [],
-            BlendAttachments = [GpuBlendAttachment.OverrideBlend], DepthStencil = GpuDepthStencilState.Disabled,
+            ShaderSet = shaders,
+            ResourceLayouts = [],
+            VertexLayouts = [],
+            BlendAttachments = [GpuBlendAttachment.OverrideBlend],
+            DepthStencil = GpuDepthStencilState.Disabled,
             Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid,
                 GpuFrontFace.Clockwise, depthClipEnabled: false, scissorTestEnabled: true),
-            Topology = GpuPrimitiveTopology.TriangleList, Outputs = framebuffer.Outputs,
+            Topology = GpuPrimitiveTopology.TriangleList,
+            Outputs = framebuffer.Outputs,
         });
 
     const string Vertex = """

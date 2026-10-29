@@ -41,6 +41,28 @@ attempts count against it. Implementation approval never authorizes a dispatch, 
 measurement. Software Vulkan and WARP can establish
 correctness only. They cannot establish a hardware floor or a T4 result.
 
+The free `legs` job builds `tools/Renderer.Perf.Verify` from the trusted `github.workflow_sha`
+checkout, never from the requested workload. Its `admit <checkout> <authorization-directory>` command
+reads the manifest with `File.ReadAllBytes` and calls `RendererPerfManifest.Parse(bytes, authorization)`.
+It reconstructs authorization from the requested checkout's HEAD, sole workload parent and added path,
+the dispatch hash, unit, leg and first attempt, and the trusted PowerShell selector's runner fact.
+The command compares those facts with `authorization.json`, then managed parsing binds the runner and
+workflow to the preset. A disagreement refuses. PowerShell's existing outer guards stay in place.
+The separate matrix step explicitly requires admission success. These checks cover every paid and
+rehearsal preset, including exact-byte refusal of a UTF-8 byte order mark, complete schedules and recipe
+identity formats, runtime policy values, pacing, enums, all deadlines and the complete budget.
+
+No check in managed manifest parsing needs the target runtime. The free job compares recipe names,
+versions, profiles, block order and frame counts with the checked-in frozen schedule for the selected
+preset and leg. Actual runtime version, GC, tiering and relevant environment are observed only on the
+selected runner. The entrypoint also retains authorized recipe source-root checks and
+`RendererPerfExecutable.ValidateWork`, which reconstructs the workload and checks its live recipe,
+settings, shaders, geometry, assets and controls. Recipe reconstruction verifies the portable authored
+construction and recomputes the current platform family's geometry, sequence and construction digests
+against `DerivedByPlatform`. A Linux admission host cannot reconstruct Windows-derived values.
+These live checks, native adapter and timestamp admission, and graphics-clock telemetry stay in the
+entrypoint. The managed manifest checks repeat there before device creation.
+
 Each preset is one entry in the typed schedule table, `RendererPerfSchedules` in
 `KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfSchedule.cs`. An entry names its execution class,
 scenes with recipe versions and profiles, iterations, block and control frame counts, control IDs,
@@ -456,8 +478,9 @@ ordinary CI and the native GPU matrix use this same build owner, including nativ
 that select Render.Tests. Process tests refuse a missing executable.
 
 The directory-verification mode of the outside-solution `tools/Renderer.Perf.Verify` console takes
-exactly directory and report filename. Its `publish` and `publish-profiles` modes are described under
-Publishing a baseline.
+exactly directory and report filename. Its free-job `admit` mode is described under
+[Evidence and authorization](#evidence-and-authorization). Its `publish` and `publish-profiles` modes
+are described under Publishing a baseline.
 It performs no backend registration, device creation or measurement. Exit zero means directory
 verification succeeded. The trusted workflow invokes its built DLL after independent execution
 identity checks, then verifies received files again rather than accepting parsed JSON alone.

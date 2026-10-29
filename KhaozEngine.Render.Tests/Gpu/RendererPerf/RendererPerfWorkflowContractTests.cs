@@ -26,10 +26,9 @@ public sealed class RendererPerfWorkflowContractTests
         fixture.Refuse("Select", "TESTED_REF", "main");
         fixture.Refuse("Select", "RENDERER_PERF_UNIT", "");
         fixture.Refuse("Select", "RENDERER_PERF_UNIT", "../escape");
-        fixture.Manifest["preset"] = "full";
-        fixture.Manifest["limits"]!["jobMinutes"] = 35;
-        fixture.Manifest["budget"]!["maximumBilledMinutes"] = 38;
-        fixture.Manifest["budget"]!["maximumCostUsd"] = 38 * fixture.Manifest["budget"]!["ratePerMinute"]!.GetValue<decimal>();
+        fixture.Manifest = RendererPerfProtocolTests.ManifestJson("full");
+        fixture.Manifest["workloadSha"] = fixture.Workload;
+        RendererPerfRehearsalManifestTests.Parse(fixture.Manifest);
         fixture.SaveManifest();
         fixture.Accept("Select", "jobMinutes=35");
         fixture.Manifest["limits"]!["jobMinutes"] = 60;

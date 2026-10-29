@@ -11,7 +11,8 @@ namespace KhaozEngine.Movement;
 internal static class ContactDropPreview
 {
     internal static RangeMoveStatus Prove(GroundNavigation navigation, NavDropTraversal traversal,
-        in MoveState body, in MoveTuning tuning, bool run, float dt, GroundMoveContext context, ContactDropPredictionBasis basis)
+        in MoveState body, in MoveTuning tuning, bool run, float dt, GroundMoveContext context,
+        ContactDropPredictionBasis basis, PlayerPathInput? playerInput = null)
     {
         var corridor = new NavDropFootprint(navigation.Footprint, tuning, traversal.StartFeet,
             traversal.LandingFeet, navigation.MaxDropMetres);
@@ -20,7 +21,7 @@ internal static class ContactDropPreview
         if (steps < 3) return RangeMoveStatus.Blocked;
         MovementFrameDescriptor frame = context.NavigationFrame;
         var state = new FramedMovementState(body with { Position = body.Position - frame.PhysicsOrigin }, frame, null);
-        MovementStepResult held = context.PredictContactStep(state, Vector2.Zero, run, dt, tuning, basis, corridor);
+        MovementStepResult held = context.PredictContactStep(state, Vector2.Zero, run, dt, tuning, basis, corridor, playerInput);
         Vector3 feet = AbsoluteFeet(held, tuning);
         if (!Accepted(held, tuning, context) || !Supported(held) || !GroundTraversalProbe.Near(feet, traversal.StartFeet))
             return Status(held, RangeMoveStatus.Blocked);
@@ -33,7 +34,7 @@ internal static class ContactDropPreview
             var water = context.SampleWaterForPacing(absolute, tuning, out float landScale);
             if (water.Swimming) return RangeMoveStatus.Blocked;
             Vector2 input = ContactDropControl.Input(absolute, traversal.LandingFeet, tuning, run, landScale, dt);
-            MovementStepResult result = context.PredictContactStep(state, input, run, dt, tuning, basis, corridor);
+            MovementStepResult result = context.PredictContactStep(state, input, run, dt, tuning, basis, corridor, playerInput);
             feet = AbsoluteFeet(result, tuning);
             if (!Accepted(result, tuning, context) || !corridor.Contains(feet) ||
                 (double)highest - feet.Y > navigation.MaxDropMetres ||
@@ -51,7 +52,7 @@ internal static class ContactDropPreview
             if (supported && flew && GroundTraversalProbe.Near(feet, traversal.LandingFeet))
             {
                 if (slice + 1 >= steps) return RangeMoveStatus.Blocked;
-                held = context.PredictContactStep(result.State, Vector2.Zero, run, dt, tuning, basis, corridor);
+                held = context.PredictContactStep(result.State, Vector2.Zero, run, dt, tuning, basis, corridor, playerInput);
                 feet = AbsoluteFeet(held, tuning);
                 return Accepted(held, tuning, context) && Supported(held) && Target(navigation.Space, traversal, feet) &&
                     corridor.Contains(feet) && GroundTraversalProbe.Near(feet, traversal.LandingFeet) &&

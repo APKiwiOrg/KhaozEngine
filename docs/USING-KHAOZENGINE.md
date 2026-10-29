@@ -9467,8 +9467,9 @@ var playerProfile = new NavBakeProfile("player", playerTuning, playerAreas)
 GroundNavigationBake playerBake = GroundNavigationBake.Create(capture, sources, [playerProfile]);
 GroundNavigation navigation = playerBake.GetProfile("player");
 var rangeMove = new MoveToRange(navigation);
-RangeSteering steering = rangeMove.Tick(playerState, playerTuning, target, range, run, dt, context);
-MoveCommand command = PlayerPathMovement.Command(steering, run, cameraYaw);
+var input = new PlayerPathInput(cameraYaw);
+RangeSteering steering = rangeMove.Tick(playerState, playerTuning, target, range, run, dt, context, input);
+MoveCommand command = input.Command(steering, run);
 // Submit the ordinary precise command through the authoritative/predicted player controller.
 // NPC hosts use NpcGroundMovement.Step for Following and Dropping, and Hold otherwise.
 ```
@@ -9486,6 +9487,11 @@ mismatch and replans once supported. Airborne fall ticks do not enter ground-sta
 at the named cell/layer and shared 3D arrival sphere, followed by a supported Hold, acknowledges completion. Reset
 cancels ownership, leaving ordinary gravity and collision active. No direct fallback, jump or interaction policy is
 introduced. Ordinary `AllowsSegment` still refuses a fall.
+
+Use the same `PlayerPathInput` for the tick and command submission. It preserves the actual camera-relative
+rounding and fractional axis in both prediction and execution, so exact body authentication does not mistake
+ordinary command conversion for an external mutation. Camera yaw may change between ticks. The overload without
+player input predicts world-space NPC input. Run, timestep, actual body and environment authentication stay exact.
 
 Direct `PathFollower` hosts read `DropTraversal`, which retains `NavLink` identity and both physical feet anchors.
 They must supply a physical NavSpace and call `CompleteDrop()` only after supported completion. The marker remains
@@ -9726,6 +9732,8 @@ public sealed class MoveToRange
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow, RouteApproachOptions options);
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context);
+    public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
+        float range, bool run, float dt, GroundMoveContext context, PlayerPathInput input);
     public void Reset();
 }
 
@@ -9756,6 +9764,13 @@ public static class NpcGroundMovement
 public static class PlayerPathMovement
 {
     public static MoveCommand Command(in RangeSteering steering, bool run, float cameraYaw);
+}
+
+public readonly record struct PlayerPathInput
+{
+    public PlayerPathInput(float cameraYaw); // finite yaw, default is zero
+    public float CameraYaw { get; }
+    public MoveCommand Command(in RangeSteering steering, bool run);
 }
 ```
 
@@ -9929,11 +9944,11 @@ else
     ReachTarget target = gameTarget.CurrentShapeSnapshot;
     bool observedReach = ReachGeometry.Within(
         in bodyShape, in target, gameTarget.NominalRange);
+    var input = new PlayerPathInput(gameCamera.Yaw);
     RangeSteering steering = follower.Tick(
         in body, in playerTuning, in target, gameTarget.NominalRange,
-        gameTarget.Run, dt, playerContext);
-    command = PlayerPathMovement.Command(
-        in steering, gameTarget.Run, gameCamera.Yaw);
+        gameTarget.Run, dt, playerContext, input);
+    command = input.Command(in steering, gameTarget.Run);
 }
 
 client.SendInput(in command); // exactly one normal submission per simulation tick

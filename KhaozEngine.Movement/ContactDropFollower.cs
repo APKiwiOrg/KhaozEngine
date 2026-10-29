@@ -18,7 +18,7 @@ internal sealed class ContactDropFollower(GroundNavigation navigation, NavDropTr
     float _highest = traversal.StartFeet.Y;
 
     internal RangeSteering Tick(in MoveState body, in MoveTuning tuning, bool run, float dt,
-        GroundMoveContext context, out bool complete, out bool replan)
+        GroundMoveContext context, PlayerPathInput? playerInput, out bool complete, out bool replan)
     {
         complete = replan = false;
         Vector3 feet = Feet(body, tuning);
@@ -36,7 +36,7 @@ internal sealed class ContactDropFollower(GroundNavigation navigation, NavDropTr
                 float bound = TravelBound(body, tuning, run, dt, context);
                 if (bound == 0) return Hold(RangeMoveStatus.Following);
                 Vector2 input = BoundedDirection(new(traversal.StartFeet.X - feet.X, traversal.StartFeet.Z - feet.Z), bound);
-                var aligned = Predict(body, input, run, dt, tuning, context);
+                var aligned = Predict(body, input, run, dt, tuning, context, playerInput: playerInput);
                 return Accepted(aligned, tuning, context) && Supported(aligned) &&
                     navigation.AllowsSegment(feet, AbsoluteFeet(aligned, tuning))
                     ? new(input, RangeMoveStatus.Following) : Hold(Status(aligned, RangeMoveStatus.Following));
@@ -50,7 +50,7 @@ internal sealed class ContactDropFollower(GroundNavigation navigation, NavDropTr
             if (body.SpeedScale == 0 || (run ? tuning.RunSpeed : tuning.WalkSpeed) == 0)
                 return Hold(RangeMoveStatus.Following);
             var previewBasis = new ContactDropPredictionBasis();
-            RangeMoveStatus preview = ContactDropPreview.Prove(navigation, traversal, body, tuning, run, dt, context, previewBasis);
+            RangeMoveStatus preview = ContactDropPreview.Prove(navigation, traversal, body, tuning, run, dt, context, previewBasis, playerInput);
             if (preview != RangeMoveStatus.Dropping) return Hold(preview);
             _execution = new(previewBasis, run, dt, context.NavigationFrame);
             _corridor = new(navigation.Footprint, tuning, traversal.StartFeet, traversal.LandingFeet, navigation.MaxDropMetres);
@@ -68,7 +68,7 @@ internal sealed class ContactDropFollower(GroundNavigation navigation, NavDropTr
             if (Target(feet) && GroundTraversalProbe.Near(feet, traversal.LandingFeet))
             {
                 // Completion is witnessed from the supplied body and a real supported Hold at that body.
-                var held = Predict(body, Vector2.Zero, run, dt, tuning, context, _corridor);
+                var held = Predict(body, Vector2.Zero, run, dt, tuning, context, _corridor, playerInput: playerInput);
                 if (Accepted(held, tuning, context) && Supported(held) && Target(AbsoluteFeet(held, tuning)) &&
                     GroundTraversalProbe.Near(AbsoluteFeet(held, tuning), traversal.LandingFeet))
                 {
@@ -95,7 +95,7 @@ internal sealed class ContactDropFollower(GroundNavigation navigation, NavDropTr
         if (sample.Swimming) return Hold(RangeMoveStatus.Suspended);
         Vector2 command = ContactDropControl.Input(body, traversal.LandingFeet, tuning, run, landScale, dt);
         var stepBasis = new ContactDropPredictionBasis();
-        var next = Predict(body, command, run, dt, tuning, context, _corridor, stepBasis);
+        var next = Predict(body, command, run, dt, tuning, context, _corridor, stepBasis, playerInput);
         if (next.Outcome == MovementStepOutcome.Advanced && !_execution!.SameEnvironment(stepBasis))
         {
             _interrupted = true;
@@ -113,11 +113,12 @@ internal sealed class ContactDropFollower(GroundNavigation navigation, NavDropTr
     bool Target(Vector3 feet) => ContactDropPreview.Target(navigation.Space, traversal, feet);
 
     internal static MovementStepResult Predict(in MoveState body, Vector2 input, bool run, float dt,
-        in MoveTuning tuning, GroundMoveContext context, NavDropFootprint? corridor = null, ContactDropPredictionBasis? basis = null)
+        in MoveTuning tuning, GroundMoveContext context, NavDropFootprint? corridor = null,
+        ContactDropPredictionBasis? basis = null, PlayerPathInput? playerInput = null)
     {
         var frame = context.NavigationFrame;
         return context.PredictContactStep(new(body with { Position = body.Position - frame.PhysicsOrigin }, frame, null),
-            input, run, dt, tuning, basis ?? new ContactDropPredictionBasis(), corridor);
+            input, run, dt, tuning, basis ?? new ContactDropPredictionBasis(), corridor, playerInput);
     }
 
     internal static Vector3 AbsoluteFeet(in MovementStepResult result, in MoveTuning tuning)

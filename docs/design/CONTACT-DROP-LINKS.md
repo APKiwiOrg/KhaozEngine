@@ -69,6 +69,12 @@ read identity. A changed basis suspends in flight and replans once supported. Kn
 existing environment error contract. Flight requests ordinary bounded input, with no jump or direct-driver fallback.
 Airborne descent is excluded from ground-stall accounting.
 
+Player hosts pass one `PlayerPathInput` carrying this tick's finite camera yaw to `MoveToRange.Tick`, then create
+the submitted command through that same value. Preview and live continuation use `EffectiveMovementBinding.Step`
+with the exact ordinary camera-relative command, including fractional axis rounding. NPC callers retain the
+world-space `StepTowards` contract. Exact body, run mode, timestep, frame and read-basis authentication remains in
+force. Camera rotation between ticks is valid when the host shares that tick's input with the preview.
+
 Supported completion comes from the actual supplied body, target cell/layer, non-swimming support and the 3D arrival
 sphere, followed by a real supported Hold. Unexpected actual support cancels the remaining route and replans there.
 Reset releases traversal while ordinary gravity and collision continue. `RangeMoveStatus.Dropping` carries requested

@@ -5,9 +5,9 @@ namespace KhaozEngine.Movement;
 public sealed partial class MoveToRange
 {
     bool TickDrop(in MoveState body, in MoveTuning tuning, bool run, float dt,
-        GroundMoveContext context, out RangeSteering steering)
+        GroundMoveContext context, PlayerPathInput? playerInput, out RangeSteering steering)
     {
-        steering = _drop!.Tick(body, tuning, run, dt, context, out bool complete, out bool replan);
+        steering = _drop!.Tick(body, tuning, run, dt, context, playerInput, out bool complete, out bool replan);
         if (complete)
         {
             _follower.CompleteDrop();

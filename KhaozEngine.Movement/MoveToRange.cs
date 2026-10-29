@@ -68,6 +68,17 @@ public sealed partial class MoveToRange
     /// live Drop obstruction. Unavailable evidence never proves an unreachable edge.</summary>
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context)
+        => TickCore(body, tuning, target, range, run, dt, context, null);
+
+    /// <summary>Predicts Contact Drops through the exact player command from <paramref name="input"/>.
+    /// Submit <see cref="PlayerPathInput.Command"/> using that same value and the returned steering.
+    /// The overload without player input retains world-space NPC prediction.</summary>
+    public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
+        float range, bool run, float dt, GroundMoveContext context, PlayerPathInput input)
+        => TickCore(body, tuning, target, range, run, dt, context, input);
+
+    RangeSteering TickCore(in MoveState body, in MoveTuning tuning, in ReachTarget target,
+        float range, bool run, float dt, GroundMoveContext context, PlayerPathInput? playerInput)
     {
         ArgumentNullException.ThrowIfNull(context);
         context.ValidateTuning(tuning);
@@ -83,7 +94,7 @@ public sealed partial class MoveToRange
         NavGoalRegion goal = Goal(tuning, target, range);
         if (!body.Grounded && !swims && _drop is null) return Hold(RangeMoveStatus.Suspended);
         if (_drop is not null && _stalled) return Hold(RangeMoveStatus.Blocked);
-        if (_drop is not null && TickDrop(body, tuning, run, dt, context, out RangeSteering dropping)) return dropping;
+        if (_drop is not null && TickDrop(body, tuning, run, dt, context, playerInput, out RangeSteering dropping)) return dropping;
         if (within)
         {
             ClearStall();
@@ -98,7 +109,7 @@ public sealed partial class MoveToRange
             if (_navigation is null || _navigation.MaxDropMetres == 0 || route.DropTraversal is not { } traversal)
                 return Hold(RangeMoveStatus.UnsupportedTransition);
             _drop = new ContactDropFollower(_navigation, traversal);
-            if (TickDrop(body, tuning, run, dt, context, out dropping)) return dropping;
+            if (TickDrop(body, tuning, run, dt, context, playerInput, out dropping)) return dropping;
             return Counted(body, Hold(RangeMoveStatus.Following));
         }
         if (route.State == PathFollowState.Hopping) return Hold(RangeMoveStatus.UnsupportedTransition);

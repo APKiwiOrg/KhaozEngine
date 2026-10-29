@@ -355,6 +355,10 @@ input through both built-in host adapters and is excluded from airborne ground-s
 the supplied body's actual supported non-swimming target cell/layer and shared 3D arrival sphere, then a supported
 Hold. Unexpected actual support replans there. Reset cancels route ownership while gravity and collision continue.
 Commitments, buffered jumps and unrelated airborne bodies stay Suspended. No jump or direct fallback is introduced.
+Player hosts pass the tick's `PlayerPathInput` to `Tick` and use its `Command` for actual movement. The preview and
+continuation check execute that exact camera-relative command, including its fractional axis and rounding. The
+overload without this input retains NPC world-space execution. Body, run mode, timestep and environment checks
+remain exact. Camera yaw may change between ticks when the same input value is used for preview and submission.
 See [Contact Drop links](../docs/design/CONTACT-DROP-LINKS.md) for costs, follower acknowledgement and storage reasons.
 
 ### Parallel contact bake
@@ -796,6 +800,8 @@ public sealed class MoveToRange
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow, RouteApproachOptions options);
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context);
+    public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
+        float range, bool run, float dt, GroundMoveContext context, PlayerPathInput input);
     public void Reset();
 }
 
@@ -826,6 +832,13 @@ public static class NpcGroundMovement
 public static class PlayerPathMovement
 {
     public static MoveCommand Command(in RangeSteering steering, bool run, float cameraYaw);
+}
+
+public readonly record struct PlayerPathInput
+{
+    public PlayerPathInput(float cameraYaw); // finite yaw, default is zero
+    public float CameraYaw { get; }
+    public MoveCommand Command(in RangeSteering steering, bool run);
 }
 ```
 
@@ -1049,11 +1062,11 @@ else
     ReachTarget target = gameTarget.CurrentShapeSnapshot;
     bool observedReach = ReachGeometry.Within(
         in bodyShape, in target, gameTarget.NominalRange);
+    var input = new PlayerPathInput(gameCamera.Yaw);
     RangeSteering steering = follower.Tick(
         in body, in playerTuning, in target, gameTarget.NominalRange,
-        gameTarget.Run, dt, gamePlayerGroundContext);
-    command = PlayerPathMovement.Command(
-        in steering, gameTarget.Run, gameCamera.Yaw);
+        gameTarget.Run, dt, gamePlayerGroundContext, input);
+    command = input.Command(in steering, gameTarget.Run);
 }
 
 client.SendInput(in command); // exactly one normal submission per simulation tick

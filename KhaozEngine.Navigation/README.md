@@ -450,6 +450,7 @@ resets the old route and cooldown.
   replan is due.
 - **`ReplanCooldownSeconds`** (default 0.5) - minimum time between ordinary replans. An exhausted
   Complete region endpoint outside current membership refreshes immediately, at most once per tick.
+  A fresh query already terminal at its start keeps the ordinary cooldown.
 - **`Budget`** (default `PathQueryBudget.Default`) - handed to `IPathPlanner.FindPath` on every replan.
 - **`ConsumePassedCollinearWaypoints`** (default false) - also advance past an active waypoint the agent has passed
   rather than landed on, when it is a collinear pass-through on the agent's layer and the feet sit at or beyond it on
@@ -473,6 +474,9 @@ refresh can happen on the same tick that the cooldown reaches zero. A reached `C
 region membership makes replanning due, even when anchor drift is within tolerance. At the endpoint's
 exact XZ position, the obsolete Complete route refreshes immediately through the cooldown because it
 has no remaining travel. Proximity alone keeps the cooldown, as does an exhausted Partial route.
+A fresh Complete result already terminal at query time also keeps the cooldown. Replacing a stale route
+does not authorize another immediate query of a fresh start-cell result on the next tick. Leaving the
+terminal state makes the corridor eligible for a later stale-terminal refresh again.
 Each tick issues at most one query. `WaitingForPath` is appended after the existing enum members, and point following never
 returns it. Shared configuration, cooldown, drift, layer, and `Hop` behavior remain in force.
 

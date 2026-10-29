@@ -9101,6 +9101,8 @@ clears the old route and cooldown.
 An exhausted Complete region endpoint outside current membership refreshes immediately at its exact XZ
 position, even while the replan cooldown is positive. The obsolete route has no remaining travel. Being
 near the endpoint still keeps the cooldown, as does an exhausted Partial route. Each tick queries at most once.
+A fresh Complete result already terminal at query time keeps the ordinary cooldown, including after
+replacing a stale route. Leaving terminal state makes a later stale-terminal refresh eligible again.
 
 ```csharp
 var follower = new PathFollower(planner, config: null, space: space);   // one per agent, PathFollowConfig.Default
@@ -9145,6 +9147,7 @@ and retries on the next tick. Existing region corridors advance before query eli
 partial refresh can happen on the same tick that the cooldown reaches zero. A reached Complete endpoint
 outside membership makes replanning due even when anchor drift is within tolerance. Exact XZ exhaustion
 refreshes that Complete route immediately through the cooldown. Each tick issues at most one query.
+A fresh query already terminal at its start keeps the ordinary cooldown.
 `WaitingForPath` is appended after existing enum members, and point following never returns
 it. Shared configuration, cooldown, drift, layer, and Hop behavior remain in force.
 
@@ -9769,6 +9772,8 @@ with zero input. A valid partial corridor still requests bounded travel until it
 Target translation follows the follower's configured drift and replan cooldown while the route remains valid.
 At an exhausted Complete endpoint outside current range, the follower immediately refreshes the obsolete
 route instead of holding at its own position.
+A fresh Complete result already terminal when queried keeps the ordinary cooldown, so a no-progress
+start-cell result cannot repeat the query every tick.
 
 The profile must match the tuning's radius, half-height, slope and step. Walk and run pace, climb pace and
 effect scale may differ. The game owns nominal ranges, target validity, target identity, cancellation and the

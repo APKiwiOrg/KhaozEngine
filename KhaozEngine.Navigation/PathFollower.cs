@@ -284,6 +284,7 @@ public sealed partial class PathFollower
         _plannedGoalY = 0f;
         _planOriginXz = Vector2.Zero;
         _followingRegion = false;
+        _freshRegionTerminal = false;
     }
 
     /// <summary>Point-to-segment distance from <paramref name="posXz"/> to the corridor leading to the

@@ -7,6 +7,8 @@ namespace KhaozEngine.Navigation;
 public sealed partial class PathFollower
 {
     bool _followingRegion;
+    // A query already terminal at its start has no new corridor to exhaust. It keeps the ordinary cooldown.
+    bool _freshRegionTerminal;
 
     /// <summary>
     /// Follows a route to <paramref name="goal"/> using actual feet membership for arrival. The last
@@ -16,6 +18,7 @@ public sealed partial class PathFollower
     /// Complete endpoint outside the region also makes a replan due, even for anchor drift within
     /// tolerance. Exact XZ exhaustion of that endpoint refreshes immediately through the cooldown,
     /// since the obsolete route has no remaining travel. Proximity alone still respects the cooldown.
+    /// A fresh query already terminal at its start keeps the ordinary cooldown until it leaves that state.
     /// Existing region waypoints advance before this decision so an eligible exhausted
     /// Partial replans in the same tick. Each tick queries at most once. A freshly exhausted Partial
     /// with no cooldown returns Unreachable at zero motion and retries on the next tick.
@@ -57,12 +60,14 @@ public sealed partial class PathFollower
         {
             _path = null;
             _index = 0;
+            _freshRegionTerminal = false;
             return new PathFollowOutput { WorldDir = Vector2.Zero, State = PathFollowState.Arrived, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
         }
 
         // Region consumption must inform this tick's query eligibility. Point consumption stays after
         // the query decision, preserving the legacy Partial raw-goal tick and planner call ordering.
         bool regionAtTerminal = followingRegion && AdvanceReachedWaypoints(position, posXz, followingRegion: true);
+        if (!regionAtTerminal) _freshRegionTerminal = false;
         bool needsPlan = _path is null
             || _index >= _path.Waypoints.Count
             || Vector2.Distance(goalXz, _plannedGoalXz) > _config.GoalRetargetTolerance
@@ -72,13 +77,14 @@ public sealed partial class PathFollower
 
         // A Complete endpoint outside current membership cannot steer anywhere once its XZ is exhausted.
         // Holding that obsolete endpoint through the cooldown can trip a moving goal's stall window.
-        bool exhaustedRegion = regionAtTerminal && _path!.Waypoints[_index].Position == posXz;
+        bool exhaustedRegion = regionAtTerminal && !_freshRegionTerminal && _path!.Waypoints[_index].Position == posXz;
         bool replanned = needsPlan && (_cooldown == 0f || exhaustedRegion);
         if (replanned)
         {
             _path = region is not null
                 ? ((IRegionPathPlanner)_planner).FindPath(position, region, agentRadius, _config.Budget)
                 : _planner.FindPath(position, goal, agentRadius, _config.Budget);
+            _freshRegionTerminal = false;
             _plannedGoalXz = goalXz;
             _plannedGoalY = goal.Y;
             _planOriginXz = posXz;
@@ -92,7 +98,10 @@ public sealed partial class PathFollower
         }
 
         if (!followingRegion || replanned)
-            AdvanceReachedWaypoints(position, posXz, followingRegion);
+        {
+            bool terminalAfterPlan = AdvanceReachedWaypoints(position, posXz, followingRegion);
+            _freshRegionTerminal = followingRegion && terminalAfterPlan;
+        }
         IReadOnlyList<NavWaypoint> waypoints = _path.Waypoints;
         if (_index >= waypoints.Count)
         {

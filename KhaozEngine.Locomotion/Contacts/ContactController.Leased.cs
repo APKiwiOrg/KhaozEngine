@@ -106,6 +106,7 @@ internal static partial class ContactController
             queries.AssertCurrent();
             return new(framed, leased.Outcome)
             {
+                ContactEnteredSwimming = modes.EnteredWater,
                 ContactAirLanded = continuation.AirLanded,
                 ContactWalkableSupport = next.Grounded && continuation.Support.Status == SupportStatus.Walkable,
                 ContactUnwalkableSupport = continuation.UnwalkableSupport,

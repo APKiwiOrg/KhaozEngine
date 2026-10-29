@@ -153,7 +153,7 @@ internal sealed class ContactDropProof : IDisposable
     {
         MoveState body = result.State.State;
         return result.Outcome == MovementStepOutcome.Advanced && footprint.Contains(feet) && !body.Swimming &&
-            !result.ContactUnwalkableSupport &&
+            !result.ContactUnwalkableSupport && !result.ContactEnteredSwimming &&
             !body.Commitment.IsActive && body.JumpBufferRemaining == 0 && float.IsFinite(body.VerticalVelocity) &&
             float.IsFinite(body.HorizontalVelocity.X) && float.IsFinite(body.HorizontalVelocity.Y);
     }

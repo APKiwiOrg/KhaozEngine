@@ -124,7 +124,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>What FXC made of each program: D's in-loop head forms in D and shipped, the fast path's
         /// straight-line forms, declared temps, precise markings and unread non-chain positions.</summary>
         [Theory]
-        // FXC run 40803574441: the precision-safe chroma floor raises only the full split programs by one temp.
+        // FXC run 40825887240: the still-pixel gate keeps the precision-floor temp counts unchanged.
         // All D temps, chain forms and unread-position pins remain unchanged.
         [InlineData("DecisionHelper", "RR", "RR", "RRRRWW", 12, 18, false, 0)]
         [InlineData("TemporalAccumulateFrag", "RR", "RR", "RRRRWW", 29, 38, false, 10)]

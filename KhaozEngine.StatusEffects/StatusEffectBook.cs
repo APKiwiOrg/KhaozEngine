@@ -16,7 +16,7 @@ public sealed partial class StatusEffectBook
     private readonly List<StatusEffectEvent> _events = new();
     private long _lastAdvancedTick;
     private bool _hasAdvanced;
-    private uint _modifierStamp;
+    private ulong _modifierStamp;
 
     public StatusEffectBook(IStatusEffectCatalog catalog, int maxEffectsPerActor = 32)
     {
@@ -73,9 +73,8 @@ public sealed partial class StatusEffectBook
 
     /// <summary>
     /// The actor's last book-wide change stamp, or zero when no instances remain. Stamps never wrap.
-    /// A change after the book exhausts the uint stamp range throws <see cref="OverflowException"/>.
     /// </summary>
-    public uint ModifierVersion(long actor) =>
+    public ulong ModifierVersion(long actor) =>
         _actors.TryGetValue(actor, out var state) && state.Instances.Count != 0 ? state.Version : 0;
 
     /// <summary>Appends queued events in order and consumes them.</summary>
@@ -130,7 +129,7 @@ public sealed partial class StatusEffectBook
     private sealed class ActorState
     {
         public readonly List<Instance> Instances = new();
-        public uint Version;
+        public ulong Version;
     }
 
     private sealed class Instance(StatusEffectDefinition definition, StatusEffectEntry entry, int magnitude)

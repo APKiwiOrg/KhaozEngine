@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using KhaozEngine.StatusEffects;
 using Xunit;
 
@@ -67,7 +68,7 @@ public sealed class StatusEffectBookLifecycleTests
         }, Events(book));
         Assert.Equal(0, book.Clear(7));
         Assert.Equal(0, book.Clear(99));
-        Assert.Equal(0u, book.ModifierVersion(7));
+        Assert.Equal(0UL, book.ModifierVersion(7));
     }
 
     [Fact]
@@ -96,7 +97,7 @@ public sealed class StatusEffectBookLifecycleTests
         book.Advance(130);
 
         Assert.Equal(1, book.ActorCount);
-        Assert.Equal(0u, book.ModifierVersion(7));
+        Assert.Equal(0UL, book.ModifierVersion(7));
         var changed = new List<long>();
         book.DrainChangedActors(changed);
 
@@ -113,9 +114,9 @@ public sealed class StatusEffectBookLifecycleTests
         var book = Create(new StatusEffectDefinition(new(1), 30, maxStacks: 3,
             modifiers: new[] { new StatusEffectModifier(2, 500) }));
         book.Apply(7, new(1), 100);
-        uint first = book.ModifierVersion(7);
+        ulong first = book.ModifierVersion(7);
         book.Apply(7, new(1), 101);
-        uint second = book.ModifierVersion(7);
+        ulong second = book.ModifierVersion(7);
         book.Apply(7, new(1), 102);
 
         Assert.Equal(1500, book.ModifierTotal(7, 2));
@@ -126,7 +127,7 @@ public sealed class StatusEffectBookLifecycleTests
         Assert.True(book.ModifierVersion(7) > second);
         book.Advance(132);
         Assert.Equal(0, book.ModifierTotal(7, 2));
-        Assert.Equal(0u, book.ModifierVersion(7));
+        Assert.Equal(0UL, book.ModifierVersion(7));
     }
 
     [Fact]
@@ -171,17 +172,34 @@ public sealed class StatusEffectBookLifecycleTests
     }
 
     [Fact]
+    public void ModifierVersion_ContinuesBeyondUIntRange()
+    {
+        var book = Create(new StatusEffectDefinition(new(1), 30));
+        // Seed the boundary directly instead of generating billions of changes.
+        var stamp = typeof(StatusEffectBook).GetField("_modifierStamp", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(stamp);
+        stamp.SetValue(book, Convert.ChangeType(4294967294UL, stamp.FieldType));
+
+        book.Apply(7, new(1), 100);
+        Assert.Equal(4294967295UL, book.ModifierVersion(7));
+        book.Apply(9, new(1), 100);
+        Assert.Equal(4294967296UL, book.ModifierVersion(9));
+        book.Apply(7, new(1), 101);
+        Assert.Equal(4294967297UL, book.ModifierVersion(7));
+    }
+
+    [Fact]
     public void ModifierVersion_NeverRepeatsAfterDrop()
     {
         var book = Create(new StatusEffectDefinition(new(1), 30));
         book.Apply(7, new(1), 100);
-        uint first = book.ModifierVersion(7);
+        ulong first = book.ModifierVersion(7);
         book.Advance(130);
-        Assert.Equal(0u, book.ModifierVersion(7));
+        Assert.Equal(0UL, book.ModifierVersion(7));
         book.DrainChangedActors(new List<long>());
 
         book.Apply(9, new(1), 130);
-        uint otherActor = book.ModifierVersion(9);
+        ulong otherActor = book.ModifierVersion(9);
         book.Apply(7, new(1), 130);
 
         Assert.True(otherActor > first);
@@ -194,7 +212,7 @@ public sealed class StatusEffectBookLifecycleTests
         var book = Create(new StatusEffectDefinition(new(1), 10), new(new(2), 30));
         book.Apply(7, new(1), 100);
         book.Apply(7, new(2), 100);
-        uint previous = book.ModifierVersion(7);
+        ulong previous = book.ModifierVersion(7);
         book.DrainChangedActors(new List<long>());
 
         book.Advance(110);
@@ -221,7 +239,7 @@ public sealed class StatusEffectBookLifecycleTests
         Assert.Equal(new long[] { 7 }, changed);
         Assert.Equal(1, book.ActorCount);
         Assert.True(book.Has(7, new(1)));
-        Assert.NotEqual(0u, book.ModifierVersion(7));
+        Assert.NotEqual(0UL, book.ModifierVersion(7));
     }
 
     [Fact]
@@ -230,7 +248,7 @@ public sealed class StatusEffectBookLifecycleTests
         var book = Create(new StatusEffectDefinition(new(1), 30, periodTicks: 10), new(new(2), 30));
         book.Apply(7, new(1), 100);
         book.Apply(7, new(2), 100);
-        uint initial = book.ModifierVersion(7);
+        ulong initial = book.ModifierVersion(7);
         book.Advance(110);
         Assert.Equal(initial, book.ModifierVersion(7));
         book.DrainChangedActors(new List<long>());
@@ -240,7 +258,7 @@ public sealed class StatusEffectBookLifecycleTests
         Assert.Empty(changed);
 
         book.Apply(7, new(1), 120);
-        uint refreshed = book.ModifierVersion(7);
+        ulong refreshed = book.ModifierVersion(7);
         Assert.True(refreshed > initial);
         book.Remove(7, new(1));
         Assert.True(book.ModifierVersion(7) > refreshed);
@@ -253,7 +271,7 @@ public sealed class StatusEffectBookLifecycleTests
     {
         var book = Create(new StatusEffectDefinition(new(1), 30));
         book.Apply(7, new(1), 100);
-        uint first = book.ModifierVersion(7);
+        ulong first = book.ModifierVersion(7);
         Events(book);
 
         book.Forget(7);
@@ -261,7 +279,7 @@ public sealed class StatusEffectBookLifecycleTests
 
         Assert.Equal(0, book.ActorCount);
         Assert.False(book.Has(7, new(1)));
-        Assert.Equal(0u, book.ModifierVersion(7));
+        Assert.Equal(0UL, book.ModifierVersion(7));
         Assert.Empty(Events(book));
         var changed = new List<long>();
         book.DrainChangedActors(changed);

@@ -97,7 +97,7 @@ public sealed class StatusEffectBookApplyTests
         }), maxEffectsPerActor: 2);
         book.Apply(7, new(1), 100, source: 11);
         book.Apply(7, new(1), 100, source: 12);
-        uint version = book.ModifierVersion(7);
+        ulong version = book.ModifierVersion(7);
 
         Assert.Equal(StatusEffectApplyResult.ActorFull, book.Apply(7, new(1), 100, source: 13));
         Assert.Equal(StatusEffectApplyResult.ActorFull, book.Apply(7, new(2), 100));
@@ -129,7 +129,7 @@ public sealed class StatusEffectBookApplyTests
 
         Assert.Equal(StatusEffectApplyResult.UnknownDefinition, book.Apply(7, new(2), 100));
         Assert.Equal(0, book.ActorCount);
-        Assert.Equal(0u, book.ModifierVersion(7));
+        Assert.Equal(0UL, book.ModifierVersion(7));
         Assert.Empty(Events(book));
         var changed = new List<long>();
         book.DrainChangedActors(changed);

@@ -286,6 +286,12 @@ paths.
    Grimhollow probe and confirmed by the owner's windowed playtest.
 10. **No steady allocation** with temporal active.
 
+The non-water composition guard retains all 248 source hashes from its pre-water baseline. It undoes
+only the accepted still-detail changes through the checked temporal restore and the four Shimmer debug
+view edits before comparing. Fully lit stages first restore their known complete program, then regain
+their compact visibility specialization after the undo. Every original hash remains fixed, and source
+changes outside those accepted deltas still fail the guard. The pure D oracle and its pins are unchanged.
+
 ## Grimhollow adoption
 
 Grimhollow's adoption runs in Grimhollow on the released engine and has its own implementation plan. Its design is set

@@ -5,11 +5,12 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
 
-/// <summary>Frames without opted-in water retain the shader source text from main at 0af218d5b.</summary>
+/// <summary>Water composition retains main's source at 0af218d5b after undoing the accepted still-detail changes.</summary>
 public sealed class NonWaterShaderSourceEqualityTests
 {
     [Fact]
@@ -37,13 +38,34 @@ public sealed class NonWaterShaderSourceEqualityTests
             .Select(row => $"{row.Key}: expected {expected[row.Key]}, composed {row.Value}")
             .ToArray();
         Assert.True(mismatches.Length == 0,
-            "Non-water GLSL must stay byte-identical to main at 0af218d5b. "
+            "Non-water GLSL must stay byte-identical to main at 0af218d5b after the still-detail undo. "
             + "Share source expressions without changing lit composition.\n" + string.Join("\n", mismatches));
     }
 
-    // Normalize checkout line endings only. All shader whitespace, identifiers and ordering remain pinned.
+    // The water baseline predates still-detail stabilization. Keep every frozen hash and undo only that
+    // accepted feature through its checked delta, restoring compact visibility after the shared undo.
+    // The Shimmer debug view lives outside the shared accumulator and has four additional exact edits.
+    static string SourceBeforeStillDetail(string source)
+    {
+        source = source.ReplaceLineEndings("\n");
+        bool fullyLit = source.Contains("bool visibilityReleased = false;", StringComparison.Ordinal);
+        source = TemporalVisibilityFrozenDLaterChanges.Restore(TemporalVisibilityFullyLitGpuTests.ForceCheck(source));
+        if (fullyLit) source = TemporalVisibilityPrograms.WithoutDecision(source);
+
+        const string shimmerModes = "// Mode.x is the SceneDebugView value: 2 History, 3 Disocclusion, 4 Reactive, 5 Shimmer.\n";
+        if (!source.Contains(shimmerModes, StringComparison.Ordinal)) return source;
+        return source.Replace(shimmerModes,
+                "// Mode.x is the SceneDebugView value: 2 History, 3 Disocclusion, 4 Reactive.\n", StringComparison.Ordinal)
+            .Replace("    vec3 c = context;   // a mode no view sets shows the dimmed scene alone\n",
+                "    vec3 c;\n", StringComparison.Ordinal)
+            .Replace("    } else if (mode == 4) {\n", "    } else {\n", StringComparison.Ordinal)
+            .Replace("    } else if (mode == 5) {\n"
+                + "        c = mix(context, vec3(0.15, 0.55, 1.0), clamp(t.shimmer, 0.0, 1.0));\n",
+                string.Empty, StringComparison.Ordinal);
+    }
+
     static string Sha256(string source)
-        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(source.ReplaceLineEndings("\n"))));
+        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(SourceBeforeStillDetail(source))));
 
     static string TablePath([CallerFilePath] string thisFile = "")
         => Path.Combine(Path.GetDirectoryName(thisFile)!, "glsl-hashes", "non-water-glsl.sha256.txt");

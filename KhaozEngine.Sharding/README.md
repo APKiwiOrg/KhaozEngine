@@ -82,6 +82,12 @@ idiom without a register still resolves) and a stale entry (out-of-band despawn,
 started migrating) is reaped on lookup. `OwnerCount(netId)` is deliberately an independent from-scratch scan, the
 exactly-once handoff oracle that can observe a duplicate (2) or loss (0) the single-valued index never could.
 
+`ShardHost.IsInHandoff(netId)` distinguishes temporary missing ownership from a despawn. It returns
+true while any cell holds a live entity with that NetId carrying `Migrating`. The source stays frozen
+until destination acknowledgement, including deferred admission and delayed link delivery. It can
+remain true after adoption while the acknowledgement is in flight, so use `TryGetOwner` first when
+publishing authoritative state. Ghosts and frozen migrating copies are never authoritative targets.
+
 Per-cell persistence primitives on `CellSim`, storage-agnostic (no new dependency): `SnapshotOwned(excludedNetIds)`
 returns a durable Replication snapshot of the cell's owned (not `Ghost`, not `Migrating`, not `Transient`) entities
 whose NetId is not in the excluded set, so a caller can persist non-player state while player entities persist

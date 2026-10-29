@@ -53,10 +53,10 @@ public class StatusEffectProjectionTests
     }
 
     [Fact]
-    public void Projection_ForgetsActorWhenPublishFails()
+    public void Projection_ForgetsActorWhenTargetReportsGone()
     {
         var book = NewBook();
-        var target = new RecordingTarget { Accept = false };
+        var target = new RecordingTarget { Result = StatusEffectPublishResult.Gone };
         var projection = new StatusEffectProjection(book, target);
         book.Apply(42, new(7), now: 20);
 
@@ -67,6 +67,77 @@ public class StatusEffectProjectionTests
         book.Advance(100);
         projection.Publish();
         Assert.Single(target.Calls);
+    }
+
+    [Fact]
+    public void Projection_MergesDeferredAndChangedActorsInOrderWithCurrentEntries()
+    {
+        var book = NewBook();
+        var target = new RecordingTarget { Result = StatusEffectPublishResult.Deferred };
+        var projection = new StatusEffectProjection(book, target);
+        book.Apply(30, new(7), now: 20);
+        book.Apply(10, new(7), now: 20);
+        projection.Publish();
+        Assert.Equal(2, book.ActorCount);
+        Assert.True(book.Has(10, new(7)));
+        Assert.True(book.Has(30, new(7)));
+
+        target.Calls.Clear();
+        target.Result = StatusEffectPublishResult.Published;
+        book.Apply(20, new(7), now: 25);
+        book.Apply(30, new(7), now: 25);
+        projection.Publish();
+
+        Assert.Collection(target.Calls,
+            call => Assert.Equal(10L, call.Actor),
+            call => Assert.Equal(20L, call.Actor),
+            call => Assert.Equal(30L, call.Actor));
+        Assert.Equal(new StatusEffectEntry(new(7), 0, 1, 25, 85), Assert.Single(target.Calls[2].State.Entries));
+        target.Calls.Clear();
+        projection.Publish();
+        Assert.Empty(target.Calls);
+    }
+
+    [Fact]
+    public void Projection_ForgetsPendingActorWhenTargetReportsGone()
+    {
+        var book = NewBook();
+        var target = new RecordingTarget { Result = StatusEffectPublishResult.Deferred };
+        var projection = new StatusEffectProjection(book, target);
+        book.Apply(42, new(7), now: 20);
+        projection.Publish();
+        Assert.Equal(1, book.ActorCount);
+
+        target.Result = StatusEffectPublishResult.Gone;
+        projection.Publish();
+
+        Assert.Equal(0, book.ActorCount);
+        Assert.False(book.Has(42, new(7)));
+        Assert.Equal(2, target.Calls.Count);
+        projection.Publish();
+        Assert.Equal(2, target.Calls.Count);
+    }
+
+    [Fact]
+    public void Projection_RetriesEmptyStateAfterTheLastDeferredEffectExpires()
+    {
+        var book = NewBook();
+        var target = new RecordingTarget { Result = StatusEffectPublishResult.Deferred };
+        var projection = new StatusEffectProjection(book, target);
+        book.Apply(42, new(7), now: 20);
+        projection.Publish();
+        book.Advance(80);
+        projection.Publish();
+        Assert.Empty(target.Calls[1].State.Entries);
+
+        target.Result = StatusEffectPublishResult.Published;
+        projection.Publish();
+
+        Assert.Equal(3, target.Calls.Count);
+        Assert.Equal(42L, target.Calls[2].Actor);
+        Assert.Empty(target.Calls[2].State.Entries);
+        projection.Publish();
+        Assert.Equal(3, target.Calls.Count);
     }
 
     [Fact]
@@ -120,11 +191,11 @@ public class StatusEffectProjectionTests
             Entries = ImmutableArray.Create(new StatusEffectEntry(new(7), 99, 1, 20, 80))
         };
 
-        Assert.True(target.TryPublish(42, in state));
+        Assert.Equal(StatusEffectPublishResult.Published, target.Publish(42, in state));
         Assert.Equal<StatusEffectEntry>(state.Entries, cell.World.Get<ActiveStatusEffects>(entity).Entries);
-        Assert.False(target.TryPublish(43, in state));
+        Assert.Equal(StatusEffectPublishResult.Gone, target.Publish(43, in state));
         cell.World.Despawn(entity);
-        Assert.False(target.TryPublish(42, in state));
+        Assert.Equal(StatusEffectPublishResult.Gone, target.Publish(42, in state));
     }
 
     private static StatusEffectBook NewBook() => new(new StatusEffectCatalog(new[]
@@ -134,13 +205,13 @@ public class StatusEffectProjectionTests
 
     private sealed class RecordingTarget : IStatusEffectProjectionTarget
     {
-        public bool Accept { get; init; } = true;
+        public StatusEffectPublishResult Result { get; set; } = StatusEffectPublishResult.Published;
         public List<(long Actor, ActiveStatusEffects State)> Calls { get; } = new();
 
-        public bool TryPublish(long actor, in ActiveStatusEffects state)
+        public StatusEffectPublishResult Publish(long actor, in ActiveStatusEffects state)
         {
             Calls.Add((actor, state));
-            return Accept;
+            return Result;
         }
     }
 }

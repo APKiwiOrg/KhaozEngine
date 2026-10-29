@@ -14,11 +14,13 @@ public sealed class ShardHostStatusEffectTarget : IStatusEffectProjectionTarget
         _host = host;
     }
 
-    public bool TryPublish(long actor, in ActiveStatusEffects state)
+    public StatusEffectPublishResult Publish(long actor, in ActiveStatusEffects state)
     {
-        if (!_host.TryGetOwner(actor, out var cell, out var entity) || !cell.World.IsAlive(entity))
-            return false;
-        cell.World.Set(entity, state);
-        return true;
+        if (_host.TryGetOwner(actor, out var cell, out var entity) && cell.World.IsAlive(entity))
+        {
+            cell.World.Set(entity, state);
+            return StatusEffectPublishResult.Published;
+        }
+        return _host.IsInHandoff(actor) ? StatusEffectPublishResult.Deferred : StatusEffectPublishResult.Gone;
     }
 }

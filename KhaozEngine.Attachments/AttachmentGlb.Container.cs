@@ -31,7 +31,7 @@ public static partial class AttachmentGlb
         internal JsonElement Root => document.RootElement;
         internal ReadOnlyMemory<byte> Binary { get; }
 
-        internal Container(ReadOnlyMemory<byte> glb)
+        internal Container(ReadOnlyMemory<byte> glb, bool validateImages = true)
         {
             ReadOnlySpan<byte> bytes = glb.Span;
             if (bytes.Length < 20 || Read(bytes, 0) != 0x46546c67 || Read(bytes, 4) != 2 || Read(bytes, 8) != (uint)bytes.Length)
@@ -66,7 +66,7 @@ public static partial class AttachmentGlb
             document = JsonDocument.Parse(json, new JsonDocumentOptions());
             try
             {
-                ValidateResources(binaryLength);
+                ValidateResources(binaryLength, validateImages);
             }
             catch
             {
@@ -75,7 +75,7 @@ public static partial class AttachmentGlb
             }
         }
 
-        void ValidateResources(int binaryLength)
+        void ValidateResources(int binaryLength, bool validateImages)
         {
             JsonElement root = Root;
             if (root.ValueKind != JsonValueKind.Object)
@@ -94,8 +94,9 @@ public static partial class AttachmentGlb
             }
             if (root.TryGetProperty("buffers", out JsonElement buffers) && buffers.GetArrayLength() > 1)
                 throw new InvalidDataException("A GLB attachment supports one embedded buffer.");
-            foreach (JsonElement image in Array(root, "images"))
-                RefuseUri(image, "image");
+            if (validateImages)
+                foreach (JsonElement image in Array(root, "images"))
+                    RefuseUri(image, "image");
         }
 
         public void Dispose() => document.Dispose();

@@ -6,7 +6,7 @@ namespace KhaozEngine.Attachments;
 
 internal static class AttachmentGlbHierarchy
 {
-    internal static void Validate(JsonElement root, JsonElement joints, string context)
+    internal static int[] Validate(JsonElement root, JsonElement joints, string context)
     {
         JsonElement nodes = AttachmentGlbAccessors.Required(root, "nodes", context);
         if (nodes.ValueKind != JsonValueKind.Array)
@@ -68,5 +68,6 @@ internal static class AttachmentGlbHierarchy
                 throw new InvalidDataException($"{context}: joints must share a common root.");
             commonRoot = jointRoot;
         }
+        return parents;
     }
 }

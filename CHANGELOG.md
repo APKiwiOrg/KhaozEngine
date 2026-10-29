@@ -4,6 +4,15 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.21.0
+
+2026-10-30
+
+- Add `AttachmentGlb.ComputeRigIdentity` in `KhaozEngine.Attachments`. Its versioned `rig-v1:` SHA-256
+  covers ordered skin joints, hierarchy, rest frames, inverse binds and skinned vertex/index data.
+  Animation and appearance edits leave fit evidence unchanged. Raw accessor elements and canonical
+  decimal rest values produce the same identity across platforms, independent of buffer layout (#1661).
+
 ## 21.20.0
 
 2026-10-29

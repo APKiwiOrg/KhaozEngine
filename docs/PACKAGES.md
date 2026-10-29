@@ -80,7 +80,7 @@ What draws, plays and lays out a frame, plus the game loop and headless screensh
 | [KhaozEngine.Particles.Render3D](../KhaozEngine.Particles.Render3D/README.md) | Draws particle simulations as sprites, trails, lights, flipbooks and distortion effects, with ready-to-use presets. | Particles, Render3D | Game3D |
 | [KhaozEngine.Telegraphs](../KhaozEngine.Telegraphs/README.md) | Animated attack warnings and danger zones with reusable styles and a 2D renderer. | Render2D, Primitives | Game2D, Game3D |
 | [KhaozEngine.Telegraphs.Render3D](../KhaozEngine.Telegraphs.Render3D/README.md) | Paints animated danger zones and fading impact marks onto 3D ground and terrain. | Telegraphs, Render3D | Game3D |
-| [KhaozEngine.Attachments](../KhaozEngine.Attachments/README.md) | Defines and validates rigid and skinned attachment sets, canonical JSON and self-contained mesh assets. | None | Game3D |
+| [KhaozEngine.Attachments](../KhaozEngine.Attachments/README.md) | Defines rigid and skinned attachment sets, validates embedded mesh assets and computes animation-independent body rig identities. | None | Game3D |
 | [KhaozEngine.Attachments.Render3D](../KhaozEngine.Attachments.Render3D/README.md) | Binds attachments to animated skeletons and manages shared uploads, drawing and outlines. | Attachments, Render3D | Game3D |
 | [KhaozEngine.Game](../KhaozEngine.Game/README.md) | Game loop, scenes, UI passes, diagnostics and staged startup screens. | Windowing, Render2D, Gui, Updates, ServerStatus, Simulation | Game2D, Game3D |
 | [KhaozEngine.Game.Render3D](../KhaozEngine.Game.Render3D/README.md) | Connects the game loop to 3D scenes and supplies character movement, facing and animation. | Game, Render3D, Locomotion, Physics | Game3D |

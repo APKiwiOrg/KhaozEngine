@@ -92,5 +92,75 @@ views and sparse overrides are supported. Accessor and sparse ranges are checked
 embedded buffer before reading. Optional inverse-bind accessors must contain one finite MAT4 per
 joint. Host joint-name mapping and bind-pose compatibility are renderer-level checks.
 
+## Body rig identity
+
+Use `AttachmentGlb.ComputeRigIdentity(glbBytes, sourceName)` to identify what a garment fits against.
+It returns `rig-v1:` followed by a lowercase SHA-256 digest. A headless publisher and a client can
+call the same API without importing a renderer. Persist and compare the complete prefixed string.
+A field that previously accepted only a bare file SHA-256 needs versioned-identity validation and
+regenerated fit evidence. Keep separate file-integrity hashes for exact asset bytes.
+
+The input is a GLB 2 with one embedded buffer, exactly one skin and at least one mesh node using
+that skin. The reader covers ordered joint names, joint hierarchy, rest local transforms, inverse
+bind matrices, and every skinned mesh primitive's positions, optional normals, joint indices,
+weights and optional vertex indices. All paired `JOINTS_n` and `WEIGHTS_n` sets are included.
+Joint and mesh-node ancestors contribute their rest frames, including non-joint ancestors.
+This reader has no 128-joint renderer limit.
+
+Animations, materials, images, textures, UVs, tangents, vertex colors, accessor bounds, extras,
+unskinned meshes, unrelated nodes and unused bytes do not contribute. Image URIs are never read.
+Adding, removing or retiming clips leaves the identity unchanged. Morph targets and weights,
+compressed geometry and unsupported accessor encodings are refused rather than omitted.
+Bad containers, hierarchy, names, references, accessor ranges and nonfinite fit data throw
+`InvalidDataException` with `sourceName` context. Invalid source-name arguments throw
+`ArgumentException`. The rigid and skinned attachment validation APIs keep their existing policies,
+including their animation and external-image refusal.
+
+### rig-v1 encoding
+
+The SHA-256 input is the following binary stream. `I(n)` is a signed 32-bit little-endian integer.
+`T(s)` is `I(UTF8 byte count)` followed by the UTF-8 bytes, without a terminator or Unicode
+normalization. Counts and flags are nonnegative. Parent `-1` denotes a root.
+
+Assign canonical node IDs by visiting each joint in skin order, then each skinned mesh node in
+source node-array order. For each visit, assign unseen ancestors first, root to leaf, then the
+node itself. Ignore all other nodes. Source node, mesh, accessor and buffer-view indices are not
+written. Joint names are ordinal and must be unique, non-blank and well-formed UTF-16. Non-joint
+node names do not contribute.
+
+1. `T("KhaozEngine.Attachments/rig-v1")`.
+2. Joint count, then each joint's `T(name)` and canonical node ID.
+3. Canonical node count, then each node's canonical parent ID and rest frame. A frame begins with
+   `I(0)` for TRS or `I(1)` for matrix. TRS writes translation's 3 numbers, rotation's 4 numbers and
+   scale's 3 numbers. Matrix writes its 16 numbers in source glTF order. Each number is `T(canonical
+   decimal)`. Matrix and TRS cannot coexist and remain distinct encodings.
+4. The inverse-bind accessor described below, in joint order. An omitted accessor writes the same
+   descriptor and IEEE-754 float bytes as explicit identity MAT4 values, one per joint.
+5. Skinned mesh-node count, then each mesh node's canonical ID and primitive count. Mesh instances
+   follow source node-array order and primitives follow source primitive-array order.
+6. Each primitive writes its mode (`I(4)` by default), POSITION accessor, normal-present flag and
+   optional NORMAL accessor, influence-set count, then each set's numeric suffix and JOINTS/WEIGHTS
+   accessors in that order. Sets are sorted by numeric suffix and set 0 is required. Finally write
+   the indices-present flag and optional indices accessor. Flags are `I(0)` or `I(1)`.
+
+An accessor writes `T(type)`, component type, element count and normalized flag, followed by its
+effective raw element bytes in element order. Supported shapes are float VEC3 positions/normals,
+float MAT4 inverse binds, unsigned byte/short VEC4 joints, float or normalized unsigned byte/short
+VEC4 weights, and unsigned byte/short/int SCALAR indices. All counts, joint indices, weights and
+vertex indices are validated. All-zero total weights across the sets are refused.
+
+Sparse overrides select raw elements before hashing. An absent base supplies zero bytes. Stride
+padding, accessor offsets and sparse storage layout do not contribute. Binary floats are never
+reserialized, so their authored bits, including signed zero, remain significant. Equivalent dense,
+strided and sparse layouts agree when their effective element bytes and descriptors agree.
+
+JSON transform numbers are encoded from decimal tokens using integer and string operations. A
+nonzero number becomes its sign, coefficient digits without leading or trailing zeroes, `e`, and
+the decimal exponent without a plus sign or leading zeroes. Zero becomes `0`, including signed
+zero. For example, `1.25`, `125e-2` and `0.0125e2` all become `125e-2`. Omitted translation, rotation
+and scale use glTF's `(0,0,0)`, `(0,0,0,1)` and `(1,1,1)` defaults. Parsing a number to check that
+it is finite does not supply its hash encoding. No transform decomposition or geometric-equivalence
+normalization occurs. Changing this stream requires a new identity prefix.
+
 Version 21 removes the rigid-only set type names without compatibility aliases. See the
 [migration record](../docs/design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md).

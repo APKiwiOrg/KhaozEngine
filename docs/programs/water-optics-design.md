@@ -43,9 +43,9 @@ remain outside M5. The analytic multiple-scattering estimate stays in use.
   still-frame noise proofs. Verify single-sample and MSAA, temporal AA on and off, and D3D11, Vulkan
   and Metal through the cross-platform GPU workflow.
 - There is no fixed GPU budget. The owner approves any performance run's legs and cap separately and
-  rules on measured cost before shipping. The current Landing 1 cost gate remains in
-  [the tracker](water-optics.md), with workloads under
-  https://github.com/APKiwiOrg/KhaozEngine/issues/1602.
+  rules on measured cost before shipping. Landing 1's cost was accepted under WO-D21 in
+  [the tracker](water-optics.md). The water-optics-v2 recipes and profile publication in the
+  [renderer reference](../RENDERER-PERFORMANCE.md#water-optics-campaign) are the measuring path.
 
 ### Landing contract
 

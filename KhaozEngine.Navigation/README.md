@@ -403,8 +403,18 @@ A replan is due when: there is no stored path, the stored path is fully consumed
 `PathFollowConfig.GoalRetargetTolerance` in XZ or past `PathFollowConfig.GoalRetargetVerticalTolerance` in
 Y from where it was planned, or the agent strayed past `PathFollowConfig.CorridorTolerance` from the
 corridor segment leading to the active waypoint. A due
-replan only fires once `PathFollowConfig.ReplanCooldownSeconds` has drained, so a persistently unreachable
-goal or a jittery corridor breach does not spam the planner every tick.
+replan ordinarily fires once `PathFollowConfig.ReplanCooldownSeconds` has drained, so a persistently unreachable
+goal or a jittery corridor breach does not spam the planner every tick. Reaching a previously useful Complete
+route's obsolete terminal permits one immediate refresh through the same query site.
+
+Point arrival requires current goal proximity in both XZ and Y, or a reached Complete endpoint whose queried
+goal still matches the current point in X, Y and Z. The latter preserves completion at a planner-selected
+snapped endpoint for the same intent. A reached endpoint for an old point intent makes a replan due even
+when goal drift is below the retarget tolerances. Terminal recognition uses the configured radius and layer
+checks, without requiring coordinate bit equality. A fresh exhausted result keeps the ordinary cooldown,
+including after an immediate replacement. While a query is deferred after route consumption, point following
+returns `WaitingForPath` with zero steering. A failed query for a different point intent also waits for the
+current query, rather than reporting its old failure as current `Unreachable`.
 
 `PathFollower(planner, config, space)` takes the `NavSpace` the planner plans over as an optional third
 argument, and it is what makes the waypoint advance layer-aware. Every `NavWaypoint` carries the layer it
@@ -448,7 +458,11 @@ resets the old route and cooldown.
   retarget trigger.
 - **`CorridorTolerance`** (default 2.5) - how far the agent may stray from the planned corridor before a
   replan is due.
-- **`ReplanCooldownSeconds`** (default 0.5) - minimum time between replans.
+- **`ReplanCooldownSeconds`** (default 0.5) - minimum time between ordinary replans. A previously
+  nonterminal Complete route refreshes immediately on reaching its terminal outside region membership or
+  after its point intent changes,
+  at most once per tick.
+  A fresh query already terminal at its start keeps the ordinary cooldown.
 - **`Budget`** (default `PathQueryBudget.Default`) - handed to `IPathPlanner.FindPath` on every replan.
 - **`ConsumePassedCollinearWaypoints`** (default false) - also advance past an active waypoint the agent has passed
   rather than landed on, when it is a collinear pass-through on the agent's layer and the feet sit at or beyond it on
@@ -464,14 +478,20 @@ point the same way and bend by a sine of at most 1e-4. The first and last waypoi
 index outside `Waypoints` throws `ArgumentOutOfRangeException`.
 
 `Tick` returns a `PathFollowOutput` (`WorldDir`, `State`, `ActiveWaypoint`, `HopStart`). Point following
-keeps its existing arrival and partial-path behavior. A region `NavPathStatus.Partial` corridor that is
+keeps its one-tick raw-goal steer on Partial exhaustion. A region `NavPathStatus.Partial` corridor that is
 exhausted while the cooldown is positive returns `PathFollowState.WaitingForPath` with zero direction.
 The fresh exhausted-Partial case with zero cooldown returns `Unreachable` with zero direction and retries
 on the next tick. Existing region corridors are advanced before query eligibility, so an eligible partial
 refresh can happen on the same tick that the cooldown reaches zero. A reached `Complete` endpoint outside
-region membership makes replanning due, even when anchor drift is within tolerance. Each tick issues at
-most one query. `WaitingForPath` is appended after the existing enum members, and point following never
-returns it. Shared configuration, cooldown, drift, layer, and `Hop` behavior remain in force.
+region membership makes replanning due, even when anchor drift is within tolerance. A corridor not
+terminal when queried refreshes immediately when its terminal is reached under the configured waypoint
+radius and layer checks. It needs no exact coordinate equality, so rebased motion can retire an old
+endpoint even when it rounds differently from the grid's cell centre. Exhausted Partial routes keep the cooldown.
+A fresh Complete result already terminal at query time also keeps the cooldown. Replacing a stale route
+does not authorize another immediate query of a fresh start-cell result on the next tick. Leaving the
+terminal state makes the corridor eligible for a later stale-terminal refresh again.
+Each tick issues at most one query. `WaitingForPath` is appended after the existing enum members.
+Shared configuration, cooldown, drift, layer, and `Hop` behavior remain in force.
 
 When the active waypoint is a `NavWaypointKind.Hop` landing, ground steering is suspended instead: the
 tick returns `PathFollowState.Hopping` with `WorldDir` zero and both hop endpoints, `HopStart` (the
@@ -498,7 +518,8 @@ is untouched and there is zero cost when unused.
 
 `ActivePath` is `null` when the follower is following no corridor: before the first `Tick` plans, after
 `Reset`, once the goal is reached (`Arrived`), while `Unreachable`, and while an exhausted region
-`NavPathStatus.Partial` is waiting for its cooldown or has just returned zero `Unreachable`. Its
+`NavPathStatus.Partial` is waiting for its cooldown or has just returned zero `Unreachable`. It is also null
+while a point query is deferred after route consumption or changing a failed intent. Its
 `ActiveWaypointIndex` is zero in those states. The point overload keeps its one-tick raw-goal steer after
 partial exhaustion. While a replan is merely due but still gated by `ReplanCooldownSeconds`, an existing
 path stays committed, so you always read the route the agent is steering on. When non-null it carries at

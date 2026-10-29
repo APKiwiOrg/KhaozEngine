@@ -9085,6 +9085,15 @@ exhausted, the goal drifted in XZ past `GoalRetargetTolerance` or in Y past
 `GoalRetargetVerticalTolerance`, or the agent strayed off the planned corridor, each gated by a cooldown)
 and hands back a per-tick world-space direction:
 
+Point arrival uses current goal proximity in XZ and Y, or a reached Complete endpoint for the same queried
+point intent in X, Y and Z. A planner-selected snapped endpoint can therefore still complete an unchanged
+intent. Reaching a previously useful Complete route's obsolete endpoint makes the current query due
+immediately, even for goal drift below the retarget tolerances. It uses the configured radius and layer
+checks, without requiring coordinate bit equality. A fresh exhausted result keeps the ordinary cooldown,
+including after an immediate replacement. A deferred point query after route consumption or changing a
+failed intent returns `WaitingForPath` at zero motion, rather than inventing a current planner failure.
+Point Partial exhaustion keeps its one-tick raw-goal steer.
+
 Hand it the `NavSpace` too on a multi-layer world. That third argument is what lets the waypoint advance
 compare the layer a waypoint carries against the agent's own (`NavSpace.LayerAt`). Without it the advance is
 XZ-only, and a stair link's upper waypoint sits about one cell from its lower partner in XZ, inside
@@ -9097,6 +9106,13 @@ stays active until membership, regardless of `AcceptRadius`. Intermediate waypoi
 radius and layer checks. Call `Reset` when the predicate, region shape, traversal profile, or target
 identity changes, or after a teleport or caller cancellation. Switching between point and region overloads
 clears the old route and cooldown.
+
+A previously nonterminal Complete region corridor refreshes immediately when its old terminal is reached
+outside current membership under the configured waypoint radius and layer checks, even while cooldown is
+positive. Exact coordinate equality is not required. An exhausted Partial route keeps the cooldown.
+Each tick queries at most once.
+A fresh Complete result already terminal at query time keeps the ordinary cooldown, including after
+replacing a stale route. Leaving terminal state makes a later stale-terminal refresh eligible again.
 
 ```csharp
 var follower = new PathFollower(planner, config: null, space: space);   // one per agent, PathFollowConfig.Default
@@ -9123,8 +9139,9 @@ else if (output.State == PathFollowState.Hopping)
     agent = PlayLunge(agent, from, fromY, to, toY, dt);   // game-owned jump motion + animation
 }
 // Point Arrived: agent.Position is within AcceptRadius of the goal in XZ and within VerticalAcceptTolerance
-// of it in Y, output.WorldDir is zero.
+// of it in Y, or reached a Complete endpoint queried for that same point intent. WorldDir is zero.
 // Region Arrived: goal.Contains(agent.Position) is true. Unreachable: the planner found no usable route.
+// WaitingForPath: the next query is deferred. WorldDir is zero.
 ```
 
 The follower owns no hop timer: it re-emits `Hopping` every tick until the agent actually reaches the
@@ -9139,9 +9156,13 @@ Partial corridor that is exhausted while the cooldown is positive returns `PathF
 with zero direction. A fresh exhausted Partial with zero cooldown returns `Unreachable` with zero direction
 and retries on the next tick. Existing region corridors advance before query eligibility, so an eligible
 partial refresh can happen on the same tick that the cooldown reaches zero. A reached Complete endpoint
-outside membership makes replanning due even when anchor drift is within tolerance. Each tick issues at
-most one query. `WaitingForPath` is appended after existing enum members, and point following never returns
-it. Shared configuration, cooldown, drift, layer, and Hop behavior remain in force.
+outside membership makes replanning due even when anchor drift is within tolerance. A previously
+nonterminal Complete corridor refreshes at the reached terminal under its radius and layer checks,
+without requiring exact coordinate equality. Each tick issues at most one query.
+A fresh query already terminal at its start keeps the ordinary cooldown.
+`WaitingForPath` is appended after existing enum members. Point following also returns it for a deferred
+query after route consumption or changing a failed intent. Shared configuration, cooldown, drift, layer,
+and Hop behavior remain in force.
 
 ### Read the committed corridor (debug overlays, logging)
 
@@ -9168,7 +9189,8 @@ follower is currently steering toward. Both are allocation-free getters over exi
 untouched and there is zero cost when unused. `ActivePath` is `null` when the follower is following no
 corridor: before the first `Tick`, after `Reset`, once `Arrived`, while `Unreachable`, and while an
 exhausted region `NavPathStatus.Partial` is waiting for its cooldown or has just returned zero
-`Unreachable`. Its `ActiveWaypointIndex` is zero in those states. The point overload keeps its one-tick
+`Unreachable`. It is also null while a point query is deferred after route consumption or changing a
+failed intent. Its `ActiveWaypointIndex` is zero in those states. The point overload keeps its one-tick
 raw-goal steer after partial exhaustion. While a replan is due but still gated by `ReplanCooldownSeconds`,
 an existing path stays committed, so you always read the route the agent is steering on. When non-null it
 carries at least one waypoint and `ActiveWaypointIndex` is a valid index into its `Waypoints`.
@@ -9183,7 +9205,9 @@ cell. `PathFollowConfig` tunes the follower itself: `AcceptRadius` (default 0.6,
 as arrived, so a goal on the floor above routes through the planner instead of arriving on XZ proximity),
 `GoalRetargetTolerance` (default 1.5, how far the goal may drift before a replan is due),
 `CorridorTolerance` (default 2.5, how far the agent may stray off the planned corridor before a replan is
-due), and `ReplanCooldownSeconds` (default 0.5, minimum time between replans). See the
+due), and `ReplanCooldownSeconds` (default 0.5, minimum time between ordinary replans, with immediate
+refresh for a previously useful Complete route reaching an obsolete point endpoint or a region endpoint
+outside membership). Fresh exhausted results retain the cooldown. See the
 `KhaozEngine.Navigation` package README for the clearance convention, the planner's documented heuristic
 limitations, and the full config surface.
 
@@ -9761,6 +9785,10 @@ near-field shortcut keeps the detour. Area or graph guards apply to direct appro
 exhausted partial route waiting on cooldown, an unreachable or refused route, or an unsupported Hop route holds
 with zero input. A valid partial corridor still requests bounded travel until it is exhausted.
 Target translation follows the follower's configured drift and replan cooldown while the route remains valid.
+A previously nonterminal Complete corridor refreshes at its reached terminal outside current range under
+the configured arrival radius and layer checks. Physics rebasing need not reproduce the waypoint's exact coordinates.
+A fresh Complete result already terminal when queried keeps the ordinary cooldown, so a no-progress
+start-cell result cannot repeat the query every tick.
 
 The profile must match the tuning's radius, half-height, slope and step. Walk and run pace, climb pace and
 effect scale may differ. The game owns nominal ranges, target validity, target identity, cancellation and the

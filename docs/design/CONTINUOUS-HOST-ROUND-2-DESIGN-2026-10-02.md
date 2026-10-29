@@ -250,10 +250,13 @@ The region follower reuses the existing replan, cooldown and layer-aware state. 
 checks region membership. It keeps the final waypoint until actual region entry, rather than consuming
 it merely because its default 0.6 m AcceptRadius was met. Consuming a partial corridor holds for the
 next replan instead of producing the point overload's current one-tick raw-goal press.
-The point overload is unchanged. Region calls require an `IRegionPathPlanner`, with a clear failure
+Region calls require an `IRegionPathPlanner`, with a clear failure
 for an unsupported planner rather than an implicit point-query fallback.
 Add a `PathFollowState.WaitingForPath` result for the region overload's exhausted partial corridor
-while a replan is gated by cooldown. The point overload never returns that new state. Do not infer
+while a replan is gated by cooldown. Point following also returns it when a query is deferred after route
+consumption or changing a failed intent. Point Complete endpoints witness arrival only for the same queried
+intent, including snapped endpoints. A previously useful route reaching an obsolete terminal refreshes
+immediately through the same query site. Fresh exhausted results keep the ordinary cooldown. Do not infer
 waiting from a zero waypoint, which can be a real world coordinate.
 
 ### Guarded graph
@@ -296,7 +299,7 @@ decisions without making legacy point queries inherit guarded semantics.
 | B3.3 | Cross-layer or underpriced same-layer links disable the spatial lower-bound priority. Dijkstra ordering costs more expansions but preserves admissibility. |
 | B3.4, B3.5 | Member discovery uses the conservative anchor/extent bound and finite-safe double distance arithmetic. Bounds reduce discovery work without changing actual predicate membership, and wide differences avoid float overflow. |
 | B4.2 | A retained waypoint with zero XZ offset stays finite and Following until true membership or replanning. Same XZ on another floor is not arrival. |
-| B4.3 | A reached Complete endpoint outside membership makes replanning due, so small target motion cannot leave a permanent zero-direction hold. |
+| B4.3 | A reached Complete endpoint outside membership makes replanning due. A previously nonterminal corridor refreshes under the follower's configured arrival radius and layer checks, without exact coordinate equality. A fresh result already terminal at query time keeps the ordinary cooldown, including after a stale-route refresh, until it leaves terminal state. Region membership remains the only Arrived witness. |
 | B4.4 | Advance the existing region corridor before query eligibility. Exhausted Partial waits with zero input during cooldown. A fresh exhausted Partial at zero cooldown returns Unreachable for that tick, then permits the next query, never a same-tick query loop. |
 
 ## 5. Physics bake and game-owned area masks

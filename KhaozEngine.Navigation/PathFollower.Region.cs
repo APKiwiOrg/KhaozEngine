@@ -7,6 +7,8 @@ namespace KhaozEngine.Navigation;
 public sealed partial class PathFollower
 {
     bool _followingRegion;
+    // A query already terminal at its start has no new corridor to exhaust. It keeps the ordinary cooldown.
+    bool _freshRegionTerminal;
 
     /// <summary>
     /// Follows a route to <paramref name="goal"/> using actual feet membership for arrival. The last
@@ -14,7 +16,11 @@ public sealed partial class PathFollower
     /// waypoints retain the configured radius and layer checks. An exhausted Partial route holds at
     /// zero motion until the shared replan cooldown permits another query. Reaching the retained
     /// Complete endpoint outside the region also makes a replan due, even for anchor drift within
-    /// tolerance. Existing region waypoints advance before this decision so an eligible exhausted
+    /// tolerance. A corridor not terminal when queried refreshes immediately when its terminal is
+    /// reached under the configured waypoint radius and layer checks. Exact coordinate equality is
+    /// not required, since movement can round differently from the grid's cell centres.
+    /// A fresh query already terminal at its start keeps the ordinary cooldown until it leaves that state.
+    /// Existing region waypoints advance before this decision so an eligible exhausted
     /// Partial replans in the same tick. Each tick queries at most once. A freshly exhausted Partial
     /// with no cooldown returns Unreachable at zero motion and retries on the next tick.
     /// Switching between point and region calls clears the previous route and cooldown. Call
@@ -52,30 +58,38 @@ public sealed partial class PathFollower
             : Vector2.Distance(posXz, goalXz) <= _config.AcceptRadius
                 && MathF.Abs(position.Y - goal.Y) <= _config.VerticalAcceptTolerance;
         if (arrived)
-        {
-            _path = null;
-            _index = 0;
-            return new PathFollowOutput { WorldDir = Vector2.Zero, State = PathFollowState.Arrived, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
-        }
+            return Arrive();
 
-        // Region consumption must inform this tick's query eligibility. Point consumption stays after
-        // the query decision, preserving the legacy Partial raw-goal tick and planner call ordering.
-        bool regionAtTerminal = followingRegion && AdvanceReachedWaypoints(position, posXz, followingRegion: true);
+        // A reached Complete endpoint belongs only to the point intent that was queried. Retain it
+        // until that check so obsolete endpoints can refresh through the single query site below.
+        // Point Partial consumption stays after query eligibility, preserving its raw-goal tick.
+        bool pointIntentMatches = goalXz == _plannedGoalXz && goal.Y == _plannedGoalY;
+        bool completeAtTerminal = (followingRegion || _path?.Status == NavPathStatus.Complete)
+            && AdvanceReachedWaypoints(position, posXz, retainCompleteTerminal: true);
+        if (!completeAtTerminal) _freshRegionTerminal = false;
+        if (!followingRegion && completeAtTerminal && pointIntentMatches)
+            return Arrive();
+
         bool needsPlan = _path is null
             || _index >= _path.Waypoints.Count
             || Vector2.Distance(goalXz, _plannedGoalXz) > _config.GoalRetargetTolerance
             || MathF.Abs(goal.Y - _plannedGoalY) > _config.GoalRetargetVerticalTolerance
-            || regionAtTerminal
+            || completeAtTerminal
             || DistanceToActiveCorridor(posXz) > _config.CorridorTolerance;
 
-        bool replanned = needsPlan && _cooldown == 0f;
+        // A useful corridor reaching an obsolete terminal needs one immediate refresh. A fresh
+        // terminal region result stays protected. Point completion clears its route and keeps cooldown.
+        bool staleCompleteTerminal = completeAtTerminal && !_freshRegionTerminal;
+        bool replanned = needsPlan && (_cooldown == 0f || staleCompleteTerminal);
         if (replanned)
         {
             _path = region is not null
                 ? ((IRegionPathPlanner)_planner).FindPath(position, region, agentRadius, _config.Budget)
                 : _planner.FindPath(position, goal, agentRadius, _config.Budget);
+            _freshRegionTerminal = false;
             _plannedGoalXz = goalXz;
             _plannedGoalY = goal.Y;
+            pointIntentMatches = true;
             _planOriginXz = posXz;
             _index = 0;
             _cooldown = _config.ReplanCooldownSeconds;
@@ -83,11 +97,18 @@ public sealed partial class PathFollower
 
         if (_path is null || _path.Status == NavPathStatus.Unreachable || _path.Waypoints.Count == 0)
         {
-            return new PathFollowOutput { WorldDir = Vector2.Zero, State = PathFollowState.Unreachable, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
+            // No current point result exists when cooldown defers a query after completion or
+            // retargeting a failed query. That wait is not a planner failure for the current intent.
+            PathFollowState state = !followingRegion && !replanned && (_path is null || !pointIntentMatches)
+                ? PathFollowState.WaitingForPath : PathFollowState.Unreachable;
+            return new PathFollowOutput { WorldDir = Vector2.Zero, State = state, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
         }
 
         if (!followingRegion || replanned)
-            AdvanceReachedWaypoints(position, posXz, followingRegion);
+        {
+            bool terminalAfterPlan = AdvanceReachedWaypoints(position, posXz, followingRegion);
+            _freshRegionTerminal = followingRegion && terminalAfterPlan;
+        }
         IReadOnlyList<NavWaypoint> waypoints = _path.Waypoints;
         if (_index >= waypoints.Count)
         {
@@ -104,7 +125,8 @@ public sealed partial class PathFollower
             _index = 0;
             if (status == NavPathStatus.Complete)
             {
-                return new PathFollowOutput { WorldDir = Vector2.Zero, State = PathFollowState.Arrived, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
+                return pointIntentMatches ? Arrive()
+                    : new PathFollowOutput { WorldDir = Vector2.Zero, State = PathFollowState.WaitingForPath, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
             }
 
             // Preserve the point overload's raw-goal steering on Partial exhaustion.
@@ -124,9 +146,17 @@ public sealed partial class PathFollower
         return new PathFollowOutput { WorldDir = dir, State = PathFollowState.Following, ActiveWaypoint = active.Position, HopStart = Vector2.Zero };
     }
 
-    // Returns true at a reached Complete region endpoint without consuming it. Membership already
-    // failed this tick, so the old endpoint alone cannot witness arrival and a replan is due instead.
-    bool AdvanceReachedWaypoints(Vector3 position, Vector2 posXz, bool followingRegion)
+    PathFollowOutput Arrive()
+    {
+        _path = null;
+        _index = 0;
+        _freshRegionTerminal = false;
+        return new PathFollowOutput { WorldDir = Vector2.Zero, State = PathFollowState.Arrived, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
+    }
+
+    // Returns true at a reached Complete endpoint without consuming it when requested, so arrival
+    // can validate current region membership or the point intent before retiring the route.
+    bool AdvanceReachedWaypoints(Vector3 position, Vector2 posXz, bool retainCompleteTerminal)
     {
         if (_path is null || _path.Status == NavPathStatus.Unreachable)
             return false;
@@ -138,7 +168,7 @@ public sealed partial class PathFollower
                     && (agentLayer is null || waypoints[_index].Layer == agentLayer.Value))
                 || (_config.ConsumePassedCollinearWaypoints && PassedActive(posXz, agentLayer))))
         {
-            if (followingRegion && _path.Status == NavPathStatus.Complete && _index == waypoints.Count - 1)
+            if (retainCompleteTerminal && _path.Status == NavPathStatus.Complete && _index == waypoints.Count - 1)
                 return true;
             _index++;
         }

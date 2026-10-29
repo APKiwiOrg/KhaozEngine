@@ -405,8 +405,8 @@ public sealed partial class ShardHost : IDisposable
     }
 
     /// <summary>
-    /// Transfers authority for entities that crossed a cell boundary since the last call, with exactly-once
-    /// semantics (never two owners, never zero). For each owned entity whose position now falls in another cell,
+    /// Transfers authority for entities that crossed a cell boundary since the last call, without double
+    /// ownership or simulation. For each owned entity whose position now falls in another cell,
     /// the owner captures its <see cref="ReplicationChannels.Migrate"/> component set (Replication codecs), sends a
     /// <see cref="CellMessageKind.Migrate"/> over the link and freezes it (<see cref="Migrating"/>); the
     /// destination adopts it as owned (despawning any prior ghost of it) and acks; the owner then releases

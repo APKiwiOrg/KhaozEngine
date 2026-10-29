@@ -361,8 +361,11 @@ overload without this input retains NPC world-space execution. Body, run mode, t
 remain exact. Camera yaw may change between ticks when the same input value is used for preview and submission.
 The follower cooldown advances once per active Drop tick, including suspended flight and supported completion.
 After acknowledgement the latest goal can replan in that landing tick before the old route's next transition.
-A target that moves past retarget tolerance before launch refreshes the route on reaching the Drop source, even
-inside the cooldown, so the body never falls toward an obsolete landing.
+A target that moves past retarget tolerance refreshes at the Drop source and throughout supported alignment,
+rooted holds and the supported launch prefix, even inside the cooldown. Current range membership cancels preparation
+without acknowledging an untraversed Drop. Refresh uses the follower's single query site and retains the fresh
+result's ordinary cooldown. A replacement without that Drop releases its preparation. The first command that
+leaves support commits the physical flight, whose source and landing then remain fixed until supported completion.
 See [Contact Drop links](../docs/design/CONTACT-DROP-LINKS.md) for costs, follower acknowledgement and storage reasons.
 
 ### Parallel contact bake

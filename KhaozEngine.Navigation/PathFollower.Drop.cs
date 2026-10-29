@@ -16,6 +16,15 @@ public sealed partial class PathFollower
         _cooldown = MathF.Max(0f, _cooldown - dt);
     }
 
+    /// <summary>Reconsiders a host's still-supported preparation through the ordinary query site.
+    /// The host must advance the clock once first and must never call this after issuing departure.
+    /// Membership or a due refresh may release the untraversed lock without acknowledging a landing.</summary>
+    internal PathFollowOutput TickDropPreparation(Vector3 feet, NavGoalRegion goal, float agentRadius)
+    {
+        if (_drop is null) throw new InvalidOperationException("No active Drop to prepare.");
+        return TickCore(feet, goal.Anchor, agentRadius, 0f, goal, preparingDrop: true);
+    }
+
     /// <summary>Acknowledges the active Drop's supported landing. The host must verify actual non-swimming
     /// support at the named landing with its movement controller. Advances exactly this transition and permits
     /// subsequent goal retargeting. A final Complete Drop remains a reached-terminal witness for the next

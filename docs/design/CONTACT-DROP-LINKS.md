@@ -73,6 +73,14 @@ expired cooldown lets the current goal replace the old route before its next tra
 support to the named source using the shared physical arrival rule. The follower's broad accept radius never
 authorizes departure. Commitments, buffered jumps and unrelated airborne bodies remain Suspended.
 
+Supported preparation is reversible, including Align, rooted holds and launch-prefix steps that retain support.
+Before issuing departure, the host reconsiders actual current range membership and refreshes due goal drift through
+the follower's single query site, even inside cooldown. Membership or a replacement without that Drop releases its
+untraversed preparation without calling `CompleteDrop()`. An unchanged Drop retains its prepared state and preview.
+A refreshed Drop keeps the ordinary cooldown and locks normally. Each tick queries at most once. The first command
+whose proved step leaves support, including a same-tick fall and landing, commits the immutable flight. Unsupported
+ticks never replan or retarget that flight, even when the latest goal contains the airborne body.
+
 Before launch, one bounded preview checks the actual body, walk/run mode, SpeedScale, momentum, timestep and live
 environment. It uses the same bounded control law and original-boundary composition as the bake. The preview slice
 count is the floor of the baked duration divided by dt, including both Holds. It neither searches for another edge

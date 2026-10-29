@@ -17,6 +17,9 @@ internal sealed class ContactDropFollower(GroundNavigation navigation, NavDropTr
     bool _interrupted;
     float _highest = traversal.StartFeet.Y;
 
+    internal bool Preparing => _phase is Phase.Align or Phase.Launch;
+    internal NavDropTraversal Traversal => traversal;
+
     internal RangeSteering Tick(in MoveState body, in MoveTuning tuning, bool run, float dt,
         GroundMoveContext context, PlayerPathInput? playerInput, out bool complete, out bool replan)
     {
@@ -107,6 +110,7 @@ internal sealed class ContactDropFollower(GroundNavigation navigation, NavDropTr
             next.ContactFirstAirLandingFeet is { } first && !Target(first + next.State.Frame.PhysicsOrigin))
             return Hold(Status(next, RangeMoveStatus.Blocked));
         _execution!.Expect(next);
+        if (!next.State.State.Grounded || next.ContactFirstAirLandingFeet is not null) _phase = Phase.Falling;
         return new(command, RangeMoveStatus.Dropping);
     }
 

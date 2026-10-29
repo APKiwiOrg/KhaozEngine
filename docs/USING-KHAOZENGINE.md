@@ -9148,9 +9148,9 @@ This example drives geometric Hop links. For baked Contact Drop routes, use the 
 below. A direct follower host handles Dropping through `DropTraversal`, aligns at its physical source and calls
 `CompleteDrop()` only after actual supported non-swimming arrival. The marker remains locked while falling,
 through moving goals and proximity. Before the lock, region membership still arrives and a replan due before
-the unlocked Drop runs at once, so the follower never launches on an obsolete route. This lock precedes
-stale-terminal refresh and point-intent checks while
-cooldown advances. Acknowledging a final Complete Drop preserves its reached-terminal witness, so the latest
+the unlocked Drop runs at once, so its lock starts from the current route. `MoveToRange` additionally reconsiders
+supported preparation before physical departure. The direct follower's lock precedes stale-terminal refresh and
+point-intent checks while cooldown advances. Acknowledging a final Complete Drop preserves its reached-terminal witness, so the latest
 intent can refresh an obsolete route immediately on the next tick even before cooldown expires. A fresh
 terminal replacement keeps the ordinary cooldown. It requires the supplied physical NavSpace.
 
@@ -9515,6 +9515,12 @@ mismatch and replans once supported. Airborne fall ticks do not enter ground-sta
 at the named cell/layer and shared 3D arrival sphere, followed by a supported Hold, acknowledges completion. Reset
 cancels ownership, leaving ordinary gravity and collision active. No direct fallback, jump or interaction policy is
 introduced. Ordinary `AllowsSegment` still refuses a fall.
+
+Supported alignment, roots and the supported launch prefix remain cancelable. Current range membership arrives
+there, and due goal drift refreshes through the follower's single query site before departure, even during cooldown.
+A replacement without that Drop releases preparation without a landing acknowledgement. A refreshed Drop keeps its
+ordinary cooldown. The first command that leaves support commits the flight. Its endpoints remain fixed through
+airborne ticks until actual supported completion, with no airborne query.
 
 Use the same `PlayerPathInput` for the tick and command submission. It preserves the actual camera-relative
 rounding and fractional axis in both prediction and execution, so exact body authentication does not mistake

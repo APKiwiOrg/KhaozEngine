@@ -145,7 +145,7 @@ public sealed class PathFollowConfig
     /// <summary>Minimum time (seconds) between replans, so a persistently unreachable goal or a jittery
     /// corridor breach does not spam the planner every tick. A previously nonterminal Complete route
     /// refreshes immediately on reaching its endpoint outside current region membership or after the
-    /// point intent changes. A due replan is also immediate before an unlocked Drop launches. A fresh terminal
+    /// point intent changes. A due replan is also immediate before an unlocked Drop locks. A fresh terminal
     /// result keeps the cooldown. Each tick queries at most once.</summary>
     public float ReplanCooldownSeconds { get; init; } = 0.5f;
 
@@ -263,8 +263,8 @@ public sealed partial class PathFollower
     /// leading to the active waypoint.</item>
     /// <item>Replans when due and the cooldown has fully drained, or immediately for a previously useful
     /// Complete route at its obsolete terminal, then resets the cooldown. A due replan is also immediate when
-    /// this tick's waypoint advance would make an unlocked Drop active, so a one-way Drop never launches on an
-    /// obsolete route. A Drop next on the refreshed route locks in that tick. Each tick queries at most once.
+    /// this tick's waypoint advance would make an unlocked Drop active, so its lock starts from the current
+    /// route. A Drop next on the refreshed route locks in that tick. Each tick queries at most once.
     /// A fresh result already terminal when queried keeps the ordinary cooldown after consumption.</item>
     /// <item>Returns <see cref="PathFollowState.WaitingForPath"/> at zero motion when a query is deferred
     /// after route consumption or changing a failed point intent. Returns <see cref="PathFollowState.Unreachable"/>

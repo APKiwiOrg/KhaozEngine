@@ -503,7 +503,7 @@ radius, goal membership, corridor drift, passed-collinear logic and a moving goa
 Before the lock a pending Drop commits nothing. Region membership still reports `Arrived` on the ledge, while
 point proximity stays refused because XZ distance cannot tell a ledge above the goal from the goal. A replan
 that is due when the next transition is an unlocked Drop runs immediately, even while cooldown is positive, so
-the one-way Drop never launches on an obsolete route. A Drop next on the refreshed route locks in that tick,
+its lock starts from the current route. A Drop next on the refreshed route locks in that tick,
 and the refreshed result keeps the ordinary cooldown.
 The host verifies supported landing and calls `CompleteDrop()`, which advances exactly one transition and throws
 without an active Drop. The lock takes precedence over stale-terminal refresh and point-intent revalidation,
@@ -513,7 +513,10 @@ consumed. The next tick checks current region membership or point intent and can
 immediately, including drift below retarget tolerance while cooldown remains positive. A fresh terminal
 replacement keeps the ordinary cooldown. `Reset()` cancels both traversal and terminal lifecycle state.
 Movement's `MoveToRange` owns the support check and advances cooldown exactly once per active Drop tick,
-passing zero elapsed time if following resumes on that landing tick. `DropTraversal` is null outside Dropping. See the
+passing zero elapsed time if following resumes on that landing tick. It also reconsiders current membership and
+due drift during safely cancelable supported preparation through the same query site. A replaced preparation
+releases its untraversed lock without acknowledging a landing. Physical flight stays immutable after departure.
+Direct follower ticks retain the lock until acknowledgement or Reset. `DropTraversal` is null outside Dropping. See the
 [Drop contract and rationale](../docs/design/CONTACT-DROP-LINKS.md).
 
 When the active waypoint is a `NavWaypointKind.Hop` landing, ground steering is suspended instead: the

@@ -23,8 +23,8 @@ public sealed partial class PathFollower
     /// A Drop locks traversal before these checks. Supported acknowledgement of a final Complete Drop
     /// is also a reached-terminal witness, so a stale route can refresh on the next tick before cooldown.
     /// Before the lock nothing is committed, so membership arrives even with a Drop still pending. A due
-    /// replan is immediate when the next transition is an unlocked Drop, so a one-way Drop never launches
-    /// on an obsolete route. A Drop next on the refreshed route locks in that tick under the ordinary cooldown.
+    /// replan is immediate when the next transition is an unlocked Drop, so its lock starts from the current
+    /// route. A Drop next on the refreshed route locks in that tick under the ordinary cooldown.
     /// Existing region waypoints advance before this decision so an eligible exhausted
     /// Partial replans in the same tick. Each tick queries at most once. A freshly exhausted Partial
     /// with no cooldown returns Unreachable at zero motion and retries on the next tick.
@@ -44,9 +44,10 @@ public sealed partial class PathFollower
         return TickCore(feetPosition, goal.Anchor, agentRadius, dt, goal);
     }
 
-    PathFollowOutput TickCore(Vector3 position, Vector3 goal, float agentRadius, float dt, NavGoalRegion? region)
+    PathFollowOutput TickCore(Vector3 position, Vector3 goal, float agentRadius, float dt, NavGoalRegion? region,
+        bool preparingDrop = false)
     {
-        if (_drop is not null)
+        if (_drop is not null && !preparingDrop)
         {
             AdvanceDropTime(dt);
             return DropOutput();
@@ -107,7 +108,11 @@ public sealed partial class PathFollower
             _planOriginXz = posXz;
             _index = 0;
             _cooldown = _config.ReplanCooldownSeconds;
+            _drop = null;
         }
+
+        // Supported preparation keeps the existing endpoints and preview unless the goal actually refreshed.
+        if (_drop is not null) return DropOutput();
 
         if (_path is null || _path.Status == NavPathStatus.Unreachable || _path.Waypoints.Count == 0)
         {
@@ -163,6 +168,7 @@ public sealed partial class PathFollower
 
     PathFollowOutput Arrive()
     {
+        _drop = null;
         _path = null;
         _index = 0;
         _freshRegionTerminal = false;

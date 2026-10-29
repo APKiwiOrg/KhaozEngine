@@ -13,6 +13,35 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 public sealed class RendererPerfWorkflowContractTests
 {
     [Fact]
+    public void Pwsh_children_use_fixture_owned_caches_outside_the_repository()
+    {
+        if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux()) return;
+        string cache;
+        string otherCache;
+        using (var fixture = new WorkflowFixture())
+        using (var other = new WorkflowFixture())
+        {
+            string inheritedCache = Path.Combine(fixture.Directory, "shared-cache");
+            fixture.Environment["XDG_CACHE_HOME"] = inheritedCache;
+            other.Environment["XDG_CACHE_HOME"] = inheritedCache;
+            var result = fixture.Execute("pwsh", ["-NoProfile", "-Command", "$env:XDG_CACHE_HOME"]);
+            Assert.True(result.Code == 0, result.Output);
+            cache = result.Output.Trim();
+            Assert.NotEqual(inheritedCache, cache);
+            Assert.True(System.IO.Directory.Exists(cache));
+            Assert.StartsWith(".." + Path.DirectorySeparatorChar, Path.GetRelativePath(fixture.Directory, cache), StringComparison.Ordinal);
+            Assert.Empty(fixture.Git("status", "--porcelain"));
+            var otherResult = other.Execute("pwsh", ["-NoProfile", "-Command", "$env:XDG_CACHE_HOME"]);
+            Assert.True(otherResult.Code == 0, otherResult.Output);
+            otherCache = otherResult.Output.Trim();
+            Assert.NotEqual(cache, otherCache);
+            Assert.True(System.IO.Directory.Exists(otherCache));
+        }
+        Assert.False(System.IO.Directory.Exists(cache));
+        Assert.False(System.IO.Directory.Exists(otherCache));
+    }
+
+    [Fact]
     public void Refuses_combined_modes_all_legs_and_freeform_filter()
     {
         using var fixture = new WorkflowFixture();
@@ -26,10 +55,9 @@ public sealed class RendererPerfWorkflowContractTests
         fixture.Refuse("Select", "TESTED_REF", "main");
         fixture.Refuse("Select", "RENDERER_PERF_UNIT", "");
         fixture.Refuse("Select", "RENDERER_PERF_UNIT", "../escape");
-        fixture.Manifest["preset"] = "full";
-        fixture.Manifest["limits"]!["jobMinutes"] = 35;
-        fixture.Manifest["budget"]!["maximumBilledMinutes"] = 38;
-        fixture.Manifest["budget"]!["maximumCostUsd"] = 38 * fixture.Manifest["budget"]!["ratePerMinute"]!.GetValue<decimal>();
+        fixture.Manifest = RendererPerfProtocolTests.ManifestJson("full");
+        fixture.Manifest["workloadSha"] = fixture.Workload;
+        RendererPerfRehearsalManifestTests.Parse(fixture.Manifest);
         fixture.SaveManifest();
         fixture.Accept("Select", "jobMinutes=35");
         fixture.Manifest["limits"]!["jobMinutes"] = 60;
@@ -88,6 +116,7 @@ public sealed class RendererPerfWorkflowContractTests
 
     internal sealed class WorkflowFixture : IDisposable
     {
+        readonly RendererPerfPowerShellCache _powerShellCache = new();
         internal readonly string Directory;
         internal string Reports => Path.Combine(Directory, "reports");
         internal string ManifestPath => Path.Combine(Directory, "tools/Renderer.Perf.Tests/authorized/pilot-linux.json");
@@ -201,6 +230,7 @@ public sealed class RendererPerfWorkflowContractTests
             var start = new ProcessStartInfo(executable) { WorkingDirectory = Directory, RedirectStandardOutput = true, RedirectStandardError = true };
             foreach (string arg in args) start.ArgumentList.Add(arg);
             foreach (var pair in Environment) start.Environment[pair.Key] = pair.Value;
+            if (executable == "pwsh") _powerShellCache.Apply(start);
             // The fixture cannot inherit a caller's native GPU enablement.
             start.Environment.Remove("KE_GPU_TESTS");
             using var process = Process.Start(start)!;
@@ -211,6 +241,10 @@ public sealed class RendererPerfWorkflowContractTests
             return (process.ExitCode, stdout.GetAwaiter().GetResult() + stderr.GetAwaiter().GetResult());
         }
         static string Script([CallerFilePath] string source = "") => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../../scripts/renderer-perf-workflow.ps1"));
-        public void Dispose() => RendererPerfFixtureDirectory.Delete(Directory);
+        public void Dispose()
+        {
+            try { RendererPerfFixtureDirectory.Delete(Directory); }
+            finally { _powerShellCache.Dispose(); }
+        }
     }
 }

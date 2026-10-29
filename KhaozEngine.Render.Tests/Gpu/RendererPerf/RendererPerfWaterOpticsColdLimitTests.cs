@@ -44,8 +44,11 @@ public sealed class RendererPerfWaterOpticsColdLimitTests
                 rig.Tick += milliseconds;
                 return sample with { CpuEndTicks = sample.CpuStartTicks + milliseconds };
             }
-            return sample with { GpuElapsedTicks = (ulong)milliseconds * 1000000,
-                GpuFrame = RendererPerfDriverTests.Value(milliseconds * 1000000, "ns") };
+            return sample with
+            {
+                GpuElapsedTicks = (ulong)milliseconds * 1000000,
+                GpuFrame = RendererPerfDriverTests.Value(milliseconds * 1000000, "ns")
+            };
         };
         var report = rig.Run();
         Assert.Equal(accepted, report.Publication.FinalUnitPublished);

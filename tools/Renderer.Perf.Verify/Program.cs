@@ -4,21 +4,24 @@ using KhaozEngine.Gpu;
 
 bool profiles = args.Length == 3 && args[0] == "publish-profiles" && args[1] == "--request";
 bool publish = profiles || args.Length == 3 && args[0] == "publish" && args[1] == "--request";
-if (!publish && args.Length != 2)
+bool admit = args.Length == 3 && args[0] == "admit";
+if (!publish && !admit && args.Length != 2)
 {
-    Console.Error.WriteLine("Expected evidence directory and report filename, or publish/publish-profiles --request and request filename.");
+    Console.Error.WriteLine("Expected evidence directory and report filename, publish/publish-profiles --request and request filename, or admit and checkout and authorization directories.");
     return 2;
 }
 try
 {
     RequireNoProviders();
-    if (publish)
+    if (admit) RendererPerfManifestAdmission.Admit(args[1], args[2]);
+    else if (publish)
     {
         _ = profiles ? RendererPerfProfilePublisher.PublishFile(args[2]) : RendererPerfBaselinePublisher.PublishFile(args[2]);
     }
     else _ = RendererPerfArtifactVerification.Verify(args[0], args[1]);
     RequireNoProviders();
-    Console.WriteLine(profiles ? "Published immutable profile files with no GPU providers registered."
+    Console.WriteLine(admit ? "Admitted renderer manifest with no GPU providers registered."
+        : profiles ? "Published immutable profile files with no GPU providers registered."
         : publish ? "Published immutable baseline files with no GPU providers registered."
         : "Verified renderer artifacts with no GPU providers registered.");
     return 0;

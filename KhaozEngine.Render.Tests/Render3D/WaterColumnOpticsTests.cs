@@ -65,17 +65,17 @@ public sealed class WaterColumnOpticsTests
         Assert.InRange(Vector3.Distance(c.Absorption + c.Scattering, c.Extinction), 0f, 0.000001f);
 
         foreach (Color color in RequestedColors)
-        foreach (float clarity in new[] { 0.1f, 2f, 100f })
-        {
-            var coefficients = WaterColumnOptics.Derive(color, clarity);
-            float mean = (coefficients.Extinction.X + coefficients.Extinction.Y + coefficients.Extinction.Z) / 3f;
-            Assert.InRange(MathF.Abs(mean * clarity - 3f), 0f, 0.000001f);
-            Assert.InRange(Vector3.Distance(coefficients.Absorption + coefficients.Scattering,
-                coefficients.Extinction) / mean, 0f, 0.000001f);
-            Assert.InRange(Vector3.Distance(coefficients.Scattering,
-                coefficients.Albedo * coefficients.Extinction) / mean, 0f, 0.000001f);
-            AssertFiniteNonNegative(coefficients.Absorption);
-        }
+            foreach (float clarity in new[] { 0.1f, 2f, 100f })
+            {
+                var coefficients = WaterColumnOptics.Derive(color, clarity);
+                float mean = (coefficients.Extinction.X + coefficients.Extinction.Y + coefficients.Extinction.Z) / 3f;
+                Assert.InRange(MathF.Abs(mean * clarity - 3f), 0f, 0.000001f);
+                Assert.InRange(Vector3.Distance(coefficients.Absorption + coefficients.Scattering,
+                    coefficients.Extinction) / mean, 0f, 0.000001f);
+                Assert.InRange(Vector3.Distance(coefficients.Scattering,
+                    coefficients.Albedo * coefficients.Extinction) / mean, 0f, 0.000001f);
+                AssertFiniteNonNegative(coefficients.Absorption);
+            }
     }
 
     [Theory]

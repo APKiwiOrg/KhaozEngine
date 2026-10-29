@@ -15,7 +15,8 @@ internal static class RuntimeStaticGateProbe
         {
             try { attempt.Set(); operation(); }
             catch (Exception error) { failure = error; }
-        }) { IsBackground = true };
+        })
+        { IsBackground = true };
         thread.Start();
         Assert.True(attempt.Wait(TimeSpan.FromSeconds(30)));
         thread.Interrupt();

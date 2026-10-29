@@ -77,17 +77,22 @@ Rows are in the order the milestones run.
   outdoors pools at the released code and publishes the OFF to M2 and M2 to M5 deltas, so it covers M2's
   native run too. The owner rules on its cost, and per WO-D10 it lands before M3 ships. The presets, the
   [rehearsals](../RENDERER-PERFORMANCE.md#water-optics-campaign) and the profile publication are built, and
-  the renderer performance program approved their admission. Its two free software rehearsals need the
-  owner's approval, and no paid unit goes out until https://github.com/APKiwiOrg/KhaozEngine/issues/1644 runs
-  managed admission in the free legs job.
+  the renderer performance program approved their admission. Both owner-approved free rehearsals passed at
+  b2fb9d2b3: lavapipe ran all 36 blocks and 12 controls in 3.8 h, WARP all 12 blocks and 12 controls in
+  1.5 h with a 38.6 s first frame of the 120 s limit. Lavapipe's measured bytes scale to about 95 MB for the
+  paid 19,632 frames, against 256 MiB. The
+  free legs job now runs trusted managed manifest admission before emitting the paid matrix. The renderer
+  performance owner reviews that trusted-path change and proves it with two free dispatches before any
+  paid unit goes out.
 - On T4 hardware M5 adds no measurable cost to frames that do not opt in. The 41 to 66% WARP slowdown is
   specific to the software rasterizer (https://github.com/APKiwiOrg/KhaozEngine/issues/1640).
 - M4 starts only when the R8a native renderer prepares and submits bounded water on main.
 
 ## Next step
 
-Run the two free water-optics-v2 rehearsals once the owner approves them, land #1644, then dispatch each
-paid leg once within the USD 7.382 cap, publish the profile deltas and bring the measured cost to the owner.
+Land the free admission change once the renderer performance owner approves it and its two free proofs
+pass, then dispatch each paid leg once within the USD 7.382 cap, publish the profile deltas and bring the
+measured cost to the owner.
 Grimhollow, now on v21.18.0, opts the river in and restores the duck shadow under
 https://github.com/APKiwiOrg/Grimhollow/issues/651. [Landing 2](water-optics-design.md) remains unbuilt and
 touches no renderer performance file, so it can run alongside the #1602 work.

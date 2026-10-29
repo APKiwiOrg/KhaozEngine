@@ -4,6 +4,14 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.19.1
+
+2026-10-29
+
+- Keep unchanged finite planar prediction coordinates exact at finite presentation phases, including when the
+  other coordinate moves. Rendering, reconciliation and quiet reseeding share the same interpolation while
+  preserving genuine movement, correction offsets and nonfinite behavior (Closes #1651).
+
 ## 21.19.0
 
 2026-10-29

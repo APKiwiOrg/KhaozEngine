@@ -57,7 +57,7 @@ public sealed class ShippedBuildingInputGuardTests
         var failure = Assert.ThrowsAny<Exception>(() => PrivateOracleEntry.Run(input.Environment, (i, report) =>
         {
             var result = ShippedBuildingComparison.Compare(ShippedBuildingInputs.Read(i));
-            report.Check("building-closure", result.Failures.Count == 0, result.DetailJson);
+            report.CheckFailures("building-closure", result.ClassifiedFailures);
         }));
         Assert.True(failure is PrivateOracleInputException or PrivateOracleFailure);
         Assert.Null(failure.InnerException);
@@ -86,7 +86,7 @@ public sealed class ShippedBuildingInputGuardTests
             Assert.NotEmpty(inputs.MeshBytes);
             var result = ShippedBuildingComparison.Compare(inputs);
             report.Record("buildings", result.DetailJson);
-            report.Check("building-parity", result.Failures.Count == 0, result.DetailJson);
+            report.CheckFailures("building-parity", result.ClassifiedFailures);
         }));
         string reportPath = fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!;
         // This diagnostic is exclusively the invented public fixture, never the process environment.
@@ -110,7 +110,7 @@ public sealed class ShippedBuildingInputGuardTests
             Assert.Equal(WorldFrame.Nearest(new Vector3(1.5f, 1, -1.5f)), WorldFrame.Nearest(new Vector3(0.5f, 1, -0.5f)));
             var result = ShippedBuildingComparison.Compare(inputs);
             report.Record("buildings", result.DetailJson);
-            report.Check("building-parity", result.Failures.Count == 0, result.DetailJson);
+            report.CheckFailures("building-parity", result.ClassifiedFailures);
         }));
         string reportPath = fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!;
         Assert.True(failure is null, File.Exists(reportPath) ? File.ReadAllText(reportPath) : failure?.ToString());
@@ -141,7 +141,7 @@ public sealed class ShippedBuildingInputGuardTests
             var result = ShippedBuildingComparison.Compare(ShippedBuildingInputs.Read(i));
             compared = result;
             report.Record("buildings", result.DetailJson);
-            report.Check("building-parity", result.Failures.Count == 0, result.DetailJson);
+            report.CheckFailures("building-parity", result.ClassifiedFailures);
         }));
         Assert.NotNull(compared);
         string category = variant switch
@@ -230,7 +230,7 @@ public sealed class ShippedBuildingInputGuardTests
         {
             compared = ShippedBuildingComparison.Compare(ShippedBuildingInputs.Read(i));
             report.Record("buildings", compared.DetailJson);
-            report.Check("building-parity", compared.Failures.Count == 0, compared.DetailJson);
+            report.CheckFailures("building-parity", compared.ClassifiedFailures);
         }));
         Assert.True(compared is not null, File.ReadAllText(fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!));
         Assert.Contains(compared.Failures, category => category.StartsWith("physical-collider", StringComparison.Ordinal));
@@ -289,7 +289,7 @@ public sealed class ShippedBuildingInputGuardTests
         {
             var result = ShippedBuildingComparison.Compare(ShippedBuildingInputs.Read(i));
             report.Record("buildings", result.DetailJson);
-            report.Check("building-parity", result.Failures.Count == 0, result.DetailJson);
+            report.CheckFailures("building-parity", result.ClassifiedFailures);
         });
         using var reportJson = JsonDocument.Parse(File.ReadAllText(fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!));
         var delta = reportJson.RootElement.GetProperty("detail").GetProperty("records").EnumerateArray()

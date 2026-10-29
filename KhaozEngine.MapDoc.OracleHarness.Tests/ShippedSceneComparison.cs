@@ -36,13 +36,13 @@ internal static partial class ShippedSceneComparison
         {
             var result = ShippedBuildingComparison.Compare(buildings);
             report.Record("scene-buildings", result.DetailJson);
-            report.Check("scene-building", result.Failures.Count == 0, result.DetailJson);
+            report.CheckFailures("scene-building", result.ClassifiedFailures);
         }
         if (inputs.Markers is { } markers)
         {
             var result = ShippedMarkerComparison.Compare(markers);
             report.Record("scene-markers", result.DetailJson);
-            report.Check("scene-marker", result.Failures.Count == 0, result.DetailJson);
+            report.CheckFailures("scene-marker", result.ClassifiedFailures);
         }
         var heads = new Dictionary<(string Window, string Probe), string>();
         int compared = 0;

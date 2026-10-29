@@ -910,6 +910,10 @@ including source comparisons without a render key. This metadata is counted inde
 examples. Native rigid foliage parts use `model-part/<n>` and classify as `rigid-model-part`.
 Only checks covering the scene as a whole use the scene-wide fallback. Totals include every failure
 without retaining every detail.
+Marker and building composite results carry the classification of each failed resource check into
+the report, with one counted entry per failed check. Terrain checks attach their resource identity
+before reporting. Foliage tally groups preserve their full 64-bit counts and differing fields after
+the example bound, and standalone water failures are classified and counted individually.
 
 Before attestation, retain one non-attesting diagnostic draft with every discrepancy kind/count and
 bounded examples. A semantic rule difference needs a controller ruling, never a looser tolerance.

@@ -111,6 +111,8 @@ internal static partial class ShippedSceneGuardFixtures
         bool featherOrigin = variant == "terrain-feather-origin", terrainPainted = featherOrigin || variant == "terrain-painted";
         if (cover) AddFoliageSource(world, streamFoliage ? 36 : wideRaster ? 33 : 4, streamFoliage);
         if (variant.StartsWith("marker-", StringComparison.Ordinal)) world.SetMarker("arrival", 1, 1, 0, ["first", "second"]);
+        if (variant == "marker-many-moved")
+            for (int i = 1; i < 24; i++) world.SetMarker("arrival-" + i, 1, 1, 0, ["first", "second"]);
         if (terrainPainted)
         {
             if (!featherOrigin) world.SetOverlay(1, 1, 0, 2);

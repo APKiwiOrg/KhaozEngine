@@ -8,13 +8,13 @@ namespace KhaozEngine.Tests.MapDocOracle;
 /// <summary>Counts all failures independently of the bounded example payloads.</summary>
 internal sealed class SceneFailureAggregation
 {
-    readonly Dictionary<string, Dictionary<SceneFailureClassification, int>> _categories = new(StringComparer.Ordinal);
+    readonly Dictionary<string, Dictionary<SceneFailureClassification, long>> _categories = new(StringComparer.Ordinal);
 
-    internal void Add(string category, string detailJson, SceneFailureClassification? classification = null)
+    internal void Add(string category, string detailJson, SceneFailureClassification? classification = null, long failureCount = 1)
     {
         var identity = classification ?? Infer(category, detailJson);
         if (!_categories.TryGetValue(category, out var counts)) _categories.Add(category, counts = []);
-        counts.TryGetValue(identity, out int count); counts[identity] = checked(count + 1);
+        counts.TryGetValue(identity, out long count); counts[identity] = checked(count + failureCount);
     }
 
     static SceneFailureClassification Infer(string category, string detailJson)

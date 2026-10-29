@@ -21,7 +21,7 @@ internal static class ShippedSceneMarkers
             return;
         }
         var result = ShippedMarkerComparison.CompareScene(source, MapEffectiveAnnotations.Markers(effective), effective.CompleteView());
-        report.Check("scene-marker", result.Failures.Count == 0, result.DetailJson);
+        report.CheckFailures("scene-marker", result.ClassifiedFailures);
     }
 
     internal static void Plan(ShippedSceneInputs inputs, MapRenderPlan plan, PrivateOracleReport report)
@@ -32,6 +32,6 @@ internal static class ShippedSceneMarkers
             return;
         }
         var result = ShippedMarkerComparison.CompareScene(source, plan.Inventory.Markers, plan.Scene.SurfaceView, plan.Scene.Scope);
-        report.Check("scene-marker", result.Failures.Count == 0, result.DetailJson);
+        report.CheckFailures("scene-marker", result.ClassifiedFailures);
     }
 }

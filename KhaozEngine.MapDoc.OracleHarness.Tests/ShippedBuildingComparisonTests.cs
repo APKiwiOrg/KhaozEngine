@@ -12,6 +12,6 @@ public sealed class ShippedBuildingComparisonTests
         {
             var result = ShippedBuildingComparison.Compare(ShippedBuildingInputs.Read(inputs));
             report.Record("buildings", result.DetailJson);
-            report.Check("building-parity", result.Failures.Count == 0, result.DetailJson);
+            report.CheckFailures("building-parity", result.ClassifiedFailures);
         });
 }

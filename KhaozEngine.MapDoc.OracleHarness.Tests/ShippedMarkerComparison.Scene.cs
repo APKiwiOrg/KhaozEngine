@@ -36,10 +36,11 @@ internal static partial class ShippedMarkerComparison
         {
             if (!expected.TryGetValue(marker.Id, out var point)) continue;
             var role = point.Role;
-            evidence.Check("marker-values", marker.Name == point.Source.Name && marker.Tags.SequenceEqual(point.Source.Tags) &&
+            var markerChecks = evidence.Resource("Marker", "marker", "marker-");
+            markerChecks.Check("marker-values", marker.Name == point.Source.Name && marker.Tags.SequenceEqual(point.Source.Tags) &&
                 marker.Role == role.Role && marker.Enabled == role.Enabled && marker.ArchetypeId == role.Archetype &&
                 Math.Abs(Math.IEEERemainder(marker.YawRadians - role.Yaw, 2 * Math.PI)) <= YawTolerance, new { marker.Id });
-            evidence.Check("marker-position", Near(marker.Position.X.ToDouble(), point.Position.X) && Near(marker.Position.Y.ToDouble(), point.Position.Y) &&
+            markerChecks.Check("marker-position", Near(marker.Position.X.ToDouble(), point.Position.X) && Near(marker.Position.Y.ToDouble(), point.Position.Y) &&
                 Near(marker.Position.Z.ToDouble(), point.Position.Z), new { marker.Id, expected = point.Position, actual = marker.Position });
             var binding = inputs.Supports[role.SupportName].Binding;
             var provenance = marker.HeightProvenance;
@@ -49,9 +50,9 @@ internal static partial class ShippedMarkerComparison
                 ? query!.SampleSurfaceExact(marker.Position, binding.SurfaceId!)
                 : query!.Select(new(ShippedSceneInputs.Point(marker.Position.X.ToDouble(), binding.ReferenceY ?? 0, marker.Position.Z.ToDouble()),
                     null, binding.SpaceId, null, binding.SearchAbove ?? 0, binding.SearchBelow ?? 0, null));
-            evidence.Check("marker-binding", marker.PayloadVersion == 2 && provenance?.Mode == role.HeightMode &&
+            markerChecks.Check("marker-binding", marker.PayloadVersion == 2 && provenance?.Mode == role.HeightMode &&
                 (bound ? provenance.Binding == binding : provenance.Binding is null), new { marker.Id });
-            evidence.Check("marker-provenance", bound
+            markerChecks.Check("marker-provenance", bound
                 ? support is { Status: MapSupportStatus.Supported, IsCaptureSupport: true, Face: not null } && provenance is not null &&
                     (binding.Kind != MapSupportBindingKind.Surface || support.Face.Value.OwnerId == binding.SurfaceId) &&
                     provenance.Face == support.Face && provenance.SpaceId == support.SpaceId && provenance.Via == support.Via &&
@@ -59,7 +60,7 @@ internal static partial class ShippedMarkerComparison
                 : support is null && provenance is { Face: null, SpaceId: null, Via: null, WorldY: null }, new { marker.Id });
             var correspondence = inputs.Correspondences[point.Source.Name];
             var membership = MapMarkerSpaces.Query(view, marker);
-            evidence.Check("marker-space", membership.Status == (correspondence.SceneSpaceId is null ? MapMembershipStatus.Outside : MapMembershipStatus.Resolved) &&
+            markerChecks.Check("marker-space", membership.Status == (correspondence.SceneSpaceId is null ? MapMembershipStatus.Outside : MapMembershipStatus.Resolved) &&
                 membership.SpaceId == correspondence.SceneSpaceId && membership.ParentSpaceIds.SequenceEqual(correspondence.SceneParents),
                 new
                 {

@@ -16,7 +16,7 @@ internal sealed class PrivateOracleReport : IDisposable
     internal const string SecureFailure = "private oracle: report could not be created securely";
     readonly string _path;
     readonly StreamWriter _writer;
-    readonly Dictionary<string, int> _failed = new(StringComparer.Ordinal);
+    readonly Dictionary<string, long> _failed = new(StringComparer.Ordinal);
     readonly List<string> _failureOrder = new();
     readonly SceneFailureAggregation _aggregation = new();
     bool _closed;
@@ -66,13 +66,20 @@ internal sealed class PrivateOracleReport : IDisposable
         _writer.WriteLine(JsonSerializer.Serialize(new { category, detail = detail.RootElement }));
     }
 
-    internal void Check(string category, bool ok, string detailJson, bool retainDetail = true, SceneFailureClassification? classification = null)
+    internal void Check(string category, bool ok, string detailJson, bool retainDetail = true, SceneFailureClassification? classification = null, long failureCount = 1)
     {
         if (ok) return;
-        _aggregation.Add(category, detailJson, classification);
+        if (failureCount <= 0) throw new ArgumentOutOfRangeException(nameof(failureCount));
+        _aggregation.Add(category, detailJson, classification, failureCount);
         Record(category, retainDetail ? detailJson : "{}");
-        if (!_failed.TryGetValue(category, out int count)) _failureOrder.Add(category);
-        _failed[category] = checked(count + 1);
+        if (!_failed.TryGetValue(category, out long count)) _failureOrder.Add(category);
+        _failed[category] = checked(count + failureCount);
+    }
+
+    internal void CheckFailures(string category, IReadOnlyList<OracleComparisonFailure> failures)
+    {
+        foreach (var failure in failures)
+            ShippedSceneComparison.Check(this, category, false, new { category = failure.Category, detail = failure.Detail }, failure.Classification);
     }
 
     internal void ThrowIfAnyFailed()

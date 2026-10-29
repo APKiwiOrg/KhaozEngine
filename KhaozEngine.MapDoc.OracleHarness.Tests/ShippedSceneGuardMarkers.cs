@@ -18,7 +18,9 @@ internal static partial class ShippedSceneGuardFixtures
     {
         var binding = new MapSupportBinding(MapSupportBindingKind.Surface, "plane-0", null, null, null, null);
         var marker = MapMarkerHeights.Apply(new(1, "scene-arrival", "arrival", new(1.5f, 0, -1.5f), .125f, "entry", true, ["first", "second"]), new(null, binding));
-        native.BuildingIntent = new(1, [], [], [], [marker]);
+        var markers = Enumerable.Range(0, variant == "marker-many-moved" ? 24 : 1)
+            .Select(i => marker with { Id = i == 0 ? marker.Id : marker.Id + "-" + i, Name = i == 0 ? marker.Name : marker.Name + "-" + i }).ToArray();
+        native.BuildingIntent = new(1, [], [], [], markers);
         var scaffold = MapDocumentFile.LoadText(MapDocumentFile.SaveText(native)); scaffold.Placements.Clear();
         File.WriteAllText(Path.Combine(root, "marker-scaffold.json"), MapDocumentFile.SaveText(scaffold));
         File.WriteAllText(Path.Combine(root, "scene-marker-roles.json"), """
@@ -31,6 +33,21 @@ internal static partial class ShippedSceneGuardFixtures
         File.WriteAllText(Path.Combine(root, "scene-marker-rows.json"), """
             {"schemaVersion":1,"markers":[{"sourceName":"arrival","x":1,"z":1,"plane":0,"regionX":0,"regionZ":0,"supportName":"ground","spaceId":null,"parents":[],"sceneSpaceId":null,"sceneParents":[]}]}
             """);
+        if (variant == "marker-many-moved")
+        {
+            foreach (string file in new[] { "scene-marker-roles.json", "scene-marker-rows.json" })
+            {
+                var json = JsonNode.Parse(File.ReadAllText(Path.Combine(root, file)))!;
+                var rows = json["markers"]!.AsArray();
+                for (int i = 1; i < markers.Length; i++)
+                {
+                    var row = rows[0]!.DeepClone(); row["sourceName"] = markers[i].Name;
+                    if (row.AsObject().ContainsKey("id")) row["id"] = markers[i].Id;
+                    rows.Add(row);
+                }
+                File.WriteAllText(Path.Combine(root, file), json.ToJsonString());
+            }
+        }
         if (variant is "marker-scene-room" or "marker-wrong-scene-room" or "marker-wrong-scene-parent")
         {
             var patch = native.Surfaces.Patches.Values.First(); var key = patch.Key;
@@ -56,6 +73,14 @@ internal static partial class ShippedSceneGuardFixtures
             {"schemaVersion":1,"nativeDocumentPath":"marker-scaffold.json","roleManifestPath":"scene-marker-roles.json","markerManifestPath":"scene-marker-rows.json",
              "expectations":{"total":1,"playerStart":1,"spawn":0,"landmark":0,"label":0,"negativeX":0,"supportBound":1,"enabled":1}}
             """);
+        if (variant == "marker-many-moved")
+        {
+            string path = Path.Combine(root, "scene-marker-comparison.json");
+            var json = JsonNode.Parse(File.ReadAllText(path))!;
+            foreach (string field in new[] { "total", "playerStart", "supportBound", "enabled" }) json["expectations"]![field] = markers.Length;
+            File.WriteAllText(path, json.ToJsonString());
+            native.BuildingIntent = new(1, [], [], [], markers.Select(m => m with { Position = m.Position + Vector3.UnitX, YawRadians = m.YawRadians + .25f }).ToArray());
+        }
         if (variant == "marker-omitted") native.BuildingIntent = new(1, [], [], [], []);
         if (variant == "marker-moved") native.BuildingIntent = new(1, [], [], [], [marker with { Position = marker.Position + Vector3.UnitX }]);
     }

@@ -148,10 +148,14 @@ public sealed class FrameViewConsumerSweepTests
             "trails in the model target"),
         new("Scene3D.cs", "_distortionRenderer.Draw(", 1, @"\bdisplayVp\b", DisplayForbidden,
             "the distortion field, applied after the temporal resolve"),
-        new("Scene3D.cs", "DrawTargetOutlines(", 1, @"\bdisplayVp\b", DisplayForbidden, "target outlines after post"),
-        new("Scene3D.cs", "_fills.Draw(", 1, @"\bdisplayVp\b", DisplayForbidden, "filled overlays after post"),
-        new("Scene3D.cs", "_lines.Draw(", 1, @"\bdisplayVp\b", DisplayForbidden, "debug lines after post"),
-        new("Scene3D.cs", "_billboards.Draw(", 2, @"\bdisplayVp\b", DisplayForbidden, "legacy overlay billboards after post"),
+        new("Scene3D.cs", "new PreparedSceneOutput(", 1, @"\bdisplayVp\b", DisplayForbidden,
+            "the retained display snapshot for output in a later recording"),
+        new("Scene3D.cs", "RecordOutputTail(", 1, @"\bdisplayVp\b", DisplayForbidden,
+            "the display snapshot for output in the ordinary recording"),
+        new("Scene3D.PreparedOutput.cs", "DrawTargetOutlines(", 1, @"\bdisplayVp\b", DisplayForbidden, "target outlines after post"),
+        new("Scene3D.PreparedOutput.cs", "_fills.Draw(", 1, @"\bdisplayVp\b", DisplayForbidden, "filled overlays after post"),
+        new("Scene3D.PreparedOutput.cs", "_lines.Draw(", 1, @"\bdisplayVp\b", DisplayForbidden, "debug lines after post"),
+        new("Scene3D.PreparedOutput.cs", "_billboards.Draw(", 2, @"\bdisplayVp\b", DisplayForbidden, "legacy overlay billboards after post"),
         new("Scene3D.cs", "ExtractCameraDepth(", 1, Snapshot + @"\.Projection\b", CpuForbidden,
             "the edge pass depth convention"),
         new("Scene3D.ShadowCascadeFit.cs", "FrustumCornersWorld(", 1, Snapshot + @"\.ViewProjection\b", CpuForbidden,
@@ -203,6 +207,8 @@ public sealed class FrameViewConsumerSweepTests
         Assert.Matches(@"\babsVp = " + Snapshot + @"\.AbsoluteViewProjection\b", text);
         Assert.Matches(@"Matrix4x4 displayVp = " + Snapshot + @"\.ViewProjection\b", text);
         Assert.Single(Regex.Matches(text, @"\bMatrix4x4 vp\b"));
+        string prepared = SourceSweep.Render3DSource("Scene3D.PreparedOutput.cs");
+        Assert.Matches(@"\bRecordOutputTail\(commands,\s*target,\s*prepared\.ViewProjection\b", prepared);
     }
 
     /// <summary>The frame's three matrix locals, which only Scene3D.cs declares.</summary>

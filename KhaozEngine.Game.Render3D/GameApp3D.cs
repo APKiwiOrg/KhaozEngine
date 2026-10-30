@@ -31,6 +31,16 @@ namespace KhaozEngine.Game
         {
             _surface3D = new Render3DSurface(Window, initialShadows);
             _drawWorld = OnDraw3D;
+            if (_surface3D.PreparePhaseSplitEnabled)
+            {
+                const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                if (GetType().GetMethod(nameof(OnPrepareWorld), flags)?.DeclaringType != typeof(GameApp3D)
+                    || GetType().GetMethod(nameof(OnRenderWorld), flags)?.DeclaringType != typeof(GameApp3D))
+                {
+                    _surface3D.Dispose();
+                    throw new NotSupportedException("The private prepare-phase split requires the inherited GameApp3D frame callbacks.");
+                }
+            }
         }
 
         /// <summary>The 3D surface bound to the window.</summary>
@@ -71,7 +81,8 @@ namespace KhaozEngine.Game
             DiagnosticsHud? hud = Diagnostics;
             if (DesiredEnableTiming(hud) is { } enableTiming) _surface3D.Scene.EnableTiming = enableTiming;
 
-            PrepareScene(_surface3D.Scene, _drawWorld, frame.Width, frame.Height);
+            PrepareProbedScene(_surface3D.Scene, _drawWorld, frame);
+            _surface3D.PrepareRender(frame);
         }
 
         /// <summary>
@@ -87,6 +98,13 @@ namespace KhaozEngine.Game
         /// real window.
         /// </para>
         /// </summary>
+        internal static void PrepareProbedScene(Scene3D scene, Action<Scene3D> drawWorld, Frame frame)
+        {
+            scene.ConfigureShadowStageProbe(frame.ShadowStageRequest);
+            try { PrepareScene(scene, drawWorld, frame.Width, frame.Height); }
+            catch { scene.CancelShadowStageProbe(); throw; }
+        }
+
         internal static void PrepareScene(Scene3D scene, Action<Scene3D> drawWorld, int viewportWidth = 0, int viewportHeight = 0)
         {
             scene.Begin();

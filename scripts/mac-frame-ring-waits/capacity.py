@@ -1,0 +1,278 @@
+"""Private recording-capacity experiment audit, independent of process control."""
+import base64
+from collections import Counter
+from fractions import Fraction
+import hashlib
+import json
+from pathlib import PurePosixPath
+import re
+from inputs import HELPER_FILES, LEGACY_HELPER_FILES, RELEASE_PURPOSE, capture_profile, validate_contract
+
+ENGINE_BASE = '7ae1e83d18a0cafe4d3b079b0dc3a399de390b4f'
+GAME_BASE = 'f45462a87441c18682f7c2309ef2f048c4abebb0'
+WORLD_ROOT = 'assets/worlds/hollowmere'
+WORLD_INPUT_SHA256 = 'e057497431deaf910db248d706c385e99898b0830a06fa8a9415d07dc5fa9707'
+CATALOG_INPUT_SHA256 = '753413079a39bbfb68f96e911279585805db34666f67adf914628bac7ec890f2'
+CATALOG_PATHS = ('assets/catalogs/archetypes.json','assets/catalogs/ground.json')
+RELEASE_WORLD_INPUT_SHA256 = '0e818bed9e529ae826b20c4994fb8a2250e5764559bb41613eb233930b35263d'
+RELEASE_CATALOG_INPUT_SHA256 = '786b926e58dafdad62ae6845b82bc8a228de05043c87ab1f87cf0ee8a4e030cc'
+MARKER = 'KE_METAL_RECORDING_CAPACITY_V1 '
+POLICY_FIELDS = set(('schemaVersion probe baseFrames selectedRecordingSlots actualRecordingSlots '
+                     'requestedDrawableCount actualDrawableCount drawableReadback retirementPolicyCap '
+                     'uncommittedDiagnosticBound deviceIdentity deviceName assemblyName assemblyVersion '
+                     'assemblyMvid assemblyInformationalVersion').split())
+HELPERS = set(LEGACY_HELPER_FILES)
+WINDOW_FIELDS = ('width','height','focused','minimized','renderSuppressed','effectiveBaseCapHz','vsync',
+                 'rendererInitializesSwapchain','preparePhaseSplitActive')
+
+
+def input_fingerprint(rows):
+    if type(rows) is not list or not rows: raise ValueError('Missing source inventory')
+    paths=[]
+    for row in rows:
+        path=row['path'];digest=row['sha256']
+        if (type(path) is not str or not path or path!=str(PurePosixPath(path))
+            or PurePosixPath(path).is_absolute() or '..' in PurePosixPath(path).parts or path=='.'
+            or any(character in path for character in '\r\n\0')
+            or type(digest) is not str or re.fullmatch('[0-9a-f]{64}',digest) is None):
+            raise ValueError('Invalid canonical source identity')
+        paths.append(path)
+    if len(paths)!=len(set(paths)): raise ValueError('Duplicate source identity')
+    text=''.join(row['path']+' '+row['sha256']+'\n' for row in sorted(rows,key=lambda row:row['path']))
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+def expected_world_selection(purpose=None):
+    from inputs import PURPOSE, RELEASE_GAME_COMMIT
+    if purpose not in (None, PURPOSE, RELEASE_PURPOSE): raise ValueError('Frozen world purpose differs')
+    released = purpose == RELEASE_PURPOSE
+    return dict(schemaVersion=1,gameCommit=RELEASE_GAME_COMMIT if released else GAME_BASE,root=WORLD_ROOT,worldFiles=40,
+                worldSha256=RELEASE_WORLD_INPUT_SHA256 if released else WORLD_INPUT_SHA256,catalogFiles=2,
+                catalogSha256=RELEASE_CATALOG_INPUT_SHA256 if released else CATALOG_INPUT_SHA256)
+
+
+def validate_world_selection(value, game_commit, purpose=None):
+    expected=expected_world_selection(purpose)
+    if (game_commit!=expected['gameCommit'] or type(value) is not dict or set(value)!=set(expected)
+        or any(type(value[key]) is not type(wanted) or value[key]!=wanted for key,wanted in expected.items())):
+        raise ValueError('Frozen world selection identity differs')
+    return expected
+
+
+def validate_world_manifest(manifest):
+    try:
+        capture_profile(manifest)
+        expected=validate_world_selection(manifest['worldSelection'],manifest['gameCommit'],manifest.get('purpose'))
+        if manifest.get('purpose') is not None:
+            expected_base = validate_contract(manifest['inputContract'])['engineBase']
+        else:
+            if 'inputContract' in manifest: raise ValueError('Input contract requires its declared purpose')
+            expected_base = ENGINE_BASE
+        if manifest['frozenEngineBase']!=expected_base: raise ValueError('Frozen engine base differs')
+        world=manifest['world']
+        if len(world)!=expected['worldFiles'] or input_fingerprint(world)!=expected['worldSha256']:
+            raise ValueError('Frozen Hollowmere directory inventory differs')
+        source_rows=manifest['gameSourceHashes'];input_fingerprint(source_rows)
+        sources={row['path']:row['sha256'] for row in source_rows}
+        if any(sources.get(row['path'])!=row['sha256'] for row in world):
+            raise ValueError('World input is missing from committed source proof')
+        catalogs=[dict(path=path,sha256=sources[path]) for path in CATALOG_PATHS]
+        if input_fingerprint(catalogs)!=expected['catalogSha256']:
+            raise ValueError('Frozen catalog identity differs')
+        payload={row['path']:row['sha256'] for row in manifest['clientFiles']}
+        if any(payload.get('Content/'+row['path'].removeprefix('assets/'))!=row['sha256'] for row in catalogs):
+            raise ValueError('Catalog payload differs from the frozen source')
+        return expected
+    except (KeyError,TypeError,AttributeError) as error:
+        raise ValueError('Invalid frozen world inventory') from error
+
+
+def validate_expectation(value):
+    if type(value) is not int or value not in (3,6):
+        raise ValueError('Expected recording slots must be the exact integer 3 or 6')
+    return value
+
+
+def _unique(pairs):
+    result = {}
+    for key,value in pairs:
+        if key in result: raise ValueError('Duplicate startup field '+key)
+        result[key] = value
+    return result
+
+
+def _policy(line):
+    if len(line) > 8192 or line.count(MARKER.encode()) != 1 or len(line.splitlines()) != 1:
+        raise ValueError('Require one bounded startup proof line')
+    value = json.loads(line.split(MARKER.encode(),1)[1], object_pairs_hook=_unique)
+    if type(value) is not dict or set(value) != POLICY_FIELDS:
+        raise ValueError('Startup proof field inventory mismatch')
+    return value
+
+
+def select_startup(raw):
+    lines = [line for line in raw.splitlines(keepends=True) if MARKER.encode() in line]
+    if len(lines) != 1: raise ValueError('Require exactly one recording-capacity startup proof')
+    _policy(lines[0])
+    return dict(lineBase64=base64.b64encode(lines[0]).decode('ascii'),
+                lineSha256=hashlib.sha256(lines[0]).hexdigest())
+
+
+def decode_startup(proof):
+    if set(proof) != {'lineBase64','lineSha256'}: raise ValueError('Startup byte proof inventory mismatch')
+    raw = base64.b64decode(proof['lineBase64'],validate=True)
+    if hashlib.sha256(raw).hexdigest() != proof['lineSha256']: raise ValueError('Startup bytes/hash mismatch')
+    return raw, _policy(raw)
+
+
+def validate_startup(selected, metal, expected_slots, probe_commit, *, profile=None):
+    from analyze import guid, integer
+    slots=validate_expectation(expected_slots)
+    profile = capture_profile({}) if profile is None else profile
+    _,policy=decode_startup(selected)
+    for key,value in [('schemaVersion',1),('baseFrames',3),('selectedRecordingSlots',slots),
+                      ('actualRecordingSlots',slots),('requestedDrawableCount',3),('actualDrawableCount',3),
+                      ('retirementPolicyCap',8),('uncommittedDiagnosticBound',slots+1)]:
+        if integer(policy[key])!=value: raise ValueError('Startup '+key+' differs')
+    if policy['probe']!='metal-recording-capacity' or policy['drawableReadback']!='available':
+        raise ValueError('Windowed capacity startup proof unavailable')
+    if not isinstance(policy['deviceName'],str) or not policy['deviceName']:
+        raise ValueError('Startup native device missing')
+    guid(policy['deviceIdentity'])
+    if (policy['assemblyName']!=metal['name'] or metal['name']!='KhaozEngine.Gpu.Metal'
+        or guid(policy['assemblyMvid'])!=guid(metal['mvid'])
+        or policy['assemblyVersion']!=metal['assemblyVersion'] or metal['assemblyVersion']!=profile['assemblyVersion']
+        or policy['assemblyInformationalVersion']!=metal['informationalVersion']
+        or metal['informationalVersion']!=profile['engineVersion']+'+'+probe_commit):
+        raise ValueError('Startup Metal committed-source identity differs')
+    return policy
+
+
+def audit_treatment(report, proof, expected_slots, *, input_contract=None):
+    from analyze import guid, integer
+    errors = []; policy = None
+    def check(condition,message):
+        if not condition: errors.append(message)
+    try:
+        slots = validate_expectation(expected_slots)
+        profile = capture_profile(proof)
+        if input_contract is not None:
+            contract = validate_contract(input_contract)
+            check(proof['purpose'] == contract['purpose'] and validate_contract(proof['inputContract']) == contract,
+                  'Stability purpose or preparation contract differs')
+            check(integer(report['schemaVersion'],5,5) == 5 and slots == 3, 'Stability treatment differs')
+        else:
+            contract = None
+            check(integer(report['schemaVersion'],4,4) == 4 and proof.get('purpose') is None
+                  and 'inputContract' not in proof, 'Legacy capacity entry point refuses stability-purpose evidence')
+        check(validate_expectation(proof['expectedRecordingSlots']) == slots,'Collection expectation differs')
+        metal = proof['metalAssembly']
+        policy = validate_startup(proof['startupProof'],metal,slots,proof['probeCommit'],profile=profile)
+        device = guid(policy['deviceIdentity'])
+        check(re.fullmatch('[0-9a-f]{40}',proof['probeCommit']) is not None,'Invalid probe commit')
+        check(proof['frozenEngineBase']==(contract['engineBase'] if contract else ENGINE_BASE)
+              and proof['gameCommit']==profile['gameCommit'],'Frozen source base differs')
+        validate_world_selection(proof['worldSelection'],proof['gameCommit'],proof.get('purpose'))
+        check(report['engineCodeIdentity']['informationalVersion']==profile['engineVersion']+'+'+proof['probeCommit'],
+              'Recorder source identity differs')
+        check(report['appCodeIdentity']['informationalVersion'].endswith('+'+profile['gameCommit']),'Game source identity differs')
+        sources=proof['sourceHashes'];paths=[row['path'] for row in sources]
+        check(bool(paths) and len(paths)==len(set(paths))
+              and all(re.fullmatch('[0-9a-f]{64}',row['sha256']) for row in sources),'Source hash inventory invalid')
+        helpers=proof['helperHashes']
+        allowed_helpers = (set(HELPER_FILES),) if contract else (HELPERS, set(HELPER_FILES))
+        check(type(helpers) is dict and set(helpers) in allowed_helpers,'Helper identity inventory differs')
+        source_hashes={row['path']:row['sha256'] for row in sources}
+        check(all(type(value) is str and re.fullmatch('[0-9a-f]{64}',value)
+                  and source_hashes.get('scripts/mac-frame-ring-waits/'+name)==value
+                  for name,value in helpers.items()),'Helper committed-source hash differs')
+        runtime=[row for row in proof['runtimeFiles'] if row['path'].split('/')[-1]=='KhaozEngine.Gpu.Metal.dll']
+        check(len(runtime)==1 and runtime[0]['sha256']==metal['sha256']==runtime[0]['afterSha256'],
+              'Startup Metal identity differs from mapped payload')
+        windows=[report['baseline']['window'],report['end']['window']]
+        boundaries=[report['baseline']['recordingWait'],report['end']['recordingWait']]
+        receipts=[]; complete=True
+        check(report['shadowStages']['mode']==1 and type(report['shadowStages']['mode']) is int,'Counts mode required')
+        for sample in report['samples']:
+            windows.extend([sample['completedFrameWindow'],sample['boundaryWindow']])
+            row=sample['recordingWait'];boundaries.extend([row['start'],row['end']])
+            callback=row['callback'];check(callback['prefixExpected'] is True,'Split prefix required')
+            for role in ('prefix','main'):
+                observation=callback[role]
+                if observation['status']==2 and observation['receipt'] is not None: receipts.append(observation['receipt'])
+                else: complete=False
+        for window in windows:
+            width, height = (contract['framebufferWidth'], contract['framebufferHeight']) if contract else (1668,1029)
+            check(integer(window['width'])==width and integer(window['height'])==height,'Actual framebuffer differs')
+            check(window['focused'] is True and window['minimized'] is False and window['renderSuppressed'] is False,
+                  'Actual window is not active and focused')
+            check(window['vsync'] is True and integer(window['effectiveBaseCapHz'])==0,'Actual VSync/software cap differs')
+            check(window['preparePhaseSplitActive'] is True and window['rendererInitializesSwapchain'] is True,
+                  'Actual split/output policy differs')
+        for boundary in boundaries:
+            if boundary['status']==1 and boundary['totals'] is not None:
+                value=boundary['totals']
+                check(integer(value['depth'])==slots and guid(value['deviceIdentity'])==device,
+                      'Available boundary treatment differs')
+            else: complete=False
+        for value in receipts:
+            check(integer(value['depth'])==slots and guid(value['deviceIdentity'])==device,'Recording receipt treatment differs')
+        complete=complete and bool(receipts) and bool(report['samples'])
+        return dict(status='invalid' if errors else 'valid' if complete else 'limited',errors=errors,policy=policy)
+    except (KeyError,TypeError,ValueError,IndexError,AttributeError,OverflowError) as error:
+        return dict(status='invalid',errors=errors+[type(error).__name__+': '+str(error)],policy=policy)
+
+
+def _run_context(report, proof, slots):
+    from analyze import analyse, _analyse_context, leaves
+    audit=analyse(report,1,report.get('processId'),proof,expected_recording_slots=slots)
+    result=dict(audit=audit,capacity=audit.get('capacity'),workDistributions={})
+    try:
+        context=_analyse_context(report,1,report['processId'])
+        histograms={}
+        for sample in report['samples']:
+            for key,value in leaves(sample['shadowStage']['callback']['snapshot']['counters']):
+                histograms.setdefault(key,Counter())[json.dumps(value,sort_keys=True)]+=1
+        distributions={key:[dict(value=json.loads(value),count=count,
+                                  share=[Fraction(count,len(report['samples'])).numerator,
+                                         Fraction(count,len(report['samples'])).denominator])
+                            for value,count in sorted(values.items())] for key,values in sorted(histograms.items())}
+        result.update(configuration=context['configuration'],window={key:context['window'][key] for key in WINDOW_FIELDS},
+                      workDistributions=distributions,frameMilliseconds=context['frameMilliseconds'],
+                      framesPerSecond=context['framesPerSecond'],counterDelta=context['counterDelta'],
+                      waits=report['recordingWaits'])
+    except (KeyError,TypeError,ValueError,IndexError,AttributeError,ZeroDivisionError):
+        pass  # Invalid or historical inputs remain visible through the audit, without invented statistics.
+    return result
+
+
+def compare_runs(control_report, control_proof, candidate_report, candidate_proof):
+    if any(type(report.get('schemaVersion')) is not int or report['schemaVersion'] != 4
+           for report in (control_report, candidate_report)) or any(
+               proof.get('purpose') is not None or 'inputContract' in proof for proof in (control_proof, candidate_proof)):
+        return dict(comparable=False, differences=['Legacy capacity comparison refuses stability-purpose evidence'],
+                    control=None, candidate=None, observedFramesPerSecondDifference=None)
+    control=_run_context(control_report,control_proof,3);candidate=_run_context(candidate_report,candidate_proof,6)
+    differences=[]
+    for name,run in [('control',control),('candidate',candidate)]:
+        if run['audit']['status']!='valid': differences.append(name+' measurement is '+run['audit']['status'])
+    def compare(name,left,right):
+        if left!=right: differences.append(name+' differs')
+    for key in ('configuration','window'):
+        compare(key,control.get(key),candidate.get(key))
+    def work(run):
+        return {key:[(json.dumps(row['value'],sort_keys=True),row['share']) for row in rows]
+                for key,rows in run['workDistributions'].items()}
+    compare('recorded work distribution',work(control),work(candidate))
+    for key in ('probeCommit','gameCommit','sourceHashes','codeIdentities','preparationSha256','helperHashes','metalAssembly','worldSelection'):
+        compare(key,control_proof.get(key),candidate_proof.get(key))
+    def dlls(proof): return sorted((row['path'].split('/')[-1],row['sha256']) for row in proof.get('runtimeFiles',[]))
+    compare('DLL bytes',dlls(control_proof),dlls(candidate_proof))
+    if all(run.get('capacity') and isinstance(run['capacity'].get('policy'),dict) for run in (control,candidate)):
+        compare('native device',control['capacity']['policy'].get('deviceName'),candidate['capacity']['policy'].get('deviceName'))
+    comparable=not differences
+    return dict(comparable=comparable,differences=differences,control=control,candidate=candidate,
+                observedFramesPerSecondDifference=candidate['framesPerSecond']-control['framesPerSecond'] if comparable else None,
+                limits=['One observed same-view pair only. Matching recorded work does not prove all work or host load matched.',
+                        'CPU API durations are distinct from GPU execution, literal parked time and physical display cadence.',
+                        'No causal or sustained-rate conclusion follows from this pair.'])

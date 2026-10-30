@@ -35,12 +35,12 @@ namespace KhaozEngine.Tests.Gpu
 
         readonly System.Collections.Generic.List<GCHandle> _pins = new();
 
-        internal MetalRingHarness(int framesInFlight = MetalFramesInFlight.Default)
+        internal MetalRingHarness(int framesInFlight = MetalFramesInFlight.Default, IMetalSharedEvent? sharedEvent = null)
         {
             FramesInFlight = framesInFlight;
             Event = new FakeMetalSharedEvent();
             Liveness = new FakeMetalDeviceLiveness();
-            Timeline = new MetalTimeline(Event, Liveness);
+            Timeline = new MetalTimeline(sharedEvent ?? Event, Liveness);
             Backpressure = new WaitAccumulator();
             SubmitLock = new object();
             Rings = new MetalRingAllocator(framesInFlight, Timeline, Backpressure, SubmitLock);
@@ -135,7 +135,7 @@ namespace KhaozEngine.Tests.Gpu
         /// A real command list wired to this harness. <paramref name="owner"/> is the opaque token the submit
         /// path compares by reference, exactly as the device passes <c>this</c>.
         /// </summary>
-        internal MetalCommandList NewList(object owner, FakeMetalCommandBufferSource? buffers = null,
+        internal MetalCommandList NewList(object owner, IMetalCommandBufferSource? buffers = null,
             FakeMetalEncoderCalls? calls = null, MetalUncommittedBuffers? uncommitted = null,
             MetalStagingArena? arena = null, FakeMetalRenderCalls? render = null,
             FakeMetalComputeApi? compute = null, MetalClearMode clearMode = MetalClearMode.PerAttachment,

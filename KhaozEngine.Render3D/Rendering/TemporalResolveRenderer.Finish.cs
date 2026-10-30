@@ -23,6 +23,16 @@ namespace KhaozEngine.Render3D.Rendering
             (_debugView ??= new TemporalDebugViewPass(_gd, ResolveLayout, FullyLitResolveLayout, targetOutput, _fragmentSourceForTests)).Draw(cl, view, set, target, LastVisibilityDecisionSkipped);
         }
 
+        // A prepared scene's debug view re-evaluates the resolve in a later recording. Its resource
+        // set is reusable, but Metal uniforms are recording-local and need the original payloads again.
+        internal void RefreshDebugUniforms(IGpuCommandList commands)
+        {
+            var resolve = LastUniforms;
+            var visibility = LastVisibilityUniforms;
+            commands.UpdateBuffer(_resolveBuffer, 0, in resolve);
+            commands.UpdateBuffer(_visibilityBuffer, 0, in visibility);
+        }
+
         TemporalCountProbe? _countProbe;
         bool _countsArmed;
 

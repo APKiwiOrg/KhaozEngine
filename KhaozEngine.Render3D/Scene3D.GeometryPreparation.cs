@@ -8,7 +8,8 @@ public sealed partial class Scene3D
         out bool hasPointShadowRequests)
     {
         using var phase = ProfileCpu("cpu.geometry.shadow-visibility");
-        shadowMapActive = Post.Quality.Shadows.ResolveFor(_gd.Capabilities).Effective == ShadowMode.ShadowMap;
+        long shadowProbeFitStart = ShadowProbeTimestamp();
+        shadowMapActive = ShadowProbeMapActive();
         shadowCascadeCount = 0;
         if (shadowMapActive)
         {
@@ -18,6 +19,7 @@ public sealed partial class Scene3D
                 _shadowFrustums[i] = FrustumPlanes.Extract(_cascadeCpuVps[i]);
         }
 
+        _shadowProbeTicks.CascadeFit = ShadowProbeElapsed(shadowProbeFitStart, _shadowProbeTicks.CascadeFit);
         hasPointShadowRequests = PreparePointShadowRequests(ActiveCamera.Eye);
     }
 

@@ -283,6 +283,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             // The sealed-but-unsubmitted buffer goes back BEFORE the new one is taken, so a list re-Begun in a
             // loop holds one buffer rather than accumulating one per iteration against the queue's own maximum.
+            _recordingWaitAvailable = false;
             ReleaseHeldBuffer();
             BeginTimestampRecording();
 
@@ -307,7 +308,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // so nothing can be recorded into a segment the GPU is still reading. CAPTURED, because this
             // recording's writes and binds all belong to the version claimed here and another list beginning
             // meanwhile moves the allocator's own current segment.
-            _segment = _rings.BeginRecording();
+            _segment = _rings.BeginRecordingWithWaitReceipt(out var ringWait);
 
             // AND THE ARENA ROTATES ONTO THE SAME SLOT, taking the completion value the gate above just read
             // rather than polling the timeline a second time. It gives back the blocks that slot filled last time
@@ -345,6 +346,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             _recording = true;
             _sealed = false;
+            _recordingWaitReceipt = ringWait with { ListIdentity = RecordingWaitListIdentity, Attempt = _timestampRecordingId };
+            _recordingWaitAvailable = true;
         }
 
         /// <summary>

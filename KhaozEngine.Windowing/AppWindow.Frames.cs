@@ -58,6 +58,7 @@ namespace KhaozEngine.Windowing
             // and a no-op unless an InitialMonitor or KE_WINDOW_MONITOR asked for one. See AppWindow.Launch.cs.
             ApplyLaunchPlacement();
             var clock = System.Diagnostics.Stopwatch.StartNew();
+            using var diagnostics = FrameDiagnosticsRecorder.FromEnvironment();
 
             // Composed ONCE, not per frame: the record-phase callback plus the rumble tick that has to follow it
             // (a Pulse issued during the frame must reach the motors on that frame). Building this inside the
@@ -66,6 +67,16 @@ namespace KhaozEngine.Windowing
 
             _window.Render += dt =>
             {
+                diagnostics?.Observe(dt, System.Diagnostics.Stopwatch.GetTimestamp(),
+                    new FrameDiagnosticsWindowState(_accumulator.IsFocused, _minimized,
+                        !_backgroundThrottle.Plan(new WindowActivity(_accumulator.IsFocused, _minimized), _effectiveBaseCapHz).RenderAndPresent,
+                        _window.FramebufferSize.X, _window.FramebufferSize.Y, _effectiveBaseCapHz, _presentMode == PresentMode.Vsync,
+                        RendererInitializesSwapchain, _frame.PreparePhaseSplitActive,
+                        _frame.PreparePhaseSubmissionCount, _frame.PreparePhaseCompositeCount),
+                    _device.Counters, _frame.CompletedShadowStageCallback, _frame.CompletedRecordingWaitCallback,
+                    diagnostics.ReadRecordingWaitBoundary(_device as Gpu.IGpuRingWaitSource));
+                _frame.BeginShadowStageCallback(diagnostics?.NextShadowStageRequest ?? default);
+                _frame.BeginRecordingWaitCallback(diagnostics?.NextRecordingWaitRequest ?? default);
                 float fdt = (float)Math.Min(dt, 0.1);
                 // Capture first, so the snapshot reports what GLFW was told this frame. See AppWindow.PointerCapture.cs.
                 ApplyPointerCapture();
@@ -103,6 +114,8 @@ namespace KhaozEngine.Windowing
                 }
 
                 if (_maxFrames > 0 && ++_frameCount >= _maxFrames) _window.Close();
+                _frame.CompleteShadowStageCallback();
+                _frame.CompleteRecordingWaitCallback();
             };
             _window.Run();
         }

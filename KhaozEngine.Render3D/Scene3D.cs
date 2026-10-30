@@ -1294,6 +1294,14 @@ namespace KhaozEngine.Render3D
         /// </summary>
         void RenderCore(IGpuCommandList cl, int viewportW, int viewportH, IGpuFramebuffer target)
         {
+            CancelPreparedOutput();
+            try { RenderInternalCore(cl, viewportW, viewportH, target, deferOutput: false); }
+            catch { CancelShadowStageProbe(); throw; }
+        }
+
+        void RenderInternalCore(IGpuCommandList cl, int viewportW, int viewportH, IGpuFramebuffer? target, bool deferOutput)
+        {
+            long shadowProbePrefixStart = BeginShadowProbePrefix();
             // Reset the always-on frame counters here (not in Begin), so they are finalized per rendered frame the
             // same way DrawnInstances / PassTimingsMs are - a Begin without a render leaves the last render's totals,
             // and a re-render never double-counts.
@@ -1544,57 +1552,14 @@ namespace KhaozEngine.Render3D
             if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             RunTemporalResolve(cl);   // resolving renders only: internal to display history, then the depth store
-            postChain.Run(cl, postTargets, target, Post, runFxaa, distortionActive);
-            DrawDebugView(cl, target);   // a development view replaces the final image (Scene3D.DebugView.cs)
-            DrawTargetOutlines(cl, displayVp, target);
+            PixelPostProcess.PreparedOutput output = postChain.RunOffscreen(cl, postTargets, Post, runFxaa, distortionActive);
             if (EnableTiming) postMs = ElapsedMs(timingStart);
-            timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
-
-            // Filled overlay: rebind `target` and draw the accumulated translucent triangles over the post image,
-            // BEFORE the lines so an outline on a fill reads crisp. Depth off, alpha blend, unjittered like picking.
-            using (ProfilePass(cl, "display.fills", executed: _fillVerts.Count > 0))
-                if (_fillVerts.Count > 0)
-                {
-                    _fills.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_fillVerts), target);
-                    _frameStats.DrawCalls++;
-                }
-
-            // Debug overlay: rebind `target` and draw the accumulated lines over the post image, depth off, alpha
-            // blend, unjittered so they line up with ScreenToGround picking.
-            using (ProfilePass(cl, "display.lines", executed: _lineVerts.Count > 0))
-                if (_lineVerts.Count > 0)
-                {
-                    _lines.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_lineVerts), target);
-                    _frameStats.DrawCalls++;
-                }
-
-            // Billboards: after the line pass, additive first (glow) then alpha, same overlay framebuffer +
-            // ViewProjection. Each rebinds `target` (no clear) and uploads its own vertex span. Additive is
-            // order-independent (kept in submission order); the alpha stream is built back-to-front so overlapping
-            // translucent billboards composite far-to-near regardless of the order the host queued them.
-            using (ProfilePass(cl, "display.billboards-additive", executed: _billboardAdditive.Count > 0))
-                if (_billboardAdditive.Count > 0)
-                {
-                    _billboards.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_billboardAdditive), target, additive: true);
-                    _frameStats.DrawCalls++;
-                }
-            BuildSortedAlphaBillboards();
-            using (ProfilePass(cl, "display.billboards-alpha", executed: _billboardAlpha.Count > 0))
-                if (_billboardAlpha.Count > 0)
-                {
-                    _billboards.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
-                    _frameStats.DrawCalls++;
-                }
-
-            // Screen-space teleport transition (blink / frozen-frame crossfade): a fullscreen pass over everything,
-            // last so it masks the whole 3D frame. No-op (and byte-identical) when none is active.
-            _transitions.Render(cl, _res, target, ScreenTransition);
-
-            if (EnableTiming)
-            {
-                transparentsMs += ElapsedMs(timingStart);
-                _passTimingsMs = new Scene3DPassTimingsMs(shadowDepthMs, modelMs, transparentsMs, waterSyncMs, postMs);
-            }
+            var timings = new Scene3DPassTimingsMs(shadowDepthMs, modelMs, transparentsMs, waterSyncMs, postMs);
+            _shadowProbeTicks.ScenePrefix = ShadowProbeElapsed(shadowProbePrefixStart, _shadowProbeTicks.ScenePrefix);
+            if (deferOutput)
+                _preparedOutput = new PreparedSceneOutput(++_preparedSerial, _frameIndex, viewportW, viewportH,
+                    displayVp, postChain, output, timings, EnableTiming);
+            else RecordOutputTail(cl, target!, displayVp, postChain, in output, timings, EnableTiming, false);
         }
 
         /// <summary>Elapsed milliseconds since <paramref name="startTimestamp"/> (a <see cref="Stopwatch.GetTimestamp"/>

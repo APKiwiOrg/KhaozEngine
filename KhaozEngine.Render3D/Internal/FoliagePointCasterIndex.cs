@@ -16,6 +16,8 @@ internal sealed class FoliagePointCasterIndex
     readonly List<int> _hits = new();
 
     internal int TouchTests => _index.TouchTests;
+    internal int SortInputs => _index.SortInputs;
+    internal int Count => _entries.Count;
 
     internal void Reset()
     {

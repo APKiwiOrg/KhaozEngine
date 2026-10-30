@@ -110,6 +110,7 @@
     <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../KhaozEngine.Windowing.Tests/RecordingWaitProbeTestData.cs" Link="Shared/RecordingWaitProbeTestData.cs" />
     <Compile Include="../test-shared/SkinnedAttachmentGlbFixture.cs" Link="Shared/SkinnedAttachmentGlbFixture.cs" />
   </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />

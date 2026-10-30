@@ -14,6 +14,7 @@ namespace KhaozEngine.Render3D
     public sealed class Render3DSurface : IDisposable
     {
         readonly AppWindow _window;
+        readonly PreparePhaseSceneSubmission? _prepareSubmission;
 
         public Scene3D Scene { get; }
 
@@ -24,8 +25,23 @@ namespace KhaozEngine.Render3D
         /// runtime-mutable on <c>Scene.Post</c>.</summary>
         public Render3DSurface(AppWindow window, ShadowSettings? shadows = null)
         {
+            bool split = PreparePhaseSceneSubmission.Parse(Environment.GetEnvironmentVariable("KE_PREPARE_PHASE_SPLIT"));
+            if (split && (!window.RendererInitializesSwapchain || window.GpuDevice.Backend != Gpu.GpuBackendKind.MetalNative))
+                throw new InvalidOperationException("KE_PREPARE_PHASE_SPLIT requires MetalNative and renderer-owned swapchain initialization.");
             _window = window;
             Scene = new Scene3D(window.GpuDevice, window.GpuDevice.SwapchainFramebuffer!.Outputs, shadows);
+            if (split) _prepareSubmission = new PreparePhaseSceneSubmission(window.GpuDevice, Scene);
+        }
+
+        /// <summary>Whether this surface uses the private prepare-phase submission experiment.</summary>
+        public bool PreparePhaseSplitEnabled => _prepareSubmission is not null;
+
+        /// <summary>Submit the private scene prefix after queue preparation and before the frame recording opens.</summary>
+        public void PrepareRender(Frame frame)
+        {
+            frame.DeclareRecordingWaitPrefix(_prepareSubmission is not null && !frame.RenderSuppressed);
+            try { _prepareSubmission?.Prepare(frame); }
+            catch { Scene.CancelShadowStageProbe(); throw; }
         }
 
         /// <summary>Record the queued scene into the window framebuffer. The frame command list is already
@@ -35,11 +51,31 @@ namespace KhaozEngine.Render3D
         /// The no-argument call below is an idempotent legacy safety net. It cannot prepare bound resources here.
         /// Legacy FFT priming from this phase is refused by <see cref="Gpu.GpuRecording"/> as a nested recording.</summary>
         public void Render(Frame frame)
+            => RecordSceneOutput(Scene, frame, _prepareSubmission, _window.GpuDevice.SwapchainFramebuffer!);
+
+        // Shared by the real surface and headless lifetime/native fixtures.
+        internal static void RecordSceneOutput(Scene3D scene, Frame frame, PreparePhaseSceneSubmission? prepared,
+            Gpu.IGpuFramebuffer target)
         {
-            Scene.PrepareFrame();
-            Scene.RenderInternal(frame.Commands, frame.Width, frame.Height, _window.GpuDevice.SwapchainFramebuffer!);
+            try
+            {
+                if (prepared is not null) prepared.Render(frame, target);
+                else
+                {
+                    scene.PrepareFrame();
+                    scene.RenderInternal(frame.Commands, frame.Width, frame.Height, target);
+                }
+                scene.PublishShadowStageProbe(frame);
+            }
+            catch { scene.CancelShadowStageProbe(); throw; }
         }
 
-        public void Dispose() => Scene.Dispose();
+        public void Dispose() => DisposeSceneAndPrefix(Scene, _prepareSubmission);
+
+        internal static void DisposeSceneAndPrefix(Scene3D scene, IDisposable? prefix)
+        {
+            try { scene.Dispose(); }
+            finally { if (scene.DisposalSafeForDependants) prefix?.Dispose(); }
+        }
     }
 }

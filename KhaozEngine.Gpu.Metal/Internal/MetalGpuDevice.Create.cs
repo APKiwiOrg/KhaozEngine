@@ -151,11 +151,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // backpressure counter was measured against rather than resting on the tester believing they set
                 // the variable. The uniform ring's segments and each list's staging arena slots are cut to it,
                 // and row 15 reads it for maximumDrawableCount.
-                string? unrecognizedFrames = null;
-                int framesInFlight = settings?.FramesInFlight ?? MetalFramesInFlight.FromEnvironment(out unrecognizedFrames);
+                var recordingPolicy = MetalRecordingCapacityPolicy.Resolve(
+                    settings is null ? Environment.GetEnvironmentVariable(MetalFramesInFlight.EnvVarName) : null,
+                    Environment.GetEnvironmentVariable(MetalRecordingCapacityPolicy.EnvVarName), settings?.FramesInFlight);
+                int framesInFlight = recordingPolicy.RecordingSlots;
+                string? unrecognizedFrames = recordingPolicy.UnrecognizedBaseValue;
                 if (unrecognizedFrames is not null)
                     log.Warn(MetalFramesInFlight.UnrecognizedWarning(unrecognizedFrames));
-                log.Info(MetalFramesInFlight.ActiveDescription(framesInFlight));
+                if (!recordingPolicy.Enabled) log.Info(MetalFramesInFlight.ActiveDescription(framesInFlight));
 
                 // THE DEVICE'S ONE COMPLETION TIMELINE (M-F1), created before anything can submit. Row 5 built
                 // it and left the wiring to the first row with a submit path, which is row 7.
@@ -196,18 +199,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // instead (which clamp) cost two goldens on the Direct3D 11 leg.
                 created.CreateSharedSamplers();
 
-                // THE ARMING IS CHECKED AGAINST THE DEVICE ITSELF, through row 1's own control: a validated
-                // device is an MTLDebugDevice rather than the driver's class. Done here because it is the first
-                // moment a real device exists to ask, and skipped entirely on an unvalidated run so an ordinary
-                // session gains no line.
-                if (settings is null) ReportDeviceClass(device);
-
-                // THE SWAPCHAIN LAST (row 15), INSIDE THIS TRY, and the position is the same argument the
-                // timeline's is: it configures the layer and takes the first drawable, so a throw anywhere in it
-                // has to unwind the queue, the timeline and the completion registration exactly as any other
-                // failure here does. The layer itself is the CALLER's to release on this path, which is what
-                // CreateForWindow's own catch does, because ownership of it transfers to the api this builds.
-                if (host is { } resolved) created.AttachSwapchain(resolved, syncToVerticalBlank, framesInFlight);
+                // A fully constructed device still belongs to this method until startup readback succeeds.
+                // On failure, release its owned children before the outer catches release queue, timeline and device.
+                MetalRecordingCapacityPolicy.Initialize(() =>
+                {
+                    if (settings is null) ReportDeviceClass(device);
+                    if (host is { } resolved)
+                        created.AttachSwapchain(resolved, syncToVerticalBlank, recordingPolicy.BaseFrames);
+                    if (recordingPolicy.Enabled) created.ReportRecordingCapacity(recordingPolicy, host);
+                }, () => created.AbortInitialization(host));
 
                 // No threading probe and no threading failure. That pair exists because the GPU package holds
                 // no device object of its own for D3D11ThreadingProbe to read a raw Direct3D 11 pointer

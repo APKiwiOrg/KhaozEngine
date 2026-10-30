@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -142,6 +143,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         void AttachSwapchain(in MetalSwapchainHost host, bool syncToVerticalBlank, int framesInFlight)
         {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             _syncToVerticalBlank = syncToVerticalBlank;
 
             _present = new MetalPresentBoundary(

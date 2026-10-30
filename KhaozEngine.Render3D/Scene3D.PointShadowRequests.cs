@@ -7,8 +7,19 @@ namespace KhaozEngine.Render3D;
 /// <summary>Request collection and ordering for point-shadow residency.</summary>
 public sealed partial class Scene3D
 {
-    internal bool PreparePointShadowRequests(Vector3 eyeAbsolute) =>
-        GatherPointShadowRequests(Post.Quality.Shadows.PointShadows, eyeAbsolute);
+    internal bool PreparePointShadowRequests(Vector3 eyeAbsolute)
+    {
+        long probeStart = ShadowProbeTimestamp();
+        bool any = GatherPointShadowRequests(Post.Quality.Shadows.PointShadows, eyeAbsolute);
+        if (_shadowProbeActive)
+        {
+            _shadowProbeCounts.HasPointRequests = any;
+            _shadowProbeCounts.StaticRequests = _pointShadowStaticRequests;
+            _shadowProbeCounts.DynamicRequests = _pointRequests.Count - _pointShadowStaticRequests;
+        }
+        _shadowProbeTicks.PointRequests = ShadowProbeElapsed(probeStart, _shadowProbeTicks.PointRequests);
+        return any;
+    }
 
     internal bool PointRequestCanRetainSkinned(
         in PointShadowCasterSphere caster, PointShadowSettings settings)

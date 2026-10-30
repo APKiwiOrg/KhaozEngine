@@ -10,6 +10,8 @@ namespace KhaozEngine.Render3D
         internal bool DisposalSafeForDependants { get; private set; }
         public void Dispose()
         {
+            _preparedOutputDisposed = true;
+            CancelPreparedOutput();
             // Drain in-flight GPU work before destroying anything because uploads or draws may still be queued on
             // the device's async submission thread (Mesa lavapipe can segfault on destroyed resources).
             DisposeShadowReconfiguration();

@@ -199,6 +199,7 @@ namespace KhaozEngine.Render3D
                 int resolution = _model.ShadowMap.Resolution;
                 for (int c = 0; c < count; c++)
                     culls[c] = ShadowCascadeCull.FromLightViewProj(_cascadeCpuVps[c], resolution);
+                if (_shadowProbeActive) _shadowProbeCounts.DirectionalMaskTests += instances * count;
                 ComputeCascadeMasks(CollectionsMarshal.AsSpan(_shadowCasterSpheres), culls, count,
                     _shadowCasterMasks.AsSpan(0, instances), _frameOrigin);
             }
@@ -216,6 +217,11 @@ namespace KhaozEngine.Render3D
                 int drawn = 0;
                 foreach (ShadowCasterSpan span in CollectionsMarshal.AsSpan(dst)) drawn += (int)span.Count;
                 _cascadeCasterCounts[c] = drawn;
+                if (_shadowProbeActive)
+                {
+                    _shadowProbeCounts.DirectionalSelectedSpans += dst.Count;
+                    _shadowProbeCounts.DirectionalSelectedInstances += drawn;
+                }
             }
             for (int c = count; c < _cascadeCasterCounts.Length; c++) _cascadeCasterCounts[c] = 0;
         }

@@ -6017,7 +6017,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `TileWaterLooks.River` carries the owner-selected linear RGB `(0.28, 0.30, 0.18)` and `Clarity = 1.5f`,
     with `WaterColumnLight` left null. Set that nullable field on a consumer-owned look to opt in, preserving
     the shared preset. Landing 1 is built and awaits the owner's measured-cost ruling before release.
-    [Landing 2's bent view](programs/water-optics-design.md) remains unbuilt.
+    Landing 2's bent view, designed in the `water-optics` program, remains unbuilt.
   - **Independent optical bed** (`WaterPlane.Optics`, a `WaterOpticsBinding`, **default unbound = legacy scene
     depth**). An unbound plane grades its colour, shore foam and shore fade from the first opaque surface behind it,
     which can be a swimming creature, a bridge or a prop. A bound plane reads its own signed bed depth for those

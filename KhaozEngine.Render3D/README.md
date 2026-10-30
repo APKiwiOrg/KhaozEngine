@@ -934,8 +934,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `TileWaterLooks.River` supplies the owner-selected linear RGB `(0.28, 0.30, 0.18)` and `Clarity = 1.5f`,
   with `WaterColumnLight` left null. See [the TileWorld reference](../KhaozEngine.TileWorld.Render3D/README.md)
   for preset ownership and explicit opt-in. The remaining bent-view design is
-  [Landing 2](../docs/programs/water-optics-design.md). Release waits for the owner's measured-cost ruling
-  tracked in [the water optics program](../docs/programs/water-optics.md).
+  Landing 2 in the `water-optics` program design. Release waits for the owner's measured-cost ruling
+  recorded in the `water-optics` program in the owner's program store.
 
   <a id="water-column-coefficients"></a>
   **Water column coefficients.** For authored linear RGB `c`, the CPU derives

@@ -276,7 +276,7 @@ Invalid homogeneous coordinates are rejected before division. Missing depth uses
 with its path capped at `8 * Clarity / max(mu, 0.0001)` as an asymptotic numerical limit, retaining the copied colour.
 Valid optical beds retain their exact depth-derived path.
 The colour and scene-depth lookups stay unoffset. Bent image lookup and foreground rejection remain
-unbuilt in [Landing 2](programs/water-optics-design.md). The copy permits per-channel extinction and
+unbuilt in Landing 2 of the `water-optics` program design. The copy permits per-channel extinction and
 shadowed in-scatter in one physical composite. A scalar alpha blend could not carry those channel weights
 or support the later bent lookup. The [coefficient reference](../KhaozEngine.Render3D/README.md#water-column-coefficients)
 defines reference-light calibration, extinction spread and energy conservation. Column opt-in also supplies
@@ -312,7 +312,7 @@ waterline. Fogged-space composition is exact there. Its distance approximation i
 change across the in-water path. Diagnostics and the absolute `WaterColumnGpuTests` cover copy demand,
 legacy parity, AA paths, transport, shadow attachment, shallow beds and reference colour without rebaking
 existing water goldens. Landing 1 awaits the owner's measured-cost ruling in
-[the program tracker](programs/water-optics.md) before release.
+the `water-optics` program in the owner's program store before release.
 
 ## Underwater lit receivers
 

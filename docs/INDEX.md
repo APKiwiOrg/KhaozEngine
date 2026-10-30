@@ -1,16 +1,15 @@
 # KhaozEngine docs index
 
-Start here. Living references, current design rationale and open program trackers have different jobs:
+Start here. Living references, current design rationale and programs have different jobs:
 
 - **Living docs** (this directory's root) are kept current and edited in place. When two of them state the
   same fact, the source-of-truth column says which one wins.
 - **Design docs** ([`design/`](design/)) keep the current rationale: the why, the alternatives weighed
   and the decisions still in force. Public API use belongs in USING and the package READMEs. Rewrite
   superseded reasoning in place. Git history retains earlier designs.
-- **Program trackers** ([`programs/`](programs/README.md)) hold remaining milestones and decisions until
-  the program is done. Current trackers are [physical atmosphere and night sky](programs/atmosphere.md),
-  [indirect diffuse](programs/indirect-diffuse.md), [AAA VFX](programs/aaa-vfx.md) and
-  [forced movement](programs/forced-movement.md).
+- **Programs** ([`programs/README.md`](programs/README.md)) live in the owner's program store, which holds
+  remaining milestones and decisions until the program is done. List this repository's open programs with
+  `gauge:program_list` and read one with `gauge:program_get`.
   Specs, plans and execution ledgers stay in ignored local scratch.
 
 ## Living docs

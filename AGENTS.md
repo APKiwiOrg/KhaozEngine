@@ -21,7 +21,7 @@ directly. Keep this root short enough to load with global guidance. Detailed rep
 | Discovered work or handoffs | [Contributor rules: Issues and handoffs](docs/CONTRIBUTOR-RULES.md#issues-and-handoffs) |
 | Rendering verification | [CROSS-PLATFORM.md](docs/CROSS-PLATFORM.md), relevant pipeline and design docs |
 | Security-sensitive work | [SECURITY-BASELINE.md](docs/SECURITY-BASELINE.md) |
-| Starting, continuing or finishing a long-running program | [Programs](docs/programs/README.md) and the program's tracker |
+| Starting, continuing or finishing a long-running program | [Programs](docs/programs/README.md) and the owner's program store |
 
 ## Before changing anything
 
@@ -116,10 +116,9 @@ merging into or pushing `main`, and wait while a release holds the lock.
 - Docs describe the system as it is today. Update them in the same commit as the behaviour they describe,
   with each reason or gotcha next to the behaviour it explains. Delete superseded text, git history is the
   archive. Never name a doc by date.
-- A long-running program, meaning work that spans more than one landing, has one tracker at
-  `docs/programs/<name>.md` in the shape [docs/programs/README.md](docs/programs/README.md) sets. Update it
-  in the same commit as each milestone. When the program is done, move every decision still in force into
-  the docs and delete the tracker.
+- Long-running program state lives in the owner's program store. Read it with gauge:program_get,
+  using the old tracker basename as its id when resuming. Follow docs/programs/README.md. Never commit
+  program state under docs/programs/.
 - Specs, plans, subagent ledgers, briefs, reports, receipts and sourced scripts are work files. They live in
   the work folder `~/.local/share/agent-work/<repo>/<key>/` from the moment they are written, never only in
   `/tmp` or a worktree. They are never committed, and no tracked file names a file inside `docs/superpowers/`

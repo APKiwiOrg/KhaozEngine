@@ -349,7 +349,10 @@ public class RigIdentityTests
         int index = body.Accessors.Count;
         body.Accessors.Add(new JsonObject
         {
-            ["bufferView"] = body.AddView(bytes), ["type"] = type, ["componentType"] = component, ["count"] = count,
+            ["bufferView"] = body.AddView(bytes),
+            ["type"] = type,
+            ["componentType"] = component,
+            ["count"] = count,
         });
         return index;
     }

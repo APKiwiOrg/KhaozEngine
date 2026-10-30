@@ -49,6 +49,17 @@ automatically, so this is transparent to every other package.
   `UpTo(rng, inclusiveMax)` answers `[0, inclusiveMax]`, the form a roll ladder is quoted in, and refuses
   `int.MaxValue`. A negative bound is refused with `ArgumentOutOfRangeException` before any draw is spent.
   Holds no state and decides no probability: the distribution is `NextInt`'s.
+- `WeightedSelector.TrySelectIndex(weights, rng, out index)` - chooses an index from nonnegative integer
+  weights, with a total up to `int.MaxValue`. Zero weights mask entries without changing canonical indexes.
+  Empty/all-zero pools return false with index -1 and no RNG call. Null RNG is rejected first, and negative
+  weights or an overflowing total are rejected before drawing. Each nonempty call allocates one snapshot
+  array and takes O(n) time/storage. The caller synchronizes capture and keeps candidates aligned until
+  resolving the span-relative index. RNG callbacks can mutate the originals without changing this call's
+  captured pool. Success reserves one logical slot through `RandomDraw.Below`: total 1 calls `Skip`, larger
+  totals call `NextInt(0, total)` once, even for a single positive entry. Underlying generator steps may vary.
+  Source exceptions propagate and out-of-range draws fail with `InvalidOperationException`, without retry.
+  Retain the resolved outcome when retries must reuse a choice. See the consumer guide's arbitrary-weight
+  choice example. `LootRoller` keeps its existing catalog behavior.
 - `StableHash` (14.9.0) - stateless, allocation-free integer hashing: `Mix(uint)`, `Mix(uint, uint)`,
   `Mix(uint, uint, uint)` fixed-arity hashes (FNV-1a accumulate + a Murmur3-style avalanche finalizer) and
   `ToUnitFloat(uint)` folding bits to a float in [0, 1). A pure key-to-value map (same inputs, same hash on every

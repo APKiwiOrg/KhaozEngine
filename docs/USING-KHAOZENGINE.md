@@ -21611,6 +21611,43 @@ Integer prefix sums over the loot index, chances in basis points, nesting capped
 destination too small is filled and `TryRoll` says so rather than silently losing drops. What the CALLER still
 owns is the journal event a draw feeds: the roller answers `LootDraw`s and writes nothing anywhere.
 
+### Arbitrary-weight choice
+
+`KhaozEngine.Primitives.WeightedSelector.TrySelectIndex(ReadOnlySpan<int> weights, IRandomSource rng, out int index)`
+selects an index from caller-prepared nonnegative integer weights. Keep one canonical candidate list and use
+zero weights to exclude entries without changing their indexes. Positive entries retain their relative weights.
+
+```csharp
+static string? ChooseLabel(IRandomSource rng)
+{
+    string[] candidates = ["alpha", "beta", "gamma"];
+    int[] eligibleWeights = [2, 0, 3];
+    return WeightedSelector.TrySelectIndex(eligibleWeights, rng, out int index)
+        ? candidates[index]
+        : null;
+}
+```
+
+Empty/default spans and all-zero pools return false with index -1 and no RNG call. A null RNG throws
+`ArgumentNullException` for `rng` first, even for an empty or invalid pool. Negative weights or a total above
+`int.MaxValue` throw `ArgumentOutOfRangeException` for `weights` before drawing. A total of `int.MaxValue` is
+accepted. Indexes are relative to the supplied span, including a slice or a compact filtered list.
+
+Each nonempty call copies the weights into one owned array before validation and RNG invocation, using O(n)
+time and storage. The helper never writes caller memory or retains inputs. The caller synchronizes capture
+and keeps its candidates aligned and alive until resolving the returned index. Concurrent mutation during
+capture is unsupported. RNG callbacks may mutate the original weights without changing the captured pool
+for the current call. Later calls capture the current weights anew.
+
+Every successful call reserves one logical RNG slot through `RandomDraw.Below`. A total of 1 calls `Skip`,
+and larger totals call `NextInt(0, total)` once, even when only one entry has positive weight. This does not
+guarantee one underlying generator step or replay stability across changed weights. Source exceptions
+propagate without retry. A returned draw outside `[0, total)` throws `InvalidOperationException` without a
+second draw. Source failures cannot roll back random state, and no result is promised on an exception.
+
+The caller owns eligibility policy, candidate lifetime and persistence. Retain the resolved outcome when
+retries must reuse the same choice. `LootRoller` keeps its existing catalog behavior and draw schedule.
+
 ### The admin console API
 
 `CatalogAdminActions.Register` puts SIXTEEN actions on the existing `ServerAdmin` dispatch, so a console

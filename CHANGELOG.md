@@ -6,7 +6,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.22.0
 
-2026-10-30
+2026-10-31
 
 - Add `WeightedSelector.TrySelectIndex` in `KhaozEngine.Primitives` for caller-prepared integer-weighted choices. Zero weights exclude entries while preserving their indexes. The helper validates and captures weights before using the caller's random source, with explicit empty-pool and logical-draw behavior (#1664).
 

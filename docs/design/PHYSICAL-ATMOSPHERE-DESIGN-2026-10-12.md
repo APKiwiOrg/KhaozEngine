@@ -10,8 +10,9 @@ Program issues: phase 1 [#1366](https://github.com/APKiwiOrg/KhaozEngine/issues/
 [Grimhollow#490](https://github.com/APKiwiOrg/Grimhollow/issues/490), with server weather in
 [Grimhollow#491](https://github.com/APKiwiOrg/Grimhollow/issues/491).
 
-This document is the program tracker and the full design for phase 1. Phases 2 to 4 are outlined here and get
-their own design section, reviewed by the owner, before each is planned.
+This document is the full design for phase 1. Its milestones live in the `atmosphere` program in the
+owner's program store. Phases 2 to 4 are outlined here and get their own design section, reviewed by the
+owner, before each is planned.
 
 ## The problem
 

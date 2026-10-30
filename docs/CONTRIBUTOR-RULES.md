@@ -265,8 +265,8 @@ accuracy.
 A completed design document keeps the rationale still in force. Rewrite superseded reasoning in
 place and keep shipped API and use instructions in the living references. Any deferral left when a
 program completes becomes an issue. Root `docs/` contains living references only. Long-running work
-uses the tracker lifecycle in [Programs](programs/README.md). Specs, plans and execution ledgers stay
-in ignored local scratch.
+lives in the owner's program store, see [Programs](programs/README.md). Specs, plans and execution
+ledgers stay in ignored local scratch.
 
 ## Issues and handoffs
 

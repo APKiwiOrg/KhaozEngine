@@ -4,6 +4,12 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.22.0
+
+2026-10-30
+
+- Add `WeightedSelector.TrySelectIndex` in `KhaozEngine.Primitives` for caller-prepared integer-weighted choices. Zero weights exclude entries while preserving their indexes. The helper validates and captures weights before using the caller's random source, with explicit empty-pool and logical-draw behavior (#1664).
+
 ## 21.21.0
 
 2026-10-30

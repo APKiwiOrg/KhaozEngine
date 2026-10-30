@@ -19,8 +19,8 @@ consumer is a player charge used at range. Knockback and leaps reuse the same ma
 
 | Milestone | Status | Issue | Owner gate |
 | --- | --- | --- | --- |
-| M1 Pathed charge (ground commitment, server steering, pursuit planning) | waiting on the path follower work | https://github.com/APKiwiOrg/KhaozEngine/issues/1658 | FM-D8 gate met, then the owner confirms the open questions below |
-| M2 Release and consumer note | waiting on M1 | https://github.com/APKiwiOrg/KhaozEngine/issues/1658 | Owner approves the exact tag |
+| M1 Pathed charge (ground commitment, server steering, pursuit planning) | Blocked | https://github.com/APKiwiOrg/KhaozEngine/issues/1658 | FM-D8 gate met, then the owner confirms the open questions below |
+| M2 Release and consumer note | Blocked | https://github.com/APKiwiOrg/KhaozEngine/issues/1658 | Owner approves the exact tag |
 
 ## Decisions in force
 

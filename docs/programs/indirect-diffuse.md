@@ -19,10 +19,10 @@ units. Each later stage earns its own design and owner decision after version 1 
 
 | Milestone | Status | Issue | Owner gate |
 | --- | --- | --- | --- |
-| M1 Directional sky and ground SH irradiance | shipped | https://github.com/APKiwiOrg/KhaozEngine/issues/1553 | Consumer adoption and look acceptance before later stages |
-| M2 World-space L2 SH probe volume sampled by world position | waiting on adoption and own design | https://github.com/APKiwiOrg/KhaozEngine/issues/1554 | Owner decides when interiors need occlusion |
-| M3 Backend selection, shader-toolchain spike, capability and fallback contracts | open, required before M4 | https://github.com/APKiwiOrg/KhaozEngine/issues/1558 | Owner approves backend and fallback strategy |
-| M4 Ray-traced or path-traced irradiance through the existing slot | waiting on own design and M3 | https://github.com/APKiwiOrg/KhaozEngine/issues/1554 | Owner approves stage after version 1 adoption |
+| M1 Directional sky and ground SH irradiance | Done | https://github.com/APKiwiOrg/KhaozEngine/issues/1553 | Consumer adoption and look acceptance before later stages |
+| M2 World-space L2 SH probe volume sampled by world position | Blocked | https://github.com/APKiwiOrg/KhaozEngine/issues/1554 | Owner decides when interiors need occlusion |
+| M3 Backend selection, shader-toolchain spike, capability and fallback contracts | Planned | https://github.com/APKiwiOrg/KhaozEngine/issues/1558 | Owner approves backend and fallback strategy |
+| M4 Ray-traced or path-traced irradiance through the existing slot | Blocked | https://github.com/APKiwiOrg/KhaozEngine/issues/1554 | Owner approves stage after version 1 adoption |
 
 ## Decisions in force
 

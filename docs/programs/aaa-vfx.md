@@ -19,13 +19,13 @@ scale and authoring tools remain demand-gated.
 
 | Milestone | Status | Issue | Owner gate |
 | --- | --- | --- | --- |
-| M1 HDR, filmic tonemap, HDR bloom, flipbooks and screen-space distortion | complete | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | none |
-| M2 Lit smoke | next tier, waiting on game pull | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | Select consumer need and independent design |
-| M3 Mesh particles | next tier, waiting on game pull | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | Select consumer need and independent design |
-| M4 Simulation death and collision events | next tier, waiting on game pull | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | Select consumer need and deterministic event contract |
-| M5 Textured UV-scrolling ribbons | next tier, waiting on game pull | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | Select consumer need and independent design |
-| M6 GPU simulation | gated Tier 3 | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | Concrete game scale requiring it |
-| M7 Data-driven authoring and tooling | gated Tier 3 | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | Demonstrated effect-tuning friction in a game |
+| M1 HDR, filmic tonemap, HDR bloom, flipbooks and screen-space distortion | Done | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | none |
+| M2 Lit smoke | Blocked | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | Select consumer need and independent design |
+| M3 Mesh particles | Blocked | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | Select consumer need and independent design |
+| M4 Simulation death and collision events | Blocked | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | Select consumer need and deterministic event contract |
+| M5 Textured UV-scrolling ribbons | Blocked | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | Select consumer need and independent design |
+| M6 GPU simulation | Blocked | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | Concrete game scale requiring it |
+| M7 Data-driven authoring and tooling | Blocked | https://github.com/APKiwiOrg/KhaozEngine/issues/55 | Demonstrated effect-tuning friction in a game |
 
 ## Decisions in force
 

@@ -42,7 +42,7 @@ def _analyse_context(report, mode, pid):
     def close(a, b):
         return math.isfinite(a) and math.isfinite(b) and math.isclose(a, b, rel_tol=1e-10, abs_tol=1e-9)
 
-    check(report['schemaVersion'] in (4,5), 'schemaVersion must be legacy 4 or purpose-bound 5')
+    check(report['schemaVersion'] in (4,5,6), 'schemaVersion must be legacy 4 or purpose-bound 5')
     check(report['processId'] == pid, 'processId mismatch')
     check(report['shadowStages']['mode'] == mode, 'shadow mode mismatch')
     check(mode in (1, 2), 'comparison requires counts or timings')
@@ -265,8 +265,8 @@ def typed_fields(value, ints='', longs='', flags='', other=(), enums=None, int_l
 
 def _schema_types(report, mode, pid):
     integer(mode,1,2); integer(pid,2,INT_MAX)
-    integer(report['schemaVersion'],4,5); integer(report['processId'],2,INT_MAX)
-    shadow_status_max = 10 if report['schemaVersion'] == 5 else 9
+    integer(report['schemaVersion'],4,6); integer(report['processId'],2,INT_MAX)
+    shadow_status_max = 10 if report['schemaVersion'] >= 5 else 9
     integer(report['sampleCount'],1,4096); integer(report['stopwatchFrequency'],1)
 
     def window(value):
@@ -539,16 +539,20 @@ def _identity_audit(report, proof, pid):
 def analyse(report, mode, pid, proof=None, *, expected_recording_slots=None):
     try:
         import inputs
-        schema = integer(report['schemaVersion'],4,5)
+        schema = integer(report['schemaVersion'],4,6)
         contract = None
-        if schema == 5:
+        if schema in (5, 6):
             if type(proof) is not dict or proof.get('purpose') not in inputs.PURPOSES:
                 raise ValueError('Schema 5 requires the declared input-stability purpose and collection proof')
             contract = inputs.validate_contract(proof['inputContract'])
+            if contract['schemaVersion'] != schema:
+                raise ValueError('Report schema and declared purpose differ')
             if type(expected_recording_slots) is not int or expected_recording_slots != contract['recordingSlots']:
                 raise ValueError('Stability recording-slot expectation differs')
         elif proof is not None and (proof.get('purpose') is not None or 'inputContract' in proof):
             raise ValueError('Legacy schema 4 has no observed inputs and cannot claim a stability purpose')
+        if schema != 6 and ('pointShadowAttribution' in report or any('pointAttribution' in (sample['shadowStage']['callback']['snapshot'] or {}) for sample in report['samples'])):
+            raise ValueError('Attribution requires schema 6')
         _schema_types(report,mode,pid)
         context = _analyse_context(report,mode,pid)
         ring = _ring_audit(report)
@@ -564,9 +568,16 @@ def analyse(report, mode, pid, proof=None, *, expected_recording_slots=None):
             from capacity import audit_treatment
             capacity_result = audit_treatment(report,proof,expected_recording_slots,input_contract=contract)
             errors.extend(capacity_result['errors'])
+        point_result = None
+        if schema == 6:
+            from point_attribution import audit_attribution
+            point_result = audit_attribution(report, proof)
+            errors.extend(point_result['integrity']['errors'])
         full = not errors and ring['fullyAttributed'] and proof is not None
         if capacity_result is not None and capacity_result['status'] != 'valid': full = False
+        if point_result is not None and point_result['availability']['status'] != 'complete': full = False
         return dict(status='invalid' if errors else 'valid' if full else 'limited', errors=errors,
+                    **({'pointAttribution': point_result} if point_result is not None else {}),
                     processId=pid, sampleCount=report['sampleCount'], durationSeconds=report['durationSeconds'],
                     framesPerSecond=context['framesPerSecond'], identityAudited=proof is not None,
                     **{**ring, 'fullyAttributed':full},

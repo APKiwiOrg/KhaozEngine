@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json.Serialization;
 
 namespace KhaozEngine.Windowing;
 
@@ -11,7 +12,8 @@ public enum ShadowStageProbeStatus
 }
 public enum ShadowStageFoliageBuildOrigin { None, Signature, RowPreparation, RowRecording }
 
-public readonly record struct ShadowStageProbeRequest(Guid Epoch, long Sequence, ShadowStageProbeMode Mode);
+public readonly record struct ShadowStageProbeRequest(Guid Epoch, long Sequence, ShadowStageProbeMode Mode,
+    [property: JsonIgnore] PointShadowAttributionCapture? PointAttribution = null);
 
 public readonly record struct ShadowStageProbeConfiguration(bool HudTiming, int DirectionalMode,
     bool TerrainCastsShadows, bool CascadeCulling, bool GpuSkinning, int CascadeMergeGap,
@@ -20,7 +22,8 @@ public readonly record struct ShadowStageProbeConfiguration(bool HudTiming, int 
 
 public readonly record struct ShadowStageProbeSnapshot(ShadowStageProbeRequest Request,
     ShadowStageProbeStatus Status, ShadowStageProbeConfiguration Configuration,
-    ShadowStageProbeCounts? Counters, ShadowStageProbeTicks? Timings, ShadowStageProbeInputs? Inputs = null);
+    ShadowStageProbeCounts? Counters, ShadowStageProbeTicks? Timings, ShadowStageProbeInputs? Inputs = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PointAttributionFrame? PointAttribution = null);
 
 internal readonly record struct ShadowStageCallbackResult(ShadowStageProbeRequest Request,
     bool Completed, int ProducerCount, ShadowStageProbeSnapshot? Snapshot);

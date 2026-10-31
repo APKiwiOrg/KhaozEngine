@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import PurePosixPath
 import re
-from inputs import HELPER_FILES, LEGACY_HELPER_FILES, RELEASE_PURPOSE, capture_profile, validate_contract
+from inputs import HELPER_FILES, LEGACY_HELPER_FILES, RELEASE_PURPOSE, POINT_PURPOSE, helper_files, capture_profile, validate_contract
 
 ENGINE_BASE = '7ae1e83d18a0cafe4d3b079b0dc3a399de390b4f'
 GAME_BASE = 'f45462a87441c18682f7c2309ef2f048c4abebb0'
@@ -44,8 +44,8 @@ def input_fingerprint(rows):
 
 def expected_world_selection(purpose=None):
     from inputs import PURPOSE, RELEASE_GAME_COMMIT
-    if purpose not in (None, PURPOSE, RELEASE_PURPOSE): raise ValueError('Frozen world purpose differs')
-    released = purpose == RELEASE_PURPOSE
+    if purpose not in (None, PURPOSE, RELEASE_PURPOSE, POINT_PURPOSE): raise ValueError('Frozen world purpose differs')
+    released = purpose in (RELEASE_PURPOSE, POINT_PURPOSE)
     return dict(schemaVersion=1,gameCommit=RELEASE_GAME_COMMIT if released else GAME_BASE,root=WORLD_ROOT,worldFiles=40,
                 worldSha256=RELEASE_WORLD_INPUT_SHA256 if released else WORLD_INPUT_SHA256,catalogFiles=2,
                 catalogSha256=RELEASE_CATALOG_INPUT_SHA256 if released else CATALOG_INPUT_SHA256)
@@ -160,7 +160,7 @@ def audit_treatment(report, proof, expected_slots, *, input_contract=None):
             contract = validate_contract(input_contract)
             check(proof['purpose'] == contract['purpose'] and validate_contract(proof['inputContract']) == contract,
                   'Stability purpose or preparation contract differs')
-            check(integer(report['schemaVersion'],5,5) == 5 and slots == 3, 'Stability treatment differs')
+            check(integer(report['schemaVersion'],contract['schemaVersion'],contract['schemaVersion']) == contract['schemaVersion'] and slots == 3, 'Stability treatment differs')
         else:
             contract = None
             check(integer(report['schemaVersion'],4,4) == 4 and proof.get('purpose') is None
@@ -180,7 +180,7 @@ def audit_treatment(report, proof, expected_slots, *, input_contract=None):
         check(bool(paths) and len(paths)==len(set(paths))
               and all(re.fullmatch('[0-9a-f]{64}',row['sha256']) for row in sources),'Source hash inventory invalid')
         helpers=proof['helperHashes']
-        allowed_helpers = (set(HELPER_FILES),) if contract else (HELPERS, set(HELPER_FILES))
+        allowed_helpers = (set(helper_files(contract['purpose'])),) if contract else (HELPERS, set(HELPER_FILES))
         check(type(helpers) is dict and set(helpers) in allowed_helpers,'Helper identity inventory differs')
         source_hashes={row['path']:row['sha256'] for row in sources}
         check(all(type(value) is str and re.fullmatch('[0-9a-f]{64}',value)

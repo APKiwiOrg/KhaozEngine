@@ -29,6 +29,8 @@ public sealed partial class Scene3D
         ReportSkippedPointRows(cl);
         foreach (PackedPointShadowSlot packed in _packedPointSlots)
         {
+            int attributionDrawStart = draws;
+            var attributionBefore = _pointAttribution is null ? default : PointAttributionWorkBoundary();
             using var row = ProfilePointRow(cl, packed);
             using (ProfilePointPass(cl, packed, PointProfilePass.Setup))
             {
@@ -80,6 +82,7 @@ public sealed partial class Scene3D
                     draws += DrawPointSkinnedCastersForFace(cl, renderer, packed, face);
                 else ProfilePointPass(cl, packed, PointProfilePass.Skinned, face, executed: false);
             }
+            ObservePointAttributionWork(packed, draws - attributionDrawStart, attributionBefore);
         }
         ReportSkippedTransientPointRows(cl);
         if (activeAtlas is not null)

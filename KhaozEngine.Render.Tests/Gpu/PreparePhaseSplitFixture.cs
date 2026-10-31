@@ -31,6 +31,7 @@ public sealed class PreparePhaseSplitFixture : IDisposable
     internal ShadowStageProbeSnapshot?[] ProbeSnapshots { get; private set; } = [];
     internal RecordingWaitCallbackResult[] WaitCallbacks { get; private set; } = [];
     internal RecordingWaitBoundary[] WaitBoundaries { get; private set; } = [];
+    internal long[][] ProbePointSignatures { get; private set; } = [];
     internal string[][] ProbeDrawOrder { get; private set; } = [];
 
     internal string ValidationProof
@@ -74,7 +75,8 @@ public sealed class PreparePhaseSplitFixture : IDisposable
     internal byte[][] Render(bool split, bool transparent, bool temporal, bool geometry, bool hdr,
         SceneDebugView debugView = SceneDebugView.None, bool resize = false, ScreenTransitionStyle? transitionStyle = null,
         BillboardBlend? atmosphereBillboards = null, ShadowStageProbeMode probeMode = ShadowStageProbeMode.Off,
-        bool pointShadows = false, bool ringWaitProbe = false, ShadowMode? directionalMode = null, bool boundWater = false)
+        bool pointShadows = false, bool ringWaitProbe = false, ShadowMode? directionalMode = null, bool boundWater = false,
+        PointShadowAttributionCapture? pointAttribution = null, bool staticPoint = false)
     {
         EnsureScene();
         IGpuDevice gpu = _gpu!.GpuDevice;
@@ -110,7 +112,8 @@ public sealed class PreparePhaseSplitFixture : IDisposable
         WaitCallbacks = new RecordingWaitCallbackResult[Frames];
         WaitBoundaries = new RecordingWaitBoundary[Frames + 1];
         ProbeDrawOrder = new string[Frames][];
-        Guid epoch = Guid.NewGuid();
+        ProbePointSignatures = new long[Frames][];
+        Guid epoch = pointAttribution?.Epoch ?? Guid.NewGuid();
         if (pointShadows)
         {
             scene.Post.Quality.Shadows.PointShadows.FaceResolution = 64;
@@ -144,7 +147,7 @@ public sealed class PreparePhaseSplitFixture : IDisposable
                     GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
                 commands.Clear();
                 commands.CommandTrace!.Clear();
-                frame.BeginShadowStageCallback(new ShadowStageProbeRequest(epoch, i + 1, probeMode));
+                frame.BeginShadowStageCallback(new ShadowStageProbeRequest(epoch, i + 1, probeMode, pointAttribution));
                 frame.BeginRecordingWaitCallback(new(epoch, i + 1, ringWaitProbe, probeMode));
                 if (ringWaitProbe) WaitBoundaries[i] = ReadWaitBoundary(device);
                 RendererFramePolicy.Run(frame, true, device, commands, Color.Black, _ =>
@@ -170,6 +173,7 @@ public sealed class PreparePhaseSplitFixture : IDisposable
                         scene.DebugLine(new Vector3(-0.8f, 0, 0), new Vector3(0.8f, 0, 0), Color.White);
                     }
                     if (pointShadows) QueueProbePoint(scene);
+                    if (staticPoint) scene.AddLight(new Vector3(0, 2, 0), Color.White, 6, 1, LightShadow.Static(71));
                     if (boundWater)
                     {
                         scene.Post.Water.SwellAmplitude = 0;
@@ -192,6 +196,8 @@ public sealed class PreparePhaseSplitFixture : IDisposable
                 Assert.True(completed.Completed);
                 Assert.Equal(probeMode == ShadowStageProbeMode.Off ? 0 : 1, completed.ProducerCount);
                 ProbeSnapshots[i] = completed.Snapshot;
+                ProbePointSignatures[i] = ((long[])typeof(Scene3D).GetField("_pointCasterSignatures",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(scene)!).ToArray();
                 ProbeDrawOrder[i] = commands.CommandTrace.Select(c => $"{c.Kind}/{c.Slot}/{c.Value}").ToArray();
             }
             // Read only after all eight frames. Per-frame drains would conceal ring-wrap lifetime bugs.

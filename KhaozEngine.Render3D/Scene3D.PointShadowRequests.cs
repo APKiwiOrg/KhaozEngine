@@ -11,6 +11,7 @@ public sealed partial class Scene3D
     {
         long probeStart = ShadowProbeTimestamp();
         bool any = GatherPointShadowRequests(Post.Quality.Shadows.PointShadows, eyeAbsolute);
+        ObservePointAttributionRequests();
         if (_shadowProbeActive)
         {
             _shadowProbeCounts.HasPointRequests = any;

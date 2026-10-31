@@ -110,6 +110,7 @@ namespace KhaozEngine.Render3D
             long selectionStart = ShadowProbeTimestamp();
             ChoosePointShadowRebuilds(cache, settings);
             ScheduleSkinnedPointShadows(cache, settings, frame);
+            ObservePointAttributionSelection();
             if (_shadowProbeActive)
             {
                 _shadowProbeCounts.SelectedTransientRows = _selectedPointTransientRequests.Count;
@@ -158,6 +159,7 @@ namespace KhaozEngine.Render3D
                     if (request.Slot >= 0) _shadowProbeCounts.TouchHits++;
                 }
                 _pointRequests[i] = request;
+                ObservePointAttributionSlot(i, cache, touch: true);
             }
 
             for (int i = 0; i < _pointRequests.Count; i++)
@@ -172,6 +174,7 @@ namespace KhaozEngine.Render3D
                     else _shadowProbeCounts.AcquireRefusals++;
                 }
                 _pointRequests[i] = request;
+                ObservePointAttributionSlot(i, cache, touch: false);
             }
 
             _shadowProbeTicks.SlotLookup = ShadowProbeElapsed(lookupStart, _shadowProbeTicks.SlotLookup);
@@ -181,6 +184,7 @@ namespace KhaozEngine.Render3D
                 PointShadowRequest request = _pointRequests[i];
                 if (request.Slot < 0 || request.Mode != LightShadowMode.Static) continue;
                 if (_shadowProbeActive) _shadowProbeCounts.Signatures++;
+                BeginPointAttributionSignature(i, cache);
                 long signature = PointCasterSignature(request.Position, request.Radius, request.NearRadius,
                     request.ExclusionMin, request.ExclusionMax);
                 // A changed signature can only ADD dirt. A freshly acquired row is already dirty, so a stale
@@ -190,6 +194,7 @@ namespace KhaozEngine.Render3D
                     cache.MarkDirty(request.Slot);
                     if (_shadowProbeActive) _shadowProbeCounts.SignatureMismatches++;
                 }
+                EndPointAttributionSignature(i, signature, cache);
                 _pointCasterSignatures[request.Slot] = signature;
             }
             _shadowProbeTicks.StaticSignatures = ShadowProbeElapsed(signaturesStart, _shadowProbeTicks.StaticSignatures);
@@ -386,18 +391,18 @@ namespace KhaozEngine.Render3D
             Vector3 exclusionMin, Vector3 exclusionMax)
         {
             ulong hash = PointSignatureSeed;
-            MixPointSignature(ref hash, unchecked((ulong)_model.InteriorResources.Version));
-            MixPointSignature(ref hash, Quantise(lightPosAbsolute.X));
-            MixPointSignature(ref hash, Quantise(lightPosAbsolute.Y));
-            MixPointSignature(ref hash, Quantise(lightPosAbsolute.Z));
-            MixPointSignature(ref hash, Quantise(radius));
-            MixPointSignature(ref hash, Quantise(nearRadius));
-            MixPointSignature(ref hash, Quantise(exclusionMin.X));
-            MixPointSignature(ref hash, Quantise(exclusionMin.Y));
-            MixPointSignature(ref hash, Quantise(exclusionMin.Z));
-            MixPointSignature(ref hash, Quantise(exclusionMax.X));
-            MixPointSignature(ref hash, Quantise(exclusionMax.Y));
-            MixPointSignature(ref hash, Quantise(exclusionMax.Z));
+            MixPointAttributionHeader(ref hash, unchecked((ulong)_model.InteriorResources.Version));
+            MixPointAttributionHeader(ref hash, Quantise(lightPosAbsolute.X));
+            MixPointAttributionHeader(ref hash, Quantise(lightPosAbsolute.Y));
+            MixPointAttributionHeader(ref hash, Quantise(lightPosAbsolute.Z));
+            MixPointAttributionHeader(ref hash, Quantise(radius));
+            MixPointAttributionHeader(ref hash, Quantise(nearRadius));
+            MixPointAttributionHeader(ref hash, Quantise(exclusionMin.X));
+            MixPointAttributionHeader(ref hash, Quantise(exclusionMin.Y));
+            MixPointAttributionHeader(ref hash, Quantise(exclusionMin.Z));
+            MixPointAttributionHeader(ref hash, Quantise(exclusionMax.X));
+            MixPointAttributionHeader(ref hash, Quantise(exclusionMax.Y));
+            MixPointAttributionHeader(ref hash, Quantise(exclusionMax.Z));
 
             // The casters come from the frame's index (Scene3D.PointCasters.cs): exactly the ones the pass will draw
             // for this light, in ascending slot order, which is the order the walk over every run visited them in.
@@ -410,8 +415,10 @@ namespace KhaozEngine.Render3D
             {
                 MeshHandle mesh = _runs[_pointCasterIndex.RunOf(slot)].Mesh;
                 ref ModelRenderer.InstanceData data = ref instances[slot];
+                uint dissolve = PointDissolveWord(data), kind = (uint)PointCasterKind(slot);
+                ObservePointAttributionRigid(slot, mesh, data, dissolve, kind);
                 MixPointSignature(ref hash, SignatureWord((uint)mesh.Index, (uint)mesh.Generation));
-                MixPointSignature(ref hash, SignatureWord(PointDissolveWord(data), (uint)PointCasterKind(slot)));
+                MixPointSignature(ref hash, SignatureWord(dissolve, kind));
                 MixPointSignature(ref hash, data.Model);
             }
             _shadowProbeTicks.RigidSignatureFold = ShadowProbeElapsed(foldStart, _shadowProbeTicks.RigidSignatureFold);

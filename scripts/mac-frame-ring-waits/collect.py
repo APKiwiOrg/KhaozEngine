@@ -19,7 +19,7 @@ if __name__ == '__main__':
     sys.dont_write_bytecode = True
 
 from analyze import INT_MAX, REQUIRED_CLOSURE, analyse, guid, integer
-from inputs import HELPER_FILES, PURPOSES, RELEASE_PURPOSE, capture_profile, validate_contract
+from inputs import HELPER_FILES, PURPOSES, RELEASE_PURPOSE, POINT_PURPOSE, helper_files, capture_profile, validate_contract
 
 CAPACITY_WORK_ROOT = Path('/tmp').resolve()/'grimhollow-mac-frame-performance'
 
@@ -86,7 +86,7 @@ def validate_preparation(manifest):
         if m.get('purpose') is not None:
             validate_contract(m['inputContract'])
             declared={row['path'] for row in m['sourceHashes']}
-            require({'scripts/mac-frame-ring-waits/'+name for name in HELPER_FILES} <= declared,
+            require({'scripts/mac-frame-ring-waits/'+name for name in helper_files(m['purpose'])} <= declared,
                     'Stability preparation omits helper source identity')
         else:
             require('inputContract' not in m,'Input contract requires a declared purpose')
@@ -94,7 +94,7 @@ def validate_preparation(manifest):
             require(re.fullmatch('[0-9a-f]{40}',m[key]) is not None, 'Missing exact code commit')
         require(integer(m['runtimeFileCount'])==profile['runtimeFiles'] and integer(m['contentFileCount'])==profile['contentFiles'],
                 'Frozen inventory counts changed')
-        require(m.get('purpose')!=RELEASE_PURPOSE or 'worldSelection' in m, 'Released preparation requires exact world selection')
+        require(m.get('purpose') not in (RELEASE_PURPOSE, POINT_PURPOSE) or 'worldSelection' in m, 'Released preparation requires exact world selection')
         if 'worldSelection' in m:
             from capacity import validate_world_manifest
             validate_world_manifest(m)
@@ -236,8 +236,8 @@ def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
-def helper_hashes():
-    return {name:digest(Path(__file__).with_name(name)) for name in HELPER_FILES}
+def helper_hashes(purpose=None):
+    return {name:digest(Path(__file__).with_name(name)) for name in helper_files(purpose)}
 
 
 def metadata_bytes(record):
@@ -257,7 +257,7 @@ def archive_outcome(args,root,preparation,result,metadata,audit_path,record,*,me
         sources=dict(probeCommit=record.get('probeCommit'),gameCommit=record.get('gameCommit'),
                      purpose=record.get('purpose'),inputContract=record.get('inputContract'),
                      frozenEngineBase=record.get('frozenEngineBase'),sourceHashes=record.get('sourceHashes'),
-                     helperHashes=record.get('helperHashes'),actualHelperHashes=helper_hashes(),
+                     helperHashes=record.get('helperHashes'),actualHelperHashes=helper_hashes(record.get('purpose')),
                      metalAssembly=record.get('metalAssembly'),codeIdentities=record.get('codeIdentities'),
                      worldSelection=record.get('worldSelection'))
         with archive._directory(root) as directory:
@@ -410,7 +410,7 @@ def main():
             startup_path=canonical_owned(args.startup_log,root)
             require(startup_path.parent==root and not args.startup_log.is_symlink(),'Startup log must be owned and direct')
             selected=select_startup(read_regular_bytes(startup_path))
-            record.update(startupProof=selected,helperHashes=helper_hashes())
+            record.update(startupProof=selected,helperHashes=helper_hashes(record.get('purpose')))
             metal=next(x for x in manifest['replacements'] if x['name']=='KhaozEngine.Gpu.Metal')
             validate_startup(selected,metal,args.expected_recording_slots,manifest['probeCommit'],profile=capture_profile(manifest))
             declared_sources={row['path']:row['sha256'] for row in manifest['sourceHashes']}
@@ -472,7 +472,7 @@ def main():
         require(stat_key(result)==result_stat,'Result changed while being read')
         record['resultSha256']=hashlib.sha256(raw).hexdigest()
         if args.expected_recording_slots is not None:
-            require(helper_hashes()==record['helperHashes'],'Collection helpers changed during capture')
+            require(helper_hashes(record.get('purpose'))==record['helperHashes'],'Collection helpers changed during capture')
             require(select_startup(read_regular_bytes(startup_path))==record['startupProof'],'Startup proof changed during capture')
         audit=analyse(json.loads(raw),1 if args.mode=='counts' else 2,pid,record,
                       expected_recording_slots=args.expected_recording_slots)

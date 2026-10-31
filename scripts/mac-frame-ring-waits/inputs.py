@@ -14,7 +14,14 @@ RELEASE_PURPOSE = 'paused-sun-input-stability-release-21.21.0'
 RELEASE_GAME_COMMIT = 'bfde827b4f959cbdbfd44c14e39ec85b7c35fbdc'
 RELEASE_CONTRACT = dict(CONTRACT, purpose=RELEASE_PURPOSE, engineBase='84d8fb7f2b34882eb387e252b4058f155ba5700c',
                         gameCommit=RELEASE_GAME_COMMIT, engineSourceVersion='21.21.0', assemblyVersion='21.21.0.0')
-PURPOSES = (PURPOSE, RELEASE_PURPOSE)
+POINT_PURPOSE = 'point-shadow-attribution-release-21.21.0'
+POINT_CONTRACT = dict(RELEASE_CONTRACT, purpose=POINT_PURPOSE, schemaVersion=6)
+POINT_HELPER_FILES = HELPER_FILES + ('point_attribution.py',)
+PURPOSES = (PURPOSE, RELEASE_PURPOSE, POINT_PURPOSE)
+
+
+def helper_files(purpose=None):
+    return POINT_HELPER_FILES if purpose == POINT_PURPOSE else HELPER_FILES
 DECISION_FLAGS = ('active rendered skipped hadPrevious anySkinnedCaster skinnedCastersCleared '
                   'resolutionChanged lightMatrixChanged casterDataChanged').split()
 COUNTS = 'prefixCount viewCount cascadeObservationCount cameraCount lightCount decisionCount'.split()
@@ -65,7 +72,8 @@ def _first_difference(left, right):
 
 
 def validate_contract(contract):
-    expected_contract = RELEASE_CONTRACT if type(contract) is dict and contract.get('purpose') == RELEASE_PURPOSE else CONTRACT
+    purpose = contract.get('purpose') if type(contract) is dict else None
+    expected_contract = POINT_CONTRACT if purpose == POINT_PURPOSE else RELEASE_CONTRACT if purpose == RELEASE_PURPOSE else CONTRACT
     _object(contract, expected_contract, 'inputContract')
     for key, expected in expected_contract.items():
         _require(type(contract[key]) is type(expected) and contract[key] == expected,
@@ -80,7 +88,7 @@ def capture_profile(value):
         _require(validate_contract(value['inputContract'])['purpose'] == purpose, 'Input contract purpose differs')
     else:
         _require('inputContract' not in value, 'Input contract requires a declared purpose')
-    if purpose == RELEASE_PURPOSE:
+    if purpose in (RELEASE_PURPOSE, POINT_PURPOSE):
         return dict(runtimeFiles=661, contentFiles=411, engineVersion='21.21.0', assemblyVersion='21.21.0.0',
                     gameCommit=RELEASE_GAME_COMMIT)
     return dict(runtimeFiles=644, contentFiles=395, engineVersion='21.13.0', assemblyVersion='21.13.0.0',
@@ -230,7 +238,7 @@ def audit_observations(report, contract):
     total = 0
     try:
         c = validate_contract(contract)
-        _integer(report['schemaVersion'], 5, 5, 'schemaVersion')
+        _integer(report['schemaVersion'], c['schemaVersion'], c['schemaVersion'], 'schemaVersion')
         total = _integer(report['sampleCount'], 1, 4096, 'sampleCount')
         _require(type(report['samples']) is list and len(report['samples']) == total, 'sample count differs')
         _integer(report['shadowStages']['mode'], c['mode'], c['mode'], 'shadowStages.mode')

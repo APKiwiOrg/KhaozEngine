@@ -25,7 +25,7 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
     FrameDiagnosticsBoundary _previous;
     int _count;
 
-    internal FrameDiagnosticsRecorder(string path, long frequency, int capacity = 4096, ShadowStageProbeMode mode = ShadowStageProbeMode.Off, bool ringWaitProbe = false)
+    internal FrameDiagnosticsRecorder(string path, long frequency, int capacity = 4096, ShadowStageProbeMode mode = ShadowStageProbeMode.Off, bool ringWaitProbe = false, bool pointAttribution = false)
     {
         if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("An absolute result path is required.", nameof(path));
         if (frequency <= 0) throw new ArgumentOutOfRangeException(nameof(frequency));
@@ -33,6 +33,9 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
         if (mode is < ShadowStageProbeMode.Off or > ShadowStageProbeMode.Timings) throw new ArgumentOutOfRangeException(nameof(mode));
         if (ringWaitProbe && mode == ShadowStageProbeMode.Off)
             throw new ArgumentException("KE_RING_WAIT_PROBE requires counts or timings shadow mode.", nameof(ringWaitProbe));
+        if (pointAttribution && mode != ShadowStageProbeMode.Counts)
+            throw new ArgumentException("Point attribution requires counts mode.", nameof(pointAttribution));
+        _pointAttribution = pointAttribution ? new PointShadowAttributionCapture(_shadowEpoch) : null;
         _ringWaitProbe = ringWaitProbe;
         _shadowMode = mode;
         _path = Path.GetFullPath(path);
@@ -49,7 +52,8 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
         {
             string? path = Environment.GetEnvironmentVariable("KE_FRAME_DIAGNOSTICS_PATH");
             string? mode = Environment.GetEnvironmentVariable("KE_SHADOW_STAGE_MODE");
-            return FromSettings(path, mode, Environment.GetEnvironmentVariable("KE_RING_WAIT_PROBE"));
+            return FromSettings(path, mode, Environment.GetEnvironmentVariable("KE_RING_WAIT_PROBE"),
+                Environment.GetEnvironmentVariable("KE_POINT_SHADOW_ATTRIBUTION"));
         }
         catch (Exception error)
         {
@@ -103,6 +107,7 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
         // The final boundary has been captured. Everything allocating, formatting or doing I/O is
         // outside the measured interval. Neither this buffer nor its boundaries are modified again.
         _phase = Phase.Stopped;
+        _pointAttribution?.Freeze();
         try { Publication = Task.Run(Publish); }
         catch (Exception error) { Fail("publication could not start (" + error.GetType().Name + ")"); }
     }
@@ -127,7 +132,7 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
         string? temporary = null;
         try
         {
-            var report = FrameDiagnosticsReport.Create(_frequency, _baseline, _previous, _samples, _count, reason, _shadowMode, _ringWaitProbe);
+            var report = FrameDiagnosticsReport.Create(_frequency, _baseline, _previous, _samples, _count, reason, _shadowMode, _ringWaitProbe, _pointAttribution);
             temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
@@ -155,6 +160,7 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
     void Fail(string reason)
     {
         _phase = Phase.Stopped;
+        _pointAttribution?.Freeze();
         Failure = reason;
         Log("KE frame diagnostics failed. " + reason + ". No completed result was published.");
     }

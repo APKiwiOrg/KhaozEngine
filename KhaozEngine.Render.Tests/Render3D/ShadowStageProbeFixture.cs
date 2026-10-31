@@ -34,9 +34,10 @@ internal sealed class ShadowStageProbeFixture : IDisposable
     }
     internal ShadowStageProbeSnapshot Render(ShadowStageProbeMode mode, bool point = true, bool rigid = true,
         FoliageBatch? foliage = null, bool staticLight = true, bool dynamicLight = true, bool duplicate = false,
-        Action<Scene3D>? extraQueue = null, FoliageRenderSettings? foliageSettings = null)
+        Action<Scene3D>? extraQueue = null, FoliageRenderSettings? foliageSettings = null,
+        PointShadowAttributionCapture? attribution = null, ShadowStageProbeRequest? probeRequest = null)
     {
-        var request = new ShadowStageProbeRequest(new Guid("c49950ca-e4a6-493d-a146-ac14c91061dc"), ++_sequence, mode);
+        var request = probeRequest ?? new ShadowStageProbeRequest(attribution?.Epoch ?? new Guid("c49950ca-e4a6-493d-a146-ac14c91061dc"), ++_sequence, mode, attribution);
         Frame.BeginShadowStageCallback(request);
         Scene.ConfigureShadowStageProbe(request);
         Scene.Begin();

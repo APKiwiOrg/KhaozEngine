@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Text.Json.Serialization;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Windowing;
@@ -14,20 +15,21 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
     string EngineAssembly, long StopwatchFrequency, double DurationSeconds, int SampleCount, string StopReason,
     FrameDiagnosticsBoundary Baseline, FrameDiagnosticsBoundary End, FrameDiagnosticsSample[] Samples,
     FrameDiagnosticsSummary Summary, FrameDiagnosticsShadowSummary ShadowStages, FrameDiagnosticsRingWaitSummary RecordingWaits,
-    FrameDiagnosticsCodeIdentity AppCodeIdentity, FrameDiagnosticsCodeIdentity EngineCodeIdentity)
+    FrameDiagnosticsCodeIdentity AppCodeIdentity, FrameDiagnosticsCodeIdentity EngineCodeIdentity,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PointShadowAttributionCapture? PointShadowAttribution = null)
 {
     internal static FrameDiagnosticsReport Create(long frequency, FrameDiagnosticsBoundary baseline,
-        FrameDiagnosticsBoundary end, FrameDiagnosticsSample[] buffer, int count, string reason, ShadowStageProbeMode mode = ShadowStageProbeMode.Off, bool ringWaitProbe = false)
+        FrameDiagnosticsBoundary end, FrameDiagnosticsSample[] buffer, int count, string reason, ShadowStageProbeMode mode = ShadowStageProbeMode.Off, bool ringWaitProbe = false, PointShadowAttributionCapture? pointAttribution = null)
     {
         var samples = new FrameDiagnosticsSample[count];
         Array.Copy(buffer, samples, count);
         var engine = typeof(FrameDiagnosticsRecorder).Assembly;
-        return new FrameDiagnosticsReport(5, Environment.ProcessId,
+        return new FrameDiagnosticsReport(pointAttribution is null ? 5 : 6, Environment.ProcessId,
             Assembly.GetEntryAssembly()?.FullName ?? "unknown", engine.FullName + " MVID=" + engine.ManifestModule.ModuleVersionId,
             frequency, (end.Timestamp - baseline.Timestamp) / (double)frequency, count, reason, baseline, end, samples,
             FrameDiagnosticsSummary.Create(baseline, end, samples, reason == "capacity", count == buffer.Length),
             FrameDiagnosticsShadowSummary.Create(samples, mode), FrameDiagnosticsRingWaitSummary.Create(samples, ringWaitProbe),
-            FrameDiagnosticsCodeIdentity.Read(Assembly.GetEntryAssembly()), FrameDiagnosticsCodeIdentity.Read(engine));
+            FrameDiagnosticsCodeIdentity.Read(Assembly.GetEntryAssembly()), FrameDiagnosticsCodeIdentity.Read(engine), pointAttribution);
     }
 }
 

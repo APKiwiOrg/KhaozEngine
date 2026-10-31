@@ -26,6 +26,7 @@ public sealed partial class Scene3D
         _shadowProbeTicks = new ShadowStageProbeTicks { Frequency = _shadowProbeFrequency };
         _shadowProbeClockValid = true;
         _shadowInputObservation.Reset(request);
+        ConfigurePointAttribution(request);
         if (_shadowProbeActive) _shadowProbeConfiguration = ShadowProbeConfiguration();
     }
 
@@ -38,7 +39,7 @@ public sealed partial class Scene3D
                 _shadowProbeClockValid ? ShadowStageProbeStatus.Valid : ShadowStageProbeStatus.InvalidClock,
                 _shadowProbeConfiguration, _shadowProbeCounts,
                 _shadowProbeRequest.Mode == ShadowStageProbeMode.Timings ? _shadowProbeTicks : null,
-                _shadowInputObservation.Finish());
+                _shadowInputObservation.Finish(), FinishPointAttribution());
             frame.PublishShadowStageSnapshot(in snapshot);
         }
         finally { CancelShadowStageProbe(); }
@@ -46,6 +47,7 @@ public sealed partial class Scene3D
 
     public void CancelShadowStageProbe()
     {
+        CancelPointAttribution();
         _shadowProbeActive = false;
         _shadowProbeRequest = default;
     }

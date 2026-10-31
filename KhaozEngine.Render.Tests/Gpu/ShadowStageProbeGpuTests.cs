@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using KhaozEngine.Render3D;
 using KhaozEngine.Windowing;
@@ -74,6 +75,37 @@ public sealed class ShadowStageProbeGpuTests(PreparePhaseSplitFixture fixture, I
                 + $"foliageFaceCalls={c.PointFoliageFaceDrawCalls}, clockReads={fixture.ProbeSnapshots[i]!.Value.Timings!.Value.TimestampReads}");
         }
         log.WriteLine(fixture.ValidationProof);
+    }
+
+    [GpuFact]
+    public void PointShadowAttribution_preserves_native_bytes_command_order_and_runtime_signatures()
+    {
+        fixture.Render(true, false, false, true, false, pointShadows: true, staticPoint: true);
+        var off = fixture.Render(true, false, false, true, false, probeMode: ShadowStageProbeMode.Counts,
+            pointShadows: true, staticPoint: true);
+        var offOrder = fixture.ProbeDrawOrder;
+        var offCounts = fixture.ProbeSnapshots.Select(s => s!.Value.Counters).ToArray();
+        var offSignatures = fixture.ProbePointSignatures;
+        var capture = new PointShadowAttributionCapture(Guid.NewGuid(), new(8, 8, 64, 128, 512, 64, 64, 64));
+        var enabled = fixture.Render(true, false, false, true, false, probeMode: ShadowStageProbeMode.Counts,
+            pointShadows: true, pointAttribution: capture, staticPoint: true);
+        capture.Freeze();
+        Assert.Equal(PointAttributionCapacity.None, capture.Overflow);
+        Assert.Equal(8, capture.FrameCount);
+        for (int i = 0; i < 8; i++)
+        {
+            Assert.Equal(off[i], enabled[i]); Assert.Equal(offOrder[i], fixture.ProbeDrawOrder[i]);
+            Assert.Equal(offCounts[i], fixture.ProbeSnapshots[i]!.Value.Counters);
+            Assert.Equal(offSignatures[i], fixture.ProbePointSignatures[i]);
+            var frame = capture.GetFrame(i);
+            Assert.True(frame.Complete); Assert.Equal(PointAttributionAvailability.Available, frame.Availability);
+            var row = capture.GetRow(frame.RowStart);
+            Assert.Equal(71, row.Key); Assert.True(row.Completed);
+            Assert.Equal(KhaozEngine.Tests.Render3D.PointShadowAttributionProducerTests.Reconstruct(capture, row), row.NewSignature);
+            Assert.True(capture.GetSpan(row.Span).Count > capture.GetSpan(row.Span).RigidCount);
+        }
+        log.WriteLine(fixture.ValidationProof);
+        log.WriteLine("8 fixed frames per mode. Moving rigid geometry and animated rest-pose foliage preserve output bytes, same-frame capture bytes, command order, counters and computed signatures.");
     }
 
     [GpuFact]

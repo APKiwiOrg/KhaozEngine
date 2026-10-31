@@ -160,6 +160,7 @@ public sealed partial class Scene3D
         {
             FoliagePointSource source = _foliagePointSources[reference.SourceOrdinal];
             ref readonly FoliagePointShadowCaster caster = ref source.Stream.Casters[(int)reference.ProxySlot];
+            ObservePointAttributionFoliage(reference.SourceOrdinal, (int)reference.ProxySlot, caster.Mesh, caster.Transform);
             MixPointSignature(ref hash, SignatureWord((uint)caster.Mesh.Index, (uint)caster.Mesh.Generation));
             MixPointSignature(ref hash, caster.Transform);
         }

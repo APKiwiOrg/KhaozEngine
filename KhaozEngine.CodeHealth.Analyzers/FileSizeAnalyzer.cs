@@ -44,7 +44,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
             if (baselineText is null) return;
 
             var parsed = BaselineFile.Parse(baselineText.ToString());
-            var root = NormalizeSeparators(Path.GetDirectoryName(baseline.Path) ?? string.Empty);
+            var root = AnalyzerPathPolicy.NormalizeSeparators(Path.GetDirectoryName(baseline.Path) ?? string.Empty);
 
             var cap = DefaultCap;
             if (context.Options.AnalyzerConfigOptionsProvider.GlobalOptions.TryGetValue(
@@ -61,14 +61,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
             SyntaxTreeAnalysisContext context, BaselineFile.Baseline baseline, string root, int cap)
         {
             if (context.IsGeneratedCode) return;
-
-            var path = context.Tree.FilePath;
-            if (string.IsNullOrEmpty(path)) return;
-
-            var full = NormalizeSeparators(path);
-            if (!full.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase)) return;
-            var relative = full.Substring(root.Length + 1);
-            if (IsExcluded(relative)) return;
+            if (!AnalyzerPathPolicy.TryGetCheckedRelativePath(context.Tree.FilePath, root, out var relative)) return;
             if (baseline.IsExempt(relative)) return;
 
             var text = context.Tree.GetText(context.CancellationToken);
@@ -107,25 +100,5 @@ namespace KhaozEngine.CodeHealth.Analyzers
             }
             return count;
         }
-
-        // Mirror of is_excluded in check-file-size.sh: generated and vendored code is not ours to shrink.
-        private static bool IsExcluded(string relative)
-        {
-            if (relative.StartsWith("obj/", StringComparison.Ordinal) ||
-                relative.StartsWith("bin/", StringComparison.Ordinal) ||
-                relative.StartsWith("vendor/", StringComparison.Ordinal) ||
-                relative.Contains("/obj/") ||
-                relative.Contains("/bin/") ||
-                relative.Contains("/vendor/"))
-            {
-                return true;
-            }
-            return relative.EndsWith(".Designer.cs", StringComparison.Ordinal) ||
-                   relative.EndsWith(".g.cs", StringComparison.Ordinal) ||
-                   relative.EndsWith(".generated.cs", StringComparison.Ordinal) ||
-                   relative.EndsWith(".AssemblyInfo.cs", StringComparison.Ordinal);
-        }
-
-        private static string NormalizeSeparators(string path) => path.Replace('\\', '/');
     }
 }

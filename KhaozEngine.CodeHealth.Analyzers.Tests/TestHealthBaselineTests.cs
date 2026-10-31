@@ -1,7 +1,7 @@
 using KhaozEngine.CodeHealth.Analyzers;
 using Xunit;
 
-namespace KhaozEngine.CodeHealth.Analyzers.Tests;
+namespace KhaozEngine.Tests.CodeHealth;
 
 public class TestHealthBaselineTests
 {

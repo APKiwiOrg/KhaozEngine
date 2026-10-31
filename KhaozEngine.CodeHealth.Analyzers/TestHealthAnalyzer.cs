@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
@@ -40,7 +39,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
             if (text is null) return;
 
             var baseline = TestHealthBaseline.Parse(text.ToString());
-            var root = NormalizeSeparators(Path.GetDirectoryName(baselineFile.Path) ?? string.Empty);
+            var root = AnalyzerPathPolicy.NormalizeSeparators(Path.GetDirectoryName(baselineFile.Path) ?? string.Empty);
             var reportMode = context.Options.AnalyzerConfigOptionsProvider.GlobalOptions.TryGetValue(
                 "build_property.KhaozTestHealthMode", out var mode) && mode == "report";
             context.RegisterSemanticModelAction(modelContext => CheckTree(modelContext, symbols, baseline, root, reportMode));
@@ -50,14 +49,8 @@ namespace KhaozEngine.CodeHealth.Analyzers
             TestHealthBaseline baseline, string root, bool reportMode)
         {
             if (context.IsGeneratedCode) return;
-
-            var path = context.SemanticModel.SyntaxTree.FilePath;
-            if (string.IsNullOrEmpty(path)) return;
-
-            var full = NormalizeSeparators(path);
-            if (!full.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase)) return;
-            var relative = full.Substring(root.Length + 1);
-            if (IsExcluded(relative)) return;
+            if (!AnalyzerPathPolicy.TryGetCheckedRelativePath(
+                    context.SemanticModel.SyntaxTree.FilePath, root, out var relative)) return;
 
             ReportFindings(context, baseline, relative, reportMode, TestHealthDiagnostics.NonPublicReflection,
                 PrivateReflectionDetector.Find(context.SemanticModel, symbols, context.CancellationToken));
@@ -81,25 +74,5 @@ namespace KhaozEngine.CodeHealth.Analyzers
                     messageArgs: new object[] { relative, locations.Length, allowance }));
             }
         }
-
-        // Keep the path exclusions in step with FileSizeAnalyzer.
-        private static bool IsExcluded(string relative)
-        {
-            if (relative.StartsWith("obj/", StringComparison.Ordinal) ||
-                relative.StartsWith("bin/", StringComparison.Ordinal) ||
-                relative.StartsWith("vendor/", StringComparison.Ordinal) ||
-                relative.Contains("/obj/") ||
-                relative.Contains("/bin/") ||
-                relative.Contains("/vendor/"))
-            {
-                return true;
-            }
-            return relative.EndsWith(".Designer.cs", StringComparison.Ordinal) ||
-                   relative.EndsWith(".g.cs", StringComparison.Ordinal) ||
-                   relative.EndsWith(".generated.cs", StringComparison.Ordinal) ||
-                   relative.EndsWith(".AssemblyInfo.cs", StringComparison.Ordinal);
-        }
-
-        private static string NormalizeSeparators(string path) => path.Replace('\\', '/');
     }
 }

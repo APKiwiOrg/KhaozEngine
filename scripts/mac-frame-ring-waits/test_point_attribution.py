@@ -1,5 +1,7 @@
 import copy
+import json
 import unittest
+from unittest.mock import patch
 import point_attribution as point
 from analyze import analyse
 from test_release_identity import release_fixture, release_contract
@@ -41,7 +43,7 @@ def fixture(first=None, second=None, *, header_change=False):
                  matrixOrder='row-major-M11-M44', frames=[], rows=[], casters=[], spans=[], references=[], inputs=[])
     report['pointShadowAttribution'] = arena
     previous = 0
-    for index, casters in enumerate((first or [caster()], second or [caster(x=1)])):
+    for index, casters in enumerate((first if first is not None else [caster()], second if second is not None else [caster(x=1)])):
         header = [0]*12
         header[2], header[4] = 2000, 6000
         if header_change and index: header[1] = 1
@@ -58,13 +60,18 @@ def fixture(first=None, second=None, *, header_change=False):
             arena['references'].extend(refs)
             arena['spans'].append(span)
         value = signature(header, casters)
+        dirty = index == 0 or previous != value
+        rigid_count = sum(c['kind'] == 0 for c in casters)
+        foliage_count = len(casters)-rigid_count
+        rigid_draws = 6 if dirty and rigid_count else 0
+        foliage_draws = 6 if dirty and foliage_count else 0
         row = dict(key=9, mode=1, lightIndex=0, ordinal=0, slot=1,
                    slotOutcome=2 if not index else 1, priorDirty=not index,
                    priorLastRenderedFrame=-(1 << 31) if not index else 100,
                    signatureStatus=1, oldSignature=previous, newSignature=value, mismatch=previous != value,
-                   dirtyAfter=True, span=span_id, selectedOrdinal=0, completed=True, transientSlot=-1,
-                   transientSelectedOrdinal=-1, transientCompleted=False, rigidDraws=6, foliageDraws=0,
-                   dynamicSkinnedDraws=0, transientSkinnedDraws=0, rigidInstances=6*len(casters), foliageInstances=0,
+                   dirtyAfter=dirty, span=span_id, selectedOrdinal=0 if dirty else -1, completed=dirty, transientSlot=-1,
+                   transientSelectedOrdinal=-1, transientCompleted=False, rigidDraws=rigid_draws, foliageDraws=foliage_draws,
+                   dynamicSkinnedDraws=0, transientSkinnedDraws=0, rigidInstances=6*rigid_count if dirty else 0, foliageInstances=6*foliage_count if dirty else 0,
                    input=arena['inputs'].index(input_row))
         arena['rows'].append(row)
         frame = dict(epoch=epoch, sequence=index+1, sceneFrame=100+index, rowStart=index, rowCount=1,
@@ -73,12 +80,75 @@ def fixture(first=None, second=None, *, header_change=False):
         arena['frames'].append(frame)
         snapshot = report['samples'][index]['shadowStage']['callback']['snapshot']
         snapshot['pointAttribution'] = frame.copy()
-        snapshot['counters'].update(selectedTransientRows=0, staticRequests=1, dynamicRequests=0, signatures=1, signatureMismatches=int(previous != value),
-                                    selectedStaticRows=1, selectedDynamicRows=0, completedStaticRebuilds=1, completedDynamicRenders=0,
-                                    pointFaceDrawCalls=6, pointFoliageFaceDrawCalls=0, pointDynamicSkinnedFaceDrawCalls=0,
-                                    pointTransientSkinnedFaceDrawCalls=0, pointRigidIssuedInstances=6*len(casters), pointFoliageIssuedInstances=0)
+        snapshot['configuration'].update(pointRows=8, transientRows=0)
+        snapshot['counters'].update(hasPointRequests=True, pointAtlasAvailable=True, packedRows=int(dirty),
+                                    touchAttempts=1, touchHits=index, acquireAttempts=1-index, acquireSuccesses=1-index, acquireRefusals=0,
+                                    selectedTransientRows=0, staticRequests=1, dynamicRequests=0, signatures=1, signatureMismatches=int(previous != value),
+                                    selectedStaticRows=int(dirty), selectedDynamicRows=0, completedStaticRebuilds=int(dirty), completedDynamicRenders=0,
+                                    pointFaceDrawCalls=rigid_draws+foliage_draws, pointFoliageFaceDrawCalls=foliage_draws, pointDynamicSkinnedFaceDrawCalls=0,
+                                    pointTransientSkinnedFaceDrawCalls=0, pointRigidIssuedInstances=6*rigid_count if dirty else 0,
+                                    pointFoliageIssuedInstances=6*foliage_count if dirty else 0)
         previous = value
     return report, proof
+
+
+def mixed_work_fixture():
+    r, p = fixture()
+    a = r['pointShadowAttribution']
+    raw_input = copy.deepcopy(a['inputs'][0]); raw_input['headerWords'] = [0]*12
+    a['inputs'].append(raw_input)
+    rows = []
+    for i in range(2):
+        static = a['rows'][i]
+        static.update(transientSlot=0, transientSelectedOrdinal=2, transientCompleted=True, transientSkinnedDraws=6)
+        dynamic = copy.deepcopy(static)
+        dynamic.update(key=1, mode=2, lightIndex=1, ordinal=1, slot=7 if i == 0 else 0, slotOutcome=2,
+                       priorDirty=True, priorLastRenderedFrame=-(1 << 31), signatureStatus=0,
+                       oldSignature=0, newSignature=0, mismatch=False, dirtyAfter=True, span=-1, input=1,
+                       selectedOrdinal=1, completed=True, transientSlot=-1, transientSelectedOrdinal=-1,
+                       transientCompleted=False, rigidDraws=0, rigidInstances=0,
+                       dynamicSkinnedDraws=6, transientSkinnedDraws=0)
+        rows.extend((static, dynamic))
+        frame = a['frames'][i]; frame.update(rowStart=2*i, rowCount=2, inputCount=2)
+        snapshot = r['samples'][i]['shadowStage']['callback']['snapshot']
+        snapshot['pointAttribution'] = frame.copy()
+        snapshot['configuration'].update(transientRows=1)
+        snapshot['counters'].update(dynamicRequests=1, touchAttempts=2, touchHits=i,
+                                    acquireAttempts=2-i, acquireSuccesses=2-i,
+                                    selectedDynamicRows=1, selectedTransientRows=1, completedDynamicRenders=1,
+                                    packedRows=3, pointFaceDrawCalls=18,
+                                    pointDynamicSkinnedFaceDrawCalls=6, pointTransientSkinnedFaceDrawCalls=6)
+    a['rows'] = rows
+    return r, p
+
+
+def unavailable_fixture(disabled=False, retained=False):
+    r, p = fixture()
+    a = r['pointShadowAttribution']
+    a.update(casters=[], spans=[], references=[], inputs=[copy.deepcopy(a['inputs'][0])])
+    a['inputs'][0]['headerWords'] = [0]*12
+    rows = []
+    for i in range(2):
+        if not disabled:
+            row = a['rows'][i]
+            row.update(slot=-1, slotOutcome=0, priorDirty=False, priorLastRenderedFrame=-(1 << 31),
+                       signatureStatus=3, oldSignature=0, newSignature=0, mismatch=False, dirtyAfter=False,
+                       span=-1, input=0, selectedOrdinal=-1, completed=False, rigidDraws=0, rigidInstances=0)
+            rows.append(row)
+        frame = a['frames'][i]
+        frame.update(rowStart=len(rows)-(0 if disabled else 1), rowCount=0 if disabled else 1,
+                     casterCount=0, spanCount=0, referenceCount=0, inputCount=1,
+                     availability=2 if disabled else 3)
+        snapshot = r['samples'][i]['shadowStage']['callback']['snapshot']
+        snapshot['pointAttribution'] = frame.copy()
+        snapshot['configuration'].update(pointEnabled=not disabled, pointRows=8 if retained else 0, transientRows=0)
+        snapshot['counters'].update(hasPointRequests=not disabled, pointAtlasAvailable=retained,
+                                    staticRequests=0 if disabled else 1, touchAttempts=0, touchHits=0,
+                                    acquireAttempts=0, acquireSuccesses=0, signatures=0, signatureMismatches=0,
+                                    selectedStaticRows=0, completedStaticRebuilds=0, packedRows=0,
+                                    pointFaceDrawCalls=0, pointRigidIssuedInstances=0)
+    a['rows'] = rows
+    return r, p
 
 
 class PointAttributionTests(unittest.TestCase):
@@ -187,6 +257,23 @@ class PointAttributionTests(unittest.TestCase):
         history = self.audit(r, p)['lights'][0]['history'][1]
         self.assertEqual(['keyed-transform'], history['classifications'])
 
+    def test_unique_keys_move_when_submission_order_preserves_all_signature_inputs(self):
+        r, p = fixture([caster(71, 0), caster(72, 1065353216)], [caster(72, 0), caster(71, 1065353216)])
+        a = r['pointShadowAttribution']
+        self.assertEqual(a['rows'][0]['newSignature'], a['rows'][1]['newSignature'])
+        result = self.audit(r, p)
+        self.assertEqual('valid', result['integrity']['status'], result)
+        history = result['lights'][0]['history'][1]
+        self.assertIn('keyed-transform', history['classifications'])
+        self.assertEqual({71, 72}, {c['motionKey'] for c in history['keyedChanges']})
+        self.assertFalse(history['signatureInputsChanged'])
+        self.assertFalse(history['mismatch'])
+        self.assertFalse(history['rebuilt'])
+        self.assertEqual(2, result['lights'][0]['firstChange']['sequence'])
+        full = analyse(r, 1, 123, p, expected_recording_slots=3)
+        self.assertEqual('valid', full['status'], full)
+        self.assertFalse(full['pointAttribution']['lights'][0]['history'][1]['signatureInputsChanged'])
+
     def test_shared_static_slot_can_be_selected_after_a_later_request_adds_dirt(self):
         r, p = fixture(second=[caster()])
         a = r['pointShadowAttribution']
@@ -194,11 +281,11 @@ class PointAttributionTests(unittest.TestCase):
         for i in range(2):
             first = a['rows'][i]
             second = copy.deepcopy(first)
-            second.update(ordinal=1, lightIndex=1, selectedOrdinal=1)
+            second.update(ordinal=1, lightIndex=1, selectedOrdinal=1, completed=True, rigidDraws=6, rigidInstances=6)
             if i == 0:
                 second.update(oldSignature=first['newSignature'], mismatch=False, priorDirty=True)
             else:
-                first.update(priorDirty=False, mismatch=False, dirtyAfter=False)
+                first.update(priorDirty=False, mismatch=False, dirtyAfter=False, selectedOrdinal=0, completed=True, rigidDraws=6, rigidInstances=6)
                 changed = copy.deepcopy(a['inputs'][0]); changed['headerWords'][1] = 1
                 a['inputs'].append(changed)
                 second.update(priorDirty=False, mismatch=True, dirtyAfter=True, input=1,
@@ -210,7 +297,8 @@ class PointAttributionTests(unittest.TestCase):
             snapshot['pointAttribution'] = frame.copy()
             snapshot['counters'].update(staticRequests=2, signatures=2, signatureMismatches=1,
                                         selectedStaticRows=2, completedStaticRebuilds=2,
-                                        pointFaceDrawCalls=12, pointRigidIssuedInstances=12)
+                                        pointFaceDrawCalls=12, pointRigidIssuedInstances=12, packedRows=2, touchAttempts=2, touchHits=2*i,
+                                        acquireAttempts=2*(1-i), acquireSuccesses=2*(1-i))
         a['rows'] = rows
         result = self.audit(r, p)
         self.assertEqual('valid', result['integrity']['status'], result)
@@ -239,6 +327,141 @@ class PointAttributionTests(unittest.TestCase):
         self.assertEqual('valid', capacity.audit_treatment(r, p, 3, input_contract=p['inputContract'])['status'])
         del p['helperHashes']['point_attribution.py']
         self.assertEqual('invalid', analyse(r, 1, 123, p, expected_recording_slots=3)['status'])
+
+    def test_snapshot_range_types_are_checked_before_python_ownership_equality(self):
+        r, p = fixture()
+        for field, value in r['samples'][0]['shadowStage']['callback']['snapshot']['pointAttribution'].items():
+            if type(value) is int or type(value) is bool:
+                bad = copy.deepcopy(r)
+                alias = int(value) if type(value) is bool else bool(value) if value in (0, 1) else float(value)
+                bad['samples'][0]['shadowStage']['callback']['snapshot']['pointAttribution'][field] = alias
+                with self.subTest(field=field):
+                    self.assertEqual('invalid', self.audit(bad, p)['integrity']['status'])
+                    self.assertEqual('invalid', analyse(bad, 1, 123, p, expected_recording_slots=3)['status'])
+
+    def test_consumed_scene_frame_identity_rejects_numeric_aliases(self):
+        r, p = fixture()
+        snapshot = r['samples'][0]['shadowStage']['callback']['snapshot']
+        snapshot['inputs']['sceneFrameIndex'] = float(snapshot['inputs']['sceneFrameIndex'])
+        self.assertEqual('invalid', self.audit(r, p)['integrity']['status'])
+        self.assertEqual('invalid', analyse(r, 1, 123, p, expected_recording_slots=3)['status'])
+
+    def test_packed_and_lookup_counters_reconcile_in_both_entry_points(self):
+        for field in ('packedRows', 'touchAttempts', 'touchHits', 'acquireAttempts', 'acquireSuccesses', 'acquireRefusals'):
+            r, p = fixture()
+            counters = r['samples'][0]['shadowStage']['callback']['snapshot']['counters']
+            counters[field] = 0 if field == 'packedRows' else counters[field]+1
+            with self.subTest(field=field):
+                self.assertEqual('invalid', self.audit(r, p)['integrity']['status'])
+                self.assertEqual('invalid', analyse(r, 1, 123, p, expected_recording_slots=3)['status'])
+
+    def test_base_and_transient_slots_use_their_distinct_live_capacities(self):
+        r, p = mixed_work_fixture()
+        self.assertEqual('valid', self.audit(r, p)['integrity']['status'])
+        self.assertEqual('valid', analyse(r, 1, 123, p, expected_recording_slots=3)['status'])
+        for row_index, field, value in ((1, 'slot', point.I32), (1, 'slot', 8), (0, 'transientSlot', 1),
+                                         (0, 'transientSlot', 7), (0, 'transientSlot', point.I32)):
+            bad = copy.deepcopy(r)
+            bad['pointShadowAttribution']['rows'][row_index][field] = value
+            with self.subTest(field=field, value=value):
+                self.assertEqual('invalid', self.audit(bad, p)['integrity']['status'])
+                self.assertEqual('invalid', analyse(bad, 1, 123, p, expected_recording_slots=3)['status'])
+
+    def test_live_retained_capacity_is_not_requested_budget_or_request_cap(self):
+        r, p = fixture()
+        # A refused shrink can retain eight live rows while requesting one row.
+        r['pointShadowAttribution']['limits']['requests'] = 1
+        for row in r['pointShadowAttribution']['rows']: row['slot'] = 7
+        for sample in r['samples']:
+            sample['shadowStage']['callback']['snapshot']['configuration'].update(staticBudget=1, dynamicBudget=1)
+        self.assertEqual('valid', self.audit(r, p)['integrity']['status'])
+        self.assertEqual('valid', analyse(r, 1, 123, p, expected_recording_slots=3)['status'])
+        r['pointShadowAttribution']['rows'][1]['slot'] = 8
+        self.assertEqual('invalid', self.audit(r, p)['integrity']['status'])
+
+    def test_zero_caster_rows_missing_atlas_and_disabled_retained_atlas_are_valid(self):
+        for make in (lambda: fixture([], []), lambda: unavailable_fixture(),
+                     lambda: unavailable_fixture(disabled=True), lambda: unavailable_fixture(disabled=True, retained=True)):
+            r, p = make()
+            with self.subTest(make=make):
+                result = self.audit(r, p)
+                self.assertEqual('valid', result['integrity']['status'], result)
+                self.assertNotEqual('invalid', analyse(r, 1, 123, p, expected_recording_slots=3)['status'])
+        r, p = fixture([], [])
+        self.assertEqual(0, r['samples'][0]['shadowStage']['callback']['snapshot']['counters']['pointFaceDrawCalls'])
+        r['samples'][0]['shadowStage']['callback']['snapshot']['counters']['packedRows'] = 0
+        self.assertEqual('invalid', self.audit(r, p)['integrity']['status'])
+
+    def test_unchanged_history_serialization_is_compact_and_uses_immutable_table_ids(self):
+        sizes = []
+        for count in (2, 8):
+            casters = [caster(71+i, 1065353216+i) for i in range(count)]
+            r, p = fixture(casters, casters)
+            result = self.audit(r, p)
+            encoded = json.dumps(result, separators=(',', ':'))
+            self.assertNotIn('matrixWords', encoded)
+            self.assertNotIn('headerWords', encoded)
+            for i, history in enumerate(result['lights'][0]['history']):
+                row = r['pointShadowAttribution']['rows'][history['rowId']]
+                self.assertEqual(i, history['rowId'])
+                self.assertEqual(row['span'], history['spanId'])
+                self.assertEqual(row['input'], history['inputId'])
+                self.assertNotIn('casters', history)
+                self.assertNotIn('input', history)
+                self.assertNotIn('row', history)
+            sizes.append(len(encoded))
+        self.assertLessEqual(sizes[1]-sizes[0], 128)
+
+    def test_derived_detail_limit_preserves_classification_counts_and_limits_analyse(self):
+        r, p = fixture()
+        with patch.object(point, 'DEFAULT_DETAIL_LIMIT', 1, create=True):
+            result = self.audit(r, p)
+            self.assertEqual('limited', result.get('detailCoverage', {}).get('status'))
+            detail = result['detailCoverage']
+            self.assertEqual((1, 0, 2, 2), (detail['limit'], detail['retained'], detail['omitted'], detail['firstLimitedSequence']))
+            history = result['lights'][0]['history'][1]
+            self.assertEqual(['keyed-transform'], history['classifications'])
+            self.assertEqual(1, history['keyedChangeCount'])
+            self.assertEqual([], history['keyedChanges'])
+            self.assertEqual(1, history['rowId'])
+            self.assertEqual('limited', analyse(r, 1, 123, p, expected_recording_slots=3)['status'])
+        complete = self.audit(r, p)
+        change = complete['lights'][0]['history'][1]['keyedChanges'][0]
+        self.assertEqual((0, 1), (change['before']['casterId'], change['after']['casterId']))
+        self.assertEqual([1, 0, 0], change['after']['positionWords'])
+        self.assertNotIn('matrixWords', json.dumps(complete))
+
+    def test_detail_exhaustion_counts_later_changes_and_enforces_the_budget_type_and_ceiling(self):
+        r, p = fixture([caster(71, 0), caster(72, 1065353216)], [caster(72, 0), caster(71, 1065353216)])
+        result = point.audit_attribution(r, p, detail_limit=2)
+        history = result['lights'][0]['history'][1]
+        self.assertEqual(2, history['keyedChangeCount'])
+        self.assertEqual(1, len(history['keyedChanges']))
+        self.assertEqual((2, 2, 2), (result['detailCoverage']['retained'], result['detailCoverage']['omitted'],
+                                    result['detailCoverage']['firstLimitedSequence']))
+        for bad in (True, 1.0, -1, 32769):
+            with self.subTest(limit=bad):
+                self.assertEqual('invalid', point.audit_attribution(r, p, detail_limit=bad)['integrity']['status'])
+
+    def test_zero_detail_budget_does_not_limit_unchanged_history(self):
+        r, p = fixture([caster()], [caster()])
+        with patch.object(point, 'DEFAULT_DETAIL_LIMIT', 0, create=True):
+            result = self.audit(r, p)
+            self.assertEqual('complete', result.get('detailCoverage', {}).get('status'))
+            self.assertEqual(0, result['detailCoverage']['retained'])
+            self.assertEqual(0, result['detailCoverage']['omitted'])
+            self.assertEqual(2, len(result['lights'][0]['history']))
+
+    def test_absence_evidence_uses_ranges_instead_of_expanding_missing_callbacks(self):
+        r, p = fixture()
+        r['pointShadowAttribution']['rows'][1].update(key=10, slotOutcome=2, priorDirty=True)
+        r['samples'][1]['shadowStage']['callback']['snapshot']['counters'].update(touchHits=0, acquireAttempts=1, acquireSuccesses=1)
+        result = self.audit(r, p)
+        self.assertEqual('valid', result['integrity']['status'])
+        absent = result['lights'][0]
+        self.assertEqual([dict(first=2, last=2)], absent.get('absentSequenceRanges'))
+        self.assertEqual(1, absent['absentSequenceCount'])
+        self.assertNotIn('absentSequences', absent)
 
     def test_new_and_old_purpose_schema_pairs_cannot_be_substituted(self):
         r, p = fixture()

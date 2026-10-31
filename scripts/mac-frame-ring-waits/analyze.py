@@ -575,7 +575,8 @@ def analyse(report, mode, pid, proof=None, *, expected_recording_slots=None):
             errors.extend(point_result['integrity']['errors'])
         full = not errors and ring['fullyAttributed'] and proof is not None
         if capacity_result is not None and capacity_result['status'] != 'valid': full = False
-        if point_result is not None and point_result['availability']['status'] != 'complete': full = False
+        if point_result is not None and (point_result['availability']['status'] != 'complete'
+                                         or point_result['detailCoverage']['status'] != 'complete'): full = False
         return dict(status='invalid' if errors else 'valid' if full else 'limited', errors=errors,
                     **({'pointAttribution': point_result} if point_result is not None else {}),
                     processId=pid, sampleCount=report['sampleCount'], durationSeconds=report['durationSeconds'],

@@ -459,9 +459,34 @@ class PointAttributionTests(unittest.TestCase):
         result = self.audit(r, p)
         self.assertEqual('valid', result['integrity']['status'])
         absent = result['lights'][0]
-        self.assertEqual([dict(first=2, last=2)], absent.get('absentSequenceRanges'))
+        self.assertEqual([dict(first=2, last=2)], absent.get('presenceGapRanges'))
         self.assertEqual(1, absent['absentSequenceCount'])
+        self.assertEqual(0, absent['unknownSequenceCount'])
         self.assertNotIn('absentSequences', absent)
+
+    def test_unknown_inventory_does_not_become_confirmed_absence(self):
+        for kind in ('overflow', 'unavailable'):
+            if kind == 'overflow':
+                r, p = fixture()
+                r['pointShadowAttribution'].update(overflow=9, overflowSequence=2)
+                frame = r['pointShadowAttribution']['frames'][1]
+                frame.update(availability=6, complete=False)
+                r['samples'][1]['shadowStage']['callback']['snapshot']['pointAttribution'] = frame.copy()
+                expected_unknown = [dict(first=2, last=2)]
+            else:
+                r, p = unavailable_fixture()
+                r['pointShadowAttribution']['rows'][1]['key'] = 10
+                expected_unknown = [dict(first=1, last=2)]
+            result = self.audit(r, p)
+            with self.subTest(kind=kind):
+                self.assertEqual('valid', result['integrity']['status'])
+                light = result['lights'][0]
+                self.assertEqual(0, light['absentSequenceCount'])
+                self.assertEqual(1, light['unknownSequenceCount'])
+                self.assertEqual([dict(first=2, last=2)], light['presenceGapRanges'])
+                self.assertNotIn('absentSequenceRanges', light)
+                self.assertNotIn('unknownSequenceRanges', light)
+                self.assertEqual(expected_unknown, result['requestInventoryCoverage']['unknownSequenceRanges'])
 
     def test_new_and_old_purpose_schema_pairs_cannot_be_substituted(self):
         r, p = fixture()

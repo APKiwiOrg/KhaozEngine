@@ -1,5 +1,6 @@
 """Validate exact consumed point-shadow inputs and classify observed changes."""
 from collections import Counter
+from bisect import bisect_left, bisect_right
 import struct
 from inputs import _require as require, _object as obj, _integer as integer, _words as words
 
@@ -283,10 +284,21 @@ def _account(rows, counts, availability):
     require(sorted(selected+transient) == list(range(len(selected)+len(transient))), 'selected order is not unique and contiguous')
 
 
+def _sequence_ranges(values):
+    ranges = []
+    for value in values:
+        if ranges and ranges[-1]['last']+1 == value:
+            ranges[-1]['last'] = value
+        else:
+            ranges.append(dict(first=value, last=value))
+    return ranges
+
+
 def audit_attribution(report, proof, *, detail_limit=None):
     errors, lights, availability, nonfinite = [], {}, Counter(), []
     overflow, first_overflow, observed = 0, 0, 0
     details, source = None, None
+    complete_inventories, sample_total = [], 0
     try:
         details = _Details(detail_limit)
         from inputs import validate_contract, _request, _counter_schema
@@ -299,6 +311,7 @@ def audit_attribution(report, proof, *, detail_limit=None):
         overflow, first_overflow = arena['overflow'], arena['overflowSequence']
         samples = report['samples']; integer(report['sampleCount'], 1, 4096, 'sampleCount')
         require(type(samples) is list and len(samples) == report['sampleCount'], 'sample inventory differs')
+        sample_total = len(samples)
         frames = {}
         row_end, prior_counts = 0, [0, 0, 0, 0]
         for frame in arena['frames']:
@@ -374,24 +387,32 @@ def audit_attribution(report, proof, *, detail_limit=None):
                         if row['completed'] and row['priorDirty'] and not row['mismatch']:
                             current['classifications'].append('carried-dirty-work')
                 light['history'].append(current)
+            if frame['availability'] in (1, 4): complete_inventories.append(sequence)
         for light in lights.values():
             sequences = sorted({h['sequence'] for h in light['history']})
             ranges = [dict(first=left+1, last=right-1) for left, right in zip(sequences, sequences[1:]+[len(samples)+1])
                       if right > left+1]
-            light['absentSequenceRanges'] = ranges
-            light['absentSequenceCount'] = sum(r['last']-r['first']+1 for r in ranges)
+            confirmed = sum(bisect_right(complete_inventories, r['last'])-bisect_left(complete_inventories, r['first']) for r in ranges)
+            light['presenceGapRanges'] = ranges
+            light['absentSequenceCount'] = confirmed
+            light['unknownSequenceCount'] = sum(r['last']-r['first']+1 for r in ranges)-confirmed
     except (KeyError, ValueError, TypeError, IndexError, AttributeError, OverflowError) as error:
         errors.append(str(error))
     state = ('overflow' if overflow else 'unusable' if nonfinite else 'complete'
              if observed == report.get('sampleCount') and not any(availability.get(str(i), 0) for i in (0, 2, 3, 5)) else 'unavailable')
+    known = set(complete_inventories)
+    inventory_coverage = dict(completeSequenceRanges=_sequence_ranges(complete_inventories),
+                              unknownSequenceRanges=_sequence_ranges(i for i in range(1, sample_total+1) if i not in known),
+                              policy='Only available or empty complete request inventories establish absence.')
     return dict(integrity=dict(status='invalid' if errors else 'valid', errors=errors),
                 availability=dict(status=state, overflowCapacity=overflow, firstOverflowSequence=first_overflow,
                                   completedFrames=observed, observations=dict(availability), nonfiniteFields=nonfinite),
-                source=source, detailCoverage=details.summary() if details is not None else dict(status='unavailable'),
+                requestInventoryCoverage=inventory_coverage, source=source, detailCoverage=details.summary() if details is not None else dict(status='unavailable'),
                 lights=list(lights.values()), limits=['The first observed light has no observed prior contributor list.',
                     'Motion keys attribute only unique keys in both observations. Slots and source ordinals are callback-local.',
                     'Foliage records identify exact rest inputs, not persistent game entities.',
                     'Row, span, input and caster IDs index the original report pointShadowAttribution tables.',
                     'Derived evidence has a global caster-reference budget. Counts and raw history references remain after exhaustion.',
+                    'Presence gaps alone do not establish absence. Confirmed and unknown counts use shared request-inventory coverage.',
                     'Required content motion and invalidation are observations, not a cache bug or speedup proof.',
                     'CPU waits are not GPU execution or physical presentation.'])

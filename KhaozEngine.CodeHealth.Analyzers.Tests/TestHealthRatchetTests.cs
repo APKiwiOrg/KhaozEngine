@@ -56,7 +56,7 @@ public class TestHealthRatchetTests
         Assert.Equal(2, diagnostics.Select(diagnostic => diagnostic.Location.SourceSpan).Distinct().Count());
     }
 
-    [Fact(Skip = "enabled in Task 3")]
+    [Fact]
     public async Task ExemptPath_IsSilentForThatRuleOnly()
     {
         var sourceWithMessageAssert = Source.Replace("Assert.NotEqual(first, second);",

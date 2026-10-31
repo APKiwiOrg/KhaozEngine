@@ -52,6 +52,8 @@ namespace KhaozEngine.CodeHealth.Analyzers
             if (!AnalyzerPathPolicy.TryGetCheckedRelativePath(
                     context.SemanticModel.SyntaxTree.FilePath, root, out var relative)) return;
 
+            ReportFindings(context, baseline, relative, reportMode, TestHealthDiagnostics.ExceptionMessageAssertion,
+                ExceptionMessageAssertionDetector.Find(context.SemanticModel, symbols, context.CancellationToken));
             ReportFindings(context, baseline, relative, reportMode, TestHealthDiagnostics.NonPublicReflection,
                 PrivateReflectionDetector.Find(context.SemanticModel, symbols, context.CancellationToken));
         }

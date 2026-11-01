@@ -19,6 +19,12 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   APIs are unchanged and consumers need no code change.
 - Bound the default renderer timing probes. Probes that only measure and report carry
   `[Trait("Category", "Diagnostic")]` and run on demand.
+- `ke-sfxbake` defaults to `eleven_text_to_sound_v3`, because ElevenLabs deprecated
+  `eleven_text_to_sound_v2` and stops serving it on 1 February 2027. The `.sfxmeta` hash no longer covers
+  the model, so this switch and any later model change re-bake nothing already approved. New sidecars
+  carry `HashVersion` 2. Earlier sidecars still skip while their other inputs are unchanged, checked
+  against their recorded model or the old v2 default. A dry run names the older model beside each output
+  it made, and `--force` re-bakes on purpose.
 
 ## 21.23.0
 

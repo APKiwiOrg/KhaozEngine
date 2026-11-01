@@ -24,6 +24,15 @@ public class SfxPlannerTests
 
     static string Abs(string rel) => Path.GetFullPath(Path.Combine(ManifestDir, rel));
 
+    static FakeFs OutputWithSidecar(string hash, int? hashVersion, string? model = null)
+    {
+        var fs = new FakeFs();
+        fs.Files[Abs("Assets/a.ogg")] = "audio-bytes";
+        fs.Files[Abs("Assets/a.ogg") + ".sfxmeta"] =
+            new SfxSidecar { Hash = hash, Key = "a", HashVersion = hashVersion, Model = model }.Serialize();
+        return fs;
+    }
+
     [Fact]
     public void Generates_when_output_missing()
     {
@@ -35,14 +44,26 @@ public class SfxPlannerTests
         Assert.Equal(Abs("Assets/a.ogg") + ".sfxmeta", item.SidecarPath);
     }
 
-    [Fact]
-    public void Skips_when_output_and_matching_sidecar_exist()
+    // A model change keeps approved outputs: the current scheme leaves the model out, and a scheme 1 sidecar is
+    // checked against the model it recorded or, for one adopted by hand with free-text provenance, the scheme 1
+    // default.
+    [Theory]
+    [InlineData("current scheme")]
+    [InlineData("scheme 1, recorded model")]
+    [InlineData("scheme 1, adopted by hand")]
+    public void Skips_when_output_and_matching_sidecar_exist(string sidecar)
     {
         SfxManifest m = OneEntry();
-        string hash = SfxHasher.Compute(m.Sounds[0], m.Model, m.SourceFormat);
-        var fs = new FakeFs();
-        fs.Files[Abs("Assets/a.ogg")] = "audio-bytes";
-        fs.Files[Abs("Assets/a.ogg") + ".sfxmeta"] = new SfxSidecar { Hash = hash, Key = "a" }.Serialize();
+        SfxEntry e = m.Sounds[0];
+        string current = SfxHasher.Compute(e, m.SourceFormat);
+        FakeFs fs = sidecar switch
+        {
+            "current scheme" => OutputWithSidecar(current, SfxHasher.HashVersion, m.Model),
+            "scheme 1, recorded model" => OutputWithSidecar(
+                SfxHasher.ComputeLegacy(e, "recorded_model", m.SourceFormat), null, "recorded_model"),
+            _ => OutputWithSidecar(
+                SfxHasher.ComputeLegacy(e, SfxHasher.LegacyDefaultModel, m.SourceFormat), null, "picked through the MCP"),
+        };
 
         SfxPlanItem item = SfxPlanner.Plan(m, ManifestDir, force: false, fs).Single();
 
@@ -50,13 +71,22 @@ public class SfxPlannerTests
         Assert.Equal(0, item.EstimatedCredits);
     }
 
-    [Fact]
-    public void Generates_when_sidecar_hash_differs()
+    [Theory]
+    [InlineData("current scheme")]
+    [InlineData("scheme 1")]
+    [InlineData("unknown scheme")]
+    public void Generates_when_sidecar_hash_differs(string sidecar)
     {
         SfxManifest m = OneEntry();
-        var fs = new FakeFs();
-        fs.Files[Abs("Assets/a.ogg")] = "audio-bytes";
-        fs.Files[Abs("Assets/a.ogg") + ".sfxmeta"] = new SfxSidecar { Hash = "stale-hash", Key = "a" }.Serialize();
+        SfxEntry e = m.Sounds[0];
+        FakeFs fs = sidecar switch
+        {
+            "current scheme" => OutputWithSidecar("stale-hash", SfxHasher.HashVersion),
+            "scheme 1" => OutputWithSidecar(
+                SfxHasher.ComputeLegacy(e with { Prompt = "older prompt" }, SfxHasher.LegacyDefaultModel, m.SourceFormat),
+                null, SfxHasher.LegacyDefaultModel),
+            _ => OutputWithSidecar(SfxHasher.Compute(e, m.SourceFormat), SfxHasher.HashVersion + 1),
+        };
 
         SfxPlanItem item = SfxPlanner.Plan(m, ManifestDir, force: false, fs).Single();
 
@@ -78,10 +108,7 @@ public class SfxPlannerTests
     public void Force_regenerates_even_when_up_to_date()
     {
         SfxManifest m = OneEntry();
-        string hash = SfxHasher.Compute(m.Sounds[0], m.Model, m.SourceFormat);
-        var fs = new FakeFs();
-        fs.Files[Abs("Assets/a.ogg")] = "audio-bytes";
-        fs.Files[Abs("Assets/a.ogg") + ".sfxmeta"] = new SfxSidecar { Hash = hash, Key = "a" }.Serialize();
+        FakeFs fs = OutputWithSidecar(SfxHasher.Compute(m.Sounds[0], m.SourceFormat), SfxHasher.HashVersion);
 
         SfxPlanItem item = SfxPlanner.Plan(m, ManifestDir, force: true, fs).Single();
 

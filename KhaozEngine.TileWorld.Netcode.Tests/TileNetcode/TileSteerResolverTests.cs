@@ -16,37 +16,23 @@ public class TileSteerResolverTests
         return TileMoveSimulatorTests.Bake(doc);
     }
 
-    [Fact]
-    public void An_open_direction_is_itself() =>
-        Assert.Equal(TileDirection.NE, TileSteerResolver.Resolve(MapWithTrees(), At, TileDirection.NE, 1));
+    [Theory]
+    [InlineData("open diagonal", TileDirection.NE, TileDirection.NE, new int[] { })]
+    [InlineData("blocked straight", TileDirection.N, null, new[] { 5, 6 })]
+    [InlineData("east wall slides north", TileDirection.NE, TileDirection.N, new[] { 6, 5, 6, 6 })]
+    [InlineData("north wall slides east", TileDirection.NE, TileDirection.E, new[] { 5, 6, 6, 6 })]
+    [InlineData("both axes open prefers north", TileDirection.NE, TileDirection.N, new[] { 6, 6 })]
+    [InlineData("southwest corner prefers south", TileDirection.SW, TileDirection.S, new[] { 4, 4 })]
+    [InlineData("diagonal and both axes blocked", TileDirection.NE, null, new[] { 5, 6, 6, 5, 6, 6 })]
+    public void Resolve_SlidesOrStandsAccordingToTheBlockedTiles(
+        string scenario, TileDirection held, TileDirection? expected, int[] treeCoordinates)
+    {
+        var trees = new (int X, int Z)[treeCoordinates.Length / 2];
+        for (int i = 0; i < trees.Length; i++)
+            trees[i] = (treeCoordinates[2 * i], treeCoordinates[2 * i + 1]);
 
-    [Fact]
-    public void A_blocked_straight_step_stands() =>
-        Assert.Null(TileSteerResolver.Resolve(MapWithTrees((5, 6)), At, TileDirection.N, 1));
-
-    [Fact]
-    public void A_diagonal_blocked_by_a_wall_to_the_east_slides_north() =>
-        Assert.Equal(TileDirection.N,
-            TileSteerResolver.Resolve(MapWithTrees((6, 5), (6, 6)), At, TileDirection.NE, 1));
-
-    [Fact]
-    public void A_diagonal_blocked_by_a_wall_to_the_north_slides_east() =>
-        Assert.Equal(TileDirection.E,
-            TileSteerResolver.Resolve(MapWithTrees((5, 6), (6, 6)), At, TileDirection.NE, 1));
-
-    [Fact]
-    public void A_blocked_corner_with_both_axes_open_takes_the_z_axis_step() =>
-        Assert.Equal(TileDirection.N,
-            TileSteerResolver.Resolve(MapWithTrees((6, 6)), At, TileDirection.NE, 1));
-
-    [Fact]
-    public void A_south_west_corner_takes_south_before_west() =>
-        Assert.Equal(TileDirection.S,
-            TileSteerResolver.Resolve(MapWithTrees((4, 4)), At, TileDirection.SW, 1));
-
-    [Fact]
-    public void A_diagonal_with_its_corner_and_both_axis_steps_blocked_stands() =>
-        Assert.Null(TileSteerResolver.Resolve(MapWithTrees((5, 6), (6, 5), (6, 6)), At, TileDirection.NE, 1));
+        Assert.True(expected == TileSteerResolver.Resolve(MapWithTrees(trees), At, held, 1), scenario);
+    }
 
     // Walled in on all eight sides, which is what the test above used to claim. Asked of every direction, because
     // the slide has an answer for a diagonal whenever either of its axis steps is open and the straight steps are

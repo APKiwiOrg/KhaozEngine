@@ -251,7 +251,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 {
                     var declared = model.GetDeclaredSymbol(variable, cancellationToken);
                     if (IsCompared(declared) && variable.Initializer is not null &&
-                        !OtherInitializersMention(loop, variable, declared!.Name))
+                        !OtherInitializersWrite(loop, variable, declared!, model, cancellationToken))
                     {
                         counter = declared!;
                         initialValue = variable.Initializer.Value;
@@ -264,7 +264,8 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 if (initializer is not AssignmentExpressionSyntax assignment ||
                     !assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)) continue;
                 var assigned = model.GetSymbolInfo(assignment.Left, cancellationToken).Symbol;
-                if (IsCompared(assigned) && !OtherInitializersMention(loop, assignment, assigned!.Name))
+                if (IsCompared(assigned) &&
+                    !OtherInitializersWrite(loop, assignment, assigned!, model, cancellationToken))
                 {
                     counter = assigned!;
                     initialValue = assignment.Right;
@@ -276,18 +277,31 @@ namespace KhaozEngine.CodeHealth.Analyzers
             return false;
         }
 
-        // Another initializer that names the counter could overwrite its start value, so the header
-        // proves nothing then. A name match is deliberately conservative.
-        private static bool OtherInitializersMention(ForStatementSyntax loop, SyntaxNode counterInitializer,
-            string name)
+        // Another initializer that writes the counter could overwrite its start value, so the header
+        // proves nothing then. Reads such as `j = i` leave the proof standing.
+        private static bool OtherInitializersWrite(ForStatementSyntax loop, SyntaxNode counterInitializer,
+            ISymbol counter, SemanticModel model, CancellationToken cancellationToken)
         {
             IEnumerable<SyntaxNode> parts = loop.Declaration is null
                 ? loop.Initializers
                 : loop.Declaration.Variables.Cast<SyntaxNode>().Concat(loop.Initializers);
             return parts.Where(part => part != counterInitializer).Any(part =>
-                part.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>()
-                    .Any(identifier => identifier.Identifier.ValueText == name));
+                part.DescendantNodesAndSelf().Any(node => WriteTarget(node) is { } target &&
+                    SymbolEqualityComparer.Default.Equals(
+                        model.GetSymbolInfo(Unwrap(target), cancellationToken).Symbol, counter)));
         }
+
+        private static ExpressionSyntax? WriteTarget(SyntaxNode node) => node switch
+        {
+            AssignmentExpressionSyntax assignment => assignment.Left,
+            PrefixUnaryExpressionSyntax prefix when prefix.IsKind(SyntaxKind.PreIncrementExpression) ||
+                                                    prefix.IsKind(SyntaxKind.PreDecrementExpression) => prefix.Operand,
+            PostfixUnaryExpressionSyntax postfix when postfix.IsKind(SyntaxKind.PostIncrementExpression) ||
+                                                      postfix.IsKind(SyntaxKind.PostDecrementExpression) => postfix.Operand,
+            ArgumentSyntax argument when argument.RefKindKeyword.IsKind(SyntaxKind.RefKeyword) ||
+                                         argument.RefKindKeyword.IsKind(SyntaxKind.OutKeyword) => argument.Expression,
+            _ => null,
+        };
 
         private static bool TryLiteralNumber(ExpressionSyntax expression, SemanticModel model,
             CancellationToken cancellationToken, out object number)

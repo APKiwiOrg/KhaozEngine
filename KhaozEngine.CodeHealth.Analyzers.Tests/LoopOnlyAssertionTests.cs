@@ -90,6 +90,7 @@ public class LoopOnlyAssertionTests
     [InlineData("foreach (var item in new int[0u]) Assert.Equal(0, item);")]
     [InlineData("for (int i = 0, j = (i = 1); i < 1; i++) Assert.Equal(i, j);")]
     [InlineData("int k; for (k = 0, k = 1; k < 1; k++) Assert.True(k == 0);")]
+    [InlineData("int k; for (k = 0, k++; k < 1; k++) Assert.True(k == 0);")]
     public async Task PossiblyEmptyGuard_Fires(string body) => await AssertFinding(body);
 
     [Theory]
@@ -129,6 +130,8 @@ public class LoopOnlyAssertionTests
     [InlineData("foreach (var item in new int[1u]) Assert.Equal(0, item);")]
     [InlineData("foreach (var item in new int[1L]) Assert.Equal(0, item);")]
     [InlineData("foreach (var item in new int[1UL]) Assert.Equal(0, item);")]
+    [InlineData("for (int i = 0, j = i; i < 1; i++) Assert.Equal(i, j);")]
+    [InlineData("int i, j; for (i = 0, j = i; i < 1; i++) Assert.Equal(i, j);")]
     public async Task DirectAssertionOrNonEmptyHeader_IsSilent(string body) =>
         Assert.Empty(await RunBody(body));
 

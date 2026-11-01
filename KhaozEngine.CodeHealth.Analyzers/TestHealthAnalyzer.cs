@@ -56,6 +56,8 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 ExceptionMessageAssertionDetector.Find(context.SemanticModel, symbols, context.CancellationToken));
             ReportFindings(context, baseline, relative, reportMode, TestHealthDiagnostics.NonPublicReflection,
                 PrivateReflectionDetector.Find(context.SemanticModel, symbols, context.CancellationToken));
+            ReportFindings(context, baseline, relative, reportMode, TestHealthDiagnostics.LoopOnlyAssertion,
+                LoopOnlyAssertionDetector.Find(context.SemanticModel, symbols, context.CancellationToken));
         }
 
         private static void ReportFindings(SemanticModelAnalysisContext context, TestHealthBaseline baseline,

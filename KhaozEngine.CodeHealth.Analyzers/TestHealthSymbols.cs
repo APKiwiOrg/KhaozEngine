@@ -6,13 +6,16 @@ namespace KhaozEngine.CodeHealth.Analyzers
     internal sealed class TestHealthSymbols
     {
         private TestHealthSymbols(INamedTypeSymbol assert, INamedTypeSymbol factAttribute,
-            INamedTypeSymbol exception, INamedTypeSymbol? bindingFlags, INamedTypeSymbol? unsafeAccessorAttribute)
+            INamedTypeSymbol exception, INamedTypeSymbol? bindingFlags, INamedTypeSymbol? unsafeAccessorAttribute,
+            INamedTypeSymbol? enumerable, INamedTypeSymbol? enumType)
         {
             Assert = assert;
             FactAttribute = factAttribute;
             Exception = exception;
             BindingFlags = bindingFlags;
             UnsafeAccessorAttribute = unsafeAccessorAttribute;
+            Enumerable = enumerable;
+            Enum = enumType;
         }
 
         public INamedTypeSymbol Assert { get; }
@@ -20,6 +23,8 @@ namespace KhaozEngine.CodeHealth.Analyzers
         public INamedTypeSymbol Exception { get; }
         public INamedTypeSymbol? BindingFlags { get; }
         public INamedTypeSymbol? UnsafeAccessorAttribute { get; }
+        public INamedTypeSymbol? Enumerable { get; }
+        public INamedTypeSymbol? Enum { get; }
 
         public static TestHealthSymbols? Resolve(Compilation compilation)
         {
@@ -32,7 +37,9 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
             return new TestHealthSymbols(assert, factAttribute, exception,
                 compilation.GetTypeByMetadataName("System.Reflection.BindingFlags"),
-                compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.UnsafeAccessorAttribute"));
+                compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.UnsafeAccessorAttribute"),
+                compilation.GetTypeByMetadataName("System.Linq.Enumerable"),
+                compilation.GetTypeByMetadataName("System.Enum"));
         }
     }
 }

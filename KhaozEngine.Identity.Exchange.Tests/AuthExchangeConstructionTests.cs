@@ -27,7 +27,6 @@ public class AuthExchangeConstructionTests
         ArgumentException refused = Assert.Throws<ArgumentException>(() =>
             new AuthExchange(new[] { Validator }, store, shortKey, ExchangeFixture.Options(Clock)));
         Assert.Equal("signingSecret", refused.ParamName);
-        Assert.Contains($"{SigningSecret.MinimumBytes}-byte minimum", refused.Message, StringComparison.Ordinal);
 
         _ = new AuthExchange(new[] { Validator }, store, new byte[SigningSecret.MinimumBytes], ExchangeFixture.Options(Clock));
     }

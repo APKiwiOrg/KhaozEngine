@@ -1,4 +1,6 @@
-# Shared allocation measurements
+# Shared test helpers
+
+## Allocation measurements
 
 Every test assembly that asserts on an allocation counter imports `AllocationMeasurement.props`.
 The import links the region, the measurement helpers, the reporting framework and the contract tests,
@@ -24,7 +26,7 @@ The process-wide budget is checked explicitly even when the runtime grants addit
 No measurement retries its workload, keeps the smallest of several readings or accepts an
 interrupted counter.
 
-## Why test reporting is synchronous
+### Why test reporting is synchronous
 
 xUnit's default message bus hands every test message to one reporter thread. Behind it the
 Visual Studio adapter and the test host serialize each result to JSON. Under CPU contention that
@@ -37,3 +39,10 @@ one window while the measured thread allocated nothing (#1391, #1449).
 Each message is delivered on the thread that reports it, one delivery at a time across threads, so a
 collection leaves nothing queued when it finishes. The test host still flushes fewer than ten cached
 results on its own timer, which stays far inside the budget.
+
+## Renderer scene inputs
+
+`RendererPerfSceneInputs.cs` holds the GPU-free geometry, pose and settings factories used by renderer
+evidence tooling and engine scene fixtures. Render.Tests compiles it by source link. The existing fixture
+methods forward to these inputs, preserving their caller APIs. A tooling project can compile the same
+source without importing real-device fixtures or referencing the engine test assembly.

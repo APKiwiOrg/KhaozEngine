@@ -39,7 +39,7 @@ internal class RendererPerfVillageScene : RendererPerfRecipe
         ];
         for (int i = 0; i < buildings; i++)
         {
-            Vector2 centre = InteriorCutCostScene.BuildingCentre(i, 6, 4, 10f);
+            Vector2 centre = RendererPerfSceneInputs.BuildingCentre(i, 6, 4, 10f);
             for (int part = 0; part < 6; part++)
                 _buildingWorlds[i * 6 + part] = Matrix4x4.CreateScale(components[part].Size)
                     * Matrix4x4.CreateTranslation(components[part].Offset + new Vector3(centre.X, 0f, centre.Y));

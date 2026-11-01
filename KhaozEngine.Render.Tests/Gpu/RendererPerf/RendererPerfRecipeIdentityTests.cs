@@ -31,9 +31,9 @@ public sealed class RendererPerfRecipeIdentityTests
     public void Explicit_geometry_inputs_preserve_the_existing_public_workload()
     {
         var placements = RendererPerfPropPlacement.Create(1024, 64f, RendererPerfRecipe.Seed);
-        Assert.Equal(StreamedWorldSceneContent.PropWorlds(1024, 64f, RendererPerfRecipe.Seed), placements.Select(p => p.World));
+        Assert.Equal(RendererPerfSceneInputs.PropWorlds(1024, 64f, RendererPerfRecipe.Seed), placements.Select(p => p.World));
         var tube = RendererPerfTubeInputs.Character.Build();
-        var original = StreamedWorldSceneContent.CharacterTube();
+        var original = RendererPerfSceneInputs.CharacterTube();
         Assert.Equal(original.Vertices, tube.Vertices);
         Assert.Equal(original.Indices32, tube.Indices32);
         Assert.Equal(original.RestPose, tube.RestPose);

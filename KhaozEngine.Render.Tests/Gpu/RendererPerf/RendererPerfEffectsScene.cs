@@ -47,7 +47,7 @@ internal sealed class RendererPerfEffectsScene : RendererPerfVillageScene
         }).ToArray();
         _poses = Enumerable.Range(0, Period).Select(i =>
         {
-            Matrix4x4[] pose = SkinnedPointShadowScene.BentPose(_tube, _poseAngles[i]);
+            Matrix4x4[] pose = RendererPerfSceneInputs.BentPose(_tube, _poseAngles[i]);
             for (int bone = 0; bone < pose.Length; bone++) pose[bone] = _tube.RestPose[bone] * pose[bone];
             return pose;
         }).ToArray();

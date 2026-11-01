@@ -24,8 +24,8 @@ internal sealed record RendererPerfPropPlacement(Vector3 Position, float Azimuth
 internal sealed record RendererPerfTubeInputs(float Radius, float Length, int Rings, int Radial, int Bones, Axis Axis)
 {
     internal static readonly RendererPerfTubeInputs Character = new(.5f, 4f,
-        StreamedWorldSceneContent.CharacterRings, StreamedWorldSceneContent.CharacterRadial,
-        StreamedWorldSceneContent.CharacterBones, Axis.Z);
+        RendererPerfSceneInputs.CharacterRings, RendererPerfSceneInputs.CharacterRadial,
+        RendererPerfSceneInputs.CharacterBones, Axis.Z);
 
     internal SkinnedGltfMesh Build() => SkinnedMeshBuilder.BuildTube(Radius, Length, Rings, Radial, Bones, Axis);
 }

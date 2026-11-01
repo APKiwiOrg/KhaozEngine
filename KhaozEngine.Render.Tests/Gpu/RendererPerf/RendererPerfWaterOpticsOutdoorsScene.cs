@@ -52,7 +52,7 @@ internal sealed class RendererPerfWaterOpticsOutdoorsScene : RendererPerfOutdoor
 
     static void ConfigureSea(WaterSeaState sea)
     {
-        OceanFocusScene.BaseSea(sea);
+        RendererPerfSceneInputs.BaseSea(sea);
         sea.CascadeResolution = 256;
         sea.FetchKilometres = FetchKilometres;
     }

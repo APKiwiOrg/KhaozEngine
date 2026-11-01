@@ -47,9 +47,9 @@ internal sealed class RendererPerfCrowdScene : RendererPerfVillageScene
         }).ToArray();
         _poses = Enumerable.Range(0, Period).Select(frame =>
         {
-            // The shared fixture returns model-space deformations. DrawSkinned accepts joint worlds,
+            // The shared inputs return model-space deformations. DrawSkinned accepts joint worlds,
             // so compose each deformation with its rest joint before the engine applies inverse-bind.
-            Matrix4x4[] deformations = SkinnedPointShadowScene.BentPose(_tube, _poseAngles[frame]);
+            Matrix4x4[] deformations = RendererPerfSceneInputs.BentPose(_tube, _poseAngles[frame]);
             for (int bone = 0; bone < deformations.Length; bone++)
                 deformations[bone] = _tube.RestPose[bone] * deformations[bone];
             return deformations;

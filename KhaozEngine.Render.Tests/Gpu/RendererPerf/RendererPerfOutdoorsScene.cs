@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 /// planes and keep the foliage, the FFT settings and the point lights.</summary>
 internal class RendererPerfOutdoorsScene : RendererPerfVillageScene
 {
-    readonly GltfMesh _shrub = FoliageShadowGpuScene.ShrubMesh();
+    readonly GltfMesh _shrub = RendererPerfSceneInputs.ShrubMesh();
     readonly RendererPerfTexture _cutout = new(8, 8, RendererPerfUiScene.ColorPixels(0), TextureMipPolicy.Full);
     readonly Scene3D.SurfaceMaps _surface = new(default, alphaCutoff: .5f);
     const float PatchSize = 4f;
@@ -120,7 +120,7 @@ internal class RendererPerfOutdoorsScene : RendererPerfVillageScene
     };
     protected override void ConfigureSettings(PixelPostProcessSettings post)
     {
-        OceanFocusScene.BaseSea(post.Water.SeaState);
+        RendererPerfSceneInputs.BaseSea(post.Water.SeaState);
         post.Water.SeaState.CascadeResolution = 256;
         post.Water.WaveSource = WaterWaveSource.FftOcean;
         post.Water.GridMode = WaterGridMode.Clipmap;

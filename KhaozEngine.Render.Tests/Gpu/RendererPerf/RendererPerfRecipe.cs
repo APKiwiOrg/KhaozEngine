@@ -362,7 +362,7 @@ internal abstract class RendererPerfRecipe : IRendererPerfRecipe
             LightDirection = new Vector3(-.5f, -.85f, -.35f),
         };
         post.Quality.AntiAliasing = active ? AntiAliasing.Temporal : AntiAliasing.Off;
-        post.Quality.Shadows = StreamedWorldSceneContent.Shadows();
+        post.Quality.Shadows = RendererPerfSceneInputs.Shadows();
         post.Quality.Shadows.Mode = active ? ShadowMode.ShadowMap : ShadowMode.Off;
         post.Quality.Shadows.ShadowMaxDistance = 400f;
         post.Quality.Shadows.PointShadows = new PointShadowSettings

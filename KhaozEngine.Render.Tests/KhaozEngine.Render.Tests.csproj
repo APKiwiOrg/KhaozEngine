@@ -111,6 +111,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../test-shared/SkinnedAttachmentGlbFixture.cs" Link="Shared/SkinnedAttachmentGlbFixture.cs" />
+    <Compile Include="../test-shared/RendererPerfSceneInputs.cs" Link="Shared/RendererPerfSceneInputs.cs" />
   </ItemGroup>
   <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

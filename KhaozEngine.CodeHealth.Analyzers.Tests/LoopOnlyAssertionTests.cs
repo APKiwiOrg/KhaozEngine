@@ -150,6 +150,16 @@ public class LoopOnlyAssertionTests
             }
             """));
 
+    [Theory]
+    [InlineData("for (double i = 0.5; i < 1.5; i++) Assert.True(i > 0);")]
+    [InlineData("for (float i = 0.5f; i <= 0.5f; i++) Assert.True(i > 0);")]
+    [InlineData("for (decimal i = -0.5m; i < 0m; i++) Assert.True(i < 0);")]
+    [InlineData("for (double i = 0.1; i < 0.10000000000000002; i++) Assert.True(i > 0);")]
+    [InlineData("for (float i = 16777217; i <= 16777216; i++) Assert.True(i > 0);")]
+    [InlineData("for (double i = 9007199254740993; i <= 9007199254740992; i++) Assert.True(i > 0);")]
+    public async Task NonEmptyNumericLiteralFor_IsSilent(string body) =>
+        Assert.Empty(await RunBody(body));
+
     private static async Task AssertFinding(string body, string attribute = "Fact") =>
         await AssertDiagnostic(Source(body, attribute));
 

@@ -1,9 +1,11 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace KhaozEngine.CodeHealth.Analyzers
 {
@@ -186,50 +188,64 @@ namespace KhaozEngine.CodeHealth.Analyzers
             }
             else return false;
 
-            if (counter is null || initialValue is null || !TryLiteralNumber(initialValue, out var start) ||
-                loop.Condition is null || Unwrap(loop.Condition) is not BinaryExpressionSyntax condition) return false;
+            if (counter is null || initialValue is null ||
+                !TryLiteralNumber(initialValue, model, cancellationToken, out var start) ||
+                loop.Condition is null || Unwrap(loop.Condition) is not BinaryExpressionSyntax condition ||
+                model.GetOperation(condition, cancellationToken) is not IBinaryOperation operation) return false;
 
-            decimal left;
-            decimal right;
+            // Honor rounding on assignment before applying the comparison's numeric promotion.
+            switch (model.GetTypeInfo(initialValue, cancellationToken).ConvertedType?.SpecialType)
+            {
+                case SpecialType.System_Single: start = Convert.ToSingle(start); break;
+                case SpecialType.System_Double: start = Convert.ToDouble(start); break;
+            }
+
+            object left;
+            object right;
             if (SymbolEqualityComparer.Default.Equals(
                     model.GetSymbolInfo(Unwrap(condition.Left), cancellationToken).Symbol, counter) &&
-                TryLiteralNumber(condition.Right, out right)) left = start;
+                TryLiteralNumber(condition.Right, model, cancellationToken, out right)) left = start;
             else if (SymbolEqualityComparer.Default.Equals(
                          model.GetSymbolInfo(Unwrap(condition.Right), cancellationToken).Symbol, counter) &&
-                     TryLiteralNumber(condition.Left, out left)) right = start;
+                     TryLiteralNumber(condition.Left, model, cancellationToken, out left)) right = start;
             else return false;
+
+            int? comparison = operation.LeftOperand.Type?.SpecialType switch
+            {
+                SpecialType.System_Single => Convert.ToSingle(left).CompareTo(Convert.ToSingle(right)),
+                SpecialType.System_Double => Convert.ToDouble(left).CompareTo(Convert.ToDouble(right)),
+                SpecialType.System_Decimal or SpecialType.System_Int32 or SpecialType.System_UInt32 or
+                    SpecialType.System_Int64 or SpecialType.System_UInt64 =>
+                    Convert.ToDecimal(left).CompareTo(Convert.ToDecimal(right)),
+                _ => null,
+            };
+            if (comparison is null) return false;
 
             return condition.Kind() switch
             {
-                SyntaxKind.LessThanExpression => left < right,
-                SyntaxKind.LessThanOrEqualExpression => left <= right,
-                SyntaxKind.GreaterThanExpression => left > right,
-                SyntaxKind.GreaterThanOrEqualExpression => left >= right,
-                SyntaxKind.EqualsExpression => left == right,
-                SyntaxKind.NotEqualsExpression => left != right,
+                SyntaxKind.LessThanExpression => comparison < 0,
+                SyntaxKind.LessThanOrEqualExpression => comparison <= 0,
+                SyntaxKind.GreaterThanExpression => comparison > 0,
+                SyntaxKind.GreaterThanOrEqualExpression => comparison >= 0,
+                SyntaxKind.EqualsExpression => comparison == 0,
+                SyntaxKind.NotEqualsExpression => comparison != 0,
                 _ => false,
             };
         }
 
-        private static bool TryLiteralNumber(ExpressionSyntax expression, out decimal number)
+        private static bool TryLiteralNumber(ExpressionSyntax expression, SemanticModel model,
+            CancellationToken cancellationToken, out object number)
         {
             expression = Unwrap(expression);
-            var sign = 1;
-            if (expression is PrefixUnaryExpressionSyntax unary &&
+            var literal = expression;
+            if (literal is PrefixUnaryExpressionSyntax unary &&
                 (unary.IsKind(SyntaxKind.UnaryMinusExpression) || unary.IsKind(SyntaxKind.UnaryPlusExpression)))
+                literal = Unwrap(unary.Operand);
+            if (literal.IsKind(SyntaxKind.NumericLiteralExpression) &&
+                model.GetConstantValue(expression, cancellationToken) is { HasValue: true, Value: { } value })
             {
-                sign = unary.IsKind(SyntaxKind.UnaryMinusExpression) ? -1 : 1;
-                expression = Unwrap(unary.Operand);
-            }
-            if (expression is LiteralExpressionSyntax literal)
-            {
-                switch (literal.Token.Value)
-                {
-                    case int value: number = sign * (decimal)value; return true;
-                    case uint value: number = sign * (decimal)value; return true;
-                    case long value: number = sign * (decimal)value; return true;
-                    case ulong value: number = sign * (decimal)value; return true;
-                }
+                number = value;
+                return true;
             }
             number = 0;
             return false;

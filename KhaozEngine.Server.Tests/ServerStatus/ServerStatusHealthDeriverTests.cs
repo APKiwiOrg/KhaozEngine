@@ -31,28 +31,15 @@ public class ServerStatusHealthDeriverTests
         Assert.Equal(ServerHealth.Unknown, ServerStatusHealthDeriver.Derive(null, default, Now, Options));
     }
 
-    [Fact]
-    public void FreshHeartbeatIsHealthy()
+    [Theory]
+    [InlineData(5, ServerHealth.Healthy)]
+    [InlineData(60, ServerHealth.Healthy)] // The staleness boundary is inclusive.
+    [InlineData(90, ServerHealth.Down)]
+    public void HeartbeatFreshnessDeterminesHealthOutsideDeployWindows(int ageSeconds, ServerHealth expected)
     {
         Assert.Equal(
-            ServerHealth.Healthy,
-            ServerStatusHealthDeriver.Derive(Beat(TimeSpan.FromSeconds(5)), default, Now, Options));
-    }
-
-    [Fact]
-    public void StaleHeartbeatIsDown()
-    {
-        Assert.Equal(
-            ServerHealth.Down,
-            ServerStatusHealthDeriver.Derive(Beat(TimeSpan.FromSeconds(90)), default, Now, Options));
-    }
-
-    [Fact]
-    public void HeartbeatExactlyAtTheStalenessBoundIsStillHealthy()
-    {
-        Assert.Equal(
-            ServerHealth.Healthy,
-            ServerStatusHealthDeriver.Derive(Beat(TimeSpan.FromSeconds(60)), default, Now, Options));
+            expected,
+            ServerStatusHealthDeriver.Derive(Beat(TimeSpan.FromSeconds(ageSeconds)), default, Now, Options));
     }
 
     [Fact]

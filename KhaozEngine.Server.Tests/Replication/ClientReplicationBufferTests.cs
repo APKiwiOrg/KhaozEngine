@@ -34,8 +34,12 @@ public class ClientReplicationBufferTests
         view.RecordInterpolationSample(t);
     }
 
-    [Fact]
-    public void InterpolateAt_lerps_between_bracketing_samples_by_true_time_fraction()
+    [Theory]
+    [InlineData(0f, 0f, 1.075, 7.5f, 15f)] // Three quarters through the bracket.
+    [InlineData(0f, 0f, 5.0, 10f, 20f)] // Starvation holds at the newest sample.
+    [InlineData(3f, 4f, 0.5, 3f, 4f)] // Warm-up clamps to the oldest sample.
+    public void InterpolateAtUsesTheTimeBracketAndClampsOutsideIt(
+        float firstX, float firstY, double renderTime, float expectedX, float expectedY)
     {
         var registry = NewRegistry();
         var client = new World();
@@ -43,57 +47,14 @@ public class ClientReplicationBufferTests
         var server = new World();
         Entity s = server.Spawn(); server.Set(s, new NetId(7));
 
-        Push(view, client, server, s, 0f, 0f, t: 1.00);
+        Push(view, client, server, s, firstX, firstY, t: 1.00);
         Push(view, client, server, s, 10f, 20f, t: 1.10);
 
-        // renderTime 1.075 sits 75% of the way from the t=1.00 sample to the t=1.10 sample.
-        view.InterpolateAt(client, 1.075);
+        view.InterpolateAt(client, renderTime);
 
         Assert.True(view.TryGetEntity(7, out Entity c));
-        Assert.Equal(7.5f, client.Get<Pos>(c).X, 4);
-        Assert.Equal(15f, client.Get<Pos>(c).Y, 4);
-    }
-
-    [Fact]
-    public void InterpolateAt_holds_at_the_newest_sample_when_renderTime_is_beyond_it()
-    {
-        // A stalled snapshot stream (renderTime advanced past the newest sample) HOLDS at the newest value; it never
-        // extrapolates. This is the only remaining "hold", and it happens solely on genuine starvation, not per tick.
-        var registry = NewRegistry();
-        var client = new World();
-        var view = new ClientReplicationView(registry);
-        var server = new World();
-        Entity s = server.Spawn(); server.Set(s, new NetId(7));
-
-        Push(view, client, server, s, 0f, 0f, t: 1.00);
-        Push(view, client, server, s, 10f, 20f, t: 1.10);
-
-        view.InterpolateAt(client, 5.0);   // long past the newest sample
-
-        Assert.True(view.TryGetEntity(7, out Entity c));
-        Assert.Equal(10f, client.Get<Pos>(c).X, 4);
-        Assert.Equal(20f, client.Get<Pos>(c).Y, 4);
-    }
-
-    [Fact]
-    public void InterpolateAt_clamps_to_the_oldest_sample_before_the_buffer_starts()
-    {
-        // During warm-up renderTime (latest - delay) can precede the oldest buffered sample; render the oldest value
-        // rather than NaN or extrapolate backward.
-        var registry = NewRegistry();
-        var client = new World();
-        var view = new ClientReplicationView(registry);
-        var server = new World();
-        Entity s = server.Spawn(); server.Set(s, new NetId(7));
-
-        Push(view, client, server, s, 3f, 4f, t: 1.00);
-        Push(view, client, server, s, 10f, 20f, t: 1.10);
-
-        view.InterpolateAt(client, 0.5);   // before the oldest sample
-
-        Assert.True(view.TryGetEntity(7, out Entity c));
-        Assert.Equal(3f, client.Get<Pos>(c).X, 4);
-        Assert.Equal(4f, client.Get<Pos>(c).Y, 4);
+        Assert.Equal(expectedX, client.Get<Pos>(c).X, 4);
+        Assert.Equal(expectedY, client.Get<Pos>(c).Y, 4);
     }
 
     private struct Vel : IComponent { public float X; public float Y; }

@@ -5,6 +5,7 @@ using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Render3D;
 
@@ -14,7 +15,7 @@ namespace KhaozEngine.Tests.Render3D;
 /// rules (a stale handle, an opted-out instance, dissolving and inverted casters) and the span grouping are the
 /// production code, and the oracle is the old walk kept in <see cref="PointCasterFullWalk"/>.
 /// </summary>
-public sealed class PointCasterWalkEquivalenceTests
+public sealed class PointCasterWalkEquivalenceTests(ITestOutputHelper output)
 {
     [Theory]
     [InlineData(11)]
@@ -97,6 +98,7 @@ public sealed class PointCasterWalkEquivalenceTests
 
         Assert.Equal(0, steady.PointStaticRebuilds);
         Assert.Equal(8, rig.Scene.PointShadowedLights);
+        output.WriteLine($"Steady static frame exact touch tests: {rig.Scene.PointCasterTouchTests}");
         // Eight signatures, one query each. Each query's window is under 44.5 m per horizontal axis (radius 6, one
         // cell, the slack and the cell floor), which holds at most three lattice columns 16 m apart, so at most
         // nine tests a light. The walk over every run tested all 1,600 instances for every light.

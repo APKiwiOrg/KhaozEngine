@@ -80,8 +80,8 @@ public sealed partial class Scene3D
         {
             PointShadowRequest request = _pointRequests[i];
             if (request.Slot < 0) continue;
-            bool skinned = PointRequestTouchesSkinned(request);
-            if (!skinned && !PointRequestTouchesMovingRigid(request)) continue;
+            bool skinned = request.TouchesSkinned;
+            if (!skinned && !request.TouchesMovingRigid) continue;
             if (request.Mode == LightShadowMode.Static)
             {
                 // A newly acquired base row becomes sampleable when its selected rigid rebuild finishes below.

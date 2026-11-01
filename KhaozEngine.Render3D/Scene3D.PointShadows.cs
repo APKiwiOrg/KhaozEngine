@@ -153,13 +153,18 @@ namespace KhaozEngine.Render3D
             for (int i = 0; i < _pointRequests.Count; i++)
             {
                 PointShadowRequest request = _pointRequests[i];
-                if (request.Slot < 0 || request.Mode != LightShadowMode.Static) continue;
-                long signature = PointCasterSignature(request.Position, request.Radius, request.NearRadius,
-                    request.ExclusionMin, request.ExclusionMax);
-                // A changed signature can only ADD dirt. A freshly acquired row is already dirty, so a stale
-                // signature left behind by the row's previous owner cannot accidentally report it clean.
-                if (_pointCasterSignatures[request.Slot] != signature) cache.MarkDirty(request.Slot);
-                _pointCasterSignatures[request.Slot] = signature;
+                if (request.Slot < 0) continue;
+                request.TouchesSkinned = PointRequestTouchesSkinned(request);
+                if (request.Mode == LightShadowMode.Static)
+                {
+                    long signature = PointCasterSignature(request.Position, request.Radius, request.NearRadius,
+                        request.ExclusionMin, request.ExclusionMax, out request.TouchesMovingRigid);
+                    // A changed signature can only ADD dirt. A freshly acquired row is already dirty, so a stale
+                    // signature left behind by the row's previous owner cannot accidentally report it clean.
+                    if (_pointCasterSignatures[request.Slot] != signature) cache.MarkDirty(request.Slot);
+                    _pointCasterSignatures[request.Slot] = signature;
+                }
+                _pointRequests[i] = request;
             }
         }
 
@@ -336,7 +341,7 @@ namespace KhaozEngine.Render3D
         /// </para>
         /// </summary>
         long PointCasterSignature(Vector3 lightPosAbsolute, float radius, float nearRadius,
-            Vector3 exclusionMin, Vector3 exclusionMax)
+            Vector3 exclusionMin, Vector3 exclusionMax, out bool movingRigid)
         {
             ulong hash = PointSignatureSeed;
             MixPointSignature(ref hash, unchecked((ulong)_model.InteriorResources.Version));
@@ -357,7 +362,7 @@ namespace KhaozEngine.Render3D
             // Read by reference: an InstanceData is 128 bytes and this runs once per touching caster per static
             // request per frame.
             QueryPointCasters(lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);
-            MixStaticRigidPointCasters(ref hash);
+            MixStaticRigidPointCasters(ref hash, out movingRigid);
             // Casting foliage joins at its rest pose (Scene3D.FoliagePointShadows.cs), so its motion never
             // dirties a row.
             MixFoliagePointSignature(ref hash, lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);
@@ -523,6 +528,11 @@ namespace KhaozEngine.Render3D
 
             /// <summary>The atlas row it was given, or -1 when the cache had none to give.</summary>
             public int Slot = -1;
+
+            // Fresh membership for this gathered request, shared by eligibility, assignment and final planning.
+            // Moving membership comes from the static signature query, never from retained spatial hits.
+            public bool TouchesMovingRigid;
+            public bool TouchesSkinned;
         }
     }
 }

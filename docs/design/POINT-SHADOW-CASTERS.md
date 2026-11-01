@@ -59,6 +59,11 @@ base cached. Legacy rows without opted-in demand keep their ordinary static budg
 The conservative dirty flag may also require a transition after geometry returns to its rendered signature.
 Selection and rendering use the same transition rule, including that dirty state.
 
+Each gathered request records fresh moving-rigid and skinned membership before selection. Moving membership
+comes from the static signature's existing index query without changing the signature. Eligibility, transient
+assignment and final planning share those values, while only the final plan advances previous-demand history.
+Requests retain no spatial hit lists. Dynamic requests need only skinned membership before their selected draw.
+
 Fallback and pure-base transitions are mandatory correctness work outside `MaxStaticRebuildsPerFrame`. One
 shared plan deduplicates them with ordinary work, with at most one base render per affected owned light per
 frame and at most the live base row count. Existing mandatory rows leave the full ordinary allowance available

@@ -23,14 +23,19 @@ public sealed partial class Scene3D
 
     // A moving actor can introduce a shared mesh first and reorder runs when its mesh changes. Sum independent
     // per-run hashes so its routing never changes the static signature through that first-seen ordering.
-    void MixStaticRigidPointCasters(ref ulong hash)
+    void MixStaticRigidPointCasters(ref ulong hash, out bool movingRigid)
     {
+        movingRigid = false;
         Span<ModelRenderer.InstanceData> instances = CollectionsMarshal.AsSpan(_instanceData);
         ulong combined = 0, runHash = PointSignatureSeed;
         int previousRun = -1, casterCount = 0;
         foreach (int slot in _pointCasterHits)
         {
-            if (!PointCasterInSet(slot, PointShadowCasterSet.StaticRigid)) continue;
+            if (!PointCasterInSet(slot, PointShadowCasterSet.StaticRigid))
+            {
+                movingRigid = true;
+                continue;
+            }
             casterCount++;
             int run = _pointCasterIndex.RunOf(slot);
             if (run != previousRun)
@@ -50,15 +55,6 @@ public sealed partial class Scene3D
         MixPointSignature(ref hash, (ulong)casterCount);
     }
 
-    bool PointRequestTouchesMovingRigid(in PointShadowRequest request)
-    {
-        QueryPointCasters(request.Position, request.Radius, request.NearRadius,
-            request.ExclusionMin, request.ExclusionMax);
-        foreach (int slot in _pointCasterHits)
-            if (PointCasterInSet(slot, PointShadowCasterSet.MovingRigid)) return true;
-        return false;
-    }
-
     void PrepareRigidPointBaseRows(PointShadowSlots cache)
     {
         if (_pointRigidBaseWork.Length < _pointRequests.Count)
@@ -71,7 +67,7 @@ public sealed partial class Scene3D
                 || !cache.EverRendered(request.Slot) || !cache.IsDirty(request.Slot)) continue;
             // Eligibility must not advance previous demand before the final layer plan reads it.
             if (_pointRigidLayers.RequiresTransition(request.Slot, request.Key,
-                _pointCasterSignatures[request.Slot], cache.IsDirty(request.Slot), PointRequestTouchesMovingRigid(request)))
+                _pointCasterSignatures[request.Slot], cache.IsDirty(request.Slot), request.TouchesMovingRigid))
                 _pointRigidBaseWork[i] = PointRigidBaseWork.Transition;
         }
     }
@@ -90,7 +86,7 @@ public sealed partial class Scene3D
             if (!cache.EverRendered(request.Slot) && !selected) continue;
             PointRigidBaseWork work = _pointRigidLayers.Plan(request.Slot, request.Key,
                 cache.EverRendered(request.Slot), _pointCasterSignatures[request.Slot],
-                cache.IsDirty(request.Slot), PointRequestTouchesMovingRigid(request), PointRequestTouchesSkinned(request),
+                cache.IsDirty(request.Slot), request.TouchesMovingRigid, request.TouchesSkinned,
                 _pointTransientRowsByRequest[i] >= 0);
             _pointRigidBaseWork[i] = work;
             if (work == PointRigidBaseWork.None) continue;

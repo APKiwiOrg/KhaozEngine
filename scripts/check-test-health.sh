@@ -40,7 +40,8 @@ if [ -z "${TESTHEALTH_BUILD_LOG:-}" ]; then
   # when it leaves the solution, otherwise missing diagnostics could silently erase its allowance.
   for target in KhaozEngine.slnx \
       tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj \
-      tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj; do
+      tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj \
+      tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj; do
     if ! dotnet build "$target" -c Release --no-incremental \
         -p:KhaozTestHealthMode=report -p:TreatWarningsAsErrors=false >>"$log" 2>&1; then
       cat "$log" >&2

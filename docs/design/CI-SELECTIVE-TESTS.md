@@ -294,3 +294,12 @@ The same selector routes Items benchmark inputs to the explicit outside-solution
 `tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj` suite on hosted Ubuntu. Dispatch selects
 `items` independently of renderer. The nine retained Items structural and resident-memory instrument
 methods stay in Server.Tests. Ordinary engine builds need no Items acceptance or verifier prerequisite.
+
+Navigation capture research has the same outside-solution boundary in
+`tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj`. The selector's independent `nav`
+route runs its three synthetic fixtures on hosted `ubuntu-26.04` when that project, Movement's
+AssemblyInfo, shared build/package/baseline inputs or the tooling workflow change. Manual dispatch
+also accepts `nav`. All three named Release facts must pass with zero skips before a separately
+approved capture or restoration campaign. The seven SupportQueryCapture methods and both enabled
+and disabled theory rows stay in Movement.Tests and default engine CI. Unrelated production Movement
+edits retain their ordinary engine tests without automatically selecting the research suite.

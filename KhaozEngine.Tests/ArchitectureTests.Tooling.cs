@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests;
 
 public partial class ArchitectureTests
 {
-    // Explicit paths avoid scanning build outputs or sibling worktrees. Later moves add their project here.
+    // Explicit paths avoid scanning build outputs or sibling worktrees.
     static readonly string[] ExternalToolingTests =
     [
         "tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj",
@@ -22,14 +22,13 @@ public partial class ArchitectureTests
         string root = RepoRoot();
         Assert.True(File.Exists(Path.Combine(root, ExternalToolingTests[0])));
         Assert.True(File.Exists(Path.Combine(root, ExternalToolingTests[1])));
+        Assert.True(File.Exists(Path.Combine(root, ExternalToolingTests[2])));
         string[] solution = XDocument.Load(Path.Combine(root, "KhaozEngine.slnx")).Descendants("Project")
             .Select(p => Path.GetFullPath(Path.Combine(root, p.Attribute("Path")!.Value.Replace('\\', '/')))).ToArray();
         string[] tools = ExternalToolingTests.Select(p => Path.GetFullPath(Path.Combine(root, p))).ToArray();
         foreach (string tool in tools)
         {
             Assert.DoesNotContain(tool, solution);
-            // Independently buildable migration commits introduce these projects one at a time.
-            if (!File.Exists(tool)) continue;
             XElement project = XDocument.Load(tool).Root!;
             Assert.Contains(project.Descendants("IsPackable"), e => e.Value == "false");
             Assert.Contains(project.Descendants("IsTestProject"), e => e.Value == "true");

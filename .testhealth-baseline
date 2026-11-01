@@ -288,7 +288,7 @@
 6 KETEST001 KhaozEngine.Movement.Tests/ParallelContactBakeFailureTests.cs
 2 KETEST001 KhaozEngine.Movement.Tests/ParallelContactBakeScheduleTests.cs
 3 KETEST001 KhaozEngine.Movement.Tests/ParallelContactBakeTests.cs
-1 KETEST002 KhaozEngine.Movement.Tests/Research/NavCaptureSnapshot.cs
+1 KETEST002 tools/NavCapture.Research.Tests/Research/NavCaptureSnapshot.cs
 3 KETEST001 KhaozEngine.Movement.Tests/RuntimeStaticNavigationTests.cs
 1 KETEST001 KhaozEngine.Movement.Tests/StableLegacyReadScopeTests.cs
 1 KETEST002 KhaozEngine.Movement.Tests/SupportQueryCaptureTests.cs

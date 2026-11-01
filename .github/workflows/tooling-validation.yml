@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
     paths:
+      - 'tools/NavCapture.Research.Tests/**'
+      - 'KhaozEngine.Movement/AssemblyInfo.cs'
       - 'tools/Items.Benchmark.Tests/**'
       - 'KhaozEngine.Benchmarks/Items/**'
       - 'KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj'
@@ -96,6 +98,8 @@ on:
       - 'KhaozEngine.Render.Tests/Gpu/GpuBackendProvidersCollection.cs'
   pull_request:
     paths:
+      - 'tools/NavCapture.Research.Tests/**'
+      - 'KhaozEngine.Movement/AssemblyInfo.cs'
       - 'tools/Items.Benchmark.Tests/**'
       - 'KhaozEngine.Benchmarks/Items/**'
       - 'KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj'
@@ -190,7 +194,7 @@ on:
       suite:
         description: Explicit tooling suite
         type: choice
-        options: [renderer, items]
+        options: [renderer, items, nav]
         default: renderer
   workflow_call:
     inputs:
@@ -217,6 +221,8 @@ jobs:
       renderer: ${{ steps.select.outputs.renderer }}
       items-matrix: ${{ steps.select.outputs.items-matrix }}
       items: ${{ steps.select.outputs.items }}
+      nav-matrix: ${{ steps.select.outputs.nav-matrix }}
+      nav: ${{ steps.select.outputs.nav }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -234,7 +240,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           set -euo pipefail
-          case "$SUITE" in renderer|items) ;; *) echo 'Unknown tooling suite' >&2; exit 1 ;; esac
+          case "$SUITE" in renderer|items|nav) ;; *) echo 'Unknown tooling suite' >&2; exit 1 ;; esac
           if [[ "$SELECTION_EVENT" == workflow_call ]]; then REQUESTED_SHA=$CALL_SHA; fi
           args=(--event "$SELECTION_EVENT" --ref "$REQUESTED_SHA" --trusted-ref "$TRUSTED_SHA")
           if [[ "$SELECTION_EVENT" == push || "$SELECTION_EVENT" == pull_request ]]; then
@@ -245,13 +251,13 @@ jobs:
               args+=(--changed-file "$RUNNER_TEMP/tooling-changed.txt")
             fi
           fi
-          for suite in renderer items; do
+          for suite in renderer items nav; do
             matrix='{"include":[]}'
             if [[ "$SELECTION_EVENT" == push || "$SELECTION_EVENT" == pull_request || "$SUITE" == "$suite" ]]; then
               matrix=$(python3 scripts/renderer-tooling-selection.py "${args[@]}" --suite "$suite")
             fi
             key=matrix
-            if [[ "$suite" == items ]]; then key=items-matrix; fi
+            if [[ "$suite" != renderer ]]; then key=$suite-matrix; fi
             echo "$key=$matrix" >> "$GITHUB_OUTPUT"
             echo "$suite=$(python3 -c 'import json,sys; print(str(bool(json.loads(sys.argv[1])["include"])).lower())' "$matrix")" >> "$GITHUB_OUTPUT"
           done
@@ -368,6 +374,59 @@ jobs:
         with:
           name: items-benchmark-${{ matrix.ref }}
           path: TestResults/items.trx
+          if-no-files-found: warn
+
+  nav:
+    needs: select
+    if: needs.select.outputs.nav == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.nav-matrix) }}
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.ref }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build navigation capture research
+        shell: bash
+        run: |
+          mkdir -p local-feed
+          sh scripts/build-release-tests.sh tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj
+      - name: Run synthetic navigation research fixtures
+        shell: pwsh
+        run: |
+          & dotnet test tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj -c Release --no-build --logger 'trx;LogFileName=nav.trx' --results-directory TestResults
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Require named navigation research passes
+        shell: pwsh
+        run: |
+          [xml]$trx = Get-Content -Raw TestResults/nav.trx
+          $counts = @($trx.SelectNodes('//*[local-name()="Counters"]'))
+          $results = @($trx.SelectNodes('//*[local-name()="UnitTestResult"]'))
+          $names = @(
+            'KhaozEngine.Tests.Movement.Research.NavCaptureResearchTests.OneCapturePreservesFixtureColumnsAndSeparatesStages'
+            'KhaozEngine.Tests.Movement.Research.NavCaptureSnapshotTests.RestoredSnapshotRetainsEveryBitWithoutSamplingPhysics'
+            'KhaozEngine.Tests.Movement.Research.NavCaptureSnapshotTests.RestoredFixtureBuildsTheSameCanonicalBakeAsFreshCapture'
+          )
+          if ($counts.Count -ne 1 -or $counts[0].total -ne '3' -or $counts[0].passed -ne '3' -or $counts[0].notExecuted -ne '0' -or $counts[0].failed -ne '0') { throw 'Navigation research requires exactly three passes and zero skips' }
+          if ($results.Count -ne 3) { throw 'All three named navigation research facts must pass' }
+          foreach ($name in $names) {
+            $matching = @($results | Where-Object { $_.testName -eq $name -and $_.outcome -eq 'Passed' })
+            if ($matching.Count -ne 1) { throw "Navigation research fact must pass once, $name" }
+          }
+      - name: Upload navigation research results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nav-capture-research-${{ matrix.ref }}
+          path: TestResults/nav.trx
           if-no-files-found: warn
 
   renderer-result:

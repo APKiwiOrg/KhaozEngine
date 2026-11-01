@@ -1,5 +1,18 @@
 # Navigation capture research
 
+The helper and its three synthetic fixture tests compile into `NavCapture.Research.Tests.dll` in
+`tools/NavCapture.Research.Tests/bin/Release/net10.0/`. Caller probes reference the
+`tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj` project, outside the engine solution.
+Build and run its fixture checks explicitly from the repository root through `build-slot`.
+
+```sh
+sh scripts/build-release-tests.sh tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj
+dotnet test tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj -c Release --no-build
+```
+
+Require the free workflow's `nav` fixture route to pass before a separately approved research capture
+or snapshot restoration campaign. The [tool README](../README.md) owns trigger and validation guidance.
+
 `NavCaptureResearch.Run(setup, outputDirectory)` is an opt-in test utility for one
 `PhysicsNavBake.Capture`. A caller supplies a factory returning its owned physics,
 context, options and classifier. The utility invokes the factory once, captures
@@ -58,7 +71,7 @@ basis cannot be transferred to a different physics instance. Keep the rebuilt
 scene unchanged through profile construction.
 
 Only the private builder constructor uses reflection. This utility lives in the
-test assembly and adds no production restore API or supported file format. A
+`NavCapture.Research.Tests` assembly and adds no production restore API or supported file format. A
 changed constructor fails explicitly. The fixture tests preserve negative zero,
 infinite headroom, area bits and water bits without sampling, then compare a
 complete KENB bake from restored columns with one from a fresh tiny fixture capture.

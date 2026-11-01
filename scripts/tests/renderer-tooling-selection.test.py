@@ -73,17 +73,31 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(self.select('--event', 'pull_request', '--suite', 'items', '--ref', A,
                                      '--changed', 'KhaozEngine.Audio/AudioBus.cs'), {'include': []})
 
-    def test_items_dispatch_and_shared_inputs_select_explicit_project(self):
-        self.assertEqual(self.select('--event', 'workflow_dispatch', '--suite', 'items', '--ref', A)['include'],
-                         [dict(ref=A, os='ubuntu-26.04')])
-        for path in ['Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props',
+    def test_nav_inputs_select_only_the_hosted_research_suite(self):
+        for path in ['tools/NavCapture.Research.Tests/Research/NavCaptureSnapshot.cs',
+                     'KhaozEngine.Movement/AssemblyInfo.cs']:
+            self.assertEqual(self.select('--event', 'push', '--suite', 'nav', '--ref', A,
+                                         '--changed', path)['include'], [dict(ref=A, os='ubuntu-26.04')])
+            for other in ['renderer', 'items']:
+                self.assertEqual(self.select('--event', 'push', '--suite', other, '--ref', A,
+                                             '--changed', path), {'include': []})
+        for path in ['KhaozEngine.Movement/PhysicsNavBake.cs', 'KhaozEngine.Audio/AudioBus.cs',
+                     'tools/Items.Benchmark.Tests/ItemsBenchmarkAcceptanceTests.cs']:
+            self.assertEqual(self.select('--event', 'pull_request', '--suite', 'nav', '--ref', A,
+                                         '--changed', path), {'include': []})
+
+    def test_cpu_dispatch_and_shared_inputs_select_explicit_projects(self):
+        for suite in ['items', 'nav']:
+            self.assertEqual(self.select('--event', 'workflow_dispatch', '--suite', suite, '--ref', A)['include'],
+                             [dict(ref=A, os='ubuntu-26.04')])
+            for path in ['Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props',
                      '.testhealth-baseline', '.filesize-baseline', 'nuget.config', 'global.json',
                      '.gitattributes', '.config/dotnet-tools.json', 'scripts/build-release-tests.sh',
                      '.github/workflows/tooling-validation.yml']:
-            self.assertEqual(len(self.select('--event', 'push', '--suite', 'items', '--ref', A,
+                self.assertEqual(len(self.select('--event', 'push', '--suite', suite, '--ref', A,
                                              '--changed', path)['include']), 1)
-        self.assertEqual(len(self.select('--event', 'push', '--suite', 'items', '--ref', A,
-                                         '--unknown-diff')['include']), 1)
+            self.assertEqual(len(self.select('--event', 'push', '--suite', suite, '--ref', A,
+                                             '--unknown-diff')['include']), 1)
 
     def test_items_trx_gate_requires_the_named_pass_without_skips(self):
         workflow = (ROOT / '.github/workflows/tooling-validation.yml').read_text()
@@ -116,9 +130,8 @@ class SelectionTests(unittest.TestCase):
         commands = '\n'.join(line[10:] for line in body.splitlines() if line.startswith('          '))
         with tempfile.TemporaryDirectory() as directory:
             output = pathlib.Path(directory) / 'output'
-            for event, suite, other in [('workflow_dispatch', 'items', 'renderer'),
-                                        ('workflow_dispatch', 'renderer', 'items'),
-                                        ('workflow_call', 'renderer', 'items')]:
+            for event, suite in [('workflow_dispatch', 'items'), ('workflow_dispatch', 'nav'),
+                                 ('workflow_dispatch', 'renderer'), ('workflow_call', 'renderer')]:
                 output.write_text('')
                 result = subprocess.run(['bash', '-c', commands], cwd=ROOT, capture_output=True, text=True,
                                         env=dict(os.environ, SELECTION_EVENT=event, SUITE=suite,
@@ -128,25 +141,56 @@ class SelectionTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 fields = dict(line.split('=', 1) for line in output.read_text().splitlines())
                 self.assertEqual(fields[suite], 'true')
-                self.assertEqual(fields[other], 'false')
-                other_matrix = 'matrix' if other == 'renderer' else 'items-matrix'
-                self.assertEqual(json.loads(fields[other_matrix]), {'include': []})
+                for other in {'renderer', 'items', 'nav'} - {suite}:
+                    self.assertEqual(fields[other], 'false')
+                    other_matrix = 'matrix' if other == 'renderer' else other + '-matrix'
+                    self.assertEqual(json.loads(fields[other_matrix]), {'include': []})
             result = subprocess.run(['bash', '-c', commands], cwd=ROOT, capture_output=True, text=True,
                                     env=dict(os.environ, SELECTION_EVENT='workflow_call', SUITE='unknown',
                                              REQUESTED_SHA=A, CALL_SHA=B, TRUSTED_SHA=A,
                                              GITHUB_OUTPUT=str(output)), check=False)
             self.assertNotEqual(result.returncode, 0)
 
-    def test_workflow_push_and_pr_watch_every_items_selector_input(self):
+    def test_nav_trx_gate_requires_every_named_pass_without_skips(self):
+        workflow = (ROOT / '.github/workflows/tooling-validation.yml').read_text()
+        marker = '      - name: Require named navigation research passes\n'
+        self.assertIn(marker, workflow)
+        body = workflow.split(marker, 1)[1].split('        run: |\n', 1)[1].split('\n      - ', 1)[0]
+        commands = '\n'.join(line[10:] for line in body.splitlines() if line.startswith('          '))
+        names = ['KhaozEngine.Tests.Movement.Research.' + name for name in [
+            'NavCaptureResearchTests.OneCapturePreservesFixtureColumnsAndSeparatesStages',
+            'NavCaptureSnapshotTests.RestoredSnapshotRetainsEveryBitWithoutSamplingPhysics',
+            'NavCaptureSnapshotTests.RestoredFixtureBuildsTheSameCanonicalBakeAsFreshCapture']]
+        cases = [(names, ['Passed'] * 3, True), ([], [], False),
+                 (names, ['Passed', 'NotExecuted', 'Passed'], False),
+                 (names, ['Passed', 'Failed', 'Passed'], False),
+                 ([*names[:2], 'Wrong.fact'], ['Passed'] * 3, False),
+                 ([names[0]] * 3, ['Passed'] * 3, False)]
+        with tempfile.TemporaryDirectory() as directory:
+            results = pathlib.Path(directory) / 'TestResults'
+            results.mkdir()
+            for test_names, outcomes, success in cases:
+                counters = (f'total="{len(outcomes)}" passed="{outcomes.count("Passed")}" '
+                            f'notExecuted="{outcomes.count("NotExecuted")}" failed="{outcomes.count("Failed")}"')
+                rows = ''.join(f'<UnitTestResult testName="{name}" outcome="{outcome}" />'
+                               for name, outcome in zip(test_names, outcomes))
+                (results / 'nav.trx').write_text(
+                    f'<TestRun><ResultSummary><Counters {counters} /></ResultSummary><Results>{rows}</Results></TestRun>')
+                result = subprocess.run(['pwsh', '-NoProfile', '-NonInteractive', '-Command', commands],
+                                        cwd=directory, capture_output=True, text=True, check=False)
+                self.assertEqual(result.returncode == 0, success, result.stderr)
+
+    def test_workflow_push_and_pr_watch_every_cpu_selector_input(self):
         spec = importlib.util.spec_from_file_location('selector', SCRIPT)
         selector = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(selector)
         workflow = (ROOT / '.github/workflows/tooling-validation.yml').read_text()
         push = workflow.split('  push:\n', 1)[1].split('  pull_request:\n', 1)[0]
         pr = workflow.split('  pull_request:\n', 1)[1].split('  workflow_dispatch:\n', 1)[0]
-        for pattern in selector.watched_paths('items'):
-            self.assertIn(f"      - '{pattern}'", push)
-            self.assertIn(f"      - '{pattern}'", pr)
+        for suite in ['items', 'nav']:
+            for pattern in selector.watched_paths(suite):
+                self.assertIn(f"      - '{pattern}'", push)
+                self.assertIn(f"      - '{pattern}'", pr)
 
 
 if __name__ == '__main__':

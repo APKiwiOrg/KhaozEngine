@@ -40,11 +40,21 @@ ITEMS_WATCHED = (
     '.filesize-baseline', 'Directory.Build.props', 'Directory.Build.targets',
     'Directory.Packages.props', 'nuget.config', 'global.json', '.config/dotnet-tools.json',
 )
+NAV_WATCHED = (
+    'tools/NavCapture.Research.Tests/**', 'KhaozEngine.Movement/AssemblyInfo.cs',
+    'scripts/renderer-tooling-selection.py', 'scripts/tests/renderer-tooling-selection.test.py',
+    'scripts/build-release-tests.sh', 'scripts/tests/build-release-tests.test.sh',
+    '.github/workflows/tooling-validation.yml', '.gitattributes', '.testhealth-baseline',
+    '.filesize-baseline', 'Directory.Build.props', 'Directory.Build.targets',
+    'Directory.Packages.props', 'nuget.config', 'global.json', '.config/dotnet-tools.json',
+)
 
 
 def watched_paths(suite='renderer'):
     if suite == 'items':
         return ITEMS_WATCHED
+    if suite == 'nav':
+        return NAV_WATCHED
     links = ET.parse(ROOT / 'test-shared/RendererPerfShared.props').iter('Compile')
     return (*WATCHED, *(node.attrib['Include'].removeprefix('$(RendererPerfRepositoryRoot)/') for node in links))
 
@@ -52,7 +62,7 @@ def watched_paths(suite='renderer'):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--event', required=True, choices=('push', 'pull_request', 'workflow_call', 'workflow_dispatch'))
-    parser.add_argument('--suite', default='renderer', choices=('renderer', 'items'))
+    parser.add_argument('--suite', default='renderer', choices=('renderer', 'items', 'nav'))
     parser.add_argument('--ref', required=True, dest='requested')
     parser.add_argument('--trusted-ref', default='')
     parser.add_argument('--changed', action='append', default=[])

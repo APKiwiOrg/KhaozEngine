@@ -297,7 +297,7 @@ check 'update after a failed own build leaves the baseline' 1 "$rc"
 fresh
 mkdir -p tools/Renderer.Perf.Tooling.Tests
 : >tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj
-printf '2 KETEST001 Tests/A.cs\n3 KETEST002 tools/Renderer.Perf.Tooling.Tests/Tool.cs\n5 KETEST002 test-shared/Shared.cs\n' >.testhealth-baseline
+printf '2 KETEST001 Tests/A.cs\n3 KETEST002 tools/Renderer.Perf.Tooling.Tests/Tool.cs\n5 KETEST002 test-shared/Shared.cs\n1 KETEST002 tools/NavCapture.Research.Tests/Research/NavCaptureSnapshot.cs\n' >.testhealth-baseline
 cp .testhealth-baseline before
 mkdir -p "$TMPROOT/combined-bin"
 cat > "$TMPROOT/combined-bin/dotnet" <<'STUB'
@@ -312,6 +312,9 @@ case "$2" in
   tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj)
     printf "warning KETEST002: 'test-shared/Shared.cs' has 4 accesses\n"
     exit "${ITEMS_BUILD_EXIT:-0}" ;;
+  tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj)
+    printf "warning KETEST002: 'tools/NavCapture.Research.Tests/Research/NavCaptureSnapshot.cs' has 1 accesses\n"
+    exit "${NAV_BUILD_EXIT:-0}" ;;
   *) exit 98 ;;
 esac
 STUB
@@ -321,7 +324,7 @@ TESTHEALTH_BUILD_LOG= PATH="$TMPROOT/combined-bin:$PATH" sh "$SCRIPT" --preview 
 rc=$?
 set -e
 unchanged
-[ "$(wc -l <commands | tr -d ' ')" -eq 3 ] || rc="$rc, extra target not built"
+[ "$(wc -l <commands | tr -d ' ')" -eq 4 ] || rc="$rc, extra target not built"
 if grep -qE 'drop |lower ' "$OUTFILE"; then rc="$rc, combined findings lost"; fi
 check 'combined report retains tool allowance and maximum linked-file count without writing' 0 "$rc"
 set +e
@@ -338,6 +341,13 @@ set -e
 said 'report build failed for tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj'
 unchanged
 check 'failing Items target refuses baseline changes' 1 "$rc"
+set +e
+TESTHEALTH_BUILD_LOG= NAV_BUILD_EXIT=39 PATH="$TMPROOT/combined-bin:$PATH" sh "$SCRIPT" --update >"$OUTFILE" 2>&1
+rc=$?
+set -e
+said 'report build failed for tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj'
+unchanged
+check 'failing navigation research target refuses baseline changes' 1 "$rc"
 
 echo ""
 echo "passed: $pass   failed: $fail"

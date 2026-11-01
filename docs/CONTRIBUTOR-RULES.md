@@ -148,6 +148,12 @@ to pass with zero skips in its own process. Require a passing run at the exact b
 before publishing new Items evidence, recording its run URL and code SHA beside that evidence.
 This validation does not launch or authorize a full benchmark campaign.
 
+The outside-solution [`NavCapture.Research.Tests`](../tools/NavCapture.Research.Tests/README.md)
+project owns three synthetic navigation capture and snapshot restoration fixtures. The free tooling
+workflow selects suite `nav` on hosted Ubuntu and requires all three named Release facts to pass
+with zero skips before a separately approved research campaign. The seven SupportQueryCapture methods
+remain in Movement.Tests and default engine CI. Fixture validation authorizes no capture campaign.
+
 The ratchet report build is a separate maintenance inventory. `check-test-health.sh` sequentially
 builds the engine solution and the baselined outside-solution tooling projects before lowering any
 allowance. Linked files retain their canonical physical repository path and findings use the maximum

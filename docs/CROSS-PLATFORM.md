@@ -542,16 +542,19 @@ below). Each sharded leg runs as jobs named `<os> / <backend> / <shard>`:
   Server.Tests, so those two move out and leave about 9 minutes on `rest`.
 - `render-1` to `render-N` each run one slice of `KhaozEngine.Render.Tests`. Each backend has its own slice
   table in `scripts/gpu-test-shards.py`, because the three rasterizers disagree about what is expensive:
-  `metal-native` has 2 slices, `direct3d11-native` 4 and `vulkan-native` 12. Every table is an ordered first-match
+  `metal-native` has 2 slices, `direct3d11-native` 3 and `vulkan-native` 11. Every table is an ordered first-match
   partition over `FullyQualifiedName`: a test belongs to the first slice whose rules match it, and the last slice
   takes everything the earlier slices do not name. A new class or method therefore always lands in exactly one
   slice. The heaviest methods are named one by one and set each backend's floor. `TemporalFollowPhaseGpuTests`'
   orthographic sweep took 17 to 22 minutes on serialised lavapipe as one method, so it is split by preset like the
   perspective sweep beside it. Native and Quality now have separate methods and Vulkan slices (#1458), with
-  Performance and UltraPerformance together in a third method. The twelve Vulkan slices cost 10.2 to 10.5
-  normalized test minutes each, leaving more room for runner variation than the former nine.
-  `ShadowCascadeCullPerfGpuTests` takes 13 to 15 minutes on WARP and has a Windows slice to itself. Each shard
-  uploads its TRX files as `shard-trx-<backend>-<shard>`, which carry the per-test durations to re-balance from.
+  Performance and UltraPerformance together in a third method. Before the renderer probe reductions, the
+  twelve Vulkan slices were balanced at 10.2 to 10.5 normalized test minutes in the source runs above.
+  `ShadowCascadeCullPerfGpuTests.A_small_caster_fixture_draws_fewer_instances_with_culling` now uses a
+  small near/far fixture and fixed draw-count observations. It runs in Windows' catch-all `render-4` and
+  Vulkan's S-prefix `render-9`. Its dedicated Windows `render-1` and Vulkan `render-2` slices are removed,
+  with every remaining shard name preserved. Each shard uploads its TRX files as
+  `shard-trx-<backend>-<shard>`, which carry the per-test durations to re-balance from.
 
 Each shard restores and builds a solution containing only its assigned test projects and their project
 references ([#1472](https://github.com/APKiwiOrg/KhaozEngine/issues/1472)). A render shard builds
@@ -568,9 +571,11 @@ The Windows-only NuGet cache still excludes every KhaozEngine extraction. The
 [measurement record](verification/2026-10-18-gpu-shard-build-cost-1472.md) compares scoped builds with per-OS
 output sharing.
 
-So a default-input dispatch is 3 Metal, 7 Windows and 14 Linux jobs plus the `sync` job. The org's Team plan
+So a default-input dispatch expands to 3 Metal, 6 Windows and 13 Linux jobs plus the `sync` job.
+The source table therefore expands to 22 matrix jobs rather than 24. This is a job-count change,
+not a measured runtime saving. The org's Team plan
 allows 60 concurrent hosted jobs and 5 concurrent macOS jobs
-([GitHub Actions limits](https://docs.github.com/en/actions/reference/limits)), so the 25 jobs of the dispatch
+([GitHub Actions limits](https://docs.github.com/en/actions/reference/limits)), so the 23 jobs of the dispatch
 and the 4 of the `ci` dispatch the pre-tag gate runs beside it all start at once. The macOS cap is the one that
 binds: every `push` and `pull_request` runs the Metal full suite too, so overlapping runs share 5 macOS slots.
 Metal stops at 3 jobs because its slowest shard is already well under the Vulkan floor, and a fourth would only
@@ -621,9 +626,14 @@ dropped about 63 minutes of runner time from a full dispatch.
   (`--filter "Category!=LiveSocket&Category!=Diagnostic"`) on every trigger - every gating `[GpuFact]`
   test (golden and behavioral) plus the headless suite, matching `ci.yml`'s exclusions. LiveSocket tests
   need a live network peer. Tests marked `[Trait("Category", "Diagnostic")]` report instead of gating
-  and run on demand by setting the dispatch input `renderTestFilter` to `Category=Diagnostic`. Since
-  [#1438](https://github.com/APKiwiOrg/KhaozEngine/issues/1438) that suite runs across three jobs on every trigger
-  except a bake or a `renderTestFilter` dispatch, as described above. Metal ran
+  and run on demand by setting the dispatch input `renderTestFilter` to `Category=Diagnostic`, optionally
+  narrowed with `&FullyQualifiedName~<probe-class>`. This includes the 19 renderer timing/cost probes.
+  The four retained atlas, hold cadence, bounded cascade and FFT checks stay in the default filter,
+  as described in [the renderer performance reference](RENDERER-PERFORMANCE.md#default-correctness-and-on-demand-probes).
+  Capability gates and software-adapter refusals still apply, so software runs establish no hardware
+  performance evidence. Since
+  [#1438](https://github.com/APKiwiOrg/KhaozEngine/issues/1438) that suite runs across three jobs on schedules
+  and default-input dispatches. Pushes and pull requests use one job, as described above. Metal ran
   on the dev Mac until [#552](https://github.com/APKiwiOrg/KhaozEngine/issues/552) moved it to a hosted runner,
   and the runner is pinned to `macos-26` by number rather than to `macos-latest` so an image promotion cannot
   move the GPU under a golden gate. It OWNS the `metal-native` golden family since `17.41.0`, exactly as the

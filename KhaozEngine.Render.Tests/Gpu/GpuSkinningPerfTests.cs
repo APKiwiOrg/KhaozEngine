@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.Gpu
     //               O(vertices), and since #407 it touches the palette ONCE per caster rather than once per pass.
     // Both paths share the bone-palette compose, so the delta is the per-vertex deform (CPU-only) vs the palette
     // pack (GPU). For a real character mesh (vertices >> bones) the GPU path's CPU cost is a small fraction. A plain
-    // [Fact] (no GPU) so it runs in the fast loop. The numbers print to the test output.
+    // [Fact] (no GPU), tagged Diagnostic so timing runs only on demand. The numbers print to the test output.
     public sealed class GpuSkinningPerfTests
     {
         readonly ITestOutputHelper _out;
@@ -25,6 +25,7 @@ namespace KhaozEngine.Tests.Gpu
         const int Frames = 40;                 // per-N frames timed (the crowd is re-skinned every frame)
         static readonly int[] Ns = { 1, 16, 64 };
 
+        [Trait("Category", "Diagnostic")]
         [Fact]
         public void CpuSkinLoop_VsGpuPalettePack_Cost()
         {

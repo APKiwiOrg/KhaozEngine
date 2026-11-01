@@ -858,12 +858,13 @@ Pixel-presence `GpuFact`s, not goldens, run on the three legs of the cross-platf
 
 ### GPU timing
 
-One capture, `InteriorCutCostPerfGpuTests` with `RequiresRealGpu`, in the shape of
-`TemporalResolveCostPerfGpuTests` and `ShadowCascadeCullPerfGpuTests`: a tree-heavy village view of cutout trees
+One capture, `InteriorCutCostPerfGpuTests` with `RequiresRealGpu` and a method-level Diagnostic trait,
+in the shape of `TemporalResolveCostPerfGpuTests` and the original shadow-cascade timing sweep:
+a tree-heavy village view of cutout trees
 around box buildings, the sun advancing every frame so the cascade pass is dirty and the dirty-skip cannot hide it,
 and four modes in rotating order:
 
-1. Shadows off, the baseline that isolates the shadow pass, as `ShadowCascadeCullPerfGpuTests` does.
+1. Shadows off, the baseline that isolates the shadow pass, as the original shadow-cascade timing sweep did.
 2. Shadows on, no layer opted in.
 3. Shadows on, the layer opted in with an empty field. Relevance rejects every instance, so casters retain
    their original pipelines and nothing is cut. Mode 3 minus mode 2 records the empty-field gate overhead.
@@ -874,7 +875,11 @@ use this rotating four-mode order. Mode 4 minus mode 2 is the feature's cost, co
 against the 0.1 ms budget only for TypicalVillage and never asserted. DenseVillage is recorded without a budget.
 The engine's GPU seam has no timestamp queries (`KhaozEngine.Diagnostics/PassTimings.cs`), so frame blocks are the
 measure, as in the temporal record. It runs through `gpu-hosted-bench` on the hosted T4 (Direct3D 11 and Vulkan),
-once, as OC8 approves.
+once, as OC8 approves. Current on-demand execution can select
+`Category=Diagnostic&FullyQualifiedName~InteriorCutCostPerfGpuTests` through the free cross-platform GPU
+workflow's `renderTestFilter`. Its real-GPU gate and software-adapter refusal remain. Paid T4 runs still
+require separate owner authorization. `ShadowCascadeCullPerfGpuTests` now retains only a bounded
+draw-count correctness check, so it no longer supplies the historical timing comparison.
 
 **As recorded.** The owner approved each later run. TypicalVillage mode 4 minus mode 2 measured 1.9 to 2.4 ms
 before the relevance counters were fixed, 0.56 to 0.63 ms after them, 0.23 to 0.31 ms once the per-draw boxing

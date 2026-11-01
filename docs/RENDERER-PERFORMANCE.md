@@ -6,6 +6,33 @@ and execution. The [cold publication design](design/RENDERER-COLD-PUBLICATION.md
 retains the design rationale. The renderer sections record no measured baseline or performance budget.
 The hosted CPU physics rebase diagnostic below carries its own fixed limit.
 
+## Default correctness and on-demand probes
+
+The default filter `Category!=LiveSocket&Category!=Diagnostic` keeps four renderer correctness checks:
+
+| Method | Default coverage |
+|---|---|
+| `ShadowRerecordBenchGpuTests.Compacted_refit_preserves_the_atlas_from_drawing_every_caster` | Byte-exact atlas equality against the full-caster oracle |
+| `ShadowRerecordBenchGpuTests.The_hold_releases_on_a_cadence_the_threshold_predicts` | Angular threshold, slow/fast cadence ratio and coverage over its 400-frame horizon |
+| `ShadowCascadeCullPerfGpuTests.A_small_caster_fixture_draws_fewer_instances_with_culling` | Two deterministic near/far casters, four cascades, one warm frame and two observations per culling state at one merge gap |
+| `OceanFftPingPongPerfGpuTests.The_fft_ocean_costs_no_steady_state_gpu_drain` | Shipping FFT setup and procedural comparison, two source transitions, two priming frames and four observations per state |
+
+The cascade check asserts unchanged candidate populations, rendered cascades and fewer instance draws.
+It establishes no timing speedup. The FFT check advances the effect clock each frame and asserts zero
+`OceanStalls` and zero `OceanStallMs` on every observed frame. Its boundary cleanup drains are separate
+from those production counters. It introduces no per-frame drain.
+
+Nineteen methods in `KhaozEngine.Render.Tests/Gpu` carry method-level
+`[Trait("Category", "Diagnostic")]`: the CPU skinning cost loop, interior-cut cost capture, shadow
+rerecord timing table, temporal outline, resolve, shadowed-frame and visibility-decomposition probes.
+They keep their existing Fact/GpuFact attributes and capability requirements. Nothing moves or is deleted.
+Run these on demand through `cross-platform-gpu.yml` with `renderTestFilter=Category=Diagnostic`, or
+narrow the filter, for example `Category=Diagnostic&FullyQualifiedName~TemporalResolveCostPerfGpuTests`.
+The dispatch input replaces the default exclusion. Hosted Metal, WARP and llvmpipe retain their existing
+capability gates and software-adapter refusals. A software result cannot certify hardware performance.
+Paid `gpu-hosted-bench.yml` measurement mode keeps its explicit filter and separate owner authorization.
+Historical timing receipts remain evidence for their original commits and workloads.
+
 ## Hosted physics rebase diagnostic
 
 The separate `physics-rebase-perf.yml` CPU lane runs on `main` every Monday at 04:37 UTC and on

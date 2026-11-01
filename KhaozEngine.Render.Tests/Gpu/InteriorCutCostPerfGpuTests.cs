@@ -35,6 +35,7 @@ public sealed class InteriorCutCostPerfGpuTests(ITestOutputHelper output)
                 || words.Contains("Tesla", StringComparer.OrdinalIgnoreCase));
     }
 
+    [Trait("Category", "Diagnostic")]
     [GpuFact(RequiresRealGpu = true)]
     public void VillageCutCostIsRecorded()
     {

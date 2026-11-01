@@ -63,9 +63,20 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   empty to a syntactic check. See the [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet)
   for rule boundaries, baseline grammar, script modes and consumer adoption. Analyzer tests use
   `KhaozEngine.Tests.CodeHealth`.
-- `[Trait("Category", "Diagnostic")]` marks tests that report instead of gating. Default CI excludes
-  them. Run them on demand through the `cross-platform-gpu` workflow dispatch input
-  `renderTestFilter` set to `Category=Diagnostic`.
+- `[Trait("Category", "Diagnostic")]` marks on-demand probes. Default CI excludes their timing and
+  cost workloads, including 19 renderer methods with method-level traits. Run them through the
+  `cross-platform-gpu` dispatch input `renderTestFilter` set to `Category=Diagnostic`, or narrow it
+  with `Category=Diagnostic&FullyQualifiedName~TemporalResolveCostPerfGpuTests`. Existing GPU
+  capability gates and software-adapter refusals still apply. Software runs prove correctness, not
+  hardware performance. Paid runs retain their separate authorization contract.
+- Four renderer checks remain in default CI without Diagnostic traits:
+  `ShadowRerecordBenchGpuTests.Compacted_refit_preserves_the_atlas_from_drawing_every_caster`,
+  `ShadowRerecordBenchGpuTests.The_hold_releases_on_a_cadence_the_threshold_predicts`,
+  `ShadowCascadeCullPerfGpuTests.A_small_caster_fixture_draws_fewer_instances_with_culling` and
+  `OceanFftPingPongPerfGpuTests.The_fft_ocean_costs_no_steady_state_gpu_drain`. Atlas equality stays
+  byte-exact and the hold cadence retains its 400-frame observation horizon. Cascade draw counts
+  and FFT stall counters use small fixed frame bounds, described in
+  [`RENDERER-PERFORMANCE.md`](RENDERER-PERFORMANCE.md#default-correctness-and-on-demand-probes).
 - CI runs Release. Local `dotnet test` defaults to Debug. Tests around `Debug.Assert`,
   `[Conditional("DEBUG")]` or `#if DEBUG` need a Release run and a configuration-independent
   observable.

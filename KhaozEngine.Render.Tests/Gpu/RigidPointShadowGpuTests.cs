@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using Xunit;
 using Xunit.Abstractions;
@@ -180,13 +181,40 @@ public sealed class RigidPointShadowGpuTests(RigidPointShadowScene fixture, ITes
             + $"current-rigid={pair.Split.Work.PointStaticTransientRigidDrawCalls}, "
             + $"current-skinned={pair.Split.Work.PointStaticTransientSkinnedDrawCalls}, "
             + $"fallback-skinned={pair.Split.Work.PointStaticFallbackSkinnedDrawCalls}");
-        if (changed != 0 && !_capturedFailure)
+        if (changed == 0) return pair;
+        Exception? captureError = null;
+        RigidPointShadowAgreement.Capture? capture = null;
+        if (fixture.Backend == GpuBackendKind.VulkanNative)
+            try { capture = fixture.ReadComparison(pair); }
+            catch (Exception error) { captureError = error; }
+        var agreement = RigidPointShadowAgreement.Evaluate(fixture.Backend, pair.Split.Rgba, pair.Full.Rgba,
+            new(RigidPointShadowScene.Width, RigidPointShadowScene.Height, 3, 256, pair.Split.Sequence, pair.Full.Sequence), capture);
+        bool accepted = agreement.Accepted && captureError is null;
+        if (!accepted && !_capturedFailure)
         {
             _capturedFailure = true;
-            try { output.WriteLine($"Failure evidence: {fixture.SaveFailure(testCase, name, pair)}"); }
-            catch (Exception error) { output.WriteLine($"Failure evidence capture failed: {error}"); }
+            try
+            {
+                string directory = fixture.BeginEvidence(testCase, name, pair);
+                if (fixture.Backend != GpuBackendKind.VulkanNative)
+                    try { capture = fixture.ReadComparison(pair); }
+                    catch (Exception error) { captureError = error; }
+                RigidPointShadowScene.FinishEvidence(directory, capture, captureError);
+                output.WriteLine($"Comparison evidence: {directory}");
+            }
+            catch (Exception error) { captureError = error; }
         }
-        Assert.True(changed == 0, $"{name}: {changed} differing bytes, max delta {worst}");
+        output.WriteLine($"{name}: agreement={accepted}, backend={fixture.Backend}, reason={agreement.Rejection}, "
+            + $"changed-pixels={agreement.Image.ChangedPixels}, changed-channels={agreement.Image.ChangedChannels}, "
+            + $"color-max={agreement.Image.MaximumDelta}, complete-coverage={agreement.CompleteCoverage}, "
+            + $"depth-compared={agreement.Depth?.ComparedTexels}, depth-mismatches={agreement.Depth?.MismatchedTexels}, "
+            + $"depth-max={agreement.Depth?.MaximumFiniteAbsoluteDelta}, ulp-max={agreement.Depth?.MaximumFiniteUlpDelta}, "
+            + $"clear-covered={agreement.Depth?.ClearCoveredDisagreements}, "
+            + $"nonfinite-base={agreement.Depth?.BaseNonfinite}, nonfinite-transient={agreement.Depth?.TransientNonfinite}, "
+            + $"nonfinite-combined={agreement.Depth?.CombinedNonfinite}, nonfinite-full={agreement.Depth?.FullNonfinite}, "
+            + $"receiver-agreement={agreement.ReceiverAgreement}");
+        if (captureError is not null) output.WriteLine($"Comparison capture failed: {captureError}");
+        Assert.True(accepted, $"{name}: {changed} differing bytes, max delta {worst}, guard {agreement.Rejection}");
         return pair;
     }
 }

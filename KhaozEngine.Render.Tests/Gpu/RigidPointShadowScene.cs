@@ -72,7 +72,7 @@ public sealed class RigidPointShadowScene : IDisposable
 
     public Shot FullControl(Pose pose) => Render(_full!, pose, full: true);
 
-    internal string SaveFailure(string testCase, string scenario, Pair pair)
+    internal string BeginEvidence(string testCase, string scenario, Pair pair)
     {
         IGpuDevice gpu = Device();
         if (pair.Split.Sequence != _split!.Sequence || pair.Full.Sequence != _full!.Sequence)
@@ -89,25 +89,7 @@ public sealed class RigidPointShadowScene : IDisposable
                 ReceiverDepth = "NDC gl_FragCoord.z, not linear world distance",
                 ReceiverNormal = "production encoded RGBA8 at bounded internal footprints for first 16 changed output pixels",
             });
-        try
-        {
-            var split = ReadAtlas(_split.Scene.PointShadowTexture!, pair.Split.BaseRows);
-            var full = ReadAtlas(_full.Scene.PointShadowTexture!, pair.Full.BaseRows);
-            var transient = pair.Split.TransientRows.Any(row => row >= 0) && _split.Scene.PointShadowTransientTexture is { } texture
-                ? ReadAtlas(texture, pair.Split.TransientRows) : null;
-            var pixels = RigidPointShadowEvidence.ComparePixels(pair.Split.Rgba, pair.Full.Rgba, Width, Height);
-            var receivers = new { Split = ReadReceivers(_split, pixels), Full = ReadReceivers(_full, pixels) };
-            RigidPointShadowEvidence.Complete(directory, split, transient, full, receivers);
-        }
-        catch (Exception error)
-        {
-            RigidPointShadowEvidence.WriteJson(Path.Combine(directory, "readback-error.json"), new { Error = error.ToString() });
-            throw;
-        }
         return directory;
-
-        RigidPointShadowEvidence.Atlas ReadAtlas(IGpuTexture texture, int[] rows) =>
-            new((int)texture.Width, (int)texture.Height, pair.Split.Resolution.FaceResolution, rows, TemporalTextureIo.Read(gpu, texture));
 
         object Describe(Head head, Shot shot) => new
         {
@@ -141,43 +123,83 @@ public sealed class RigidPointShadowScene : IDisposable
             },
         };
 
-        object ReadReceivers(Head head, RigidPointShadowEvidence.PixelReport pixels)
-        {
-            IGpuTexture depthTarget = head.Scene.ResolvedDepthTarget, normalTarget = head.Scene.ResolvedNormalTarget;
-            int width = (int)depthTarget.Width, height = (int)depthTarget.Height;
-            if (normalTarget.Width != depthTarget.Width || normalTarget.Height != depthTarget.Height)
-                throw new InvalidOperationException("receiver depth and normal target dimensions differ");
-            float[] depth = TemporalTextureIo.Read(gpu, depthTarget);
-            byte[] normal = GpuReadback.ToRgba(gpu, normalTarget, width, height);
-            return new
-            {
-                Width = width,
-                Height = height,
-                DepthFormat = depthTarget.Format.ToString(),
-                NormalFormat = normalTarget.Format.ToString(),
-                Mapping = "nominal bilinear base-LOD candidates in both raw V orientations, not an asserted final shader sample trace",
-                Pixels = pixels.FirstPixels.Select(pixel => new
-                {
-                    pixel.X,
-                    pixel.Y,
-                    U = (pixel.X + 0.5) / Width,
-                    V = (pixel.Y + 0.5) / Height,
-                    DirectV = Footprint(pixel, flipV: false),
-                    FlippedV = Footprint(pixel, flipV: true),
-                }).ToArray(),
-            };
+    }
 
-            object[] Footprint(RigidPointShadowEvidence.Pixel pixel, bool flipV) =>
-                RigidPointShadowEvidence.ReceiverFootprint(pixel.X, pixel.Y, Width, Height, width, height, flipV)
-                    .Select(site => (object)new
-                    {
-                        site.X,
-                        site.Y,
-                        site.NominalWeight,
-                        NdcDepthBits = unchecked((uint)BitConverter.SingleToInt32Bits(depth[site.Y * width + site.X])),
-                        EncodedNormal = normal.AsSpan((site.Y * width + site.X) * 4, 4).ToArray().Select(value => (int)value).ToArray(),
-                    }).ToArray();
+    internal GpuBackendKind Backend => Device().Backend;
+
+    internal RigidPointShadowAgreement.Capture ReadComparison(Pair pair)
+    {
+        IGpuDevice gpu = Device();
+        Current();
+        int[] splitRows = BaseRows(_split!), fullRows = BaseRows(_full!);
+        int[] transientRows = TransientRows(_split!);
+        var split = ReadAtlas(_split!.Scene.PointShadowTexture, splitRows);
+        var full = ReadAtlas(_full!.Scene.PointShadowTexture, fullRows);
+        var transient = transientRows.Any(row => row >= 0)
+            ? ReadAtlas(_split.Scene.PointShadowTransientTexture, transientRows) : null;
+        var pixels = RigidPointShadowEvidence.ComparePixels(pair.Split.Rgba, pair.Full.Rgba, Width, Height);
+        var splitReceiver = ReadReceivers(_split, pixels);
+        var fullReceiver = ReadReceivers(_full, pixels);
+        Current();
+        return new(split, transient, full, transientRows, splitReceiver, fullReceiver);
+
+        void Current()
+        {
+            if (pair.Split.Sequence != _split!.Sequence || pair.Full.Sequence != _full!.Sequence
+                || !BaseRows(_split).SequenceEqual(pair.Split.BaseRows) || !BaseRows(_full).SequenceEqual(pair.Full.BaseRows)
+                || !TransientRows(_split).SequenceEqual(pair.Split.TransientRows))
+                throw new InvalidOperationException("comparison readback must belong to the current published heads");
         }
+        static int[] BaseRows(Head head) => [head.Scene.PointShadowBaseSlotForLight(0),
+            head.Scene.PointShadowBaseSlotForLight(1), head.Scene.PointShadowBaseSlotForLight(2)];
+        static int[] TransientRows(Head head) => [head.Scene.PointShadowTransientSlotForLight(0),
+            head.Scene.PointShadowTransientSlotForLight(1), head.Scene.PointShadowTransientSlotForLight(2)];
+        RigidPointShadowEvidence.Atlas ReadAtlas(IGpuTexture? texture, int[] rows)
+        {
+            if (texture is null) throw new InvalidOperationException("an assigned comparison atlas is missing");
+            return new((int)texture.Width, (int)texture.Height, pair.Split.Resolution.FaceResolution,
+                rows, TemporalTextureIo.Read(gpu, texture));
+        }
+    }
+
+    internal static void FinishEvidence(string directory, RigidPointShadowAgreement.Capture? capture, Exception? error)
+    {
+        if (capture is null)
+        {
+            RigidPointShadowEvidence.WriteJson(Path.Combine(directory, "readback-error.json"),
+                new { Error = error?.ToString() ?? "current comparison readback unavailable" });
+            return;
+        }
+        RigidPointShadowEvidence.Complete(directory, capture.Base, capture.Transient, capture.Full,
+            new { Split = capture.SplitReceiver, Full = capture.FullReceiver });
+    }
+
+    RigidPointShadowAgreement.Receiver ReadReceivers(Head head, RigidPointShadowEvidence.PixelReport pixels)
+    {
+        IGpuDevice gpu = Device();
+        Scene3D scene = head.Scene;
+        IGpuTexture depthTarget = scene.ResolvedDepthTarget, normalTarget = scene.ResolvedNormalTarget;
+        int width = (int)depthTarget.Width, height = (int)depthTarget.Height;
+        if (normalTarget.Width != depthTarget.Width || normalTarget.Height != depthTarget.Height)
+            throw new InvalidOperationException("receiver depth and normal target dimensions differ");
+        float[] depth = TemporalTextureIo.Read(gpu, depthTarget);
+        byte[] normal = GpuReadback.ToRgba(gpu, normalTarget, width, height);
+        var samples = pixels.FirstPixels.SelectMany(pixel =>
+            RigidPointShadowEvidence.ReceiverFootprint(pixel.X, pixel.Y, Width, Height, width, height, flipV: false)
+                .Where(site => site.NominalWeight > 0).DistinctBy(site => (site.X, site.Y))
+                .Select(site => new RigidPointShadowAgreement.Sample(pixel.X, pixel.Y, site.X, site.Y,
+                    unchecked((uint)BitConverter.SingleToInt32Bits(depth[site.Y * width + site.X])),
+                    normal.AsSpan((site.Y * width + site.X) * 4, 4).ToArray().Select(value => (int)value).ToArray()))).ToArray();
+        // With no post passes, the final V flip cancels the fullscreen inversion. These are actual source
+        // texels from the direct bilinear footprint, not CPU-estimated shader positions or visibility.
+        bool direct = scene.Post.RenderScale == RenderScale.FixedInternal && !scene.Post.Pixelated
+            && !scene.Post.MipFilterFixedInternalDownscale && !scene.Post.Quantize && !scene.Post.Outline
+            && !scene.Post.Hdr.Enabled && !scene.Post.Bloom.Enabled
+            && scene.Post.Quality.AntiAliasing.Mode == AntiAliasingMode.None && scene.RenderTargetSampleCount == 1;
+        return new(head.Sequence, Width, Height, width, height, (int)normalTarget.Width, (int)normalTarget.Height,
+            scene.Camera.View, scene.Camera.Projection, GpuClip.Correct(scene.Camera.ViewProjection, gpu.Capabilities),
+            scene.RenderOrigin ?? Vector3.Zero, gpu.Capabilities.ClipSpaceYInverted, gpu.Capabilities.DepthRangeZeroToOne,
+            direct, samples);
     }
 
     public int Red(Shot shot, Vector3 world)

@@ -100,8 +100,9 @@ zero ordinary budget, positive ordinary refresh and admission beside mandatory w
 growth, recovery, removal, mobility changes, slot ownership,
 off-camera retention, mesh changes, dissolve and rebasing.
 
-`RigidPointShadowGpuTests` compares full-resolution split images byte for byte with a separate scene whose
-Dynamic lights redraw complete current geometry. The oracle matches base atlas height and light row placement
+`RigidPointShadowGpuTests` compares full-resolution split images with a separate scene whose Dynamic lights
+redraw complete current geometry. Exact byte equality is the fast path and remains mandatory on Metal and
+D3D11. The oracle matches base atlas height and light row placement
 to control viewport-coordinate rounding. The split scene still has different base and transient row indices
 and counts. Hard and soft cases cover mixed same-mesh rigid mobility, skinned casters, first demand, growth,
 recovery, both mobility switches and disappearance with zero ordinary refresh budget. Direct receiver probes
@@ -109,3 +110,21 @@ disable casting while retaining the actor bodies, so body color cannot satisfy t
 scenery probes and work counters accompany the image comparisons. A fresh-scene parity check validates reuse
 of the lazy fixture after configuration changes. These fixed frames verify behavior without timing thresholds.
 Shader and binding changes require the backend checks in `docs/CROSS-PLATFORM.md`.
+
+The Vulkan fixture permits a measured numerical difference only through `RigidPointShadowAgreement`: at most
+one changed output pixel, RGB delta at most 2 and exact alpha. Every admitted light, face and local texel needs
+current, complete, nonempty depth coverage. The canonical full depth versus nearer base/current depth must
+have no clear-versus-covered disagreement or nonfinite source value, normalized absolute difference at most
+`1e-5` and finite ULP distance at most 320. Signed zero remains distinct for ULP accounting.
+
+Actual current NDC-depth words and encoded normal bytes must match across the complete relevant internal
+bilinear footprint. Camera and clip inputs must match exactly. Missing, stale, partial, differently sized or
+failed readback rejects the comparison. This fixture's unchanged post configuration has a direct bilinear
+footprint. These captured inputs are not CPU estimates of world positions or shader visibility. Each nonexact
+frame receives fresh validation, while retained artifact payloads remain bounded to one per test case.
+
+Accepted diagnostics record backend, pixel/channel counts, color maximum, complete depth coverage, depth/ULP
+maxima, coverage and nonfinite counts, and receiver agreement. Row, budget, draw, direct shadow and exact
+aged/fresh assertions remain in force. CPU controls reject omitted, previous-pose and ghost depths, including
+a weak-light-only omission with a permitted tiny color delta. A later pose outside the measured bounds fails
+and retains its evidence. This contract changes no production shader, bias, projection or graphics setting.

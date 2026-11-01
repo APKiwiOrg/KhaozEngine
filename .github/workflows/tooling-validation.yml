@@ -7,6 +7,7 @@ on:
     paths:
       - 'tools/NavCapture.Research.Tests/**'
       - 'KhaozEngine.Movement/AssemblyInfo.cs'
+      - 'KhaozEngine.Movement/PhysicsNav*.cs'
       - 'tools/Items.Benchmark.Tests/**'
       - 'KhaozEngine.Benchmarks/Items/**'
       - 'KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj'
@@ -100,6 +101,7 @@ on:
     paths:
       - 'tools/NavCapture.Research.Tests/**'
       - 'KhaozEngine.Movement/AssemblyInfo.cs'
+      - 'KhaozEngine.Movement/PhysicsNav*.cs'
       - 'tools/Items.Benchmark.Tests/**'
       - 'KhaozEngine.Benchmarks/Items/**'
       - 'KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj'

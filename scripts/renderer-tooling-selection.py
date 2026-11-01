@@ -42,6 +42,7 @@ ITEMS_WATCHED = (
 )
 NAV_WATCHED = (
     'tools/NavCapture.Research.Tests/**', 'KhaozEngine.Movement/AssemblyInfo.cs',
+    'KhaozEngine.Movement/PhysicsNav*.cs',
     'scripts/renderer-tooling-selection.py', 'scripts/tests/renderer-tooling-selection.test.py',
     'scripts/build-release-tests.sh', 'scripts/tests/build-release-tests.test.sh',
     '.github/workflows/tooling-validation.yml', '.gitattributes', '.testhealth-baseline',

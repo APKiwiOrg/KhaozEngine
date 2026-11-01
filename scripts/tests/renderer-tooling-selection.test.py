@@ -74,14 +74,17 @@ class SelectionTests(unittest.TestCase):
                                      '--changed', 'KhaozEngine.Audio/AudioBus.cs'), {'include': []})
 
     def test_nav_inputs_select_only_the_hosted_research_suite(self):
+        # The snapshot restore reflects over PhysicsNavBake's private constructor and reads the capture
+        # types, so a change to any PhysicsNav source must run the research facts.
         for path in ['tools/NavCapture.Research.Tests/Research/NavCaptureSnapshot.cs',
-                     'KhaozEngine.Movement/AssemblyInfo.cs']:
+                     'KhaozEngine.Movement/AssemblyInfo.cs', 'KhaozEngine.Movement/PhysicsNavBake.cs',
+                     'KhaozEngine.Movement/PhysicsNavBake.Profiles.cs', 'KhaozEngine.Movement/PhysicsNavColumns.cs']:
             self.assertEqual(self.select('--event', 'push', '--suite', 'nav', '--ref', A,
                                          '--changed', path)['include'], [dict(ref=A, os='ubuntu-26.04')])
             for other in ['renderer', 'items']:
                 self.assertEqual(self.select('--event', 'push', '--suite', other, '--ref', A,
                                              '--changed', path), {'include': []})
-        for path in ['KhaozEngine.Movement/PhysicsNavBake.cs', 'KhaozEngine.Audio/AudioBus.cs',
+        for path in ['KhaozEngine.Movement/GroundNavigation.cs', 'KhaozEngine.Audio/AudioBus.cs',
                      'tools/Items.Benchmark.Tests/ItemsBenchmarkAcceptanceTests.cs']:
             self.assertEqual(self.select('--event', 'pull_request', '--suite', 'nav', '--ref', A,
                                          '--changed', path), {'include': []})

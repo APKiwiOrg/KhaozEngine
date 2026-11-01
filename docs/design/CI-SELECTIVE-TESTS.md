@@ -298,8 +298,10 @@ methods stay in Server.Tests. Ordinary engine builds need no Items acceptance or
 Navigation capture research has the same outside-solution boundary in
 `tools/NavCapture.Research.Tests/NavCapture.Research.Tests.csproj`. The selector's independent `nav`
 route runs its three synthetic fixtures on hosted `ubuntu-26.04` when that project, Movement's
-AssemblyInfo, shared build/package/baseline inputs or the tooling workflow change. Manual dispatch
+AssemblyInfo, any `KhaozEngine.Movement/PhysicsNav*.cs` source, shared build/package/baseline inputs
+or the tooling workflow change. The PhysicsNav sources are watched because the snapshot restore
+reflects over `PhysicsNavBake`'s private constructor and reads the capture types. Manual dispatch
 also accepts `nav`. All three named Release facts must pass with zero skips before a separately
 approved capture or restoration campaign. The seven SupportQueryCapture methods and both enabled
-and disabled theory rows stay in Movement.Tests and default engine CI. Unrelated production Movement
+and disabled theory rows stay in Movement.Tests and default engine CI. Other production Movement
 edits retain their ordinary engine tests without automatically selecting the research suite.

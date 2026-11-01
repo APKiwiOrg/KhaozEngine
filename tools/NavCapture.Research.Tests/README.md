@@ -21,10 +21,13 @@ The private-constructor reflection stays in the test-only snapshot utility, with
 allowance transferred to its new path. There is no production restore API or supported snapshot format.
 
 The free `tooling-validation.yml` workflow selects suite `nav` on GitHub-hosted `ubuntu-26.04` for
-this project, Movement's AssemblyInfo, shared build/package/baseline inputs or workflow changes.
-Manual dispatch accepts `nav` independently of the renderer and Items routes. Its TRX gate requires
-all three named facts to pass once with zero skips. Production Movement edits still receive their
-engine tests without automatically selecting this research suite.
+this project, Movement's AssemblyInfo, any `KhaozEngine.Movement/PhysicsNav*.cs` source, shared
+build/package/baseline inputs or workflow changes. The PhysicsNav sources are watched because the
+snapshot restore reflects over `PhysicsNavBake`'s private constructor and reads the capture types, so a
+production change there can break restoration without touching this project. Manual dispatch accepts
+`nav` independently of the renderer and Items routes. Its TRX gate requires all three named facts to
+pass once with zero skips. Other Movement edits receive their engine tests without selecting this
+research suite.
 
 Require a passing research fixture workflow run before a separately approved capture or snapshot
 restoration campaign. These synthetic checks preserve diagnostic float and unsigned bits, refuse

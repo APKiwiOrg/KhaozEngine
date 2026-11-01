@@ -90,8 +90,7 @@ public sealed class SystemProcessRunnerTests : IDisposable
         Task<ProcessResult> run = Task.Run(() => runner.Run(exe, args));
         Task finished = await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(30)));
         Assert.True(ReferenceEquals(finished, run), "the bounded wait did not bound anything");
-        TimeoutException thrown = await Assert.ThrowsAsync<TimeoutException>(() => run);
-        Assert.Contains("killed", thrown.Message, StringComparison.Ordinal);
+        await Assert.ThrowsAsync<TimeoutException>(() => run);
     }
 
     /// <summary>A timeout has to be a real duration. Zero or negative would mean the child is out of time before

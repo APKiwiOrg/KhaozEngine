@@ -6,6 +6,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
+// Regression coverage for #1144: share fresh caster demand without repeating spatial queries.
 public sealed class PointCasterDemandTests
 {
     [Fact]

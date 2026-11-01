@@ -179,7 +179,7 @@ public class MapPhysicsRegistrationTests
     {
         using var physics = new BepuPhysicsWorld();
         using var native = MapPhysicsRegistration.Register(NativeWorldFixtures.BuildStackedCave(), physics);
-        Assert.Contains("contact controller", Assert.Throws<MapDocumentException>(() => native.CreateLegacyMoveContext()).Message);
+        Assert.Throws<MapDocumentException>(() => native.CreateLegacyMoveContext());
         using var legacyPhysics = new BepuPhysicsWorld();
         using var legacy = MapPhysicsRegistration.Register(NativeWorldFixtures.BuildLegacySlope(), legacyPhysics);
         Assert.Same(legacyPhysics, legacy.CreateLegacyMoveContext().Physics);

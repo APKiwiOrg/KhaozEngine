@@ -71,12 +71,16 @@ namespace KhaozEngine.Tests.Render3D
             GltfMesh raw = Box(0f, 0f, 0f, 1f, 2f, 1f);
             raw = new GltfMesh(raw.Vertices, new uint[] { 0, 1, 9 });
 
-            Assert.Throws<InvalidOperationException>(
+            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
                 () => PropLoader.Normalize(raw, heightMeters: 2f));
+
+            // The consumer contract promises the offending index and the vertex count in the diagnostic.
+            Assert.Contains("index 9", ex.Message);
+            Assert.Contains("vertex count 8", ex.Message);
         }
 
         [Fact]
-        public void NormalizeParts_RejectsMalformedPart()
+        public void NormalizeParts_RejectsMalformedPartWithItsPartNumber()
         {
             GltfMesh good = Box(0f, 0f, 0f, 1f, 2f, 1f);
             GltfMesh bad = new(good.Vertices, new uint[] { 0, 1, uint.MaxValue });
@@ -86,8 +90,13 @@ namespace KhaozEngine.Tests.Render3D
                 new GltfMeshPart(bad, default),
             };
 
-            Assert.Throws<InvalidOperationException>(
+            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
                 () => PropLoader.NormalizeParts(parts, heightMeters: 2f));
+
+            // Part identity, offending index and vertex count are the documented diagnostic payload.
+            Assert.Contains("part 1", ex.Message);
+            Assert.Contains($"index {uint.MaxValue}", ex.Message);
+            Assert.Contains("vertex count 8", ex.Message);
         }
 
         // ---- LoadProp (in-process glb) ----
@@ -131,6 +140,8 @@ namespace KhaozEngine.Tests.Render3D
             var entry = new AssetEntry("ghost", Path.Combine(Path.GetTempPath(), "does_not_exist_xyz.glb"), 5f, "test", "CC0");
             var ex = Assert.Throws<InvalidOperationException>(() => PropLoader.LoadProp(entry));
             Assert.NotNull(ex.InnerException);
+            // LoadProp promises the entry identity in its failure.
+            Assert.Contains("ghost", ex.Message);
         }
 
         // ---- LoadPropLodAuto (author-supplied far LOD variant) ----
@@ -169,6 +180,8 @@ namespace KhaozEngine.Tests.Render3D
                 lodFile: Path.Combine(Path.GetTempPath(), "no_such_lod_xyz.glb"));
             var ex = Assert.Throws<InvalidOperationException>(() => PropLoader.LoadPropLodAuto(entry));
             Assert.NotNull(ex.InnerException);
+            // LoadPropLodAuto promises the entry identity in its failure.
+            Assert.Contains("stump", ex.Message);
         }
     }
 }

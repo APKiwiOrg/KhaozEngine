@@ -239,7 +239,6 @@
 2 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeLifecycleTests.cs
 2 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeMarkerCommandTests.cs
 3 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeMarkerSupportEditTests.cs
-1 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeNumericSchemaTests.cs
 1 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativePrefabCommandTests.cs
 4 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeStorageOwnershipTests.cs
 4 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeWaterCommandTests.cs
@@ -351,7 +350,6 @@
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalBoundResourceTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalBufferUploadTests.cs
 6 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalCommandListRecordingTests.cs
-1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalDeviceLifecycleTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalDispatchPathTests.cs
 7 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalDrawPathTests.cs
 1 KETEST002 KhaozEngine.Render.Tests/Gpu/MetalEagerViewArchitectureTests.cs
@@ -402,7 +400,6 @@
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfCompilerPublicationTests.Capacity.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfCompilerPublicationTests.Content.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfCompilerPublicationTests.Failures.cs
-1 KETEST001 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfCompilerPublicationTests.Full.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfCompilerPublicationTests.Return.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfConstructionTests.Behavior.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfConstructionTests.Content.cs
@@ -421,7 +418,6 @@
 4 KETEST001 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfProtocolTests.cs
 6 KETEST001 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfRecipeIdentityTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfRecipeSettingsTests.cs
-1 KETEST001 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfSceneScheduleTests.cs
 3 KETEST001 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfSceneTemporalTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfScheduleTests.cs
 1 KETEST002 KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfShaderIdentityTests.cs

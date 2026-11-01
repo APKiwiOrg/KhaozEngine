@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using BepuPhysics;
+using BepuPhysics.Collidables;
 using BepuUtilities.Memory;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -94,6 +97,9 @@ public sealed partial class StaticMutationLeaseTests
             : new CompoundShape([new(Box, Pose.Identity)]);
         using IPhysicsStaticMutationLease writer = Acquire(world);
         StaticHandle first = world.AddStatic(shape, Pose.At(new(2, 0, 0)));
+        TypedIndex root = InstalledShape(world, first);
+        Simulation simulation = Field<Simulation>(world, "_sim");
+        int? child = mesh ? null : simulation.Shapes.GetShape<Compound>(root.Index).Children[0].ShapeIndex.Index;
         int installedStorage = OutstandingStorage(world);
         Assert.True(world.Raycast(Vector3.Zero, Vector3.UnitX, 4, out _));
 
@@ -101,7 +107,11 @@ public sealed partial class StaticMutationLeaseTests
         Assert.False(world.Raycast(Vector3.Zero, Vector3.UnitX, 4, out _));
         Assert.True(OutstandingStorage(world) < installedStorage);
         StaticHandle second = world.AddStatic(shape, Pose.At(new(2, 0, 0)));
+        TypedIndex replacement = InstalledShape(world, second);
         Assert.Equal(installedStorage, OutstandingStorage(world));
+        // Backing buffers can retain capacity while a compound child shape slot leaks.
+        if (child is int originalChild)
+            Assert.Equal(originalChild, simulation.Shapes.GetShape<Compound>(replacement.Index).Children[0].ShapeIndex.Index);
         Assert.True(world.Raycast(Vector3.Zero, Vector3.UnitX, 4, out RayHit hit));
         Assert.Equal(second, hit.Body);
         world.RemoveStatic(second);
@@ -126,6 +136,9 @@ public sealed partial class StaticMutationLeaseTests
         return (int)cache.GetType().GetProperty("Constructions", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(cache)!;
     }
+
+    static TypedIndex InstalledShape(BepuPhysicsWorld world, StaticHandle handle) =>
+        Field<Dictionary<int, (BepuPhysics.StaticHandle, TypedIndex)>>(world, "_handles")[handle.Value].Item2;
 
     static int OutstandingStorage(BepuPhysicsWorld world)
     {

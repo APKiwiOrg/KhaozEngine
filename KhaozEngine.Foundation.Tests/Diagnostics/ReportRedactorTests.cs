@@ -18,34 +18,22 @@ public sealed class ReportRedactorTests
 
     static readonly ReportRedactor NoHome = new("");
 
-    [Fact]
-    public void Home_becomes_tilde()
+    [Theory]
+    [InlineData("/Users/ann", "open /Users/ann/Library/x.log", "open ~/Library/x.log")]
+    [InlineData("/Users/ann", "cwd /Users/ann", "cwd ~")]
+    [InlineData("/Users/ann", "\"/USERS/ANN/x\"", "\"~/x\"")]
+    [InlineData("/Users/ann", "/Users/anna/x", "/Users/anna/x")]
+    [InlineData("/Users/ann", "/Users/ann.old/x", "/Users/ann.old/x")]
+    [InlineData("/Users/ann", "/Users/ann_2/x", "/Users/ann_2/x")]
+    [InlineData(@"C:\Users\Ann", @"C:\Users\Ann\AppData", @"~\AppData")]
+    [InlineData(@"C:\Users\Ann", "c:/users/ann/x", "~/x")]
+    [InlineData(@"C:\Users\Ann", @"C:\Users\Annie\x", @"C:\Users\Annie\x")]
+    public void Home_redaction_respects_case_separators_and_path_boundaries(
+        string home, string input, string expected)
     {
-        var redactor = new ReportRedactor("/Users/ann");
+        var redactor = new ReportRedactor(home);
 
-        Assert.Equal("open ~/Library/x.log", redactor.Redact("open /Users/ann/Library/x.log"));
-        Assert.Equal("cwd ~", redactor.Redact("cwd /Users/ann"));
-        Assert.Equal("\"~/x\"", redactor.Redact("\"/USERS/ANN/x\""));
-    }
-
-    [Fact]
-    public void Sibling_user_is_untouched()
-    {
-        var redactor = new ReportRedactor("/Users/ann");
-
-        Assert.Equal("/Users/anna/x", redactor.Redact("/Users/anna/x"));
-        Assert.Equal("/Users/ann.old/x", redactor.Redact("/Users/ann.old/x"));
-        Assert.Equal("/Users/ann_2/x", redactor.Redact("/Users/ann_2/x"));
-    }
-
-    [Fact]
-    public void Windows_home_matches_both_separators()
-    {
-        var redactor = new ReportRedactor(@"C:\Users\Ann");
-
-        Assert.Equal(@"~\AppData", redactor.Redact(@"C:\Users\Ann\AppData"));
-        Assert.Equal("~/x", redactor.Redact("c:/users/ann/x"));
-        Assert.Equal(@"C:\Users\Annie\x", redactor.Redact(@"C:\Users\Annie\x"));
+        Assert.Equal(expected, redactor.Redact(input));
     }
 
     [Fact]

@@ -97,7 +97,7 @@ public class TileFoliageLayerPersistenceTests
         File.WriteAllText(manifest, malformed);
 
         TileWorldException ex = Assert.Throws<TileWorldException>(() => TileWorldSource.Open(dir));
-        Assert.IsType<ArgumentException>(ex.InnerException);
+        Assert.Contains(manifest, ex.Message, StringComparison.Ordinal);
     }
 
     [Theory]

@@ -152,6 +152,8 @@ public class TileFootprintInterestTests
 
         Assert.Equal("spec", error.ParamName);
         Assert.Equal(2, error.ActualValue);
+        Assert.Contains("16.41", error.Message, StringComparison.Ordinal);
+        Assert.Matches(@"(?<![\d.])16(?![\d.])", error.Message);
         // The refusal is the PAIR rather than the body, so one tile is still fine and a wider band admits the 2x2.
         Assert.NotEqual(0L, h.Body(new TileCoord(20, 20, 0), size: 1));
         using var wider = new Harness(radius: 15f, margin: 17f);

@@ -87,9 +87,11 @@ public class TileWorldValidatorTests
         doc.PlaneHeight = -1f;
 
         var codes = TileWorldValidator.Validate(doc, TileWorldCatalogs.Greybox()).Select(i => i.Code).ToList();
+        Assert.Equal(4, codes.Count);
         Assert.Contains("header.planeCount", codes);
         Assert.Contains("header.tileSize", codes);
         Assert.Contains("header.planeHeight", codes);
+        Assert.Contains("region.planeCount", codes);
 
         var ex = Assert.Throws<TileWorldException>(() => TileWorldValidator.ValidateOrThrow(doc, TileWorldCatalogs.Greybox()));
         Assert.Contains($"has {codes.Count} validation issues", ex.Message);

@@ -6,7 +6,7 @@ using KhaozEngine.Render3D;
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 /// <summary>Keeps the frozen v1 uniform-lighting profile and unbound water planes exact as the renderer gains
-/// opt-in settings.</summary>
+/// opt-in settings and draw metadata.</summary>
 internal static class RendererPerfRecipeSettings
 {
     internal static DefaultJsonTypeInfoResolver Resolver()
@@ -14,6 +14,14 @@ internal static class RendererPerfRecipeSettings
         var resolver = new DefaultJsonTypeInfoResolver();
         resolver.Modifiers.Add(static info =>
         {
+            if (info.Type == typeof(RigidInstanceDraw))
+            {
+                foreach (var property in info.Properties)
+                    if (property.Name == nameof(RigidInstanceDraw.ShadowMobility))
+                        property.ShouldSerialize = static (_, field) =>
+                            field is ShadowCasterMobility mobility && mobility != ShadowCasterMobility.Static;
+                return;
+            }
             // New water defaults preserve the frozen encoding. Explicit opt-ins remain authored inputs.
             if (info.Type == typeof(WaterPlane))
             {

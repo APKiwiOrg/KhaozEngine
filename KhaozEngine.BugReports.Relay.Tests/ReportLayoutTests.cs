@@ -163,19 +163,13 @@ public sealed class ReportLayoutTests
         Assert.Equal("https://media.example.test/reports/g/2026-10/a/viewer.html", url.AbsoluteUri);
     }
 
-    [Fact]
-    public void PublicUrl_BaseWithoutTrailingSlash_Throws()
-    {
-        Assert.Throws<ArgumentException>(() =>
-            ReportLayout.PublicUrl(new Uri("https://media.example.test/reports"), "g/viewer.html"));
-    }
-
     [Theory]
-    [InlineData("/other/viewer.html")]
-    [InlineData("../viewer.html")]
-    [InlineData("g/viewer.html?token=secret")]
-    public void PublicUrl_InvalidPath_Throws(string path)
+    [InlineData("https://media.example.test/reports", "g/viewer.html")]
+    [InlineData("https://media.example.test/reports/", "/other/viewer.html")]
+    [InlineData("https://media.example.test/reports/", "../viewer.html")]
+    [InlineData("https://media.example.test/reports/", "g/viewer.html?token=secret")]
+    public void PublicUrl_InvalidBaseOrPath_Throws(string mediaBase, string path)
     {
-        Assert.Throws<ArgumentException>(() => ReportLayout.PublicUrl(new Uri("https://media.example.test/reports/"), path));
+        Assert.Throws<ArgumentException>(() => ReportLayout.PublicUrl(new Uri(mediaBase), path));
     }
 }

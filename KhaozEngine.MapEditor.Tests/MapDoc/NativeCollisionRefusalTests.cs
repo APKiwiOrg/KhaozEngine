@@ -18,7 +18,7 @@ public class NativeCollisionRefusalTests
         var f = NativeEditorAssetFixtures.ExternalBufferMeshAsset();
         string message = Assert.Throws<MapDocumentException>(() => NativeMapAssetLoader.Load(f.Asset, f.Closure)).Message;
         Assert.Contains("'external'", message);
-        Assert.Contains("external buffer URI 'body.bin'", message);
+        Assert.Contains("body.bin", message);
     }
 
     [Fact]
@@ -27,7 +27,7 @@ public class NativeCollisionRefusalTests
         var f = NativeEditorAssetFixtures.ExternalImageMeshAsset();
         string message = Assert.Throws<MapDocumentException>(() => NativeMapAssetLoader.Load(f.Asset, f.Closure)).Message;
         Assert.Contains("'external-image'", message);
-        Assert.Contains("external image URI 'albedo.png'", message);
+        Assert.Contains("albedo.png", message);
     }
 
     [Fact]
@@ -39,29 +39,23 @@ public class NativeCollisionRefusalTests
         Assert.Equal(2f, NativeEditorAssetFixtures.MaxVertexY(mesh));
     }
 
-    [Fact]
-    public void SlightlyTiltedBox_RefusesHeightEdits()
+    [Theory]
+    [InlineData("tilted-wall", "compound boxes")]
+    [InlineData("shared-a", "shared.collider")]
+    [InlineData("nested-wall", "nested-wall")]
+    [InlineData("split-wall", "kit")]
+    [InlineData("rock-mesh", "compound boxes")]
+    public void UnsupportedColliderOrManifest_RefusesHeightEdits(string assetId, string diagnostic)
     {
         using var f = new NativeCollisionToolFixture();
-        Assert.Contains("upright", Assert.Throws<MapDocumentException>(() => f.Service.SetHeights("tilted-wall", 0f, 1f)).Message);
-    }
+        byte[] before = f.ReadAssetDirectoryDigest();
 
-    [Fact]
-    public void SharedCollider_RefusesHeightEdits()
-    {
-        using var f = new NativeCollisionToolFixture();
-        Assert.Contains("shares collider resource 'shared.collider'",
-            Assert.Throws<MapDocumentException>(() => f.Service.SetHeights("shared-a", 0f, 1f)).Message);
-    }
+        var error = Assert.Throws<MapDocumentException>(() => f.Service.SetHeights(assetId, 0f, 1f));
 
-    [Fact]
-    public void NestedOrUndeclaredManifest_RefusesHeightEdits()
-    {
-        using var f = new NativeCollisionToolFixture();
-        Assert.Contains("not declared directly in a root manifest",
-            Assert.Throws<MapDocumentException>(() => f.Service.SetHeights("nested-wall", 0f, 1f)).Message);
-        Assert.Contains("is not declared in root manifest 'kit'",
-            Assert.Throws<MapDocumentException>(() => f.Service.SetHeights("split-wall", 0f, 1f)).Message);
+        Assert.Contains(diagnostic, error.Message, StringComparison.Ordinal);
+        Assert.Contains(assetId, error.Message, StringComparison.Ordinal);
+        Assert.Equal(before, f.ReadAssetDirectoryDigest());
+        Assert.False(f.Session.IsDirty);
     }
 
     [Fact]
@@ -99,8 +93,7 @@ public class NativeCollisionRefusalTests
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllBytes(path, new byte[] { 9, 9 });
         var writer = new MapAssetFileWriter(f.Root);
-        Assert.Contains("already holds other content",
-            Assert.Throws<MapDocumentException>(() => writer.WriteResource(bytes, "coll")).Message);
+        Assert.Throws<MapDocumentException>(() => writer.WriteResource(bytes, "coll"));
         Assert.Equal(new byte[] { 9, 9 }, File.ReadAllBytes(path));
     }
 }

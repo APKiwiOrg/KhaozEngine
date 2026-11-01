@@ -49,7 +49,8 @@ fresh() {
 # Sort the entire path before the rule, retain spaces, and ignore other diagnostics and prose.
 fresh
 cat >build.log <<'LOG'
-/src/Z Tests/Z.cs(12,5): warning KETEST003: 'Z Tests/Z.cs' has 2 test(s) whose assertions all run inside a loop that may be empty, .testhealth-baseline allows 0. Assert the expected count or non-emptiness before the loop so an empty result fails. [/src/Z Tests/Z.csproj]
+/src/Z Tests/Z.cs(12,5): warning KETEST002: 'Z Tests/Z.cs' has 2 non-public reflection access(es), .testhealth-baseline allows 0. Test through the public API, or an internal seam with InternalsVisibleTo. [/src/Z Tests/Z.csproj]
+/src/B Tests/B.cs(12,5): warning KETEST003: 'B Tests/B.cs' has 5 test(s) whose assertions all run inside a loop that may be empty, .testhealth-baseline allows 0. Assert the expected count or non-emptiness before the loop so an empty result fails. [/src/B Tests/B.csproj]
 /src/A Tests/A.cs(12,5): error KETEST002: 'A Tests/A.cs' has 4 non-public reflection access(es), .testhealth-baseline allows 0. Test through the public API, or an internal seam with InternalsVisibleTo. [/src/A Tests/A.csproj]
 /src/A Tests/A.cs(18,5): warning KETEST001: 'A Tests/A.cs' has 3 exception message assertion(s), .testhealth-baseline allows 0. Assert the exception type and a structured member (parameter name, error code, status) instead of message wording. [/src/A Tests/A.csproj]
 /src/Other.cs(1,1): warning KETEST004: 'Other.cs' has 9 unrelated finding(s), .testhealth-baseline allows 0. [/src/Other.csproj]
@@ -58,14 +59,14 @@ LOG
 cat >expected <<'ENTRIES'
 3 KETEST001 A Tests/A.cs
 4 KETEST002 A Tests/A.cs
-2 KETEST003 Z Tests/Z.cs
+2 KETEST002 Z Tests/Z.cs
 ENTRIES
 run --init
 entries_match
 baseline_said 'may only shrink'
 baseline_said 'exempt KETEST001 path/to/File.cs'
 baseline_said 'build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update'
-check 'init writes sorted entries' 0 "$rc"
+check 'init writes sorted entries and skips report-only KETEST003' 0 "$rc"
 
 fresh
 : >.testhealth-baseline
@@ -104,11 +105,11 @@ entries_match
 check 'update lowers a count' 0 "$rc"
 
 fresh
-printf '5 KETEST001 Tests/Gone.cs\n2 KETEST003 Tests/Still.cs\n' >.testhealth-baseline
+printf '5 KETEST001 Tests/Gone.cs\n2 KETEST002 Tests/Still.cs\n' >.testhealth-baseline
 cat >build.log <<'LOG'
-/src/Tests/Still.cs(12,5): warning KETEST003: 'Tests/Still.cs' has 2 test(s) whose assertions all run inside a loop that may be empty, .testhealth-baseline allows 0. Assert the expected count or non-emptiness before the loop so an empty result fails. [/src/Tests/Tests.csproj]
+/src/Tests/Still.cs(12,5): warning KETEST002: 'Tests/Still.cs' has 2 non-public reflection access(es), .testhealth-baseline allows 0. Test through the public API, or an internal seam with InternalsVisibleTo. [/src/Tests/Tests.csproj]
 LOG
-printf '2 KETEST003 Tests/Still.cs\n' >expected
+printf '2 KETEST002 Tests/Still.cs\n' >expected
 run --update
 entries_match
 check 'update drops a zero entry' 0 "$rc"

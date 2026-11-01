@@ -179,6 +179,12 @@ public class LoopOnlyAssertionTests
     private static async Task AssertFinding(string body, string attribute = "Fact") =>
         await AssertDiagnostic(Source(body, attribute));
 
+    [Fact]
+    public async Task NormalBuild_IsSilent_BecauseTheRuleIsReportOnly() =>
+        Assert.Empty(await TestHealthHarness.Run(
+            new[] { ("/repo/Tests/R.cs", Source("foreach (var item in GetItems()) Assert.True(item > 0);", "Fact")) },
+            baseline: ""));
+
     private static async Task AssertDiagnostic(string source)
     {
         var diagnostic = Assert.Single(await Run(source));

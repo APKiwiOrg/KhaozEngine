@@ -46,10 +46,11 @@ fi
 # Each diagnostic carries the file total. Findings repeat at every location, in the build summary,
 # and across projects that compile test-shared sources. Keep the largest total, never their sum.
 # POSIX awk has no capture-array extension to match(), so peel the matched prefix in stages.
+# KETEST003 is a report-only review aid that the analyzer never enforces, so it never enters the baseline.
 awk '
   BEGIN { quote = sprintf("%c", 39) }
   {
-    pattern = "(warning|error) KETEST00[1-3]: " quote "[^" quote "]+" quote " has [0-9]+ "
+    pattern = "(warning|error) KETEST00[12]: " quote "[^" quote "]+" quote " has [0-9]+ "
     if (!match($0, pattern)) next
     finding = substr($0, RSTART, RLENGTH)
     sub(/^(warning|error) /, "", finding)

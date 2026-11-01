@@ -56,8 +56,12 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 ExceptionMessageAssertionDetector.Find(context.SemanticModel, symbols, context.CancellationToken));
             ReportFindings(context, baseline, relative, reportMode, TestHealthDiagnostics.NonPublicReflection,
                 PrivateReflectionDetector.Find(context.SemanticModel, symbols, context.CancellationToken));
-            ReportFindings(context, baseline, relative, reportMode, TestHealthDiagnostics.LoopOnlyAssertion,
-                LoopOnlyAssertionDetector.Find(context.SemanticModel, symbols, context.CancellationToken));
+            // KETEST003 is a review aid, never a ratchet. On this repository only 6 of 20 sampled findings
+            // were real: loops over local tables and test-owned case helpers look possibly empty to a
+            // syntactic check. Report mode lists its candidates for review, normal builds never see it.
+            if (reportMode)
+                ReportFindings(context, baseline, relative, reportMode, TestHealthDiagnostics.LoopOnlyAssertion,
+                    LoopOnlyAssertionDetector.Find(context.SemanticModel, symbols, context.CancellationToken));
         }
 
         private static void ReportFindings(SemanticModelAnalysisContext context, TestHealthBaseline baseline,

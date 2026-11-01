@@ -36,12 +36,16 @@ public sealed class PointShadowAttributionRecorderTests : IDisposable
         recorder.Observe(.016, 0, Window, default);
         recorder.Observe(.016, 1000, Window, default);
         var request = recorder.NextShadowStageRequest;
-        var capture = Assert.IsType<PointShadowAttributionCapture>(request.PointAttribution);
+        var capture = Assert.IsType<PointShadowAttributionCapture>(recorder.NextPointAttribution);
         Assert.True(capture.BeginFrame(request.Epoch, request.Sequence, 77));
         capture.AddRow(new() { Key = 39 });
         var range = capture.EndFrame(PointAttributionAvailability.MissingAtlas);
         var snapshot = Payload(request) with { PointAttribution = range };
-        recorder.Observe(.016, 1016, Window, default, new(request, true, 1, snapshot));
+        var frame = new Frame();
+        frame.BeginShadowStageCallback(request, capture);
+        frame.PublishShadowStageSnapshot(snapshot, capture); frame.CompleteShadowStageCallback();
+        recorder.Observe(.016, 1016, Window, default, frame.CompletedShadowStageCallback,
+            completedPointAttribution: frame.ShadowStagePointAttribution);
         Assert.True(capture.Frozen);
         Assert.False(capture.BeginFrame(request.Epoch, 2, 78));
         await recorder.Publication;
@@ -64,8 +68,8 @@ public sealed class PointShadowAttributionRecorderTests : IDisposable
         a.Observe(.016, 0, Window, default); b.Observe(.016, 0, Window, default);
         a.Observe(.016, 1000, Window, default); b.Observe(.016, 1000, Window, default);
         var first = a.NextShadowStageRequest; var second = b.NextShadowStageRequest;
-        Assert.NotNull(first.PointAttribution); Assert.NotNull(second.PointAttribution);
-        Assert.NotSame(first.PointAttribution, second.PointAttribution);
-        Assert.False(first.PointAttribution!.BeginFrame(second.Epoch, 1, 1));
+        Assert.NotNull(a.NextPointAttribution); Assert.NotNull(b.NextPointAttribution);
+        Assert.NotSame(a.NextPointAttribution, b.NextPointAttribution);
+        Assert.False(a.NextPointAttribution!.BeginFrame(second.Epoch, 1, 1));
     }
 }

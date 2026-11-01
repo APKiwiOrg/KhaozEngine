@@ -17,7 +17,9 @@ public sealed partial class Scene3D
     Func<long> _shadowProbeTimestamp = Stopwatch.GetTimestamp;
     long _shadowProbeFrequency = Stopwatch.Frequency;
 
-    public void ConfigureShadowStageProbe(in ShadowStageProbeRequest request)
+    public void ConfigureShadowStageProbe(in ShadowStageProbeRequest request) => ConfigureShadowStageProbe(request, null);
+
+    public void ConfigureShadowStageProbe(in ShadowStageProbeRequest request, PointShadowAttributionCapture? pointAttribution)
     {
         _shadowProbeRequest = request;
         _shadowProbeActive = request.Epoch != Guid.Empty && request.Sequence > 0
@@ -26,7 +28,7 @@ public sealed partial class Scene3D
         _shadowProbeTicks = new ShadowStageProbeTicks { Frequency = _shadowProbeFrequency };
         _shadowProbeClockValid = true;
         _shadowInputObservation.Reset(request);
-        ConfigurePointAttribution(request);
+        ConfigurePointAttribution(request, pointAttribution);
         if (_shadowProbeActive) _shadowProbeConfiguration = ShadowProbeConfiguration();
     }
 
@@ -40,7 +42,7 @@ public sealed partial class Scene3D
                 _shadowProbeConfiguration, _shadowProbeCounts,
                 _shadowProbeRequest.Mode == ShadowStageProbeMode.Timings ? _shadowProbeTicks : null,
                 _shadowInputObservation.Finish(), FinishPointAttribution());
-            frame.PublishShadowStageSnapshot(in snapshot);
+            frame.PublishShadowStageSnapshot(in snapshot, _pointAttribution);
         }
         finally { CancelShadowStageProbe(); }
     }

@@ -76,8 +76,8 @@ public sealed class PointShadowAttributionWorkTests
         f.Render(ShadowStageProbeMode.Counts, attribution: capture); control.Render(ShadowStageProbeMode.Counts);
         Assert.Equal(f.Order(), control.Order()); Assert.Equal(f.Signatures(), control.Signatures());
         var isolated = new PointShadowAttributionCapture(Guid.NewGuid(), new(4, 4, 8, 8, 16, 8, 4, 8));
-        var request = new ShadowStageProbeRequest(isolated.Epoch, 1, ShadowStageProbeMode.Counts, isolated);
-        f.Scene.ConfigureShadowStageProbe(request);
+        var request = new ShadowStageProbeRequest(isolated.Epoch, 1, ShadowStageProbeMode.Counts);
+        f.Scene.ConfigureShadowStageProbe(request, isolated);
         f.Scene.PreparePointShadowRequests(Vector3.Zero); f.Scene.CancelShadowStageProbe();
         Assert.Equal(PointAttributionAvailability.Abandoned, isolated.GetFrame(0).Availability);
         Assert.False(isolated.GetFrame(0).Complete);

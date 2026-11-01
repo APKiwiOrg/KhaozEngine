@@ -18,10 +18,10 @@ public sealed partial class Scene3D
 
     Span<ulong> PointAttributionMotionKeys() => _pointAttribution is { } capture ? capture.MotionKeys : default;
 
-    void ConfigurePointAttribution(in ShadowStageProbeRequest request)
+    void ConfigurePointAttribution(in ShadowStageProbeRequest request, PointShadowAttributionCapture? pointAttribution)
     {
         CancelPointAttribution();
-        _pointAttribution = _shadowProbeActive && request.Mode == ShadowStageProbeMode.Counts ? request.PointAttribution : null;
+        _pointAttribution = _shadowProbeActive && request.Mode == ShadowStageProbeMode.Counts ? pointAttribution : null;
     }
 
     void ObservePointAttributionRequests()

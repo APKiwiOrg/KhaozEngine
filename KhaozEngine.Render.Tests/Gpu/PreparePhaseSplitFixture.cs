@@ -147,13 +147,13 @@ public sealed class PreparePhaseSplitFixture : IDisposable
                     GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
                 commands.Clear();
                 commands.CommandTrace!.Clear();
-                frame.BeginShadowStageCallback(new ShadowStageProbeRequest(epoch, i + 1, probeMode, pointAttribution));
+                frame.BeginShadowStageCallback(new ShadowStageProbeRequest(epoch, i + 1, probeMode), pointAttribution);
                 frame.BeginRecordingWaitCallback(new(epoch, i + 1, ringWaitProbe, probeMode));
                 if (ringWaitProbe) WaitBoundaries[i] = ReadWaitBoundary(device);
                 RendererFramePolicy.Run(frame, true, device, commands, Color.Black, _ =>
                 {
                     frame.DeclareRecordingWaitPrefix(split);
-                    scene.ConfigureShadowStageProbe(frame.ShadowStageRequest);
+                    scene.ConfigureShadowStageProbe(frame.ShadowStageRequest, frame.ShadowStagePointAttribution);
                     scene.Begin();
                     scene.EffectTimeSeconds = index / 60f;
                     if (index == 2) transition?.Begin();

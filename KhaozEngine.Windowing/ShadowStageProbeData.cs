@@ -12,8 +12,7 @@ public enum ShadowStageProbeStatus
 }
 public enum ShadowStageFoliageBuildOrigin { None, Signature, RowPreparation, RowRecording }
 
-public readonly record struct ShadowStageProbeRequest(Guid Epoch, long Sequence, ShadowStageProbeMode Mode,
-    [property: JsonIgnore] PointShadowAttributionCapture? PointAttribution = null);
+public readonly record struct ShadowStageProbeRequest(Guid Epoch, long Sequence, ShadowStageProbeMode Mode);
 
 public readonly record struct ShadowStageProbeConfiguration(bool HudTiming, int DirectionalMode,
     bool TerrainCastsShadows, bool CascadeCulling, bool GpuSkinning, int CascadeMergeGap,

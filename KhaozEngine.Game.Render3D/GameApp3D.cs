@@ -100,7 +100,7 @@ namespace KhaozEngine.Game
         /// </summary>
         internal static void PrepareProbedScene(Scene3D scene, Action<Scene3D> drawWorld, Frame frame)
         {
-            scene.ConfigureShadowStageProbe(frame.ShadowStageRequest);
+            scene.ConfigureShadowStageProbe(frame.ShadowStageRequest, frame.ShadowStagePointAttribution);
             try { PrepareScene(scene, drawWorld, frame.Width, frame.Height); }
             catch { scene.CancelShadowStageProbe(); throw; }
         }

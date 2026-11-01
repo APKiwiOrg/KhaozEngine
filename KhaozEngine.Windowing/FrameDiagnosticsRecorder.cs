@@ -72,7 +72,7 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
 
     internal void Observe(double dt, long timestamp, FrameDiagnosticsWindowState window, GpuDeviceCounters counters,
         in ShadowStageCallbackResult completed, in RecordingWaitCallbackResult recordingWait = default,
-        in RecordingWaitBoundary ringBoundary = default)
+        in RecordingWaitBoundary ringBoundary = default, PointShadowAttributionCapture? completedPointAttribution = null)
     {
         if (_phase == Phase.Stopped) return;
         if (_phase == Phase.Waiting)
@@ -98,7 +98,7 @@ internal sealed partial class FrameDiagnosticsRecorder : IDisposable
         }
         _samples[_count++] = new FrameDiagnosticsSample(_previous.Timestamp, timestamp,
             (timestamp - _previous.Timestamp) / (double)_frequency, dt, _previous.Window, window, counters,
-            ShadowRow(completed, _previous.Window.RenderSuppressed), RecordingWaitRow(recordingWait, boundary));
+            ShadowRow(completed, _previous.Window.RenderSuppressed, completedPointAttribution), RecordingWaitRow(recordingWait, boundary));
         _shadowSequence++;
         _previous = boundary;
         bool durationReached = (timestamp - _baseline.Timestamp) / (double)_frequency >= 10;

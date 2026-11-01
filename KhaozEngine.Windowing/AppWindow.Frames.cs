@@ -74,8 +74,8 @@ namespace KhaozEngine.Windowing
                         RendererInitializesSwapchain, _frame.PreparePhaseSplitActive,
                         _frame.PreparePhaseSubmissionCount, _frame.PreparePhaseCompositeCount),
                     _device.Counters, _frame.CompletedShadowStageCallback, _frame.CompletedRecordingWaitCallback,
-                    diagnostics.ReadRecordingWaitBoundary(_device as Gpu.IGpuRingWaitSource));
-                _frame.BeginShadowStageCallback(diagnostics?.NextShadowStageRequest ?? default);
+                    diagnostics.ReadRecordingWaitBoundary(_device as Gpu.IGpuRingWaitSource), _frame.ShadowStagePointAttribution);
+                BeginShadowStageCallback(_frame, diagnostics);
                 _frame.BeginRecordingWaitCallback(diagnostics?.NextRecordingWaitRequest ?? default);
                 float fdt = (float)Math.Min(dt, 0.1);
                 // Capture first, so the snapshot reports what GLFW was told this frame. See AppWindow.PointerCapture.cs.
@@ -119,6 +119,9 @@ namespace KhaozEngine.Windowing
             };
             _window.Run();
         }
+
+        internal static void BeginShadowStageCallback(Frame frame, FrameDiagnosticsRecorder? diagnostics) =>
+            frame.BeginShadowStageCallback(diagnostics?.NextShadowStageRequest ?? default, diagnostics?.NextPointAttribution);
 
         /// <summary>Idle for <paramref name="seconds"/> using the monotonic <paramref name="clock"/>: sleep the bulk
         /// (leaving a ~1 ms margin so the OS timer granularity can't overshoot the cap), then spin the remainder.</summary>

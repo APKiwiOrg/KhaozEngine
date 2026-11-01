@@ -12,7 +12,9 @@ internal sealed partial class FrameDiagnosticsRecorder
     ShadowStageProbeConfiguration? _shadowConfiguration;
 
     internal ShadowStageProbeRequest NextShadowStageRequest => _phase == Phase.Sampling
-        ? new(_shadowEpoch, _shadowSequence, _shadowMode, _pointAttribution) : default;
+        ? new(_shadowEpoch, _shadowSequence, _shadowMode) : default;
+
+    internal PointShadowAttributionCapture? NextPointAttribution => _phase == Phase.Sampling ? _pointAttribution : null;
 
     internal static ShadowStageProbeMode ParseShadowStageMode(string? value) => value switch
     {
@@ -43,15 +45,15 @@ internal sealed partial class FrameDiagnosticsRecorder
         return new FrameDiagnosticsRecorder(path, System.Diagnostics.Stopwatch.Frequency, mode: mode, ringWaitProbe: enabled, pointAttribution: pointAttribution);
     }
 
-    ShadowStageProbeRow ShadowRow(in ShadowStageCallbackResult completed, bool suppressed)
+    ShadowStageProbeRow ShadowRow(in ShadowStageCallbackResult completed, bool suppressed, PointShadowAttributionCapture? completedPointAttribution)
     {
         var request = NextShadowStageRequest;
-        var status = ValidateShadowRow(request, completed, suppressed);
+        var status = ValidateShadowRow(request, completed, suppressed, completedPointAttribution);
         return new(request, status, completed);
     }
 
     ShadowStageProbeStatus ValidateShadowRow(ShadowStageProbeRequest expected,
-        in ShadowStageCallbackResult completed, bool suppressed)
+        in ShadowStageCallbackResult completed, bool suppressed, PointShadowAttributionCapture? completedPointAttribution)
     {
         if (_shadowMode == ShadowStageProbeMode.Off) return ShadowStageProbeStatus.Off;
         if (suppressed) return ShadowStageProbeStatus.NotRendered;
@@ -67,12 +69,13 @@ internal sealed partial class FrameDiagnosticsRecorder
         if (snapshot.Request.Mode != _shadowMode || !snapshot.Counters.HasValue
             || (_shadowMode == ShadowStageProbeMode.Timings) != snapshot.Timings.HasValue)
             return ShadowStageProbeStatus.ModeMismatch;
+        if (!ReferenceEquals(completedPointAttribution, _pointAttribution))
+            return ShadowStageProbeStatus.InvalidInputs;
         if (_pointAttribution is { } capture
-            && (!ReferenceEquals(snapshot.Request.PointAttribution, capture)
-                || (snapshot.PointAttribution is { } range
-                    ? range.Epoch != expected.Epoch || range.Sequence != expected.Sequence
-                        || capture.FrameCount == 0 || capture.GetFrame(capture.FrameCount - 1) != range
-                    : capture.Overflow == PointAttributionCapacity.None || expected.Sequence < capture.OverflowSequence)))
+            && (snapshot.PointAttribution is { } range
+                ? range.Epoch != expected.Epoch || range.Sequence != expected.Sequence
+                    || capture.FrameCount == 0 || capture.GetFrame(capture.FrameCount - 1) != range
+                : capture.Overflow == PointAttributionCapacity.None || expected.Sequence < capture.OverflowSequence))
             return ShadowStageProbeStatus.InvalidInputs;
         if (snapshot.Status != ShadowStageProbeStatus.Valid) return snapshot.Status;
         if (snapshot.Timings is { } timings && timings.Frequency != _frequency)

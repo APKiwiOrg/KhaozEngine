@@ -27,11 +27,11 @@ public sealed class PointShadowAttributionAllocationTests
             long timestamp = 1000;
             void Sample()
             {
-                f.Frame.BeginShadowStageCallback(recorder.NextShadowStageRequest);
-                f.Scene.ConfigureShadowStageProbe(f.Frame.ShadowStageRequest);
+                AppWindow.BeginShadowStageCallback(f.Frame, recorder);
+                f.Scene.ConfigureShadowStageProbe(f.Frame.ShadowStageRequest, f.Frame.ShadowStagePointAttribution);
                 f.Scene.PreparePointShadows(commands, f.Scene.Camera.Eye);
                 f.Scene.PublishShadowStageProbe(f.Frame); f.Frame.CompleteShadowStageCallback();
-                recorder.Observe(.016, timestamp += 16, window, default, f.Frame.CompletedShadowStageCallback);
+                recorder.Observe(.016, timestamp += 16, window, default, f.Frame.CompletedShadowStageCallback, completedPointAttribution: f.Frame.ShadowStagePointAttribution);
             }
             for (int i = 0; i < 4; i++) Sample();
             AllocationMeasurement.NoPerCallAllocation("point attribution producer, Frame and recorder", () =>
@@ -39,7 +39,7 @@ public sealed class PointShadowAttributionAllocationTests
                 for (int i = 0; i < 8; i++) Sample();
             });
             commands.End();
-            var capture = recorder.NextShadowStageRequest.PointAttribution!;
+            var capture = recorder.NextPointAttribution!;
             Assert.Equal(12, capture.FrameCount); Assert.Equal(PointAttributionCapacity.None, capture.Overflow);
             recorder.Dispose();
             Assert.True(capture.Frozen);

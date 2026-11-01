@@ -37,9 +37,9 @@ internal sealed class ShadowStageProbeFixture : IDisposable
         Action<Scene3D>? extraQueue = null, FoliageRenderSettings? foliageSettings = null,
         PointShadowAttributionCapture? attribution = null, ShadowStageProbeRequest? probeRequest = null)
     {
-        var request = probeRequest ?? new ShadowStageProbeRequest(attribution?.Epoch ?? new Guid("c49950ca-e4a6-493d-a146-ac14c91061dc"), ++_sequence, mode, attribution);
-        Frame.BeginShadowStageCallback(request);
-        Scene.ConfigureShadowStageProbe(request);
+        var request = probeRequest ?? new ShadowStageProbeRequest(attribution?.Epoch ?? new Guid("c49950ca-e4a6-493d-a146-ac14c91061dc"), ++_sequence, mode);
+        Frame.BeginShadowStageCallback(request, attribution);
+        Scene.ConfigureShadowStageProbe(request, Frame.ShadowStagePointAttribution);
         Scene.Begin();
         if (rigid) Scene.Draw(Mesh, Matrix4x4.CreateTranslation(1.5f, .5f, 0));
         if (foliage is not null) Scene.DrawFoliage(foliage, Vector3.Zero,

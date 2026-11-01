@@ -22,6 +22,7 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   FULL selective CI run.
 - Share `AnalyzerPathPolicy` between KESIZE and KETEST and move analyzer tests to
   `KhaozEngine.Tests.CodeHealth`.
+- Correct `FixedTickHost.SecondsUntilNextTick` documentation to describe the full-tick wait with an empty accumulator and the shorter wait when time remains.
 
 ## 21.22.0
 

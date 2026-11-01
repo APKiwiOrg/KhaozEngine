@@ -5434,7 +5434,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         Static geometry before publishing split sampling. Removal and mobility changes clear stale actor depth,
         including at zero ordinary budget. A changed static signature under current or previous opted-in demand
         can conservatively force a scenery rebuild. This correctness work is bounded to one base render per owned
-        light per frame, outside the ordinary static budget. See [caster layers](design/POINT-SHADOW-CASTERS.md).
+        light per frame, outside the ordinary static budget, leaving its allowance available for independent dirty
+        rows and new admissions. First admission still consumes an ordinary selection when it uses fallback.
+        See [caster layers](design/POINT-SHADOW-CASTERS.md).
         Dynamic lights clear and draw rigid and skinned casters together in their selected base row. A static transient row is independent of the
         light's base row number. The receiver selects one face and local UV for each hard or soft tap, reads both
         atlases there, and compares against the nearer stored depth. When no transient row is assigned it takes

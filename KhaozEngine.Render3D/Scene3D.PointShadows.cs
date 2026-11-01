@@ -103,6 +103,7 @@ namespace KhaozEngine.Render3D
             // signature and every row the pass draws below asks this one index rather than walking every instance.
             EnsurePointCasterIndex();
             AcquirePointShadowSlots(cache, frame);
+            PrepareRigidPointBaseRows(cache);
             ChoosePointShadowRebuilds(cache, settings);
             ScheduleCurrentPointShadows(cache, settings, frame);
             ScheduleRigidPointBaseRows(cache);
@@ -181,6 +182,7 @@ namespace KhaozEngine.Render3D
                 {
                     PointShadowRequest r = _pointRequests[i];
                     if (r.Mode != LightShadowMode.Static || r.Slot < 0) continue;
+                    if (_pointRigidBaseWork[i] != Internal.PointRigidBaseWork.None) continue;
                     if (!cache.IsDirty(r.Slot) || _pointRebuilds.Contains(i)) continue;
                     if (pick < 0 || cache.LastRenderedFrame(r.Slot) < cache.LastRenderedFrame(_pointRequests[pick].Slot))
                         pick = i;

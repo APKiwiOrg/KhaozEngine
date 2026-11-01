@@ -56,12 +56,17 @@ A changed rendered static signature while current or previous Dynamic rigid dema
 base transition. This handles both mobility switches at zero ordinary static budget. It can conservatively
 rebuild simultaneous scenery changes. Disappearance without a static-signature change leaves an already pure
 base cached. Legacy rows without opted-in demand keep their ordinary static budget semantics.
+The conservative dirty flag may also require a transition after geometry returns to its rendered signature.
+Selection and rendering use the same transition rule, including that dirty state.
 
 Fallback and pure-base transitions are mandatory correctness work outside `MaxStaticRebuildsPerFrame`. One
 shared plan deduplicates them with ordinary work, with at most one base render per affected owned light per
-frame and at most the live base row count. This may cost a full scenery redraw when storage fails. It preserves
-shadows, face resolution and current actor poses without a quality knob. New rows without an admitted base
-render follow the existing cache admission policy.
+frame and at most the live base row count. Existing mandatory rows leave the full ordinary allowance available
+for independent dirty rows and new admissions. First admission always consumes an ordinary selection, even
+when that render uses complete-base fallback. Admission never refunds that selection to admit another new row.
+Transient assignment includes admitted rows before final layer planning, which advances demand history once.
+This may cost a full scenery redraw when storage fails. It preserves shadows, face resolution and current actor
+poses without a quality knob.
 
 ## Resource lifecycle
 
@@ -91,7 +96,8 @@ static lights before live transient capacity is applied.
 
 CPU fixtures drive actual `Scene3D` scheduling through the established fake GPU and inspect submitted slot
 ranges and draw streams. They cover default compatibility, mixed mobility, both skinning paths, dynamic lights,
-zero ordinary budget, allocation and bind refusals, growth, recovery, removal, mobility changes, slot ownership,
+zero ordinary budget, positive ordinary refresh and admission beside mandatory work, allocation and bind refusals,
+growth, recovery, removal, mobility changes, slot ownership,
 off-camera retention, mesh changes, dissolve and rebasing.
 
 `RigidPointShadowGpuTests` compares full-resolution split images byte for byte with a separate scene whose

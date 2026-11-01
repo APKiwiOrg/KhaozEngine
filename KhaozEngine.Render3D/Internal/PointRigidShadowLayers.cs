@@ -18,15 +18,21 @@ internal sealed class PointRigidShadowLayers
 
     internal void Reset(int capacity) => _rows = new Row[capacity];
 
+    internal bool RequiresTransition(int slot, long owner, long staticSignature, bool dirty, bool movingRigid)
+    {
+        ref Row row = ref _rows[slot];
+        return row.Known && row.Owner == owner && (row.ContainsTransient
+            || ((movingRigid || row.HadMovingRigid) && (dirty || row.StaticSignature != staticSignature)));
+    }
+
     internal PointRigidBaseWork Plan(int slot, long owner, bool rendered, long staticSignature,
-        bool movingRigid, bool skinned, bool hasTransient)
+        bool dirty, bool movingRigid, bool skinned, bool hasTransient)
     {
         ref Row row = ref _rows[slot];
         if (!rendered || !row.Known || row.Owner != owner)
             row = new Row { Owner = owner, Known = true };
         bool fallback = !hasTransient && (movingRigid || (row.ContainsTransient && skinned));
-        bool transition = row.ContainsTransient || (rendered && (movingRigid || row.HadMovingRigid)
-            && row.StaticSignature != staticSignature);
+        bool transition = rendered && RequiresTransition(slot, owner, staticSignature, dirty, movingRigid);
         row.HadMovingRigid = movingRigid;
         return fallback ? PointRigidBaseWork.Fallback
             : transition ? PointRigidBaseWork.Transition : PointRigidBaseWork.None;

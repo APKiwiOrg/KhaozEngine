@@ -567,7 +567,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   transient row. `PointRigidTransitionRowsRendered` counts mandatory pure-base cleanup before split sampling,
   after fallback removal, or when a changed static signature meets current or previous moving rigid demand.
   Both bypass the ordinary static budget, deduplicate with ordinary work, and render each owned base row at
-  most once per frame. Refusal can cost a full scenery redraw, preserving current character and scenery shadows.
+  most once per frame. Existing mandatory rows leave the ordinary allowance available for independent dirty
+  rows and new admissions. First admission still spends an ordinary selection, including when it uses fallback.
+  Refusal can cost a full scenery redraw, preserving current character and scenery shadows.
   `PointStaticFallbackSkinnedDrawCalls` counts skinned face draws into fallback bases. `PointFaceDrawCalls`
   includes every caster draw in these categories. See [caster layers](../docs/design/POINT-SHADOW-CASTERS.md).
   Point-light MASK alpha testing remains [#1098](https://github.com/APKiwiOrg/KhaozEngine/issues/1098).

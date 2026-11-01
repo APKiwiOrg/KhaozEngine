@@ -59,11 +59,25 @@ public sealed partial class Scene3D
         return false;
     }
 
-    void ScheduleRigidPointBaseRows(PointShadowSlots cache)
+    void PrepareRigidPointBaseRows(PointShadowSlots cache)
     {
         if (_pointRigidBaseWork.Length < _pointRequests.Count)
             Array.Resize(ref _pointRigidBaseWork, _pointRequests.Count);
         Array.Clear(_pointRigidBaseWork);
+        for (int i = 0; i < _pointRequests.Count; i++)
+        {
+            PointShadowRequest request = _pointRequests[i];
+            if (request.Slot < 0 || request.Mode != LightShadowMode.Static
+                || !cache.EverRendered(request.Slot) || !cache.IsDirty(request.Slot)) continue;
+            // Eligibility must not advance previous demand before the final layer plan reads it.
+            if (_pointRigidLayers.RequiresTransition(request.Slot, request.Key,
+                _pointCasterSignatures[request.Slot], cache.IsDirty(request.Slot), PointRequestTouchesMovingRigid(request)))
+                _pointRigidBaseWork[i] = PointRigidBaseWork.Transition;
+        }
+    }
+
+    void ScheduleRigidPointBaseRows(PointShadowSlots cache)
+    {
         _pointStaticTransientRigidDrawCallsThisFrame = 0;
         _pointStaticFallbackSkinnedDrawCallsThisFrame = 0;
         _pointRigidFallbackRowsThisFrame = 0;
@@ -76,7 +90,7 @@ public sealed partial class Scene3D
             if (!cache.EverRendered(request.Slot) && !selected) continue;
             PointRigidBaseWork work = _pointRigidLayers.Plan(request.Slot, request.Key,
                 cache.EverRendered(request.Slot), _pointCasterSignatures[request.Slot],
-                PointRequestTouchesMovingRigid(request), PointRequestTouchesSkinned(request),
+                cache.IsDirty(request.Slot), PointRequestTouchesMovingRigid(request), PointRequestTouchesSkinned(request),
                 _pointTransientRowsByRequest[i] >= 0);
             _pointRigidBaseWork[i] = work;
             if (work == PointRigidBaseWork.None) continue;

@@ -84,7 +84,7 @@ public sealed class ContactNavigationProofReuseScheduleTests
                 });
                 var selected = Assert.Throws<OrderedProviderFailure>(cutoff.ThrowSelected);
                 primary = selected;
-                Assert.Equal(expected.Message, selected.Message);
+                Assert.Equal(expected.Row, selected.Row);
                 Assert.Equal(1, Volatile.Read(ref waited));
                 ContactNavigationReuseFixture.Released();
             }

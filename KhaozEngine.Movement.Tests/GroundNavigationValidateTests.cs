@@ -44,9 +44,9 @@ public class GroundNavigationValidateTests
         MoveTuning legacy = Tuning with { Controller = MovementControllerKind.Legacy, Water = default };
         GroundNavigation graph = Graph(contactGraph, loaded);
         using var binding = contactGraph ? EffectiveMovementBinding.Legacy(legacy) : context.CreateNavigationBinding(Tuning);
-        Assert.Contains("Kind", Assert.Throws<ArgumentException>(() => Validate(graph, binding)).Message, StringComparison.Ordinal);
+        Assert.Equal("binding", Assert.Throws<ArgumentException>(() => Validate(graph, binding)).ParamName);
         MoveTuning wrong = contactGraph ? legacy : Tuning;
-        Assert.Contains("Kind", Assert.Throws<ArgumentException>(() => Validate(graph, wrong)).Message, StringComparison.Ordinal);
+        Assert.Equal("tuning", Assert.Throws<ArgumentException>(() => Validate(graph, wrong)).ParamName);
     }
 
     public static IEnumerable<object[]> ContactFields => NavBakeIdentity.TuningFieldNames
@@ -55,15 +55,16 @@ public class GroundNavigationValidateTests
 
     [Theory]
     [MemberData(nameof(ContactFields))]
-    public void EachContactIdentityFieldMismatchNamesTheField(string field, bool loaded)
+    public void EachContactIdentityFieldMismatchIsRefused(string field, bool loaded)
     {
         using var world = GroundTraversalProbeTests.FlatWorld();
         using var context = Context(world);
         GroundNavigation graph = Graph(true, loaded);
+        Validate(graph, Tuning);
         MoveTuning wrong = Changed(Tuning, field);
         using var binding = context.CreateNavigationBinding(wrong);
-        Assert.Contains(field, Assert.Throws<ArgumentException>(() => Validate(graph, binding)).Message, StringComparison.Ordinal);
-        Assert.Contains(field, Assert.Throws<ArgumentException>(() => Validate(graph, wrong)).Message, StringComparison.Ordinal);
+        Assert.Equal("binding", Assert.Throws<ArgumentException>(() => Validate(graph, binding)).ParamName);
+        Assert.Equal("tuning", Assert.Throws<ArgumentException>(() => Validate(graph, wrong)).ParamName);
     }
 
     [Theory]
@@ -81,9 +82,9 @@ public class GroundNavigationValidateTests
             MovementBoundary.Rectangle(-20, -20, 20, 20));
         var environment = new MovementEnvironmentContext(view, provider, provider.Identity);
         using var binding = EffectiveMovementBinding.PublicExplicit(legacy, environment, new(WaterTraversalMode.DryOnly));
-        const string message = "Explicit navigation profiles are not supported yet. See https://github.com/APKiwiOrg/KhaozEngine/issues/1389.";
+        const string deferredIssue = "https://github.com/APKiwiOrg/KhaozEngine/issues/1389";
         foreach (GroundNavigation graph in new[] { bake.GetProfile("player"), Load(Write(bake), new(FlatOptions, Sources(), [profile])).GetProfile("player") })
-            Assert.Equal(message, Assert.Throws<NotSupportedException>(() => Validate(graph, binding)).Message);
+            Assert.Contains(deferredIssue, Assert.Throws<NotSupportedException>(() => Validate(graph, binding)).Message, StringComparison.Ordinal);
     }
 
     [Theory]

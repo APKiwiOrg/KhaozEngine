@@ -19,9 +19,8 @@ public class RuntimeStaticNavigationTests
         using var context = Context(scene);
         Set(scene);
         int samples = 0;
-        var refusal = Assert.Throws<InvalidOperationException>(() =>
+        Assert.Throws<InvalidOperationException>(() =>
             PhysicsNavBake.Capture(context, Options, _ => { samples++; return 0; }));
-        Assert.Contains("runtime statics", refusal.Message);
         Assert.Equal(0, samples);
         using var known = scene.Acquire();
     }

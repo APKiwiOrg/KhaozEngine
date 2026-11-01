@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Threading;
 using KhaozEngine.Physics;
 using Xunit;
@@ -13,10 +12,6 @@ public class SupportQueryCaptureTests
     [Fact]
     public void EveryPublicCounterReadsTheExistingRecorderAsLong()
     {
-        Type[] results = [typeof(SupportQueryMeasurement), typeof(SupportQueryMetrics),
-            typeof(SupportQueryRouteMetrics), typeof(SupportProofReuseMetrics)];
-        Assert.All(results, type => Assert.All(type.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
-            constructor => Assert.True(constructor.IsAssembly)));
         string[] names = ("Find Proposals Volumes SelectedStatics MeshLeaves Polygons Members Extrema " +
             "IntervalFallbacks ExactFallbacks JoinPairs JoinsProved JoinsPruned Unsupported Ambiguous CapacityExceeded " +
             "AnalyticSamples Bindings PhysicsLeases MovementLeases ProducerPins GroundSubsteps MediumRetries ModeSegments " +

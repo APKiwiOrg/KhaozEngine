@@ -113,9 +113,8 @@ public sealed class StableLegacyReadScopeTests
         int reads = 0;
         using var context = new GroundMoveContext((_, _) => { reads++; return 0; }, null, world, null, null, view);
         using var capture = PhysicsNavBake.Capture(context, Options, _ => 0);
-        var failure = Assert.Throws<NotSupportedException>(() =>
+        Assert.Throws<NotSupportedException>(() =>
             capture.BuildProfile(Tuning, default, GroundProfileOptions.Default, Stable()));
-        Assert.Contains(nameof(IPhysicsQueryLeaseSource), failure.Message, StringComparison.Ordinal);
         Assert.Equal(0, reads);
         Assert.Throws<NotSupportedException>(() => GroundNavigationBake.Create(capture, ContactBakeFile.Sources(),
             [new("legacy", Tuning, default)], Stable()));

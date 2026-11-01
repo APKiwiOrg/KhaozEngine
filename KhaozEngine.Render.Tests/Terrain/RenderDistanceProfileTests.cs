@@ -197,19 +197,23 @@ namespace KhaozEngine.Tests.Terrain
         [Fact]
         public void Validate_RejectsANonPositiveFarClip()
         {
-            // FarClip 0 also breaks the ocean-past-the-clip rule, but the positivity check is the one that fires
-            // first, so the message names the actual defect.
             RenderDistanceProfile p = RenderDistanceProfile.Default with { FarClip = 0f };
             ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(() => p.Validate());
-            Assert.Contains("FarClip must be positive", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(p.FarClip, Assert.IsType<float>(ex.ActualValue));
+            Assert.Equal(nameof(RenderDistanceProfile), ex.ParamName);
         }
 
-        [Fact]
-        public void Validate_RejectsANonPositiveOceanHalfExtent()
+        [Theory]
+        [InlineData(0f)]   // non-positive
+        [InlineData(450f)] // rim inside the far clip
+        [InlineData(700f)] // ocean beyond resident terrain
+        public void Validate_RejectsAnIncoherentOceanExtent(float oceanHalfExtent)
         {
-            RenderDistanceProfile p = RenderDistanceProfile.Default with { OceanHalfExtent = 0f };
+            RenderDistanceProfile p = RenderDistanceProfile.Default with { OceanHalfExtent = oceanHalfExtent };
             ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(() => p.Validate());
-            Assert.Contains("OceanHalfExtent must be positive", ex.Message, StringComparison.Ordinal);
+
+            Assert.Equal(oceanHalfExtent, Assert.IsType<float>(ex.ActualValue));
+            Assert.Equal(nameof(RenderDistanceProfile), ex.ParamName);
         }
 
         [Fact]
@@ -218,7 +222,8 @@ namespace KhaozEngine.Tests.Terrain
             // Equal is already wrong: the band needs at least one chunk of hysteresis or the outer edge churns.
             RenderDistanceProfile p = RenderDistanceProfile.Default with { UnloadRadiusChunks = 11 };
             ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(() => p.Validate());
-            Assert.Contains("UnloadRadiusChunks", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(p.UnloadRadiusChunks, Assert.IsType<int>(ex.ActualValue));
+            Assert.Equal(nameof(RenderDistanceProfile), ex.ParamName);
         }
 
         [Fact]
@@ -233,26 +238,8 @@ namespace KhaozEngine.Tests.Terrain
                 UnloadRadiusChunks = 13,
             };
             ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(() => p.Validate());
-            Assert.Contains("UnloadRadiusChunks", ex.Message, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public void Validate_RejectsAnOceanRimInsideTheFrustum()
-        {
-            // The rim would be drawn as a visible edge of water in shot.
-            RenderDistanceProfile p = RenderDistanceProfile.Default with { OceanHalfExtent = 450f };
-            ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(() => p.Validate());
-            Assert.Contains("OceanHalfExtent must exceed FarClip", ex.Message, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public void Validate_RejectsAnOceanPastTheStreamedTerrain()
-        {
-            // Sea drawn over a void: the exact failure the coherent set exists to prevent. 700 m of ocean over a
-            // 660 m far field (11 chunks) leaves a ring of water with nothing under it.
-            RenderDistanceProfile p = RenderDistanceProfile.Default with { OceanHalfExtent = 700f };
-            ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(() => p.Validate());
-            Assert.Contains("within the terrain far field", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(p.UnloadRadiusChunks, Assert.IsType<int>(ex.ActualValue));
+            Assert.Equal(nameof(RenderDistanceProfile), ex.ParamName);
         }
 
         [Fact]
@@ -260,7 +247,8 @@ namespace KhaozEngine.Tests.Terrain
         {
             RenderDistanceProfile p = RenderDistanceProfile.Default with { PropDrawRadius = 550f };
             ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(() => p.Validate());
-            Assert.Contains("PropDrawRadius must not exceed FarClip", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(p.PropDrawRadius, Assert.IsType<float>(ex.ActualValue));
+            Assert.Equal(nameof(RenderDistanceProfile), ex.ParamName);
         }
 
         [Fact]

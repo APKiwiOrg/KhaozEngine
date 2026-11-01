@@ -5360,12 +5360,11 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         and starts to band once the taps are far apart, and the ceiling grows with distance by construction (it
         is an angle off the light), so a far receiver is still allowed a wider penumbra than a near one. Clamped
         into `PenumbraTexelsFloor`..`PenumbraTexelsCeiling` (`1`..`16`) by `ResolvedMaxPenumbraTexels`.
-      - **Two per-frame budgets.** `MaxStaticRebuildsPerFrame` (default `2`) caps how many CACHED maps one frame
-        may re-render, which bounds the frame in which several of them changed at once. A still scene rebuilds
-        none, which is the whole point of the cache. `MaxDynamicLightsPerFrame` (default `4`) caps the
-        every-frame maps, and each one of those is six faces every frame, so it is the hard ceiling on the
-        pass's steady cost. Current-pose transient rows have no separate budget: deferring one would reuse an old
-        skinned pose. Their capacity is capped by the live base atlas instead.
+      - **Two ordinary per-frame budgets.** `MaxStaticRebuildsPerFrame` (default `2`) caps ordinary cached base
+        refreshes. Mandatory moving-rigid fallback and pure-base transitions have separate counters and run
+        outside this budget, with at most one base render per owned light per frame. A still scene rebuilds
+        none. `MaxDynamicLightsPerFrame` (default `4`) caps dynamic-light maps, each costing six faces per frame. Current-pose transient rows have no separate budget: deferring one would reuse an old
+        rigid or skinned pose. Their capacity is capped by the live base atlas instead.
       - **A `Dynamic` light has NO IDENTITY ACROSS FRAMES, so its budget is harder than the static one.** It
         carries no key, so the engine keys its row by the light's PLACE IN THE QUEUE, and that place belongs to a
         different light as soon as one of them expires and the rest shift down. So a dynamic row carries nothing
@@ -5387,8 +5386,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         plus 5 of `D32FloatS8UInt` depth per texel: `28,311,552` bytes (27 MiB) at the defaults and `95,551,488`
         bytes (about 91 MiB) at `384` by `12`. Read it into a settings screen the way `ShadowMapResolution`'s
         cascade cost is read. Static expansion may require more rows, while extent or allocation limits may
-        reduce face resolution. A compact transient atlas for current skinned poses adds live memory only when a
-        static light intersects a skinned caster. Its exact high-water row count is capped by the live base atlas.
+        reduce face resolution. A compact transient atlas for current skinned poses and opted-in moving rigid casters adds live memory
+        only when a static light intersects one. Its exact high-water row count is capped by the live base atlas.
         `PointShadowSettings.AtlasBytes` remains the configured base floor. Use `scene.ResolvedPointShadows` for
         actual live dimensions, base and transient bytes, and refusal state.
       - **The three detail profiles carry it.** `ShadowSettings.ForDetail(ShadowMapDetail.Low)` sets
@@ -5418,14 +5417,27 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       - **The counters.** `scene.PointShadowedLights` is how many lights carried a map last frame, and
         `LastShadowPassDiagnostics` carries `PointShadowedLights`, `PointStaticRebuilds`, `PointDynamicRenders`,
         `PointTransientDemand`, `PointTransientRowsRendered`, `PointDynamicSkinnedDrawCalls`,
-        `PointStaticTransientSkinnedDrawCalls`, `PointFaceDrawCalls`, and `PointSlotsInUse` beside the cascade
-        pass's own counters. `PointStaticRebuilds` still counts rigid static base rebuilds only. A changing
-        skinned pose can redraw a transient row every frame while this rigid counter stays at zero.
+        `PointStaticTransientSkinnedDrawCalls`, `PointStaticTransientRigidDrawCalls`, `PointFaceDrawCalls`, and
+        `PointSlotsInUse` beside the cascade pass's own counters. `PointStaticRebuilds` counts ordinary budgeted
+        base rebuilds only. `PointRigidFallbackRowsRendered` counts complete-base compatibility redraws and
+        `PointRigidTransitionRowsRendered` counts mandatory pure-base cleanup. `PointStaticFallbackSkinnedDrawCalls`
+        reports skinned face draws in fallback bases. All caster draws enter `PointFaceDrawCalls`.
       - **Skinned bodies cast point shadows by default.** `Scene3D.DrawSkinned` and its dissolved variants use
         CPU or GPU skinning and cast unless `castsShadows: false` is passed. Models, tile ground, splat terrain,
-        and `DrawShadowOnly` instances remain rigid casters. Static lights keep those rigid casters in cached
-        base rows and put current skinned poses in a compact transient atlas. Dynamic lights clear and draw rigid
-        and skinned casters together in their selected base row. A static transient row is independent of the
+        and `DrawShadowOnly` instances remain rigid casters. Static lights cache Static rigid casters and put current
+        skinned poses in a compact transient atlas.
+        Set `RigidInstanceDraw.ShadowMobility = ShadowCasterMobility.Dynamic` for moving rigid casters to share
+        that transient layer without invalidating the warmed base. Static is the constructor and zero default.
+        Unsupported enum values are rejected before queue mutation. Motion keys, cast opt-out and shadow-only
+        remain independent, and key-light rendering is unchanged. If transient capacity is unavailable, affected
+        admitted rows redraw a complete current base, including skinned geometry. Recovery clears the base to
+        Static geometry before publishing split sampling. Removal and mobility changes clear stale actor depth,
+        including at zero ordinary budget. A changed static signature under current or previous opted-in demand
+        can conservatively force a scenery rebuild. This correctness work is bounded to one base render per owned
+        light per frame, outside the ordinary static budget, leaving its allowance available for independent dirty
+        rows and new admissions. First admission still consumes an ordinary selection when it uses fallback.
+        See [caster layers](design/POINT-SHADOW-CASTERS.md).
+        Dynamic lights clear and draw rigid and skinned casters together in their selected base row. A static transient row is independent of the
         light's base row number. The receiver selects one face and local UV for each hard or soft tap, reads both
         atlases there, and compares against the nearer stored depth. When no transient row is assigned it takes
         the original base-only path before any transient fetch. Skinned colour and target-outline alpha cutouts

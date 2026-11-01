@@ -43,17 +43,12 @@ namespace KhaozEngine.Tests.Gui
         /// its formatter is an absent key, which Get returns verbatim by contract. A key carrying a brace is
         /// therefore the reachable case, and it must not throw either.
         /// </summary>
-        [Fact]
-        public void PatchNotesStrings_absent_key_carrying_a_placeholder_falls_back_to_the_key()
+        [Theory]
+        [InlineData("patchnotes.{0}.missing", "patchnotes.{0}.missing")]
+        [InlineData("patchnotes.title", "Patch Notes")]
+        public void PatchNotesStrings_formats_present_and_missing_keys(string key, string expected)
         {
-            Assert.Equal("patchnotes.{0}.missing",
-                PatchNotesStrings.EnglishDefaults.Format("patchnotes.{0}.missing"));
-        }
-
-        [Fact]
-        public void PatchNotesStrings_present_key_still_resolves()
-        {
-            Assert.Equal("Patch Notes", PatchNotesStrings.EnglishDefaults.Format("patchnotes.title"));
+            Assert.Equal(expected, PatchNotesStrings.EnglishDefaults.Format(key));
         }
     }
 }

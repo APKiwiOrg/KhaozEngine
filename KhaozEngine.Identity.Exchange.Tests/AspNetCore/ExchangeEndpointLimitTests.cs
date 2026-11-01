@@ -45,32 +45,19 @@ public class ExchangeEndpointLimitTests
         Assert.Equal(HttpStatusCode.OK, (await host.Client.GetAsync("/healthz")).StatusCode);
     }
 
-    [Fact]
-    public async Task IPv6Callers_ShareOneWindowPerSlash64_ThroughTheTrustedProxy()
+    [Theory]
+    [InlineData("2001:db8:1:2::1", "2001:db8:1:2:ffff:ffff:ffff:fffe", "2001:db8:1:3::1")]
+    [InlineData("203.0.113.7", "::ffff:203.0.113.7", "203.0.113.8")]
+    public async Task Callers_ShareWindowsOnlyWithinTheirClientBucket_ThroughTheTrustedProxy(
+        string first, string sameClient, string otherClient)
     {
         await using ExchangeHttpHost host = await ExchangeHttpHost.StartAsync(await ExchangeAccounts.BuildAsync(),
             new AuthExchangeEndpointOptions { PermitsPerClientPerMinute = 1 },
             new AuthExchangeHostingOptions { TrustedProxies = TrustedProxyNetworks.Loopback });
 
-        Assert.Equal(HttpStatusCode.Unauthorized, (await host.ExchangeAsync("discord", "bad", "2001:db8:1:2::1")).Status);
-        // Another address in the same /64 is the same client.
-        Assert.Equal(HttpStatusCode.TooManyRequests,
-            (await host.ExchangeAsync("discord", "bad", "2001:db8:1:2:ffff:ffff:ffff:fffe")).Status);
-        // The next /64 is another client.
-        Assert.Equal(HttpStatusCode.Unauthorized, (await host.ExchangeAsync("discord", "bad", "2001:db8:1:3::1")).Status);
-    }
-
-    [Fact]
-    public async Task IPv4Callers_AreEachTheirOwnClient_AndAMappedAddressIsTheSameCaller()
-    {
-        await using ExchangeHttpHost host = await ExchangeHttpHost.StartAsync(await ExchangeAccounts.BuildAsync(),
-            new AuthExchangeEndpointOptions { PermitsPerClientPerMinute = 1 },
-            new AuthExchangeHostingOptions { TrustedProxies = TrustedProxyNetworks.Loopback });
-
-        Assert.Equal(HttpStatusCode.Unauthorized, (await host.ExchangeAsync("discord", "bad", "203.0.113.7")).Status);
-        Assert.Equal(HttpStatusCode.TooManyRequests,
-            (await host.ExchangeAsync("discord", "bad", "::ffff:203.0.113.7")).Status);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await host.ExchangeAsync("discord", "bad", "203.0.113.8")).Status);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await host.ExchangeAsync("discord", "bad", first)).Status);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await host.ExchangeAsync("discord", "bad", sameClient)).Status);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await host.ExchangeAsync("discord", "bad", otherClient)).Status);
     }
 
     [Fact]

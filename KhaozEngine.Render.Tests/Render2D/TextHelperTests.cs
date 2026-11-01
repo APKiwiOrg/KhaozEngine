@@ -17,11 +17,12 @@ namespace KhaozEngine.Tests.Render2D
 
         static readonly FixedFont Font = new();
 
-        [Fact]
-        public void CenteredX_puts_the_text_midpoint_on_the_anchor()
+        [Theory]
+        [InlineData("abc", 100f, 85f)]
+        [InlineData("", 50f, 50f)]
+        public void CenteredX_puts_the_text_midpoint_on_the_anchor(string text, float centerX, float expected)
         {
-            // "abc" = 30px wide -> starts 15px left of centerX 100
-            Assert.Equal(85f, TextHelper.CenteredX(Font, "abc", centerX: 100f));
+            Assert.Equal(expected, TextHelper.CenteredX(Font, text, centerX));
         }
 
         [Fact]
@@ -46,12 +47,6 @@ namespace KhaozEngine.Tests.Render2D
         {
             // wraps "aaaaa bbbbb ccccc ddddd" to 2 lines at width 120 -> 2 * 20px
             Assert.Equal(40f, TextHelper.MeasureWrappedHeight(Font, "aaaaa bbbbb ccccc ddddd", 120f));
-        }
-
-        [Fact]
-        public void CenteredX_of_empty_text_is_the_anchor()
-        {
-            Assert.Equal(50f, TextHelper.CenteredX(Font, "", centerX: 50f));
         }
     }
 }

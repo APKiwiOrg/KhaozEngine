@@ -8,11 +8,13 @@ namespace KhaozEngine.Tests.Imaging;
 
 public class JpegThumbnailDecoderTests
 {
-    [Fact]
-    public void Solid_colour_decodes_within_tolerance()
+    [Theory]
+    [InlineData(64, 48, 8, 6)]
+    [InlineData(61, 37, 8, 5)]
+    public void Solid_colour_decodes_with_expected_dimensions(int width, int height, int columns, int rows)
     {
-        JpegThumbnail image = JpegThumbnailDecoder.DecodeEighthScale(Encode(64, 48, (x, y) => (200, 40, 90)));
-        Assert.Equal((8, 6), (image.Width, image.Height));
+        JpegThumbnail image = JpegThumbnailDecoder.DecodeEighthScale(Encode(width, height, (x, y) => (200, 40, 90)));
+        Assert.Equal((columns, rows), (image.Width, image.Height));
         AssertPixels(image, (x, y) => (200, 40, 90), 8);
     }
 
@@ -21,14 +23,6 @@ public class JpegThumbnailDecoderTests
     {
         JpegThumbnail image = JpegThumbnailDecoder.DecodeEighthScale(Encode(64, 64, ColourHalves));
         AssertColourHalves(image);
-    }
-
-    [Fact]
-    public void Odd_sizes_round_up()
-    {
-        JpegThumbnail image = JpegThumbnailDecoder.DecodeEighthScale(Encode(61, 37, (x, y) => (200, 40, 90)));
-        Assert.Equal((8, 5), (image.Width, image.Height));
-        AssertPixels(image, (x, y) => (200, 40, 90), 8);
     }
 
     [Theory]
@@ -220,6 +214,8 @@ public class JpegThumbnailDecoderTests
 
     private static void AssertPixels(JpegThumbnail image, Func<int, int, (byte R, byte G, byte B)> expected, int tolerance)
     {
+        Assert.True(image.Width > 0);
+        Assert.True(image.Height > 0);
         Assert.Equal(image.Width * image.Height * 4, image.Rgba.Length);
         for (int y = 0; y < image.Height; y++)
             for (int x = 0; x < image.Width; x++)

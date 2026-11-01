@@ -64,35 +64,23 @@ public class MovementCapsuleSweepLeaseTests
         Assert.Equal(0f, hit.Result.ImpactDistance);
     }
 
-    [Fact]
-    public void ShortClearCannotPublishAPrefix()
+    [Theory]
+    [InlineData(0.99f)] // Short clear cannot publish a prefix.
+    [InlineData(1.01f)] // Overlong clear cannot claim another request.
+    public void ClearMustCoverExactlyTheRequestedDistance(float distance)
     {
         using var scene = new Scene();
-        scene.Script.Result = Clear(0.99f);
+        scene.Script.Result = Clear(distance);
         AssertRefused(Query(scene.Lease, Vector3.UnitX), MovementAvailability.Invalid);
     }
 
-    [Fact]
-    public void OverlongClearCannotClaimAnotherRequest()
+    [Theory]
+    [InlineData(0.9f, 1.1f)] // Upper bound outside the request.
+    [InlineData(1.1f, 1.2f)] // Both bounds outside the request.
+    public void HitBoundsCannotExceedTheRequest(float lower, float upper)
     {
         using var scene = new Scene();
-        scene.Script.Result = Clear(1.01f);
-        AssertRefused(Query(scene.Lease, Vector3.UnitX), MovementAvailability.Invalid);
-    }
-
-    [Fact]
-    public void HitUpperBoundCannotExceedTheRequest()
-    {
-        using var scene = new Scene();
-        scene.Script.Result = new(CapsuleSweepStatus.Hit, 0.9f, 1.1f, 0f);
-        AssertRefused(Query(scene.Lease, Vector3.UnitX), MovementAvailability.Invalid);
-    }
-
-    [Fact]
-    public void BothHitBoundsBeyondTheRequestAreRejected()
-    {
-        using var scene = new Scene();
-        scene.Script.Result = new(CapsuleSweepStatus.Hit, 1.1f, 1.2f, 0f);
+        scene.Script.Result = new(CapsuleSweepStatus.Hit, lower, upper, 0f);
         AssertRefused(Query(scene.Lease, Vector3.UnitX), MovementAvailability.Invalid);
     }
 

@@ -29,13 +29,14 @@ public sealed class SkinnedAttachmentSubmissionTests
         using var fixture = new MixedAttachmentSubmissionFixture();
         BoundAttachmentSet bound = fixture.Bound;
         RigidInstanceDraw template = MixedAttachmentSubmissionFixture.Template with
-        { CastsShadows = castsShadows, ShadowOnly = shadowOnly };
+        { CastsShadows = castsShadows, ShadowOnly = shadowOnly, ShadowMobility = ShadowCasterMobility.Dynamic };
         var draws = new AttachmentDraw[4];
         Assert.Equal(3, bound.DrawCount);
         Assert.Equal(3, bound.WriteDraws(fixture.Skeleton, fixture.Palette, fixture.Model, fixture.Key, template, draws));
         Assert.Equal(default, draws[3]);
         Assert.Equal(1u, draws[0].PartId);
         Assert.False(draws[0].IsSkinned);
+        Assert.Equal(ShadowCasterMobility.Dynamic, draws[0].Rigid.ShadowMobility);
         Assert.True(draws[0].BoneMatrices.IsEmpty);
         Assert.Equal(2u, draws[1].PartId);
         Assert.True(draws[1].IsSkinned);
@@ -50,7 +51,7 @@ public sealed class SkinnedAttachmentSubmissionTests
         {
             if (property.Name is nameof(RigidInstanceDraw.Mesh) or nameof(RigidInstanceDraw.World) or nameof(RigidInstanceDraw.Motion)) continue;
             Assert.Equal(property.GetValue(template), property.GetValue(draws[0].Rigid));
-            if (property.Name == nameof(RigidInstanceDraw.CutInsideInteriors)) continue;
+            if (property.Name is nameof(RigidInstanceDraw.CutInsideInteriors) or nameof(RigidInstanceDraw.ShadowMobility)) continue;
             Assert.Equal(property.GetValue(template), typeof(SkinnedInstanceDraw).GetProperty(property.Name)!.GetValue(draws[1].Skinned));
         }
 
@@ -63,7 +64,9 @@ public sealed class SkinnedAttachmentSubmissionTests
         Assert.Equal(draws[2].Skinned, fixture.Capability.SkinnedDraws[1]);
         Assert.Equal(fixture.Palette[1], fixture.Capability.Palettes[0][0]);
         Assert.Equal(fixture.Palette[0], fixture.Capability.Palettes[0][1]);
-        Assert.Equal(draws[0].Rigid.World, Assert.Single(fixture.Scene.QueuedInstancesForTests).World);
+        SceneInstances.Instance queuedRigid = Assert.Single(fixture.Scene.QueuedInstancesForTests);
+        Assert.Equal(draws[0].Rigid.World, queuedRigid.World);
+        Assert.Equal(ShadowCasterMobility.Dynamic, queuedRigid.ShadowMobility);
         for (int i = 0; i < 2; i++)
         {
             AssertQueuedSkin(draws[i + 1].Skinned, fixture.Scene.QueuedSkinnedInstancesForTests[i]);

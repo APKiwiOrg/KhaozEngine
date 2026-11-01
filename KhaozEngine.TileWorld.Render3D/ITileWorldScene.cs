@@ -89,7 +89,7 @@ public interface ITileWorldScene
     /// so it must stay the same across frames and be unique per draw: each part of a multi-part body takes its own
     /// key, derived with <see cref="MotionKey.Combine"/>. Defaults to the solid or dissolved mesh draw, which keeps an
     /// implementation written before descriptors compiling and keeps the body visible. That fallback keeps the mesh,
-    /// the transform and the dissolve with its edge. It drops the key, the tint, the material, <c>CastsShadows</c> and
+    /// the transform and the dissolve with its edge. It drops the key, the tint, the material, <c>ShadowMobility</c>, <c>CastsShadows</c> and
     /// <c>InvertShadowDissolve</c>, and does not forward <c>DissolveComplement</c>. It draws nothing for a shadow-only
     /// descriptor, which an older scene never cast. It also draws nothing for a complement phase above one half with
     /// no dissolve. <see cref="Scene3D"/> shows no body for that draw, at most a shadow, so the fallback treats it like

@@ -1,14 +1,12 @@
 # Point light shadows
 
-Status: ships in 19.2.0. Issue #1002. Owner decision 2026-09-17.
+Current point-light atlas and cache architecture. Caster layers and compatibility fallback are defined in
+[Point-shadow caster layers](POINT-SHADOW-CASTERS.md).
 
 ## The problem
 
-`Scene3D.AddLight` point lights have no occlusion of any kind. `computeLighting` in
-`Internal/ShaderSources.Lighting.cs` adds `colour * max(N.L, 0) * falloff` to every fragment inside a
-light's radius. Only the key light has a shadow map. In Grimhollow a door lantern outside a wall lights the
-inner faces of the side walls through the wall, and its light pools radially around the flame instead of
-fanning through the doorway. In the reference consumer a fireball lights the far side of a pillar.
+Unshadowed point lighting reaches every fragment inside the light radius, including surfaces behind walls.
+Omnidirectional maps add local occlusion for placed lanterns and moving effect lights.
 
 ## Alternatives weighed
 
@@ -42,11 +40,13 @@ fanning through the doorway. In the reference consumer a fireball lights the far
 4. **Two modes on one call.** `AddLight(pos, colour, radius, intensity, LightShadow shadow)`.
    `LightShadow.None` is the default and renders byte-identically to today. `LightShadow.Static(key)` is
    rendered once into a cached slot and re-rendered only when the light moves, its radius changes, or the
-   rigid caster signature inside its radius changes, under `MaxStaticRebuildsPerFrame`. `LightShadow.Dynamic`
+   Static rigid caster signature inside its radius changes, under `MaxStaticRebuildsPerFrame`.
+   Mandatory moving-rigid fallback and layer transitions run outside that ordinary budget. `LightShadow.Dynamic`
    is re-rendered every frame under `MaxDynamicLightsPerFrame`. Requests past `MaxShadowedLights` fall back
    to unshadowed, nearest to the eye first.
-5. **Rigid casters only in this round, shadow-only instances included.** Skinned casters in dynamic maps
-   are a follow-up with their own issue. A static map that included a body would be wrong a frame later.
+5. **Explicit caster layers, shadow-only instances included.** Static rigid geometry is cached. Moving rigid
+   geometry and skinned poses share current-frame transient rows for static lights. Dynamic maps draw all
+   eligible geometry together. See [caster layers](POINT-SHADOW-CASTERS.md) for fallback and clean transitions.
 6. **Nothing is allocated until something asks, and all of it happens at the FRAME BOUNDARY.** A game that
    never requests a point shadow allocates nothing at all. Once a frame has carried a request, the atlas comes
    up at the next frame boundary rather than inside that frame, beside the cascade atlas's own pending layout,
@@ -60,16 +60,16 @@ fanning through the doorway. In the reference consumer a fireball lights the far
 
 ## Contract between the halves
 
-- UBO tail after the shadow tail: `vec4 PointShadowParams[16]` as `(slot or -1, bias, slopeBias, 0)`
+- UBO tail after the shadow tail: `vec4 PointShadowParams[16]` as `(base row or -1, bias, slopeBias, transient row or -1)`
   index-aligned with the point light arrays, and `vec4 PointShadowAtlas` as
   `(1 / (6 * res), 1 / (rows * res), rows, 6)`.
 - Receivers bind the atlas as `PointShadowMap` directly after `ShadowSamp` in every shader family that
   binds `ShadowMap` (model, skinned, foliage, terrain, tile ground) and sample it with `ShadowSamp`, the
   existing clamp/point sampler, after the material maps per the Metal sample-order rule. A 1x1 white R32F
   default is bound when the atlas does not exist.
-- Compare: `lit = step(d, stored + bias + slopeBias * (1 - ndl))`, averaged over a 2x2 tap pattern at half
-  texel offsets clamped inside the cell. `att *= lit`. A slot below zero skips the whole thing, which is the
-  byte-identical path.
+- Compare: `lit = step(d, stored + bias + slopeBias * (1 - ndl))`. Hard and soft filters keep taps within the
+  selected face. A negative base row skips point-shadow sampling. The transient texture and shape, independent
+  row mapping and nearer-depth combination are defined in [caster layers](POINT-SHADOW-CASTERS.md).
 
 ## What the build taught
 
@@ -207,3 +207,12 @@ Headless: face math, slot cache and eviction, budgets, settings clamps and atlas
 GPU, relative pixels and no goldens: a wall between light and floor, a doorway gap, a static map that does
 not re-render on a still frame, a dynamic light that moves its shadow, zero requests and disabled settings
 both byte-identical to the pre-feature capture.
+
+Moving rigid proof uses separate split and complete-current-redraw scenes with identical current geometry,
+face resolution and hard or soft settings. Three point lights cover stationary scenery, a multipart rigid
+actor and a bent skinned caster. Interleaved static and dynamic instances share a mesh. Full-resolution image
+comparisons cover safe first-demand fallback, transient growth and recovery, both mobility switches and
+disappearance at zero ordinary static budget. Receiver probes retain actor bodies while disabling their
+casting, so a body-color difference cannot satisfy the shadow control. A shared-scene parity case compares
+aged and fresh scenes after configuration changes. Allocation and bind refusal remain deterministic CPU
+fault-injection proofs rather than native memory exhaustion. See [caster layers](POINT-SHADOW-CASTERS.md).

@@ -46,13 +46,11 @@ public sealed class ShardedEntityVisibilityTests
         Assert.Equal(0, rig.SnapshotViewer.DeltaFramesApplied);
     }
 
-    [Fact]
-    public void PolicyChangesRemoveAndRestoreOnTheDeltaPath() =>
-        AssertRemoveAndRestore(rig => rig.DeltaViewer);
-
-    [Fact]
-    public void PolicyChangesRemoveAndRestoreOnTheSnapshotPath() =>
-        AssertRemoveAndRestore(rig => rig.SnapshotViewer);
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PolicyChangesRemoveAndRestoreOnBothReplicationPaths(bool useDelta) =>
+        AssertRemoveAndRestore(rig => useDelta ? rig.DeltaViewer : rig.SnapshotViewer);
 
     private static void AssertRemoveAndRestore(Func<Rig, RawDeltaClient> pick)
     {
@@ -352,6 +350,7 @@ public sealed class ShardedEntityVisibilityTests
 
     private static void AssertSameFrames(List<byte[]> expected, List<byte[]> actual)
     {
+        Assert.NotEmpty(expected);
         Assert.Equal(expected.Count, actual.Count);
         for (int i = 0; i < expected.Count; i++) Assert.Equal(expected[i], actual[i]);
     }

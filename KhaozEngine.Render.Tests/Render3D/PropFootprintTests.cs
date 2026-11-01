@@ -50,25 +50,16 @@ public class PropFootprintTests
         Assert.Equal(1.2f, s.Radius, 2); // max half-extent (never under-covers)
     }
 
-    [Fact]
-    public void ShortOblongProp_UsesBox()
+    [Theory]
+    [InlineData(2f, 1.5f, 0.8f)]
+    [InlineData(3f, 5f, 1.5f)]
+    public void Oblong_props_use_their_box_footprint(float halfWidth, float height, float halfDepth)
     {
-        // 1.5 m slab, oblong footprint hx=2 hz=0.8 (aspect 2.5 > threshold) -> oriented box.
-        ColliderShape s = PropFootprint.Derive(Mesh(new List<Vector3>(Box(2f, 0f, 1.5f, 0.8f)).ToArray()));
+        ColliderShape s = PropFootprint.Derive(
+            Mesh(new List<Vector3>(Box(halfWidth, 0f, height, halfDepth)).ToArray()));
         Assert.Equal(ColliderKind.Box, s.Kind);
-        Assert.Equal(2f, s.HalfW, 2);
-        Assert.Equal(0.8f, s.HalfD, 2);
-    }
-
-    [Fact]
-    public void TallUniformBuilding_FullFootprintViaTrunkSlice()
-    {
-        // 5 m building with vertical walls hx=3 hz=1.5 at every height -> the bottom 1 m slice equals the full
-        // footprint, so an oriented box(3, 1.5) (aspect 2 > threshold) is derived.
-        ColliderShape s = PropFootprint.Derive(Mesh(new List<Vector3>(Box(3f, 0f, 5f, 1.5f)).ToArray()));
-        Assert.Equal(ColliderKind.Box, s.Kind);
-        Assert.Equal(3f, s.HalfW, 2);
-        Assert.Equal(1.5f, s.HalfD, 2);
+        Assert.Equal(halfWidth, s.HalfW, 2);
+        Assert.Equal(halfDepth, s.HalfD, 2);
     }
 
     [Fact]

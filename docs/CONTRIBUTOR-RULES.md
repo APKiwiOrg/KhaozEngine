@@ -101,6 +101,79 @@ a screen, frame loop or test fixture that gains lines with each feature. Inspect
 classification is unclear. The detailed rationale lives in
 [`design/FILESIZE-ANALYZER-DESIGN-2026-07-20.md`](design/FILESIZE-ANALYZER-DESIGN-2026-07-20.md).
 
+## Writing tests
+
+Every test guards something distinct: a contract, a rule, an owner ruling or a past regression. A correct
+change should break few tests, and each failure should point at a real defect. These fourteen rules are the
+fleet standard. Every game repo carries the same text as game-template's managed `docs/WRITING-TESTS.md`, so
+keep the two in step and change the shared wording in both.
+
+1. **Find the existing test first.** Search for a test of the same behaviour and extend it, usually with a
+   theory row. Add a new test only for behaviour no test covers. Each theory row covers a distinct branch or
+   boundary, so ten rows that take the same path are one row. Sibling facts that differ only in their inputs
+   are one theory.
+2. **Test the rule, not the value.** Do not copy a tunable constant, palette entry, default or published
+   catalog number into an assertion. Such a test fails only when someone retunes on purpose. Assert the
+   property the value must keep: a bound, an ordering, a monotonic step, a conservation.
+3. **One guard per owner ruling.** An approved look or tuned value gets one test named for its ruling, not one
+   assertion per value. A ruling with several behavioural obligations keeps one test per obligation.
+4. **Assert the contract, not incidental detail.** Exception message wording, call or allocation counts on
+   fakes, log text, internal ordering, private members reached by reflection, exact frame indices and exact
+   intermediate values are not contracts unless a document or ruling makes them one. They break on correct
+   refactors and catch nothing a behavioural assertion would miss. Assert the exception type and a structured
+   member (`ParamName`, an error code, a status) instead, and reach behaviour through the public API or an
+   `InternalsVisibleTo` seam.
+5. **Validate every shipped item through one validator.** An invariant over assets, clips, meshes, shaders,
+   goldens or catalog rows is written once as a theory with one case per discovered item, plus a fact that the
+   discovered set equals the shipped set from an independent source, with an explicit policy for any item it
+   exempts. It never loops over items inside one fact, because the first failure hides the rest, and it never
+   checks a representative sample, because a defect in one item is invisible in another.
+6. **Use the shared fixtures.** Fakes, host boot, waits, content reads and comparison helpers live in shared
+   fixtures. Extend one instead of writing a local copy, because copies drift and each needs its own fixes.
+7. **Name the regression.** A test written for a defect names its issue number in a comment.
+8. **Exact values where they are the contract.** Wire and persisted formats, determinism hashes, public
+   constants, documented tuning values and golden images are compared exactly. There the exact value is the
+   behaviour, and a looser check lets a format break ship.
+9. **Absence checks and documented diagnostic values stay.** `Assert.DoesNotContain` or `DoesNotMatch` on a
+   message pins what it must never say (a token, a secret, a retired claim), which is a disclosure contract. A
+   diagnostic value the README, consumer docs or a member's XML docs promise (an entry id, the offending index,
+   a count, a path) is the contract, and only the prose around it is a wording pin. Check those docs before
+   removing any message assertion.
+10. **A test must be able to fail.** Assert the expected count or non-emptiness before asserting inside a loop
+    or `Assert.All`, because an empty result passes silently. Never assert a fake's configured answer, a
+    constant the test itself defined, or a golden generated in the same run it is compared against. When an
+    assertion goes, keep the call it made if it is the only exercise of a production path, and assert a
+    property of its result.
+11. **Never delete or weaken a test without evidence.** A deletion names, in its commit message, the surviving
+    test that fails for the same defect, or shows why the deleted test could not fail. Removing an
+    over-specific line keeps or strengthens the behavioural assertion beside it. A failing test is fixed or its
+    defect is filed, never loosened until it passes.
+12. **Timing never gates default CI.** A test that measures and reports instead of asserting carries
+    `[Trait("Category", "Diagnostic")]`, and default CI excludes that category. Wall-clock bounds flake on
+    shared runners and say nothing about correctness.
+13. **No sleeps, retries or bigger budgets for flakes.** A test that fails intermittently gets an issue when it
+    is first seen and a deterministic fix: a completion signal, a held clock or a serial collection. A sleep or
+    retry hides the race and slows every run.
+14. **Tooling tests live with their tooling.** Tests of measurement harnesses, evidence pipelines and research
+    tools sit in their own project outside the main test project, with their own CI trigger, so product changes
+    do not pay for them.
+
+In this repository:
+
+- KETEST001 and KETEST002 enforce rules 4 and 9 as build errors against `.testhealth-baseline`, and
+  KETEST003 lists rule 10's possibly empty loops in report mode only (see the "Test-health ratchet" bullet
+  above and `KhaozEngine.CodeHealth.Analyzers/README.md`). KETEST001 cannot tell a documented diagnostic
+  value from prose, so a legitimate rule 9 case is an owner-approved baseline exemption, never a deleted
+  assertion.
+- Rule 12's category is excluded by every default filter (`scripts/ci-selective-test.sh`, `ci.yml`,
+  `cross-platform-gpu.yml`). Run it on demand with the cross-platform-gpu `renderTestFilter` input set to
+  `Category=Diagnostic`. Issue #491 is the precedent: a wall-clock bound that flaked on a loaded shared runner.
+- Rule 14's reference is `tools/Physics.Rebase.Perf.Tests`, outside `KhaozEngine.slnx`, which runs only on its
+  own weekly and on-demand `physics-rebase-perf.yml` workflow.
+- Rule 6's shared helpers include `test-shared` (allocation measurement, serialized reporting) and each area
+  test project's fixtures. Process-global state still needs a `DisableParallelization` collection (see
+  above).
+
 ## Dependencies and package structure
 
 The authoritative package and umbrella catalog is [`PACKAGES.md`](PACKAGES.md), one row per package

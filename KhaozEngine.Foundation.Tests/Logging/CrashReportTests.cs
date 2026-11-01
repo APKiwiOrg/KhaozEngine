@@ -217,23 +217,25 @@ public class CrashReportTests
     /// every report the label <c>show-crash</c> wrote, so one head's retention deleted another head's reports
     /// out of the shared OS crash directory.
     /// </summary>
-    [Fact]
-    public void Write_DoesNotPruneALabelWhoseStemStartsWithItsOwn()
+    [Theory]
+    [InlineData("show", "show-crash-crash", "show-crash-2*.log")]
+    [InlineData("head", "head-taskfault", "head-crash-*.log")]
+    public void Write_CrashRetention_PreservesOtherLabelsAndTaskFaultPools(
+        string processLabel, string otherStem, string ownedReportPattern)
     {
         CrashReport.ClearNotes();
         string dir = TempDir();
         try
         {
-            // Written by the process label "show-crash", whose stem begins with the stem of the label "show".
             for (int i = 0; i < 4; i++)
-                File.WriteAllText(Path.Combine(dir, Report("show-crash-crash", "20260101", i)), "x");
+                File.WriteAllText(Path.Combine(dir, Report(otherStem, "20260101", i)), "x");
 
             CrashReport.Write(
-                new CrashReportOptions { Directory = dir, ProcessLabel = "show", MaxRetainedReports = 1 },
+                new CrashReportOptions { Directory = dir, ProcessLabel = processLabel, MaxRetainedReports = 1 },
                 "Unhandled exception", Thrown("x"), null);
 
-            Assert.Equal(4, Directory.GetFiles(dir, "show-crash-crash-*.log").Length);
-            Assert.Single(Directory.GetFiles(dir, "show-crash-2*.log"));
+            Assert.Equal(4, Directory.GetFiles(dir, otherStem + "-*.log").Length);
+            Assert.Single(Directory.GetFiles(dir, ownedReportPattern));
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -327,30 +329,6 @@ public class CrashReportTests
             Assert.NotNull(path);
             Assert.StartsWith("head-taskfault-", Path.GetFileName(path), StringComparison.Ordinal);
             Assert.Empty(Directory.GetFiles(dir, "head-crash-*.log"));
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    /// <summary>
-    /// AND THE TWO POOLS ARE SEPARATE, which is the reason the stems are. A fault storm bounded to the same
-    /// pool as the crashes would evict exactly the report worth keeping.
-    /// </summary>
-    [Fact]
-    public void Write_CrashRetention_DoesNotTouchTheTaskFaultPool()
-    {
-        CrashReport.ClearNotes();
-        string dir = TempDir();
-        try
-        {
-            for (int i = 0; i < 4; i++)
-                File.WriteAllText(Path.Combine(dir, Report("head-taskfault", "20260101", i)), "x");
-
-            CrashReport.Write(
-                new CrashReportOptions { Directory = dir, ProcessLabel = "head", MaxRetainedReports = 1 },
-                "Unhandled exception", Thrown("x"), null);
-
-            Assert.Equal(4, Directory.GetFiles(dir, "head-taskfault-*.log").Length);
-            Assert.Single(Directory.GetFiles(dir, "head-crash-*.log"));
         }
         finally { Directory.Delete(dir, true); }
     }

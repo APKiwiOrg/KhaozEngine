@@ -100,7 +100,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             var layers = new[] { Layer(new TileGroundSteepLayer { CompanionSlot = 0, FromDegrees = 40f, ToDegrees = 55f }), Layer() };
             var ex = Assert.Throws<ArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
-            Assert.Contains("names itself", ex.Message);
+            Assert.Equal("layers", ex.ParamName);
         }
 
         [Theory]
@@ -110,7 +110,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             var layers = new[] { Layer(new TileGroundSteepLayer { CompanionSlot = slot, FromDegrees = 40f, ToDegrees = 55f }), Layer() };
             var ex = Assert.Throws<ArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
-            Assert.Contains("outside the set's 2 layers", ex.Message);
+            Assert.Equal("layers", ex.ParamName);
         }
 
         [Theory]
@@ -123,7 +123,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             var layers = new[] { Layer(new TileGroundSteepLayer { CompanionSlot = 1, FromDegrees = from, ToDegrees = to }), Layer() };
             var ex = Assert.Throws<ArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
-            Assert.Contains("must rise strictly inside (0, 90)", ex.Message);
+            Assert.Equal("layers", ex.ParamName);
         }
 
         [Fact]
@@ -133,7 +133,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(Cos(0.001f), Cos(0.002f));
             var layers = new[] { Layer(new TileGroundSteepLayer { CompanionSlot = 1, FromDegrees = 0.001f, ToDegrees = 0.002f }), Layer() };
             var ex = Assert.Throws<ArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
-            Assert.Contains("pack to the same cosine", ex.Message);
+            Assert.Equal("layers", ex.ParamName);
         }
 
         [Fact]

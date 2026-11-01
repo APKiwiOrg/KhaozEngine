@@ -257,10 +257,11 @@ public class WallContactTangentialTravelTests
     // rate) pairs span L from 0.05 m to 0.80 m, a factor of sixteen in step length and so a factor of 256 in the ask.
     public static IEnumerable<object[]> Rides()
     {
-        foreach (float lean in new[] { 0f, 5f, 10f, 20f, 30f })
-            foreach (bool run in new[] { false, true })
-                foreach (float hz in new[] { 15f, 30f, 120f })
-                    yield return new object[] { lean, run, hz };
+        foreach (float bendRadius in new[] { 400f, 8f })
+            foreach (float lean in new[] { 0f, 5f, 10f, 20f, 30f })
+                foreach (bool run in new[] { false, true })
+                    foreach (float hz in new[] { 15f, 30f, 120f })
+                        yield return new object[] { bendRadius, lean, run, hz };
     }
 
     // WHAT EACH CASE IS PINNED TO, AND WHY THE EFFICIENCY BAND HAS AN UPPER SIDE.
@@ -356,36 +357,13 @@ public class WallContactTangentialTravelTests
         };
     }
 
-    // ---- The near-planar face: the +0.000 class, which is eight of the ten measured blocks ----
-
+    // Both the 400 m near-planar rounding case and the 8 m curved case keep their own measured bands.
+    // Lean zero is the control, a purely tangential step on a face bending away from the walker.
     [Theory]
     [MemberData(nameof(Rides))]
-    public void A_near_planar_bank_keeps_its_along_face_travel(float lean, bool run, float hz)
+    public void BankRideLandsInItsPinnedBand(float bendRadius, float lean, bool run, float hz)
     {
-        // A 400 m bend radius: one walking step's projected endpoint lands 5e-5 m inside the contour it meant to
-        // follow, which is a rise of 5.6e-5 m. That is a face no measurement a player can make calls curved, and it
-        // is the class the island's blocks overwhelmingly fell in. Ten seconds, exactly the reported ride.
-        //
-        // Lean 0 is the control: on a face that bends AWAY from the walker a purely tangential step lands slightly
-        // OUTSIDE the contour, so it never meets the wall at all and must be untouched by any of this.
-        var bank = new Bank(400f);
-        Ride r = WalkAlong(Tuning, bank, lean, run, hz, seconds: 10f, startOutside: 0.002f);
-        _out.WriteLine(r.Measured);
-        Check(r, Expected(bank.BendRadius, lean, run, hz));
-    }
-
-    // ---- The curved face: the class the slack alone cannot cover ----
-
-    [Theory]
-    [MemberData(nameof(Rides))]
-    public void A_curved_bank_ride_lands_in_its_pinned_band(float lean, bool run, float hz)
-    {
-        // An 8 m bend radius: one walking step's projected endpoint lands 2.5e-3 m inside the contour, a rise of
-        // 2.8e-3 m, which is well past any float tolerance this rule could honestly carry, so the slack alone does
-        // not reach it and the shortening ladder is what keeps the walk moving. At run speed and 15 Hz the step is
-        // long enough that even the sixty-fourth rung cannot get under the slack - see Expected and the ceiling
-        // table in the file header.
-        var bank = new Bank(8f);
+        var bank = new Bank(bendRadius);
         Ride r = WalkAlong(Tuning, bank, lean, run, hz, seconds: 10f, startOutside: 0.002f);
         _out.WriteLine(r.Measured);
         Check(r, Expected(bank.BendRadius, lean, run, hz));

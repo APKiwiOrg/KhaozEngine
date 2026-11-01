@@ -10,20 +10,14 @@ public class EnergyBeamTests
 {
     const float Tol = 1e-4f;
 
-    [Fact]
-    public void Axis_HorizontalBeam_HasLengthAndZeroAngle()
+    [Theory]
+    [InlineData(10f, 0f, 10f, 0f)]
+    [InlineData(0f, 5f, 5f, MathF.PI / 2f)]
+    public void Axis_measures_length_and_angle(float x, float y, float expectedLength, float expectedAngle)
     {
-        var (length, angle) = EnergyBeam.Axis(new Vector2(0, 0), new Vector2(10, 0));
-        Assert.Equal(10f, length, Tol);
-        Assert.Equal(0f, angle, Tol);
-    }
-
-    [Fact]
-    public void Axis_VerticalBeam_HasRightAngle()
-    {
-        var (length, angle) = EnergyBeam.Axis(new Vector2(0, 0), new Vector2(0, 5));
-        Assert.Equal(5f, length, Tol);
-        Assert.Equal(MathF.PI / 2f, angle, Tol);
+        var (length, angle) = EnergyBeam.Axis(Vector2.Zero, new Vector2(x, y));
+        Assert.Equal(expectedLength, length, Tol);
+        Assert.Equal(expectedAngle, angle, Tol);
     }
 
     [Fact]
@@ -75,10 +69,14 @@ public class EnergyBeamTests
         Assert.Equal(BeamCap.None, BeamParams.Default.Caps);
     }
 
-    [Fact]
-    public void RoundCaps_DisabledCap_EmitsNoCap()
+    [Theory]
+    [InlineData(0f, 0f, 10f, 0f, BeamCap.None, 8f)]
+    [InlineData(3f, 3f, 3f, 3f, BeamCap.Round, 8f)]
+    [InlineData(0f, 0f, 10f, 0f, BeamCap.Round, 0f)]
+    public void RoundCaps_invisible_or_disabled_beams_emit_no_cap(
+        float ax, float ay, float bx, float by, BeamCap cap, float bandWidth)
     {
-        var caps = EnergyBeam.RoundCaps(new Vector2(0, 0), new Vector2(10, 0), BeamCap.None, bandWidth: 8f, pulse: 1f);
+        var caps = EnergyBeam.RoundCaps(new Vector2(ax, ay), new Vector2(bx, by), cap, bandWidth, pulse: 1f);
         Assert.False(caps.Enabled);
     }
 
@@ -109,20 +107,6 @@ public class EnergyBeamTests
         var coreCaps = EnergyBeam.RoundCaps(a, b, BeamCap.Round, bandWidth: 3f, pulse: 1f);
         Assert.Equal(6f, glowCaps.Radius, Tol);
         Assert.Equal(1.5f, coreCaps.Radius, Tol);
-    }
-
-    [Fact]
-    public void RoundCaps_ZeroLengthBeam_EmitsNoCap()
-    {
-        var caps = EnergyBeam.RoundCaps(new Vector2(3, 3), new Vector2(3, 3), BeamCap.Round, bandWidth: 8f, pulse: 1f);
-        Assert.False(caps.Enabled);
-    }
-
-    [Fact]
-    public void RoundCaps_ZeroWidthBand_EmitsNoCap()
-    {
-        var caps = EnergyBeam.RoundCaps(new Vector2(0, 0), new Vector2(10, 0), BeamCap.Round, bandWidth: 0f, pulse: 1f);
-        Assert.False(caps.Enabled);
     }
 
     // ---- jagged electric-arc geometry (#239) ---------------------------------------------------

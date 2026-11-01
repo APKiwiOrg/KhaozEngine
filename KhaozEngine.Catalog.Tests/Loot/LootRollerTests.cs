@@ -22,38 +22,24 @@ namespace KhaozEngine.Tests.Catalog.Loot;
 [Collection("AllocSensitive")]
 public class LootRollerTests
 {
-    [Fact]
-    public void A_seeded_roll_over_the_chest_table_drops_exactly_these_lines()
+    [Theory]
+    // Seed 1 hits the first guaranteed entry's chance and consumes its count draw.
+    [InlineData(1UL, new[] { 2, 8, 1, 1 }, new[] { 3, 1, 2, 1 },
+        new[] { LootRollerFixtures.ChestTable, LootRollerFixtures.RareTable, LootRollerFixtures.ChestTable, LootRollerFixtures.ChestTable })]
+    // Seed 3 misses that chance, so the rest rolls without consuming its count draw.
+    [InlineData(3UL, new[] { 8, 2, 1 }, new[] { 1, 1, 2 },
+        new[] { LootRollerFixtures.RareTable, LootRollerFixtures.ChestTable, LootRollerFixtures.ChestTable })]
+    public void A_seeded_roll_over_the_chest_table_drops_exactly_these_lines(
+        ulong seed, int[] itemIds, int[] counts, int[] tableIds)
     {
-        // Seed 1 draws, in the order the rule consumes them: 4876 against entry 401's 5,000 chance (a hit),
-        // 3 for its count over 1 to 3, 2 for the nested rare table's one weighted pick, then 10 and 91 for
-        // the chest's two picks over a pool total of 100, and 0 for the tag draw the second pick lands on.
-        var roller = new LootRoller(LootRollerFixtures.Runtime(), new SeededRandomSource(1));
+        var roller = new LootRoller(LootRollerFixtures.Runtime(), new SeededRandomSource(seed));
         Span<LootDraw> destination = stackalloc LootDraw[8];
 
         int written = roller.Roll(LootRollerFixtures.ChestTable, destination);
 
-        Assert.Equal(4, written);
-        Assert.Equal(new LootDraw(2, 3, LootRollerFixtures.ChestTable), destination[0]);
-        Assert.Equal(new LootDraw(8, 1, LootRollerFixtures.RareTable), destination[1]);
-        Assert.Equal(new LootDraw(1, 2, LootRollerFixtures.ChestTable), destination[2]);
-        Assert.Equal(new LootDraw(1, 1, LootRollerFixtures.ChestTable), destination[3]);
-    }
-
-    [Fact]
-    public void A_guaranteed_entry_whose_chance_misses_drops_nothing_and_the_rest_of_the_table_still_rolls()
-    {
-        // Seed 3 opens with 7969 against the same 5,000, so entry 401 misses and consumes no count draw. The
-        // certain entry 402 still recurses, and both weighted picks still happen.
-        var roller = new LootRoller(LootRollerFixtures.Runtime(), new SeededRandomSource(3));
-        Span<LootDraw> destination = stackalloc LootDraw[8];
-
-        int written = roller.Roll(LootRollerFixtures.ChestTable, destination);
-
-        Assert.Equal(3, written);
-        Assert.Equal(new LootDraw(8, 1, LootRollerFixtures.RareTable), destination[0]);
-        Assert.Equal(new LootDraw(2, 1, LootRollerFixtures.ChestTable), destination[1]);
-        Assert.Equal(new LootDraw(1, 2, LootRollerFixtures.ChestTable), destination[2]);
+        Assert.Equal(itemIds.Length, written);
+        LootDraw[] expected = itemIds.Select((itemId, i) => new LootDraw(itemId, counts[i], tableIds[i])).ToArray();
+        Assert.Equal(expected, destination[..written].ToArray());
     }
 
     [Fact]
@@ -79,24 +65,12 @@ public class LootRollerTests
                 Assert.Equal(LootRollerFixtures.ChestTable, drawn[0].TableId);
             }
 
+            Assert.Equal(2, drawn.Length - nested - 1);
             for (int i = nested + 1; i < drawn.Length; i++)
             {
                 Assert.Equal(LootRollerFixtures.ChestTable, drawn[i].TableId);
             }
         }
-    }
-
-    [Fact]
-    public void TableId_names_the_table_the_line_came_from_including_after_a_nested_draw()
-    {
-        // The one thing a caller cannot reconstruct: the rare table's line is the rare table's, and the chest
-        // lines around it are the chest's. It is what a game's own drop event writes down as the source.
-        var roller = new LootRoller(LootRollerFixtures.Runtime(), new SeededRandomSource(1));
-        LootDraw[] drawn = Draw(roller, LootRollerFixtures.ChestTable, 8);
-
-        Assert.Equal(
-            [LootRollerFixtures.ChestTable, LootRollerFixtures.RareTable, LootRollerFixtures.ChestTable, LootRollerFixtures.ChestTable],
-            drawn.Select(draw => draw.TableId).ToArray());
     }
 
     [Fact]
@@ -160,9 +134,13 @@ public class LootRollerTests
             {
                 // Entry 401 is the only one with a range, 1 to 3, and it is the only source of item 2 with a
                 // TableId of the chest.
-                if (draw.ItemId == 2 && draw.TableId == LootRollerFixtures.ChestTable && draw.Count > 1)
+                if (draw.ItemId == 2 && draw.TableId == LootRollerFixtures.ChestTable)
                 {
-                    counts.Add(draw.Count);
+                    Assert.InRange(draw.Count, 1, 3);
+                    if (draw.Count > 1)
+                    {
+                        counts.Add(draw.Count);
+                    }
                 }
             }
         }
@@ -181,7 +159,9 @@ public class LootRollerTests
         for (ulong seed = 1; seed <= 60; seed++)
         {
             var roller = new LootRoller(runtime, new SeededRandomSource(seed));
-            foreach (LootDraw draw in Draw(roller, LootRollerFixtures.ChestTable, 16))
+            LootDraw[] drawn = Draw(roller, LootRollerFixtures.ChestTable, 16);
+            Assert.NotEmpty(drawn);
+            foreach (LootDraw draw in drawn)
             {
                 Assert.False(
                     draw.ItemId == 8 && draw.TableId == LootRollerFixtures.ChestTable,

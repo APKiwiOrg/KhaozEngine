@@ -72,6 +72,7 @@ public class EngineContentTypeTests
     {
         ContentTypeRegistry registry = Registered();
 
+        Assert.NotEmpty(registry.ByTypeId);
         Assert.All(registry.ByTypeId, r => Assert.Equal(ContentRegistrationBand.Engine, r.Band));
         Assert.All(registry.ByTypeId, r => Assert.True(r.Type.IsEngine));
     }
@@ -117,6 +118,7 @@ public class EngineContentTypeTests
     {
         ContentTypeRegistry registry = Registered();
 
+        Assert.Contains(registry.ByTypeId.SelectMany(r => r.Schema.Fields), f => f.IsDerivedMarker);
         foreach (ContentTypeRegistration registration in registry.ByTypeId)
         {
             IReadOnlyList<string> markers = registration.Schema.Fields
@@ -127,10 +129,16 @@ public class EngineContentTypeTests
         }
     }
 
-    [Fact]
-    public void TagSchemaIsTheDerivedNameAndTheEditorSort()
+    /// <summary>
+    /// Both vocabularies share the derived name and editor sort, because they answer the same kind of
+    /// question about a row and a second shape would be a second thing to keep in step.
+    /// </summary>
+    [Theory]
+    [InlineData("tag")]
+    [InlineData("item_category")]
+    public void VocabularySchemaIsTheDerivedNameAndTheEditorSort(string typeKey)
     {
-        ContentFieldSchema schema = Type(Registered(), "tag").Schema;
+        ContentFieldSchema schema = Type(Registered(), typeKey).Schema;
 
         Assert.Equal(2, schema.Fields.Count);
         AssertField(schema, 0, "name", ContentFieldKind.LocalizedTextKey, null, ContentVisibility.Client, true);
@@ -160,20 +168,6 @@ public class EngineContentTypeTests
         AssertField(schema, 14, "socket_max", ContentFieldKind.Int, null, ContentVisibility.Client, false);
         AssertField(schema, 15, "equip_profile", ContentFieldKind.KeyReference, "equip_profile", ContentVisibility.Client, false);
         AssertField(schema, 16, "category", ContentFieldKind.KeyReference, "item_category", ContentVisibility.Client, false);
-    }
-
-    /// <summary>
-    /// The category vocabulary is the tag type's shape exactly, because it answers the same kind of question
-    /// about a row and a second shape would be a second thing to keep in step.
-    /// </summary>
-    [Fact]
-    public void ItemCategorySchemaIsTheDerivedNameAndTheEditorSort()
-    {
-        ContentFieldSchema schema = Type(Registered(), "item_category").Schema;
-
-        Assert.Equal(2, schema.Fields.Count);
-        AssertField(schema, 0, "name", ContentFieldKind.LocalizedTextKey, null, ContentVisibility.Client, true);
-        AssertField(schema, 1, "sort", ContentFieldKind.Int, null, ContentVisibility.Client, false);
     }
 
     [Fact]

@@ -37,13 +37,19 @@ public class StructuralChangeGuardTests
 
     // ---- refused: the four structural changes ----
 
-    [Fact]
-    public void DespawnInsideForEachThrows()
+    [Theory]
+    [InlineData(4)]
+    [InlineData(8)]
+    [InlineData(2)]
+    public void DespawnInsideForEachStopsAtTheOffendingRow(int entityCount)
     {
-        World w = WorldWith(4);
+        World w = WorldWith(entityCount);
+        int visited = 0;
         var ex = Assert.Throws<StructuralChangeDuringIterationException>(
-            () => w.ForEach((Entity e, ref Pos _) => w.Despawn(e)));
+            () => w.ForEach((Entity e, ref Pos _) => { visited++; w.Despawn(e); }));
+
         Assert.Equal("Despawn", ex.Operation);
+        Assert.Equal(1, visited);
     }
 
     [Fact]
@@ -73,18 +79,6 @@ public class StructuralChangeGuardTests
         Assert.Equal("Remove", ex.Operation);
     }
 
-    // The whole point of the guard is that it fires AT the offending row, before the corrupted rows are read: the
-    // row that despawned is the last one the action ever sees.
-    [Fact]
-    public void TheGuardStopsTheLoopAtTheOffendingRow()
-    {
-        World w = WorldWith(8);
-        int visited = 0;
-        Assert.Throws<StructuralChangeDuringIterationException>(
-            () => w.ForEach((Entity e, ref Pos _) => { visited++; w.Despawn(e); }));
-        Assert.Equal(1, visited);
-    }
-
     [Fact]
     public void StructuralChangeInsideAnEntitiesLoopThrows()
     {
@@ -112,16 +106,6 @@ public class StructuralChangeGuardTests
         {
             foreach (Entity e in w.Query().With<Pos>().Entities()) { visited++; w.Despawn(e); }
         });
-        Assert.Equal(1, visited);
-    }
-
-    [Fact]
-    public void ForEachRefusesTheSameArchetypeEmptyingDespawn()
-    {
-        World w = WorldWith(2);
-        int visited = 0;
-        Assert.Throws<StructuralChangeDuringIterationException>(
-            () => w.ForEach((Entity e, ref Pos _) => { visited++; w.Despawn(e); }));
         Assert.Equal(1, visited);
     }
 
@@ -169,6 +153,9 @@ public class StructuralChangeGuardTests
         var seen = new List<int>();
         w.ForEach((Entity _, ref Vel v) => seen.Add(v.Dx));
         Assert.Equal(new[] { 100, 100, 100, 100 }, seen);
+        var positions = new List<int>();
+        w.ForEach((Entity _, ref Pos p) => positions.Add(p.X));
+        Assert.Equal(new[] { 0, 2, 4, 6 }, positions);
     }
 
     // The engine's own serial callers (Sharding's owner scans, the replication capture walks) read OTHER entities

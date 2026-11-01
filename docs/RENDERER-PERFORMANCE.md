@@ -159,7 +159,13 @@ the approved unit and cumulative campaign envelope after every attempt.
 The public deterministic recipes cover empty, village, outdoors, crowd and effects/UI scenes. They
 use fixed simulation sequences and no consumer assets. The v1 settings encoding fixes uniform indirect
 lighting and zero irradiance coefficients. The harness explicitly selects and validates both values.
-Directional or nonzero input refuses construction instead of changing the frozen recipe identity. A full unit has 1,200 conditioning frames,
+Directional or nonzero input refuses construction instead of changing the frozen recipe identity.
+
+The recipe-local JSON resolver omits `RigidInstanceDraw.ShadowMobility` only for `Static`, preserving the
+existing rigid construction bytes and digests. `Dynamic` and other nondefault values remain authored geometry
+inputs and change geometry and construction identities. Frozen recipe files and strict comparisons stay unchanged.
+
+A full unit has 1,200 conditioning frames,
 five scenes, both layouts, three iterations, 192 warm-up and 256 measured frames per block, and twelve
 controls with 64 warm-up and 128 measured frames each. That is 16,944 retained frames. The smaller
 pilot has its own frozen schedule and 1,260 frames. Warm-up and conditioning remain separate from

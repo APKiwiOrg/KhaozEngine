@@ -30,19 +30,21 @@ public class ResourceStringCatalogTests
         WithCulture("en-US", () => Assert.Equal("missing.key", strings.Get("missing.key")));
     }
 
-    [Fact]
-    public void TryGet_PresentKey_ReturnsTrueAndValue()
+    [Theory]
+    [InlineData("greeting", "Hello")]
+    [InlineData("OK", "OK")] // A present translation can equal its key.
+    public void TryGet_PresentKey_ReturnsTrueAndValue_EvenWhenTheValueEqualsTheKey(string key, string expected)
     {
         var rm = new FakeStringResourceManager
         {
-            ["en-US"] = { ["greeting"] = "Hello" },
+            ["en-US"] = { [key] = expected },
         };
         IStringCatalog strings = new ResourceStringCatalog(rm);
 
         WithCulture("en-US", () =>
         {
-            Assert.True(strings.TryGet("greeting", out string value));
-            Assert.Equal("Hello", value);
+            Assert.True(strings.TryGet(key, out string value));
+            Assert.Equal(expected, value);
         });
     }
 
@@ -56,24 +58,6 @@ public class ResourceStringCatalogTests
         {
             Assert.False(strings.TryGet("missing.key", out string value));
             Assert.Equal("missing.key", value);
-        });
-    }
-
-    [Fact]
-    public void TryGet_PresentKeyWhoseTranslationEqualsTheKey_ReturnsTrue()
-    {
-        var rm = new FakeStringResourceManager
-        {
-            // A real resx carries entries like this: an untranslated placeholder, or a culture whose
-            // translation genuinely is the key text.
-            ["en-US"] = { ["OK"] = "OK" },
-        };
-        IStringCatalog strings = new ResourceStringCatalog(rm);
-
-        WithCulture("en-US", () =>
-        {
-            Assert.True(strings.TryGet("OK", out string value));
-            Assert.Equal("OK", value);
         });
     }
 

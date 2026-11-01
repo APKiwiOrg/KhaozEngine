@@ -16,14 +16,6 @@ public class FileSizeAnalyzerTests
     }
 
     [Fact]
-    public async Task UnlistedFile_AtCap_Passes()
-    {
-        var diags = await AnalyzerHarness.Run(
-            new[] { (Root + "/Src/Edge.cs", AnalyzerHarness.SourceOfLines(800)) }, baseline: "");
-        Assert.Empty(diags);
-    }
-
-    [Fact]
     public async Task UnlistedFile_OverCap_Fires002()
     {
         var diags = await AnalyzerHarness.Run(
@@ -35,11 +27,13 @@ public class FileSizeAnalyzerTests
         Assert.Contains("800-line cap", d.GetMessage());
     }
 
-    [Fact]
-    public async Task BaselinedFile_AtBaseline_Passes()
+    [Theory]
+    [InlineData(1200)] // At the baseline.
+    [InlineData(900)]  // Shrink is free, even when still over the unlisted-file cap.
+    public async Task BaselinedFile_AtOrUnderBaseline_Passes(int lines)
     {
         var diags = await AnalyzerHarness.Run(
-            new[] { (Root + "/Src/Frozen.cs", AnalyzerHarness.SourceOfLines(1200)) },
+            new[] { (Root + "/Src/Frozen.cs", AnalyzerHarness.SourceOfLines(lines)) },
             baseline: "1200 Src/Frozen.cs\n");
         Assert.Empty(diags);
     }
@@ -75,15 +69,6 @@ public class FileSizeAnalyzerTests
         Assert.Equal("KESIZE001", d.Id);
         Assert.Contains("Src/Nested/Grown.cs", d.GetMessage());
         Assert.DoesNotContain("Src/Frozen.cs", d.GetMessage());
-    }
-
-    [Fact]
-    public async Task BaselinedFile_UnderBaseline_Passes_ShrinkIsFree()
-    {
-        var diags = await AnalyzerHarness.Run(
-            new[] { (Root + "/Src/Frozen.cs", AnalyzerHarness.SourceOfLines(900)) },
-            baseline: "1200 Src/Frozen.cs\n");
-        Assert.Empty(diags);
     }
 
     [Fact]
@@ -189,48 +174,17 @@ public class FileSizeAnalyzerTests
         Assert.Equal(10, d.Location.GetLineSpan().StartLinePosition.Line);
     }
 
-    [Fact]
-    public async Task Exempt_SuppressesWhatWouldBe002()
+    [Theory]
+    [InlineData("Src/Shaders.cs", 5000, "# size is content, not structure\nexempt Src/Shaders.cs\n")]
+    [InlineData("Src/Shaders.cs", 1201, "exempt Src/Shaders.cs\n1200 Src/Shaders.cs\n")]
+    [InlineData("Src/Shaders.cs", 1201, "1200 Src/Shaders.cs\nexempt Src/Shaders.cs\n")]
+    [InlineData("Src/Big Blob.cs", 5000, "exempt Src/Big Blob.cs\n")]
+    [InlineData("Src/Shaders.cs", 5000, "  \texempt\tSrc/Shaders.cs\n")]
+    public async Task Exempt_SuppressesCapAndBaseline_ForSupportedBaselineSyntax(
+        string relativePath, int lines, string baseline)
     {
         var diags = await AnalyzerHarness.Run(
-            new[] { (Root + "/Src/Shaders.cs", AnalyzerHarness.SourceOfLines(5000)) },
-            baseline: "# size is content, not structure\nexempt Src/Shaders.cs\n");
-        Assert.Empty(diags);
-    }
-
-    [Fact]
-    public async Task Exempt_SuppressesWhatWouldBe001()
-    {
-        var diags = await AnalyzerHarness.Run(
-            new[] { (Root + "/Src/Shaders.cs", AnalyzerHarness.SourceOfLines(1201)) },
-            baseline: "exempt Src/Shaders.cs\n1200 Src/Shaders.cs\n");
-        Assert.Empty(diags);
-    }
-
-    [Fact]
-    public async Task Exempt_WinsOverNumericEntry_WhenNumericComesFirst()
-    {
-        var diags = await AnalyzerHarness.Run(
-            new[] { (Root + "/Src/Shaders.cs", AnalyzerHarness.SourceOfLines(1201)) },
-            baseline: "1200 Src/Shaders.cs\nexempt Src/Shaders.cs\n");
-        Assert.Empty(diags);
-    }
-
-    [Fact]
-    public async Task Exempt_PathWithSpaces_Parses()
-    {
-        var diags = await AnalyzerHarness.Run(
-            new[] { (Root + "/Src/Big Blob.cs", AnalyzerHarness.SourceOfLines(5000)) },
-            baseline: "exempt Src/Big Blob.cs\n");
-        Assert.Empty(diags);
-    }
-
-    [Fact]
-    public async Task Exempt_LeadingWhitespaceAndTabSeparator_AreTolerated()
-    {
-        var diags = await AnalyzerHarness.Run(
-            new[] { (Root + "/Src/Shaders.cs", AnalyzerHarness.SourceOfLines(5000)) },
-            baseline: "  \texempt\tSrc/Shaders.cs\n");
+            new[] { (Root + "/" + relativePath, AnalyzerHarness.SourceOfLines(lines)) }, baseline);
         Assert.Empty(diags);
     }
 

@@ -124,6 +124,21 @@ flowchart LR
    shader (lit / cel / textured), and writes the framebuffer. `AppWindow` calls `Present()` to put the
    swapchain image on screen.
 
+## Point-shadow caster layers
+
+`RigidInstanceDraw.ShadowMobility` classifies point-shadow participation independently of motion identity.
+Static rigid draws enter keyed static lights' cached bases. Dynamic rigid draws share current-frame transient
+rows with skinned poses. Dynamic lights redraw all relevant casters into their base rows. Both hard and soft
+receiver filters compare the nearer depth from the two layers at each tap, before deciding visibility.
+
+Transient allocation and rebinding happen at `Scene3D.Begin`, outside recording. Until a moving rigid caster
+has transient storage, its light receives a complete current base redraw. Recovery clears that base back to
+static content before sampling separate current depth. Mobility changes and removal clean stale depth when
+needed. Mandatory fallback and transition rows bypass the ordinary static refresh budget, each owned base
+rendering at most once per frame. Their row counters and caster draws remain visible in
+`ShadowPassDiagnostics`. See [point-shadow caster layers](design/POINT-SHADOW-CASTERS.md) for ownership,
+resource refusal and lifecycle details.
+
 ## Terrain splat pipeline (second model-pass pipeline)
 
 Terrain chunks rendered with a `TerrainLayeredMaterial` take a separate pipeline path inside `ModelRenderer`:

@@ -39,30 +39,20 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Equal(5f, si.Items[0].World.M41, 4);     // the near placement's X
         }
 
-        [Fact]
-        public void Queue_HorizontalCull_IgnoresHeight()
+        [Theory]
+        [InlineData("rock_a", 400f, "rock_a", 2, 10f, 1)]
+        [InlineData("ghost", 0f, "pine_a", 1, 100f, 0)]
+        public void Queue_UsesHorizontalRangeAndKnownMeshIds(
+            string placementId, float height, string meshId, int meshSlot, float radius, int expectedCount)
         {
-            // A placement directly above the focus but far in Y is still in range (cull is XZ-only).
-            var placements = new List<PropPlacement> { new PropPlacement("rock_a", 1f, 400f, 1f, 1f, 0f, 0) };
-            var meshes = Meshes(("rock_a", 2));
+            var placements = new List<PropPlacement> { new PropPlacement(placementId, 1f, height, 1f, 1f, 0f, 0) };
+            var meshes = Meshes((meshId, meshSlot));
             var si = new SceneInstances();
 
-            int queued = PropRenderer.Queue(si, placements, meshes, focus: Vector3.Zero, drawRadius: 10f);
+            int queued = PropRenderer.Queue(si, placements, meshes, focus: Vector3.Zero, drawRadius: radius);
 
-            Assert.Equal(1, queued);
-        }
-
-        [Fact]
-        public void Queue_UnknownId_Skipped()
-        {
-            var placements = new List<PropPlacement> { new PropPlacement("ghost", 1f, 0f, 1f, 1f, 0f, 0) };
-            var meshes = Meshes(("pine_a", 1));
-            var si = new SceneInstances();
-
-            int queued = PropRenderer.Queue(si, placements, meshes, focus: Vector3.Zero, drawRadius: 100f);
-
-            Assert.Equal(0, queued);
-            Assert.Empty(si.Items);
+            Assert.Equal(expectedCount, queued);
+            Assert.Equal(expectedCount, si.Items.Count);
         }
 
         [Fact]
@@ -117,29 +107,26 @@ namespace KhaozEngine.Tests.Terrain
             return si.Items.Count == 1 ? si.Items[0].DissolveThreshold : float.NaN;
         }
 
-        [Fact]
-        public void FadeBand_Zero_KeepsHardCut_NoDissolve()
+        [Theory]
+        [InlineData(0f, 50f, 99f)]  // hard cut
+        [InlineData(40f, 50f, 60f)] // interior and exact inner edge
+        public void FadeBand_KeepsPropsSolidOutsideTheFade(
+            float fadeWidth, float firstDistance, float secondDistance)
         {
-            // Band 0 = today's behaviour: an in-range prop carries no dissolve (the byte-identical old path).
-            Assert.Equal(0f, DissolveAtDistance(dist: 50f, drawRadius: 100f, fadeBandWidth: 0f), 5);
-            Assert.Equal(0f, DissolveAtDistance(dist: 99f, drawRadius: 100f, fadeBandWidth: 0f), 5);
+            Assert.Equal(0f, DissolveAtDistance(firstDistance, drawRadius: 100f, fadeWidth), 5);
+            Assert.Equal(0f, DissolveAtDistance(secondDistance, drawRadius: 100f, fadeWidth), 5);
         }
 
-        [Fact]
-        public void FadeBand_InsideInnerRadius_NoDissolve()
+        [Theory]
+        [InlineData(40f, 80f, 0.5f)]
+        [InlineData(40f, 90f, 0.75f)]
+        [InlineData(40f, 100f, 1f)]
+        [InlineData(200f, 0f, 0f)]
+        [InlineData(200f, 50f, 0.5f)]
+        [InlineData(200f, 100f, 1f)]
+        public void FadeBand_RampsByDistanceAndClampsItsWidth(float fadeWidth, float distance, float expectedDissolve)
         {
-            // drawRadius 100, band 40 -> fade starts at 60. A prop at 50 is fully solid.
-            Assert.Equal(0f, DissolveAtDistance(dist: 50f, drawRadius: 100f, fadeBandWidth: 40f), 5);
-            Assert.Equal(0f, DissolveAtDistance(dist: 60f, drawRadius: 100f, fadeBandWidth: 40f), 5);   // exactly at the inner edge
-        }
-
-        [Fact]
-        public void FadeBand_AcrossBand_RampsZeroToOne_ByDistance()
-        {
-            // fade band [60,100]: 80 is the midpoint (0.5), 100 is fully dissolved (1). Deterministic per distance.
-            Assert.Equal(0.5f, DissolveAtDistance(dist: 80f, drawRadius: 100f, fadeBandWidth: 40f), 4);
-            Assert.Equal(0.75f, DissolveAtDistance(dist: 90f, drawRadius: 100f, fadeBandWidth: 40f), 4);
-            Assert.Equal(1f, DissolveAtDistance(dist: 100f, drawRadius: 100f, fadeBandWidth: 40f), 4);
+            Assert.Equal(expectedDissolve, DissolveAtDistance(distance, drawRadius: 100f, fadeWidth), 4);
         }
 
         [Fact]
@@ -149,16 +136,6 @@ namespace KhaozEngine.Tests.Terrain
             float a = DissolveAtDistance(dist: 85f, drawRadius: 100f, fadeBandWidth: 40f);
             float b = DissolveAtDistance(dist: 85f, drawRadius: 100f, fadeBandWidth: 40f);
             Assert.Equal(a, b);
-        }
-
-        [Fact]
-        public void FadeBand_WiderThanRadius_Clamped_StartsAtFocus_ReachesOneAtRadius()
-        {
-            // Band 200 > radius 100: clamped so the fade starts at the focus (dist 0 -> 0) and still reaches 1 at the
-            // radius, never dissolving a prop at the focus.
-            Assert.Equal(0f, DissolveAtDistance(dist: 0f, drawRadius: 100f, fadeBandWidth: 200f), 4);
-            Assert.Equal(0.5f, DissolveAtDistance(dist: 50f, drawRadius: 100f, fadeBandWidth: 200f), 4);
-            Assert.Equal(1f, DissolveAtDistance(dist: 100f, drawRadius: 100f, fadeBandWidth: 200f), 4);
         }
 
         [Fact]
@@ -197,42 +174,18 @@ namespace KhaozEngine.Tests.Terrain
             return si.Items.Count == 1 ? si.Items[0].Mesh.Index : -1;
         }
 
-        [Fact]
-        public void Lod_WithinDistance_UsesFullMesh()
+        [Theory]
+        [InlineData(50f, 100f, "pine_a", 7)]  // near
+        [InlineData(150f, 100f, "pine_a", 50)] // far
+        [InlineData(150f, 100f, "rock_a", 7)] // another kit has the variant
+        [InlineData(300f, 0f, "pine_a", 7)]   // switching disabled
+        [InlineData(300f, 100f, null, 7)]     // no variant table
+        public void Lod_SelectsAVariantOnlyWhenAvailableAndBeyondAnEnabledDistance(
+            float distance, float lodDistance, string? variantId, int expectedSlot)
         {
-            int slot = MeshSlotAtDistance(dist: 50f, lodDistance: 100f, Meshes(("pine_a", 7)), Meshes(("pine_a", 50)));
-            Assert.Equal(7, slot);   // near: full mesh
-        }
-
-        [Fact]
-        public void Lod_BeyondDistance_SelectsVariant()
-        {
-            int slot = MeshSlotAtDistance(dist: 150f, lodDistance: 100f, Meshes(("pine_a", 7)), Meshes(("pine_a", 50)));
-            Assert.Equal(50, slot);  // far: LOD variant
-        }
-
-        [Fact]
-        public void Lod_NoVariantForKit_FallsBackToFullMesh()
-        {
-            // The LOD set has a variant for a DIFFERENT kit, so this kit keeps its full mesh even out past lodDistance.
-            int slot = MeshSlotAtDistance(dist: 150f, lodDistance: 100f, Meshes(("pine_a", 7)), Meshes(("rock_a", 50)));
-            Assert.Equal(7, slot);
-        }
-
-        [Fact]
-        public void Lod_ZeroDistance_NeverSwitches()
-        {
-            // lodDistance 0 disables switching: every prop draws its full mesh regardless of distance.
-            int slot = MeshSlotAtDistance(dist: 300f, lodDistance: 0f, Meshes(("pine_a", 7)), Meshes(("pine_a", 50)));
-            Assert.Equal(7, slot);
-        }
-
-        [Fact]
-        public void Lod_NullVariants_NeverSwitches()
-        {
-            // No LOD set at all: unchanged behaviour, full mesh at every distance.
-            int slot = MeshSlotAtDistance(dist: 300f, lodDistance: 100f, Meshes(("pine_a", 7)), lod: null);
-            Assert.Equal(7, slot);
+            var variants = variantId is null ? null : Meshes((variantId, 50));
+            int slot = MeshSlotAtDistance(distance, lodDistance, Meshes(("pine_a", 7)), variants);
+            Assert.Equal(expectedSlot, slot);
         }
 
         [Fact]

@@ -26,6 +26,8 @@ public class TileColorsTests
     {
         Vector4 c = TileColors.Parse("#4D8A3A80");
         Assert.Equal(0.302f, c.X, Tolerance);
+        Assert.Equal(0.541f, c.Y, Tolerance);
+        Assert.Equal(0.227f, c.Z, Tolerance);
         Assert.Equal(128f / 255f, c.W, Tolerance);
     }
 
@@ -35,10 +37,9 @@ public class TileColorsTests
     [InlineData("#4d8a3ag0")]
     [InlineData("#zzzzzz")]
     [InlineData("")]
-    public void Parse_throws_naming_the_bad_string(string hex)
+    public void Parse_rejects_malformed_hex(string hex)
     {
-        var ex = Assert.Throws<TileWorldException>(() => TileColors.Parse(hex));
-        Assert.Contains(hex, ex.Message, StringComparison.Ordinal);
+        Assert.Throws<TileWorldException>(() => TileColors.Parse(hex));
     }
 
     [Fact]
@@ -46,8 +47,7 @@ public class TileColorsTests
     {
         // A catalog material whose colour was written as JSON null is bad content, not a caller bug, so it fails
         // with the tile-world error every other malformed colour raises rather than as an argument error.
-        var ex = Assert.Throws<TileWorldException>(() => TileColors.Parse((string?)null));
-        Assert.Contains("null", ex.Message, StringComparison.Ordinal);
+        Assert.Throws<TileWorldException>(() => TileColors.Parse((string?)null));
 
         var blank = new GroundMaterial { Id = 9, Name = "blank", Color = null! };
         Assert.Throws<TileWorldException>(() => TileColors.Parse(blank));
@@ -75,20 +75,20 @@ public class TileColorsTests
     [Fact]
     public void Jitter_honours_a_custom_amplitude()
     {
-        Assert.InRange(TileColors.Jitter(7, 9, 1, 0.5f), 0.5f, 1.5f);
+        float baseline = TileColors.Jitter(7, 9, 1);
+        float custom = TileColors.Jitter(7, 9, 1, 0.5f);
+        Assert.InRange(custom, 0.5f, 1.5f);
+        Assert.Equal(1f + (baseline - 1f) * (0.5f / TileColors.DefaultJitterAmplitude), custom, 1e-5f);
         Assert.Equal(1f, TileColors.Jitter(7, 9, 1, 0f));
     }
 
-    [Fact]
-    public void Jitter_differs_between_swapped_coordinates()
+    [Theory]
+    [InlineData(1, 2, 0, 2, 1, 0)] // swapped world coordinates
+    [InlineData(3, 4, 0, 3, 4, 1)] // different planes
+    public void Jitter_distinguishes_world_coordinates_and_planes(
+        int firstX, int firstZ, int firstPlane, int secondX, int secondZ, int secondPlane)
     {
-        Assert.NotEqual(TileColors.Jitter(1, 2, 0), TileColors.Jitter(2, 1, 0));
-    }
-
-    [Fact]
-    public void Jitter_differs_between_planes()
-    {
-        Assert.NotEqual(TileColors.Jitter(3, 4, 0), TileColors.Jitter(3, 4, 1));
+        Assert.NotEqual(TileColors.Jitter(firstX, firstZ, firstPlane), TileColors.Jitter(secondX, secondZ, secondPlane));
     }
 
     [Fact]

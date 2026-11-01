@@ -12,9 +12,9 @@ public enum LightShadowMode : byte
     /// light did before point shadows existed and is the byte-identical path.</summary>
     None = 0,
 
-    /// <summary>A CACHED map behind a caller-supplied key. It is rendered once and re-rendered only when the light
-    /// moves, its radius changes, or the rigid casters inside its radius change. For a placed light (a wall
-    /// lantern, a lamp post, a forge) whose surroundings almost never move.</summary>
+    /// <summary>A cached base behind a caller-supplied key. Light or Static rigid caster changes request an
+    /// ordinary refresh. Dynamic rigid and skinned casters use current-frame depth, with mandatory complete-base
+    /// fallback and pure-base transitions when needed. For a placed light whose surroundings almost never move.</summary>
     Static = 1,
 
     /// <summary>

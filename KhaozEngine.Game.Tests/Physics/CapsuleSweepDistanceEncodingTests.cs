@@ -40,13 +40,16 @@ public class CapsuleSweepDistanceEncodingTests
         Assert.True(upper * upper <= 5d);
     }
 
-    [Fact]
-    public void ExactlyRepresentableEndpointRetainsItsHit()
+    [Theory]
+    [InlineData(4f, 0f, 1d, 1d, 4f)] // Exactly representable endpoint hit.
+    [InlineData(1f, 2f, 0d, 0d, 0f)] // Initial contact despite irrational norm.
+    [InlineData(0f, 0f, 0d, 1d, 0f)] // Stationary request with distinct fractions.
+    public void ExactPointEncodingRetainsItsHit(float x, float y, double from, double to, float expected)
     {
-        CapsuleSweepResult result = Hit(new(4, 0, 0), 1, 1, 0);
+        CapsuleSweepResult result = Hit(new(x, y, 0f), from, to, 0);
         Accepted(result, 0);
-        Assert.Equal(4f, result.ClearThroughDistance);
-        Assert.Equal(4f, result.ImpactDistance);
+        Assert.Equal(expected, result.ClearThroughDistance);
+        Assert.Equal(expected, result.ImpactDistance);
     }
 
     [Fact]
@@ -55,24 +58,6 @@ public class CapsuleSweepDistanceEncodingTests
         double roundedUp = (float)Math.Sqrt(5d);
         Assert.True(roundedUp * roundedUp > 5d);
         Refused(Hit(new(1, 2, 0), 1, 1));
-    }
-
-    [Fact]
-    public void InitialContactRemainsZeroEvenWithIrrationalNorm()
-    {
-        CapsuleSweepResult result = Hit(new(1, 2, 0), 0, 0, 0);
-        Accepted(result, 0);
-        Assert.Equal(0f, result.ClearThroughDistance);
-        Assert.Equal(0f, result.ImpactDistance);
-    }
-
-    [Fact]
-    public void ZeroDisplacementHasZeroDistance()
-    {
-        CapsuleSweepResult result = Hit(Vector3.Zero, 0, 1, 0);
-        Accepted(result, 0);
-        Assert.Equal(0f, result.ClearThroughDistance);
-        Assert.Equal(0f, result.ImpactDistance);
     }
 
     [Fact]

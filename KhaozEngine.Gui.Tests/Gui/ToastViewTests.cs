@@ -47,32 +47,19 @@ public class ToastViewTests
         Assert.Equal(200f, r.Width);
     }
 
-    [Fact]
-    public void Short_message_height_clamps_to_MinHeight()
+    [Theory]
+    [InlineData("hi", 36f)]
+    [InlineData("AAAAAAAAAA BBBBBBBBBB CCCCCCCCCC", 72f)]
+    public void Message_height_clamps_or_grows_to_fit_wrapping(string message, float expectedHeight)
     {
-        // "hi" wraps to 1 line (20px). 2*PaddingY(12) + 20 = 32, below MinHeight(36), so it clamps.
+        // One line is 20 + padding 12 = 32, clamped to 36. Three 100px words wrap to 60 + 12 = 72.
         var stack = new ToastStack();
-        stack.Show(LocalizedText.Raw("hi"));
+        stack.Show(LocalizedText.Raw(message));
         ToastView view = MakeView(stack);
 
         Rect r = view.GetToastBounds(0);
 
-        Assert.Equal(36f, r.Height);
-    }
-
-    [Fact]
-    public void Long_message_wraps_to_three_lines_and_grows_past_MinHeight()
-    {
-        // Each word is 10 chars (100px). The text width is Width(200) - PaddingX*2(16) = 184px, so no two
-        // 100px words fit on one line together: the greedy wrap emits exactly 3 lines, one word each.
-        var stack = new ToastStack();
-        stack.Show(LocalizedText.Raw("AAAAAAAAAA BBBBBBBBBB CCCCCCCCCC"));
-        ToastView view = MakeView(stack);
-
-        Rect r = view.GetToastBounds(0);
-
-        // 3 lines * 20px line height = 60, plus PaddingY*2(12) = 72, which exceeds MinHeight(36).
-        Assert.Equal(72f, r.Height);
+        Assert.Equal(expectedHeight, r.Height);
     }
 
     [Fact]
@@ -142,11 +129,14 @@ public class ToastViewTests
     // Safely inside the window frame (960x540) and outside every toast bounds anchored at TopRight.
     static readonly Vector2 Outside = new(10, 10);
 
-    [Fact]
-    public void Tap_inside_the_top_toast_dismisses_it_and_Update_returns_true()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Dismissing_tap_removes_the_toast_and_consumes_the_gesture(bool sticky)
     {
         var stack = new ToastStack();
-        stack.Show(LocalizedText.Raw("hi"));
+        if (sticky) stack.ShowSticky(LocalizedText.Raw("hi"));
+        else stack.Show(LocalizedText.Raw("hi"));
         ToastView view = MakeView(stack);
         Rect bounds = view.GetToastBounds(0);
         var inside = new Vector2(bounds.X + 5, bounds.Y + 5);
@@ -161,6 +151,8 @@ public class ToastViewTests
 
         Assert.True(dismissed);
         Assert.Empty(stack.Active);
+        Assert.True(p.IsConsumed);
+        Assert.False(p.IsTapIn(bounds));
     }
 
     [Fact]
@@ -225,50 +217,6 @@ public class ToastViewTests
 
         Assert.True(p.IsBlocked(inside));
         Assert.False(p.IsBlocked(Outside));
-    }
-
-    [Fact]
-    public void Tap_on_a_sticky_toast_dismisses_it()
-    {
-        var stack = new ToastStack();
-        stack.ShowSticky(LocalizedText.Raw("hi"));
-        ToastView view = MakeView(stack);
-        Rect bounds = view.GetToastBounds(0);
-        var inside = new Vector2(bounds.X + 5, bounds.Y + 5);
-
-        var p = new Pointer();
-        p.Update(Frame(inside, false));
-        view.Update(p);
-        p.Update(Frame(inside, true));
-        view.Update(p);
-        p.Update(Frame(inside, false));
-        bool dismissed = view.Update(p);
-
-        Assert.True(dismissed);
-        Assert.Empty(stack.Active);
-    }
-
-    [Fact]
-    public void Dismissing_tap_consumes_the_gesture_so_it_cannot_also_fire_a_widget_below()
-    {
-        var stack = new ToastStack();
-        stack.Show(LocalizedText.Raw("hi"));
-        ToastView view = MakeView(stack);
-        Rect bounds = view.GetToastBounds(0);
-        var inside = new Vector2(bounds.X + 5, bounds.Y + 5);
-
-        var p = new Pointer();
-        p.Update(Frame(inside, false));   // idle
-        view.Update(p);
-        p.Update(Frame(inside, true));    // press inside
-        view.Update(p);
-        p.Update(Frame(inside, false));   // release inside, dismissing the toast
-        bool dismissed = view.Update(p);
-
-        Assert.True(dismissed);
-        Assert.True(p.IsConsumed);
-        // A widget under the toast sharing this pointer sees no tap from the same, now-consumed gesture.
-        Assert.False(p.IsTapIn(bounds));
     }
 
     [Fact]

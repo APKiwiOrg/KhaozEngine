@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal.Internal;
 
 namespace KhaozEngine.Windowing;
 
@@ -13,18 +14,26 @@ internal readonly record struct FrameDiagnosticsSample(long StartTimestamp, long
 internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, string AppAssembly,
     string EngineAssembly, long StopwatchFrequency, double DurationSeconds, int SampleCount, string StopReason,
     FrameDiagnosticsBoundary Baseline, FrameDiagnosticsBoundary End, FrameDiagnosticsSample[] Samples,
-    FrameDiagnosticsSummary Summary)
+    FrameDiagnosticsSummary Summary, FrameDiagnosticsIdentity Identity, int? FramesInFlight,
+    FrameDiagnosticsCaptureState BaselineCapture, FrameDiagnosticsCaptureState EndCapture,
+    FrameTimingClockMap BaselineClock, FrameTimingClockMap EndClock, FrameTimingSnapshot Timing,
+    FrameDiagnosticsAnnotationReport Annotations, FrameDiagnosticsGpuSummary GpuSummary)
 {
     internal static FrameDiagnosticsReport Create(long frequency, FrameDiagnosticsBoundary baseline,
-        FrameDiagnosticsBoundary end, FrameDiagnosticsSample[] buffer, int count, string reason)
+        FrameDiagnosticsBoundary end, FrameDiagnosticsSample[] buffer, int count, string reason,
+        FrameTimingSnapshot timing, FrameDiagnosticsAnnotationReport annotations, int? framesInFlight,
+        FrameDiagnosticsCaptureState baselineCapture, FrameDiagnosticsCaptureState endCapture,
+        FrameTimingClockMap baselineClock, FrameTimingClockMap endClock)
     {
         var samples = new FrameDiagnosticsSample[count];
         Array.Copy(buffer, samples, count);
         var engine = typeof(FrameDiagnosticsRecorder).Assembly;
-        return new FrameDiagnosticsReport(1, Environment.ProcessId,
+        return new FrameDiagnosticsReport(7, Environment.ProcessId,
             Assembly.GetEntryAssembly()?.FullName ?? "unknown", engine.FullName + " MVID=" + engine.ManifestModule.ModuleVersionId,
             frequency, (end.Timestamp - baseline.Timestamp) / (double)frequency, count, reason, baseline, end, samples,
-            FrameDiagnosticsSummary.Create(baseline, end, samples, reason == "capacity", count == buffer.Length));
+            FrameDiagnosticsSummary.Create(baseline, end, samples, reason == "capacity", count == buffer.Length),
+            FrameDiagnosticsIdentity.Collect(), framesInFlight, baselineCapture, endCapture, baselineClock, endClock,
+            timing, annotations, FrameDiagnosticsGpuSummary.Create(timing, count));
     }
 }
 

@@ -195,6 +195,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// goes through its every-segment path (M-M5).
         /// </summary>
         internal MetalRingAllocator Rings => _rings;
+        internal int DiagnosticFramesInFlight => _framesInFlight;
 
         /// <summary>
         /// The ring's segment stalls, cumulative since the device was created. MM4's exit criterion is that this
@@ -457,7 +458,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // and a buffer that completed before its handler was attached would report nothing at all.
                 MetalCompletionHandler.AttachTo(buffer);
 
-                new MTLCommandBuffer(buffer).Commit();
+                new MTLCommandBuffer(buffer).Commit(FrameTimingCommandKind.Other, list);
 
                 _timeline.RegisterSubmitted(value);
                 fence?.Arm(value);

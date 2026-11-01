@@ -163,8 +163,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 MetalCompletionHandler.AttachTo(commandBuffer);
 
                 var buffer = new MTLCommandBuffer(commandBuffer);
+                if (MetalFrameTimingProbe.Sampling)
+                {
+                    var reader = new MetalFrameTimingNative.Reader();
+                    MetalFrameTimingProbe.ObservePresent(commandBuffer, drawable, ref reader);
+                }
                 buffer.PresentDrawable(drawable);
-                buffer.Commit();
+                buffer.Commit(FrameTimingCommandKind.PresentBuffer);
             }
             finally
             {

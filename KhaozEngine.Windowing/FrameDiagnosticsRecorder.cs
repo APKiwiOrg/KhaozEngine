@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal.Internal;
 
 namespace KhaozEngine.Windowing;
 
@@ -18,13 +19,19 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
     readonly string _trigger;
     readonly long _frequency;
     readonly FrameDiagnosticsSample[] _samples;
+    readonly FrameTimingCapture _timing;
+    readonly FrameDiagnosticsAnnotations _annotations;
+    readonly int? _framesInFlight;
+    FrameDiagnosticsCaptureState _baselineCapture, _endCapture;
+    FrameTimingClockMap _baselineClock, _endClock;
     Phase _phase;
     long? _lastPoll;
     FrameDiagnosticsBoundary _baseline;
     FrameDiagnosticsBoundary _previous;
     int _count;
 
-    internal FrameDiagnosticsRecorder(string path, long frequency, int capacity = 4096)
+    internal FrameDiagnosticsRecorder(string path, long frequency, int capacity = 4096,
+        IFrameDiagnosticsAnnotator? annotator = null, IGpuDevice? device = null, IGpuCommandList? frameCommands = null)
     {
         if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("An absolute result path is required.", nameof(path));
         if (frequency <= 0) throw new ArgumentOutOfRangeException(nameof(frequency));
@@ -35,14 +42,22 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         _trigger = _path + ".start";
         _frequency = frequency;
         _samples = new FrameDiagnosticsSample[capacity];
+        _annotations = new(annotator, capacity);
+        _timing = new(frameCommands);
+        _framesInFlight = (device as MetalGpuDevice)?.DiagnosticFramesInFlight;
+        MetalFrameTimingNative.Prepare();
     }
 
-    internal static FrameDiagnosticsRecorder? FromEnvironment()
+    internal static bool IsEnabled => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("KE_FRAME_DIAGNOSTICS_PATH"));
+    internal bool NeedsBoundary => _phase is Phase.Armed or Phase.Sampling;
+
+    internal static FrameDiagnosticsRecorder? FromEnvironment(IFrameDiagnosticsAnnotator? annotator = null,
+        IGpuDevice? device = null, IGpuCommandList? frameCommands = null)
     {
         try
         {
             string? path = Environment.GetEnvironmentVariable("KE_FRAME_DIAGNOSTICS_PATH");
-            return string.IsNullOrEmpty(path) ? null : new FrameDiagnosticsRecorder(path, Stopwatch.Frequency);
+            return string.IsNullOrEmpty(path) ? null : new FrameDiagnosticsRecorder(path, Stopwatch.Frequency, annotator: annotator, device: device, frameCommands: frameCommands);
         }
         catch (Exception error)
         {
@@ -56,7 +71,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
 
     // Called before the next frame does any work. Counters include the entire PREVIOUS callback,
     // including prepare, update, render, UI, capture, submit and present. No SnapshotTool is involved.
-    internal void Observe(double dt, long timestamp, FrameDiagnosticsWindowState window, GpuDeviceCounters counters)
+    internal void Observe(double dt, long timestamp, FrameDiagnosticsWindowState window, GpuDeviceCounters counters, FrameDiagnosticsCaptureState captureState = default)
     {
         if (_phase == Phase.Stopped) return;
         if (_phase == Phase.Waiting)
@@ -69,7 +84,11 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         if (_phase == Phase.Armed)
         {
             // Trigger I/O was on the previous callback. Its partial interval and dt are discarded.
+            _baselineCapture = captureState;
+            _baselineClock = MetalFrameTimingNative.ClockMap();
             _baseline = _previous = boundary;
+            try { _timing.Start(); }
+            catch (Exception error) { Fail("sampling could not start (" + error.GetType().Name + ")"); return; }
             _phase = Phase.Sampling;
             return;
         }
@@ -79,11 +98,20 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
             Fail("non-increasing monotonic boundary");
             return;
         }
+        try { _annotations.Sample(_count); }
+        catch (Exception error) { Fail("annotation failed (" + error.GetType().Name + ")"); return; }
         _samples[_count++] = new FrameDiagnosticsSample(_previous.Timestamp, timestamp,
             (timestamp - _previous.Timestamp) / (double)_frequency, dt, _previous.Window, window, counters);
         _previous = boundary;
         bool durationReached = (timestamp - _baseline.Timestamp) / (double)_frequency >= 10;
-        if (!durationReached && _count < _samples.Length) return;
+        if (!durationReached && _count < _samples.Length)
+        {
+            _timing.CallbackIndex = _count;
+            return;
+        }
+        _timing.Stop();
+        _endCapture = captureState;
+        _endClock = MetalFrameTimingNative.ClockMap();
 
         // The final boundary has been captured. Everything allocating, formatting or doing I/O is
         // outside the measured interval. Neither this buffer nor its boundaries are modified again.
@@ -112,7 +140,9 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         string? temporary = null;
         try
         {
-            var report = FrameDiagnosticsReport.Create(_frequency, _baseline, _previous, _samples, _count, reason);
+            var report = FrameDiagnosticsReport.Create(_frequency, _baseline, _previous, _samples, _count, reason,
+                _timing.Snapshot().Window(_baseline.Timestamp, _previous.Timestamp), _annotations.Report(_count), _framesInFlight, _baselineCapture, _endCapture,
+                _baselineClock, _endClock);
             temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
@@ -139,6 +169,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
 
     void Fail(string reason)
     {
+        _timing.Stop();
         _phase = Phase.Stopped;
         Failure = reason;
         Log("KE frame diagnostics failed. " + reason + ". No completed result was published.");
@@ -153,6 +184,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
     public void Dispose()
     {
         if (_phase is Phase.Armed or Phase.Sampling) Fail("closed before measurement completed");
+        _timing.Stop();
         _phase = Phase.Stopped;
         Publication.GetAwaiter().GetResult(); // Loop exit joins an already started, exception-contained writer.
     }

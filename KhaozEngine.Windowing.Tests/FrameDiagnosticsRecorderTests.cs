@@ -14,7 +14,7 @@ public sealed class FrameDiagnosticsAllocationCollection { }
 [Collection("AllocSensitive")]
 public sealed class FrameDiagnosticsRecorderTests : IDisposable
 {
-    readonly string _directory = Path.Combine("/tmp/khaozengine-mac-frame-performance/release-diagnostics", "recorder-tests-" + Guid.NewGuid().ToString("N"));
+    readonly string _directory = Path.Combine("/tmp/khaozengine-mac-frame-performance/recorder-21.23.0", "recorder-tests-" + Guid.NewGuid().ToString("N"));
     string ResultPath => Path.Combine(_directory, "result.json");
     static FrameDiagnosticsWindowState Foreground => new(true, false, false, 800, 600, 0, false);
 
@@ -307,7 +307,7 @@ public sealed class FrameDiagnosticsRecorderTests : IDisposable
     }
 
     [Fact]
-    public void Disposal_joins_started_publication_and_metadata_contains_only_assembly_identity()
+    public void Disposal_joins_started_publication_and_metadata_identifies_the_process_and_loaded_assemblies()
     {
         var recorder = Recorder(1);
         Trigger();
@@ -318,12 +318,13 @@ public sealed class FrameDiagnosticsRecorderTests : IDisposable
         Assert.True(recorder.Publication.IsCompletedSuccessfully);
         Assert.Null(recorder.Failure);
         using var json = JsonDocument.Parse(File.ReadAllText(ResultPath));
-        Assert.Equal(1, json.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(7, json.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal(Environment.ProcessId, json.RootElement.GetProperty("processId").GetInt32());
         Assert.Equal(1000, json.RootElement.GetProperty("stopwatchFrequency").GetInt64());
         Assert.Contains("KhaozEngine.Windowing", json.RootElement.GetProperty("engineAssembly").GetString());
         Assert.False(string.IsNullOrWhiteSpace(json.RootElement.GetProperty("appAssembly").GetString()));
-        Assert.False(json.RootElement.TryGetProperty("environment", out _));
+        Assert.Equal(Environment.ProcessPath, json.RootElement.GetProperty("identity").GetProperty("processPath").GetString());
+        Assert.NotEmpty(json.RootElement.GetProperty("identity").GetProperty("assemblies").EnumerateArray());
         Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
     }
 

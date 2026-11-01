@@ -43,6 +43,8 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Windowing" />
+    <InternalsVisibleTo Include="KhaozEngine.Windowing.Tests" />
     <!-- The uniform ring's SEMANTIC tests are shared with both other native backends (M-P5, M-T5): one internal
          test-only interface and all THREE adapters live in KhaozEngine.TestSupport.Gpu, which is
          IsPackable=false and ships nothing, so 2.8's no-shared-PRODUCTION-home ruling is untouched. The

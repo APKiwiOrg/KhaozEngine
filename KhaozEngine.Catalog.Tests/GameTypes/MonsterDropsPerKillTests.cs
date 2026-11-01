@@ -65,28 +65,17 @@ public class MonsterDropsPerKillTests
     }
 
     /// <summary>
-    /// THE BLAME PASSES DOWN, one level at a time, to the deepest table whose own structure produced the
-    /// count. A root that draws a table that draws a table is innocent of everything but the draw.
+    /// Blame passes to the deepest table that produced the lines, unless a roll count above one at a
+    /// higher table multiplies that count. Then the multiplying table is what the author must edit.
     /// </summary>
-    [Fact]
-    public void TheFindingNamesTheDeepestTableThatProducedTheLines()
+    [Theory]
+    [InlineData("three_deep", "bottom", 2)]
+    [InlineData("picks_of_two", "picks_of_two", 6)]
+    public void TheFindingNamesTheTableWhoseStructureProducedTheLines(string tree, string culprit, int most)
     {
-        ContentFinding only = Assert.Single(PerKill(OneTree("three_deep", allowed: 1)));
-        Assert.Contains("The lines come from table 'bottom'.", only.Message, StringComparison.Ordinal);
-        Assert.Contains("can leave 2 lines off one kill", only.Message, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// The blame STOPS where the roll_count is doing the multiplying. A table that picks three times from a
-    /// table worth two lines is six lines, and naming the nested table would send an author to edit a table
-    /// worth two while the six went on being six.
-    /// </summary>
-    [Fact]
-    public void AMultiplyingRollCountKeepsTheBlameOnTheTableThatMultiplied()
-    {
-        ContentFinding only = Assert.Single(PerKill(OneTree("picks_of_two", allowed: 1)));
-        Assert.Contains("can leave 6 lines off one kill", only.Message, StringComparison.Ordinal);
-        Assert.Contains("The lines come from table 'picks_of_two'.", only.Message, StringComparison.Ordinal);
+        ContentFinding only = Assert.Single(PerKill(OneTree(tree, allowed: 1)));
+        Assert.Contains($"The lines come from table '{culprit}'.", only.Message, StringComparison.Ordinal);
+        Assert.Contains(FormattableString.Invariant($"can leave {most} lines off one kill"), only.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

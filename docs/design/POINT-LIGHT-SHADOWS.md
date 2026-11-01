@@ -207,3 +207,12 @@ Headless: face math, slot cache and eviction, budgets, settings clamps and atlas
 GPU, relative pixels and no goldens: a wall between light and floor, a doorway gap, a static map that does
 not re-render on a still frame, a dynamic light that moves its shadow, zero requests and disabled settings
 both byte-identical to the pre-feature capture.
+
+Moving rigid proof uses separate split and complete-current-redraw scenes with identical current geometry,
+face resolution and hard or soft settings. Three point lights cover stationary scenery, a multipart rigid
+actor and a bent skinned caster. Interleaved static and dynamic instances share a mesh. Full-resolution image
+comparisons cover safe first-demand fallback, transient growth and recovery, both mobility switches and
+disappearance at zero ordinary static budget. Receiver probes retain actor bodies while disabling their
+casting, so a body-color difference cannot satisfy the shadow control. A shared-scene parity case compares
+aged and fresh scenes after configuration changes. Allocation and bind refusal remain deterministic CPU
+fault-injection proofs rather than native memory exhaustion. See [caster layers](POINT-SHADOW-CASTERS.md).

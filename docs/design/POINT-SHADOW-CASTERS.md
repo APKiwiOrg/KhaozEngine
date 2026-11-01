@@ -92,6 +92,14 @@ static lights before live transient capacity is applied.
 CPU fixtures drive actual `Scene3D` scheduling through the established fake GPU and inspect submitted slot
 ranges and draw streams. They cover default compatibility, mixed mobility, both skinning paths, dynamic lights,
 zero ordinary budget, allocation and bind refusals, growth, recovery, removal, mobility changes, slot ownership,
-off-camera retention, mesh changes, dissolve and rebasing. Native Metal proof compares equal-pose split images
-with a complete-geometry redraw oracle under the same hard or soft settings. Pixel evidence and diagnostics
-must agree. Shader and binding changes require the backend checks in `docs/CROSS-PLATFORM.md`.
+off-camera retention, mesh changes, dissolve and rebasing.
+
+`RigidPointShadowGpuTests` compares full-resolution split images byte for byte with a separate scene whose
+Dynamic lights redraw complete current geometry. The oracle matches base atlas height and light row placement
+to control viewport-coordinate rounding. The split scene still has different base and transient row indices
+and counts. Hard and soft cases cover mixed same-mesh rigid mobility, skinned casters, first demand, growth,
+recovery, both mobility switches and disappearance with zero ordinary refresh budget. Direct receiver probes
+disable casting while retaining the actor bodies, so body color cannot satisfy the negative control. Fixed
+scenery probes and work counters accompany the image comparisons. A fresh-scene parity check validates reuse
+of the lazy fixture after configuration changes. These fixed frames verify behavior without timing thresholds.
+Shader and binding changes require the backend checks in `docs/CROSS-PLATFORM.md`.

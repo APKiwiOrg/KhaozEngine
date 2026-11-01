@@ -61,7 +61,9 @@ namespace KhaozEngine.Tests.Gpu
             if (!KhaozEngineD3D11.IsPlatformSupported) return;   // no d3dcompiler off Windows
 
             var failures = new List<string>();
-            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
+            ShippedGraphicsProgram[] programs = ShippedShaderPrograms.GraphicsPrograms().ToArray();
+            Assert.NotEmpty(programs);
+            foreach (ShippedGraphicsProgram program in programs)
             {
                 try
                 {
@@ -109,7 +111,9 @@ namespace KhaozEngine.Tests.Gpu
             if (!KhaozEngineD3D11.IsPlatformSupported) return;
 
             var failures = new List<string>();
-            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
+            ShippedComputeKernel[] kernels = ShippedShaderPrograms.ComputeKernels().ToArray();
+            Assert.NotEmpty(kernels);
+            foreach (ShippedComputeKernel kernel in kernels)
             {
                 try
                 {
@@ -297,22 +301,10 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         [Theory]
         [InlineData("TargetOutlineSkinnedFull")]
         [InlineData("TargetOutlineSkinnedVisible")]
-        public void Skinned_target_outline_keeps_the_complete_seven_element_vertex_signature(string programName)
-        {
-            ShippedGraphicsProgram program = Program(programName);
-            CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
-                program.VertexGlsl, program.FragmentGlsl, program.Name);
-
-            uint[] inputs = Semantics(pair.VertexSource, "SPIRV_Cross_Input");
-
-            Assert.Equal(Enumerable.Range(0, 7).Select(i => (uint)i).ToArray(), inputs);
-        }
-
-        [Theory]
         [InlineData("PointShadowSkinned")]
         [InlineData("PointShadowSkinnedDissolve")]
         [InlineData("PointShadowSkinnedDissolveInverted")]
-        public void Point_skinned_casters_keep_the_complete_seven_element_vertex_signature(string programName)
+        public void Skinned_program_keeps_the_complete_seven_element_vertex_signature(string programName)
         {
             ShippedGraphicsProgram program = Program(programName);
             CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
@@ -335,7 +327,9 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         public void EveryCatalogProgram_EmitsAGapFreeVertexInputSignature()
         {
             var failures = new List<string>();
-            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
+            ShippedGraphicsProgram[] programs = ShippedShaderPrograms.GraphicsPrograms().ToArray();
+            Assert.NotEmpty(programs);
+            foreach (ShippedGraphicsProgram program in programs)
             {
                 CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
                     program.VertexGlsl, program.FragmentGlsl, program.Name);

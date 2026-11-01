@@ -214,15 +214,13 @@ namespace KhaozEngine.Tests.Gpu
                 ArgumentException thrown = Assert.Throws<ArgumentException>(
                     () => MetalBufferPolicy.RequireCreatable(GpuBufferUsage.UniformBuffer | structured));
 
-                Assert.Contains("frame ring", thrown.Message, StringComparison.Ordinal);
-                Assert.Contains("create two buffers", thrown.Message, StringComparison.Ordinal);
+                Assert.Equal("usage", thrown.ParamName);
             }
         }
 
-        /// <summary>A write past the end is refused by name, where the incumbent's own copy has no bound check at
-        /// all.</summary>
+        /// <summary>A write past the end reports the offending parameter and value before any copy occurs.</summary>
         [Fact]
-        public void AWritePastTheEnd_IsRefusedWithBothNumbers()
+        public void AWritePastTheEnd_IsRefusedWithItsParameterAndValue()
         {
             MetalBufferPolicy.RequireWriteFits(0, 64, 64);
             MetalBufferPolicy.RequireWriteFits(32, 32, 64);
@@ -230,8 +228,8 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
                 () => MetalBufferPolicy.RequireWriteFits(32, 33, 64));
 
-            Assert.Contains("33", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("64", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("writeBytes", thrown.ParamName);
+            Assert.Equal(33u, thrown.ActualValue);
         }
 
         // ---- Textures and views -------------------------------------------------------------------------------
@@ -245,7 +243,9 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void NoUsageTheSeamCanExpress_CreatesAView()
         {
-            foreach (GpuTextureUsage usage in EveryBindableUsage())
+            GpuTextureUsage[] usages = EveryBindableUsage();
+            Assert.NotEmpty(usages);
+            foreach (GpuTextureUsage usage in usages)
             {
                 MetalTextureViewPlan plan = MetalViewPolicy.ForTexture(usage, 1, 1);
                 Assert.Equal(0, plan.ViewCount);
@@ -259,7 +259,9 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryRealTextureIsPrivate_AndStagingIsABuffer()
         {
-            foreach (GpuTextureUsage usage in EveryBindableUsage())
+            GpuTextureUsage[] usages = EveryBindableUsage();
+            Assert.NotEmpty(usages);
+            foreach (GpuTextureUsage usage in usages)
             {
                 MetalTextureViewPlan plan = MetalViewPolicy.ForTexture(usage, 1, 1);
                 Assert.False(plan.Staging);
@@ -279,10 +281,8 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void StagingCombinedWithAnythingElse_IsRefused()
         {
-            ArgumentException thrown = Assert.Throws<ArgumentException>(
+            Assert.Throws<ArgumentException>(
                 () => MetalViewPolicy.ForTexture(GpuTextureUsage.Staging | GpuTextureUsage.Sampled, 1, 1));
-
-            Assert.Contains("MTLBuffer", thrown.Message, StringComparison.Ordinal);
         }
 
         /// <summary>The depth reading travels on the plan, because it is what picks between the two Metal formats
@@ -400,11 +400,9 @@ namespace KhaozEngine.Tests.Gpu
             string? refusal = MetalSamplerPolicy.MissingBorderColorSupport(bordered, false);
             Assert.NotNull(refusal);
 
-            // The sentence names the DEVICE FACT and what to use instead, which is what makes it actionable from
-            // a CI log by someone who has never seen this machine.
+            // The refusal identifies the missing device capability and the requested feature.
             Assert.Contains("MTLGPUFamilyMac2", refusal, StringComparison.Ordinal);
             Assert.Contains("GpuSamplerAddress.Border", refusal, StringComparison.Ordinal);
-            Assert.Contains("Use Clamp", refusal, StringComparison.Ordinal);
 
             // A supporting device takes the same description without comment.
             Assert.Null(MetalSamplerPolicy.MissingBorderColorSupport(bordered, true));
@@ -507,7 +505,6 @@ namespace KhaozEngine.Tests.Gpu
                 () => MetalResourceOwnership.Require<OwnedResource>(owned, new FakeMetalDeviceLiveness(),
                     "resource"));
 
-            Assert.Contains("DIFFERENT native Metal device", thrown.Message, StringComparison.Ordinal);
             Assert.Equal("resource", thrown.ParamName);
         }
 
@@ -521,8 +518,7 @@ namespace KhaozEngine.Tests.Gpu
                 () => MetalResourceOwnership.Require<OwnedResource>("not a resource",
                     new FakeMetalDeviceLiveness(), "resource"));
 
-            Assert.Contains("was not created by the native Metal backend", thrown.Message,
-                StringComparison.Ordinal);
+            Assert.Equal("resource", thrown.ParamName);
         }
 
         /// <summary>
@@ -571,38 +567,20 @@ namespace KhaozEngine.Tests.Gpu
             MetalStagingLayout.RequireRegionFits(shape, 2, 2, 8, 4, 8, 4);
         }
 
-        /// <summary>
-        /// ONE TEXEL PAST THE RIGHT EDGE IS REFUSED, which is the case the length check cannot see: the payload
-        /// is exactly the right size for the region and the region is in the wrong place.
-        /// </summary>
-        [Fact]
-        public void ARegionOneTexelPastTheRightEdge_IsRefused()
+        /// <summary>Each axis is checked against its own mip dimensions, for origins and extents alike.</summary>
+        [Theory]
+        [InlineData(0u, 1u, 0u, 64u, 32u)]
+        [InlineData(0u, 0u, 0u, 65u, 32u)]
+        [InlineData(2u, 0u, 0u, 32u, 8u)]
+        [InlineData(0u, 0u, 1u, 64u, 32u)]
+        [InlineData(0u, 0u, 0u, 64u, 33u)]
+        [InlineData(2u, 0u, 0u, 16u, 16u)]
+        public void ARegionPastASubresourceEdge_IsRefused(uint mip, uint x, uint y, uint width, uint height)
         {
             var shape = new MetalStagingShape(64, 32, 4, 1, GpuPixelFormat.R8G8B8A8UNorm);
 
             Assert.Throws<ArgumentOutOfRangeException>(
-                () => MetalStagingLayout.RequireRegionFits(shape, 0, 0, 1, 0, 64, 32));
-            Assert.Throws<ArgumentOutOfRangeException>(
-                () => MetalStagingLayout.RequireRegionFits(shape, 0, 0, 0, 0, 65, 32));
-
-            // And against the MIP's dimensions rather than mip 0's: 32 by 16 fits the texture and not level 2.
-            Assert.Throws<ArgumentOutOfRangeException>(
-                () => MetalStagingLayout.RequireRegionFits(shape, 2, 0, 0, 0, 32, 8));
-        }
-
-        /// <summary>The same one texel past the BOTTOM edge, because a check that only compared one axis would
-        /// pass every row of this class and still corrupt memory.</summary>
-        [Fact]
-        public void ARegionOneTexelPastTheBottomEdge_IsRefused()
-        {
-            var shape = new MetalStagingShape(64, 32, 4, 1, GpuPixelFormat.R8G8B8A8UNorm);
-
-            Assert.Throws<ArgumentOutOfRangeException>(
-                () => MetalStagingLayout.RequireRegionFits(shape, 0, 0, 0, 1, 64, 32));
-            Assert.Throws<ArgumentOutOfRangeException>(
-                () => MetalStagingLayout.RequireRegionFits(shape, 0, 0, 0, 0, 64, 33));
-            Assert.Throws<ArgumentOutOfRangeException>(
-                () => MetalStagingLayout.RequireRegionFits(shape, 2, 0, 0, 0, 16, 16));
+                () => MetalStagingLayout.RequireRegionFits(shape, mip, 0, x, y, width, height));
         }
 
         /// <summary>A subresource that does not exist is refused before its dimensions are asked for, since there

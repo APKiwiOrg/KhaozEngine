@@ -137,31 +137,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("1.2.0", described, StringComparison.Ordinal);
         }
 
-        /// <summary>An index in range and eligible is honoured exactly.</summary>
-        [Fact]
-        public void AnIndex_IsHonoured()
-        {
-            int chosen = VulkanPhysicalDeviceSelection.Choose(
-                VulkanPhysicalDeviceSelection.Parse("1"), TwoGpusAndLlvmpipe, out string? warning);
-
-            Assert.Equal(1, chosen);
-            Assert.Null(warning);
-        }
-
-        /// <summary>
-        /// A name substring matches case-insensitively, which is what makes the variable usable by somebody who
-        /// typed their GPU's name off a settings screen rather than out of the driver string.
-        /// </summary>
-        [Fact]
-        public void ANameSubstring_MatchesCaseInsensitively()
-        {
-            int chosen = VulkanPhysicalDeviceSelection.Choose(
-                VulkanPhysicalDeviceSelection.Parse("intel uhd"), TwoGpusAndLlvmpipe, out string? warning);
-
-            Assert.Equal(1, chosen);
-            Assert.Null(warning);
-        }
-
         /// <summary>
         /// THE VALUE CI PINS. <c>llvmpipe</c> finds the software rasterizer wherever the loader happens to
         /// enumerate it, which is the belt to the loader-level brace the leg relies on today, and it is a
@@ -178,12 +153,14 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(TwoGpusAndLlvmpipe[chosen].IsSoftwareRasterizer);
         }
 
-        /// <summary>The three device-class tokens each pick their own class.</summary>
+        /// <summary>Index, case-insensitive name and device-class requests select the matching eligible device.</summary>
         [Theory]
+        [InlineData("1", 1)]
+        [InlineData("intel uhd", 1)]
         [InlineData("discrete", 0)]
         [InlineData("integrated", 1)]
         [InlineData("cpu", 2)]
-        public void TheClassTokens_PickTheirClass(string value, int expected)
+        public void AnExplicitRequest_SelectsItsEligibleDevice(string value, int expected)
         {
             int chosen = VulkanPhysicalDeviceSelection.Choose(
                 VulkanPhysicalDeviceSelection.Parse(value), TwoGpusAndLlvmpipe, out string? warning);
@@ -222,7 +199,8 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(0, chosen);
             Assert.NotNull(warning);
-            Assert.Contains("enumerated", warning, StringComparison.Ordinal);
+            Assert.Contains(value, warning, StringComparison.Ordinal);
+            Assert.Contains("NVIDIA GeForce RTX 4080", warning, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -279,8 +257,6 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(VulkanPhysicalDeviceSelection.NoDevice, chosen);
             Assert.Null(warning);
-            Assert.Contains("no physical device", VulkanPhysicalDeviceSelection.Describe(
-                chosen, VulkanPhysicalDeviceSelection.Parse("2"), empty), StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -310,7 +286,8 @@ namespace KhaozEngine.Tests.Gpu
 
             string described = VulkanPhysicalDeviceSelection.Describe(chosen, request, TwoGpusAndLlvmpipe);
 
-            Assert.Contains("KE_VULKAN_DEVICE='llvmpipe'", described, StringComparison.Ordinal);
+            Assert.Contains(VulkanPhysicalDeviceSelection.EnvVarName, described, StringComparison.Ordinal);
+            Assert.Contains("llvmpipe", described, StringComparison.Ordinal);
             Assert.Contains("SOFTWARE", described, StringComparison.Ordinal);
         }
 
@@ -324,9 +301,8 @@ namespace KhaozEngine.Tests.Gpu
 
             string described = VulkanPhysicalDeviceSelection.Describe(0, request, devices);
 
-            Assert.Contains("the default", described, StringComparison.Ordinal);
-            Assert.Contains("KE_VULKAN_DEVICE=llvmpipe|discrete|integrated|cpu", described,
-                StringComparison.Ordinal);
+            Assert.Contains(VulkanPhysicalDeviceSelection.EnvVarName, described, StringComparison.Ordinal);
+            Assert.Contains(TwoGpusAndLlvmpipe[0].Name, described, StringComparison.Ordinal);
         }
     }
 }

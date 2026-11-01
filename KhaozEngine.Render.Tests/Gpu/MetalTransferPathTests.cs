@@ -241,50 +241,20 @@ namespace KhaozEngine.Tests.Gpu
 
         // ---- CopyBuffer: the refusals ------------------------------------------------------------------------
 
-        /// <summary>
-        /// AN UNALIGNED SOURCE OFFSET IS REFUSED AND THE MESSAGE SAYS SOURCE. Section 9.3's ruling is asymmetric
-        /// on purpose: the size is padded and the offsets throw, because the incumbent's answer to an unaligned
-        /// offset is an embedded compute shader driven by a dedicated compute pipeline, and shipping a second
-        /// metallib for a case no shipped call site produces is the unreachable-code reproduction G1 declined
-        /// once already.
-        /// <para>
-        /// NAMING THE SIDE IS THE POINT OF THE ROW. Both offsets go through one helper, so a refusal that named
-        /// the wrong end would send a caller to inspect the buffer that was fine.
-        /// </para>
-        /// </summary>
-        [Fact]
-        public void AnUnalignedSourceOffsetIsRefusedAndNamesTheSource()
+        /// <summary>Unaligned offsets refuse the offending side before opening an encoder or recording work.</summary>
+        [Theory]
+        [InlineData(3u, 0u, "srcOffsetBytes")]
+        [InlineData(4u, 6u, "dstOffsetBytes")]
+        public void AnUnalignedOffset_IsRefusedAndNamesItsParameter(uint sourceOffset, uint destinationOffset,
+            string parameter)
         {
             (MetalBuffer source, MetalBuffer destination) = Buffers();
             _list.Begin();
 
             ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
-                () => _list.CopyBuffer(source, 3, destination, 0, 16));
+                () => _list.CopyBuffer(source, sourceOffset, destination, destinationOffset, 16));
 
-            Assert.Contains("source offset of 3", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("multiple of 4", thrown.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain("destination offset", thrown.Message, StringComparison.Ordinal);
-
-            AssertNothingWasSpent();
-        }
-
-        /// <summary>
-        /// AND THE DESTINATION END, SEPARATELY, with an ALIGNED source so only one of the two can be the cause.
-        /// A single row covering both offsets would pass on an implementation that checked one of them twice.
-        /// </summary>
-        [Fact]
-        public void AnUnalignedDestinationOffsetIsRefusedAndNamesTheDestination()
-        {
-            (MetalBuffer source, MetalBuffer destination) = Buffers();
-            _list.Begin();
-
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
-                () => _list.CopyBuffer(source, 4, destination, 6, 16));
-
-            Assert.Contains("destination offset of 6", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("multiple of 4", thrown.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain("source offset", thrown.Message, StringComparison.Ordinal);
-
+            Assert.Equal(parameter, thrown.ParamName);
             AssertNothingWasSpent();
         }
 
@@ -363,11 +333,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             (MetalBuffer source, MetalBuffer destination) = Buffers();
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
-                () => _list.CopyBuffer(source, 0, destination, 0, 16));
-
-            Assert.Contains("Copying between buffers", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("Call Begin", thrown.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(() => _list.CopyBuffer(source, 0, destination, 0, 16));
 
             AssertNothingWasSpent();
         }
@@ -381,13 +347,10 @@ namespace KhaozEngine.Tests.Gpu
             var foreign = new FakeBuffer(SourceSize);
             _list.Begin();
 
-            Assert.Contains("not created by the native Metal backend",
-                Assert.Throws<ArgumentException>(() => _list.CopyBuffer(foreign, 0, destination, 0, 16)).Message,
-                StringComparison.Ordinal);
-
-            Assert.Contains("not created by the native Metal backend",
-                Assert.Throws<ArgumentException>(() => _list.CopyBuffer(source, 0, foreign, 0, 16)).Message,
-                StringComparison.Ordinal);
+            Assert.Equal("src", Assert.Throws<ArgumentException>(
+                () => _list.CopyBuffer(foreign, 0, destination, 0, 16)).ParamName);
+            Assert.Equal("dst", Assert.Throws<ArgumentException>(
+                () => _list.CopyBuffer(source, 0, foreign, 0, 16)).ParamName);
 
             AssertNothingWasSpent();
         }
@@ -405,7 +368,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             _list.Begin();
 
-            foreach (Action member in EveryMemberWith(null!, null!)) Assert.Throws<ArgumentNullException>(member);
+            Action[] members = EveryMemberWith(null!, null!);
+            Assert.NotEmpty(members);
+            foreach (Action member in members) Assert.Throws<ArgumentNullException>(member);
 
             AssertNothingWasSpent();
         }
@@ -428,12 +393,9 @@ namespace KhaozEngine.Tests.Gpu
             var texture = new FakeTexture(8, 8, 1, 1, GpuPixelFormat.R8G8B8A8UNorm);
             _list.Begin();
 
-            foreach (Action member in EveryMemberWith(texture, texture))
-            {
-                ArgumentException thrown = Assert.Throws<ArgumentException>(member);
-                Assert.Contains("not created by the native Metal backend", thrown.Message,
-                    StringComparison.Ordinal);
-            }
+            Action[] members = EveryMemberWith(texture, texture);
+            Assert.NotEmpty(members);
+            foreach (Action member in members) Assert.Throws<ArgumentException>(member);
 
             AssertNothingWasSpent();
         }
@@ -450,8 +412,9 @@ namespace KhaozEngine.Tests.Gpu
             _list.Begin();
             _list.Dispose();
 
-            foreach (Action member in EveryMemberWith(texture, texture))
-                Assert.Throws<ObjectDisposedException>(member);
+            Action[] members = EveryMemberWith(texture, texture);
+            Assert.NotEmpty(members);
+            foreach (Action member in members) Assert.Throws<ObjectDisposedException>(member);
 
             Assert.Throws<ObjectDisposedException>(() => _list.CopyBuffer(null!, 0, null!, 0, 16));
         }

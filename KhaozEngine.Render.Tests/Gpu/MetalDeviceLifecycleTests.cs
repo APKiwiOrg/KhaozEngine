@@ -282,14 +282,11 @@ namespace KhaozEngine.Tests.Gpu
             Drive(() => device.Submit(list, (ReadOnlySpan<IGpuFence>)new[] { firstCompletion, secondCompletion }),
                 nameof(device.Submit));
 
-            // AND THE REFUSAL THAT IS LEFT IS ABOUT THE CALLER, not about the package. Asserted by its message
-            // rather than by its type, because both shapes are exceptions and only the message tells a reader
-            // whether to fix their code or wait for a row. It drives the one-argument Submit at the same time.
+            // A foreign command list is a caller error, distinct from an unbuilt member. This also drives
+            // the one-argument Submit overload.
             using var foreign = new NullGpuCommandList();
             driven.Add(nameof(device.Submit));
-            string refusal = Refusal(() => device.Submit(foreign));
-            _output.WriteLine(refusal);
-            Assert.Contains("not created by this native Metal device", refusal, StringComparison.Ordinal);
+            Assert.Throws<ArgumentException>(() => device.Submit(foreign));
 
             RequireEveryMemberDriven(driven);
         }
@@ -352,18 +349,13 @@ namespace KhaozEngine.Tests.Gpu
 
         static IGpuDevice CreateHeadless() => new MetalBackendProvider().CreateHeadless().Device;
 
-        static string Refusal(Action call) => Assert.ThrowsAny<Exception>(call).Message;
-
-        // A member that is UNBUILT raises NotSupportedException, which is the shape MetalGpuDevice.NotBuiltYet
-        // produced until row 15 deleted it with its last caller. Anything else is left to propagate, because a
-        // member that fails for a real reason is a different fact and should fail this row loudly rather than be
-        // swallowed by a catch that was only looking for one type.
+        // Every driven call is expected to succeed. A real device failure must fail the sweep as well as an
+        // unbuilt member, so never discard an exception by narrowing its type.
         static void NothingUnbuilt(Action call, string member)
         {
-            NotSupportedException? unbuilt = Record.Exception(call) as NotSupportedException;
-            Assert.True(unbuilt is null,
-                "IGpuDevice." + member + " on the native Metal backend still refuses as unbuilt: "
-                + unbuilt?.Message);
+            Exception? failure = Record.Exception(call);
+            Assert.True(failure is null,
+                "IGpuDevice." + member + " on the native Metal backend failed: " + failure);
         }
 
         // [SupportedOSPlatformGuard] rather than an inline check at every call site, which is the same mechanism

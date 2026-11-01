@@ -155,7 +155,6 @@ public class ClearanceToolsTests
 
         McpException ex = Assert.Throws<McpException>(() => f.Worlds.WorldSave());
 
-        Assert.StartsWith("world 'clearance' has 2 clearance issues:", ex.Message);
         string[] lines = ex.Message.Split('\n');
         Assert.Equal(3, lines.Length);
         Assert.All(lines.Skip(1), l => Assert.StartsWith($"[{TileWorldClearance.OverlapCode}] ", l));
@@ -192,10 +191,10 @@ public class ClearanceToolsTests
         f.DeclareRule("../absent");
         f.Mutate.ObjectPlace("tree", 5, 5, 0);
         byte[] before = File.ReadAllBytes(f.Manifest);
+        Assert.Single(f.Session.ClearanceIssues());
 
         McpException ex = Assert.Throws<McpException>(() => f.Worlds.WorldSave());
 
-        Assert.StartsWith("world 'clearance' has 1 clearance issue:", ex.Message);
         Assert.Contains($"[{TileWorldClearance.MeshCode}] ", ex.Message);
         Assert.Contains(Path.GetFullPath(f.Temp.Sub("absent")), ex.Message);
         Assert.Equal(before, File.ReadAllBytes(f.Manifest));

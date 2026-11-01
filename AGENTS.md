@@ -65,8 +65,9 @@ directly. Keep this root short enough to load with global guidance. Detailed rep
 These are binding here and in every game repo. Reasons and the full list:
 [Contributor rules: Writing tests](docs/CONTRIBUTOR-RULES.md#writing-tests).
 
-- EVERY TEST GUARDS SOMETHING DISTINCT: a contract, a rule, an owner ruling or a past regression. Find the
-  existing test first and add a theory row. A new test is for behaviour no test covers.
+- EVERY TEST GUARDS SOMETHING DISTINCT: a contract, a rule, an owner ruling or a past regression. Decide a
+  test is needed before writing it, and favour a similar existing test: extend it with a theory row or
+  combine the two. A new test is for behaviour no test covers.
 - ASSERT THE CONTRACT, NEVER INCIDENTAL DETAIL: no exception message wording, call counts on fakes, private
   members by reflection, log text or internal order. Exact values only where they are the contract.
   KETEST001 and KETEST002 fail the build on two of these.

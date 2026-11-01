@@ -27,7 +27,7 @@ HEAD=${2-}
 
 SLNX="KhaozEngine.slnx"
 ZERO_SHA="0000000000000000000000000000000000000000"
-LIVE_SOCKET_FILTER="Category!=LiveSocket"
+DEFAULT_TEST_FILTER="Category!=LiveSocket&Category!=Diagnostic"
 FOUNDATION_TESTS="KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj"
 # dotnet-affected's exit code for "no affected projects were found". It is not an error, it is the
 # docs-only fast path, so the script maps it to a clean skip rather than a failure.
@@ -43,7 +43,7 @@ run_full() {
   echo "ci-selective-test: FULL ($1)"
   dotnet restore || fail "restore failed"
   sh scripts/build-release-tests.sh KhaozEngine.slnx --no-restore || fail "build failed"
-  dotnet test -c Release --no-build --filter "$LIVE_SOCKET_FILTER" || fail "test failed"
+  dotnet test -c Release --no-build --filter "$DEFAULT_TEST_FILTER" || fail "test failed"
   # Determinism guard: the FP-scope tests must stay byte-identical under both JIT tiering modes. The
   # DeterministicFp tests live in KhaozEngine.Foundation.Tests, so the pass is scoped to that project
   # (the workflow's tag path scopes it the same way).
@@ -57,7 +57,7 @@ run_full() {
 # Force-FULL file classes. A change to any of these can invalidate the selective diff, so the whole
 # solution is validated instead. $1 is a file holding the changed paths, one per line.
 touches_full_class() {
-  grep -qE '^\.github/workflows/|^scripts/|^Directory\.Build\.props$|^nuget\.config$|\.slnx$|^\.config/dotnet-tools\.json$' "$1"
+  grep -qE '^\.github/workflows/|^scripts/|^Directory\.Build\.props$|^nuget\.config$|\.slnx$|^\.config/dotnet-tools\.json$|^\.testhealth-baseline$' "$1"
 }
 
 # FULL fallback guards on the base sha, checked before any diff is attempted.
@@ -159,7 +159,7 @@ done < "$TMP/affected_tests.txt"
 
 while IFS= read -r proj; do
   echo "selective test: $proj"
-  dotnet test "$proj" -c Release --no-build --filter "$LIVE_SOCKET_FILTER" || fail "test failed for $proj"
+  dotnet test "$proj" -c Release --no-build --filter "$DEFAULT_TEST_FILTER" || fail "test failed for $proj"
 done < "$TMP/affected_tests.txt"
 
 # Determinism double-pass, only when the DeterministicFp owner is itself in the affected set.

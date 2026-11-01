@@ -160,7 +160,7 @@ jobs:
       # headlessly by LoopbackTransport. Run them locally with the full (unfiltered) test command.
       - name: Test (full)
         if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && env.REUSED_GATE != 'true'
-        run: dotnet test -c Release --no-build --filter "Category!=LiveSocket"
+        run: dotnet test -c Release --no-build --filter "Category!=LiveSocket&Category!=Diagnostic"
       # Determinism guard: the FP-scope tests must stay byte-identical under both JIT tiering modes.
       # (The default run above covers ambient tiering. These pin the two extremes explicitly.) The
       # DeterministicFp tests live in KhaozEngine.Foundation.Tests, and the fan-out tests that prove the

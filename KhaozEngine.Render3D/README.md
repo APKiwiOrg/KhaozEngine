@@ -514,7 +514,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   unshadowed and the frame after it carries the map. Knobs on `ShadowSettings.PointShadows` (a `PointShadowSettings`):
   `Enabled`, `FaceResolution` (default `256`, `64..1024` via `ResolvedFaceResolution`), `MaxShadowedLights` (default
   `8`, `1..256` via `ResolvedMaxLights`, the configured capacity floor and dynamic-effect budget),
-  `MaxStaticRebuildsPerFrame` (default `2`), `MaxDynamicLightsPerFrame` (default `4`, nearest-eye-first), and the
+  `MaxStaticRebuildsPerFrame` (default `2`, ordinary base refreshes), `MaxDynamicLightsPerFrame` (default `4`, nearest-eye-first), and the
   radius-normalized `Bias`/`SlopeBias` (defaults `0.01`/`0.02`, clamped
   `0..MaxBias` via `ResolvedBias`/`ResolvedSlopeBias`).
   Every submitted point light reaches a growable shared structured buffer. CPU-built conservative 3D frustum
@@ -544,8 +544,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `Scene3D.RequestShadowMapDetail` carries a profile on a
   live scene and `Scene3D.RequestPointShadowSettings` requests a custom one at the next frame boundary.
   `Scene3D.DrawSkinned` and its dissolved variants cast by default through CPU or GPU skinning. Static lights keep
-  rigid casters (`DrawShadowOnly` included) in cached base rows and render each current skinned pose in a compact
-  transient atlas. Dynamic lights clear and redraw rigid and skinned casters together in their selected base row.
+  Static rigid casters (`DrawShadowOnly` included) in cached base rows. Set
+  `RigidInstanceDraw.ShadowMobility = ShadowCasterMobility.Dynamic` for moving rigid geometry. It shares the
+  current-frame transient atlas with skinned poses and stays outside the cached static signature. Static is the
+  constructor and zero default. Motion keys do not select mobility, and unsupported mobility values are refused
+  before queue mutation. Key-light and color behavior stay unchanged. Dynamic lights clear and redraw rigid and
+  skinned casters together in their selected base row.
   `castsShadows: false` excludes a skinned draw from point work. The transient atlas grows to exact demand at a
   frame boundary, keeps high-water capacity within a compatible base layout, and never exceeds its base row count.
   Receiver hard and soft taps compare the nearer of the base and transient depths. An unassigned transient row
@@ -557,7 +561,15 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   default. Read `Scene3D.PointShadowedLights`, or `PointShadowedLights`/`PointStaticRebuilds`/
   `PointDynamicRenders`/`PointTransientDemand`/`PointTransientRowsRendered`/
   `PointDynamicSkinnedDrawCalls`/`PointStaticTransientSkinnedDrawCalls`/`PointFaceDrawCalls`/`PointSlotsInUse` on
-  `ShadowPassDiagnostics`. `PointStaticRebuilds` counts rigid base rebuilds only.
+  `ShadowPassDiagnostics`. `PointStaticRebuilds` counts ordinary budgeted base rebuilds only.
+  `PointStaticTransientRigidDrawCalls` reports moving rigid transient face draws.
+  `PointRigidFallbackRowsRendered` counts complete current base redraws when a moving rigid caster has no
+  transient row. `PointRigidTransitionRowsRendered` counts mandatory pure-base cleanup before split sampling,
+  after fallback removal, or when a changed static signature meets current or previous moving rigid demand.
+  Both bypass the ordinary static budget, deduplicate with ordinary work, and render each owned base row at
+  most once per frame. Refusal can cost a full scenery redraw, preserving current character and scenery shadows.
+  `PointStaticFallbackSkinnedDrawCalls` counts skinned face draws into fallback bases. `PointFaceDrawCalls`
+  includes every caster draw in these categories. See [caster layers](../docs/design/POINT-SHADOW-CASTERS.md).
   Point-light MASK alpha testing remains [#1098](https://github.com/APKiwiOrg/KhaozEngine/issues/1098).
   Skinned colour and outline cutouts are available, while key-light skinned cutout remains
   [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097). No draw overload or point-shadow quality

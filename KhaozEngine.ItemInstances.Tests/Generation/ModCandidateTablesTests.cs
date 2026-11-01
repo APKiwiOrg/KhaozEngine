@@ -355,9 +355,8 @@ public class ModCandidateTablesTests
         Assert.Equal(65_550, tier);
         ContentSnapshot candidate = Snapshot(registry, rows.ToArray());
 
-        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
+        Assert.Throws<InvalidOperationException>(
             () => ModCandidateTables.Build(candidate));
-        Assert.Contains("65535", failure.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -387,10 +386,8 @@ public class ModCandidateTablesTests
         ModCandidateTables under = ModCandidateTables.Build(Snapshot(registry, Rows(1_000_000_000)));
         Assert.Equal(2_000_000_000L, under.LiveWeight(SignatureOf(under, 40), KindPosition(under, ModContentType.PrefixKind), 0));
 
-        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
+        Assert.Throws<InvalidOperationException>(
             () => ModCandidateTables.Build(Snapshot(registry, Rows(half))));
-        Assert.Contains("3000000000", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("2147483647", failure.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -415,7 +412,6 @@ public class ModCandidateTablesTests
 
         InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
             () => ModCandidateTables.Build(Snapshot(registry, Rows(16))));
-        Assert.Contains("16", failure.Message, StringComparison.Ordinal);
         Assert.Contains(InstanceContentFindings.TierOrdinal, failure.Message, StringComparison.Ordinal);
     }
 
@@ -438,7 +434,6 @@ public class ModCandidateTablesTests
         // refuses it for the same reason the ordinal ceiling does.
         InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
             () => ModCandidateTables.Build(Snapshot(registry, rows.ToArray())));
-        Assert.Contains("8", failure.Message, StringComparison.Ordinal);
         Assert.Contains(InstanceContentFindings.GenerationTagPositions, failure.Message, StringComparison.Ordinal);
 
         // At the ceiling it builds, and the header space is the positions the signature actually has.

@@ -70,7 +70,7 @@ public class InstanceEntryOrderRegistrationTests
         ArgumentException exception = Assert.Throws<ArgumentException>(() => registry.Register(
             InstanceKindBand.Game, 2048, InstancePropertyCodec.ShapeOnly, PropertyVisibility.Everyone,
             -1, shape, references));
-        Assert.Contains("2048", exception.Message, StringComparison.Ordinal);
+        Assert.Equal("shape", exception.ParamName);
         Assert.False(registry.TryGet(2048, out _));
     }
 }

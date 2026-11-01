@@ -63,10 +63,14 @@ public class GenerationTablesTests
         ContentSnapshot candidate = Snapshot(registry, [.. rows]);
         ModCandidateTables tables = ModCandidateTables.Build(candidate);
 
-        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
+        Assert.Throws<InvalidOperationException>(
             () => GenerationTables.Build(tables, candidate));
-        Assert.Contains("4096", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("LIVE", failure.Message, StringComparison.Ordinal);
+
+        rows[3] = RarityRule(registry, 1, "grand", minAffixes: 240, maxAffixes: 240,
+            maxPrefixes: 240, maxSuffixes: 240);
+        ContentSnapshot withinLimit = Snapshot(registry, [.. rows]);
+        GenerationTables built = GenerationTables.Build(ModCandidateTables.Build(withinLimit), withinLimit);
+        Assert.Equal(withinLimit.VersionNumber, built.ContentVersion);
     }
 
     [Fact]

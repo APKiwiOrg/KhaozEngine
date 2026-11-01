@@ -31,13 +31,13 @@ public sealed class AllocationIsolationContractTests
         {
             var copy = context.LoadFromAssemblyPath(typeof(AllocationIsolationContractTests).Assembly.Location);
             var probe = copy.GetType(typeof(AllocationIsolationContractTests).FullName!, throwOnError: true)!
-                .GetMethod(nameof(IsolationSeenHere), BindingFlags.NonPublic | BindingFlags.Static)!;
+                .GetMethod(nameof(IsolationSeenHere), BindingFlags.Public | BindingFlags.Static)!;
             Assert.Equal((true, true), ((bool, bool))probe.Invoke(null, null)!);
         }
         finally { context.Unload(); }
     }
 
-    static (bool RunsAlone, bool Reported) IsolationSeenHere() =>
+    public static (bool RunsAlone, bool Reported) IsolationSeenHere() =>
         (CollectionIsolation.RunsAlone, SerializedMessageBus.AssemblyDelivered > 0);
 
     [Fact]

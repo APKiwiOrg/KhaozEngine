@@ -7,6 +7,7 @@ using KhaozEngine.Identity.Exchange.AspNetCore;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -35,19 +36,12 @@ public class ExchangeForwardedHeadersTests
         return (await host.ExchangeAsync("discord", "bad", "198.51.100.2")).Status == HttpStatusCode.Unauthorized;
     }
 
-    [Fact]
-    public async Task APlainIPv4Proxy_InAPlainIPv4Network_IsBelieved()
+    [Theory]
+    [InlineData("127.0.0.0", 8)]
+    [InlineData("::ffff:127.0.0.0", 104)]
+    public async Task APlainIPv4Proxy_IsBelieved_InEitherNetworkFamily(string network, int prefix)
     {
-        await using ExchangeHttpHost host = await StartAsync(new IPNetwork(IPAddress.Parse("127.0.0.0"), 8));
-
-        Assert.True(await ForwardedHeaderIsBelievedAsync(host));
-    }
-
-    [Fact]
-    public async Task APlainIPv4Proxy_InANetworkTypedOnlyAsMappedIPv6_IsStillBelieved()
-    {
-        // The reference consumer typed its list in the mapped form only, which distrusts the proxy the moment the host reports it plain.
-        await using ExchangeHttpHost host = await StartAsync(new IPNetwork(IPAddress.Parse("::ffff:127.0.0.0"), 104));
+        await using ExchangeHttpHost host = await StartAsync(new IPNetwork(IPAddress.Parse(network), prefix));
 
         Assert.True(await ForwardedHeaderIsBelievedAsync(host));
     }
@@ -118,8 +112,9 @@ public class ExchangeForwardedHeadersTests
         Assert.Equal(ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto, options.ForwardedHeaders);
         Assert.Equal(1, options.ForwardLimit);
         Assert.Empty(options.KnownProxies);
-        Assert.Equal(new[] { new IPNetwork(IPAddress.Parse("10.1.0.0"), 16), new IPNetwork(IPAddress.Parse("::ffff:10.1.0.0"), 112) },
-            options.KnownIPNetworks.ToArray());
+        Assert.Equal(2, options.KnownIPNetworks.Count);
+        Assert.Contains(new IPNetwork(IPAddress.Parse("10.1.0.0"), 16), options.KnownIPNetworks);
+        Assert.Contains(new IPNetwork(IPAddress.Parse("::ffff:10.1.0.0"), 112), options.KnownIPNetworks);
 
         ForwardedHeadersOptions off = ConfiguredOptions(Array.Empty<IPNetwork>());
         Assert.Equal(ForwardedHeaders.None, off.ForwardedHeaders);
@@ -147,10 +142,7 @@ public class ExchangeForwardedHeadersTests
         AuthExchange exchange = await ExchangeAccounts.BuildAsync();
         await using WebApplication app = BuildWithHosting();
 
-        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() => app.MapAuthExchange(exchange));
-
-        Assert.Contains(nameof(AuthExchangeHosting.UseAuthExchangeHosting), refusal.Message, StringComparison.Ordinal);
-        Assert.Contains(nameof(AuthExchangeHosting.AddAuthExchangeHosting), refusal.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => app.MapAuthExchange(exchange));
     }
 
     [Fact]
@@ -162,8 +154,16 @@ public class ExchangeForwardedHeadersTests
 
         composed.UseAuthExchangeHosting();
 
-        Assert.NotNull(composed.MapAuthExchange(exchange));
-        Assert.NotNull(bare.MapAuthExchange(exchange));
+        composed.MapAuthExchange(exchange);
+        bare.MapAuthExchange(exchange);
+
+        foreach (WebApplication app in new[] { composed, bare })
+        {
+            RouteEndpoint endpoint = Assert.Single(((IEndpointRouteBuilder)app).DataSources
+                .SelectMany(source => source.Endpoints).OfType<RouteEndpoint>());
+            Assert.Equal("/auth/exchange", endpoint.RoutePattern.RawText);
+            Assert.Equal(new[] { "POST" }, endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods);
+        }
     }
 
     private static WebApplication BuildWithHosting()

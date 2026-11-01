@@ -39,7 +39,8 @@ if [ -z "${TESTHEALTH_BUILD_LOG:-}" ]; then
   # Explicit report roots are independent of engine test selection. Add each baselined tool here
   # when it leaves the solution, otherwise missing diagnostics could silently erase its allowance.
   for target in KhaozEngine.slnx \
-      tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj; do
+      tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj \
+      tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj; do
     if ! dotnet build "$target" -c Release --no-incremental \
         -p:KhaozTestHealthMode=report -p:TreatWarningsAsErrors=false >>"$log" 2>&1; then
       cat "$log" >&2

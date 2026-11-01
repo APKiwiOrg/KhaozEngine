@@ -290,3 +290,7 @@ the graph walker reports no affected projects, and a baseline
 edit still forces FULL. `tooling-validation.yml` selects the renderer suite from an explicit watched
 path inventory and offers explicit manual and reusable entrypoints. Its free validation gates paid
 renderer allocation without expanding ordinary engine CI. Missing or failed prerequisites refuse tests.
+The same selector routes Items benchmark inputs to the explicit outside-solution
+`tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj` suite on hosted Ubuntu. Dispatch selects
+`items` independently of renderer. The nine retained Items structural and resident-memory instrument
+methods stay in Server.Tests. Ordinary engine builds need no Items acceptance or verifier prerequisite.

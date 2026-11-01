@@ -22075,6 +22075,13 @@ owned item carries beyond its definition id, the registry that says what every p
 walker that knows nothing about any kind, container codec version 2, the instance id allocator and the
 validator that sweeps a stored container against the active content version.
 
+Items benchmark options, limits, declared fields, JSON, atomic output and resident-memory instrument
+regressions remain covered by nine Server.Tests methods in default engine CI. The end-to-end quick
+acceptance fact runs explicitly in the outside-solution
+[`Items.Benchmark.Tests`](../tools/Items.Benchmark.Tests/README.md) suite. A passing free tooling run
+at the exact benchmark code commit is required before publishing new evidence. It validates the
+instrument and workload structure, while separately authorized benchmark runs produce performance evidence.
+
 Four rules run through all of it. The ENCODER is what makes a payload canonical (fields strictly ascending by
 kind, no kind twice, every varint minimal), so **byte equality is the stacking rule** and nothing anywhere
 decodes two payloads to compare them. An unknown kind is preserved VERBATIM, position included, so a client

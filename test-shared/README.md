@@ -53,3 +53,11 @@ KETEST retain each helper's physical repository-relative identity. The helper fi
 Render.Tests, including GpuPerfTimestampRing and its fakes. No module initializer or unrelated fact
 file is linked. The tooling project also imports AllocationMeasurement.props, including its independent
 allocation-isolation contract tests and serialized reporting framework.
+
+## Items benchmark fixtures
+
+`ItemsBenchmarkFields.cs` owns the positive-measurement field inventory shared by the Server.Tests
+budget fence and the outside-solution Items acceptance fact. `ItemsBenchmarkFixtureDirectory.cs`
+preserves bounded IOException cleanup retries after fixture handles are disposed. Both projects
+source-link these helpers so field coverage and cleanup behavior have one source. The explicit
+acceptance project also links Server.Tests' nonparallel AllocSensitive collection definition.

@@ -21,6 +21,7 @@ public partial class ArchitectureTests
     {
         string root = RepoRoot();
         Assert.True(File.Exists(Path.Combine(root, ExternalToolingTests[0])));
+        Assert.True(File.Exists(Path.Combine(root, ExternalToolingTests[1])));
         string[] solution = XDocument.Load(Path.Combine(root, "KhaozEngine.slnx")).Descendants("Project")
             .Select(p => Path.GetFullPath(Path.Combine(root, p.Attribute("Path")!.Value.Replace('\\', '/')))).ToArray();
         string[] tools = ExternalToolingTests.Select(p => Path.GetFullPath(Path.Combine(root, p))).ToArray();

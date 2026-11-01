@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select free renderer validation, independently of solution-based engine selection."""
+"""Select free tooling validation, independently of solution-based engine selection."""
 import argparse
 import fnmatch
 import json
@@ -28,9 +28,23 @@ PLATFORMS = (
     ('windows-latest', 'direct3d11-native'),
     ('macos-26', 'metal-native'),
 )
+ITEMS_WATCHED = (
+    'tools/Items.Benchmark.Tests/**', 'KhaozEngine.Benchmarks/Items/**',
+    'KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj',
+    'KhaozEngine.Benchmarks/Baselines/items-*.json',
+    'test-shared/ItemsBenchmarkFields.cs', 'test-shared/ItemsBenchmarkFixtureDirectory.cs',
+    'KhaozEngine.Server.Tests/AllocSensitiveCollection.cs',
+    'scripts/renderer-tooling-selection.py', 'scripts/tests/renderer-tooling-selection.test.py',
+    'scripts/build-release-tests.sh', 'scripts/tests/build-release-tests.test.sh',
+    '.github/workflows/tooling-validation.yml', '.gitattributes', '.testhealth-baseline',
+    '.filesize-baseline', 'Directory.Build.props', 'Directory.Build.targets',
+    'Directory.Packages.props', 'nuget.config', 'global.json', '.config/dotnet-tools.json',
+)
 
 
-def watched_paths():
+def watched_paths(suite='renderer'):
+    if suite == 'items':
+        return ITEMS_WATCHED
     links = ET.parse(ROOT / 'test-shared/RendererPerfShared.props').iter('Compile')
     return (*WATCHED, *(node.attrib['Include'].removeprefix('$(RendererPerfRepositoryRoot)/') for node in links))
 
@@ -38,7 +52,7 @@ def watched_paths():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--event', required=True, choices=('push', 'pull_request', 'workflow_call', 'workflow_dispatch'))
-    parser.add_argument('--suite', default='renderer', choices=('renderer',))
+    parser.add_argument('--suite', default='renderer', choices=('renderer', 'items'))
     parser.add_argument('--ref', required=True, dest='requested')
     parser.add_argument('--trusted-ref', default='')
     parser.add_argument('--changed', action='append', default=[])
@@ -52,9 +66,10 @@ def main():
         parser.error('validation requires immutable full commit SHAs')
     changed = args.changed + (args.changed_file.read_text().splitlines() if args.changed_file else [])
     selected = (args.event in ('workflow_call', 'workflow_dispatch') or args.unknown_diff
-                or any(fnmatch.fnmatchcase(path, pattern) for path in changed for pattern in watched_paths()))
-    print(json.dumps({'include': [dict(ref=ref, os=os, backend=backend)
-                                 for ref in refs for os, backend in PLATFORMS] if selected else []}))
+                or any(fnmatch.fnmatchcase(path, pattern) for path in changed for pattern in watched_paths(args.suite)))
+    rows = ([dict(ref=ref, os=os, backend=backend) for ref in refs for os, backend in PLATFORMS]
+            if args.suite == 'renderer' else [dict(ref=ref, os='ubuntu-26.04') for ref in refs])
+    print(json.dumps({'include': rows if selected else []}))
 
 
 if __name__ == '__main__':

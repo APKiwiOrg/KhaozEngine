@@ -140,6 +140,14 @@ native engine shards do not build or discover the tooling suite. A csproj-only e
 architecture rump when dotnet-affected reports no affected roots. `tooling-validation.yml` owns its free
 three-OS validation and the prerequisite gate for separately authorized renderer campaigns.
 
+The outside-solution [`Items.Benchmark.Tests`](../tools/Items.Benchmark.Tests/README.md) project owns
+the process-memory-sensitive Items quick acceptance fact. Its only direct reference is Benchmarks.
+Five Items structural methods and four resident-memory instrument methods remain in Server.Tests.
+The free tooling workflow selects suite `items` on hosted Ubuntu and requires the named Release fact
+to pass with zero skips in its own process. Require a passing run at the exact benchmark code commit
+before publishing new Items evidence, recording its run URL and code SHA beside that evidence.
+This validation does not launch or authorize a full benchmark campaign.
+
 The ratchet report build is a separate maintenance inventory. `check-test-health.sh` sequentially
 builds the engine solution and the baselined outside-solution tooling projects before lowering any
 allowance. Linked files retain their canonical physical repository path and findings use the maximum

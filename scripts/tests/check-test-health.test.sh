@@ -309,6 +309,9 @@ case "$2" in
   tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj)
     printf "warning KETEST002: 'tools/Renderer.Perf.Tooling.Tests/Tool.cs' has 3 accesses\nwarning KETEST002: 'test-shared/Shared.cs' has 5 accesses\n"
     exit "${EXTRA_BUILD_EXIT:-0}" ;;
+  tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj)
+    printf "warning KETEST002: 'test-shared/Shared.cs' has 4 accesses\n"
+    exit "${ITEMS_BUILD_EXIT:-0}" ;;
   *) exit 98 ;;
 esac
 STUB
@@ -318,7 +321,7 @@ TESTHEALTH_BUILD_LOG= PATH="$TMPROOT/combined-bin:$PATH" sh "$SCRIPT" --preview 
 rc=$?
 set -e
 unchanged
-[ "$(wc -l <commands | tr -d ' ')" -eq 2 ] || rc="$rc, extra target not built"
+[ "$(wc -l <commands | tr -d ' ')" -eq 3 ] || rc="$rc, extra target not built"
 if grep -qE 'drop |lower ' "$OUTFILE"; then rc="$rc, combined findings lost"; fi
 check 'combined report retains tool allowance and maximum linked-file count without writing' 0 "$rc"
 set +e
@@ -328,6 +331,13 @@ set -e
 said 'report build failed'
 unchanged
 check 'failing outside-solution target refuses baseline changes' 1 "$rc"
+set +e
+TESTHEALTH_BUILD_LOG= ITEMS_BUILD_EXIT=39 PATH="$TMPROOT/combined-bin:$PATH" sh "$SCRIPT" --update >"$OUTFILE" 2>&1
+rc=$?
+set -e
+said 'report build failed for tools/Items.Benchmark.Tests/Items.Benchmark.Tests.csproj'
+unchanged
+check 'failing Items target refuses baseline changes' 1 "$rc"
 
 echo ""
 echo "passed: $pass   failed: $fail"

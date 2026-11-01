@@ -124,19 +124,21 @@ namespace KhaozEngine.Tests.Gui
             Assert.False(menu.IsOpen);
         }
 
-        [Fact]
-        public void Fresh_right_tap_on_an_exposed_enabled_wedge_retargets_the_open_context_menu()
+        [Theory]
+        [InlineData(3, 3, 104L)]
+        [InlineData(2, 0, 101L)]
+        public void Right_tap_retargets_only_an_available_wedge(int entryIndex, int expectedLockedIndex, long expectedTag)
         {
             (RadialMenu menu, ContextMenu context) = Open(shortLabels: true);
             var pointer = new Pointer();
             RightTap(menu, pointer, EntryPoint(0));
 
-            RightTap(menu, pointer, EntryPoint(3));
+            RightTap(menu, pointer, EntryPoint(entryIndex));
 
             Assert.True(context.IsOpen);
-            Assert.Equal(3, menu.LockedEntryIndex);
+            Assert.Equal(expectedLockedIndex, menu.LockedEntryIndex);
             Tap(menu, pointer, CenterOf(context.EntryBounds(4)), quickSelect: false);
-            Assert.Equal(new RadialMenuSelection(104, 1), menu.Selection);
+            Assert.Equal(new RadialMenuSelection(expectedTag, 1), menu.Selection);
             Assert.False(menu.WasChoiceChanged);
         }
 
@@ -182,21 +184,6 @@ namespace KhaozEngine.Tests.Gui
 
             Assert.True(context.IsOpen);
             Assert.Equal(0, menu.LockedEntryIndex);
-        }
-
-        [Fact]
-        public void Right_tap_on_unavailable_wedge_keeps_existing_context_target()
-        {
-            (RadialMenu menu, ContextMenu context) = Open(shortLabels: true);
-            var pointer = new Pointer();
-            RightTap(menu, pointer, EntryPoint(0));
-
-            RightTap(menu, pointer, EntryPoint(2));
-
-            Assert.True(context.IsOpen);
-            Assert.Equal(0, menu.LockedEntryIndex);
-            Tap(menu, pointer, CenterOf(context.EntryBounds(4)), quickSelect: false);
-            Assert.Equal(new RadialMenuSelection(101, 1), menu.Selection);
         }
 
         [Fact]

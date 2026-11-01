@@ -15,34 +15,22 @@ public class TooltipStackLayoutTests
         public Vector2 Measure(string text) => new(text.Length * 10f, 20f);
     }
 
-    [Fact]
-    public void BoxesKeepTheirOrderAndGapBesideThePointer()
+    [Theory]
+    [InlineData(100f, 100f, 112f, 112f)]
+    [InlineData(390f, 280f, 258f, 140f)]
+    public void Boxes_keep_their_order_and_gap_when_the_stack_flips(
+        float pointerX, float pointerY, float expectedX, float expectedY)
     {
         Vector2[] sizes = [new(80, 20), new(120, 40), new(100, 60)];
         Span<Rect> boxes = stackalloc Rect[3];
 
-        Rect group = TooltipStackLayout.Place(sizes, new Vector2(100, 100),
+        Rect group = TooltipStackLayout.Place(sizes, new Vector2(pointerX, pointerY),
             new Vector2(400, 300), boxes, gap: 4, offset: 12, margin: 4);
 
-        Assert.Equal(new Rect(112, 112, 120, 128), group);
-        Assert.Equal(new Rect(112, 112, 80, 20), boxes[0]);
-        Assert.Equal(new Rect(112, 136, 120, 40), boxes[1]);
-        Assert.Equal(new Rect(112, 180, 100, 60), boxes[2]);
-    }
-
-    [Fact]
-    public void WholeStackFlipsAtTheViewportEdgesWithoutChangingItsOrder()
-    {
-        Vector2[] sizes = [new(80, 20), new(120, 40), new(100, 60)];
-        Span<Rect> boxes = stackalloc Rect[3];
-
-        Rect group = TooltipStackLayout.Place(sizes, new Vector2(390, 280),
-            new Vector2(400, 300), boxes, gap: 4, offset: 12, margin: 4);
-
-        Assert.Equal(new Rect(258, 140, 120, 128), group);
-        Assert.Equal(new Rect(258, 140, 80, 20), boxes[0]);
-        Assert.Equal(new Rect(258, 164, 120, 40), boxes[1]);
-        Assert.Equal(new Rect(258, 208, 100, 60), boxes[2]);
+        Assert.Equal(new Rect(expectedX, expectedY, 120, 128), group);
+        Assert.Equal(new Rect(expectedX, expectedY, 80, 20), boxes[0]);
+        Assert.Equal(new Rect(expectedX, expectedY + 24, 120, 40), boxes[1]);
+        Assert.Equal(new Rect(expectedX, expectedY + 68, 100, 60), boxes[2]);
     }
 
     [Fact]

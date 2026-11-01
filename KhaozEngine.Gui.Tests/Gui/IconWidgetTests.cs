@@ -91,18 +91,13 @@ namespace KhaozEngine.Tests.Gui
         // Exercised directly (not through StatChip, which only reaches the formatter when font is non-null -
         // needing a GPU-backed SpriteFont) since the caching/formatting logic itself is font-independent.
 
-        [Fact]
-        public void FormatStatChipText_JoinsLabelAndValueWithTwoSpaces()
+        [Theory]
+        [InlineData("120", "Gold  120")]
+        [InlineData("", "Gold")]
+        public void FormatStatChipText_formats_label_and_optional_value(string value, string expected)
         {
             var ui = Surface();
-            Assert.Equal("Gold  120", ui.FormatStatChipText("Gold", "120"));
-        }
-
-        [Fact]
-        public void FormatStatChipText_EmptyValue_ReturnsLabelAlone()
-        {
-            var ui = Surface();
-            Assert.Equal("Gold", ui.FormatStatChipText("Gold", ""));
+            Assert.Equal(expected, ui.FormatStatChipText("Gold", value));
         }
 
         [Fact]

@@ -52,16 +52,12 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal("A", TextEntry.Apply("", Frame(new[] { Key.A }, held: new[] { Key.LeftShift })));
         }
 
-        [Fact]
-        public void Backspace_removes_the_last_character()
+        [Theory]
+        [InlineData("abc", "ab")]
+        [InlineData("", "")]
+        public void Backspace_removes_a_character_or_leaves_an_empty_buffer(string current, string expected)
         {
-            Assert.Equal("ab", TextEntry.Apply("abc", Frame(new[] { Key.Backspace })));
-        }
-
-        [Fact]
-        public void Backspace_on_empty_is_a_noop()
-        {
-            Assert.Equal("", TextEntry.Apply("", Frame(new[] { Key.Backspace })));
+            Assert.Equal(expected, TextEntry.Apply(current, Frame(new[] { Key.Backspace })));
         }
 
         [Fact]
@@ -93,35 +89,22 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal("123", TextEntry.Apply("12", Frame(new[] { Key.D3 }), filter: DigitsOnly));
         }
 
-        [Fact]
-        public void Ctrl_held_does_not_type_the_letter()
+        [Theory]
+        [InlineData(Key.LeftControl)]
+        [InlineData(Key.RightControl)]
+        [InlineData(Key.LeftSuper)]
+        [InlineData(Key.RightSuper)]
+        public void Command_modifier_with_empty_clipboard_does_not_type_the_letter(Key modifier)
         {
-            // Ctrl+V is a paste shortcut, not a 'v' keystroke. With an empty clipboard, paste appends nothing,
-            // so the literal 'v' must never reach the field. (Paste-with-content is covered separately below.)
+            // An empty clipboard contributes no text, and the shortcut must not type a literal v.
             using var _ = new FakeClipboard("");
-            Assert.Equal("abc", TextEntry.Apply("abc", Frame(new[] { Key.V }, held: new[] { Key.LeftControl })));
-            Assert.Equal("abc", TextEntry.Apply("abc", Frame(new[] { Key.V }, held: new[] { Key.RightControl })));
-        }
-
-        [Fact]
-        public void Super_held_does_not_type_the_letter()
-        {
-            // Cmd+V (macOS paste) must not append 'v' either; empty clipboard -> no change.
-            using var _ = new FakeClipboard("");
-            Assert.Equal("abc", TextEntry.Apply("abc", Frame(new[] { Key.V }, held: new[] { Key.LeftSuper })));
-            Assert.Equal("abc", TextEntry.Apply("abc", Frame(new[] { Key.V }, held: new[] { Key.RightSuper })));
+            Assert.Equal("abc", TextEntry.Apply("abc", Frame(new[] { Key.V }, held: new[] { modifier })));
         }
 
         [Fact]
         public void Bare_V_still_appends()
         {
             Assert.Equal("v", TextEntry.Apply("", Frame(new[] { Key.V })));
-        }
-
-        [Fact]
-        public void Shift_still_types_with_no_modifier_block()
-        {
-            Assert.Equal("A", TextEntry.Apply("", Frame(new[] { Key.A }, held: new[] { Key.LeftShift })));
         }
 
         // ---- Numpad: keypad keys type digits, dot, minus (shift-independent; no symbol row on a keypad). ----
@@ -200,18 +183,14 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal("AA", TextEntry.Apply("A", Repeat(new[] { Key.A }, held: new[] { Key.LeftShift })));
         }
 
-        [Fact]
-        public void Ctrl_chord_blocks_repeated_character_entry()
+        [Theory]
+        [InlineData(Key.LeftControl)]
+        [InlineData(Key.LeftSuper)]
+        public void Command_chord_blocks_repeated_character_entry(Key modifier)
         {
-            // Holding Ctrl+V must not machine-gun 'v' into the field on repeat ticks.
-            Assert.Equal("abc", TextEntry.Apply("abc", Repeat(new[] { Key.V }, held: new[] { Key.LeftControl })));
-        }
-
-        [Fact]
-        public void Super_chord_blocks_repeated_character_entry()
-        {
-            // Holding Cmd+V (macOS) must not machine-gun 'v' either.
-            Assert.Equal("abc", TextEntry.Apply("abc", Repeat(new[] { Key.V }, held: new[] { Key.LeftSuper })));
+            // A held paste chord must neither type v nor paste again on an OS repeat tick.
+            using var _ = new FakeClipboard("XY");
+            Assert.Equal("abc", TextEntry.Apply("abc", Repeat(new[] { Key.V }, held: new[] { modifier })));
         }
 
         [Fact]
@@ -224,37 +203,19 @@ namespace KhaozEngine.Tests.Gui
 
         // ---- Clipboard paste: Ctrl/Cmd+V appends clipboard text, filtered + length-capped like typed chars. ----
 
-        [Fact]
-        public void Ctrl_V_pastes_clipboard_text()
+        [Theory]
+        [InlineData("ab", "XY", Key.LeftControl, "abXY")]
+        [InlineData("ab", "XY", Key.LeftSuper, "abXY")]
+        [InlineData("ab", "XY", Key.RightControl, "abXY")]
+        [InlineData("ab", "XY", Key.RightSuper, "abXY")]
+        [InlineData("", "X", Key.LeftControl, "X")]
+        [InlineData("ab", "", Key.LeftControl, "ab")]
+        [InlineData("", "a\nb", Key.LeftControl, "a\nb")]
+        public void Paste_chord_appends_clipboard_without_typing_the_shortcut(
+            string current, string clipboard, Key modifier, string expected)
         {
-            using var _ = new FakeClipboard("XY");
-            Assert.Equal("abXY", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.LeftControl })));
-        }
-
-        [Fact]
-        public void Cmd_V_pastes_clipboard_text()
-        {
-            using var _ = new FakeClipboard("XY");
-            Assert.Equal("abXY", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.LeftSuper })));
-        }
-
-        [Fact]
-        public void TextEntry_PasteChord_WorksViaHelper()
-        {
-            // The paste gate now routes through InputState.IsCommandDown (shared with MapEditorScene's chords),
-            // which counts all four modifier keys, not just the Left variants exercised above. Right Control and
-            // Right Super must paste too, so the refactor did not narrow the chord's key coverage.
-            using var _ = new FakeClipboard("XY");
-            Assert.Equal("abXY", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.RightControl })));
-            Assert.Equal("abXY", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.RightSuper })));
-        }
-
-        [Fact]
-        public void Paste_does_not_also_type_a_v()
-        {
-            // The paste chord consumes the V press: only the clipboard text lands, never a literal 'v'.
-            using var _ = new FakeClipboard("X");
-            Assert.Equal("X", TextEntry.Apply("", Frame(new[] { Key.V }, held: new[] { Key.LeftControl })));
+            using var _ = new FakeClipboard(clipboard);
+            Assert.Equal(expected, TextEntry.Apply(current, Frame(new[] { Key.V }, held: new[] { modifier })));
         }
 
         [Fact]
@@ -265,25 +226,13 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal("123", TextEntry.Apply("", Frame(new[] { Key.V }, held: new[] { Key.LeftControl }), filter: DigitsOnly));
         }
 
-        [Fact]
-        public void Paste_honors_maxLength()
+        [Theory]
+        [InlineData("XYZW", 4, "abXY")]
+        [InlineData("XYZ", 2, "ab")]
+        public void Paste_respects_remaining_capacity(string clipboard, int maxLength, string expected)
         {
-            using var _ = new FakeClipboard("XYZW");
-            Assert.Equal("abXY", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.LeftControl }), maxLength: 4));
-        }
-
-        [Fact]
-        public void Paste_into_a_full_field_appends_nothing()
-        {
-            using var _ = new FakeClipboard("XYZ");
-            Assert.Equal("ab", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.LeftControl }), maxLength: 2));
-        }
-
-        [Fact]
-        public void Empty_clipboard_paste_is_a_noop()
-        {
-            using var _ = new FakeClipboard("");
-            Assert.Equal("ab", TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.LeftControl })));
+            using var _ = new FakeClipboard(clipboard);
+            Assert.Equal(expected, TextEntry.Apply("ab", Frame(new[] { Key.V }, held: new[] { Key.LeftControl }), maxLength));
         }
 
         [Fact]
@@ -415,12 +364,5 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal("", TextEntry.Apply("", paste, filter: (_, c) => !char.IsLowSurrogate(c)));
         }
 
-        [Fact]
-        public void Clipboard_paste_keeps_its_existing_control_character_behavior()
-        {
-            using var _ = new FakeClipboard("a\nb");
-            Assert.Equal("a\nb", TextEntry.Apply("", Frame(new[] { Key.V },
-                held: new[] { Key.LeftControl })));
-        }
     }
 }

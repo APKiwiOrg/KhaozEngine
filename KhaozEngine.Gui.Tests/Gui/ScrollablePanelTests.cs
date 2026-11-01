@@ -280,8 +280,10 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(400f, sp.CurrentBounds.Height, 3);
         }
 
-        [Fact]
-        public void Header_drag_does_not_scroll_the_content()
+        [Theory]
+        [InlineData(165f, 250f)]
+        [InlineData(65f, 350f)]
+        public void Header_drag_resizes_without_scrolling_the_content(float dragY, float expectedHeight)
         {
             var sp = Make();
             sp.HeaderHeight = 30f;
@@ -291,27 +293,10 @@ namespace KhaozEngine.Tests.Gui
             var p = new Pointer();
             p.Update(Frame(new Vector2(150, 115), false)); sp.Update(p, Frame(new Vector2(150, 115), false));
             p.Update(Frame(new Vector2(150, 115), true)); sp.Update(p, Frame(new Vector2(150, 115), true));
-            p.Update(Frame(new Vector2(150, 165), true)); sp.Update(p, Frame(new Vector2(150, 165), true));
-            Assert.Equal(0f, sp.ScrollOffset, 3);   // the header drag resized, it did not pan the list
-        }
-
-        [Fact]
-        public void Header_drag_up_grows_the_panel_without_scrolling_the_content()
-        {
-            var sp = Make();
-            sp.HeaderHeight = 30f;
-            sp.Resizable = true;
-            sp.MinHeight = 100f;
-            sp.MaxHeight = 400f;
-            var p = new Pointer();
-            // Press in the header, then drag UP to grow the panel. Growing docks the top upward, so the content
-            // region rises past the fixed press-origin - the regression: without the _resizing guard the resize
-            // also panned the list (GetDragDelta's press-origin then landed inside the grown ContentBounds).
-            p.Update(Frame(new Vector2(150, 115), false)); sp.Update(p, Frame(new Vector2(150, 115), false));
-            p.Update(Frame(new Vector2(150, 115), true)); sp.Update(p, Frame(new Vector2(150, 115), true));
-            p.Update(Frame(new Vector2(150, 65), true)); sp.Update(p, Frame(new Vector2(150, 65), true));
-            Assert.Equal(350f, sp.CurrentBounds.Height, 3);   // it did resize (top rose above the press point)
-            Assert.Equal(0f, sp.ScrollOffset, 3);             // and the list did not scroll
+            // Growing the panel raises the content past the press origin, so resizing must suppress pan.
+            p.Update(Frame(new Vector2(150, dragY), true)); sp.Update(p, Frame(new Vector2(150, dragY), true));
+            Assert.Equal(expectedHeight, sp.CurrentBounds.Height, 3);
+            Assert.Equal(0f, sp.ScrollOffset, 3);
         }
 
         [Fact]
@@ -334,34 +319,19 @@ namespace KhaozEngine.Tests.Gui
             Assert.False(sp.ScrimDismissed);
         }
 
-        [Fact]
-        public void Scrim_dismiss_ignores_a_drag_that_began_on_the_panel()
-        {
-            var sp = Make();
-            sp.Scrim = new Rect(0, 0, 960, 540);   // full-surface scrim spanning behind the panel (Nullwake's setup)
-            var p = new Pointer();
-            // Press ON the list, scroll-drag up past the panel's top edge, release in the dimmed scrim above it.
-            // Press-origin is inside the panel, release is not: the gesture began on the panel so it must not dismiss.
-            p.Update(Frame(new Vector2(150, 200), false)); sp.Update(p, Frame(new Vector2(150, 200), false));
-            p.Update(Frame(new Vector2(150, 200), true)); sp.Update(p, Frame(new Vector2(150, 200), true));   // press inside the panel
-            p.Update(Frame(new Vector2(150, 50), true)); sp.Update(p, Frame(new Vector2(150, 50), true));    // drag up above the panel (still in the scrim)
-            p.Update(Frame(new Vector2(150, 50), false)); sp.Update(p, Frame(new Vector2(150, 50), false));   // release in the scrim above
-            Assert.False(sp.ScrimDismissed);
-        }
-
-        [Fact]
-        public void Scrim_dismiss_still_fires_for_a_drag_that_began_off_the_panel()
+        [Theory]
+        [InlineData(200f, false)]
+        [InlineData(40f, true)]
+        public void Scrim_drag_dismissal_depends_on_press_origin(float pressY, bool expectedDismissed)
         {
             var sp = Make();
             sp.Scrim = new Rect(0, 0, 960, 540);
             var p = new Pointer();
-            // Same drag shape, but press-origin AND release are both in the scrim above the panel (never on it):
-            // the guard is about the press origin, not about movement, so a genuine off-panel gesture still dismisses.
-            p.Update(Frame(new Vector2(150, 40), false)); sp.Update(p, Frame(new Vector2(150, 40), false));
-            p.Update(Frame(new Vector2(150, 40), true)); sp.Update(p, Frame(new Vector2(150, 40), true));    // press above the panel
-            p.Update(Frame(new Vector2(150, 50), true)); sp.Update(p, Frame(new Vector2(150, 50), true));    // small drag, still off-panel
-            p.Update(Frame(new Vector2(150, 50), false)); sp.Update(p, Frame(new Vector2(150, 50), false));   // release in the scrim
-            Assert.True(sp.ScrimDismissed);
+            p.Update(Frame(new Vector2(150, pressY), false)); sp.Update(p, Frame(new Vector2(150, pressY), false));
+            p.Update(Frame(new Vector2(150, pressY), true)); sp.Update(p, Frame(new Vector2(150, pressY), true));
+            p.Update(Frame(new Vector2(150, 50), true)); sp.Update(p, Frame(new Vector2(150, 50), true));
+            p.Update(Frame(new Vector2(150, 50), false)); sp.Update(p, Frame(new Vector2(150, 50), false));
+            Assert.Equal(expectedDismissed, sp.ScrimDismissed);
         }
 
         // ---- opt-in height glide (10.121.0) ----------------------------------------------------------------

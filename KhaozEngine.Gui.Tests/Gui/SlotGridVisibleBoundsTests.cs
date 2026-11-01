@@ -104,30 +104,18 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(-1, grid.PressOriginSlot);
         }
 
-        [Fact]
-        public void Visible_bounds_preserves_the_press_origin_invariant_for_a_partial_cell()
+        [Theory]
+        [InlineData(125f, 110f)]
+        [InlineData(110f, 125f)]
+        public void Partial_cell_taps_require_both_ends_in_visible_bounds(float pressX, float releaseX)
         {
             SlotGrid grid = Grid(count: 1);
             grid.VisibleBounds = new Rect(120, 105, 20, 30);
             var pointer = new Pointer();
 
-            pointer.Update(Frame(new Vector2(125, 120)));
-            pointer.Update(Frame(new Vector2(125, 120), leftDown: true));
-            pointer.Update(Frame(new Vector2(110, 120)));
-
-            Assert.Equal(-1, grid.Update(pointer));
-        }
-
-        [Fact]
-        public void A_press_hidden_by_visible_bounds_cannot_release_into_a_partial_cell()
-        {
-            SlotGrid grid = Grid(count: 1);
-            grid.VisibleBounds = new Rect(120, 105, 20, 30);
-            var pointer = new Pointer();
-
-            pointer.Update(Frame(new Vector2(110, 120)));
-            pointer.Update(Frame(new Vector2(110, 120), leftDown: true));
-            pointer.Update(Frame(new Vector2(125, 120)));
+            pointer.Update(Frame(new Vector2(pressX, 120)));
+            pointer.Update(Frame(new Vector2(pressX, 120), leftDown: true));
+            pointer.Update(Frame(new Vector2(releaseX, 120)));
 
             Assert.Equal(-1, grid.Update(pointer));
         }

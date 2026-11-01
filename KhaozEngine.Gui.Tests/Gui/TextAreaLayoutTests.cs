@@ -36,21 +36,20 @@ namespace KhaozEngine.Tests.Gui
                 Assert.Equal(new TextAreaLine(expected[i].Start, expected[i].Length), lines[i]);
         }
 
-        [Fact]
-        public void Newline_ends_a_line() => AssertLines(Wrap("ab\ncd", 100), (0, 2), (3, 2));
+        [Theory]
+        [InlineData("ab\ncd", 100f, new[] { 0, 3 }, new[] { 2, 2 })]
+        [InlineData("hello world again", 120f, new[] { 0, 12 }, new[] { 12, 5 })]
+        [InlineData("abcdefghij", 40f, new[] { 0, 4, 8 }, new[] { 4, 4, 2 })]
+        [InlineData("ab\n", 100f, new[] { 0, 3 }, new[] { 2, 0 })]
+        [InlineData("", 100f, new[] { 0 }, new[] { 0 })]
+        public void Wrap_preserves_line_boundaries(string text, float width, int[] starts, int[] lengths)
+        {
+            IReadOnlyList<TextAreaLine> lines = Wrap(text, width);
 
-        [Fact]
-        public void Words_wrap_after_the_last_space() =>
-            AssertLines(Wrap("hello world again", 120), (0, 12), (12, 5));
-
-        [Fact]
-        public void Long_word_hard_breaks() => AssertLines(Wrap("abcdefghij", 40), (0, 4), (4, 4), (8, 2));
-
-        [Fact]
-        public void Trailing_newline_adds_an_empty_line() => AssertLines(Wrap("ab\n", 100), (0, 2), (3, 0));
-
-        [Fact]
-        public void Empty_text_is_one_empty_line() => AssertLines(Wrap("", 100), (0, 0));
+            Assert.Equal(starts.Length, lines.Count);
+            for (int i = 0; i < starts.Length; i++)
+                Assert.Equal(new TextAreaLine(starts[i], lengths[i]), lines[i]);
+        }
 
         [Fact]
         public void Surrogate_pairs_are_never_split()
@@ -71,27 +70,19 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal((1, 0f), TextAreaLayout.CaretPosition(font, text, lines, 12));
         }
 
-        [Fact]
-        public void IndexAt_picks_the_nearest_boundary()
+        [Theory]
+        [InlineData("abcd", 100f, 0, 14f, 1)]
+        [InlineData("abcd", 100f, 0, 16f, 2)]
+        [InlineData("hello world again", 120f, 0, 500f, 11)]
+        [InlineData("hello world again", 120f, 1, 500f, 17)]
+        public void IndexAt_picks_the_nearest_boundary_on_the_requested_line(
+            string text, float width, int line, float x, int expected)
         {
             var font = new CountingMeasurer();
-            const string text = "abcd";
-            IReadOnlyList<TextAreaLine> lines = TextAreaLayout.Wrap(font, text, 100);
-
-            Assert.Equal(1, TextAreaLayout.IndexAt(font, text, lines, 0, 14));
-            Assert.Equal(2, TextAreaLayout.IndexAt(font, text, lines, 0, 16));
-        }
-
-        [Fact]
-        public void IndexAt_stays_on_a_soft_wrapped_line()
-        {
-            var font = new CountingMeasurer();
-            const string text = "hello world again";
-            IReadOnlyList<TextAreaLine> lines = TextAreaLayout.Wrap(font, text, 120);
+            IReadOnlyList<TextAreaLine> lines = TextAreaLayout.Wrap(font, text, width);
 
             // Index 12 renders at the start of line 1, so the far end of line 0 resolves to 11.
-            Assert.Equal(11, TextAreaLayout.IndexAt(font, text, lines, 0, 500));
-            Assert.Equal(17, TextAreaLayout.IndexAt(font, text, lines, 1, 500));
+            Assert.Equal(expected, TextAreaLayout.IndexAt(font, text, lines, line, x));
         }
 
         [Fact]

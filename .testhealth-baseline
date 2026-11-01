@@ -117,7 +117,6 @@
 1 KETEST002 KhaozEngine.Game.Tests/Physics/InstalledPoseFixture.cs
 2 KETEST002 KhaozEngine.Game.Tests/Physics/InstalledSupportPoseTests.cs
 1 KETEST002 KhaozEngine.Game.Tests/Physics/PhysicsQueryViewLifecycleTests.cs
-16 KETEST001 KhaozEngine.Game.Tests/Physics/PropCollisionFormatTests.cs
 1 KETEST002 KhaozEngine.Game.Tests/Physics/SupportCurvedWorkTests.cs
 2 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintCurvedProofOracle.cs
 1 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintProofReuseBasisTests.cs
@@ -138,8 +137,6 @@
 1 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.TiltedStorage.cs
 2 KETEST002 KhaozEngine.Game.Tests/Physics/SupportFootprintTests.WorldForm.cs
 3 KETEST002 KhaozEngine.Game.Tests/Physics/SupportNeighborhoodOracle.cs
-2 KETEST001 KhaozEngine.Gui.Tests/Gui/ContextMenuTests.cs
-2 KETEST001 KhaozEngine.Identity.Exchange.Tests/AspNetCore/ExchangeForwardedHeadersTests.cs
 2 KETEST001 KhaozEngine.Identity.Exchange.Tests/AspNetCore/ExchangeHostingPrimitiveTests.cs
 1 KETEST001 KhaozEngine.Identity.Exchange.Tests/AuthExchangeConstructionTests.cs
 1 KETEST001 KhaozEngine.Identity.Exchange.Tests/AuthExchangeOutcomeTests.cs
@@ -228,8 +225,7 @@
 1 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/MapTiledConcurrentSaveTests.cs
 5 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/MapTiledFileTests.cs
 5 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/MapTiledFormatTests.cs
-5 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeCollisionRefusalTests.cs
-1 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeCollisionServiceTests.cs
+2 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeCollisionRefusalTests.cs
 2 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeDocumentTransactionTests.cs
 4 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeFoliageCommandTests.cs
 1 KETEST001 KhaozEngine.MapEditor.Tests/MapDoc/NativeFoliageProposalAdmissionTests.cs
@@ -307,7 +303,6 @@
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11CommandStreamTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11ComputePathTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11ConstructionScopeTests.cs
-2 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11DeviceWiringTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11DrawPathTests.cs
 9 KETEST001 KhaozEngine.Render.Tests/Gpu/D3D11EmitterResolutionTests.cs
 4 KETEST002 KhaozEngine.Render.Tests/Gpu/D3D11EmitterResolutionTests.cs
@@ -365,7 +360,6 @@
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalRendererInitializationTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalResourceGpuTests.cs
 11 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalResourceLayoutTests.cs
-7 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalResourcePolicyTests.cs
 4 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalRingStrideTests.cs
 1 KETEST002 KhaozEngine.Render.Tests/Gpu/MetalShaderArchitectureTests.cs
 7 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalShaderGpuTests.cs
@@ -376,11 +370,9 @@
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalSwapchainCaptureTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalSwapchainFramebufferTests.cs
 6 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalTransferGpuTests.cs
-9 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalTransferPathTests.cs
 4 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalUniformRingTests.cs
 3 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalVertexInputTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/MotionExpectationTests.cs
-1 KETEST001 KhaozEngine.Render.Tests/Gpu/MslBindingOrderGuardTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/NativeDefaultTests.cs
 3 KETEST001 KhaozEngine.Render.Tests/Gpu/Performance/GpuPerfTimestampRingTests.Parity.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/PerspectiveExpectationTests.cs
@@ -438,7 +430,6 @@
 4 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanCommandListTests.cs
 3 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLayoutTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs
-2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDeviceLossLatchTests.cs
 3 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDeviceWiringTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDrawPathTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs
@@ -472,7 +463,6 @@
 1 KETEST002 KhaozEngine.Render.Tests/GpuPublicApiTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Imaging/PngReaderTests.cs
 1 KETEST002 KhaozEngine.Render.Tests/NameplateLegacyTemplateTests.cs
-2 KETEST002 KhaozEngine.Render.Tests/NameplateTemplateTests.cs
 1 KETEST002 KhaozEngine.Render.Tests/Render2D/DpiFontBindingTests.cs
 5 KETEST002 KhaozEngine.Render.Tests/Render2D/SpriteBatchMaskedTestRig.cs
 1 KETEST002 KhaozEngine.Render.Tests/Render2D/SpriteBatchMaskedVertexTests.cs
@@ -506,7 +496,6 @@
 2 KETEST001 KhaozEngine.Render.Tests/Render3D/TemporalHistoryReleaseTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Render3D/TemporalSplitReleaseTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Render3D/TileGroundSteepLoadOrderTests.cs
-4 KETEST001 KhaozEngine.Render.Tests/Render3D/TileGroundSteepShadingTests.cs
 3 KETEST001 KhaozEngine.Render.Tests/Render3D/UnderwaterSunlightSettingsTests.cs
 1 KETEST002 KhaozEngine.Render.Tests/Render3D/WaterColumnCopyTests.cs
 1 KETEST002 KhaozEngine.Render.Tests/Render3D/WaterColumnResourceLifecycleTests.cs
@@ -516,13 +505,11 @@
 2 KETEST001 KhaozEngine.Render.Tests/Render3D/WindowedFramePrepareTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Terrain/ChunkPropRefreshTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Terrain/ChunkSinkFieldSwapTests.cs
-7 KETEST001 KhaozEngine.Render.Tests/Terrain/RenderDistanceProfileTests.cs
 5 KETEST001 KhaozEngine.Render.Tests/Terrain/TerrainLodConfigTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Terrain/TerrainStreamerReconfigureTests.cs
 15 KETEST001 KhaozEngine.Render.Tests/TileWorld/AnimatedFoliageStyleTests.cs
-2 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileColorsTests.cs
 7 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileGroundMaterialsTests.cs
-5 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileGroundSteepCompanionsTests.cs
+4 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileGroundSteepCompanionsTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileWaterPlanesTests.cs
 4 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileWorldPropLayerTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/TileWorld/TileWorldRoofPropLayerTests.cs
@@ -602,7 +589,7 @@
 2 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/Editing/MarkerAndRegionCommandTests.cs
 1 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/Editing/ObjectCommandTests.cs
 12 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/Editing/PgmReaderTests.cs
-11 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/GroundMaterialSteepTests.cs
+7 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/GroundMaterialSteepTests.cs
 2 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileFoliageLayerPersistenceTests.cs
 2 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TileHeightsTests.cs
 4 KETEST001 KhaozEngine.TileWorld.Tests/TileWorld/TilePrefabTests.cs

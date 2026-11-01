@@ -158,7 +158,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
                     var countExpression = ArgumentFor(invocation, method, 1);
                     return countExpression is not null &&
                         model.GetConstantValue(countExpression, cancellationToken) is
-                            { HasValue: true, Value: int rangeCount } &&
+                        { HasValue: true, Value: int rangeCount } &&
                         rangeCount > 0;
                 default:
                     return false;

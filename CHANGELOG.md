@@ -8,6 +8,10 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-01
 
+- Add `RigidInstanceDraw.ShadowMobility` and `ShadowCasterMobility.Dynamic` so moving rigid casters share
+  current point-shadow layers with skinned casters while static scenery stays cached. Preserve shadows
+  through mobility changes and transient allocation failure with separately counted fallback work.
+  Existing draws retain their cached behavior (#1144).
 - Add the opt-in test-health ratchet to `KhaozEngine.CodeHealth.Analyzers`. KETEST001 counts exception-message
   wording assertions, excluding `DoesNotContain` and `DoesNotMatch` disclosure checks. KETEST002 counts
   `BindingFlags.NonPublic` references and `UnsafeAccessor` applications. Both enforce per-file allowances

@@ -60,19 +60,13 @@ namespace KhaozEngine.Tests.Windowing
 
         // ---- menu select ----------------------------------------------------
 
-        [Fact]
-        public void MenuSelect_fires_on_Enter()
+        [Theory]
+        [InlineData(Key.Enter)]
+        [InlineData(Key.Space)]
+        public void MenuSelect_fires_on_a_supported_keyboard_key(Key key)
         {
             var im = new InputManager();
-            im.Update(Keys(pressed: new[] { Key.Enter }));
-            Assert.True(im.IsMenuSelect(null, out _));
-        }
-
-        [Fact]
-        public void MenuSelect_fires_on_Space()
-        {
-            var im = new InputManager();
-            im.Update(Keys(pressed: new[] { Key.Space }));
+            im.Update(Keys(pressed: new[] { key }));
             Assert.True(im.IsMenuSelect(null, out _));
         }
 
@@ -262,24 +256,17 @@ namespace KhaozEngine.Tests.Windowing
 
         // ---- pointer delegation + press-origin invariant --------------------
 
-        [Fact]
-        public void IsTapIn_requires_press_and_release_inside_bounds()
+        [Theory]
+        [InlineData(150f, 140f, true)]
+        [InlineData(10f, 10f, false)]
+        public void IsTapIn_requires_the_press_to_begin_inside_before_releasing_inside(
+            float pressX, float pressY, bool expectedTap)
         {
             var box = new Rect(100, 100, 200, 80);
             var im = new InputManager();
-            im.Update(Mouse(new Vector2(150, 140), leftDown: true));   // press inside
-            im.Update(Mouse(new Vector2(150, 140), leftDown: false));  // release inside
-            Assert.True(im.IsTapIn(box));
-        }
-
-        [Fact]
-        public void IsTapIn_is_false_when_the_press_began_outside()
-        {
-            var box = new Rect(100, 100, 200, 80);
-            var im = new InputManager();
-            im.Update(Mouse(new Vector2(10, 10), leftDown: true));     // press outside
-            im.Update(Mouse(new Vector2(150, 140), leftDown: false));  // release inside
-            Assert.False(im.IsTapIn(box));                            // click-through prevented
+            im.Update(Mouse(new Vector2(pressX, pressY), leftDown: true));
+            im.Update(Mouse(new Vector2(150, 140), leftDown: false));
+            Assert.Equal(expectedTap, im.IsTapIn(box));
         }
 
         [Fact]
@@ -333,22 +320,16 @@ namespace KhaozEngine.Tests.Windowing
             new HashSet<MouseButton>(), new HashSet<MouseButton>(),
             pos, Vector2.Zero, scroll, 960, 540);
 
-        [Fact]
-        public void GetScrollIn_returns_rounded_delta_when_pointer_is_inside_bounds()
+        [Theory]
+        [InlineData(150f, 140f, 2.6f, 3)]
+        [InlineData(10f, 10f, 5f, 0)]
+        public void GetScrollIn_rounds_inside_and_suppresses_outside(
+            float pointerX, float pointerY, float scroll, int expectedDelta)
         {
-            var box = new Rect(100, 100, 200, 80);   // contains (150,140)
+            var box = new Rect(100, 100, 200, 80);
             var im = new InputManager();
-            im.Update(Scroll(new Vector2(150, 140), 2.6f));
-            Assert.Equal(3, im.GetScrollIn(box));                       // rounded to the nearest notch
-        }
-
-        [Fact]
-        public void GetScrollIn_is_zero_when_pointer_is_outside_bounds()
-        {
-            var box = new Rect(100, 100, 200, 80);   // does NOT contain (10,10)
-            var im = new InputManager();
-            im.Update(Scroll(new Vector2(10, 10), 5f));
-            Assert.Equal(0, im.GetScrollIn(box));                       // scoped: no scroll outside the region
+            im.Update(Scroll(new Vector2(pointerX, pointerY), scroll));
+            Assert.Equal(expectedDelta, im.GetScrollIn(box));
         }
     }
 }

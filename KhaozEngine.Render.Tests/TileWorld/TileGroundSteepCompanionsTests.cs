@@ -75,7 +75,7 @@ public class TileGroundSteepCompanionsTests
 
         var ex = Assert.Throws<TileWorldException>(() => TileGroundMaterials.Build(catalogs));
         Assert.Contains("ground material set", ex.Message);
-        Assert.Contains("not in the same catalog", ex.Message);
+        Assert.Contains("grass", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -83,23 +83,28 @@ public class TileGroundSteepCompanionsTests
     {
         var layers = new[] { Flat(), Flat(new TileGroundSteepLayer { CompanionSlot = 0, FromDegrees = 40f, ToDegrees = 55f }) };
         var ex = Assert.Throws<ArgumentException>(() => new TileGroundMaterialSet(1, 1, new ushort[] { 1 }, layers));
-        Assert.Contains("reserved missing-material layer", ex.Message);
+        Assert.Equal("layers", ex.ParamName);
+        Assert.Contains("layer 1", ex.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_hand_built_set_refuses_a_companion_naming_the_missing_slot()
+    [Theory]
+    [InlineData(2, 40f, 55f)] // companion names the reserved missing slot
+    [InlineData(1, 60f, 40f)] // band runs backwards
+    public void A_hand_built_set_refuses_an_invalid_companion_or_band(
+        int companionSlot, float fromDegrees, float toDegrees)
     {
-        var layers = new[] { Flat(new TileGroundSteepLayer { CompanionSlot = 2, FromDegrees = 40f, ToDegrees = 55f }), Flat(), Flat() };
+        var layers = new[]
+        {
+            Flat(new TileGroundSteepLayer
+            {
+                CompanionSlot = companionSlot, FromDegrees = fromDegrees, ToDegrees = toDegrees,
+            }),
+            Flat(),
+            Flat(),
+        };
         var ex = Assert.Throws<ArgumentException>(() => new TileGroundMaterialSet(1, 1, new ushort[] { 1, 2 }, layers));
-        Assert.Contains("not one of the set's material slots 0 to 1", ex.Message);
-    }
-
-    [Fact]
-    public void A_hand_built_set_refuses_a_band_the_packer_would_refuse()
-    {
-        var layers = new[] { Flat(new TileGroundSteepLayer { CompanionSlot = 1, FromDegrees = 60f, ToDegrees = 40f }), Flat(), Flat() };
-        var ex = Assert.Throws<ArgumentException>(() => new TileGroundMaterialSet(1, 1, new ushort[] { 1, 2 }, layers));
-        Assert.Contains("must rise strictly inside (0, 90)", ex.Message);
+        Assert.Equal("layers", ex.ParamName);
+        Assert.Contains("layer 0", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -36,13 +36,15 @@ public class TileWorldCameraProbeTests
                        Func<TileObjectArchetype, bool> blocks, Vector3 origin, Vector3 direction) =>
         new TileWorldCameraProbe(view, bounds, blocks).Reach(origin, direction, Length, Radius);
 
-    [Fact]
-    public void Open_ground_gives_the_full_length()
+    [Theory]
+    [InlineData(1.5f)]
+    [InlineData(0f)] // touching ground retries the surface pick from above
+    public void A_rising_boom_over_open_ground_gets_the_full_length(float pivotHeight)
     {
         using TileWorldView view = View(TileRenderTestData.HouseWorld(), out var bounds);
 
         float reach = Reach(view, bounds, _ => true,
-            new Vector3(40.5f, 1.5f, -40.5f), Vector3.Normalize(new Vector3(0f, 0.5f, 1f)));
+            new Vector3(40.5f, pivotHeight, -40.5f), Vector3.Normalize(new Vector3(0f, 0.5f, 1f)));
 
         Assert.Equal(Length, reach);
     }
@@ -56,17 +58,6 @@ public class TileWorldCameraProbeTests
             new Vector3(40.5f, 1.5f, -40.5f), new Vector3(0f, -MathF.Sin(1f), MathF.Cos(1f)));
 
         Assert.Equal(1.5f / MathF.Sin(1f) - Radius, reach, 1e-3f);
-    }
-
-    [Fact]
-    public void A_pivot_on_flat_ground_with_a_rising_boom_gets_the_full_length()
-    {
-        using TileWorldView view = View(TileRenderTestData.HouseWorld(), out var bounds);
-
-        float reach = Reach(view, bounds, _ => true,
-            new Vector3(40.5f, 0f, -40.5f), Vector3.Normalize(new Vector3(0f, 0.5f, 1f)));
-
-        Assert.Equal(Length, reach);
     }
 
     [Fact]

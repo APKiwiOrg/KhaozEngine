@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -179,8 +180,8 @@ public class MapWaterDomainTests
         var errors = new List<string>();
         MapWaterValidation.Validate(WithOceanColumn(64, descending: true), errors, new MapWaterWorkBudget(8));
         string error = Assert.Single(errors);
-        Assert.Contains("ocean", error, StringComparison.Ordinal);
-        Assert.Contains("8", error, StringComparison.Ordinal);
+        foreach (string value in new[] { "ocean", "8" })
+            Assert.Matches(@"(?<![\p{L}\p{N}_])" + Regex.Escape(value) + @"(?![\p{L}\p{N}_])", error);
     }
 
     [Fact]

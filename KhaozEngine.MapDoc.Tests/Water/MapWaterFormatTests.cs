@@ -96,7 +96,14 @@ public class MapWaterFormatTests
     [InlineData("short-ring", "water body 'ocean': ring 0 needs at least 3 vertices")]
     [InlineData("no-cover", "water body 'ocean': covers no space")]
     [InlineData("repeated-cover", "water body 'ocean': cover 'sea' is repeated")]
-    public void Validation_RefusesBadMediaAndBodies(string variant, string message)
+    [InlineData("bow-tie", "water body 'ocean': ring 0 self-intersects")]
+    [InlineData("collinear", "water body 'ocean': ring 0 has zero area")]
+    [InlineData("overlapping-pieces", "water body 'ocean': rect 0 and rect 1 overlap")]
+    [InlineData("overlapping-ring", "water body 'ocean': rect 0 and ring 0 overlap")]
+    [InlineData("overlapping-bodies", "water bodies 'cave-lake' and 'second-lake' overlap in space 'lake-cave'")]
+    [InlineData("too-many-pieces", "water body 'ocean': domain exceeds 65536 pieces")]
+    [InlineData("too-many-vertices", "water body 'ocean': domain exceeds 262144 vertices")]
+    public void Validation_RefusesInvalidWater(string variant, string message)
     {
         IReadOnlyList<string> errors = MapDocumentValidator.Validate(WaterFixtures.Broken(variant), MapDocRegistry.CreateDefault());
         Assert.Contains(errors, e => e.Contains(message, StringComparison.Ordinal));

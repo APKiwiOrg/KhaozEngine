@@ -23,7 +23,12 @@ public sealed class AllocationMeasurementTests
     {
         Action allocate = static () => GC.KeepAlive(new byte[37]);
         allocate();
-        Assert.Equal(64, AllocationMeasurement.Measure("one array", allocate));
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        allocate();
+        long expected = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.True(expected > 0);
+        Assert.Equal(expected, AllocationMeasurement.Measure("one array", allocate));
     }
 
     [Fact]
@@ -66,8 +71,8 @@ public sealed class AllocationMeasurementTests
     public void ARegionThatCannotStartDoesNotEndItsOwnersRegion()
     {
         using var owner = AllocationRegion.Start("owner");
-        var failure = Assert.ThrowsAny<XunitException>(() => AllocationRegion.Start("nested"));
-        Assert.Contains("could not start", failure.Message);
+        Assert.Throws<XunitException>(() => AllocationRegion.Start("nested"));
+        Assert.Equal(System.Runtime.GCLatencyMode.NoGCRegion, System.Runtime.GCSettings.LatencyMode);
         owner.Dispose();
     }
 

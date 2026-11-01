@@ -28,25 +28,14 @@ public class GridRayTests
         Assert.False(GridRay.IsClear(new Vector2(5f, 5f), new Vector2(95f, 5f), 10f, Blockers((4, 0))));
     }
 
-    [Fact]
-    public void DiagonalThatClipsACornerCellIsBlocked()
+    [Theory]
+    [InlineData(5f, 55f, 1, 0)] // X-first corner-adjacent cell.
+    [InlineData(2f, 38f, 2, 2)] // Thin wall on the diagonal interior.
+    public void DiagonalBlockersAreNotSkipped(float start, float end, int blockerX, int blockerY)
     {
-        // Pure 45-degree diagonal from cell (0,0) toward (5,5). The supercover traversal walks the
-        // edge-adjacent cells; a wall on the path is caught even though a coarse sampler could skip it.
-        var from = new Vector2(5f, 5f);
-        var to = new Vector2(55f, 55f);
-        // (1,0) is the first cell the X-first traversal steps into after the origin cell.
-        Assert.False(GridRay.IsClear(from, to, 10f, Blockers((1, 0))));
-    }
-
-    [Fact]
-    public void ThinDiagonalWallIsNotMissed()
-    {
-        // A wall straddling the diagonal's path that a 0.25*cellSize sampler could step over.
-        var from = new Vector2(2f, 2f);
-        var to = new Vector2(38f, 38f);
-        // The traversal from (0,0) to (3,3) passes through (1,1) and (2,2); block one of them.
-        Assert.False(GridRay.IsClear(from, to, 10f, Blockers((2, 2))));
+        var from = new Vector2(start, start);
+        var to = new Vector2(end, end);
+        Assert.False(GridRay.IsClear(from, to, 10f, Blockers((blockerX, blockerY))));
     }
 
     [Fact]

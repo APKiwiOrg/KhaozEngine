@@ -183,6 +183,7 @@ public class ConsumerStairBaseMountTests
         // The guard: once the centre has cleared the front edge by a full radius, the capsule must be on the flat, NOT
         // still lifted up on the tread it stepped off. A too-wide fan ring (>= 1.0 R) re-grabs the departing tread and
         // holds the capsule up here, stalling the descent; the shipped 0.95 R ring does not.
+        Assert.Contains(path, p => p.Z >= clearedEdge);
         foreach ((float z, float y) in path)
             if (z >= clearedEdge)
                 Assert.True(y <= flatY + 0.05f,
@@ -223,24 +224,5 @@ public class ConsumerStairBaseMountTests
         // (4) Reaches the top (no stall / deadlock): a stuck base never climbs off the first riser.
         Assert.True(r.MaxY >= topY - 0.3f,
             $"climb did not reach the top ({tag}): peak Y {r.MaxY:F3}, expected ~{topY:F3} - a base stall.");
-    }
-
-    // The explicit named reference phases from the investigation (walk 1.13; run 1.34 / 1.14 / 1.36 / 1.16), pinned
-    // separately so a regression names the exact worst-collapse arrival offsets.
-    [Theory]
-    [InlineData(false, 1.13f)]
-    [InlineData(true, 1.34f)]
-    [InlineData(true, 1.14f)]
-    [InlineData(true, 1.36f)]
-    [InlineData(true, 1.16f)]
-    public void ReferencePhase_MountsCleanly(bool run, float startZ)
-    {
-        Result r = Drive(startZ, run);
-        string tag = $"{(run ? "run" : "walk")} startZ={startZ:F2}";
-        float topY = Steps * Riser + MoveTuning.Default.CapsuleHalfHeight;
-        Assert.True(r.WorstDrop < 0.1f, $"reference collapse-bob {r.WorstDrop:F3} m ({tag}).");
-        Assert.True(r.WorstPen < 0.15f, $"reference penetration {r.WorstPen:F3} m ({tag}).");
-        Assert.True(r.WorstBack > -0.02f, $"reference backslide {r.WorstBack:F4} m ({tag}).");
-        Assert.True(r.MaxY >= topY - 0.3f, $"reference climb stalled: peak Y {r.MaxY:F3} ({tag}).");
     }
 }

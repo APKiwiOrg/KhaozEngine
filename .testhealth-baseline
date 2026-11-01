@@ -360,6 +360,7 @@
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalRendererInitializationTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalResourceGpuTests.cs
 11 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalResourceLayoutTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalResourcePolicyTests.cs
 4 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalRingStrideTests.cs
 1 KETEST002 KhaozEngine.Render.Tests/Gpu/MetalShaderArchitectureTests.cs
 7 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalShaderGpuTests.cs
@@ -430,6 +431,7 @@
 4 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanCommandListTests.cs
 3 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLayoutTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs
+2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDeviceLossLatchTests.cs
 3 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDeviceWiringTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDrawPathTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs

@@ -222,8 +222,12 @@ namespace KhaozEngine.Tests.Gpu
             // A positive result is a SUCCESS code in Vulkan, which is the one that catches people out.
             VulkanResultCodes.Require(Result.Incomplete, "vkEnumeratePhysicalDevices");
 
-            Assert.Throws<InvalidOperationException>(
+            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
                 () => VulkanResultCodes.Require(Result.ErrorIncompatibleDriver, "vkCreateInstance"));
+
+            // VulkanResultCodes promises the call name verbatim and the stable result token in the message.
+            Assert.Contains("vkCreateInstance", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("VK_ERROR_INCOMPATIBLE_DRIVER", ex.Message, StringComparison.Ordinal);
         }
 
         /// <summary><c>VK_SUBOPTIMAL_KHR</c> is a SUCCESS, which the swapchain row depends on and which is the

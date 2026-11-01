@@ -220,7 +220,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>A write past the end reports the offending parameter and value before any copy occurs.</summary>
         [Fact]
-        public void AWritePastTheEnd_IsRefusedWithItsParameterAndValue()
+        public void AWritePastTheEnd_IsRefusedWithBothNumbers()
         {
             MetalBufferPolicy.RequireWriteFits(0, 64, 64);
             MetalBufferPolicy.RequireWriteFits(32, 32, 64);
@@ -230,6 +230,9 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal("writeBytes", thrown.ParamName);
             Assert.Equal(33u, thrown.ActualValue);
+            // MetalBufferPolicy promises both numbers in the refusal: the write size and the capacity.
+            Assert.Contains("33", thrown.Message, StringComparison.Ordinal);
+            Assert.Contains("64", thrown.Message, StringComparison.Ordinal);
         }
 
         // ---- Textures and views -------------------------------------------------------------------------------

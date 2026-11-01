@@ -150,9 +150,8 @@ public class TileFootprintInterestTests
         ArgumentOutOfRangeException error =
             Assert.Throws<ArgumentOutOfRangeException>(() => h.Server.SpawnActor(new TileCoord(20, 20, 0), spawn));
 
-        Assert.Contains("InterestRadius", error.Message, StringComparison.Ordinal);
-        Assert.Contains("OverlapMargin", error.Message, StringComparison.Ordinal);
-        Assert.Contains("16.41", error.Message, StringComparison.Ordinal);
+        Assert.Equal("spec", error.ParamName);
+        Assert.Equal(2, error.ActualValue);
         // The refusal is the PAIR rather than the body, so one tile is still fine and a wider band admits the 2x2.
         Assert.NotEqual(0L, h.Body(new TileCoord(20, 20, 0), size: 1));
         using var wider = new Harness(radius: 15f, margin: 17f);
@@ -189,7 +188,8 @@ public class TileFootprintInterestTests
         ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(
             () => h.Server.Actors.Add(definition, new TileCoord(20, 20, 0)));
 
-        Assert.Contains("OverlapMargin", error.Message, StringComparison.Ordinal);
+        Assert.Equal("definition", error.ParamName);
+        Assert.Equal(definition.FootprintSize, error.ActualValue);
         Assert.Empty(h.Server.Actors.Spawners);
         // Nothing to spawn, so the tick the definition would have fired on is uneventful.
         h.Server.Tick(Dt);

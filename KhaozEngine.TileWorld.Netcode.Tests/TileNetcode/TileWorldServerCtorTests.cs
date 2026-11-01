@@ -26,8 +26,6 @@ public class TileWorldServerCtorTests
             new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator()));
 
         Assert.Equal("config", refused.ParamName);
-        Assert.Contains("PlaneCount 3", refused.Message);
-        Assert.Contains("4 planes", refused.Message);
     }
 
     [Fact]

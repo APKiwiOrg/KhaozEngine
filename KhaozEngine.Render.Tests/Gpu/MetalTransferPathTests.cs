@@ -243,10 +243,10 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Unaligned offsets refuse the offending side before opening an encoder or recording work.</summary>
         [Theory]
-        [InlineData(3u, 0u, "srcOffsetBytes")]
-        [InlineData(4u, 6u, "dstOffsetBytes")]
+        [InlineData(3u, 0u, "srcOffsetBytes", "destination offset")]
+        [InlineData(4u, 6u, "dstOffsetBytes", "source offset")]
         public void AnUnalignedOffset_IsRefusedAndNamesItsParameter(uint sourceOffset, uint destinationOffset,
-            string parameter)
+            string parameter, string otherSide)
         {
             (MetalBuffer source, MetalBuffer destination) = Buffers();
             _list.Begin();
@@ -255,6 +255,8 @@ namespace KhaozEngine.Tests.Gpu
                 () => _list.CopyBuffer(source, sourceOffset, destination, destinationOffset, 16));
 
             Assert.Equal(parameter, thrown.ParamName);
+            // The refusal must not blame the side that was aligned.
+            Assert.DoesNotContain(otherSide, thrown.Message, StringComparison.Ordinal);
             AssertNothingWasSpent();
         }
 

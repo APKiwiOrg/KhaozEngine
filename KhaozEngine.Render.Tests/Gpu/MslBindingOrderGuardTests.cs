@@ -239,8 +239,9 @@ void main() { o = texture(sampler2D(T[1], S), vec2(0.5)) + texture(sampler2D(T[0
             byte[] fragment = SpirvFrontEnd.ToSpirv(frag, GpuShaderStages.Fragment, "TextureArray");
             Assert.Throws<ShaderValidationException>(
                 () => SpirvCrossCompile.VertexFragmentToMsl(vertex, fragment, "TextureArray"));
-            Assert.Throws<ShaderValidationException>(
+            var ex = Assert.Throws<ShaderValidationException>(
                 () => ShaderValidation.ValidatePair(PositionOnlyVert, frag, "TextureArray"));
+            Assert.DoesNotContain("binding order", ex.Message);
         }
 
         /// <summary>A stage that declares no resources at all, which is what the post stack's fullscreen vertex

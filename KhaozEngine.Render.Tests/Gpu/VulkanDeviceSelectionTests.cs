@@ -257,6 +257,9 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(VulkanPhysicalDeviceSelection.NoDevice, chosen);
             Assert.Null(warning);
+            // Describe must answer NoDevice over an empty enumeration rather than index a device.
+            Assert.False(string.IsNullOrWhiteSpace(VulkanPhysicalDeviceSelection.Describe(
+                chosen, VulkanPhysicalDeviceSelection.Parse("2"), empty)));
         }
 
         /// <summary>

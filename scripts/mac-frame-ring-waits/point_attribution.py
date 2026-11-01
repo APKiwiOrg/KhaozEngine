@@ -95,42 +95,40 @@ def changes(previous, current, arena, details, sequence):
             by_left, by_right = {c['motionKey']: (i, c) for i, c in left}, {c['motionKey']: (i, c) for i, c in right}
             for key in sorted((set(lk) & set(rk))-{0}):
                 if lk[key] != 1 or rk[key] != 1: continue
+                paired_keys.add(key)
                 before_id, before = by_left[key]; after_id, after = by_right[key]
                 fields = [label for field, label in (('matrixWords', 'transform'), ('castKind', 'cast'),
                                                       ('dissolveWord', 'dissolve')) if before[field] != after[field]]
                 if any(before[field] != after[field] for field in ('meshIndex', 'meshGeneration')): fields.append('mesh')
                 if fields:
-                    paired_keys.add(key)
                     local_keyed.append((key, fields, before_id, after_id))
-        if lt == rt and not local_keyed: continue
-        if same_multiset and not local_keyed:
-            labels.append('order-only')
-            continue
         for key, fields, before_id, after_id in local_keyed:
             labels.extend('keyed-'+field for field in fields)
             keyed_count += 1
             if details.retain(2, sequence):
                 keyed.append(dict(motionKey=key, fields=fields, before=evidence(before_id, arena), after=evidence(after_id, arena)))
-        # A paired unique change already identifies both records. Other differences need separate evidence.
-        for rows, counts, target in ((left, Counter(lt)-Counter(rt), removed), (right, Counter(rt)-Counter(lt), added)):
+        # Paired identities cannot cancel uncertain occurrences. Compare each remaining key cohort exactly.
+        unpaired_left = [(i, c) for i, c in left if kind == 1 or c['motionKey'] not in paired_keys]
+        unpaired_right = [(i, c) for i, c in right if kind == 1 or c['motionKey'] not in paired_keys]
+        lc = Counter((c['motionKey'], token(c)) for _, c in unpaired_left)
+        rc = Counter((c['motionKey'], token(c)) for _, c in unpaired_right)
+        for rows, counts, target in ((unpaired_left, lc-rc, removed), (unpaired_right, rc-lc, added)):
             for caster_id, c in rows:
-                t = token(c)
+                t = (c['motionKey'], token(c))
                 if counts[t]:
                     counts[t] -= 1
-                    if c['motionKey'] in paired_keys: continue
                     if target is removed: removed_count += 1
                     else: added_count += 1
                     if details.retain(1, sequence): target.append(evidence(caster_id, arena))
         if kind == 1:
-            labels.append('foliage-membership')
-            continue
-        duplicate_keys = {key for key, count in (*lk.items(), *rk.items()) if key and count > 1}
-        ambiguous_left = Counter((c['motionKey'], token(c)) for _, c in left if c['motionKey'] in duplicate_keys)
-        ambiguous_right = Counter((c['motionKey'], token(c)) for _, c in right if c['motionKey'] in duplicate_keys)
-        if ambiguous_left != ambiguous_right: labels.append('ambiguous-duplicate-motion-key')
-        if Counter(token(c) for _, c in left if not c['motionKey']) != Counter(token(c) for _, c in right if not c['motionKey']):
-            labels.append('ambiguous-unkeyed')
-        if set(lk)-{0} != set(rk)-{0} or len(left) != len(right): labels.append('rigid-membership')
+            if lc != rc: labels.append('foliage-membership')
+        else:
+            duplicate_keys = {key for key, count in (*lk.items(), *rk.items()) if key and count > 1}
+            changed_cohorts = {key for key, _ in (lc-rc) | (rc-lc)}
+            if changed_cohorts & duplicate_keys: labels.append('ambiguous-duplicate-motion-key')
+            if 0 in changed_cohorts: labels.append('ambiguous-unkeyed')
+            if lk != rk: labels.append('rigid-membership')
+        if lt != rt and same_multiset and not local_keyed and lc == rc: labels.append('order-only')
     return dict(classifications=list(dict.fromkeys(labels)) or ['unchanged'], keyedChanges=keyed, added=added, removed=removed,
                 signatureInputsChanged=signature_inputs_changed, keyedChangeCount=keyed_count, addedCount=added_count, removedCount=removed_count)
 
@@ -204,7 +202,7 @@ def _frame(value, arena, samples, path):
     require(value['complete'] == (value['availability'] in (1, 2, 3, 4)), path+' availability/completion differs')
 
 
-def _row(row, frame, arena, base_rows, transient_rows):
+def _row_structure(row, frame, arena, base_rows, transient_rows):
     obj(row, [*ROW_INTS, *ROW_FLAGS, *ROW_LONGS], 'row')
     integer(row['key'], -(1 << 63), (1 << 63)-1, 'key')
     for name in ROW_FLAGS: require(type(row[name]) is bool, name+' must be Boolean')
@@ -218,7 +216,19 @@ def _row(row, frame, arena, base_rows, transient_rows):
     for name in ('slot', 'span', 'selectedOrdinal', 'transientSlot', 'transientSelectedOrdinal'): integer(row[name], -1, I32, name)
     integer(row['slot'], -1, base_rows-1, 'row.slot live base atlas bound')
     integer(row['transientSlot'], -1, transient_rows-1, 'row.transientSlot live transient atlas bound')
+    integer(row['ordinal'], 0, frame['rowCount']-1, 'row.ordinal')
+    integer(row['selectedOrdinal'], -1, frame['rowCount']-1, 'row.selectedOrdinal')
+    integer(row['transientSelectedOrdinal'], -1, 2*frame['rowCount']-1, 'row.transientSelectedOrdinal')
     integer(row['input'], 0, frame['inputCount']-1, 'row.input')
+    integer(row['span'], -1, frame['spanCount']-1, 'row.span')
+    if row['span'] >= 0:
+        span = arena['spans'][row['span']]
+        require(span['start']+span['count'] <= frame['referenceCount'], 'forward contributor references')
+        refs = arena['references'][span['start']:span['start']+span['count']]
+        require(all(ref['caster'] < frame['casterCount'] for ref in refs), 'forward caster reference')
+
+
+def _row(row, frame, arena, base_rows):
     if frame['availability'] == 1:
         require(base_rows > 0 and row['slotOutcome'] in (1, 2, 3), 'live-atlas request lacks a slot lookup')
         require(row['signatureStatus'] == (0 if row['mode'] == 2 else 1 if row['slot'] >= 0 else 2), 'signature applicability differs')
@@ -242,9 +252,7 @@ def _row(row, frame, arena, base_rows, transient_rows):
     if evaluated:
         integer(row['span'], 0, frame['spanCount']-1, 'row.span')
         span = arena['spans'][row['span']]
-        require(span['start']+span['count'] <= frame['referenceCount'], 'forward contributor references')
         refs = arena['references'][span['start']:span['start']+span['count']]
-        require(all(ref['caster'] < frame['casterCount'] for ref in refs), 'forward caster reference')
         casters = [arena['casters'][ref['caster']] for ref in refs]
         require(reconstruct(arena['inputs'][row['input']]['headerWords'], casters) == row['newSignature'], 'computed signature differs')
         require(row['mismatch'] == (row['oldSignature'] != row['newSignature']), 'mismatch flag differs')
@@ -346,21 +354,22 @@ def audit_attribution(report, proof, *, detail_limit=None):
             _frame(snapshot.get('pointAttribution'), arena, len(samples), 'snapshot.pointAttribution')
             require(snapshot.get('pointAttribution') == frame, 'snapshot frame range ownership differs')
             availability[str(frame['availability'])] += 1
+            rows = arena['rows'][frame['rowStart']:frame['rowStart']+frame['rowCount']]
+            base_rows = integer(snapshot['configuration']['pointRows'], 0, I32, 'configuration.pointRows')
+            transient_rows = integer(snapshot['configuration']['transientRows'], 0, I32, 'configuration.transientRows')
+            for row in rows: _row_structure(row, frame, arena, base_rows, transient_rows)
             if not frame['complete']:
                 continue
             scene_frame = integer(snapshot['inputs']['sceneFrameIndex'], 1, (1 << 63)-1, 'inputs.sceneFrameIndex')
             require(frame['sceneFrame'] == scene_frame, 'scene-frame ownership differs')
-            rows = arena['rows'][frame['rowStart']:frame['rowStart']+frame['rowCount']]
             require([r['ordinal'] for r in rows] == list(range(len(rows))), 'request ordinal inventory differs')
             require(len({r['lightIndex'] for r in rows}) == len(rows), 'duplicate uploaded light index')
             if frame['availability'] in (2, 4): require(not rows, 'disabled or empty callback contains requests')
-            base_rows = integer(snapshot['configuration']['pointRows'], 0, I32, 'configuration.pointRows')
-            transient_rows = integer(snapshot['configuration']['transientRows'], 0, I32, 'configuration.transientRows')
             _account(rows, snapshot['counters'], frame['availability'])
             keys = Counter(r['key'] for r in rows if r['mode'] == 1)
             observed += 1
             for ordinal, row in enumerate(rows):
-                _row(row, frame, arena, base_rows, transient_rows)
+                _row(row, frame, arena, base_rows)
                 if row['mode'] != 1: continue
                 light = lights.setdefault(row['key'], dict(key=row['key'], mismatches=0, rebuilds=0, firstChange=None, history=[]))
                 light['mismatches'] += row['mismatch']; light['rebuilds'] += row['completed']

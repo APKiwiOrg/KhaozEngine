@@ -114,6 +114,7 @@ jobs:
           sh scripts/check-agent-instructions.sh --tree
           sh scripts/check-scratch.sh --tree
           sh scripts/tests/check-scratch.test.sh
+          sh scripts/tests/check-test-health.test.sh
       # Fail fast if the docs' "current version" declarations drifted from Directory.Build.props. Runs
       # on every event, both paths, so a selective docs-only push is still guarded.
       - name: Check doc version consistency

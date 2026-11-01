@@ -10,8 +10,16 @@
   <ItemGroup Condition="'$(KhaozFileSizeBaselineDir)' != ''">
     <AdditionalFiles Include="$(KhaozFileSizeBaselineDir)/.filesize-baseline" />
   </ItemGroup>
+  <!-- Test-health adoption uses the same walked-up discovery and an independent override. -->
+  <PropertyGroup>
+    <KhaozTestHealthBaselineDir Condition="'$(KhaozTestHealthBaselineDir)' == ''">$([MSBuild]::GetDirectoryNameOfFileAbove('$(MSBuildProjectDirectory)', '.testhealth-baseline'))</KhaozTestHealthBaselineDir>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(KhaozTestHealthBaselineDir)' != ''">
+    <AdditionalFiles Include="$(KhaozTestHealthBaselineDir)/.testhealth-baseline" />
+  </ItemGroup>
   <ItemGroup>
     <!-- Surfaces the cap override to the analyzer as build_property.KhaozFileSizeCap. -->
     <CompilerVisibleProperty Include="KhaozFileSizeCap" />
+    <CompilerVisibleProperty Include="KhaozTestHealthMode" />
   </ItemGroup>
 </Project>

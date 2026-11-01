@@ -58,5 +58,8 @@
   <ItemGroup>
     <AdditionalFiles Include="$(MSBuildThisFileDirectory).filesize-baseline"
                      Condition="Exists('$(MSBuildThisFileDirectory).filesize-baseline')" />
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory).testhealth-baseline"
+                     Condition="Exists('$(MSBuildThisFileDirectory).testhealth-baseline')" />
+    <CompilerVisibleProperty Include="KhaozTestHealthMode" />
   </ItemGroup>
 </Project>

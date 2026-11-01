@@ -24,7 +24,7 @@ public class GroundMaterialSteepTests
     static void AssertDiagnosticValues(string message, string[] values)
     {
         foreach (string value in values)
-            Assert.Matches(@"(?<![\p{L}\p{N}_])" + Regex.Escape(value) + @"(?![\p{L}\p{N}_])", message);
+            Assert.Matches(@"(?<![\p{L}\p{N}_.\-])" + Regex.Escape(value) + @"(?![\p{L}\p{N}_\-]|\.[\p{L}\p{N}])", message);
     }
 
     [Fact]

@@ -181,7 +181,7 @@ public class MapWaterDomainTests
         MapWaterValidation.Validate(WithOceanColumn(64, descending: true), errors, new MapWaterWorkBudget(8));
         string error = Assert.Single(errors);
         foreach (string value in new[] { "ocean", "8" })
-            Assert.Matches(@"(?<![\p{L}\p{N}_])" + Regex.Escape(value) + @"(?![\p{L}\p{N}_])", error);
+            Assert.Matches(@"(?<![\p{L}\p{N}_.\-])" + Regex.Escape(value) + @"(?![\p{L}\p{N}_\-]|\.[\p{L}\p{N}])", error);
     }
 
     [Fact]

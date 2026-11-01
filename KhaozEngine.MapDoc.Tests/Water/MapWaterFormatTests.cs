@@ -108,7 +108,7 @@ public class MapWaterFormatTests
     {
         IReadOnlyList<string> errors = MapDocumentValidator.Validate(WaterFixtures.Broken(variant), MapDocRegistry.CreateDefault());
         Assert.Contains(errors, error => diagnosticValues.All(value =>
-            Regex.IsMatch(error, @"(?<![\p{L}\p{N}_])" + Regex.Escape(value) + @"(?![\p{L}\p{N}_])")));
+            Regex.IsMatch(error, @"(?<![\p{L}\p{N}_.\-])" + Regex.Escape(value) + @"(?![\p{L}\p{N}_\-]|\.[\p{L}\p{N}])")));
     }
 
     [Fact]

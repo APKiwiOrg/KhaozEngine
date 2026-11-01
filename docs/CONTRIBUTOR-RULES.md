@@ -168,8 +168,9 @@ In this repository:
 - Rule 12's category is excluded by every default filter (`scripts/ci-selective-test.sh`, `ci.yml`,
   `cross-platform-gpu.yml`). Run it on demand with the cross-platform-gpu `renderTestFilter` input set to
   `Category=Diagnostic`. Issue #491 is the precedent: a wall-clock bound that flaked on a loaded shared runner.
-- Rule 14's reference is `tools/Physics.Rebase.Perf.Tests`, outside `KhaozEngine.slnx`, which runs only on its
-  own weekly and on-demand `physics-rebase-perf.yml` workflow.
+- Rule 14's reference is `tools/Renderer.Perf.Tooling.Tests`, outside `KhaozEngine.slnx`. It runs on the free
+  `tooling-validation.yml` workflow when its own inputs change, never in the engine full suite. `tools/Items.Benchmark.Tests` and
+  `tools/NavCapture.Research.Tests` follow the same pattern.
 - Rule 6's shared helpers include `test-shared` (allocation measurement, serialized reporting) and each area
   test project's fixtures. Process-global state still needs a `DisableParallelization` collection (see
   above).

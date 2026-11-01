@@ -108,10 +108,13 @@ change should break few tests, and each failure should point at a real defect. T
 fleet standard. Every game repo carries the same text as game-template's managed `docs/WRITING-TESTS.md`, so
 keep the two in step and change the shared wording in both.
 
-1. **Find the existing test first.** Search for a test of the same behaviour and extend it, usually with a
-   theory row. Add a new test only for behaviour no test covers. Each theory row covers a distinct branch or
-   boundary, so ten rows that take the same path are one row. Sibling facts that differ only in their inputs
-   are one theory.
+1. **Decide the test is needed, then find the existing one.** Before writing a test, name what it guards (a
+   contract, a rule, an owner ruling or a past regression) and search for a test that already fails when that
+   breaks. If one does, add nothing, or strengthen that test. If a similar test covers part of the behaviour,
+   favour it: extend it, usually with a theory row, or combine the two into one theory. Add a new test only
+   for behaviour no test covers. Each theory row covers a distinct branch or boundary, so ten rows that take
+   the same path are one row. Sibling facts that differ only in their inputs are one theory. A test that
+   guards nothing new costs CI time on every run and breaks on correct refactors without catching anything.
 2. **Test the rule, not the value.** Do not copy a tunable constant, palette entry, default or published
    catalog number into an assertion. Such a test fails only when someone retunes on purpose. Assert the
    property the value must keep: a bound, an ordering, a monotonic step, a conservation.

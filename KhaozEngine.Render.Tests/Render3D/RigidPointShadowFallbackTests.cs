@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using KhaozEngine.Render3D;
 using Xunit;
 
@@ -78,6 +80,36 @@ public sealed class RigidPointShadowFallbackTests
         Assert.True(current.PointFaceDrawCalls >= 12);
         Assert.Equal(0, current.PointStaticRebuilds);
     }
+
+    [Fact]
+    public void StaticToMovingSwitchClearsCachedPoseBeforeLiveSplitSampling()
+    {
+        using var rig = new RigidPointShadowRig();
+        rig.Warm();
+        Assert.Equal(2, rig.Scene.PointShadowTransientRows);
+        rig.Frame(mobility: ShadowCasterMobility.Static);
+        Assert.All(rig.RigidPointDraws(), draw => { Assert.Equal(0u, draw.Slot); Assert.Equal(2u, draw.Value); });
+        ShadowPassDiagnostics held = rig.Frame(mobility: ShadowCasterMobility.Static);
+        Assert.Equal(2, held.PointShadowedLights);
+        Assert.Equal(0, held.PointFaceDrawCalls);
+        rig.Settings.PointShadows.MaxStaticRebuildsPerFrame = 0;
+
+        ShadowPassDiagnostics current = rig.Frame(0.5f);
+
+        Assert.Equal(2, current.PointRigidTransitionRowsRendered);
+        Assert.Equal(0, current.PointRigidFallbackRowsRendered);
+        Assert.Equal(0, current.PointStaticRebuilds);
+        Assert.Equal(2, current.PointTransientRowsRendered);
+        Assert.Equal(12, current.PointStaticTransientRigidDrawCalls);
+        Assert.Equal(24, current.PointFaceDrawCalls);
+        var draws = rig.RigidPointDraws();
+        Assert.Equal(24, draws.Length);
+        // Two lights with six faces each. Base rows contain scenery, transient rows contain the current actor.
+        Assert.All(draws.Take(12), draw => { Assert.Equal(0u, draw.Slot); Assert.Equal(1u, draw.Value); });
+        Assert.All(draws.Skip(12), draw => { Assert.Equal(1u, draw.Slot); Assert.Equal(1u, draw.Value); });
+        Assert.Equal(0.5f, BitConverter.ToSingle(Assert.IsType<byte[]>(rig.InstanceUpload), 176));
+    }
+
     [Fact]
     public void UnadmittedRigidRowHonorsZeroOrdinaryBudget()
     {

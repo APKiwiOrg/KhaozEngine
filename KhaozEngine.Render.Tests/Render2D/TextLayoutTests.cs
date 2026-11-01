@@ -15,24 +15,13 @@ namespace KhaozEngine.Tests.Render2D
 
         static readonly FixedFont Font = new();
 
-        [Fact]
-        public void AlignedX_left_is_the_left_edge()
+        [Theory]
+        [InlineData(TextAlign.Left, 100f)]
+        [InlineData(TextAlign.Center, 185f)]
+        [InlineData(TextAlign.Right, 270f)]
+        public void AlignedX_positions_text_for_the_selected_alignment(TextAlign align, float expected)
         {
-            Assert.Equal(100f, TextLayout.AlignedX(Font, "abc", left: 100, width: 200, TextAlign.Left));
-        }
-
-        [Fact]
-        public void AlignedX_center_offsets_by_half_the_leftover()
-        {
-            // "abc" = 30px wide in a 200px region -> (200-30)/2 = 85 past the left edge
-            Assert.Equal(100f + 85f, TextLayout.AlignedX(Font, "abc", left: 100, width: 200, TextAlign.Center));
-        }
-
-        [Fact]
-        public void AlignedX_right_puts_the_text_against_the_right_edge()
-        {
-            // right edge = 100+200 = 300; "abc" 30px -> starts at 270
-            Assert.Equal(270f, TextLayout.AlignedX(Font, "abc", left: 100, width: 200, TextAlign.Right));
+            Assert.Equal(expected, TextLayout.AlignedX(Font, "abc", left: 100, width: 200, align));
         }
 
         [Fact]
@@ -55,13 +44,13 @@ namespace KhaozEngine.Tests.Render2D
             Assert.Equal("tiny", lines[2]);
         }
 
-        [Fact]
-        public void Wrap_hard_breaks_a_word_wider_than_the_limit_when_enabled()
+        [Theory]
+        [InlineData("tiny enormouslylongword tiny")]
+        [InlineData("tiny\nenormouslylongword tiny")]
+        public void Wrap_hard_breaks_a_word_wider_than_the_limit_when_enabled(string text)
         {
-            // maxWidth 60 = 6 chars. "enormouslylongword" (18) has no break point, so with hardBreak it is
-            // sliced into three 6-char chunks; the trailing "ngword" chunk cannot repack with the following
-            // "tiny" (would overflow), so "tiny" starts its own line.
-            var lines = TextLayout.Wrap(Font, "tiny enormouslylongword tiny", 60f, hardBreak: true);
+            // Six characters fit per line. Both a space and an explicit break precede the long word.
+            var lines = TextLayout.Wrap(Font, text, 60f, hardBreak: true);
             Assert.Equal(new[] { "tiny", "enormo", "uslylo", "ngword", "tiny" }, lines);
         }
 

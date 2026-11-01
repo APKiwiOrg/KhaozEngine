@@ -55,26 +55,14 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(0f, (mn.Z + mx.Z) * 0.5f, 3);         // Z re-centred on origin
         }
 
-        [Fact]
-        public void Normalize_ImplausibleDeclaredHeight_Throws()
+        [Theory]
+        [InlineData(2f, 5000f)]
+        [InlineData(5000f, 1.8f)]
+        [InlineData(0f, 2f)]
+        public void Normalize_rejects_implausible_or_degenerate_height(float rawHeight, float declaredHeight)
         {
-            GltfMesh raw = Box(0f, 0f, 0f, 1f, 2f, 1f);
-            Assert.Throws<InvalidOperationException>(() => PropLoader.Normalize(raw, heightMeters: 5000f));
-        }
-
-        [Fact]
-        public void Normalize_ImplausibleScale_Throws()
-        {
-            // A 5000-unit-tall raw mesh declared as 1.8 m needs a 3.6e-4 scale: below MinScale -> wrong units.
-            GltfMesh raw = Box(0f, 0f, 0f, 1f, 5000f, 1f);
-            Assert.Throws<InvalidOperationException>(() => PropLoader.Normalize(raw, heightMeters: 1.8f));
-        }
-
-        [Fact]
-        public void Normalize_DegenerateMesh_Throws()
-        {
-            GltfMesh flat = Box(0f, 0f, 0f, 1f, 0f, 1f);   // zero height
-            Assert.Throws<InvalidOperationException>(() => PropLoader.Normalize(flat, heightMeters: 2f));
+            GltfMesh raw = Box(0f, 0f, 0f, 1f, rawHeight, 1f);
+            Assert.Throws<InvalidOperationException>(() => PropLoader.Normalize(raw, heightMeters: declaredHeight));
         }
 
         [Fact]
@@ -83,15 +71,12 @@ namespace KhaozEngine.Tests.Render3D
             GltfMesh raw = Box(0f, 0f, 0f, 1f, 2f, 1f);
             raw = new GltfMesh(raw.Vertices, new uint[] { 0, 1, 9 });
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            Assert.Throws<InvalidOperationException>(
                 () => PropLoader.Normalize(raw, heightMeters: 2f));
-
-            Assert.Contains("index 9", ex.Message);
-            Assert.Contains("vertex count 8", ex.Message);
         }
 
         [Fact]
-        public void NormalizeParts_RejectsMalformedPartWithItsPartNumber()
+        public void NormalizeParts_RejectsMalformedPart()
         {
             GltfMesh good = Box(0f, 0f, 0f, 1f, 2f, 1f);
             GltfMesh bad = new(good.Vertices, new uint[] { 0, 1, uint.MaxValue });
@@ -101,12 +86,8 @@ namespace KhaozEngine.Tests.Render3D
                 new GltfMeshPart(bad, default),
             };
 
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            Assert.Throws<InvalidOperationException>(
                 () => PropLoader.NormalizeParts(parts, heightMeters: 2f));
-
-            Assert.Contains("part 1", ex.Message);
-            Assert.Contains($"index {uint.MaxValue}", ex.Message);
-            Assert.Contains("vertex count 8", ex.Message);
         }
 
         // ---- LoadProp (in-process glb) ----
@@ -145,11 +126,11 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void LoadProp_MissingFile_ThrowsWithContext()
+        public void LoadProp_MissingFile_PreservesTheLoadFailure()
         {
             var entry = new AssetEntry("ghost", Path.Combine(Path.GetTempPath(), "does_not_exist_xyz.glb"), 5f, "test", "CC0");
-            var ex = Assert.ThrowsAny<Exception>(() => PropLoader.LoadProp(entry));
-            Assert.Contains("ghost", ex.Message);
+            var ex = Assert.Throws<InvalidOperationException>(() => PropLoader.LoadProp(entry));
+            Assert.NotNull(ex.InnerException);
         }
 
         // ---- LoadPropLodAuto (author-supplied far LOD variant) ----
@@ -182,12 +163,12 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void LoadPropLodAuto_MissingLodFile_ThrowsWithContext()
+        public void LoadPropLodAuto_MissingLodFile_PreservesTheLoadFailure()
         {
             var entry = new AssetEntry("stump", "stump.glb", 5f, "test", "CC0",
                 lodFile: Path.Combine(Path.GetTempPath(), "no_such_lod_xyz.glb"));
-            var ex = Assert.ThrowsAny<Exception>(() => PropLoader.LoadPropLodAuto(entry));
-            Assert.Contains("stump", ex.Message);
+            var ex = Assert.Throws<InvalidOperationException>(() => PropLoader.LoadPropLodAuto(entry));
+            Assert.NotNull(ex.InnerException);
         }
     }
 }

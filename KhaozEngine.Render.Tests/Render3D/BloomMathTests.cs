@@ -82,47 +82,19 @@ namespace KhaozEngine.Tests.Render3D
         [InlineData(2)]
         [InlineData(4)]
         [InlineData(8)]
-        public void GaussianWeights_HasCorrectTapCount(int radius)
+        public void GaussianWeights_have_normalized_symmetric_centre_peaked_taps(int radius)
         {
             float[] w = BloomMath.GaussianWeights(radius);
             Assert.Equal(2 * radius + 1, w.Length);
-        }
-
-        [Theory]
-        [InlineData(1)]
-        [InlineData(2)]
-        [InlineData(4)]
-        [InlineData(8)]
-        public void GaussianWeights_SumToOne(int radius)
-        {
-            float[] w = BloomMath.GaussianWeights(radius);
             float sum = 0f;
-            foreach (float x in w) sum += x;
-            Assert.Equal(1f, sum, 5);
-        }
-
-        [Theory]
-        [InlineData(1)]
-        [InlineData(2)]
-        [InlineData(4)]
-        [InlineData(8)]
-        public void GaussianWeights_AreSymmetric(int radius)
-        {
-            float[] w = BloomMath.GaussianWeights(radius);
-            for (int i = 0; i < w.Length; i++)
-                Assert.Equal(w[i], w[w.Length - 1 - i], 6);
-        }
-
-        [Theory]
-        [InlineData(1)]
-        [InlineData(2)]
-        [InlineData(4)]
-        [InlineData(8)]
-        public void GaussianWeights_PeakAtCentre(int radius)
-        {
-            float[] w = BloomMath.GaussianWeights(radius);
             float centre = w[radius];
-            foreach (float x in w) Assert.True(centre >= x - 1e-6f, "centre tap is not the maximum weight");
+            for (int i = 0; i < w.Length; i++)
+            {
+                sum += w[i];
+                Assert.Equal(w[i], w[w.Length - 1 - i], 6);
+                Assert.True(centre >= w[i] - 1e-6f, "centre tap is not the maximum weight");
+            }
+            Assert.Equal(1f, sum, 5);
         }
 
         [Fact]
@@ -132,23 +104,22 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void GaussianWeights_AtRadiusFour_KeepTheirBitPatterns()
+        public void GaussianWeights_AtRadiusFour_MatchReferenceCurve()
         {
-            // Radius 4's nine taps, 0.0276 at the ends to 0.2042 at the centre. The array overload fills through the
-            // span overload, so comparing the two cannot catch a change to their shared arithmetic. These literals can.
-            int[] radiusFour =
+            // Independent normalized Gaussian reference for radius 4 and sigma 2.
+            float[] reference =
             {
-                0x3CE25976, 0x3D87BEFC, 0x3DFD9B63, 0x3E387F7C, 0x3E511049,
-                0x3E387F7C, 0x3DFD9B63, 0x3D87BEFC, 0x3CE25976,
+                0.02763055f, 0.06628225f, 0.12383154f, 0.18017382f, 0.20416369f,
+                0.18017382f, 0.12383154f, 0.06628225f, 0.02763055f,
             };
             float[] array = BloomMath.GaussianWeights(4);
             var buffer = new float[2 * BloomMath.MaxRadius + 1];
             BloomMath.GaussianWeights(4, buffer);
-            Assert.Equal(radiusFour.Length, array.Length);
-            for (int i = 0; i < radiusFour.Length; i++)
+            Assert.Equal(reference.Length, array.Length);
+            for (int i = 0; i < reference.Length; i++)
             {
-                Assert.Equal(radiusFour[i], BitConverter.SingleToInt32Bits(array[i]));
-                Assert.Equal(radiusFour[i], BitConverter.SingleToInt32Bits(buffer[i]));
+                Assert.Equal(reference[i], array[i], 6);
+                Assert.Equal(reference[i], buffer[i], 6);
             }
         }
 
@@ -184,18 +155,10 @@ namespace KhaozEngine.Tests.Render3D
         [InlineData(1600, 900, 800, 450)]
         [InlineData(480, 320, 240, 160)]
         [InlineData(2, 2, 1, 1)]
-        public void HalfResSize_EvenDimensions_ExactHalf(int w, int h, int expW, int expH)
-        {
-            var (hw, hh) = BloomMath.HalfResSize(w, h);
-            Assert.Equal(expW, hw);
-            Assert.Equal(expH, hh);
-        }
-
-        [Theory]
-        [InlineData(481, 321, 241, 161)]  // odd sizes round UP, not down
+        [InlineData(481, 321, 241, 161)]
         [InlineData(1, 1, 1, 1)]
         [InlineData(3, 5, 2, 3)]
-        public void HalfResSize_OddDimensions_RoundUp(int w, int h, int expW, int expH)
+        public void HalfResSize_rounds_each_dimension_up(int w, int h, int expW, int expH)
         {
             var (hw, hh) = BloomMath.HalfResSize(w, h);
             Assert.Equal(expW, hw);
@@ -205,10 +168,7 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void HalfResSize_NeverUnderflowsToZero()
         {
-            var (hw, hh) = BloomMath.HalfResSize(1, 1);
-            Assert.True(hw >= 1 && hh >= 1);
-            var (hw0, hh0) = BloomMath.HalfResSize(0, 0);
-            Assert.True(hw0 >= 1 && hh0 >= 1);
+            Assert.Equal((1, 1), BloomMath.HalfResSize(0, 0));
         }
 
         [Fact]

@@ -171,50 +171,23 @@ public class Render2DCameraFollowTests
         AssertClose(Vector2.Zero, cam.Position);            // default LookAhead -> no lead
     }
 
-    [Fact]
-    public void LookAhead_LeadsAlongVelocity()
+    [Theory]
+    [InlineData(1000f, 0f, 0f, 40f)]
+    [InlineData(30f, 0f, 0f, 30f)]
+    [InlineData(1000f, 1000f, 100f, 40f)]
+    public void LookAhead_applies_velocity_lead_with_per_axis_limits(
+        float maxX, float maxY, float velocityY, float expectedX)
     {
         var cam = new Camera2D { Position = Vector2.Zero };
         var follow = new CameraFollow(cam)
         {
-            // Lead 0.4s horizontally, generous clamp, instant lead easing (Stiffness 0).
-            LookAhead = new LookAheadSettings(new Vector2(0.4f, 0f), new Vector2(1000f, 0f), 0f),
+            LookAhead = new LookAheadSettings(new Vector2(0.4f, 0f), new Vector2(maxX, maxY), 0f),
         };
         follow.SetStiffness(0f);
 
-        follow.Update(new Vector2(0f, 0f), new Vector2(100f, 0f), 0.1f, Vw, Vh, Unbounded);
+        follow.Update(Vector2.Zero, new Vector2(100f, velocityY), 0.1f, Vw, Vh, Unbounded);
 
-        AssertClose(new Vector2(40f, 0f), cam.Position);    // 100 * 0.4 = 40 ahead, +x
-    }
-
-    [Fact]
-    public void LookAhead_ClampsToMaxDistance()
-    {
-        var cam = new Camera2D { Position = Vector2.Zero };
-        var follow = new CameraFollow(cam)
-        {
-            LookAhead = new LookAheadSettings(new Vector2(0.4f, 0f), new Vector2(30f, 0f), 0f),
-        };
-        follow.SetStiffness(0f);
-
-        follow.Update(new Vector2(0f, 0f), new Vector2(100f, 0f), 0.1f, Vw, Vh, Unbounded);
-
-        AssertClose(new Vector2(30f, 0f), cam.Position);    // 40 desired, clamped to 30
-    }
-
-    [Fact]
-    public void LookAhead_PerAxisLeavesUnleadAxisOnTarget()
-    {
-        var cam = new Camera2D { Position = Vector2.Zero };
-        var follow = new CameraFollow(cam)
-        {
-            LookAhead = new LookAheadSettings(new Vector2(0.4f, 0f), new Vector2(1000f, 1000f), 0f),
-        };
-        follow.SetStiffness(0f);
-
-        follow.Update(new Vector2(0f, 0f), new Vector2(100f, 100f), 0.1f, Vw, Vh, Unbounded);
-
-        AssertClose(new Vector2(40f, 0f), cam.Position);    // x leads, y has LeadTime 0 -> no lead
+        AssertClose(new Vector2(expectedX, 0f), cam.Position);
     }
 
     [Fact]

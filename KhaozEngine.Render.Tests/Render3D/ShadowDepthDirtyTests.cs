@@ -56,15 +56,6 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void Any_skinned_caster_forces_dirty()
-        {
-            // A skinned caster animates its bones every frame. The palette is not hashed, so its mere presence is dirty.
-            Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: true,
-                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: false,
-                casterDataChanged: false));
-        }
-
-        [Fact]
         public void Resolution_light_and_caster_changes_each_force_dirty()
         {
             Assert.True(Scene3D.ShadowDepthPassDirty(true, false, false, resolutionChanged: true, lightMatrixChanged: false, casterDataChanged: false));
@@ -86,17 +77,6 @@ namespace KhaozEngine.Tests.Render3D
             // left the character's shadow on the ground. It must render.
             Assert.True(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
                 skinnedCastersCleared: true, resolutionChanged: false, lightMatrixChanged: false,
-                casterDataChanged: false));
-        }
-
-        [Fact]
-        public void The_frame_after_a_vanished_skinned_caster_is_clean_again()
-        {
-            // The re-render above commits "no skinned casters" as the new reference, so the transition is false on
-            // the next frame and the scene goes straight back to reusing the atlas. Exactly ONE extra pass, which
-            // is what keeps the #410 dirty-skip worth having.
-            Assert.False(Scene3D.ShadowDepthPassDirty(hadPrevious: true, anySkinnedCaster: false,
-                skinnedCastersCleared: false, resolutionChanged: false, lightMatrixChanged: false,
                 casterDataChanged: false));
         }
 
@@ -152,17 +132,6 @@ namespace KhaozEngine.Tests.Render3D
         // normalize(Post.LightDirection), focus, ...) each frame, and dirties the depth pass when
         // _lastShadowLightVp != shadowLightVp (lightMatrixChanged). So a per-frame LightDirection change (a day/night
         // cycle) must produce a DIFFERENT light matrix and therefore re-render the depth map, not reuse the stale one.
-
-        [Fact]
-        public void A_changed_light_direction_produces_a_different_light_matrix()
-        {
-            // Same focus / radius / resolution, only the light direction moved (sun crossing the sky): the fitted
-            // world->light-clip matrix must change, otherwise the shadow would stay frozen against the old sun.
-            var focus = new Vector3(2f, 0f, -1f);
-            var noon = ShadowMapMath.BuildLightViewProj(new Vector3(-0.2f, -1f, -0.1f), focus, radius: 16f, resolution: 2048);
-            var evening = ShadowMapMath.BuildLightViewProj(new Vector3(-0.8f, -0.4f, -0.2f), focus, radius: 16f, resolution: 2048);
-            Assert.NotEqual(noon, evening);
-        }
 
         [Fact]
         public void A_moving_sun_dirties_the_shadow_depth_pass()

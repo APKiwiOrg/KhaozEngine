@@ -46,19 +46,12 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(11u, TextureMipPolicy.Full.LevelsFor(1024, 512));
         }
 
-        [Fact]
-        public void AtlasGrid_SquareSheet_StopsAtFourTexelCells()
+        [Theory]
+        [InlineData(4, 4, 256, 256)]
+        [InlineData(4, 1, 512, 64)]
+        public void AtlasGrid_follows_the_shorter_cell_side(int columns, int rows, int width, int height)
         {
-            // 256x256 packed 4x4 is a 64-texel cell: levels 0..4 take it 64 -> 4.
-            Assert.Equal(5u, TextureMipPolicy.AtlasGrid(4, 4).LevelsFor(256, 256));
-        }
-
-        [Fact]
-        public void AtlasGrid_NonSquareCells_FollowTheShorterSide()
-        {
-            // 512x64 packed 4 across and 1 down is a 128x64 cell. The shorter side (64) is what must stay above the
-            // floor, so the cap is log2(64/4) = 4 levels past level 0, not log2(128/4) = 5.
-            Assert.Equal(5u, TextureMipPolicy.AtlasGrid(4, 1).LevelsFor(512, 64));
+            Assert.Equal(5u, TextureMipPolicy.AtlasGrid(columns, rows).LevelsFor(width, height));
         }
 
         [Fact]
@@ -80,20 +73,14 @@ namespace KhaozEngine.Tests.Render3D
                 TextureMipPolicy.AtlasGrid(4, 2, minCellTexels).LevelsFor(1024, 512));
         }
 
-        [Fact]
-        public void AtlasGrid_OneByOneTexture_IsOneLevel()
+        [Theory]
+        [InlineData(4, 4, 1, 1)]
+        [InlineData(1, 1, 1, 1)]
+        [InlineData(512, 512, 64, 64)]
+        [InlineData(128, 1, 64, 64)]
+        public void AtlasGrid_sub_floor_cells_keep_one_level(int columns, int rows, int width, int height)
         {
-            // Never below one level, whatever the grid claims.
-            Assert.Equal(1u, TextureMipPolicy.AtlasGrid(4, 4).LevelsFor(1, 1));
-            Assert.Equal(1u, TextureMipPolicy.AtlasGrid(1, 1).LevelsFor(1, 1));
-        }
-
-        [Fact]
-        public void AtlasGrid_GridLargerThanTheTexture_IsOneLevel()
-        {
-            // A cell smaller than a texel already fails the floor at level 0, so there is nothing to keep.
-            Assert.Equal(1u, TextureMipPolicy.AtlasGrid(512, 512).LevelsFor(64, 64));
-            Assert.Equal(1u, TextureMipPolicy.AtlasGrid(128, 1).LevelsFor(64, 64));
+            Assert.Equal(1u, TextureMipPolicy.AtlasGrid(columns, rows).LevelsFor(width, height));
         }
 
         [Theory]

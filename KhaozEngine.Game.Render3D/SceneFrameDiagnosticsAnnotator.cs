@@ -72,6 +72,8 @@ internal sealed class SceneFrameDiagnosticsAnnotator(Scene3D scene) : IFrameDiag
                 for (int c = 1; c <= 4; c++) names.Add($"camera.{matrix}.M{r}{c}.bits");
         foreach (string vector in new[] { "camera.eye", "camera.forward", "light.direction" })
             foreach (string axis in new[] { "x", "y", "z" }) names.Add(vector + "." + axis + ".bits");
+        // GameApp3D follows the F1 overlay's visibility here, and it switches on per-pass CPU Stopwatch reads.
+        names.Add("scene.EnableTiming");
         return names.ToArray();
     }
 
@@ -137,6 +139,7 @@ internal sealed class SceneFrameDiagnosticsAnnotator(Scene3D scene) : IFrameDiag
         Vector(values, ref i, camera.Eye);
         Vector(values, ref i, camera.Forward);
         Vector(values, ref i, scene.Post.LightDirection);
+        values[i++] = scene.EnableTiming ? 1 : 0;
     }
 
     static void Matrix(Span<long> values, ref int i, Matrix4x4 m)

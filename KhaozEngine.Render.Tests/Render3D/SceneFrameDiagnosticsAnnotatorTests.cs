@@ -20,6 +20,7 @@ public sealed class SceneFrameDiagnosticsAnnotatorTests
         var camera = new Camera();
         scene.CameraOverride = camera;
         scene.Post.LightDirection = new Vector3(-0.0f, 0.25f, -1);
+        scene.EnableTiming = true;
         var annotator = new SceneFrameDiagnosticsAnnotator(scene);
         var values = new long[annotator.Channels.Length];
         annotator.Sample(values);
@@ -30,6 +31,7 @@ public sealed class SceneFrameDiagnosticsAnnotatorTests
         Assert.Equal(BitConverter.SingleToInt32Bits(camera.Eye.Y), Value("camera.eye.y.bits"));
         Assert.Equal(BitConverter.SingleToInt32Bits(camera.Forward.Z), Value("camera.forward.z.bits"));
         Assert.Equal(BitConverter.SingleToInt32Bits(scene.Post.LightDirection.X), Value("light.direction.x.bits"));
+        Assert.Equal(1, Value("scene.EnableTiming"));
         var shadowProperties = typeof(ShadowPassDiagnostics).GetProperties()
             .Where(p => p.PropertyType == typeof(bool) || p.PropertyType == typeof(int)).ToArray();
         Assert.NotEmpty(shadowProperties);

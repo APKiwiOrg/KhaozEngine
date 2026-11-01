@@ -129,7 +129,9 @@ Camera channels use the public CameraOverride when present, otherwise Camera. `c
 through M44 and `camera.projection.M11.bits` through M44 store exact signed float bit patterns.
 `camera.eye`, `camera.forward` and `light.direction` each have x/y/z.bits channels.
 The light direction is Post.LightDirection. These are public camera inputs and light inputs,
-not private jittered projection or fitted shadow matrices. Boolean channels are 0 or 1.
+not private jittered projection or fitted shadow matrices. `scene.EnableTiming` is last. GameApp3D
+follows the F1 overlay's visibility with it, and it switches on per-pass CPU Stopwatch reads, so it
+records whether the overlay's timing work ran. Boolean channels are 0 or 1.
 All other channel values are exact signed integer counts or bytes. The annotator must fill its
 fixed Span without allocation or I/O. No channel is recomputed by rendering.
 

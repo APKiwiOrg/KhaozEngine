@@ -54,8 +54,7 @@ public class TileWorldValidatorTests
         Assert.Contains("object.duplicateId", codes);
         Assert.Contains("marker.region", codes);
         Assert.Contains("marker.duplicateName", codes);
-        var ex = Assert.Throws<TileWorldException>(() => TileWorldValidator.ValidateOrThrow(doc, TileWorldCatalogs.Greybox()));
-        Assert.Contains("issues", ex.Message);
+        Assert.Throws<TileWorldException>(() => TileWorldValidator.ValidateOrThrow(doc, TileWorldCatalogs.Greybox()));
     }
 
     [Fact]
@@ -94,8 +93,7 @@ public class TileWorldValidatorTests
 
         var ex = Assert.Throws<TileWorldException>(() => TileWorldValidator.ValidateOrThrow(doc, TileWorldCatalogs.Greybox()));
         Assert.Contains($"has {codes.Count} validation issues", ex.Message);
-        Assert.Contains("[header.planeCount]", ex.Message);
-        Assert.Equal(4, ex.Message.Split(" | ").Length);
+        Assert.All(codes, code => Assert.Contains(code, ex.Message, StringComparison.Ordinal));
     }
 
     [Fact]

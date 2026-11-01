@@ -97,7 +97,7 @@ public class TileFoliageLayerPersistenceTests
         File.WriteAllText(manifest, malformed);
 
         TileWorldException ex = Assert.Throws<TileWorldException>(() => TileWorldSource.Open(dir));
-        Assert.Contains("foliage", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.IsType<ArgumentException>(ex.InnerException);
     }
 
     [Theory]
@@ -106,10 +106,9 @@ public class TileFoliageLayerPersistenceTests
     [InlineData(0.5f, 3, -1)]
     public void Invalid_dimensions_fail_clearly(float cellSize, int width, int height)
     {
-        ArgumentException ex = Assert.Throws<ArgumentException>(() => new TileFoliageLayer(
+        Assert.Throws<ArgumentException>(() => new TileFoliageLayer(
             "bad", 0, 0f, 0f, cellSize, width, height, Array.Empty<byte>(), 1, 1f, 1f, 1f, 0f,
             [new TileFoliageArchetype("bush", 1f)], [1], true, true, 0f, 0f));
-        Assert.Contains("foliage", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

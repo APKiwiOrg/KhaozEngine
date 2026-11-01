@@ -1,7 +1,6 @@
 using System;
-using System.IO;
 using System.Numerics;
-using KhaozEngine.Imaging;
+using System.Runtime.CompilerServices;
 using KhaozEngine.Render3D;
 using Xunit;
 using Xunit.Abstractions;
@@ -11,6 +10,7 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class RigidPointShadowGpuTests(RigidPointShadowScene fixture, ITestOutputHelper output)
     : IClassFixture<RigidPointShadowScene>
 {
+    bool _capturedFailure;
     [GpuTheory]
     [InlineData(PointShadowFilter.Hard)]
     [InlineData(PointShadowFilter.Soft)]
@@ -101,12 +101,12 @@ public sealed class RigidPointShadowGpuTests(RigidPointShadowScene fixture, ITes
         Check("aged-parity", aged);
     }
 
-    void Warm(PointShadowFilter filter)
+    void Warm(PointShadowFilter filter, [CallerMemberName] string testCase = "")
     {
         fixture.Reset(filter);
         var scenery = new RigidPointShadowScene.Pose(Actor: false, Skinned: false);
         fixture.Capture(scenery);
-        RigidPointShadowScene.Pair warmed = Check("static-warm", fixture.Capture(scenery));
+        RigidPointShadowScene.Pair warmed = Check("static-warm", fixture.Capture(scenery), testCase);
         Assert.Equal(3, warmed.Split.Work.PointStaticRebuilds);
         Assert.Equal(0, warmed.Split.Resolution.TransientAtlasRows);
         fixture.FreezeOrdinaryRefresh();
@@ -151,7 +151,7 @@ public sealed class RigidPointShadowGpuTests(RigidPointShadowScene fixture, ITes
         Assert.True(lit - dark >= 20, $"{name} receiver must darken by at least 20 bytes: {dark} vs {lit}");
     }
 
-    RigidPointShadowScene.Pair Check(string name, RigidPointShadowScene.Pair pair)
+    RigidPointShadowScene.Pair Check(string name, RigidPointShadowScene.Pair pair, [CallerMemberName] string testCase = "")
     {
         Assert.Equal(3, pair.Full.Work.PointDynamicRenders);
         Assert.Equal(3, pair.Full.Work.PointShadowedLights);
@@ -180,13 +180,11 @@ public sealed class RigidPointShadowGpuTests(RigidPointShadowScene fixture, ITes
             + $"current-rigid={pair.Split.Work.PointStaticTransientRigidDrawCalls}, "
             + $"current-skinned={pair.Split.Work.PointStaticTransientSkinnedDrawCalls}, "
             + $"fallback-skinned={pair.Split.Work.PointStaticFallbackSkinnedDrawCalls}");
-        if (changed != 0)
+        if (changed != 0 && !_capturedFailure)
         {
-            string directory = Path.Combine(OperatingSystem.IsWindows() ? Path.GetTempPath() : "/tmp",
-                "khaozengine-mac-frame-performance", "rigid-shadow-task-2");
-            Directory.CreateDirectory(directory);
-            PngWriter.Save(Path.Combine(directory, name + "-split.png"), pair.Split.Rgba, RigidPointShadowScene.Width, RigidPointShadowScene.Height);
-            PngWriter.Save(Path.Combine(directory, name + "-full.png"), pair.Full.Rgba, RigidPointShadowScene.Width, RigidPointShadowScene.Height);
+            _capturedFailure = true;
+            try { output.WriteLine($"Failure evidence: {fixture.SaveFailure(testCase, name, pair)}"); }
+            catch (Exception error) { output.WriteLine($"Failure evidence capture failed: {error}"); }
         }
         Assert.True(changed == 0, $"{name}: {changed} differing bytes, max delta {worst}");
         return pair;

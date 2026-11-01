@@ -53,6 +53,19 @@ can absorb another contributor's staged files. Never use the shared stash for wo
 - A GPU test class that captures more than a few images shares one lazily created `Scene3D` through a
   class fixture. It also carries a parity test that ages the shared scene through several
   configurations and compares it with a fresh snapshot scene. `OceanFocusScene` is the reference.
+- The test-health ratchet enforces per-file KETEST001 exception-message assertions and KETEST002
+  non-public reflection counts in `.testhealth-baseline`. Growth requires owner approval. A legitimate
+  wording or structural-reflection contract uses an owner-approved `exempt <rule> <path>` entry with a
+  `#` reason above it, never a suppression. Ratchet down with
+  `build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update`.
+  KETEST003 is a report-only review aid, outside the baseline. Only 6 of 20 sampled findings in this
+  repository were real because loops over local tables and test-owned case helpers look possibly
+  empty to a syntactic check. See the [analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet)
+  for rule boundaries, baseline grammar, script modes and consumer adoption. Analyzer tests use
+  `KhaozEngine.Tests.CodeHealth`.
+- `[Trait("Category", "Diagnostic")]` marks tests that report instead of gating. Default CI excludes
+  them. Run them on demand through the `cross-platform-gpu` workflow dispatch input
+  `renderTestFilter` set to `Category=Diagnostic`.
 - CI runs Release. Local `dotnet test` defaults to Debug. Tests around `Debug.Assert`,
   `[Conditional("DEBUG")]` or `#if DEBUG` need a Release run and a configuration-independent
   observable.
@@ -101,7 +114,7 @@ Run from the repository root:
 ```sh
 mkdir -p local-feed
 sh scripts/build-release-tests.sh KhaozEngine.slnx
-dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
+dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket&Category!=Diagnostic"
 ```
 
 The shared Release setup builds the selected target, then the outside-solution renderer verifier
@@ -129,6 +142,10 @@ Warnings are errors in every configuration. Fix warnings at the source. Do not a
 suppression or disable `TreatWarningsAsErrors`. The standing XML documentation suppression is the
 narrow exception.
 
+The default CI filter is `Category!=LiveSocket&Category!=Diagnostic`. LiveSocket tests need a live
+network peer, and Diagnostic tests report on demand rather than gate. A `.testhealth-baseline` change
+forces a FULL selective CI run.
+
 Ordinary pushes and pull requests run `scripts/ci-selective-test.sh`. Manual runs use the full
 restore, Release build, test, determinism and pack path plus the three SQL Server jobs, and never
 publish. A tag push reuses the hosted pre-tag gate when `scripts/ci-prior-gate.sh` finds a successful
@@ -136,7 +153,7 @@ manual run of `ci` at the tag's exact commit. It then restores, builds, packs an
 full test, the determinism pass and the SQL Server jobs, and cites the reused run's URL. Without such a
 run, or on any lookup doubt, the tag runs the whole manual path and publishes. Only tag pushes publish.
 Convention, instruction budget and doc-version checks run before both paths. See
-[`design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md`](design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md).
+[`design/CI-SELECTIVE-TESTS.md`](design/CI-SELECTIVE-TESTS.md).
 
 The whole-tree convention checks are `scripts/check-dashes.sh`, `scripts/check-prose.sh`,
 `scripts/check-file-size.sh`, `scripts/check-agent-instructions.sh`, `scripts/check-scratch.sh` and

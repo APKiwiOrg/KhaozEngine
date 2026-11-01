@@ -15,7 +15,7 @@ directly. Keep this root short enough to load with global guidance. Detailed rep
 |---|---|
 | Engine code or tests | [Contributor rules: Engine code and test contracts](docs/CONTRIBUTOR-RULES.md#engine-code-and-test-contracts) |
 | Package or dependency changes | [Contributor rules: Dependencies and package structure](docs/CONTRIBUTOR-RULES.md#dependencies-and-package-structure), [DEPENDENCY-SEAMS.md](docs/DEPENDENCY-SEAMS.md) |
-| Build or CI work | [Contributor rules: Build and CI](docs/CONTRIBUTOR-RULES.md#build-and-ci), [CI selective design](docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md) |
+| Build or CI work | [Contributor rules: Build and CI](docs/CONTRIBUTOR-RULES.md#build-and-ci), [CI selective design](docs/design/CI-SELECTIVE-TESTS.md) |
 | Version, pack or release work | [Contributor rules: Version, package and release rules](docs/CONTRIBUTOR-RULES.md#version-package-and-release-rules) |
 | Documentation | [Contributor rules: Documentation governance](docs/CONTRIBUTOR-RULES.md#documentation-governance), [docs index](docs/INDEX.md) |
 | Discovered work or handoffs | [Contributor rules: Issues and handoffs](docs/CONTRIBUTOR-RULES.md#issues-and-handoffs) |
@@ -51,6 +51,8 @@ directly. Keep this root short enough to load with global guidance. Detailed rep
 - KESIZE is a structure ratchet. Put new behavior in a new type. Do not split at an arbitrary line.
   Baseline growth and exemptions require owner approval. Ratchet down freely with
   `scripts/check-file-size.sh --update`.
+- KETEST is a test-health ratchet. Baseline growth and exemptions require owner approval. Ratchet
+  down with `build-slot --heavy --label testhealth-update -- sh scripts/check-test-health.sh --update`.
 - Warnings are errors. Fix them at the source. Do not add blanket suppressions or disable the rule.
 - CI tests Release. Validate any Debug-only behavior in Release with a configuration-independent
   observable.
@@ -64,7 +66,7 @@ Create the gitignored local source before restore:
 ```sh
 mkdir -p local-feed
 sh scripts/build-release-tests.sh KhaozEngine.slnx
-dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
+dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket&Category!=Diagnostic"
 ```
 
 Also run the checks appropriate to the files changed. Repository governance changes run at least:

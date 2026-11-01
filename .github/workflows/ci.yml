@@ -1,5 +1,5 @@
 name: ci
-# Paths split by event (see docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md, Decisions 4, 5 and 7):
+# Paths split by event (see docs/design/CI-SELECTIVE-TESTS.md, Decisions 4, 5 and 7):
 #   * workflow_dispatch runs the FULL sequence inline: restore, build, full test, determinism double-pass,
 #     pack, plus the three SQL Server jobs. A dispatch on main at the release commit is the hosted
 #     pre-tag gate. It never publishes and never reuses anything.

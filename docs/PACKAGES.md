@@ -192,7 +192,7 @@ Analyzers, test kits, the Debug-only automation endpoint and author-time command
 |---|---|---|---|
 | [KhaozEngine.Automation](../KhaozEngine.Automation/README.md) | Debug-only playtest endpoint for injected input, frame stepping, state inspection and game-defined commands. | Windowing | Opt-in |
 | [KhaozEngine.Localization.Analyzers](../KhaozEngine.Localization.Analyzers/README.md) | Checks player-facing localization usage and generates typed string keys from neutral resource files. | None at runtime | Game2D, Game3D |
-| [KhaozEngine.CodeHealth.Analyzers](../KhaozEngine.CodeHealth.Analyzers/README.md) | Enforces file-size limits and prevents files from growing beyond recorded baselines. | None at runtime | Every umbrella |
+| [KhaozEngine.CodeHealth.Analyzers](../KhaozEngine.CodeHealth.Analyzers/README.md) | Enforces file-size and test-health ratchets against recorded baselines, with report-only loop-assertion review. | None at runtime | Every umbrella |
 | [KhaozEngine.Localization.TestKit](../KhaozEngine.Localization.TestKit/README.md) | Checks localization completeness and format placeholders across neutral resources and shipped languages. | App | Opt-in |
 | [KhaozEngine.Gpu.TestKit](../KhaozEngine.Gpu.TestKit/README.md) | GPU availability checks and golden-image comparisons for a game's tests without requiring a particular test framework. | Gpu, Gpu.D3D11, Gpu.Vulkan, Gpu.Metal, Imaging | Opt-in |
 | [KhaozEngine.Updates.Tool](../KhaozEngine.Updates.Tool/README.md) | Generates, signs, and verifies update manifests from publish pipelines. | Updates | Opt-in |

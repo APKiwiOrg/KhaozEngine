@@ -4,6 +4,25 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.23.0
+
+2026-11-01
+
+- Add the opt-in test-health ratchet to `KhaozEngine.CodeHealth.Analyzers`. KETEST001 counts exception-message
+  wording assertions, excluding `DoesNotContain` and `DoesNotMatch` disclosure checks. KETEST002 counts
+  `BindingFlags.NonPublic` references and `UnsafeAccessor` applications. Both enforce per-file allowances
+  in `.testhealth-baseline` as errors in xunit compilations and stay silent without that adoption file.
+  KETEST003 reports possibly empty assertion loops only with `KhaozTestHealthMode=report`, never enters
+  the baseline and does not gate normal builds. Only 6 of 20 sampled findings were real because local
+  tables and test-owned case helpers look possibly empty to a syntactic check. Baseline growth and
+  exemptions need owner approval, and `scripts/check-test-health.sh --update` only ratchets down.
+- Exclude tests marked `[Trait("Category", "Diagnostic")]` from default CI with
+  `Category!=LiveSocket&Category!=Diagnostic`. Run these reporting tests on demand through the
+  `cross-platform-gpu` dispatch input `renderTestFilter=Category=Diagnostic`. Baseline changes force a
+  FULL selective CI run.
+- Share `AnalyzerPathPolicy` between KESIZE and KETEST and move analyzer tests to
+  `KhaozEngine.Tests.CodeHealth`.
+
 ## 21.22.0
 
 2026-10-31

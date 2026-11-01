@@ -610,9 +610,11 @@ matrix has produced. The delete also shortened the matrix's own wall clock (slow
 dropped about 63 minutes of runner time from a full dispatch.
 
 - **GitHub-hosted Metal NATIVE leg (`macos-26`)**: the engine's own `KhaozEngine.Gpu.Metal` backend
-  (`KE_GRAPHICS_BACKEND=metal-native`) on the WHOLE test suite (`--filter "Category!=LiveSocket"`) on every
-  trigger - every `[GpuFact]` test (golden and behavioral) plus the headless suite, matching `ci.yml`'s own
-  `Category!=LiveSocket` exclusion (LiveSocket tests need a live network peer, not available here). Since
+  (`KE_GRAPHICS_BACKEND=metal-native`) on the WHOLE test suite
+  (`--filter "Category!=LiveSocket&Category!=Diagnostic"`) on every trigger - every gating `[GpuFact]`
+  test (golden and behavioral) plus the headless suite, matching `ci.yml`'s exclusions. LiveSocket tests
+  need a live network peer. Tests marked `[Trait("Category", "Diagnostic")]` report instead of gating
+  and run on demand by setting the dispatch input `renderTestFilter` to `Category=Diagnostic`. Since
   [#1438](https://github.com/APKiwiOrg/KhaozEngine/issues/1438) that suite runs across three jobs on every trigger
   except a bake or a `renderTestFilter` dispatch, as described above. Metal ran
   on the dev Mac until [#552](https://github.com/APKiwiOrg/KhaozEngine/issues/552) moved it to a hosted runner,

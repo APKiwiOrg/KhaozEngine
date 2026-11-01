@@ -1,4 +1,4 @@
-# CI Selective Tests Design (2026-07-18)
+# CI Selective Tests Design
 
 Status: complete, shipped in 13.0.3. Program issue: [#207](https://github.com/APKiwiOrg/KhaozEngine/issues/207)
 (which also records the rejected alternatives: per-area workflow files, consumer smoke leg).
@@ -130,7 +130,9 @@ encapsulated in `scripts/ci-selective-test.sh` so it is runnable and testable lo
 1. Diff base: `github.event.before` for pushes, merge-base against the base branch for PRs. A zero or
    unknown before-sha falls back to FULL.
 2. Force-FULL file classes (belt and braces over the tool's own handling): `.github/workflows/**`,
-   `scripts/**`, `Directory.Build.props`, `nuget.config`, `*.slnx`, `.config/dotnet-tools.json`.
+   `scripts/**`, `Directory.Build.props`, `.testhealth-baseline`, `nuget.config`, `*.slnx`,
+   `.config/dotnet-tools.json`. The test-health baseline forces FULL because its allowances apply across
+   test projects.
 3. Otherwise run `dotnet affected`, intersect with slnx test projects. Then, if the diff touched any
    `*.csproj`, add the architecture-test rump (`KhaozEngine.Tests`) to that set: it has zero
    `ProjectReference`s so dotnet-affected never reaches it, yet its rules validate csproj XML, so a
@@ -139,7 +141,7 @@ encapsulated in `scripts/ci-selective-test.sh` so it is runnable and testable lo
    under a minute, and this is the common case the change exists for (docs, governance, changelog
    pushes).
 5. Non-empty: restore + build the affected test projects (their references pull in exactly the needed
-   slice), then `dotnet test --no-build` each, with the existing `Category!=LiveSocket` filter. The
+   slice), then `dotnet test --no-build` each, with the `Category!=LiveSocket&Category!=Diagnostic` filter. The
    determinism step runs only when `KhaozEngine.Foundation.Tests` (owner of the `DeterministicFp`
    tests) is affected, scoped to that project instead of the whole solution.
 6. No pack on selective runs. Pack requires a full build, and its regression window is bounded by the

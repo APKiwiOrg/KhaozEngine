@@ -3546,6 +3546,14 @@ description, because MSBuild prints the message and nothing else. If you hit one
 genuinely legitimate, the answer is to ask the repo owner to bless or exempt it, never to split the
 file to make the error go away.
 
+The same package supplies the opt-in KETEST test-health ratchet for xunit compilations. Add a
+`.testhealth-baseline` to adopt it. `KhaozTestHealthBaselineDir` overrides the discovered directory.
+Without that file the KETEST rules stay silent. KETEST001 and KETEST002 enforce exception-message assertion and
+non-public reflection allowances. KETEST003 is report-only because only 6 of 20 sampled findings were
+real, as local tables and test-owned case helpers look possibly empty to a syntactic check. The
+[analyzer README](../KhaozEngine.CodeHealth.Analyzers/README.md#test-health-ratchet) owns rule details,
+report mode, baseline grammar and the owner-approved exemption path.
+
 ## In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)
 
 Renders a game's player-facing `docs/PLAY_CHANGELOG.md` (the shared changelog style, `docs/CHANGELOG-STYLE.md`)
@@ -9206,7 +9214,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.22.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.23.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -9648,7 +9656,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.22.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.23.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -10478,7 +10486,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.22.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.23.0" />
 ```
 
 ```csharp
@@ -18725,7 +18733,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.22.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.23.0" />
 ```
 
 ```csharp
@@ -18761,7 +18769,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.22.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.23.0" />
 ```
 
 ```csharp
@@ -19005,7 +19013,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.22.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.23.0" />
 ```
 
 ```csharp
@@ -23569,7 +23577,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.22.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.23.0" />
 </ItemGroup>
 ```
 

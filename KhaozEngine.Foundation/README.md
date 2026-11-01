@@ -66,8 +66,9 @@ Pulls in:
 - `KhaozEngine.Determinism` - `DeterministicFpScope` FP-environment pinning for lockstep sims.
 - `KhaozEngine.Platform` - cross-platform `Clipboard` facade.
 - `KhaozEngine.Updates` - delta auto-update pipeline.
-- `KhaozEngine.CodeHealth.Analyzers` - compile-time file-size ratchet diagnostics and `buildTransitive` baseline
-  discovery. The umbrella packs it with `PrivateAssets="none"` so both assets flow to consumers.
+- `KhaozEngine.CodeHealth.Analyzers` - compile-time file-size and test-health ratchets, with
+  `buildTransitive` baseline discovery. The umbrella packs it with `PrivateAssets="none"` so both assets
+  flow to consumers.
 
 Also ships buildTransitive build defaults that flow to every consumer, whether Foundation is
 referenced directly or via `Game2D`/`Game3D`/`Server`:

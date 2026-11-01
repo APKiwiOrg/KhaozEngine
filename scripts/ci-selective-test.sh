@@ -5,7 +5,7 @@
 # Called by .github/workflows/ci.yml for the push (main) and pull_request events. Tag pushes and
 # workflow_dispatch keep the full restore/build/test/pack sequence inline in the workflow (a tag that
 # reuses the hosted gate skips its test steps, and only tags publish) and do NOT call this script.
-# Spec: docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md (Decisions 4, 5 and 7).
+# Spec: docs/design/CI-SELECTIVE-TESTS.md (Decisions 4, 5 and 7).
 #
 # Usage: scripts/ci-selective-test.sh <BASE_SHA> <HEAD_SHA>
 #   BASE_SHA  commit to diff from (github.event.before on pushes, the PR base sha on PRs)

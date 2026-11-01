@@ -250,7 +250,8 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 foreach (var variable in loop.Declaration.Variables)
                 {
                     var declared = model.GetDeclaredSymbol(variable, cancellationToken);
-                    if (IsCompared(declared) && variable.Initializer is not null)
+                    if (IsCompared(declared) && variable.Initializer is not null &&
+                        !OtherInitializersMention(loop, variable, declared!.Name))
                     {
                         counter = declared!;
                         initialValue = variable.Initializer.Value;
@@ -263,7 +264,7 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 if (initializer is not AssignmentExpressionSyntax assignment ||
                     !assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)) continue;
                 var assigned = model.GetSymbolInfo(assignment.Left, cancellationToken).Symbol;
-                if (IsCompared(assigned))
+                if (IsCompared(assigned) && !OtherInitializersMention(loop, assignment, assigned!.Name))
                 {
                     counter = assigned!;
                     initialValue = assignment.Right;
@@ -273,6 +274,19 @@ namespace KhaozEngine.CodeHealth.Analyzers
             counter = null!;
             initialValue = null!;
             return false;
+        }
+
+        // Another initializer that names the counter could overwrite its start value, so the header
+        // proves nothing then. A name match is deliberately conservative.
+        private static bool OtherInitializersMention(ForStatementSyntax loop, SyntaxNode counterInitializer,
+            string name)
+        {
+            IEnumerable<SyntaxNode> parts = loop.Declaration is null
+                ? loop.Initializers
+                : loop.Declaration.Variables.Cast<SyntaxNode>().Concat(loop.Initializers);
+            return parts.Where(part => part != counterInitializer).Any(part =>
+                part.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>()
+                    .Any(identifier => identifier.Identifier.ValueText == name));
         }
 
         private static bool TryLiteralNumber(ExpressionSyntax expression, SemanticModel model,

@@ -88,6 +88,8 @@ public class LoopOnlyAssertionTests
     [InlineData("for (int i = 0, j = 0; j < GetItems().Length; i++) Assert.True(i >= 0);")]
     [InlineData("for (char c = 'b'; c < 'b'; c++) Assert.True(c == 'a');")]
     [InlineData("foreach (var item in new int[0u]) Assert.Equal(0, item);")]
+    [InlineData("for (int i = 0, j = (i = 1); i < 1; i++) Assert.Equal(i, j);")]
+    [InlineData("int k; for (k = 0, k = 1; k < 1; k++) Assert.True(k == 0);")]
     public async Task PossiblyEmptyGuard_Fires(string body) => await AssertFinding(body);
 
     [Theory]

@@ -32,11 +32,11 @@ public sealed class RendererPerfIdentityCheckoutTests
             "KhaozEngine.Render.Tests/Gpu/TemporalVisibilityFrozenDMask.cs",
             "KhaozEngine.Render.Tests/Gpu/TemporalLockReleaseProbe.cs",
             "KhaozEngine.Render.Tests/Render3D/PointShadowFilterShaderTests.cs",
-            "KhaozEngine.Render.Tests/Fixtures/renderer-profiles/profiles.expected.txt",
-            "KhaozEngine.Render.Tests/Fixtures/renderer-profiles/index.expected.txt",
+            "tools/Renderer.Perf.Tooling.Tests/Fixtures/renderer-profiles/profiles.expected.txt",
+            "tools/Renderer.Perf.Tooling.Tests/Fixtures/renderer-profiles/index.expected.txt",
             "KhaozEngine.Render.Tests/Gpu/WaterPipelineEmissionTests.cs",
             .. checkout.Git("ls-files", "-z", "--",
-                "KhaozEngine.Render.Tests/Gpu/RendererPerf/controls/*.glsl",
+                "tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/controls/*.glsl",
                 "tools/Renderer.Perf.Tests/authorized/*.json").Split('\0', StringSplitOptions.RemoveEmptyEntries)];
         Assert.All(inputs, input => Assert.True(File.Exists(Path.Combine(Root(), input)), input));
         string[] attributes = checkout.Git(["check-attr", "-z", "text", "eol", "--", .. inputs])
@@ -64,5 +64,5 @@ public sealed class RendererPerfIdentityCheckoutTests
     }
 
     static string Root([CallerFilePath] string source = "") =>
-        Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../.."));
+        RendererPerfRepositoryPaths.Root;
 }

@@ -93,7 +93,7 @@ public sealed class RendererPerfGpuClockWorkflowTests
         fixture.Environment["RENDERER_PERF_EXECUTION_CLASS"] = "performance";
         fixture.Environment["RENDERER_PERF_LOCKED_GRAPHICS_CLOCK_MHZ"] = "1095";
         fixture.Environment["CLOCK_FAULT"] = fault;
-        fixture.Environment["CLOCK_SCRIPT"] = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../../scripts/renderer-perf-gpu-clock.ps1"));
+        fixture.Environment["CLOCK_SCRIPT"] = RendererPerfRepositoryPaths.File("scripts/renderer-perf-gpu-clock.ps1");
         File.WriteAllText(Path.Combine(fixture.Directory, "clock-test.ps1"), """
             param([string]$Mode)
             function global:sudo {

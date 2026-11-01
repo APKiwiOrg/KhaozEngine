@@ -24314,7 +24314,7 @@ including skips. Detailed markers can serialize Vulkan work or split Metal encod
 separately from the outer-pair-only frame totals and report that instrumentation cost.
 
 The internal renderer adapter is
-[`RendererPerfRecorder`](../KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfRecorder.cs), with
+[`RendererPerfRecorder`](../tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfRecorder.cs), with
 `RendererPerfDevice` and `RendererPerfCommandList` forwarding the native seam. Construct the recorder,
 fixed pass definitions, sample storage, CPU-span capacity and resource metadata capacity before warming.
 Pass definitions freeze IDs, occurrences, parents and increasing reserved marker pairs for GPU intervals.

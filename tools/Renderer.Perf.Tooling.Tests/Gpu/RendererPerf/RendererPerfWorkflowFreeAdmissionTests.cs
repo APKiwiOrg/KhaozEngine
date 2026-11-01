@@ -168,7 +168,7 @@ public sealed class RendererPerfWorkflowFreeAdmissionTests
 
     static (int Code, string Output) Admit(RendererPerfWorkflowContractTests.WorkflowFixture fixture, [CallerFilePath] string source = "")
     {
-        string repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../.."));
+        string repo = RendererPerfRepositoryPaths.Root;
         return fixture.Execute("dotnet", [Path.Combine(repo, "tools/Renderer.Perf.Verify/bin/Release/net10.0/Renderer.Perf.Verify.dll"),
             "admit", Path.GetFullPath(fixture.Git("rev-parse", "--show-toplevel").Trim()), fixture.Reports]);
     }

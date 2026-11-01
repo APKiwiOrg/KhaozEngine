@@ -117,14 +117,22 @@ sh scripts/build-release-tests.sh KhaozEngine.slnx
 dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket&Category!=Diagnostic"
 ```
 
-The shared Release setup builds the selected target, then the outside-solution renderer verifier
-when the solution or Render.Tests owns the selection, including reduced native GPU shard solutions.
-Its process tests require that freshly built executable. Ordinary full and selective CI and the native
-GPU matrix use the same setup. A raw solution build alone does not
-produce this test prerequisite. Other selected test assemblies keep their original build and test slice.
-Canonical solution and project selection uses this checkout's actual file identity. Every other
-solution inspects its resolved project roots, including a foreign solution with the canonical basename.
-Unrelated roots never acquire the renderer verifier prerequisite.
+The shared Release setup builds the selected engine target without renderer tooling prerequisites.
+Renderer measurement implementation and tests live in the outside-solution
+[`Renderer.Perf.Tooling.Tests`](../tools/Renderer.Perf.Tooling.Tests/README.md) project. No engine project
+references it. Build it explicitly with
+`sh scripts/build-release-tests.sh tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj`
+before its `dotnet test -c Release --no-build` run. This target, and foreign or reduced solutions whose
+resolved roots include this exact project, also build the offline verifier required by process tests.
+Canonical project selection uses actual file identity, never a basename match. Ordinary engine CI and
+native engine shards do not build or discover the tooling suite. A csproj-only edit still selects the
+architecture rump when dotnet-affected reports no affected roots. `tooling-validation.yml` owns its free
+three-OS validation and the prerequisite gate for separately authorized renderer campaigns.
+
+The ratchet report build is a separate maintenance inventory. `check-test-health.sh` sequentially
+builds the engine solution and the baselined outside-solution tooling projects before lowering any
+allowance. Linked files retain their canonical physical repository path and findings use the maximum
+per-source count across assemblies. This build inventory adds no tooling test execution to engine CI.
 
 Renderer workflow contract tests parse checkout text through `RendererPerfWorkflowText`, which accepts
 LF and CRLF before extracting jobs or embedded commands. Exact-byte inputs keep their LF rules in

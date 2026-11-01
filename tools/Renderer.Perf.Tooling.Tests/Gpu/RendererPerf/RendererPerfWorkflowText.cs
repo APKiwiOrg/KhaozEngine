@@ -11,13 +11,13 @@ internal sealed class RendererPerfWorkflowText(string text)
 
     internal static string Selector([CallerFilePath] string source = "")
     {
-        string repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../.."));
+        string repo = RendererPerfRepositoryPaths.Root;
         return File.ReadAllText(Path.Combine(repo, "scripts/renderer-perf-workflow.ps1")).ReplaceLineEndings("\n");
     }
 
     internal static RendererPerfWorkflowText Read([CallerFilePath] string source = "")
     {
-        string repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../.."));
+        string repo = RendererPerfRepositoryPaths.Root;
         return new(File.ReadAllText(Path.Combine(repo, ".github/workflows/gpu-hosted-bench.yml")));
     }
 }

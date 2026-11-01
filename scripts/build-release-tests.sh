@@ -1,7 +1,7 @@
 #!/bin/sh
 # Release test setup shared by local development, ordinary CI and native GPU CI.
-# The verifier remains outside the solution and depends on Render.Tests, so build it only after
-# its owning test assembly. No reverse project reference or test-time build is needed.
+# Only the outside-solution renderer tooling suite owns verifier process tests.
+# Build its executable prerequisite after that suite, without a reverse project reference.
 set -eu
 cd "$(dirname "$0")/.."
 target=${1:-KhaozEngine.slnx}
@@ -13,8 +13,10 @@ case "${OS:-}" in
 esac
 needs_verifier=false
 # Only this checkout's actual canonical files can bypass solution-root inspection.
-if [ "$normalized_target" -ef "$PWD/KhaozEngine.slnx" ] \
-  || [ "$normalized_target" -ef "$PWD/KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj" ]; then
+if [ "$normalized_target" -ef "$PWD/KhaozEngine.slnx" ]; then
+  # The architecture guard keeps tooling outside this solution. Retain its shell-only setup path.
+  needs_verifier=false
+elif [ "$normalized_target" -ef "$PWD/tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj" ]; then
   needs_verifier=true
 else
   case "$normalized_target" in
@@ -23,9 +25,9 @@ else
       needs_verifier=$(python3 - "$normalized_target" "$PWD" <<'PY'
 import pathlib, sys, xml.etree.ElementTree as ET
 solution = pathlib.Path(sys.argv[1]).resolve()
-render_tests = (pathlib.Path(sys.argv[2]) / 'KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj').resolve()
+tooling_tests = (pathlib.Path(sys.argv[2]) / 'tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj').resolve()
 projects = ET.parse(solution).iter('Project')
-print(str(any((solution.parent / project.attrib['Path'].replace('\\', '/')).resolve() == render_tests
+print(str(any((solution.parent / project.attrib['Path'].replace('\\', '/')).resolve() == tooling_tests
               for project in projects)).lower())
 PY
       )

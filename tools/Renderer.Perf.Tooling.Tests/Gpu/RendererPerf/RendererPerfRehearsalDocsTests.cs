@@ -23,5 +23,5 @@ public sealed class RendererPerfRehearsalDocsTests
     }
 
     static string Read(string file, [CallerFilePath] string source = "") =>
-        File.ReadAllText(Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../../docs", file)));
+        File.ReadAllText(RendererPerfRepositoryPaths.File(Path.Combine("docs", file)));
 }

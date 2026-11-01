@@ -26,10 +26,11 @@ inputs. `PlatformFamily` and `Derived` identify the running family's computed co
 complete live construction for diagnostics and assertions, rather than the frozen envelope.
 
 Freeze the local family from cold construction. Collect any new family's digests from a
-hosted `cross-platform-gpu` failure, review that portable inputs match, commit the new
-entry and run the complete matrix again. Never accept missing entries or copy a digest
-from another family without measuring it. Keep GPU caches enabled and the render filter
-empty for the full gate. The public engine repository uses hosted runners only.
+free hosted `tooling-validation` failure, review that portable inputs match, commit the new
+entry and run the complete tooling matrix again. Never accept missing entries or copy a digest
+from another family without measuring it. Keep GPU caches enabled. This outside-solution suite
+is built and tested explicitly as described in the [tooling README](../../../README.md).
+The public engine repository uses hosted runners only.
 
 ## Water optics v2 recipes
 

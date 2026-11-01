@@ -35,12 +35,18 @@ trap 'rm -rf "$tmp"' 0
 trap 'exit 2' HUP INT TERM
 log=${TESTHEALTH_BUILD_LOG:-$tmp/build.log}
 if [ -z "${TESTHEALTH_BUILD_LOG:-}" ]; then
-  if ! dotnet build KhaozEngine.slnx -c Release --no-incremental \
-      -p:KhaozTestHealthMode=report -p:TreatWarningsAsErrors=false >"$log" 2>&1; then
-    cat "$log" >&2
-    echo "check-test-health: report build failed. Baseline entries were not changed." >&2
-    exit 1
-  fi
+  : >"$log"
+  # Explicit report roots are independent of engine test selection. Add each baselined tool here
+  # when it leaves the solution, otherwise missing diagnostics could silently erase its allowance.
+  for target in KhaozEngine.slnx \
+      tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj; do
+    if ! dotnet build "$target" -c Release --no-incremental \
+        -p:KhaozTestHealthMode=report -p:TreatWarningsAsErrors=false >>"$log" 2>&1; then
+      cat "$log" >&2
+      echo "check-test-health: report build failed for $target. Baseline entries were not changed." >&2
+      exit 1
+    fi
+  done
 fi
 
 # Each diagnostic carries the file total. Findings repeat at every location, in the build summary,

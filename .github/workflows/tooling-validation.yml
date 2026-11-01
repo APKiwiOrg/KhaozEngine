@@ -1,0 +1,320 @@
+# Free validation for tooling suites outside the engine solution.
+name: tooling-validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/Renderer.Perf.Tooling.Tests/**'
+      - 'tools/Renderer.Perf.Verify/**'
+      - 'tools/Renderer.Perf.Tests/**'
+      - 'scripts/renderer-perf-*.ps1'
+      - 'scripts/renderer-tooling-selection.py'
+      - 'scripts/tests/renderer-tooling-selection.test.py'
+      - 'scripts/build-release-tests.sh'
+      - 'scripts/tests/build-release-tests.test.sh'
+      - '.github/workflows/gpu-hosted-bench.yml'
+      - '.github/workflows/tooling-validation.yml'
+      - 'test-shared/RendererPerfShared.props'
+      - 'test-shared/RendererPerfSceneInputs.cs'
+      - 'test-shared/AllocationMeasurement.props'
+      - 'test-shared/AllocationRegion.cs'
+      - 'test-shared/AllocationMeasurement.cs'
+      - 'test-shared/SerializedReportingTestFramework.cs'
+      - 'test-shared/AllocationIsolationContractTests.cs'
+      - 'KhaozEngine.Render.Tests/Assets/Roboto-Regular.ttf'
+      - '.gitattributes'
+      - '.testhealth-baseline'
+      - '.filesize-baseline'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - 'Directory.Packages.props'
+      - 'nuget.config'
+      - 'global.json'
+      - '.config/dotnet-tools.json'
+      - 'docs/RENDERER-PERFORMANCE.md'
+      - 'docs/CONTRIBUTOR-RULES.md'
+      - 'docs/CROSS-PLATFORM.md'
+      - 'KhaozEngine.Render.Tests/Gpu/CommandTallyGpuCommandList.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/CountingGpuTexture.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/CoveragePerf/D3D11TimestampEndFixture.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/D3D11TimestampTestApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/D3D11TimestampTestEmitter.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeD3D11InfoQueue.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeD3D11Ring.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeGpuDevice.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeMetalEncoderSink.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeMetalRenderApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeMetalSetupNative.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeMetalSharedEvent.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeMetalStaging.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanBarrierRecorder.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanCommandApi.MemoryRelease.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanCommandApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanDescriptorApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanDeviceMemoryApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanDrawEmitter.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanPipelineApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanPipelineBinder.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanRenderApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanResourceApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanSetupSink.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanShaderApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanTimelineSemaphore.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanTransferSink.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/IlCallGraph.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/MetalBindFixtures.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/MetalRingHarness.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/MetalSwapchainFakes.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/MetalTimestampTestNative.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/OpenListTrackingGpuDevice.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/Performance/GpuPerfTimestampFakes.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/Performance/GpuPerfTimestampRing.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Bindings.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Commands.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Draws.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Reads.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.Visibility.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/SpyGpuDevice.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/SubmissionTestDevice.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/UniformWindowIndex.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/VulkanDeviceHarness.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/VulkanResourceHarness.cs'
+      - 'KhaozEngine.Render.Tests/Render3D/HeadlessSceneRig.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/BackendProviderScope.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/VulkanDescriptorCapture.cs'
+      - 'KhaozEngine.Render.Tests/AllocSensitiveCollection.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/GpuBackendProvidersCollection.cs'
+  pull_request:
+    paths:
+      - 'tools/Renderer.Perf.Tooling.Tests/**'
+      - 'tools/Renderer.Perf.Verify/**'
+      - 'tools/Renderer.Perf.Tests/**'
+      - 'scripts/renderer-perf-*.ps1'
+      - 'scripts/renderer-tooling-selection.py'
+      - 'scripts/tests/renderer-tooling-selection.test.py'
+      - 'scripts/build-release-tests.sh'
+      - 'scripts/tests/build-release-tests.test.sh'
+      - '.github/workflows/gpu-hosted-bench.yml'
+      - '.github/workflows/tooling-validation.yml'
+      - 'test-shared/RendererPerfShared.props'
+      - 'test-shared/RendererPerfSceneInputs.cs'
+      - 'test-shared/AllocationMeasurement.props'
+      - 'test-shared/AllocationRegion.cs'
+      - 'test-shared/AllocationMeasurement.cs'
+      - 'test-shared/SerializedReportingTestFramework.cs'
+      - 'test-shared/AllocationIsolationContractTests.cs'
+      - 'KhaozEngine.Render.Tests/Assets/Roboto-Regular.ttf'
+      - '.gitattributes'
+      - '.testhealth-baseline'
+      - '.filesize-baseline'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - 'Directory.Packages.props'
+      - 'nuget.config'
+      - 'global.json'
+      - '.config/dotnet-tools.json'
+      - 'docs/RENDERER-PERFORMANCE.md'
+      - 'docs/CONTRIBUTOR-RULES.md'
+      - 'docs/CROSS-PLATFORM.md'
+      - 'KhaozEngine.Render.Tests/Gpu/CommandTallyGpuCommandList.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/CountingGpuTexture.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/CoveragePerf/D3D11TimestampEndFixture.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/D3D11TimestampTestApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/D3D11TimestampTestEmitter.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeD3D11InfoQueue.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeD3D11Ring.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeGpuDevice.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeMetalEncoderSink.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeMetalRenderApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeMetalSetupNative.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeMetalSharedEvent.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeMetalStaging.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanBarrierRecorder.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanCommandApi.MemoryRelease.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanCommandApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanDescriptorApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanDeviceMemoryApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanDrawEmitter.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanPipelineApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanPipelineBinder.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanRenderApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanResourceApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanSetupSink.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanShaderApi.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanTimelineSemaphore.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/FakeVulkanTransferSink.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/IlCallGraph.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/MetalBindFixtures.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/MetalRingHarness.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/MetalSwapchainFakes.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/MetalTimestampTestNative.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/OpenListTrackingGpuDevice.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/Performance/GpuPerfTimestampFakes.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/Performance/GpuPerfTimestampRing.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Bindings.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Commands.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Draws.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.Reads.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/RecordingGpuCommandList.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.Visibility.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/SpyGpuDevice.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/SubmissionTestDevice.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/UniformWindowIndex.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/VulkanDeviceHarness.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/VulkanResourceHarness.cs'
+      - 'KhaozEngine.Render.Tests/Render3D/HeadlessSceneRig.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/BackendProviderScope.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/VulkanDescriptorCapture.cs'
+      - 'KhaozEngine.Render.Tests/AllocSensitiveCollection.cs'
+      - 'KhaozEngine.Render.Tests/Gpu/GpuBackendProvidersCollection.cs'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Explicit tooling suite
+        type: choice
+        options: [renderer]
+        default: renderer
+  workflow_call:
+    inputs:
+      suite:
+        type: string
+        required: true
+      ref:
+        description: Immutable requested authorization SHA
+        type: string
+        required: true
+      trusted-ref:
+        description: Immutable trusted workflow implementation SHA
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-26.04
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      renderer: ${{ steps.select.outputs.renderer }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: select
+        shell: bash
+        env:
+          SELECTION_EVENT: ${{ (inputs.ref != '' || inputs.trusted-ref != '') && 'workflow_call' || github.event_name }}
+          SUITE: ${{ inputs.suite || 'renderer' }}
+          REQUESTED_SHA: ${{ github.sha }}
+          CALL_SHA: ${{ inputs.ref }}
+          TRUSTED_SHA: ${{ inputs.trusted-ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "$SELECTION_EVENT" == workflow_call ]]; then REQUESTED_SHA=$CALL_SHA; fi
+          args=(--event "$SELECTION_EVENT" --suite "$SUITE" --ref "$REQUESTED_SHA" --trusted-ref "$TRUSTED_SHA")
+          if [[ "$SELECTION_EVENT" == push || "$SELECTION_EVENT" == pull_request ]]; then
+            if [[ -z "$BASE_SHA" ]] || ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+              args+=(--unknown-diff)
+            else
+              git diff --name-only "$BASE_SHA" "$REQUESTED_SHA" > "$RUNNER_TEMP/tooling-changed.txt"
+              args+=(--changed-file "$RUNNER_TEMP/tooling-changed.txt")
+            fi
+          fi
+          matrix=$(python3 scripts/renderer-tooling-selection.py "${args[@]}")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "renderer=$(python3 -c 'import json,sys; print(str(bool(json.loads(sys.argv[1])["include"])).lower())' "$matrix")" >> "$GITHUB_OUTPUT"
+
+  renderer:
+    needs: select
+    if: needs.select.outputs.renderer == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
+      KE_D3D11_ADAPTER: warp
+      KE_VULKAN_DEVICE: llvmpipe
+      KE_VULKAN_REQUIRED: ${{ matrix.backend == 'vulkan-native' && '1' || '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.ref }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Check process-fixture tools
+        shell: bash
+        run: |
+          git --version
+          python3 --version
+          pwsh -NoProfile -Command "\$PSVersionTable.PSVersion.ToString()"
+          bash --version
+      - name: Install software Vulkan
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mesa-vulkan-drivers vulkan-tools libvulkan1
+          icd=$(dpkg -L mesa-vulkan-drivers | grep -E '/lvp_icd[^/]*\.json$' | head -1)
+          test -n "$icd" && test -f "$icd"
+          echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+      - name: Build renderer tooling and offline verifier
+        shell: bash
+        run: |
+          mkdir -p local-feed
+          sh scripts/build-release-tests.sh tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj
+      - name: Run complete headless renderer tooling suite
+        shell: pwsh
+        run: |
+          Remove-Item Env:KE_GPU_TESTS, Env:KE_RENDERER_PERF_UNIT -ErrorAction SilentlyContinue
+          & dotnet test tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj -c Release --no-build --logger 'trx;LogFileName=headless.trx' --results-directory TestResults
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run free native FFT bound correctness fact with no skips
+        shell: pwsh
+        run: |
+          Remove-Item Env:KE_RENDERER_PERF_UNIT -ErrorAction SilentlyContinue
+          $env:KE_GPU_TESTS = '1'
+          & dotnet test tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName=KhaozEngine.Tests.Gpu.RendererPerf.RendererPerfWaterOpticsRecipeTests.Fft_surface_stays_within_its_bound' --logger 'trx;LogFileName=fft-bound.trx' --results-directory TestResults
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          [xml]$trx = Get-Content -Raw TestResults/fft-bound.trx
+          $counts = @($trx.SelectNodes('//*[local-name()="Counters"]'))
+          if ($counts.Count -ne 1 -or $counts[0].total -ne '1' -or $counts[0].passed -ne '1' -or $counts[0].notExecuted -ne '0' -or $counts[0].failed -ne '0') { throw 'Free FFT correctness requires exactly one pass and zero skips' }
+      - name: Upload tooling test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: renderer-tooling-${{ matrix.os }}-${{ matrix.ref }}
+          path: TestResults/*.trx
+          if-no-files-found: warn
+
+  renderer-result:
+    needs: [select, renderer]
+    if: always()
+    runs-on: ubuntu-26.04
+    timeout-minutes: 2
+    steps:
+      - name: Require completed tooling validation
+        shell: bash
+        env:
+          REQUIRED: ${{ github.event_name == 'workflow_dispatch' || inputs.trusted-ref != '' || needs.select.outputs.renderer == 'true' }}
+          SELECT_RESULT: ${{ needs.select.result }}
+          RENDERER_RESULT: ${{ needs.renderer.result }}
+        run: |
+          test "$SELECT_RESULT" = success
+          if [ "$REQUIRED" = true ]; then
+            test "$RENDERER_RESULT" = success
+          fi

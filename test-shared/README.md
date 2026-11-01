@@ -46,3 +46,10 @@ results on its own timer, which stays far inside the budget.
 evidence tooling and engine scene fixtures. Render.Tests compiles it by source link. The existing fixture
 methods forward to these inputs, preserving their caller APIs. A tooling project can compile the same
 source without importing real-device fixtures or referencing the engine test assembly.
+
+`RendererPerfShared.props` explicitly source-links helper-only engine test files into the outside-solution
+renderer tooling assembly. It normalizes the source root before constructing paths, so KESIZE and
+KETEST retain each helper's physical repository-relative identity. The helper files remain owned by
+Render.Tests, including GpuPerfTimestampRing and its fakes. No module initializer or unrelated fact
+file is linked. The tooling project also imports AllocationMeasurement.props, including its independent
+allocation-isolation contract tests and serialized reporting framework.

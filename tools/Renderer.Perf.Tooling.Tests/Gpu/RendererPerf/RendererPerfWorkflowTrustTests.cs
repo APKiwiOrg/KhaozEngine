@@ -90,7 +90,7 @@ public sealed class RendererPerfWorkflowTrustTests
 
         internal AdmissionWorkspace([CallerFilePath] string source = "")
         {
-            string repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../.."));
+            string repo = RendererPerfRepositoryPaths.Root;
             string legs = RendererPerfWorkflowText.Read().Job("legs").Split("\n  bench:", 2)[0];
             string requested = _root;
             foreach (string step in legs.Split("      - ").Where(s => s.Contains("uses: actions/checkout@", StringComparison.Ordinal)))

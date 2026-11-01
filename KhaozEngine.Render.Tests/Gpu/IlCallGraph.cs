@@ -12,9 +12,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <para><b>WHY THESE RULES NEED IL AT ALL.</b> A field-graph walk answers "can this type be REACHED",
     /// which is what <c>V-D2</c>'s descriptor-pool rule needs. It cannot answer "does this path make this
     /// CALL", and two of this backend's rules are exactly that: M-N5 (no path reaches an <c>objc_msgSend</c>
-    /// without a pool on it, <see cref="MetalAutoreleaseArchitectureTests"/>) and row 10's name blindness
+    /// without a pool on it, <c>MetalAutoreleaseArchitectureTests</c>) and row 10's name blindness
     /// (nothing on <c>MetalShaderIndexTable</c> reads a layout element's name,
-    /// <see cref="MetalIndexTableNameBlindnessTests"/>). The pool and the message send are two calls from one
+    /// <c>MetalIndexTableNameBlindnessTests</c>). The pool and the message send are two calls from one
     /// method with no type relationship between them, so the call site is the only thing that carries the fact.
     /// </para>
     ///

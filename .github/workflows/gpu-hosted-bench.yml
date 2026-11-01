@@ -84,6 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
+      authorization-sha: ${{ steps.renderer-admission.outputs.authorization-sha }}
     env:
       LEGS: ${{ inputs.legs }}
       FILTER: ${{ inputs.filter }}
@@ -138,6 +139,8 @@ jobs:
           pwsh -NoProfile -File "$admission" -Mode Authorize
           verifier="$GITHUB_WORKSPACE/renderer-perf-trusted/tools/Renderer.Perf.Verify/bin/Release/net10.0/Renderer.Perf.Verify.dll"
           dotnet "$verifier" admit "$GITHUB_WORKSPACE/renderer-perf-requested" "$KE_RENDERER_PERF_REPORTS"
+          authorization_sha=$(git rev-parse HEAD)
+          echo "authorization-sha=$authorization_sha" >> "$GITHUB_OUTPUT"
       - id: pick
         if: success() && ((inputs.renderer-perf-unit == '' && inputs.renderer-perf-manifest-sha256 == '' && inputs.renderer-perf-workload-sha == '') || steps.renderer-admission.outcome == 'success')
         shell: bash
@@ -435,8 +438,17 @@ jobs:
           path: ${{ runner.temp }}/coverage-perf
           if-no-files-found: warn
 
-  renderer-bench:
+  renderer-tooling-validation:
     needs: legs
+    if: inputs.renderer-perf-unit != '' && github.run_attempt == 1
+    uses: ./.github/workflows/tooling-validation.yml
+    with:
+      suite: renderer
+      ref: ${{ needs.legs.outputs.authorization-sha }}
+      trusted-ref: ${{ github.workflow_sha }}
+
+  renderer-bench:
+    needs: [legs, renderer-tooling-validation]
     if: inputs.renderer-perf-unit != '' && github.run_attempt == 1
     name: renderer / ${{ matrix.leg }}
     # The trusted matrix binds paid caps and every software rehearsal schedule, including all controls.

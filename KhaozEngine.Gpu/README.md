@@ -434,7 +434,8 @@ What it owns today:
   once per batch of at most three, including the final short batch, then harvests once. The ring retains the
   exact submission fence through immutable publication and quarantines pending or invalid results without
   waiting or polling again. Pass labels and skipped-pass status remain adapter-owned.
-  The internal renderer harness adds `RendererPerfRecorder`, `RendererPerfDevice` and
+  The outside-solution [renderer tooling harness](../tools/Renderer.Perf.Tooling.Tests/README.md)
+  adds `RendererPerfRecorder`, `RendererPerfDevice` and
   `RendererPerfCommandList` beside its protocol records. They retain fixed command-owner, CPU-span,
   dispatch-size and framebuffer-format storage before recording. Logical requested calls, redundant bind
   requests, upload bytes and copy bytes stay separate from optional native emitted-state counters.

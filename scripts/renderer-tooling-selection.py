@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""Select free renderer validation, independently of solution-based engine selection."""
+import argparse
+import fnmatch
+import json
+import pathlib
+import re
+import xml.etree.ElementTree as ET
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+WATCHED = (
+    'tools/Renderer.Perf.Tooling.Tests/**', 'tools/Renderer.Perf.Verify/**',
+    'tools/Renderer.Perf.Tests/**', 'scripts/renderer-perf-*.ps1',
+    'scripts/renderer-tooling-selection.py', 'scripts/tests/renderer-tooling-selection.test.py',
+    'scripts/build-release-tests.sh', 'scripts/tests/build-release-tests.test.sh',
+    '.github/workflows/gpu-hosted-bench.yml', '.github/workflows/tooling-validation.yml',
+    'test-shared/RendererPerfShared.props', 'test-shared/RendererPerfSceneInputs.cs',
+    'test-shared/AllocationMeasurement.props', 'test-shared/AllocationRegion.cs',
+    'test-shared/AllocationMeasurement.cs', 'test-shared/SerializedReportingTestFramework.cs',
+    'test-shared/AllocationIsolationContractTests.cs', 'KhaozEngine.Render.Tests/Assets/Roboto-Regular.ttf',
+    '.gitattributes', '.testhealth-baseline',
+    '.filesize-baseline', 'Directory.Build.props', 'Directory.Build.targets',
+    'Directory.Packages.props', 'nuget.config', 'global.json', '.config/dotnet-tools.json',
+    'docs/RENDERER-PERFORMANCE.md', 'docs/CONTRIBUTOR-RULES.md', 'docs/CROSS-PLATFORM.md',
+)
+PLATFORMS = (
+    ('ubuntu-26.04', 'vulkan-native'),
+    ('windows-latest', 'direct3d11-native'),
+    ('macos-26', 'metal-native'),
+)
+
+
+def watched_paths():
+    links = ET.parse(ROOT / 'test-shared/RendererPerfShared.props').iter('Compile')
+    return (*WATCHED, *(node.attrib['Include'].removeprefix('$(RendererPerfRepositoryRoot)/') for node in links))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--event', required=True, choices=('push', 'pull_request', 'workflow_call', 'workflow_dispatch'))
+    parser.add_argument('--suite', default='renderer', choices=('renderer',))
+    parser.add_argument('--ref', required=True, dest='requested')
+    parser.add_argument('--trusted-ref', default='')
+    parser.add_argument('--changed', action='append', default=[])
+    parser.add_argument('--changed-file', type=pathlib.Path)
+    parser.add_argument('--unknown-diff', action='store_true')
+    args = parser.parse_args()
+    if args.event == 'workflow_call' and not args.trusted_ref:
+        parser.error('reusable validation requires both requested and trusted commit SHAs')
+    refs = list(dict.fromkeys(ref for ref in (args.requested, args.trusted_ref) if ref))
+    if not args.requested or any(not re.fullmatch('[0-9a-f]{40}', ref) for ref in refs):
+        parser.error('validation requires immutable full commit SHAs')
+    changed = args.changed + (args.changed_file.read_text().splitlines() if args.changed_file else [])
+    selected = (args.event in ('workflow_call', 'workflow_dispatch') or args.unknown_diff
+                or any(fnmatch.fnmatchcase(path, pattern) for path in changed for pattern in watched_paths()))
+    print(json.dumps({'include': [dict(ref=ref, os=os, backend=backend)
+                                 for ref in refs for os, backend in PLATFORMS] if selected else []}))
+
+
+if __name__ == '__main__':
+    main()

@@ -278,8 +278,15 @@ Two known selection imprecisions surfaced after the split, both verified, both n
   rump to the affected set whenever the diff touches any `*.csproj` (Decision 5, step 3).
 
 
-Release test setup now uses `scripts/build-release-tests.sh` in both ordinary CI routes and the
-local contributor commands. It builds the selected test target and, for the solution or Render.Tests,
-then builds the outside-solution renderer verifier needed by process tests. The verifier depends on
-Render.Tests, so this ordering avoids a circular reference. Other selected assemblies keep the same
-selection, restore and test semantics. Missing or failed prerequisites refuse tests.
+Release test setup uses `scripts/build-release-tests.sh` in ordinary CI and local contributor commands.
+Engine targets retain their solution-owned selection and do not build renderer tooling. The explicit
+outside-solution `tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj` target owns its
+offline verifier process prerequisite. Other solution files acquire that prerequisite only when their
+resolved roots include this checkout's actual tooling project. A matching basename is insufficient.
+
+The affected set still intersects `KhaozEngine.slnx`, so outside-solution tooling is not selected even
+when dotnet-affected names it. A tooling csproj edit still adds the architecture rump, including when
+the graph walker reports no affected projects, and a baseline
+edit still forces FULL. `tooling-validation.yml` selects the renderer suite from an explicit watched
+path inventory and offers explicit manual and reusable entrypoints. Its free validation gates paid
+renderer allocation without expanding ordinary engine CI. Missing or failed prerequisites refuse tests.

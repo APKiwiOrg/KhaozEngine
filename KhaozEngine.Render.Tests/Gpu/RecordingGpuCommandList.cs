@@ -30,7 +30,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <see cref="CapturePayloads"/> is on) the bytes themselves, and how many draws or dispatches had already
         /// been recorded when it went in. That last number is what turns a pair of uploads into an ORDERING fact:
         /// two writes to one range with no draw between them are a redundant write, and two with a draw between
-        /// them are the ring-collapse hazard <see cref="UniformRewriteAudit"/> looks for (#483).</summary>
+        /// them are the ring-collapse hazard <c>UniformRewriteAudit</c> looks for (#483).</summary>
         internal readonly record struct Upload(IGpuBuffer Buffer, uint Offset, uint Bytes, byte[]? Data = null,
             int DrawsBefore = 0, int FramebufferBindsBefore = 0)
         {

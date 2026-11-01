@@ -293,6 +293,42 @@ said 'report build failed'
 unchanged
 check 'update after a failed own build leaves the baseline' 1 "$rc"
 
+# Combined report builds must retain physical tool paths and use maximum linked-source counts.
+fresh
+mkdir -p tools/Renderer.Perf.Tooling.Tests
+: >tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj
+printf '2 KETEST001 Tests/A.cs\n3 KETEST002 tools/Renderer.Perf.Tooling.Tests/Tool.cs\n5 KETEST002 test-shared/Shared.cs\n' >.testhealth-baseline
+cp .testhealth-baseline before
+mkdir -p "$TMPROOT/combined-bin"
+cat > "$TMPROOT/combined-bin/dotnet" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >>commands
+case "$2" in
+  KhaozEngine.slnx)
+    printf "warning KETEST001: 'Tests/A.cs' has 2 assertions\nwarning KETEST002: 'test-shared/Shared.cs' has 3 accesses\n" ;;
+  tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj)
+    printf "warning KETEST002: 'tools/Renderer.Perf.Tooling.Tests/Tool.cs' has 3 accesses\nwarning KETEST002: 'test-shared/Shared.cs' has 5 accesses\n"
+    exit "${EXTRA_BUILD_EXIT:-0}" ;;
+  *) exit 98 ;;
+esac
+STUB
+chmod +x "$TMPROOT/combined-bin/dotnet"
+set +e
+TESTHEALTH_BUILD_LOG= PATH="$TMPROOT/combined-bin:$PATH" sh "$SCRIPT" --preview >"$OUTFILE" 2>&1
+rc=$?
+set -e
+unchanged
+[ "$(wc -l <commands | tr -d ' ')" -eq 2 ] || rc="$rc, extra target not built"
+if grep -qE 'drop |lower ' "$OUTFILE"; then rc="$rc, combined findings lost"; fi
+check 'combined report retains tool allowance and maximum linked-file count without writing' 0 "$rc"
+set +e
+TESTHEALTH_BUILD_LOG= EXTRA_BUILD_EXIT=39 PATH="$TMPROOT/combined-bin:$PATH" sh "$SCRIPT" --update >"$OUTFILE" 2>&1
+rc=$?
+set -e
+said 'report build failed'
+unchanged
+check 'failing outside-solution target refuses baseline changes' 1 "$rc"
+
 echo ""
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

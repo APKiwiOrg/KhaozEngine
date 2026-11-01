@@ -8,11 +8,10 @@ namespace KhaozEngine.Tests.Gpu.RendererPerf;
 
 public sealed partial class RendererPerfCompilerPublicationTests
 {
-    internal static string Verifier([CallerFilePath] string source = "") => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!,
-        "../../../tools/Renderer.Perf.Verify/bin/Release/net10.0/Renderer.Perf.Verify.dll"));
+    internal static string Verifier([CallerFilePath] string source = "") => RendererPerfRepositoryPaths.File("tools/Renderer.Perf.Verify/bin/Release/net10.0/Renderer.Perf.Verify.dll");
     (int Exit, string Output) RunConsole(params string[] args)
     {
-        Assert.True(File.Exists(Verifier()), "Run scripts/build-release-tests.sh KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj before --no-build process tests.");
+        Assert.True(File.Exists(Verifier()), "Run scripts/build-release-tests.sh tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj before --no-build process tests.");
         var info = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true };
         info.ArgumentList.Add(Verifier());
         foreach (string arg in args) info.ArgumentList.Add(arg);

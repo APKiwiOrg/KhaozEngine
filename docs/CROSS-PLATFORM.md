@@ -295,7 +295,14 @@ manifest bytes and repeats managed parsing, schedule and recipe identity format 
 batch and enum checks, paid or rehearsal deadlines and budgets, byte-hash and independent authorization
 checks. Empty schedules, malformed hashes, Debug runtime policy, invalid pacing, enum values, paid unit
 or steady frame limits and a UTF-8 byte order mark all refuse before the separate matrix step.
-That step requires successful admission, so no paid runner is allocated on a refusal.
+That step requires successful admission, so no paid runner is allocated on a refusal. The subsequent
+free `renderer-tooling-validation` job runs the complete outside-solution tooling suite at both immutable
+requested and trusted SHAs, deduplicating equal refs, on `ubuntu-26.04`, `windows-latest` and `macos-26`.
+It also requires the one FFT bound correctness fact to pass without a skip on lavapipe, WARP and Metal.
+`renderer-bench` needs both free jobs to succeed before its matrix can allocate. A failed, skipped or
+cancelled tooling gate blocks it, and the first-attempt condition still refuses reruns. The generic
+`bench` job keeps only its existing `legs` prerequisite. This free validation is separate from the
+[authorized entrypoint](../tools/Renderer.Perf.Tests/authorized/README.md) and never executes that fact.
 Observed runtime and native identity, source-root ownership and live recipe construction still run on
 the selected runner, as described in the [renderer reference](RENDERER-PERFORMANCE.md#evidence-and-authorization).
 Every paid manifest's
@@ -555,8 +562,8 @@ coverage guards unchanged. Reduced solutions explicitly preserve Release on thei
 `ShouldUnsetParentConfigurationAndPlatform=false`. Otherwise MSBuild resets unlisted references to their
 default configuration, which is Debug. A build guard rejects any Debug output on the fresh CI checkout.
 Native matrix and sync builds use `scripts/build-release-tests.sh`, including reduced shard solutions.
-When the selected roots include this checkout's `Render.Tests`, setup also builds its outside-solution
-renderer verifier before process tests run with `--no-build`. Shards without `Render.Tests` keep their build slice.
+Engine shards do not build the outside-solution renderer tooling or its offline verifier. The explicit
+`Renderer.Perf.Tooling.Tests` target owns that process-test prerequisite.
 The Windows-only NuGet cache still excludes every KhaozEngine extraction. The
 [measurement record](verification/2026-10-18-gpu-shard-build-cost-1472.md) compares scoped builds with per-OS
 output sharing.

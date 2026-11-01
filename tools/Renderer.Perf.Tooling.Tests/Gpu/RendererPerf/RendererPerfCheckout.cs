@@ -24,7 +24,7 @@ internal sealed class RendererPerfCheckout
         {
             string id = RendererPerfRecipe.IdFromVersion(recipe.Version);
             Require(SamePath(RendererPerfRecipe.RecipePath(id),
-                Path.Combine(_root, "KhaozEngine.Render.Tests/Gpu/RendererPerf/recipes", id + ".json")),
+                Path.Combine(_root, "tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/recipes", id + ".json")),
                 "Recipe sources must belong to the authorized checkout root.");
         }
     }

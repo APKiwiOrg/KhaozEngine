@@ -48,6 +48,16 @@ It reconstructs authorization from the requested checkout's HEAD, sole workload 
 the dispatch hash, unit, leg and first attempt, and the trusted PowerShell selector's runner fact.
 The command compares those facts with `authorization.json`, then managed parsing binds the runner and
 workflow to the preset. A disagreement refuses. PowerShell's existing outer guards stay in place.
+After admission, the free `renderer-tooling-validation` prerequisite validates both the resolved
+authorization SHA B and the trusted `github.workflow_sha` implementation, deduplicating identical refs.
+Its reusable `tooling-validation.yml` matrix runs the entire headless tooling suite on Ubuntu lavapipe,
+Windows D3D11 WARP and macOS Metal, then runs the single native FFT bound correctness fact with zero skips.
+Checkout credentials are read-only and measurement opt-in is removed. The paid `renderer-bench` matrix
+requires both admission and this validation to succeed. Failed, skipped or cancelled validation refuses
+allocation, including reruns. The reusable workflow also refuses completion if its required renderer matrix was skipped, failed or
+cancelled, rather than accepting a successful selector alone. A tooling pass grants no permission to execute a measurement campaign.
+The generic bench mode retains its existing admission dependency.
+
 The separate matrix step explicitly requires admission success. These checks cover every paid and
 rehearsal preset, including exact-byte refusal of a UTF-8 byte order mark, complete schedules and recipe
 identity formats, runtime policy values, pacing, enums, all deadlines and the complete budget.
@@ -64,7 +74,7 @@ These live checks, native adapter and timestamp admission, and graphics-clock te
 entrypoint. The managed manifest checks repeat there before device creation.
 
 Each preset is one entry in the typed schedule table, `RendererPerfSchedules` in
-`KhaozEngine.Render.Tests/Gpu/RendererPerf/RendererPerfSchedule.cs`. An entry names its execution class,
+`tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf/RendererPerfSchedule.cs`. An entry names its execution class,
 scenes with recipe versions and profiles, iterations, block and control frame counts, control IDs,
 conditioning frames and scene, total frames and admitted hosted legs. A manifest must reproduce its entry
 exactly. An unknown preset, including a differently cased one, is refused with the `Preset` code before
@@ -477,11 +487,13 @@ post-verification write protection nor an atomic multi-file filesystem transacti
 Offline and workflow verification must repeat against received files. Verified summaries retain that association and their reference rates.
 `RendererPerfComparison.Compare(verifiedBaseline, verifiedCandidate)` requires it for verdicts.
 
-Ordinary local Release test setup runs `sh scripts/build-release-tests.sh KhaozEngine.slnx`, or passes
-`KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj` for the affected assembly. This builds its
-outside-solution process prerequisite before `dotnet test -c Release --no-build`. Full and selective
-ordinary CI and the native GPU matrix use this same build owner, including native shard solutions
-that select Render.Tests. Process tests refuse a missing executable.
+Renderer tooling Release setup runs
+`sh scripts/build-release-tests.sh tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj`,
+then `dotnet test tools/Renderer.Perf.Tooling.Tests/Renderer.Perf.Tooling.Tests.csproj -c Release --no-build`
+with `KE_GPU_TESTS` and `KE_RENDERER_PERF_UNIT` unset. This builds its offline process prerequisite.
+Process tests refuse a missing executable. Engine solution builds and native engine shards no longer
+own these tests or require the verifier. The [tooling README](../tools/Renderer.Perf.Tooling.Tests/README.md)
+lists the explicit references, helper ownership and assembly access.
 
 The directory-verification mode of the outside-solution `tools/Renderer.Perf.Verify` console takes
 exactly directory and report filename. Its free-job `admit` mode is described under
@@ -527,7 +539,7 @@ are errors. Keep the error instead of repairing the input into a favorable resul
 
 ## Reproducing summaries
 
-The offline types live in `KhaozEngine.Render.Tests/Gpu/RendererPerf`, not a shipped package API.
+The offline types live in `tools/Renderer.Perf.Tooling.Tests/Gpu/RendererPerf`, not a shipped package API.
 `RendererPerfAnalysis` owns arithmetic, `RendererPerfComparison` owns compatibility and deltas,
 and `RendererPerfMarkdown` formats compact human output. None creates a device, reads a clock,
 launches a workload or changes the raw artifact.

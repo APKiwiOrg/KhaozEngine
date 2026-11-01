@@ -96,8 +96,15 @@ affected_rc=$?
 set -e
 
 if [ "$affected_rc" -eq "$AFFECTED_NONE_RC" ]; then
-  echo "selective: no affected test projects, skipping build/test"
-  exit 0
+  # Outside-solution project edits may have no affected graph roots. Their XML still belongs to
+  # the architecture guard, so preserve that route even when the graph walker reports nothing.
+  if grep -qE '\.csproj$' "$TMP/changed.txt"; then
+    : > "$TMP/affected.txt"
+    affected_rc=0
+  else
+    echo "selective: no affected test projects, skipping build/test"
+    exit 0
+  fi
 fi
 if [ "$affected_rc" -ne 0 ]; then
   fail "dotnet affected exited ${affected_rc}"

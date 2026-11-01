@@ -28,6 +28,18 @@ run() {
   rc=$?
   set -e
 }
+# run_built <dotnet exit code> <args>: the script's own build path, with a stub dotnet that prints build.log.
+run_built() {
+  stub="$TMPROOT/stub $case_no"
+  mkdir -p "$stub"
+  printf '#!/bin/sh\ncat "%s"\nexit %s\n' "$PWD/build.log" "$1" >"$stub/dotnet"
+  chmod +x "$stub/dotnet"
+  shift
+  set +e
+  TESTHEALTH_BUILD_LOG= PATH="$stub:$PATH" sh "$SCRIPT" "$@" >"$OUTFILE" 2>&1
+  rc=$?
+  set -e
+}
 said() { if ! grep -qF -- "$1" "$OUTFILE"; then rc="$rc, without '$1'"; fi; }
 baseline_said() { if ! grep -qF -- "$1" .testhealth-baseline; then rc="$rc, baseline without '$1'"; fi; }
 unchanged() { if ! cmp -s before .testhealth-baseline; then rc="$rc, baseline changed"; fi; }
@@ -248,6 +260,38 @@ check 'preview does not create a missing baseline' 2 "$rc"
 fresh
 run --nonsense
 check 'unknown mode exits 2' 2 "$rc"
+
+# The script's own non-incremental build is trusted: zero findings means the last debt is gone.
+fresh
+printf '# keep me\nexempt KETEST002 Tests/Guard.cs\n3 KETEST001 Tests/A.cs\n2 KETEST002 Tests/B.cs\n' >.testhealth-baseline
+cat >build.log <<'LOG'
+/src/Tests/C.cs(12,5): warning KETEST003: 'Tests/C.cs' has 1 test(s) whose assertions all run inside a loop that may be empty, .testhealth-baseline allows 0. Assert the expected count or non-emptiness before the loop so an empty result fails. [/src/Tests/Tests.csproj]
+Build succeeded.
+LOG
+: >expected
+run_built 0 --update
+entries_match
+baseline_said '# keep me'
+baseline_said 'exempt KETEST002 Tests/Guard.cs'
+check 'update after its own build clears the last debt' 0 "$rc"
+
+fresh
+printf '3 KETEST001 Tests/A.cs\n' >.testhealth-baseline
+cp .testhealth-baseline before
+printf 'Build succeeded.\n' >build.log
+run_built 0 --preview
+said 'Tests/A.cs'
+unchanged
+check 'preview after its own build reports the clearing without writing' 0 "$rc"
+
+fresh
+printf '3 KETEST001 Tests/A.cs\n' >.testhealth-baseline
+cp .testhealth-baseline before
+printf 'error CS1002: ; expected\n' >build.log
+run_built 1 --update
+said 'report build failed'
+unchanged
+check 'update after a failed own build leaves the baseline' 1 "$rc"
 
 echo ""
 echo "passed: $pass   failed: $fail"

@@ -21,6 +21,8 @@ public class ExceptionMessageAssertionTests
     [InlineData("Equal(\"bad input\", ex.Message);")]
     [InlineData("Assert.Equal(\"bad input\", ex?.Message);")]
     [InlineData("Assert.True(Check(() => Assert.Equal(\"bad input\", ex.Message)));")]
+    [InlineData("Assert.True(ex.Message.Contains(\"bad\"), \"explains the failure\");")]
+    [InlineData("Assert.True(userMessage: \"explains\", condition: ex.Message.StartsWith(\"bad\"));")]
     public async Task WordingAssertion_Fires(string statement)
     {
         var diagnostic = Assert.Single(await RunStatement(statement));
@@ -38,6 +40,10 @@ public class ExceptionMessageAssertionTests
     [InlineData("Assert.IsType<string>(ex.Message);")]
     [InlineData("var message = ex.Message;")]
     [InlineData("Assert.Throws<ArgumentException>(() => throw new ArgumentException(ex.Message));")]
+    [InlineData("Assert.True(ex is null, ex.Message);")]
+    [InlineData("Assert.False(ex is not null, ex?.Message);")]
+    [InlineData("Assert.True(userMessage: ex.Message, condition: ex is null);")]
+    [InlineData("Assert.False(userMessage: \"load failed: \" + ex.Message, condition: false);")]
     public async Task NonWordingUse_IsSilent(string statement) =>
         Assert.Empty(await RunStatement(statement));
 

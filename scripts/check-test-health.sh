@@ -90,8 +90,11 @@ HEADER
   exit 0
 fi
 
-if [ ! -s "$tmp/counts" ] && has_entries; then
-  echo "check-test-health: no KETEST diagnostics over a populated baseline. An incremental or failed build is the likely cause." >&2
+# A supplied log with no findings over a populated baseline usually came from an incremental or failed
+# build, which prints nothing for up-to-date projects. The script's own build is non-incremental and
+# succeeded by this point, so an empty result from it means the debt is gone and the entries may go too.
+if [ -n "${TESTHEALTH_BUILD_LOG:-}" ] && [ ! -s "$tmp/counts" ] && has_entries; then
+  echo "check-test-health: no KETEST001 or KETEST002 diagnostics in the supplied log over a populated baseline. An incremental or failed build is the likely cause. Run without TESTHEALTH_BUILD_LOG to build fresh." >&2
   exit 2
 fi
 

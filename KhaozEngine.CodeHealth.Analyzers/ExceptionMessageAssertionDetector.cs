@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace KhaozEngine.CodeHealth.Analyzers
 {
@@ -42,12 +43,19 @@ namespace KhaozEngine.CodeHealth.Analyzers
         private static bool IsWordingAssertionArgument(SyntaxNode access, SemanticModel model,
             TestHealthSymbols symbols, CancellationToken cancellationToken)
         {
+            SyntaxNode child = access;
             foreach (var ancestor in access.Ancestors())
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                var argument = child;
+                child = ancestor;
                 if (ancestor is not ArgumentListSyntax { Parent: InvocationExpressionSyntax invocation } ||
                     model.GetSymbolInfo(invocation, cancellationToken).Symbol is not IMethodSymbol method ||
                     !SymbolEqualityComparer.Default.Equals(method.ContainingType, symbols.Assert)) continue;
+
+                // xunit's userMessage only explains a failure, so wording passed there is never asserted.
+                if (model.GetOperation(argument, cancellationToken) is IArgumentOperation { Parameter.Name: "userMessage" })
+                    return false;
 
                 // The nearest Assert owns this access, including when its method is excluded.
                 return method.Name is "Contains" or "Equal" or "NotEqual" or "StartsWith" or

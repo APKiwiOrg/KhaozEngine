@@ -111,6 +111,12 @@ wins over a numeric entry for the same rule and path. KETEST003 is never baselin
 - `--update` lowers counts or drops resolved entries, preserves exemptions and never raises counts.
   Preview and update return a failure for unapproved growth.
 
+`TESTHEALTH_BUILD_LOG=<file>` makes the script parse that log instead of building. A supplied log with no
+KETEST001 or KETEST002 findings over a baseline that still has numeric entries is refused with exit 2,
+because an incremental or failed build prints nothing for up-to-date projects and would wipe the
+baseline. The script's own build is non-incremental and must succeed, so an empty result from it is
+trusted and `--update` drops the last entries.
+
 Ratchet down through the shared build queue:
 
 ```sh

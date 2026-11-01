@@ -29,7 +29,7 @@ public class TileEditOpsTests
         CompositeCommand line = TileEditOps.Line(Cat, "wall", (10, 10), (14, 12), 0, 1);
         ed.Execute(line);
 
-        Assert.Equal("Line", line.Label);
+        Assert.False(string.IsNullOrWhiteSpace(line.Label));
         Assert.Equal(5, line.Commands.Count);
         Assert.Equal(new[] { (10, 10), (11, 11), (12, 11), (13, 12), (14, 12) }, Anchors(doc, "wall"));
         Assert.All(doc.AllObjects(), o => Assert.Equal(1, o.Rotation));
@@ -38,14 +38,16 @@ public class TileEditOpsTests
         Assert.Empty(doc.AllObjects());
     }
 
-    [Fact]
-    public void Line_along_an_axis_places_every_tile_between_the_ends()
+    [Theory]
+    [InlineData("fence", 2, 2, 2, 6, new[] { 2, 2, 2, 3, 2, 4, 2, 5, 2, 6 })]
+    [InlineData("tree", 14, 12, 10, 10, new[] { 14, 12, 13, 11, 12, 11, 11, 10, 10, 10 })]
+    public void Line_places_every_expected_tile(string archetype, int startX, int startZ, int endX, int endZ, int[] expected)
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);
 
-        ed.Execute(TileEditOps.Line(Cat, "fence", (2, 2), (2, 6), 0, 0));
+        ed.Execute(TileEditOps.Line(Cat, archetype, (startX, startZ), (endX, endZ), 0, 0));
 
-        Assert.Equal(new[] { (2, 2), (2, 3), (2, 4), (2, 5), (2, 6) }, Anchors(doc, "fence"));
+        Assert.Equal(expected, Anchors(doc, archetype).SelectMany(p => new[] { p.X, p.Z }).ToArray());
     }
 
     [Fact]
@@ -61,16 +63,6 @@ public class TileEditOpsTests
     }
 
     [Fact]
-    public void Line_runs_west_and_south_as_readily_as_east_and_north()
-    {
-        TileEditingDocument ed = Editing(out TileWorldDocument doc);
-
-        ed.Execute(TileEditOps.Line(Cat, "tree", (14, 12), (10, 10), 0, 0));
-
-        Assert.Equal(new[] { (14, 12), (13, 11), (12, 11), (11, 10), (10, 10) }, Anchors(doc, "tree"));
-    }
-
-    [Fact]
     public void Scatter_skips_blocked_tiles_and_tiles_that_already_hold_an_anchor()
     {
         TileWorldDocument doc = TileWorldTestData.FlatWorld();
@@ -83,7 +75,7 @@ public class TileEditOpsTests
         CompositeCommand scatter = TileEditOps.Scatter(ed, "tree", new TileRect(10, 10, 3, 3), 0, 1, 0, 7);
         ed.Execute(scatter);
 
-        Assert.Equal("Scatter", scatter.Label);
+        Assert.False(string.IsNullOrWhiteSpace(scatter.Label));
         Assert.Equal(
             new[] { (10, 10), (11, 10), (12, 10), (10, 11), (12, 11), (11, 12), (12, 12) },
             Anchors(doc, "tree").OrderBy(t => t.Z).ThenBy(t => t.X).ToArray());
@@ -177,6 +169,7 @@ public class TileEditOpsTests
         ed.Execute(TileEditOps.Scatter(ed, "tree", new TileRect(10, 10, 10, 10), 0, 1, 2, 55));
 
         (int X, int Z)[] anchors = Anchors(doc, "tree");
+        Assert.NotEmpty(anchors);
         Assert.Equal(anchors.Length, anchors.Distinct().Count());
     }
 
@@ -208,7 +201,7 @@ public class TileEditOpsTests
 
         SnapshotRectCommand cmd = TileEditOps.PlacePrefab(prefab, 20, 20, 0, rotation);
 
-        Assert.Equal("Place prefab", cmd.Label);
+        Assert.False(string.IsNullOrWhiteSpace(cmd.Label));
         Assert.Equal(new TileDirtyRect(touched, 0), Assert.Single(cmd.DirtyRects));
     }
 

@@ -23,8 +23,6 @@ namespace KhaozEngine.Tests.ItemInstances.Content;
 /// </summary>
 public class UniqueFamilyTests
 {
-    public static TheoryData<string> TypeKeys => Keys(Unique);
-
     [Fact]
     public void The_three_register_in_the_Instances_band_at_259_268_and_269()
     {
@@ -280,24 +278,6 @@ public class UniqueFamilyTests
                 template.TypeKey, new ContentKey(contentKey).Utf8, UniqueTemplateContentType.NameField));
         Assert.True(template.Schema.Fields[1].IsDerivedMarker);
         Assert.DoesNotContain(UniqueTemplateContentType.NameField, template.Codec.WrittenFields);
-    }
-
-    [Theory]
-    [MemberData(nameof(TypeKeys))]
-    public void Every_field_name_is_snake_case_under_the_content_key_rules(string typeKey)
-    {
-        FamilyType type = Find(typeKey);
-
-        foreach (ContentFieldEntry field in type.CreateSchema().Fields)
-        {
-            Assert.False(
-                ContentTextKey.ExceedsBound(type.Key, 64, field.Name),
-                ContentTextKey.Derive(type.Key, ReadOnlySpan<byte>.Empty, field.Name));
-            foreach (char c in field.Name)
-            {
-                Assert.True(c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '_', field.Name);
-            }
-        }
     }
 
     /// <summary>

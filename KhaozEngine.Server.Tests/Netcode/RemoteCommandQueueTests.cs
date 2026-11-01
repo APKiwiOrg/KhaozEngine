@@ -71,26 +71,19 @@ public class RemoteCommandQueueTests
         Assert.Equal(-999, q.Dequeue(0, out _));
     }
 
-    [Fact]
-    public void Store_ReplayOfAlreadyDequeuedSeq_IsRejected()
+    [Theory]
+    [InlineData(0, 100, 0, 999)] // Replay of the processed sequence.
+    [InlineData(5, 55, 3, 33)] // Stale sequence below the processed high-water mark.
+    public void Store_ProcessedOrOlderSeq_IsRejectedWithoutRegressingAck(
+        int processedSeq, int processedCommand, int staleSeq, int staleCommand)
     {
         var q = NewQueue();
-        q.Store(0, 0, 100);
-        q.Dequeue(0, out _);          // process seq 0; high-water mark is now 0
-        q.Store(0, 0, 999);           // replay of an already-processed seq -> must be dropped
-        Assert.Equal(-999, q.Dequeue(0, out int ack)); // nothing reprocessed
-        Assert.Equal(0, ack);
-    }
+        q.Store(0, processedSeq, processedCommand);
+        q.Dequeue(0, out _);
+        q.Store(0, staleSeq, staleCommand);
 
-    [Fact]
-    public void Store_StaleLowerSeqAfterHigherProcessed_DoesNotRegressAck()
-    {
-        var q = NewQueue();
-        q.Store(0, 5, 55);
-        q.Dequeue(0, out _);          // ack high-water -> 5
-        q.Store(0, 3, 33);           // stale (below high-water) -> dropped
         Assert.Equal(-999, q.Dequeue(0, out int ack));
-        Assert.Equal(5, ack);        // ack must not regress to 3
+        Assert.Equal(processedSeq, ack);
     }
 
     [Fact]

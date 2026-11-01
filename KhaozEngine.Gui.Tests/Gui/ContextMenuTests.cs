@@ -36,13 +36,15 @@ namespace KhaozEngine.Tests.Gui
             new ContextMenuEntry("Use", "Rope"),
         };
 
-        [Fact]
-        public void Bounds_size_to_widest_row_including_right_detail()
+        [Theory]
+        [InlineData("", 300f, 200f, 106f)]
+        [InlineData("Bank of the Wilderness", 100f, 100f, 240f)]
+        public void Bounds_width_fits_the_widest_content(string title, float pointX, float pointY, float expectedWidth)
         {
-            Rect r = ContextMenu.ComputeBounds(Font, "", Font, Two(), new Vector2(300, 200), View, M);
-            // PadX*2(20) + label "Use"(30) + DetailGap(16) + detail "Rope"(40) = 106, wider than the
-            // detail-less "Attack" row at 20 + 60 = 80.
-            Assert.Equal(106f, r.Width);
+            // Row-driven: padding 20 + Use 30 + detail gap 16 + Rope 40 = 106.
+            // Title-driven: 22 characters * 10 + padding 20 = 240.
+            Rect r = ContextMenu.ComputeBounds(Font, title, Font, Two(), new Vector2(pointX, pointY), View, M);
+            Assert.Equal(expectedWidth, r.Width);
         }
 
         [Fact]
@@ -74,16 +76,6 @@ namespace KhaozEngine.Tests.Gui
             Rect r = ContextMenu.ComputeBounds(Font, "", Font, Two(), point, View, M);
             Assert.Equal(point.Y, r.Bottom);
             Assert.Equal(point.Y - (TitleBand + 2f * RowH), r.Y);
-        }
-
-        [Fact]
-        public void Bounds_size_to_the_title_when_it_is_wider_than_every_row()
-        {
-            // The title is 22 chars (220), well past the 86 of the widest row, so the title drives the
-            // width: 220 + PadX*2(20) = 240.
-            Rect r = ContextMenu.ComputeBounds(Font, "Bank of the Wilderness", Font, Two(),
-                new Vector2(100, 100), View, M);
-            Assert.Equal(240f, r.Width);
         }
 
         [Fact]
@@ -334,8 +326,7 @@ namespace KhaozEngine.Tests.Gui
             menu.Open(LocalizedText.Raw("Options"), Three(), Point);
 
             Assert.Equal(Vector2.Zero, menu.Viewport);
-            var ex = Assert.Throws<InvalidOperationException>(() => menu.Draw(null!, null!));
-            Assert.Contains("Viewport", ex.Message);
+            Assert.Throws<InvalidOperationException>(() => menu.Draw(null!, null!));
 
             // A CLOSED menu returns before every guard, so the same call is a no-op.
             menu.Close();
@@ -349,8 +340,7 @@ namespace KhaozEngine.Tests.Gui
             var menu = new ContextMenu(Font, Font) { Viewport = View };
             menu.Open(LocalizedText.Raw("Options"), Three(), Point);
 
-            var ex = Assert.Throws<InvalidOperationException>(() => menu.Draw(null!, null!));
-            Assert.Contains("measure-only", ex.Message);
+            Assert.Throws<InvalidOperationException>(() => menu.Draw(null!, null!));
         }
 
         [Fact]

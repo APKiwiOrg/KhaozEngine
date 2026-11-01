@@ -88,13 +88,12 @@ public class StatusEffectsReplicationTests
         Assert.Throws<InvalidDataException>(() => Encode(state));
     }
 
-    [Fact]
-    public void Codec_RefusesZeroStacks() =>
-        Assert.Throws<InvalidDataException>(() => Decode(Payload(effect: 7, stacks: 0, start: 20, end: 80)));
-
-    [Fact]
-    public void Codec_RefusesZeroEffect() =>
-        Assert.Throws<InvalidDataException>(() => Decode(Payload(effect: 0, stacks: 1, start: 20, end: 80)));
+    [Theory]
+    [InlineData(7, 0, 20L, 80L)]
+    [InlineData(0, 1, 20L, 80L)]
+    [InlineData(7, 1, 80L, 20L)]
+    public void Codec_RefusesInvalidEntryFields(int effect, byte stacks, long start, long end) =>
+        Assert.Throws<InvalidDataException>(() => Decode(Payload(effect, stacks, start, end)));
 
     [Theory]
     [InlineData(0, 20, 80)]
@@ -108,10 +107,6 @@ public class StatusEffectsReplicationTests
 
         Assert.Throws<InvalidDataException>(() => Encode(state));
     }
-
-    [Fact]
-    public void Codec_RefusesEndBeforeStart() =>
-        Assert.Throws<InvalidDataException>(() => Decode(Payload(effect: 7, stacks: 1, start: 80, end: 20)));
 
     [Fact]
     public void Codec_AcceptsZeroLengthWindow()

@@ -80,14 +80,19 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Equal(1.5f * 2.5f, radius, 4);            // base radius x placement scale
         }
 
-        [Fact]
-        public void Kit_absent_from_the_table_registers_no_blob()
+        [Theory]
+        [InlineData("rock_a", "rock_a", "pine_a", 2f, 3f, 0f, 0f)]   // no radius entry
+        [InlineData("ghost_a", "pine_a", "ghost_a", 2f, 3f, 0f, 0f)] // no source mesh
+        [InlineData("pine_a", "pine_a", "pine_a", 40f, 0f, 12f, 0f)] // full distance fade
+        [InlineData("pine_a", "pine_a", "pine_a", 2f, 3f, 0f, 1f)]   // full HLOD floor
+        public void Invisible_or_unmapped_casters_register_no_blob(
+            string placementId, string meshId, string radiusId, float x, float z, float fadeWidth, float floor)
         {
-            var placements = new List<PropPlacement> { new("rock_a", 2f, 0f, 3f, 1f, 0f, 0) };
-            var radii = new Dictionary<string, float> { ["pine_a"] = 1.5f };   // rock_a has no entry
-            var blobs = new List<(Vector3 pos, float radius)>();
+            var placements = new List<PropPlacement> { new(placementId, x, 0f, z, 1f, 0f, 0) };
+            var radii = new Dictionary<string, float> { [radiusId] = 1.5f };
+            var blobs = new Blobs();
 
-            PropRenderer.Emit(placements, Meshes(("rock_a", 1)), null, 0f, Vector3.Zero, 40f, 0f, 0f,
+            PropRenderer.Emit(placements, Meshes((meshId, 1)), null, 0f, Vector3.Zero, 40f, fadeWidth, floor,
                 blobs, NoOpSink, radii, RecordBlob);
 
             Assert.Empty(blobs);
@@ -108,35 +113,6 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
-        public void Unknown_mesh_id_registers_no_blob_even_with_a_radius_entry()
-        {
-            // A kit id with a blob radius but no mesh handle never draws, so it must not leave a blob behind either.
-            var placements = new List<PropPlacement> { new("ghost_a", 2f, 0f, 3f, 1f, 0f, 0) };
-            var radii = new Dictionary<string, float> { ["ghost_a"] = 1.5f };
-            var blobs = new List<(Vector3 pos, float radius)>();
-
-            PropRenderer.Emit(placements, Meshes(("pine_a", 1)), null, 0f, Vector3.Zero, 40f, 0f, 0f,
-                blobs, NoOpSink, radii, RecordBlob);
-
-            Assert.Empty(blobs);
-        }
-
-        [Fact]
-        public void Fully_dissolved_placement_in_the_fade_band_registers_no_blob()
-        {
-            // At exactly the draw radius the dissolve ramps to 1 (fully discarded): the prop is invisible there, so
-            // it must not leave a floating blob with no visible caster.
-            var placements = new List<PropPlacement> { new("pine_a", 40f, 0f, 0f, 1f, 0f, 0) };   // AT drawRadius
-            var radii = new Dictionary<string, float> { ["pine_a"] = 1.5f };
-            var blobs = new List<(Vector3 pos, float radius)>();
-
-            PropRenderer.Emit(placements, Meshes(("pine_a", 1)), null, 0f, Vector3.Zero, 40f, 12f, 0f,
-                blobs, NoOpSink, radii, RecordBlob);
-
-            Assert.Empty(blobs);
-        }
-
-        [Fact]
         public void Partially_dissolved_placement_still_registers_a_blob()
         {
             // Inside the fade band but not yet fully discarded (dissolve < 1): the prop still draws (fading), so it
@@ -149,22 +125,6 @@ namespace KhaozEngine.Tests.Terrain
                 blobs, NoOpSink, radii, RecordBlob);
 
             Assert.Single(blobs);
-        }
-
-        [Fact]
-        public void HlodDissolveFloor_of_one_registers_no_blob()
-        {
-            // The HLOD crossfade drives dissolveFloor to 1 when a chunk cluster has fully swapped to its merged
-            // mesh: Emit must treat that exactly like the fade band's full dissolve (no blob for a prop the HLOD
-            // branch is no longer drawing individually).
-            var placements = new List<PropPlacement> { new("pine_a", 2f, 0f, 3f, 1f, 0f, 0) };
-            var radii = new Dictionary<string, float> { ["pine_a"] = 1.5f };
-            var blobs = new List<(Vector3 pos, float radius)>();
-
-            PropRenderer.Emit(placements, Meshes(("pine_a", 1)), null, 0f, Vector3.Zero, 40f, 0f, 1f,
-                blobs, NoOpSink, radii, RecordBlob);
-
-            Assert.Empty(blobs);
         }
 
         [Fact]

@@ -134,15 +134,16 @@ namespace KhaozEngine.Tests.Dungeon
             return max;
         }
 
-        // Head-on into the first riser from the flat floor at WALK speed: forward progress stays a monotone, bounded,
-        // non-reversing glide (the DELIBERATE slowdown stays: mean below the flat-walk step). RED against the pre-fix
-        // per-riser backward shove (a tick reverses ~-0.06 m). Both the 0.4 stair radius and the 0.3 demo radius.
+        // Head-on from flat ground at normal and half walk speed, with both the 0.4 stair and 0.3 demo radii.
+        // Preserve the paced slowdown while forbidding reversal, lurches and sustained stalls. The pre-fix shove
+        // was about -0.06 m at normal walk and -0.07 m at half walk.
         [Theory]
-        [InlineData(0.4f)]
-        [InlineData(0.3f)]
-        public void Climb_ForwardProgress_StaysWithinConsistentBand(float capsuleRadius)
+        [InlineData(0.4f, 6f)]
+        [InlineData(0.3f, 6f)]
+        [InlineData(0.4f, 3f)]
+        [InlineData(0.3f, 3f)]
+        public void Climb_ForwardProgress_StaysWithinConsistentBand(float capsuleRadius, float walk)
         {
-            const float walk = 6f;
             float walkStep = walk * Dt;
             MoveTuning tuning = MoveTuning.Default with { CapsuleRadius = capsuleRadius };
             List<float> adv = ClimbForwardAdvances(tuning, walk);
@@ -151,42 +152,18 @@ namespace KhaozEngine.Tests.Dungeon
             // (a) No reversal: no tick moves the capsule BACKWARD down the climb (this is the per-riser jitter the fix
             //     kills; the pre-fix trace reverses to ~-0.06 m).
             Assert.True(min >= -0.005f,
-                $"radius {capsuleRadius}: a climb tick advanced {min:F5} m (backward) - the per-riser fore-aft ripple.");
+                $"walk {walk}, radius {capsuleRadius}: a climb tick advanced {min:F5} m (backward) - the per-riser fore-aft ripple.");
             // (b) No lurch: no tick exceeds a normal walk step (the step-up never teleports the body forward).
             Assert.True(max <= walkStep + 0.01f,
-                $"radius {capsuleRadius}: a climb tick advanced {max:F5} m, over the {walkStep:F5} m walk step (a forward lurch).");
+                $"walk {walk}, radius {capsuleRadius}: a climb tick advanced {max:F5} m, over the {walkStep:F5} m walk step (a forward lurch).");
             // (c) Consistent band + slowdown preserved: mean forward advance sits in a sane fraction of the walk step,
             //     below the flat-walk step (the climb is slower than flat) but well clear of a stall.
             Assert.True(mean < walkStep && mean > 0.3f * walkStep,
-                $"radius {capsuleRadius}: mean forward advance {mean:F5} m out of band ({0.3f * walkStep:F5}..{walkStep:F5}); slowdown/stall.");
+                $"walk {walk}, radius {capsuleRadius}: mean forward advance {mean:F5} m out of band ({0.3f * walkStep:F5}..{walkStep:F5}); slowdown/stall.");
             // (d) No sustained stall: the paced climb pauses at most a tick or two per riser, never freezes.
             int maxRun = MaxConsecutiveNearZero(adv, walkStep);
             Assert.True(maxRun <= 4,
-                $"radius {capsuleRadius}: {maxRun} consecutive near-zero forward ticks - the climb stalls mid-ascent.");
-        }
-
-        // The case that used to DEGENERATE: a SLOW walk (half speed) into the first riser. The pre-fix backward shove
-        // was worst here (~-0.07 m). Same no-reversal, no-stall band at half walk. Both radii.
-        [Theory]
-        [InlineData(0.4f)]
-        [InlineData(0.3f)]
-        public void Climb_SlowWalk_ForwardProgress_NoStallTicks(float capsuleRadius)
-        {
-            const float walk = 3f;   // half the 6 m/s default walk
-            float walkStep = walk * Dt;
-            MoveTuning tuning = MoveTuning.Default with { CapsuleRadius = capsuleRadius };
-            List<float> adv = ClimbForwardAdvances(tuning, walk);
-
-            float min = adv.Min(), max = adv.Max(), mean = adv.Average();
-            Assert.True(min >= -0.005f,
-                $"slow-walk radius {capsuleRadius}: a climb tick advanced {min:F5} m (backward) - the slow-walk fore-aft shove.");
-            Assert.True(max <= walkStep + 0.01f,
-                $"slow-walk radius {capsuleRadius}: a climb tick advanced {max:F5} m, over the {walkStep:F5} m walk step.");
-            Assert.True(mean < walkStep && mean > 0.3f * walkStep,
-                $"slow-walk radius {capsuleRadius}: mean forward advance {mean:F5} m out of band; slowdown/stall.");
-            int maxRun = MaxConsecutiveNearZero(adv, walkStep);
-            Assert.True(maxRun <= 4,
-                $"slow-walk radius {capsuleRadius}: {maxRun} consecutive near-zero ticks - the slow-walk climb stalls.");
+                $"walk {walk}, radius {capsuleRadius}: {maxRun} consecutive near-zero forward ticks - the climb stalls mid-ascent.");
         }
 
         // ---------- (2) Avatar composition (sources 2 + 3, avatar + physics in one loop) ----------
@@ -319,19 +296,24 @@ namespace KhaozEngine.Tests.Dungeon
             using (world as IDisposable)
             {
                 float ascentLo = lowerFloorY + halfH + 0.1f, ascentHi = upperFloorY + halfH - 0.05f;
-                int airborneTicks = 0, firstAirborne = -1;
+                int airborneTicks = 0, firstAirborne = -1, ascentTicks = 0;
                 for (int i = 0; i < 600; i++)
                 {
                     float physYBefore = avatar.Position.Y;
                     avatar.Update(Keys(Key.W), Dt, axisYaw, ground, normal, world);
-                    if (physYBefore > ascentLo && avatar.Position.Y < ascentHi && !avatar.Grounded)
+                    if (physYBefore > ascentLo && avatar.Position.Y < ascentHi)
                     {
-                        airborneTicks++;
-                        if (firstAirborne < 0) firstAirborne = i;
+                        ascentTicks++;
+                        if (!avatar.Grounded)
+                        {
+                            airborneTicks++;
+                            if (firstAirborne < 0) firstAirborne = i;
+                        }
                     }
                 }
                 Assert.True(avatar.Position.Y > upperFloorY + halfH - 0.25f,
                     $"radius {radius}: avatar did not reach the top: final Y {avatar.Position.Y:F3}");
+                Assert.True(ascentTicks > 20, $"radius {radius}: too few ascent ticks ({ascentTicks}) sampled");
                 Assert.True(airborneTicks == 0,
                     $"radius {radius}: avatar read airborne on {airborneTicks} ascent tick(s) (first at {firstAirborne}): the " +
                     "grounded-stick flickered, so the render snap branch fires and pops the model and camera mid-climb.");

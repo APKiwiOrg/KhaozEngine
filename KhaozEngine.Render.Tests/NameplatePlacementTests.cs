@@ -63,26 +63,17 @@ public sealed class NameplatePlacementTests
         Assert.False(state.IsDeflected);
     }
 
-    [Fact]
-    public void Place_clamp_leftOverflow_clampsLeftToMargin()
+    [Theory]
+    [InlineData(30f, 10f)]
+    [InlineData(770f, 690f)]
+    public void Place_clamp_horizontalOverflow_clampsToMargin(float anchorX, float expectedLeft)
     {
         NameplateStyle style = StyleWith(NameplateEdgeBehavior.Clamp);
         var state = new NameplatePlacementState();
 
-        Vector4 rect = NameplatePlacement.Place(new Vector2(30f, 300f), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
+        Vector4 rect = NameplatePlacement.Place(new Vector2(anchorX, 300f), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
 
-        Assert.Equal(10f, rect.X, 3);
-    }
-
-    [Fact]
-    public void Place_clamp_rightOverflow_clampsLeftToViewportMinusMarginMinusWidth()
-    {
-        NameplateStyle style = StyleWith(NameplateEdgeBehavior.Clamp);
-        var state = new NameplatePlacementState();
-
-        Vector4 rect = NameplatePlacement.Place(new Vector2(770f, 300f), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
-
-        Assert.Equal(690f, rect.X, 3); // 800 - 10 - 100
+        Assert.Equal(expectedLeft, rect.X, 3);
     }
 
     [Fact]
@@ -125,72 +116,39 @@ public sealed class NameplatePlacementTests
         AssertWithinMargin(rect);
     }
 
-    [Fact]
-    public void Place_deflect_topLeftCorner_deflectsRight_andStaysWithinViewport()
+    [Theory]
+    [InlineData(30f, 38f)]
+    [InlineData(770f, 662f)]
+    public void Place_deflect_topCorner_choosesTheRoomierSide_andStaysWithinViewport(float anchorX, float expectedLeft)
     {
-        // Near the left edge there is far more room to the right than to the left, so it deflects right.
         NameplateStyle style = StyleWith(NameplateEdgeBehavior.Deflect);
         var state = new NameplatePlacementState();
 
-        Vector4 rect = NameplatePlacement.Place(new Vector2(30f, 20f), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
+        Vector4 rect = NameplatePlacement.Place(new Vector2(anchorX, 20f), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
 
         Assert.True(state.IsDeflected);
-        Assert.Equal(38f, rect.X, 3); // anchor.X + DeflectGap
+        Assert.Equal(expectedLeft, rect.X, 3);
         AssertWithinMargin(rect);
     }
 
-    [Fact]
-    public void Place_deflect_topRightCorner_deflectsLeft_andStaysWithinViewport()
+    [Theory]
+    [InlineData(0f, 69f, 70f, 30f)]
+    [InlineData(5f, 54f, 55f, 15f)]
+    public void Place_deflect_hysteresis_exitsOnlyAtTheThreshold(float hysteresis, float beforeExitY, float exitY,
+        float expectedTop)
     {
-        // Near the right edge there is far more room to the left than to the right, so it deflects left.
-        NameplateStyle style = StyleWith(NameplateEdgeBehavior.Deflect);
-        var state = new NameplatePlacementState();
-
-        Vector4 rect = NameplatePlacement.Place(new Vector2(770f, 20f), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
-
-        Assert.True(state.IsDeflected);
-        Assert.Equal(662f, rect.X, 3); // anchor.X - DeflectGap - width
-        AssertWithinMargin(rect);
-    }
-
-    [Fact]
-    public void Place_deflect_hysteresis_defaultBand_exitsAtDerivedThreshold()
-    {
-        // EdgeHysteresis <= 0 derives the exit band as half the plate height: 40 * 0.5 = 20, so the exit
-        // threshold is margin(10) + band(20) = 30.
-        NameplateStyle style = StyleWith(NameplateEdgeBehavior.Deflect);
+        NameplateStyle style = StyleWith(NameplateEdgeBehavior.Deflect, hysteresis);
         var state = new NameplatePlacementState();
 
         NameplatePlacement.Place(new Vector2(400f, 30f), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
         Assert.True(state.IsDeflected);
 
-        // baselineTop = 69 - 40 = 29, still short of the 30 threshold: stays deflected.
-        NameplatePlacement.Place(new Vector2(400f, 69f), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
+        NameplatePlacement.Place(new Vector2(400f, beforeExitY), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
         Assert.True(state.IsDeflected);
 
-        // baselineTop = 70 - 40 = 30, clears the threshold: un-deflects back to the normal clamped placement.
-        Vector4 rect = NameplatePlacement.Place(new Vector2(400f, 70f), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
+        Vector4 rect = NameplatePlacement.Place(new Vector2(400f, exitY), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
         Assert.False(state.IsDeflected);
-        Assert.Equal(30f, rect.Y, 3);
-    }
-
-    [Fact]
-    public void Place_deflect_hysteresis_explicitBand_exitsAtExplicitThreshold()
-    {
-        // EdgeHysteresis = 5 sets the exit threshold to margin(10) + band(5) = 15.
-        NameplateStyle style = StyleWith(NameplateEdgeBehavior.Deflect, hysteresis: 5f);
-        var state = new NameplatePlacementState();
-
-        NameplatePlacement.Place(new Vector2(400f, 30f), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
-        Assert.True(state.IsDeflected);
-
-        // baselineTop = 54 - 40 = 14, short of 15: stays deflected.
-        NameplatePlacement.Place(new Vector2(400f, 54f), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
-        Assert.True(state.IsDeflected);
-
-        // baselineTop = 55 - 40 = 15, clears it: un-deflects.
-        NameplatePlacement.Place(new Vector2(400f, 55f), PlateSize, ViewportWidth, ViewportHeight, style, ref state);
-        Assert.False(state.IsDeflected);
+        Assert.Equal(expectedTop, rect.Y, 3);
     }
 
     [Fact]

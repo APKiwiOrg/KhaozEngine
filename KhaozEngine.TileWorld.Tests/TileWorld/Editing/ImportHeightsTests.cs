@@ -24,65 +24,34 @@ public class ImportHeightsTests
     // centimetres and the test reads as the orientation check it is meant to be.
     static PgmImage ThreeByTwo() => new(3, 2, 200, new ushort[] { 10, 20, 30, 40, 50, 60 });
 
-    [Fact]
-    public void An_image_the_size_of_the_rect_maps_one_to_one_with_row_zero_on_the_north_corners()
+    [Theory]
+    [InlineData(0, 200, new[] { 40, 50, 60, 10, 20, 30 })]
+    [InlineData(75, 75, new[] { 75, 75, 75, 75, 75, 75 })]
+    public void Import_maps_image_rows_and_the_height_range(short min, short max, int[] expected)
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);
 
-        ed.Execute(TileEditOps.ImportHeights(ThreeByTwo(), new TileRect(10, 10, 3, 2), 0, 0, 200));
+        ed.Execute(TileEditOps.ImportHeights(ThreeByTwo(), new TileRect(10, 10, 3, 2), 0, min, max));
 
-        // Image row 0 is the NORTH edge, and tile z grows northward, so it lands on z 11, the rect's far row.
-        Assert.Equal(10, doc.CornerHeightCm(10, 11, 0));
-        Assert.Equal(20, doc.CornerHeightCm(11, 11, 0));
-        Assert.Equal(30, doc.CornerHeightCm(12, 11, 0));
-        Assert.Equal(40, doc.CornerHeightCm(10, 10, 0));
-        Assert.Equal(50, doc.CornerHeightCm(11, 10, 0));
-        Assert.Equal(60, doc.CornerHeightCm(12, 10, 0));
+        // Expected rows run south to north, opposite the image's top-to-bottom samples.
+        for (int z = 0; z < 2; z++)
+            for (int x = 0; x < 3; x++)
+                Assert.Equal(expected[z * 3 + x], doc.CornerHeightCm(10 + x, 10 + z, 0));
     }
 
-    [Fact]
-    public void Upsampling_a_two_by_two_image_lands_the_bilinear_midpoints_between_its_samples()
+    [Theory]
+    [InlineData(3, new[] { 40, 60, 80, 20, 55, 90, 0, 50, 100 })]
+    [InlineData(1, new[] { 40, 20, 0 })]
+    public void Upsampling_handles_full_and_single_column_rects(int width, int[] expected)
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);
-
-        // Top row 0 and 100, bottom row 40 and 80, over a maxval of 100 imported to 0..100 cm, so again sample
-        // equals centimetre. Onto a 3 by 3 corner rect the four samples land on the corners of the rect and
-        // every other corner is the average of the two or four samples around it.
         var image = new PgmImage(2, 2, 100, new ushort[] { 0, 100, 40, 80 });
 
-        ed.Execute(TileEditOps.ImportHeights(image, new TileRect(10, 10, 3, 3), 0, 0, 100));
+        ed.Execute(TileEditOps.ImportHeights(image, new TileRect(10, 10, width, 3), 0, 0, 100));
 
-        // North row (z 12): the image's top row, its midpoint in the middle.
-        Assert.Equal(0, doc.CornerHeightCm(10, 12, 0));
-        Assert.Equal(50, doc.CornerHeightCm(11, 12, 0));
-        Assert.Equal(100, doc.CornerHeightCm(12, 12, 0));
-        // Middle row (z 11): halfway down, so each value is the mean of the column above and below it, and the
-        // centre corner is the mean of all four samples.
-        Assert.Equal(20, doc.CornerHeightCm(10, 11, 0));
-        Assert.Equal(55, doc.CornerHeightCm(11, 11, 0));
-        Assert.Equal(90, doc.CornerHeightCm(12, 11, 0));
-        // South row (z 10): the image's bottom row.
-        Assert.Equal(40, doc.CornerHeightCm(10, 10, 0));
-        Assert.Equal(60, doc.CornerHeightCm(11, 10, 0));
-        Assert.Equal(80, doc.CornerHeightCm(12, 10, 0));
-    }
-
-    [Fact]
-    public void A_rect_one_corner_wide_takes_the_images_first_column_down_its_whole_height()
-    {
-        TileEditingDocument ed = Editing(out TileWorldDocument doc);
-        // Top row 0 and 100, bottom row 40 and 80, maxval 100 imported to 0..100 cm, so sample equals
-        // centimetre again.
-        var image = new PgmImage(2, 2, 100, new ushort[] { 0, 100, 40, 80 });
-
-        // One corner wide, so there is no span to stretch the image's x across and the east column (100 and 80)
-        // is never sampled. Down the three corners the west column stretches as before: the north corner takes
-        // the top sample, the south corner the bottom one, and the middle corner their mean.
-        ed.Execute(TileEditOps.ImportHeights(image, new TileRect(10, 10, 1, 3), 0, 0, 100));
-
-        Assert.Equal(0, doc.CornerHeightCm(10, 12, 0));
-        Assert.Equal(20, doc.CornerHeightCm(10, 11, 0));
-        Assert.Equal(40, doc.CornerHeightCm(10, 10, 0));
+        for (int z = 0; z < 3; z++)
+            for (int x = 0; x < width; x++)
+                Assert.Equal(expected[z * width + x], doc.CornerHeightCm(10 + x, 10 + z, 0));
     }
 
     [Fact]
@@ -119,17 +88,6 @@ public class ImportHeightsTests
             () => TileEditOps.ImportHeights(ThreeByTwo(), new TileRect(10, 10, 3, 2), 0, 100, 99));
         Assert.Throws<ArgumentException>(
             () => TileEditOps.ImportHeights(default(PgmImage), new TileRect(10, 10, 3, 2), 0, 0, 100));
-    }
-
-    [Fact]
-    public void An_equal_min_and_max_flattens_the_rect_to_that_height()
-    {
-        TileEditingDocument ed = Editing(out TileWorldDocument doc);
-
-        ed.Execute(TileEditOps.ImportHeights(ThreeByTwo(), new TileRect(10, 10, 3, 2), 0, 75, 75));
-
-        Assert.Equal(75, doc.CornerHeightCm(10, 10, 0));
-        Assert.Equal(75, doc.CornerHeightCm(12, 11, 0));
     }
 
     [Fact]

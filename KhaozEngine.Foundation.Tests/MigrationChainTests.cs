@@ -37,48 +37,30 @@ public class MigrationChainTests
         Assert.Equal(3, chain.CurrentVersion);
     }
 
-    [Fact]
-    public void Migrate_AlreadyCurrent_IsNoOp()
+    [Theory]
+    [InlineData(2)] // Already current.
+    [InlineData(5)] // A file from a newer build.
+    public void Migrate_AtOrAboveCurrent_IsNoOp(int version)
     {
         var chain = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v)
             .Step(1, p => { p.Steps.Add(1); return p; })
             .Build(2);
 
-        var result = chain.Migrate(new Poco { Ver = 2 });
+        var result = chain.Migrate(new Poco { Ver = version });
 
-        Assert.Equal(2, result.Ver);
-        Assert.Empty(result.Steps);   // no step ran
-    }
-
-    [Fact]
-    public void Migrate_NewerFileThanCurrent_IsNoOp()
-    {
-        var chain = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v)
-            .Step(1, p => { p.Steps.Add(1); return p; })
-            .Build(2);
-
-        var result = chain.Migrate(new Poco { Ver = 5 });   // file from a newer build
-
-        Assert.Equal(5, result.Ver);
+        Assert.Equal(version, result.Ver);
         Assert.Empty(result.Steps);
     }
 
-    [Fact]
-    public void Build_GapInSteps_Throws()
-    {
-        var builder = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v)
-            .Step(1, p => p)    // 1 -> 2
-            .Step(3, p => p);   // 3 -> 4, but 2 -> 3 is missing
-        Assert.Throws<ArgumentException>(() => builder.Build(4));
-    }
-
-    [Fact]
-    public void Build_StepAtOrAboveCurrent_Throws()
+    [Theory]
+    [InlineData(3, 4)] // Missing step from 2 to 3.
+    [InlineData(2, 2)] // Step from 2 targets a version beyond current.
+    public void Build_NoncontiguousOrOutOfRangeSteps_Throws(int secondStep, int currentVersion)
     {
         var builder = MigrationChain.For<Poco>(p => p.Ver, (p, v) => p.Ver = v)
             .Step(1, p => p)
-            .Step(2, p => p);   // targets 3, but current is 2
-        Assert.Throws<ArgumentException>(() => builder.Build(2));
+            .Step(secondStep, p => p);
+        Assert.Throws<ArgumentException>(() => builder.Build(currentVersion));
     }
 
     [Fact]

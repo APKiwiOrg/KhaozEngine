@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
 
 namespace KhaozEngine.Tests;
@@ -68,15 +71,17 @@ public sealed class NameplateTemplateTests
         }));
     }
 
-    [Fact]
-    public void ANonRootTargetingItselfIsRefused()
+    [Theory]
+    [InlineData("level")]
+    [InlineData("missing")]
+    public void ANonRootTargetingAnIdThatIsNotEarlier_IsRefused(string target)
     {
         Assert.Throws<ArgumentException>(() => new NameplateTemplate(new NameplateComponent[]
         {
             new NameplateTextComponent("name", NameplateSlot.Name),
             new NameplateBadgeComponent("level", NameplateSlot.Level)
             {
-                Attach = new NameplateAttach(AttachPoint.Right, "level", AttachPoint.Left, Vector2.Zero),
+                Attach = new NameplateAttach(AttachPoint.Right, target, AttachPoint.Left, Vector2.Zero),
             },
         }));
     }
@@ -92,19 +97,6 @@ public sealed class NameplateTemplateTests
                 Attach = new NameplateAttach(AttachPoint.Right, "health", AttachPoint.Left, Vector2.Zero),
             },
             new NameplateBarComponent("health", NameplateSlot.Health),
-        }));
-    }
-
-    [Fact]
-    public void ANonRootTargetingAMissingComponentIsRefused()
-    {
-        Assert.Throws<ArgumentException>(() => new NameplateTemplate(new NameplateComponent[]
-        {
-            new NameplateTextComponent("name", NameplateSlot.Name),
-            new NameplateBadgeComponent("level", NameplateSlot.Level)
-            {
-                Attach = new NameplateAttach(AttachPoint.Right, "missing", AttachPoint.Left, Vector2.Zero),
-            },
         }));
     }
 
@@ -223,19 +215,30 @@ public sealed class NameplateTemplateTests
     [Fact]
     public void OnlyTheEngineCanConstructAComponentKind()
     {
-        ConstructorInfo[] constructors = typeof(NameplateComponent).GetConstructors(
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        ConstructorInfo creating = Assert.Single(constructors,
-            constructor => constructor.GetParameters() is not [{ ParameterType: var type }] || type != typeof(NameplateComponent));
+        string[] platform = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator);
+        var references = platform
+            .Concat(new[] { typeof(NameplateComponent).Assembly.Location })
+            .Distinct(StringComparer.Ordinal).Select(file => MetadataReference.CreateFromFile(file));
+        const string shippedKind = """
+            using KhaozEngine.Render3D;
+            public static class Consumer
+            {
+                public static NameplateComponent Create() => new NameplateTextComponent("name", NameplateSlot.Name);
+            }
+            """;
+        CSharpCompilation consumer = CSharpCompilation.Create("ExternalNameplateConsumer",
+            [CSharpSyntaxTree.ParseText(shippedKind)], references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        Assert.Empty(consumer.GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
 
-        Assert.True(creating.IsFamilyAndAssembly);
-        MethodInfo engineOwned = Assert.Single(typeof(NameplateComponent).GetMethods(
-            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly),
-            method => method.Name == "EngineOwned");
-        Assert.True(engineOwned.IsAssembly && engineOwned.IsAbstract);
-        string[] properties = Array.ConvertAll(
-            typeof(NameplateComponent).GetProperties(BindingFlags.Instance | BindingFlags.Public), property => property.Name);
-        Array.Sort(properties, StringComparer.Ordinal);
-        Assert.Equal(new[] { "Attach", "Id", "Slot" }, properties);
+        const string customKind = """
+            using KhaozEngine.Render3D;
+            public sealed record CustomComponent(string Id, NameplateSlot Slot) : NameplateComponent(Id, Slot);
+            """;
+        CSharpCompilation extension = consumer.RemoveAllSyntaxTrees().AddSyntaxTrees(CSharpSyntaxTree.ParseText(customKind));
+
+        // Accessibility or an engine-owned abstract member must prevent an external consumer adding a kind.
+        Assert.Contains(extension.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error
+            && diagnostic.Id is "CS0122" or "CS0534");
     }
 }

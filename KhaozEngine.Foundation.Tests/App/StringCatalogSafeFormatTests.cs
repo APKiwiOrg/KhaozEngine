@@ -12,11 +12,15 @@ namespace KhaozEngine.Tests.App
     /// </summary>
     public class StringCatalogSafeFormatTests
     {
-        [Fact]
-        public void Substitutes_args_into_a_well_formed_template()
+        [Theory]
+        [InlineData("Score: {0}", 7, "Score: 7")]
+        [InlineData("Score: {0}, Bonus: {1}", 7, "Score: {0}, Bonus: {1}")]
+        [InlineData("50% of {0", 1, "50% of {0")]
+        public void Formats_valid_templates_and_preserves_templates_that_cannot_be_formatted(
+            string template, int argument, string expected)
         {
-            Assert.Equal("Score: 7",
-                IStringCatalog.SafeFormat(CultureInfo.InvariantCulture, "Score: {0}", new object?[] { 7 }));
+            Assert.Equal(expected,
+                IStringCatalog.SafeFormat(CultureInfo.InvariantCulture, template, new object?[] { argument }));
         }
 
         [Fact]
@@ -29,20 +33,6 @@ namespace KhaozEngine.Tests.App
 
             Assert.Equal("1.5", IStringCatalog.SafeFormat(CultureInfo.InvariantCulture, "{0:0.0}", new object?[] { 1.5 }));
             Assert.Equal("1,5", IStringCatalog.SafeFormat(comma, "{0:0.0}", new object?[] { 1.5 }));
-        }
-
-        [Fact]
-        public void A_placeholder_index_the_args_cannot_satisfy_falls_back_to_the_template()
-        {
-            Assert.Equal("Score: {0}, Bonus: {1}",
-                IStringCatalog.SafeFormat(CultureInfo.InvariantCulture, "Score: {0}, Bonus: {1}", new object?[] { 7 }));
-        }
-
-        [Fact]
-        public void An_unbalanced_brace_falls_back_to_the_template()
-        {
-            Assert.Equal("50% of {0",
-                IStringCatalog.SafeFormat(CultureInfo.InvariantCulture, "50% of {0", new object?[] { 1 }));
         }
 
         [Fact]

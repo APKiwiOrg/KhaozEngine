@@ -135,62 +135,33 @@ public sealed class PointCasterSignatureTests
         }
     }
 
-    [Fact]
-    public void AFadeCrossingOneStepRebuildsTheStaticRowExactlyOnce()
+    [Theory]
+    [InlineData(0.40f, 0.41f, 0.42f, 0.43f, 0f, 1)]
+    [InlineData(1.2f, 1.4f, 1.0f, 1.0f, 0f, 0)]
+    [InlineData(-0.3f, -0.1f, 0f, 0f, 1f, 0)] // Complement keeps negative thresholds on the dissolve path.
+    public void Fade_threshold_changes_rebuild_only_across_quantized_steps(
+        float initial, float first, float second, float third, float complement, int expectedFirstRebuilds)
     {
-        // 0.40 is 6.4 sixteenths (step 6) and 0.41 is 6.56 (step 7). The two frames after it stay on step 7.
         using var rig = new PointShadowRig();
         MeshHandle box = rig.Scene.LoadMesh(MeshPrimitives.Box(1f));
-        Warm(rig, s => QueueFadingProp(s, box, 0.40f));
-        Assert.Equal(1, rig.RenderFrame(s => QueueFadingProp(s, box, 0.41f)).PointStaticRebuilds);
-        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 0.42f)).PointStaticRebuilds);
-        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 0.43f)).PointStaticRebuilds);
+        Warm(rig, s => QueueFadingProp(s, box, initial, complement));
+        Assert.Equal(expectedFirstRebuilds,
+            rig.RenderFrame(s => QueueFadingProp(s, box, first, complement)).PointStaticRebuilds);
+        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, second, complement)).PointStaticRebuilds);
+        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, third, complement)).PointStaticRebuilds);
     }
 
-    [Fact]
-    public void ThresholdsPastOneAreAllTheLastStep()
+    [Theory]
+    [InlineData(0f, 0f, 1f)]
+    [InlineData(0.4f, 0.5f, 0.6f)]
+    public void Complement_changes_rebuild_only_across_the_shader_boundary(
+        float initial, float equivalent, float flipped)
     {
         using var rig = new PointShadowRig();
         MeshHandle box = rig.Scene.LoadMesh(MeshPrimitives.Box(1f));
-        Warm(rig, s => QueueFadingProp(s, box, 1.2f));
-        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 1.4f)).PointStaticRebuilds);
-        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 1.0f)).PointStaticRebuilds);
-    }
-
-    [Fact]
-    public void AComplementFlipAtAConstantThresholdRebuildsTheStaticRow()
-    {
-        // The dissolve pipeline keeps the opposite noise set once the complement is set, so the map changes while
-        // the threshold does not.
-        using var rig = new PointShadowRig();
-        MeshHandle box = rig.Scene.LoadMesh(MeshPrimitives.Box(1f));
-        Warm(rig, s => QueueFadingProp(s, box, 0.5f, complement: 0f));
-        Assert.Equal(1, rig.RenderFrame(s => QueueFadingProp(s, box, 0.5f, complement: 1f)).PointStaticRebuilds);
-        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 0.5f, complement: 1f)).PointStaticRebuilds);
-    }
-
-    [Fact]
-    public void NegativeThresholdsAreAllTheFirstStep()
-    {
-        // Complemented, because a caster with neither a positive threshold nor a complement is not dissolving and
-        // packs a zero threshold, so its negative value never reaches the signature. The shader clamps it to 0, so
-        // -0.3, -0.1 and 0 are one map.
-        using var rig = new PointShadowRig();
-        MeshHandle box = rig.Scene.LoadMesh(MeshPrimitives.Box(1f));
-        Warm(rig, s => QueueFadingProp(s, box, -0.3f, complement: 1f));
-        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, -0.1f, complement: 1f)).PointStaticRebuilds);
-        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 0f, complement: 1f)).PointStaticRebuilds);
-    }
-
-    [Fact]
-    public void TheComplementIsReadAboveOneHalfTheWayTheShaderReadsIt()
-    {
-        // The shaders keep the complementary set only above 0.5, so 0.4 and 0.5 are one map and 0.6 is the other.
-        using var rig = new PointShadowRig();
-        MeshHandle box = rig.Scene.LoadMesh(MeshPrimitives.Box(1f));
-        Warm(rig, s => QueueFadingProp(s, box, 0.5f, complement: 0.4f));
-        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 0.5f, complement: 0.5f)).PointStaticRebuilds);
-        Assert.Equal(1, rig.RenderFrame(s => QueueFadingProp(s, box, 0.5f, complement: 0.6f)).PointStaticRebuilds);
-        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 0.5f, complement: 0.6f)).PointStaticRebuilds);
+        Warm(rig, s => QueueFadingProp(s, box, 0.5f, initial));
+        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 0.5f, equivalent)).PointStaticRebuilds);
+        Assert.Equal(1, rig.RenderFrame(s => QueueFadingProp(s, box, 0.5f, flipped)).PointStaticRebuilds);
+        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 0.5f, flipped)).PointStaticRebuilds);
     }
 }

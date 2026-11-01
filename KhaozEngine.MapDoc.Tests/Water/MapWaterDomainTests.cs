@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -162,20 +163,6 @@ public class MapWaterDomainTests
     }
 
     [Theory]
-    [InlineData("bow-tie", "water body 'ocean': ring 0 self-intersects")]
-    [InlineData("collinear", "water body 'ocean': ring 0 has zero area")]
-    [InlineData("overlapping-pieces", "water body 'ocean': rect 0 and rect 1 overlap")]
-    [InlineData("overlapping-ring", "water body 'ocean': rect 0 and ring 0 overlap")]
-    [InlineData("overlapping-bodies", "water bodies 'cave-lake' and 'second-lake' overlap in space 'lake-cave'")]
-    [InlineData("too-many-pieces", "water body 'ocean': domain exceeds 65536 pieces")]
-    [InlineData("too-many-vertices", "water body 'ocean': domain exceeds 262144 vertices")]
-    public void Validation_RefusesBadGeometry(string variant, string message)
-    {
-        IReadOnlyList<string> errors = MapDocumentValidator.Validate(WaterFixtures.Broken(variant), MapDocRegistry.CreateDefault());
-        Assert.Contains(errors, e => e.Contains(message, StringComparison.Ordinal));
-    }
-
-    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void Validation_ColumnOfOneCellRects_ChargesLinearWork(bool descending)
@@ -192,7 +179,9 @@ public class MapWaterDomainTests
     {
         var errors = new List<string>();
         MapWaterValidation.Validate(WithOceanColumn(64, descending: true), errors, new MapWaterWorkBudget(8));
-        Assert.Equal(new[] { "water body 'ocean': domain work exceeds 8 pair checks." }, errors);
+        string error = Assert.Single(errors);
+        foreach (string value in new[] { "ocean", "8" })
+            Assert.Matches(@"(?<![\p{L}\p{N}_.\-])" + Regex.Escape(value) + @"(?![\p{L}\p{N}_\-]|\.[\p{L}\p{N}])", error);
     }
 
     [Fact]

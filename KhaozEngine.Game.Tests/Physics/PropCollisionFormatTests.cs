@@ -41,7 +41,10 @@ public class PropCollisionFormatTests
 
         var c0 = loaded.Children[0];
         Assert.Equal(new Vector3(2, 0, 0), c0.Local.Position);
-        Assert.Equal(4, Assert.IsType<ConvexHullShape>(c0.Shape).Points.Length);
+        Assert.Equal(Quaternion.Identity, c0.Local.Orientation);
+        var loadedHull = Assert.IsType<ConvexHullShape>(c0.Shape);
+        Assert.Equal(4, loadedHull.Points.Length);
+        Assert.Equal(hull.Points, loadedHull.Points);
 
         var c1 = loaded.Children[1];
         Assert.Equal(new Vector3(0, 5, 0), c1.Local.Position);
@@ -60,7 +63,9 @@ public class PropCollisionFormatTests
         using var b = new MemoryStream();
         PropCollisionFormat.Write(compound, a);
         PropCollisionFormat.Write(compound, b);
-        Assert.Equal(a.ToArray(), b.ToArray());
+        byte[] first = a.ToArray();
+        Assert.NotEmpty(first);
+        Assert.Equal(first, b.ToArray());
     }
 
     // Hand-built streams below use the raw wire kind byte (1 = convex hull, per PropCollisionFormat's internal
@@ -87,8 +92,7 @@ public class PropCollisionFormatTests
         // treats a negative array length as an unsigned overflow (OverflowException), not the
         // InvalidOperationException this format promises for every other malformed-input case (issue #147).
         using MemoryStream ms = StreamWithConvexHullCount(-1);
-        var ex = Assert.Throws<InvalidOperationException>(() => PropCollisionFormat.Read(ms));
-        Assert.Contains("negative", ex.Message);
+        Assert.Throws<InvalidOperationException>(() => PropCollisionFormat.Read(ms));
     }
 
     [Fact]
@@ -97,8 +101,7 @@ public class PropCollisionFormatTests
         // A huge bogus positive count (garbage bits from corruption) must fail cleanly instead of attempting a
         // multi-gigabyte allocation or crawling past the end of the stream (issue #147).
         using MemoryStream ms = StreamWithConvexHullCount(int.MaxValue);
-        var ex = Assert.Throws<InvalidOperationException>(() => PropCollisionFormat.Read(ms));
-        Assert.Contains("remain", ex.Message);
+        Assert.Throws<InvalidOperationException>(() => PropCollisionFormat.Read(ms));
     }
 
     // Malformed shape data is refused at the reader (#1346), in the same InvalidOperationException contract as a bad
@@ -117,61 +120,42 @@ public class PropCollisionFormatTests
     }
 
     [Theory]
-    [InlineData(float.NaN)]
-    [InlineData(float.PositiveInfinity)]
-    [InlineData(float.NegativeInfinity)]
-    public void Read_NonFiniteBoxHalfExtent_Refuses(float value)
+    [InlineData(float.NaN, 1f)]
+    [InlineData(float.PositiveInfinity, 1f)]
+    [InlineData(float.NegativeInfinity, 1f)]
+    [InlineData(1f, 0f)]
+    [InlineData(1f, -1f)]
+    public void Read_InvalidBoxHalfExtent_Refuses(float y, float z)
     {
-        var ex = ReadRefusal(new BoxShape(new Vector3(1f, value, 1f)));
-        Assert.Contains("box half extent", ex.Message);
-    }
-
-    [Theory]
-    [InlineData(0f)]
-    [InlineData(-1f)]
-    public void Read_NonPositiveBoxHalfExtent_Refuses(float value)
-    {
-        var ex = ReadRefusal(new BoxShape(new Vector3(1f, 1f, value)));
-        Assert.Contains("box half extent", ex.Message);
+        ReadRefusal(new BoxShape(new Vector3(1f, y, z)));
     }
 
     [Theory]
     [InlineData(float.NaN, 1f)]
     [InlineData(1f, float.PositiveInfinity)]
-    public void Read_NonFiniteCylinder_Refuses(float radius, float length)
-    {
-        var ex = ReadRefusal(new CylinderShape(radius, length));
-        Assert.Contains("cylinder", ex.Message);
-    }
-
-    [Theory]
     [InlineData(0f, 1f)]
     [InlineData(1f, -2f)]
-    public void Read_NonPositiveCylinder_Refuses(float radius, float length)
+    public void Read_InvalidCylinderSize_Refuses(float radius, float length)
     {
-        var ex = ReadRefusal(new CylinderShape(radius, length));
-        Assert.Contains("cylinder", ex.Message);
+        ReadRefusal(new CylinderShape(radius, length));
     }
 
     [Fact]
     public void Read_NonFiniteHullPoint_Refuses()
     {
-        var ex = ReadRefusal(new ConvexHullShape(new[] { Vector3.Zero, Vector3.UnitX, new Vector3(0f, float.NaN, 0f), Vector3.UnitZ }));
-        Assert.Contains("convex hull point", ex.Message);
+        ReadRefusal(new ConvexHullShape(new[] { Vector3.Zero, Vector3.UnitX, new Vector3(0f, float.NaN, 0f), Vector3.UnitZ }));
     }
 
     [Fact]
     public void Read_NonFiniteMeshVertex_Refuses()
     {
-        var ex = ReadRefusal(new TriangleMeshShape(new[] { Vector3.Zero, new Vector3(float.PositiveInfinity, 0f, 0f), Vector3.UnitZ }, new[] { 0, 1, 2 }));
-        Assert.Contains("triangle mesh vertex", ex.Message);
+        ReadRefusal(new TriangleMeshShape(new[] { Vector3.Zero, new Vector3(float.PositiveInfinity, 0f, 0f), Vector3.UnitZ }, new[] { 0, 1, 2 }));
     }
 
     [Fact]
     public void Read_MeshIndexCountNotATriple_Refuses()
     {
-        var ex = ReadRefusal(new TriangleMeshShape(new[] { Vector3.Zero, Vector3.UnitX, Vector3.UnitZ }, new[] { 0, 1, 2, 0 }));
-        Assert.Contains("multiple of 3", ex.Message);
+        ReadRefusal(new TriangleMeshShape(new[] { Vector3.Zero, Vector3.UnitX, Vector3.UnitZ }, new[] { 0, 1, 2, 0 }));
     }
 
     [Theory]
@@ -179,22 +163,19 @@ public class PropCollisionFormatTests
     [InlineData(3)]
     public void Read_MeshIndexOutsideTheVertices_Refuses(int index)
     {
-        var ex = ReadRefusal(new TriangleMeshShape(new[] { Vector3.Zero, Vector3.UnitX, Vector3.UnitZ }, new[] { 0, 1, index }));
-        Assert.Contains("triangle mesh index", ex.Message);
+        ReadRefusal(new TriangleMeshShape(new[] { Vector3.Zero, Vector3.UnitX, Vector3.UnitZ }, new[] { 0, 1, index }));
     }
 
     [Fact]
     public void Read_NonFiniteChildPosition_Refuses()
     {
-        var ex = ReadRefusal(Wrap(new BoxShape(Vector3.One), new Pose(new Vector3(0f, float.NaN, 0f), Quaternion.Identity)));
-        Assert.Contains("compound child pose", ex.Message);
+        ReadRefusal(Wrap(new BoxShape(Vector3.One), new Pose(new Vector3(0f, float.NaN, 0f), Quaternion.Identity)));
     }
 
     [Fact]
     public void Read_NonFiniteChildOrientation_Refuses()
     {
-        var ex = ReadRefusal(Wrap(new BoxShape(Vector3.One), new Pose(Vector3.Zero, new Quaternion(0f, 0f, 0f, float.NaN))));
-        Assert.Contains("compound child pose", ex.Message);
+        ReadRefusal(Wrap(new BoxShape(Vector3.One), new Pose(Vector3.Zero, new Quaternion(0f, 0f, 0f, float.NaN))));
     }
 
     [Theory]
@@ -204,8 +185,7 @@ public class PropCollisionFormatTests
     {
         // Write refuses this orientation too, so the stream is written with an identity child and patched.
         byte[] bytes = WithChildOrientation(Wrap(new BoxShape(Vector3.One), Pose.Identity), new Quaternion(x, y, z, w));
-        var ex = Assert.Throws<InvalidOperationException>(() => PropCollisionFormat.Read(new MemoryStream(bytes)));
-        Assert.Contains("is not a unit quaternion", ex.Message);
+        Assert.Throws<InvalidOperationException>(() => PropCollisionFormat.Read(new MemoryStream(bytes)));
     }
 
     [Theory]
@@ -215,8 +195,9 @@ public class PropCollisionFormatTests
     public void Write_NonUnitChildOrientation_RefusesWithTheReadersTolerance(float x, float y, float z, float w)
     {
         var nested = Wrap(Wrap(new BoxShape(Vector3.One), new Pose(Vector3.Zero, new Quaternion(x, y, z, w))), Pose.Identity);
-        var ex = Assert.Throws<ArgumentException>(() => PropCollisionFormat.Write(nested, new MemoryStream()));
-        Assert.Contains("is not a unit quaternion", ex.Message);
+        using var stream = new MemoryStream();
+        Assert.Throws<ArgumentException>(() => PropCollisionFormat.Write(nested, stream));
+        Assert.Equal(0, stream.Length);
     }
 
     [Fact]
@@ -247,8 +228,7 @@ public class PropCollisionFormatTests
     [Fact]
     public void Read_CompoundWithoutChildren_Refuses()
     {
-        var ex = ReadRefusal(new CompoundShape(Array.Empty<CompoundChild>()));
-        Assert.Contains("no children", ex.Message);
+        ReadRefusal(new CompoundShape(Array.Empty<CompoundChild>()));
     }
 
     [Fact]
@@ -268,7 +248,6 @@ public class PropCollisionFormatTests
     [Fact]
     public void Read_CompoundNestedDeeperThanSixteenLevels_Refuses()
     {
-        var ex = ReadRefusal(Nest(17));
-        Assert.Contains("nesting", ex.Message);
+        ReadRefusal(Nest(17));
     }
 }

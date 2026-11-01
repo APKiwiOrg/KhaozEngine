@@ -90,18 +90,12 @@ public sealed class ContainerLoadGeometryTests
         Assert.Equal(ContainerLoadReason.PageSectionMismatch, Refusal(bytes));
     }
 
-    [Fact]
-    public void IncorrectOriginPrecedesSectionAndShortGeometryChecks()
+    [Theory]
+    [InlineData(99, 30)] // Incorrect origin with a short page.
+    [InlineData(100, 101)] // Correct origin with an overwide page.
+    public void InvalidCodecGeometryPrecedesSectionChecking(int firstSlot, int slotCount)
     {
-        byte[] bytes = ItemContainerPageCodec.Encode(1, 99, 30, ActiveVersion, Array.Empty<PageSlotInput>());
-
-        Assert.Equal(ItemContainerPageReason.SlotOrigin, Refusal(bytes));
-    }
-
-    [Fact]
-    public void OverWideGeometryStillPrecedesSectionChecking()
-    {
-        byte[] bytes = ItemContainerPageCodec.Encode(1, 100, 101, ActiveVersion, Array.Empty<PageSlotInput>());
+        byte[] bytes = ItemContainerPageCodec.Encode(1, firstSlot, slotCount, ActiveVersion, Array.Empty<PageSlotInput>());
 
         Assert.Equal(ItemContainerPageReason.SlotOrigin, Refusal(bytes));
     }

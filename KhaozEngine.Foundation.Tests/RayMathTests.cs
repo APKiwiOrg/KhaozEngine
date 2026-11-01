@@ -12,11 +12,13 @@ namespace KhaozEngine.Tests
         static readonly Vector3 Min = new(-1f, -1f, -1f);
         static readonly Vector3 Max = new(1f, 1f, 1f);
 
-        [Fact]
-        public void HitFromOutside_ReturnsEntryDistance()
+        [Theory]
+        [InlineData(1f, 4f)]
+        [InlineData(2f, 2f)]
+        public void HitFromOutside_ReturnsEntryDistanceInDirectionUnits(float speed, float expected)
         {
-            Assert.True(RayMath.IntersectAabb(new Vector3(-5f, 0f, 0f), new Vector3(1f, 0f, 0f), Min, Max, out float t));
-            Assert.Equal(4f, t, 4);
+            Assert.True(RayMath.IntersectAabb(new Vector3(-5f, 0f, 0f), new Vector3(speed, 0f, 0f), Min, Max, out float t));
+            Assert.Equal(expected, t, 4);
         }
 
         [Fact]
@@ -44,13 +46,6 @@ namespace KhaozEngine.Tests
             Assert.True(RayMath.IntersectAabb(new Vector3(0.5f, -9f, 0.5f), new Vector3(0f, 1f, 0f), Min, Max, out float t));
             Assert.Equal(8f, t, 4);
             Assert.False(RayMath.IntersectAabb(new Vector3(2f, -9f, 0.5f), new Vector3(0f, 1f, 0f), Min, Max, out _));
-        }
-
-        [Fact]
-        public void UnnormalizedDirection_ScalesT()
-        {
-            Assert.True(RayMath.IntersectAabb(new Vector3(-5f, 0f, 0f), new Vector3(2f, 0f, 0f), Min, Max, out float t));
-            Assert.Equal(2f, t, 4);
         }
 
         [Fact]

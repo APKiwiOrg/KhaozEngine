@@ -133,32 +133,20 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(new RadialMenuChoiceChange(101, 10), menu.ChoiceChange);
         }
 
-        [Fact]
-        public void Clicking_another_enabled_entry_replaces_the_lock()
+        [Theory]
+        [InlineData(3, 5L, 104L)]
+        [InlineData(2, 10L, 101L)]
+        public void Entry_enabled_state_controls_lock_replacement(int entryIndex, long choiceTag, long expectedEntryTag)
         {
             RadialMenu menu = Open();
             var pointer = new Pointer();
 
             Tap(menu, pointer, EntryPoint(0));
-            Tap(menu, pointer, EntryPoint(3));
-            Tap(menu, pointer, ChoicePoint(5));
+            Tap(menu, pointer, EntryPoint(entryIndex));
+            Tap(menu, pointer, ChoicePoint(choiceTag));
 
-            Assert.Equal(new RadialMenuSelection(104, 5), menu.Selection);
-            Assert.Equal(new RadialMenuChoiceChange(104, 5), menu.ChoiceChange);
-        }
-
-        [Fact]
-        public void Disabled_entry_cannot_replace_a_locked_entry()
-        {
-            RadialMenu menu = Open();
-            var pointer = new Pointer();
-
-            Tap(menu, pointer, EntryPoint(0));
-            Tap(menu, pointer, EntryPoint(2));
-            Tap(menu, pointer, ChoicePoint(10));
-
-            Assert.Equal(new RadialMenuSelection(101, 10), menu.Selection);
-            Assert.Equal(new RadialMenuChoiceChange(101, 10), menu.ChoiceChange);
+            Assert.Equal(new RadialMenuSelection(expectedEntryTag, choiceTag), menu.Selection);
+            Assert.Equal(new RadialMenuChoiceChange(expectedEntryTag, choiceTag), menu.ChoiceChange);
         }
 
         [Fact]

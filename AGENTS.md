@@ -14,6 +14,7 @@ directly. Keep this root short enough to load with global guidance. Detailed rep
 | Task | Read first |
 |---|---|
 | Engine code or tests | [Contributor rules: Engine code and test contracts](docs/CONTRIBUTOR-RULES.md#engine-code-and-test-contracts) |
+| Writing, changing or deleting tests | [Contributor rules: Writing tests](docs/CONTRIBUTOR-RULES.md#writing-tests) |
 | Package or dependency changes | [Contributor rules: Dependencies and package structure](docs/CONTRIBUTOR-RULES.md#dependencies-and-package-structure), [DEPENDENCY-SEAMS.md](docs/DEPENDENCY-SEAMS.md) |
 | Build or CI work | [Contributor rules: Build and CI](docs/CONTRIBUTOR-RULES.md#build-and-ci), [CI selective design](docs/design/CI-SELECTIVE-TESTS.md) |
 | Version, pack or release work | [Contributor rules: Version, package and release rules](docs/CONTRIBUTOR-RULES.md#version-package-and-release-rules) |
@@ -58,6 +59,21 @@ directly. Keep this root short enough to load with global guidance. Detailed rep
   observable.
 - No em-dash or en-dash glyphs in shipped prose or comments. No prose semicolons in Markdown. Run the
   whole-tree guards before completion.
+
+## Writing tests
+
+These are binding here and in every game repo. Reasons and the full list:
+[Contributor rules: Writing tests](docs/CONTRIBUTOR-RULES.md#writing-tests).
+
+- EVERY TEST GUARDS SOMETHING DISTINCT: a contract, a rule, an owner ruling or a past regression. Find the
+  existing test first and add a theory row. A new test is for behaviour no test covers.
+- ASSERT THE CONTRACT, NEVER INCIDENTAL DETAIL: no exception message wording, call counts on fakes, private
+  members by reflection, log text or internal order. Exact values only where they are the contract.
+  KETEST001 and KETEST002 fail the build on two of these.
+- KEEP ABSENCE CHECKS AND DOCUMENTED DIAGNOSTIC VALUES. They are contracts, not wording.
+- A TEST MUST BE ABLE TO FAIL, AND IS NEVER DELETED OR WEAKENED WITHOUT NAMING ITS SURVIVOR.
+- TIMING NEVER GATES DEFAULT CI, AND FLAKES GET A DETERMINISTIC FIX, NEVER A SLEEP OR RETRY. Report-only
+  tests carry `[Trait("Category", "Diagnostic")]`.
 
 ## Build and test
 

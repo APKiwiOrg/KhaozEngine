@@ -4,6 +4,22 @@ All notable changes to KhaozEngine. One shared version line `<KhaozEngineVersion
 governs every package, including the four umbrella metapackages. Planned work lives in the repo's GitHub
 Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.23.1
+
+2026-11-02
+
+- Move the renderer performance evidence tooling tests, the Items benchmark quick acceptance test and the
+  navigation capture research fixtures out of the engine solution into `tools/Renderer.Perf.Tooling.Tests`,
+  `tools/Items.Benchmark.Tests` and `tools/NavCapture.Research.Tests`. The free `tooling-validation.yml`
+  workflow runs each one when its own inputs change, and engine CI no longer runs them. No test was deleted,
+  and their test-health baseline entries moved with them.
+- `KhaozEngine.Gpu`, `KhaozEngine.Gpu.D3D11`, `KhaozEngine.Gpu.Metal`, `KhaozEngine.Gpu.Vulkan`,
+  `KhaozEngine.Render2D`, `KhaozEngine.Render3D` and `KhaozEngine.Windowing` grant `InternalsVisibleTo` to
+  `Renderer.Perf.Tooling.Tests`, and `KhaozEngine.Movement` grants it to `NavCapture.Research.Tests`. Public
+  APIs are unchanged and consumers need no code change.
+- Bound the default renderer timing probes. Probes that only measure and report carry
+  `[Trait("Category", "Diagnostic")]` and run on demand.
+
 ## 21.23.0
 
 2026-11-01

@@ -393,7 +393,7 @@ public sealed class BugReportBundleWriterTests
     {
         ArgumentException invalid = Assert.Throws<ArgumentException>(
             () => BugReportBundleWriter.Write(Draft(sections: [Section(key, "{}")])));
-        Assert.Contains("\"" + key + "\"", invalid.Message, StringComparison.Ordinal);
+        Assert.Equal("draft", invalid.ParamName);
     }
 
     [Fact]
@@ -401,7 +401,7 @@ public sealed class BugReportBundleWriterTests
     {
         ArgumentException duplicate = Assert.Throws<ArgumentException>(
             () => BugReportBundleWriter.Write(Draft(sections: [Section("build", "{}"), Section("build", "{\"a\":1}")])));
-        Assert.Contains("\"build\"", duplicate.Message, StringComparison.Ordinal);
+        Assert.Equal("draft", duplicate.ParamName);
     }
 
     [Theory]

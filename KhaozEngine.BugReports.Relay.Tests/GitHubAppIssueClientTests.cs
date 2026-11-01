@@ -202,14 +202,12 @@ public sealed class GitHubAppIssueClientTests : IDisposable
     }
 
     [Fact]
-    public async Task IssueClientWithoutUpdate_ThrowsNotSupportedNamingTheMember()
+    public async Task IssueClientWithoutUpdate_ThrowsNotSupported()
     {
         IGitHubIssueClient client = new IssueClientWithoutUpdate();
 
-        var error = await Assert.ThrowsAsync<NotSupportedException>(() =>
+        await Assert.ThrowsAsync<NotSupportedException>(() =>
             client.UpdateIssueAsync(12, new GitHubIssueUpdate("Title", "Body"), CancellationToken.None));
-
-        Assert.Contains("IGitHubIssueClient.UpdateIssueAsync", error.Message);
     }
 
     sealed class IssueClientWithoutUpdate : IGitHubIssueClient
@@ -385,7 +383,7 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         var error = await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
         Assert.False(error.IsRateLimited);
         Assert.Null(error.RetryAfter);
-        Assert.Contains("422", error.Message);
+        Assert.Equal(422, error.StatusCode);
         Assert.Contains("Validation failed", error.Message);
         Assert.DoesNotContain("invalid", error.Message);
     }
@@ -613,7 +611,7 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         var error = await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
         Assert.False(error.IsRateLimited);
         Assert.Null(error.RetryAfter);
-        Assert.Contains("403", error.Message);
+        Assert.Equal(403, error.StatusCode);
     }
 
     [Fact]

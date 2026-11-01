@@ -73,7 +73,7 @@ LC_ALL=C sort -t "$(printf '\t')" -k1,1 -k2,2 "$tmp/counts-unsorted" >"$tmp/coun
 
 if [ "$mode" = --init ]; then
   cat >"$tmp/baseline" <<'HEADER'
-# KhaozEngine test-health baseline for KETEST001, KETEST002 and KETEST003.
+# KhaozEngine test-health baseline for KETEST001 and KETEST002. KETEST003 is report-only and never listed.
 # Entries are '<count> <rule> <path>', relative to this directory.
 # This baseline may only shrink. New debt is not allowed.
 # With owner approval, exempt a rule and path with a reason comment:

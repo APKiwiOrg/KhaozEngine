@@ -85,6 +85,9 @@ public class LoopOnlyAssertionTests
     [InlineData("var items = new[] { 1, 2 }; foreach (var item in items) Assert.True(item > 0);")]
     [InlineData("foreach (var (left, right) in GetPairs()) Assert.Equal(left, right);")]
     [InlineData("foreach (var item in PretendEnumerable.Range(0, 2)) Assert.True(item > 0);")]
+    [InlineData("for (int i = 0, j = 0; j < GetItems().Length; i++) Assert.True(i >= 0);")]
+    [InlineData("for (char c = 'b'; c < 'b'; c++) Assert.True(c == 'a');")]
+    [InlineData("foreach (var item in new int[0u]) Assert.Equal(0, item);")]
     public async Task PossiblyEmptyGuard_Fires(string body) => await AssertFinding(body);
 
     [Theory]
@@ -116,6 +119,14 @@ public class LoopOnlyAssertionTests
     [InlineData("foreach (var item in GetItems()) { void Check() => Assert.True(true); Check(); }")]
     [InlineData("foreach (var item in GetItems()) Assert.True(item > 0); Assert.NotEmpty(GetItems());")]
     [InlineData("foreach (var item in InspectSource(() => Assert.True(true))) Assert.True(item > 0);")]
+    [InlineData("for (int i = 0, j = 0; i < 1; i++) Assert.True(i == j);")]
+    [InlineData("for (int j = 0, i = 0; 1 > i; i++) Assert.True(i == j);")]
+    [InlineData("for (char c = 'a'; c < 'b'; c++) Assert.True(c == 'a');")]
+    [InlineData("for (nint i = 0; i < 1; i++) Assert.True(i == 0);")]
+    [InlineData("for (nuint i = 0; i < 1; i++) Assert.True(i == 0);")]
+    [InlineData("foreach (var item in new int[1u]) Assert.Equal(0, item);")]
+    [InlineData("foreach (var item in new int[1L]) Assert.Equal(0, item);")]
+    [InlineData("foreach (var item in new int[1UL]) Assert.Equal(0, item);")]
     public async Task DirectAssertionOrNonEmptyHeader_IsSilent(string body) =>
         Assert.Empty(await RunBody(body));
 

@@ -140,8 +140,8 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 case ArrayCreationExpressionSyntax array:
                     if (array.Initializer is not null) return array.Initializer.Expressions.Count > 0;
                     return array.Type.RankSpecifiers[0].Sizes.All(size =>
-                        model.GetConstantValue(size, cancellationToken) is { HasValue: true, Value: int count } &&
-                        count > 0);
+                        model.GetConstantValue(size, cancellationToken) is { HasValue: true, Value: { } count } &&
+                        IsPositiveIntegral(count));
                 case CollectionExpressionSyntax collection:
                     return collection.Elements.Any(element => element is ExpressionElementSyntax);
                 case ObjectCreationExpressionSyntax creation:
@@ -169,29 +169,32 @@ namespace KhaozEngine.CodeHealth.Analyzers
             initializer is not null && initializer.IsKind(SyntaxKind.CollectionInitializerExpression) &&
             initializer.Expressions.Count > 0;
 
+        // Every integral type a constant array dimension can legally have.
+        private static bool IsPositiveIntegral(object value) => value switch
+        {
+            sbyte number => number > 0,
+            byte number => number > 0,
+            short number => number > 0,
+            ushort number => number > 0,
+            char number => number > 0,
+            int number => number > 0,
+            uint number => number > 0,
+            long number => number > 0,
+            ulong number => number > 0,
+            _ => false,
+        };
+
         private static bool HasFirstIteration(ForStatementSyntax loop, SemanticModel model,
             CancellationToken cancellationToken)
         {
-            ISymbol? counter;
-            ExpressionSyntax? initialValue;
-            if (loop.Declaration?.Variables.Count == 1)
-            {
-                var variable = loop.Declaration.Variables[0];
-                counter = model.GetDeclaredSymbol(variable, cancellationToken);
-                initialValue = variable.Initializer?.Value;
-            }
-            else if (loop.Initializers.Count == 1 && loop.Initializers[0] is AssignmentExpressionSyntax assignment &&
-                     assignment.IsKind(SyntaxKind.SimpleAssignmentExpression))
-            {
-                counter = model.GetSymbolInfo(assignment.Left, cancellationToken).Symbol;
-                initialValue = assignment.Right;
-            }
-            else return false;
-
-            if (counter is null || initialValue is null ||
-                !TryLiteralNumber(initialValue, model, cancellationToken, out var start) ||
-                loop.Condition is null || Unwrap(loop.Condition) is not BinaryExpressionSyntax condition ||
+            if (loop.Condition is null || Unwrap(loop.Condition) is not BinaryExpressionSyntax condition ||
                 model.GetOperation(condition, cancellationToken) is not IBinaryOperation operation) return false;
+
+            var leftSymbol = model.GetSymbolInfo(Unwrap(condition.Left), cancellationToken).Symbol;
+            var rightSymbol = model.GetSymbolInfo(Unwrap(condition.Right), cancellationToken).Symbol;
+            if (!TryFindCounterStart(loop, model, leftSymbol, rightSymbol, cancellationToken,
+                    out var counter, out var initialValue) ||
+                !TryLiteralNumber(initialValue, model, cancellationToken, out var start)) return false;
 
             // Honor rounding on assignment before applying the comparison's numeric promotion.
             switch (model.GetTypeInfo(initialValue, cancellationToken).ConvertedType?.SpecialType)
@@ -202,11 +205,9 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
             object left;
             object right;
-            if (SymbolEqualityComparer.Default.Equals(
-                    model.GetSymbolInfo(Unwrap(condition.Left), cancellationToken).Symbol, counter) &&
+            if (SymbolEqualityComparer.Default.Equals(leftSymbol, counter) &&
                 TryLiteralNumber(condition.Right, model, cancellationToken, out right)) left = start;
-            else if (SymbolEqualityComparer.Default.Equals(
-                         model.GetSymbolInfo(Unwrap(condition.Right), cancellationToken).Symbol, counter) &&
+            else if (SymbolEqualityComparer.Default.Equals(rightSymbol, counter) &&
                      TryLiteralNumber(condition.Left, model, cancellationToken, out left)) right = start;
             else return false;
 
@@ -215,7 +216,8 @@ namespace KhaozEngine.CodeHealth.Analyzers
                 SpecialType.System_Single => Convert.ToSingle(left).CompareTo(Convert.ToSingle(right)),
                 SpecialType.System_Double => Convert.ToDouble(left).CompareTo(Convert.ToDouble(right)),
                 SpecialType.System_Decimal or SpecialType.System_Int32 or SpecialType.System_UInt32 or
-                    SpecialType.System_Int64 or SpecialType.System_UInt64 =>
+                    SpecialType.System_Int64 or SpecialType.System_UInt64 or
+                    SpecialType.System_IntPtr or SpecialType.System_UIntPtr =>
                     Convert.ToDecimal(left).CompareTo(Convert.ToDecimal(right)),
                 _ => null,
             };
@@ -233,6 +235,46 @@ namespace KhaozEngine.CodeHealth.Analyzers
             };
         }
 
+        // The counter is whichever for-initializer variable the condition compares, so a header that
+        // declares or assigns several variables still proves its first iteration.
+        private static bool TryFindCounterStart(ForStatementSyntax loop, SemanticModel model, ISymbol? leftSymbol,
+            ISymbol? rightSymbol, CancellationToken cancellationToken, out ISymbol counter,
+            out ExpressionSyntax initialValue)
+        {
+            bool IsCompared(ISymbol? candidate) =>
+                candidate is not null && (SymbolEqualityComparer.Default.Equals(candidate, leftSymbol) ||
+                                          SymbolEqualityComparer.Default.Equals(candidate, rightSymbol));
+
+            if (loop.Declaration is not null)
+            {
+                foreach (var variable in loop.Declaration.Variables)
+                {
+                    var declared = model.GetDeclaredSymbol(variable, cancellationToken);
+                    if (IsCompared(declared) && variable.Initializer is not null)
+                    {
+                        counter = declared!;
+                        initialValue = variable.Initializer.Value;
+                        return true;
+                    }
+                }
+            }
+            foreach (var initializer in loop.Initializers)
+            {
+                if (initializer is not AssignmentExpressionSyntax assignment ||
+                    !assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)) continue;
+                var assigned = model.GetSymbolInfo(assignment.Left, cancellationToken).Symbol;
+                if (IsCompared(assigned))
+                {
+                    counter = assigned!;
+                    initialValue = assignment.Right;
+                    return true;
+                }
+            }
+            counter = null!;
+            initialValue = null!;
+            return false;
+        }
+
         private static bool TryLiteralNumber(ExpressionSyntax expression, SemanticModel model,
             CancellationToken cancellationToken, out object number)
         {
@@ -241,10 +283,12 @@ namespace KhaozEngine.CodeHealth.Analyzers
             if (literal is PrefixUnaryExpressionSyntax unary &&
                 (unary.IsKind(SyntaxKind.UnaryMinusExpression) || unary.IsKind(SyntaxKind.UnaryPlusExpression)))
                 literal = Unwrap(unary.Operand);
-            if (literal.IsKind(SyntaxKind.NumericLiteralExpression) &&
+            if ((literal.IsKind(SyntaxKind.NumericLiteralExpression) ||
+                 literal.IsKind(SyntaxKind.CharacterLiteralExpression)) &&
                 model.GetConstantValue(expression, cancellationToken) is { HasValue: true, Value: { } value })
             {
-                number = value;
+                // A char compares through its code point. Convert.ToDecimal refuses a char.
+                number = value is char character ? (int)character : value;
                 return true;
             }
             number = 0;

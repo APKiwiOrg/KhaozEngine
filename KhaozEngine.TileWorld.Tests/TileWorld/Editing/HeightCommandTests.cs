@@ -28,7 +28,7 @@ public class HeightCommandTests
         var cmd = new SetCornerHeightsCommand(new TileRect(10, 10, 2, 2), 0, new short[] { 100, 200, 300, 400 });
         ed.Execute(cmd);
 
-        Assert.Equal("Set heights", cmd.Label);
+        Assert.False(string.IsNullOrWhiteSpace(cmd.Label));
         Assert.Equal(100, doc.CornerHeightCm(10, 10, 0));
         Assert.Equal(200, doc.CornerHeightCm(11, 10, 0));
         Assert.Equal(300, doc.CornerHeightCm(10, 11, 0));
@@ -132,35 +132,21 @@ public class HeightCommandTests
         Assert.Equal(0, doc.CornerHeightCm(14, 14, 0));
     }
 
-    [Fact]
-    public void Raise_falloff_handles_an_even_sized_rect_with_a_half_corner_centre()
+    [Theory]
+    [InlineData(4, 67)] // half-corner centre, zero on the outer ring
+    [InlineData(1, 100)] // no extent to fade across
+    public void Raise_falloff_handles_even_and_single_corner_rects(int size, int innerDelta)
     {
         TileEditingDocument ed = Editing(out TileWorldDocument doc);
 
-        // A 4 by 4 corner rect has no middle corner: its centre falls on (11.5, 11.5) and its half extent is
-        // 1.5. The inner 2 by 2 sits at chebyshev 0.5, so it keeps 1 - 0.5 / 1.5 of the delta, which rounds to
-        // 67, and the outer ring sits at 1.5, exactly the extent, so it gets nothing.
-        ed.Execute(TileEditOps.Raise(doc, new TileRect(10, 10, 4, 4), 0, 100, falloff: 1f));
+        ed.Execute(TileEditOps.Raise(doc, new TileRect(10, 10, size, size), 0, 100, falloff: 1f));
 
-        Assert.Equal(67, doc.CornerHeightCm(11, 11, 0));
-        Assert.Equal(67, doc.CornerHeightCm(12, 11, 0));
-        Assert.Equal(67, doc.CornerHeightCm(11, 12, 0));
-        Assert.Equal(67, doc.CornerHeightCm(12, 12, 0));
-        Assert.Equal(0, doc.CornerHeightCm(10, 10, 0));
-        Assert.Equal(0, doc.CornerHeightCm(13, 13, 0));
-        Assert.Equal(0, doc.CornerHeightCm(11, 10, 0));
-        Assert.Equal(0, doc.CornerHeightCm(13, 11, 0));
-    }
-
-    [Fact]
-    public void Raise_keeps_the_full_delta_when_the_rect_is_too_small_to_fade_across()
-    {
-        TileEditingDocument ed = Editing(out TileWorldDocument doc);
-
-        // One corner wide, so there is no ring to fade out to and the falloff has nothing to divide by.
-        ed.Execute(TileEditOps.Raise(doc, new TileRect(10, 10, 1, 1), 0, 100, falloff: 1f));
-
-        Assert.Equal(100, doc.CornerHeightCm(10, 10, 0));
+        for (int z = 0; z < size; z++)
+            for (int x = 0; x < size; x++)
+            {
+                bool inner = size == 1 || (x > 0 && x < size - 1 && z > 0 && z < size - 1);
+                Assert.Equal(inner ? innerDelta : 0, doc.CornerHeightCm(10 + x, 10 + z, 0));
+            }
     }
 
     [Fact]

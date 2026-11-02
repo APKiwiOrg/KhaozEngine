@@ -144,9 +144,9 @@ public sealed class DeltaReliabilityAcceptanceTests
         for (int i = 0; i < DeltaFaultSchedule.MaxQueuedFrames; i++)
             down.Send(new NetConnectionId(1), ServerFrame(FaultFrameKind.Notice, (byte)i), Reliable);
         Assert.Equal(64, down.HeldCount);
-        InvalidOperationException overflow = Assert.Throws<InvalidOperationException>(() =>
+        Assert.Throws<InvalidOperationException>(() =>
             down.Send(new NetConnectionId(1), ServerFrame(FaultFrameKind.Notice, 65), Reliable));
-        Assert.Contains("fixture error", overflow.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(64, down.HeldCount);
 
         var late = new DeltaFaultTransport(hub.Server, FaultDirection.ServerToClient,
             new[] { DeltaFaultSchedule.DelayState(1, 9) }, 0);

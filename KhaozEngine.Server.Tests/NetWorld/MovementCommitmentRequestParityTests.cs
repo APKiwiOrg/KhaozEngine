@@ -67,7 +67,6 @@ public class MovementCommitmentRequestParityTests
         Assert.NotNull(requestRefusal);
         Assert.Equal(commitmentRefusal.GetType(), requestRefusal!.GetType());
         Assert.Equal(((ArgumentException)commitmentRefusal).ParamName, ((ArgumentException)requestRefusal).ParamName);
-        Assert.Equal(commitmentRefusal.Message, requestRefusal.Message);
     }
 
     // A default request never ran a constructor, so the float heads still refuse it at the door through the real

@@ -14,7 +14,8 @@ internal sealed class MetalPassTimingCapture : IDisposable
     readonly Command[] _commands = Enumerable.Range(0, 64).Select(_ => new Command()).ToArray();
     readonly Dictionary<PassTimingSignature, int> _signatures;
     readonly int _signatureCapacity, _sampleCapacity;
-    readonly FrameTimingBuffer<PassTimingEncoder> _records = new(65536);
+    // About 70 encoders a frame over the timed half of 4096 callbacks. Records are about 140 bytes each.
+    readonly FrameTimingBuffer<PassTimingEncoder> _records = new(196608);
     readonly FrameTimingBuffer<PassTimingClockPair> _clocks = new(64);
     readonly PassTimingBlock[] _blocks = new PassTimingBlock[58];
     int _blockCount, _disposed;

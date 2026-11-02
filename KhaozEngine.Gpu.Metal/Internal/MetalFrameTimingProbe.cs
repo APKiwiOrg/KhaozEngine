@@ -23,8 +23,10 @@ internal static class MetalFrameTimingProbe
     internal static IntPtr BeginEncoder(MetalEncoderKind kind, IntPtr commandBuffer, IntPtr descriptor)
     {
         var capture = Volatile.Read(ref _capture);
-        if (capture?.PassTiming is not { } passes) return IntPtr.Zero;
-        return passes.Begin(kind, commandBuffer, descriptor, capture.CurrentCallback, Sampling);
+        // A stop racing the sink's Sampling check still opens the encoder, untimed, through the same native path.
+        // PassTiming outlives the capture, and the sink only calls here once it is set.
+        var passes = capture?.PassTiming ?? Volatile.Read(ref PassTiming)!;
+        return passes.Begin(kind, commandBuffer, descriptor, capture?.CurrentCallback ?? -1, capture is not null && Sampling);
     }
 
     internal static void Stop(FrameTimingCapture capture)

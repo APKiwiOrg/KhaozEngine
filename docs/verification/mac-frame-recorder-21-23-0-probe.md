@@ -184,7 +184,7 @@ The existing command-buffer error-latch route continues independently. A complet
 returns its resources without resolving. Disposal releases idle slots and defers in-flight slots
 until completion, without draining or waiting on the frame thread.
 
-Resolved encoder records use append-only bounded storage with 65536 entries and ready bits,
+Resolved encoder records use append-only bounded storage with 196608 entries and ready bits,
 matching the schema 7 storage policy. The `encoders` and `clockPairs` buffers expose `records`,
 `overflow` and `incompleteWrites`. A capture that reaches a bound loses evidence explicitly.
 `pendingCommandBuffers` exposes the tail at publication. There is no diagnostic wait to fill it.

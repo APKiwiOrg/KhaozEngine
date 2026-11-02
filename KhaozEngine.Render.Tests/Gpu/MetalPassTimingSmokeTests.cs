@@ -101,8 +101,16 @@ public sealed class MetalPassTimingSmokeTests(ITestOutputHelper output)
         new MTLBlitCommandEncoder(blit).CopyFromBufferToBuffer(sourceBuffer, 0, destination, 0, 4);
         sink.EndEncoding(MetalEncoderKind.Blit, blit);
         Assert.True(MetalCompletionHandler.AttachTo(buffer.Handle));
-        buffer.Commit();
-        buffer.WaitUntilCompleted();
+        // waitUntilCompleted can return before the completed handler runs, and the handler resolves the counters.
+        // Its queue sink is told after the pass timing hook, so this waits for the resolve itself.
+        var completed = new CompletionSignal();
+        MetalCompletionHandler.Register(queue.Handle, completed);
+        try
+        {
+            buffer.Commit();
+            Assert.True(completed.Done.Wait(TimeSpan.FromSeconds(30)), "The completed handler never ran.");
+        }
+        finally { MetalCompletionHandler.Unregister(queue.Handle); }
         capture.Stop();
         passes.End(1, System.Diagnostics.Stopwatch.GetTimestamp());
         Assert.Equal(4, (int)buffer.Status());
@@ -121,6 +129,12 @@ public sealed class MetalPassTimingSmokeTests(ITestOutputHelper output)
         var last = report.ClockPairs.Records[^1];
         Assert.True(last.CpuNanoseconds > first.CpuNanoseconds && last.GpuTicks > first.GpuTicks);
         output.WriteLine("Measured nanoseconds per GPU tick " + (last.CpuNanoseconds - first.CpuNanoseconds) / (double)(last.GpuTicks - first.GpuTicks));
+    }
+
+    sealed class CompletionSignal : IMetalCommandBufferErrorSink
+    {
+        internal System.Threading.ManualResetEventSlim Done { get; } = new();
+        public void CommandBufferCompleted(in MetalCommandBufferOutcome outcome) => Done.Set();
     }
 
     [SupportedOSPlatform("macos")]

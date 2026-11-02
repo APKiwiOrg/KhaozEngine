@@ -15,7 +15,7 @@ internal sealed class FrameTimingBuffer<T> where T : struct
 
     internal FrameTimingBuffer(int capacity)
     {
-        if (capacity < 1 || capacity > 65536) throw new ArgumentOutOfRangeException(nameof(capacity));
+        if (capacity < 1 || capacity > 262144) throw new ArgumentOutOfRangeException(nameof(capacity));
         _records = new T[capacity];
         _ready = new int[capacity];
     }

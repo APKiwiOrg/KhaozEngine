@@ -448,14 +448,8 @@ namespace KhaozEngine.Tests.Gpu
         public void AnUnmappedKind_ThrowsRatherThanInventingAFamily()
             => Assert.Throws<NotSupportedException>(() => GoldenCompare.GoldenBackendToken((GpuBackendKind)9001));
 
-        /// <summary>
-        /// The bake, which this kind is now ALLOWED to take. It owns <c>direct3d11-native</c>, so
-        /// <c>KE_UPDATE_GOLDENS</c> writes the family it is itself checked against and nothing else, which is
-        /// what owning a family means.
-        /// </summary>
-        [Fact]
-        public void Baking_IsAllowedOnTheNativeKind_BecauseItOwnsItsFamily()
-            => Assert.Null(GoldenCompare.BakeRefusal(GpuBackendKind.Direct3D11Native, familyOverride: false));
+        // The native kind is allowed to bake because it owns direct3d11-native. That is asserted by the
+        // Direct3D11Native row of Baking_IsAllowedOnEveryBackendThatOwnsItsFamily below.
 
         /// <summary>A backend that OWNS its family bakes as it always did, and since 17.41.0 that is every live
         /// member of the enum. The guard must not cost the ordinary rebake anything, or it gets worked around

@@ -81,19 +81,8 @@ namespace KhaozEngine.Tests.Gpu
 
         // --- row 3: the CreateForWindow / CreateHeadless Veldrid switches. In the registry class below. ---
 
-        /// <summary>
-        /// The fourteenth site, stated so it needs no edit. It was "everything the built-in path does not build"
-        /// over a positive membership test across the four Veldrid kinds, which made an APPENDED member
-        /// provider-backed with no edit at all. 18.0.0 deleted the built-in path, so
-        /// <see cref="GpuBackendProviders.RequiresProvider"/> is now unconditionally true and the site stopped
-        /// being an append site entirely. Forgetting a registration still throws a message naming it.
-        /// </summary>
-        [Fact]
-        public void TheNativeKind_IsProviderBacked_WithNoEditToTheRegistry()
-        {
-            Assert.True(GpuBackendProviders.RequiresProvider(GpuBackendKind.MetalNative));
-            Assert.True(GpuBackendProviders.RequiresProvider(GpuBackendKind.Metal));
-        }
+        // The fourteenth site needs no edit: GpuBackendProviders.RequiresProvider is unconditionally true since
+        // 18.0.0. MetalNative and Metal are asserted by GpuBackendProvidersTests.RequiresProvider_IsTrue_ForEveryKind.
 
         // --- row 4: GpuBackendSelector.ToVeldrid, one more explicit throwing arm ---
 
@@ -206,29 +195,8 @@ namespace KhaozEngine.Tests.Gpu
         // --- row 7: GpuBackendSelector.ProbeOS, FLIPPED at 17.40.0, and the arm with the largest blast radius
         // of the three ---
 
-        /// <summary>
-        /// macOS probes to the native backend since 17.40.0, and macOS is the operating system this member's
-        /// flip changed hardest. That is the difference from both earlier versions of this row: Windows and
-        /// Linux are player platforms, macOS is the fleet's DEVELOPMENT platform, so this arm moved every
-        /// windowed playtest, every capture, every editor session and every local golden bake onto the native
-        /// backend on the day it landed. A local bake is the sharp one: the native kind is a GUEST in the
-        /// <c>metal</c> golden family, so a bare local <c>KE_UPDATE_GOLDENS=1</c> is now REFUSED and a bake has
-        /// to name the incumbent.
-        /// <para>
-        /// Only the macOS row is here. The full four-OS mapping is the same assertion for all three appends, so
-        /// it is pinned once in <c>GpuBackendKindAppendAuditTests.ProbeOS_AnswersTheNativeBackend_OnEveryOs</c>,
-        /// and "this kind is never what the fallback answers" is walked over every OS by
-        /// <see cref="ANativeRequest_IsItsOwnFallback_OnExactlyItsOwnPlatform"/> below.
-        /// </para>
-        /// </summary>
-        [Fact]
-        public void ProbeOS_AnswersTheNativeBackend_OnMacOs()
-        {
-            Assert.Equal(GpuBackendKind.MetalNative, GpuBackendSelector.ProbeOS(OSPlatformKind.MacOS));
-            // And it is what a failed creation falls back to as well since 18.0.0, the incumbent map having gone
-            // with the incumbent. There is one macOS answer now rather than two.
-            Assert.False(GpuBackendSelector.IsRetired(GpuBackendSelector.ProbeOS(OSPlatformKind.MacOS)));
-        }
+        // The macOS probe answer, MetalNative and not retired, is asserted by the MacOS row of
+        // GpuBackendKindAppendAuditTests.ProbeOS_AnswersTheNativeBackend_OnEveryOs.
 
         // --- row 8: GpuBackendSelector._windowCandidates. In the registry class below. ---
 

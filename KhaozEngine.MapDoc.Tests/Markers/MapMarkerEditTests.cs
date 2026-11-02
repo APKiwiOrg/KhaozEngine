@@ -109,9 +109,18 @@ public sealed class MapMarkerEditTests
         MapLocalMarkerDoc m = MarkerFixtures.BasicMarker();
         MapLocalMarkerDoc other = new(1, "other", "other-name", new Vector3(3, 1, 3), 0, "entry-role", true, Array.Empty<string>());
 
-        // Invalid height: a Support height whose owner does not exist, and a Support carrier that is not +0.
+        // Missing support and a noncanonical carrier each refuse independently.
         Refuses(basic, new MapSetMarker(MapMarkerHeights.Apply(m, MarkerFixtures.SurfaceHeight())));
-        Refuses(basic, new MapSetMarker(MapMarkerHeights.Apply(m, MarkerFixtures.SurfaceHeight()) with { Position = m.Position }));
+        MarkerFixture stacked = MarkerFixtures.Stacked();
+        MapLocalMarkerDoc support = stacked.Document.BuildingIntent!.Markers.Single(x => x.Id == "stacked-surface")
+            with { Name = "support-renamed" };
+        Refuses(stacked, new MapSetMarker(support with { Position = support.Position with { Y = m.Position.Y } }));
+        var accepted = MapMarkerEdits.Prepare(stacked.Document, stacked.Assets, new MapSetMarker(support));
+        var published = Assert.Single(accepted.After.BuildingIntent!.Markers, x => x.Id == support.Id);
+        Assert.Equal(support.Name, published.Name);
+        Assert.Equal(MapMarkerHeightMode.Support, published.HeightMode);
+        Assert.Equal(0u, BitConverter.SingleToUInt32Bits(published.Position.Y));
+        Assert.Equal(support.SupportBinding, published.SupportBinding);
         Refuses(basic, new MapSetMarker(m with { Position = m.Position with { Y = float.NaN } }));
         Accepts(basic, new MapSetMarker(MapMarkerHeights.Apply(m, new(13.125f, null))));
 

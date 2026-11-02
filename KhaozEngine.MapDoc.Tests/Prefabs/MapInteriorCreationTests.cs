@@ -40,9 +40,19 @@ public sealed class MapInteriorCreationTests
         var anchor = new MapPatchKey("a/floor", 0, 0);
         f.Document.Surfaces.Patches[anchor].Records.Add(new MapSpaceDoc("alias-room", MapSpaceKind.Room,
             new("exterior", new("exterior", 0, 0)), new("a/room", anchor), [], [], [], []));
+        var domain = MapInteriorCreationFixtures.Domain() with { Space = new("alias-room", anchor), StoreyId = "a/lower" };
         string before = MapDocumentFile.SaveText(f.Document);
-        Assert.Throws<MapDocumentException>(() => MapInteriorEdits.Prepare(f.Document, f.Assets,
-            new MapSetInterior(MapInteriorCreationFixtures.Domain() with { Space = new("alias-room", anchor) })));
+        Assert.Throws<MapDocumentException>(() => MapInteriorEdits.Prepare(f.Document, f.Assets, new MapSetInterior(domain)));
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+
+        var nonAlias = domain with { Space = new("new-room", anchor) };
+        var accepted = MapInteriorEdits.Prepare(f.Document, f.Assets, new MapSetInterior(nonAlias));
+        var prism = Assert.Single(accepted.After.Surfaces.AllRecords().OfType<MapPrismDomain>(), p => p.Id == domain.Id);
+        Assert.Equal(nonAlias.Space, prism.Space);
+        Assert.Equal(nonAlias.StoreyId, prism.StoreyId);
+        var room = Assert.Single(accepted.After.Surfaces.AllRecords().OfType<MapSpaceDoc>(), r => r.Id == nonAlias.Space.Id);
+        Assert.Equal(MapSpaceKind.Room, room.Kind);
+        Assert.Null(room.AliasOf);
         Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
     }
     [Fact]

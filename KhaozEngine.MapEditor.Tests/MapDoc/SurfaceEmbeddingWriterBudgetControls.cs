@@ -28,7 +28,6 @@ public sealed class SurfaceEmbeddingWriterBudgetControls
             set.Patches.Add(patch.Key, patch);
         }
         MapSurfaceEmbedding.Check(set, 2, exactBytes);
-        Assert.Contains("tiled", Assert.Throws<MapDocumentException>(() =>
-            MapSurfaceEmbedding.Check(set, 2, exactBytes - 1)).Message);
+        Assert.Throws<MapDocumentException>(() => MapSurfaceEmbedding.Check(set, 2, exactBytes - 1));
     }
 }

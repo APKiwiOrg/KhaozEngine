@@ -80,8 +80,7 @@ public sealed class MarkerServiceTests
         // The four rectangle parameters are all present or all absent.
         foreach (var partial in new Func<object>[] { () => tools.MarkerList(minX: -1), () => tools.MarkerList(minX: -1, minZ: -1, maxX: 0) })
         {
-            var refused = Assert.Throws<McpException>(partial);
-            Assert.Contains("minX, minZ, maxX and maxZ", refused.Message, StringComparison.Ordinal);
+            Assert.Throws<McpException>(partial);
         }
         Assert.Equal(new[] { "m" }, tools.MarkerList(minX: -1, minZ: -2, maxX: 0, maxZ: 0).Select(m => m.Id));
     }

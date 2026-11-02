@@ -334,31 +334,31 @@ namespace KhaozEngine.Tests.MapEditTool
 
                 ArgumentException unknownKind = Assert.Throws<ArgumentException>(() =>
                     mutation.ElementDuplicate("waypoint", id: "inn"));
-                Assert.Contains("Unknown element kind 'waypoint'", unknownKind.Message);
+                Assert.Equal("kind", unknownKind.ParamName);
 
                 ArgumentException terrainKind = Assert.Throws<ArgumentException>(() =>
                     mutation.ElementDuplicate("terrain", id: "anything"));
-                Assert.Contains("Unknown element kind 'terrain'", terrainKind.Message);
+                Assert.Equal("kind", terrainKind.ParamName);
 
                 ArgumentException missingId = Assert.Throws<ArgumentException>(() =>
                     mutation.ElementDuplicate("placement"));
-                Assert.Contains("requires id", missingId.Message);
+                Assert.Equal("id", missingId.ParamName);
 
                 ArgumentException wrongRefIsIndex = Assert.Throws<ArgumentException>(() =>
-                    mutation.ElementDuplicate("placement", index: 0));
-                Assert.Contains("addressed by id, not index", wrongRefIsIndex.Message);
+                    mutation.ElementDuplicate("placement", id: "inn", index: 0));
+                Assert.Equal("index", wrongRefIsIndex.ParamName);
 
                 ArgumentException missingIndex = Assert.Throws<ArgumentException>(() =>
                     mutation.ElementDuplicate("feature"));
-                Assert.Contains("requires index", missingIndex.Message);
+                Assert.Equal("index", missingIndex.ParamName);
 
                 ArgumentException wrongRefIsId = Assert.Throws<ArgumentException>(() =>
-                    mutation.ElementDuplicate("feature", id: "lake"));
-                Assert.Contains("addressed by index, not id", wrongRefIsId.Message);
+                    mutation.ElementDuplicate("feature", id: "lake", index: 0));
+                Assert.Equal("id", wrongRefIsId.ParamName);
 
                 ArgumentException outOfRange = Assert.Throws<ArgumentException>(() =>
                     mutation.ElementDuplicate("feature", index: 99));
-                Assert.Contains("out of range", outOfRange.Message);
+                Assert.Equal("index", outOfRange.ParamName);
 
                 InvalidOperationException unresolvedId = Assert.Throws<InvalidOperationException>(() =>
                     mutation.ElementDuplicate("placement", id: "does-not-exist"));
@@ -367,6 +367,9 @@ namespace KhaozEngine.Tests.MapEditTool
                 string after = session.WithDocument((doc, r) => MapDocumentFile.SaveText(doc, r));
                 Assert.Equal(before, after);
                 Assert.False(session.IsDirty);
+
+                mutation.ElementDuplicate("placement", id: "inn");
+                mutation.ElementDuplicate("feature", index: 0);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }

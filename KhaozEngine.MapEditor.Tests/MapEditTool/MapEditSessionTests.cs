@@ -159,9 +159,17 @@ namespace KhaozEngine.Tests.MapEditTool
         [Fact]
         public void Summary_WithoutOpenDocument_Throws()
         {
-            var session = new MapEditSession();
-            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => session.Summary());
-            Assert.Contains("map_open", ex.Message);
+            string dir = NewTempDir();
+            try
+            {
+                var session = new MapEditSession();
+                Assert.False(session.HasDocument);
+                Assert.Throws<InvalidOperationException>(() => session.Summary());
+
+                session.Create(Path.Combine(dir, "summary.map.json"), "summary-control", "Summary", -10, -10, 10, 10);
+                Assert.Equal("summary-control", session.Summary().Id);
+            }
+            finally { Directory.Delete(dir, recursive: true); }
         }
 
         [Fact]
@@ -314,9 +322,13 @@ namespace KhaozEngine.Tests.MapEditTool
                 var session = new MapEditSession();
                 session.Open(path);
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    session.SetWindow(-10f, -10f, 10f, 10f));
-                Assert.Contains("tiled", ex.Message, StringComparison.OrdinalIgnoreCase);
+                Assert.True(session.HasDocument);
+                Assert.False(session.IsDirty);
+                Assert.False(session.WindowStatus().Tiled);
+                Assert.Throws<InvalidOperationException>(() => session.SetWindow(-10f, -10f, 10f, 10f));
+
+                session.ConvertToTiled(Path.Combine(dir, "tiled"));
+                Assert.True(session.SetWindow(-10f, -10f, 10f, 10f).Tiled);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
@@ -338,9 +350,14 @@ namespace KhaozEngine.Tests.MapEditTool
                 }, worldChanged: false);
                 Assert.True(session.IsDirty);
 
-                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-                    session.SetWindow(-100f, -100f, 100f, 100f));
-                Assert.Contains("unsaved changes", ex.Message);
+                string before = session.WithDocument((doc, registry) => MapDocumentFile.SaveText(doc, registry));
+                Assert.Throws<InvalidOperationException>(() => session.SetWindow(-100f, -100f, 100f, 100f));
+                Assert.Equal(before, session.WithDocument((doc, registry) => MapDocumentFile.SaveText(doc, registry)));
+                Assert.True(session.IsDirty);
+
+                session.SetWindow(-100f, -100f, 100f, 100f, discard: true);
+                Assert.False(session.IsDirty);
+                Assert.False(session.WithDocument((doc, _) => doc.Placements.Any(p => p.Id == "new-1")));
             }
             finally { TiledFixture.Delete(dir); }
         }

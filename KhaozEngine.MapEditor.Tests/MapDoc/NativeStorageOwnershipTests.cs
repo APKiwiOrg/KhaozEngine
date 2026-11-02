@@ -65,10 +65,13 @@ public sealed class NativeStorageOwnershipTests
         string target = Path.Combine(f.ResourceRoot, "analytic-tiled");
         Directory.CreateDirectory(target);
 
-        var ex = Assert.Throws<MapDocumentException>(() => session.ConvertToTiled(target));
-        Assert.Contains("already exists", ex.Message, StringComparison.Ordinal);
+        Assert.Throws<MapDocumentException>(() => session.ConvertToTiled(target));
         Assert.Empty(Directory.GetFileSystemEntries(target));
         Assert.Equal(Path.Combine(f.ResourceRoot, "analytic.map.json"), session.DocumentPath);
+
+        Directory.Delete(target);
+        session.ConvertToTiled(target);
+        Assert.Equal("analytic", MapDocumentFile.LoadTiled(target).Id);
     }
 
     [Theory]

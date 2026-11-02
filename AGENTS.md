@@ -45,6 +45,9 @@ directly. Keep this root short enough to load with global guidance. Detailed rep
   the engine projects they use and keep namespaces under `KhaozEngine.Tests.*`.
 - Tests that mutate process-global state use a collection definition with
   `DisableParallelization = true`.
+- A refusal callers may tell apart carries a public reason enum and its promised identifiers on a
+  refusal-family exception derived from the type thrown before, filled at every throw site. Messages are
+  prose, never a contract. Plain parameter checks stay BCL.
 - Player-facing text resolves through the localization catalog with `StringId`. Prefer
   `LocalizedText` at GUI sinks. Raw text is limited to developer output and non-localizable tokens.
 - Third-party libraries sit behind dependency-free engine seams with opt-in backends. Read

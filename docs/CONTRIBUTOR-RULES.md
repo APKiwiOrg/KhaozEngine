@@ -24,6 +24,13 @@ can absorb another contributor's staged files. Never use the shared stash for wo
 - `AppWindow` in `KhaozEngine.Windowing` is the only class that touches Silk.NET or GLFW input
   statics. All other code reads the immutable `InputState` snapshot through `InputManager` and
   `Pointer`. Hit testing uses their bounds helpers.
+- A refusal a caller may need to tell apart carries structured members on its exception: a public reason
+  enum and the identifiers its docs promise (an entry id, the offending index, a path), filled at every throw
+  site. The type belongs to the refusal family that owns the check, a validator or policy, and derives from
+  the type thrown before, as `WaterOpticsSurfaceException` derives from `ArgumentException`, so existing
+  catches keep working. A new refusal in a family adds a reason member. The message stays developer prose
+  and is never a contract. A plain parameter check whose `ParamName` and `ActualValue` already name the
+  problem stays a BCL exception.
 - New behavior gets a headless test in the matching `KhaozEngine.<Area>.Tests` project. Use the rump
   `KhaozEngine.Tests` project only for genuinely cross-cutting contracts. Declared namespaces remain
   `KhaozEngine.Tests.*` and new test projects set `<IsPackable>false</IsPackable>`.
@@ -104,7 +111,7 @@ classification is unclear. The detailed rationale lives in
 ## Writing tests
 
 Every test guards something distinct: a contract, a rule, an owner ruling or a past regression. A correct
-change should break few tests, and each failure should point at a real defect. These fourteen rules are the
+change should break few tests, and each failure should point at a real defect. These fifteen rules are the
 fleet standard. Every game repo carries the same text as game-template's managed `docs/WRITING-TESTS.md`, so
 keep the two in step and change the shared wording in both.
 
@@ -125,7 +132,8 @@ keep the two in step and change the shared wording in both.
    intermediate values are not contracts unless a document or ruling makes them one. They break on correct
    refactors and catch nothing a behavioural assertion would miss. Assert the exception type and a structured
    member (`ParamName`, an error code, a status) instead, and reach behaviour through the public API or an
-   `InternalsVisibleTo` seam.
+   `InternalsVisibleTo` seam. Removing one incidental check never adds another, so do not require an inner
+   exception type, wrapper or library namespace unless a document promises it.
 5. **Validate every shipped item through one validator.** An invariant over assets, clips, meshes, shaders,
    goldens or catalog rows is written once as a theory with one case per discovered item, plus a fact that the
    discovered set equals the shipped set from an independent source, with an explicit policy for any item it
@@ -160,14 +168,19 @@ keep the two in step and change the shared wording in both.
 14. **Tooling tests live with their tooling.** Tests of measurement harnesses, evidence pipelines and research
     tools sit in their own project outside the main test project, with their own CI trigger, so product changes
     do not pay for them.
+15. **A refusal test breaks one rule.** A test that expects a refusal feeds an input that breaks only the rule
+    under test, beside a passing control that fixes that one defect. An input that breaks two rules still
+    passes when the wrong check refuses it, because the exception type cannot tell the refusals apart. When no
+    input can break one rule alone, assert the structured member that names the rule.
 
 In this repository:
 
 - KETEST001 and KETEST002 enforce rules 4 and 9 as build errors against `.testhealth-baseline`, and
   KETEST003 lists rule 10's possibly empty loops in report mode only (see the "Test-health ratchet" bullet
   above and `KhaozEngine.CodeHealth.Analyzers/README.md`). KETEST001 cannot tell a documented diagnostic
-  value from prose, so a legitimate rule 9 case is an owner-approved baseline exemption, never a deleted
-  assertion.
+  value from prose, so a rule 9 value moves onto a structured member of the thrown exception (the refusal
+  bullet under "Engine code and test contracts") and the test asserts that member. It is never a deleted
+  assertion and never an exemption.
 - Rule 12's category is excluded by every default filter (`scripts/ci-selective-test.sh`, `ci.yml`,
   `cross-platform-gpu.yml`). Run it on demand with the cross-platform-gpu `renderTestFilter` input set to
   `Category=Diagnostic`. Issue #491 is the precedent: a wall-clock bound that flaked on a loaded shared runner.

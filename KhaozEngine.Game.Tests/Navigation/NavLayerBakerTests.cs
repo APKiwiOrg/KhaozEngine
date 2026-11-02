@@ -671,10 +671,14 @@ public class NavLayerBakerTests
             return surfaces.Length + 1;
         });
 
-        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => NavLayerBaker.BakeOverworldLayered(
+        Assert.Throws<InvalidOperationException>(() => NavLayerBaker.BakeOverworldLayered(
             provider, minX: 0f, minZ: 0f, maxX: 4f, maxZ: 4f,
             cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: JumpHeight));
-        Assert.Contains("surfaces", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        // The default samples are not standable, so only the count refuses. A full buffer is inside the contract.
+        NavLayerBaker.BakeOverworldLayered(
+            new DelegateColumnProvider((x, z, surfaces) => surfaces.Length), minX: 0f, minZ: 0f, maxX: 4f, maxZ: 4f,
+            cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: JumpHeight);
     }
 
     [Fact]
@@ -687,11 +691,22 @@ public class NavLayerBakerTests
             return 2;
         });
 
-        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => NavLayerBaker.BakeOverworldLayered(
+        Assert.Throws<InvalidOperationException>(() => NavLayerBaker.BakeOverworldLayered(
             provider, minX: 0f, minZ: 0f, maxX: 4f, maxZ: 4f,
             cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: JumpHeight,
             maxSurfacesPerColumn: 2));
-        Assert.Contains("ascending", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        // The same two surfaces in ascending order are accepted, so only the order refuses.
+        var ascending = new DelegateColumnProvider((x, z, surfaces) =>
+        {
+            surfaces[0] = new NavSurfaceSample(true, 0.5f, float.PositiveInfinity);
+            surfaces[1] = new NavSurfaceSample(true, 1.0f, float.PositiveInfinity);
+            return 2;
+        });
+        NavLayerBaker.BakeOverworldLayered(
+            ascending, minX: 0f, minZ: 0f, maxX: 4f, maxZ: 4f,
+            cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: JumpHeight,
+            maxSurfacesPerColumn: 2);
     }
 
     [Fact]

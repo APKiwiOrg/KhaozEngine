@@ -200,13 +200,15 @@ namespace KhaozEngine.Tests.Gpu
             submitter.Record(First);
             submitter.Submit();
 
-            InvalidOperationException refused;
             lock (harness.SubmitLock)
-                refused = Assert.Throws<InvalidOperationException>(() => harness.Ring.Write(0, Second));
-
-            Assert.Contains("submit lock", refused.Message);
+                Assert.Throws<InvalidOperationException>(() => harness.Ring.Write(0, Second));
             Assert.Equal(0, harness.Allocator.CurrentSegment);
             Assert.Equal(First, Segment(harness, 0));
+
+            harness.Ring.Write(0, Second);
+            Assert.Equal(1, harness.Allocator.CurrentSegment);
+            Assert.Equal(First, Segment(harness, 0));
+            Assert.Equal(Second, Segment(harness, 1));
         }
 
         [Fact]

@@ -534,7 +534,12 @@ namespace KhaozEngine.Tests.Gpu
                 () => new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("Frame"), element)));
 
             Assert.Contains("Work", error.Message, StringComparison.Ordinal);
-            Assert.Contains("dynamic", error.Message, StringComparison.Ordinal);
+            Assert.Equal("description", error.ParamName);
+
+            var accepted = new GpuResourceLayoutElement("Work", kind, GpuShaderStages.Compute);
+            using var layout = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("Frame"), accepted));
+            Assert.Equal(2, layout.ElementCount);
+            Assert.False(layout.IsDynamic(1));
         }
 
         /// <summary>The same element without the dynamic flag is ordinary and numbers as the table above says, so

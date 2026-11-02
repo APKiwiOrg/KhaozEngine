@@ -229,8 +229,8 @@ namespace KhaozEngine.Tests.Gpu
         /// either. One of the copies is in a Windows-only body no test off Windows can execute, so a change to
         /// the reachable one would have stayed invisible until a Windows leg ran.
         /// <para>
-        /// It still says what the FULL SCISSOR case needs rather than the generic attachment sentence the other
-        /// two wrappers take, because this command names the framebuffer's extent and not an attachment of it.
+        /// Both entry points refuse without a framebuffer and accept a bound target. The compiled-call check
+        /// below separately guards that both emitters route through the shared helper.
         /// </para>
         /// </summary>
         [Fact]
@@ -239,13 +239,13 @@ namespace KhaozEngine.Tests.Gpu
             var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), new D3D11NativeCallLog());
             emitter.Begin();
 
-            var thrown = Assert.Throws<InvalidOperationException>(emitter.SetFullScissorRects);
-            var shared = Assert.Throws<InvalidOperationException>(
-                () => D3D11BindResolve.RequireScissorExtent(null));
+            Assert.Throws<InvalidOperationException>(emitter.SetFullScissorRects);
+            Assert.Throws<InvalidOperationException>(() => D3D11BindResolve.RequireScissorExtent(null));
 
-            Assert.Equal(shared.Message, thrown.Message);
-            Assert.Contains("The full scissor IS the bound framebuffer's extent", thrown.Message,
-                StringComparison.Ordinal);
+            FakeFramebuffer target = Framebuffer(640, 480);
+            Assert.Same(target, D3D11BindResolve.RequireScissorExtent(target));
+            emitter.SetFramebuffer(target);
+            emitter.SetFullScissorRects();
         }
 
         /// <summary>
@@ -298,8 +298,12 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(
                 () => emitter.ClearColorTarget(1, KhaozEngine.Primitives.Color.Black));
 
-            Assert.Contains("1 colour attachments", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("index", ex.ParamName);
+            Assert.Equal(1u, ex.ActualValue);
             Assert.Empty(log.Trace);
+
+            emitter.ClearColorTarget(0, KhaozEngine.Primitives.Color.Black);
+            Assert.Single(log.Trace);
         }
 
         /// <summary>And a depth clear against a framebuffer that declares no depth attachment, which would

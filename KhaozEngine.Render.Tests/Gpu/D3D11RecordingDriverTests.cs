@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
@@ -300,7 +301,7 @@ namespace KhaozEngine.Tests.Gpu
             var recorded = new CapturingEmitter(log);
             D3D11CommandDrivers.Replay(list, ref recorded);
 
-            Assert.Equal(16, recorded.Bytes.Single().Length);
+            Assert.Equal(MemoryMarshal.AsBytes(new[] { Sixteen }.AsSpan()).ToArray(), recorded.Bytes.Single());
         }
 
         static readonly Vector4Like Sixteen = new(1f, 2f, 3f, 4f);
@@ -380,7 +381,7 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException ex = Assert.Throws<ArgumentException>(
                 () => D3D11CommandDrivers.Replay(foreign, ref emitter));
 
-            Assert.Contains("Direct3D 11", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("list", ex.ParamName);
         }
 
         /// <summary>

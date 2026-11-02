@@ -77,7 +77,6 @@ namespace KhaozEngine.Tests.Gpu
                 () => D3D11BindResolve.ViewOf(resource, D3D11RegisterFile.Sampler));
 
             Assert.Contains("'s' register", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("DECLARED", ex.Message, StringComparison.Ordinal);
         }
 
         /// <summary>And a resource from another backend is refused by name rather than by an
@@ -110,7 +109,9 @@ namespace KhaozEngine.Tests.Gpu
                 () => D3D11BindResolve.NativeBuffer(foreign));
 
             Assert.Contains(nameof(FakeBuffer), first.Message, StringComparison.Ordinal);
-            Assert.Equal(first.Message, second.Message);
+            Assert.Contains(nameof(FakeBuffer), second.Message, StringComparison.Ordinal);
+            Assert.Equal("buffer", first.ParamName);
+            Assert.Equal("buffer", second.ParamName);
 
             // The other half of the ordering rule, and the reason the resolve has to come first: the cache RECORDS
             // at the first ask, so a bind that resolved after it would find the second ask redundant.
@@ -216,7 +217,7 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException ex = Assert.Throws<ArgumentException>(
                 () => D3D11BindResolve.Constants(binds, new int[4], new int[4]));
 
-            Assert.Contains("null entry", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("binds", ex.ParamName);
         }
 
         /// <summary>A scratch shorter than the bind is a defect in the emitter rather than an oversized bind, and

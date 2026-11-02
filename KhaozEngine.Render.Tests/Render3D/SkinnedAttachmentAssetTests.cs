@@ -112,7 +112,11 @@ public sealed class SkinnedAttachmentAssetTests
         var source = new AttachmentTestSource();
         AttachmentMeshRef skin = source.Mesh("skin.glb", Glb());
         string hash = Set(source, "set.json", Skin(1, skin));
-        source.Bytes[changeDefinition ? "set.json" : skin.Key][0] ^= 1;
+        // Valid replacement bytes, so only the declared hash can refuse them. A flipped first byte would also
+        // fail the GLB header or the JSON parse with the same exception type.
+        if (changeDefinition)
+            source.Bytes["set.json"] = AttachmentSetJson.Write(new AttachmentSetDefinition([Skin(2, skin)]));
+        else source.Bytes[skin.Key] = Glb(materials: 2);
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count;
 

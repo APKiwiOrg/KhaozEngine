@@ -160,22 +160,21 @@ public sealed class CertifiedCompoundSweepLifetimeTests
         var queryDimensions = new CapsuleQueryDimensions(0.25f, 1);
         HitContains(world.SweepCapsuleCertified(queryDimensions, overlap, Vector3.UnitX), 0, 0);
         var geometry = Geometry(world, handle);
-        var childrenProperty = typeof(InstalledSweepGeometry).GetProperty("Children", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(childrenProperty);
-        var children = (InstalledSweepGeometry[])childrenProperty.GetValue(geometry)!;
-        var mapField = typeof(InstalledSweepGeometry).GetField("_operator", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        object saved = mapField.GetValue(children[1])!;
-        object invalid = mapField.GetValue(children[1])!;
+        var children = geometry.Children;
+        Assert.NotNull(children);
+        var child = children[1];
+        Assert.True(child.TryPose(child.ParentPose, out var saved));
+        object invalid = saved;
         typeof(InstalledPoseOperator).GetField("<X>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(invalid, new FeaturePoint(FeatureNumber.Exact(double.Epsilon), FeatureNumber.Exact(0), FeatureNumber.Exact(0)));
-        mapField.SetValue(children[1], invalid);
+        child.PublishPose(child.ParentPose, child.LeafPose, (InstalledPoseOperator)invalid);
         Refused(world.SweepCapsuleCertified(queryDimensions, overlap, Vector3.UnitX));
         CapsuleSweepResult refusal = default;
         long refusalBytes = AllocationMeasurement.Measure(nameof(CompoundWarmDimensionAndRefusalQueriesAllocateNothing) + "_late", () =>
             refusal = world.SweepCapsuleCertified(queryDimensions, overlap, Vector3.UnitX));
         Assert.Equal(0, refusalBytes);
         Refused(refusal);
-        mapField.SetValue(children[1], saved);
+        child.PublishPose(child.ParentPose, child.LeafPose, saved);
         HitContains(world.SweepCapsuleCertified(queryDimensions, overlap, Vector3.UnitX), 0, 0);
         lease.AssertCurrent();
     }

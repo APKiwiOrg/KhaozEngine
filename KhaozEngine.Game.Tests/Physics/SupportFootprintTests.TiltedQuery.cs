@@ -62,7 +62,6 @@ public partial class SupportFootprintTests
         SupportFootprintResult warm = default;
         long allocation = AllocationMeasurement.Measure(nameof(CurvedTiltedUncertifiedSourceFamilyRefusesAtomicallyAtCellBound), () =>
             warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins));
-        _output.WriteLine($"refusal retained-array-payload={ArrayPayload(TiltedScratch(scene.World).Tilted)}");
         Assert.Equal(CapsuleFeatureStatus.Unsupported, warm.Status);
         Assert.Equal(0, allocation);
         Assert.Equal(before, members);

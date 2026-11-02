@@ -133,22 +133,21 @@ public sealed class CertifiedHullSweepTests
         HitContains(Query(), 0, 0);
         var captures = (Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics");
         InstalledSweepGeometry geometry = captures[handle.Value]!;
-        FieldInfo mapField = typeof(InstalledSweepGeometry).GetField("_operator", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object savedMap = mapField.GetValue(geometry)!;
-        object uncertain = mapField.GetValue(geometry)!;
+        Assert.True(geometry.TryPose(geometry.ParentPose, out var savedMap));
+        object uncertain = savedMap;
         typeof(InstalledPoseOperator).GetField("<X>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(uncertain, new FeaturePoint(FeatureNumber.Enclosed(GeometryInterval.Enclose(-1, 1)), FeatureNumber.Exact(0), FeatureNumber.Exact(0)));
-        mapField.SetValue(geometry, uncertain);
+        geometry.PublishPose(geometry.ParentPose, geometry.LeafPose, (InstalledPoseOperator)uncertain);
         Assert.Equal(default(CapsuleSweepResult), Query());
-        object overflowing = mapField.GetValue(geometry)!;
+        object overflowing = (InstalledPoseOperator)uncertain;
         typeof(InstalledPoseOperator).GetField("<X>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(overflowing, new FeaturePoint(FeatureNumber.Exact(double.Epsilon), FeatureNumber.Exact(0), FeatureNumber.Exact(0)));
-        mapField.SetValue(geometry, overflowing);
+        geometry.PublishPose(geometry.ParentPose, geometry.LeafPose, (InstalledPoseOperator)overflowing);
         Assert.Equal(default(CapsuleSweepResult), Query());
         SweepExactWorkspace failed = ConcurrentReadGateTests.Gate(world).ScratchPool.Constructed()[0].GeneralSweeps.Idle!.Exact;
         Assert.False(failed.IsResolved);
         Assert.InRange(failed.Checkpoint, 1, SweepExactWorkspace.MaximumNumbers - 1);
-        mapField.SetValue(geometry, savedMap);
+        geometry.PublishPose(geometry.ParentPose, geometry.LeafPose, savedMap);
         HitContains(Query(), 0, 0);
         lease.AssertCurrent();
     }

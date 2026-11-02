@@ -296,8 +296,7 @@ public sealed class ConcurrentReadScratchTests
     // The owner's published geometry, read through the cache's own lookup, which hits once a capture is published.
     static InstalledSupportGeometry? Published(BepuPhysicsWorld world, InstalledSupportGeometryCache cache, StaticHandle owner)
     {
-        long version = (long)typeof(BepuPhysicsWorld)
-            .GetField("_staticGeometryVersion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
+        long version = world.StaticGeometryGeneration;
         Assert.Equal(CapsuleFeatureStatus.Complete, cache.GetOrCapture(SupportFootprintTests.SimulationOf(world), owner,
             SupportFootprintTests.HandlesOf(world)[owner.Value].Shape, version, out InstalledSupportGeometry? geometry));
         return geometry;

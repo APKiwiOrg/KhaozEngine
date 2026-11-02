@@ -203,9 +203,7 @@ public partial class SupportFootprintTests
             Assert.Equal(2, SupportQueryDiagnostics.Snapshot().Proposals);
             Assert.Equal(1, SupportQueryDiagnostics.Snapshot().Volumes);
             object scratch = FootprintScratch(scene.World);
-            long payload = (long)typeof(KhaozEngine.Tests.Locomotion.Contacts.SupportCostScratch)
-                .GetMethod("Visit", BindingFlags.Static | BindingFlags.NonPublic)!
-                .Invoke(null, [scratch, new HashSet<object>(ReferenceEqualityComparer.Instance)])!;
+            long payload = SupportCostScratch.Visit(scratch, new HashSet<object>(ReferenceEqualityComparer.Instance));
             _output.WriteLine($"{partition} coldBytes={coldBytes} warmBytes={allocated} scratchPayloadBytes={payload} members={result.Members}");
         }
         finally { SupportQueryDiagnostics.Enable(false); }

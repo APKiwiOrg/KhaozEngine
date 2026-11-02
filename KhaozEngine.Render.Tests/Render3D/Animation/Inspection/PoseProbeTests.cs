@@ -85,7 +85,7 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
         }
 
         [Fact]
-        public void SampleClip_RejectsNegativeDurationWithPreciseDiagnostic()
+        public void SampleClip_RejectsNegativeDurationAsTheClipArgument()
         {
             var fixture = new InspectionFixture();
             var probe = new PoseProbe(fixture.Skeleton);

@@ -137,7 +137,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
         }
 
         [Fact]
-        public void FrameAccessorsRefuseANonContractNodeNamingIt()
+        public void FrameAccessorsRefuseANonContractNodeAsTheNodeArgument()
         {
             Skeleton skeleton = Build();
             var map = new ContractJointMap(skeleton, Contract);

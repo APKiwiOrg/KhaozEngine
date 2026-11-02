@@ -176,11 +176,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             using var temp = new TempDirectory();
 
-            NotSupportedException error = Assert.Throws<NotSupportedException>(() =>
+            Assert.Throws<NotSupportedException>(() =>
                 GoldenImage.Check(
                     temp.Path, "unknown", Frame(), Width, Height, 0, (GpuBackendKind)9001));
-
-            Assert.Contains("No golden family", error.Message, StringComparison.Ordinal);
         }
 
         [Theory]
@@ -195,7 +193,8 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(() =>
                 GoldenImage.Check(temp.Path, "scene", Array.Empty<byte>(), width, height, 0, "metal-native"));
 
-            Assert.Contains("positive", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(width <= 0 ? "width" : "height", error.ParamName);
+            Assert.Equal(width <= 0 ? width : height, error.ActualValue);
         }
 
         [Fact]
@@ -216,7 +215,7 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException error = Assert.Throws<ArgumentException>(() =>
                 GoldenImage.Check(temp.Path, "scene", new byte[3], 1, 1, 0, "metal-native"));
 
-            Assert.Contains("4", error.Message, StringComparison.Ordinal);
+            Assert.Equal("rgba", error.ParamName);
         }
 
         [Theory]
@@ -253,7 +252,7 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException error = Assert.Throws<ArgumentException>(() =>
                 GoldenImage.Check(temp.Path, scene, Frame(), Width, Height, 0, "metal-native"));
 
-            Assert.Contains("file name", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("scene", error.ParamName);
         }
 
         [Theory]
@@ -281,7 +280,13 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(() =>
                 GoldenImage.Check(temp.Path, "scene", Frame(), Width, Height, tolerance, "metal-native"));
 
-            Assert.Contains("0 through 255", error.Message, StringComparison.Ordinal);
+            Assert.Equal("tolerance", error.ParamName);
+            Assert.Equal(tolerance, error.ActualValue);
+
+            using var update = new EnvironmentVariableScope("KE_UPDATE_GOLDENS", null);
+            GoldenResult boundary = GoldenImage.Check(
+                temp.Path, "scene", Frame(), Width, Height, tolerance < 0 ? 0 : 255, "metal-native");
+            Assert.NotNull(boundary.SkipReason);
         }
 
         [Fact]

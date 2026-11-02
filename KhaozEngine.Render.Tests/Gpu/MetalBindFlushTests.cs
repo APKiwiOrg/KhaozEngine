@@ -301,7 +301,8 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
                 () => records.Flush(ref sink, Encoder, Epoch, segment: 0));
 
-            Assert.Contains("runs past the end of its own", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("range", thrown.ParamName);
+            Assert.Equal(256u, thrown.ActualValue);
 
             // THE MARK SURVIVES, which is what turns a loud repeatable refusal into a loud repeatable refusal
             // rather than one throw followed by a frame of silence.

@@ -74,7 +74,7 @@ namespace KhaozEngine.Tests.Gpu
                 harness.Liveness, new GpuResourceSetDescription(layout, buffer)));
 
             Assert.Contains("'Frame' at binding 0", failed.Message, StringComparison.Ordinal);
-            Assert.Contains("already been disposed", failed.Message, StringComparison.Ordinal);
+            Assert.Equal("element", failed.ParamName);
         }
 
         static GpuResourceLayoutElement Element(string name, bool dynamic = false)

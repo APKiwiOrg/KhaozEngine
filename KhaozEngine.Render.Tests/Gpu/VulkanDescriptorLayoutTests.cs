@@ -168,8 +168,8 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException ex = Assert.Throws<ArgumentException>(() => new VulkanResourceLayout(
                 cache, new GpuResourceLayoutDescription(E("Windowed", kind, dynamic: true))));
 
-            Assert.Contains("Windowed", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("V-D4", ex.Message, StringComparison.Ordinal);
+            // TypeFor's refusal. Its unknown-kind fallthrough is ArgumentOutOfRangeException, excluded above.
+            Assert.Equal("element", ex.ParamName);
             Assert.Empty(api.Events);
         }
 

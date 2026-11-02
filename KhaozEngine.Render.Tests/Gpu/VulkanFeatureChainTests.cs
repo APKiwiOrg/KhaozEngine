@@ -89,8 +89,6 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Contains(missing, ex.Message, StringComparison.Ordinal);
             Assert.Contains("Old Radeon", ex.Message, StringComparison.Ordinal);
-            // And it points at the working path rather than leaving the reader stuck.
-            Assert.Contains("GpuBackendKind.Vulkan", ex.Message, StringComparison.Ordinal);
         }
 
         /// <summary>

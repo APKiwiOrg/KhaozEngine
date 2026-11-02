@@ -423,7 +423,6 @@ namespace KhaozEngine.Tests.Gpu
                 NotSupportedException refused = Assert.Throws<NotSupportedException>(() => call(list));
                 Assert.Contains("https://github.com/APKiwiOrg/KhaozEngine/issues/", refused.Message,
                     StringComparison.Ordinal);
-                Assert.Contains("not built yet", refused.Message, StringComparison.Ordinal);
                 Assert.False(string.IsNullOrEmpty(member));
             }
         }

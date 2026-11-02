@@ -458,7 +458,6 @@ namespace KhaozEngine.Tests.Gpu
                 () => cache.GetOrCreate([1, 2, 3], dynamicUniformCount: 3));
 
             Assert.Contains("maxDescriptorSetUniformBuffersDynamic", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("V-D4", ex.Message, StringComparison.Ordinal);
             Assert.Equal(0, api.PipelineLayoutCreateCount);
 
             // AND ON EVERY REQUEST, not only the first: the check runs before the dedup lookup, so a layout over

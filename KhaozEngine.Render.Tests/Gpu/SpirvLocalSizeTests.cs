@@ -40,12 +40,14 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal((1u, 1u, 1u), SpirvLocalSize.Parse(spirv, "t"));
         }
 
+        // A real module whose ONLY defect is its magic number. Without the magic check these bytes parse to 64x1x1,
+        // so the refusal cannot come from the missing-LocalSize or truncation throws, which share the exception type.
         [Fact]
         public void NonSpirvBytesAreRejectedByTheMagicNumber()
         {
-            var notSpirv = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 };
-            var ex = Assert.Throws<ShaderValidationException>(() => SpirvLocalSize.Parse(notSpirv, "t"));
-            Assert.Contains("not a SPIR-V module", ex.Message);
+            var notSpirv = (byte[])Spirv("#version 450\nlayout(local_size_x = 64) in;\nvoid main() {}\n").Clone();
+            notSpirv[0] ^= 0xFF;
+            Assert.Throws<ShaderValidationException>(() => SpirvLocalSize.Parse(notSpirv, "t"));
         }
 
         [Fact]

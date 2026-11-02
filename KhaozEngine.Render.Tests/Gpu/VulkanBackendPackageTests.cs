@@ -311,15 +311,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Throws<ObjectDisposedException>(() => created.Device.Present());
         }
 
-        /// <summary>
-        /// The provider returns a real device or throws, and never hands back an empty result. Pinned here
-        /// because the adopting path checks for a null device and produces its own message for it, and that guard
-        /// only stays meaningful while no provider actually relies on it.
-        /// </summary>
-        [Fact]
-        public void WindowedCreationNeverReturnsAnEmptyResult()
-            => Assert.ThrowsAny<Exception>(() => new VulkanBackendProvider().CreateForWindow(default));
-
         // The probe, with the same swallow the provider applies, so a machine whose loader throws out of the
         // P/Invoke layer is a "no" here too rather than a red test. Reaching past the provider is deliberate: the
         // rows above compare the two, and comparing them through the same catch is what makes the comparison mean

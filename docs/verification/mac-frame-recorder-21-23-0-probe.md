@@ -4,16 +4,18 @@ NEVER MERGE this diagnostic archive into `main`. Branch
 `fix/mac-frame-recorder-21-23-0-probe` starts exactly at released `v21.23.0`, commit
 `cc5771ccc0a21593c07a0e0c1e20eb5f3b17377b`. It ports recorder commits `1066ce936` and
 `5b6a423bd` and extends their evidence. No engine pin, version, GPU commands, encoder count, public
-timestamp pools, frames in flight, framebufferOnly policy, capture taps or waits change. The one rendering
-change is the depth and stencil store action of the directional cascade pass, in alternate sampling blocks
-only, described under Cascade depth-discard experiment. `KhaozEngine.Render3D` remains identical to the base tag.
-Only `KhaozEngine.Gpu.Metal`, `KhaozEngine.Windowing` and `KhaozEngine.Game.Render3D`
+timestamp pools, frames in flight, framebufferOnly policy, capture taps or waits change. The rendering
+changes are three shader gates, on in rotating sampling blocks only, described under Shader gates. The depth and
+stencil store code of the directional cascade pass stays in the tree, off in every recorder block.
+`KhaozEngine.Render3D` differs from the base tag only for the three gates and their plumbing.
+Only `KhaozEngine.Render3D`, `KhaozEngine.Gpu.Metal`, `KhaozEngine.Windowing` and `KhaozEngine.Game.Render3D`
 contain modified production source. This archive is never released or packaged.
 
 ## Boundaries and activation
 
 `KE_FRAME_DIAGNOSTICS_PATH` absent or empty disables recording. All native capture flags stay
-false, no drawable handlers are attached, `Scene3D.PassObserver` stays unset and no store action changes.
+false, no drawable handlers are attached, `Scene3D.PassObserver` stays unset, no store action changes and nothing
+registers the gate seam, so every gate stays off. The shaders still read a zero switch value.
 An enabled run requires an absolute, nonexistent
 result path in an existing directory. Recorder creation preallocates storage and resolves its
 native selectors, global presented block and QuartzCore import before measurement. While waiting,
@@ -37,12 +39,13 @@ It cannot exclude changes that reverse between callbacks. Cap and vsync changes 
 the summary. Require cap 0 and vsync true at baseline, end and both sample window states when
 comparing the intended scene. `cadenceCapped=true` is expected with vsync.
 
-## Schema 9
+## Schema 10
 
 The existing top-level cadence fields remain `processId`, `appAssembly`, `engineAssembly`,
 `stopwatchFrequency`, `durationSeconds`, `sampleCount`, `stopReason`, `baseline`, `end`,
-`samples` and `summary`. `schemaVersion` is 9. All schema 7 and 8 fields retain their meaning, except that
-`passTiming.blocks[].timed` is now true in every block. Its additional top-level fields are:
+`samples` and `summary`. `schemaVersion` is 10. All schema 7 to 9 fields retain their meaning, except that
+`passTiming.blocks[].timed` is true in every block since schema 9 and `experiment.blocks[].discard` is false in every
+block since schema 10. Its additional top-level fields are:
 
 - `identity`: process id, executable path, command-line argument array, every loaded assembly whose
   name starts with KhaozEngine or Grimhollow, and sorted KE_* environment names and values.
@@ -64,6 +67,7 @@ The existing top-level cadence fields remain `processId`, `appAssembly`, `engine
   counts/flags described below. It supplements the existing cadence summary.
 - `passTiming`: stage-boundary support, configuration, block schedule, correlated clocks, render
   signatures, encoder records and explicit evidence-loss counters described below.
+- `shaderGates`: gate names, block schedule, the state each callback applied and counts, described under Shader gates.
 
 ## Native timing records
 
@@ -125,8 +129,8 @@ No counter buffer or attachment is created when the diagnostics environment vari
 An enabled but unarmed recorder allocates its storage without attaching it to any encoder.
 
 While sampling, per-encoder timing stays on in every block. Schema 8 alternated it with off blocks,
-and its measured overhead of about 1% is what let schema 9 keep it on so pass times compare across
-the discard states. Blocks are still 72 callbacks. Each `blocks` entry records `startCallback`,
+and its measured overhead of about 1% is what let later schemas keep it on so pass times compare across
+block states. Blocks are still 72 callbacks. Each `blocks` entry records `startCallback`,
 `endCallbackExclusive`, `startTimestamp`, `endTimestamp` and `timed`. The final block may be partial.
 All schema 7 instrumentation, annotations and command-buffer timing remain enabled. Encoders on other
 managed threads are untimed. Ordinary setup-upload batches use their existing direct blit path outside
@@ -258,7 +262,8 @@ Top-level `passLabels` holds:
 - `events`: bounded `records`, `overflow` and `incompleteWrites`. A record holds `callbackIndex`, `commandBuffer`,
   `encoderOrdinal`, `kind` (begin, end or skip), `labelId` and `occurrence`. `encoderOrdinal` is the ordinal the next
   encoder on that buffer takes, so an event with ordinal N falls after encoder N-1 began and before encoder N began.
-  The bound is 524288, about 370 events a callback over a ten-second capture at 139 FPS.
+  The bound is 1048576, about 750 events a callback over a ten-second capture at 139 FPS. Capture 03 overflowed
+  524288 at about 640 a callback.
 - `stackOverflow` past 64 nested scopes, `unbalancedEnds`, `abandonedScopes`, `foreignEvents`, `observerFailures`.
 
 Encoder records gain `labelId` and `labelOccurrence`, the innermost scope open at the encoder's begin, or -1. An
@@ -277,10 +282,98 @@ layer. `bytes` is the padded upload size or `width * height * bytesPerTexel`. `g
 format the staging layout lacks. Uniform ring writes are memcpys with no blit encoder and are not transfers. The setup
 batch is outside the frame list and is not recorded. Standalone multisample resolves are render encoders.
 
+## Shader gates
+
+The shading study found work whose result is already known exactly, and capture 03 had shown the bandwidth fixes were
+small. Three switches skip that work. Each is a uniform branch, so no shader recompiles mid-capture. `ShaderGateProbe`
+holds the mask, `Scene3D.ProbeShaderGates` the current value, off by default.
+
+| Name | Bit | Switch | Skips |
+| --- | --- | --- | --- |
+| `pointShadowZeroNdl` (#1676) | 1 | `IndirectParams.y` | `samplePointShadowCombined` when the banded `ndl` is not above 0. `ndl` then zeroes both diffuse and specular, whatever `att` holds |
+| `underwaterMarchZero` (#1675) | 2 | `IndirectParams.z` | The remaining slices once `floatBitsToUint(visibility) == 0u`. Later slices only multiply positive zero by a value in 0 to 1. The receiver coverage fade after the loop still runs |
+| `rigidWorldReuse` (#1679) | 4 | `MotionParams.y` | `prevModel * Position` for slot -1, reusing `world`. `PrevViewProj` still applies |
+
+Neither frame block changed layout: the switches take components nothing else reads, zero when off, so those bytes
+equal the released upload. The conditions are exact on purpose. No epsilon, no geometric normal and no change to
+accumulation order. The study's optional entry filter bypass is left out: it would have to reproduce each strength
+and coverage mix in `sampleKeyShadow`, and no measurement says it is worth that.
+
+With `rigidWorldReuse` on, `RigidMotionSlots.Build` also gives a keyed instance slot -1 when its reduced previous
+transform has exactly the bits of the matrix `UploadInstancesRelative` just uploaded. Float equality would call -0 and +0
+equal. The instance keeps its entry in the previous-transform upload, so bytes transferred do not depend on the state and
+only the vertex path differs. A shipping version would drop that entry and save a little more. Skinned, CPU-skinned
+and wind-deformed vertices use other programs and never qualify.
+
+`GameApp3D` registers `SceneFrameShaderGates` through `AppWindow.RegisterFrameDiagnosticsShaderGates` only when the
+recorder is requested. The recorder's opening boundary is before prepare or update, so one callback sees one state.
+From callback 0, blocks of 72 callbacks rotate baseline, `pointShadowZeroNdl`, `underwaterMarchZero`, `rigidWorldReuse`.
+The schedule leaves the gates alone until sampling starts, and turns them off at the last boundary and on every failure and
+disposal. After that it never applies a nonzero mask. Nothing else in the engine sets the property.
+
+Top-level `shaderGates` holds:
+
+- `names`: bit i of a mask is `names[i]`. `blockCallbacks` is 72.
+- `schedule`: `startCallback`, `endCallbackExclusive`, `startTimestamp`, `endTimestamp`, `state` and `gates`.
+- `appliedPerCallback`: one value per sample, the mask that callback's frames actually uploaded, read back from the scene.
+  -1 means no frame rendered, -2 means renders disagreed and -3 means nothing was registered.
+- `counts`: per state `blocks`, `scheduledCallbacks`, `matchingCallbacks`, `noFrameCallbacks`, `mismatchedCallbacks`
+  (which includes -2 and -3). `applyFailures` sits beside it.
+
+`gpuSummary.shaderGateStates` has one entry per state with `state`, `gates`, `mainPassLabel`, `settledCallbacks`,
+`frameCompletionIntervalMs` (the same-block adjacency rule above) and three kinds of main pass input. The main pass is the
+encoder labelled `opaque.rigid` when it opened. Terrain, foliage and skinned draws usually share that encoder under their
+own scopes, so these are the whole forward target, not rigid geometry alone.
+
+- `mainPassVertexMs`, `mainPassFragmentMs`, `mainPassEncoderMs`: raw stage spans. These overlap other passes and frames.
+- `mainPassExclusiveVertexMs`, `mainPassExclusiveFragmentMs`: each instant of GPU time split evenly among the stage intervals
+  active at it, summed per callback, the same sweep capture 03's offline analysis used. Valid records only.
+- `attributedBusyMs`: the same sweep's total per callback.
+
+The exclusive values and `settledCallbacks` skip 3 callbacks at each block edge, because overlap there reaches a
+neighbouring state. Raw records stay in the report for offline analysis.
+
+### Pixel identity evidence
+
+`ShaderGatePixelIdentityGpuTests` is gated by `KE_GPU_TESTS=1` and needs no window or swapchain. For each gate it renders a
+small deterministic scene through `Scene3D` with temporal rendering and HDR on for six frames, off twice and on once,
+each on a fresh headless device. It compares the raw bytes of HDR colour, normal, scene depth, motion, key visibility and
+the resolved picture on every frame. The repeated off run separates a gate's difference from the scene's own
+nondeterminism. A control with the caster or the motion removed proves that the comparison sees a real change.
+
+| Gate | What the scene exercises |
+| --- | --- |
+| `pointShadowZeroNdl` | Cel bands 4, a soft shadowed static lamp 0.6 m above a floor plus a dynamic light and a moving caster. Banded zero with raw `ndl` above 0 beyond about 4.7 m. The count replays banded `ndl` in C# from the stored normal and depth |
+| `underwaterMarchZero` | A shadow-only slab 0.5 m under the surface over a bed 3 m down, four cascades. The caster is below the entry point, so a stored key visibility of 0 is the march's own result |
+| `rigidWorldReuse` | A moving camera, static and moving keyed boxes, unkeyed boxes and a render origin step. Slot counts come from the frame's own motion slots |
+
+Limits:
+
+- The gates are invisible by design, so a switch that never reached the shader would also pass. `ShaderGateProbeTests` pins the
+  uploaded values and the shader conditions, but no execution shows the branch taken.
+- These are small synthetic scenes on one GPU, not Hollowmere. The pixel identity they show holds for the compiled shaders of
+  this tree on this GPU.
+- Off and on run the same compiled pipeline. Comparing the off state with the released shader would need a build of the
+  released tree. The source diff is the evidence there, so the baseline blocks may not equal v21.23.0 timing or bits if the Metal
+  compiler optimizes the new branches differently.
+
+### Measurement limits for the gates
+
+- Compare states only within one capture. A later block is not independent of an earlier one, and drift reaches them
+  differently with four states than with two, because each state returns only every 288 callbacks.
+- A state's GPU work can still be in flight past its block, so a completion crossing a block is excluded and the
+  exclusive values skip the edges.
+- The gates can be slower. A branch adds a uniform read and can change register allocation or vectorization. A
+  compiler may also already remove the duplicate transform for slot -1. Report a negative result as measured.
+- The states are one gate at a time. Savings need not add, because their fragments and instructions overlap.
+- None of this establishes the 144 Hz budget or a tail improvement.
+
 ## Cascade depth-discard experiment
 
-Top-level `experiment` has `name` `cascadeDepthDiscard`, `blockCallbacks` 72 and `blocks`, whose entries repeat the
-pass timing block bounds with `discard`. Blocks alternate starting with discard off. It counts `openedUnknown`,
+Off in every recorder block since schema 10, because capture 03 measured it. `MetalPassTimingCapture(discardBlocks: true)`
+turns it back on, and only its tests and the native smoke do that. Top-level `experiment` has `name` `cascadeDepthDiscard`,
+`blockCallbacks` 72 and `blocks`, whose entries repeat the pass timing block bounds with `discard`. With the experiment on,
+blocks alternate starting with discard off. It counts `openedUnknown`,
 `dontCareApplied`, `keptStoreScopeOpen`, `resolvedDuringStop`, `resolveFailures`, `unresolvedEncoders`,
 `descriptorFailures` and `directionalEncodersOff`. `openedUnknown` equals the sum of the second through sixth.
 
@@ -302,7 +395,7 @@ Blocks decide the state, so a discard-block encoder that kept Store still counts
 
 ### Why output pixels are identical
 
-Paths are under `KhaozEngine.Render3D/`, and that tree is byte-identical to v21.23.0.
+Paths are under `KhaozEngine.Render3D/`. The gates changed none of these lines' behaviour.
 
 - The texture cannot be read by a shader. `Rendering/ShadowMapRenderer.cs:222` creates it with
   `GpuTextureUsage.DepthStencil` alone, never `Sampled`.
@@ -372,12 +465,15 @@ Schema 8 tests also cover stage attachments, reused descriptors, factory selecti
 overflow, error-value handling, signature bounds, block schedules, clock pairs and pass summaries.
 Schema 9 tests cover label interning and bounds, the never-throwing observer, event order, transfer records, every
 discard decision, the block schedule, serialization and the per-state summary, all through fakes.
+Schema 10 tests cover gate defaults and gating outside sampling, the rotation, the per-callback applied state, every way
+out of sampling, serialization, the per-state summary arithmetic, the uploaded switch values and bit-identical slot
+selection, also through fakes.
 One separately gated native smoke case records a headless offscreen render, serial compute and
 blit encoder, then two passes over a Depth32Float_Stencil8 attachment through the real sink, opened Unknown and
 resolved to Store and DontCare. It commits once, waits for that buffer and resolves real stage timestamps. Its temporary
 isolated test host links the same test source to avoid unrelated GPU probes during suite discovery.
-The source diff against v21.23.0 must be empty for KhaozEngine.Render3D. Verification commands,
-results, source identities and limitations belong in the implementer's external report.
+The source diff against v21.23.0 for KhaozEngine.Render3D must be limited to the three gates and their plumbing. Verification
+commands, results, source identities and limitations belong in the implementer's external report.
 CPU tests do not prove native handler delivery, actual GPU timing validity, physical presentation,
-pixel identity or an FPS improvement. The parent owns DLL substitution and the single human-launched
+pixel identity or an FPS improvement. The gated GPU test is the pixel identity evidence, with the limits above. The parent owns DLL substitution and the single human-launched
 capture. No windowed app, push, merge, release, package publication or tag is part of this archive.

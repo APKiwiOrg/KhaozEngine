@@ -36,12 +36,12 @@ namespace KhaozEngine.Render3D.Rendering
         /// </para></summary>
         public void SetFrameUniforms(IGpuCommandList cl, Matrix4x4 viewProj, Vector3 cameraPos,
             PixelPostProcessSettings s, ReadOnlySpan<PointLightData> lights, Vector3 renderOrigin = default,
-            Vector2 materialLod = default)
+            Vector2 materialLod = default, ShaderGateProbe shaderGates = ShaderGateProbe.None)
         {
             int count = BuildLightArrays(lights, _lightPosRadius, _lightColorIntensity, renderOrigin);
             UploadPointLights(cl, lights, renderOrigin);
             _renderOrigin = new Vector4(renderOrigin, s.Atmosphere.Enabled ? 1f : 0f);
-            _indirectUniforms = new IndirectUniforms(s);
+            _indirectUniforms = new IndirectUniforms(s, shaderGates);
 
             // Clip-space-Y correction is derived from the live backend (GpuClip), not baked for Metal: it is the
             // identity on Metal/D3D (byte-identical render) and flips clip-Y on inverted-Y backends (Vulkan).

@@ -35,6 +35,7 @@ namespace KhaozEngine.Game
             {
                 Window.RegisterFrameDiagnosticsAnnotator(new SceneFrameDiagnosticsAnnotator(_surface3D.Scene));
                 _surface3D.Scene.PassObserver = new SceneFramePassObserver(Window.FrameDiagnosticsPasses);
+                Window.RegisterFrameDiagnosticsShaderGates(new SceneFrameShaderGates(_surface3D.Scene));
             }
         }
 

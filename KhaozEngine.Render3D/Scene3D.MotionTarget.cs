@@ -67,7 +67,7 @@ public sealed partial class Scene3D
         {
             CurViewProj = current.ViewProjection,
             PrevViewProj = previous?.ViewProjection ?? current.ViewProjection,
-            Params = new Vector4(previous is null ? 0f : 1f, 0f, 0f, 0f),
+            Params = new Vector4(previous is null ? 0f : 1f, RigidWorldReuseOn ? 1f : 0f, 0f, 0f),
         }));
 
         int count = _instanceData.Count;
@@ -77,7 +77,7 @@ public sealed partial class Scene3D
         if (_motionSlots.Length < count) _motionSlots = new float[Math.Max(count, _motionSlots.Length * 2)];
         Span<float> slots = _motionSlots.AsSpan(0, count);
         RigidMotionSlots.Build(CollectionsMarshal.AsSpan(_instanceMotionKeys), PreviousMotion, current.RenderOrigin,
-            slots, _previousInstanceTransforms);
+            slots, _previousInstanceTransforms, RigidWorldReuseOn ? UploadedInstances : default);
         _frameStats.AddInstanceUpload(
             _model.UploadRigidMotion(cl, slots, CollectionsMarshal.AsSpan(_previousInstanceTransforms)));
     }

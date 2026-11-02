@@ -12,7 +12,8 @@ internal struct MotionFrameUbo
     public Matrix4x4 CurViewProj;
     /// <summary>Last frame's, rebased to this frame's render origin, or this frame's when there is no valid history.</summary>
     public Matrix4x4 PrevViewProj;
-    /// <summary>x = 1 when last frame is valid history, else 0, which makes every variant write exactly zero.</summary>
+    /// <summary>x = 1 when last frame is valid history, else 0, which makes every variant write exactly zero. y is the
+    /// private probe's rigid reuse switch, zero outside a sampling window.</summary>
     public Vector4 Params;
 
     public const uint SizeInBytes = 144;

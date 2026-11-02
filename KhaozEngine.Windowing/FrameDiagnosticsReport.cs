@@ -22,6 +22,7 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
     public PassLabelsSnapshot PassLabels { get; init; } = PassLabelsSnapshot.Unavailable();
     public FrameTimingBufferSnapshot<PassTransfer> Transfers { get; init; } = new([], 0, 0);
     public PassExperimentSnapshot Experiment { get; init; } = PassExperimentSnapshot.Unavailable();
+    public FrameDiagnosticsShaderGateReport ShaderGates { get; init; } = FrameDiagnosticsShaderGateReport.Empty;
 
     internal FrameDiagnosticsReport WithPassTiming(MetalPassTimingCapture? capture)
     {
@@ -36,6 +37,16 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
             GpuSummary = GpuSummary.WithPassTiming(Timing, passes).WithDiscardStates(Timing, passes, experiment),
         };
     }
+
+    internal FrameDiagnosticsReport WithShaderGates(FrameDiagnosticsShaderGateReport shaderGates) => this with
+    {
+        ShaderGates = shaderGates,
+        GpuSummary = GpuSummary with
+        {
+            ShaderGateStates = FrameDiagnosticsShaderGateSummary.States(Timing, PassTiming, PassLabels, shaderGates),
+        },
+    };
+
     internal static FrameDiagnosticsReport Create(long frequency, FrameDiagnosticsBoundary baseline,
         FrameDiagnosticsBoundary end, FrameDiagnosticsSample[] buffer, int count, string reason,
         FrameTimingSnapshot timing, FrameDiagnosticsAnnotationReport annotations, int? framesInFlight,
@@ -45,7 +56,7 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
         var samples = new FrameDiagnosticsSample[count];
         Array.Copy(buffer, samples, count);
         var engine = typeof(FrameDiagnosticsRecorder).Assembly;
-        return new FrameDiagnosticsReport(9, Environment.ProcessId,
+        return new FrameDiagnosticsReport(10, Environment.ProcessId,
             Assembly.GetEntryAssembly()?.FullName ?? "unknown", engine.FullName + " MVID=" + engine.ManifestModule.ModuleVersionId,
             frequency, (end.Timestamp - baseline.Timestamp) / (double)frequency, count, reason, baseline, end, samples,
             FrameDiagnosticsSummary.Create(baseline, end, samples, reason == "capacity", count == buffer.Length),

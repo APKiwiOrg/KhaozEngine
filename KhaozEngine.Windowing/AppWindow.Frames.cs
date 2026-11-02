@@ -58,7 +58,7 @@ namespace KhaozEngine.Windowing
             // and a no-op unless an InitialMonitor or KE_WINDOW_MONITOR asked for one. See AppWindow.Launch.cs.
             ApplyLaunchPlacement();
             var clock = System.Diagnostics.Stopwatch.StartNew();
-            using var diagnostics = FrameDiagnosticsRecorder.FromEnvironment(_frameDiagnosticsAnnotator, _device, _cl);
+            using var diagnostics = FrameDiagnosticsRecorder.FromEnvironment(_frameDiagnosticsAnnotator, _device, _cl, _frameDiagnosticsShaderGates);
 
             // Composed ONCE, not per frame: the record-phase callback plus the rumble tick that has to follow it
             // (a Pulse issued during the frame must reach the motors on that frame). Building this inside the

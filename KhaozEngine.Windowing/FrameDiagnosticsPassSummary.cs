@@ -43,7 +43,7 @@ internal static class FrameDiagnosticsPassSummary
         }
     }
 
-    static (FrameDiagnosticsDistribution Vertex, FrameDiagnosticsDistribution Fragment, FrameDiagnosticsDistribution Whole) Spans(
+    internal static (FrameDiagnosticsDistribution Vertex, FrameDiagnosticsDistribution Fragment, FrameDiagnosticsDistribution Whole) Spans(
         IEnumerable<PassTimingEncoder> encoders, PassTimingSnapshot passes)
     {
         var vertex = new List<double>();
@@ -71,6 +71,13 @@ internal static class FrameDiagnosticsPassSummary
     static void Add(List<double> values, ulong? start, ulong? end, PassTimingSnapshot passes)
     {
         if (!Valid(start, end)) return;
+        double scale = NanosecondsPerTick(start!.Value, passes);
+        if (scale > 0) values.Add((end!.Value - start.Value) * scale / 1_000_000);
+    }
+
+    /// <summary>The nearest valid adjacent clock pair's scale, or 0 without calibration.</summary>
+    internal static double NanosecondsPerTick(ulong start, PassTimingSnapshot passes)
+    {
         var clocks = passes.ClockPairs.Records;
         double nearest = double.PositiveInfinity, scale = 0;
         for (int i = 1; i < clocks.Length; i++)
@@ -78,12 +85,12 @@ internal static class FrameDiagnosticsPassSummary
             var a = clocks[i - 1];
             var b = clocks[i];
             if (b.GpuTicks <= a.GpuTicks || b.CpuNanoseconds <= a.CpuNanoseconds) continue;
-            double distance = start < a.GpuTicks ? a.GpuTicks - start.Value : start > b.GpuTicks ? start.Value - b.GpuTicks : 0;
+            double distance = start < a.GpuTicks ? a.GpuTicks - start : start > b.GpuTicks ? start - b.GpuTicks : 0;
             if (distance >= nearest) continue;
             nearest = distance;
             scale = (b.CpuNanoseconds - a.CpuNanoseconds) / (double)(b.GpuTicks - a.GpuTicks);
         }
-        if (scale > 0) values.Add((end!.Value - start!.Value) * scale / 1_000_000);
+        return scale;
     }
 
     internal static (FrameDiagnosticsDistribution Timed, FrameDiagnosticsDistribution Untimed) Intervals(
@@ -91,7 +98,7 @@ internal static class FrameDiagnosticsPassSummary
         => IntervalsBy(timing, passes.Blocks.Select(b => (b.StartCallback, b.EndCallbackExclusive, b.Timed)));
 
     /// <summary>Adjacent callbacks inside one block. Transitions, gaps and non-frame buffers do not contribute.</summary>
-    static (FrameDiagnosticsDistribution Set, FrameDiagnosticsDistribution Unset) IntervalsBy(FrameTimingSnapshot timing,
+    internal static (FrameDiagnosticsDistribution Set, FrameDiagnosticsDistribution Unset) IntervalsBy(FrameTimingSnapshot timing,
         IEnumerable<(int Start, int EndExclusive, bool State)> schedule)
     {
         var blocks = schedule.ToArray();

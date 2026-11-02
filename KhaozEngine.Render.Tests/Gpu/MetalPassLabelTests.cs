@@ -11,6 +11,11 @@ public sealed class MetalPassLabelTests
 {
     static readonly IntPtr Buffer = new(1);
 
+    /// <summary>Capture 03 overflowed at about 640 events a callback, and a capture runs about 1400 callbacks.</summary>
+    [Fact]
+    public void The_default_event_bound_holds_650_events_a_callback_over_1400_callbacks()
+        => Assert.True(MetalPassTimingCapture.DefaultLabelEvents >= 650 * 1400);
+
     [Fact]
     public void Labels_intern_to_stable_ids_and_a_full_table_counts_overflow_without_losing_the_directional_id()
     {

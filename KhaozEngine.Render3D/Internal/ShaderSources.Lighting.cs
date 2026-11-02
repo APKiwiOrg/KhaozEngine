@@ -474,7 +474,8 @@ void computeLighting(texture2D pointAtlas, texture2D pointTransientAtlas, sample
         // att = 0, so whatever the sample answered it would be multiplied by nothing. Skipping it keeps the cost
         // of the soft filter on the one to three lights that actually reach a fragment, and it moves no picture,
         // because 0 * lit is 0 for every lit in 0..1.
-        if (att > 0.0 && pointLight.ShadowParams.x >= 0.0)
+        // IndirectParams.y is the private probe's switch: a banded ndl of exactly zero multiplies this term away.
+        if (att > 0.0 && pointLight.ShadowParams.x >= 0.0 && (IndirectParams.y < 0.5 || ndl > 0.0))
             att *= samplePointShadowCombined(pointAtlas, pointTransientAtlas, pointSamp, toL, dist, radius,
                                              ndlRaw, pointLight.ShadowParams, worldPos);
         vec3 lc = pointLight.ColorIntensity.rgb;

@@ -7,6 +7,7 @@ namespace KhaozEngine.Windowing;
 public sealed partial class AppWindow
 {
     IFrameDiagnosticsAnnotator? _frameDiagnosticsAnnotator;
+    IFrameDiagnosticsShaderGates? _frameDiagnosticsShaderGates;
 
     /// <summary>Whether this process requested the private frame recorder through KE_FRAME_DIAGNOSTICS_PATH.</summary>
     public bool FrameDiagnosticsEnabled => FrameDiagnosticsRecorder.IsEnabled;
@@ -16,6 +17,13 @@ public sealed partial class AppWindow
     {
         ArgumentNullException.ThrowIfNull(annotator);
         _frameDiagnosticsAnnotator = annotator;
+    }
+
+    /// <summary>Register what the recorder's block boundaries drive while sampling. Nothing else turns a gate on.</summary>
+    public void RegisterFrameDiagnosticsShaderGates(IFrameDiagnosticsShaderGates gates)
+    {
+        ArgumentNullException.ThrowIfNull(gates);
+        _frameDiagnosticsShaderGates = gates;
     }
 
     /// <summary>Where a 3D surface forwards its render pass boundaries. Does nothing unless the recorder is sampling.</summary>

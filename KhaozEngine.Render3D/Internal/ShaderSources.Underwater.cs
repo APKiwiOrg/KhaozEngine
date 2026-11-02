@@ -307,6 +307,8 @@ float underwaterSubmergedOcclusion(UnderwaterKey key, vec3 renderPos, vec3 Ngeo,
                 }
             }
             visibility *= lit;
+            // IndirectParams.z is the private probe's switch. Later slices only multiply a positive zero by 0 to 1.
+            if (IndirectParams.z > 0.5 && floatBitsToUint(visibility) == 0u) break;
         }
         start = end;
     }

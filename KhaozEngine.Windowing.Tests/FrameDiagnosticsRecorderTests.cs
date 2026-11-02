@@ -318,7 +318,7 @@ public sealed class FrameDiagnosticsRecorderTests : IDisposable
         Assert.True(recorder.Publication.IsCompletedSuccessfully);
         Assert.Null(recorder.Failure);
         using var json = JsonDocument.Parse(File.ReadAllText(ResultPath));
-        Assert.Equal(9, json.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(10, json.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.False(json.RootElement.GetProperty("passTiming").GetProperty("supported").GetBoolean());
         Assert.Equal(0, json.RootElement.GetProperty("passLabels").GetProperty("events").GetProperty("records").GetArrayLength());
         Assert.Equal(0, json.RootElement.GetProperty("transfers").GetProperty("records").GetArrayLength());

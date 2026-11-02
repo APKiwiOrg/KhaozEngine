@@ -22,6 +22,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
     readonly FrameDiagnosticsSample[] _samples;
     readonly FrameTimingCapture _timing;
     readonly FrameDiagnosticsAnnotations _annotations;
+    readonly FrameDiagnosticsShaderGateSchedule _shaderGates;
     readonly int? _framesInFlight;
     FrameDiagnosticsCaptureState _baselineCapture, _endCapture;
     FrameTimingClockMap _baselineClock, _endClock;
@@ -32,7 +33,8 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
     int _count;
 
     internal FrameDiagnosticsRecorder(string path, long frequency, int capacity = 4096,
-        IFrameDiagnosticsAnnotator? annotator = null, IGpuDevice? device = null, IGpuCommandList? frameCommands = null)
+        IFrameDiagnosticsAnnotator? annotator = null, IGpuDevice? device = null, IGpuCommandList? frameCommands = null,
+        IFrameDiagnosticsShaderGates? shaderGates = null)
     {
         if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("An absolute result path is required.", nameof(path));
         if (frequency <= 0) throw new ArgumentOutOfRangeException(nameof(frequency));
@@ -44,6 +46,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         _frequency = frequency;
         _samples = new FrameDiagnosticsSample[capacity];
         _annotations = new(annotator, capacity);
+        _shaderGates = new(shaderGates, capacity);
         _timing = new(frameCommands, passTiming: CreatePassTiming(device));
         _framesInFlight = (device as MetalGpuDevice)?.DiagnosticFramesInFlight;
         MetalFrameTimingNative.Prepare();
@@ -59,12 +62,12 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
     internal bool NeedsBoundary => _phase is Phase.Armed or Phase.Sampling;
 
     internal static FrameDiagnosticsRecorder? FromEnvironment(IFrameDiagnosticsAnnotator? annotator = null,
-        IGpuDevice? device = null, IGpuCommandList? frameCommands = null)
+        IGpuDevice? device = null, IGpuCommandList? frameCommands = null, IFrameDiagnosticsShaderGates? shaderGates = null)
     {
         try
         {
             string? path = Environment.GetEnvironmentVariable("KE_FRAME_DIAGNOSTICS_PATH");
-            return string.IsNullOrEmpty(path) ? null : new FrameDiagnosticsRecorder(path, Stopwatch.Frequency, annotator: annotator, device: device, frameCommands: frameCommands);
+            return string.IsNullOrEmpty(path) ? null : new FrameDiagnosticsRecorder(path, Stopwatch.Frequency, annotator: annotator, device: device, frameCommands: frameCommands, shaderGates: shaderGates);
         }
         catch (Exception error)
         {
@@ -98,6 +101,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
             try { _timing.Start(); }
             catch (Exception error) { Fail("sampling could not start (" + error.GetType().Name + ")"); return; }
             _phase = Phase.Sampling;
+            _shaderGates.Boundary(0, timestamp);
             return;
         }
 
@@ -108,6 +112,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         }
         try { _annotations.Sample(_count); }
         catch (Exception error) { Fail("annotation failed (" + error.GetType().Name + ")"); return; }
+        _shaderGates.CallbackEnded(_count);
         _samples[_count++] = new FrameDiagnosticsSample(_previous.Timestamp, timestamp,
             (timestamp - _previous.Timestamp) / (double)_frequency, dt, _previous.Window, window, counters);
         _previous = boundary;
@@ -116,8 +121,10 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         {
             _timing.CallbackIndex = _count;
             _timing.PassTiming?.Boundary(_count, timestamp);
+            _shaderGates.Boundary(_count, timestamp);
             return;
         }
+        _shaderGates.End(_count, timestamp);
         _timing.Stop();
         _timing.PassTiming?.End(_count, timestamp);
         _endCapture = captureState;
@@ -153,7 +160,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
             var report = FrameDiagnosticsReport.Create(_frequency, _baseline, _previous, _samples, _count, reason,
                 _timing.Snapshot().Window(_baseline.Timestamp, _previous.Timestamp), _annotations.Report(_count), _framesInFlight, _baselineCapture, _endCapture,
                 _baselineClock, _endClock);
-            report = report.WithPassTiming(_timing.PassTiming);
+            report = report.WithPassTiming(_timing.PassTiming).WithShaderGates(_shaderGates.Report(_count));
             temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
@@ -180,6 +187,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
 
     void Fail(string reason)
     {
+        _shaderGates.Stop();
         _timing.Stop();
         _phase = Phase.Stopped;
         Failure = reason;
@@ -195,6 +203,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
     public void Dispose()
     {
         if (_phase is Phase.Armed or Phase.Sampling) Fail("closed before measurement completed");
+        _shaderGates.Stop();
         _timing.Stop();
         _phase = Phase.Stopped;
         Publication.GetAwaiter().GetResult(); // Loop exit joins an already started, exception-contained writer.

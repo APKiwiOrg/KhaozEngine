@@ -28,7 +28,7 @@ layout(location=12) out vec4 vPrevClip;"),
         @"    int slot = int(IMotionSlot);
     mat4 prevModel = slot < 0 ? Model : PrevModel[max(slot, 0)];
     vCurClip = CurViewProj * world;
-    vPrevClip = MotionParams.x > 0.5 ? PrevViewProj * (prevModel * vec4(Position, 1.0)) : vCurClip;
+    vPrevClip = MotionParams.x > 0.5 ? PrevViewProj * (MotionParams.y > 0.5 && slot < 0 ? world : prevModel * vec4(Position, 1.0)) : vCurClip;
 ");
 
     /// <summary>SkinnedModelVert with motion: skinned twice (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24 section 3). Last

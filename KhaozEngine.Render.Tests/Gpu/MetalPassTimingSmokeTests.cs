@@ -28,7 +28,7 @@ public sealed class MetalPassTimingSmokeTests(ITestOutputHelper output)
         var device = new MTLDevice(objects.Own(MTLDevice.CreateSystemDefault()));
         var queue = new MTLCommandQueue(objects.Own(device.NewCommandQueue().Handle));
         var native = new MetalPassTimingNative(device.Handle);
-        using var passes = new MetalPassTimingCapture(native);
+        using var passes = new MetalPassTimingCapture(native, discardBlocks: true);
         Assert.True(passes.Supported, passes.Reason);
         output.WriteLine("Device " + device.Name());
         var timestamps = new MTLTimestampInterop(device.Handle);

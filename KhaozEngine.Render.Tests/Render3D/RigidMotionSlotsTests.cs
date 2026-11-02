@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
@@ -33,6 +34,26 @@ public sealed class RigidMotionSlotsTests
         Assert.Equal(1, count);
         Assert.Equal(new[] { -1f, 0f, -1f }, slots);
         Assert.Equal(Matrix4x4.CreateTranslation(2f, 2f, -4f), previous[0]);   // reduced by this frame's origin
+    }
+
+    /// <summary>Only a key whose reduced previous transform has the uploaded bits reuses the current world position.
+    /// Its entry stays, so the probe's upload size does not depend on the state. Float equality would pass the -0
+    /// row.</summary>
+    [Theory]
+    [InlineData(2f, 2f, -1f)]
+    [InlineData(0f, -0f, 0f)]
+    [InlineData(2f, 2.5f, 0f)]
+    public void WithReuseOnOnlyAnUploadedBitIdenticalTransformLeavesTheKeysSlot(float previousX, float uploadedX, float expectedSlot)
+    {
+        MotionHistory history = HistoryWith(Mover, Matrix4x4.CreateTranslation(Origin.X + previousX, 2f, -4f));
+        var slots = new float[1];
+        var previous = new List<Matrix4x4>();
+        var uploaded = new[] { new ModelRenderer.InstanceData { Model = Matrix4x4.CreateTranslation(uploadedX, 2f, -4f) } };
+
+        int count = RigidMotionSlots.Build(new[] { Mover }, history, Origin, slots, previous, uploaded);
+
+        Assert.Equal(1, count);
+        Assert.Equal(expectedSlot, slots[0]);
     }
 
     [Fact]

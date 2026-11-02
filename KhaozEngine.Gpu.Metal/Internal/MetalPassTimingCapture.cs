@@ -22,6 +22,7 @@ internal sealed class MetalPassTimingCapture : IDisposable
     readonly MetalPassLabels _labels;
     readonly FrameTimingBuffer<PassTransfer> _transfers;
     readonly MetalCascadeDiscardExperiment _experiment;
+    readonly bool _discardBlocks;
     int _blockCount, _disposed;
     bool _timed, _discardBlock;
     // The frame recording the label stack describes. Bound by the first label event or encoder of each recording.
@@ -36,10 +37,15 @@ internal sealed class MetalPassTimingCapture : IDisposable
     internal bool Supported { get; }
     internal string? Reason { get; }
 
-    // A frame carries a few hundred label events, so the event bound covers 1400 callbacks at about 370 a callback.
-    // Events are about 32 bytes each and transfers about 48, so the two together preallocate about 25 MB.
+    // Capture 03 overflowed 524288 events at about 640 a callback. This bound covers 1400 callbacks at about 750 a
+    // callback. Events are about 32 bytes each and transfers about 48, so the two together preallocate about 40 MB.
+    internal const int DefaultLabelEvents = 1048576;
+
+    /// <summary><paramref name="discardBlocks"/> is off in the recorder, because capture 03 already measured the cascade
+    /// discard. Only its tests turn it on, which keeps the code and its native proof alive.</summary>
     internal MetalPassTimingCapture(IMetalPassTimingNative native, int slots = 16, int samples = 4096,
-        int signatures = 256, int labels = 256, int labelEvents = 524288, int transfers = 131072)
+        int signatures = 256, int labels = 256, int labelEvents = DefaultLabelEvents, int transfers = 131072,
+        bool discardBlocks = false)
     {
         if (slots < 1 || slots > 32 || samples < 4 || samples > 4096 || signatures < 1 || signatures > 256)
             throw new ArgumentOutOfRangeException(nameof(slots));
@@ -47,6 +53,7 @@ internal sealed class MetalPassTimingCapture : IDisposable
         _labels = new(labels, labelEvents);
         _transfers = new(transfers);
         _experiment = new(native);
+        _discardBlocks = discardBlocks;
         _sampleCapacity = samples;
         _signatureCapacity = signatures;
         _signatures = new(signatures);
@@ -72,9 +79,9 @@ internal sealed class MetalPassTimingCapture : IDisposable
     {
         if (callback % BlockCallbacks != 0) return;
         CloseBlock(callback, timestamp);
-        // Timing stays on in every block so pass times compare across the discard states, which alternate starting off.
+        // Timing stays on in every block so pass times compare across the states the blocks select.
         _timed = true;
-        _discardBlock = MetalCascadeDiscardExperiment.DiscardBlock(callback, BlockCallbacks);
+        _discardBlock = _discardBlocks && MetalCascadeDiscardExperiment.DiscardBlock(callback, BlockCallbacks);
         if (_blockCount < _blocks.Length)
             _blocks[_blockCount++] = new(callback, callback, timestamp, timestamp, _timed);
         Clock(callback, timestamp);
@@ -333,7 +340,7 @@ internal sealed class MetalPassTimingCapture : IDisposable
     internal FrameTimingBufferSnapshot<PassTransfer> TransfersSnapshot() => _transfers.Snapshot();
     internal PassExperimentSnapshot ExperimentSnapshot() => _experiment.Snapshot(BlockCallbacks, _blocks.Take(_blockCount)
         .Select(b => new PassExperimentBlock(b.StartCallback, b.EndCallbackExclusive, b.StartTimestamp, b.EndTimestamp,
-            MetalCascadeDiscardExperiment.DiscardBlock(b.StartCallback, BlockCallbacks))).ToArray());
+            _discardBlocks && MetalCascadeDiscardExperiment.DiscardBlock(b.StartCallback, BlockCallbacks))).ToArray());
 
     public void Dispose()
     {

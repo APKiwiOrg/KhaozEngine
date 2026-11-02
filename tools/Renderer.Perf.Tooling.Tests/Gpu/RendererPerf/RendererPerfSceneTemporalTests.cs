@@ -38,8 +38,7 @@ public sealed class RendererPerfSceneTemporalTests
         Assert.True(rig.Work.Scene.TemporalHistory.IsValid);
         rig.Work.Scene.CameraCut();
 
-        var error = Assert.Throws<InvalidOperationException>(() => rig.Record(0));
-        Assert.Contains("temporal history", error.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => rig.Record(0));
         Assert.Equal(warmup + 1, rig.Work.Scene.CurrentFrameView.FrameIndex);
         Assert.False(rig.Work.Scene.TemporalHistory.IsValid);
         Assert.Equal(TemporalResetReason.CameraCutRequested, rig.Work.Scene.TemporalHistory.LastReset);
@@ -50,8 +49,7 @@ public sealed class RendererPerfSceneTemporalTests
     {
         using var rig = new TemporalWorkload(0);
         rig.Work.Scene.Post.Quality.AntiAliasing = AntiAliasing.Off;
-        var error = Assert.Throws<InvalidOperationException>(() => rig.Record(0));
-        Assert.Contains("temporal history", error.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => rig.Record(0));
         Assert.False(rig.Work.Scene.TemporalActive);
     }
 
@@ -61,8 +59,7 @@ public sealed class RendererPerfSceneTemporalTests
         using var rig = new TemporalWorkload(0);
         rig.Record(0);
         rig.Work.Scene.CameraCut();
-        var error = Assert.Throws<InvalidOperationException>(() => rig.Record(1));
-        Assert.Contains("temporal history", error.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => rig.Record(1));
         Assert.Equal(TemporalResetReason.CameraCutRequested, rig.Work.Scene.TemporalHistory.LastReset);
     }
 

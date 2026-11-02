@@ -317,7 +317,7 @@ public sealed class RendererPerfCounterTests
                 if (device is IGpuFencedReadback readback)
                     Assert.Equal(new IntPtr(123), readback.MapForRead(new FakeTexture(4, 4, 1, 1, GpuPixelFormat.R8G8B8A8UNorm), device.Factory.CreateFence()).Data);
                 if (device is IGpuResourceMemoryDiagnostics memory)
-                    Assert.Equal("test memory snapshot", Assert.Throws<NotSupportedException>(() => memory.ReadMemorySnapshot()).Message);
+                    Assert.Same(native.MemoryFailure, Assert.Throws<NotSupportedException>(() => memory.ReadMemorySnapshot()));
                 if (device is IGpuDeviceLifecycle lifecycle) { lifecycle.MarkDeviceDisposed(); Assert.Equal(42, native.Commands.Events[0]); }
             }
         }
@@ -431,6 +431,7 @@ public sealed class RendererPerfCounterTests
         internal System.Collections.Generic.List<GpuPerfTimestampTestPool> Pools => _inner.Pools;
         internal IGpuCommandList? ForwardUpdates, LastSubmitted;
         internal int BufferUploads;
+        internal readonly NotSupportedException MemoryFailure = new("test memory snapshot");
         public IGpuResourceFactory Factory => this;
         public GpuBackendKind Backend => _inner.Backend;
         public GpuCapabilities Capabilities => _inner.Capabilities;
@@ -444,7 +445,7 @@ public sealed class RendererPerfCounterTests
         public bool SwapchainCopyable => true;
         public void CopySwapchainColor(IGpuCommandList commands, IGpuTexture destination) => commands.CopyTexture(destination, destination);
         public MappedData MapForRead(IGpuTexture staging, IGpuFence fence) => new(new IntPtr(123), 16, 64);
-        public GpuResourceMemorySnapshot ReadMemorySnapshot() => throw new NotSupportedException("test memory snapshot");
+        public GpuResourceMemorySnapshot ReadMemorySnapshot() => throw MemoryFailure;
         public void MarkDeviceDisposed() => Commands.Event(42);
         public int GetDeviceRemovedReason() => 17;
         public void Submit(IGpuCommandList commands) { LastSubmitted = commands; }

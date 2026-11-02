@@ -119,8 +119,8 @@ public sealed partial class RendererPerfColdLifecycleTests
             var post = new TemporalPostTargets(device);
             post.Ensure(res, scene.TemporalHistory, 8, 8, false);
             typeof(Scene3D).GetField("_temporalPost", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(scene, post);
-            postTail = Field<FakeTexture>(post, "_pingB");
-            Field<FakeTexture>(post, "_pingA").OnDispose = () => { observed.Add("temporal.post"); throw temporal; };
+            postTail = (FakeTexture)post.PingB;
+            ((FakeTexture)post.PingA).OnDispose = () => { observed.Add("temporal.post"); throw temporal; };
             depthTail = (FakeTexture)scene.TemporalHistory.PreviousDepth(1);
             depthTail.OnDispose = () => { observed.Add("temporal.history"); throw temporalTail; };
             return work;

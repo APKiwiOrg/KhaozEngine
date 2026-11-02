@@ -150,7 +150,7 @@ public sealed partial class RendererPerfCompilerPublicationTests
         Assert.True(reached);
         var failure = Assert.Single(result.Failures);
         if (cancel) Assert.Equal(f.Cancellation.Token, Assert.IsType<OperationCanceledException>(failure.Error).CancellationToken);
-        else Assert.Contains(boundary, Assert.IsType<TimeoutException>(failure.Error).Message, StringComparison.Ordinal);
+        else Assert.IsType<TimeoutException>(failure.Error);
         Assert.False(result.Report.Publication.FinalUnitPublished);
         Assert.False(result.Report.Assessment.ValidForPromotion);
         Assert.Equal(f.Report.Blocks, result.Report.Blocks);

@@ -83,7 +83,7 @@ public sealed partial class RendererPerfColdLifecycleTests
             Assert.Same(baseAtlas.Texture, scene.BoundPointShadowTexture);
             Assert.Same(transientAtlas.Texture, scene.BoundPointShadowTransientTexture);
             var model = Field<ModelRenderer>(scene, "_model");
-            modelUniform = Field<SubmissionTestBuffer>(model, "_ubo");
+            modelUniform = (SubmissionTestBuffer)model.SharedFrameUniforms;
             modelDefault = Field<FakeTexture>(model, "_white");
             modelSet = Field<FakeResourceSet>(model, "_defaultSet");
             Assert.Contains(receivers[0].Resources, r => ReferenceEquals(r, modelUniform));

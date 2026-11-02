@@ -45,7 +45,7 @@ public sealed partial class RendererPerfCompilerPublicationTests
             Assert.Equal(3, outcome.Report.Publication.FailureText.OmittedFailures);
             Assert.True(outcome.Report.Publication.FailureText.RequiredUtf8Bytes > 16777216);
         }
-        else Assert.Equal(final.Message, outcome.Report.Publication.OriginalFailure);
+        else Assert.Equal("actual final write", outcome.Report.Publication.OriginalFailure);
         _output.WriteLine("actual final/correction/recovery events=3 partialExists=true textComplete={0} required={1}",
             outcome.Report.Publication.FailureText.Complete, outcome.Report.Publication.FailureText.RequiredUtf8Bytes);
         System.IO.Directory.Delete(directory, true);

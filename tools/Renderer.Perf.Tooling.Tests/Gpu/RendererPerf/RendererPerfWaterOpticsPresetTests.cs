@@ -140,7 +140,8 @@ public sealed class RendererPerfWaterOpticsPresetTests
         json["preset"] = retired;
         var error = Assert.Throws<RendererPerfProtocolException>(() => RendererPerfRehearsalManifestTests.Parse(json));
         Assert.Equal("Preset", error.Code);
-        Assert.Equal("Unknown renderer preset.", error.Message);
+        Assert.DoesNotContain(retired, RendererPerfSchedules.Presets);
+        Assert.Equal("Preset", Assert.Throws<RendererPerfProtocolException>(() => RendererPerfSchedules.For(retired)).Code);
     }
 
     [Theory]

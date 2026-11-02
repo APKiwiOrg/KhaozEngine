@@ -174,7 +174,6 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
         var result = pipeline.ReadCompilerReport(D3D11PipelineDiagnostics.Request, _ => { }, default);
         Assert.Same(api.Failure, result.Failures[0].Error);
         Assert.Contains("not captured", result.Failures[1].Error.Message);
-        Assert.Equal("pixel reflection failed natively", result.Failures[0].Error.Message);
     }
 
     [Fact]

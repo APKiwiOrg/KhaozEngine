@@ -97,9 +97,7 @@ public sealed class RendererPerfEntrypointTests
         void Inspect(string site, IGpuCommandList commands)
         {
             if (FailureSite is not null || recorder.FrameFailure(Frame) is null) return;
-            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-            FailureSite = site + ", host=" + ReferenceEquals(RendererPerfCommandList.Unwrap(commands), recorder.FrameCommands)
-                + ", marker=" + typeof(RendererPerfRecorder).GetField("_nextMarker", flags)!.GetValue(recorder);
+            FailureSite = site + ", host=" + ReferenceEquals(RendererPerfCommandList.Unwrap(commands), recorder.FrameCommands);
         }
         public void BeginPass(IGpuCommandList commands, RenderPassKey key) { Trace.BeginPass(commands, key); inner.BeginPass(commands, key); Inspect("begin " + key, commands); }
         public void EndPass(IGpuCommandList commands, RenderPassKey key) { inner.EndPass(commands, key); Trace.EndPass(commands, key); Inspect("end " + key, commands); }

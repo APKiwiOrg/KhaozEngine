@@ -118,7 +118,7 @@ public sealed class RendererPerfControlAdmissionTests
             RendererPerfControls.Create(device, new(4, "1", facts.WorkSha256, 32, 64)));
 
         Assert.Contains("Control 4", error.Message, StringComparison.Ordinal);
-        Assert.Contains("compute", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Compatibility", error.Code);
         Assert.Equal(0, device.TextureAttempts);
         Assert.Equal(0, device.Submissions);
     }

@@ -37,12 +37,13 @@ public sealed class RendererPerfBatchFailureTests
         rig.Session.CompleteBatch(samples.AsSpan(0, 3));
         Assert.NotNull(rig.Session.ReadInfo().Drain);
         for (int i = 3; i < 6; i++) rig.Session.Frame(i, ref samples[i]);
+        var drain = new InvalidOperationException("native drain failed");
         rig.Device.Trace = op =>
         {
-            if (op == "drain") throw new InvalidOperationException("native drain failed");
+            if (op == "drain") throw drain;
         };
         var failure = Assert.Throws<GpuDiagnosticFailureException>(() => rig.Session.CompleteBatch(samples.AsSpan(3, 3)));
-        Assert.Equal("native drain failed", Assert.Single(failure.Failures).Error.Message);
+        Assert.Same(drain, Assert.Single(failure.Failures).Error);
         rig.Device.Trace = null;
         var failed = rig.Session.ReadInfo();
         Assert.Null(failed.Drain);

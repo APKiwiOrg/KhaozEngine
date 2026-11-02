@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading;
 using KhaozEngine.Gpu;
@@ -17,8 +18,9 @@ public sealed partial class RendererPerfMetalDiagnosticsTests
     public void Device_orphan_route_uses_its_ledger_and_the_injected_production_owner()
     {
         var owner = typeof(MetalGpuDevice).GetMethod("CreateOrphanTarget", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var shared = typeof(MetalGpuDevice).GetMethod("CreateOrphanTarget", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var memory = typeof(MetalGpuDevice).GetProperty(nameof(MetalGpuDevice.Memory), BindingFlags.NonPublic | BindingFlags.Instance)!.GetMethod!;
+        var shared = ((Func<IMetalResourceNative, IDeviceLiveness, MetalMemoryDiagnostics, MetalDrawableSize, GpuPixelFormat, MetalTexture>)MetalGpuDevice.CreateOrphanTarget).Method;
+        Expression<Func<MetalGpuDevice, MetalMemoryDiagnostics>> memoryAccess = device => device.Memory;
+        var memory = ((PropertyInfo)((MemberExpression)memoryAccess.Body).Member).GetMethod!;
         var calls = IlCallGraph.Callees(owner);
         Assert.Contains(memory, calls);
         Assert.Contains(shared, calls);

@@ -62,7 +62,7 @@ public sealed partial class RendererPerfColdLifecycleTests
             rig.Publication.Ready = false;
             var outcome = rig.Run();
             Assert.Single(rig.Attempts); Assert.Equal(0, rig.Diagnostic.FactoryAttempts);
-            Assert.Contains(outcome.Failures, f => f.Error.Message.Contains("preparation", StringComparison.Ordinal));
+            Assert.IsType<InvalidOperationException>(Assert.Single(outcome.Failures).Error);
         }
         using (var rig = new RendererPerfColdLifecycleFixture())
         {

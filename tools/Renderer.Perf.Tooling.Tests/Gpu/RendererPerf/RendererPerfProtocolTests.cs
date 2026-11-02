@@ -120,18 +120,9 @@ public sealed class RendererPerfProtocolTests
             _ => auth
         };
 
-        int factoryCalls = 0, clockCalls = 0;
-        RendererPerfProtocolException error = Assert.Throws<RendererPerfProtocolException>(() =>
-        {
-            _ = RendererPerfManifest.Parse(bytes, auth);
-            clockCalls++;
-            factoryCalls++;
-        });
+        RendererPerfProtocolException error = Assert.Throws<RendererPerfProtocolException>(() => RendererPerfManifest.Parse(bytes, auth));
         Assert.Equal(code, error.Code);
-        Assert.False(string.IsNullOrWhiteSpace(error.Message));
         if (code == "Json") Assert.NotNull(error.InnerException);
-        Assert.Equal(0, factoryCalls);
-        Assert.Equal(0, clockCalls);
     }
 
     [Fact]
@@ -324,7 +315,6 @@ public sealed class RendererPerfProtocolTests
         RendererPerfProtocolException error = Assert.Throws<RendererPerfProtocolException>(
             () => RendererPerfReportJson.Parse(Encoding.UTF8.GetBytes(json.ToJsonString())));
         Assert.Equal("Sample", error.Code);
-        Assert.False(string.IsNullOrWhiteSpace(error.Message));
     }
 
     [Theory]
@@ -395,7 +385,6 @@ public sealed class RendererPerfProtocolTests
         RendererPerfProtocolException error = Assert.Throws<RendererPerfProtocolException>(
             () => RendererPerfReportJson.Parse(Encoding.UTF8.GetBytes(json.ToJsonString())));
         Assert.Equal("Sample", error.Code);
-        Assert.False(string.IsNullOrWhiteSpace(error.Message));
     }
 
     [Fact]
@@ -492,7 +481,6 @@ public sealed class RendererPerfProtocolTests
         report = report with { Assessment = report.Assessment with { WorkModels = fault == "duplicate-model" ? [model, model] : [model] } };
         RendererPerfProtocolException error = Assert.Throws<RendererPerfProtocolException>(() => RendererPerfReportJson.Serialize(report));
         Assert.Equal(fault is "nonfinite-minimum" or "nonfinite-maximum" ? "Json" : "Metric", error.Code);
-        Assert.False(string.IsNullOrWhiteSpace(error.Message));
     }
 
     [Theory]

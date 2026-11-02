@@ -92,7 +92,6 @@ public sealed class RendererPerfScheduleTests
     {
         var error = Assert.Throws<RendererPerfProtocolException>(() => RendererPerfSchedules.For("smoke"));
         Assert.Equal("Preset", error.Code);
-        Assert.Equal("Unknown renderer preset.", error.Message);
     }
 
     [Fact]

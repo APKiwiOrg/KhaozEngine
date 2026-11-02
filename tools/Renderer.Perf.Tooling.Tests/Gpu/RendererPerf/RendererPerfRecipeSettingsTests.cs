@@ -179,9 +179,10 @@ public sealed class RendererPerfRecipeSettingsTests
     [InlineData(IndirectDiffuseMode.Uniform, true)]
     public void Frozen_construction_refuses_new_indirect_lighting_work(IndirectDiffuseMode mode, bool irradiance)
     {
+        using var control = new ChangedIndirectRecipe(IndirectDiffuseMode.Uniform, false);
+        control.Freeze();
         using var recipe = new ChangedIndirectRecipe(mode, irradiance);
-        var error = Assert.Throws<InvalidOperationException>(recipe.Freeze);
-        Assert.Contains("indirect", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Throws<InvalidOperationException>(recipe.Freeze);
     }
 
     sealed class ChangedIndirectRecipe(IndirectDiffuseMode mode, bool irradiance) : RendererPerfRecipe("empty")

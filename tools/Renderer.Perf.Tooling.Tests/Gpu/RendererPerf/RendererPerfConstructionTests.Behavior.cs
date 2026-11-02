@@ -135,7 +135,7 @@ public sealed partial class RendererPerfConstructionTests
         var failure = new InvalidOperationException("native pipeline refused"); native.FactoryFailure = failure;
         Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => device.Factory.CreateComputePipeline(new(shader))));
         capture.EndOperation(); var inventory = capture.Freeze();
-        var e = inventory.FactoryEvents[1]; Assert.Equal(failure.Message, e.Failure); Assert.Null(e.OutputId);
+        var e = inventory.FactoryEvents[1]; Assert.Equal("native pipeline refused", e.Failure); Assert.Null(e.OutputId);
         Assert.Empty(inventory.Occurrences); Assert.Single(inventory.Recipes); Assert.Equal(2, native.FactoryAttempts);
         Assert.Equal(GpuDiagnosticStatus.Invalid, inventory.Recipes[0].CodeGenerationSha256.Status);
     }

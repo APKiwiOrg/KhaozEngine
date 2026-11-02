@@ -72,7 +72,8 @@ public sealed partial class RendererPerfConstructionTests
     {
         using var native = new RendererPerfConstructionFixture();
         var capture = new RendererPerfConstructionCapture(OneOperation());
-        var original = new InvalidOperationException("original frame factory failure");
+        const string failureText = "original frame factory failure";
+        var original = new InvalidOperationException(failureText);
         using (var session = Session(native, capture, new(() => 0, 1000), (d, _) => new Work(d)
         {
             BeforePrepare = device =>
@@ -85,9 +86,9 @@ public sealed partial class RendererPerfConstructionTests
             RendererPerfFrameSample sample = default;
             var frameFailure = Assert.Throws<GpuDiagnosticFailureException>(() => session.Frame(0, ref sample));
             Assert.Same(original, Assert.Single(frameFailure.Failures).Error);
-            Assert.Equal(original.Message, session.ReadInfo().Failure);
+            Assert.Equal(failureText, session.ReadInfo().Failure);
             Assert.Empty(sample.Metrics);
-            Assert.Equal(original.Message, Assert.Single(sample.Errors));
+            Assert.Equal(failureText, Assert.Single(sample.Errors));
             Assert.Contains("capacity", capture.Failure!, StringComparison.Ordinal);
         }
         var i = capture.Freeze(); Assert.False(i.Complete); Assert.Equal(2, native.FactoryAttempts);

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
@@ -23,8 +22,7 @@ public sealed class RendererPerfShaderIdentityTests
     {
         string name = typeof(ShaderSources).FullName + "." + field;
         string source = (string)typeof(ShaderSources).GetField(field)!.GetValue(null)!;
-        var sources = (SortedDictionary<string, string>)typeof(RendererPerfExecutable)
-            .GetMethod("ShaderSourcesByName", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, null)!;
+        SortedDictionary<string, string> sources = RendererPerfExecutable.ShaderSourcesByName();
         Assert.True(sources.ContainsKey(name), "Generated GPU source is absent: " + name);
         Assert.Equal(source, sources[name]);
         Assert.Equal(Hash(source), RendererPerfExecutable.ShaderHashes[name]);

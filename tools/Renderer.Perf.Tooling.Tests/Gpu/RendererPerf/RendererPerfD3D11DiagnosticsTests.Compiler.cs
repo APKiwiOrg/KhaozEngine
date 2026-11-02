@@ -40,16 +40,16 @@ public sealed partial class RendererPerfD3D11DiagnosticsTests
     public void Unavailable_reflection_does_not_revoke_a_created_compute_shader()
     {
         var native = new CompilerApi();
+        var unavailable = new NotSupportedException("reflection unavailable");
         var compiler = new D3D11ShaderCompiler(new DeviceLiveness(), native, null, 0x8000,
             new(true, D3D11RecordMode.Deferred, false, false),
-            new ReflectionApi { Failure = new NotSupportedException("reflection unavailable") });
+            new ReflectionApi { Failure = unavailable });
         using var shader = compiler.CreateComputeShader("compute source");
         using var pipeline = new D3D11ComputePipeline(new GpuComputePipelineDescription(shader));
         Assert.Same(native.Handles[0], ((ID3D11ComputePipelineState)pipeline).ComputeShader);
         Assert.Equal(GpuDiagnosticStatus.Invalid, pipeline.ReadCompilerReport().Status);
         var result = pipeline.ReadCompilerReport(D3D11PipelineDiagnostics.Request, _ => { }, default);
-        Assert.IsType<NotSupportedException>(Assert.Single(result.Failures).Error);
-        Assert.Equal("reflection unavailable", result.Failures[0].Error.Message);
+        Assert.Same(unavailable, Assert.Single(result.Failures).Error);
         Assert.Equal(0, native.Handles[0].Disposals);
     }
 

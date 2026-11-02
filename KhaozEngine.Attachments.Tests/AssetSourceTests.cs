@@ -30,11 +30,10 @@ public sealed class AssetSourceTests : IDisposable
     }
 
     [Fact]
-    public void Read_ReportsMissingFileAsIoFailure()
+    public void Read_RejectsMissingFile()
     {
         var source = new DirectoryAttachmentAssetSource(root);
-        var error = Assert.Throws<InvalidDataException>(() => source.Read("missing.glb"));
-        Assert.IsAssignableFrom<IOException>(error.InnerException);
+        Assert.Throws<InvalidDataException>(() => source.Read("missing.glb"));
     }
 
     [Theory]

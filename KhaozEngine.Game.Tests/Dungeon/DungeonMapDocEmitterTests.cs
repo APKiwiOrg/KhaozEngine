@@ -84,13 +84,17 @@ namespace KhaozEngine.Tests.Dungeon
         {
             DungeonLayout layout = DungeonGenerator.Generate(SingleFloorConfig(), 1UL);
             var kit = new DungeonKitMap();
+            foreach (DungeonPiece piece in Enum.GetValues<DungeonPiece>())
+            {
+                if (piece != DungeonPiece.Wall) kit.Map(piece, piece.ToString());
+            }
             var plot = new DungeonPlotTransform(0f, 0f, 0f, 0f);
             var target = new MapDocument();
 
             InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
                 () => DungeonMapDocEmitter.Emit(layout, kit, plot, target));
 
-            Assert.Matches("No kit id mapped for dungeon piece '\\w+'\\.", ex.Message);
+            Assert.Contains(nameof(DungeonPiece.Wall), ex.Message);
         }
 
         // The first seed in the scanned range whose single-floor layout carries at least one Spawn marker,

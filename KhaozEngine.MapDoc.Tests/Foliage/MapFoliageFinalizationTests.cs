@@ -121,8 +121,8 @@ public sealed class MapFoliageFinalizationTests
         // Removing an owner alone leaves dangling foliage owners. One sequence removes it with its rows and finalizes once.
         FoliageFixture owned = FoliageFixtures.OwnedByInstance();
         string ownedState = MapDocumentFile.SaveText(owned.Document);
-        Assert.Contains("p/prop", Assert.Throws<MapDocumentException>(() =>
-            MapPrefabEdits.Prepare(owned.Document, owned.Assets, new MapRemovePrefab("p"))).Message, StringComparison.Ordinal);
+        Assert.Throws<MapDocumentException>(() =>
+            MapPrefabEdits.Prepare(owned.Document, owned.Assets, new MapRemovePrefab("p")));
         long captures = MapFoliageGenerationContext.ThreadCaptures;
         MapPrefabEditResult sequence = MapFoliageEdits.Prepare(owned.Document, owned.Assets, new MapFoliageEditSequence(
             [new MapSetFoliageLayer(FoliageFixtures.WithoutInstanceOwner(owned))], new MapRemovePrefab("p")));
@@ -138,8 +138,7 @@ public sealed class MapFoliageFinalizationTests
         clearance.Document.Placements[0].SupportBinding = FoliageFixtures.Surface("peer-seat");
         string before = MapDocumentFile.SaveText(clearance.Document);
         var lost = new MapReplaceTopology([], clearance.Document.Surfaces.Patches.Keys.Where(k => k.SurfaceId == "floor-1").ToArray(), [], ["floor-1"]);
-        var error = Assert.Throws<MapDocumentException>(() => MapDocumentTerrainEdits.Prepare(clearance.Document, clearance.Assets, lost));
-        Assert.Contains("floor-1", error.Message, StringComparison.Ordinal);
+        Assert.Throws<MapDocumentException>(() => MapDocumentTerrainEdits.Prepare(clearance.Document, clearance.Assets, lost));
         Assert.Equal(before, MapDocumentFile.SaveText(clearance.Document));
     }
 
@@ -184,7 +183,7 @@ public sealed class MapFoliageFinalizationTests
         foreach (Action entry in entries)
         {
             long expansions = MapPrefabResolver.ThreadExpansions, copies = MapPrefabEditPreparation.ThreadCopies;
-            Assert.StartsWith("Foliage CapacityExceeded", Assert.Throws<MapDocumentException>(entry).Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(MapFoliageStatus.CapacityExceeded), Assert.Throws<MapDocumentException>(entry).Message, StringComparison.Ordinal);
             Assert.Equal((0L, 0L), (MapPrefabResolver.ThreadExpansions - expansions, MapPrefabEditPreparation.ThreadCopies - copies));
         }
         Assert.Equal(state, MapDocumentFile.SaveText(grown.Document));

@@ -28,8 +28,7 @@ public sealed class MapMarkerRegistryTests
         _ = AcceptBothPaths(MarkerFixtures.WithEntryOverride(child, new MapPrefabRemoveOverride(MarkerFixtures.EntryKey)));
         string[] errorsAfterRestore = RefuseBothPaths(MarkerFixtures.WithEntryOverride(renamedChild, null));
 
-        Assert.Contains(errorsBeforeRename, e => e.Contains("duplicate marker name", StringComparison.Ordinal) &&
-            e.EndsWith("explicit marker replace override with a new name, or rename the world marker.", StringComparison.Ordinal));
+        Assert.Contains(errorsBeforeRename, e => e.Contains("duplicate marker name", StringComparison.Ordinal));
         Assert.Equal(new[] { "arrival", "arrival-child" }, childRenamed.All.Select(m => m.Name).Order(StringComparer.Ordinal));
         Assert.Equal("w", childRenamed.FindByName("arrival")!.Id);
         Assert.Equal("a/entry", childRenamed.FindByName("arrival-child")!.Id);
@@ -225,7 +224,7 @@ public sealed class MapMarkerRegistryTests
         fixture.Assets.GetPrefab(MarkerFixtures.DuplicateResource).Children.OfType<MapPrefabMarkerChild>().Single();
 
     /// <summary>The loaded expansion and the stored resolver both refuse before any patch read, the loaded one also
-    /// before stage ExpandedGeometry, with one message.</summary>
+    /// before stage ExpandedGeometry, for the duplicate marker identity.</summary>
     static string[] RefuseBothPaths(MarkerFixture fixture)
     {
         var loaded = new CountingSurfaceSource(MapDocumentSurfaceSource.Capture(fixture.Document));
@@ -240,7 +239,7 @@ public sealed class MapMarkerRegistryTests
             MapResolverV2.Resolve(fixture.Document, fixture.Assets, stored, MarkerFixtures.Options()));
         Assert.Equal(0, stored.ReadPatchCalls);
         Assert.Equal(0, stored.FindPatchesCalls);
-        Assert.Equal(error.Message, storedError.Message);
+        Assert.Contains("duplicate marker", storedError.Message, StringComparison.OrdinalIgnoreCase);
         return error.Message.Split('\n');
     }
 

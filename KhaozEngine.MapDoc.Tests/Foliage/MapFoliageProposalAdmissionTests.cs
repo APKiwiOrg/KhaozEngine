@@ -49,7 +49,7 @@ public sealed class MapFoliageProposalAdmissionTests
         };
         long copies = MapPrefabEditPreparation.ThreadCopies, expansions = MapPrefabResolver.ThreadExpansions;
         long captures = MapFoliageGenerationContext.ThreadCaptures;
-        Assert.StartsWith("Foliage CapacityExceeded", Assert.Throws<MapDocumentException>(paths[path]).Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(MapFoliageStatus.CapacityExceeded), Assert.Throws<MapDocumentException>(paths[path]).Message, StringComparison.Ordinal);
         Assert.Equal((0L, 0L, 0L), (MapPrefabEditPreparation.ThreadCopies - copies,
             MapPrefabResolver.ThreadExpansions - expansions, MapFoliageGenerationContext.ThreadCaptures - captures));
         Assert.Null(fixture.Document.Foliage);

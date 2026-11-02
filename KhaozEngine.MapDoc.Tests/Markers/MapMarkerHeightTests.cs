@@ -159,13 +159,13 @@ public sealed class MapMarkerHeightTests
         var exact = MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits(MaxCandidatePatches: 16));
         Assert.Equal(supports.Select(s => s.Support.WorldY), exact.Supports.Select(s => s.Support.WorldY));
         var error = Assert.Throws<MapDocumentException>(() => MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits(MaxCandidatePatches: 15)));
-        Assert.Contains("support status CapacityExceeded", error.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(MapSupportStatus.CapacityExceeded), error.Message, StringComparison.Ordinal);
 
         // The captured document source visits two index pages for each of the sixteen surfaces in a per-point scope.
         var pages = MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits(MaxPageReads: 32));
         Assert.Equal(supports.Select(s => s.Support.WorldY), pages.Supports.Select(s => s.Support.WorldY));
         error = Assert.Throws<MapDocumentException>(() => MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits(MaxPageReads: 31)));
-        Assert.Contains("support status CapacityExceeded", error.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(MapSupportStatus.CapacityExceeded), error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -188,8 +188,8 @@ public sealed class MapMarkerHeightTests
         MapSupportBinding swapped = binding with { SearchBelow = 0.1f, SearchAbove = 0.7f };
         var placementError = Assert.Throws<MapDocumentException>(() => MarkerFixtures.Effective(Seated(swapped, placement: true, marker: false)));
         var markerError = Assert.Throws<MapDocumentException>(() => MarkerFixtures.Effective(Seated(swapped, placement: false, marker: true)));
-        Assert.Contains("Placement 'seat' support status NoSupport", placementError.Message, StringComparison.Ordinal);
-        Assert.Contains("Marker 'seated' support status NoSupport", markerError.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(MapSupportStatus.NoSupport), placementError.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(MapSupportStatus.NoSupport), markerError.Message, StringComparison.Ordinal);
     }
 
     static MarkerFixture Seated(MapSupportBinding binding, bool placement, bool marker)

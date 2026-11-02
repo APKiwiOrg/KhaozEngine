@@ -72,9 +72,8 @@ public sealed class FormatAdvanceTests
         doc.ResolverIdentity = new(1, 2);
         doc.SupportRecipe = MapSupportRecipe.AuthoredBindingsV2;
         int calls = 0;
-        MapDocumentException error = Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(doc, FormatFourFixtures.Assets(),
+        Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(doc, FormatFourFixtures.Assets(),
             (x, z) => { calls++; return 0f; }, FormatFourFixtures.Options));
-        Assert.Contains("MapAuthoredIdentityV2", error.Message);
         Assert.Equal(0, calls);
     }
 

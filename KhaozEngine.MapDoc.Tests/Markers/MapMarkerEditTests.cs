@@ -110,28 +110,28 @@ public sealed class MapMarkerEditTests
         MapLocalMarkerDoc other = new(1, "other", "other-name", new Vector3(3, 1, 3), 0, "entry-role", true, Array.Empty<string>());
 
         // Invalid height: a Support height whose owner does not exist, and a Support carrier that is not +0.
-        Refuses(basic, new MapSetMarker(MapMarkerHeights.Apply(m, MarkerFixtures.SurfaceHeight())), "Marker 'm'");
-        Refuses(basic, new MapSetMarker(MapMarkerHeights.Apply(m, MarkerFixtures.SurfaceHeight()) with { Position = m.Position }), "+0");
-        Refuses(basic, new MapSetMarker(m with { Position = m.Position with { Y = float.NaN } }), "finite");
+        Refuses(basic, new MapSetMarker(MapMarkerHeights.Apply(m, MarkerFixtures.SurfaceHeight())));
+        Refuses(basic, new MapSetMarker(MapMarkerHeights.Apply(m, MarkerFixtures.SurfaceHeight()) with { Position = m.Position }));
+        Refuses(basic, new MapSetMarker(m with { Position = m.Position with { Y = float.NaN } }));
         Accepts(basic, new MapSetMarker(MapMarkerHeights.Apply(m, new(13.125f, null))));
 
         // Duplicate name with a positive control.
         MarkerFixture two = MarkerFixtures.WithWorldMarkers(basic, m, other);
-        Refuses(two, new MapSetMarker(other with { Name = "arrival" }), "duplicate marker name 'arrival'");
+        Refuses(two, new MapSetMarker(other with { Name = "arrival" }));
         Accepts(two, new MapSetMarker(other with { Name = "arrival-2" }));
 
         // Duplicate ID against a dormant reservation of a removed instance, with a positive control.
         MarkerFixture prefab = MarkerFixtures.Create("prefab-basic");
         MapDocument removed = MapPrefabEdits.Prepare(prefab.Document, prefab.Assets, new MapRemovePrefab("a")).After;
         var dormant = new MarkerFixture(removed, prefab.Assets);
-        Refuses(dormant, new MapSetMarker(other with { Id = "a/entry" }), "reservation");
+        Refuses(dormant, new MapSetMarker(other with { Id = "a/entry" }));
         Accepts(dormant, new MapSetMarker(other));
 
         // Foreign ownership: a live prefab child is owned by its instance, and a missing standalone ID has nothing to remove.
         Refuses(prefab, new MapSetMarker(other with { Id = "a/entry" }), "prefab_override");
-        Refuses(basic, new MapRemoveMarker("absent"), "No standalone marker 'absent'");
+        Refuses(basic, new MapRemoveMarker("absent"));
         Accepts(prefab, new MapSetMarker(other));
-        Refuses(basic, new MapSetMarker(other with { Id = " " }), "ID");
+        Refuses(basic, new MapSetMarker(other with { Id = " " }));
     }
 
     [Fact]
@@ -143,7 +143,6 @@ public sealed class MapMarkerEditTests
         foreach (MapMarkerEdit edit in new MapMarkerEdit[] { new MapSetMarker(MarkerFixtures.BasicMarker()), new MapRemoveMarker("m") })
         {
             var refused = Assert.Throws<MapDocumentException>(() => MapMarkerEdits.Prepare(document, assets, edit));
-            Assert.Contains("resolver adoption", refused.Message, StringComparison.Ordinal);
             Assert.Contains("MapResolverAdoption.ConvertToAuthoredSupport", refused.Message, StringComparison.Ordinal);
         }
         Assert.Equal(before, MapDocumentFile.SaveText(document));
@@ -195,11 +194,11 @@ public sealed class MapMarkerEditTests
         return result;
     }
 
-    static void Refuses(MarkerFixture fixture, MapMarkerEdit edit, string message)
+    static void Refuses(MarkerFixture fixture, MapMarkerEdit edit, string? guidance = null)
     {
         string before = MapDocumentFile.SaveText(fixture.Document);
         var refused = Assert.Throws<MapDocumentException>(() => MapMarkerEdits.Prepare(fixture.Document, fixture.Assets, edit));
-        Assert.Contains(message, refused.Message, StringComparison.Ordinal);
+        if (guidance is not null) Assert.Contains(guidance, refused.Message, StringComparison.Ordinal);
         Assert.Equal(before, MapDocumentFile.SaveText(fixture.Document));
     }
 

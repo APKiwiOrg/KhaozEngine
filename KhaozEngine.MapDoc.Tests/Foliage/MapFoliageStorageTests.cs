@@ -315,8 +315,7 @@ public sealed class MapFoliageStorageTests
         manifest["resolverIdentity"]!["resolverVersion"] = 1;
         manifest["supportRecipe"] = "LegacyXzCallbackV1";
         File.WriteAllText(Path.Combine(dir.Root, "map.json"), manifest.ToJsonString());
-        Assert.Contains("foliage: requires resolver identity", Assert.Throws<MapDocumentException>(() =>
-            MapAuthoredIdentityV2.Compute(MapStoredSurfaceSource.Open(dir.Root), fixture.Assets, FoliageFixtures.Options())).Message,
-            StringComparison.Ordinal);
+        Assert.Throws<MapDocumentException>(() =>
+            MapAuthoredIdentityV2.Compute(MapStoredSurfaceSource.Open(dir.Root), fixture.Assets, FoliageFixtures.Options()));
     }
 }

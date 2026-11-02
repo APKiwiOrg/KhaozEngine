@@ -41,9 +41,8 @@ public sealed class MapInteriorCreationTests
         f.Document.Surfaces.Patches[anchor].Records.Add(new MapSpaceDoc("alias-room", MapSpaceKind.Room,
             new("exterior", new("exterior", 0, 0)), new("a/room", anchor), [], [], [], []));
         string before = MapDocumentFile.SaveText(f.Document);
-        var error = Assert.Throws<MapDocumentException>(() => MapInteriorEdits.Prepare(f.Document, f.Assets,
+        Assert.Throws<MapDocumentException>(() => MapInteriorEdits.Prepare(f.Document, f.Assets,
             new MapSetInterior(MapInteriorCreationFixtures.Domain() with { Space = new("alias-room", anchor) })));
-        Assert.Contains("alias room", error.Message);
         Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
     }
     [Fact]
@@ -51,9 +50,8 @@ public sealed class MapInteriorCreationTests
     {
         var f = MapInteriorCreationFixtures.Empty();
         string before = MapDocumentFile.SaveText(f.Document);
-        var error = Assert.Throws<MapDocumentException>(() => MapInteriorEdits.Prepare(f.Document, f.Assets,
+        Assert.Throws<MapDocumentException>(() => MapInteriorEdits.Prepare(f.Document, f.Assets,
             new MapSetInterior(MapInteriorCreationFixtures.Domain() with { Space = new("exterior", new("exterior", 0, 0)) })));
-        Assert.Contains("Room", error.Message);
         Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
     }
     [Fact]

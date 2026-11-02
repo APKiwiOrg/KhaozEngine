@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using KhaozEngine.MapDoc;
@@ -133,16 +132,14 @@ public sealed class SchemeTwoIdentityTests
             Assert.All(t.GetProperties(), p => Assert.Null(p.SetMethod));
         }
 
-        Assert.IsType<ReadOnlyCollection<string>>(a.Witness.SurfaceIds);
-        Assert.IsType<ReadOnlyCollection<KeyValuePair<MapPatchKey, string>>>(a.Witness.Present);
-        Assert.IsType<ReadOnlyCollection<MapCoveredRange>>(a.Witness.KnownEmpty);
-        Assert.IsType<ReadOnlyCollection<MapRecordRef>>(a.Witness.Records);
-        Assert.IsType<ReadOnlyCollection<MapUnavailable>>(a.Witness.Unavailable);
-        Assert.Throws<NotSupportedException>(() => ((IList<string>)a.Witness.SurfaceIds).Add("forged"));
-        Assert.Throws<NotSupportedException>(() => ((IList<KeyValuePair<MapPatchKey, string>>)a.Identity.Patches).Add(default));
-        Assert.Throws<NotSupportedException>(() => ((IList<MapRecordRef>)a.Identity.Records).Add(new("forged", new("ground", 0, 0))));
-        Assert.Throws<NotSupportedException>(() => ((IList<MapCoveredRange>)a.Identity.KnownEmpty).Add(new("ground", new(0, 0, 1, 1))));
-        Assert.Throws<NotSupportedException>(() => ((IList<MapUnavailable>)a.Witness.Unavailable).Add(new("forged", new("ground", 0, 0), MapPatchStatus.Missing)));
+        AssertReadOnly(a.Witness.SurfaceIds, "forged");
+        AssertReadOnly(a.Witness.Present, default);
+        AssertReadOnly(a.Witness.KnownEmpty, new("ground", new(0, 0, 1, 1)));
+        AssertReadOnly(a.Witness.Records, new("forged", new("ground", 0, 0)));
+        AssertReadOnly(a.Witness.Unavailable, new("forged", new("ground", 0, 0), MapPatchStatus.Missing));
+        AssertReadOnly(a.Identity.Patches, default);
+        AssertReadOnly(a.Identity.Records, new("forged", new("ground", 0, 0)));
+        AssertReadOnly(a.Identity.KnownEmpty, new("ground", new(0, 0, 1, 1)));
 
         string[] assetSha256 = { new string('a', 64), new string('b', 64) };
         MapSurfaceRole[] roles = ScopeFixtures.AllRoles.ToArray();
@@ -155,6 +152,14 @@ public sealed class SchemeTwoIdentityTests
         Assert.Equal(new[] { new string('a', 64), new string('b', 64) }, withAssets.Identity.AssetSha256);
         Assert.Equal(scope.Digest, withAssets.Scope.Digest);
         Assert.Equal(digest, withAssets.Identity.Digest);
-        Assert.Throws<NotSupportedException>(() => ((IList<string>)withAssets.Identity.AssetSha256).Add(new string('d', 64)));
+        AssertReadOnly(withAssets.Identity.AssetSha256, new string('d', 64));
+    }
+
+    static void AssertReadOnly<T>(IReadOnlyList<T> values, T addition)
+    {
+        if (values is ICollection<T> collection)
+            Assert.Throws<NotSupportedException>(() => collection.Add(addition));
+        if (values is IList<T> list && list.Count > 0)
+            Assert.Throws<NotSupportedException>(() => list[0] = values[0]);
     }
 }

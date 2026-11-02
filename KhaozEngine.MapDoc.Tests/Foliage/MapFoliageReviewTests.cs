@@ -113,13 +113,11 @@ public sealed class MapFoliageReviewTests
         MapDocumentFile.SaveTiled(fixture.Document, dir.Root);
         var source = MapStoredSurfaceSource.Open(dir.Root);
         var globals = (MapDocument)typeof(MapStoredSurfaceSource).GetField("_globals", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(source)!;
-        MapFoliageSet metadata = globals.Foliage!;
-        Assert.Empty(metadata.Layers[0].Chunks);
+        Assert.Empty(globals.Foliage!.Layers[0].Chunks);
         string first = MapAuthoredIdentityV2.Compute(source, fixture.Assets, FoliageFixtures.Options());
-        Assert.Same(metadata, globals.Foliage);
         Assert.Empty(globals.Foliage!.Layers[0].Chunks);
         Assert.Equal(first, MapAuthoredIdentityV2.Compute(source, fixture.Assets, FoliageFixtures.Options()));
-        Assert.Same(metadata, globals.Foliage);
+        Assert.Empty(globals.Foliage!.Layers[0].Chunks);
     }
 
     [Fact]

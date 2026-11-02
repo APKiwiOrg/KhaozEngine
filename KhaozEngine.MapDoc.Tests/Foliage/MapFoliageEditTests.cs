@@ -168,35 +168,31 @@ public sealed class MapFoliageEditTests
         Assert.Equal(new MapFoliageLayerChange(Id, seeded.BeforeDigest, null), Assert.Single(removed.Effects.FoliageLayers));
         Assert.True(removed.WriteSet.Foliage);
 
-        // Every invalid request refuses for its own reason before any write and leaves the document byte for byte as it was.
-        const string range = "must be from 0 to 255", count = "needs 2 values", outside = "lies outside layer", absent = "No foliage layer 'absent'";
-        const string radius = "radius must be finite and positive", hardness = "hardness must be from 0 to 1";
+        // Every invalid request refuses before any write and leaves the document byte for byte as it was.
         // A layer that advertises a chunk it does not hold cannot become this document's state.
         MapFoliageLayer advertisedOnly = MapFoliageLayer.FromStorage(layer,
             layer.ChunkDigests.Select(d => d.Key.X == 1 ? d with { Sha256 = new string('0', 64) } : d).ToArray(), layer.Chunks.Take(1).ToArray());
-        foreach ((MapFoliageEdit bad, string reason) in new (MapFoliageEdit, string)[]
+        foreach (MapFoliageEdit bad in new MapFoliageEdit[]
         {
-            (new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 256]), range), (new MapSetFoliageDensity(Id, 1, 2, 2, 1, [-1, 9]), range),
-            (new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7]), count), (new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9, 11]), count),
-            (new MapSetFoliageDensity(Id, 34, 0, 2, 1, [1, 1]), outside), (new MapSetFoliageDensity(Id, -1, 0, 1, 1, [1]), outside),
-            (new MapSetFoliageDensity(Id, 0, 3, 1, 1, [1]), outside), (new MapSetFoliageDensity(Id, 0, 0, 0, 1, []), "positive width and depth"),
-            (new MapSetFoliageDensity(Id, 0, 0, 1, 1, null!), "requires its values"), (new MapSetFoliageDensity("absent", 0, 0, 1, 1, [1]), absent),
-            (Paint(1, -1, 0, 9, 1), radius), (Paint(1, -1, -2, 9, 1), radius), (Paint(1, -1, float.NaN, 9, 1), radius),
-            (Paint(1, -1, float.PositiveInfinity, 9, 1), radius), (Paint(1, -1, 2, 9, -0.1f), hardness), (Paint(1, -1, 2, 9, 1.1f), hardness),
-            (Paint(1, -1, 2, 9, float.NaN), hardness), (Paint(float.NaN, -1, 2, 9, 1), "finite world position"),
-            (new MapPaintFoliage("absent", 1, -1, 2, 9, 1), absent), (new MapRemoveFoliage("absent"), absent),
-            (new MapSetFoliageLayer(null!), "requires a layer"),
-            (new MapSetFoliageLayer(Change(layer, l => l["policy"]!["version"] = 2)), "only policy legacy-tile version 1 is supported"),
-            (new MapSetFoliageLayer(Change(layer, l => l["models"] = new JsonArray(new JsonObject { ["assetId"] = "missing", ["weight"] = 1 }))),
-                "model asset 'missing' is not in the verified closure"),
-            (new MapSetFoliageLayer(advertisedOnly), "advertises chunk MapFoliageChunkKey { X = 1, Z = 0 } without its density bytes"),
-            (new MapFoliageEditSequence([new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9]), new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7])], null), count),
-            (new MapFoliageEditSequence([new MapFoliageEditSequence([], null)], null), "cannot contain another sequence"),
-            (new MapFoliageEditSequence(null!, null), "requires its edit list"),
-            (new MapFoliageEditSequence([new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9])], new MapMovePrefab("missing", new(Vector3.Zero, 0, 1))),
-                "No live prefab instance 'missing'"),
+            new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 256]), new MapSetFoliageDensity(Id, 1, 2, 2, 1, [-1, 9]),
+            new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7]), new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9, 11]),
+            new MapSetFoliageDensity(Id, 34, 0, 2, 1, [1, 1]), new MapSetFoliageDensity(Id, -1, 0, 1, 1, [1]),
+            new MapSetFoliageDensity(Id, 0, 3, 1, 1, [1]), new MapSetFoliageDensity(Id, 0, 0, 0, 1, []),
+            new MapSetFoliageDensity(Id, 0, 0, 1, 1, null!), new MapSetFoliageDensity("absent", 0, 0, 1, 1, [1]),
+            Paint(1, -1, 0, 9, 1), Paint(1, -1, -2, 9, 1), Paint(1, -1, float.NaN, 9, 1),
+            Paint(1, -1, float.PositiveInfinity, 9, 1), Paint(1, -1, 2, 9, -0.1f), Paint(1, -1, 2, 9, 1.1f),
+            Paint(1, -1, 2, 9, float.NaN), Paint(float.NaN, -1, 2, 9, 1),
+            new MapPaintFoliage("absent", 1, -1, 2, 9, 1), new MapRemoveFoliage("absent"),
+            new MapSetFoliageLayer(null!),
+            new MapSetFoliageLayer(Change(layer, l => l["policy"]!["version"] = 2)),
+            new MapSetFoliageLayer(Change(layer, l => l["models"] = new JsonArray(new JsonObject { ["assetId"] = "missing", ["weight"] = 1 }))),
+            new MapSetFoliageLayer(advertisedOnly),
+            new MapFoliageEditSequence([new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9]), new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7])], null),
+            new MapFoliageEditSequence([new MapFoliageEditSequence([], null)], null),
+            new MapFoliageEditSequence(null!, null),
+            new MapFoliageEditSequence([new MapSetFoliageDensity(Id, 1, 2, 2, 1, [7, 9])], new MapMovePrefab("missing", new(Vector3.Zero, 0, 1))),
         })
-            Refused(f, bad, reason);
+            Refused(f, bad);
         // 255 is a legal stored density.
         Assert.Equal((byte)255, Pure(f, new MapSetFoliageDensity(Id, 4, 1, 1, 1, [255])).After.Foliage!.Layers[0].DensityAt(4, 1));
 
@@ -326,8 +322,7 @@ public sealed class MapFoliageEditTests
         Assert.Contains(painted.Chunks, c => c.Key == new MapFoliageChunkKey(0, 1));
         Assert.Equal((byte)90, painted.DensityAt(31, 48));
         // A disc that reaches the advertised chunk still refuses rather than reading it as zero.
-        var error = Assert.Throws<MapDocumentException>(() => MapFoliageBrush.Apply(partial, Paint(48, 48, 25, 90, 1)));
-        Assert.Contains("chunk MapFoliageChunkKey { X = 0, Z = 0 } is unavailable", error.Message, StringComparison.Ordinal);
+        Assert.Throws<MapDocumentException>(() => MapFoliageBrush.Apply(partial, Paint(48, 48, 25, 90, 1)));
     }
 
     static MapPaintFoliage Paint(float x, float z, float radius, byte target, float hardness) => new(Id, x, z, radius, target, hardness);

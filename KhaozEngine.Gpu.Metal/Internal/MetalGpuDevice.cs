@@ -390,7 +390,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 return;
             }
 
-            if (!list.HasEarlyPrefix) _rings.EarlyFrames.RequireNoPending();
+            if (!list.HasEarlyPrefix) _rings.EarlyFrames.NoteDeviceWork();
 
             // Non-zero by construction on this arm: a sealed list holds a real buffer, because Begin throws
             // rather than sealing over a nil one.
@@ -572,7 +572,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // the uploads the caller has just made, which is exactly the case an explicit drain is asked for.
             // The flush COMMITS and does not wait, and it says whether it committed anything, because that is
             // what decides the second drain below.
-            _rings.EarlyFrames.RequireNoPending();
+            _rings.EarlyFrames.NoteDeviceWork();
             bool committed = _setup.Flush();
 
             // M-F5's DRAIN, counted, over everything a Submit ever took to the queue.

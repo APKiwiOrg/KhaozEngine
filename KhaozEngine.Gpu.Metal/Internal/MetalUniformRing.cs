@@ -188,7 +188,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (data.Length == 0) return;
 
-            _allocator.EarlyFrames.RequireWritable(segment, _readRecordings[segment]);
+            _allocator.EarlyFrames.NoteUniformWrite(segment, _readRecordings[segment]);
             CopyInto(_contents, segmentBase + offsetBytes, data);
         }
 

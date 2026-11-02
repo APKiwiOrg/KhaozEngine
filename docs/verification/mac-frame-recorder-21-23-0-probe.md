@@ -68,7 +68,9 @@ block since schema 10. `shaderGates.schedule[].gates` is zero in every block sin
 - `passTiming`: stage-boundary support, configuration, block schedule, correlated clocks, render
   signatures, encoder records and explicit evidence-loss counters described below.
 - `shaderGates`: gate names, block schedule, the state each callback applied and counts, described under Shader gates.
-- `earlySubmit`: `blockCallbacks` 72, `schedule` and `appliedPerCallback`, described under Early offscreen commit.
+- `earlySubmit`: `blockCallbacks` 72, `schedule`, `appliedPerCallback`, `tailDeviceWorkPerCallback`,
+  `prefixUniformRewritesPerCallback`, `tailDeviceWorkTotal` and `prefixUniformRewritesTotal`, described under Early
+  offscreen commit.
 
 ## Native timing records
 
@@ -316,13 +318,21 @@ it. The device's existing queue drain at teardown covers that prefix even though
 device follows the existing no-op release posture. No recovery buffer, extra GPU signal or wait is introduced.
 
 Uniform bindings record the segment's recording identity while sampling. After an early commit, a record-time write
-to any uniform buffer already referenced by the prefix is refused before copying bytes. Whole-buffer protection is
-conservative even for disjoint ranges. New tail-only uniform buffers remain writable. Device-level uploads, maps, WaitForIdle and
-foreign submissions are refused while an early frame awaits its final submission. Otherwise they could put setup
-uploads after a prefix that previously executed after them, or modify bytes the prefix is reading. This probe fails
-on such a shape instead of silently testing different inputs. Public timestamp batches already recorded on the list
-leave that frame unsplit, because their existing ownership is one command buffer. An externally held mapped pointer
-must still obey the ordinary resource-lifetime contract.
+to a uniform buffer already referenced by the prefix still happens, and `prefixUniformRewritesPerCallback` counts it
+against its callback. Unsplit, the prefix would have read those new bytes, so the analysis treats any callback with a
+nonzero count as contaminated and leaves it out of the comparison. Tracking is whole-buffer, so a disjoint range also
+counts. Tail-only uniform buffers, such as SpriteBatch's view-projection buffer, are never counted.
+
+Device-level uploads, maps, WaitForIdle and foreign submissions also still happen while an early frame awaits its
+final submission, and `tailDeviceWorkPerCallback` counts them. A real frame does this every time: SpriteBatch uploads
+its quads through the device after Render3D's final blit has bound the drawable, so refusing would fail every split
+frame. A ring-backed device write defers the pending segment, as the ring already does for in-flight segments. An
+ordinary buffer write keeps the same in-flight rules it has against any earlier frame. A setup upload made in the
+tail executes after the prefix, where unsplit it would have executed before the whole frame, which only matters if
+the prefix samples that texture. WaitForIdle waits for timeline values earlier submits registered, and the pending
+frame registers its own at its final submit, so it cannot wait on itself. The totals include work from other threads.
+Public timestamp batches already recorded on the list leave that frame unsplit, because their existing ownership is
+one command buffer. An externally held mapped pointer must still obey the ordinary resource-lifetime contract.
 
 `earlySubmit.schedule` contains `startCallback`, `endCallbackExclusive`, `startTimestamp`, `endTimestamp` and `enabled`.
 `appliedPerCallback` is true if at least one prefix actually committed in that callback. An ON block can contain false

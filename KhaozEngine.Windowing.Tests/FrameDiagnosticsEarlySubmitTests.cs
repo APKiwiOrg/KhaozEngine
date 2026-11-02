@@ -85,7 +85,7 @@ public sealed class FrameDiagnosticsEarlySubmitSummaryTests
             new([new(1, 1, 4, 31, 72), new(1, 2, 6, 41, 73), new(2, 3, 10, 61, 75)], 0, 0),
             new([new(1, 36, 2), new(1, 46, 2.008), new(2, 66, 2.03)], 0, 0), 0);
         var experiment = new FrameEarlySubmitSnapshot(72,
-            [new(0, 72, 0, 72, false), new(72, 80, 72, 80, true)], new bool[80]);
+            [new(0, 72, 0, 72, false), new(72, 80, 72, 80, true)], new bool[80], new int[80], new int[80], 0, 0);
         experiment.AppliedPerCallback[72] = experiment.AppliedPerCallback[73] = true;
         var passes = PassTimingSnapshot.Unavailable() with
         {

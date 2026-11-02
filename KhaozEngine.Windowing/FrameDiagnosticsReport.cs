@@ -24,7 +24,7 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
     public PassExperimentSnapshot Experiment { get; init; } = PassExperimentSnapshot.Unavailable();
     public FrameDiagnosticsShaderGateReport ShaderGates { get; init; } = FrameDiagnosticsShaderGateReport.Empty;
 
-    public FrameEarlySubmitSnapshot EarlySubmit { get; init; } = new(72, [], []);
+    public FrameEarlySubmitSnapshot EarlySubmit { get; init; } = new(72, [], [], [], [], 0, 0);
 
     internal FrameDiagnosticsReport WithEarlySubmit(FrameEarlySubmitSnapshot early) => this with
     {

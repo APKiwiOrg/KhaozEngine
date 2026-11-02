@@ -123,7 +123,7 @@ public sealed class MetalEarlyFrameSubmitTests
     }
 
     [Fact]
-    public void Early_uniform_reads_cannot_be_overwritten_and_off_timeline_updates_defer_until_the_final_signal()
+    public void Early_uniform_rewrites_and_tail_device_work_are_counted_and_off_timeline_updates_defer_until_the_final_signal()
     {
         using var harness = new MetalRingHarness(framesInFlight: 1);
         var ring = harness.NewRing(16, out _);
@@ -140,13 +140,17 @@ public sealed class MetalEarlyFrameSubmitTests
         list.Encoders.EnsureRenderEncoder(new(99));
         var lease = list.Arena.Take(4);
         list.SplitBeforeDrawableAcquire();
-        Assert.Throws<InvalidOperationException>(() => ring.Write(slot, 0, new byte[] { 9 }));
+        // A real frame's tail must never fail, so a rewrite of a prefix-read uniform is counted against its callback.
+        ring.Write(slot, 8, new byte[] { 9 });
+        Assert.Equal(1, capture.EarlySubmit.Snapshot(100).PrefixUniformRewritesPerCallback[72]);
         // A resource first referenced in the tail was not read by the prefix and remains writable.
         var tailRing = harness.NewRing(16, out _);
         tailRing.RecordRead(slot);
         tailRing.Write(slot, 0, new byte[] { 7 });
         Assert.Equal(7, tailRing.ReadSegment(slot, 0, 1)[0]);
-        Assert.Throws<InvalidOperationException>(harness.Rings.EarlyFrames.RequireNoPending);
+        // SpriteBatch uploads its quads through the device after the drawable is bound, so tail device work is counted.
+        harness.Rings.EarlyFrames.NoteDeviceWork();
+        Assert.Equal(1, capture.EarlySubmit.Snapshot(100).TailDeviceWorkPerCallback[72]);
         harness.Rings.UpdateBuffer(ring, 0, new byte[] { 9 });
         Assert.Equal(1, ring.ReadSegment(slot, 0, 1)[0]);
         Assert.True(ring.HasPendingPatchesFor(slot));
@@ -154,7 +158,8 @@ public sealed class MetalEarlyFrameSubmitTests
         Assert.True(lease.Buffer != tailLease.Buffer || lease.OffsetBytes != tailLease.OffsetBytes);
         list.End();
         ulong final = harness.Submit(list);
-        harness.Rings.EarlyFrames.RequireNoPending();
+        harness.Rings.EarlyFrames.NoteDeviceWork();
+        Assert.Equal(1, capture.EarlySubmit.Snapshot(100).TailDeviceWorkTotal);
         harness.Event.Completed = final;
         list.Begin();
         Assert.Equal(9, ring.ReadSegment(list.RingSegment, 0, 1)[0]);

@@ -71,6 +71,17 @@ internal static class MetalFrameTimingProbe
         if (Volatile.Read(ref _capture) is { } capture && capture.IsFrame(commands)) capture.EarlySubmit?.Applied(capture.CurrentCallback);
     }
 
+    // CurrentCallback is -1 off the frame thread, so such work reaches only the totals.
+    internal static void TailDeviceWork()
+    {
+        if (Volatile.Read(ref _capture) is { EarlySubmit: { } early } capture) early.TailDeviceWork(capture.CurrentCallback);
+    }
+
+    internal static void PrefixUniformRewrite()
+    {
+        if (Volatile.Read(ref _capture) is { EarlySubmit: { } early } capture) early.PrefixUniformRewrite(capture.CurrentCallback);
+    }
+
     internal static void ContinueFrame(MetalCommandList commands, IntPtr prefix, IntPtr tail)
     {
         if (Volatile.Read(ref _capture) is { } capture && capture.IsFrame(commands))

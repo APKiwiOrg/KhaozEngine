@@ -184,6 +184,7 @@ public static class SfxBakeCommands
             deps.Fs.WriteAllText(p.SidecarPath, new SfxSidecar
             {
                 Hash = p.Hash,
+                HashVersion = SfxHasher.HashVersion,
                 Key = e.Key,
                 GeneratedUtc = deps.UtcNowIso(),
                 Model = manifest.Model,

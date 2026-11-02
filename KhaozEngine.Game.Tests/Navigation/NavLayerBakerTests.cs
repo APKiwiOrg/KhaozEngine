@@ -665,19 +665,26 @@ public class NavLayerBakerTests
     [Fact]
     public void ProviderOverflow_Throws()
     {
-        var provider = new DelegateColumnProvider((x, z, surfaces) =>
+        // Writes every slot with a non-standable sample at strictly ascending heights, so the samples satisfy
+        // the provider contract and only the reported count can refuse. The baker's buffer is stack memory, so
+        // an unwritten slot would hold undefined data that could trip the ordering refusal instead.
+        static int FillAscending(Span<NavSurfaceSample> surfaces)
         {
-            // Reports one more surface than the caller's buffer can possibly hold.
-            return surfaces.Length + 1;
-        });
+            for (int i = 0; i < surfaces.Length; i++)
+                surfaces[i] = new NavSurfaceSample(false, i, float.PositiveInfinity);
+            return surfaces.Length;
+        }
+
+        // Reports one more surface than the caller's buffer can possibly hold.
+        var provider = new DelegateColumnProvider((x, z, surfaces) => FillAscending(surfaces) + 1);
 
         Assert.Throws<InvalidOperationException>(() => NavLayerBaker.BakeOverworldLayered(
             provider, minX: 0f, minZ: 0f, maxX: 4f, maxZ: 4f,
             cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: JumpHeight));
 
-        // The default samples are not standable, so only the count refuses. A full buffer is inside the contract.
+        // The same written samples with the exact buffer count are inside the contract and accepted.
         NavLayerBaker.BakeOverworldLayered(
-            new DelegateColumnProvider((x, z, surfaces) => surfaces.Length), minX: 0f, minZ: 0f, maxX: 4f, maxZ: 4f,
+            new DelegateColumnProvider((x, z, surfaces) => FillAscending(surfaces)), minX: 0f, minZ: 0f, maxX: 4f, maxZ: 4f,
             cellSize: 1f, stepHeight: StepHeight, agentHeight: AgentHeight, jumpHeight: JumpHeight);
     }
 

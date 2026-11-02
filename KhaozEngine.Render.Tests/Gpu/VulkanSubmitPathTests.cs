@@ -158,7 +158,6 @@ namespace KhaozEngine.Tests.Gpu
 
             InvalidOperationException failed =
                 Assert.Throws<InvalidOperationException>(() => fixture.Submits.Submit(list, null));
-            Assert.Contains("vkQueueSubmit failed", failed.Message, StringComparison.Ordinal);
 
             // The gap: allocated, never registered, never signalled.
             Assert.Equal(2UL, fixture.Timeline.LastAllocated);

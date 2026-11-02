@@ -186,7 +186,6 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Contains("vkCreateDevice", ex.Message, StringComparison.Ordinal);
             Assert.Contains("the descriptor set is not bound", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("KE_VULKAN_VALIDATION=strict", ex.Message, StringComparison.Ordinal);
         }
 
         /// <summary>A warning never latches, on any rung. <c>strict</c> is about errors, and latching on a

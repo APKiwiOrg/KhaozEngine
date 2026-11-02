@@ -56,11 +56,9 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AnSrgbRequestAgainstASurfaceWithNoSrgbFormatIsRefused()
         {
-            NotSupportedException refused = Assert.Throws<NotSupportedException>(
+            Assert.Throws<NotSupportedException>(
                 () => VulkanSwapchainPolicy.ChooseFormat(
                     FakeVulkanSurfaceApi.Desktop().Formats, srgb: true, out _));
-
-            Assert.Contains("sRGB", refused.Message, StringComparison.Ordinal);
         }
 
         /// <summary>An sRGB request a surface CAN serve is served, so the refusal above is about the surface

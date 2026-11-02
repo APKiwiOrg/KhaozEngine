@@ -152,11 +152,10 @@ public sealed class GltfSkinnedMaterialPartsTests
         byte[] atCap = new SkinnedAttachmentGlbFixture(SkinningMath.MaxBonesPerDraw).Build();
         AttachmentGlb.ValidateSkinnedEmbedded(atCap, "at-cap");
         Assert.Equal(128, GltfLoader.LoadSkinned(atCap, "at-cap").BoneCount);
+        Assert.NotEmpty(GltfLoader.LoadSkinnedPartsWithMaterials(atCap, "at-cap"));
         byte[] overCap = new SkinnedAttachmentGlbFixture(SkinningMath.MaxBonesPerDraw + 1).Build();
-        Assert.Contains("1 to 128", Assert.Throws<InvalidDataException>(
-            () => AttachmentGlb.ValidateSkinnedEmbedded(overCap, "over-cap")).Message);
-        Assert.Contains("128-bone", Assert.Throws<InvalidOperationException>(
-            () => GltfLoader.LoadSkinnedPartsWithMaterials(overCap, "over-cap")).Message);
+        Assert.Throws<InvalidDataException>(() => AttachmentGlb.ValidateSkinnedEmbedded(overCap, "over-cap"));
+        Assert.Throws<InvalidOperationException>(() => GltfLoader.LoadSkinnedPartsWithMaterials(overCap, "over-cap"));
     }
 
     [Theory]

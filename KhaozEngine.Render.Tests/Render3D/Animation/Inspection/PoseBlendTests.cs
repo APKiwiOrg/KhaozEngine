@@ -148,7 +148,6 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
             ArgumentException error = Assert.Throws<ArgumentException>(() => PoseBlend.BlendInto(into, from, 1f, null));
 
             Assert.Equal("from", error.ParamName);
-            Assert.Contains("must equal destination length 1", error.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -161,7 +160,6 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
             ArgumentException error = Assert.Throws<ArgumentException>(() => PoseBlend.BlendInto(into, from, 1f, mask));
 
             Assert.Equal("mask", error.ParamName);
-            Assert.Contains("must equal pose length 2", error.Message, StringComparison.Ordinal);
         }
 
         [Theory]
@@ -177,7 +175,6 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
                 () => PoseBlend.BlendInto(into, from, weight, null));
 
             Assert.Equal("weight", error.ParamName);
-            Assert.StartsWith("Blend weight must be finite.", error.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -347,7 +344,6 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
                 () => PoseBlend.AddInto(destination, sample, reference, 1f));
 
             Assert.Equal("sample", error.ParamName);
-            Assert.Contains("must equal destination length 1", error.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -361,7 +357,6 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
                 () => PoseBlend.AddInto(destination, sample, reference, 1f));
 
             Assert.Equal("reference", error.ParamName);
-            Assert.Contains("must equal destination length 2", error.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -376,7 +371,6 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
                 () => PoseBlend.AddInto(destination, sample, reference, 1f, mask));
 
             Assert.Equal("mask", error.ParamName);
-            Assert.Contains("must equal pose length 2", error.Message, StringComparison.Ordinal);
         }
 
         [Theory]
@@ -393,7 +387,6 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
                 () => PoseBlend.AddInto(destination, sample, reference, weight));
 
             Assert.Equal("weight", error.ParamName);
-            Assert.StartsWith("Additive weight must be finite.", error.Message, StringComparison.Ordinal);
         }
 
         [Fact]

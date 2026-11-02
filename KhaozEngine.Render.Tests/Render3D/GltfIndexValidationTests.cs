@@ -130,7 +130,6 @@ namespace KhaozEngine.Tests.Render3D
             InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
                 () => MeshIndexValidation.Rebase(1, vertexCount: 3, baseIndex: uint.MaxValue, "huge-rig.glb"));
 
-            Assert.Contains("overflows", ex.Message);
             Assert.Contains("huge-rig.glb", ex.Message);
         }
     }

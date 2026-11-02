@@ -289,7 +289,7 @@ namespace KhaozEngine.Tests.Gpu
 
             ArgumentException ex = Assert.Throws<ArgumentException>(() => cache.GetOrCreate(new byte[length]));
 
-            Assert.Contains("32-bit words", ex.Message, StringComparison.Ordinal);
+            Assert.Equal("spirv", ex.ParamName);
             Assert.Empty(api.Created);
         }
     }

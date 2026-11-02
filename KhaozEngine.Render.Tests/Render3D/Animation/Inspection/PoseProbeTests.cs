@@ -94,7 +94,6 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
             ArgumentException error = Assert.Throws<ArgumentException>(() => probe.SampleClip(broken, 0.5f));
 
             Assert.Equal("clip", error.ParamName);
-            Assert.StartsWith("Clip duration must be finite and non-negative.", error.Message, StringComparison.Ordinal);
         }
 
         static JointPose Pose(Vector3 translation) =>

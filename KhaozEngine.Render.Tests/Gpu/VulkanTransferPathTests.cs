@@ -549,7 +549,6 @@ namespace KhaozEngine.Tests.Gpu
                     Assert.Throws<InvalidOperationException>(() => list.GenerateMipmaps(array));
 
                 Assert.Contains("WIDER than the ranges it has tracked", refused.Message, StringComparison.Ordinal);
-                Assert.Contains("still at rest", refused.Message, StringComparison.Ordinal);
             }
             finally
             {

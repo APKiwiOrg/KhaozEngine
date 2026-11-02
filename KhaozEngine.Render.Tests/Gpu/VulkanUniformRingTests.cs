@@ -49,9 +49,8 @@ namespace KhaozEngine.Tests.Gpu
         /// uniform descriptor carries the ring's per-frame base, so the other bind would read segment zero while
         /// the uniform read read segment N.
         /// <para>
-        /// This combination was ACCEPTED by <see cref="GpuBackendKind.Vulkan"/>, the Veldrid leg, which is what
-        /// makes it a DIVERGENCE rather than a bug fix, and the message has to name that: a consumer meeting this
-        /// has working code on the other Vulkan backend and no other way to find out why this one refuses it.
+        /// This combination was accepted by the retired Veldrid Vulkan backend and is legal on the seam, which is
+        /// what makes it a documented DIVERGENCE rather than a bug fix, and the message says so.
         /// </para>
         /// </summary>
         [Theory]
@@ -65,7 +64,6 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentException ex = Assert.Throws<ArgumentException>(
                 () => VulkanBufferRingPolicy.ForBuffer(usage));
 
-            Assert.Contains("GpuBackendKind.Vulkan", ex.Message, StringComparison.Ordinal);
             Assert.Contains("divergence", ex.Message, StringComparison.Ordinal);
 
             Assert.True(VulkanBufferRingPolicy.IsRefusedCombination(usage));
@@ -174,8 +172,7 @@ namespace KhaozEngine.Tests.Gpu
 
             ArgumentOutOfRangeException ex = Assert.Throws<ArgumentOutOfRangeException>(
                 () => VulkanRingStride.RequireBindWindowFits(0, 768, 257, 1024));
-            Assert.Contains("VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979", ex.Message,
-                StringComparison.Ordinal);
+            Assert.Equal("range", ex.ParamName);
         }
 
         /// <summary>

@@ -142,9 +142,10 @@
 1 KETEST001 KhaozEngine.MapDoc.Tests/Editing/FinePatchConversionTests.cs
 1 KETEST001 KhaozEngine.MapDoc.Tests/Foliage/MapFoliageEditTests.cs
 1 KETEST001 KhaozEngine.MapDoc.Tests/Foliage/MapFoliageFinalizationTests.cs
-1 KETEST001 KhaozEngine.MapDoc.Tests/Foliage/MapFoliagePayloadTests.cs
+2 KETEST001 KhaozEngine.MapDoc.Tests/Foliage/MapFoliagePayloadTests.cs
 1 KETEST001 KhaozEngine.MapDoc.Tests/Foliage/MapFoliageProposalAdmissionTests.cs
 1 KETEST002 KhaozEngine.MapDoc.Tests/Foliage/MapFoliageReviewTests.cs
+1 KETEST001 KhaozEngine.MapDoc.Tests/Foliage/MapFoliageStorageTests.cs
 3 KETEST001 KhaozEngine.MapDoc.Tests/Identity/SchemeTwoIdentityTests.cs
 1 KETEST001 KhaozEngine.MapDoc.Tests/LegacyLoadPolicyTests.cs
 2 KETEST001 KhaozEngine.MapDoc.Tests/Markers/MapMarkerAdoptionTests.cs

@@ -132,7 +132,8 @@ public sealed class MapFoliagePayloadTests
         }
         Assert.Single(Convert(section.Length, complete: true).Layers);
         Assert.Throws<JsonException>(() => Convert(section.Length - 1, complete: true));
-        Assert.Throws<JsonException>(() => Convert(section.Length, complete: false));
+        var partial = Assert.Throws<JsonException>(() => Convert(section.Length, complete: false));
+        Assert.Contains("fully buffered", partial.Message, StringComparison.Ordinal);
     }
 
     [Fact]

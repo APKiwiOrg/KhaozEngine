@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
@@ -75,10 +74,6 @@ public sealed partial class ContactLifetimeAllocationTests(ITestOutputHelper out
             Assert.Equal(supportBytes, phases.Bytes.Sum());
             Assert.Equal(0, supportBytes);
             Assert.Equal(cold, warm);
-            var slots = (CapsuleShape?[])typeof(ContactCapsuleShapes).GetField("_slots", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(borrowed.LastMovementLease!.Workspace.Shapes)!;
-            output.WriteLine($"Shapes {name}. " + string.Join(", ", Enum.GetValues<ContactCapsuleRole>().Select(role =>
-                $"{role} {slots.Skip((int)role * ContactCapsuleShapes.SlotsPerRole).Take(ContactCapsuleShapes.SlotsPerRole).Count(s => s is not null)}")));
         }
         Assert.True(samples.Max(s => s.Counts.Find) > samples.Min(s => s.Counts.Find));
         Assert.True(samples.Single(s => s.Scene == "pushed seat").Routes.PushedPlacements > 0);

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -51,14 +50,8 @@ public class MovementFreeTopPartitionTests
         Assert.Equal(MovementAvailability.Unresolved, Check(body, Vector3.Zero, scene.Lease));
     }
 
-    delegate MovementAvailability CheckDelegate(in MovementBodyQuery body, Vector3 delta,
-        MovementQueryLease lease, WaterTraversalMode mode);
-    static MovementAvailability Check(MovementBodyQuery body, Vector3 delta, MovementQueryLease lease)
-    {
-        var type = typeof(MovementQueryLease).Assembly.GetType("KhaozEngine.Locomotion.MovementWaterPathProof")!;
-        var method = type.GetMethod("Check", BindingFlags.Static | BindingFlags.NonPublic)!;
-        return method.CreateDelegate<CheckDelegate>()(body, delta, lease, WaterTraversalMode.SurfaceSwimmer);
-    }
+    static MovementAvailability Check(MovementBodyQuery body, Vector3 delta, MovementQueryLease lease) =>
+        MovementWaterPathProof.Check(body, delta, lease, WaterTraversalMode.SurfaceSwimmer);
 
     sealed class Scene : IDisposable
     {

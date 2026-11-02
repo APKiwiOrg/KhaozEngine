@@ -1,7 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
-using System.Runtime.ExceptionServices;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -175,20 +173,9 @@ public class MovementCapsuleSweepLeaseTests
 
     static Capture Query(MovementQueryLease lease, Vector3 displacement)
     {
-        MethodInfo? method = typeof(MovementQueryLease).GetMethod("QuerySolidSweep",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        object?[] args = [Body, displacement, Clear(123f)];
-        try
-        {
-            var availability = (MovementAvailability)method.Invoke(lease, args)!;
-            return new Capture(availability, (CapsuleSweepResult)args[2]!);
-        }
-        catch (TargetInvocationException exception) when (exception.InnerException is not null)
-        {
-            ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
-            throw;
-        }
+        CapsuleSweepResult result = Clear(123f);
+        MovementAvailability availability = lease.QuerySolidSweep(Body, displacement, out result);
+        return new Capture(availability, result);
     }
 
     readonly record struct Capture(MovementAvailability Availability, CapsuleSweepResult Result);

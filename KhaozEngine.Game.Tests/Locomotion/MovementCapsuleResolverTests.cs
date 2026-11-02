@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -183,18 +182,6 @@ public partial class MovementCapsuleResolverTests
         Assert.Equal(0, scene.View.LegacySweepCalls);
     }
 
-    delegate MovementAvailability ResolveDelegate(in MovementBodyQuery body, Vector3 displacement,
-        MovementQueryLease queries, Span<Vector3> destination, out int written, out bool blocked);
-
-    static ResolveDelegate Resolver()
-    {
-        Type? type = typeof(MovementQueryLease).Assembly.GetType("KhaozEngine.Locomotion.MovementCapsuleResolver");
-        Assert.NotNull(type);
-        MethodInfo? method = type.GetMethod("TryResolveSolids", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        return method.CreateDelegate<ResolveDelegate>();
-    }
-
     sealed record Capture(MovementAvailability Status, Vector3[] Path, int Count, bool Blocked)
     {
         public Vector3 End => Path[Count - 1];
@@ -240,7 +227,7 @@ public partial class MovementCapsuleResolverTests
             if (StaleDuringSweep) view.AfterSweep = () => Environment.Fault = "stale-pin";
             var destination = new Vector3[capacity];
             Array.Fill(destination, Sentinel);
-            MovementAvailability status = Resolver()(body, delta, lease, destination, out int count, out bool blocked);
+            MovementAvailability status = MovementCapsuleResolver.TryResolveSolids(body, delta, lease, destination, out int count, out bool blocked);
             return new Capture(status, destination, count, blocked);
         }
         public void Dispose() => World.Dispose();

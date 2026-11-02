@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion;
 using Xunit;
 
@@ -170,19 +169,11 @@ public class SurfaceWaterMotionTests
         Assert.False(result.Launched);
     }
 
-    delegate MovementAvailability ProposeDelegate(in MoveState state, bool airborneFromWater, bool jump,
-        in MovementWaterPoint point, float dt, in MoveTuning tuning, float surfaceJumpSpeed,
-        out Vector2 vertical, out bool launched);
-
     static (MovementAvailability Status, Vector2 Vertical, bool Launched) Propose(MoveState state,
         bool airborne, bool jump, MovementWaterPoint point, float dt, MoveTuning tuning, float speed)
     {
-        Type? type = typeof(MoveState).Assembly.GetType("KhaozEngine.Locomotion.SurfaceWaterMotion");
-        Assert.NotNull(type);
-        MethodInfo? method = type.GetMethod("TryPropose", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        var invoke = method.CreateDelegate<ProposeDelegate>();
-        var status = invoke(state, airborne, jump, point, dt, tuning, speed, out var vertical, out bool launched);
+        var status = SurfaceWaterMotion.TryPropose(state, airborne, jump, point, dt, tuning, speed, out var vertical,
+            out bool launched);
         return (status, vertical, launched);
     }
 }

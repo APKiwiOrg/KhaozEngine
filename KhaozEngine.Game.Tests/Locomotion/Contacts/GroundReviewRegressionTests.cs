@@ -148,9 +148,9 @@ public class GroundReviewRegressionTests
 
         ArgumentException error = Assert.Throws<ArgumentException>(() => ShellGeometry.Validate(tuning));
 
-        Assert.Contains("StepHeight", error.Message);
-        Assert.Contains("CapsuleRadius", error.Message);
-        Assert.Contains("MaxSlope", error.Message);
+        Assert.Equal("tuning", error.ParamName);
+        // The span rule ignores the slope, so accepting this step height on flat ground pins the refusal on the plane.
+        ShellGeometry.Validate(tuning with { MaxSlopeRadians = 0, TractionHysteresisRadians = 0 });
         ShellGeometry.Validate(Tuning);
     }
 

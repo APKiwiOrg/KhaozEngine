@@ -353,9 +353,12 @@ Limits:
   uploaded values and the shader conditions, but no execution shows the branch taken.
 - These are small synthetic scenes on one GPU, not Hollowmere. The pixel identity they show holds for the compiled shaders of
   this tree on this GPU.
-- Off and on run the same compiled pipeline. Comparing the off state with the released shader would need a build of the
-  released tree. The source diff is the evidence there, so the baseline blocks may not equal v21.23.0 timing or bits if the Metal
+- Off and on run the same compiled pipeline. No pixel comparison runs the off state against the released shader, which would
+  need a build of the released tree. `NonWaterShaderSourceEqualityTests` shows each stage's GLSL with the gate text taken out
+  still hashes to the released capture. The baseline blocks may still differ from v21.23.0 in timing or bits if the Metal
   compiler optimizes the new branches differently.
+- The compiled SPIR-V, MSL and HLSL hash tables are rebaked for this archive. The gates move 30 lit fragment programs and the
+  rigid motion vertex with its visibility variant, 32 of each table's rows. No other row moved.
 
 ### Measurement limits for the gates
 

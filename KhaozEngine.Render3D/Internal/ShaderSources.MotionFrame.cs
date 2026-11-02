@@ -13,7 +13,7 @@ internal static partial class ShaderSources
     public const string MotionFrameMembersGlsl = @"
     mat4 CurViewProj;     // this frame, unjittered, render-relative
     mat4 PrevViewProj;    // last frame, unjittered, rebased to this frame's render origin
-    vec4 MotionParams;    // x = 1 when last frame is valid history, else 0, y = private probe's rigid reuse switch
+    vec4 MotionParams;    // x = 1 when last frame is valid history, else 0
 ";
 
     /// <summary>The shared frame block <c>U</c> in FoliageVert's compact spelling: ModelVert's members in ModelVert's

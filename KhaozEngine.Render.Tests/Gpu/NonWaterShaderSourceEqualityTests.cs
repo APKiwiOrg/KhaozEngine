@@ -9,7 +9,9 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
 
-/// <summary>Frames without opted-in water retain the shader source text from main at 0af218d5b.</summary>
+/// <summary>Frames without opted-in water retain the shader source text from main at 0af218d5b, apart from the private
+/// probe's three shader gates. The table stays that capture, so with the gate text taken out this proves everything else
+/// in every stage is the released source. <c>ShaderGateProbeTests</c> pins the gate text itself.</summary>
 public sealed class NonWaterShaderSourceEqualityTests
 {
     [Fact]
@@ -41,9 +43,17 @@ public sealed class NonWaterShaderSourceEqualityTests
             + "Share source expressions without changing lit composition.\n" + string.Join("\n", mismatches));
     }
 
-    // Normalize checkout line endings only. All shader whitespace, identifiers and ordering remain pinned.
+    // Normalize checkout line endings and undo the probe's exact gate text only. All other shader whitespace, identifiers
+    // and ordering remain pinned.
     static string Sha256(string source)
-        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(source.ReplaceLineEndings("\n"))));
+        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(WithoutProbeGates(source.ReplaceLineEndings("\n")))));
+
+    static string WithoutProbeGates(string source) => source
+        .Replace("        // IndirectParams.y is the private probe's switch: a banded ndl of exactly zero multiplies this term away.\n", "", StringComparison.Ordinal)
+        .Replace(" && (IndirectParams.y < 0.5 || ndl > 0.0))", ")", StringComparison.Ordinal)
+        .Replace("            // IndirectParams.z is the private probe's switch. Later slices only multiply a positive zero by 0 to 1.\n"
+            + "            if (IndirectParams.z > 0.5 && floatBitsToUint(visibility) == 0u) break;\n", "", StringComparison.Ordinal)
+        .Replace("(MotionParams.y > 0.5 && slot < 0 ? world : prevModel * vec4(Position, 1.0))", "(prevModel * vec4(Position, 1.0))", StringComparison.Ordinal);
 
     static string TablePath([CallerFilePath] string thisFile = "")
         => Path.Combine(Path.GetDirectoryName(thisFile)!, "glsl-hashes", "non-water-glsl.sha256.txt");

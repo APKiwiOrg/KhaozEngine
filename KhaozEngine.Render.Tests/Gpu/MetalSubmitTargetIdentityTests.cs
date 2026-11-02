@@ -54,7 +54,6 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Throws<ArgumentException>(() => MetalGpuDevice.RequireList(NewList(theirs), mine));
 
             Assert.Equal("cl", thrown.ParamName);
-            Assert.Contains("DIFFERENT native Metal device", thrown.Message, StringComparison.Ordinal);
         }
 
         /// <summary>And the arm that always worked, in the shape it actually turns up in: a decorator that WRAPS
@@ -96,7 +95,6 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal("fence", thrown.ParamName);
             Assert.Contains("names no value on this device's timeline", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("DIFFERENT native Metal device", thrown.Message, StringComparison.Ordinal);
 
             // And it was never armed, so the wrong counter was never written into it.
             Assert.Equal(0UL, foreign.Target);

@@ -274,7 +274,7 @@
 7 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalShaderGpuTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalStagingAllocationTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalStagingArenaTests.cs
-3 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalSubmitTargetIdentityTests.cs
+1 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalSubmitTargetIdentityTests.cs
 5 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalTransferGpuTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalUniformRingTests.cs
 3 KETEST001 KhaozEngine.Render.Tests/Gpu/MetalVertexInputTests.cs
@@ -332,7 +332,6 @@
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanRingSubmissionTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanShaderPathTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanStagingLayoutTableTests.cs
-1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanStagingMapTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanSwapchainCaptureTests.cs
 2 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanTransferPathTests.cs
 1 KETEST001 KhaozEngine.Render.Tests/Gpu/VulkanUniformRingTests.cs

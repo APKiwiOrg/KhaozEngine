@@ -62,7 +62,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public IntPtr BeginRenderEncoder(IntPtr commandBuffer, IntPtr descriptor)
-            => Retained(new MTLCommandBuffer(commandBuffer).RenderCommandEncoder(descriptor));
+            => Retained(MetalFrameTimingProbe.Sampling && MetalFrameTimingProbe.PassTiming is { Supported: true }
+                ? MetalFrameTimingProbe.BeginEncoder(MetalEncoderKind.Render, commandBuffer, descriptor)
+                : new MTLCommandBuffer(commandBuffer).RenderCommandEncoder(descriptor));
 
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -70,7 +72,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             // .Handle because a list holds its encoder across calls and every transition here is by raw pointer.
             // The typed MTLBlitCommandEncoder exists for the setup batch, which opens, copies and ends in one go.
-            return Retained(new MTLCommandBuffer(commandBuffer).BlitCommandEncoder().Handle);
+            return Retained(MetalFrameTimingProbe.Sampling && MetalFrameTimingProbe.PassTiming is { Supported: true }
+                ? MetalFrameTimingProbe.BeginEncoder(MetalEncoderKind.Blit, commandBuffer, IntPtr.Zero)
+                : new MTLCommandBuffer(commandBuffer).BlitCommandEncoder().Handle);
         }
 
         /// <inheritdoc/>
@@ -78,7 +82,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// barrier machinery behind it.</remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public IntPtr BeginComputeEncoder(IntPtr commandBuffer)
-            => Retained(new MTLCommandBuffer(commandBuffer).ComputeCommandEncoder(MTLDispatchType.Serial));
+            => Retained(MetalFrameTimingProbe.Sampling && MetalFrameTimingProbe.PassTiming is { Supported: true }
+                ? MetalFrameTimingProbe.BeginEncoder(MetalEncoderKind.Compute, commandBuffer, IntPtr.Zero)
+                : new MTLCommandBuffer(commandBuffer).ComputeCommandEncoder(MTLDispatchType.Serial));
 
         /// <inheritdoc/>
         /// <remarks>The end AND the release, in that order: releasing an encoder that has not been ended would

@@ -128,6 +128,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // THE TEXTURE'S OWN FLAG, one message per frame. A layer may recycle a pooled drawable made before a
             // framebufferOnly write, so the property in force now says nothing certain about this texture.
             MTLTexture texture = drawable.Texture();
+            if (MetalFrameTimingProbe.Sampling && MetalFrameTimingProbe.PassTiming is { } passes)
+                passes.DrawableTexture = texture.Handle;
             return new MetalAcquiredDrawable(drawable.Handle, texture.Handle, texture.IsFramebufferOnly());
         }
 

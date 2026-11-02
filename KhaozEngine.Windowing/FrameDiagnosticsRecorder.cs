@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Runtime.Versioning;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal.Internal;
 
@@ -43,10 +44,16 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         _frequency = frequency;
         _samples = new FrameDiagnosticsSample[capacity];
         _annotations = new(annotator, capacity);
-        _timing = new(frameCommands);
+        _timing = new(frameCommands, passTiming: CreatePassTiming(device));
         _framesInFlight = (device as MetalGpuDevice)?.DiagnosticFramesInFlight;
         MetalFrameTimingNative.Prepare();
     }
+
+    static MetalPassTimingCapture? CreatePassTiming(IGpuDevice? device) => OperatingSystem.IsMacOS() && device is MetalGpuDevice metal
+        ? CreateMetalPassTiming(metal) : null;
+
+    [SupportedOSPlatform("macos")]
+    static MetalPassTimingCapture CreateMetalPassTiming(MetalGpuDevice device) => new(new MetalPassTimingNative(device.Handle.Handle));
 
     internal static bool IsEnabled => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("KE_FRAME_DIAGNOSTICS_PATH"));
     internal bool NeedsBoundary => _phase is Phase.Armed or Phase.Sampling;
@@ -87,6 +94,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
             _baselineCapture = captureState;
             _baselineClock = MetalFrameTimingNative.ClockMap();
             _baseline = _previous = boundary;
+            _timing.PassTiming?.Boundary(0, timestamp);
             try { _timing.Start(); }
             catch (Exception error) { Fail("sampling could not start (" + error.GetType().Name + ")"); return; }
             _phase = Phase.Sampling;
@@ -107,9 +115,11 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         if (!durationReached && _count < _samples.Length)
         {
             _timing.CallbackIndex = _count;
+            _timing.PassTiming?.Boundary(_count, timestamp);
             return;
         }
         _timing.Stop();
+        _timing.PassTiming?.End(_count, timestamp);
         _endCapture = captureState;
         _endClock = MetalFrameTimingNative.ClockMap();
 
@@ -143,6 +153,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
             var report = FrameDiagnosticsReport.Create(_frequency, _baseline, _previous, _samples, _count, reason,
                 _timing.Snapshot().Window(_baseline.Timestamp, _previous.Timestamp), _annotations.Report(_count), _framesInFlight, _baselineCapture, _endCapture,
                 _baselineClock, _endClock);
+            report = report.WithPassTiming(_timing.PassTiming?.Snapshot());
             temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
@@ -187,5 +198,6 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         _timing.Stop();
         _phase = Phase.Stopped;
         Publication.GetAwaiter().GetResult(); // Loop exit joins an already started, exception-contained writer.
+        _timing.Dispose();
     }
 }

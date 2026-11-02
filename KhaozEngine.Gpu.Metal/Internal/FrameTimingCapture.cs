@@ -13,10 +13,12 @@ internal sealed class FrameTimingCapture : IDisposable
     internal readonly FrameTimingBuffer<FrameTimingPresentCall> PresentCalls;
     internal readonly FrameTimingBuffer<FrameTimingPresented> Presented;
     internal long NativeReadFailures;
+    internal readonly MetalPassTimingCapture? PassTiming;
 
-    internal FrameTimingCapture(IGpuCommandList? frameCommands, int capacity = 65536)
+    internal FrameTimingCapture(IGpuCommandList? frameCommands, int capacity = 65536, MetalPassTimingCapture? passTiming = null)
     {
         _frameCommands = frameCommands;
+        PassTiming = passTiming;
         Submissions = new(capacity);
         Completions = new(capacity);
         PresentCalls = new(Math.Min(capacity, 8192));
@@ -36,5 +38,5 @@ internal sealed class FrameTimingCapture : IDisposable
     internal void Stop() => MetalFrameTimingProbe.Stop(this);
     internal FrameTimingSnapshot Snapshot() => new(Submissions.Snapshot(), Completions.Snapshot(),
         PresentCalls.Snapshot(), Presented.Snapshot(), Interlocked.Read(ref NativeReadFailures));
-    public void Dispose() => Stop();
+    public void Dispose() { Stop(); PassTiming?.Dispose(); }
 }

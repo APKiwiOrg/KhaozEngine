@@ -271,6 +271,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     var reader = new MetalFrameTimingNative.Reader();
                     MetalFrameTimingProbe.ObserveCompletion(commandBuffer, queue, outcome.Status, ref reader);
                 }
+                try { MetalFrameTimingProbe.PassTiming?.Complete(commandBuffer, MetalFrameTimingProbe.Sampling); }
+                catch (Exception ex) { Swallow(ex, "the pass timing completion hook failed"); }
                 Deliver(queue, outcome);
             }
             catch (Exception ex)

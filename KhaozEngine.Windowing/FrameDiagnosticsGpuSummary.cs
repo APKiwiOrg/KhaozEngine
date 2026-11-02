@@ -23,6 +23,20 @@ internal sealed record FrameDiagnosticsGpuSummary(FrameDiagnosticsDistribution F
     bool AllCallbacksCovered, bool Overflowed, bool IncompleteWrites, long NativeReadFailures,
     int UnmatchedCompletions, int InvalidGpuTimings)
 {
+    public FrameDiagnosticsPassDistribution[] PassEncoders { get; init; } = [];
+    public FrameDiagnosticsDistribution TimedFrameCompletionIntervalMs { get; init; } = new(0, 0, 0, 0, 0, 0);
+    public FrameDiagnosticsDistribution UntimedFrameCompletionIntervalMs { get; init; } = new(0, 0, 0, 0, 0, 0);
+    internal FrameDiagnosticsGpuSummary WithPassTiming(FrameTimingSnapshot timing, PassTimingSnapshot passes)
+    {
+        var (timed, untimed) = FrameDiagnosticsPassSummary.Intervals(timing, passes);
+        return this with
+        {
+            PassEncoders = FrameDiagnosticsPassSummary.Encoders(passes),
+            TimedFrameCompletionIntervalMs = timed,
+            UntimedFrameCompletionIntervalMs = untimed
+        };
+    }
+
     internal static FrameDiagnosticsGpuSummary Create(FrameTimingSnapshot timing, int count)
     {
         var busy = new List<double>();

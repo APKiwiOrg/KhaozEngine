@@ -9,12 +9,22 @@ internal static class MetalFrameTimingProbe
 {
     internal static volatile bool Sampling;
     static FrameTimingCapture? _capture;
+    // Kept after stop so a late completion can return its resources without resolving counters.
+    internal static MetalPassTimingCapture? PassTiming;
 
     internal static void Start(FrameTimingCapture capture)
     {
         if (Interlocked.CompareExchange(ref _capture, capture, null) is not null)
             throw new InvalidOperationException("Only one frame diagnostics capture may sample at a time.");
+        Volatile.Write(ref PassTiming, capture.PassTiming);
         Sampling = true;
+    }
+
+    internal static IntPtr BeginEncoder(MetalEncoderKind kind, IntPtr commandBuffer, IntPtr descriptor)
+    {
+        var capture = Volatile.Read(ref _capture);
+        if (capture?.PassTiming is not { } passes) return IntPtr.Zero;
+        return passes.Begin(kind, commandBuffer, descriptor, capture.CurrentCallback, Sampling);
     }
 
     internal static void Stop(FrameTimingCapture capture)

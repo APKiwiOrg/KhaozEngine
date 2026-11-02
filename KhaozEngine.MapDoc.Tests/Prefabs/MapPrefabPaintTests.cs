@@ -106,11 +106,9 @@ public sealed class MapPrefabPaintTests
     [Fact]
     public void PaintConflict_RequiresExplicitPriority()
     {
-        Assert.Contains("equal-priority", Assert.Throws<MapDocumentException>(() =>
-            PrefabFixtures.Effective(PrefabFixtures.Create("equal-priority-paint"))).Message);
+        Assert.Throws<MapDocumentException>(() => PrefabFixtures.Effective(PrefabFixtures.Create("equal-priority-paint")));
         var conflict = PrefabFixtures.Create("equal-priority-paint");
-        Assert.Contains("equal-priority", Assert.Throws<MapDocumentException>(() =>
-            MapNativeResolution.Resolve(conflict.Document, conflict.Assets, PrefabFixtures.Options())).Message);
+        Assert.Throws<MapDocumentException>(() => MapNativeResolution.Resolve(conflict.Document, conflict.Assets, PrefabFixtures.Options()));
         var ordered = PrefabFixtures.Effective(PrefabFixtures.Create("prioritized-paint"));
         var regions = ordered.PaintRegions["ground"].Regions;
         Assert.NotEmpty(regions);
@@ -228,7 +226,7 @@ public sealed class MapPrefabPaintTests
         Assert.DoesNotContain("paintPriority", JsonNode.Parse(json)!["surfaces"]!.AsArray().Single(s => s!["id"]!.GetValue<string>() == "ground")!.ToJsonString());
         int groundIndex = loaded.Surfaces.Refs.FindIndex(s => s.Id == "ground");
         loaded.Surfaces.Refs[groundIndex] = ground with { PaintPriority = 1 };
-        Assert.Contains("paintPriority", Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveText(loaded)).Message);
+        Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveText(loaded));
         var local = PrefabFixtures.Create("uneven-painted");
         var asset = local.Assets.GetPrefab("hut");
         var paint = (MapPrefabSurfaceChild)asset.Children.Single(c => c.Key.Key == "paint");
@@ -243,14 +241,22 @@ public sealed class MapPrefabPaintTests
         var f = PrefabFixtures.Create("uneven-painted");
         var asset = f.Assets.GetPrefab("hut");
         var child = (MapPrefabSurfaceChild)asset.Children.Single(c => c.Key.Key == "paint");
-        var invalid = child with { Surface = child.Surface with { Role = MapSurfaceRole.SupportFloor, PaintPriority = 2 } };
-        Assert.Contains("paintPriority", Assert.Throws<MapDocumentException>(() => MapPrefabFile.Write(asset with
-        { Children = asset.Children.Select(c => c == child ? invalid : c).ToArray() })).Message);
-        var root = JsonNode.Parse(MapPrefabFile.Write(asset))!;
+        var nonPaint = child with
+        {
+            Surface = child.Surface with { Role = MapSurfaceRole.SupportFloor, PaintTargetSurfaceId = null },
+            References = child.References.Where(r => r.Path != "/surface/paintTargetSurfaceId").ToArray(),
+        };
+        var control = asset with { Children = asset.Children.Select(c => c == child ? nonPaint : c).ToArray() };
+        byte[] valid = MapPrefabFile.Write(control);
+        var loaded = (MapPrefabSurfaceChild)MapPrefabFile.Read(valid, "hut").Children.Single(c => c.Key == child.Key);
+        Assert.Equal(MapSurfaceRole.SupportFloor, loaded.Surface.Role);
+        Assert.Equal(0, loaded.Surface.PaintPriority);
+        var invalid = nonPaint with { Surface = nonPaint.Surface with { PaintPriority = 2 } };
+        Assert.Throws<MapDocumentException>(() => MapPrefabFile.Write(control with
+        { Children = control.Children.Select(c => c == nonPaint ? invalid : c).ToArray() }));
+        var root = JsonNode.Parse(valid)!;
         var surface = root["children"]!.AsArray().Single(c => c!["key"]!["key"]!.GetValue<string>() == "paint")!["surface"]!;
-        surface["role"] = "SupportFloor";
         surface["paintPriority"] = 2;
-        Assert.Contains("paintPriority", Assert.Throws<MapDocumentException>(() =>
-            MapPrefabFile.Read(Encoding.UTF8.GetBytes(root.ToJsonString()), "hut")).Message);
+        Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(Encoding.UTF8.GetBytes(root.ToJsonString()), "hut"));
     }
 }

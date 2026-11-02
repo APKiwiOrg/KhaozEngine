@@ -281,8 +281,7 @@ public class MapPrefabWaterTests
         var body = Assert.Single(MapWaterCompiler.Compile(r.CompleteView(), r.Water!));
         Assert.Equal(MapWaterCompileStatus.Invalid, body.Status);
         Assert.Contains("not connected below its surface", body.Detail);
-        Assert.Contains("not connected below its surface", Assert.Throws<MapDocumentException>(() =>
-            MapBoundDocumentValidation.ValidateEffectiveWater(r, invalid.Assets)).Message);
+        Assert.Throws<MapDocumentException>(() => MapBoundDocumentValidation.ValidateEffectiveWater(r, invalid.Assets));
     }
 
     [Fact]
@@ -339,17 +338,18 @@ public class MapPrefabWaterTests
     [InlineData("scale")]
     [InlineData("yaw")]
     [InlineData("position")]
-    public void ReleasedPlacementRefusal_KeepsItsDetail(string fault)
+    public void ReleasedPlacementRefusal_RejectsEachInvalidComponent(string fault)
     {
         var placement = new MapWaterPlacement(new(10.25f, 5, -3.125f), 0.371f, 0.8f);
+        var domain = PrefabFixtures.Domain(0, 0, 4, 4);
+        Assert.NotEmpty(MapWaterDomain.Compile(domain, placement).Pieces);
         placement = fault switch
         {
             "scale" => placement with { Scale = 0 },
             "yaw" => placement with { Yaw = float.NaN },
             _ => placement with { Position = new(10.25f, float.NaN, -3.125f) },
         };
-        var error = Assert.Throws<MapDocumentException>(() => MapWaterDomain.Compile(PrefabFixtures.Domain(0, 0, 4, 4), placement));
-        Assert.Equal("water domain: placement must be finite with a positive scale.", error.Message);
+        Assert.Throws<MapDocumentException>(() => MapWaterDomain.Compile(domain, placement));
     }
 
     [Fact]

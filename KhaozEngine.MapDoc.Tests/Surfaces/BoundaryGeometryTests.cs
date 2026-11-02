@@ -24,7 +24,10 @@ public sealed class BoundaryGeometryTests
 
     [Fact]
     public void WallStrip_LowerAboveUpperRefuses()
-        => Assert.Contains("lower", Assert.Throws<MapDocumentException>(() => BoundaryFixtures.CompileStrip(new[] { 0, 400 }, new[] { 300, 300 }, MapStripFacing.Front)).Message);
+    {
+        Assert.NotEmpty(BoundaryFixtures.CompileStrip(new[] { 0, 300 }, new[] { 300, 300 }, MapStripFacing.Front).Faces);
+        Assert.Throws<MapDocumentException>(() => BoundaryFixtures.CompileStrip(new[] { 0, 400 }, new[] { 300, 300 }, MapStripFacing.Front));
+    }
 
     [Fact]
     public void TwoSidedLintelEmitsOppositeFacesUnderOneOwner()

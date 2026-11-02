@@ -45,7 +45,9 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void NonSpirvBytesAreRejectedByTheMagicNumber()
         {
-            var notSpirv = (byte[])Spirv("#version 450\nlayout(local_size_x = 64) in;\nvoid main() {}\n").Clone();
+            byte[] module = Spirv("#version 450\nlayout(local_size_x = 64) in;\nvoid main() {}\n");
+            Assert.Equal((64u, 1u, 1u), SpirvLocalSize.Parse(module, "t"));
+            var notSpirv = (byte[])module.Clone();
             notSpirv[0] ^= 0xFF;
             Assert.Throws<ShaderValidationException>(() => SpirvLocalSize.Parse(notSpirv, "t"));
         }

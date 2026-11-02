@@ -18,6 +18,9 @@ public sealed partial class AppWindow
         _frameDiagnosticsAnnotator = annotator;
     }
 
+    /// <summary>Where a 3D surface forwards its render pass boundaries. Does nothing unless the recorder is sampling.</summary>
+    public IFrameDiagnosticsPassSink FrameDiagnosticsPasses => FrameDiagnosticsPassForwarder.Instance;
+
     void ObserveFrameDiagnostics(FrameDiagnosticsRecorder diagnostics, double dt)
     {
         long timestamp = Stopwatch.GetTimestamp();

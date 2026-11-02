@@ -26,6 +26,9 @@ internal sealed record FrameDiagnosticsGpuSummary(FrameDiagnosticsDistribution F
     public FrameDiagnosticsPassDistribution[] PassEncoders { get; init; } = [];
     public FrameDiagnosticsDistribution TimedFrameCompletionIntervalMs { get; init; } = new(0, 0, 0, 0, 0, 0);
     public FrameDiagnosticsDistribution UntimedFrameCompletionIntervalMs { get; init; } = new(0, 0, 0, 0, 0, 0);
+    public FrameDiagnosticsDiscardState[] CascadeDepthDiscard { get; init; } = [];
+    internal FrameDiagnosticsGpuSummary WithDiscardStates(FrameTimingSnapshot timing, PassTimingSnapshot passes, PassExperimentSnapshot experiment)
+        => this with { CascadeDepthDiscard = FrameDiagnosticsPassSummary.DiscardStates(timing, passes, experiment) };
     internal FrameDiagnosticsGpuSummary WithPassTiming(FrameTimingSnapshot timing, PassTimingSnapshot passes)
     {
         var (timed, untimed) = FrameDiagnosticsPassSummary.Intervals(timing, passes);

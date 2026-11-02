@@ -29,13 +29,18 @@ public sealed class FrameDiagnosticsExtensionTests
             Assert.False(MetalFrameTimingProbe.Sampling);
             recorder.Observe(0, 1, state, default);
             Assert.True(MetalFrameTimingProbe.Sampling);
-            for (int i = 2; i < 10; i++) recorder.Observe(0.001, i, state, default);
+            for (int i = 2; i < 10; i++)
+            {
+                recorder.Observe(0.001, i, state, default);
+                FrameDiagnosticsPassForwarder.Instance.Pass(null!, FrameDiagnosticsPassEvent.Begin, "pass", 0);
+            }
             annotation.Value = BitConverter.SingleToInt32Bits(-0.0f);
             long bytes;
             using (AllocationRegion.Start("diagnostic annotation sampling"))
             {
                 long before = GC.GetAllocatedBytesForCurrentThread();
                 recorder.Observe(0.001, 10, state, default);
+                FrameDiagnosticsPassForwarder.Instance.Pass(null!, FrameDiagnosticsPassEvent.Begin, "pass", 0);
                 bytes = GC.GetAllocatedBytesForCurrentThread() - before;
             }
             Assert.Equal(0, bytes);

@@ -19,10 +19,22 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
     FrameTimingClockMap BaselineClock, FrameTimingClockMap EndClock, FrameTimingSnapshot Timing,
     FrameDiagnosticsAnnotationReport Annotations, FrameDiagnosticsGpuSummary GpuSummary, PassTimingSnapshot PassTiming)
 {
-    internal FrameDiagnosticsReport WithPassTiming(PassTimingSnapshot? timing)
+    public PassLabelsSnapshot PassLabels { get; init; } = PassLabelsSnapshot.Unavailable();
+    public FrameTimingBufferSnapshot<PassTransfer> Transfers { get; init; } = new([], 0, 0);
+    public PassExperimentSnapshot Experiment { get; init; } = PassExperimentSnapshot.Unavailable();
+
+    internal FrameDiagnosticsReport WithPassTiming(MetalPassTimingCapture? capture)
     {
-        var passes = timing ?? PassTimingSnapshot.Unavailable();
-        return this with { PassTiming = passes, GpuSummary = GpuSummary.WithPassTiming(Timing, passes) };
+        var passes = capture?.Snapshot() ?? PassTimingSnapshot.Unavailable();
+        var experiment = capture?.ExperimentSnapshot() ?? PassExperimentSnapshot.Unavailable();
+        return this with
+        {
+            PassTiming = passes,
+            PassLabels = capture?.LabelsSnapshot() ?? PassLabelsSnapshot.Unavailable(),
+            Transfers = capture?.TransfersSnapshot() ?? new([], 0, 0),
+            Experiment = experiment,
+            GpuSummary = GpuSummary.WithPassTiming(Timing, passes).WithDiscardStates(Timing, passes, experiment),
+        };
     }
     internal static FrameDiagnosticsReport Create(long frequency, FrameDiagnosticsBoundary baseline,
         FrameDiagnosticsBoundary end, FrameDiagnosticsSample[] buffer, int count, string reason,
@@ -33,7 +45,7 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
         var samples = new FrameDiagnosticsSample[count];
         Array.Copy(buffer, samples, count);
         var engine = typeof(FrameDiagnosticsRecorder).Assembly;
-        return new FrameDiagnosticsReport(8, Environment.ProcessId,
+        return new FrameDiagnosticsReport(9, Environment.ProcessId,
             Assembly.GetEntryAssembly()?.FullName ?? "unknown", engine.FullName + " MVID=" + engine.ManifestModule.ModuleVersionId,
             frequency, (end.Timestamp - baseline.Timestamp) / (double)frequency, count, reason, baseline, end, samples,
             FrameDiagnosticsSummary.Create(baseline, end, samples, reason == "capacity", count == buffer.Length),

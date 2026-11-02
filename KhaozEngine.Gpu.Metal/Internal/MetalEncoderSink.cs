@@ -95,6 +95,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (encoder == IntPtr.Zero) return;
 
+            // Private probe. An encoder opened with an Unknown store action is resolved here on every exit, which
+            // is why this runs whether or not sampling is still on.
+            if (kind == MetalEncoderKind.Render) MetalFrameTimingProbe.BeforeEndEncoding(encoder);
+
             new MTLCommandEncoder(encoder).EndEncoding();
             ObjCRuntime.ObjcRelease(encoder);
         }

@@ -13,6 +13,7 @@ public sealed class MetalPassTimingTests
         var native = new PassTimingTestNative();
         using var timing = new MetalPassTimingCapture(native, 1, 8, 2);
         timing.Begin(MetalEncoderKind.Render, new(1), new(7), 0, false);
+        Assert.False(native.TimedFactory);
         Assert.False(native.Attached);
         timing.Boundary(0, 10);
         timing.Begin(MetalEncoderKind.Render, new(1), new(7), 0, true);
@@ -20,21 +21,24 @@ public sealed class MetalPassTimingTests
         Assert.False(native.Attached);
         timing.Complete(new(1), true);
         timing.Boundary(72, 20);
+        // Pass times compare across discard states, so timing stays on in every block.
         timing.Begin(MetalEncoderKind.Compute, new(2), default, 72, true);
+        Assert.True(native.TimedFactory);
+        timing.Complete(new(2), true);
+        // A stop racing the sink's sampling check still opens through the untimed factory.
+        timing.Begin(MetalEncoderKind.Compute, new(3), default, 72, false);
         Assert.False(native.TimedFactory);
         Assert.Equal(IntPtr.Zero, native.OpenDescriptor);
-        timing.Begin(MetalEncoderKind.Render, new(3), new(7), 72, true);
-        Assert.False(native.Attached);
         timing.Boundary(144, 30);
         timing.Begin(MetalEncoderKind.Blit, new(4), default, 144, true);
         Assert.True(native.TimedFactory);
         timing.Complete(new(4), true);
         timing.End(145, 40);
         var result = timing.Snapshot();
-        Assert.Equal(new[] { true, false, true }, result.Blocks.Select(b => b.Timed));
+        Assert.Equal(new[] { true, true, true }, result.Blocks.Select(b => b.Timed));
         Assert.Equal(4, result.ClockPairs.Records.Length);
-        Assert.Equal(2, result.Encoders.Records.Length);
-        Assert.Equal(3, result.UntimedEncoders);
+        Assert.Equal(3, result.Encoders.Records.Length);
+        Assert.Equal(2, result.UntimedEncoders);
     }
 
     [Theory]

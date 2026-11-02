@@ -14,24 +14,39 @@ internal sealed class MetalPassTimingCapture : IDisposable
     readonly Command[] _commands = Enumerable.Range(0, 64).Select(_ => new Command()).ToArray();
     readonly Dictionary<PassTimingSignature, int> _signatures;
     readonly int _signatureCapacity, _sampleCapacity;
-    // About 70 encoders a frame over the timed half of 4096 callbacks. Records are about 140 bytes each.
+    // About 48 encoders a frame over all 4096 callbacks, far above the observed 17 to 20 a frame. Records are about
+    // 170 bytes each.
     readonly FrameTimingBuffer<PassTimingEncoder> _records = new(196608);
     readonly FrameTimingBuffer<PassTimingClockPair> _clocks = new(64);
     readonly PassTimingBlock[] _blocks = new PassTimingBlock[58];
+    readonly MetalPassLabels _labels;
+    readonly FrameTimingBuffer<PassTransfer> _transfers;
+    readonly MetalCascadeDiscardExperiment _experiment;
     int _blockCount, _disposed;
-    bool _timed;
+    bool _timed, _discardBlock;
+    // The frame recording the label stack describes. Bound by the first label event or encoder of each recording.
+    IntPtr _frameBuffer, _frameEncoder;
+    int _frameCallback = -1, _frameOrdinal;
+    // Where a tracked Unknown encoder's record waits for its resolution, when it is timed.
+    Slot? _discardSlot;
+    int _discardPending;
     long _capacityOverflow, _signatureOverflow, _untimed, _skipped, _commandOverflow;
     long _resolveFailures, _errorValues, _clockFailures, _nativeFailures;
     internal IntPtr DrawableTexture;
     internal bool Supported { get; }
     internal string? Reason { get; }
 
+    // A frame carries a few hundred label events, so the event bound covers 1400 callbacks at about 370 a callback.
+    // Events are about 32 bytes each and transfers about 48, so the two together preallocate about 25 MB.
     internal MetalPassTimingCapture(IMetalPassTimingNative native, int slots = 16, int samples = 4096,
-        int signatures = 256)
+        int signatures = 256, int labels = 256, int labelEvents = 524288, int transfers = 131072)
     {
         if (slots < 1 || slots > 32 || samples < 4 || samples > 4096 || signatures < 1 || signatures > 256)
             throw new ArgumentOutOfRangeException(nameof(slots));
         _native = native;
+        _labels = new(labels, labelEvents);
+        _transfers = new(transfers);
+        _experiment = new(native);
         _sampleCapacity = samples;
         _signatureCapacity = signatures;
         _signatures = new(signatures);
@@ -57,7 +72,9 @@ internal sealed class MetalPassTimingCapture : IDisposable
     {
         if (callback % BlockCallbacks != 0) return;
         CloseBlock(callback, timestamp);
-        _timed = callback / BlockCallbacks % 2 == 0;
+        // Timing stays on in every block so pass times compare across the discard states, which alternate starting off.
+        _timed = true;
+        _discardBlock = MetalCascadeDiscardExperiment.DiscardBlock(callback, BlockCallbacks);
         if (_blockCount < _blocks.Length)
             _blocks[_blockCount++] = new(callback, callback, timestamp, timestamp, _timed);
         Clock(callback, timestamp);
@@ -67,6 +84,7 @@ internal sealed class MetalPassTimingCapture : IDisposable
     {
         CloseBlock(callback, timestamp);
         _timed = false;
+        _discardBlock = false;
         Clock(callback, timestamp);
     }
 
@@ -97,6 +115,10 @@ internal sealed class MetalPassTimingCapture : IDisposable
         Command? command = null;
         int signature = -1, ordinal = 0;
         bool timed = Supported && sampling && _timed && callback >= 0 && Volatile.Read(ref _disposed) == 0;
+        bool frame = Supported && sampling && callback >= 0 && callback == _frameCallback && buffer == _frameBuffer;
+        int label = -1, occurrence = 0;
+        PassDepthStencil planes = default;
+        bool directional = false;
         try
         {
             if (Supported && sampling && callback >= 0 && _native.Owns(buffer))
@@ -121,15 +143,85 @@ internal sealed class MetalPassTimingCapture : IDisposable
                     }
                 }
             }
+            if (frame)
+            {
+                _labels.Innermost(out label, out occurrence);
+                // The whole stack rather than the innermost label: the encoder opens on the first draw, which is
+                // inside a nested shadow.rigid.* or shadow.cascade.* scope.
+                if (kind == MetalEncoderKind.Render && _labels.DirectionalOpen)
+                {
+                    planes = _native.DepthStencil(descriptor);
+                    directional = planes.Any;
+                }
+            }
         }
-        catch { Interlocked.Increment(ref _nativeFailures); slot = null; resources = default; }
+        catch { Interlocked.Increment(ref _nativeFailures); slot = null; resources = default; directional = false; }
         if (resources.Samples == IntPtr.Zero) Interlocked.Increment(ref _untimed);
+        if (directional && !_discardBlock) _experiment.CountDirectionalOff();
+        // After the signature read, so a descriptor's signature and id stay the same in both discard states.
+        bool unknown = directional && _discardBlock && _experiment.Prepare(descriptor, planes);
         // Native.Begin also clears render attachments on the ordinary path. The native sink calls this
         // only during sampling, and timed render attachments are cleared in its finally before returning.
-        IntPtr encoder = _native.Begin(kind, buffer, descriptor, resources, first);
+        IntPtr encoder;
+        try { encoder = _native.Begin(kind, buffer, descriptor, resources, first); }
+        finally { if (unknown) _experiment.Restore(descriptor, planes); }
+        if (frame)
+        {
+            _frameOrdinal = command is null ? _frameOrdinal + 1 : ordinal + 1;
+            _frameEncoder = encoder;
+        }
+        bool tracked = unknown && encoder != IntPtr.Zero;
+        if (tracked)
+        {
+            _experiment.Opened(encoder, planes);
+            _discardSlot = null;
+        }
         if (slot is not null && command is not null && resources.Samples != IntPtr.Zero)
-            slot.Pending[slot.Count++] = new(buffer.ToInt64(), callback, ordinal, kind, signature, first, encoder != IntPtr.Zero);
+        {
+            if (tracked) { _discardSlot = slot; _discardPending = slot.Count; }
+            slot.Pending[slot.Count++] = new(buffer.ToInt64(), callback, ordinal, kind, signature, first, encoder != IntPtr.Zero,
+                label, occurrence, directional, !directional ? null : tracked ? PassStoreResolution.Unresolved : PassStoreResolution.DescriptorStore);
+        }
         return encoder;
+    }
+
+    /// <summary>Called on every render encoder's end, sampling or not, because an encoder opened Unknown must be
+    /// resolved on every path. Holds nothing that disposal releases.</summary>
+    internal void BeforeEndEncoding(IntPtr encoder, bool sampling)
+    {
+        if (_experiment.BeforeEndEncoding(encoder, sampling) is not { } resolution || _discardSlot is not { } slot) return;
+        slot.Pending[_discardPending] = slot.Pending[_discardPending] with { StoreResolution = resolution };
+        _discardSlot = null;
+    }
+
+    /// <summary>Starts a new label stack when the frame list moves to another recording or callback.</summary>
+    internal void BindFrame(int callback, IntPtr buffer)
+    {
+        if (callback == _frameCallback && buffer == _frameBuffer) return;
+        _labels.BeginRecording();
+        _frameCallback = callback;
+        _frameBuffer = buffer;
+        _frameEncoder = IntPtr.Zero;
+        _frameOrdinal = 0;
+    }
+
+    internal void ObservePass(IntPtr buffer, int callback, PassLabelEventKind kind, string id, int occurrence)
+    {
+        BindFrame(callback, buffer);
+        int label = _labels.Observe(callback, buffer.ToInt64(), _frameOrdinal, kind, id, occurrence);
+        if (kind == PassLabelEventKind.End && label == MetalPassLabels.DirectionalLabel && !_labels.DirectionalOpen)
+            _experiment.ScopeEnded();
+    }
+
+    internal void ForeignPass() => _labels.Foreign();
+    internal void PassObserverFailed() => _labels.ObserverFailed();
+
+    /// <summary>Records one blit operation when <paramref name="encoder"/> is the frame list's open encoder.</summary>
+    internal void Transfer(IntPtr encoder, int callback, string kind, ulong bytes, IntPtr destination)
+    {
+        if (encoder == IntPtr.Zero || encoder != _frameEncoder || callback != _frameCallback) return;
+        _labels.Innermost(out int label, out int occurrence);
+        _transfers.Add(new(callback, _frameBuffer.ToInt64(), _frameOrdinal - 1, kind, bytes, destination.ToInt64(), label, occurrence));
     }
 
     int Signature(IntPtr descriptor)
@@ -151,7 +243,7 @@ internal sealed class MetalPassTimingCapture : IDisposable
             if (Interlocked.CompareExchange(ref command.State, -1, 0) != 0) continue;
             command.Handle = buffer;
             command.Ordinal = 0;
-            command.Slot = -2; // No timed encoder yet. Off blocks claim no sample buffer.
+            command.Slot = -2; // No timed encoder yet. A sample buffer is claimed on the first one.
             Volatile.Write(ref command.State, 1);
             return command;
         }
@@ -218,7 +310,8 @@ internal sealed class MetalPassTimingCapture : IDisposable
             _records.Add(new(pending.Buffer, pending.Callback, pending.Ordinal,
                 pending.Kind == MetalEncoderKind.Render ? "render" : pending.Kind == MetalEncoderKind.Compute ? "compute" : "blit",
                 pending.Signature, n == 4 ? a : null, n == 4 ? b : null, c, d,
-                n == 2 ? a : null, n == 2 ? b : null, status));
+                n == 2 ? a : null, n == 2 ? b : null, status, pending.LabelId, pending.LabelOccurrence,
+                pending.DirectionalScope, pending.StoreResolution));
         }
     }
 
@@ -235,6 +328,12 @@ internal sealed class MetalPassTimingCapture : IDisposable
         _blocks.Take(_blockCount).ToArray(), _clocks.Snapshot(), _signatures.OrderBy(p => p.Value).Select(p => p.Key).ToArray(),
         _records.Snapshot(), _capacityOverflow, _signatureOverflow, _untimed, _skipped, _commandOverflow,
         _resolveFailures, _errorValues, _clockFailures, _nativeFailures, _commands.Count(c => Volatile.Read(ref c.State) != 0));
+
+    internal PassLabelsSnapshot LabelsSnapshot() => _labels.Snapshot();
+    internal FrameTimingBufferSnapshot<PassTransfer> TransfersSnapshot() => _transfers.Snapshot();
+    internal PassExperimentSnapshot ExperimentSnapshot() => _experiment.Snapshot(BlockCallbacks, _blocks.Take(_blockCount)
+        .Select(b => new PassExperimentBlock(b.StartCallback, b.EndCallbackExclusive, b.StartTimestamp, b.EndTimestamp,
+            MetalCascadeDiscardExperiment.DiscardBlock(b.StartCallback, BlockCallbacks))).ToArray());
 
     public void Dispose()
     {
@@ -256,5 +355,5 @@ internal sealed class MetalPassTimingCapture : IDisposable
         internal int State, Used, Count;
     }
     readonly record struct Pending(long Buffer, int Callback, int Ordinal, MetalEncoderKind Kind,
-        int Signature, int First, bool Created);
+        int Signature, int First, bool Created, int LabelId, int LabelOccurrence, bool DirectionalScope, string? StoreResolution);
 }

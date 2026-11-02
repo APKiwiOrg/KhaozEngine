@@ -3,20 +3,22 @@
 NEVER MERGE this diagnostic archive into `main`. Branch
 `fix/mac-frame-recorder-21-23-0-probe` starts exactly at released `v21.23.0`, commit
 `cc5771ccc0a21593c07a0e0c1e20eb5f3b17377b`. It ports recorder commits `1066ce936` and
-`5b6a423bd` and extends their evidence, without changing rendering behavior. No engine pin,
-version, GPU commands, encoder count, public timestamp pools, frames in flight, framebufferOnly policy,
-capture taps or waits change. `KhaozEngine.Render3D` remains identical to the base tag.
+`5b6a423bd` and extends their evidence. No engine pin, version, GPU commands, encoder count, public
+timestamp pools, frames in flight, framebufferOnly policy, capture taps or waits change. The one rendering
+change is the depth and stencil store action of the directional cascade pass, in alternate sampling blocks
+only, described under Cascade depth-discard experiment. `KhaozEngine.Render3D` remains identical to the base tag.
 Only `KhaozEngine.Gpu.Metal`, `KhaozEngine.Windowing` and `KhaozEngine.Game.Render3D`
 contain modified production source. This archive is never released or packaged.
 
 ## Boundaries and activation
 
 `KE_FRAME_DIAGNOSTICS_PATH` absent or empty disables recording. All native capture flags stay
-false and no drawable handlers are attached. An enabled run requires an absolute, nonexistent
+false, no drawable handlers are attached, `Scene3D.PassObserver` stays unset and no store action changes.
+An enabled run requires an absolute, nonexistent
 result path in an existing directory. Recorder creation preallocates storage and resolves its
 native selectors, global presented block and QuartzCore import before measurement. While waiting,
-the only per-callback diagnostic work is the sibling `<result>.start` trigger poll, at most twice
-per second. Consuming that file arms the recorder. The following opening callback boundary is the
+the only per-callback recorder work is the sibling `<result>.start` trigger poll, at most twice
+per second, plus Scene3D calling the preallocated pass observer, which returns at its sampling check. Consuming that file arms the recorder. The following opening callback boundary is the
 baseline, excluding trigger I/O and its partial interval.
 
 The hook observes AppWindow's render callback before its delta clamp, input, prepare or render.
@@ -35,12 +37,12 @@ It cannot exclude changes that reverse between callbacks. Cap and vsync changes 
 the summary. Require cap 0 and vsync true at baseline, end and both sample window states when
 comparing the intended scene. `cadenceCapped=true` is expected with vsync.
 
-## Schema 8
+## Schema 9
 
 The existing top-level cadence fields remain `processId`, `appAssembly`, `engineAssembly`,
 `stopwatchFrequency`, `durationSeconds`, `sampleCount`, `stopReason`, `baseline`, `end`,
-`samples` and `summary`. `schemaVersion` is 8. All schema 7 fields retain their meaning. Its additional
-top-level fields are:
+`samples` and `summary`. `schemaVersion` is 9. All schema 7 and 8 fields retain their meaning, except that
+`passTiming.blocks[].timed` is now true in every block. Its additional top-level fields are:
 
 - `identity`: process id, executable path, command-line argument array, every loaded assembly whose
   name starts with KhaozEngine or Grimhollow, and sorted KE_* environment names and values.
@@ -122,15 +124,14 @@ arming. Unsupported hardware, discovery failures and sample-buffer creation fail
 No counter buffer or attachment is created when the diagnostics environment variable is absent.
 An enabled but unarmed recorder allocates its storage without attaching it to any encoder.
 
-While sampling, the callback thread alternates 72 callbacks on and 72 off, starting on. Each
-`blocks` entry records `startCallback`, `endCallbackExclusive`, `startTimestamp`, `endTimestamp`
-and `timed`. The final block may be partial. All schema 7 instrumentation, annotations and
-command-buffer timing remain enabled in both block types. Encoders on other managed threads
-are untimed. Ordinary setup-upload batches use their existing direct blit path outside the
-frame command buffer and are not encoder-instrumented.
-`timed` describes the requested block schedule. Require support and usable encoder coverage
-before comparing blocks. Descriptor clearing and command-state tracking are common to both blocks,
-so the comparison estimates the incremental sampling and signature-read cost.
+While sampling, per-encoder timing stays on in every block. Schema 8 alternated it with off blocks,
+and its measured overhead of about 1% is what let schema 9 keep it on so pass times compare across
+the discard states. Blocks are still 72 callbacks. Each `blocks` entry records `startCallback`,
+`endCallbackExclusive`, `startTimestamp`, `endTimestamp` and `timed`. The final block may be partial.
+All schema 7 instrumentation, annotations and command-buffer timing remain enabled. Encoders on other
+managed threads are untimed. Ordinary setup-upload batches use their existing direct blit path outside
+the frame command buffer and are not encoder-instrumented. Require support and usable encoder coverage
+before comparing blocks.
 
 The native encoder sink attaches four indices to render descriptor sample-buffer attachment 0,
 before creating the existing encoder. They are start/end of vertex and start/end of fragment.
@@ -152,8 +153,8 @@ their existing end, retain and release path.
 There are no inline `sampleCountersInBuffer:` calls, marker copies, extra encoders, GPU resolves,
 event signals, event waits or diagnostic GPU commands. Only the hardware's descriptor-driven
 stage-boundary sampling is enabled. Stage spans on a tile-based GPU can overlap across passes.
-They are not additive frame costs. Compare timed and untimed blocks to estimate perturbation
-before treating an instrumented pass ranking as representative.
+They are not additive frame costs. Every block is timed, so this capture holds no within-run estimate
+of the timing perturbation.
 
 ### Storage and completion
 
@@ -169,12 +170,12 @@ A command buffer claims a sample slot at its first timed encoder. It never waits
 claim leaves that command buffer untimed and increments `skippedCommandBuffers`. A full slot
 leaves subsequent encoders untimed and increments `capacityOverflow` per encoder. Recording
 continues through the ordinary encoder factory in either case. A separate fixed table tracks
-64 command buffers, including off blocks, so encoder ordinals include preceding untimed encoders.
+64 command buffers, so encoder ordinals include preceding untimed encoders.
 If that table fills, `commandStateOverflow` counts refused encoder observations. The signature
 table holds 256 distinct render signatures. Excess signatures use id -1 and increment
 `signatureOverflow`. Compute and blit records use signature id -1 and are grouped by kind.
-`untimedEncoders` counts observed encoder begins that received no sample indices, including
-off blocks. A disabled native timing path does not count encoder begins it never observes.
+`untimedEncoders` counts observed encoder begins that received no sample indices. A disabled native
+timing path does not count encoder begins it never observes.
 
 The existing command-buffer completion handler resolves only during sampling, using
 `-[MTLCounterSampleBuffer resolveCounterRange:]`. It copies the used range into a preallocated
@@ -235,8 +236,107 @@ Without valid calibration, no duration is reported.
 GPU end-to-end intervals on each queue, ordered by GPU completion time. Only adjacent callback
 indices within one recorded block contribute. Transitions, missing callbacks, unmatched
 completions and non-frame command buffers do not contribute. These are GPU throughput
-distributions, not completion-handler scheduling intervals or display intervals. They include
-the complete frame workload in both block types and are the within-capture perturbation estimate.
+distributions, not completion-handler scheduling intervals or display intervals. With timing on in
+every block the untimed distribution is empty.
+
+## Pass labels
+
+`GameApp3D` sets `Scene3D.PassObserver` next to the annotator registration when the recorder is requested.
+The observer forwards `BeginPass`, `EndPass` and `SkipPass` through `AppWindow.FrameDiagnosticsPasses` into the
+Metal probe, so Game.Render3D does not reference Gpu.Metal internals. Scene3D rethrows an observer failure after
+recording, so nothing the sink does may escape: the observer and the forwarder both catch everything.
+It records no GPU commands. CPU phases and fused-motion marks are not forwarded.
+
+Only the frame command list on the frame thread feeds the labels. Any other list or thread increments
+`foreignEvents`. The scope stack belongs to one recording: a new callback or command buffer forgets scopes still
+open and counts them in `abandonedScopes`.
+
+Top-level `passLabels` holds:
+
+- `labels`: Render3D's `RenderPassKey` ids. An event's `labelId` indexes this table. The bound is 256, id 0 is
+  reserved for `shadow.directional`, and excess ids use -1 and increment `labelOverflow`.
+- `events`: bounded `records`, `overflow` and `incompleteWrites`. A record holds `callbackIndex`, `commandBuffer`,
+  `encoderOrdinal`, `kind` (begin, end or skip), `labelId` and `occurrence`. `encoderOrdinal` is the ordinal the next
+  encoder on that buffer takes, so an event with ordinal N falls after encoder N-1 began and before encoder N began.
+  The bound is 524288, about 370 events a callback over a ten-second capture at 139 FPS.
+- `stackOverflow` past 64 nested scopes, `unbalancedEnds`, `abandonedScopes`, `foreignEvents`, `observerFailures`.
+
+Encoder records gain `labelId` and `labelOccurrence`, the innermost scope open at the encoder's begin, or -1. An
+encoder opens on its first draw, so this is usually a leaf such as `shadow.rigid.opaque`, and an encoder can outlive
+the scope it began in. They also gain `directionalScope` and `storeResolution`, below. Use the event stream to place
+scopes against encoder ordinals.
+
+## Transfers
+
+Top-level `transfers` holds bounded `records`, `overflow` and `incompleteWrites`, with a bound of 131072. It records
+each operation on a blit encoder the frame list opened: `bufferUpload` (a `MetalBufferUpload` staging copy),
+`bufferCopy`, `textureToTexture`, `textureToBuffer`, `bufferToTexture`, `stagingToStaging`, `generateMipmaps`,
+`swapchainToTexture` and `swapchainToBuffer`. A record holds `callbackIndex`, `commandBuffer`, `encoderOrdinal`,
+`kind`, `bytes`, `destination`, `labelId` and `labelOccurrence`. One whole-texture copy records one row per mip and
+layer. `bytes` is the padded upload size or `width * height * bytesPerTexel`. `generateMipmaps` reports 0, as does a
+format the staging layout lacks. Uniform ring writes are memcpys with no blit encoder and are not transfers. The setup
+batch is outside the frame list and is not recorded. Standalone multisample resolves are render encoders.
+
+## Cascade depth-discard experiment
+
+Top-level `experiment` has `name` `cascadeDepthDiscard`, `blockCallbacks` 72 and `blocks`, whose entries repeat the
+pass timing block bounds with `discard`. Blocks alternate starting with discard off. It counts `openedUnknown`,
+`dontCareApplied`, `keptStoreScopeOpen`, `resolvedDuringStop`, `resolveFailures`, `unresolvedEncoders`,
+`descriptorFailures` and `directionalEncodersOff`. `openedUnknown` equals the sum of the second through sixth.
+
+In a discard block, a frame-list render encoder that begins while `shadow.directional` is open and whose descriptor
+names a depth or stencil texture is created with an Unknown depth and stencil store action. Any nesting depth counts,
+because the first draw that opens the encoder is inside a nested scope such as `shadow.rigid.opaque`. The signature is
+read first and the descriptor returns to Store once the encoder exists, including when the factory throws or returns
+nil, so a signature id means the same thing in both states. Colour attachments are untouched. Immediately before
+that encoder's `endEncoding`, `MetalEncoderSink` sends `setDepthStoreAction:` and `setStencilStoreAction:` with DontCare
+if the scope has ended and sampling is still on, otherwise Store. A blit that splits the pass mid-scope therefore
+stores, because the next encoder loads that depth. `MetalFrameTimingProbe.PassTiming` outlives the capture, so an
+encoder still open after stop or disposal is resolved to Store. A failed DontCare also falls back to Store.
+
+An encoder record's `storeResolution` is null outside the directional scope, `descriptorStore` in an off block,
+then `dontCare`, `storeScopeOpen`, `storeStopped` or `failed`. `unresolved` in a report would mean a defect.
+`gpuSummary.cascadeDepthDiscard` holds one entry per state with `discard`, `frameCompletionIntervalMs` (the same
+same-block adjacency rule as above), `directionalVertexMs`, `directionalFragmentMs` and `directionalEncoderMs`.
+Blocks decide the state, so a discard-block encoder that kept Store still counts as on.
+
+### Why output pixels are identical
+
+Paths are under `KhaozEngine.Render3D/`, and that tree is byte-identical to v21.23.0.
+
+- The texture cannot be read by a shader. `Rendering/ShadowMapRenderer.cs:222` creates it with
+  `GpuTextureUsage.DepthStencil` alone, never `Sampled`.
+- Nothing can copy it. Its only uses are the framebuffer at `Rendering/ShadowMapRenderer.cs:224` and the private
+  layout record's constructor, property and dispose at `:639`, `:654` and `:677`. No member exposes the texture. The
+  framebuffer is private too: `:412` binds it and `:126` exposes only its output formats.
+- Receivers bind the separate R32F atlas. `Rendering/ShadowMapRenderer.cs:113` exposes only that texture, read at
+  `Rendering/ModelRenderer.cs:303`, `Rendering/ModelRenderer.TileGround.cs:128`, `Rendering/ModelRenderer.InteriorCut.cs:34`
+  and `Scene3D.WaterColumnLight.cs:58`.
+- Every pass clears it first. `Rendering/ShadowMapRenderer.cs:412` through `:414` binds and clears the only time that
+  framebuffer is bound, so no frame loads an earlier frame's depth. `MetalRenderPassSchedule.ClearDepthStencil` folds
+  that into the Clear load action, and `MetalRenderApi.DescribeDepth` applies it with stencil value 0. Metal never
+  loads a discarded depth because the only encoders that load it are mid-scope reopenings, which follow a Store.
+- Frames that skip the pass bind nothing: `Scene3D.CascadeShadowPass.cs:61` only reports a skip.
+- The atlas colour store is unchanged, and depth testing inside the encoder does not depend on the store action.
+- Nothing draws to that framebuffer after the scope without rebinding it. The next pass binds its own framebuffer,
+  which is also what normally ends this encoder after the scope has closed.
+
+This argument has not been checked by a pixel comparison.
+
+### Measurement limits
+
+- Compare states only within one capture. The observer is on in both states, so Scene3D's extra caster and draw-list
+  checks under an observer, and the event recording itself, are CPU costs earlier schemas did not have.
+- The Unknown path is not the shipping shape. A real change would declare DontCare in the descriptor, which may
+  let the driver plan better than a store action decided at the encoder's end, so this can understate a saving.
+- There is no store-byte counter. Stage-boundary spans may not include the tile store, so an unchanged
+  `directionalEncoderMs` does not prove the store was free. `frameCompletionIntervalMs` is the primary comparison.
+- A directional encoder exists only on frames that re-render the atlas. Skip events and encoder records show how
+  many frames in each state actually exercised the change.
+- A block comparison is sensitive to anything else that changes over ten seconds, including camera movement and
+  thermal state, because alternation reduces drift but does not remove it. Frames in flight smear a state's GPU work
+  past the boundary only as completions, and intervals crossing a block are excluded.
+- None of this establishes the 144 Hz budget or a tail improvement.
 
 ## Scene workload channels
 
@@ -270,8 +370,11 @@ Headless tests cover recorder lifecycle, bounds and overflow, inactive native re
 paths, exact annotations, warmed allocation-free sampling, summary arithmetic and missing coverage.
 Schema 8 tests also cover stage attachments, reused descriptors, factory selection, pool and slot
 overflow, error-value handling, signature bounds, block schedules, clock pairs and pass summaries.
+Schema 9 tests cover label interning and bounds, the never-throwing observer, event order, transfer records, every
+discard decision, the block schedule, serialization and the per-state summary, all through fakes.
 One separately gated native smoke case records a headless offscreen render, serial compute and
-blit encoder, commits once, waits for that buffer and resolves real stage timestamps. Its temporary
+blit encoder, then two passes over a Depth32Float_Stencil8 attachment through the real sink, opened Unknown and
+resolved to Store and DontCare. It commits once, waits for that buffer and resolves real stage timestamps. Its temporary
 isolated test host links the same test source to avoid unrelated GPU probes during suite discovery.
 The source diff against v21.23.0 must be empty for KhaozEngine.Render3D. Verification commands,
 results, source identities and limitations belong in the implementer's external report.

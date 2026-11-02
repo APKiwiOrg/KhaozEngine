@@ -29,6 +29,19 @@ internal sealed class FrameTimingCapture : IDisposable
     internal FrameTimingCommandKind Kind(IGpuCommandList? commands, FrameTimingCommandKind fallback) =>
         commands is not null && ReferenceEquals(commands, _frameCommands) ? FrameTimingCommandKind.FrameRecording : fallback;
 
+    /// <summary>The frame list's open recording, or nil. Read only on the frame thread.</summary>
+    internal IntPtr FrameCommandBuffer => (_frameCommands as MetalCommandList)?.RecordingCommandBuffer ?? IntPtr.Zero;
+
+    /// <summary>Only the frame list on the frame thread feeds the label stack. Anything else is counted.</summary>
+    internal void ObservePass(IGpuCommandList commands, PassLabelEventKind kind, string id, int occurrence)
+    {
+        if (PassTiming is not { } passes) return;
+        int callback = CurrentCallback;
+        IntPtr buffer = ReferenceEquals(commands, _frameCommands) ? FrameCommandBuffer : IntPtr.Zero;
+        if (callback < 0 || buffer == IntPtr.Zero) { passes.ForeignPass(); return; }
+        passes.ObservePass(buffer, callback, kind, id, occurrence);
+    }
+
     internal void Start()
     {
         _thread = Environment.CurrentManagedThreadId;

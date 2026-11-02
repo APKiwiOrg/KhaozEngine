@@ -318,8 +318,12 @@ public sealed class FrameDiagnosticsRecorderTests : IDisposable
         Assert.True(recorder.Publication.IsCompletedSuccessfully);
         Assert.Null(recorder.Failure);
         using var json = JsonDocument.Parse(File.ReadAllText(ResultPath));
-        Assert.Equal(8, json.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(9, json.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.False(json.RootElement.GetProperty("passTiming").GetProperty("supported").GetBoolean());
+        Assert.Equal(0, json.RootElement.GetProperty("passLabels").GetProperty("events").GetProperty("records").GetArrayLength());
+        Assert.Equal(0, json.RootElement.GetProperty("transfers").GetProperty("records").GetArrayLength());
+        Assert.Equal("cascadeDepthDiscard", json.RootElement.GetProperty("experiment").GetProperty("name").GetString());
+        Assert.Equal(2, json.RootElement.GetProperty("gpuSummary").GetProperty("cascadeDepthDiscard").GetArrayLength());
         Assert.Equal(Environment.ProcessId, json.RootElement.GetProperty("processId").GetInt32());
         Assert.Equal(1000, json.RootElement.GetProperty("stopwatchFrequency").GetInt64());
         Assert.Contains("KhaozEngine.Windowing", json.RootElement.GetProperty("engineAssembly").GetString());

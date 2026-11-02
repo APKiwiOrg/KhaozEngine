@@ -153,7 +153,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
             var report = FrameDiagnosticsReport.Create(_frequency, _baseline, _previous, _samples, _count, reason,
                 _timing.Snapshot().Window(_baseline.Timestamp, _previous.Timestamp), _annotations.Report(_count), _framesInFlight, _baselineCapture, _endCapture,
                 _baselineClock, _endClock);
-            report = report.WithPassTiming(_timing.PassTiming?.Snapshot());
+            report = report.WithPassTiming(_timing.PassTiming);
             temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {

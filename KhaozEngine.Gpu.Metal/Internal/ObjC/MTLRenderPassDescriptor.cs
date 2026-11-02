@@ -56,6 +56,10 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// <summary><c>MTLStoreActionStoreAndMultisampleResolve</c>: store the multisampled source as well as
         /// resolving it. Selected only for an explicitly source-preserving standalone resolve.</summary>
         StoreAndMultisampleResolve = 3,
+
+        /// <summary><c>MTLStoreActionUnknown</c>: the encoder must be told before <c>endEncoding</c>. Selected only by
+        /// the private cascade depth-discard experiment.</summary>
+        Unknown = 4,
     }
 
     /// <summary>

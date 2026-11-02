@@ -86,6 +86,24 @@ internal sealed class MetalPassTimingNative : IMetalPassTimingNative, IMetalPass
                 && ObjCMsgSend.Send(Color(colors, 0), ObjCRuntime.Sel("texture")) == drawableTexture);
     }
 
+    public PassDepthStencil DepthStencil(IntPtr descriptor) => new(
+        ObjCMsgSend.Send(ObjCMsgSend.Send(descriptor, ObjCRuntime.Sel("depthAttachment")), ObjCRuntime.Sel("texture")) != IntPtr.Zero,
+        ObjCMsgSend.Send(ObjCMsgSend.Send(descriptor, ObjCRuntime.Sel("stencilAttachment")), ObjCRuntime.Sel("texture")) != IntPtr.Zero);
+
+    public void SetDescriptorStore(IntPtr descriptor, PassDepthStencil planes, bool unknown)
+    {
+        nuint action = (nuint)(ulong)(unknown ? MTLStoreAction.Unknown : MTLStoreAction.Store);
+        if (planes.Depth) ObjCMsgSend.SendVoidNUInt(ObjCMsgSend.Send(descriptor, ObjCRuntime.Sel("depthAttachment")), ObjCRuntime.Sel("setStoreAction:"), action);
+        if (planes.Stencil) ObjCMsgSend.SendVoidNUInt(ObjCMsgSend.Send(descriptor, ObjCRuntime.Sel("stencilAttachment")), ObjCRuntime.Sel("setStoreAction:"), action);
+    }
+
+    public void ResolveEncoderStore(IntPtr encoder, PassDepthStencil planes, bool discard)
+    {
+        nuint action = (nuint)(ulong)(discard ? MTLStoreAction.DontCare : MTLStoreAction.Store);
+        if (planes.Depth) ObjCMsgSend.SendVoidNUInt(encoder, ObjCRuntime.Sel("setDepthStoreAction:"), action);
+        if (planes.Stencil) ObjCMsgSend.SendVoidNUInt(encoder, ObjCRuntime.Sel("setStencilStoreAction:"), action);
+    }
+
     static IntPtr Color(IntPtr colors, nuint index) => ObjCMsgSend.SendPtrNUInt(colors, ObjCRuntime.Sel("objectAtIndexedSubscript:"), index);
     static ulong Read(IntPtr value, string name) => (ulong)ObjCMsgSend.SendNUInt(value, ObjCRuntime.Sel(name));
     static PassTimingAttachment Attachment(IntPtr attachment)
@@ -117,5 +135,5 @@ internal sealed class MetalPassTimingNative : IMetalPassTimingNative, IMetalPass
         "colorAttachments", "depthAttachment", "stencilAttachment", "texture", "width", "height", "pixelFormat",
         "textureType", "arrayLength", "sampleCount", "slice", "level", "depthPlane", "loadAction", "storeAction",
         "renderTargetArrayLength", "renderTargetWidth", "renderTargetHeight", "resolveCounterRange:", "length", "bytes",
-        "sampleTimestamps:gpuTimestamp:"];
+        "sampleTimestamps:gpuTimestamp:", "setStoreAction:", "setDepthStoreAction:", "setStencilStoreAction:"];
 }

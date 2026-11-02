@@ -26,7 +26,34 @@ internal static class MetalFrameTimingProbe
         // A stop racing the sink's Sampling check still opens the encoder, untimed, through the same native path.
         // PassTiming outlives the capture, and the sink only calls here once it is set.
         var passes = capture?.PassTiming ?? Volatile.Read(ref PassTiming)!;
-        return passes.Begin(kind, commandBuffer, descriptor, capture?.CurrentCallback ?? -1, capture is not null && Sampling);
+        int callback = capture?.CurrentCallback ?? -1;
+        bool sampling = capture is not null && Sampling;
+        if (sampling && callback >= 0 && commandBuffer == capture!.FrameCommandBuffer) passes.BindFrame(callback, commandBuffer);
+        return passes.Begin(kind, commandBuffer, descriptor, callback, sampling);
+    }
+
+    /// <summary>Runs before every render encoder's end. PassTiming outlives the capture, so an encoder opened with an
+    /// Unknown store action is still resolved after stop and disposal. It is null when diagnostics are off.</summary>
+    internal static void BeforeEndEncoding(IntPtr encoder)
+    {
+        if (Volatile.Read(ref PassTiming) is { } passes)
+            passes.BeforeEndEncoding(encoder, Sampling && Volatile.Read(ref _capture) is not null);
+    }
+
+    internal static void ObservePass(IGpuCommandList commands, PassLabelEventKind kind, string id, int occurrence)
+    {
+        if (Sampling && Volatile.Read(ref _capture) is { } capture) capture.ObservePass(commands, kind, id, occurrence);
+    }
+
+    internal static void PassObserverFailed()
+    {
+        if (Volatile.Read(ref _capture)?.PassTiming is { } passes) passes.PassObserverFailed();
+    }
+
+    internal static void ObserveTransfer(IntPtr encoder, string kind, ulong bytes, IntPtr destination)
+    {
+        if (Sampling && Volatile.Read(ref _capture) is { PassTiming: { } passes } capture)
+            passes.Transfer(encoder, capture.CurrentCallback, kind, bytes, destination);
     }
 
     internal static void Stop(FrameTimingCapture capture)

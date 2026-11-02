@@ -9,6 +9,12 @@ internal sealed record FrameDiagnosticsPassDistribution(string Kind, int Signatu
     FrameDiagnosticsDistribution VertexMs, FrameDiagnosticsDistribution FragmentMs,
     FrameDiagnosticsDistribution EncoderMs);
 
+/// <summary>One discard state's frames and directional encoders. Blocks decide the state, so a discard-on encoder that
+/// kept Store because a blit split the pass still counts as on. Each record's storeResolution separates them.</summary>
+internal sealed record FrameDiagnosticsDiscardState(bool Discard, FrameDiagnosticsDistribution FrameCompletionIntervalMs,
+    FrameDiagnosticsDistribution DirectionalVertexMs, FrameDiagnosticsDistribution DirectionalFragmentMs,
+    FrameDiagnosticsDistribution DirectionalEncoderMs);
+
 internal static class FrameDiagnosticsPassSummary
 {
     internal static FrameDiagnosticsPassDistribution[] Encoders(PassTimingSnapshot passes)
@@ -16,26 +22,47 @@ internal static class FrameDiagnosticsPassSummary
         var output = new List<FrameDiagnosticsPassDistribution>();
         foreach (var group in passes.Encoders.Records.GroupBy(e => (e.Kind, e.SignatureId)).OrderBy(g => g.Key.Kind).ThenBy(g => g.Key.SignatureId))
         {
-            var vertex = new List<double>();
-            var fragment = new List<double>();
-            var whole = new List<double>();
-            foreach (var encoder in group)
-            {
-                if (encoder.Status is "resolveFailure" or "encoderUnavailable") continue;
-                if (encoder.Kind == "render")
-                {
-                    Add(vertex, encoder.StartVertex, encoder.EndVertex, passes);
-                    Add(fragment, encoder.StartFragment, encoder.EndFragment, passes);
-                    if (Valid(encoder.StartVertex, encoder.EndVertex) && Valid(encoder.StartFragment, encoder.EndFragment))
-                        Add(whole, Math.Min(encoder.StartVertex!.Value, encoder.StartFragment!.Value),
-                            Math.Max(encoder.EndVertex!.Value, encoder.EndFragment!.Value), passes);
-                }
-                else Add(whole, encoder.StartEncoder, encoder.EndEncoder, passes);
-            }
-            output.Add(new(group.Key.Kind, group.Key.SignatureId, FrameDiagnosticsDistribution.Create(vertex),
-                FrameDiagnosticsDistribution.Create(fragment), FrameDiagnosticsDistribution.Create(whole)));
+            var (vertex, fragment, whole) = Spans(group, passes);
+            output.Add(new(group.Key.Kind, group.Key.SignatureId, vertex, fragment, whole));
         }
         return output.ToArray();
+    }
+
+    internal static FrameDiagnosticsDiscardState[] DiscardStates(FrameTimingSnapshot timing, PassTimingSnapshot passes,
+        PassExperimentSnapshot experiment)
+    {
+        var blocks = experiment.Blocks;
+        var (on, off) = IntervalsBy(timing, blocks.Select(b => (b.StartCallback, b.EndCallbackExclusive, b.Discard)));
+        return [State(false, off), State(true, on)];
+
+        FrameDiagnosticsDiscardState State(bool discard, FrameDiagnosticsDistribution intervals)
+        {
+            var (vertex, fragment, whole) = Spans(passes.Encoders.Records.Where(e => e.DirectionalScope
+                && blocks.Any(b => b.Discard == discard && e.CallbackIndex >= b.StartCallback && e.CallbackIndex < b.EndCallbackExclusive)), passes);
+            return new(discard, intervals, vertex, fragment, whole);
+        }
+    }
+
+    static (FrameDiagnosticsDistribution Vertex, FrameDiagnosticsDistribution Fragment, FrameDiagnosticsDistribution Whole) Spans(
+        IEnumerable<PassTimingEncoder> encoders, PassTimingSnapshot passes)
+    {
+        var vertex = new List<double>();
+        var fragment = new List<double>();
+        var whole = new List<double>();
+        foreach (var encoder in encoders)
+        {
+            if (encoder.Status is "resolveFailure" or "encoderUnavailable") continue;
+            if (encoder.Kind == "render")
+            {
+                Add(vertex, encoder.StartVertex, encoder.EndVertex, passes);
+                Add(fragment, encoder.StartFragment, encoder.EndFragment, passes);
+                if (Valid(encoder.StartVertex, encoder.EndVertex) && Valid(encoder.StartFragment, encoder.EndFragment))
+                    Add(whole, Math.Min(encoder.StartVertex!.Value, encoder.StartFragment!.Value),
+                        Math.Max(encoder.EndVertex!.Value, encoder.EndFragment!.Value), passes);
+            }
+            else Add(whole, encoder.StartEncoder, encoder.EndEncoder, passes);
+        }
+        return (FrameDiagnosticsDistribution.Create(vertex), FrameDiagnosticsDistribution.Create(fragment), FrameDiagnosticsDistribution.Create(whole));
     }
 
     static bool Valid(ulong? start, ulong? end) => start is > 0 && end >= start
@@ -61,9 +88,15 @@ internal static class FrameDiagnosticsPassSummary
 
     internal static (FrameDiagnosticsDistribution Timed, FrameDiagnosticsDistribution Untimed) Intervals(
         FrameTimingSnapshot timing, PassTimingSnapshot passes)
+        => IntervalsBy(timing, passes.Blocks.Select(b => (b.StartCallback, b.EndCallbackExclusive, b.Timed)));
+
+    /// <summary>Adjacent callbacks inside one block. Transitions, gaps and non-frame buffers do not contribute.</summary>
+    static (FrameDiagnosticsDistribution Set, FrameDiagnosticsDistribution Unset) IntervalsBy(FrameTimingSnapshot timing,
+        IEnumerable<(int Start, int EndExclusive, bool State)> schedule)
     {
-        var timed = new List<double>();
-        var untimed = new List<double>();
+        var blocks = schedule.ToArray();
+        var set = new List<double>();
+        var unset = new List<double>();
         var frames = new List<(FrameTimingCompletion Completion, int Callback)>();
         var submits = timing.Submissions.Records.GroupBy(s => (s.Queue, s.CommandBuffer))
             .ToDictionary(g => g.Key, g => g.OrderBy(s => s.Timestamp).ToArray());
@@ -85,14 +118,14 @@ internal static class FrameDiagnosticsPassSummary
                 var a = sorted[i - 1];
                 var b = sorted[i];
                 if (b.Callback != a.Callback + 1) continue;
-                foreach (var block in passes.Blocks)
+                foreach (var block in blocks)
                 {
-                    if (a.Callback < block.StartCallback || b.Callback >= block.EndCallbackExclusive) continue;
-                    (block.Timed ? timed : untimed).Add((b.Completion.GpuEndTime - a.Completion.GpuEndTime) * 1000);
+                    if (a.Callback < block.Start || b.Callback >= block.EndExclusive) continue;
+                    (block.State ? set : unset).Add((b.Completion.GpuEndTime - a.Completion.GpuEndTime) * 1000);
                     break;
                 }
             }
         }
-        return (FrameDiagnosticsDistribution.Create(timed), FrameDiagnosticsDistribution.Create(untimed));
+        return (FrameDiagnosticsDistribution.Create(set), FrameDiagnosticsDistribution.Create(unset));
     }
 }

@@ -91,6 +91,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             _blit.CopyBufferToBuffer(encoder, source.Handle.Handle, srcOffsetBytes, destination.Handle.Handle,
                 dstOffsetBytes, MetalCopyAlignment.PaddedSize(sizeInBytes));
+            MetalFrameTimingProbe.ObserveTransfer(encoder, PassTransferKind.BufferCopy,
+                MetalCopyAlignment.PaddedSize(sizeInBytes), destination.Handle.Handle);
         }
 
         /// <inheritdoc/>
@@ -181,6 +183,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (target.Handle.Handle == IntPtr.Zero) return;
 
             _blit.GenerateMipmaps(encoder, target.Handle.Handle);
+            MetalFrameTimingProbe.ObserveTransfer(encoder, PassTransferKind.GenerateMipmaps, 0, target.Handle.Handle);
         }
 
         /// <inheritdoc/>
@@ -307,6 +310,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         void Region(IntPtr encoder, MetalTexture source, uint sourceLevel, uint sourceLayer,
             MetalTexture destination, uint destinationLevel, uint destinationLayer, uint width, uint height)
         {
+            if (MetalFrameTimingProbe.Sampling)
+            {
+                MetalFrameTimingProbe.ObserveTransfer(encoder,
+                    PassTransferKind.For(MetalTransferPlan.CaseFor(source.IsStaging, destination.IsStaging)),
+                    PassTransferKind.TextureBytes(source.Format, width, height),
+                    destination.IsStaging ? destination.StagingBuffer.Handle : destination.Handle.Handle);
+            }
+
             switch (MetalTransferPlan.CaseFor(source.IsStaging, destination.IsStaging))
             {
                 case MetalTransferCase.TextureToTexture:

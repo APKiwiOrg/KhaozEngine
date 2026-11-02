@@ -214,6 +214,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// anything.</summary>
         internal bool IsSealed => _sealed;
 
+        /// <summary>The open recording's <c>MTLCommandBuffer</c>, or nil. Read by the private frame recorder.</summary>
+        internal IntPtr RecordingCommandBuffer => _commandBuffer;
+
         /// <summary>
         /// The <c>MTLCommandBuffer</c> the sealed record lives in, as the submit path names it. Still owned by
         /// this list: the submit path reads it, commits it, and hands ownership back through

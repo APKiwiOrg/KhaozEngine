@@ -14,7 +14,8 @@ internal readonly record struct PassTimingSignature(PassTimingAttachment Color0,
     ulong RenderTargetWidth, ulong RenderTargetHeight, ulong SampleCount, bool Color0IsDrawable);
 internal readonly record struct PassTimingEncoder(long CommandBuffer, int CallbackIndex, int Ordinal,
     string Kind, int SignatureId, ulong? StartVertex, ulong? EndVertex, ulong? StartFragment,
-    ulong? EndFragment, ulong? StartEncoder, ulong? EndEncoder, string Status);
+    ulong? EndFragment, ulong? StartEncoder, ulong? EndEncoder, string Status, int LabelId = -1, int LabelOccurrence = 0,
+    bool DirectionalScope = false, string? StoreResolution = null);
 internal readonly record struct PassTimingClockPair(int CallbackIndex, long BoundaryTimestamp,
     long BeforeTimestamp, long AfterTimestamp, ulong CpuNanoseconds, ulong GpuTicks);
 internal readonly record struct PassTimingBlock(int StartCallback, int EndCallbackExclusive,
@@ -41,7 +42,8 @@ internal sealed record PassTimingSnapshot(bool Supported, string? Reason, string
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
-// Only descriptor stage attachments and a CPU resolve exist on this seam. No GPU marker API is exposed.
+// Descriptor stage attachments, store actions of the attachments a descriptor already names, and a CPU resolve are all
+// that exist on this seam. No GPU marker API is exposed.
 internal interface IMetalPassTimingNative
 {
     bool Supported { get; }
@@ -52,6 +54,9 @@ internal interface IMetalPassTimingNative
     IntPtr Begin(MetalEncoderKind kind, IntPtr commandBuffer, IntPtr descriptor,
         PassTimingResources resources, int firstSample);
     PassTimingSignature Signature(IntPtr descriptor, IntPtr drawableTexture);
+    PassDepthStencil DepthStencil(IntPtr descriptor);
+    void SetDescriptorStore(IntPtr descriptor, PassDepthStencil planes, bool unknown);
+    void ResolveEncoderStore(IntPtr encoder, PassDepthStencil planes, bool discard);
     void Resolve(IntPtr samples, int count, Span<ulong> values);
     void SampleClocks(out ulong cpuNanoseconds, out ulong gpuTicks);
 }

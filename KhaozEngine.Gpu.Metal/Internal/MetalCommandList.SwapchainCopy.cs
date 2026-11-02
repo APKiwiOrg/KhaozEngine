@@ -46,6 +46,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
             IntPtr encoder = EnsureCopyEncoder();
             if (encoder == IntPtr.Zero || drawableTexture == IntPtr.Zero) return;
 
+            if (MetalFrameTimingProbe.Sampling)
+            {
+                MetalFrameTimingProbe.ObserveTransfer(encoder,
+                    destination.IsStaging ? PassTransferKind.SwapchainToBuffer : PassTransferKind.SwapchainToTexture,
+                    PassTransferKind.TextureBytes(destination.Format, destination.Width, destination.Height),
+                    destination.IsStaging ? destination.StagingBuffer.Handle : destination.Handle.Handle);
+            }
+
             if (destination.IsStaging)
             {
                 _blit.CopyTextureToBuffer(encoder, drawableTexture, destination.StagingBuffer.Handle,

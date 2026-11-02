@@ -147,6 +147,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (encoder == IntPtr.Zero) return;
 
             blit.CopyBufferToBuffer(encoder, lease.Buffer, lease.OffsetBytes, destination, offsetBytes, copyBytes);
+            MetalFrameTimingProbe.ObserveTransfer(encoder, PassTransferKind.BufferUpload, copyBytes, destination);
         }
 
     }

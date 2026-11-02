@@ -128,7 +128,7 @@ namespace KhaozEngine.Tests.Gpu
             // The message has to say whose line is missing, because the fix is in the consuming app and not in
             // the engine. It states the naming CONVENTION plus two worked examples rather than switching on the
             // kind, which is what keeps it correct for a backend appended later.
-            Assert.Contains("No graphics backend provider is registered", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(SentinelKind, ex.Backend);
             Assert.Contains("KhaozEngineD3D11.Register()", ex.Message, StringComparison.Ordinal);
         }
 

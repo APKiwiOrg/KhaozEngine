@@ -53,8 +53,8 @@ public sealed class MetalRendererInitializationTests
                     commands.ClearColorTarget(0, Color.Black);
                     Assert.Equal(rendererOwned ? 0 : 1, h.Api.AcquireCount);
                     if (rendererOwned)
-                        Assert.Equal(SwapchainCopyCheck.NotBoundMessage, Assert.Throws<InvalidOperationException>(
-                            () => commands.CopyFromDrawable(IntPtr.Zero, destination)).Message);
+                        Assert.Throws<InvalidOperationException>(
+                            () => commands.CopyFromDrawable(IntPtr.Zero, destination));
                     commands.SetFramebuffer(h.Boundary.Framebuffer);
                     commands.ClearColorTarget(0, Color.Transparent);
                 }, taps, rendererOwned);

@@ -168,10 +168,6 @@ namespace KhaozEngine.Tests.Gpu
 
                 _output.WriteLine(error.Message);
 
-                // Metal's own diagnostic, not a paraphrase. It names the attribute, which is the only thing that
-                // makes a rejected pipeline actionable.
-                Assert.Contains("rejected this graphics pipeline", error.Message, StringComparison.Ordinal);
-
                 // THE TOKEN ONLY METAL CAN SUPPLY. The wrapper's own prefix and tail already contain "rejected
                 // this graphics pipeline" and the words "vertex layouts", so an assertion on either passes on
                 // the arm where -newRenderPipelineStateWithDescriptor:error: answered nil and wrote NO NSError,

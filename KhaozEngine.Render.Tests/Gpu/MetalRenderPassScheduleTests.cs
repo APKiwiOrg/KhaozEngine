@@ -69,10 +69,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             Harness h = Harness.New();
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
-                () => h.Schedule.PrepareDraw());
-
-            Assert.Contains("needs a framebuffer bound", thrown.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(() => h.Schedule.PrepareDraw());
+            h.Schedule.SetFramebuffer(Framebuffer(1, colourCount: 1));
+            Assert.NotEqual(IntPtr.Zero, h.Schedule.PrepareDraw());
         }
 
         // ---- The per-attachment clear (M-A2) -----------------------------------------------------------------
@@ -153,7 +152,11 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
                 () => h.Schedule.ClearColourTarget(2, Red));
 
-            Assert.Contains("2 colour attachment(s)", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("index", thrown.ParamName);
+            Assert.Equal(2u, thrown.ActualValue);
+            h.Schedule.ClearColourTarget(1, Red);
+            h.Schedule.PrepareDraw();
+            Assert.Equal(Red, Assert.Single(h.Render.Passes).Colour[1].ClearValue);
         }
 
         /// <summary>
@@ -221,6 +224,7 @@ namespace KhaozEngine.Tests.Gpu
             h.Schedule.PrepareDraw();
 
             RecordedRenderPass pass = Assert.Single(h.Render.Passes);
+            Assert.Equal(3, pass.Colour.Length);
             Assert.All(pass.Colour, a => Assert.Equal(MetalStoreAction.Store, a.StoreAction));
             Assert.Equal(MetalStoreAction.Store, pass.Depth.StoreAction);
         }
@@ -250,12 +254,14 @@ namespace KhaozEngine.Tests.Gpu
             Harness h = Harness.New();
             h.Schedule.SetFramebuffer(Framebuffer(1, colourCount: 1));
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
-                () => h.Schedule.ClearDepthStencil(1f));
-            Assert.Contains("declares no depth attachment", thrown.Message, StringComparison.Ordinal);
-
+            Assert.Throws<InvalidOperationException>(() => h.Schedule.ClearDepthStencil(1f));
             h.Schedule.PrepareDraw();
             Assert.False(Assert.Single(h.Render.Passes).Depth.Present);
+            h.Schedule.SetFramebuffer(Framebuffer(2, colourCount: 1, depth: true));
+            h.Schedule.ClearDepthStencil(1f);
+            h.Schedule.PrepareDraw();
+            Assert.Equal(MetalLoadAction.Clear, h.Render.Passes[1].Depth.LoadAction);
+            Assert.Equal(1f, h.Render.Passes[1].Depth.ClearDepth);
         }
 
         // ---- The clear-only pass (M-A3) ----------------------------------------------------------------------
@@ -393,9 +399,11 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(h.Schedule.IsRendering);
             Assert.True(h.Schedule.HasPendingClears);
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(h.Schedule.EndPass);
-
-            Assert.Contains("OPEN and still owes a clear", thrown.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(h.Schedule.EndPass);
+            h.Scope.EnsureNoEncoder();
+            h.Schedule.EndPass();
+            Assert.Equal(Red, Assert.Single(h.Render.Passes).Colour[0].ClearValue);
+            Assert.False(h.Schedule.HasPendingClears);
         }
 
         // ---- The viewport and the scissor (M-A6, M-A7) -------------------------------------------------------
@@ -565,7 +573,10 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
                 () => h.Schedule.SetScissorRect(1, 0, 0, 8, 8));
 
-            Assert.Contains("ONE scissor rectangle, at index 0", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("index", thrown.ParamName);
+            Assert.Equal(1u, thrown.ActualValue);
+            h.Schedule.SetScissorRect(0, 0, 0, 8, 8);
+            Assert.Equal(new MetalScissorRect(0, 0, 8, 8), h.Schedule.Scissor);
         }
 
         /// <summary>Resetting the scissor with no framebuffer bound is refused, because the rectangle is derived
@@ -575,10 +586,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             Harness h = Harness.New();
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
-                h.Schedule.SetFullScissorRects);
-
-            Assert.Contains("needs a framebuffer bound", thrown.Message, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(h.Schedule.SetFullScissorRects);
+            h.Schedule.SetFramebuffer(Framebuffer(1, colourCount: 1));
+            h.Schedule.SetFullScissorRects();
+            Assert.Equal(new MetalScissorRect(0, 0, 64, 64), h.Schedule.Scissor);
         }
 
         // ---- The encoder boundary (M-R4, M-A5) ---------------------------------------------------------------

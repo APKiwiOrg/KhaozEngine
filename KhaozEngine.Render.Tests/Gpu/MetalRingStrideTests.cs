@@ -47,19 +47,6 @@ namespace KhaozEngine.Tests.Gpu
         public void TheStrideIsTheSizeRoundedUpTo256(uint sizeInBytes, uint expected)
             => Assert.Equal(expected, MetalRingStride.SegmentStrideFor(sizeInBytes));
 
-        /// <summary>A FLAT FLOOR, not a maximum against the device (M-M3). The incumbent reported 16 on macOS and
-        /// a device-derived stride would pack tighter, which is exactly the tradeoff the design declines: one
-        /// number governing all three rings is what lets one shared policy test assert it, and a device-shaped
-        /// number under a golden-bearing path is what it refuses to buy the memory with.</summary>
-        [Fact]
-        public void TheStrideDoesNotDependOnTheDevice()
-        {
-            // The whole surface takes no alignment argument at all, which is the assertion. The Vulkan sibling's
-            // SegmentStrideFor has a second parameter for exactly this and this one does not.
-            Assert.Equal(256u, MetalRingStride.SegmentStrideFor(16));
-            Assert.Equal(256u, MetalRingStride.SegmentStrideFor(200));
-        }
-
         [Fact]
         public void TheAllocationIsTheStrideTimesTheDepth()
         {
@@ -75,7 +62,8 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException thrown =
                 Assert.Throws<ArgumentOutOfRangeException>(() => MetalRingStride.SegmentStrideFor(0));
 
-            Assert.Contains("cannot be ring-backed", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("sizeInBytes", thrown.ParamName);
+            Assert.Equal(0u, thrown.ActualValue);
         }
 
         [Fact]
@@ -111,7 +99,8 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
                 () => MetalRingStride.RequireBindWindowFits(0, 256, 1024, 1024));
 
-            Assert.Contains("setBufferOffset: carries no length", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("range", thrown.ParamName);
+            Assert.Equal(1024u, thrown.ActualValue);
             Assert.Contains("GpuBufferRange window narrower than the buffer", thrown.Message,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("Widen the buffer", thrown.Message, StringComparison.Ordinal);

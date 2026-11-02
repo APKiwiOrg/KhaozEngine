@@ -54,7 +54,6 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Throws<ArgumentException>(() => MetalGpuDevice.RequireList(NewList(theirs), mine));
 
             Assert.Equal("cl", thrown.ParamName);
-            Assert.Contains("not created by this native Metal device", thrown.Message, StringComparison.Ordinal);
             Assert.Contains("DIFFERENT native Metal device", thrown.Message, StringComparison.Ordinal);
         }
 

@@ -347,7 +347,10 @@ namespace KhaozEngine.Tests.Gpu
             ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
                 () => new MetalStagingArena(_harness.Staging, MetalFramesInFlight.Maximum + 1));
 
-            Assert.Contains("slots", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal("framesInFlight", thrown.ParamName);
+            Assert.Equal(MetalFramesInFlight.Maximum + 1, thrown.ActualValue);
+            using var accepted = new MetalStagingArena(_harness.Staging, MetalFramesInFlight.Maximum);
+            Assert.Equal(MetalFramesInFlight.Maximum, accepted.Depth);
         }
     }
 }

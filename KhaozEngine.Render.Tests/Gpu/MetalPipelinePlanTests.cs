@@ -86,13 +86,16 @@ namespace KhaozEngine.Tests.Gpu
                 () => MetalGraphicsPipelinePlan.Build(
                     _liveness,
                     Description(ShaderSet(table, otherDevice), Layout(GpuResourceKind.UniformBuffer))));
-            Assert.Contains("DIFFERENT native Metal device", byShaders.Message, StringComparison.Ordinal);
+            Assert.Equal("description", byShaders.ParamName);
 
             ArgumentException byLayout = Assert.Throws<ArgumentException>(
                 () => MetalGraphicsPipelinePlan.Build(
                     _liveness,
                     Description(ShaderSet(table), LayoutOn(otherDevice, GpuResourceKind.UniformBuffer))));
-            Assert.Contains("DIFFERENT native Metal device", byLayout.Message, StringComparison.Ordinal);
+            Assert.Equal("layout", byLayout.ParamName);
+
+            Assert.Single(MetalGraphicsPipelinePlan.Build(
+                _liveness, Description(ShaderSet(table), Layout(GpuResourceKind.UniformBuffer))).Layouts);
         }
 
         /// <summary>A disposed layout is refused, which is the flag row 10 kept precisely because a Metal layout
@@ -125,7 +128,7 @@ namespace KhaozEngine.Tests.Gpu
             ObjectDisposedException refused = Assert.Throws<ObjectDisposedException>(
                 () => MetalGraphicsPipelinePlan.Build(
                     _liveness, Description(shaders, Layout(GpuResourceKind.UniformBuffer))));
-            Assert.Contains("already disposed", refused.Message, StringComparison.Ordinal);
+            Assert.Equal(nameof(MetalShaderSet), refused.ObjectName);
 
             MetalComputeShader kernel = new(
                 _liveness, default, TableFor(GpuResourceKind.UniformBuffer), 64, 1, 1);
@@ -135,7 +138,7 @@ namespace KhaozEngine.Tests.Gpu
                 () => MetalComputePipeline.Check(
                     _liveness,
                     new GpuComputePipelineDescription(kernel, Layout(GpuResourceKind.UniformBuffer))));
-            Assert.Contains("already disposed", refusedKernel.Message, StringComparison.Ordinal);
+            Assert.Equal(nameof(MetalComputeShader), refusedKernel.ObjectName);
         }
 
         /// <summary>No shader set at all is a named refusal rather than a null reference from inside the
@@ -143,10 +146,15 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void NoShaderSet_IsRefusedByName()
         {
+            MetalShaderSet shaders = ShaderSet(TableFor(GpuResourceKind.UniformBuffer));
+            GpuPipelineDescription description = Description(shaders, Layout(GpuResourceKind.UniformBuffer));
+            description.ShaderSet = null!;
             ArgumentException error = Assert.Throws<ArgumentException>(
-                () => MetalGraphicsPipelinePlan.Build(_liveness, default));
+                () => MetalGraphicsPipelinePlan.Build(_liveness, description));
+            Assert.Equal("description", error.ParamName);
 
-            Assert.Contains("was given no shader set", error.Message, StringComparison.Ordinal);
+            description.ShaderSet = shaders;
+            Assert.Same(shaders, MetalGraphicsPipelinePlan.Build(_liveness, description).Shaders);
         }
 
         /// <summary>
@@ -395,10 +403,14 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void NoComputeShader_IsRefusedByName()
         {
+            IGpuResourceLayout[] layouts = Layout(GpuResourceKind.UniformBuffer);
             ArgumentException error = Assert.Throws<ArgumentException>(
-                () => MetalComputePipeline.Check(_liveness, default));
+                () => MetalComputePipeline.Check(_liveness, new GpuComputePipelineDescription(null!, layouts)));
+            Assert.Equal("description", error.ParamName);
 
-            Assert.Contains("was given no compute shader", error.Message, StringComparison.Ordinal);
+            MetalComputeShader shader = new(_liveness, default, TableFor(GpuResourceKind.UniformBuffer), 64, 1, 1);
+            Assert.Same(shader, MetalComputePipeline.Check(
+                _liveness, new GpuComputePipelineDescription(shader, layouts)).Shader);
         }
 
         // ---- fixtures ------------------------------------------------------------------------------------

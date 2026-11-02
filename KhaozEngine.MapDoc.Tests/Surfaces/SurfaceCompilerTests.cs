@@ -124,6 +124,6 @@ public sealed class SurfaceCompilerTests
         p1.EdgeSubdivisions.Add(new(0, 0, MapCellEdge.South, 64));
         Assert.NotEmpty(MapSurfaceCompiler.Compile(s1, p1).Faces);
         p1.EdgeSubdivisions[0] = new(0, 0, MapCellEdge.South, 65);
-        Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.Compile(s1, p1));
+        Assert.Contains("segments", Assert.Throws<MapDocumentException>(() => MapSurfaceCompiler.Compile(s1, p1)).Message);
     }
 }

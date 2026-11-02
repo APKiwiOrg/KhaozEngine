@@ -349,7 +349,8 @@ public class MapPrefabWaterTests
             "yaw" => placement with { Yaw = float.NaN },
             _ => placement with { Position = new(10.25f, float.NaN, -3.125f) },
         };
-        Assert.Throws<MapDocumentException>(() => MapWaterDomain.Compile(domain, placement));
+        var error = Assert.Throws<MapDocumentException>(() => MapWaterDomain.Compile(domain, placement));
+        Assert.Equal("water domain: placement must be finite with a positive scale.", error.Message);
     }
 
     [Fact]

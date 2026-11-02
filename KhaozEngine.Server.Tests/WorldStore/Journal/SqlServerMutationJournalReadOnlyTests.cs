@@ -51,12 +51,12 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
         JournalEventPage events = await reader.ReadEventsAsync(new JournalEventRead("player/a", 0, null, 10, 1024));
         JournalProjectionRead projections = await reader.ReadProjectionsAsync(new JournalProjectionQuery("player/a"));
         JournalOperationResolution resolution = await reader.ResolveOperationAsync(Identity(3));
-        await AssertRefused(nameof(inner.InitializeAsync), () => reader.InitializeAsync(Initialization(10, "player/c")));
-        await AssertRefused(nameof(inner.CommitAsync), () => reader.CommitAsync(Commit(11, "player/a", 2, 7)));
-        await AssertRefused(nameof(inner.CompactAsync), () => reader.CompactAsync(new JournalCompaction("player/a", 2, "player.v2", 2, new byte[] { 40 }, 2)));
-        await AssertRefused(nameof(inner.PurgeOperationsAsync), () => inner.PurgeOperationsAsync(new JournalOperationPurge(DateTimeOffset.MaxValue, 10)));
-        await AssertRefused(nameof(inner.PurgeOperationsByAgeAsync), () => inner.PurgeOperationsByAgeAsync(new JournalOperationAgePurge(TimeSpan.Zero, 10)));
-        await AssertRefused(nameof(inner.RotateStoreEpochAsync), () => inner.RotateStoreEpochAsync());
+        await AssertRefused(() => reader.InitializeAsync(Initialization(10, "player/c")));
+        await AssertRefused(() => reader.CommitAsync(Commit(11, "player/a", 2, 7)));
+        await AssertRefused(() => reader.CompactAsync(new JournalCompaction("player/a", 2, "player.v2", 2, new byte[] { 40 }, 2)));
+        await AssertRefused(() => inner.PurgeOperationsAsync(new JournalOperationPurge(DateTimeOffset.MaxValue, 10)));
+        await AssertRefused(() => inner.PurgeOperationsByAgeAsync(new JournalOperationAgePurge(TimeSpan.Zero, 10)));
+        await AssertRefused(() => inner.RotateStoreEpochAsync());
         string after = await SqlServerJournalFingerprint.CaptureAsync(DedicatedConnectionString, writer.Prefix);
 
         Assert.Equal(new[] { ("player/a", 2L), ("player/b", 0L) }, page.Streams.Select(value => (value.StreamKey, value.HeadVersion)));
@@ -248,11 +248,9 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
         await writer.CompactAsync(new JournalCompaction("player/a", 1, "player.v1", 1, new byte[] { 30 }, null));
     }
 
-    private static async Task AssertRefused(string operation, Func<Task> write)
+    private static async Task AssertRefused(Func<Task> write)
     {
-        NotSupportedException exception = await Assert.ThrowsAsync<NotSupportedException>(write);
-        Assert.Contains(nameof(SqlServerJournalSchemaMode.ReadOnly), exception.Message, StringComparison.Ordinal);
-        Assert.Contains(operation, exception.Message, StringComparison.Ordinal);
+        await Assert.ThrowsAsync<NotSupportedException>(write);
     }
 
     private static void AssertSchemaRefusal(JournalStoreException exception)

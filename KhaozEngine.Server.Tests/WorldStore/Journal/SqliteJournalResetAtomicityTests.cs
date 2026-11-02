@@ -48,7 +48,7 @@ public sealed class SqliteJournalResetAtomicityTests : IDisposable
         Assert.Equal(JournalStoreFailureScope.WholeStore, failed.Scope);
         SqliteException provider = Assert.IsType<SqliteException>(failed.InnerException);
         Assert.Equal(19, provider.SqliteErrorCode);
-        Assert.Contains("FOREIGN KEY", provider.Message, StringComparison.Ordinal);
+        Assert.Equal(787, provider.SqliteExtendedErrorCode);
         Assert.Equal(before, SqliteJournalResetHarness.Counts(database, path));
         Assert.Equal(metadata, SqliteJournalResetHarness.Metadata(database, path));
         Assert.Equal(

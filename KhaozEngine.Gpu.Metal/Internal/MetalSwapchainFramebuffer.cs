@@ -92,6 +92,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>The current colour attachment, for the tests that assert the publish ordering this type exists
         /// for.</summary>
         internal MetalAttachment Attachment => _colour[0];
+        internal bool IsResolved => _colour[0].Texture != IntPtr.Zero;
 
         /// <inheritdoc/>
         MetalBoundFramebuffer IMetalBoundFramebufferSource.AsBound

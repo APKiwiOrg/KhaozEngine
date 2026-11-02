@@ -43,6 +43,9 @@ internal static class FrameDiagnosticsShaderGateSummary
         }).ToArray();
     }
 
+    internal static Dictionary<int, double> AttributedBusy(PassTimingSnapshot passes)
+        => ExclusiveShares(passes, -1).ToDictionary(pair => pair.Key, pair => pair.Value.BusyMs);
+
     readonly record struct Interval(ulong Start, ulong End, bool MainVertex, bool MainFragment, int Callback, double Scale);
     sealed class Share { internal double MainVertexMs, MainFragmentMs, BusyMs; }
 

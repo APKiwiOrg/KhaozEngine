@@ -104,22 +104,10 @@ internal static class FrameDiagnosticsPassSummary
         var blocks = schedule.ToArray();
         var set = new List<double>();
         var unset = new List<double>();
-        var frames = new List<(FrameTimingCompletion Completion, int Callback)>();
-        var submits = timing.Submissions.Records.GroupBy(s => (s.Queue, s.CommandBuffer))
-            .ToDictionary(g => g.Key, g => g.OrderBy(s => s.Timestamp).ToArray());
-        foreach (var completion in timing.Completions.Records)
+        var frames = FrameDiagnosticsEarlySubmitSummary.Frames(timing);
+        foreach (var queue in frames.GroupBy(f => f.Queue))
         {
-            if (completion.Status != 4 || completion.GpuStartTime <= 0 || !double.IsFinite(completion.GpuStartTime)
-                || completion.GpuEndTime < completion.GpuStartTime || !double.IsFinite(completion.GpuEndTime)
-                || !submits.TryGetValue((completion.Queue, completion.CommandBuffer), out var matches)) continue;
-            FrameTimingSubmit? submit = null;
-            foreach (var candidate in matches) if (candidate.Timestamp <= completion.Timestamp) submit = candidate;
-            if (submit is { Kind: FrameTimingCommandKind.FrameRecording, CallbackIndex: >= 0 } frame)
-                frames.Add((completion, frame.CallbackIndex));
-        }
-        foreach (var queue in frames.GroupBy(f => f.Completion.Queue))
-        {
-            var sorted = queue.OrderBy(f => f.Completion.GpuEndTime).ToArray();
+            var sorted = queue.OrderBy(f => f.End).ToArray();
             for (int i = 1; i < sorted.Length; i++)
             {
                 var a = sorted[i - 1];
@@ -128,7 +116,7 @@ internal static class FrameDiagnosticsPassSummary
                 foreach (var block in blocks)
                 {
                     if (a.Callback < block.Start || b.Callback >= block.EndExclusive) continue;
-                    (block.State ? set : unset).Add((b.Completion.GpuEndTime - a.Completion.GpuEndTime) * 1000);
+                    (block.State ? set : unset).Add((b.End - a.End) * 1000);
                     break;
                 }
             }

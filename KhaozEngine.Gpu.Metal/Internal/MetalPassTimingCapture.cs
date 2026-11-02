@@ -212,6 +212,15 @@ internal sealed class MetalPassTimingCapture : IDisposable
         _frameOrdinal = 0;
     }
 
+    internal void ContinueFrame(int callback, IntPtr prefix, IntPtr tail)
+    {
+        if (_frameCallback != callback || _frameBuffer != prefix) { BindFrame(callback, tail); return; }
+        // Preserve scopes across the split. Encoder ordinals remain local to each command buffer.
+        _frameBuffer = tail;
+        _frameEncoder = IntPtr.Zero;
+        _frameOrdinal = 0;
+    }
+
     internal void ObservePass(IntPtr buffer, int callback, PassLabelEventKind kind, string id, int occurrence)
     {
         BindFrame(callback, buffer);

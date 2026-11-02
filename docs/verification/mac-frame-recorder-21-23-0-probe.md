@@ -3,10 +3,10 @@
 NEVER MERGE this diagnostic archive into `main`. Branch
 `fix/mac-frame-recorder-21-23-0-probe` starts exactly at released `v21.23.0`, commit
 `cc5771ccc0a21593c07a0e0c1e20eb5f3b17377b`. It ports recorder commits `1066ce936` and
-`5b6a423bd` and extends their evidence. No engine pin, version, GPU commands, encoder count, public
-timestamp pools, frames in flight, framebufferOnly policy, capture taps or waits change. The rendering
-changes are three shader gates, on in rotating sampling blocks only, described under Shader gates. The depth and
-stencil store code of the directional cascade pass stays in the tree, off in every recorder block.
+`5b6a423bd` and extends their evidence. No engine pin, version, draws, passes, copies, encoder count, public
+timestamp pools, frames in flight, framebufferOnly policy, capture taps or waits change. Schema 11 alternates
+committing offscreen work before drawable acquisition. The three shader gates and the directional cascade
+depth and stencil store experiment stay in the tree, off in every recorder block.
 `KhaozEngine.Render3D` differs from the base tag only for the three gates and their plumbing.
 Only `KhaozEngine.Render3D`, `KhaozEngine.Gpu.Metal`, `KhaozEngine.Windowing` and `KhaozEngine.Game.Render3D`
 contain modified production source. This archive is never released or packaged.
@@ -39,13 +39,13 @@ It cannot exclude changes that reverse between callbacks. Cap and vsync changes 
 the summary. Require cap 0 and vsync true at baseline, end and both sample window states when
 comparing the intended scene. `cadenceCapped=true` is expected with vsync.
 
-## Schema 10
+## Schema 11
 
 The existing top-level cadence fields remain `processId`, `appAssembly`, `engineAssembly`,
 `stopwatchFrequency`, `durationSeconds`, `sampleCount`, `stopReason`, `baseline`, `end`,
-`samples` and `summary`. `schemaVersion` is 10. All schema 7 to 9 fields retain their meaning, except that
+`samples` and `summary`. `schemaVersion` is 11. All schema 7 to 10 fields retain their meaning, except that
 `passTiming.blocks[].timed` is true in every block since schema 9 and `experiment.blocks[].discard` is false in every
-block since schema 10. Its additional top-level fields are:
+block since schema 10. `shaderGates.schedule[].gates` is zero in every block since schema 11. Its additional top-level fields are:
 
 - `identity`: process id, executable path, command-line argument array, every loaded assembly whose
   name starts with KhaozEngine or Grimhollow, and sorted KE_* environment names and values.
@@ -68,6 +68,7 @@ block since schema 10. Its additional top-level fields are:
 - `passTiming`: stage-boundary support, configuration, block schedule, correlated clocks, render
   signatures, encoder records and explicit evidence-loss counters described below.
 - `shaderGates`: gate names, block schedule, the state each callback applied and counts, described under Shader gates.
+- `earlySubmit`: `blockCallbacks` 72, `schedule` and `appliedPerCallback`, described under Early offscreen commit.
 
 ## Native timing records
 
@@ -75,7 +76,8 @@ All native hooks are gated by one static volatile sampling flag. GPU times are r
 existing double-returning objc_msgSend in the existing `MetalCompletionHandler.Completed`
 block. Its error-latch route still runs normally. Submits record command-buffer handle, queue,
 Stopwatch ticks, callback index and kind immediately before commit. Kinds are 0 Other,
-1 FrameRecording, 2 SetupFlush and 3 PresentBuffer. The frame list is recognized by reference,
+1 FrameRecording (the final buffer), 2 SetupFlush, 3 PresentBuffer and 4 EarlyFrameRecording (the offscreen prefix).
+The prefix retains its callback index. Both frame buffers use the ordinary completion handler and error latch. The frame list is recognized by reference,
 not by an assumption that every submitted list is a frame. Submits on another managed thread
 carry callback index -1. Setup and present buffers keep their existing completion handlers.
 A queue-drain buffer receives that same handler only while sampling. Its existing wait is unchanged.
@@ -102,8 +104,9 @@ clipped to inclusive baseline/end callback ticks. A producer racing stop can fin
 its reserved slot, but cannot mutate a copied report. There are no diagnostic drains or waits.
 A missing tail completion or presentation is a coverage gap, not evidence of zero GPU cost.
 
-`gpuSummary.frameGpuBusyMs` describes valid matched frame-recording buffer end-minus-start
-seconds converted to milliseconds. `gpuIdleGapMs` describes nonnegative gaps in execution-time
+`gpuSummary.frameGpuBusyMs` sums valid matched frame-buffer end-minus-start durations per callback, converted to
+milliseconds. Split frames require both completions. Frame-list submits on another thread have no callback to join
+and keep their individual raw spans. `gpuIdleGapMs` describes nonnegative gaps in execution-time
 order between valid completed buffers on each queue. It is not completion-handler dispatch delay.
 `presentedIntervalMs` describes consecutive positive finite physical presented times, sorted by
 native time. Each distribution contains count, mean, median, nearest-rank p95, p99 and worst.
@@ -112,7 +115,7 @@ Count 0 means no evidence and its numeric placeholders are 0. A valid GPU timing
 
 `unpresentedDrawables` counts callbacks reporting presentedTime 0. Per-sample
 `frameCompletionCoverage`, `presentCallCoverage` and `presentedCoverage` mark whether a matched
-valid frame completion, a present call and a positive presented callback exist. `allCallbacksCovered`
+valid completions for every captured frame buffer, a present call and a positive presented callback exist. `allCallbacksCovered`
 requires every flag. Reused drawable ids are paired within successive present-call tick ranges,
 so a later presentation cannot fill an earlier gap. `overflowed`, `incompleteWrites`, `nativeReadFailures`,
 `unmatchedCompletions` and `invalidGpuTimings` expose evidence loss and unsupported readings.
@@ -282,6 +285,87 @@ layer. `bytes` is the padded upload size or `width * height * bytesPerTexel`. `g
 format the staging layout lacks. Uniform ring writes are memcpys with no blit encoder and are not transfers. The setup
 batch is outside the frame list and is not recorded. Standalone multisample resolves are render encoders.
 
+## Early offscreen commit
+
+Schema 11 tests #1682. Sampling blocks of 72 callbacks alternate OFF then ON, starting OFF. Per-encoder timing,
+labels and transfers stay on in both states. Shader gates and cascade discard stay off. Outside sampling, including
+when `KE_FRAME_DIAGNOSTICS_PATH` is absent, there is no early submission.
+
+`MetalCommandList.SetFramebuffer` reaches the split only for the frame list's first bind of an unresolved swapchain
+framebuffer. It runs before `AsBound` calls `MetalPresentBoundary.AcquireAndPublish` and `NextDrawable`. This is already
+a framebuffer-change boundary. `EndPass` performs the clear-only flush and render encoder end that the change owes,
+and `EnsureNoEncoder` ends a remaining blit or compute encoder before commit. A refused pending clear or a recording with no encoded work leaves the
+frame unsplit. No encoder is cut in half and no pass or encoder is added.
+
+`MetalEarlyFrameSubmit` flushes pending setup work before taking the existing submit lock. It rechecks liveness,
+attaches the ordinary completion handler and commits the prefix with kind 4, without presenting or signalling the
+shared event. The list drops that buffer's retain and uncommitted count, then takes a fresh retained buffer from
+its existing source and queue. It continues the recording without a new `Begin`, ring rotation or arena rotation.
+The final framebuffer pass, UI and capture taps record into the tail. Final submission, fences and present follow
+the existing path. Pass-label scopes survive the split, while encoder ordinals restart at zero for the new buffer,
+keeping their existing per-buffer meaning. Pass timing owns separate sample slots for the two buffers and releases
+each on its own completion, including late completions after sampling stops.
+
+The pair owns one frame slot. Only final submit encodes and registers the ordinary `MTLSharedEvent` value, records
+that value as the uniform segment owner and gives it to the staging arena. Neither early completion nor early commit
+recycles storage. The arena continues allocating after the prefix's used bytes. An abandoned prefix quarantines its
+segment until device teardown. A later Begin cannot claim it, and off-timeline ring updates defer rather than overwrite
+it. The device's existing queue drain at teardown covers that prefix even though it has no timeline signal. A lost
+device follows the existing no-op release posture. No recovery buffer, extra GPU signal or wait is introduced.
+
+Uniform bindings record the segment's recording identity while sampling. After an early commit, a record-time write
+to any uniform buffer already referenced by the prefix is refused before copying bytes. Whole-buffer protection is
+conservative even for disjoint ranges. New tail-only uniform buffers remain writable. Device-level uploads, maps, WaitForIdle and
+foreign submissions are refused while an early frame awaits its final submission. Otherwise they could put setup
+uploads after a prefix that previously executed after them, or modify bytes the prefix is reading. This probe fails
+on such a shape instead of silently testing different inputs. Public timestamp batches already recorded on the list
+leave that frame unsplit, because their existing ownership is one command buffer. An externally held mapped pointer
+must still obey the ordinary resource-lifetime contract.
+
+`earlySubmit.schedule` contains `startCallback`, `endCallbackExclusive`, `startTimestamp`, `endTimestamp` and `enabled`.
+`appliedPerCallback` is true if at least one prefix actually committed in that callback. An ON block can contain false
+entries, for example a suppressed frame, an already acquired drawable, a public timestamp batch or no swapchain bind.
+The state is scheduled treatment, and the applied flag exposes whether the mechanism ran.
+
+`gpuSummary.earlySubmitStates` contains OFF and ON entries with:
+
+- `enabled`, `scheduledCallbacks`, `appliedCallbacks` and `settledCallbacks`.
+- `callbackIntervalMs` and `framesPerSecond`, from the callback samples in that state.
+- `frameCompletionIntervalMs`, between adjacent callbacks' final frame ends inside one block on the same queue.
+- `gpuIdlePerFrameMs`, the positive part of this frame's first buffer start minus the previous frame's last buffer end.
+  This uses the same adjacency and block rule, includes zero for overlap, and excludes the internal prefix-to-tail gap.
+- `attributedBusyMs`, from the existing stage-overlap attribution sweep across both buffers, skipping three callbacks
+  at each block edge. It is a sum per settled callback, not the sum of overlapping raw stage spans.
+- `drawableAcquireWaitMsPerCallback`, consecutive cumulative counter differences, including zero-wait callbacks.
+- `presentedIntervalMs`, from presented drawables matched to their callback. Only adjacent callbacks inside one block
+  contribute. Reused drawable ids match their latest preceding present call.
+
+A frame has one final submit and at most one prefix on the same queue and callback. Both need valid completions for
+frame coverage and the new frame metrics. Matching uses queue, handle and latest preceding commit timestamp, so native
+handle reuse and unordered handler delivery do not confuse the pair. Existing `frameGpuBusyMs` sums both buffers'
+GPU durations per frame, preserving its meaning without counting the gap between them as busy. Existing global queue
+idle and presentation distributions keep their original definitions.
+
+### Identical-output argument and limits
+
+Both buffers come from the same queue and commit in prefix-then-tail order. Every existing encoder remains intact,
+with the same render attachments, load/store actions, draws and transfers, in the same order. There are no new GPU
+commands, encoders or waits. The final event signal follows both parts, so frame-slot reuse cannot race the prefix.
+The uniform and off-timeline guards above preserve inputs where moving commit earlier would otherwise expose a write.
+
+`MetalEarlyFrameSplitGpuTests` is separately gated by `KE_GPU_TESTS=1`. It runs headlessly, records three offscreen
+draw passes, a dependent final copy and a final draw, once unsplit and once split through this list's real early-submit
+path on the same queue, and compares all four targets
+as 4096 readback bytes. Background and triangle-centre byte controls prove that both clears and draws ran. It creates no window,
+layer, swapchain or drawable, so it does not prove the live drawable-acquire hook or physical presentation. The native
+smoke independently checks render, compute and blit timing selectors.
+
+The readback is a small synthetic workload on one GPU. It does not establish Hollowmere pixel identity or an FPS gain.
+Buffers may overlap differently on the GPU despite identical command order. ON also pays one extra command buffer,
+commit, completion handler and timing sample-slot occupancy. Compare states within one capture and inspect applied
+counts and missing coverage before interpreting a difference. Drift, thermal changes and work crossing block edges
+remain limitations. No claim about the 144 Hz budget follows from this probe alone.
+
 ## Shader gates
 
 The shading study found work whose result is already known exactly, and capture 03 had shown the bandwidth fixes were
@@ -307,7 +391,8 @@ and wind-deformed vertices use other programs and never qualify.
 
 `GameApp3D` registers `SceneFrameShaderGates` through `AppWindow.RegisterFrameDiagnosticsShaderGates` only when the
 recorder is requested. The recorder's opening boundary is before prepare or update, so one callback sees one state.
-From callback 0, blocks of 72 callbacks rotate baseline, `pointShadowZeroNdl`, `underwaterMarchZero`, `rigidWorldReuse`.
+Since schema 11, every callback applies baseline with all gates zero. The retained test-only gate-block switch
+rotates baseline, `pointShadowZeroNdl`, `underwaterMarchZero`, `rigidWorldReuse` in blocks of 72 callbacks.
 The schedule leaves the gates alone until sampling starts, and turns them off at the last boundary and on every failure and
 disposal. After that it never applies a nonzero mask. Nothing else in the engine sets the property.
 
@@ -471,11 +556,14 @@ discard decision, the block schedule, serialization and the per-state summary, a
 Schema 10 tests cover gate defaults and gating outside sampling, the rotation, the per-callback applied state, every way
 out of sampling, serialization, the per-state summary arithmetic, the uploaded switch values and bit-identical slot
 selection, also through fakes.
+Schema 11 tests cover the split gating and encoder boundary, final-buffer slot ownership, abandonment quarantine,
+uniform-write protection, label continuity, actual-applied flags, serialization and per-state pair/idle arithmetic.
 One separately gated native smoke case records a headless offscreen render, serial compute and
 blit encoder, then two passes over a Depth32Float_Stencil8 attachment through the real sink, opened Unknown and
 resolved to Store and DontCare. It commits once, waits for that buffer and resolves real stage timestamps. Its temporary
 isolated test host links the same test source to avoid unrelated GPU probes during suite discovery.
-The source diff against v21.23.0 for KhaozEngine.Render3D must be limited to the three gates and their plumbing. Verification
+This increment changes no KhaozEngine.Render3D source. The source diff against v21.23.0 for KhaozEngine.Render3D remains
+limited to the three gates and their plumbing. Verification
 commands, results, source identities and limitations belong in the implementer's external report.
 CPU tests do not prove native handler delivery, actual GPU timing validity, physical presentation,
 pixel identity or an FPS improvement. The gated GPU test is the pixel identity evidence, with the limits above. The parent owns DLL substitution and the single human-launched

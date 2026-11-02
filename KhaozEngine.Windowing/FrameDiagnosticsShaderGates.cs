@@ -29,7 +29,7 @@ internal sealed record FrameDiagnosticsShaderGateReport(string[] Names, int Bloc
 
 /// <summary>Rotates the gates through baseline, then each one alone, in blocks of 72 callbacks. Every gate is off outside
 /// the sampling window, because only an unstopped schedule ever applies a nonzero mask and every way out stops it.</summary>
-internal sealed class FrameDiagnosticsShaderGateSchedule(IFrameDiagnosticsShaderGates? gates, int capacity)
+internal sealed class FrameDiagnosticsShaderGateSchedule(IFrameDiagnosticsShaderGates? gates, int capacity, bool rotate = true)
 {
     internal const int BlockCallbacks = 72;
     internal const int NotRegistered = -3;
@@ -49,7 +49,7 @@ internal sealed class FrameDiagnosticsShaderGateSchedule(IFrameDiagnosticsShader
         if (callback == 0) gates?.ConsumeApplied(); // A value from before the window describes no sample.
         if (callback % BlockCallbacks != 0) return;
         CloseBlock(callback, timestamp);
-        var state = States[callback / BlockCallbacks % States.Length];
+        var state = States[rotate ? callback / BlockCallbacks % States.Length : 0];
         _blocks[_blockCount++] = new(callback, callback, timestamp, timestamp, state.Name, state.Gates);
         Apply(state.Gates);
     }

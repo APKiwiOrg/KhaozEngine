@@ -97,6 +97,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // RecordSegmentOwner. Zero means no submission has ever read the segment, which is the only case that
         // needs no wait: the timeline's first value is 1, so zero cannot be a real target.
         readonly ulong[] _segmentOwner;
+        internal MetalEarlyFrameProtection EarlyFrames { get; }
 
         // Every ring currently owing at least one segment a deferred off-timeline write, so a rotation can apply
         // exactly those. A device may hold hundreds of rings and a walk over all of them at every rotation would
@@ -153,6 +154,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _backpressure = backpressure;
             _submitLock = submitLock;
             _segmentOwner = new ulong[framesInFlight];
+            EarlyFrames = new(framesInFlight);
             FramesInFlight = framesInFlight;
         }
 
@@ -253,6 +255,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 _recordingIndex++;
                 int segment = (int)(_recordingIndex % (ulong)FramesInFlight);
+
+                EarlyFrames.Begin(segment, _recordingIndex);
 
                 while (true)
                 {
@@ -414,7 +418,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 {
                     // _segment is read and written under this lock alone, so this comparison is exact rather than
                     // a benign stale read.
-                    if (segment != _segment && DeferralIsOwed(ring, segment, ref completed, ref polled))
+                    if (EarlyFrames.Pending(segment) || (segment != _segment && DeferralIsOwed(ring, segment, ref completed, ref polled)))
                     {
                         _patchesCoalesced += ring.RecordPendingPatchUnderLock(segment, offsetBytes, data);
                         _patchesDeferred++;

@@ -11,6 +11,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             using var autorelease = ObjCAutoreleasePool.Enter();
             RequireTimestampPool(pool).Begin(_commandBuffer, count, this, _timestampRecordingId);
+            _timestampBatchRecorded = true;
         }
 
         public void WriteTimestamp(IGpuTimestampPool pool, uint index)

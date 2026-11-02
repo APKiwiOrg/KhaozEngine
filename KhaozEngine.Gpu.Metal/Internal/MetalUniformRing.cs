@@ -45,6 +45,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     internal sealed class MetalUniformRing
     {
         readonly MetalRingAllocator _allocator;
+        readonly ulong[] _readRecordings;
 
         // The persistently mapped base of the WHOLE ring, which is the MTLBuffer's own contents() pointer taken
         // ONCE at creation. Stable for the buffer's life by Metal's own contract (M-M2), which is why it is a
@@ -79,6 +80,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             }
 
             _allocator = allocator;
+            _readRecordings = new ulong[allocator.FramesInFlight];
             _contents = contents;
 
             SizeInBytes = sizeInBytes;
@@ -136,6 +138,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal bool BindWindowFits(uint rangeOffset, uint callerDynamicOffset, uint range)
             => MetalRingStride.BindWindowFits(rangeOffset, callerDynamicOffset, range, SegmentStrideBytes);
 
+        internal void RecordRead(int segment)
+        {
+            if (MetalFrameTimingProbe.Sampling) _readRecordings[segment] = _allocator.EarlyFrames.Recording(segment);
+        }
+
         /// <summary>
         /// WRITE INTO THE RECORDING'S OWN SEGMENT, which is what a record-time <c>UpdateBuffer</c> on a uniform
         /// buffer becomes: <c>memcpy(contents + segmentBase + offsetBytes, data, n)</c> and nothing else.
@@ -180,6 +187,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (data.Length == 0) return;
 
+            _allocator.EarlyFrames.RequireWritable(segment, _readRecordings[segment]);
             CopyInto(_contents, segmentBase + offsetBytes, data);
         }
 

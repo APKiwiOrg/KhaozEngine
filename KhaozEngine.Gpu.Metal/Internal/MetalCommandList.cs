@@ -284,10 +284,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "an encoder left open is a command buffer that cannot be committed.");
             }
 
+            if (_earlyProtected) throw new InvalidOperationException("An early frame must be submitted before this list can begin again.");
+
             // The sealed-but-unsubmitted buffer goes back BEFORE the new one is taken, so a list re-Begun in a
             // loop holds one buffer rather than accumulating one per iteration against the queue's own maximum.
             ReleaseHeldBuffer();
             BeginTimestampRecording();
+            _timestampBatchRecorded = false;
 
             IntPtr buffer = _buffers.Acquire();
             if (buffer == IntPtr.Zero)
@@ -330,6 +333,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // and braces rather than the mechanism, which is deliberate: the stamps carry the answer for the
             // ordinary encoder boundary as well, and only one of the two paths can be tested through a Begin.
             _encoders.BeginRecording(buffer);
+            _earlyRecordingEpoch = _encoders.Epoch;
             _passes.Reset();
             _graphicsBinds.Reset();
             _computeBinds.Reset();
@@ -395,6 +399,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal void MarkSubmitted(ulong signalledValue)
         {
             _arena.RecordSubmitted(signalledValue);
+            if (_earlyProtected)
+            {
+                _rings.EarlyFrames.Submitted(_segment);
+                _earlyProtected = false;
+            }
             if (_segment >= 0) _rings.RecordSegmentOwner(_segment, signalledValue);
 
             _sealed = false;

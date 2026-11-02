@@ -24,6 +24,14 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
     public PassExperimentSnapshot Experiment { get; init; } = PassExperimentSnapshot.Unavailable();
     public FrameDiagnosticsShaderGateReport ShaderGates { get; init; } = FrameDiagnosticsShaderGateReport.Empty;
 
+    public FrameEarlySubmitSnapshot EarlySubmit { get; init; } = new(72, [], []);
+
+    internal FrameDiagnosticsReport WithEarlySubmit(FrameEarlySubmitSnapshot early) => this with
+    {
+        EarlySubmit = early,
+        GpuSummary = GpuSummary with { EarlySubmitStates = FrameDiagnosticsEarlySubmitSummary.States(Timing, PassTiming, early, Baseline, Samples) },
+    };
+
     internal FrameDiagnosticsReport WithPassTiming(MetalPassTimingCapture? capture)
     {
         var passes = capture?.Snapshot() ?? PassTimingSnapshot.Unavailable();
@@ -56,7 +64,7 @@ internal sealed record FrameDiagnosticsReport(int SchemaVersion, int ProcessId, 
         var samples = new FrameDiagnosticsSample[count];
         Array.Copy(buffer, samples, count);
         var engine = typeof(FrameDiagnosticsRecorder).Assembly;
-        return new FrameDiagnosticsReport(10, Environment.ProcessId,
+        return new FrameDiagnosticsReport(11, Environment.ProcessId,
             Assembly.GetEntryAssembly()?.FullName ?? "unknown", engine.FullName + " MVID=" + engine.ManifestModule.ModuleVersionId,
             frequency, (end.Timestamp - baseline.Timestamp) / (double)frequency, count, reason, baseline, end, samples,
             FrameDiagnosticsSummary.Create(baseline, end, samples, reason == "capacity", count == buffer.Length),

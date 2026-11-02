@@ -27,6 +27,7 @@ internal sealed record FrameDiagnosticsGpuSummary(FrameDiagnosticsDistribution F
     public FrameDiagnosticsDistribution TimedFrameCompletionIntervalMs { get; init; } = new(0, 0, 0, 0, 0, 0);
     public FrameDiagnosticsDistribution UntimedFrameCompletionIntervalMs { get; init; } = new(0, 0, 0, 0, 0, 0);
     public FrameDiagnosticsDiscardState[] CascadeDepthDiscard { get; init; } = [];
+    public FrameDiagnosticsEarlySubmitState[] EarlySubmitStates { get; init; } = [];
     public FrameDiagnosticsShaderGateState[] ShaderGateStates { get; init; } = [];
     internal FrameDiagnosticsGpuSummary WithDiscardStates(FrameTimingSnapshot timing, PassTimingSnapshot passes, PassExperimentSnapshot experiment)
         => this with { CascadeDepthDiscard = FrameDiagnosticsPassSummary.DiscardStates(timing, passes, experiment) };
@@ -64,9 +65,14 @@ internal sealed record FrameDiagnosticsGpuSummary(FrameDiagnosticsDistribution F
                     if (candidate.Timestamp <= completion.Timestamp) submit = candidate;
             if (submit is null) unmatched++;
             if (!Valid(completion)) { invalid++; continue; }
-            if (submit is not { Kind: FrameTimingCommandKind.FrameRecording } frame) continue;
-            busy.Add((completion.GpuEndTime - completion.GpuStartTime) * 1000);
-            if ((uint)frame.CallbackIndex < (uint)count) frameCoverage[frame.CallbackIndex] = true;
+            // A frame list submitted on another thread has no callback to join, but its raw busy span still counts.
+            if (submit is { Kind: FrameTimingCommandKind.FrameRecording, CallbackIndex: < 0 })
+                busy.Add((completion.GpuEndTime - completion.GpuStartTime) * 1000);
+        }
+        foreach (var frame in FrameDiagnosticsEarlySubmitSummary.Frames(timing))
+        {
+            busy.Add(frame.BusyMs);
+            if ((uint)frame.Callback < (uint)count) frameCoverage[frame.Callback] = true;
         }
         foreach (var queue in completions.Where(Valid).GroupBy(c => c.Queue))
         {

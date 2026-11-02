@@ -80,6 +80,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (!KhaozEngineMetal.IsPlatformSupported || _liveness.IsDead) return;
             if (width == 0 || height == 0) return;
 
+            _rings.EarlyFrames.RequireNoPending();
             var upload = new MetalTextureUpload(mipLevel, arrayLayer, x, y, width, height);
 
             if (metal.IsStaging) WriteStagingTexture(metal, upload, data);
@@ -106,6 +107,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     nameof(staging));
             }
 
+            _rings.EarlyFrames.RequireNoPending();
             DrainForRead(mode);
             return metal.Mapped(subresource: 0);
         }
@@ -122,6 +124,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             MetalBuffer metal = MetalResourceOwnership.Require<MetalBuffer>(staging, _liveness, nameof(staging));
 
+            _rings.EarlyFrames.RequireNoPending();
             DrainForRead(mode);
             return metal.Mapped();
         }
@@ -206,6 +209,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MetalBuffer metal = MetalResourceOwnership.Require<MetalBuffer>(buffer, _liveness, nameof(buffer));
 
             if (!KhaozEngineMetal.IsPlatformSupported || _liveness.IsDead) return;
+
+            _rings.EarlyFrames.RequireNoPending();
 
             // A RING-BACKED BUFFER TAKES THE EVERY-SEGMENT PATH (M-M5,
             // https://github.com/APKiwiOrg/KhaozEngine/issues/484). A device-level write has no frame to belong

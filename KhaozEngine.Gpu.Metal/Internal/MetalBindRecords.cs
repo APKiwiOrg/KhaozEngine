@@ -542,6 +542,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     bound.RangeOffset, caller, bound.Range, ring.SegmentStrideBytes);
 
                 frameBase = ring.SegmentBaseBytes(segment);
+                ring.RecordRead(segment);
             }
 
             ulong composed = frameBase + bound.RangeOffset + caller;

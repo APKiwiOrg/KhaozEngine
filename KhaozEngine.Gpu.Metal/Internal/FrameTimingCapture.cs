@@ -14,11 +14,13 @@ internal sealed class FrameTimingCapture : IDisposable
     internal readonly FrameTimingBuffer<FrameTimingPresented> Presented;
     internal long NativeReadFailures;
     internal readonly MetalPassTimingCapture? PassTiming;
+    internal readonly FrameEarlySubmitCapture? EarlySubmit;
 
-    internal FrameTimingCapture(IGpuCommandList? frameCommands, int capacity = 65536, MetalPassTimingCapture? passTiming = null)
+    internal FrameTimingCapture(IGpuCommandList? frameCommands, int capacity = 65536, MetalPassTimingCapture? passTiming = null, FrameEarlySubmitCapture? earlySubmit = null)
     {
         _frameCommands = frameCommands;
         PassTiming = passTiming;
+        EarlySubmit = earlySubmit;
         Submissions = new(capacity);
         Completions = new(capacity);
         PresentCalls = new(Math.Min(capacity, 8192));
@@ -27,7 +29,8 @@ internal sealed class FrameTimingCapture : IDisposable
 
     internal int CurrentCallback => Environment.CurrentManagedThreadId == _thread ? CallbackIndex : -1;
     internal FrameTimingCommandKind Kind(IGpuCommandList? commands, FrameTimingCommandKind fallback) =>
-        commands is not null && ReferenceEquals(commands, _frameCommands) ? FrameTimingCommandKind.FrameRecording : fallback;
+        commands is not null && ReferenceEquals(commands, _frameCommands) && fallback != FrameTimingCommandKind.EarlyFrameRecording
+            ? FrameTimingCommandKind.FrameRecording : fallback;
 
     /// <summary>The frame list's open recording, or nil. Read only on the frame thread.</summary>
     internal IntPtr FrameCommandBuffer => (_frameCommands as MetalCommandList)?.RecordingCommandBuffer ?? IntPtr.Zero;
@@ -48,7 +51,8 @@ internal sealed class FrameTimingCapture : IDisposable
         MetalFrameTimingProbe.Start(this);
     }
 
-    internal void Stop() => MetalFrameTimingProbe.Stop(this);
+    internal bool IsFrame(IGpuCommandList commands) => CurrentCallback >= 0 && ReferenceEquals(commands, _frameCommands);
+    internal void Stop() { EarlySubmit?.Stop(); MetalFrameTimingProbe.Stop(this); }
     internal FrameTimingSnapshot Snapshot() => new(Submissions.Snapshot(), Completions.Snapshot(),
         PresentCalls.Snapshot(), Presented.Snapshot(), Interlocked.Read(ref NativeReadFailures));
     public void Dispose() { Stop(); PassTiming?.Dispose(); }

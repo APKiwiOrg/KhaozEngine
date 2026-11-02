@@ -236,7 +236,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // M-A2's POSITION, CAPTURED PER LIST so a recording cannot straddle two policies. It is the
                 // per-attachment fix for every caller the engine has: the switch that could ask for the other
                 // position is gone, and what remains is a test seam. See MetalClearPolicy.
-                clearMode, _timeline);
+                clearMode, _timeline)
+            { EarlySubmit = new(this, _submitLock) };
 
         /// <inheritdoc/>
         /// <remarks>M-G2's <c>softwareAdapter</c> is ALWAYS false with confidence rather than null, because Apple
@@ -388,6 +389,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 PrepareForCommit(list, _setup, alive: false);
                 return;
             }
+
+            if (!list.HasEarlyPrefix) _rings.EarlyFrames.RequireNoPending();
 
             // Non-zero by construction on this arm: a sealed list holds a real buffer, because Begin throws
             // rather than sealing over a nil one.
@@ -569,6 +572,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // the uploads the caller has just made, which is exactly the case an explicit drain is asked for.
             // The flush COMMITS and does not wait, and it says whether it committed anything, because that is
             // what decides the second drain below.
+            _rings.EarlyFrames.RequireNoPending();
             bool committed = _setup.Flush();
 
             // M-F5's DRAIN, counted, over everything a Submit ever took to the queue.

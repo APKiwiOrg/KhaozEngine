@@ -45,7 +45,7 @@ internal sealed class FrameTimingBuffer<T> where T : struct
 }
 
 internal sealed record FrameTimingBufferSnapshot<T>(T[] Records, long Overflow, int IncompleteWrites) where T : struct;
-internal enum FrameTimingCommandKind { Other, FrameRecording, SetupFlush, PresentBuffer }
+internal enum FrameTimingCommandKind { Other, FrameRecording, SetupFlush, PresentBuffer, EarlyFrameRecording }
 internal readonly record struct FrameTimingSubmit(long CommandBuffer, long Queue, long Timestamp, int CallbackIndex, FrameTimingCommandKind Kind);
 internal readonly record struct FrameTimingCompletion(long CommandBuffer, long Queue, long Timestamp, long Status, double GpuStartTime, double GpuEndTime);
 internal readonly record struct FrameTimingPresentCall(ulong DrawableId, long DrawableHandle, long CommandBuffer, long Timestamp, int CallbackIndex);

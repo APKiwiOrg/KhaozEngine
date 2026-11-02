@@ -23,6 +23,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
     readonly FrameTimingCapture _timing;
     readonly FrameDiagnosticsAnnotations _annotations;
     readonly FrameDiagnosticsShaderGateSchedule _shaderGates;
+    readonly FrameEarlySubmitCapture _earlySubmit;
     readonly int? _framesInFlight;
     FrameDiagnosticsCaptureState _baselineCapture, _endCapture;
     FrameTimingClockMap _baselineClock, _endClock;
@@ -34,7 +35,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
 
     internal FrameDiagnosticsRecorder(string path, long frequency, int capacity = 4096,
         IFrameDiagnosticsAnnotator? annotator = null, IGpuDevice? device = null, IGpuCommandList? frameCommands = null,
-        IFrameDiagnosticsShaderGates? shaderGates = null)
+        IFrameDiagnosticsShaderGates? shaderGates = null, bool shaderGateBlocks = false)
     {
         if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("An absolute result path is required.", nameof(path));
         if (frequency <= 0) throw new ArgumentOutOfRangeException(nameof(frequency));
@@ -46,8 +47,9 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
         _frequency = frequency;
         _samples = new FrameDiagnosticsSample[capacity];
         _annotations = new(annotator, capacity);
-        _shaderGates = new(shaderGates, capacity);
-        _timing = new(frameCommands, passTiming: CreatePassTiming(device));
+        _shaderGates = new(shaderGates, capacity, rotate: shaderGateBlocks);
+        _earlySubmit = new(capacity);
+        _timing = new(frameCommands, passTiming: CreatePassTiming(device), earlySubmit: _earlySubmit);
         _framesInFlight = (device as MetalGpuDevice)?.DiagnosticFramesInFlight;
         MetalFrameTimingNative.Prepare();
     }
@@ -102,6 +104,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
             catch (Exception error) { Fail("sampling could not start (" + error.GetType().Name + ")"); return; }
             _phase = Phase.Sampling;
             _shaderGates.Boundary(0, timestamp);
+            _earlySubmit.Boundary(0, timestamp);
             return;
         }
 
@@ -122,9 +125,11 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
             _timing.CallbackIndex = _count;
             _timing.PassTiming?.Boundary(_count, timestamp);
             _shaderGates.Boundary(_count, timestamp);
+            _earlySubmit.Boundary(_count, timestamp);
             return;
         }
         _shaderGates.End(_count, timestamp);
+        _earlySubmit.End(_count, timestamp);
         _timing.Stop();
         _timing.PassTiming?.End(_count, timestamp);
         _endCapture = captureState;
@@ -160,7 +165,7 @@ internal sealed class FrameDiagnosticsRecorder : IDisposable
             var report = FrameDiagnosticsReport.Create(_frequency, _baseline, _previous, _samples, _count, reason,
                 _timing.Snapshot().Window(_baseline.Timestamp, _previous.Timestamp), _annotations.Report(_count), _framesInFlight, _baselineCapture, _endCapture,
                 _baselineClock, _endClock);
-            report = report.WithPassTiming(_timing.PassTiming).WithShaderGates(_shaderGates.Report(_count));
+            report = report.WithPassTiming(_timing.PassTiming).WithShaderGates(_shaderGates.Report(_count)).WithEarlySubmit(_earlySubmit.Snapshot(_count));
             temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {

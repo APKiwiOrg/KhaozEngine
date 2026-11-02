@@ -63,6 +63,20 @@ internal static class MetalFrameTimingProbe
         Interlocked.CompareExchange(ref _capture, null, capture);
     }
 
+    internal static bool ShouldEarlySubmit(MetalCommandList commands) => Sampling
+        && Volatile.Read(ref _capture) is { EarlySubmit.Enabled: true } capture && capture.IsFrame(commands);
+
+    internal static void EarlySubmitted(MetalCommandList commands)
+    {
+        if (Volatile.Read(ref _capture) is { } capture && capture.IsFrame(commands)) capture.EarlySubmit?.Applied(capture.CurrentCallback);
+    }
+
+    internal static void ContinueFrame(MetalCommandList commands, IntPtr prefix, IntPtr tail)
+    {
+        if (Volatile.Read(ref _capture) is { } capture && capture.IsFrame(commands))
+            capture.PassTiming?.ContinueFrame(capture.CurrentCallback, prefix, tail);
+    }
+
     internal static void Submit(IntPtr commandBuffer, IntPtr queue, FrameTimingCommandKind kind, IGpuCommandList? commands)
     {
         if (!Sampling || Volatile.Read(ref _capture) is not { } capture) return;

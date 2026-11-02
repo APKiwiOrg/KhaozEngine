@@ -32,7 +32,7 @@ public sealed class FrameDiagnosticsShaderGateTests : IDisposable
         }
     }
 
-    FrameDiagnosticsRecorder Recorder(FakeGates gates, int capacity) => new(ResultPath, 1000, capacity, shaderGates: gates);
+    FrameDiagnosticsRecorder Recorder(FakeGates gates, int capacity) => new(ResultPath, 1000, capacity, shaderGates: gates, shaderGateBlocks: true);
     void Trigger() => File.WriteAllText(ResultPath + ".start", "");
     static void Observe(FrameDiagnosticsRecorder recorder, long timestamp) =>
         recorder.Observe(0.001, timestamp, Foreground, default);
@@ -99,7 +99,7 @@ public sealed class FrameDiagnosticsShaderGateTests : IDisposable
 
         using var json = JsonDocument.Parse(File.ReadAllText(ResultPath));
         JsonElement report = json.RootElement.GetProperty("shaderGates");
-        Assert.Equal(10, json.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(11, json.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal(new[] { "pointShadowZeroNdl", "underwaterMarchZero", "rigidWorldReuse" },
             report.GetProperty("names").EnumerateArray().Select(n => n.GetString()));
         Assert.Equal(72, report.GetProperty("blockCallbacks").GetInt32());

@@ -627,7 +627,8 @@ namespace KhaozEngine.Tests.Gpu
 
             lock (submitLock)
             {
-                Assert.Throws<InvalidOperationException>(fences.WaitForIdle);
+                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(fences.WaitForIdle);
+                Assert.Contains("submit lock", ex.Message, StringComparison.Ordinal);
             }
 
             // And it still drains normally from outside, so the guard costs the ordinary path nothing.
@@ -682,7 +683,9 @@ namespace KhaozEngine.Tests.Gpu
 
             lock (harness.SubmitLock)
             {
-                Assert.Throws<InvalidOperationException>(harness.Allocator.BeginFrame);
+                InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+                    harness.Allocator.BeginFrame);
+                Assert.Contains("submit lock", ex.Message, StringComparison.Ordinal);
             }
 
             harness.Allocator.BeginFrame();

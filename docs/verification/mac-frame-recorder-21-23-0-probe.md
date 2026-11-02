@@ -294,7 +294,9 @@ when `KE_FRAME_DIAGNOSTICS_PATH` is absent, there is no early submission.
 `MetalCommandList.SetFramebuffer` reaches the split only for the frame list's first bind of an unresolved swapchain
 framebuffer. It runs before `AsBound` calls `MetalPresentBoundary.AcquireAndPublish` and `NextDrawable`. This is already
 a framebuffer-change boundary. `EndPass` performs the clear-only flush and render encoder end that the change owes,
-and `EnsureNoEncoder` ends a remaining blit or compute encoder before commit. A refused pending clear or a recording with no encoded work leaves the
+and `EnsureNoEncoder` confirms that the scope has no open encoder before commit. A blit or compute encoder at
+this bind leaves the frame unsplit, because the ordinary bind can let that encoder continue and cutting it could add
+an encoder. A refused pending clear or a recording with no encoded work leaves the
 frame unsplit. No encoder is cut in half and no pass or encoder is added.
 
 `MetalEarlyFrameSubmit` flushes pending setup work before taking the existing submit lock. It rechecks liveness,
@@ -324,7 +326,7 @@ must still obey the ordinary resource-lifetime contract.
 
 `earlySubmit.schedule` contains `startCallback`, `endCallbackExclusive`, `startTimestamp`, `endTimestamp` and `enabled`.
 `appliedPerCallback` is true if at least one prefix actually committed in that callback. An ON block can contain false
-entries, for example a suppressed frame, an already acquired drawable, a public timestamp batch or no swapchain bind.
+entries, for example a suppressed frame, an already acquired drawable, an open blit or compute encoder, a public timestamp batch or no swapchain bind.
 The state is scheduled treatment, and the applied flag exposes whether the mechanism ran.
 
 `gpuSummary.earlySubmitStates` contains OFF and ON entries with:

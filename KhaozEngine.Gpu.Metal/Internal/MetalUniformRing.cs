@@ -140,7 +140,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         internal void RecordRead(int segment)
         {
-            if (MetalFrameTimingProbe.Sampling) _readRecordings[segment] = _allocator.EarlyFrames.Recording(segment);
+            if (MetalFrameTimingProbe.Sampling && !_allocator.EarlyFrames.Pending(segment))
+                _readRecordings[segment] = _allocator.EarlyFrames.Recording(segment);
         }
 
         /// <summary>

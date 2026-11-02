@@ -35,7 +35,7 @@ public sealed class MetalEarlyFrameSubmitTests
         if (sampling) capture.Start();
         list.Begin();
         IntPtr first = list.RecordingCommandBuffer;
-        list.Encoders.EnsureBlitEncoder();
+        list.Encoders.EnsureRenderEncoder(new(99));
         bool acquiredAfterCommit = false;
         var framebuffer = new MetalSwapchainFramebuffer(GpuPixelFormat.R8G8B8A8UNorm, new(16, 16), () =>
         {
@@ -84,7 +84,7 @@ public sealed class MetalEarlyFrameSubmitTests
         capture.Start();
         capture.CallbackIndex = 72;
         list.Begin();
-        list.Encoders.EnsureBlitEncoder();
+        list.Encoders.EnsureRenderEncoder(new(99));
         int slot = list.RingSegment;
         if (exit == "replacement") buffers.NextAcquireFails = true;
         if (exit == "replacement") Assert.Throws<InvalidOperationException>(list.SplitBeforeDrawableAcquire);
@@ -115,7 +115,7 @@ public sealed class MetalEarlyFrameSubmitTests
         capture.Start();
         capture.CallbackIndex = 72;
         list.Begin();
-        list.Encoders.EnsureBlitEncoder();
+        list.Encoders.EnsureRenderEncoder(new(99));
         if (handlerFailure) Assert.Throws<InvalidOperationException>(list.SplitBeforeDrawableAcquire);
         else list.SplitBeforeDrawableAcquire();
         Assert.Empty(native.Committed);
@@ -137,10 +137,15 @@ public sealed class MetalEarlyFrameSubmitTests
         int slot = list.RingSegment;
         ring.Write(slot, 0, new byte[] { 1, 2, 3, 4 });
         ring.RecordRead(slot);
-        list.Encoders.EnsureBlitEncoder();
+        list.Encoders.EnsureRenderEncoder(new(99));
         var lease = list.Arena.Take(4);
         list.SplitBeforeDrawableAcquire();
         Assert.Throws<InvalidOperationException>(() => ring.Write(slot, 0, new byte[] { 9 }));
+        // A resource first referenced in the tail was not read by the prefix and remains writable.
+        var tailRing = harness.NewRing(16, out _);
+        tailRing.RecordRead(slot);
+        tailRing.Write(slot, 0, new byte[] { 7 });
+        Assert.Equal(7, tailRing.ReadSegment(slot, 0, 1)[0]);
         Assert.Throws<InvalidOperationException>(harness.Rings.EarlyFrames.RequireNoPending);
         harness.Rings.UpdateBuffer(ring, 0, new byte[] { 9 });
         Assert.Equal(1, ring.ReadSegment(slot, 0, 1)[0]);
@@ -168,9 +173,37 @@ public sealed class MetalEarlyFrameSubmitTests
         capture.CallbackIndex = 72;
         capture.Stop();
         list.Begin();
-        list.Encoders.EnsureBlitEncoder();
+        list.Encoders.EnsureRenderEncoder(new(99));
         list.SplitBeforeDrawableAcquire();
         Assert.Empty(native.Committed);
+    }
+
+    [Theory]
+    [InlineData((int)MetalEncoderKind.Blit)]
+    [InlineData((int)MetalEncoderKind.Compute)]
+    public void A_swapchain_bind_does_not_split_a_nonrender_encoder_that_may_continue_after_the_bind(int kindValue)
+    {
+        var kind = (MetalEncoderKind)kindValue;
+        using var harness = new MetalRingHarness();
+        using var list = harness.NewList(new object());
+        var native = new SubmitApi(list);
+        list.EarlySubmit = new(native, harness.SubmitLock);
+        using var capture = new FrameTimingCapture(list, earlySubmit: new FrameEarlySubmitCapture(100));
+        capture.EarlySubmit!.Boundary(72, 72);
+        capture.Start();
+        capture.CallbackIndex = 72;
+        list.Begin();
+        IntPtr prefix = list.RecordingCommandBuffer;
+        if (kind == MetalEncoderKind.Blit) list.Encoders.EnsureBlitEncoder();
+        else list.Encoders.EnsureComputeEncoder();
+        MetalSwapchainFramebuffer? framebuffer = null;
+        framebuffer = new(GpuPixelFormat.R8G8B8A8UNorm, new(16, 16), () =>
+            framebuffer!.Adopt(new(new(42), GpuPixelFormat.R8G8B8A8UNorm), new(16, 16)));
+        list.SetFramebuffer(framebuffer);
+        Assert.Equal(kind, list.Encoders.Open);
+        Assert.Equal(prefix, list.RecordingCommandBuffer);
+        Assert.Empty(native.Committed);
+        Assert.False(capture.EarlySubmit.Snapshot(100).AppliedPerCallback[72]);
     }
 
     sealed class SubmitApi(MetalCommandList list) : IMetalEarlyFrameSubmitApi

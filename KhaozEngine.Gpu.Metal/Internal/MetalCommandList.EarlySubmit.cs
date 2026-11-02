@@ -23,6 +23,9 @@ internal sealed partial class MetalCommandList
         if (_earlyProtected || _timestampBatchRecorded || EarlySubmit is null || !MetalFrameTimingProbe.ShouldEarlySubmit(this)) return;
         RequireRecording("Splitting the frame before drawable acquisition");
         if (_encoders.Epoch == _earlyRecordingEpoch && !_passes.HasPendingClears) return;
+        // SetFramebuffer ends a render pass, but can leave a blit or compute encoder open. Splitting those could
+        // create an extra encoder if more copies or dispatches follow the bind. Keep that shape unsplit.
+        if (_encoders.Open is MetalEncoderKind.Blit or MetalEncoderKind.Compute) return;
         try
         {
             _passes.EndPass();

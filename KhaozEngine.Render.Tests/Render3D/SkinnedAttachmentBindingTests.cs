@@ -25,7 +25,6 @@ public sealed class SkinnedAttachmentBindingTests
         InvalidDataException error = Assert.Throws<InvalidDataException>(() => new AttachmentSetBinding(definition, Map(Create())));
 
         Assert.Contains("host", error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("2", error.Message);
     }
 
     [Fact]

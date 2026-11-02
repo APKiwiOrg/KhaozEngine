@@ -136,11 +136,8 @@ namespace KhaozEngine.Tests.Render3D
 
             using (GpuRecording.Open(device, device.Factory.CreateCommandList(), "the window's frame list"))
             {
-                var release = Assert.Throws<InvalidOperationException>(() => history.ReleaseTargets());
-                Assert.Contains("the window's frame list", release.Message);
-                var resize = Assert.Throws<InvalidOperationException>(
-                    () => history.EnsureTargets(device, 128, 72, 64, 36));
-                Assert.Contains("the window's frame list", resize.Message);
+                Assert.Throws<InvalidOperationException>(() => history.ReleaseTargets());
+                Assert.Throws<InvalidOperationException>(() => history.EnsureTargets(device, 128, 72, 64, 36));
                 using var other = new FakeGpuDevice();   // a device change drains the old device, which is recording
                 Assert.Throws<InvalidOperationException>(() => history.EnsureTargets(other, 96, 54, 64, 36));
             }

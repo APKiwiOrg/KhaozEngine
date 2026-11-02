@@ -308,10 +308,11 @@ namespace KhaozEngine.Tests.Windowing
             var taps = new FrameCaptureTaps(device, capture);
             IGpuTexture owned = device.Factory.CreateTexture(
                 GpuTextureDescription.Texture2D(4, 4, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            var detachFailure = new InvalidOperationException("detach failed");
             var throwing = new RecordingTap(device, new List<string>())
             {
                 OnRecord = c => c.AcquireSwapchainImage(),
-                OnDetach = _ => throw new InvalidOperationException("detach failed"),
+                OnDetach = _ => throw detachFailure,
             };
             var after = new RecordingTap(device, new List<string>()) { OnDetach = retire => retire(owned) };
             taps.Add(throwing);
@@ -320,7 +321,7 @@ namespace KhaozEngine.Tests.Windowing
 
             var thrown = Assert.Throws<InvalidOperationException>(taps.Dispose);
 
-            Assert.Equal("detach failed", thrown.Message);
+            Assert.Same(detachFailure, thrown);
             Assert.Equal(1, throwing.Detaches);
             Assert.Equal(1, after.Detaches);
             Assert.Equal(new[] { true, false }, capture.Requested);

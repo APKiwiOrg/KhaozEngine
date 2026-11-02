@@ -123,10 +123,14 @@ public class TerrainStreamerReconfigureTests
         using var streamer = new TerrainStreamer(Config(1, 3), sink);
         StreamerConfig original = streamer.Config;
 
-        Assert.Contains("construction-only",
-            Assert.Throws<ArgumentException>(() => streamer.Reconfigure(original with { ChunkSize = 120f })).Message);
-        Assert.Contains("construction-only",
-            Assert.Throws<ArgumentException>(() => streamer.Reconfigure(original with { Async = true })).Message);
+        // 90 m passes every config rule on its own, so only the construction-only check can refuse it here. Past
+        // about 113 m the default table's 80 m boundary would refuse it with the same type and parameter.
+        using var atThatSize = new FakeChunkSink();
+        using var built = new TerrainStreamer(original with { ChunkSize = 90f }, atThatSize);
+        Assert.Equal("config",
+            Assert.Throws<ArgumentException>(() => streamer.Reconfigure(original with { ChunkSize = 90f })).ParamName);
+        Assert.Equal("config",
+            Assert.Throws<ArgumentException>(() => streamer.Reconfigure(original with { Async = true })).ParamName);
         Assert.Equal(original, streamer.Config);
 
         streamer.Reconfigure(Config(2, 3));

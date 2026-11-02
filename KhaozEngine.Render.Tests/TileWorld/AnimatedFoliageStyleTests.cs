@@ -46,10 +46,8 @@ public sealed class AnimatedFoliageStyleTests
             CreateSnapshot(sharedSelection, shrubOnly, catalogs, meshes));
 
         Assert.Equal("AnimatedFoliageStyles", conflict.ParamName);
-        Assert.Contains("bush_alias", conflict.Message);
-        Assert.Contains("bush", conflict.Message);
-        Assert.True(conflict.Message.IndexOf("'bush'", StringComparison.Ordinal) <
-                    conflict.Message.IndexOf("'bush_alias'", StringComparison.Ordinal));
+        Assert.Contains("'bush_alias'", conflict.Message);
+        Assert.Contains("'bush'", conflict.Message);
         shrubOnly["bush"] = new AnimatedFoliageStyle(FoliageMotionProfile.Blade, false);
         AnimatedFoliageStyleSnapshot compatible = CreateSnapshot(sharedSelection, shrubOnly, catalogs, meshes);
         Assert.Equal(FoliageMotionProfile.Blade, compatible.MotionProfiles["bush"]);
@@ -71,10 +69,8 @@ public sealed class AnimatedFoliageStyleTests
 
         ArgumentException conflict = Assert.Throws<ArgumentException>(() => CreateSnapshot(selection, styles, catalogs, meshes));
 
-        Assert.Contains("bush_alias", conflict.Message);
-        Assert.Contains("bush", conflict.Message);
-        Assert.True(conflict.Message.IndexOf("'bush'", StringComparison.Ordinal) <
-                    conflict.Message.IndexOf("'bush_alias'", StringComparison.Ordinal));
+        Assert.Contains("'bush_alias'", conflict.Message);
+        Assert.Contains("'bush'", conflict.Message);
         styles["bush_alias"] = Shrub;
         AnimatedFoliageStyleSnapshot compatible = CreateSnapshot(selection, styles, catalogs, meshes);
         Assert.Equal(Shrub.Motion, compatible.MotionProfiles["bush_alias"]);

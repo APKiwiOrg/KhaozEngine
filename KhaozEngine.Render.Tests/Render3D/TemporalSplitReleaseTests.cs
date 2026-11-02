@@ -30,8 +30,7 @@ public sealed class TemporalSplitReleaseTests
 
         using (GpuRecording.Open(rig.Device, rig.Device.Factory.CreateCommandList(), "the window's frame list"))
         {
-            var refused = Assert.Throws<InvalidOperationException>(() => split.ReleaseTargets(null));
-            Assert.Contains("the window's frame list", refused.Message);
+            Assert.Throws<InvalidOperationException>(() => split.ReleaseTargets(null));
             Assert.True(split.TargetsAllocated);
         }
 

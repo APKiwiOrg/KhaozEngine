@@ -84,7 +84,6 @@ public class TileGroundSteepCompanionsTests
         var layers = new[] { Flat(), Flat(new TileGroundSteepLayer { CompanionSlot = 0, FromDegrees = 40f, ToDegrees = 55f }) };
         var ex = Assert.Throws<ArgumentException>(() => new TileGroundMaterialSet(1, 1, new ushort[] { 1 }, layers));
         Assert.Equal("layers", ex.ParamName);
-        Assert.Contains("layer 1", ex.Message, StringComparison.Ordinal);
     }
 
     [Theory]

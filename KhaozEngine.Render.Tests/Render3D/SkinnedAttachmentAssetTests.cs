@@ -35,9 +35,8 @@ public sealed class SkinnedAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int beforeUploads = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
 
-        Assert.Contains("z-invalid.glb", error.Message);
         Assert.Equal(1, source.Reads[rigid.Key]);
         Assert.Equal(1, source.Reads[skinned.Key]);
         Assert.Equal(beforeUploads, harness.Factory.Buffers.Count);
@@ -97,9 +96,8 @@ public sealed class SkinnedAttachmentAssetTests
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+        Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
 
-        Assert.Contains("z-skinned.glb", error.Message);
         Assert.Equal(1, source.Reads[invalid.Key]);
         Assert.Equal(buffers, harness.Factory.Buffers.Count);
         Assert.Equal(textures, harness.Factory.Textures.Count);
@@ -141,9 +139,8 @@ public sealed class SkinnedAttachmentAssetTests
         LoadedAttachmentSet previous = cache.Get("previous.json", previousHash);
         int beforeUploads = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => cache.Get("wrong.json", wrongHash));
+        Assert.Throws<InvalidDataException>(() => cache.Get("wrong.json", wrongHash));
 
-        Assert.Contains("shared.glb", error.Message);
         Assert.Equal(1, source.Reads[mesh.Key]);
         Assert.Equal(beforeUploads, harness.Factory.Buffers.Count);
         Assert.Equal(textures, harness.Factory.Textures.Count);

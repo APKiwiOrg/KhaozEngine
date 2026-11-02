@@ -109,7 +109,7 @@ public sealed class UnderwaterSunlightSettingsTests
         var plane = new WaterPlane(0f, 2f, 0f, 4f, floorY: floor);
 
         ArgumentException error = Assert.Throws<ArgumentException>(() => scene.DrawWater(plane));
-        Assert.Contains(nameof(WaterPlane.FloorY), error.Message);
+        Assert.Equal(nameof(WaterPlane.FloorY), error.ParamName);
         Assert.Equal(0, scene.WaterPlaneCount);
     }
 
@@ -125,7 +125,7 @@ public sealed class UnderwaterSunlightSettingsTests
         var plane = new WaterPlane(0f, 2f, 0f, 4f, look: look);
 
         ArgumentException error = Assert.Throws<ArgumentException>(() => scene.DrawWater(plane));
-        Assert.Contains(nameof(WaterLook.UnderwaterPenumbraPerMetre), error.Message);
+        Assert.Equal(nameof(WaterLook.UnderwaterPenumbraPerMetre), error.ParamName);
         Assert.Equal(0, scene.WaterPlaneCount);
     }
 
@@ -141,7 +141,7 @@ public sealed class UnderwaterSunlightSettingsTests
 
         ArgumentException error = Assert.Throws<ArgumentException>(() =>
             scene.DrawWater(new WaterPlane(0f, 2f, 0f, 4f)));
-        Assert.Contains(nameof(WaterSettings.UnderwaterPenumbraPerMetre), error.Message);
+        Assert.Equal(nameof(WaterSettings.UnderwaterPenumbraPerMetre), error.ParamName);
         Assert.Equal(0, scene.WaterPlaneCount);
     }
 

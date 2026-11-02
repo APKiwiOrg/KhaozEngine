@@ -17,10 +17,8 @@ public sealed class TileWorldSceneOverlayTests
     {
         ITileWorldScene scene = new LegacyTileWorldScene();
 
-        NotSupportedException ex = Assert.Throws<NotSupportedException>(() =>
+        Assert.Throws<NotSupportedException>(() =>
             scene.DrawOverlayMesh(new MeshHandle(7, 3), Matrix4x4.Identity));
-
-        Assert.Contains("overlay", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

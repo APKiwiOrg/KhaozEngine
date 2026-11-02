@@ -32,8 +32,7 @@ public sealed class TileWorldRoofPropLayerTests
             World(), TileRenderTestData.Catalogs, new Resolver(),
             new TileWorldViewOptions { PropLayers = new[] { Roofs() with { CutInsideInteriors = true } } }));
 
-        Assert.Contains("roofs", error.Message, StringComparison.Ordinal);
-        Assert.Contains("CutInsideInteriors", error.Message, StringComparison.Ordinal);
+        Assert.Equal("definitions", error.ParamName);
         Assert.Empty(scene.MaterialLoads);
         Assert.Empty(scene.PropMeshLoads);
     }

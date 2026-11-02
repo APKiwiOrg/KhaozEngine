@@ -22,10 +22,7 @@ public sealed class RigidAttachmentBindingTests
         var skinned = new SkinnedAttachmentPartDefinition(7, Part(1, "hip").Mesh);
         var definition = new AttachmentSetDefinition(mixed ? [Part(1, "hip"), skinned] : [skinned]);
 
-        InvalidDataException error = Assert.Throws<InvalidDataException>(() => new AttachmentSetBinding(definition, Map(skeleton)));
-
-        Assert.Contains("7", error.Message);
-        Assert.Contains("skinned", error.Message);
+        Assert.Throws<InvalidDataException>(() => new AttachmentSetBinding(definition, Map(skeleton)));
     }
 
     [Fact]

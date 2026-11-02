@@ -113,7 +113,7 @@ public sealed class ContentUpgradeFreezeReleaseTests
         InvalidOperationException escaped = await Assert.ThrowsAsync<InvalidOperationException>(
             async () => await RunAsync(store, registry));
 
-        Assert.Contains("frozen draft", escaped.Message, StringComparison.Ordinal);
+        Assert.Same(store.Failure, escaped);
         ContentDraft? draft = await lease.Store.GetOpenDraftAsync();
         Assert.NotNull(draft);
         Assert.False(draft.IsFrozen, "the run left a marker standing that nothing will ever clear.");
@@ -293,6 +293,9 @@ internal sealed class TheReadBackFaultsStore(IContentAuthoringStore inner) : For
 {
     bool _frozen;
 
+    /// <summary>The unknown failure injected into the frozen read-back.</summary>
+    public Exception Failure { get; } = new InvalidOperationException("the seam faulted while reading the frozen draft back.");
+
     /// <inheritdoc />
     public override async Task FreezeDraftAsync(int baseVersion, CancellationToken cancellationToken = default)
     {
@@ -306,7 +309,7 @@ internal sealed class TheReadBackFaultsStore(IContentAuthoringStore inner) : For
         if (_frozen)
         {
             _frozen = false;
-            throw new InvalidOperationException("the seam faulted while reading the frozen draft back.");
+            throw Failure;
         }
 
         return await base.GetOpenDraftAsync(cancellationToken);

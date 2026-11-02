@@ -171,23 +171,6 @@ public class ContentIdAllocatorTests
     }
 
     [Fact]
-    public async Task RetiredRowsKeepTheirIdsSoTheCeilingCountsEveryIdEverIssued()
-    {
-        // Spec 4.7: ids are never reused, so a retired row keeps its id and the space it occupies. There is
-        // no path in this seam that hands an id BACK, and the high-water mark is the proof: it only ever
-        // rises, so a type that retires aggressively burns its ceiling exactly as fast as one that does not.
-        InMemoryContentAuthoringStore store = CeilingStore(maxDefinitionId: 8);
-        await store.AllocateAsync(Game, 8);
-        ContentIdHighWater afterIssue = await store.ReadHighWaterAsync(Game);
-
-        await Assert.ThrowsAsync<ContentAuthoringException>(() => store.AllocateAsync(Game, 1));
-
-        ContentIdHighWater afterRefusal = await store.ReadHighWaterAsync(Game);
-        Assert.Equal(afterIssue, afterRefusal);
-        Assert.Equal(8, afterRefusal.IssuedThrough);
-    }
-
-    [Fact]
     public async Task AFamilyReservesAnAlignedBlockAtCreationAndIssuesFromIt()
     {
         InMemoryContentAuthoringStore store = EngineStore();

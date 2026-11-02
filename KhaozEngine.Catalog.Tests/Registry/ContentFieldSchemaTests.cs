@@ -109,7 +109,7 @@ public class ContentFieldSchemaTests
         ArgumentException error = Assert.Throws<ArgumentException>(
             () => new ContentFieldSchema(new[] { Int("sort"), Int("sort") }));
 
-        Assert.Contains("sort", error.Message, StringComparison.Ordinal);
+        Assert.Equal("fields", error.ParamName);
     }
 
     [Fact]

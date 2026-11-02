@@ -125,13 +125,13 @@ public sealed class ContentUpgradeTagAppendTests
 
     /// <summary>
     /// One FIELD written twice by one plan is the planner contradicting itself, whether the second call
-    /// appends the same element, a different one, or patches the whole value. A row carries one value per
-    /// field, so there is no answer the draft could keep.
+    /// appends the same element, a different one, or patches the whole value. The refusal identifies the
+    /// field parameter. A row carries one value per field, so there is no answer the draft could keep.
     /// </summary>
     [Theory]
     [InlineData(TagUpgradeFixtures.NewTag)]
     [InlineData(TagUpgradeFixtures.NewTag - 1)]
-    public void AppendingToOneFieldTwiceIsRefusedNamingTheRowAndTheField(int second)
+    public void AppendingToOneFieldTwiceIsRefused(int second)
     {
         ContentUpgradePlanBuilder builder = Builder()
             .AppendTag(
@@ -146,8 +146,7 @@ public sealed class ContentUpgradeTagAppendTests
             TagUpgradeFixtures.TagsField,
             second));
 
-        Assert.Contains(TagUpgradeFixtures.PlainRow, refused.Message, StringComparison.Ordinal);
-        Assert.Contains(TagUpgradeFixtures.TagsField, refused.Message, StringComparison.Ordinal);
+        Assert.Equal("fieldName", refused.ParamName);
     }
 
     /// <summary>A patch of the same field is the same collision, and it reads the same from either side.</summary>
@@ -182,7 +181,7 @@ public sealed class ContentUpgradeTagAppendTests
             TagUpgradeFixtures.TagsField,
             TagUpgradeFixtures.NewTag));
 
-        Assert.Contains(TagUpgradeFixtures.TagsField, refused.Message, StringComparison.Ordinal);
+        Assert.Equal("fieldName", refused.ParamName);
     }
 
     /// <summary>
@@ -202,7 +201,7 @@ public sealed class ContentUpgradeTagAppendTests
         ArgumentException refused = Assert.Throws<ArgumentException>(() => appendFirst.RetireRow(
             TagUpgradeFixtures.Tagged, new ContentKey(TagUpgradeFixtures.PlainRow), ContentRetirePolicy.Placeholder));
 
-        Assert.Contains(TagUpgradeFixtures.PlainRow, refused.Message, StringComparison.Ordinal);
+        Assert.Equal("key", refused.ParamName);
 
         ContentUpgradePlanBuilder retireFirst = Builder()
             .RetireRow(

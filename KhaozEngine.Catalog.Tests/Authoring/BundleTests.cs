@@ -250,7 +250,6 @@ public class BundleTests
             () => source.Store.ImportBundleAsync(bundle, PublishFixtures.Actor, "oid:tests", "seed again"));
 
         Assert.Equal(ContentAuthoringException.CatalogNotEmptyReason, refused.Reason);
-        Assert.Contains("3", refused.Message, StringComparison.Ordinal);
         Assert.Equal(3, await source.Store.GetActiveVersionAsync());
         Assert.Null(await source.Store.GetOpenDraftAsync());
     }

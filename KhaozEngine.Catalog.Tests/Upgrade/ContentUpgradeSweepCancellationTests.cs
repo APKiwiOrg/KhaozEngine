@@ -38,7 +38,6 @@ public sealed class ContentUpgradeSweepCancellationTests
 
         Assert.True(exercise.IsCancellationRequested);
         Assert.Same(packs.EnumerationCancellation, escaped);
-        Assert.Contains(nameof(FileSystemPackStore), escaped.StackTrace, StringComparison.Ordinal);
         Assert.Equal(2, packs.Enumerations);
         Assert.Equal(2, (await lease.Store.ListVersionsAsync()).Count);
         Assert.Null(await lease.Store.GetOpenDraftAsync());

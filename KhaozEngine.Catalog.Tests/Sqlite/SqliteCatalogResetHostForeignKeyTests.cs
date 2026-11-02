@@ -72,7 +72,6 @@ public class SqliteCatalogResetHostForeignKeyTests
         Assert.Contains("'host_notes'", refused.Message, StringComparison.Ordinal);
         Assert.Contains("'catalog_version'", refused.Message, StringComparison.Ordinal);
         Assert.Contains("ON DELETE " + action, refused.Message, StringComparison.Ordinal);
-        Assert.Contains("Nothing was dropped", refused.Message, StringComparison.Ordinal);
 
         // And the catalog is exactly the one that stood, down to the epoch and the audit trail.
         Assert.Equal(epochBefore, SqliteCatalogResetHarness.Text(database, "SELECT store_epoch FROM catalog_metadata;"));

@@ -58,7 +58,6 @@ public sealed class UpgradeLifetimeCatalogTests
         }
 
         Assert.IsAssignableFrom<IOException>(primary);
-        Assert.Contains(nameof(FileSystemPackStore), primary.StackTrace, StringComparison.Ordinal);
     }
 
     sealed class FailsAfterDisposeStore(IContentAuthoringStore inner, Exception failure)

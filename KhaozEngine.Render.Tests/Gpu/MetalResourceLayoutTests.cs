@@ -260,8 +260,13 @@ namespace KhaozEngine.Tests.Gpu
                 return;
             }
 
-            ArgumentException failed = Assert.Throws<ArgumentException>(
+            GpuResourceSetException failed = Assert.Throws<GpuResourceSetException>(
                 () => MetalResourceSet.RequireWindowInBuffer(offset, range, size, "a row"));
+            Assert.IsAssignableFrom<ArgumentException>(failed);
+            Assert.Equal(GpuResourceSetRefusal.BufferWindowOutsideResource, failed.Reason);
+            Assert.Equal(offset, failed.RangeOffset);
+            Assert.Equal(range, failed.RangeBytes);
+            Assert.Equal(size, failed.BufferBytes);
             Assert.Equal("range", failed.ParamName);
         }
 
@@ -293,19 +298,21 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (allowed)
             {
-                MetalResourceSet.RequireTextureUsage(kind, usage, "a row");
+                MetalResourceSet.RequireTextureUsage(kind, usage, "a row", elementName: "a row", binding: 0);
                 return;
             }
 
-            ArgumentException failed = Assert.Throws<ArgumentException>(
-                () => MetalResourceSet.RequireTextureUsage(kind, usage, "a row"));
+            GpuResourceSetException failed = Assert.Throws<GpuResourceSetException>(
+                () => MetalResourceSet.RequireTextureUsage(kind, usage, "a row", elementName: "a row", binding: 0));
 
-            Assert.Contains("a row declares a " + kind, failed.Message, StringComparison.Ordinal);
-            Assert.Contains(
-                kind == GpuResourceKind.TextureReadWrite
-                    ? "Add GpuTextureUsage.Storage"
-                    : "Add GpuTextureUsage.Sampled",
-                failed.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceSetRefusal.TextureUsageMissing, failed.Reason);
+            Assert.Equal(kind, failed.ResourceKind);
+            Assert.Equal("a row", failed.ElementName);
+            Assert.Equal(0, failed.Binding);
+            Assert.Equal(usage, failed.ActualUsage);
+            Assert.Equal(kind == GpuResourceKind.TextureReadWrite
+                ? GpuTextureUsage.Storage
+                : GpuTextureUsage.Sampled | GpuTextureUsage.GenerateMipmaps, failed.RequiredUsage);
         }
 
         static GpuResourceLayoutElement Element(string name, GpuResourceKind kind, bool dynamic = false)

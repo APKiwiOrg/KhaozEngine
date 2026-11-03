@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Silk.NET.Vulkan;
 using Xunit;

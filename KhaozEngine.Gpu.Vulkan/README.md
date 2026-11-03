@@ -1921,6 +1921,8 @@ on every rebuild. Its sampled R32F atlas remains stored. See
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.RingBufferUsedAsStorage` | Refuses a ring-backed uniform buffer through a storage binding that cannot apply its frame base. | `ParamName`, `ElementName`, `Binding`, `ResourceKind` |
+| `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.UniformBufferNotRingBacked` | Refuses a Vulkan uniform binding without its required ring. | `ParamName`, `ElementName`, `Binding`, `ActualUsage` |
 | `VulkanStagingLayoutException`, `VulkanStagingLayoutRefusal.MappingSizeExceeded` | Staging layout arithmetic exceeding the mapping's 32-bit size ceiling | `ParamName`, `ActualValue`, `Width`, `Height`, `MipLevels`, `ArrayLayers`, `Format`, `Quantity`, `ComputedBytes`, `MaximumBytes` |
 | `VulkanRingWaitException`, `VulkanRingWaitRefusal.SubmitLockHeld` | a Vulkan ring rotation while the caller holds the submit lock | `Operation` |
 | `VulkanTimestampAdapterException`, `VulkanTimestampAdapterRefusal.NativeDeviceLost` | a timestamp native operation that reports device loss | `Site` |

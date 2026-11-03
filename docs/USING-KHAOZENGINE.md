@@ -19838,6 +19838,8 @@ writes are being queued for a segment nothing ever acquires, which on a running 
 
 Ownership refusals use `GpuResourceOwnershipArgumentException` for `DifferentDevice`, `ForeignBackend`, `MissingResource` and `ResourceNotOwnedByDevice`, and `GpuResourceOwnershipDisposedException` for `NativeHandleReleased`. Read the backend, resource identity, operation context and native handle properties rather than message text.
 
+Resource set declarations use `GpuResourceSetException`. Its required `GpuResourceSetRefusal` and diagnostic members distinguish count, kind, missing resources, buffer windows, texture usage, staging textures and native handle liveness. Vulkan ring bindings use `VulkanResourceSetRingException` with `UniformBufferNotRingBacked` or `RingBufferUsedAsStorage`.
+
 See the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) and [Vulkan refusal catalog](../KhaozEngine.Gpu.Vulkan/README.md#refusals) for the full diagnostic members. Existing BCL catches still match.
 
 ---

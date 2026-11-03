@@ -237,8 +237,8 @@ public class GpuPublicApiTests
     /// ask what the surface EXPOSES and say nothing about how much of it there is, so a new public method that
     /// happens to name no Silk type is invisible to every one of them.
     /// <para>
-    /// The list is one entry, and one entry is the claim. Everything a consumer needs from this package is
-    /// <c>Register()</c>: the backend arrives through <c>IGpuBackendProvider</c>, the seam speaks engine types in
+    /// Registration remains one entry point, <c>Register()</c>. Structured refusal types expose engine-only
+    /// reasons and identifiers. The backend arrives through <c>IGpuBackendProvider</c>, the seam speaks engine types in
     /// both directions, and the Vulkan binding stays inside the package (decision V-P3). There is deliberately no
     /// <c>IsPlatformSupported</c> here, which is the one member the Direct3D 11 sibling has that this must not
     /// grow by analogy: V-P1 says Vulkan is not a Windows API, the loader is resolved at runtime, and a machine
@@ -278,6 +278,8 @@ public class GpuPublicApiTests
         Assert.Equal(new[]
         {
             "KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan",
+            "KhaozEngine.Gpu.Vulkan.VulkanResourceSetRingException",
+            "KhaozEngine.Gpu.Vulkan.VulkanResourceSetRingRefusal",
             "KhaozEngine.Gpu.Vulkan.VulkanRingWaitException",
             "KhaozEngine.Gpu.Vulkan.VulkanRingWaitRefusal",
             "KhaozEngine.Gpu.Vulkan.VulkanStagingLayoutException",

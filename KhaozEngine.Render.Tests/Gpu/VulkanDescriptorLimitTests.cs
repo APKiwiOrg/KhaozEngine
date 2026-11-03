@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;

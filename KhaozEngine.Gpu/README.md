@@ -620,6 +620,13 @@ exception type. Message text is developer prose. Branch on the reason and read t
 
 | Exception and reason member | What it refuses | Identifiers |
 |---|---|---|
+| `GpuResourceSetException`, `GpuResourceSetRefusal.BufferWindowOutsideResource` | Refuses a binding window that does not fit within the buffer. | `ParamName`, `ElementName`, `Binding`, `RangeOffset`, `RangeBytes`, `BufferBytes` |
+| `GpuResourceSetException`, `GpuResourceSetRefusal.NativeHandleMissing` | Refuses a set resource whose native handle was already released. | `ParamName`, `ElementName`, `Binding`, `ResourceKind`, `NativeHandleKind` |
+| `GpuResourceSetException`, `GpuResourceSetRefusal.ResourceCountMismatch` | Refuses a set whose resource count differs from its layout. | `ParamName`, `DeclaredCount`, `SuppliedCount` |
+| `GpuResourceSetException`, `GpuResourceSetRefusal.ResourceKindMismatch` | Refuses a resource whose type does not match the layout element. | `ParamName`, `ElementName`, `Binding`, `ResourceKind`, `ActualType`, `ExpectedType` |
+| `GpuResourceSetException`, `GpuResourceSetRefusal.ResourceMissing` | Refuses a null resource in a set declaration. | `ParamName`, `ElementName`, `Binding` |
+| `GpuResourceSetException`, `GpuResourceSetRefusal.StagingTextureCannotBind` | Refuses a staging texture as a shader texture binding. | `ParamName`, `ElementName`, `Binding`, `ResourceKind` |
+| `GpuResourceSetException`, `GpuResourceSetRefusal.TextureUsageMissing` | Refuses a texture lacking the usage required by the layout binding. | `ParamName`, `ElementName`, `Binding`, `ResourceKind`, `ActualUsage`, `RequiredUsage` |
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.DifferentDevice` | Refuses a resource created by a different device of the same backend. | `ParamName`, `ExpectedBackend`, `ResourceKind`, `Context` |
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ForeignBackend` | Refuses a resource originating from a different GPU backend. | `ParamName`, `ExpectedBackend`, `ActualType`, `ExpectedType`, `Context`, `ResourceIndex`, `PipelineKind` |
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.MissingResource` | Refuses a required resource that was not supplied. | `ParamName`, `ResourceKind`, `Context` |

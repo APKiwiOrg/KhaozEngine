@@ -10,10 +10,14 @@ public sealed partial class WorldServer
 {
     private int nextMovementCommitmentSequence;
     private readonly List<MovementCommitmentResult> movementCommitmentLandings = new();
+    private readonly List<MovementCommitmentResult> movementCommitmentArrivals = new();
     private readonly List<MovementCommitmentResult> movementCommitmentEnds = new();
 
     /// <summary>Raised once on physical landing, after movement settles and before that tick's snapshot pass.</summary>
     public event Action<MovementCommitmentResult>? MovementCommitmentLanded;
+
+    /// <summary>Raised once when authoritative ground arrival is accepted, before optional recovery and snapshots.</summary>
+    public event Action<MovementCommitmentResult>? MovementCommitmentArrived;
 
     /// <summary>Raised once after recovery, or when a commitment aborts for any reason.</summary>
     public event Action<MovementCommitmentResult>? MovementCommitmentEnded;
@@ -42,6 +46,14 @@ public sealed partial class WorldServer
             Sequence = expectedSequence,
         });
 
+    /// <inheritdoc cref="IAdminControllable.SteerMovementCommitment"/>
+    public void SteerMovementCommitment(PlayerRef target, uint expectedSequence, Vector2 direction, float distanceRemaining) =>
+        admin.Enqueue(MovementCommitmentControl.Steer(target, expectedSequence, direction, distanceRemaining));
+
+    /// <inheritdoc cref="IAdminControllable.EndMovementCommitment"/>
+    public void EndMovementCommitment(PlayerRef target, uint expectedSequence, MovementCommitmentStopReason reason) =>
+        admin.Enqueue(MovementCommitmentControl.End(target, expectedSequence, reason));
+
     private uint NextMovementCommitmentSequence()
     {
         uint sequence;
@@ -54,10 +66,16 @@ public sealed partial class WorldServer
     {
         int slot = ResolveSlot(command.Target);
         if (slot < 0 || !stateBySlot.TryGetValue(slot, out PlayerMoveState state)) return;
-        if (state.Move.Commitment.IsActive)
-            QueueMovementCommitmentEnd(slot, state, MovementCommitmentEndReason.Superseded);
-        state.Move.Commitment = command.MovementCommitment.Start(command.Sequence);
-        SetPlayerState(slot, state);
+        if (MovementCommitmentControl.Begin(command, slot, ref state, movementCommitmentEnds))
+            StoreMovementCommitment(slot, state, command.MovementCommitment.IsGroundTravel);
+    }
+
+    private void ApplyGroundMovementCommitmentControl(in AdminCommand command)
+    {
+        int slot = ResolveSlot(command.Target);
+        if (slot < 0 || !stateBySlot.TryGetValue(slot, out PlayerMoveState state)) return;
+        if (MovementCommitmentControl.Apply(command, slot, ref state, movementCommitmentArrivals, movementCommitmentEnds))
+            StoreMovementCommitment(slot, state, ground: true);
     }
 
     private void ApplyAbortMovementCommitment(PlayerRef target, uint expectedSequence,
@@ -67,8 +85,18 @@ public sealed partial class WorldServer
         if (slot < 0 || !stateBySlot.TryGetValue(slot, out PlayerMoveState state)
             || !state.Move.Commitment.IsActive || state.Move.Commitment.Sequence != expectedSequence) return;
         QueueMovementCommitmentEnd(slot, state, reason);
+        bool ground = state.Move.Commitment.Kind == MovementCommitmentKind.Ground;
         state.Move.Commitment = default;
-        SetPlayerState(slot, state);
+        StoreMovementCommitment(slot, state, ground);
+    }
+
+    private void StoreMovementCommitment(int slot, in PlayerMoveState state, bool ground)
+    {
+        if (!ground) { SetPlayerState(slot, state); return; }
+        // Ground controls edit carried state, not placement. They must persist even while an explicit
+        // environment holds movement, otherwise a queued terminal event could outlive its refused state edit.
+        stateBySlot[slot] = state;
+        MovementComponents.Set(world, entityBySlot[slot], state);
     }
 
     private void InspectMovementCommitmentTransition(int slot, in PlayerMoveState before, in PlayerMoveState after)
@@ -98,9 +126,12 @@ public sealed partial class WorldServer
     {
         foreach (MovementCommitmentResult result in movementCommitmentLandings)
             MovementCommitmentLanded?.Invoke(result);
+        foreach (MovementCommitmentResult result in movementCommitmentArrivals)
+            MovementCommitmentArrived?.Invoke(result);
         foreach (MovementCommitmentResult result in movementCommitmentEnds)
             MovementCommitmentEnded?.Invoke(result);
         movementCommitmentLandings.Clear();
+        movementCommitmentArrivals.Clear();
         movementCommitmentEnds.Clear();
     }
 }

@@ -52,6 +52,12 @@ public sealed partial class ServerAdmin
         server.BeginMovementCommitment(target, request);
     public void AbortMovementCommitment(PlayerRef target, uint expectedSequence) =>
         server.AbortMovementCommitment(target, expectedSequence);
+    /// <inheritdoc cref="IAdminControllable.SteerMovementCommitment"/>
+    public void SteerMovementCommitment(PlayerRef target, uint expectedSequence, Vector2 direction, float distanceRemaining) =>
+        server.SteerMovementCommitment(target, expectedSequence, direction, distanceRemaining);
+    /// <inheritdoc cref="IAdminControllable.EndMovementCommitment"/>
+    public void EndMovementCommitment(PlayerRef target, uint expectedSequence, MovementCommitmentStopReason reason) =>
+        server.EndMovementCommitment(target, expectedSequence, reason);
     public void Kick(PlayerRef target, string reason) => server.Kick(target, reason);
     public void Broadcast(string text) => server.Broadcast(text);
 

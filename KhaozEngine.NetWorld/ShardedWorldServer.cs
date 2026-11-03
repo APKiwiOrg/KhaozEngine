@@ -710,6 +710,10 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             case AdminCommandKind.AbortMovementCommitment:
                 ApplyAbortMovementCommitment(cmd.Target, cmd.Sequence, MovementCommitmentEndReason.Aborted);
                 break;
+            case AdminCommandKind.SteerMovementCommitment:
+            case AdminCommandKind.EndMovementCommitment:
+                ApplyGroundMovementCommitmentControl(cmd);
+                break;
             case AdminCommandKind.HoldMovement:
             case AdminCommandKind.ReleaseMovement:
                 ApplyMovementHold(cmd);

@@ -375,6 +375,58 @@ public class MovementCommitmentReplicationTests
         Assert.Equal(MovementCommitmentPhase.None, teleported.Move.Commitment.Phase);
     }
 
+    [Theory]
+    [InlineData(MovementHoldHead.Flat)]
+    [InlineData(MovementHoldHead.Sharded)]
+    public void Ground_controls_and_arrival_effects_reach_the_same_ticks_authoritative_snapshot(MovementHoldHead head)
+    {
+        using var rig = new MovementHoldRig(head);
+        using var seat = rig.JoinClient("ground-replication");
+        var target = PlayerRef.Slot(seat.Slot);
+        uint sequence = 0;
+        void Begin(float _)
+        {
+            if (sequence != 0) return;
+            sequence = rig.Admin.BeginMovementCommitment(target,
+                MovementCommitmentRequest.ForGroundTravel(Vector2.UnitX, 30, 10, recoverySeconds: 0.2f));
+            rig.Admin.SteerMovementCommitment(target, sequence, Vector2.UnitY, 4);
+        }
+        void OnArrival(MovementCommitmentResult result)
+        {
+            Assert.Equal(sequence, result.Sequence);
+            var state = rig.Authority(seat.Slot);
+            state.Move.SpeedScale = 0.5f;
+            rig.Server.SetPlayerState(seat.Slot, state);
+        }
+        if (rig.Single is { } single)
+        {
+            single.OnBeforeTick += Begin;
+            single.MovementCommitmentArrived += OnArrival;
+        }
+        else
+        {
+            rig.Sharded!.OnBeforeTick += Begin;
+            rig.Sharded.MovementCommitmentArrived += OnArrival;
+        }
+        rig.Serve(seat);
+        var travel = seat.Client.LocalRenderState.Move.Commitment;
+        Assert.Equal(sequence, travel.Sequence);
+        Assert.Equal(MovementCommitmentKind.Ground, travel.Kind);
+        Assert.Equal(MovementCommitmentPhase.Travelling, travel.Phase);
+        Assert.Equal(Vector2.UnitY, travel.Direction);
+        Assert.InRange(travel.DistanceRemaining, 2.99f, 3.01f);
+
+        var beforeEnd = rig.Authority(seat.Slot).Move.Commitment;
+        new ServerAdmin(rig.Admin).EndMovementCommitment(target, sequence, MovementCommitmentStopReason.Arrived);
+        Assert.Equal(beforeEnd, rig.Authority(seat.Slot).Move.Commitment);
+        rig.Serve(seat);
+        var recovery = seat.Client.LocalRenderState.Move;
+        Assert.Equal(MovementCommitmentPhase.Recovering, recovery.Commitment.Phase);
+        Assert.Equal(MovementCommitmentEndReason.Arrived, recovery.Commitment.EndReason);
+        Assert.Equal(0, recovery.Commitment.DistanceRemaining);
+        Assert.Equal(0.5f, recovery.SpeedScale);
+    }
+
     private static MovementState RoundTrip(MovementState source)
     {
         ReplicationRegistry registry = MoveProtocol.CreateRegistry();

@@ -700,6 +700,10 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             case AdminCommandKind.AbortMovementCommitment:
                 ApplyAbortMovementCommitment(cmd.Target, cmd.Sequence, MovementCommitmentEndReason.Aborted);
                 break;
+            case AdminCommandKind.SteerMovementCommitment:
+            case AdminCommandKind.EndMovementCommitment:
+                ApplyGroundMovementCommitmentControl(cmd);
+                break;
             case AdminCommandKind.HoldMovement:
             case AdminCommandKind.ReleaseMovement:
                 ApplyMovementHold(cmd);

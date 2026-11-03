@@ -14613,8 +14613,33 @@ distance budget subtracts achieved XZ displacement and holds active at zero. Use
 `GroundTravelCommitment.End` to confirm `Arrived`, optionally recovering with that reason preserved, or to abort
 with another terminal reason. Steering and ending do not restart recovery. Three consecutive steps below 10 percent
 progress abort as `Blocked`, with the counter carried in state. Lost grounded support and water entry terminate
-explicitly. The local request bridge recognizes `MovementCommitmentRequest.ForGroundTravel`, but ground wire
-replication, authoritative server controls and pursuit are not yet available.
+explicitly. Both float server heads accept `MovementCommitmentRequest.ForGroundTravel` through
+`BeginMovementCommitment`, and ground progress rides wire generation 15. A begin requires grounded support and
+refuses swimming or airborne-from-water actors. Refusal preserves any active commitment and publishes exactly
+one `MovementCommitmentEnded` for the refused sequence with `UnsupportedState`.
+
+Use `SteerMovementCommitment(target, expectedSequence, direction, distanceRemaining)` to re-aim preparing or
+travelling ground state. The sequence must be nonzero, direction finite and nonzero, and distance finite and
+nonnegative, including zero to hold. Use `EndMovementCommitment(target, expectedSequence, reason)` with the
+Netcode-defined `MovementCommitmentStopReason`. `Arrived` emits `MovementCommitmentArrived` once before optional
+recovery, then `MovementCommitmentEnded` once at release with `Arrived` retained. With no recovery, arrival
+precedes end in the same frame. Apply authoritative effects from the arrival result's absolute `Position` and
+steered `Direction`, with the game's normal target, reach and combat validation. Ended releases ability bookkeeping.
+
+`TargetLost`, `NoPath`, `TooLong` and `UnsupportedState` abort with their corresponding Locomotion reason.
+`Cancelled` maps to `Aborted`. `None`, unknown reasons and invalid values throw before queueing even for stale
+sequences or missing actors. Both controls ignore stale sequences, absent actors, ballistic or terminal state,
+and recovery. Repeated ends publish nothing and never restart recovery. `AbortMovementCommitment` can still
+cancel recovery. These calls also live on `IAdminControllable` and `ServerAdmin`. Other heads retain unsupported
+defaults that throw `NotSupportedException`.
+
+The admin drain follows `OnBeforeTick` on both heads, so calls from that hook affect the same eligible movement
+step. A short sharded frame may apply control and publish accepted outcomes without advancing physical timers.
+Ground controls edit carried state without placement admission, so an unresolved explicit movement environment
+can hold physical movement without refusing begin, steer, end or abort, advancing timers, or duplicating events.
+Arrival and end publish before snapshots, so effects applied from event handlers are served that frame.
+Sequence checks persist across same-host handoff, and active ground travel retains the movement anomaly
+exemption at speeds above ordinary walking while respecting bounds. Pursuit remains pending.
 
 For a server-authored ballistic leap, knockback, or similar move that player input must not steer, queue a movement
 commitment. This example authors an 8 metre same-height arc with a 2 metre apex, then holds a rooted recovery pose
@@ -16010,8 +16035,8 @@ top of the next tick, ahead of `OnBeforeTick`. The host-thread `Kick(int slot, s
   join, and once per tick over every live session, ahead of `OnBeforeTick`. A ban that lands after the door closes
   the session with `TileServerReason.Banned`, the same string as the door's `ke:banned` refusal, whoever recorded
   it, and a tokenless guest seat is never checked. This is the tile counterpart of the `WorldServer` join check.
-- `SetPosition` keeps the interface default and cuts like `Teleport`. The movement commitment pair is not
-  supported and throws `NotSupportedException`.
+- `SetPosition` keeps the interface default and cuts like `Teleport`. The movement commitment controls are not
+  supported and throw `NotSupportedException`.
 
 ```csharp
 var server = new TileWorldServer(transport, config with { Presenter = new TilePresenter(document) }, map);

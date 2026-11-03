@@ -831,8 +831,9 @@ producer acceptance or a playable consumer feature.
   depth aborts with `MovementCommitmentEndReason.EnteredWater` and hands control to the ordinary swim state.
   The airborne phase uses its latched XZ direction, horizontal speed, vertical speed, and gravity through the normal
   swept collision, support, and bounds path. `Completed` and `Aborted` are terminal states that clear on the next
-  step. The zero default is ordinary command-driven locomotion. The existing NetWorld wire carries ballistic state.
-  Ground wire state and server controls are not yet available.
+  step. The zero default is ordinary command-driven locomotion. NetWorld carries ballistic and ground state over
+  wire generation 15. Both float heads provide queued ground admission, steering, end and arrival events, described
+  in the [NetWorld committed movement contract](../KhaozEngine.NetWorld/README.md#server-authored-committed-movement).
   `MovementCommitment.ForGroundTravel(sequence, direction, speed, distance)` creates positive-budget ground state,
   with optional preparation, recovery and timeout durations. The factory validates values. Its caller admits only
   supported, non-swimming actors. Ground travel faces its committed direction, ignores `SpeedScale`, suppresses any

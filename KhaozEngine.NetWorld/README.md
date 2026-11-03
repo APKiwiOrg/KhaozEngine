@@ -776,11 +776,12 @@ momentarily unreadable) is not a teleport, and neither is the recovery back off 
 
 ## Server-authored committed movement
 
-The request bridge also recognizes `MovementCommitmentRequest.ForGroundTravel` and builds the ground Locomotion
-state. This is a local primitive. Ground admission controls, pursuit and wire replication are not yet available.
-Do not send ground commitments through the existing ballistic wire.
+Both authoritative heads accept `MovementCommitmentRequest.ForGroundTravel(direction, speed, distance)` and
+carry ground progress over wire generation 15. Begin admits only grounded actors that are neither swimming nor
+airborne from water. A refused begin leaves any current commitment untouched and emits exactly one
+`MovementCommitmentEnded` for the refused sequence with `UnsupportedState`.
 
-Both authoritative heads can commit a player to one collision-safe ballistic move. The direction and arc are
+Both authoritative heads can also commit a player to one collision-safe ballistic move. The direction and arc are
 latched when the queued request reaches the host tick. Player move, jump, facing, and self-rescue input cannot alter
 the move while it is active. Admin teleport and `AbortMovementCommitment(target, expectedSequence)` remain deliberate
 server controls. The expected sequence prevents a delayed abort from cancelling a replacement move.
@@ -810,11 +811,36 @@ handoff, and ghost sync, before that tick's snapshots are encoded. `MovementComm
 Both fire in the landing tick when recovery is zero. The result exposes the absolute capsule-centre position and the
 latched XZ direction.
 
+Ground travel uses `SteerMovementCommitment(target, expectedSequence, direction, distanceRemaining)` to replace
+the direction and remaining budget during preparation or travel. The sequence must be nonzero, direction finite
+and nonzero, and distance finite and nonnegative. A zero budget holds without inferring arrival. Use
+`EndMovementCommitment(target, expectedSequence, MovementCommitmentStopReason.Arrived)` to confirm arrival.
+`MovementCommitmentArrived` publishes exactly once at the accepted end, before optional rooted recovery.
+`MovementCommitmentEnded` publishes exactly once at control release, after recovery if requested. Arrival
+precedes end if both occur in one frame. These events publish before snapshots, so effects applied by their
+handlers reach that frame's snapshot. Arrival results carry the absolute position and current steered direction.
+
+Other stop reasons are `TargetLost`, `NoPath`, `TooLong`, `UnsupportedState` and `Cancelled`. They abort immediately,
+with `Cancelled` mapping to the existing Locomotion `Aborted` reason. `None` and unknown values are invalid.
+Arguments validate before queueing even for absent actors or stale sequences. Both controls ignore missing actors,
+stale sequences, ballistic or terminal state, and recovery. Use `AbortMovementCommitment` to cancel recovery.
+Repeated ends emit nothing and never restart recovery. The common `IAdminControllable` seam and `ServerAdmin`
+expose both calls, with unsupported defaults retained on other heads.
+
+Begin, steer and end queue through the host-thread admin drain. Calls from `OnBeforeTick` affect the same frame's
+eligible movement. A short sharded frame can apply controls and publish accepted outcomes without stepping
+movement or spending preparation, recovery or timeout timers. Ground control remains sequence-checked through
+same-host cell handoff. Ground begin, steer, end and abort edit carried state without placement admission. They
+remain effective while an unresolved explicit environment holds physical movement, without spending timers or
+repeating arrival or end events. Ballistic begin keeps its existing placement path. Fast ground travel retains
+the active-commitment anomaly exemption and ordinary bounds. Pursuit remains pending.
+
 The full state rides as `MoveState.Commitment` locally and `MovementState.Commitment` remotely. A client begins from
 the first authoritative snapshot carrying the sequence, then prediction replays pending commands through the same
-simulator. `Preparing`, `Airborne`, and `Recovering` report `IsActive == true`. `Completed` and `Aborted` remain for
-one served state before the next simulation step clears them. Timeout, deep-water swim entry, and a launch blocked
-at its first stride abort the sequence without a landing event. A second server begin supersedes the first.
+simulator. `Preparing`, `Airborne`, `Travelling` and `Recovering` report `IsActive == true`. `Completed` and
+`Aborted` clear on the next simulation step. An immediate admin end can therefore clear before that frame is
+served. Timeout, deep-water swim entry, and a launch blocked at its first stride abort the sequence without a
+landing event. A second server begin supersedes the first.
 Disconnect emits an ended result and strips the state before persistence.
 
 ## Authoritative movement invocation measurement

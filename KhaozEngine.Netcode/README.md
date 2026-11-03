@@ -596,8 +596,8 @@ consumer compiles and binds unchanged and a file importing both namespaces sees 
   `KhaozEngine.Accounts.AccountBanStore`, which files each ban on the account row the exchange reads.
 
 **One admin seam.** `IAdminControllable` (the live-admin surface: `ListOnline`, `Teleport`, `SetPosition`, `Kick`,
-`Broadcast` and the movement commitment pair) lives here on the same terms as the ban seam, with the three types it
-names: `PlayerRef`, `OnlinePlayer` and `MovementCommitmentRequest`. Their full names are still
+`Broadcast` and movement commitment controls) lives here on the same terms as the ban seam, with its three
+original companions: `PlayerRef`, `OnlinePlayer` and `MovementCommitmentRequest`. Their full names are still
 `KhaozEngine.NetWorld.*` and `KhaozEngine.NetWorld` type-forwards all four, so existing implementers and callers
 compile and bind unchanged. A head that never references `NetWorld` can implement it, which is what
 `KhaozEngine.TileWorld.Netcode`'s `TileWorldServer` does. `ServerAdmin`, the facade over it, stays in `NetWorld`.
@@ -607,7 +607,22 @@ compile and bind unchanged. A head that never references `NetWorld` can implemen
 an immutable ground request with optional preparation, recovery and timeout durations. Speed and begin distance
 are positive and finite. Directions are finite, nonzero and normalized, including extreme finite magnitudes.
 `IsGroundTravel` and `DistanceRemaining` identify this request without a Locomotion dependency. Existing ballistic
-requests default to false and zero. Ground wire support and authoritative server controls remain in development.
+requests default to false and zero. Ground state rides wire generation 15.
+
+Both float heads implement queued `SteerMovementCommitment(target, expectedSequence, direction, distanceRemaining)`
+and `EndMovementCommitment(target, expectedSequence, reason)`, also exposed by `ServerAdmin`. The dependency-free
+`MovementCommitmentStopReason` lives here under `KhaozEngine.NetWorld`. `None` is invalid. `Arrived`, `TargetLost`,
+`NoPath`, `TooLong` and `UnsupportedState` map to the corresponding Locomotion reasons, while `Cancelled` maps to
+`Aborted`. A nonzero sequence, finite nonzero direction and finite nonnegative steering distance are validated
+before queueing, even for absent or stale targets. Zero distance holds. Both controls ignore stale sequences,
+inactive or ballistic state, and recovery. Use `AbortMovementCommitment` to cancel recovery. Unsupported heads
+retain default methods that throw `NotSupportedException`.
+
+The float heads admit a ground begin only for grounded actors that are neither swimming nor airborne from water.
+A refused request leaves the current commitment intact and emits one `MovementCommitmentEnded` result for the
+refused sequence with `UnsupportedState`. `MovementCommitmentArrived` fires once at accepted ground arrival,
+before optional recovery. `MovementCommitmentEnded` fires once at release. Arrival precedes end when both happen
+in one frame, and both precede snapshots. Pursuit remains pending.
 
 The three decorators are public and compose on their own when a head wants a different order, or only one of them.
 They forward both optional verified-claim companions. Version and world gates unwrap their own token layer before

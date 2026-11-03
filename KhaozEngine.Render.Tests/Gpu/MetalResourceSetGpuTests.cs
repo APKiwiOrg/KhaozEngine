@@ -312,8 +312,6 @@ namespace KhaozEngine.Tests.Gpu
 
         static IGpuDevice CreateHeadless() => new MetalBackendProvider().CreateHeadless().Device;
 
-        static string Refusal(Func<object> call) => Assert.ThrowsAny<Exception>(() => call()).Message;
-
         // [SupportedOSPlatformGuard] rather than an inline check at every call site, the same mechanism the
         // sibling GPU suites use. Dormant off macOS rather than skipped, which is phase 3's row-19 lesson.
         [SupportedOSPlatformGuard("macos")]

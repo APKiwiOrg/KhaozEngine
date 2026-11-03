@@ -280,6 +280,8 @@ public class GpuPublicApiTests
             "KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan",
             "KhaozEngine.Gpu.Vulkan.VulkanBufferBindingException",
             "KhaozEngine.Gpu.Vulkan.VulkanBufferBindingRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanBufferCopyException",
+            "KhaozEngine.Gpu.Vulkan.VulkanBufferCopyRefusal",
             "KhaozEngine.Gpu.Vulkan.VulkanBufferRingException",
             "KhaozEngine.Gpu.Vulkan.VulkanBufferRingRefusal",
             "KhaozEngine.Gpu.Vulkan.VulkanDescriptorLimitException",

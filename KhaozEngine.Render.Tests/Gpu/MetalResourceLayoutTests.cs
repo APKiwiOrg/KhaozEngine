@@ -176,14 +176,23 @@ namespace KhaozEngine.Tests.Gpu
             var missingRefusal = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalResourceLayout.Require(null, mine, "a set"));
             Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, missingRefusal.Reason);
+            Assert.Equal(nameof(MetalResourceLayout), missingRefusal.ResourceKind);
+            Assert.Equal("a set", missingRefusal.Context);
 
             var foreignBackendRefusal = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalResourceLayout.Require(foreignBackend, mine, "a set"));
             Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, foreignBackendRefusal.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, foreignBackendRefusal.ExpectedBackend);
+            Assert.Equal(typeof(NotAMetalLayout), foreignBackendRefusal.ActualType);
+            Assert.Equal(typeof(MetalResourceLayout), foreignBackendRefusal.ExpectedType);
+            Assert.Equal("layout", foreignBackendRefusal.Context);
 
             var foreignDeviceRefusal = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => MetalResourceLayout.Require(foreignDevice, mine, "a set"));
             Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, foreignDeviceRefusal.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, foreignDeviceRefusal.ExpectedBackend);
+            Assert.Equal(nameof(MetalResourceLayout), foreignDeviceRefusal.ResourceKind);
+            Assert.Equal("layout", foreignDeviceRefusal.Context);
 
             // The positive control, so the three refusals above are not passing because Require refuses
             // everything.

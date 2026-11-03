@@ -1130,8 +1130,8 @@ inside a resize and after disposal).
 names the current render target view and holds no native reference. At replay the native emitter takes the back
 buffer from that view with `GetResource`, issues `CopyResource` and releases the reference at once, so no reference
 survives to make the next `ResizeBuffers` fail. A list that never bound the swapchain framebuffer in its current
-recording is refused with `InvalidOperationException` at the call, in the same words the other backends use, and
-records nothing. The engine half is device-free tested. The native half runs only
+recording is refused with `GpuSwapchainCopyStateException` and `GpuSwapchainCopyRefusal.SwapchainNotBound`
+at the call, as on the other backends, and records nothing. The engine half is device-free tested. The native half runs only
 on a Windows device.
 
 ## Capabilities, adapter selection, the debug layer and device loss
@@ -1399,3 +1399,10 @@ Recording lifecycle and timestamp contract refusals use `GpuRecordingStateExcept
 `GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException` and
 `GpuTimestampUnsupportedException` types from `KhaozEngine.Gpu`. Their required reasons and identifiers
 are listed in the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals).
+
+Resource ownership, layout declarations, resource sets and framebuffer checks use the corresponding
+`GpuResourceOwnership*Exception`, `GpuResourceLayoutException`, `GpuResourceSetException` and
+`GpuFramebufferException` types from `KhaozEngine.Gpu`. Existing BCL catches still match. The
+[portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) lists each required reason and its
+diagnostic members. Swapchain copies use `GpuSwapchainCopyArgumentException` and
+`GpuSwapchainCopyStateException` from that same catalog.

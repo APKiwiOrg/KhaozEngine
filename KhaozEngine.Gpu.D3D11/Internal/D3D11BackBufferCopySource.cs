@@ -88,10 +88,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             ArgumentNullException.ThrowIfNull(commands);
             ArgumentNullException.ThrowIfNull(destination);
 
-            object view = swapchain?.CurrentColourView ?? throw new InvalidOperationException(
+            object view = swapchain?.CurrentColourView ?? throw new GpuSwapchainCopyStateException(GpuSwapchainCopyRefusal.SwapchainNotCopyable,
                 "CopySwapchainColor was called while the swapchain is not copyable: the device has no swapchain, or "
                 + "its back buffer views are released for a resize or for disposal. Check SwapchainCopyable "
-                + "first.");
+                + "first.")
+            {
+                Command = "CopySwapchainColor",
+            };
 
             D3D11SwapchainFramebuffer framebuffer = swapchain.Framebuffer;
             SwapchainCopyCheck.RequireDestination(framebuffer, destination);

@@ -471,7 +471,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (resource is not T typed)
             {
-                throw new GpuResourceSetException(resource is null ? GpuResourceSetRefusal.ResourceMissing : GpuResourceSetRefusal.ResourceKindMismatch,
+                throw new GpuResourceSetException(GpuResourceSetRefusal.ResourceKindMismatch,
                     $"{where} declares {element.Kind}, which needs {what} created by the native Metal backend. It "
                     + $"was given a {resource?.GetType().Name ?? "null"}.",
                     nameof(resource))

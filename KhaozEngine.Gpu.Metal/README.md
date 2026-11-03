@@ -870,7 +870,8 @@ bind records the incoming program's binding table, which is what invalidates a r
 the two programs map that slot's elements to different indices. Both hang off the identity guard above, so a
 redundant bind touches neither, and the compute bind carries the second one for the same reason a dispatch has.
 
-**A disposed pipeline is refused at the bind, by name.** Disposing one releases its `MTLRenderPipelineState` and
+**A disposed pipeline is refused at the bind with `GpuResourceOwnershipDisposedException`.**
+Its `NativeHandleReleased` reason and `NativeHandleKind` identify the released objects. Disposing one releases its `MTLRenderPipelineState` and
 its `MTLDepthStencilState`, so binding it afterwards would leave a later draw setting a released object on a
 live encoder. That is the one refusal on this path about memory rather than about a caller's belief: a disposed
 resource layout or resource set releases nothing at all here, where a pipeline genuinely has.
@@ -1291,3 +1292,15 @@ Recording lifecycle and timestamp contract refusals use `GpuRecordingStateExcept
 `GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException` and
 `GpuTimestampUnsupportedException` types from `KhaozEngine.Gpu`. Their required reasons and identifiers
 are listed in the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals).
+
+Resource ownership, layout declarations, resource sets and framebuffer checks use the corresponding
+`GpuResourceOwnership*Exception`, `GpuResourceLayoutException`, `GpuResourceSetException` and
+`GpuFramebufferException` types from `KhaozEngine.Gpu`. Existing BCL catches still match. The
+[portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) lists each required reason and its
+diagnostic members. Swapchain copies use `GpuSwapchainCopyArgumentException` and
+`GpuSwapchainCopyStateException` from that same catalog.
+
+Graphics blend counts use `GpuPipelineOutputsException`. Texture copy, mip generation and resolve
+checks use `GpuTextureTransferArgumentException` and `GpuTextureTransferRangeException` where the
+backend checks the rule. Their reasons identify the rejected shape or subresource. Backend-specific
+admission differences remain as described above.

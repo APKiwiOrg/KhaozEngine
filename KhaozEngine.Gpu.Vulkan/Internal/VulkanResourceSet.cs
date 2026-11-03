@@ -452,7 +452,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         static T Require<T>(object? resource, in GpuResourceLayoutElement element, int index, string what)
             where T : class
             => resource as T
-                ?? throw new GpuResourceSetException(resource is null ? GpuResourceSetRefusal.ResourceMissing : GpuResourceSetRefusal.ResourceKindMismatch,
+                ?? throw new GpuResourceSetException(GpuResourceSetRefusal.ResourceKindMismatch,
                     $"'{element.Name}' at binding {index.ToString(CultureInfo.InvariantCulture)} of a native "
                     + "Vulkan resource set declares " + element.Kind + ", which needs " + what
                     + " created by this backend. It was given a "

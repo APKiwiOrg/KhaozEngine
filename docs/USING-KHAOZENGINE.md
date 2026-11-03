@@ -18847,7 +18847,8 @@ validated by a human at a window or not at all. A green Vulkan leg is not eviden
 Call it unconditionally anyway, and on every OS. Unlike `KhaozEngine.Gpu.D3D11` there is no platform guard to
 read first and none to add: Vulkan is not a Windows API, the same managed code runs everywhere, the loader is
 resolved at runtime, and a machine without one is answered by the probe rather than by a platform predicate. The
-package's whole public surface is that one method.
+package's registration surface is that one method. Its structured refusal enums and exceptions also expose
+engine-only reasons and diagnostic values.
 
 Whether the machine can run it is the separate question `IsBackendSupported` answers, through this package's own
 functional probe: a Vulkan loader, a throwaway instance at the 1.3 floor, then every physical device checked for
@@ -19581,7 +19582,9 @@ number, and again only the first can make it refuse something the other backends
 **A uniform buffer may not also be something else there either.** Creating a buffer as
 `GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly` (or with either read-write structured
 bit, or with the vertex, index or indirect bits) is legal on the seam and was accepted by the deleted Veldrid
-Vulkan backend. `GpuBackendKind.VulkanNative` REFUSES it at creation, with a message saying so. A uniform buffer there is ring-backed: it holds one copy of itself per frame in flight, and
+Vulkan backend. `GpuBackendKind.VulkanNative` refuses it at creation with
+`VulkanBufferRingException` and `VulkanBufferRingRefusal.UniformUsageCombination`.
+Read `Usage` and `ConflictingUsage` for the rejected binding combination. A uniform buffer there is ring-backed: it holds one copy of itself per frame in flight, and
 the frame's base offset is supplied at the bind as the dynamic uniform descriptor's offset. No other binding
 carries that base, so the vertex, index, indirect or storage read would address the first copy while the uniform
 read addressed the current one, and one frame's data would be read as another's with nothing thrown. Create two
@@ -19836,17 +19839,45 @@ writes are being queued for a segment nothing ever acquires, which on a running 
 
 ## GPU resource refusals
 
-Ownership refusals use `GpuResourceOwnershipArgumentException` for `DifferentDevice`, `ForeignBackend`, `MissingResource` and `ResourceNotOwnedByDevice`, and `GpuResourceOwnershipDisposedException` for `NativeHandleReleased`. Read the backend, resource identity, operation context and native handle properties rather than message text.
+Resource ownership checks use `GpuResourceOwnershipArgumentException` for `DifferentDevice`,
+`ForeignBackend`, `MissingResource` and `ResourceNotOwnedByDevice`, and
+`GpuResourceOwnershipDisposedException` for `NativeHandleReleased`. Read the resource type, backend,
+operation context and native handle properties rather than message text. Plain BCL parameter and
+lifetime checks keep their existing types.
 
-Resource set declarations use `GpuResourceSetException`. Its required `GpuResourceSetRefusal` and diagnostic members distinguish count, kind, missing resources, buffer windows, texture usage, staging textures and native handle liveness. Vulkan ring bindings use `VulkanResourceSetRingException` with `UniformBufferNotRingBacked` or `RingBufferUsedAsStorage`.
+`GpuResourceLayoutException` carries `DynamicOffsetUnsupportedForKind`, the backend, element name,
+binding when known and declared kind. `GpuResourceSetException` distinguishes resource count, kind,
+null entries, buffer windows, texture usage, staging textures and missing native handles. Its members
+retain the declaration index and the offending window or usage. Vulkan's ring constraints use
+`VulkanResourceSetRingException` with `UniformBufferNotRingBacked` or `RingBufferUsedAsStorage`.
 
-Resource layout declarations use `GpuResourceLayoutException` with `DynamicOffsetUnsupportedForKind`, the backend, element name, binding and resource kind. Framebuffers use `GpuFramebufferException` with attachment identity, actual and expected shape or usage, and a required `GpuFramebufferRefusal`. Graphics blend count checks use `GpuPipelineOutputsException` with `BlendCountMismatch`, both counts and `PipelineKind`.
+`GpuFramebufferException` distinguishes `NoAttachments`, `AttachmentShapeMismatch`,
+`AttachmentViewMissing` and `AttachmentNotRenderable`. It identifies the attachment and the actual
+and expected shapes, usage or native handle kind as appropriate. Graphics blend-count checks use
+`GpuPipelineOutputsException` with `BlendCountMismatch`, `DeclaredBlendCount`, `ColourOutputCount`
+and `PipelineKind`. Backend admission differences remain as documented by each backend.
 
-Vulkan native buffer binding, ring policy and descriptor budgets use `VulkanBufferBindingException`, `VulkanBufferRingException` and `VulkanDescriptorLimitException`, with required reasons and usage or limit data. Layout transitions and queries use `VulkanLayoutArgumentException` and `VulkanLayoutStateException`, with the image and requested or tracked subresource ranges.
+Texture copy, mip generation and resolve checks use the portable `GpuTextureTransferArgumentException`
+and `GpuTextureTransferRangeException`. Their required `GpuTextureTransferRefusal` reason distinguishes
+`TextureShapeMismatch`, `MipChainRequired`, `ResolveShapeMismatch` and `SubresourceOutOfRange`.
+Shape properties retain both resources' dimensions and format. Subresource refusals retain `ParamName`,
+`ActualValue`, `Side`, mip and layer indices and their limits.
 
+Swapchain copy checks use `GpuSwapchainCopyArgumentException` for `ColourAttachmentCount` and
+`DestinationShapeMismatch`, and `GpuSwapchainCopyStateException` for `SwapchainNotBound` and
+`SwapchainNotCopyable`. The shape refusal carries both shapes. The state refusal names `Command`.
+
+Vulkan native buffer copies use `VulkanBufferCopyException` with `EmptyCopy` or `WindowOutsideBuffer`,
+the side and the refused byte window. Binding usage checks use `VulkanBufferBindingException` with
+`RequiredUsageMissing`, `Usage`, `RequiredUsage` and `Context`. Descriptor budgets use
+`VulkanDescriptorLimitException` with `DynamicUniformLimitExceeded`, `LimitName`, `RequestedCount`,
+`Limit` and `SetLayoutCount`. Layout tracking uses `VulkanLayoutArgumentException` for
+`ImageHandleMissing` and `VulkanLayoutStateException` for `NoSingleLayout`, `PartialOverlap` and
+`UntrackedRemainder`. Its properties identify the image and requested or tracked subresource ranges.
 Staging framebuffer attachments carry `AttachmentNotRenderable` across the native backends. A non-staging attachment without its required native render view carries `AttachmentViewMissing`. Missing swapchain attachment handles carry `AttachmentNotRenderable`.
 
-See the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) and [Vulkan refusal catalog](../KhaozEngine.Gpu.Vulkan/README.md#refusals) for the full diagnostic members. Existing BCL catches still match.
+See the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) and
+[Vulkan refusal catalog](../KhaozEngine.Gpu.Vulkan/README.md#refusals) for the full diagnostic members.
 
 ---
 

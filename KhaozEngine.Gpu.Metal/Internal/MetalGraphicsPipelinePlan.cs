@@ -50,7 +50,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <summary>The name every refusal from this row quotes. The seam gives a pipeline no name of its own, so
-        /// there is nothing more specific to say, and the message carries the numbers instead.</summary>
+        /// there is nothing more specific to say. Structured refusal properties carry the diagnostic counts.</summary>
         internal const string Label = "A native Metal graphics pipeline";
 
         /// <summary>The compiled shader set, which is where the functions and the binding table come from.</summary>

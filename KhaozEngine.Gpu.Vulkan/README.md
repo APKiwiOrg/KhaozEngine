@@ -117,7 +117,8 @@ using KhaozEngine.Gpu.Vulkan;
 KhaozEngineVulkan.Register();   // once, at startup, on every OS
 ```
 
-That is the package's entire public surface, and the pin test in `KhaozEngine.Render.Tests` holds it to one
+That is the package's registration surface. Structured refusal enums and exceptions also expose engine-only
+reasons and diagnostic values. The pin test in `KhaozEngine.Render.Tests` holds registration to one
 member. Everything else (the provider, the probe, the requirement check, the binding spike) is internal, because
 the seam speaks engine types in both directions and a `Silk.NET.Vulkan` type on a public signature would make a
 consumer that merely reads it compile against the Vulkan binding.
@@ -1303,10 +1304,11 @@ moves is already inside an entry that recording put there: nothing at rest is to
 the entry in one barrier. Splitting the entry down to the request instead would mean naming the entry MINUS the
 request, which is a rectangle subtraction this tracker does not do, and it would trade one entry for up to four.
 
-Two shapes are refused by name. A range that PARTIALLY overlaps a tracked one, meaning they share a subresource
+Two transition shapes carry distinct `VulkanLayoutRefusal` reasons on `VulkanLayoutStateException`.
+`PartialOverlap` identifies a range that PARTIALLY overlaps a tracked one, meaning they share a subresource
 and neither holds the other, because transitioning it would move part of that range and leave its entry claiming a
 layout the rest no longer has. And
-a wider range whose untouched levels would themselves need a barrier, which only happens when the target is not
+`UntrackedRemainder` identifies a wider range whose untouched levels would themselves need a barrier, which only happens when the target is not
 the resting layout, since untouched means at rest. That second one is unreachable through a sampled bind, because
 `Sampled` wins the resting ladder, so a full-chain texture rests exactly where a sampled bind wants it.
 
@@ -1921,15 +1923,17 @@ on every rebuild. Its sampled R32F atlas remains stored. See
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.RingBufferUsedAsStorage` | Refuses a ring-backed uniform buffer through a storage binding that cannot apply its frame base. | `ParamName`, `ElementName`, `Binding`, `ResourceKind` |
+| `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.UniformBufferNotRingBacked` | Refuses a Vulkan uniform binding without its required ring. | `ParamName`, `ElementName`, `Binding`, `ActualUsage` |
 | `VulkanBufferBindingException`, `VulkanBufferBindingRefusal.RequiredUsageMissing` | Refuses binding a Vulkan buffer without the required native usage declaration. | `ParamName`, `Usage`, `RequiredUsage`, `Context` |
+| `VulkanBufferCopyException`, `VulkanBufferCopyRefusal.EmptyCopy` | Refuses an empty VkBufferCopy region. | `ParamName`, `ActualValue`, `Side`, `SizeBytes` |
+| `VulkanBufferCopyException`, `VulkanBufferCopyRefusal.WindowOutsideBuffer` | Refuses a Vulkan buffer copy window extending outside its selected buffer. | `ParamName`, `ActualValue`, `Side`, `OffsetBytes`, `SizeBytes`, `BufferBytes` |
 | `VulkanBufferRingException`, `VulkanBufferRingRefusal.UniformUsageCombination` | Refuses combining a Vulkan ring-backed uniform buffer with another binding usage. | `ParamName`, `Usage`, `ConflictingUsage` |
 | `VulkanDescriptorLimitException`, `VulkanDescriptorLimitRefusal.DynamicUniformLimitExceeded` | Refuses a pipeline layout exceeding the device dynamic uniform descriptor limit. | `LimitName`, `RequestedCount`, `Limit`, `SetLayoutCount` |
 | `VulkanLayoutArgumentException`, `VulkanLayoutRefusal.ImageHandleMissing` | Refuses a layout transition for a staging or null image handle. | `ParamName`, `Image` |
 | `VulkanLayoutStateException`, `VulkanLayoutRefusal.NoSingleLayout` | Refuses querying one layout for a range spanning narrower tracked pieces. | `Image`, `CoveredRangeCount`, `BaseMip`, `MipCount`, `BaseLayer`, `LayerCount` |
 | `VulkanLayoutStateException`, `VulkanLayoutRefusal.PartialOverlap` | Refuses partially overlapping tracked subresource rectangles that neither contain one another. | `Image`, `RequestedBaseMip`, `RequestedMipCount`, `RequestedBaseLayer`, `RequestedLayerCount`, `TrackedBaseMip`, `TrackedMipCount`, `TrackedBaseLayer`, `TrackedLayerCount` |
 | `VulkanLayoutStateException`, `VulkanLayoutRefusal.UntrackedRemainder` | Refuses a wider transition whose uncovered remainder would need an unrepresentable barrier. | `Image`, `BaseMip`, `MipCount`, `BaseLayer`, `LayerCount`, `TargetLayout`, `RestingLayout` |
-| `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.RingBufferUsedAsStorage` | Refuses a ring-backed uniform buffer through a storage binding that cannot apply its frame base. | `ParamName`, `ElementName`, `Binding`, `ResourceKind` |
-| `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.UniformBufferNotRingBacked` | Refuses a Vulkan uniform binding without its required ring. | `ParamName`, `ElementName`, `Binding`, `ActualUsage` |
 | `VulkanStagingLayoutException`, `VulkanStagingLayoutRefusal.MappingSizeExceeded` | Staging layout arithmetic exceeding the mapping's 32-bit size ceiling | `ParamName`, `ActualValue`, `Width`, `Height`, `MipLevels`, `ArrayLayers`, `Format`, `Quantity`, `ComputedBytes`, `MaximumBytes` |
 | `VulkanRingWaitException`, `VulkanRingWaitRefusal.SubmitLockHeld` | a Vulkan ring rotation while the caller holds the submit lock | `Operation` |
 | `VulkanTimestampAdapterException`, `VulkanTimestampAdapterRefusal.NativeDeviceLost` | a timestamp native operation that reports device loss | `Site` |
@@ -1948,3 +1952,15 @@ Recording lifecycle and timestamp contract refusals use `GpuRecordingStateExcept
 `GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException` and
 `GpuTimestampUnsupportedException` types from `KhaozEngine.Gpu`. Their required reasons and identifiers
 are listed in the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals).
+
+Resource ownership, layout declarations, resource sets and framebuffer checks use the corresponding
+`GpuResourceOwnership*Exception`, `GpuResourceLayoutException`, `GpuResourceSetException` and
+`GpuFramebufferException` types from `KhaozEngine.Gpu`. Existing BCL catches still match. The
+[portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) lists each required reason and its
+diagnostic members. Swapchain copies use `GpuSwapchainCopyArgumentException` and
+`GpuSwapchainCopyStateException` from that same catalog.
+
+Graphics blend counts use `GpuPipelineOutputsException`. Texture copy, mip generation and resolve
+checks use `GpuTextureTransferArgumentException` and `GpuTextureTransferRangeException` where the
+backend checks the rule. Their reasons identify the rejected shape or subresource. Backend-specific
+admission differences remain as described above.

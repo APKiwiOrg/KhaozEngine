@@ -245,6 +245,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.IsAssignableFrom<ObjectDisposedException>(refused);
             Assert.Equal(GpuResourceOwnershipRefusal.NativeHandleReleased, refused.Reason);
             Assert.Equal("MTLRenderPipelineState, MTLDepthStencilState", refused.NativeHandleKind);
+            Assert.Equal(nameof(MetalGraphicsPipeline), refused.ResourceKind);
+            Assert.Equal("p", refused.Context);
             Assert.Equal(nameof(MetalGraphicsPipeline), refused.ObjectName);
 
             MetalComputePipeline compute = ComputePipeline();

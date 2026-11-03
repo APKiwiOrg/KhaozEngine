@@ -252,6 +252,9 @@ namespace KhaozEngine.Tests.Gpu
             GpuFramebufferException stagingRefusal = Assert.Throws<GpuFramebufferException>(
                 () => device.Factory.CreateFramebuffer(null, staging));
             Assert.Equal(GpuFramebufferRefusal.AttachmentNotRenderable, stagingRefusal.Reason);
+            Assert.Equal(true, stagingRefusal.IsStaging);
+            Assert.Equal(GpuTextureUsage.Staging, stagingRefusal.ActualUsage);
+            Assert.Equal(GpuTextureUsage.RenderTarget, stagingRefusal.RequiredUsage);
 
             GpuFramebufferException sizeRefusal = Assert.Throws<GpuFramebufferException>(
                 () => device.Factory.CreateFramebuffer(null, colour, larger));

@@ -413,10 +413,20 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(128u, window.RangeBytes);
             Assert.Equal(256u, window.BufferBytes);
 
+            var missingBuffer = Assert.Throws<GpuResourceSetException>(() => fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(uniformLayout, new GpuBufferRange(null!, 0, 256))));
+            Assert.Equal(GpuResourceSetRefusal.ResourceKindMismatch, missingBuffer.Reason);
+            Assert.Null(missingBuffer.ActualType);
+            Assert.Equal(typeof(VulkanBuffer), missingBuffer.ExpectedType);
+            Assert.Equal("Frame", missingBuffer.ElementName);
+            Assert.Equal(0, missingBuffer.Binding);
+
             // NOTHING NATIVE HAPPENED for any of them: no set was allocated and none was written, which is what
             // keeps a caller error from leaving a half-built descriptor set behind.
             Assert.Equal(0, fixture.DescriptorApi.AllocateCount);
             Assert.Equal(0, fixture.DescriptorApi.UpdateCount);
+            using IGpuResourceSet control = fixture.Factory.CreateResourceSet(
+                new GpuResourceSetDescription(uniformLayout, new GpuBufferRange(uniform, 0, 256)));
         }
 
         /// <summary>
@@ -431,8 +441,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(GpuBackendKind.VulkanNative, refusal.ExpectedBackend);
             Assert.Equal(typeof(ForeignSet), refusal.ActualType);
         }
-
-        static string Throws(Action action) => Assert.Throws<ArgumentException>(action).Message;
 
         sealed class ForeignSet : IGpuResourceSet
         {

@@ -620,12 +620,6 @@ exception type. Message text is developer prose. Branch on the reason and read t
 
 | Exception and reason member | What it refuses | Identifiers |
 |---|---|---|
-| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentNotRenderable` | Refuses an attachment without the native texture or view needed for rendering. | `Attachment`, `ActualUsage`, `RequiredUsage`, `IsStaging`, `NativeHandleKind` |
-| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentShapeMismatch` | Refuses attachments that do not share one size and sample count. | `Attachment`, `Width`, `Height`, `SampleCount`, `ExpectedWidth`, `ExpectedHeight`, `ExpectedSampleCount` |
-| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentViewMissing` | Refuses an attachment with no required native render view. | `ParamName`, `Attachment`, `ActualUsage`, `RequiredUsage`, `IsStaging`, `NativeHandleKind` |
-| `GpuFramebufferException`, `GpuFramebufferRefusal.NoAttachments` | Refuses a framebuffer with no colour or depth attachment. | `ParamName`, `ColourAttachmentCount`, `HasDepth` |
-| `GpuPipelineOutputsException`, `GpuPipelineOutputsRefusal.BlendCountMismatch` | Refuses a graphics pipeline whose blend state count differs from its colour outputs. | `ParamName`, `DeclaredBlendCount`, `ColourOutputCount`, `PipelineKind` |
-| `GpuResourceLayoutException`, `GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind` | Refuses a dynamic offset on a resource kind the backend cannot rebase. | `ParamName`, `Backend`, `ElementName`, `Binding`, `ResourceKind` |
 | `GpuResourceSetException`, `GpuResourceSetRefusal.BufferWindowOutsideResource` | Refuses a binding window that does not fit within the buffer. | `ParamName`, `ElementName`, `Binding`, `RangeOffset`, `RangeBytes`, `BufferBytes` |
 | `GpuResourceSetException`, `GpuResourceSetRefusal.NativeHandleMissing` | Refuses a set resource whose native handle was already released. | `ParamName`, `ElementName`, `Binding`, `ResourceKind`, `NativeHandleKind` |
 | `GpuResourceSetException`, `GpuResourceSetRefusal.ResourceCountMismatch` | Refuses a set whose resource count differs from its layout. | `ParamName`, `DeclaredCount`, `SuppliedCount` |
@@ -638,6 +632,20 @@ exception type. Message text is developer prose. Branch on the reason and read t
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.MissingResource` | Refuses a required resource that was not supplied. | `ParamName`, `ResourceKind`, `Context` |
 | `GpuResourceOwnershipDisposedException`, `GpuResourceOwnershipRefusal.NativeHandleReleased` | Refuses use of a resource whose native handle has been released. | `ObjectName`, `NativeHandleKind`, `ResourceKind`, `Context` |
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice` | Refuses a submitted command list or fence that is not owned by the submitting backend or device. | `ParamName`, `ExpectedBackend`, `ActualType`, `ResourceKind` |
+| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentNotRenderable` | Refuses an attachment without the native texture or view needed for rendering. | `Attachment`, `ActualUsage`, `RequiredUsage`, `IsStaging`, `NativeHandleKind` |
+| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentShapeMismatch` | Refuses attachments that do not share one size and sample count. | `Attachment`, `Width`, `Height`, `SampleCount`, `ExpectedWidth`, `ExpectedHeight`, `ExpectedSampleCount` |
+| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentViewMissing` | Refuses an attachment with no required native render view. | `ParamName`, `Attachment`, `ActualUsage`, `RequiredUsage`, `IsStaging`, `NativeHandleKind` |
+| `GpuFramebufferException`, `GpuFramebufferRefusal.NoAttachments` | Refuses a framebuffer with no colour or depth attachment. | `ParamName`, `ColourAttachmentCount`, `HasDepth` |
+| `GpuPipelineOutputsException`, `GpuPipelineOutputsRefusal.BlendCountMismatch` | Refuses a graphics pipeline whose blend state count differs from its colour outputs. | `ParamName`, `DeclaredBlendCount`, `ColourOutputCount`, `PipelineKind` |
+| `GpuResourceLayoutException`, `GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind` | Refuses a dynamic offset on a resource kind the backend cannot rebase. | `ParamName`, `Backend`, `ElementName`, `Binding`, `ResourceKind` |
+| `GpuTextureTransferArgumentException`, `GpuTextureTransferRefusal.MipChainRequired` | Refuses mip generation without a real texture and multiple mip levels. | `ParamName`, `MipLevels`, `IsStaging`, `NativeHandleMissing` |
+| `GpuTextureTransferArgumentException`, `GpuTextureTransferRefusal.ResolveShapeMismatch` | Refuses a multisample resolve whose source or destination is not a compatible attachment. | `ParamName`, `SourceSampleCount`, `DestinationSampleCount`, `SourceWidth`, `SourceHeight`, `DestinationWidth`, `DestinationHeight`, `SourceFormat`, `DestinationFormat`, `SourceIsStaging`, `DestinationIsStaging` |
+| `GpuTextureTransferRangeException`, `GpuTextureTransferRefusal.SubresourceOutOfRange` | Refuses a copied subresource index outside the selected source or destination texture. | `ParamName`, `ActualValue`, `Side`, `MipLevel`, `ArrayLayer`, `MipLevels`, `ArrayLayers` |
+| `GpuTextureTransferArgumentException`, `GpuTextureTransferRefusal.TextureShapeMismatch` | Refuses a whole-texture copy between incompatible shapes. | `ParamName`, `SourceWidth`, `SourceHeight`, `SourceFormat`, `SourceMipLevels`, `SourceArrayLayers`, `DestinationWidth`, `DestinationHeight`, `DestinationFormat`, `DestinationMipLevels`, `DestinationArrayLayers` |
+| `GpuSwapchainCopyArgumentException`, `GpuSwapchainCopyRefusal.ColourAttachmentCount` | Refuses a swapchain source without exactly one colour attachment. | `ParamName`, `ColourAttachmentCount` |
+| `GpuSwapchainCopyArgumentException`, `GpuSwapchainCopyRefusal.DestinationShapeMismatch` | Refuses a swapchain copy destination whose complete texture shape differs. | `ParamName`, `SourceWidth`, `SourceHeight`, `SourceFormat`, `DestinationWidth`, `DestinationHeight`, `DestinationFormat`, `DestinationMipLevels`, `DestinationSampleCount` |
+| `GpuSwapchainCopyStateException`, `GpuSwapchainCopyRefusal.SwapchainNotBound` | Refuses a swapchain copy before the source swapchain is bound in this recording. | `Command` |
+| `GpuSwapchainCopyStateException`, `GpuSwapchainCopyRefusal.SwapchainNotCopyable` | Refuses a copy without a live copyable swapchain image. | `Command` |
 | `GpuBackendProviderMissingException`, `GpuBackendProviderMissingRefusal.ProviderNotRegistered` | A backend has no registered provider and cannot fall back. | `Backend`, `RegistrationConvention`, optional `RegistrationMethod` |
 | `GpuBackendRetiredException`, `GpuBackendRetiredRefusal.BackendRetired` | An explicitly named backend whose implementation was retired. | `Backend`, `Replacement`, `RetirementVersion` |
 | `GpuNoUsableBackendException`, `GpuNoUsableBackendRefusal.RequestedCreationFailed` | The requested backend and its fallback both threw. | `RequestedBackend`, `FallbackBackend`, `RequestedFailure`, `InnerException`, `FallbackFailure` |
@@ -697,6 +705,9 @@ Staging framebuffer attachments use `AttachmentNotRenderable` on all native back
 attachment without its required native render view uses `AttachmentViewMissing`. A missing swapchain
 attachment handle also uses `AttachmentNotRenderable`. These classifications preserve the existing
 validation points and backend admission differences.
+
+A `GpuBufferRange` whose `Buffer` is null carries `ResourceKindMismatch`. A null resource entry
+in a set declaration carries `ResourceMissing`.
 
 ## Optional compiler and memory diagnostics
 
@@ -837,11 +848,11 @@ is presented.
   or a recreation.
 - **Copy.** `CopySwapchainColor(commands, destination)` records, into an open recording, a whole copy of the
   current swapchain colour image into `destination`. The destination must have the size of `SwapchainFramebuffer`,
-  the swapchain's colour format, one mip and one sample, or it is refused with an `ArgumentException` naming both
-  shapes. `commands` must have bound `SwapchainFramebuffer` in its current recording, which makes it the frame's
+  the swapchain's colour format, one mip and one sample, or `GpuSwapchainCopyArgumentException` carries
+  `DestinationShapeMismatch` and both shapes. `commands` must have bound `SwapchainFramebuffer` in its current recording, which makes it the frame's
   own list. Only that list is ordered after the image's acquire and holds what the frame drew. A list that never
-  bound it, and an uncopyable swapchain, are both refused with an `InvalidOperationException`, with one message
-  for the first on every backend. Nothing is recorded on any refusal.
+  bound it is refused with `GpuSwapchainCopyStateException` and `SwapchainNotBound` on every backend.
+  An uncopyable swapchain carries `SwapchainNotCopyable` on the same type. Nothing is recorded on any refusal.
 - **Direct3D 11.** The request is stored and changes nothing, because a `RenderTargetOutput` back buffer is
   already a `CopyResource` source. The image is copyable whenever the swapchain's attachments are live.
 

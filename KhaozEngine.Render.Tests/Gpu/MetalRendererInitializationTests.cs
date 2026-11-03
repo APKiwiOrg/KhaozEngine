@@ -33,7 +33,7 @@ public sealed class MetalRendererInitializationTests
             Assert.Same(commands, c.Commands);
             Assert.Equal(h.Api.Handed[0].Texture, h.Boundary.Framebuffer.Attachment.Texture);
             // Reaching the destination ownership check proves this recording bound the swapchain.
-            Assert.Throws<ArgumentException>(() => commands.CopyFromDrawable(
+            Assert.Throws<GpuResourceOwnershipArgumentException>(() => commands.CopyFromDrawable(
                 h.Boundary.Framebuffer.Attachment.Texture, destination));
             captured = true;
         }, _ =>
@@ -53,7 +53,7 @@ public sealed class MetalRendererInitializationTests
                     commands.ClearColorTarget(0, Color.Black);
                     Assert.Equal(rendererOwned ? 0 : 1, h.Api.AcquireCount);
                     if (rendererOwned)
-                        Assert.Throws<InvalidOperationException>(
+                        Assert.Throws<GpuSwapchainCopyStateException>(
                             () => commands.CopyFromDrawable(IntPtr.Zero, destination));
                     commands.SetFramebuffer(h.Boundary.Framebuffer);
                     commands.ClearColorTarget(0, Color.Transparent);

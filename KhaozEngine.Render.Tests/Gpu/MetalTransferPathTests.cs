@@ -12,15 +12,8 @@ namespace KhaozEngine.Tests.Gpu
     /// breakdown row 14 (https://github.com/APKiwiOrg/KhaozEngine/issues/580), over
     /// <c>MetalCommandList.Transfers.cs</c>.
     ///
-    /// <para><b>WHAT IS HERE IS THE BUFFER COPY AND THE ARGUMENT REFUSALS, AND THAT IS A LIMIT OF THE FIXTURE
-    /// RATHER THAN OF THE ROW.</b> A <see cref="MetalTexture"/> has a private constructor and one factory that
-    /// takes an <c>MTLDevice</c>, so there is no way to stand one up off a device and no fake can substitute for
-    /// it: the four texture members type-check their arguments to that concrete class. So every claim below the
-    /// ownership check on <c>CopyTexture</c>, both <c>CopyTextureSubresource</c> overloads,
-    /// <c>GenerateMipmaps</c> and <c>ResolveTexture</c> lives in the <c>[GpuFact]</c> companion instead, and this
-    /// file asserts what it genuinely can: the whole of <c>CopyBuffer</c>, and the argument, ownership, recording
-    /// and disposal refusals every member shares. <see cref="MetalRenderPassScheduleTests"/> records the same
-    /// constraint for the pass schedule, for the same reason.</para>
+    /// <para>The harness supplies native-free textures for subresource validation. GPU companions also exercise
+    /// those refusals over real resources and validate the transfer results.</para>
     ///
     /// <para><b>THE ENCODER BOUNDARY IS THE CLAIM WORTH THE MOST HERE.</b> Four of the five members open a BLIT
     /// encoder, which is a DIFFERENT kind from the one a draw uses, so ending the open render pass first is M-A5
@@ -60,6 +53,37 @@ namespace KhaozEngine.Tests.Gpu
         {
             _list.Dispose();
             _harness.Dispose();
+        }
+
+        [Theory]
+        [InlineData("source", true)]
+        [InlineData("source", false)]
+        [InlineData("destination", true)]
+        [InlineData("destination", false)]
+        public void SubresourceRefusalsIdentifyTheSideAndItsLimits(string side, bool mip)
+        {
+            using MetalTexture source = _harness.NewTexture(GpuTextureDescription.Texture2D(
+                8, 8, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            using MetalTexture destination = _harness.NewTexture(GpuTextureDescription.Texture2D(
+                8, 8, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            _list.Begin();
+            _list.CopyTextureSubresource(source, 0, 0, destination, 0, 0, 8, 8);
+            uint level = mip ? 1u : 0u;
+            uint layer = mip ? 0u : 1u;
+            var refusal = Assert.Throws<GpuTextureTransferRangeException>(() =>
+                _list.CopyTextureSubresource(source, side == "source" ? level : 0,
+                    side == "source" ? layer : 0, destination, side == "destination" ? level : 0,
+                    side == "destination" ? layer : 0, 8, 8));
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(refusal);
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, refusal.Reason);
+            Assert.Equal(mip ? "mipLevel" : "arrayLayer", refusal.ParamName);
+            Assert.Equal(1u, refusal.ActualValue);
+            Assert.Equal(side, refusal.Side);
+            Assert.Equal(level, refusal.MipLevel);
+            Assert.Equal(layer, refusal.ArrayLayer);
+            Assert.Equal(1u, refusal.MipLevels);
+            Assert.Equal(1u, refusal.ArrayLayers);
+            _list.End();
         }
 
         // ---- CopyBuffer: the copy itself ---------------------------------------------------------------------
@@ -384,8 +408,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// AND EVERY MEMBER REFUSES A RESOURCE ANOTHER BACKEND CREATED, which is as far into the four texture
         /// members as a device-free fixture can reach: the check is a type test against
-        /// <see cref="MetalTexture"/>, and that class has a private constructor and one factory that takes an
-        /// <c>MTLDevice</c>.
+        /// <see cref="MetalTexture"/>. Native-free textures for checks below that cast come from the ring harness.
         /// <para>
         /// WHAT A RED RUN MEANS: a resource created on one backend is being used on another's device, which on a
         /// machine with more than one Metal device is an illegal copy and on Apple silicon, where the whole

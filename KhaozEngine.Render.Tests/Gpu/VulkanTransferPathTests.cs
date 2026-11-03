@@ -97,8 +97,13 @@ namespace KhaozEngine.Tests.Gpu
                 IGpuBuffer source = Buffer(fixture, owned, GpuBufferUsage.StructuredBufferReadWrite);
                 IGpuBuffer destination = Buffer(fixture, owned, GpuBufferUsage.Staging);
 
-                Assert.Throws<ArgumentOutOfRangeException>(
+                var refusal = Assert.Throws<VulkanBufferCopyException>(
                     () => list.CopyBuffer(source, 200, destination, 0, 128));
+                Assert.Equal(VulkanBufferCopyRefusal.WindowOutsideBuffer, refusal.Reason);
+                Assert.Equal("source", refusal.Side);
+                Assert.Equal(200u, refusal.OffsetBytes);
+                Assert.Equal(128u, refusal.SizeBytes);
+                Assert.Equal(source.SizeInBytes, refusal.BufferBytes);
             }
             finally
             {
@@ -127,10 +132,15 @@ namespace KhaozEngine.Tests.Gpu
                 IGpuBuffer source = Buffer(fixture, owned, GpuBufferUsage.StructuredBufferReadWrite);
                 IGpuBuffer destination = Buffer(fixture, owned, GpuBufferUsage.Staging);
 
-                ArgumentOutOfRangeException refused = Assert.Throws<ArgumentOutOfRangeException>(
+                VulkanBufferCopyException refused = Assert.Throws<VulkanBufferCopyException>(
                     () => list.CopyBuffer(source, 0, destination, 0, 0));
 
-                Assert.Contains("size must be positive", refused.Message, StringComparison.Ordinal);
+                Assert.IsAssignableFrom<ArgumentOutOfRangeException>(refused);
+                Assert.Equal(VulkanBufferCopyRefusal.EmptyCopy, refused.Reason);
+                Assert.Equal("sizeInBytes", refused.ParamName);
+                Assert.Equal(0u, refused.ActualValue);
+                Assert.Equal("source", refused.Side);
+                Assert.Equal(0u, refused.SizeBytes);
                 Assert.DoesNotContain("leaves the buffer", refused.Message, StringComparison.Ordinal);
                 Assert.Empty(fixture.TransferSink.BufferCopies);
             }
@@ -345,7 +355,10 @@ namespace KhaozEngine.Tests.Gpu
                 using VulkanCommandList list = fixture.CreateList();
                 list.Begin();
 
-                Assert.Throws<ArgumentException>(() => list.CopyTexture(source, destination));
+                var refusal = Assert.Throws<GpuTextureTransferArgumentException>(() => list.CopyTexture(source, destination));
+                Assert.Equal(GpuTextureTransferRefusal.TextureShapeMismatch, refusal.Reason);
+                Assert.Equal(source.Width, refusal.SourceWidth);
+                Assert.Equal(destination.Width, refusal.DestinationWidth);
             }
             finally
             {
@@ -437,7 +450,10 @@ namespace KhaozEngine.Tests.Gpu
                 using VulkanCommandList list = fixture.CreateList();
                 list.Begin();
 
-                Assert.Throws<ArgumentException>(() => list.GenerateMipmaps(flat));
+                var refusal = Assert.Throws<GpuTextureTransferArgumentException>(() => list.GenerateMipmaps(flat));
+                Assert.Equal(GpuTextureTransferRefusal.MipChainRequired, refusal.Reason);
+                Assert.Equal(1u, refusal.MipLevels);
+                Assert.Equal(false, refusal.IsStaging);
             }
             finally
             {
@@ -621,7 +637,10 @@ namespace KhaozEngine.Tests.Gpu
                 using VulkanCommandList list = fixture.CreateList();
                 list.Begin();
 
-                Assert.Throws<ArgumentException>(() => list.ResolveTexture(flat, other));
+                var refusal = Assert.Throws<GpuTextureTransferArgumentException>(() => list.ResolveTexture(flat, other));
+                Assert.Equal(GpuTextureTransferRefusal.ResolveShapeMismatch, refusal.Reason);
+                Assert.Equal(1u, refusal.SourceSampleCount);
+                Assert.Equal(1u, refusal.DestinationSampleCount);
             }
             finally
             {

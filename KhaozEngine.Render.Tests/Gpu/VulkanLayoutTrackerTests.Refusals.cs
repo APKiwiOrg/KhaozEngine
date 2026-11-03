@@ -84,6 +84,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(VulkanLayoutRefusal.UntrackedRemainder, error.Reason);
             Assert.Equal(ColourImage, error.Image);
             Assert.Equal(4u, error.MipCount);
+            Assert.Equal(0u, error.BaseMip);
+            Assert.Equal(0u, error.BaseLayer);
+            Assert.Equal(1u, error.LayerCount);
             Assert.Equal((int)ImageLayout.TransferSrcOptimal, error.TargetLayout);
             Assert.Equal((int)ImageLayout.General, error.RestingLayout);
         }
@@ -126,6 +129,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(2u, error.RequestedMipCount);
             Assert.Equal(0u, error.TrackedBaseMip);
             Assert.Equal(2u, error.TrackedMipCount);
+            Assert.Equal(0u, error.RequestedBaseLayer);
+            Assert.Equal(1u, error.RequestedLayerCount);
+            Assert.Equal(0u, error.TrackedBaseLayer);
+            Assert.Equal(1u, error.TrackedLayerCount);
         }
 
         /// <summary>

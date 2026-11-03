@@ -50,11 +50,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             VulkanSwapchainFramebuffer framebuffer =
                 _present is { CurrentGenerationCopyable: true, Framebuffer: { } bound }
                     ? bound
-                    : throw new InvalidOperationException(
+                    : throw new GpuSwapchainCopyStateException(GpuSwapchainCopyRefusal.SwapchainNotCopyable,
                         "CopySwapchainColor was called while the swapchain is not copyable: the device has no "
                         + "swapchain, the current generation was created before the copy-source request applied "
                         + "or on a surface without TRANSFER_SRC support, or the frame is on the orphan target. "
-                        + "Check SwapchainCopyable first.");
+                        + "Check SwapchainCopyable first.")
+                    {
+                        Command = "CopySwapchainColor",
+                    };
 
             SwapchainCopyCheck.RequireDestination(framebuffer, destination);
 

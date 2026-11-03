@@ -278,10 +278,13 @@ resources. Later replacements retain deferred retirement. The colour source is r
 disposal stage, after its water sets, preserving the later scene disposal stages.
 
 Cascade projection, coverage and blend policy share C# GLSL text fragments with lit receivers. The refraction
-constant is shared separately from water's sun-travel function. Lit composition retains its original statements,
-identifiers, whitespace and ordering, so every non-water program keeps its pre-M5 shader emission.
-`NonWaterShaderSourceEqualityTests` pins all 248 non-water stage sources to main at `0af218d5b`, alongside the
-existing HLSL, MSL and SPIR-V emission pins. Only the four water programs' emission pins change for this landing.
+constant is shared separately from water's sun-travel function. Lit composition is pinned as fully composed GLSL, alongside the HLSL, MSL and SPIR-V emission
+pins. `NonWaterShaderSourceEqualityTests` covers all 248 non-water stages. Intentional source changes are
+rebaked with `KE_UPDATE_GLSL_HASHES=1`, `KE_UPDATE_HLSL_HASHES=1`, `KE_UPDATE_MSL_HASHES=1` and
+`KE_UPDATE_SPIRV_HASHES=1`, using the matching equality tests through `build-slot`. Read each table diff.
+The point-shadow exact-zero banded-NdotL gate deliberately changes the lit fragments' source while preserving
+every contributing term. GPU comparisons against the ungated arithmetic hold the atlas and all main
+attachments byte for byte.
 
 The first landing reads the copy at the original pixel with mip-zero `texelFetch`. It unprojects two depths
 through `InvViewProj` to recover the incident direction for perspective and orthographic cameras, then refracts

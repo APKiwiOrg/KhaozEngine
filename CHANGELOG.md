@@ -6,8 +6,11 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.23.1
 
-2026-11-02
+2026-11-03
 
+- Skip clustered point-shadow filters when banded NdotL is exactly zero. Diffuse and specular are already
+  zero there. Ignore non-finite light intensities so attenuation remains finite. Shader source and backend
+  emission pins are rebaked without relaxing equality checks.
 - Move the renderer performance evidence tooling tests, the Items benchmark quick acceptance test and the
   navigation capture research fixtures out of the engine solution into `tools/Renderer.Perf.Tooling.Tests`,
   `tools/Items.Benchmark.Tests` and `tools/NavCapture.Research.Tests`. The free `tooling-validation.yml`

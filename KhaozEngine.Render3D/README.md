@@ -1792,3 +1792,7 @@ foliage pays no point-proxy cost.
 Dispose the batch when placements change or unload. The scene owns GPU buffers and retires them safely.
 Mesh handles remain caller-owned and must belong to that scene. `LastFoliageStats` reports workload and
 upload counts. `CandidateInstances` includes instances the shader rejects, rather than exact visible blades.
+
+The clustered point-light receiver skips its shadow filter when banded NdotL is exactly zero. Both diffuse
+and specular are already zero there, with specular gated by `step(0.0001, ndl)`. `AddLight` ignores non-finite
+intensities, keeping attenuation finite.

@@ -82,6 +82,9 @@ public sealed partial class Scene3D
             _model.UploadRigidMotion(cl, slots, CollectionsMarshal.AsSpan(_previousInstanceTransforms)));
     }
 
+    /// <summary>The raw motion attachment, so identity tests compare its stored half-float bits.</summary>
+    internal IGpuTexture? MotionTargetForTests => _res.MotionTex;
+
     /// <summary>Read the motion target back: one UV motion per internal pixel, row 0 at the top, the sentinel where no
     /// opaque geometry drew. Drains the device. For tests.</summary>
     /// <exception cref="InvalidOperationException">No motion target exists, because temporal rendering was off for the

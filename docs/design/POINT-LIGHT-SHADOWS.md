@@ -70,6 +70,11 @@ Omnidirectional maps add local occlusion for placed lanterns and moving effect l
 - Compare: `lit = step(d, stored + bias + slopeBias * (1 - ndl))`. Hard and soft filters keep taps within the
   selected face. A negative base row skips point-shadow sampling. The transient texture and shape, independent
   row mapping and nearer-depth combination are defined in [caster layers](POINT-SHADOW-CASTERS.md).
+- The receiver samples only when attenuation and banded `NdotL` are both positive. At exactly zero
+  banded `NdotL`, diffuse is zero and specular is zero through `step(0.0001, ndl)`, whatever the shadow
+  filter returns. `AddLight` ignores non-finite intensity. The distance rejection leaves finite distance
+  squared below radius squared, the falloff is clamped to 0..1, and multiplying it twice by a finite
+  intensity leaves finite attenuation. This gate changes no contributing fragment (#1676).
 
 ## What the build taught
 

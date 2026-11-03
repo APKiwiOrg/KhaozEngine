@@ -633,6 +633,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     [InlineData("foot radius", false)]
     [InlineData("water mode", false)]
     [InlineData("water launch", false)]
+    [InlineData("commitment kind", false)]
     public void HostedNormalizationMatchesCommittedPhysicalInputs(string tuning, bool expected)
     {
         string path = Path.Combine(GitOutput("rev-parse --show-toplevel"), "docs", "verification", "2026-10-11-support-gates-cost.json");
@@ -652,6 +653,9 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             case "foot radius": hosted["Tuning"]!["FootRadiusFraction"] = 0.75f; break;
             case "water mode": hosted["Tuning"]!["Water"]!["Mode"] = (int)WaterTraversalMode.WadeOnly; break;
             case "water launch": hosted["Tuning"]!["Water"]!["SurfaceJumpSpeed"] = 1f; break;
+            case "commitment kind":
+                hosted["Scenes"]!["flat box"]!["InputState"]!["Commitment"]!["Kind"] = (int)MovementCommitmentKind.Ground;
+                break;
         }
         Assert.Equal(expected, SupportCostVerdict.TryHostedScale(reference, hosted, out HostedScale scale));
         Assert.Equal(expected ? 0.5 : 0, scale.K);

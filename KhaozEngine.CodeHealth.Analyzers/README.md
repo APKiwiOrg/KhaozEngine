@@ -88,9 +88,15 @@ tables and test-owned case helpers look possibly empty to a syntactic check. Rev
 instead of treating them as enforced debt.
 
 Both ratchets use `AnalyzerPathPolicy` for baseline-relative paths and the generated and vendored
-file exclusions listed above. Baseline roots and source paths use the same separator and dot-segment
-normalization, including repeated and trailing separators. Linked files resolve to their real repository
-path, so a baseline or `exempt` line names the file where it lives. The baseline grammar is `<count> <rule> <path>` or
+file exclusions listed above. Both callers normalize baseline-root separators before calling the policy.
+The policy collapses dot segments and repeated and trailing separators in both operands. Relative roots
+such as `.` and `A/..` resolve to their own base without gaining an absolute leading separator. Leading
+`..` segments in a relative root remain part of its base, and a source cannot escape that base. Relative
+and absolute paths stay distinct. An empty root retains its historical leading-separator behavior.
+Rejected inputs keep their original relative output. A previously checked path that becomes generated
+only when its trailing separator is removed keeps its prior result, preserving existing baseline checks.
+Linked files resolve to their real repository path, so a baseline or `exempt` line names the file where
+it lives. The baseline grammar is `<count> <rule> <path>` or
 `exempt <rule> <path>`, with paths relative to its directory and a `#` reason line above each exemption:
 
 ```text

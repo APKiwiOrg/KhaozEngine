@@ -10,9 +10,49 @@ public class AnalyzerPathPolicyTests
     [InlineData("/repo/A/..", "/repo/A/../X.cs", "X.cs")]
     [InlineData("/repo/", "/repo//X.cs", "X.cs")]
     [InlineData("/repo", "/repo/X.cs", "X.cs")]
+    [InlineData(".", "./X.cs", "X.cs")]
+    [InlineData("A/..", "A/../X.cs", "X.cs")]
+    [InlineData("", "/X.cs", "X.cs")]
     public void RelativePathNormalizesRootAndSource(string root, string path, string expectedRelative)
     {
         Assert.True(AnalyzerPathPolicy.TryGetCheckedRelativePath(path, root, out var relative));
+        Assert.Equal(expectedRelative, relative);
+    }
+
+    [Theory]
+    [InlineData("..", "../X.cs", "X.cs")]
+    [InlineData("/repo", "/repo/", "")]
+    [InlineData("/repo", "/repo/X.g.cs/", "X.g.cs/")]
+    public void CheckedPathsKeepTheirPreTaskAcceptance(string root, string path, string expectedRelative)
+    {
+        Assert.True(AnalyzerPathPolicy.TryGetCheckedRelativePath(path, root, out var relative));
+        Assert.Equal(expectedRelative, relative);
+    }
+
+    [Theory]
+    [InlineData(".", "../X.cs", "./X.cs")]
+    [InlineData(".", "/X.cs", "./X.cs")]
+    [InlineData("/", "X.cs", "/X.cs")]
+    [InlineData("", "X.cs", "/X.cs")]
+    [InlineData(".", "./obj/X.cs", "./X.cs")]
+    [InlineData(".", "./X.g.cs", "./X.cs")]
+    public void NormalizedBaseKeepsContainmentAndExclusions(string root, string path, string control)
+    {
+        Assert.True(AnalyzerPathPolicy.TryGetCheckedRelativePath(control, root, out var relative));
+        Assert.Equal("X.cs", relative);
+        Assert.False(AnalyzerPathPolicy.TryGetCheckedRelativePath(path, root, out _));
+    }
+
+    [Theory]
+    [InlineData("/repo", "/repo/A/../obj/X.cs", "A/../obj/X.cs", "/repo", "/repo/A/../X.cs")]
+    [InlineData("/repo/", "/repo/obj/X.cs", "", "/repo/", "/repo/X.cs")]
+    [InlineData(@"C:\repo", @"C:\repo\X.cs", "", "C:/repo", @"C:\repo\X.cs")]
+    public void RejectedPathsKeepTheirPreTaskRelativeOutput(
+        string root, string path, string expectedRelative, string controlRoot, string controlPath)
+    {
+        Assert.True(AnalyzerPathPolicy.TryGetCheckedRelativePath(controlPath, controlRoot, out var control));
+        Assert.Equal("X.cs", control);
+        Assert.False(AnalyzerPathPolicy.TryGetCheckedRelativePath(path, root, out var relative));
         Assert.Equal(expectedRelative, relative);
     }
 

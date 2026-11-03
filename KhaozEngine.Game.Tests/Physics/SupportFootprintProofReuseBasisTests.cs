@@ -45,7 +45,7 @@ public sealed class SupportFootprintProofReuseBasisTests
         // Clone without registering or disposing it. It borrows the original memo and domain, never their ownership.
         // Only one captured origin field changes. The live owner, real lease, generations and request key stay fixed.
         var captured = capturedSession.CloneWithOriginForTests(axis, bits);
-        Assert.Equal(capturedSession.NonOriginStateForTests, captured.NonOriginStateForTests);
+        Assert.True(capturedSession.HasSameNonOriginStateForTests(captured));
         var originalBits = capturedSession.OriginBitsForTests;
         Assert.Equal((axis == "X" ? bits : originalBits.X, axis == "Y" ? bits : originalBits.Y,
             axis == "Z" ? bits : originalBits.Z), captured.OriginBitsForTests);

@@ -16,11 +16,10 @@ internal sealed class SupportTiltedCurved
 
     readonly SupportTiltedCurvedGeometry _geometry;
     readonly SupportCurvedSurfaceAdmission _admission;
-    /// <summary>Lets TiltedQuery and TiltedRegions inspect actual root work and capacity refusal.</summary>
-    internal SupportTiltedCurvedGeometry GeometryForTests => _geometry;
-
-    /// <summary>Lets TiltedQuery and TiltedRegions inspect actual surface-admission work and refusal.</summary>
-    internal SupportCurvedSurfaceAdmission AdmissionForTests => _admission;
+    /// <summary>Copies root and admission diagnostics so later queries cannot change an earlier observation.</summary>
+    internal SupportTiltedCurvedObservation ObservationForTests => new(_geometry.RootCellCount,
+        _geometry.RootLiveHighWater, _geometry.RootTerminalHighWater, _geometry.RootCapacityRefusedForTests,
+        _admission.TotalCells, _admission.FrontierHighWater, _admission.CapacityRefused);
 
     internal void ResetStatistics() { _geometry.ResetStatistics(); _admission.ResetStatistics(); }
 

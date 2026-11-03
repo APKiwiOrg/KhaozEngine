@@ -32,7 +32,7 @@ public partial class SupportFootprintTests
                 out var member);
             var part = ColumnPart(column, Vector3.Zero, OracleSurface.CylinderSide, 0);
             var reference = SupportFootprintOracle.Curved(part.Tangent, request)!;
-            _output.WriteLine($"y={y:R} result={result} capacity={kernel.GeometryForTests.RootsForTests.CapacityRefused}");
+            _output.WriteLine($"y={y:R} result={result} capacity={kernel.ObservationForTests.RootCapacityRefused}");
             Assert.Equal(GeometrySign.Positive, result);
             CheckTiltedMember(member, reference, part, request);
             var selected = reference.Witnesses.Single(w => w.Role == SupportWitnessRole.Footprint);
@@ -86,7 +86,7 @@ public partial class SupportFootprintTests
             var kernel = new SupportTiltedCurved(NewCurvedWork());
             Assert.Equal(GeometrySign.Positive, kernel.Measure(new(1), ColumnLeaf(column), SupportNeighborhoodCurved.TopCap,
                 request, out var member));
-            Assert.False(kernel.AdmissionForTests.CapacityRefused);
+            Assert.False(kernel.ObservationForTests.AdmissionCapacityRefused);
             CheckTiltedMember(member, reference, part, request);
         }
     }

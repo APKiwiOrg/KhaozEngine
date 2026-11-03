@@ -10,7 +10,8 @@ namespace KhaozEngine.Physics.Bepu;
 
 public sealed partial class BepuPhysicsWorld
 {
-    /// <summary>Lets InstalledPoseFixture and CapsuleSweepCharacterizationTests inspect the actual owned Bepu buffers.</summary>
+    /// <summary>Borrowed world-owned simulation for inspecting installed native buffers and supplying geometry readers
+    /// with the exact simulation. Never dispose or mutate this borrowed object. Use named fault controls for mutations.</summary>
     internal BepuSim SimulationForTests => _sim;
 
     /// <summary>Lets SupportFootprintScenes and CertifiedGeneralSweepFixture resolve installed static identities.</summary>
@@ -34,7 +35,8 @@ public sealed partial class BepuPhysicsWorld
     /// <summary>Lets support world-form and StaticMutationLeaseTests inspect published cache identities and captures.</summary>
     internal InstalledSupportGeometryCache InstalledSupportGeometryForTests => _installedSupportGeometry;
 
-    /// <summary>Lets CertifiedHullSweepTests allocate malformed geometry with the owner's real allocator.</summary>
+    /// <summary>Borrowed world-owned allocator for observing outstanding storage and identifying the exact native pool.
+    /// Never dispose, clear or mutate this borrowed object. Deliberate allocation faults belong in named fault controls.</summary>
     internal BufferPool PoolForTests => _pool;
 
     /// <summary>Lets sweep lifetime tests observe captured statics across installation changes without replacing entries.</summary>

@@ -75,14 +75,17 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprintReuseSour
         /// <summary>Lets SupportFootprintProofReuseBasisTests verify that only the selected origin component changed.</summary>
         internal (int X, int Y, int Z) OriginBitsForTests => (_originX, _originY, _originZ);
 
-        /// <summary>Lets SupportFootprintProofReuseBasisTests compare every non-origin field on a non-owning copy.</summary>
-        internal (BepuPhysicsWorld Owner, IPhysicsWorld Receiver, StaticQueryExclusions? Exclusions, int Thread,
-            long InstalledGeneration, long StaticGeneration, long LeaseGeneration, SupportFootprintProofMemo Memo,
-            SupportFootprintReuseDomain Domain, bool HasDomain, bool Disposed, ulong SourceVersion) NonOriginStateForTests =>
-            (_owner, _receiver, Exclusions, _thread, _installedGeneration, _staticGeneration, _leaseGeneration,
-                Memo, _domain, _hasDomain, _disposed, SourceVersion);
+        /// <summary>Compares every non-origin value and identity without lending either session's owners or memo.</summary>
+        internal bool HasSameNonOriginStateForTests(FootprintReuseSession other) =>
+            ReferenceEquals(_owner, other._owner) && ReferenceEquals(_receiver, other._receiver) &&
+            ReferenceEquals(Exclusions, other.Exclusions) && _thread == other._thread &&
+            _installedGeneration == other._installedGeneration && _staticGeneration == other._staticGeneration &&
+            _leaseGeneration == other._leaseGeneration && ReferenceEquals(Memo, other.Memo) &&
+            _domain.Equals(other._domain) && _hasDomain == other._hasDomain && _disposed == other._disposed &&
+            SourceVersion == other.SourceVersion;
 
-        /// <summary>Lets SupportFootprintProofReuseBasisTests alter one captured origin field without owning the copied memo.</summary>
+        /// <summary>Returns an unregistered copy with one altered origin field and borrowed memo ownership.
+        /// Never dispose or mutate the copy, which shares the live session's memo.</summary>
         internal FootprintReuseSession CloneWithOriginForTests(string axis, int bits) => new(this, axis, bits);
 
         FootprintReuseSession(FootprintReuseSession source, string axis, int bits)

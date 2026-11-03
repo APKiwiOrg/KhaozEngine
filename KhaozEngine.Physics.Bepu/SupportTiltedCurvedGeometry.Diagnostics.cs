@@ -9,8 +9,8 @@ internal sealed partial class SupportTiltedCurvedGeometry
     internal int RootLiveHighWater { get; private set; }
     internal int RootTerminalHighWater { get; private set; }
 
-    /// <summary>Lets TiltedQuery and TiltedRegions distinguish root capacity refusal from surface admission refusal.</summary>
-    internal SupportCurvedRootRegions RootsForTests => _roots;
+    /// <summary>Observes root capacity refusal without lending the mutable root solver.</summary>
+    internal bool RootCapacityRefusedForTests => _roots.CapacityRefused;
 
     internal void ResetStatistics()
     {

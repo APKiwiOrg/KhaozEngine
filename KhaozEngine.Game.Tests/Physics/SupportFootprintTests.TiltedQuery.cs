@@ -56,9 +56,8 @@ public partial class SupportFootprintTests
         Assert.Equal(CapsuleFeatureStatus.Unsupported, result.Status);
         Assert.Equal(before, members);
         Assert.All(joins, word => Assert.Equal(73UL, word));
-        var (_, roots, admission) = TiltedScratch(scene.World);
-        Assert.True(roots.CapacityRefused
-            || admission.CapacityRefused);
+        var observation = TiltedObservation(scene.World);
+        Assert.True(observation.RootCapacityRefused || observation.AdmissionCapacityRefused);
         SupportFootprintResult warm = default;
         long allocation = AllocationMeasurement.Measure(nameof(CurvedTiltedUncertifiedSourceFamilyRefusesAtomicallyAtCellBound), () =>
             warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins));
@@ -66,6 +65,11 @@ public partial class SupportFootprintTests
         Assert.Equal(0, allocation);
         Assert.Equal(before, members);
         Assert.All(joins, word => Assert.Equal(73UL, word));
+
+        var refused = TiltedObservation(scene.World);
+        var clear = Capability(scene.World).QuerySupportFootprint(lease, Request(x: 10), members, joins);
+        Assert.Equal(CapsuleFeatureStatus.Complete, clear.Status);
+        Assert.True(refused.RootCapacityRefused || refused.AdmissionCapacityRefused);
     }
 
     [Theory]
@@ -209,16 +213,11 @@ public partial class SupportFootprintTests
 
     static string TiltedStatistics(object world)
     {
-        var (geometry, _, admission) = TiltedScratch(world);
-        return $"root cells={geometry.RootCellCount} frontier={geometry.RootLiveHighWater} terminal={geometry.RootTerminalHighWater} " +
-            $"admission cells={admission.TotalCells} frontier={admission.FrontierHighWater}";
+        var observation = TiltedObservation(world);
+        return $"root cells={observation.RootCellCount} frontier={observation.RootLiveHighWater} terminal={observation.RootTerminalHighWater} " +
+            $"admission cells={observation.AdmissionTotalCells} frontier={observation.AdmissionFrontierHighWater}";
     }
 
-    static (KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry Geometry,
-        KhaozEngine.Physics.Bepu.SupportCurvedRootRegions Roots,
-        KhaozEngine.Physics.Bepu.SupportCurvedSurfaceAdmission Admission) TiltedScratch(object world)
-    {
-        var tilted = FootprintScratch((KhaozEngine.Physics.Bepu.BepuPhysicsWorld)world).CurvedKernelForTests.TiltedForTests;
-        return (tilted.GeometryForTests, tilted.GeometryForTests.RootsForTests, tilted.AdmissionForTests);
-    }
+    static KhaozEngine.Physics.Bepu.SupportTiltedCurvedObservation TiltedObservation(object world) =>
+        FootprintScratch((KhaozEngine.Physics.Bepu.BepuPhysicsWorld)world).TiltedObservationForTests;
 }

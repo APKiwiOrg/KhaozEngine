@@ -78,8 +78,8 @@ internal sealed partial class SupportFootprintCollector
         return observations.ToArray();
     }
 
-    /// <summary>Lets TiltedQuery inspect the actual retained curved proof storage and work counters.</summary>
-    internal SupportFootprintCurved CurvedKernelForTests => _curvedKernel;
+    /// <summary>Copies tilted proof counters and refusal flags without lending the retained proof storage.</summary>
+    internal SupportTiltedCurvedObservation TiltedObservationForTests => _curvedKernel.TiltedObservationForTests;
 
     /// <summary>Lets CurvedWork inject an exhausted work account before publication.</summary>
     internal SupportCurvedWork CurvedWorkForTests => _curvedWork;

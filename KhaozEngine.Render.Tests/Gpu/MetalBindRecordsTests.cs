@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 
@@ -201,10 +203,15 @@ namespace KhaozEngine.Tests.Gpu
             MetalBoundSet nothingDynamic = MetalBindProgram.Set(
                 new MetalBoundResource(MetalIndexSpace.Buffer, buffer, 0, 64, AppliesCallerOffset: false));
 
-            ArgumentException thrown = Assert.Throws<ArgumentException>(
+            var thrown = Assert.Throws<GpuDynamicBindingException>(
                 () => records.Record(0, nothingDynamic, 256));
 
             Assert.Equal("dynamicOffset", thrown.ParamName);
+            Assert.Equal(GpuDynamicBindingRefusal.DynamicElementMissing, thrown.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, thrown.Backend);
+            Assert.Equal(0u, thrown.Set);
+            Assert.Equal(256u, thrown.DynamicOffset);
+            Assert.IsAssignableFrom<ArgumentException>(thrown);
 
             // A ZERO OFFSET IS ACCEPTED AGAINST ANY SET, because dropping zero changes nothing and the seam's
             // no-offset overload is exactly that call.
@@ -226,8 +233,10 @@ namespace KhaozEngine.Tests.Gpu
             records.Flush(ref sink, Encoder, Epoch, segment: 0);
 
             records.Record(0, MetalBindProgram.Set(harness), 0);
-            Assert.Throws<InvalidOperationException>(
+            var refusal = Assert.Throws<MetalBindRecordsStateException>(
                 () => records.Flush(ref sink, Encoder, Epoch, segment: 0));
+            Assert.Equal(MetalBindRecordsRefusal.PipelineTableMissing, refusal.Reason);
+            Assert.IsAssignableFrom<InvalidOperationException>(refusal);
 
             // The failed draw still owes its bind, which succeeds once its pipeline is supplied.
             Assert.True(records.IsDirty(0));
@@ -250,8 +259,9 @@ namespace KhaozEngine.Tests.Gpu
             records.SetIndexTable(MetalBindProgram.Table());
             records.Record(0, MetalBindProgram.Set(harness), 0);
 
-            Assert.Throws<InvalidOperationException>(
+            var refusal = Assert.Throws<MetalBindRecordsStateException>(
                 () => records.Flush(ref sink, IntPtr.Zero, Epoch, segment: 0));
+            Assert.Equal(MetalBindRecordsRefusal.EncoderMissing, refusal.Reason);
 
             Assert.True(records.IsDirty(0));
             records.Flush(ref sink, Encoder, Epoch, segment: 0);

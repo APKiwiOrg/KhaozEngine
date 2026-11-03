@@ -310,7 +310,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             if (set is not null && dynamicOffset != 0 && set.Layout.DeclaredDynamicCount == 0)
             {
-                throw new ArgumentException(
+                throw new GpuDynamicBindingException(GpuDynamicBindingRefusal.DynamicElementMissing,
                     "A native Vulkan resource set was bound at set "
                     + slot.ToString(CultureInfo.InvariantCulture)
                     + " with a dynamic offset of "
@@ -321,7 +321,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     + "offset attaches to. With no declared element the offset would be dropped and the draw would "
                     + "read the buffer's first slot. Declare the element dynamic in the resource layout, or bind "
                     + "through the overload that passes no offset.",
-                    nameof(dynamicOffset));
+                    nameof(dynamicOffset))
+                    {
+                        Backend = GpuBackendKind.VulkanNative,
+                        Set = slot,
+                        DynamicOffset = dynamicOffset,
+                    };
             }
 
             EnsureSlot(slot);

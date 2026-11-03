@@ -629,6 +629,7 @@ The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumen
 
 | Exception and reason member | What it refuses | Identifiers |
 |---|---|---|
+| `GpuDynamicBindingException`, `GpuDynamicBindingRefusal.DynamicElementMissing` | Refuses a nonzero dynamic offset on a set with no dynamic layout element. | `ParamName`, `Backend`, `Set`, `DynamicOffset` |
 | `ShaderValidationException`, `ShaderValidationRefusal.ComputeLocalSizeMissing` | Refuses a compute module without a literal local-size execution mode. | `Label` |
 | `ShaderValidationException`, `ShaderValidationRefusal.ComputeLocalSizeSpecialized` | Refuses a compute local size requiring specialization constant evaluation. | `Label`, `ExecutionMode` |
 | `ShaderValidationException`, `ShaderValidationRefusal.CrossCompileFailed` | Refuses a shader translation after a structured cross-compiler failure is caught. | `Label`, `Stage`, `Target`, `InnerException` |

@@ -28110,4 +28110,10 @@ See the [D3D11 refusal table](../KhaozEngine.Gpu.D3D11/README.md#refusals) for t
 ### Native Metal creation and binding refusals
 
 `MetalBackendCreationRefusal` identifies platform, machine, Cocoa handle and native-layer failures.
+`MetalBindRecordsRefusal` identifies an unaligned composed offset, missing pipeline table, nil encoder or
+argument-space mismatch.
 See the [Metal refusal table](../KhaozEngine.Gpu.Metal/README.md#refusals) for each exception and identifier.
+
+On Metal and Vulkan, a nonzero offset on a set with no authored dynamic element throws the portable
+`GpuDynamicBindingException` with `GpuDynamicBindingRefusal.DynamicElementMissing` and the backend,
+set number and offset. These families preserve the original BCL exception bases and parameter data.

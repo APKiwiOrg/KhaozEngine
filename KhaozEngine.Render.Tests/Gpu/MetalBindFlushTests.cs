@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 using Xunit.Abstractions;
@@ -384,15 +385,20 @@ namespace KhaozEngine.Tests.Gpu
             // and therefore reaches the alignment check rather than the window one.
             records.Record(0, set, MetalBindProgram.DeviceOffsetAlignment / 2);
 
-            ArgumentOutOfRangeException thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            var thrown = Assert.Throws<MetalBindRecordsRangeException>(
                 () => records.Flush(ref sink, Encoder, Epoch, segment: 1));
 
             // ALL THREE COMPONENTS ARE NAMED, because the composed number on its own does not say which of them
             // to go and look at.
-            Assert.Contains("ring segment base", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("range offset", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("per-draw offset", thrown.Message, StringComparison.Ordinal);
-            Assert.Contains("16-byte buffer-offset alignment", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal(MetalBindRecordsRefusal.ComposedOffsetUnaligned, thrown.Reason);
+            Assert.Equal(264ul, thrown.ComposedOffset);
+            Assert.Equal(256ul, thrown.RingBase);
+            Assert.Equal(0u, thrown.RangeOffset);
+            Assert.Equal(8u, thrown.DynamicOffset);
+            Assert.Equal(16u, thrown.AlignmentBytes);
+            Assert.Equal("dynamicOffset", thrown.ParamName);
+            Assert.Equal(8u, thrown.ActualValue);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(thrown);
 
             // AND THE REFUSAL IS A WHOLE-FLUSH REFUSAL like every other one on this path.
             Assert.True(records.IsDirty(0));

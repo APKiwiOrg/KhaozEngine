@@ -199,7 +199,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (set.IsBound && dynamicOffset != 0 && !set.HasDynamicElement)
             {
-                throw new ArgumentException(
+                throw new GpuDynamicBindingException(GpuDynamicBindingRefusal.DynamicElementMissing,
                     "A native Metal resource set was bound at set " + slot.ToString(CultureInfo.InvariantCulture)
                     + " with a dynamic offset of " + dynamicOffset.ToString(CultureInfo.InvariantCulture)
                     + " bytes, and its layout declares no dynamic element for that offset to apply to. The "
@@ -208,7 +208,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "offset would be dropped and the draw would read the buffer's first slot. Declare the "
                     + "element dynamic in the resource layout, or bind through the overload that passes no "
                     + "offset.",
-                    nameof(dynamicOffset));
+                    nameof(dynamicOffset))
+                    {
+                        Backend = GpuBackendKind.MetalNative,
+                        Set = slot,
+                        DynamicOffset = dynamicOffset,
+                    };
             }
 
             EnsureSlot(slot);
@@ -590,7 +595,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if ((composed & (alignment - 1UL)) == 0) return;
 
-            throw new ArgumentOutOfRangeException(nameof(dynamicOffset), dynamicOffset,
+            throw new MetalBindRecordsRangeException(MetalBindRecordsRefusal.ComposedOffsetUnaligned, nameof(dynamicOffset), dynamicOffset,
                 "A native Metal buffer bind composed the offset "
                 + composed.ToString(CultureInfo.InvariantCulture) + " (ring segment base "
                 + frameBase.ToString(CultureInfo.InvariantCulture) + " plus the set's range offset "
@@ -600,7 +605,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "-byte buffer-offset alignment this device reports. The segment base is aligned by "
                 + "construction, so one of the other two is the misaligned one. Metal's debug layer calls an "
                 + "unaligned offset a validation error and the driver calls it undefined behaviour, and neither "
-                + "says which bind did it.");
+                + "says which bind did it.")
+                {
+                    ComposedOffset = composed,
+                    RingBase = frameBase,
+                    RangeOffset = rangeOffset,
+                    DynamicOffset = dynamicOffset,
+                    AlignmentBytes = alignment,
+                };
         }
 
         // WHAT SEPARATES THE THREE ARMS, IN ONE PLACE. Read the order: an invalid stamp beats a clean flag,
@@ -644,7 +656,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (entry.Space == bound.Space) return;
 
-            throw new InvalidOperationException(
+            throw new MetalBindRecordsStateException(MetalBindRecordsRefusal.IndexSpaceMismatch,
                 "A native Metal bind at set " + slot.ToString(CultureInfo.InvariantCulture) + " binding "
                 + binding.ToString(CultureInfo.InvariantCulture) + " holds a resource resolved into the "
                 + bound.Space.Word() + " argument table, and the " + stage.ToString().ToLowerInvariant()
@@ -652,11 +664,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + entry.Index.ToString(CultureInfo.InvariantCulture) + ")]]. The set was built against a "
                 + "resource layout that disagrees with the shader's own reflection, which is what the pipeline's "
                 + "layout shape check refuses at creation. Binding it anyway would put a resource of one kind "
-                + "where another was expected, with nothing downstream to report it.");
+                + "where another was expected, with nothing downstream to report it.")
+                {
+                    Set = (uint)slot,
+                    Binding = binding,
+                    Stage = stage == MetalShaderStage.Vertex ? GpuShaderStages.Vertex : stage == MetalShaderStage.Fragment ? GpuShaderStages.Fragment : GpuShaderStages.Compute,
+                    ExpectedSpace = entry.Space.Word(),
+                    ActualSpace = bound.Space.Word(),
+                    ArgumentIndex = entry.Index,
+                };
         }
 
         MetalShaderIndexTable RequireIndexTable()
-            => _table ?? throw new InvalidOperationException(
+            => _table ?? throw new MetalBindRecordsStateException(MetalBindRecordsRefusal.PipelineTableMissing,
                 "A native Metal draw or dispatch flushed resource-set binds with no pipeline bound. The index a "
                 + "resource lands at is a fact about the emission rather than about the layout (M-B1), so there "
                 + "is no table to resolve a bind through until a pipeline names its program. Call SetPipeline "
@@ -666,7 +686,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (encoder != IntPtr.Zero) return;
 
-            throw new InvalidOperationException(
+            throw new MetalBindRecordsStateException(MetalBindRecordsRefusal.EncoderMissing,
                 "A native Metal bind flush was given a nil encoder. A message to nil is a silent no-op in "
                 + "Objective-C, so the binds would go nowhere and the slots would be marked clean, which is a "
                 + "frame that renders against stale argument tables with nothing reported. The pass schedule "

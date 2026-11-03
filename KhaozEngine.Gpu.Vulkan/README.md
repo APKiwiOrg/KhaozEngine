@@ -941,7 +941,8 @@ ring-backed uniform's base moves every frame, so the array is recomposed on any 
 would change no call and skip no work. The "was there an offset overload" flag the other backend keeps is gone
 for the same reason: with no second activation path to choose, a bind with an offset of zero and a bind without
 one are the same call. The one thing that distinction still buys is a refusal, so a NON-ZERO offset passed to a
-set whose layout declares no dynamic element is rejected by name rather than silently dropped.
+set whose layout declares no dynamic element throws the shared `GpuDynamicBindingException` with
+`GpuDynamicBindingRefusal.DynamicElementMissing`, `Backend`, `Set` and `DynamicOffset`.
 
 **One `vkCmdBindDescriptorSets` per CONTIGUOUS RUN of dirty slots**, with `firstSet` at the run's start. A full
 activation of the engine's shapes is ONE call carrying every set and an offsets-only rebind of one set is ONE

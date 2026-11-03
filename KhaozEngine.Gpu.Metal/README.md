@@ -955,7 +955,8 @@ the same check at set creation passes a zero caller offset and cannot fire. Noth
 values, and an unaligned result is a validation error under the debug layer and undefined behaviour without it.
 The number checked against is the device's own reported buffer-offset alignment, read at creation and carried
 down to the bind records, not the ring stride: macOS reports 16 or 32, so checking against 256 would refuse
-binds every Mac accepts. The refusal names all three components.
+binds every Mac accepts. `MetalBindRecordsRefusal.ComposedOffsetUnaligned` carries `ComposedOffset`,
+`RingBase`, `RangeOffset`, `DynamicOffset` and `AlignmentBytes`.
 
 **A refused flush is refused whole.** Any exception out of a flush drops the staged writes and invalidates every
 slot's emitted state, so the next draw re-derives every arm and re-binds in full. Without that, a throw part way
@@ -1289,6 +1290,10 @@ These backend policies use required reason enums and preserve the BCL base type,
 | `MetalBackendCreationPlatformException`, `MetalBackendCreationRefusal.OperatingSystemUnsupported` | Refuses native Metal creation off macOS. | `CreationPath`, `RequiredOperatingSystem` |
 | `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.WindowHandleMissing` | Refuses a null Cocoa window handle. | `ParamName`, `WindowKind` |
 | `MetalBackendCreationArgumentException`, `MetalBackendCreationRefusal.WindowKindUnsupported` | Refuses a Metal swapchain window that is not Cocoa. | `ParamName`, `ActualWindowKind`, `RequiredWindowKind` |
+| `MetalBindRecordsRangeException`, `MetalBindRecordsRefusal.ComposedOffsetUnaligned` | Refuses a composed Metal buffer bind offset that violates device alignment. | `ParamName`, `ActualValue`, `ComposedOffset`, `RingBase`, `RangeOffset`, `DynamicOffset`, `AlignmentBytes` |
+| `MetalBindRecordsStateException`, `MetalBindRecordsRefusal.EncoderMissing` | Refuses a bind flush with a nil native encoder. | No additional identifiers |
+| `MetalBindRecordsStateException`, `MetalBindRecordsRefusal.IndexSpaceMismatch` | Refuses binding a resource in an argument table different from shader reflection. | `Set`, `Binding`, `Stage`, `ExpectedSpace`, `ActualSpace`, `ArgumentIndex` |
+| `MetalBindRecordsStateException`, `MetalBindRecordsRefusal.PipelineTableMissing` | Refuses flushing resource sets without a bound pipeline index table. | No additional identifiers |
 | `MetalShaderFunctionException`, `MetalShaderFunctionRefusal.FunctionReleased` | Refuses reading a released Metal shader function. | `Stage`, `ResourceKind` |
 | `MetalShaderFunctionException`, `MetalShaderFunctionRefusal.StageMissing` | Refuses a shader-set function for a stage the set does not carry. | `Stage` |
 | `MetalBufferPolicyArgumentException`, `MetalBufferPolicyRefusal.UniformStructuredCombination` | Uniform and structured usage on the same ring-backed buffer | `ParamName`, `Usage` |
@@ -1325,3 +1330,7 @@ Graphics blend counts use `GpuPipelineOutputsException`. Texture copy, mip gener
 checks use `GpuTextureTransferArgumentException` and `GpuTextureTransferRangeException` where the
 backend checks the rule. Their reasons identify the rejected shape or subresource. Backend-specific
 admission differences remain as described above.
+
+A nonzero dynamic offset without a declared dynamic element uses the portable
+`GpuDynamicBindingException` and `GpuDynamicBindingRefusal.DynamicElementMissing`, carrying
+`Backend`, `Set` and `DynamicOffset`.

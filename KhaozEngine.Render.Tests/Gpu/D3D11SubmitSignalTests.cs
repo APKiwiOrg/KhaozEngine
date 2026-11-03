@@ -181,8 +181,11 @@ namespace KhaozEngine.Tests.Gpu
             halfRecorded.Begin();
             halfRecorded.Draw(1);
 
-            Assert.Throws<InvalidOperationException>(
+            var ex = Assert.Throws<GpuRecordingStateException>(
                 () => D3D11CommandDrivers.Submit(new object(), halfRecorded, ref emitter, signal));
+            Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, ex.Reason);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, ex.Backend);
+            Assert.Equal("Submit", ex.Command);
             Assert.Equal(0, signal.SignalCount);
         }
 

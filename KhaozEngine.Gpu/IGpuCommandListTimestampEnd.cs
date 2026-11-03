@@ -29,10 +29,11 @@ namespace KhaozEngine.Gpu
         /// </para>
         /// </summary>
         /// <exception cref="ArgumentNullException">The pool is null.</exception>
-        /// <exception cref="ArgumentException">The pool belongs to another device or backend.</exception>
-        /// <exception cref="ArgumentOutOfRangeException">The index is not the batch's last index.</exception>
-        /// <exception cref="InvalidOperationException">The list or batch is not recording, an earlier index
+        /// <exception cref="GpuTimestampArgumentException">The pool belongs to another device or backend.</exception>
+        /// <exception cref="GpuTimestampRangeException">The index is not the batch's last index.</exception>
+        /// <exception cref="GpuTimestampStateException">The batch is not recording, an earlier index
         /// is missing, the final index is already written, or a tail is already armed.</exception>
+        /// <exception cref="GpuRecordingStateException">The list is not recording.</exception>
         void FinishTimestampsOnEnd(IGpuTimestampPool pool, uint finalIndex);
     }
 }

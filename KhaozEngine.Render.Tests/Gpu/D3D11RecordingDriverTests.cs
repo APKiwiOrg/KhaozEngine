@@ -324,7 +324,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList list = CreateDeferred();
             list.Begin();
 
-            Assert.Throws<InvalidOperationException>(list.Begin);
+            Assert.Equal(GpuRecordingStateRefusal.BeginWhileRecording, Assert.Throws<GpuRecordingStateException>(list.Begin).Reason);
         }
 
         /// <summary><c>End</c> with no recording open is a caller sequencing error and never anything the
@@ -334,7 +334,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             using IGpuCommandList list = CreateDeferred();
 
-            Assert.Throws<InvalidOperationException>(list.End);
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(list.End).Reason);
         }
 
         /// <summary>
@@ -352,21 +352,21 @@ namespace KhaozEngine.Tests.Gpu
             {
                 deferred.Begin();
                 deferred.Draw(3);
-                Assert.Throws<InvalidOperationException>(() =>
+                Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(() =>
                 {
                     var replay = new D3D11CountingEmitter(log);
                     D3D11CommandDrivers.Replay(deferred, ref replay);
-                });
+                }).Reason);
             }
 
             using IGpuCommandList immediate = CreateRecording(D3D11RecordMode.Immediate, emitter);
             immediate.Begin();
             immediate.Draw(3);
-            Assert.Throws<InvalidOperationException>(() =>
+            Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(() =>
             {
                 var replay = new D3D11CountingEmitter(log);
                 D3D11CommandDrivers.Replay(immediate, ref replay);
-            });
+            }).Reason);
         }
 
         /// <summary>A list this backend did not create cannot be replayed, and the message says why rather than

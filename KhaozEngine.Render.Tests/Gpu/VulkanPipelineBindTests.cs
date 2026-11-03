@@ -440,7 +440,10 @@ namespace KhaozEngine.Tests.Gpu
                 using VulkanCommandList list = fixture.CreateList();
 
                 // Never begun and the pipeline is live, so the recording guard is the one refusing.
-                Assert.Throws<InvalidOperationException>(() => list.SetPipeline(pipeline));
+                var ex = Assert.Throws<GpuRecordingStateException>(() => list.SetPipeline(pipeline));
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, ex.Reason);
+                Assert.Equal(GpuBackendKind.VulkanNative, ex.Backend);
+                Assert.Equal("Binding a graphics pipeline", ex.Command);
 
                 Assert.Empty(fixture.PipelineBinder.Binds);
             }

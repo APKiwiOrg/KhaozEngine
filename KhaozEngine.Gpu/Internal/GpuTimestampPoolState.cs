@@ -24,7 +24,7 @@ namespace KhaozEngine.Gpu.Internal
         {
             if (count == 0 || count > _capacity) throw new ArgumentOutOfRangeException(nameof(count));
             if (_phase is Phase.Recording or Phase.Pending)
-                throw new InvalidOperationException("The timestamp pool already has an unresolved batch.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.UnresolvedBatch, "The timestamp pool already has an unresolved batch.") { Count = Count };
             Count = count;
             _nextIndex = 0;
             _phase = Phase.Recording;
@@ -33,34 +33,34 @@ namespace KhaozEngine.Gpu.Internal
         internal void Write(uint index)
         {
             if (_phase != Phase.Recording)
-                throw new InvalidOperationException("Begin a timestamp batch before writing queries.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.BatchNotRecording, "Begin a timestamp batch before writing queries.") { Command = nameof(Write) };
             if (index >= Count) throw new ArgumentOutOfRangeException(nameof(index));
             if (index != _nextIndex)
-                throw new InvalidOperationException("Timestamp indices must be written exactly once in increasing order.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.IndexOutOfSequence, "Timestamp indices must be written exactly once in increasing order.") { Index = index, ExpectedIndex = _nextIndex, Count = Count };
             _nextIndex++;
         }
 
         internal void ValidateTimestampEnd(uint finalIndex)
         {
             if (_phase != Phase.Recording)
-                throw new InvalidOperationException("Begin a timestamp batch before arming its final timestamp.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.BatchNotRecording, "Begin a timestamp batch before arming its final timestamp.") { Command = nameof(ValidateTimestampEnd) };
             if (finalIndex != Count - 1)
-                throw new ArgumentOutOfRangeException(nameof(finalIndex), "The final timestamp must use the batch's last index.");
+                throw new GpuTimestampRangeException(GpuTimestampRefusal.FinalIndexRequired, nameof(finalIndex), null, "The final timestamp must use the batch's last index.") { FinalIndex = Count - 1, Count = Count };
             if (_nextIndex != finalIndex)
-                throw new InvalidOperationException("Write every earlier timestamp index, leaving the final index unwritten, before arming the tail.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.TailPrefixIncomplete, "Write every earlier timestamp index, leaving the final index unwritten, before arming the tail.") { ExpectedIndex = _nextIndex, FinalIndex = finalIndex, Count = Count };
         }
 
         internal void End()
         {
             if (_phase != Phase.Recording || _nextIndex != Count)
-                throw new InvalidOperationException("Write every timestamp index before ending the batch.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.IncompleteBatch, "Write every timestamp index before ending the batch.") { WrittenCount = _nextIndex, Count = Count };
             _phase = Phase.Pending;
         }
 
         internal void Resolved()
         {
             if (_phase is not (Phase.Pending or Phase.Resolved))
-                throw new InvalidOperationException("End a timestamp batch before resolving it.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.BatchNotEnded, "End a timestamp batch before resolving it.") { Command = nameof(Resolved), Count = Count };
             _phase = Phase.Resolved;
         }
 

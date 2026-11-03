@@ -28,7 +28,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _liveness = liveness ?? throw new ArgumentNullException(nameof(liveness));
             _state = new GpuTimestampPoolState(capacity);
             RequireLive();
-            if (!api.SupportsTimestampCounters) throw new NotSupportedException("This Metal device has no usable timestamp counters.");
+            if (!api.SupportsTimestampCounters) throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Metal device has no usable timestamp counters.") { Backend = GpuBackendKind.MetalNative, Command = nameof(IGpuResourceFactory.CreateTimestampPool) };
             Capacity = capacity;
             _stageBoundary = api.SupportsStageBoundary;
             _values = new ulong[checked((int)capacity)];
@@ -41,7 +41,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             RequireLive();
             if (!ReferenceEquals(_timeline, timeline) || !ReferenceEquals(_liveness, liveness))
-                throw new ArgumentException("The timestamp pool belongs to another Metal device.", "pool");
+                throw new GpuTimestampArgumentException(GpuTimestampRefusal.ForeignPool, "The timestamp pool belongs to another Metal device.", "pool") { Backend = GpuBackendKind.MetalNative, ActualType = GetType() };
         }
 
         internal void Begin(IntPtr commandBuffer, uint count, MetalCommandList? list = null, ulong recordingId = 0)
@@ -61,7 +61,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             RequireLive();
             if (!ReferenceEquals(_recordingList, list) || _recordingId != recordingId)
-                throw new InvalidOperationException("The timestamp pool must be begun on this list in its current recording.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.WrongRecording, "The timestamp pool must be begun on this list in its current recording.") { Backend = GpuBackendKind.MetalNative, Command = nameof(ValidateTimestampEnd), RecordingId = recordingId };
             RequireRecording(commandBuffer);
             _state.ValidateTimestampEnd(finalIndex);
         }
@@ -88,11 +88,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             tickPeriodNanoseconds = 0d;
             RequireLive();
             ArgumentNullException.ThrowIfNull(completion);
-            if (!_ended) throw new InvalidOperationException("End a timestamp batch before resolving it.");
+            if (!_ended) throw new GpuTimestampStateException(GpuTimestampRefusal.BatchNotEnded, "End a timestamp batch before resolving it.") { Backend = GpuBackendKind.MetalNative, Command = nameof(TryResolve), Count = _state.Count };
             int count = (int)_state.Count;
-            if (ticks.Length < count) throw new ArgumentException("The output cannot hold the timestamp batch.", nameof(ticks));
+            if (ticks.Length < count) throw new GpuTimestampArgumentException(GpuTimestampRefusal.OutputTooSmall, "The output cannot hold the timestamp batch.", nameof(ticks)) { Backend = GpuBackendKind.MetalNative, SuppliedCount = ticks.Length, RequiredCount = _state.Count };
             if (completion is not MetalGpuFence fence)
-                throw new ArgumentException("Use this Metal device's completion fence.", nameof(completion));
+                throw new GpuTimestampArgumentException(GpuTimestampRefusal.ForeignCompletionFence, "Use this Metal device's completion fence.", nameof(completion)) { Backend = GpuBackendKind.MetalNative, ActualType = completion.GetType() };
             fence.RequireOwner(_timeline);
             if (_resolved is null)
             {
@@ -137,14 +137,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_liveness.IsDead || _timeline.IsDeviceDead)
-                throw new InvalidOperationException("The native Metal timestamp device is disposed or lost.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.TimestampDeviceUnavailable, "The native Metal timestamp device is disposed or lost.") { Backend = GpuBackendKind.MetalNative };
         }
 
-        void RequireRecording(IntPtr commandBuffer)
+        void RequireRecording(IntPtr commandBuffer, [System.Runtime.CompilerServices.CallerMemberName] string member = "")
         {
             RequireLive();
             if (_ended || commandBuffer == IntPtr.Zero || commandBuffer != _recordingBuffer)
-                throw new InvalidOperationException("Write and end a timestamp batch in the command buffer that began it.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.WrongRecording, "Write and end a timestamp batch in the command buffer that began it.") { Backend = GpuBackendKind.MetalNative, Command = member };
         }
 
         internal void ContinueRecording(MetalCommandList list, ulong recordingId, IntPtr commandBuffer)

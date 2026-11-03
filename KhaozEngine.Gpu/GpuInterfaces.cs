@@ -174,9 +174,9 @@ namespace KhaozEngine.Gpu
         /// a frame list and retain one per pending frame in a fixed caller-owned ring. Unsupported devices
         /// report <see cref="GpuCapabilities.SupportsTimestamps"/> false and throw rather than estimate time.</summary>
         /// <exception cref="ArgumentOutOfRangeException">A supported device was given zero capacity.</exception>
-        /// <exception cref="NotSupportedException">Timestamp pools are not supported by this factory.</exception>
+        /// <exception cref="GpuTimestampUnsupportedException">Timestamp pools are not supported by this factory.</exception>
         IGpuTimestampPool CreateTimestampPool(uint capacity)
-            => throw new NotSupportedException("This GPU factory does not support timestamps.");
+            => throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This GPU factory does not support timestamps.") { Command = nameof(CreateTimestampPool) };
     }
 
     /// <summary>Records GPU commands for one submission.</summary>
@@ -409,29 +409,29 @@ namespace KhaozEngine.Gpu
         /// belong to this device and have no recording or unresolved batch. Count is 1 through Capacity.
         /// A successful begin clears the prior terminal result. See <see cref="IGpuTimestampPool"/>.</summary>
         /// <exception cref="ArgumentOutOfRangeException">Count is zero or exceeds the pool capacity.</exception>
-        /// <exception cref="InvalidOperationException">The pool already has a recording or unresolved batch.</exception>
-        /// <exception cref="NotSupportedException">Timestamp commands are not supported by this list.</exception>
+        /// <exception cref="GpuTimestampStateException">The pool already has a recording or unresolved batch.</exception>
+        /// <exception cref="GpuTimestampUnsupportedException">Timestamp commands are not supported by this list.</exception>
         void BeginTimestamps(IGpuTimestampPool pool, uint count)
-            => throw new NotSupportedException("This GPU command list does not support timestamps.");
+            => throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This GPU command list does not support timestamps.") { Command = nameof(BeginTimestamps) };
 
         /// <summary>Encode a pass-boundary query without submitting. Write each index from zero through count
         /// minus one exactly once, in increasing order, in the same list that began the batch. For completed-frame
         /// timing, reserve the last index for <see cref="IGpuCommandListTimestampEnd"/> instead of writing it here.</summary>
         /// <exception cref="ArgumentOutOfRangeException">Index is outside the current batch count.</exception>
-        /// <exception cref="InvalidOperationException">The batch is not recording or the index is not next.</exception>
-        /// <exception cref="NotSupportedException">Timestamp commands are not supported by this list.</exception>
+        /// <exception cref="GpuTimestampStateException">The batch is not recording or the index is not next.</exception>
+        /// <exception cref="GpuTimestampUnsupportedException">Timestamp commands are not supported by this list.</exception>
         void WriteTimestamp(IGpuTimestampPool pool, uint index)
-            => throw new NotSupportedException("This GPU command list does not support timestamps.");
+            => throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This GPU command list does not support timestamps.") { Command = nameof(WriteTimestamp) };
 
         /// <summary>Encode the end of the batch after every index was written, without submitting. Submit this
         /// list with the same-device fence later supplied to <see cref="IGpuTimestampPool.TryResolve"/>. Keep
         /// that fence alive and unreset until the result and every associated readback have been consumed.
         /// An armed <see cref="IGpuCommandListTimestampEnd"/> tail ends the batch instead and refuses this call.
         /// Ordinary markers before End cannot prove completed-frame timing without that optional interface.</summary>
-        /// <exception cref="InvalidOperationException">The batch is not recording or an index is missing.</exception>
-        /// <exception cref="NotSupportedException">Timestamp commands are not supported by this list.</exception>
+        /// <exception cref="GpuTimestampStateException">The batch is not recording or an index is missing.</exception>
+        /// <exception cref="GpuTimestampUnsupportedException">Timestamp commands are not supported by this list.</exception>
         void EndTimestamps(IGpuTimestampPool pool)
-            => throw new NotSupportedException("This GPU command list does not support timestamps.");
+            => throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This GPU command list does not support timestamps.") { Command = nameof(EndTimestamps) };
     }
 
     /// <summary>The GPU device: backend info, capabilities, the resource factory, the swapchain framebuffer,

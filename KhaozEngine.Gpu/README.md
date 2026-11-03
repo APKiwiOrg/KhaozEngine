@@ -621,6 +621,26 @@ retains its owner/attempted constructor, which also fills the reason. Message te
 | `GpuNoUsableBackendException`, `GpuNoUsableBackendRefusal.RequestedMachineUnsupported` | The requested backend failed its support probe and the fallback failed. | `RequestedBackend`, `FallbackBackend`, `RequestedFailure`, `InnerException`, `FallbackFailure` |
 | `GpuNoUsableBackendException`, `GpuNoUsableBackendRefusal.RequestedProviderNotRegistered` | A stored preference had no registered provider and its fallback failed. | `RequestedBackend`, `FallbackBackend`, `RequestedFailure`, `InnerException`, `FallbackFailure` |
 | `GpuNestedRecordingException`, `GpuNestedRecordingRefusal.RecordingAlreadyOpen` | A second recording while one is already open on the device. | `Owner`, `Attempted` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.BeginWhileRecording` | Begin while a command list is already recording | `Backend`, `Command` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.CommandOutsideRecording` | a command that requires an open recording | `Backend`, `Command` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.EndWithoutRecording` | End before a recording has begun or after a failed recording was abandoned | `Backend`, `Command` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.RecordingAlreadySealed` | End when the recording is already sealed | `Backend`, `Command` |
+| `GpuRecordingStateException`, `GpuRecordingStateRefusal.SubmissionWithoutSeal` | submission of a command list without a sealed recording | `Backend`, `Command` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.BatchNotEnded` | resolving or awaiting a batch that has not ended | `Command`, `Count` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.BatchNotRecording` | a timestamp write or tail arm before the batch begins | `Command` |
+| `GpuTimestampRangeException`, `GpuTimestampRefusal.FinalIndexRequired` | arming any index except the batch final index | `ParamName`, `ActualValue`, `FinalIndex`, `Count` |
+| `GpuTimestampArgumentException`, `GpuTimestampRefusal.ForeignCompletionFence` | resolving timestamps with another device or backend completion fence | `ParamName`, `Backend`, `ActualType` |
+| `GpuTimestampArgumentException`, `GpuTimestampRefusal.ForeignPool` | a timestamp pool from another backend, device or timeline | `ParamName`, `Backend`, `ActualType` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.IncompleteBatch` | ending a batch whose timestamps are incomplete | `WrittenCount`, `Count` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.IndexOutOfSequence` | an index that repeats or skips the next timestamp | `Index`, `ExpectedIndex`, `Count` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.ManualFinalizationWhileArmed` | manual write or end of the timestamp pool reserved for command-list End | `Backend`, `Command` |
+| `GpuTimestampArgumentException`, `GpuTimestampRefusal.OutputTooSmall` | an output span that cannot hold the batch | `ParamName`, `SuppliedCount`, `RequiredCount` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.TailAlreadyArmed` | arming a second timestamp tail in one recording | `Backend` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.TailPrefixIncomplete` | arming until all earlier timestamps are written and the final one is unwritten | `ExpectedIndex`, `FinalIndex`, `Count` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.TimestampDeviceUnavailable` | using a timestamp device that is lost or disposed | `Backend` |
+| `GpuTimestampUnsupportedException`, `GpuTimestampRefusal.TimestampUnsupported` | timestamps when the device or adapter has no timestamp capability | `Backend`, `Command`, `Detail` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.UnresolvedBatch` | beginning a batch while the preceding batch is unresolved | `Count`, `Backend` |
+| `GpuTimestampStateException`, `GpuTimestampRefusal.WrongRecording` | timestamp work on another list, command buffer or recording | `Backend`, `Command`, `RecordingId` |
 
 Missing-provider refusals always carry `RegistrationConvention = "KhaozEngine<Backend>.Register()"`.
 `RegistrationMethod` carries the known startup entry point, such as `KhaozEngineD3D11.Register()`, and is null
@@ -808,3 +828,9 @@ read, including a reopened pass, capture or readback. Metal and Vulkan map it di
 may retain the data. Native Metal may commit an offscreen prefix during drawable resolution, making that
 prefix's CPU-visible access ranges immutable through final frame completion. See
 [frame submission](../docs/METAL-FRAME-SUBMISSION.md) for the structured refusal and mapping contract.
+
+Recording-state refusals derive from `InvalidOperationException`. Timestamp state, argument, range and
+unsupported subtypes derive from `InvalidOperationException`, `ArgumentException`,
+`ArgumentOutOfRangeException` and `NotSupportedException` respectively. Plain count and index bounds
+remain BCL checks. A timestamp fence of another backend uses `ForeignCompletionFence`. A native fence
+from another device of the same backend retains the resource-ownership validator's refusal.

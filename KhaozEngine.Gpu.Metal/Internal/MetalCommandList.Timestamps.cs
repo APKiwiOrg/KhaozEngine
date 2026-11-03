@@ -59,14 +59,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _encoders.RecordExternalEncoderBoundary();
         }
 
-        MetalTimestampPool RequireTimestampPool(IGpuTimestampPool pool)
+        MetalTimestampPool RequireTimestampPool(IGpuTimestampPool pool, [System.Runtime.CompilerServices.CallerMemberName] string member = "")
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             RequireRecording("Recording timestamps");
             ArgumentNullException.ThrowIfNull(pool);
-            if (_timestampTimeline is null) throw new NotSupportedException("This Metal command list has no timestamp device.");
+            if (_timestampTimeline is null) throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Metal command list has no timestamp device.") { Backend = GpuBackendKind.MetalNative, Command = member };
             if (pool is not MetalTimestampPool timestamps)
-                throw new ArgumentException("Use this Metal device's timestamp pool.", nameof(pool));
+                throw new GpuTimestampArgumentException(GpuTimestampRefusal.ForeignPool, "Use this Metal device's timestamp pool.", nameof(pool)) { Backend = GpuBackendKind.MetalNative, ActualType = pool.GetType() };
             timestamps.RequireOwner(_timestampTimeline, _liveness);
             return timestamps;
         }

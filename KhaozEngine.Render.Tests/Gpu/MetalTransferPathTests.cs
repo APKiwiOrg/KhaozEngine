@@ -336,7 +336,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             (MetalBuffer source, MetalBuffer destination) = Buffers();
 
-            Assert.Throws<InvalidOperationException>(() => _list.CopyBuffer(source, 0, destination, 0, 16));
+            var ex = Assert.Throws<GpuRecordingStateException>(() => _list.CopyBuffer(source, 0, destination, 0, 16));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, ex.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, ex.Backend);
+            Assert.Equal("Copying between buffers", ex.Command);
 
             AssertNothingWasSpent();
         }

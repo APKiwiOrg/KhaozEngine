@@ -577,17 +577,22 @@ namespace KhaozEngine.Tests.Gpu
         {
             (MetalCommandList list, FakeMetalEncoderCalls calls, FakeMetalRenderCalls render, _) = NewList();
 
-            Assert.StartsWith("Drawing needs",
-                Assert.Throws<InvalidOperationException>(() => list.Draw(3)).Message, StringComparison.Ordinal);
-            Assert.StartsWith("Drawing needs",
-                Assert.Throws<InvalidOperationException>(() => list.Draw(3, 1, 0, 0)).Message,
-                StringComparison.Ordinal);
-            Assert.StartsWith("Drawing indexed needs",
-                Assert.Throws<InvalidOperationException>(() => list.DrawIndexed(3, 1, 0, 0, 0)).Message,
-                StringComparison.Ordinal);
-            Assert.StartsWith("Dispatching compute work needs",
-                Assert.Throws<InvalidOperationException>(() => list.Dispatch(1, 1, 1)).Message,
-                StringComparison.Ordinal);
+            var draw = Assert.Throws<GpuRecordingStateException>(() => list.Draw(3));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, draw.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, draw.Backend);
+            Assert.Equal("Drawing", draw.Command);
+            var instanced = Assert.Throws<GpuRecordingStateException>(() => list.Draw(3, 1, 0, 0));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, instanced.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, instanced.Backend);
+            Assert.Equal("Drawing", instanced.Command);
+            var indexed = Assert.Throws<GpuRecordingStateException>(() => list.DrawIndexed(3, 1, 0, 0, 0));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, indexed.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, indexed.Backend);
+            Assert.Equal("Drawing indexed", indexed.Command);
+            var compute = Assert.Throws<GpuRecordingStateException>(() => list.Dispatch(1, 1, 1));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, compute.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, compute.Backend);
+            Assert.Equal("Dispatching compute work", compute.Command);
 
             Assert.Empty(calls.Log);
             Assert.Empty(render.Log);

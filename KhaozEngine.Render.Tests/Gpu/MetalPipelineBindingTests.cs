@@ -191,8 +191,8 @@ namespace KhaozEngine.Tests.Gpu
 
             MetalGraphicsPipeline graphics = Pipeline();
             MetalComputePipeline compute = ComputePipeline();
-            Assert.Throws<InvalidOperationException>(() => list.SetPipeline(graphics));
-            Assert.Throws<InvalidOperationException>(() => list.SetComputePipeline(compute));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => list.SetPipeline(graphics)).Reason);
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => list.SetComputePipeline(compute)).Reason);
 
             list.Begin();
             list.SetPipeline(graphics);

@@ -54,7 +54,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal void RequireOwner(D3D11FenceSubsystem fences)
         {
             RequireLive();
-            if (!ReferenceEquals(_fences, fences)) throw new ArgumentException("Use a timestamp pool from this Direct3D 11 device.", "pool");
+            if (!ReferenceEquals(_fences, fences)) throw new GpuTimestampArgumentException(GpuTimestampRefusal.ForeignPool, "Use a timestamp pool from this Direct3D 11 device.", "pool") { Backend = GpuBackendKind.Direct3D11Native, ActualType = GetType() };
         }
 
         internal void BeginRecording(object recording, uint count, ulong recordingId = 0)
@@ -73,7 +73,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             RequireLive();
             if (!ReferenceEquals(_recording, recording) || _recordingId != recordingId)
-                throw new InvalidOperationException("The timestamp pool must be begun on this list in its current recording.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.WrongRecording, "The timestamp pool must be begun on this list in its current recording.") { Backend = GpuBackendKind.Direct3D11Native, Command = nameof(ValidateTimestampEnd), RecordingId = recordingId };
             RequireRecording(recording);
             _state.ValidateTimestampEnd(finalIndex);
         }
@@ -101,10 +101,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             tickPeriodNanoseconds = 0d;
             RequireLive();
             ArgumentNullException.ThrowIfNull(completion);
-            if (!_ended) throw new InvalidOperationException("End a timestamp batch before resolving it.");
+            if (!_ended) throw new GpuTimestampStateException(GpuTimestampRefusal.BatchNotEnded, "End a timestamp batch before resolving it.") { Backend = GpuBackendKind.Direct3D11Native, Command = nameof(TryResolve), Count = _state.Count };
             int count = (int)_state.Count;
-            if (ticks.Length < count) throw new ArgumentException("The output cannot hold the timestamp batch.", nameof(ticks));
-            if (completion is not D3D11GpuFence fence) throw new ArgumentException("Use this Direct3D 11 device's completion fence.", nameof(completion));
+            if (ticks.Length < count) throw new GpuTimestampArgumentException(GpuTimestampRefusal.OutputTooSmall, "The output cannot hold the timestamp batch.", nameof(ticks)) { Backend = GpuBackendKind.Direct3D11Native, SuppliedCount = ticks.Length, RequiredCount = _state.Count };
+            if (completion is not D3D11GpuFence fence) throw new GpuTimestampArgumentException(GpuTimestampRefusal.ForeignCompletionFence, "Use this Direct3D 11 device's completion fence.", nameof(completion)) { Backend = GpuBackendKind.Direct3D11Native, ActualType = completion.GetType() };
             fence.RequireOwner(_fences);
             if (_resolved is null)
             {
@@ -138,8 +138,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         {
             RequireLive();
             ArgumentNullException.ThrowIfNull(completion);
-            if (!_ended) throw new InvalidOperationException("End a timestamp batch before awaiting its queries.");
-            if (completion is not D3D11GpuFence fence) throw new ArgumentException("Use this Direct3D 11 device's completion fence.", nameof(completion));
+            if (!_ended) throw new GpuTimestampStateException(GpuTimestampRefusal.BatchNotEnded, "End a timestamp batch before awaiting its queries.") { Backend = GpuBackendKind.Direct3D11Native, Command = nameof(AwaitAvailability), Count = _state.Count };
+            if (completion is not D3D11GpuFence fence) throw new GpuTimestampArgumentException(GpuTimestampRefusal.ForeignCompletionFence, "Use this Direct3D 11 device's completion fence.", nameof(completion)) { Backend = GpuBackendKind.Direct3D11Native, ActualType = completion.GetType() };
             fence.RequireOwner(_fences);
             return _availability.Await(fence, (int)_state.Count, now, deadline);
         }
@@ -160,11 +160,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (_fences.IsDeviceDead) throw new ObjectDisposedException(nameof(IGpuDevice), "The Direct3D 11 timestamp device is disposed or lost.");
         }
 
-        void RequireRecording(object recording)
+        void RequireRecording(object recording, [System.Runtime.CompilerServices.CallerMemberName] string member = "")
         {
             RequireLive();
             if (_ended || !ReferenceEquals(recording, _recording))
-                throw new InvalidOperationException("Write and end timestamps in the command list that began them.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.WrongRecording, "Write and end timestamps in the command list that began them.") { Backend = GpuBackendKind.Direct3D11Native, Command = member };
         }
     }
 }

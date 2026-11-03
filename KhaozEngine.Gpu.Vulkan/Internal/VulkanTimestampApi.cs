@@ -30,7 +30,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             if (capacity == 0 || capacity > int.MaxValue / 2)
                 throw new ArgumentOutOfRangeException(nameof(capacity));
             if (_results.Length != 0)
-                throw new InvalidOperationException("A native timestamp adapter owns exactly one fixed pool.");
+                throw new VulkanTimestampAdapterException(VulkanTimestampAdapterRefusal.PoolAlreadyCreated, "A native timestamp adapter owns exactly one fixed pool.");
             _results = new ulong[checked((int)capacity * 2)];
             var info = new QueryPoolCreateInfo(StructureType.QueryPoolCreateInfo,
                 queryType: QueryType.Timestamp, queryCount: capacity);
@@ -81,13 +81,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         void RequireLive()
         {
             if (_liveness.IsDead)
-                throw new InvalidOperationException("The native Vulkan timestamp device is disposed or lost.");
+                throw new GpuTimestampStateException(GpuTimestampRefusal.TimestampDeviceUnavailable, "The native Vulkan timestamp device is disposed or lost.") { Backend = GpuBackendKind.VulkanNative };
         }
 
         void Check(Result result, string site)
         {
             if (_loss.Check(result, site))
-                throw new InvalidOperationException($"The native Vulkan device was lost at {site}.");
+                throw new VulkanTimestampAdapterException(VulkanTimestampAdapterRefusal.NativeDeviceLost, $"The native Vulkan device was lost at {site}.") { Site = site };
             VulkanResultCodes.Require(result, site);
         }
     }

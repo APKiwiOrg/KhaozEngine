@@ -105,7 +105,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <inheritdoc/>
         public IGpuTimestampPool CreateTimestampPool(uint capacity)
             => new MetalTimestampPool(_device.TimestampApi
-                ?? throw new NotSupportedException("This Metal device has no timestamp counter API."),
+                ?? throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Metal device has no timestamp counter API.") { Backend = GpuBackendKind.MetalNative, Command = nameof(CreateTimestampPool) },
                 _device.Timeline, _device.Liveness, capacity);
 
         /// <inheritdoc/>

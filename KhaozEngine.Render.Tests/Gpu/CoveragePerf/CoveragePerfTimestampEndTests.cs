@@ -22,7 +22,7 @@ public sealed class CoveragePerfTimestampEndTests
         Assert.False(contract.IsInstanceOfType(legacy));
         legacy.Begin();
         legacy.End();
-        Assert.Throws<NotSupportedException>(() => legacy.BeginTimestamps(null!, 2));
+        Assert.Equal(GpuTimestampRefusal.TimestampUnsupported, Assert.Throws<GpuTimestampUnsupportedException>(() => legacy.BeginTimestamps(null!, 2)).Reason);
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using KhaozEngine.Gpu;
 using System;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Primitives;
@@ -70,7 +71,7 @@ namespace KhaozEngine.Tests.Gpu
             (MetalCommandList list, _, _, _) = NewList();
             list.Begin();
 
-            Assert.Throws<InvalidOperationException>(list.Begin);
+            Assert.Equal(GpuRecordingStateRefusal.BeginWhileRecording, Assert.Throws<GpuRecordingStateException>(list.Begin).Reason);
             Assert.True(list.IsRecording);
 
             list.End();
@@ -106,8 +107,11 @@ namespace KhaozEngine.Tests.Gpu
         {
             (MetalCommandList list, _, _, _) = NewList();
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(list.End);
-            Assert.Contains("not recording", thrown.Message, StringComparison.Ordinal);
+            GpuRecordingStateException thrown = Assert.Throws<GpuRecordingStateException>(list.End);
+            Assert.Equal(GpuRecordingStateRefusal.EndWithoutRecording, thrown.Reason);
+            Assert.IsAssignableFrom<InvalidOperationException>(thrown);
+            Assert.Equal(GpuBackendKind.MetalNative, thrown.Backend);
+            Assert.Equal("End", thrown.Command);
         }
 
         [Fact]
@@ -117,8 +121,10 @@ namespace KhaozEngine.Tests.Gpu
             list.Begin();
             list.End();
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(list.End);
-            Assert.Contains("twice", thrown.Message, StringComparison.Ordinal);
+            GpuRecordingStateException thrown = Assert.Throws<GpuRecordingStateException>(list.End);
+            Assert.Equal(GpuRecordingStateRefusal.RecordingAlreadySealed, thrown.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, thrown.Backend);
+            Assert.Equal("End", thrown.Command);
         }
 
         /// <summary>
@@ -156,7 +162,7 @@ namespace KhaozEngine.Tests.Gpu
             (MetalCommandList list, _, _, _) = NewList();
             list.Begin();
 
-            Assert.Throws<InvalidOperationException>(() => _ = list.SealedCommandBuffer);
+            Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(() => _ = list.SealedCommandBuffer).Reason);
             Assert.True(list.IsRecording);
             Assert.False(list.IsSealed);
 
@@ -197,7 +203,7 @@ namespace KhaozEngine.Tests.Gpu
             // NOT released through the source: a committed buffer is the queue's until it completes, and the
             // release paired with the commit is the submit path's.
             Assert.Empty(buffers.Released);
-            Assert.Throws<InvalidOperationException>(() => _ = list.SealedCommandBuffer);
+            Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(() => _ = list.SealedCommandBuffer).Reason);
         }
 
         /// <summary>
@@ -509,8 +515,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             (MetalCommandList list, _, _, _) = NewList();
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
+            GpuRecordingStateException thrown = Assert.Throws<GpuRecordingStateException>(
                 () => list.SetGraphicsResourceSet(0, null!));
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, thrown.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, thrown.Backend);
 
             Assert.DoesNotContain("not built", thrown.Message, StringComparison.Ordinal);
 
@@ -562,10 +570,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             (MetalCommandList list, _, _, _) = NewList();
 
-            InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
+            GpuRecordingStateException thrown = Assert.Throws<GpuRecordingStateException>(
                 () => list.ClearColorTarget(0, new Color(1f, 1f, 1f, 1f)));
-
-            Assert.Contains("Call Begin first", thrown.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, thrown.Reason);
+            Assert.Equal(GpuBackendKind.MetalNative, thrown.Backend);
             Assert.DoesNotContain("not built", thrown.Message, StringComparison.Ordinal);
         }
     }

@@ -259,7 +259,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public IGpuTimestampPool CreateTimestampPool(uint capacity)
         {
             if (!_supportsTimestamps || _timestamps is null || _timestampFences is null || _submitLock is null)
-                throw new NotSupportedException("This Direct3D 11 device has no timestamp query support.");
+                throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Direct3D 11 device has no timestamp query support.") { Backend = GpuBackendKind.Direct3D11Native, Command = nameof(CreateTimestampPool) };
             using (_creation.Enter()) return new D3D11TimestampPool(_timestamps, _timestampFences, _submitLock, capacity);
         }
 

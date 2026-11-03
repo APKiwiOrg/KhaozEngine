@@ -24181,18 +24181,14 @@ signal them at the same completion point. Null or duplicate fences are refused. 
 alive and unreset until its own consumers release it. Older device implementations inherit a default span
 overload that forwards zero or one fence and throws `NotSupportedException` for several fences.
 
-Wait admission uses `D3D11WaitPolicyException` with `D3D11WaitPolicyRefusal.SubmitLockHeld` or
-`VulkanRingWaitException` with `VulkanRingWaitRefusal.SubmitLockHeld`, both carrying `Operation`.
-Both retain their `InvalidOperationException` base and their existing refusal points. Messages are
-developer prose.
-
 ### GPU timestamps without waiting
 
 Gate timestamp collection on `GpuCapabilities.SupportsTimestamps`. It defaults to false. Native Vulkan
 reports the selected graphics queue's counter support. Direct3D 11 probes both native query kinds on
 the actual device without timing a workload. Metal probes the timestamp counter set, supported sampling
 boundaries and sample-buffer creation. An unsupported
-`IGpuResourceFactory.CreateTimestampPool(capacity)` throws `NotSupportedException`. The optional timestamp
+`IGpuResourceFactory.CreateTimestampPool(capacity)` throws `GpuTimestampUnsupportedException` with
+`GpuTimestampRefusal.TimestampUnsupported`. It remains a `NotSupportedException`. The optional timestamp
 command defaults also throw, so existing factories and command lists stay source compatible.
 
 Allocate a fixed caller-owned ring once, with one `IGpuTimestampPool` per retained frame and preallocated
@@ -24206,7 +24202,10 @@ Place writes at pass boundaries, including between a compute dispatch and a draw
 requires every index to have been written. These three calls only encode work. They never submit it. A pool
 retains one unresolved batch, and a new begin clears the previous batch only after its result was consumed.
 Invalid count or index bounds throw `ArgumentOutOfRangeException`. Missing, duplicate or out-of-order writes
-and invalid lifecycle operations throw `InvalidOperationException`.
+and invalid timestamp lifecycle operations throw `GpuTimestampStateException`. Its required
+`GpuTimestampRefusal` reason distinguishes `BatchNotRecording`, `UnresolvedBatch`, `IndexOutOfSequence`,
+`IncompleteBatch` and `BatchNotEnded`. Cursor refusals carry `Count`, `Index`, `ExpectedIndex` or
+`WrittenCount` as appropriate. The exception still derives from `InvalidOperationException`.
 
 For completed-frame GPU timing, also require `commandList is IGpuCommandListTimestampEnd`. Vulkan, Direct3D 11
 and Metal implement this optional interface. A list without it cannot prove completed-frame time, because End can
@@ -24214,11 +24213,23 @@ emit later clears or barriers. Begin the batch and write every index before the 
 `FinishTimestampsOnEnd(pool, count - 1)` while the list is still recording. Arming validates the current
 list and recording, the same-device pool, the last batch index and every earlier write before storing
 anything. Only one tail can be armed. Manual `WriteTimestamp` or `EndTimestamps` for its pool is refused.
+`GpuTimestampRefusal.WrongRecording`, `TailPrefixIncomplete`, `TailAlreadyArmed` and
+`ManualFinalizationWhileArmed` distinguish the state refusals. A wrong final index uses
+`GpuTimestampRangeException` with `FinalIndexRequired`, retaining `ParamName` and `ActualValue` and
+carrying `FinalIndex` and `Count`. Foreign pools use `GpuTimestampArgumentException` with `ForeignPool`,
+`Backend`, `ActualType` and the original `ParamName`.
 The ordinary End writes the last marker and ends that same batch after all GPU finalization and before
 the native seal, with no extra submission, flush, wait or per-frame allocation. Unarmed End is unchanged.
 Failure or abandonment clears only the list's tail. The caller quarantines the Recording or Pending pool
 through teardown, rather than resetting or reusing it. There is no cancellation API. Device loss follows
 the backend's sealing policy and cannot produce valid completed-frame evidence.
+
+Recording lifecycle checks on all three native backends use `GpuRecordingStateException`, derived
+from `InvalidOperationException`, with `Backend` and `Command`. `GpuRecordingStateRefusal` distinguishes
+`BeginWhileRecording`, `CommandOutsideRecording`, `EndWithoutRecording`, `RecordingAlreadySealed`
+and `SubmissionWithoutSeal`. Direct3D 11 keeps its existing `CommandOutsideRecording` rule for End.
+A lost Metal or Vulkan timestamp device uses `GpuTimestampStateException` with
+`TimestampDeviceUnavailable` and `Backend`. Direct3D 11 keeps its disposed-device exception.
 
 Submit the list containing `EndTimestamps` once with a same-device completion fence, then call
 `pool.TryResolve(completion, ticks, out double tickPeriodNanoseconds)` on later frames. Keep the pool and
@@ -24226,6 +24237,11 @@ fence alive, and never reset, resubmit or dispose that fence until resolution co
 readback ring has consumed its entries. A fence from another submission is a caller error. A never-submitted
 fence stays pending. On Direct3D 11, presenting or a caller drain hands submitted work to the driver. This
 API introduces no flush policy for a headless loop that never presents.
+
+A short output uses `GpuTimestampArgumentException` with `OutputTooSmall`, `SuppliedCount` and
+`RequiredCount`. A completion fence of another backend uses the same type with
+`ForeignCompletionFence`, `Backend` and `ActualType`. Both preserve `ParamName`. A native fence from
+another device of the same backend keeps the resource-ownership validator's refusal.
 
 `Pending` leaves caller ticks unchanged and sets the period to zero. `Invalid` does the same but consumes
 the batch, for example when counters are disjoint, calibration is unusable or elapsed ticks overflow.
@@ -24508,6 +24524,17 @@ Marker cost counts as part of instrumented GPU time and is never subtracted. Hos
 may report unsupported. Its negative branch must execute and that GPU gate is unmeasurable there.
 Native correctness is required on supported Apple hardware. Budget timing remains a separate,
 owner-approved measurement on a chosen device.
+
+Backend adapter refusals stay in their packages. `D3D11TimestampAdapterException` carries
+`D3D11TimestampAdapterRefusal.QueryReadFailed`, the native `HResult` and `Operation`.
+`MetalTimestampAdapterStateException` carries `NativeTimestampResourceUnavailable` and `ResourceKind`.
+`MetalTimestampAdapterUnsupportedException` carries `SamplingBoundaryUnsupported` and `StageBoundary`.
+Both use `MetalTimestampAdapterRefusal`. `VulkanTimestampAdapterException` carries
+`VulkanTimestampAdapterRefusal.NativeDeviceLost` with `Site`, or `PoolAlreadyCreated`.
+Wait admission uses `D3D11WaitPolicyException` with `D3D11WaitPolicyRefusal.SubmitLockHeld` or
+`VulkanRingWaitException` with `VulkanRingWaitRefusal.SubmitLockHeld`, both carrying `Operation`.
+These adapter and wait state exceptions retain their `InvalidOperationException` base. The Metal
+sampling-boundary exception retains `NotSupportedException`. Messages remain developer prose.
 
 ### Ordering: two rules, because there is no barrier call
 

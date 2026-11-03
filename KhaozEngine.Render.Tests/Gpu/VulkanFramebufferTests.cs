@@ -327,10 +327,10 @@ namespace KhaozEngine.Tests.Gpu
 
                 using VulkanCommandList list = fixture.CreateList();
 
-                Assert.Throws<InvalidOperationException>(() => list.SetFramebuffer(framebuffer));
-                Assert.Throws<InvalidOperationException>(() => list.ClearColorTarget(0, Color.White));
-                Assert.Throws<InvalidOperationException>(() => list.SetScissorRect(0, 0, 0, 8, 8));
-                Assert.Throws<InvalidOperationException>(list.SetFullScissorRects);
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => list.SetFramebuffer(framebuffer)).Reason);
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => list.ClearColorTarget(0, Color.White)).Reason);
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(() => list.SetScissorRect(0, 0, 0, 8, 8)).Reason);
+                Assert.Equal(GpuRecordingStateRefusal.CommandOutsideRecording, Assert.Throws<GpuRecordingStateException>(list.SetFullScissorRects).Reason);
             }
             finally
             {

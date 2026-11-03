@@ -120,8 +120,8 @@ namespace KhaozEngine.Tests.Gpu
 
             Upload(setup);
 
-            Assert.Throws<InvalidOperationException>(
-                () => MetalGpuDevice.PrepareForCommit(list, setup, alive: true));
+            Assert.Equal(GpuRecordingStateRefusal.SubmissionWithoutSeal, Assert.Throws<GpuRecordingStateException>(
+                () => MetalGpuDevice.PrepareForCommit(list, setup, alive: true)).Reason);
 
             Assert.Empty(native.Committed);
             Assert.True(setup.HasPendingWork);

@@ -23,10 +23,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _timeline = timeline ?? throw new ArgumentNullException(nameof(timeline));
             _owner = owner ?? throw new ArgumentNullException(nameof(owner));
             if (!ReferenceEquals(timeline, owner.Timeline))
-                throw new ArgumentException("A timestamp pool must use its resource owner's timeline.", nameof(timeline));
+                throw new GpuTimestampArgumentException(GpuTimestampRefusal.ForeignPool, "A timestamp pool must use its resource owner's timeline.", nameof(timeline)) { Backend = GpuBackendKind.VulkanNative, ActualType = timeline.GetType() };
             _state = new GpuTimestampPoolState(capacity);
             if (!new VulkanTimestampSupport(validBits, tickPeriodNanoseconds).IsSupported)
-                throw new NotSupportedException("This Vulkan queue has no usable timestamp counter.");
+                throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Vulkan queue has no usable timestamp counter.") { Backend = GpuBackendKind.VulkanNative, Command = nameof(IGpuResourceFactory.CreateTimestampPool) };
             VulkanTimestampRecording.RequireDeviceLive(timeline);
             Capacity = capacity;
             _validBits = validBits;
@@ -43,7 +43,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             Recording.RequireLive();
             if (!ReferenceEquals(_timeline, timeline))
-                throw new ArgumentException("The timestamp pool belongs to another Vulkan device.", "pool");
+                throw new GpuTimestampArgumentException(GpuTimestampRefusal.ForeignPool, "The timestamp pool belongs to another Vulkan device.", "pool") { Backend = GpuBackendKind.VulkanNative, ActualType = GetType() };
         }
 
         internal void Begin(ulong commandBuffer, uint count, VulkanCommandList list, ulong recordingId)
@@ -67,11 +67,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             tickPeriodNanoseconds = 0d;
             Recording.RequireLive();
             ArgumentNullException.ThrowIfNull(completion);
-            if (!Recording.Ended) throw new InvalidOperationException("End a timestamp batch before resolving it.");
+            if (!Recording.Ended) throw new GpuTimestampStateException(GpuTimestampRefusal.BatchNotEnded, "End a timestamp batch before resolving it.") { Backend = GpuBackendKind.VulkanNative, Command = nameof(TryResolve), Count = _state.Count };
             int count = (int)_state.Count;
-            if (ticks.Length < count) throw new ArgumentException("The output cannot hold the timestamp batch.", nameof(ticks));
+            if (ticks.Length < count) throw new GpuTimestampArgumentException(GpuTimestampRefusal.OutputTooSmall, "The output cannot hold the timestamp batch.", nameof(ticks)) { Backend = GpuBackendKind.VulkanNative, SuppliedCount = ticks.Length, RequiredCount = _state.Count };
             if (completion is not VulkanGpuFence fence)
-                throw new ArgumentException("Use this Vulkan device's completion fence.", nameof(completion));
+                throw new GpuTimestampArgumentException(GpuTimestampRefusal.ForeignCompletionFence, "Use this Vulkan device's completion fence.", nameof(completion)) { Backend = GpuBackendKind.VulkanNative, ActualType = completion.GetType() };
             fence.RequireOwner(_timeline);
             if (_resolved is null)
             {

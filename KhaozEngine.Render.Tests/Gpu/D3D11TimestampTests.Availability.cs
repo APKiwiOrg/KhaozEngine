@@ -1,3 +1,4 @@
+using KhaozEngine.Gpu.D3D11;
 using System;
 using System.Linq;
 using KhaozEngine.Gpu.D3D11.Internal;
@@ -97,7 +98,7 @@ namespace KhaozEngine.Tests.Gpu
             native.Failure = 1;
             Assert.Equal(1, api.ReadAvailability(2, flush: true));
             native.Failure = unchecked((int)0x80004005);
-            Assert.Throws<InvalidOperationException>(() => api.ReadAvailability(2, flush: true));
+            Assert.Equal(D3D11TimestampAdapterRefusal.QueryReadFailed, Assert.Throws<D3D11TimestampAdapterException>(() => api.ReadAvailability(2, flush: true)).Reason);
         }
 
         sealed class AvailabilityRig : IDisposable

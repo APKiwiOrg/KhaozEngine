@@ -1274,6 +1274,8 @@ These backend policies use required reason enums and preserve the BCL base type,
 | `MetalStagingArenaRangeException`, `MetalStagingArenaRefusal.LeaseSizeUnaligned` | A lease size not aligned to the native copy boundary | `ParamName`, `ActualValue`, `AlignmentBytes`, `RecoveryOperation` |
 | `MetalStagingArenaStateException`, `MetalStagingArenaRefusal.BlockAllocationFailed` | A nil staging block allocation | `BlockBytes` |
 | `MetalArgumentBatchException`, `MetalArgumentBatchRefusal.DuplicateArgumentIndex` | Two entries at one argument index within one space and shader stage | `Index`, `Space`, `Stage` |
+| `MetalTimestampAdapterStateException`, `MetalTimestampAdapterRefusal.NativeTimestampResourceUnavailable` | a nil timestamp resource or encoder | `ResourceKind` |
+| `MetalTimestampAdapterUnsupportedException`, `MetalTimestampAdapterRefusal.SamplingBoundaryUnsupported` | a counter sampling boundary the Metal device does not support | `StageBoundary` |
 
 The argument subtype derives from `ArgumentException`, range subtypes from
 `ArgumentOutOfRangeException`, and state and batch subtypes from `InvalidOperationException`.
@@ -1284,3 +1286,8 @@ Portable copy-alignment and staging-admission refusals use `GpuCopyAlignmentExce
 `GpuStagingMapArgumentException` / `GpuStagingMapStateException` types from `KhaozEngine.Gpu`.
 A staged buffer upload carries its payload in `PayloadBytes` and its device-level remedy in
 `RecoveryOperation`. The ring-backed write path keeps its existing alignment freedom.
+
+Recording lifecycle and timestamp contract refusals use `GpuRecordingStateException` and the
+`GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException` and
+`GpuTimestampUnsupportedException` types from `KhaozEngine.Gpu`. Their required reasons and identifiers
+are listed in the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals).

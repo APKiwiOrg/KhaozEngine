@@ -1923,6 +1923,8 @@ on every rebuild. Its sampled R32F atlas remains stored. See
 |---|---|---|
 | `VulkanStagingLayoutException`, `VulkanStagingLayoutRefusal.MappingSizeExceeded` | Staging layout arithmetic exceeding the mapping's 32-bit size ceiling | `ParamName`, `ActualValue`, `Width`, `Height`, `MipLevels`, `ArrayLayers`, `Format`, `Quantity`, `ComputedBytes`, `MaximumBytes` |
 | `VulkanRingWaitException`, `VulkanRingWaitRefusal.SubmitLockHeld` | a Vulkan ring rotation while the caller holds the submit lock | `Operation` |
+| `VulkanTimestampAdapterException`, `VulkanTimestampAdapterRefusal.NativeDeviceLost` | a timestamp native operation that reports device loss | `Site` |
+| `VulkanTimestampAdapterException`, `VulkanTimestampAdapterRefusal.PoolAlreadyCreated` | creating a second native query pool in one fixed adapter | No additional identifiers |
 
 `VulkanStagingLayoutException` derives from `ArgumentOutOfRangeException` and keeps its original
 parameter and actual shape. `Reason` is required and the computed byte counts remain 64-bit.
@@ -1932,3 +1934,8 @@ Portable copy offsets use `GpuCopyAlignmentException`. Map admission, double map
 missing mappings and unsignaled fenced reads use the shared `GpuStagingMapArgumentException` and
 `GpuStagingMapStateException` types documented in `KhaozEngine.Gpu`. Their reasons preserve the
 existing refusal points and map state tracking.
+
+Recording lifecycle and timestamp contract refusals use `GpuRecordingStateException` and the
+`GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException` and
+`GpuTimestampUnsupportedException` types from `KhaozEngine.Gpu`. Their required reasons and identifiers
+are listed in the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals).

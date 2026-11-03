@@ -210,6 +210,8 @@ public class GpuPublicApiTests
         {
             "KhaozEngine.Gpu.D3D11.D3D11InvocationBlock",
             "KhaozEngine.Gpu.D3D11.D3D11InvocationReport",
+            "KhaozEngine.Gpu.D3D11.D3D11TimestampAdapterException",
+            "KhaozEngine.Gpu.D3D11.D3D11TimestampAdapterRefusal",
             "KhaozEngine.Gpu.D3D11.D3D11WaitPolicyException",
             "KhaozEngine.Gpu.D3D11.D3D11WaitPolicyRefusal",
             "KhaozEngine.Gpu.D3D11.ID3D11InvocationDiagnostics",
@@ -280,6 +282,8 @@ public class GpuPublicApiTests
             "KhaozEngine.Gpu.Vulkan.VulkanRingWaitRefusal",
             "KhaozEngine.Gpu.Vulkan.VulkanStagingLayoutException",
             "KhaozEngine.Gpu.Vulkan.VulkanStagingLayoutRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanTimestampAdapterException",
+            "KhaozEngine.Gpu.Vulkan.VulkanTimestampAdapterRefusal",
         }, exported);
     }
 
@@ -335,6 +339,9 @@ public class GpuPublicApiTests
             "KhaozEngine.Gpu.Metal.MetalStagingArenaRangeException",
             "KhaozEngine.Gpu.Metal.MetalStagingArenaRefusal",
             "KhaozEngine.Gpu.Metal.MetalStagingArenaStateException",
+            "KhaozEngine.Gpu.Metal.MetalTimestampAdapterRefusal",
+            "KhaozEngine.Gpu.Metal.MetalTimestampAdapterStateException",
+            "KhaozEngine.Gpu.Metal.MetalTimestampAdapterUnsupportedException",
         }, exported);
     }
 

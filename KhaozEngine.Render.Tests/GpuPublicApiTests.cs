@@ -293,6 +293,9 @@ public class GpuPublicApiTests
         Assert.Equal(new[]
         {
             "KhaozEngine.Gpu.Vulkan.KhaozEngineVulkan",
+            "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationArgumentException",
+            "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanBackendCreationUnsupportedException",
             "KhaozEngine.Gpu.Vulkan.VulkanBufferBindingException",
             "KhaozEngine.Gpu.Vulkan.VulkanBufferBindingRefusal",
             "KhaozEngine.Gpu.Vulkan.VulkanBufferCopyException",
@@ -301,6 +304,11 @@ public class GpuPublicApiTests
             "KhaozEngine.Gpu.Vulkan.VulkanBufferRingRefusal",
             "KhaozEngine.Gpu.Vulkan.VulkanDescriptorLimitException",
             "KhaozEngine.Gpu.Vulkan.VulkanDescriptorLimitRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanFeatureException",
+            "KhaozEngine.Gpu.Vulkan.VulkanFeatureRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanInstanceRefusal",
+            "KhaozEngine.Gpu.Vulkan.VulkanInstanceStateException",
+            "KhaozEngine.Gpu.Vulkan.VulkanInstanceUnsupportedException",
             "KhaozEngine.Gpu.Vulkan.VulkanLayoutArgumentException",
             "KhaozEngine.Gpu.Vulkan.VulkanLayoutRefusal",
             "KhaozEngine.Gpu.Vulkan.VulkanLayoutStateException",

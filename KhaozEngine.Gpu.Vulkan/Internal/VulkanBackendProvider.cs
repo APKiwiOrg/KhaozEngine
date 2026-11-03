@@ -117,7 +117,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         public GpuProviderDevice CreateHeadless(IGpuHeadlessDiagnosticSettings settings)
         {
             if (settings is not VulkanHeadlessDiagnosticSettings frozen)
-                throw new ArgumentException("Settings are not owned by this backend.", nameof(settings));
+                throw new VulkanBackendCreationArgumentException(VulkanBackendCreationRefusal.ForeignDiagnosticSettings, "Settings are not owned by this backend.", nameof(settings))
+                {
+                    ActualType = settings?.GetType(),
+                };
             if (_headless is not null) return _headless(frozen);
             return VulkanGpuDevice.CreateHeadless(frozen);
         }
@@ -158,12 +161,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // must be tellable apart from a refusal about the PACKAGE (a window kind with no surface extension is the
         // one left, now that every work-breakdown row has landed and no member refuses by naming one) and from
         // GpuBackendProviderMissingException, which is about the WIRING. That three-way split is decision V-I4.
-        static NotSupportedException ThisMachineCannot(string missing)
-            => new("The native Vulkan backend cannot create a device on this machine: " + missing
+        static VulkanBackendCreationUnsupportedException ThisMachineCannot(string missing)
+            => new(VulkanBackendCreationRefusal.MachineUnsupported, "The native Vulkan backend cannot create a device on this machine: " + missing
                 + ". This is a statement about the MACHINE rather than about the package, which returns a real "
                 + "device on both its headless and its windowed path wherever the probe answers yes. It is the "
                 + "same question GpuBackendSelector.IsBackendSupported answers without creating anything, asked "
                 + "here so a machine that cannot run the backend refuses instead of failing partway into "
-                + "creation.");
+                + "creation.")
+            { MissingRequirement = missing, Probe = "GpuBackendSelector.IsBackendSupported", DriverPackage = missing.Contains(VulkanSupportProbe.NoDriverInstalled, StringComparison.Ordinal) ? "mesa-vulkan-drivers" : null };
     }
 }

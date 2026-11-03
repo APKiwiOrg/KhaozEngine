@@ -28116,6 +28116,14 @@ argument-space mismatch. `MetalRingLayoutRefusal` carries frame-depth bounds or 
 its `GpuBufferRange` remedy. `MetalRingWaitRefusal.SubmitLockHeld` carries the refused operation.
 See the [Metal refusal table](../KhaozEngine.Gpu.Metal/README.md#refusals) for each exception and identifier.
 
+### Native Vulkan creation and device refusals
+
+`VulkanBackendCreationRefusal` separates machine support, surface kind, diagnostic-settings and native-loader
+failures. `LoaderUnavailable` retains the native cause. `VulkanInstanceRefusal` separates a null factory
+result from incompatible live and requested configurations. `VulkanFeatureRefusal.RequiredFeatureMissing`
+carries the feature and device.
+See the [Vulkan refusal table](../KhaozEngine.Gpu.Vulkan/README.md#refusals).
+
 On Metal and Vulkan, a nonzero offset on a set with no authored dynamic element throws the portable
 `GpuDynamicBindingException` with `GpuDynamicBindingRefusal.DynamicElementMissing` and the backend,
 set number and offset. These families preserve the original BCL exception bases and parameter data.

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Vulkan;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -136,6 +137,21 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(refCount.IsLive);
         }
 
+        [Fact]
+        public void AFactoryReturningNullLeavesNothingClaimedAndCanRecover()
+        {
+            bool absent = true;
+            var refCount = new VulkanInstanceRefCount<FakeInstance>(key => absent ? null! : new FakeInstance(key), _ => { });
+            var refusal = Assert.Throws<VulkanInstanceStateException>(() => refCount.Acquire(Headless));
+            Assert.Equal(VulkanInstanceRefusal.FactoryReturnedNull, refusal.Reason);
+            Assert.IsAssignableFrom<InvalidOperationException>(refusal);
+            Assert.Equal(0, refCount.Count);
+            Assert.False(refCount.IsLive);
+            absent = false;
+            using var lease = refCount.Acquire(Headless);
+            Assert.True(refCount.IsLive);
+        }
+
         /// <summary>
         /// A second configuration while the first is live REFUSES, and the message says what is live and what was
         /// asked for. It is the one case the single-instance model cannot serve, because a live instance's
@@ -153,10 +169,16 @@ namespace KhaozEngine.Tests.Gpu
 
             var windowed = new VulkanInstanceKey(Windowed: true, Window: GpuWindowKind.X11,
                 Validation: VulkanValidationMode.Off);
-            NotSupportedException ex = Assert.Throws<NotSupportedException>(() => refCount.Acquire(windowed));
+            var ex = Assert.Throws<VulkanInstanceUnsupportedException>(() => refCount.Acquire(windowed));
 
-            Assert.Contains("headless", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("windowed", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(VulkanInstanceRefusal.ConfigurationIncompatible, ex.Reason);
+            Assert.False(ex.LiveWindowed);
+            Assert.Equal(Headless.Window, ex.LiveWindowKind);
+            Assert.Equal((int)Headless.Validation, ex.LiveValidationMode);
+            Assert.True(ex.RequestedWindowed);
+            Assert.Equal(GpuWindowKind.X11, ex.RequestedWindowKind);
+            Assert.Equal((int)VulkanValidationMode.Off, ex.RequestedValidationMode);
+            Assert.IsAssignableFrom<NotSupportedException>(ex);
             // The refusal must not have disturbed what was already there.
             Assert.Equal(1, refCount.Count);
             Assert.True(refCount.IsLive);
@@ -237,7 +259,7 @@ namespace KhaozEngine.Tests.Gpu
 
             using VulkanInstanceLease<FakeInstance> plain = refCount.Acquire(Headless);
 
-            Assert.Throws<NotSupportedException>(() => refCount.Acquire(
+            Assert.Throws<VulkanInstanceUnsupportedException>(() => refCount.Acquire(
                 new VulkanInstanceKey(Windowed: false, Window: default,
                     Validation: VulkanValidationMode.Strict)));
         }
@@ -372,10 +394,13 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ACocoaWindow_IsRefusedByName()
         {
-            NotSupportedException ex = Assert.Throws<NotSupportedException>(
+            var ex = Assert.Throws<VulkanBackendCreationUnsupportedException>(
                 () => VulkanInstanceLayout.SurfaceExtensionFor(GpuWindowKind.Cocoa));
 
-            Assert.Contains("MoltenVK", ex.Message, StringComparison.Ordinal);
+            Assert.Equal(VulkanBackendCreationRefusal.CocoaSurfaceUnsupported, ex.Reason);
+            Assert.Equal(GpuWindowKind.Cocoa, ex.WindowKind);
+            Assert.Equal("MoltenVK", ex.RequiredTranslationLayer);
+            Assert.Equal("VK_EXT_metal_surface", ex.RequiredExtension);
         }
 
         /// <summary>

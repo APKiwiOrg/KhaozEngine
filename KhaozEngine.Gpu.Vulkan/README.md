@@ -245,7 +245,8 @@ windowed path, and a device whose graphics family cannot present is refused with
 through the reported fallback.
 
 **Features are enabled by name.** `dynamicRendering`, `synchronization2` and `timelineSemaphore` are REQUIRED,
-and a device missing one is refused with that feature's name and what depends on it in the message.
+and a device missing one throws `VulkanFeatureException` with
+`VulkanFeatureRefusal.RequiredFeatureMissing`, `FeatureName` and `DeviceName`.
 `samplerAnisotropy`, `fillModeNonSolid`, `depthClamp` and `independentBlend` are enabled when the device offers
 them and degrade quietly when it does not. `geometryShader`, `tessellationShader`, `multiViewport`,
 `drawIndirectFirstInstance` and `shaderFloat64` are READ for capability reporting and never enabled, because
@@ -1620,8 +1621,9 @@ windowed device that cannot describe its own surface has nothing to hand back.
 windowed list is the headless one plus `VK_KHR_surface` and one platform surface extension. So a headless
 device asked for while a windowed one is live is served by that instance, which is what makes a client that
 opens a window and then takes a `Render3DSnapshot.Capture` work on Linux. The other order is a real shortfall
-and is refused by name, as is a windowed device on a DIFFERENT platform surface, and so is any change of
-validation rung, since the layer is a `vkCreateInstance` argument. Run the refused shapes in separate
+and throws `VulkanInstanceUnsupportedException` with `ConfigurationIncompatible`, carrying the live
+and requested window and validation fields. A windowed device on a DIFFERENT platform surface and any change of
+validation rung use the same refusal, since the layer is a `vkCreateInstance` argument. Run the refused shapes in separate
 processes. Serving them would mean either a second instance, which abandons the single-instance decision
 quietly, or creating every instance with the surface extensions, which takes the golden leg down on a machine
 with no display server. Widened from a strict key match in 17.40.0
@@ -1926,6 +1928,14 @@ on every rebuild. Its sampled R32F atlas remains stored. See
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.CocoaSurfaceUnsupported` | Refuses Cocoa presentation because the native Vulkan package does not carry the Metal translation layer. | `WindowKind`, `RequiredTranslationLayer`, `RequiredExtension` |
+| `VulkanBackendCreationArgumentException`, `VulkanBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses settings not owned by the Vulkan provider. | `ParamName`, `ActualType` |
+| `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.MachineUnsupported` | Refuses Vulkan creation when the machine support probe reports a missing requirement. | `MissingRequirement`, `Probe`, `DriverPackage` |
+| `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.WindowKindUnsupported` | Refuses a window kind with no supported Vulkan surface extension. | `WindowKind` |
+| `VulkanFeatureException`, `VulkanFeatureRefusal.RequiredFeatureMissing` | Refuses a Vulkan device missing a mandatory Vulkan 1.3 feature. | `FeatureName`, `DeviceName` |
+| `VulkanInstanceUnsupportedException`, `VulkanInstanceRefusal.ConfigurationIncompatible` | Refuses acquiring an instance configuration not satisfied by the live process-wide instance. | `LiveWindowed`, `LiveWindowKind`, `LiveValidationMode`, `RequestedWindowed`, `RequestedWindowKind`, `RequestedValidationMode` |
+| `VulkanInstanceStateException`, `VulkanInstanceRefusal.FactoryReturnedNull` | Refuses an instance factory that returns no instance. | No additional identifiers |
+| `VulkanBackendCreationUnsupportedException`, `VulkanBackendCreationRefusal.LoaderUnavailable` | Refuses native instance creation when the Vulkan loader cannot be resolved. | `LoaderExceptionType`, `Probe` |
 | `ShaderValidationArgumentException`, `ShaderValidationRefusal.SpirvLengthInvalid` | Refuses an empty or unaligned SPIR-V module at shader-cache admission. | `ParamName`, `ByteLength`, `WordBytes` |
 | `VulkanVertexInputException`, `VulkanVertexInputRefusal.InstanceDivisorUnsupported` | Refuses an instance divisor that the enabled Vulkan core vertex input cannot express. | `ParamName`, `InstanceStepRate`, `Slot`, `MaximumStepRate` |
 | `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.RingBufferUsedAsStorage` | Refuses a ring-backed uniform buffer through a storage binding that cannot apply its frame base. | `ParamName`, `ElementName`, `Binding`, `ResourceKind` |

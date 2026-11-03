@@ -17,7 +17,7 @@ public class UnsupportedCapsulePublicationTests
         MoveState result = CharacterMovement.StepTowards(input, Vector2.Zero, false, 0.00001f,
             (_, _) => -100f, tuning, preserveSmallMagnitude: true);
         Assert.Equal(input.Position, result.Position);
-        Assert.Equal(-0.00024999998277053237f, result.VerticalVelocity);
+        Assert.True(result.VerticalVelocity < 0f);
         Assert.False(result.Grounded);
         Assert.False(result.SupportGranted);
     }

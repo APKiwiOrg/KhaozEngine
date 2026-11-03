@@ -688,10 +688,9 @@ The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumen
 | `GpuResourceSetException`, `GpuResourceSetRefusal.StagingTextureCannotBind` | Refuses a staging texture as a shader texture binding. | `ParamName`, `ElementName`, `Binding`, `ResourceKind` |
 | `GpuResourceSetException`, `GpuResourceSetRefusal.TextureUsageMissing` | Refuses a texture lacking the usage required by the layout binding. | `ParamName`, `ElementName`, `Binding`, `ResourceKind`, `ActualUsage`, `RequiredUsage` |
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.DifferentDevice` | Refuses a resource created by a different device of the same backend. | `ParamName`, `ExpectedBackend`, `ResourceKind`, `Context` |
-| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ForeignBackend` | Refuses a resource originating from a different GPU backend. | `ParamName`, `ExpectedBackend`, `ActualType`, `ExpectedType`, `Context`, `ResourceIndex`, `PipelineKind` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ForeignBackend` | Refuses a resource from another backend at bind, map, readback or upload admission. | `ParamName`, `ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind`, `Context`, `ResourceIndex`, `PipelineKind` |
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.MissingResource` | Refuses a required resource that was not supplied. | `ParamName`, `ResourceKind`, `Context`, optional `ResourceIndex` |
 | `GpuResourceOwnershipDisposedException`, `GpuResourceOwnershipRefusal.NativeHandleReleased` | Refuses use of a resource whose native handle has been released. | `ObjectName`, `NativeHandleKind`, `ResourceKind`, `Context` |
-| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice` | Refuses a submitted command list or fence that is not owned by the submitting backend or device. | `ParamName`, `ExpectedBackend`, `ActualType`, `ResourceKind` |
 | `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentNotRenderable` | Refuses an attachment without the native texture or view needed for rendering. | `Attachment`, `ActualUsage`, `RequiredUsage`, `IsStaging`, `NativeHandleKind` |
 | `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentShapeMismatch` | Refuses attachments that do not share one size and sample count. | `Attachment`, `Width`, `Height`, `SampleCount`, `ExpectedWidth`, `ExpectedHeight`, `ExpectedSampleCount` |
 | `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentViewMissing` | Refuses an attachment with no required native render view. | `ParamName`, `Attachment`, `ActualUsage`, `RequiredUsage`, `IsStaging`, `NativeHandleKind` |
@@ -759,7 +758,6 @@ is required. Messages are developer prose. `ParamName` and `ActualValue` keep th
 | `GpuStagingMapStateException`, `GpuStagingMapRefusal.NotMapped` | An unmap without an open map | `Backend` |
 | `GpuStagingMapStateException`, `GpuStagingMapRefusal.CompletionNotSignaled` | A fenced read map before completion | `Command` |
 | `GpuStagingMapStateException`, `GpuStagingMapRefusal.MappingMissing` | A Vulkan staging write without mapped backing memory | `Backend` |
-| `GpuStagingMapArgumentException`, `GpuStagingMapRefusal.ForeignResource` | A staging or upload resource without the backend's native capability | `ParamName`, `Backend`, `ActualType`, `ResourceKind` |
 | `GpuStagingMapArgumentException`, `GpuStagingMapRefusal.StagingUsageRequired` | A map or read of a resource without the required staging usage | `ParamName` where previously supplied, `Backend`, `ResourceKind`, `RequiredBufferUsage` or `RequiredTextureUsage` |
 
 The state exception derives from `InvalidOperationException`, the staging and shape argument exceptions

@@ -166,7 +166,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (fence is not VulkanGpuFence armed)
             {
-                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     "A fence created by another GPU backend was handed to the native Vulkan backend's Submit. A "
                     + $"fence on this backend is a value on this device's one timeline, and a {fence.GetType().Name} "
                     + "has no value on it. Create fences through the device you submit to.", nameof(fence))
@@ -202,7 +202,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (cl is not VulkanCommandList list)
             {
-                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     "A command list created by another GPU backend was handed to the native Vulkan backend's "
                     + $"Submit. A {cl.GetType().Name} holds no VkCommandBuffer, so there is nothing to queue. "
                     + "Create command lists from the device you submit them to.", nameof(cl))

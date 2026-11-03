@@ -215,7 +215,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             foreach (var completion in completions)
             {
                 if (completion is not D3D11GpuFence fence)
-                    throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice, "A completion fence belongs to another backend.", nameof(completions))
+                    throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend, "A completion fence belongs to another backend.", nameof(completions))
                     {
                         ExpectedBackend = GpuBackendKind.Direct3D11Native,
                         ActualType = completion?.GetType(),

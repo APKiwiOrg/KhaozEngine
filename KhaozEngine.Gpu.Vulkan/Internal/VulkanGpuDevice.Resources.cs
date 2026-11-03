@@ -285,12 +285,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             ArgumentNullException.ThrowIfNull(texture);
 
             return texture as VulkanTexture
-                ?? throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.ForeignResource,
+                ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A texture created by another GPU backend was {what} on the native Vulkan backend. A "
                     + $"{texture.GetType().Name} holds no VkImage and no staging VkBuffer, so there is nothing to "
                     + "write into. Create textures through the device you use them on.", nameof(texture))
                 {
-                    Backend = GpuBackendKind.VulkanNative,
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ExpectedType = typeof(VulkanTexture),
+                    Context = "texture access",
                     ActualType = texture.GetType(),
                     ResourceKind = "texture",
                 };
@@ -319,12 +321,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (staging is not VulkanBuffer target)
             {
-                throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.ForeignResource,
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     "A buffer created by another GPU backend was mapped on the native Vulkan backend. A "
                     + $"{staging.GetType().Name} holds no VkBuffer, so there is nothing to map. Create buffers "
                     + "through the device you use them on.", nameof(staging))
                 {
-                    Backend = GpuBackendKind.VulkanNative,
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ExpectedType = typeof(VulkanBuffer),
+                    Context = "staging map",
                     ActualType = staging.GetType(),
                     ResourceKind = "buffer",
                 };
@@ -347,12 +351,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         static IVulkanUploadDestination RequireUploadable(IGpuBuffer buffer)
             => buffer as IVulkanUploadDestination
-                ?? throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.ForeignResource,
+                ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     "A buffer created by another GPU backend was written through the native Vulkan backend's "
                     + $"UpdateBuffer. A {buffer.GetType().Name} holds no VkBuffer, so there is nothing to copy "
                     + "into. Create buffers through the device you write them on.", nameof(buffer))
                 {
-                    Backend = GpuBackendKind.VulkanNative,
+                    ExpectedBackend = GpuBackendKind.VulkanNative,
+                    ExpectedType = typeof(IVulkanUploadDestination),
+                    Context = "UpdateBuffer",
                     ActualType = buffer?.GetType(),
                     ResourceKind = "buffer",
                 };

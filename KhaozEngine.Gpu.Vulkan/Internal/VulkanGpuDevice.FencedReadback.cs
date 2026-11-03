@@ -34,7 +34,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (fence is not VulkanGpuFence own || !ReferenceEquals(own.Timeline, _timeline))
             {
-                throw new GpuResourceOwnershipArgumentException(fence is VulkanGpuFence ? GpuResourceOwnershipRefusal.DifferentDevice : GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
+                throw new GpuResourceOwnershipArgumentException(fence is VulkanGpuFence ? GpuResourceOwnershipRefusal.DifferentDevice : GpuResourceOwnershipRefusal.ForeignBackend,
                     "MapForRead was handed a fence this native Vulkan device did not create. A fence is a value on "
                     + "its own device's timeline, so another device's fence would read signaled for work this "
                     + "device never ran.", nameof(fence))

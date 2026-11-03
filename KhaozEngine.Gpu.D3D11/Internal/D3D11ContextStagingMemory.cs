@@ -142,13 +142,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         [SupportedOSPlatform("windows")]
         static ID3D11Resource RequireResource(object resource)
             => resource as ID3D11Resource
-                ?? throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.ForeignResource,
+                ?? throw new GpuResourceOwnershipArgumentException(resource is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {(resource is null ? "null" : resource.GetType().Name)} reached the native Direct3D 11 "
                     + "staging map as a map target. ID3D11MappableResource.MapTarget answers the ID3D11Resource a "
                     + "Map names, so this is a wiring mistake in the backend rather than in the caller.",
                     nameof(resource))
                 {
-                    Backend = GpuBackendKind.Direct3D11Native,
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ExpectedType = typeof(ID3D11Resource),
+                    Context = "staging map",
                     ActualType = resource?.GetType(),
                     ResourceKind = "map target",
                 };

@@ -149,7 +149,7 @@ namespace KhaozEngine.Tests.Gpu
 
             GpuResourceOwnershipArgumentException ex =
                 Assert.Throws<GpuResourceOwnershipArgumentException>(() => fences.SignalEndOfReplay(new ForeignFence()));
-            Assert.Equal(GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice, ex.Reason);
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, ex.Reason);
             Assert.Equal(typeof(ForeignFence), ex.ActualType);
             Assert.Equal(0, timeline.SignalCount);
         }

@@ -447,16 +447,21 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("buffer", notStaging.ResourceKind);
             Assert.Equal(GpuBufferUsage.Staging, notStaging.RequiredBufferUsage);
 
-            GpuStagingMapArgumentException otherBackend = Assert.Throws<GpuStagingMapArgumentException>(
+            GpuResourceOwnershipArgumentException otherBackend = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => access.Map(foreign, GpuMapMode.Read));
-            Assert.Equal(GpuStagingMapRefusal.ForeignResource, otherBackend.Reason);
+            Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, otherBackend.Reason);
             Assert.Equal("staging", otherBackend.ParamName);
-            Assert.Equal(GpuBackendKind.Direct3D11Native, otherBackend.Backend);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, otherBackend.ExpectedBackend);
             Assert.Equal(typeof(FakeBuffer), otherBackend.ActualType);
+            Assert.Equal(typeof(ID3D11MappableResource), otherBackend.ExpectedType);
+            Assert.Equal("staging map", otherBackend.Context);
             Assert.Equal("buffer", otherBackend.ResourceKind);
 
             Assert.Empty(memory.Calls);
             Assert.Equal(0, access.Maps.OpenCount);
+            using var own = new FakeStagingBuffer();
+            access.Map(own, GpuMapMode.Read);
+            access.Unmap(own);
         }
 
         // ---- The load-path claim ------------------------------------------------------------------------------

@@ -11,6 +11,4 @@ public enum GpuResourceOwnershipRefusal
     MissingResource,
     /// <summary>Refuses use of a resource whose native handle has been released.</summary>
     NativeHandleReleased,
-    /// <summary>Refuses a submitted command list or fence that is not owned by the submitting backend or device.</summary>
-    ResourceNotOwnedByDevice,
 }

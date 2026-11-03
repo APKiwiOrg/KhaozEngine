@@ -27,7 +27,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (completion is not VulkanGpuFence fence)
             {
-                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {completion.GetType().Name} was handed to the native Vulkan backend as the completion fence "
                     + "of a staging copy. Only a fence this backend created names a value on its timeline.",
                     nameof(completion))

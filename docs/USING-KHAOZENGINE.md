@@ -19974,10 +19974,16 @@ writes are being queued for a segment nothing ever acquires, which on a running 
 ## GPU resource refusals
 
 Resource ownership checks use `GpuResourceOwnershipArgumentException` for `DifferentDevice`,
-`ForeignBackend`, `MissingResource` and `ResourceNotOwnedByDevice`, and
+`ForeignBackend` and `MissingResource`, and
 `GpuResourceOwnershipDisposedException` for `NativeHandleReleased`. Read the resource type, backend,
 operation context and native handle properties rather than message text. Plain BCL parameter and
 lifetime checks keep their existing types.
+
+Foreign-resource admission at GPU bind, map, readback and upload entry points uses
+`GpuResourceOwnershipArgumentException` with `GpuResourceOwnershipRefusal.ForeignBackend` on all three
+backends. Its `ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind` and `Context` carry the
+resource identifiers available at that guard. `ParamName` keeps the entry point's parameter name.
+Staging usage and mapping state remain in `GpuStagingMapRefusal`.
 
 The same ownership reasons apply to attachment factories, pipeline and resource-set binds, uploads,
 completed staging-buffer reads and swapchain-copy command lists. D3D11 framebuffer adapters identify
@@ -24231,9 +24237,9 @@ byte[] mip = GpuReadback.ToRgbaMip(gd, mipped, 2, 0, w / 4, h / 4);   // one lev
 ```
 
 Staging admission uses `GpuStagingMapArgumentException` (an `ArgumentException`) with
-`ForeignResource` or `StagingUsageRequired`. It carries `Backend`, `ResourceKind` and the original
-`ParamName`, plus `ActualType` for a foreign resource or `RequiredBufferUsage` / `RequiredTextureUsage`
-for missing usage. `GpuStagingMapStateException` (an `InvalidOperationException`) carries `AlreadyMapped`
+`StagingUsageRequired`. It carries `Backend`, `ResourceKind`, the original `ParamName` and
+`RequiredBufferUsage` / `RequiredTextureUsage` for missing usage. A foreign staging resource uses
+`GpuResourceOwnershipArgumentException` with `ForeignBackend` and the ownership identifiers. `GpuStagingMapStateException` (an `InvalidOperationException`) carries `AlreadyMapped`
 with `Backend`, `ExistingMode` and `RequestedMode`, `NotMapped` or `MappingMissing` with `Backend`, and
 `CompletionNotSignaled` with `Command`. The last reason identifies an unsignaled `MapForRead` fence.
 The backends retain their existing admission checks and state tracking.

@@ -64,7 +64,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (completion is not D3D11GpuFence fence)
             {
-                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {completion.GetType().Name} was handed to the native Direct3D 11 backend as the completion "
                     + "fence of a staging copy. Only a fence this backend created names a value on its timeline.",
                     nameof(completion))

@@ -1404,7 +1404,7 @@ and `AlignmentBytes`. Staging contract refusals use the shared types in `KhaozEn
 | `D3D11BackendCreationStateException`, `D3D11BackendCreationRefusal.NativeObjectsMissing` | Refuses native creation success without its device and context outputs. | `DeviceReturned`, `ContextReturned` |
 | `D3D11BackendCreationPlatformException`, `D3D11BackendCreationRefusal.OperatingSystemUnsupported` | Refuses native D3D11 device creation off Windows. | `Backend`, `CreationPath`, `RequiredOperatingSystem`, `SupportProbe` |
 | `D3D11BackendCreationArgumentException`, `D3D11BackendCreationRefusal.WindowKindUnsupported` | Refuses a D3D11 swapchain window that is not Win32. | `ParamName`, `ActualWindowKind`, `RequiredWindowKind` |
-| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ForeignBackend` | Refuses a bindable resource, framebuffer or buffer without this backend's native adapter. | `ParamName`, `ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind`, `Context` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ForeignBackend` | Refuses a resource without this backend's native adapter at bind, map, readback or upload admission. | `ParamName`, `ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind`, `Context` |
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.MissingResource` | Refuses a missing required native buffer. | `ParamName`, `ExpectedBackend`, `ExpectedType`, `ResourceKind`, `Context` |
 | `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.NullBufferWindowNonzero` | Refuses a null constant buffer carrying a nonzero window. | `ParamName`, `RegisterIndex`, `FirstConstant`, `ConstantCount` |
 | `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.TransposeScratchTooSmall` | Refuses transposing a constant-buffer span into undersized scratch. | `ParamName`, `SuppliedCount`, `RequiredCount` |
@@ -1421,7 +1421,6 @@ and `AlignmentBytes`. Staging contract refusals use the shared types in `KhaozEn
 | `GpuStagingMapStateException`, `GpuStagingMapRefusal.AlreadyMapped` | A second map of an open resource | `Backend`, `ExistingMode`, `RequestedMode` |
 | `GpuStagingMapStateException`, `GpuStagingMapRefusal.NotMapped` | An unmap of a resource without an open mapping | `Backend` |
 | `GpuStagingMapStateException`, `GpuStagingMapRefusal.CompletionNotSignaled` | A fenced read map before completion | `Command` |
-| `GpuStagingMapArgumentException`, `GpuStagingMapRefusal.ForeignResource` | A staging or native map target without the backend capability | `ParamName`, `Backend`, `ActualType`, `ResourceKind` |
 | `GpuStagingMapArgumentException`, `GpuStagingMapRefusal.StagingUsageRequired` | A resource without mappable staging usage | `ParamName` where previously supplied, `Backend`, `ResourceKind`, `RequiredBufferUsage` or `RequiredTextureUsage` |
 | `D3D11TimestampAdapterException`, `D3D11TimestampAdapterRefusal.QueryReadFailed` | a timestamp query read that returns a failed HRESULT | `HResult`, `Operation` |
 | `D3D11WaitPolicyException`, `D3D11WaitPolicyRefusal.SubmitLockHeld` | a D3D11 drain or ring rotation while the caller holds the submit lock | `Operation` |

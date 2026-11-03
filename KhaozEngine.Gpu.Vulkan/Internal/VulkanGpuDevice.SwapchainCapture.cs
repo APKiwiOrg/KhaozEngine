@@ -63,7 +63,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (commands is not VulkanCommandList list)
             {
-                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     "A command list created by another GPU backend was handed to the native Vulkan backend's "
                     + $"CopySwapchainColor. A {commands.GetType().Name} holds no VkCommandBuffer to record the "
                     + "copy into. Create command lists from the device you copy with.", nameof(commands))

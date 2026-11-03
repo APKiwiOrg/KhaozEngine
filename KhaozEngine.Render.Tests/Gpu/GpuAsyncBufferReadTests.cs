@@ -226,7 +226,7 @@ namespace KhaozEngine.Tests.Gpu
             using var otherDevices = new FakeStagingBuffer(StagingBytes, owner: new FakeD3D11DeviceLiveness());
             Assert.Equal("staging", Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => rig.Reads.TryReadBuffer(otherDevices, completion, 0, four)).ParamName);
-            Assert.Equal("staging", Assert.Throws<GpuStagingMapArgumentException>(
+            Assert.Equal("staging", Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => rig.Reads.TryReadBuffer(new FakeBuffer(StagingBytes), completion, 0, four)).ParamName);
             var disposedStaging = new FakeStagingBuffer(StagingBytes, owner: rig.Liveness);
             disposedStaging.Dispose();

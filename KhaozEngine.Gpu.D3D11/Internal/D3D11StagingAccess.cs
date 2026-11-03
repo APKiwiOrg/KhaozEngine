@@ -187,12 +187,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (staging is not ID3D11ReadableStaging buffer)
             {
-                throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.ForeignResource,
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {staging.GetType().Name} was handed to the native Direct3D 11 backend as a staging buffer to "
                     + "read. A buffer this backend created carries the ID3D11Buffer a map names, and a buffer from "
                     + "another backend carries another backend's.", nameof(staging))
                 {
-                    Backend = GpuBackendKind.Direct3D11Native,
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ExpectedType = typeof(ID3D11ReadableStaging),
+                    Context = "staging read",
                     ActualType = staging.GetType(),
                     ResourceKind = "buffer",
                 };
@@ -263,24 +265,28 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // got wrong is handing this backend another backend's buffer.
         static ID3D11MappableResource RequireBuffer(IGpuBuffer? staging)
             => staging as ID3D11MappableResource
-                ?? throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.ForeignResource,
+                ?? throw new GpuResourceOwnershipArgumentException(staging is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {(staging is null ? "null" : staging.GetType().Name)} was handed to the native Direct3D 11 "
                     + "backend as a staging buffer. A buffer this backend created carries the ID3D11Buffer a map "
                     + "names, and a buffer from another backend carries another backend's.", nameof(staging))
                 {
-                    Backend = GpuBackendKind.Direct3D11Native,
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ExpectedType = typeof(ID3D11MappableResource),
+                    Context = "staging map",
                     ActualType = staging?.GetType(),
                     ResourceKind = "buffer",
                 };
 
         static ID3D11MappableResource RequireTexture(IGpuTexture? staging)
             => staging as ID3D11MappableResource
-                ?? throw new GpuStagingMapArgumentException(GpuStagingMapRefusal.ForeignResource,
+                ?? throw new GpuResourceOwnershipArgumentException(staging is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                     $"A {(staging is null ? "null" : staging.GetType().Name)} was handed to the native Direct3D 11 "
                     + "backend as a staging texture. A texture this backend created carries the ID3D11Texture2D a "
                     + "map names, and a texture from another backend carries another backend's.", nameof(staging))
                 {
-                    Backend = GpuBackendKind.Direct3D11Native,
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ExpectedType = typeof(ID3D11MappableResource),
+                    Context = "staging map",
                     ActualType = staging?.GetType(),
                     ResourceKind = "texture",
                 };

@@ -1275,6 +1275,11 @@ written rather than one being written and disabled, and `BOOL` is one byte while
 The one comforting property of this risk is that an interop defect presents as a crash rather than as a wrong
 pixel, and the leg that will exercise it runs the full suite on a real GPU on every trigger.
 
+Foreign resources at map, readback and upload entry points use
+`GpuResourceOwnershipArgumentException` with `GpuResourceOwnershipRefusal.ForeignBackend`.
+`ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind` and `Context` identify the refused resource
+where the guard has those values. Mapping-state and staging-usage refusals stay in `GpuStagingMapRefusal`.
+
 ## Refusals
 
 These backend policies use required reason enums and preserve the BCL base type, `ParamName` and

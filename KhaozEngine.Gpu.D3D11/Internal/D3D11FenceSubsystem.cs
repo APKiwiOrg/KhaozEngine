@@ -237,7 +237,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             if (fence is not null)
             {
                 own = fence as D3D11GpuFence
-                    ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
+                    ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                         $"A {fence.GetType().Name} was handed to the native Direct3D 11 device as a fence. Only a "
                         + "fence this backend created can be armed, because a fence from another backend has "
                         + "another backend's completion signal behind it.", nameof(fence))

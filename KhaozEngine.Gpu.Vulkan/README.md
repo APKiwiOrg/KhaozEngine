@@ -1926,6 +1926,11 @@ it reopens. The unobserved directional cascade pass is uninterrupted and clears 
 on every rebuild. Its sampled R32F atlas remains stored. See
 [the owner proof](../docs/METAL-FRAME-SUBMISSION.md#attachment-store-intent).
 
+Foreign resources at map, readback and upload entry points use
+`GpuResourceOwnershipArgumentException` with `GpuResourceOwnershipRefusal.ForeignBackend`.
+`ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind` and `Context` identify the refused resource
+where the guard has those values. Mapping-state and staging-usage refusals stay in `GpuStagingMapRefusal`.
+
 ## Refusals
 
 `CandidateNames` and `CandidateRejections` copy supplied lists into exception-owned read-only snapshots,
@@ -1993,7 +1998,7 @@ diagnostic members. Swapchain copies use `GpuSwapchainCopyArgumentException` and
 
 Completed buffer reads report `DifferentDevice` with `ParamName = "staging"` for a buffer owned by
 another device. A copyable swapchain request with a valid destination reports
-`ResourceNotOwnedByDevice` with `ParamName = "commands"` for a foreign command list. Pipeline-layout
+`ForeignBackend` with `ParamName = "commands"` for a foreign command list. Pipeline-layout
 null entries report `MissingResource` with the slot's `ResourceIndex`. Command-list uploads report
 `ForeignBackend` for foreign buffers. A seam-built list missing its staging uploader keeps its plain
 argument refusal when the buffer already implements the native upload interface.

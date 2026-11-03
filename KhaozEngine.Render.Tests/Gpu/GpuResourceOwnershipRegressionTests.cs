@@ -100,7 +100,7 @@ public sealed class GpuResourceOwnershipRegressionTests
 
         var refusal = Assert.Throws<GpuResourceOwnershipArgumentException>(
             () => fixture.Device.CopySwapchainColor(foreign, destination));
-        Assert.Equal(GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice, refusal.Reason);
+        Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, refusal.Reason);
         Assert.Equal("commands", refusal.ParamName);
         Assert.Equal(GpuBackendKind.VulkanNative, refusal.ExpectedBackend);
         Assert.Equal(typeof(NullGpuCommandList), refusal.ActualType);

@@ -506,7 +506,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (cl is MetalCommandList list && ReferenceEquals(list.Owner, device)) return list;
 
-            throw new GpuResourceOwnershipArgumentException(cl is MetalCommandList ? GpuResourceOwnershipRefusal.DifferentDevice : GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
+            throw new GpuResourceOwnershipArgumentException(cl is MetalCommandList ? GpuResourceOwnershipRefusal.DifferentDevice : GpuResourceOwnershipRefusal.ForeignBackend,
                 "That command list was not created by this native Metal device, so it holds no MTLCommandBuffer "
                 + "this device's queue can commit. Create command lists through the device you submit them to. A "
                 + "list from a DIFFERENT native Metal device is refused here too, by reference rather than by "
@@ -537,7 +537,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (fence is MetalGpuFence mine && ReferenceEquals(mine.Timeline, timeline)) return mine;
 
-            throw new GpuResourceOwnershipArgumentException(fence is MetalGpuFence ? GpuResourceOwnershipRefusal.DifferentDevice : GpuResourceOwnershipRefusal.ResourceNotOwnedByDevice,
+            throw new GpuResourceOwnershipArgumentException(fence is MetalGpuFence ? GpuResourceOwnershipRefusal.DifferentDevice : GpuResourceOwnershipRefusal.ForeignBackend,
                 "That fence was not created by this native Metal device, so it names no value on this device's "
                 + "timeline. Create fences through the device you submit against. A fence from a DIFFERENT native "
                 + "Metal device is refused here too, by reference rather than by type: arming it would point it at "

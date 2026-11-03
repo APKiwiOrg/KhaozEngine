@@ -22,6 +22,25 @@ namespace KhaozEngine.CodeHealth.Analyzers
             if (string.IsNullOrEmpty(path)) return false;
 
             var full = NormalizeSeparators(path);
+            var prefixLength = 0;
+            while (prefixLength < full.Length && full[prefixLength] == '/') prefixLength++;
+
+            var segments = full.Substring(prefixLength).Split('/');
+            var segmentCount = 0;
+            foreach (var segment in segments)
+            {
+                if (segment.Length == 0 || segment == ".") continue;
+                if (segment == "..")
+                {
+                    if (segmentCount == 0) return false;
+                    segmentCount--;
+                }
+                else
+                {
+                    segments[segmentCount++] = segment;
+                }
+            }
+            full = full.Substring(0, prefixLength) + string.Join("/", segments, 0, segmentCount);
             if (!full.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase)) return false;
 
             relative = full.Substring(root.Length + 1);

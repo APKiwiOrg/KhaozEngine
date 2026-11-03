@@ -18,7 +18,13 @@ public sealed partial class RendererPerfColdLifecycleTests(ITestOutputHelper out
         Assert.Equal(5000, budget.ElapsedMilliseconds());
         budget.Check("first");
         now = 200;
-        Assert.Throws<TimeoutException>(() => budget.Check("second"));
+        var timeout = Assert.Throws<RendererPerfUnitBudgetTimeoutException>(() => budget.Check("second"));
+        Assert.Equal(RendererPerfUnitBudgetRefusal.DeadlineReached, timeout.Reason);
+        Assert.Equal("second", timeout.Stage);
+        now = 99;
+        var clock = Assert.Throws<RendererPerfUnitBudgetClockException>(() => budget.Check("earlier"));
+        Assert.Equal(RendererPerfUnitBudgetRefusal.ClockMovedBackwards, clock.Reason);
+        Assert.Equal("earlier", clock.Stage);
         now = 150;
         cancellation.Cancel();
         Assert.Throws<OperationCanceledException>(() => budget.Check("third"));

@@ -141,7 +141,10 @@ public sealed class RendererPerfComparisonTests
         var original = Assert.Throws<RendererPerfProtocolException>(() => VerifiedAnalyze(candidate));
         var result = VerifiedCompare(baseline, candidate);
         Assert.False(result.Compatible);
-        Assert.Contains($"candidate protocol {original.Code}: {original.Message}", result.Reasons);
+        var (side, refusal) = Assert.Single(result.ProtocolRefusals);
+        Assert.Equal("candidate", side);
+        Assert.Equal(original.Code, refusal.Code);
+        Assert.Single(result.Reasons);
         Assert.Empty(result.Differences);
         Assert.Empty(result.Rows);
         Assert.Empty(result.CombinedRows);

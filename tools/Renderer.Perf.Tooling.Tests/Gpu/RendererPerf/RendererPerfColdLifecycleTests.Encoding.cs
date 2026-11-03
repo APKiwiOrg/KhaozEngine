@@ -37,7 +37,10 @@ public sealed partial class RendererPerfColdLifecycleTests
         var read = rig.Diagnostic.LastRead!;
         Assert.Equal(2, outcome.Failures.Length);
         Assert.Same(read.Failures[0].Error, outcome.Failures[0].Error);
-        Assert.Contains("above reservation 1048576", outcome.Failures[1].Error.Message, StringComparison.Ordinal);
+        var encoding = Assert.IsType<RendererPerfCompilerEncodingException>(outcome.Failures[1].Error);
+        Assert.Equal(RendererPerfCompilerEncodingRefusal.AboveReservation, encoding.Reason);
+        Assert.Equal(1048576, encoding.ReservationBytes);
+        Assert.True(encoding.RequiredBytes > encoding.ReservationBytes);
         Assert.Same(read.Report, Assert.Single(outcome.Report!.Pipelines));
         Assert.Same(read.Counts, outcome.Report.Compiler.Results[0].Read!.Counts);
         Assert.Equal(1, rig.Diagnostic.CompilerReads); Assert.Equal(0, rig.Publication.Committed);

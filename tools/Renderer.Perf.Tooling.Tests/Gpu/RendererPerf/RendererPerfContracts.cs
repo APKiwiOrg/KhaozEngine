@@ -100,4 +100,19 @@ internal sealed class RendererPerfProtocolException(string code, string message,
     : Exception(message, inner)
 {
     internal string Code { get; } = code;
+
+    /// <summary>The control a compatibility refusal names.</summary>
+    internal int? ControlId { get; init; }
+
+    /// <summary>The bytes one storage-buffer binding of <see cref="ControlId"/> requires.</summary>
+    internal uint? RequiredBytes { get; init; }
+
+    /// <summary>The storage-buffer range the device admits, zero when it reported none.</summary>
+    internal uint? DeviceLimitBytes { get; init; }
+
+    /// <summary>The preset whose schedule refused <see cref="Leg"/>.</summary>
+    internal string? Preset { get; init; }
+
+    /// <summary>The hosted leg a preset refused.</summary>
+    internal string? Leg { get; init; }
 }

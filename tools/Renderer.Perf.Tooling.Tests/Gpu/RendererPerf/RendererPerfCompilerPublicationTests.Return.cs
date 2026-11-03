@@ -52,8 +52,9 @@ public sealed partial class RendererPerfCompilerPublicationTests
             if (cancel) Assert.Equal(f.Cancellation.Token, Assert.IsType<OperationCanceledException>(original).CancellationToken);
             else
             {
-                Assert.IsType<TimeoutException>(original);
-                Assert.Contains("renderer.publication.return", original.Message, StringComparison.Ordinal);
+                var timeout = Assert.IsType<RendererPerfUnitBudgetTimeoutException>(original);
+                Assert.Equal(RendererPerfUnitBudgetRefusal.DeadlineReached, timeout.Reason);
+                Assert.Equal("renderer.publication.return", timeout.Stage);
             }
             Assert.NotNull(observed.Final);
             Assert.Equal(outcome.Failures.Length, observed.Final.Failures.Length);

@@ -72,16 +72,23 @@ internal static class RendererPerfFrozenRecipe
     {
         string id = authored["Id"]!.GetValue<string>();
         if (frozen["Schema"]?.GetValue<string>() != "khaozengine.renderer-perf-frozen-recipe/2")
-            throw new InvalidOperationException($"The {id} frozen recipe has an unsupported identity schema.");
+            throw new RendererPerfFrozenRecipeException(RendererPerfFrozenRecipeRefusal.UnsupportedSchema,
+                $"The {id} frozen recipe has an unsupported identity schema.") { RecipeId = id, Family = family, ActualDerived = derived };
         string actualAuthored = RendererPerfRecipe.Digest(authored);
         string actual = JsonSerializer.Serialize(derived, RendererPerfRecipe.Json);
         if (RendererPerfRecipe.Digest(frozen["Authored"]) != actualAuthored)
-            throw new InvalidOperationException($"The {id} portable authored construction differs for {family} at "
-                + $"{Difference(frozen["Authored"], authored, "$")}. Actual AuthoredSha256={actualAuthored}. ActualDerived={actual}");
+            throw new RendererPerfFrozenRecipeException(RendererPerfFrozenRecipeRefusal.AuthoredDiffers,
+                $"The {id} portable authored construction differs for {family} at "
+                + $"{Difference(frozen["Authored"], authored, "$")}. Actual AuthoredSha256={actualAuthored}. ActualDerived={actual}")
+            { RecipeId = id, Family = family, ActualDerived = derived };
         if (frozen["DerivedByPlatform"] is not JsonObject families || families[family] is not JsonObject expected)
-            throw new InvalidOperationException($"The {id} recipe has no frozen derived digests for {family}. ActualDerived={actual}");
+            throw new RendererPerfFrozenRecipeException(RendererPerfFrozenRecipeRefusal.DerivedMissing,
+                $"The {id} recipe has no frozen derived digests for {family}. ActualDerived={actual}")
+            { RecipeId = id, Family = family, ActualDerived = derived };
         if (expected.Deserialize<RendererPerfDerivedDigests>(RendererPerfRecipe.Json) != derived)
-            throw new InvalidOperationException($"The {id} derived construction differs for {family}. ActualDerived={actual}");
+            throw new RendererPerfFrozenRecipeException(RendererPerfFrozenRecipeRefusal.DerivedDiffers,
+                $"The {id} derived construction differs for {family}. ActualDerived={actual}")
+            { RecipeId = id, Family = family, ActualDerived = derived };
     }
 
     static string Difference(JsonNode? expected, JsonNode? actual, string path)

@@ -84,7 +84,8 @@ public sealed partial class RendererPerfConstructionTests
                 });
                 break;
         }
-        var error = Assert.Throws<JsonException>(() => RendererPerfCompilerJson.Parse(Encoding.UTF8.GetBytes(node.ToJsonString()), 1048576));
-        Assert.Contains(fault is "shader" or "layout" ? "Duplicate" : fault == "old-schema" ? "schema" : "ource", error.Message, StringComparison.Ordinal);
+        var error = Assert.Throws<RendererPerfCompilerJsonException>(() => RendererPerfCompilerJson.Parse(Encoding.UTF8.GetBytes(node.ToJsonString()), 1048576));
+        Assert.Equal(fault is "shader" or "layout" ? RendererPerfCompilerJsonRefusal.Inventory
+            : fault == "old-schema" ? RendererPerfCompilerJsonRefusal.Schema : RendererPerfCompilerJsonRefusal.SourceTable, error.Reason);
     }
 }

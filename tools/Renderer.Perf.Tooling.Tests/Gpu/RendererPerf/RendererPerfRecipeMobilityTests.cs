@@ -57,8 +57,9 @@ public sealed class RendererPerfRecipeMobilityTests
         JsonObject frozen = JsonNode.Parse(RendererPerfFrozenRecipe.Freeze(original.Describe()))!.AsObject();
         var (authored, derived) = RendererPerfFrozenRecipe.Capture(changed.Describe());
 
-        Assert.Throws<InvalidOperationException>(() => RendererPerfFrozenRecipe.Verify(
+        var error = Assert.Throws<RendererPerfFrozenRecipeException>(() => RendererPerfFrozenRecipe.Verify(
             frozen, authored, derived, RendererPerfFrozenRecipe.PlatformFamily));
+        Assert.Equal(RendererPerfFrozenRecipeRefusal.AuthoredDiffers, error.Reason);
     }
 
     sealed class MobilityRecipe(ShadowCasterMobility mobility) : RendererPerfRecipe("empty")

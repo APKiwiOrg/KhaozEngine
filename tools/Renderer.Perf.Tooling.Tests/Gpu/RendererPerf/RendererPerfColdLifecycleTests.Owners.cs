@@ -63,7 +63,6 @@ public sealed partial class RendererPerfColdLifecycleTests
         for (int i = 0; i < expected.Length; i++) Assert.Same(expected[i], outcome.Failures[i].Error);
         Assert.Equal("renderer.frame", outcome.Failures[0].Stage);
         Assert.Single(outcome.Report!.Conditioning);
-        Assert.Equal(frame.Message, outcome.Report.Publication.OriginalFailure);
         Assert.Equal(0, rig.Diagnostic.CompilerReads);
         Assert.Single(rig.Attempts);
         Assert.DoesNotContain("production.dispose.shader", rig.Trace);

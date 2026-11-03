@@ -120,7 +120,8 @@ internal static class RendererPerfArtifactVerification
             }
             _files.ValidateAll();
         }
-        static IOException Changed(string path) => new("Artifact content changed during verification: " + path);
+        static RendererPerfArtifactVerificationException Changed(string path) => new(RendererPerfArtifactVerificationRefusal.ContentChanged,
+            "Artifact content changed during verification: " + path) { Path = path };
         internal (byte[] Bytes, long Length, string Sha256) Read(string relative, int maximum)
         {
             budget?.Check("renderer.verify.file.before");

@@ -11,8 +11,12 @@ internal sealed record RendererPerfUnitBudget(RendererPerfClock Clock, long Cold
         Boundary?.Invoke(stage);
         Cancellation.ThrowIfCancellationRequested();
         long now = Clock.Now();
-        if (now < ColdStart) throw new InvalidOperationException("The monotonic clock moved backwards at " + stage + ".");
-        if (now >= Deadline) throw new TimeoutException("UnitTimeout at " + stage + ".");
+        if (now < ColdStart)
+            throw new RendererPerfUnitBudgetClockException(RendererPerfUnitBudgetRefusal.ClockMovedBackwards,
+                "The monotonic clock moved backwards at " + stage + ".") { Stage = stage };
+        if (now >= Deadline)
+            throw new RendererPerfUnitBudgetTimeoutException(RendererPerfUnitBudgetRefusal.DeadlineReached,
+                "UnitTimeout at " + stage + ".") { Stage = stage };
     }
     public double ElapsedMilliseconds() => checked(Clock.Now() - ColdStart) * 1000d / Clock.Frequency;
 }

@@ -122,9 +122,10 @@ public sealed class RendererPerfRecipeIdentityTests
         JsonObject frozen = JsonNode.Parse(RendererPerfFrozenRecipe.Freeze(original))!.AsObject();
         foreach (string family in new[] { "osx-arm64", "linux-x64", "win-x64" })
         {
-            InvalidOperationException error = Assert.Throws<InvalidOperationException>(() =>
+            var error = Assert.Throws<RendererPerfFrozenRecipeException>(() =>
                 RendererPerfFrozenRecipe.Verify(frozen, authored, derived, family));
-            Assert.Contains("authored", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(RendererPerfFrozenRecipeRefusal.AuthoredDiffers, error.Reason);
+            Assert.Equal(family, error.Family);
         }
     }
 
@@ -137,9 +138,10 @@ public sealed class RendererPerfRecipeIdentityTests
     {
         JsonObject authored = Authored();
         authored["Camera"]!["Azimuth"] = .7f;
-        InvalidOperationException error = Assert.Throws<InvalidOperationException>(() =>
+        var error = Assert.Throws<RendererPerfFrozenRecipeException>(() =>
             RendererPerfFrozenRecipe.Verify(Frozen(), authored, Actual, family));
-        Assert.Contains("authored", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(RendererPerfFrozenRecipeRefusal.AuthoredDiffers, error.Reason);
+        Assert.Equal(family, error.Family);
     }
 
     [Theory]
@@ -159,7 +161,11 @@ public sealed class RendererPerfRecipeIdentityTests
         foreach (string other in new[] { "osx-arm64", "linux-x64", "win-x64" })
         {
             if (other == family)
-                Assert.Throws<InvalidOperationException>(() => RendererPerfFrozenRecipe.Verify(frozen, Authored(), Actual, other));
+            {
+                var error = Assert.Throws<RendererPerfFrozenRecipeException>(() => RendererPerfFrozenRecipe.Verify(frozen, Authored(), Actual, other));
+                Assert.Equal(RendererPerfFrozenRecipeRefusal.DerivedDiffers, error.Reason);
+                Assert.Equal(family, error.Family);
+            }
             else
                 RendererPerfFrozenRecipe.Verify(frozen, Authored(), Actual, other);
         }
@@ -174,12 +180,23 @@ public sealed class RendererPerfRecipeIdentityTests
     {
         JsonObject frozen = Frozen();
         ((JsonObject)frozen["DerivedByPlatform"]!).Remove(family);
-        InvalidOperationException error = Assert.Throws<InvalidOperationException>(() =>
+        var error = Assert.Throws<RendererPerfFrozenRecipeException>(() =>
             RendererPerfFrozenRecipe.Verify(frozen, Authored(), Actual, family));
-        Assert.Contains(family, error.Message, StringComparison.Ordinal);
-        Assert.Contains(Actual.GeometrySha256, error.Message, StringComparison.Ordinal);
-        Assert.Contains(Actual.SequenceSha256, error.Message, StringComparison.Ordinal);
-        Assert.Contains(Actual.ConstructionSha256, error.Message, StringComparison.Ordinal);
+        Assert.Equal(RendererPerfFrozenRecipeRefusal.DerivedMissing, error.Reason);
+        Assert.Equal(family, error.Family);
+        Assert.Equal(Actual, error.ActualDerived);
+    }
+
+    [Fact]
+    public void Unsupported_identity_schema_is_rejected_before_any_digest()
+    {
+        // The passing control is Mutated_derived_digest_is_rejected_only_for_its_family's untouched families.
+        JsonObject frozen = Frozen();
+        frozen["Schema"] = "khaozengine.renderer-perf-frozen-recipe/1";
+        var error = Assert.Throws<RendererPerfFrozenRecipeException>(() =>
+            RendererPerfFrozenRecipe.Verify(frozen, Authored(), Actual, "linux-x64"));
+        Assert.Equal(RendererPerfFrozenRecipeRefusal.UnsupportedSchema, error.Reason);
+        Assert.Equal("fixture", error.RecipeId);
     }
 
     static JsonObject Authored() => JsonNode.Parse("""

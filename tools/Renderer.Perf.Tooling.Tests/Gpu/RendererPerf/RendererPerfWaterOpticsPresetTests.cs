@@ -187,15 +187,18 @@ public sealed class RendererPerfWaterOpticsPresetTests
     }
 
     [Fact]
-    public void V2_refuses_windows_vulkan_with_a_campaign_specific_message()
+    public void V2_refuses_windows_vulkan_naming_the_refusing_campaign()
     {
         var error = Assert.Throws<RendererPerfProtocolException>(() =>
             RendererPerfRehearsalManifestTests.Parse(ManifestJson(leg: "windows-vulkan")));
         Assert.Equal("Preset", error.Code);
-        Assert.Equal("Windows Vulkan is not an approved leg for the water-optics-v2 campaign.", error.Message);
-        var pilot = RendererPerfProtocolTests.ManifestJson("pilot", "windows-vulkan");
-        Assert.Equal("Windows Vulkan has no initial pilot preset.", Assert.Throws<RendererPerfProtocolException>(() =>
-            RendererPerfRehearsalManifestTests.Parse(pilot)).Message);
+        Assert.Equal("water-optics-v2", error.Preset);
+        Assert.Equal("windows-vulkan", error.Leg);
+        var pilot = Assert.Throws<RendererPerfProtocolException>(() =>
+            RendererPerfRehearsalManifestTests.Parse(RendererPerfProtocolTests.ManifestJson("pilot", "windows-vulkan")));
+        Assert.Equal("Preset", pilot.Code);
+        Assert.Equal("pilot", pilot.Preset);
+        Assert.Equal("windows-vulkan", pilot.Leg);
     }
 
     [Theory]
@@ -227,8 +230,8 @@ public sealed class RendererPerfWaterOpticsPresetTests
         Assert.Equal(operations, RendererPerfCompilerJson.ReadFile(fileBytes, RendererPerfReportJson.MaximumBytes,
             manifest.Schedule.Operations).Inventory.Operations.Length);
         byte[] oversizedBytes = JsonSerializer.SerializeToUtf8Bytes(file with { Inventory = oversized }, RendererPerfCompilerJson.Options);
-        Assert.Throws<JsonException>(() => RendererPerfCompilerJson.ReadFile(oversizedBytes, RendererPerfReportJson.MaximumBytes,
-            manifest.Schedule.Operations));
+        Assert.Equal(RendererPerfCompilerJsonRefusal.Capacity, Assert.Throws<RendererPerfCompilerJsonException>(() =>
+            RendererPerfCompilerJson.ReadFile(oversizedBytes, RendererPerfReportJson.MaximumBytes, manifest.Schedule.Operations)).Reason);
     }
 
     [Theory]

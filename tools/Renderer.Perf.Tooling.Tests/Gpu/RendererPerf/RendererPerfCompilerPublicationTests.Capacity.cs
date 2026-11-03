@@ -43,7 +43,8 @@ public sealed partial class RendererPerfCompilerPublicationTests
             var budget = new RendererPerfUnitBudget(new(() => 100, 1000), 100, 1500100, default);
             var result = RendererPerfPublicationWriter.Files(directory).PrepareCollection(report, inventory, budget);
             Assert.False(result.Ready); Assert.Single(result.Failures);
-            Assert.Contains("capacity", result.Failures[0].Error.Message, StringComparison.Ordinal);
+            Assert.Equal(RendererPerfPublicationCapacityRefusal.RetainedEvidenceExceedsCapacity,
+                Assert.IsType<RendererPerfPublicationCapacityException>(result.Failures[0].Error).Reason);
             Assert.False(File.Exists(Path.Combine(directory, report.Manifest.UnitId + "-compiler-inventory.json")));
             Assert.Equal(32, inventory.Shaders.Length);
             _output.WriteLine("unique source logical bytes=33554432 roots include a 52428800-byte retained provenance field. Admission refused before compiler file write.");

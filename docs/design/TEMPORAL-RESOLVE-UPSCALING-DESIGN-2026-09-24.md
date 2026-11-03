@@ -100,6 +100,11 @@ jitter. Outputs: the display-resolution colour and the new history. Missing visi
    it reduces to plain temporal anti-aliasing. The kernel is separable (amendment 18). Below Native a pixel whose
    history is converged and still also takes the 3x3 reconstructed with the kernel sized in display pixels
    (amendment 26).
+   When both internal dimensions exactly equal their display dimensions, the display kernel pair reuses the
+   internal pair after the same precision conversion. `DisplayOverInternal` divides equal positive dimensions
+   and takes their maximum with one, so `Jitter.z` is exactly `1.0`. Multiplying a finite sample distance by one
+   leaves its bits unchanged. The broader at-display-size variant also admits unequal sizes and is not the
+   reuse guard. Weights, reconstruction and accumulation order stay unchanged (#1680).
 5. **Neighbourhood clipping.** Convert to YCoCg and build a variance box, mean plus or minus gamma times the standard
    deviation, over the 3x3 internal neighbourhood. Clip the history towards the box centre, not a clamp to its
    corners, which keeps colour. Gamma widens where the pixel's motion is small and tightens as it grows, so a still or

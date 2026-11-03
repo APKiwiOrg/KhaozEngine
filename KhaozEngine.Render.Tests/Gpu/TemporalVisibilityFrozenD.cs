@@ -15,10 +15,10 @@ namespace KhaozEngine.Tests.Gpu;
 /// mask (Task 7f.3) changed in the first pass, the surface and the fused entry, frozen in
 /// <see cref="TemporalVisibilityFrozenDMask"/>.
 /// <para><b>TWO D PROGRAMS SINCE 7g.3a.</b> Production's lock release lost <c>precise</c> for an ordered barrier form
-/// (<c>ShaderSources.TemporalLockReleaseGlsl</c>). <see cref="ToShippedD"/> also restores D's precise helper
+/// (<c>ShaderSources.TemporalLockReleaseGlsl</c>). <see cref="ToShippedD"/> also restores D's precise helper and kernels
 /// (<see cref="LockReleaseGlsl"/>), so its program is the whole program D shipped, which the pins hold. It must match
 /// production byte for byte on Metal, which lowered the precise helper as the barrier form computes. <see cref="ToD"/>,
-/// D prime, keeps production's helper, so D and production share one lock arithmetic on every backend. Every other
+/// D prime, keeps production's helper and kernels, so it shares those arithmetic paths on every backend. Every other
 /// rule compares against D prime.</para>
 /// </summary>
 internal static class TemporalVisibilityFrozenD
@@ -137,7 +137,8 @@ float temporalReleaseLock(float value, float motionPixels, float reactive, float
     internal static string ToD(string program) => Rewrite(program, VisibilityGlsl, CallSiteGlsl, HoldReleaseGlsl);
 
     /// <summary>A production fragment program as the program D shipped: <see cref="ToD"/>, then production's lock
-    /// release helper replaced by <see cref="LockReleaseGlsl"/>. Every program the renderer compiles comes out as the
+    /// release helper replaced by <see cref="LockReleaseGlsl"/> and the old Lanczos kernels restored. Every program
+    /// the renderer compiles comes out as the
     /// program D shipped, which <c>TemporalVisibilityFrozenDTests</c> holds to
     /// <see cref="TemporalVisibilityFrozenDMask.ProgramSha256"/>. A program without the helper comes back as
     /// <see cref="ToD"/> gives it. One that holds the visibility release without the helper, or the helper twice,
@@ -150,7 +151,9 @@ float temporalReleaseLock(float value, float motionPixels, float reactive, float
         if (helpers == 0 && !release) return d;
         if (helpers != 1)
             throw new InvalidOperationException($"the shipped D rewrite found {helpers} lock release helpers, one expected");
-        return d.Replace(ShaderSources.TemporalLockReleaseGlsl, LockReleaseGlsl, StringComparison.Ordinal);
+        // Only the historical shipped-D program restores the old kernels. D prime keeps the production cut.
+        return ShaderCutBaseline.RestoreTemporalKernels(
+            d.Replace(ShaderSources.TemporalLockReleaseGlsl, LockReleaseGlsl, StringComparison.Ordinal));
     }
 
     /// <summary>As <see cref="ToD"/> with the call site's text transformed first, for mutant controls that prove a

@@ -161,8 +161,16 @@ TemporalKernels temporalKernels(vec2 pixelCentre, ivec2 centreTexel, ivec2 maxTe
         vec2 toSample = vec2(texel) + 0.5 - jitter - pixelCentre;
         kernels.x[i] = toAfloat(lanczos2(toSample.x));
         kernels.y[i] = toAfloat(lanczos2(toSample.y));
-        kernels.displayX[i] = toAfloat(lanczos2(toSample.x * displayOverInternal));
-        kernels.displayY[i] = toAfloat(lanczos2(toSample.y * displayOverInternal));
+        // Equal positive sizes make both CPU ratios exactly 1.0, and max(1.0, 1.0) stays 1.0.
+        // Multiplication by that factor is exact, so reuse after the same precision conversion (#1680).
+        // The at-display-size variant also admits unequal sizes and cannot serve as this guard.
+        if (all(equal(Sizes.xy, Sizes.zw))) {
+            kernels.displayX[i] = kernels.x[i];
+            kernels.displayY[i] = kernels.y[i];
+        } else {
+            kernels.displayX[i] = toAfloat(lanczos2(toSample.x * displayOverInternal));
+            kernels.displayY[i] = toAfloat(lanczos2(toSample.y * displayOverInternal));
+        }
     }
     return kernels;
 }

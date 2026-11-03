@@ -30,6 +30,32 @@ internal static class ShaderCutBaseline
     internal static string RestoreTileSamples(string source) => ReplaceRegion(source,
         "    // Repeated active roles", "    // The per-vertex jitter", TileSamples);
 
+    static readonly string TemporalKernels = string.Join("\n", new[]
+    {
+        "TemporalKernels temporalKernels(vec2 pixelCentre, ivec2 centreTexel, ivec2 maxTexel) {",
+        "    vec2 jitter = Jitter.xy;",
+        "    float displayOverInternal = Jitter.z;",
+        "    TemporalKernels kernels;",
+        "    kernels.x = avec3(0.0);",
+        "    kernels.y = avec3(0.0);",
+        "    kernels.displayX = avec3(0.0);",
+        "    kernels.displayY = avec3(0.0);",
+        "    for (int i = 0; i < 3; i++) {",
+        "        ivec2 texel = clamp(centreTexel + ivec2(i - 1), ivec2(0), maxTexel);",
+        "        vec2 toSample = vec2(texel) + 0.5 - jitter - pixelCentre;",
+        "        kernels.x[i] = toAfloat(lanczos2(toSample.x));",
+        "        kernels.y[i] = toAfloat(lanczos2(toSample.y));",
+        "        kernels.displayX[i] = toAfloat(lanczos2(toSample.x * displayOverInternal));",
+        "        kernels.displayY[i] = toAfloat(lanczos2(toSample.y * displayOverInternal));",
+        "    }",
+        "    return kernels;",
+        "}",
+        "",
+    });
+
+    internal static string RestoreTemporalKernels(string source) => ReplaceRegion(source,
+        "TemporalKernels temporalKernels(", "\n// Step 4: Lanczos", TemporalKernels);
+
     static string ReplaceRegion(string source, string first, string next, string baseline)
     {
         int start = source.IndexOf(first, StringComparison.Ordinal);

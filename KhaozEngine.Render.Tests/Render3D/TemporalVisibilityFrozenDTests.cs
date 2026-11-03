@@ -9,7 +9,7 @@ namespace KhaozEngine.Tests.Render3D
     /// <summary>
     /// The frozen D oracle cannot drift. Its texts hash to the pins taken from production at 583a3ae7b, and the shipped
     /// D rewrite turns every program the resolve renderer and its split compile into the program D shipped, the first
-    /// pass and the depth store included. D prime is that program with production's lock release helper. Device-free.
+    /// pass and the depth store included. D prime keeps production's lock release helper and kernels. Device-free.
     /// </summary>
     public sealed class TemporalVisibilityFrozenDTests
     {
@@ -57,18 +57,20 @@ namespace KhaozEngine.Tests.Render3D
             => Assert.Equal(sha256,
                 TemporalVisibilityFrozenD.Sha256(TemporalVisibilityFrozenD.ToShippedD(Program(program))));
 
-        /// <summary>D prime is the program D shipped with production's lock release helper in place of D's, and
-        /// nothing else apart.</summary>
+        /// <summary>D prime shares production's kernels and lock release helper. Only the historical shipped-D
+        /// rewrite restores the old kernels, so the frozen hashes stay fixed without hiding the production cut.</summary>
         [Theory]
         [MemberData(nameof(RigProgramNames))]
-        public void DPrimeDiffersFromShippedDInTheLockReleaseHelperAlone(string program)
+        public void DPrimeKeepsProductionKernelsAndLockReleaseWhileShippedDStaysFrozen(string program)
         {
             string prime = TemporalVisibilityFrozenD.ToD(Program(program));
             string shipped = TemporalVisibilityFrozenD.ToShippedD(Program(program));
             int helpers = Count(prime, ShaderSources.TemporalLockReleaseGlsl);
             Assert.Equal(helpers, Count(shipped, TemporalVisibilityFrozenD.LockReleaseGlsl));
-            Assert.Equal(prime.Replace(ShaderSources.TemporalLockReleaseGlsl, TemporalVisibilityFrozenD.LockReleaseGlsl,
-                StringComparison.Ordinal), shipped);
+            Assert.Equal(ShaderCutBaseline.RestoreTemporalKernels(prime.Replace(ShaderSources.TemporalLockReleaseGlsl,
+                TemporalVisibilityFrozenD.LockReleaseGlsl, StringComparison.Ordinal)), shipped);
+            if (helpers > 0)
+                Assert.Contains("if (all(equal(Sizes.xy, Sizes.zw)))", prime, StringComparison.Ordinal);
             Assert.DoesNotContain("temporalOrdered", shipped, StringComparison.Ordinal);
             Assert.DoesNotMatch(@"\bprecise\b", prime);
             Assert.True(helpers == (Program(program).Contains("temporalReleaseLock(", StringComparison.Ordinal) ? 1 : 0),

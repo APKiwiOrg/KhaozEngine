@@ -8,6 +8,8 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-03
 
+- Reuse the internal Lanczos kernel pair for TAA's display pair only when both sizes match exactly, preserving
+  output and history bits after the same precision conversion.
 - Reuse tile-ground material samples for repeated active slot IDs, including steep companions, while keeping
   every weight threshold and weighted addition unchanged. Output pixels stay identical.
 - Preserve cascade working depth and stencil under pass observers, whose timestamp markers can end native

@@ -14,25 +14,39 @@ public sealed class ShaderCutPixelIdentityGpuTests
 {
     const int Width = 128, Height = 96, Frames = 3;
 
-    // #1677. A wrong cached slot or companion must change a real attachment, including temporal history.
+    // #1677 and #1680. Check both cuts together and apart against the old arithmetic through real Render3D.
     [GpuFact]
     public void ShaderCutsPreserveEveryMainAttachmentAndTemporalHistoryBit()
     {
         using var context = GpuDeviceContext.CreateHeadless();
-        int restored = 0;
+        int restored = 0, kernelsRestored = 0;
         using var baseline = new ShaderOverrideGpuDevice(context.GpuDevice, source =>
         {
             string old = ShaderCutBaseline.RestoreTileSamples(source);
             if (old != source) restored++;
-            return old;
+            string oldKernels = ShaderCutBaseline.RestoreTemporalKernels(old);
+            if (oldKernels != old) kernelsRestored++;
+            return oldKernels;
         });
         byte[][] expected = Render(baseline);
         byte[][] actual = Render(context.GpuDevice);
+        using var oldTile = new ShaderOverrideGpuDevice(context.GpuDevice, ShaderCutBaseline.RestoreTileSamples);
+        using var oldKernels = new ShaderOverrideGpuDevice(context.GpuDevice, ShaderCutBaseline.RestoreTemporalKernels);
+        byte[][] tileOnly = Render(oldKernels);
+        byte[][] kernelsOnly = Render(oldTile);
         byte[][] control = Render(context.GpuDevice, changeMaterial: true);
         Assert.True(restored > 0, "The baseline must compile the old tile-ground arithmetic.");
+        Assert.True(kernelsRestored > 0, "The baseline must compile the old Lanczos arithmetic.");
         Assert.Equal(Frames * 9, expected.Length);
         Assert.Equal(expected.Length, actual.Length);
-        for (int i = 0; i < expected.Length; i++) Assert.Equal(expected[i], actual[i]);
+        Assert.Equal(expected.Length, tileOnly.Length);
+        Assert.Equal(expected.Length, kernelsOnly.Length);
+        for (int i = 0; i < expected.Length; i++)
+        {
+            Assert.Equal(expected[i], actual[i]);
+            Assert.Equal(expected[i], tileOnly[i]);
+            Assert.Equal(expected[i], kernelsOnly[i]);
+        }
         Assert.False(actual[0].SequenceEqual(control[0]), "The repeated-slot material must contribute HDR pixels.");
     }
 

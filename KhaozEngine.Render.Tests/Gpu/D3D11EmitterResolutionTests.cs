@@ -411,8 +411,6 @@ namespace KhaozEngine.Tests.Gpu
             D3D11InteropLoad.AssertNotLoaded();
         }
 
-        /// <summary>A bindable resource whose views are plain objects, which is all the resolution ever asks of
-        /// one. It is a buffer as well, so a <see cref="GpuBufferRange"/> can be built over it.</summary>
         sealed class ViewfulSampler : IGpuSampler, ID3D11BindableViews
         {
             public object? BufferObject => null;
@@ -422,6 +420,8 @@ namespace KhaozEngine.Tests.Gpu
             public void Dispose() { }
         }
 
+        /// <summary>A bindable resource whose views are plain objects, which is all the resolution ever asks of
+        /// one. It is a buffer as well, so a <see cref="GpuBufferRange"/> can be built over it.</summary>
         sealed class ViewfulBuffer : IGpuBuffer, ID3D11BindableViews
         {
             readonly object? _shaderResource;

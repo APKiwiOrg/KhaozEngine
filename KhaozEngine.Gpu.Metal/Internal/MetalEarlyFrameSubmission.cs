@@ -6,7 +6,7 @@ internal interface IMetalEarlyFrameApi
 {
     bool IsAlive { get; }
     void FlushSetup();
-    void CommitWithCompletionHandler(IntPtr buffer);
+    void CommitWithCompletionHandler(IntPtr buffer, MetalCommandList list);
 }
 
 /// <summary>The ordinary setup-before-submit lock order, with error reporting but no frame timeline signal.</summary>
@@ -20,8 +20,9 @@ internal sealed class MetalEarlyFrameSubmission(IMetalEarlyFrameApi api, object 
         {
             if (!api.IsAlive) return false;
             list.ProtectPrefix();
-            api.CommitWithCompletionHandler(buffer);
+            api.CommitWithCompletionHandler(buffer, list);
             list.PrefixCommitted();
+            MetalFrameTimingProbe.PrefixCommitted(list);
             return true;
         }
     }

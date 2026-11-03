@@ -264,9 +264,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
             try
             {
-                Deliver(
-                    ObjCMsgSend.Send(commandBuffer, Selectors.CommandQueue),
-                    ReadOutcome(commandBuffer));
+                IntPtr queue = ObjCMsgSend.Send(commandBuffer, Selectors.CommandQueue);
+                var outcome = ReadOutcome(commandBuffer);
+                if (MetalFrameTimingProbe.Sampling)
+                {
+                    var reader = new MetalFrameTimingNative.Reader();
+                    MetalFrameTimingProbe.ObserveCompletion(commandBuffer, queue, outcome.Status, ref reader);
+                }
+                try { MetalFrameTimingProbe.PassTiming?.Complete(commandBuffer, MetalFrameTimingProbe.Sampling); }
+                catch (Exception ex) { Swallow(ex, "the pass timing completion hook failed"); }
+                Deliver(queue, outcome);
             }
             catch (Exception ex)
             {

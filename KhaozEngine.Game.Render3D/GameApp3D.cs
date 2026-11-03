@@ -31,6 +31,8 @@ namespace KhaozEngine.Game
         {
             _surface3D = new Render3DSurface(Window, initialShadows);
             _drawWorld = OnDraw3D;
+            if (Window.FrameDiagnosticsEnabled)
+                Window.RegisterFrameDiagnosticsAnnotator(new SceneFrameDiagnosticsAnnotator(_surface3D.Scene));
         }
 
         /// <summary>The 3D surface bound to the window.</summary>

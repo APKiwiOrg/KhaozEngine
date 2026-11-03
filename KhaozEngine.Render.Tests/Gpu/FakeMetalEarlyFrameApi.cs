@@ -9,5 +9,5 @@ internal sealed class FakeMetalEarlyFrameApi : IMetalEarlyFrameApi
     internal Action? OnCommit;
     internal Action? OnFlush;
     public void FlushSetup() => OnFlush?.Invoke();
-    public void CommitWithCompletionHandler(IntPtr buffer) => OnCommit?.Invoke();
+    public void CommitWithCompletionHandler(IntPtr buffer, MetalCommandList list) => OnCommit?.Invoke();
 }

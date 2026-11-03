@@ -464,7 +464,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 if (!MetalCompletionHandler.AttachTo(buffer))
                     throw new InvalidOperationException("Metal could not attach the final completion error handler.");
 
-                new MTLCommandBuffer(buffer).Commit();
+                new MTLCommandBuffer(buffer).Commit(FrameTimingCommandKind.Other, list);
 
                 _timeline.RegisterSubmitted(value);
                 fence?.Arm(value);

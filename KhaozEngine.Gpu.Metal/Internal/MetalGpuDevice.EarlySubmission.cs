@@ -11,11 +11,11 @@ internal sealed partial class MetalGpuDevice
     {
         public bool IsAlive => !device._liveness.IsDead;
         public void FlushSetup() => device._setup.Flush();
-        public void CommitWithCompletionHandler(IntPtr buffer)
+        public void CommitWithCompletionHandler(IntPtr buffer, MetalCommandList list)
         {
             if (!MetalCompletionHandler.AttachTo(buffer))
                 throw new InvalidOperationException("Metal could not attach the prefix completion error handler.");
-            new MTLCommandBuffer(buffer).Commit();
+            new MTLCommandBuffer(buffer).Commit(FrameTimingCommandKind.EarlyFrameRecording, list);
         }
     }
 }

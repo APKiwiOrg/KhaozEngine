@@ -89,6 +89,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed class MetalRingAllocator
     {
+        internal MetalCpuReadProtection CpuReads { get; }
         readonly MetalTimeline _timeline;
         readonly WaitAccumulator _backpressure;
         readonly object _submitLock;
@@ -152,6 +153,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _timeline = timeline;
             _backpressure = backpressure;
             _submitLock = submitLock;
+            CpuReads = new MetalCpuReadProtection(submitLock, () => timeline.CompletedValue);
             _segmentOwner = new ulong[framesInFlight];
             FramesInFlight = framesInFlight;
         }
@@ -251,6 +253,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             Monitor.Enter(_submitLock, ref taken);
             try
             {
+                CpuReads.RequireSlotAvailable((int)((_recordingIndex + 1) % (ulong)FramesInFlight));
                 _recordingIndex++;
                 int segment = (int)(_recordingIndex % (ulong)FramesInFlight);
 
@@ -405,6 +408,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             lock (_submitLock)
             {
+                // Refuse atomically, before updating ANY segment. A prefix has no completion value until its
+                // tail submits, and even an identical rewrite races a GPU read of shared memory (#1682).
+                for (int segment = 0; segment < FramesInFlight; segment++)
+                    CpuReads.RequireWritable(ring.CpuResource, ring.SegmentBaseBytes(segment) + offsetBytes, (ulong)data.Length);
                 bool wasPatched = ring.HasPendingPatches;
 
                 ulong completed = 0;

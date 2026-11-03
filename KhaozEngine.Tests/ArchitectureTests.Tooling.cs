@@ -36,9 +36,9 @@ public partial class ArchitectureTests
             Assert.Contains(project.Descendants("RootNamespace"), e => e.Value == "KhaozEngine.Tests");
         }
         foreach (string directory in Directory.EnumerateDirectories(root, "KhaozEngine*"))
-        foreach (string project in Directory.EnumerateFiles(directory, "*.csproj"))
-        foreach (string target in ToolingProjectReferences(project))
-            Assert.DoesNotContain(target, tools);
+            foreach (string project in Directory.EnumerateFiles(directory, "*.csproj"))
+                foreach (string target in ToolingProjectReferences(project))
+                    Assert.DoesNotContain(target, tools);
     }
 
     [Theory]

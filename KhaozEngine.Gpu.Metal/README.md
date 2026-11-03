@@ -528,8 +528,8 @@ a CPU write racing a GPU read.
 
 **A record-time uniform write LANDS THE MOMENT IT IS MADE, which is the ring's one consequence for a
 renderer.** It records no command, so it is not ordered against the draws in the same list: two writes to the
-same range inside one frame leave the second value for every draw of that frame, including the draws recorded
-between them. The deleted Veldrid Metal backend ordered the same write against the draws, so this was a real
+same range before its drawable resolves leave the second value for every earlier draw in that recording.
+After an early prefix commits, an overlapping CPU write is refused until final completion. The deleted Veldrid Metal backend ordered the same write against the draws, so this was a real
 difference between the two Metal backends, and it was measured on both in one process by the engine's
 `RecordTimeUniformRewriteGpuTests`. Per-draw and per-pass uniforms are addressed by dynamic offset rather than by
 rewriting one range, which is what the engine's renderers do and what makes the ring possible at all.
@@ -633,8 +633,8 @@ again, assert the second bind was re-issued) because that shape fails on the cor
 bookkeeping.
 
 **N lists record concurrently here, and that is still not a promise of the seam.** Each list holds its own
-command buffer and its own encoders, and this backend has no shared record-time state at all: no layout
-tracker, no barrier batch, no device state cache. The portable contract remains one open recording per device,
+command buffer and its own encoders, and the ordinary encoder state remains list-local. The committed-prefix CPU-range register is shared under
+the submit lock, so a concurrent writer cannot mutate bytes another list has already committed. The portable contract remains one open recording per device,
 and code that relies on more does not port. The engine's own recordings all open through `GpuRecording`, which
 refuses a second one whatever the backend is, so nothing engine-shipped exercises this property.
 
@@ -1166,6 +1166,20 @@ is copyable. `SwapchainCopySupported` is always true because any drawable can be
 throws `InvalidOperationException` when it is false. It throws the same exception for a list that never bound the
 swapchain framebuffer in its current recording, because only the frame's own list holds what the frame drew. The
 copy is a blit from the drawable's texture on the same encoder `CopyTexture` uses, so a pending clear lands first. Clearing the request writes `framebufferOnly = true` again at the next boundary.
+
+## Early frame submission and CPU writes
+
+The first drawable resolution commits the completed offscreen prefix before `nextDrawable` can block. The
+remaining commands use a second buffer on the same queue. Both buffers are one frame, with one ring slot and
+one final timeline signal. A frame that never resolves a drawable keeps one buffer. A bind during an open
+compute or blit encoder defers resolution to the rendering boundary already owed, preserving encoder count.
+
+CPU-visible ranges the prefix can read become immutable until the final buffer completes. Overlapping CPU
+writes and writable mappings throw `MetalFrameAccessException`, with `Reason`, `ResourceId`, `OffsetBytes`,
+`LengthBytes` and `FrameId`. A writable mapping already open over those bytes refuses the prefix commit.
+Disjoint byte ranges and texture subresources remain writable. `Unmap` ends the writable access lease.
+An abandoned prefix quarantines its ring slot, identified by `RingSegment`, until device teardown.
+[Frame submission](../docs/METAL-FRAME-SUBMISSION.md) owns the lifetime and write-path details.
 
 ## Three decisions worth knowing before reading the code
 

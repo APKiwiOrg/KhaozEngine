@@ -229,9 +229,9 @@ namespace KhaozEngine.Gpu
         /// <para>
         /// THE ENGINE'S OWN NATIVE METAL BACKEND IS PERMISSIVE TOO, AND IT COSTS THAT BACKEND NOTHING TO BE.
         /// Each list holds its own <c>MTLCommandBuffer</c> and its own encoders, which is the allocation the queue
-        /// hands out per recording rather than anything shared, and that backend keeps no record-time state
-        /// outside the list at all: no layout tracker, no barrier batch, no device state cache. So N lists there
-        /// record concurrently and submit order is the observable order, because the commits are serialised. That
+        /// hands out per recording rather than a shared encoder. Prefix CPU-access protection is registered
+        /// under the device's submit lock. N lists can record concurrently, and queue commit order is observable,
+        /// including an offscreen prefix committed during drawable resolution. That
         /// is the same shape the native Vulkan backend has, reached from Metal's object model instead of from a
         /// barrier design, and it is a BACKEND PROPERTY with all the same caveats: the retired
         /// <c>GpuBackendKind.Metal</c>, which named the Veldrid Metal backend, did not have it.
@@ -529,6 +529,10 @@ namespace KhaozEngine.Gpu
         /// instead, which copies at RECORD time and applies in list order. This one is for uploads that happen
         /// once (mesh vertices, an index buffer, a baked field) or that a drain already orders. The FFT ocean lost
         /// a frame of surface phase to exactly this when the drain that had been hiding it went away (#398).
+        /// Native Metal may commit an offscreen prefix when the drawable resolves, before the explicit Submit.
+        /// CPU-visible bytes that prefix can read stay immutable until the final frame buffer completes.
+        /// Overlapping CPU writes and writable mappings are refused with MetalFrameAccessException. Disjoint
+        /// byte ranges remain writable. Record-time GPU copies retain their queue ordering.
         /// </para>
         /// </summary>
         void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged;

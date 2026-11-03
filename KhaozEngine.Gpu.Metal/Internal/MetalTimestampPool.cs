@@ -146,5 +146,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (_ended || commandBuffer == IntPtr.Zero || commandBuffer != _recordingBuffer)
                 throw new InvalidOperationException("Write and end a timestamp batch in the command buffer that began it.");
         }
+
+        internal void ContinueRecording(MetalCommandList list, ulong recordingId, IntPtr commandBuffer)
+        {
+            if (!_ended && ReferenceEquals(_recordingList, list) && _recordingId == recordingId)
+                _recordingBuffer = commandBuffer;
+        }
     }
 }

@@ -82,7 +82,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             var upload = new MetalTextureUpload(mipLevel, arrayLayer, x, y, width, height);
 
-            if (metal.IsStaging) WriteStagingTexture(metal, upload, data);
+            if (metal.IsStaging)
+            {
+                lock (_rings.CpuReads.Gate)
+                {
+                    var layout = metal.SubresourceLayout(mipLevel, arrayLayer);
+                    ulong bytes = MetalStagingLayout.RowPitch(width, metal.Format);
+                    ulong xBytes = (ulong)x * MetalStagingLayout.BytesPerTexel(metal.Format);
+                    for (uint row = 0; row < height; row++)
+                        _rings.CpuReads.RequireWritable(metal.CpuResource,
+                            layout.Offset + (y + row) * layout.RowPitch + xBytes, bytes);
+                    WriteStagingTexture(metal, upload, data);
+                }
+            }
             else UploadThroughSetup(metal, upload, data);
         }
 
@@ -106,14 +118,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     nameof(staging));
             }
 
-            DrainForRead(mode);
-            return metal.Mapped(subresource: 0);
+            var layout = metal.SubresourceLayout(0, 0);
+            _rings.CpuReads.Map(metal, metal.CpuResource, layout.Offset, layout.Size, mode != GpuMapMode.Read);
+            try { DrainForRead(mode); return metal.Mapped(subresource: 0); }
+            catch { _rings.CpuReads.Unmap(metal); throw; }
         }
 
         /// <inheritdoc/>
-        /// <remarks>A NO-OP, as it is in the incumbent: a Shared buffer's <c>contents()</c> pointer is valid for
-        /// the buffer's life and there is nothing to unmap.</remarks>
-        public void Unmap(IGpuTexture staging) { }
+        /// <remarks>Ends the writable mapping lease. Shared memory needs no native unmap.</remarks>
+        public void Unmap(IGpuTexture staging) => _rings.CpuReads.Unmap(staging);
 
         /// <inheritdoc/>
         public MappedData Map(IGpuBuffer staging, GpuMapMode mode)
@@ -122,13 +135,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             MetalBuffer metal = MetalResourceOwnership.Require<MetalBuffer>(staging, _liveness, nameof(staging));
 
-            DrainForRead(mode);
-            return metal.Mapped();
+            _rings.CpuReads.Map(metal, metal.CpuResource,
+                metal.Ring?.CurrentSegmentBaseBytes ?? 0, metal.SizeInBytes, mode != GpuMapMode.Read);
+            try { DrainForRead(mode); return metal.Mapped(); }
+            catch { _rings.CpuReads.Unmap(metal); throw; }
         }
 
         /// <inheritdoc/>
-        /// <remarks>A no-op. See <see cref="Unmap(IGpuTexture)"/>.</remarks>
-        public void Unmap(IGpuBuffer staging) { }
+        /// <remarks>Ends the writable mapping lease. See <see cref="Unmap(IGpuTexture)"/>.</remarks>
+        public void Unmap(IGpuBuffer staging) => _rings.CpuReads.Unmap(staging);
 
         /// <summary>
         /// M-C6's READ DRAIN, and the setup flush that has to happen before it.
@@ -219,8 +234,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 return;
             }
 
-            // Everything else is the ungated copy into contents(), which is the incumbent's behaviour and is
-            // correct for a load-time write to a vertex, index or structured buffer.
+            // Non-ring buffers enforce the same committed-prefix byte ranges around their shared-memory copy.
             metal.Write(offsetBytes, data);
         }
 

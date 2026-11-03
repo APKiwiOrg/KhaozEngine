@@ -1614,6 +1614,13 @@ phase 3 confirmed it, and Metal gives no new reason to revisit it.
 - `Submit` encodes the timeline signal (M-F1), adds the completion handler that reads `status` and `error`
   (M-F2), and commits, all under `_submitLock`.
 
+**A drawable frame can commit before its explicit Submit (#1682).** The first drawable resolution commits
+the offscreen prefix without a timeline signal, then continues on a second buffer on the same queue. The
+frame keeps one ring segment and staging slot. The final buffer alone signals and releases them. Committed
+prefix CPU ranges are immutable through final completion. An abandoned prefix quarantines its slot rather
+than assigning a signal nothing will produce. [Frame submission](../METAL-FRAME-SUBMISSION.md) owns the
+write-path inventory, mapped-pointer rule and encoder-boundary details.
+
 **There is no command-buffer pool to reset (M-R2).** Vulkan needed `FramesInFlight` `VkCommandPool`s per list
 because a command buffer's memory is the pool's and a pool cannot be reset while its buffers are in flight.
 Metal's queue owns that allocation and hands out a fresh buffer each time, and there is no reset, no pool

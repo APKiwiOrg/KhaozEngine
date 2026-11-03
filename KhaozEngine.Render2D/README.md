@@ -388,3 +388,7 @@ bake the full band once, draw it in the track colour, then draw the SAME texture
 device state, not a new quad, so the whole gauge is two draws and zero uploads per frame however fast the value
 moves. A radial wipe past a quarter turn wants the arc split into per-quadrant scissor passes, since a scissor
 rect is axis-aligned.
+
+SpriteBatch writes only the new Begin's 64-byte view-projection matrix at its disjoint dynamic slot. Earlier
+slots are never rewritten, including when an offscreen batch precedes native Metal's drawable resolution.
+This preserves [the committed-prefix CPU contract](../docs/METAL-FRAME-SUBMISSION.md#cpu-write-after-record-rule).

@@ -105,6 +105,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // what survives here is a power of two that divides the stride, and it is what every bind's composed
         // offset is checked against. 256 would refuse offsets the device accepts (macOS reports 16 or 32).
         readonly uint _bufferOffsetAlignment;
+        readonly MetalEarlyFrameSubmission _earlySubmission;
 
         // THE DEVICE'S BORDER-COLOUR ANSWER, read off the probe's snapshot at creation because a sampler cannot
         // ask it safely: the way to ask a device directly is to build a border sampler, which is the abort.
@@ -144,6 +145,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // the segment owner it records would name a submission that had not happened yet.
             _backpressure = new WaitAccumulator();
             _rings = new MetalRingAllocator(framesInFlight, timeline, _backpressure, _submitLock);
+            _earlySubmission = new MetalEarlyFrameSubmission(new EarlyFrameApi(this), _submitLock);
 
             _factory = new MetalResourceFactory(this);
         }
@@ -235,7 +237,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 // M-A2's POSITION, CAPTURED PER LIST so a recording cannot straddle two policies. It is the
                 // per-attachment fix for every caller the engine has: the switch that could ask for the other
                 // position is gone, and what remains is a test seam. See MetalClearPolicy.
-                clearMode, _timeline);
+                clearMode, _timeline)
+            { EarlySubmission = _earlySubmission };
 
         /// <inheritdoc/>
         /// <remarks>M-G2's <c>softwareAdapter</c> is ALWAYS false with confidence rather than null, because Apple
@@ -455,7 +458,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
                 // BEFORE THE COMMIT. Metal refuses a handler added to a buffer that has already been committed,
                 // and a buffer that completed before its handler was attached would report nothing at all.
-                MetalCompletionHandler.AttachTo(buffer);
+                if (!MetalCompletionHandler.AttachTo(buffer))
+                    throw new InvalidOperationException("Metal could not attach the final completion error handler.");
 
                 new MTLCommandBuffer(buffer).Commit();
 

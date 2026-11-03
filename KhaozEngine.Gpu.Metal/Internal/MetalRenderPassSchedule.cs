@@ -227,6 +227,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _scissorEmitted.Clear();
         }
 
+        // Replace the unresolved drawable placeholder without losing its clears or caller's scissor.
+        internal void ResolveFramebuffer(in MetalBoundFramebuffer framebuffer) => _framebuffer = framebuffer;
+
         /// <summary>
         /// A COLOUR CLEAR, WHICH FOLDS OR COSTS A BOUNDARY DEPENDING ON WHETHER THE PASS IS ALREADY OPEN (M-A2).
         /// <para>

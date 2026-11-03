@@ -284,7 +284,8 @@ rebaked with `KE_UPDATE_GLSL_HASHES=1`, `KE_UPDATE_HLSL_HASHES=1`, `KE_UPDATE_MS
 `KE_UPDATE_SPIRV_HASHES=1`, using the matching equality tests through `build-slot`. Read each table diff.
 The point-shadow exact-zero banded-NdotL gate deliberately changes the lit fragments' source while preserving
 every contributing term. GPU comparisons against the ungated arithmetic hold the atlas and all main
-attachments byte for byte.
+attachments byte for byte. Native Metal's [frame submission](METAL-FRAME-SUBMISSION.md) also defines the
+CPU write boundary and per-attachment store intent.
 
 The first landing reads the copy at the original pixel with mip-zero `texelFetch`. It unprojects two depths
 through `InvViewProj` to recover the incident direction for perspective and orthographic cameras, then refracts

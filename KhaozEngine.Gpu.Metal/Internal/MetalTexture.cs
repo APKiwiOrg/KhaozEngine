@@ -90,6 +90,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>True for a staging texture, which has a <see cref="StagingBuffer"/> and no
         /// <see cref="Handle"/>.</summary>
         internal bool IsStaging => Plan.Staging;
+        internal MetalCpuResource CpuResource { get; } = new();
 
         /// <summary>The native texture, or a nil handle on a staging texture and after disposal.</summary>
         internal MTLTexture Handle => _disposed ? default : _texture;

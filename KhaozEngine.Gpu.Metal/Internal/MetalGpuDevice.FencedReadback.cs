@@ -47,6 +47,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     + "may still be running. Poll IGpuFence.Signaled first. This map never waits, by design.");
             }
 
+            var layout = metal.SubresourceLayout(0, 0);
+            _rings.CpuReads.Map(metal, metal.CpuResource, layout.Offset, layout.Size, writable: false);
             return metal.Mapped(subresource: 0);
         }
     }

@@ -36,6 +36,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal sealed class MetalBuffer : IGpuBuffer, IMetalOwnedResource, IMetalBindable
     {
+        readonly MetalCpuResource _cpuResource = new();
+        internal MetalCpuResource CpuResource => _ring?.CpuResource ?? _cpuResource;
         readonly IDeviceLiveness _liveness;
         readonly MTLBuffer _buffer;
         readonly IntPtr _contents;
@@ -63,6 +65,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             SizeInBytes = sizeInBytes;
             Usage = usage;
             _native = native;
+            _rings = rings;
 
             if (rings is not null && MetalBufferPolicy.IsRingBacked(usage))
             {
@@ -228,10 +231,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// routes there and this member throws rather than quietly reproducing the race for a caller that reached
         /// it by another road.</para>
         ///
-        /// <para><b>EVERY OTHER BUFFER IS STILL AN UNGATED COPY, AND THAT IS THE INCUMBENT'S BEHAVIOUR
-        /// UNCHANGED.</b> A device-level write to a vertex, index or structured buffer is a load-time call by
-        /// construction, the ring is deliberately only for uniforms (M-M6), and nothing on this seam gates it on
-        /// either sibling backend either.</para>
+        /// <para>Non-uniform writes copy shared bytes under the prefix-protection lock. Disjoint vertex,
+        /// index and structured-buffer ranges remain writable. Overlapping committed-prefix reads are refused
+        /// until final completion, even for an identical payload.</para>
         /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -255,8 +257,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (source.IsEmpty) return;
             if (_liveness.IsDead) return;
 
-            source.CopyTo(new Span<byte>((byte*)_contents + offsetBytes, source.Length));
+            if (_rings is null) CopyBytes(offsetBytes, source);
+            else lock (_rings.CpuReads.Gate)
+            {
+                _rings.CpuReads.RequireWritable(CpuResource, offsetBytes, (ulong)source.Length);
+                CopyBytes(offsetBytes, source);
+            }
         }
+
+        unsafe void CopyBytes(uint offsetBytes, ReadOnlySpan<byte> source)
+            => source.CopyTo(new Span<byte>((byte*)_contents + offsetBytes, source.Length));
 
         /// <summary>
         /// The buffer's bytes as a span, for the <c>Map</c> path. The whole REQUESTED size rather than the rounded

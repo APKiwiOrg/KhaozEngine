@@ -297,11 +297,11 @@ namespace KhaozEngine.Tests.Gpu
             _list.Begin();
 
             // The SOURCE is 256 bytes, so a 64-byte read from 224 runs off it.
-            Assert.Throws<MetalBufferPolicyRangeException>(
+            Assert.Throws<GpuBufferTransferRangeException>(
                 () => _list.CopyBuffer(source, SourceSize - 32, destination, 0, 64));
 
             // The DESTINATION is 128, so a 64-byte write from 96 runs off it while the source is comfortable.
-            Assert.Throws<MetalBufferPolicyRangeException>(
+            Assert.Throws<GpuBufferTransferRangeException>(
                 () => _list.CopyBuffer(source, 0, destination, DestinationSize - 32, 64));
 
             AssertNothingWasSpent();

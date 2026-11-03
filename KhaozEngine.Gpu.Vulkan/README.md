@@ -1939,7 +1939,10 @@ change the captured diagnostics.
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
-| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.OffsetMisaligned` | Refuses a composed buffer offset that violates binding alignment. | `ParamName`, `ActualValue`, `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride` |
+| `GpuBufferUsageArgumentException`, `GpuBufferUsageRefusal.UniformBindingCombination` | Refuses a uniform buffer combined with another binding of the same bytes. | `ParamName`, `Usage`, `ConflictingUsage` |
+| `GpuBufferTransferRangeException`, `GpuBufferTransferRefusal.WindowOutsideBuffer` | Refuses a buffer write or copy window outside the logical buffer. | `ParamName`, `ActualValue`, `OffsetBytes`, `SizeBytes`, `BufferBytes`, optional `Side` |
+| `GpuTextureTransferRangeException`, `GpuTextureTransferRefusal.SubresourceOutOfRange` | Refuses a copy, staging or upload subresource outside the texture. | `ParamName`, `ActualValue`, `MipLevel`, `ArrayLayer`, `MipLevels`, `ArrayLayers`, optional `Side` |
+| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.OffsetMisaligned` | Refuses a composed buffer offset that violates binding alignment. | `ParamName`, `ActualValue`, `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `Set` and `Binding` |
 | `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.WindowOutsideSegment` | Refuses a uniform window outside its own frame-ring segment. | `ParamName`, `ActualValue`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `RecoveryOperation` |
 | `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
@@ -1965,8 +1968,6 @@ change the captured diagnostics.
 | `VulkanResourceSetRingException`, `VulkanResourceSetRingRefusal.UniformBufferNotRingBacked` | Refuses a Vulkan uniform binding without its required ring. | `ParamName`, `ElementName`, `Binding`, `ActualUsage` |
 | `VulkanBufferBindingException`, `VulkanBufferBindingRefusal.RequiredUsageMissing` | Refuses binding a Vulkan buffer without the required native usage declaration. | `ParamName`, `Usage`, `RequiredUsage`, `Context` |
 | `VulkanBufferCopyException`, `VulkanBufferCopyRefusal.EmptyCopy` | Refuses an empty VkBufferCopy region. | `ParamName`, `ActualValue`, `Side`, `SizeBytes` |
-| `VulkanBufferCopyException`, `VulkanBufferCopyRefusal.WindowOutsideBuffer` | Refuses a Vulkan buffer copy window extending outside its selected buffer. | `ParamName`, `ActualValue`, `Side`, `OffsetBytes`, `SizeBytes`, `BufferBytes` |
-| `VulkanBufferRingException`, `VulkanBufferRingRefusal.UniformUsageCombination` | Refuses combining a Vulkan ring-backed uniform buffer with another binding usage. | `ParamName`, `Usage`, `ConflictingUsage` |
 | `VulkanDescriptorLimitException`, `VulkanDescriptorLimitRefusal.DynamicUniformLimitExceeded` | Refuses a pipeline layout exceeding the device dynamic uniform descriptor limit. | `LimitName`, `RequestedCount`, `Limit`, `SetLayoutCount` |
 | `VulkanLayoutArgumentException`, `VulkanLayoutRefusal.ImageHandleMissing` | Refuses a layout transition for a staging or null image handle. | `ParamName`, `Image` |
 | `VulkanLayoutStateException`, `VulkanLayoutRefusal.NoSingleLayout` | Refuses querying one layout for a range spanning narrower tracked pieces. | `Image`, `CoveredRangeCount`, `BaseMip`, `MipCount`, `BaseLayer`, `LayerCount` |
@@ -1987,7 +1988,7 @@ missing mappings and unsignaled fenced reads use the shared `GpuStagingMapArgume
 existing refusal points and map state tracking.
 
 Recording lifecycle and timestamp contract refusals use `GpuRecordingStateException` and the
-`GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException` and
+`GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException`, `GpuTimestampDisposedException` and
 `GpuTimestampUnsupportedException` types from `KhaozEngine.Gpu`. Their required reasons and identifiers
 are listed in the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals).
 
@@ -2009,3 +2010,13 @@ Graphics blend counts use `GpuPipelineOutputsException`. Texture copy, mip gener
 checks use `GpuTextureTransferArgumentException` and `GpuTextureTransferRangeException` where the
 backend checks the rule. Their reasons identify the rejected shape or subresource. Backend-specific
 admission differences remain as described above.
+
+A resource of the declared logical kind from another backend uses `GpuResourceOwnershipRefusal.ForeignBackend`
+in resource-set admission. A genuinely different logical kind keeps `GpuResourceSetRefusal.ResourceKindMismatch`.
+The ownership carrier records `ElementName`, `ResourceIndex`, `ResourceKind`, `ExpectedBackend`, `ActualType`
+and `ExpectedType` where the guard has them. An absent D3D11 register view uses `MissingResource` and
+`RegisterLetter`, with the original parameter and resource types.
+
+Timestamp pools and completion fences use `GpuResourceOwnershipArgumentException` with `ForeignBackend`
+for another backend or `DifferentDevice` for another device/timeline. Their ownership identifiers retain
+the original parameter and runtime type.

@@ -222,6 +222,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("dynamicUniform", refused.ParamName);
             Assert.Equal(GpuDynamicBindingRefusal.OffsetMisaligned, refused.Reason);
             Assert.Equal(128ul, refused.ActualValue);
+            Assert.Equal(0u, refused.Set);
+            Assert.Equal(0u, refused.Binding);
             Assert.Equal(128ul, refused.ComposedOffset);
             Assert.Equal(256ul, refused.AlignmentBytes);
             Assert.Equal(0ul, refused.RingBase);

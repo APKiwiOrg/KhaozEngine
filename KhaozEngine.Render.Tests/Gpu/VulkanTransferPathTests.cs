@@ -97,13 +97,14 @@ namespace KhaozEngine.Tests.Gpu
                 IGpuBuffer source = Buffer(fixture, owned, GpuBufferUsage.StructuredBufferReadWrite);
                 IGpuBuffer destination = Buffer(fixture, owned, GpuBufferUsage.Staging);
 
-                var refusal = Assert.Throws<VulkanBufferCopyException>(
+                var refusal = Assert.Throws<GpuBufferTransferRangeException>(
                     () => list.CopyBuffer(source, 200, destination, 0, 128));
-                Assert.Equal(VulkanBufferCopyRefusal.WindowOutsideBuffer, refusal.Reason);
+                Assert.Equal(GpuBufferTransferRefusal.WindowOutsideBuffer, refusal.Reason);
                 Assert.Equal("source", refusal.Side);
                 Assert.Equal(200u, refusal.OffsetBytes);
                 Assert.Equal(128u, refusal.SizeBytes);
-                Assert.Equal(source.SizeInBytes, refusal.BufferBytes);
+                Assert.Equal((ulong)source.SizeInBytes, refusal.BufferBytes);
+                list.CopyBuffer(source, 128, destination, 0, 128);
             }
             finally
             {

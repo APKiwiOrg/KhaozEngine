@@ -162,7 +162,8 @@ namespace KhaozEngine.Gpu
         /// </summary>
         /// <param name="device">The device the list belongs to. Two lists on two devices never collide.</param>
         /// <param name="commands">The list to begin.</param>
-        /// <param name="owner">What to call this recording in a refusal message. Say it the way it would read in
+        /// <param name="owner">The recording name carried by <see cref="GpuNestedRecordingException.Owner"/> or
+        /// <see cref="GpuNestedRecordingException.Attempted"/>. Say it the way it would read in
         /// a sentence, e.g. "the window's frame list" or "Scene3D.LoadTexture".</param>
         /// <exception cref="GpuNestedRecordingException">Another recording is already open on
         /// <paramref name="device"/>. Nothing was begun and the open recording is untouched.</exception>

@@ -1,3 +1,4 @@
+using KhaozEngine.Gpu;
 using System;
 using System.Threading;
 using KhaozEngine.Gpu.Internal;
@@ -85,8 +86,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             MetalUniformRing ring = _harness.NewRing(200, out _);
 
-            ArgumentOutOfRangeException thrown =
-                Assert.Throws<ArgumentOutOfRangeException>(() => ring.Write(0, 192, new byte[16]));
+            GpuBufferTransferRangeException thrown =
+                Assert.Throws<GpuBufferTransferRangeException>(() => ring.Write(0, 192, new byte[16]));
 
             Assert.Equal("offsetBytes", thrown.ParamName);
             Assert.Equal(192u, thrown.ActualValue);
@@ -106,7 +107,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             MetalUniformRing ring = _harness.NewRing(200, out _);
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => ring.Write(0, 200, new byte[1]));
+            Assert.Throws<GpuBufferTransferRangeException>(() => ring.Write(0, 200, new byte[1]));
         }
 
         /// <summary>

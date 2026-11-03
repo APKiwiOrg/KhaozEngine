@@ -339,7 +339,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (offsetBytes <= buffer.SizeInBytes && sizeInBytes <= buffer.SizeInBytes - offsetBytes) return;
 
-            throw new VulkanBufferCopyException(VulkanBufferCopyRefusal.WindowOutsideBuffer, nameof(sizeInBytes), sizeInBytes,
+            throw new GpuBufferTransferRangeException(GpuBufferTransferRefusal.WindowOutsideBuffer, nameof(sizeInBytes), sizeInBytes,
                 "A native Vulkan buffer copy names " + sizeInBytes.ToString(CultureInfo.InvariantCulture)
                 + " bytes at offset " + offsetBytes.ToString(CultureInfo.InvariantCulture) + " of its " + side
                 + ", which is a " + buffer.Describe()

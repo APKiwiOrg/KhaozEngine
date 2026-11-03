@@ -150,7 +150,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Throws<GpuResourceOwnershipArgumentException>(() => pool.TryResolve(foreignFence, new ulong[3], out _));
             using var foreignList = List(other);
             foreignList.Begin();
-            Assert.Equal(GpuTimestampRefusal.ForeignPool, Assert.Throws<GpuTimestampArgumentException>(() => foreignList.BeginTimestamps(pool, 1)).Reason);
+            Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, Assert.Throws<GpuResourceOwnershipArgumentException>(() => foreignList.BeginTimestamps(pool, 1)).Reason);
             fence.Dispose();
             Assert.Throws<ObjectDisposedException>(() => pool.TryResolve(fence, new ulong[3], out _));
             Assert.Equal(0, api.ReadCalls);

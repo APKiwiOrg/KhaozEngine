@@ -1287,7 +1287,10 @@ These backend policies use required reason enums and preserve the BCL base type,
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
-| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.OffsetMisaligned` | Refuses a composed buffer offset that violates binding alignment. | `ParamName`, `ActualValue`, `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride` |
+| `GpuBufferUsageArgumentException`, `GpuBufferUsageRefusal.UniformBindingCombination` | Refuses a uniform buffer combined with another binding of the same bytes. | `ParamName`, `Usage`, `ConflictingUsage` |
+| `GpuBufferTransferRangeException`, `GpuBufferTransferRefusal.WindowOutsideBuffer` | Refuses a buffer write or copy window outside the logical buffer. | `ParamName`, `ActualValue`, `OffsetBytes`, `SizeBytes`, `BufferBytes`, optional `Side` |
+| `GpuTextureTransferRangeException`, `GpuTextureTransferRefusal.SubresourceOutOfRange` | Refuses a copy, staging or upload subresource outside the texture. | `ParamName`, `ActualValue`, `MipLevel`, `ArrayLayer`, `MipLevels`, `ArrayLayers`, optional `Side` |
+| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.OffsetMisaligned` | Refuses a composed buffer offset that violates binding alignment. | `ParamName`, `ActualValue`, `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `Set` and `Binding` |
 | `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.WindowOutsideSegment` | Refuses a uniform window outside its own frame-ring segment. | `ParamName`, `ActualValue`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `RecoveryOperation` |
 | `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
@@ -1311,8 +1314,6 @@ These backend policies use required reason enums and preserve the BCL base type,
 | `MetalRingWaitException`, `MetalRingWaitRefusal.SubmitLockHeld` | Refuses a Metal segment claim while the caller holds the submit lock. | `Operation` |
 | `MetalShaderFunctionException`, `MetalShaderFunctionRefusal.FunctionReleased` | Refuses reading a released Metal shader function. | `Stage`, `ResourceKind` |
 | `MetalShaderFunctionException`, `MetalShaderFunctionRefusal.StageMissing` | Refuses a shader-set function for a stage the set does not carry. | `Stage` |
-| `MetalBufferPolicyArgumentException`, `MetalBufferPolicyRefusal.UniformStructuredCombination` | Uniform and structured usage on the same ring-backed buffer | `ParamName`, `Usage` |
-| `MetalBufferPolicyRangeException`, `MetalBufferPolicyRefusal.WriteOutsideBuffer` | A CPU write outside the logical buffer | `ParamName`, `ActualValue`, `OffsetBytes`, `WriteBytes`, `BufferBytes` |
 | `MetalStagingArenaRangeException`, `MetalStagingArenaRefusal.LeaseSizeUnaligned` | A lease size not aligned to the native copy boundary | `ParamName`, `ActualValue`, `AlignmentBytes`, `RecoveryOperation` |
 | `MetalStagingArenaStateException`, `MetalStagingArenaRefusal.BlockAllocationFailed` | A nil staging block allocation | `BlockBytes` |
 | `MetalArgumentBatchException`, `MetalArgumentBatchRefusal.DuplicateArgumentIndex` | Two entries at one argument index within one space and shader stage | `Index`, `Space`, `Stage` |
@@ -1330,7 +1331,7 @@ A staged buffer upload carries its payload in `PayloadBytes` and its device-leve
 `RecoveryOperation`. The ring-backed write path keeps its existing alignment freedom.
 
 Recording lifecycle and timestamp contract refusals use `GpuRecordingStateException` and the
-`GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException` and
+`GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException`, `GpuTimestampDisposedException` and
 `GpuTimestampUnsupportedException` types from `KhaozEngine.Gpu`. Their required reasons and identifiers
 are listed in the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals).
 
@@ -1349,3 +1350,13 @@ admission differences remain as described above.
 A nonzero dynamic offset without a declared dynamic element uses the portable
 `GpuDynamicBindingException` and `GpuDynamicBindingRefusal.DynamicElementMissing`, carrying
 `Backend`, `Set` and `DynamicOffset`.
+
+A resource of the declared logical kind from another backend uses `GpuResourceOwnershipRefusal.ForeignBackend`
+in resource-set admission. A genuinely different logical kind keeps `GpuResourceSetRefusal.ResourceKindMismatch`.
+The ownership carrier records `ElementName`, `ResourceIndex`, `ResourceKind`, `ExpectedBackend`, `ActualType`
+and `ExpectedType` where the guard has them. An absent D3D11 register view uses `MissingResource` and
+`RegisterLetter`, with the original parameter and resource types.
+
+Timestamp pools and completion fences use `GpuResourceOwnershipArgumentException` with `ForeignBackend`
+for another backend or `DifferentDevice` for another device/timeline. Their ownership identifiers retain
+the original parameter and runtime type.

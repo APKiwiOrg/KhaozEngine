@@ -136,8 +136,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// with no display server.
         /// <para>
         /// THE TEST IS SATISFACTION, NOT EQUALITY, and 17.40.0 is where that stopped being a distinction without
-        /// a difference. It was written as equality, which refused the ordering the refusal message itself
-        /// prescribes: a windowed instance's extension list is the headless one PLUS <c>VK_KHR_surface</c> and
+        /// a difference. Equality refused a compatible ordering: a windowed instance's extension list is the headless one PLUS <c>VK_KHR_surface</c> and
         /// one platform surface extension, so a headless device asked for while a windowed one is live already
         /// has everything it needs and asks for nothing the live instance lacks. Equality refused it anyway, so
         /// "create the windowed device first" resolved nothing and a Linux client that opened a window and then

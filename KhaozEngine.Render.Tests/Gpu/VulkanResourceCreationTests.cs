@@ -154,10 +154,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             var fixture = new VulkanResourceFixture();
 
-            VulkanBufferRingException ex = Assert.Throws<VulkanBufferRingException>(() => fixture.Factory.CreateBuffer(
+            GpuBufferUsageArgumentException ex = Assert.Throws<GpuBufferUsageArgumentException>(() => fixture.Factory.CreateBuffer(
                 new GpuBufferDescription(256, GpuBufferUsage.UniformBuffer | GpuBufferUsage.VertexBuffer)));
 
-            Assert.Equal(VulkanBufferRingRefusal.UniformUsageCombination, ex.Reason);
+            Assert.Equal(GpuBufferUsageRefusal.UniformBindingCombination, ex.Reason);
             Assert.Equal(GpuBufferUsage.UniformBuffer | GpuBufferUsage.VertexBuffer, ex.Usage);
             Assert.Equal(GpuBufferUsage.VertexBuffer, ex.ConflictingUsage);
             Assert.Empty(fixture.ResourceApi.Events);

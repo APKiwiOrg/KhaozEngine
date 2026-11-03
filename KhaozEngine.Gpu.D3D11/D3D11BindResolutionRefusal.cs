@@ -7,6 +7,4 @@ public enum D3D11BindResolutionRefusal
     NullBufferWindowNonzero,
     /// <summary>Refuses transposing a constant-buffer span into undersized scratch.</summary>
     TransposeScratchTooSmall,
-    /// <summary>Refuses a resource without the native view needed by the register file.</summary>
-    ViewMissing,
 }

@@ -341,22 +341,34 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             // mipLevel even when the layer was the bad value, which sends a caller reading the wrong argument.
             if (mipLevel >= shape.MipLevels)
             {
-                throw new ArgumentOutOfRangeException(nameof(mipLevel), mipLevel,
+                throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange,nameof(mipLevel), mipLevel,
                     "Mip level "
                     + mipLevel.ToString(CultureInfo.InvariantCulture)
                     + " is outside a native Vulkan staging texture with "
                     + shape.MipLevels.ToString(CultureInfo.InvariantCulture)
-                    + " mip levels. The offset it would produce lands in whatever follows the buffer.");
+                    + " mip levels. The offset it would produce lands in whatever follows the buffer.")
+                {
+                    MipLevel = mipLevel,
+                    ArrayLayer = arrayLayer,
+                    MipLevels = shape.MipLevels,
+                    ArrayLayers = shape.ArrayLayers,
+                };
             }
 
             if (arrayLayer >= shape.ArrayLayers)
             {
-                throw new ArgumentOutOfRangeException(nameof(arrayLayer), arrayLayer,
+                throw new GpuTextureTransferRangeException(GpuTextureTransferRefusal.SubresourceOutOfRange,nameof(arrayLayer), arrayLayer,
                     "Array layer "
                     + arrayLayer.ToString(CultureInfo.InvariantCulture)
                     + " is outside a native Vulkan staging texture with "
                     + shape.ArrayLayers.ToString(CultureInfo.InvariantCulture)
-                    + " array layers. The offset it would produce lands in whatever follows the buffer.");
+                    + " array layers. The offset it would produce lands in whatever follows the buffer.")
+                {
+                    MipLevel = mipLevel,
+                    ArrayLayer = arrayLayer,
+                    MipLevels = shape.MipLevels,
+                    ArrayLayers = shape.ArrayLayers,
+                };
             }
         }
 

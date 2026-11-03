@@ -63,7 +63,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// A RESOURCE WITH NO VIEW FOR THE FILE IS A REFUSAL, and the message names the HLSL register letter so it
+        /// A RESOURCE WITH NO VIEW FOR THE FILE IS A REFUSAL, and RegisterLetter identifies its HLSL register so it
         /// can be matched against a shader. Views follow from the declared usage at creation, so this is the shape
         /// of "a layout element of the wrong kind" and of "a texture created without the usage bit its layout
         /// asks for", both of which would otherwise bind nothing the shader reads.
@@ -73,15 +73,16 @@ namespace KhaozEngine.Tests.Gpu
         {
             var resource = new ViewfulBuffer(shaderResource: new object());
 
-            var ex = Assert.Throws<D3D11BindResolutionArgumentException>(
+            var ex = Assert.Throws<GpuResourceOwnershipArgumentException>(
                 () => D3D11BindResolve.ViewOf(resource, D3D11RegisterFile.Sampler));
 
-            Assert.Equal(D3D11BindResolutionRefusal.ViewMissing, ex.Reason);
+            Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, ex.Reason);
             Assert.Equal('s', ex.RegisterLetter);
-            Assert.Equal(typeof(ViewfulBuffer), ex.ResourceType);
-            Assert.Equal(typeof(ID3D11BindableViews), ex.RequiredInterface);
+            Assert.Equal(typeof(ViewfulBuffer), ex.ActualType);
+            Assert.Equal(typeof(ID3D11BindableViews), ex.ExpectedType);
             Assert.Equal("resource", ex.ParamName);
             Assert.IsAssignableFrom<ArgumentException>(ex);
+            Assert.NotNull(D3D11BindResolve.ViewOf(new ViewfulSampler(), D3D11RegisterFile.Sampler));
         }
 
         /// <summary>And a resource from another backend is refused by name rather than by an
@@ -137,16 +138,27 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(streams.BindIndexBuffer(foreign, GpuIndexFormat.UInt16));
         }
 
-        [Fact]
-        public void ANullNativeBufferCarriesTheSharedMissingResourceReason()
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void ANullNativeBufferCarriesTheSharedMissingResourceReason(int absence)
         {
-            var refusal = Assert.Throws<GpuResourceOwnershipArgumentException>(() => D3D11BindResolve.NativeBuffer(null));
+            IGpuBuffer? buffer = absence == 0 ? null : new ViewfulBuffer(hasBuffer: false);
+            var refusal = Assert.Throws<GpuResourceOwnershipArgumentException>(() =>
+            {
+                if (absence == 2) D3D11BindResolve.ViewOf(new GpuBufferRange(null!, 0, 16), D3D11RegisterFile.ConstantBuffer);
+                else D3D11BindResolve.NativeBuffer(buffer);
+            });
             Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, refusal.Reason);
-            Assert.Equal("buffer", refusal.ParamName);
-            Assert.Null(refusal.ActualType);
+            Assert.Equal(absence == 2 ? "resource" : "buffer", refusal.ParamName);
+            Assert.Equal(absence == 0 ? null : absence == 2 ? typeof(GpuBufferRange) : typeof(ViewfulBuffer),
+                refusal.ActualType);
             Assert.Equal(typeof(ID3D11BindableViews), refusal.ExpectedType);
             Assert.Equal(GpuBackendKind.Direct3D11Native, refusal.ExpectedBackend);
             Assert.NotNull(D3D11BindResolve.NativeBuffer(new ViewfulBuffer()));
+            Assert.NotNull(D3D11BindResolve.ViewOf(new GpuBufferRange(new ViewfulBuffer(), 0, 16),
+                D3D11RegisterFile.ConstantBuffer));
         }
 
         // ---- the two framebuffer types --------------------------------------------------------------------
@@ -427,14 +439,14 @@ namespace KhaozEngine.Tests.Gpu
             readonly object? _shaderResource;
             readonly object? _unorderedAccess;
 
-            internal ViewfulBuffer(object? shaderResource = null, object? unorderedAccess = null)
+            internal ViewfulBuffer(object? shaderResource = null, object? unorderedAccess = null, bool hasBuffer = true)
             {
                 _shaderResource = shaderResource;
                 _unorderedAccess = unorderedAccess;
-                Buffer = new object();
+                Buffer = hasBuffer ? new object() : null;
             }
 
-            internal object Buffer { get; }
+            internal object? Buffer { get; }
 
             public uint SizeInBytes => 1024;
 

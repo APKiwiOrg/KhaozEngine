@@ -41,7 +41,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             RequireLive();
             if (!ReferenceEquals(_timeline, timeline) || !ReferenceEquals(_liveness, liveness))
-                throw new GpuTimestampArgumentException(GpuTimestampRefusal.ForeignPool, "The timestamp pool belongs to another Metal device.", "pool") { Backend = GpuBackendKind.MetalNative, ActualType = GetType() };
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.DifferentDevice, "The timestamp pool belongs to another Metal device.", "pool") { ExpectedBackend = GpuBackendKind.MetalNative, ActualType = GetType(), ExpectedType = typeof(MetalTimestampPool), ResourceKind = "timestamp pool", Context = "timestamp pool" };
         }
 
         internal void Begin(IntPtr commandBuffer, uint count, MetalCommandList? list = null, ulong recordingId = 0)
@@ -92,7 +92,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             int count = (int)_state.Count;
             if (ticks.Length < count) throw new GpuTimestampArgumentException(GpuTimestampRefusal.OutputTooSmall, "The output cannot hold the timestamp batch.", nameof(ticks)) { Backend = GpuBackendKind.MetalNative, SuppliedCount = ticks.Length, RequiredCount = _state.Count };
             if (completion is not MetalGpuFence fence)
-                throw new GpuTimestampArgumentException(GpuTimestampRefusal.ForeignCompletionFence, "Use this Metal device's completion fence.", nameof(completion)) { Backend = GpuBackendKind.MetalNative, ActualType = completion.GetType() };
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend, "Use this Metal device's completion fence.", nameof(completion)) { ExpectedBackend = GpuBackendKind.MetalNative, ActualType = completion.GetType(), ExpectedType = typeof(MetalGpuFence), ResourceKind = "completion fence", Context = "timestamp completion" };
             fence.RequireOwner(_timeline);
             if (_resolved is null)
             {

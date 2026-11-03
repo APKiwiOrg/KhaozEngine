@@ -630,7 +630,11 @@ The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumen
 
 | Exception and reason member | What it refuses | Identifiers |
 |---|---|---|
-| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.OffsetMisaligned` | Refuses a composed buffer offset that violates binding alignment. | `ParamName`, `ActualValue`, `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride` |
+| `GpuBufferUsageArgumentException`, `GpuBufferUsageRefusal.UniformBindingCombination` | Refuses a uniform buffer combined with another binding of the same bytes. | `ParamName`, `Usage`, `ConflictingUsage` |
+| `GpuBufferTransferRangeException`, `GpuBufferTransferRefusal.WindowOutsideBuffer` | Refuses a buffer write or copy window outside the logical buffer. | `ParamName`, `ActualValue`, `OffsetBytes`, `SizeBytes`, `BufferBytes`, optional `Side` |
+| `GpuTextureTransferRangeException`, `GpuTextureTransferRefusal.SubresourceOutOfRange` | Refuses a copy, staging or upload subresource outside the texture. | `ParamName`, `ActualValue`, `MipLevel`, `ArrayLayer`, `MipLevels`, `ArrayLayers`, optional `Side` |
+| `GpuTimestampDisposedException`, `GpuTimestampRefusal.TimestampDeviceUnavailable` | Refuses timestamp work after the Direct3D 11 device is lost or disposed. | `ObjectName`, `Backend` |
+| `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.OffsetMisaligned` | Refuses a composed buffer offset that violates binding alignment. | `ParamName`, `ActualValue`, `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `Set` and `Binding` |
 | `GpuDynamicBindingRangeException`, `GpuDynamicBindingRefusal.WindowOutsideSegment` | Refuses a uniform window outside its own frame-ring segment. | `ParamName`, `ActualValue`, `RangeOffset`, `DynamicOffset`, `RangeBytes`, `SegmentStride`, optional `RecoveryOperation` |
 | `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
 | `GpuBoundFramebufferException`, `GpuBoundFramebufferRefusal.FramebufferNotBound` | Refuses a framebuffer-dependent command when no framebuffer is bound. | `Command` |
@@ -691,7 +695,7 @@ The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumen
 | `GpuResourceSetException`, `GpuResourceSetRefusal.TextureUsageMissing` | Refuses a texture lacking the usage required by the layout binding. | `ParamName`, `ElementName`, `Binding`, `ResourceKind`, `ActualUsage`, `RequiredUsage` |
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.DifferentDevice` | Refuses a resource created by a different device of the same backend. | `ParamName`, `ExpectedBackend`, `ResourceKind`, `Context` |
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.ForeignBackend` | Refuses a resource from another backend at bind, map, readback or upload admission. | `ParamName`, `ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind`, `Context`, `ResourceIndex`, `PipelineKind` |
-| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.MissingResource` | Refuses a required resource that was not supplied. | `ParamName`, `ResourceKind`, `Context`, optional `ResourceIndex` |
+| `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.MissingResource` | Refuses a required resource that was not supplied. | `ParamName`, `ResourceKind`, `Context`, optional `ResourceIndex`, `ActualType`, `ExpectedType`, `RegisterLetter` |
 | `GpuResourceOwnershipDisposedException`, `GpuResourceOwnershipRefusal.NativeHandleReleased` | Refuses use of a resource whose native handle has been released. | `ObjectName`, `NativeHandleKind`, `ResourceKind`, `Context` |
 | `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentNotRenderable` | Refuses an attachment without the native texture or view needed for rendering. | `Attachment`, `ActualUsage`, `RequiredUsage`, `IsStaging`, `NativeHandleKind` |
 | `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentShapeMismatch` | Refuses attachments that do not share one size and sample count. | `Attachment`, `Width`, `Height`, `SampleCount`, `ExpectedWidth`, `ExpectedHeight`, `ExpectedSampleCount` |
@@ -701,7 +705,6 @@ The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumen
 | `GpuResourceLayoutException`, `GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind` | Refuses a dynamic offset on a resource kind the backend cannot rebase. | `ParamName`, `Backend`, `ElementName`, `Binding`, `ResourceKind` |
 | `GpuTextureTransferArgumentException`, `GpuTextureTransferRefusal.MipChainRequired` | Refuses mip generation without a real texture and multiple mip levels. | `ParamName`, `MipLevels`, `IsStaging`, `NativeHandleMissing` |
 | `GpuTextureTransferArgumentException`, `GpuTextureTransferRefusal.ResolveShapeMismatch` | Refuses a multisample resolve whose source or destination is not a compatible attachment. | `ParamName`, `SourceSampleCount`, `DestinationSampleCount`, `SourceWidth`, `SourceHeight`, `DestinationWidth`, `DestinationHeight`, `SourceFormat`, `DestinationFormat`, `SourceIsStaging`, `DestinationIsStaging` |
-| `GpuTextureTransferRangeException`, `GpuTextureTransferRefusal.SubresourceOutOfRange` | Refuses a copied subresource index outside the selected source or destination texture. | `ParamName`, `ActualValue`, `Side`, `MipLevel`, `ArrayLayer`, `MipLevels`, `ArrayLayers` |
 | `GpuTextureTransferArgumentException`, `GpuTextureTransferRefusal.TextureShapeMismatch` | Refuses a whole-texture copy between incompatible shapes. | `ParamName`, `SourceWidth`, `SourceHeight`, `SourceFormat`, `SourceMipLevels`, `SourceArrayLayers`, `DestinationWidth`, `DestinationHeight`, `DestinationFormat`, `DestinationMipLevels`, `DestinationArrayLayers` |
 | `GpuSwapchainCopyArgumentException`, `GpuSwapchainCopyRefusal.ColourAttachmentCount` | Refuses a swapchain source without exactly one colour attachment. | `ParamName`, `ColourAttachmentCount` |
 | `GpuSwapchainCopyArgumentException`, `GpuSwapchainCopyRefusal.DestinationShapeMismatch` | Refuses a swapchain copy destination whose complete texture shape differs. | `ParamName`, `SourceWidth`, `SourceHeight`, `SourceFormat`, `DestinationWidth`, `DestinationHeight`, `DestinationFormat`, `DestinationMipLevels`, `DestinationSampleCount` |
@@ -721,8 +724,6 @@ The Vulkan shader-module cache's byte-length guard uses `ShaderValidationArgumen
 | `GpuTimestampStateException`, `GpuTimestampRefusal.BatchNotEnded` | resolving or awaiting a batch that has not ended | `Command`, `Count` |
 | `GpuTimestampStateException`, `GpuTimestampRefusal.BatchNotRecording` | a timestamp write or tail arm before the batch begins | `Command` |
 | `GpuTimestampRangeException`, `GpuTimestampRefusal.FinalIndexRequired` | arming any index except the batch final index | `ParamName`, `ActualValue`, `FinalIndex`, `Count` |
-| `GpuTimestampArgumentException`, `GpuTimestampRefusal.ForeignCompletionFence` | resolving timestamps with another device or backend completion fence | `ParamName`, `Backend`, `ActualType` |
-| `GpuTimestampArgumentException`, `GpuTimestampRefusal.ForeignPool` | a timestamp pool from another backend, device or timeline | `ParamName`, `Backend`, `ActualType` |
 | `GpuTimestampStateException`, `GpuTimestampRefusal.IncompleteBatch` | ending a batch whose timestamps are incomplete | `WrittenCount`, `Count` |
 | `GpuTimestampStateException`, `GpuTimestampRefusal.IndexOutOfSequence` | an index that repeats or skips the next timestamp | `Index`, `ExpectedIndex`, `Count` |
 | `GpuTimestampStateException`, `GpuTimestampRefusal.ManualFinalizationWhileArmed` | manual write or end of the timestamp pool reserved for command-list End | `Backend`, `Command` |
@@ -937,5 +938,13 @@ prefix's CPU-visible access ranges immutable through final frame completion. See
 Recording-state refusals derive from `InvalidOperationException`. Timestamp state, argument, range and
 unsupported subtypes derive from `InvalidOperationException`, `ArgumentException`,
 `ArgumentOutOfRangeException` and `NotSupportedException` respectively. Plain count and index bounds
-remain BCL checks. A timestamp fence of another backend uses `ForeignCompletionFence`. A native fence
-from another device of the same backend retains the resource-ownership validator's refusal.
+remain BCL checks. Timestamp pools and completion fences use `GpuResourceOwnershipArgumentException` with
+`GpuResourceOwnershipRefusal.ForeignBackend` for another backend or `DifferentDevice` for another
+device/timeline. They preserve `ParamName` and carry `ExpectedBackend`, `ActualType`, `ExpectedType`,
+`ResourceKind` and `Context`.
+
+A resource of the declared logical kind from another backend uses `GpuResourceOwnershipRefusal.ForeignBackend`
+in resource-set admission. A genuinely different logical kind keeps `GpuResourceSetRefusal.ResourceKindMismatch`.
+The ownership carrier records `ElementName`, `ResourceIndex`, `ResourceKind`, `ExpectedBackend`, `ActualType`
+and `ExpectedType` where the guard has them. An absent D3D11 register view uses `MissingResource` and
+`RegisterLetter`, with the original parameter and resource types.

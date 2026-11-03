@@ -19706,7 +19706,7 @@ number, and again only the first can make it refuse something the other backends
 `GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly` (or with either read-write structured
 bit, or with the vertex, index or indirect bits) is legal on the seam and was accepted by the deleted Veldrid
 Vulkan backend. `GpuBackendKind.VulkanNative` refuses it at creation with
-`VulkanBufferRingException` and `VulkanBufferRingRefusal.UniformUsageCombination`.
+`GpuBufferUsageArgumentException` and `GpuBufferUsageRefusal.UniformBindingCombination`.
 Read `Usage` and `ConflictingUsage` for the rejected binding combination. A uniform buffer there is ring-backed: it holds one copy of itself per frame in flight, and
 the frame's base offset is supplied at the bind as the dynamic uniform descriptor's offset. No other binding
 carries that base, so the vertex, index, indirect or storage read would address the first copy while the uniform
@@ -19984,6 +19984,11 @@ backends. Its `ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind` an
 resource identifiers available at that guard. `ParamName` keeps the entry point's parameter name.
 Staging usage and mapping state remain in `GpuStagingMapRefusal`.
 
+A resource-set adapter cast distinguishes logical-kind mistakes from foreign-backend resources.
+The former uses `GpuResourceSetRefusal.ResourceKindMismatch`. The latter uses
+`GpuResourceOwnershipRefusal.ForeignBackend`, with `ElementName`, `ResourceIndex`, `ResourceKind`,
+`ExpectedBackend`, `ActualType` and `ExpectedType` where those values are available.
+
 The same ownership reasons apply to attachment factories, pipeline and resource-set binds, uploads,
 completed staging-buffer reads and swapchain-copy command lists. D3D11 framebuffer adapters identify
 colour or depth attachments through `Context` and retain `ParamName = "texture"`. Vulkan completed
@@ -20007,6 +20012,9 @@ and `PipelineKind`. Backend admission differences remain as documented by each b
 Texture copy, mip generation and resolve checks use the portable `GpuTextureTransferArgumentException`
 and `GpuTextureTransferRangeException`. Their required `GpuTextureTransferRefusal` reason distinguishes
 `TextureShapeMismatch`, `MipChainRequired`, `ResolveShapeMismatch` and `SubresourceOutOfRange`.
+The last reason also covers existing staging-layout and upload mip/layer guards on all three backends.
+Their `GpuTextureTransferRangeException` carries the mip, layer and texture counts available at the guard,
+plus the original `ParamName` and `ActualValue`. A copy guard also carries `Side`.
 Shape properties retain both resources' dimensions and format. Subresource refusals retain `ParamName`,
 `ActualValue`, `Side`, mip and layer indices and their limits.
 
@@ -20014,8 +20022,10 @@ Swapchain copy checks use `GpuSwapchainCopyArgumentException` for `ColourAttachm
 `DestinationShapeMismatch`, and `GpuSwapchainCopyStateException` for `SwapchainNotBound` and
 `SwapchainNotCopyable`. The shape refusal carries both shapes. The state refusal names `Command`.
 
-Vulkan native buffer copies use `VulkanBufferCopyException` with `EmptyCopy` or `WindowOutsideBuffer`,
-the side and the refused byte window. Binding usage checks use `VulkanBufferBindingException` with
+Buffer writes and copies that leave the logical buffer use `GpuBufferTransferRangeException` with
+`GpuBufferTransferRefusal.WindowOutsideBuffer`, `OffsetBytes`, `SizeBytes`, `BufferBytes` and `Side`
+where the guard has the copy side. This includes the uniform-ring write checks on all three backends.
+Vulkan refuses empty buffer copies with `VulkanBufferCopyException` and `VulkanBufferCopyRefusal.EmptyCopy`. Binding usage checks use `VulkanBufferBindingException` with
 `RequiredUsageMissing`, `Usage`, `RequiredUsage` and `Context`. Descriptor budgets use
 `VulkanDescriptorLimitException` with `DynamicUniformLimitExceeded`, `LimitName`, `RequestedCount`,
 `Limit` and `SetLayoutCount`. Layout tracking uses `VulkanLayoutArgumentException` for
@@ -24243,9 +24253,12 @@ with `Backend`, `ExistingMode` and `RequestedMode`, `NotMapped` or `MappingMissi
 `CompletionNotSignaled` with `Command`. The last reason identifies an unsignaled `MapForRead` fence.
 The backends retain their existing admission checks and state tracking.
 
-Metal buffer policy uses `MetalBufferPolicyArgumentException` with `UniformStructuredCombination`
-and `Usage`, or `MetalBufferPolicyRangeException` with `WriteOutsideBuffer`, `OffsetBytes`,
-`WriteBytes` and `BufferBytes`. Metal arena refusals use `MetalStagingArenaRangeException` with
+Uniform and structured usage on one buffer is refused by all three backends through
+`GpuBufferUsageArgumentException` with `GpuBufferUsageRefusal.UniformBindingCombination`, `Usage` and
+`ConflictingUsage`. Vulkan and Direct3D 11 also refuse uniform plus vertex, index or indirect usage,
+while Metal accepts those combinations. Buffer bounds use `GpuBufferTransferRangeException` with
+`WindowOutsideBuffer`, `OffsetBytes`, `SizeBytes` and `BufferBytes`. These shared range exceptions retain
+each guard's original `ParamName` and `ActualValue`. Metal arena refusals use `MetalStagingArenaRangeException` with
 `LeaseSizeUnaligned`, `AlignmentBytes` and `RecoveryOperation`, or `MetalStagingArenaStateException`
 with `BlockAllocationFailed` and 64-bit `BlockBytes`. Duplicate argument entries use
 `MetalArgumentBatchException` with `DuplicateArgumentIndex`, `Index`, `Space` and `Stage`.
@@ -24424,8 +24437,9 @@ anything. Only one tail can be armed. Manual `WriteTimestamp` or `EndTimestamps`
 `GpuTimestampRefusal.WrongRecording`, `TailPrefixIncomplete`, `TailAlreadyArmed` and
 `ManualFinalizationWhileArmed` distinguish the state refusals. A wrong final index uses
 `GpuTimestampRangeException` with `FinalIndexRequired`, retaining `ParamName` and `ActualValue` and
-carrying `FinalIndex` and `Count`. Foreign pools use `GpuTimestampArgumentException` with `ForeignPool`,
-`Backend`, `ActualType` and the original `ParamName`.
+carrying `FinalIndex` and `Count`. Foreign pools use `GpuResourceOwnershipArgumentException` with
+`ForeignBackend` for another backend or `DifferentDevice` for another device/timeline. They carry
+`ExpectedBackend`, `ActualType`, `ExpectedType`, `ResourceKind`, `Context` and the original `ParamName`.
 The ordinary End writes the last marker and ends that same batch after all GPU finalization and before
 the native seal, with no extra submission, flush, wait or per-frame allocation. Unarmed End is unchanged.
 Failure or abandonment clears only the list's tail. The caller quarantines the Recording or Pending pool
@@ -24438,7 +24452,8 @@ from `InvalidOperationException`, with `Backend` and `Command`. `GpuRecordingSta
 and `SubmissionWithoutSeal`. End on a fresh or abandoned list uses `EndWithoutRecording`.
 End on a sealed list uses `RecordingAlreadySealed`.
 A lost Metal or Vulkan timestamp device uses `GpuTimestampStateException` with
-`TimestampDeviceUnavailable` and `Backend`. Direct3D 11 keeps its disposed-device exception.
+`TimestampDeviceUnavailable` and `Backend`. Direct3D 11 uses `GpuTimestampDisposedException` with the
+same reason and `Backend`, retaining `ObjectName = "IGpuDevice"` and its `ObjectDisposedException` base.
 
 Submit the list containing `EndTimestamps` once with a same-device completion fence, then call
 `pool.TryResolve(completion, ticks, out double tickPeriodNanoseconds)` on later frames. Keep the pool and
@@ -24448,9 +24463,9 @@ fence stays pending. On Direct3D 11, presenting or a caller drain hands submitte
 API introduces no flush policy for a headless loop that never presents.
 
 A short output uses `GpuTimestampArgumentException` with `OutputTooSmall`, `SuppliedCount` and
-`RequiredCount`. A completion fence of another backend uses the same type with
-`ForeignCompletionFence`, `Backend` and `ActualType`. Both preserve `ParamName`. A native fence from
-another device of the same backend keeps the resource-ownership validator's refusal.
+`RequiredCount`. A completion fence of another backend uses `GpuResourceOwnershipArgumentException`
+with `GpuResourceOwnershipRefusal.ForeignBackend` and its ownership identifiers. Both preserve
+`ParamName`. A native fence from another device of the same backend uses `DifferentDevice`.
 
 `Pending` leaves caller ticks unchanged and sets the period to zero. `Invalid` does the same but consumes
 the batch, for example when counters are disjoint, calibration is unusable or elapsed ticks overflow.
@@ -28237,7 +28252,8 @@ Resolve settings through the same provider before creating its device.
 
 `D3D11BackendCreationRefusal` distinguishes native platform and window-kind refusals.
 `D3D11ObjectPlatformRefusal.WindowsObjectUsedOffWindows` carries the native object kind and support probe.
-`D3D11BindResolutionRefusal` identifies missing register views and constant-buffer transposition inputs.
+`D3D11BindResolutionRefusal` identifies constant-buffer transposition inputs. Missing native register views
+use `GpuResourceOwnershipRefusal.MissingResource`, with `RegisterLetter`, `ActualType` and `ExpectedType`.
 Foreign bindable resources, framebuffers and buffers use `GpuResourceOwnershipArgumentException` with
 `GpuResourceOwnershipRefusal.ForeignBackend`, `ActualType` and `ExpectedType`. A missing required native
 buffer uses `MissingResource`. `D3D11MapResultRefusal.MapFailed` carries the map site, HRESULT,
@@ -28252,7 +28268,8 @@ See the [D3D11 refusal table](../KhaozEngine.Gpu.D3D11/README.md#refusals) for t
 `MetalRingLayoutRefusal` carries frame-depth bounds. `GpuDynamicBindingRangeException` identifies
 `OffsetMisaligned` or `WindowOutsideSegment` through `GpuDynamicBindingRefusal` on Metal and Vulkan.
 It carries `ComposedOffset`, `AlignmentBytes`, `RingBase`, `RangeOffset`, `DynamicOffset`, `RangeBytes`
-and `SegmentStride` where the guard has those values. It preserves `ParamName` and `ActualValue` as
+and `SegmentStride` where the guard has those values. Vulkan alignment refusals also carry `Set` and
+`Binding`. It preserves `ParamName` and `ActualValue` as
 `ArgumentOutOfRangeException` data. Metal window refusals retain `RecoveryOperation = "GpuBufferRange"`.
 D3D11 accepts these inputs today, tracked in [#1689](https://github.com/APKiwiOrg/KhaozEngine/issues/1689). `MetalRingWaitRefusal.SubmitLockHeld` carries the refused operation.
 See the [Metal refusal table](../KhaozEngine.Gpu.Metal/README.md#refusals) for each exception and identifier.

@@ -15,7 +15,7 @@ public sealed class GpuStagingMapArgumentException : ArgumentException
     /// <summary>The backend refusing the resource.</summary>
     public GpuBackendKind Backend { get; init; }
 
-    /// <summary>The actual foreign resource type, or null for a null resource.</summary>
+    /// <summary>The runtime resource type, when supplied by the validator.</summary>
     public Type? ActualType { get; init; }
 
     /// <summary>The kind of resource being mapped, read or written.</summary>

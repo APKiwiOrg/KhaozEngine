@@ -65,21 +65,25 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                                 "Unmapped Direct3D 11 register file in a bind."),
                         };
 
-                        return view ?? throw new D3D11BindResolutionArgumentException(D3D11BindResolutionRefusal.ViewMissing,
+                        return view ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.MissingResource,
                             $"A {resource.GetType().Name} was bound at a '{Letter(file)}' register of the native "
                             + "Direct3D 11 backend and has no view for it. Views follow from a resource's DECLARED "
                             + "usage at creation (decision X1 creates them all eagerly and the emitter creates none), "
                             + "so this is either a layout element of the wrong kind or a resource created without the "
                             + "usage bit its layout asks for.", nameof(resource))
                             {
-                                ResourceType = resource.GetType(),
+                                ActualType = resource.GetType(),
+                                ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                                ResourceKind = "bindable resource",
+                                Context = "register view",
                                 RegisterLetter = Letter(file)[0],
-                                RequiredInterface = typeof(ID3D11BindableViews),
+                                ExpectedType = typeof(ID3D11BindableViews),
                             };
                     }
 
                 default:
-                    throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
+                    throw new GpuResourceOwnershipArgumentException(resource is GpuBufferRange
+                            ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                         $"A {resource.GetType().Name} was bound into the native Direct3D 11 backend. A resource "
                         + "this backend created answers ID3D11BindableViews, which is where the view a register "
                         + "file wants comes from, and a resource from another backend carries another backend's "
@@ -129,7 +133,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// </summary>
         internal static object NativeBuffer(IGpuBuffer? buffer)
-            => (buffer as ID3D11BindableViews)?.BufferObject ?? throw new GpuResourceOwnershipArgumentException(buffer is null ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
+            => (buffer as ID3D11BindableViews)?.BufferObject ?? throw new GpuResourceOwnershipArgumentException(buffer is null or ID3D11BindableViews
+                    ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                 $"A {(buffer is null ? "null" : buffer.GetType().Name)} was handed to the native Direct3D 11 "
                 + "emitter as a buffer. A buffer this backend created carries the ID3D11Buffer every bind, copy "
                 + "and write names, and a buffer from another backend carries another backend's.",

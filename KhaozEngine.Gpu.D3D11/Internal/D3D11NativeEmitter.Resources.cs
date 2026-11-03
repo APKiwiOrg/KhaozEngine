@@ -90,10 +90,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </summary>
         void CopyBackBuffer(D3D11BackBufferCopySource source, D3D11Texture destination)
         {
-            var view = source.ColourView as ID3D11RenderTargetView ?? throw new ArgumentException(
+            var view = source.ColourView as ID3D11RenderTargetView ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend,
                 "A swapchain copy reached the native Direct3D 11 emitter naming a "
                 + source.ColourView.GetType().Name + " as its colour view. The swapchain names an "
-                + "ID3D11RenderTargetView over the back buffer.", nameof(source));
+                + "ID3D11RenderTargetView over the back buffer.", nameof(source))
+            {
+                ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                ActualType = source.ColourView.GetType(),
+                ExpectedType = typeof(ID3D11RenderTargetView),
+                ResourceKind = "colour view",
+                Context = "CopyBackBuffer",
+            };
 
             ID3D11Resource backBuffer = view.Resource;
             try
@@ -130,10 +137,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         public void GenerateMipmaps(IGpuTexture texture)
         {
             D3D11Texture source = NativeTexture(texture);
-            ID3D11ShaderResourceView view = source.ShaderResourceView ?? throw new ArgumentException(
+            ID3D11ShaderResourceView view = source.ShaderResourceView ?? throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.MissingResource,
                 "GenerateMipmaps needs a shader resource view over the full mip chain, and this texture was not "
                 + "created with GpuTextureUsage.Sampled or GpuTextureUsage.GenerateMipmaps, so it never got one. "
-                + "Views follow from the declared usage at creation (decision X1).", nameof(texture));
+                + "Views follow from the declared usage at creation (decision X1).", nameof(texture))
+            {
+                ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                ExpectedType = typeof(ID3D11ShaderResourceView),
+                ResourceKind = "shader resource view",
+                Context = "GenerateMipmaps",
+            };
 
             Native.GenerateMips(view);
         }
@@ -179,9 +192,20 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             D3D11NativeEmitter sink = this;
             _state.Binds.SetComputePipeline(ref sink, pipeline);
 
-            ID3D11ComputeShader shader = state.ComputeShader as ID3D11ComputeShader ?? throw new ArgumentException(
+            object? nativeShader = state.ComputeShader;
+            ID3D11ComputeShader shader = nativeShader as ID3D11ComputeShader
+                ?? throw new GpuResourceOwnershipArgumentException(nativeShader is null
+                    ? GpuResourceOwnershipRefusal.MissingResource : GpuResourceOwnershipRefusal.ForeignBackend,
                 "A compute pipeline reached the native Direct3D 11 emitter with no compiled compute shader.",
-                nameof(pipeline));
+                nameof(pipeline))
+                {
+                    ExpectedBackend = GpuBackendKind.Direct3D11Native,
+                    ActualType = nativeShader?.GetType(),
+                    ExpectedType = typeof(ID3D11ComputeShader),
+                    ResourceKind = "compute shader",
+                    Context = "SetComputePipeline",
+                    PipelineKind = "compute",
+                };
             Native.CSSetShader(shader);
         }
 

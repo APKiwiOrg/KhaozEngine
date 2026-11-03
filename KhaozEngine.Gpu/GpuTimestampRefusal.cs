@@ -12,11 +12,7 @@ public enum GpuTimestampRefusal
     /// <summary>Refuses arming any index except the batch final index.</summary>
     FinalIndexRequired,
 
-    /// <summary>Refuses resolving timestamps with another device or backend completion fence.</summary>
-    ForeignCompletionFence,
 
-    /// <summary>Refuses a timestamp pool from another backend, device or timeline.</summary>
-    ForeignPool,
 
     /// <summary>Refuses ending a batch whose timestamps are incomplete.</summary>
     IncompleteBatch,

@@ -443,7 +443,7 @@ The resource-view and native-buffer adapters use the same shared family. A missi
 **What a resource offers a register file is the resource's own answer.** `ID3D11BindableViews` is the seam for
 that, and `D3D11BindResolve` is the device-free half of the bind: it unwraps a `GpuBufferRange` to its buffer,
 refuses a resource whose declared usage never earned it the view its layout asks for with
-`D3D11BindResolutionRefusal.ViewMissing` and `RegisterLetter`, `ResourceType` and `RequiredInterface`, passes a null through as the HOLE an array bind legitimately has, and transposes a span of binds into
+`GpuResourceOwnershipRefusal.MissingResource` and `RegisterLetter`, `ActualType` and `ExpectedType`, passes a null through as the HOLE an array bind legitimately has, and transposes a span of binds into
 the parallel arrays `*SetConstantBuffers1` takes. It is also where a REFUSAL both emitters owe lives: a buffer
 from another backend, and the framebuffer a clear names an attachment of (none bound, no
 colour attachment at that index, no depth attachment at all). The missing-framebuffer and missing-depth
@@ -1398,6 +1398,10 @@ and `AlignmentBytes`. Staging contract refusals use the shared types in `KhaozEn
 
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
+| `GpuBufferUsageArgumentException`, `GpuBufferUsageRefusal.UniformBindingCombination` | Refuses a uniform buffer combined with another binding of the same bytes. | `ParamName`, `Usage`, `ConflictingUsage` |
+| `GpuBufferTransferRangeException`, `GpuBufferTransferRefusal.WindowOutsideBuffer` | Refuses a buffer write or copy window outside the logical buffer. | `ParamName`, `ActualValue`, `OffsetBytes`, `SizeBytes`, `BufferBytes`, optional `Side` |
+| `GpuTextureTransferRangeException`, `GpuTextureTransferRefusal.SubresourceOutOfRange` | Refuses a copy, staging or upload subresource outside the texture. | `ParamName`, `ActualValue`, `MipLevel`, `ArrayLayer`, `MipLevels`, `ArrayLayers`, optional `Side` |
+| `GpuTimestampDisposedException`, `GpuTimestampRefusal.TimestampDeviceUnavailable` | Refuses timestamp work after the Direct3D 11 device is lost or disposed. | `ObjectName`, `Backend` |
 | `GpuBackendCreationArgumentException`, `GpuBackendCreationRefusal.ForeignDiagnosticSettings` | Refuses headless creation with diagnostic settings not owned by the requested backend. | `ParamName`, `ExpectedBackend`, `ActualType` |
 | `D3D11BackendCreationArgumentException`, `D3D11BackendCreationRefusal.WindowHandleMissing` | Refuses a null HWND for native D3D11 windowed creation. | `ParamName`, `ActualWindowKind` |
 | `D3D11BackendCreationUnsupportedException`, `D3D11BackendCreationRefusal.RuntimeContextUnavailable` | Refuses a runtime without the required versioned D3D11 context. | `RequiredInterface` |
@@ -1408,7 +1412,6 @@ and `AlignmentBytes`. Staging contract refusals use the shared types in `KhaozEn
 | `GpuResourceOwnershipArgumentException`, `GpuResourceOwnershipRefusal.MissingResource` | Refuses a missing required native buffer. | `ParamName`, `ExpectedBackend`, `ExpectedType`, `ResourceKind`, `Context` |
 | `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.NullBufferWindowNonzero` | Refuses a null constant buffer carrying a nonzero window. | `ParamName`, `RegisterIndex`, `FirstConstant`, `ConstantCount` |
 | `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.TransposeScratchTooSmall` | Refuses transposing a constant-buffer span into undersized scratch. | `ParamName`, `SuppliedCount`, `RequiredCount` |
-| `D3D11BindResolutionArgumentException`, `D3D11BindResolutionRefusal.ViewMissing` | Refuses a resource without the native view needed by the register file. | `ParamName`, `ResourceType`, `RegisterLetter`, `RequiredInterface` |
 | `D3D11MapResultException`, `D3D11MapResultRefusal.MapFailed` | Refuses a native mapping operation that returns a failed HRESULT. | `Site`, `HResult`, `ResultToken`, `DeviceLost` |
 | `D3D11ObjectPlatformException`, `D3D11ObjectPlatformRefusal.WindowsObjectUsedOffWindows` | Refuses use of a Windows-only native D3D11 object on another operating system. | `ObjectKind`, `RequiredOperatingSystem`, `SupportProbe` |
 | `D3D11CompilerEvidenceStateException`, `D3D11CompilerEvidenceRefusal.CombinedFlagsTooLarge` | Refuses retaining combined compiler flags beyond the bounded pipeline evidence profile. | `Field`, `MaximumUtf8Bytes`, `ActualUtf8Bytes` |
@@ -1430,7 +1433,7 @@ State exceptions derive from `InvalidOperationException`, staging argument excep
 names and actual values stay intact. Native map-result failures remain a separate backend family.
 
 Recording lifecycle and timestamp contract refusals use `GpuRecordingStateException` and the
-`GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException` and
+`GpuTimestampStateException`, `GpuTimestampArgumentException`, `GpuTimestampRangeException`, `GpuTimestampDisposedException` and
 `GpuTimestampUnsupportedException` types from `KhaozEngine.Gpu`. Their required reasons and identifiers
 are listed in the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals).
 
@@ -1450,3 +1453,13 @@ view and register validation remains the separate bind-resolution contract.
 D3D11 currently accepts dynamic offset alignment and segment-window inputs that Metal and Vulkan refuse
 through `GpuDynamicBindingRangeException` with `OffsetMisaligned` or `WindowOutsideSegment`.
 The admission gap is tracked in [#1689](https://github.com/APKiwiOrg/KhaozEngine/issues/1689).
+
+A resource of the declared logical kind from another backend uses `GpuResourceOwnershipRefusal.ForeignBackend`
+in resource-set admission. A genuinely different logical kind keeps `GpuResourceSetRefusal.ResourceKindMismatch`.
+The ownership carrier records `ElementName`, `ResourceIndex`, `ResourceKind`, `ExpectedBackend`, `ActualType`
+and `ExpectedType` where the guard has them. An absent D3D11 register view uses `MissingResource` and
+`RegisterLetter`, with the original parameter and resource types.
+
+Timestamp pools and completion fences use `GpuResourceOwnershipArgumentException` with `ForeignBackend`
+for another backend or `DifferentDevice` for another device/timeline. Their ownership identifiers retain
+the original parameter and runtime type.

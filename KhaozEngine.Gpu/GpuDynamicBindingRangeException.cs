@@ -12,6 +12,12 @@ public sealed class GpuDynamicBindingRangeException : ArgumentOutOfRangeExceptio
     /// <summary>The rule that refused the binding.</summary>
     public GpuDynamicBindingRefusal Reason { get; }
 
+    /// <summary>The resource-set number, when the validator has it.</summary>
+    public uint? Set { get; init; }
+
+    /// <summary>The dynamic uniform binding number, when the validator has it.</summary>
+    public uint? Binding { get; init; }
+
     /// <summary>The composed native binding offset in bytes, when available.</summary>
     public ulong? ComposedOffset { get; init; }
 

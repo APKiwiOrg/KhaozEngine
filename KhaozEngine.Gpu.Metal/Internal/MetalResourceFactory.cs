@@ -12,7 +12,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>THE not-yet LEDGER IS GONE FROM THIS TYPE, which is the discipline rather than a cleanup.</b> This
     /// file carried a <c>NotBuiltYet</c> helper and one row constant per refusing member, and the rule was that a
     /// row filling a member deletes its entry. Row 12 filled the last one, so the helper and both constants went
-    /// with it: a refusal message nothing can reach is a claim that this factory is unfinished, and a reader who
+    /// with it: a refusal nothing can reach is a claim that this factory is unfinished, and a reader who
     /// found it would be misled by it. <c>MetalCommandList.Unbuilt.cs</c> carried the same kind of ledger until
     /// row 14 filled its last member and deleted the file, so no ledger of that sort is left in the package.</para>
     ///

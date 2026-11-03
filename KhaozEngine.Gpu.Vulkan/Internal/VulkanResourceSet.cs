@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using KhaozEngine.Gpu.Internal;
 using Silk.NET.Vulkan;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
@@ -452,18 +453,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         static T Require<T>(object? resource, in GpuResourceLayoutElement element, int index, string what)
             where T : class
             => resource as T
-                ?? throw new GpuResourceSetException(GpuResourceSetRefusal.ResourceKindMismatch,
+                ?? throw GpuResourceSetMismatch.Refusal(resource, element, index, GpuBackendKind.VulkanNative, typeof(T),
                     $"'{element.Name}' at binding {index.ToString(CultureInfo.InvariantCulture)} of a native "
                     + "Vulkan resource set declares " + element.Kind + ", which needs " + what
                     + " created by this backend. It was given a "
                     + (resource?.GetType().Name ?? "null") + ".",
-                    nameof(resource))
-                {
-                    ElementName = element.Name,
-                    Binding = index,
-                    ResourceKind = element.Kind,
-                    ActualType = resource?.GetType(),
-                    ExpectedType = typeof(T),
-                };
+                    nameof(resource));
     }
 }

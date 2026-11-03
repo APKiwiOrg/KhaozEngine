@@ -53,7 +53,7 @@ public sealed partial class MetalTimestampEndTests
         rig.List.Begin();
         Assert.Equal(GpuTimestampRefusal.WrongRecording, Assert.Throws<GpuTimestampStateException>(() => rig.Arm()).Reason);
         Assert.Throws<ArgumentNullException>(() => tail.FinishTimestampsOnEnd(null!, 1));
-        Assert.Equal(GpuTimestampRefusal.ForeignPool, Assert.Throws<GpuTimestampArgumentException>(() => tail.FinishTimestampsOnEnd(foreign.Pool, 1)).Reason);
+        Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, Assert.Throws<GpuResourceOwnershipArgumentException>(() => tail.FinishTimestampsOnEnd(foreign.Pool, 1)).Reason);
         rig.List.BeginTimestamps(rig.Pool, 2);
         var indexError = Assert.Throws<GpuTimestampRangeException>(() => rig.Arm(0));
         Assert.Equal(GpuTimestampRefusal.FinalIndexRequired, indexError.Reason);

@@ -208,7 +208,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             IntPtr handle = texture.Handle.Handle;
             if (handle != IntPtr.Zero) return handle;
 
-            throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentNotRenderable,
+            throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentViewMissing,
                 "The " + what + " has no MTLTexture to bind, which on this backend means the texture has already "
                 + "been disposed: every non-staging texture is created with its native texture and holds it for "
                 + "life, and there is no view factory anywhere in this package to make a second one with (M-M10).", null)

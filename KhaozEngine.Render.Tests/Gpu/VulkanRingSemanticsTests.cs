@@ -1,3 +1,4 @@
+using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Vulkan;
 using System;
 using System.Threading;
@@ -301,7 +302,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             using var harness = new VulkanRingHarness(sizeInBytes: 256, framesInFlight: 3);
 
-            Assert.Throws<ArgumentOutOfRangeException>(
+            Assert.Throws<GpuBufferTransferRangeException>(
                 () => harness.Allocator.UpdateBuffer(harness.Ring, 250, new byte[8]));
 
             Assert.Equal(new byte[harness.Bytes.Length], harness.Bytes);

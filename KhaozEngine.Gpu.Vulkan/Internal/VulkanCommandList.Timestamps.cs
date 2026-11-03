@@ -33,7 +33,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             if (_timestampTimeline is null) throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Vulkan command list has no timestamp support.") { Backend = GpuBackendKind.VulkanNative, Command = member };
             ArgumentNullException.ThrowIfNull(pool);
             if (pool is not VulkanTimestampPool native)
-                throw new GpuTimestampArgumentException(GpuTimestampRefusal.ForeignPool, "Use a timestamp pool from this Vulkan device.", nameof(pool)) { Backend = GpuBackendKind.VulkanNative, ActualType = pool.GetType() };
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend, "Use a timestamp pool from this Vulkan device.", nameof(pool)) { ExpectedBackend = GpuBackendKind.VulkanNative, ActualType = pool.GetType(), ExpectedType = typeof(VulkanTimestampPool), ResourceKind = "timestamp pool", Context = "timestamp pool" };
             native.RequireOwner(_timestampTimeline);
             return native;
         }

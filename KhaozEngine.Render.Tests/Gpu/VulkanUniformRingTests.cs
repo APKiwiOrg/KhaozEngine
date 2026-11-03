@@ -62,12 +62,13 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(GpuBufferUsage.UniformBuffer | GpuBufferUsage.IndirectBuffer)]
         public void AUniformBufferCombinedWithAnotherBinding_IsRefusedAtCreation(GpuBufferUsage usage)
         {
-            VulkanBufferRingException ex = Assert.Throws<VulkanBufferRingException>(
+            GpuBufferUsageArgumentException ex = Assert.Throws<GpuBufferUsageArgumentException>(
                 () => VulkanBufferRingPolicy.ForBuffer(usage));
 
             Assert.IsAssignableFrom<ArgumentException>(ex);
-            Assert.Equal(VulkanBufferRingRefusal.UniformUsageCombination, ex.Reason);
+            Assert.Equal(GpuBufferUsageRefusal.UniformBindingCombination, ex.Reason);
             Assert.Equal("usage", ex.ParamName);
+            VulkanBufferRingPolicy.ForBuffer(GpuBufferUsage.UniformBuffer);
             Assert.Equal(usage, ex.Usage);
             Assert.Equal(usage & ~GpuBufferUsage.UniformBuffer, ex.ConflictingUsage);
 
@@ -356,8 +357,15 @@ namespace KhaozEngine.Tests.Gpu
         {
             using var harness = new VulkanRingHarness(sizeInBytes: 256, framesInFlight: 3);
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => harness.Ring.Write(250, new byte[8]));
-            Assert.Throws<ArgumentOutOfRangeException>(() => harness.Ring.Write(257, new byte[1]));
+            var refusal = Assert.Throws<GpuBufferTransferRangeException>(() => harness.Ring.Write(250, new byte[8]));
+            Assert.Equal(GpuBufferTransferRefusal.WindowOutsideBuffer, refusal.Reason);
+            Assert.Equal("offsetBytes", refusal.ParamName);
+            Assert.Equal(250ul, refusal.ActualValue);
+            Assert.Equal(250ul, refusal.OffsetBytes);
+            Assert.Equal(8L, refusal.SizeBytes);
+            Assert.Equal(256ul, refusal.BufferBytes);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(refusal);
+            Assert.Throws<GpuBufferTransferRangeException>(() => harness.Ring.Write(257, new byte[1]));
 
             // The boundary itself is legal.
             harness.Ring.Write(248, new byte[8]);

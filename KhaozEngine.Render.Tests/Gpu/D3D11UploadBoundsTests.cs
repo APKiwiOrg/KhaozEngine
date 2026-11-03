@@ -37,10 +37,14 @@ namespace KhaozEngine.Tests.Gpu
             uint slices = D3D11UploadBounds.ArraySlices(description);
             Assert.Equal(1u, slices);
 
-            var thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            var thrown = Assert.Throws<GpuTextureTransferRangeException>(
                 () => D3D11UploadBounds.RequireArrayLayer(1, slices));
 
             Assert.Equal("arrayLayer", thrown.ParamName);
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, thrown.Reason);
+            Assert.Equal(1u, thrown.ArrayLayer);
+            Assert.Equal(1u, thrown.ArrayLayers);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(thrown);
         }
 
         /// <summary>
@@ -71,7 +75,7 @@ namespace KhaozEngine.Tests.Gpu
 
             for (uint layer = 0; layer < 4; layer++) D3D11UploadBounds.RequireArrayLayer(layer, slices);
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => D3D11UploadBounds.RequireArrayLayer(4, slices));
+            Assert.Throws<GpuTextureTransferRangeException>(() => D3D11UploadBounds.RequireArrayLayer(4, slices));
         }
 
         /// <summary>
@@ -92,7 +96,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(6u, slices);
 
             D3D11UploadBounds.RequireArrayLayer(5, slices);
-            Assert.Throws<ArgumentOutOfRangeException>(() => D3D11UploadBounds.RequireArrayLayer(6, slices));
+            Assert.Throws<GpuTextureTransferRangeException>(() => D3D11UploadBounds.RequireArrayLayer(6, slices));
         }
 
         /// <summary>
@@ -104,10 +108,15 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void AOneMipTextureRefusesLevelOneByName()
         {
-            var thrown = Assert.Throws<ArgumentOutOfRangeException>(
+            var thrown = Assert.Throws<GpuTextureTransferRangeException>(
                 () => D3D11UploadBounds.RequireMipLevel(1, 1));
 
             Assert.Equal("mipLevel", thrown.ParamName);
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, thrown.Reason);
+            Assert.Equal(1u, thrown.MipLevel);
+            Assert.Equal(1u, thrown.MipLevels);
+            Assert.Equal(1u, thrown.ActualValue);
+            D3D11UploadBounds.RequireMipLevel(0, 1);
         }
 
         /// <summary>
@@ -119,7 +128,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             for (uint level = 0; level < 4; level++) D3D11UploadBounds.RequireMipLevel(level, 4);
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => D3D11UploadBounds.RequireMipLevel(4, 4));
+            Assert.Throws<GpuTextureTransferRangeException>(() => D3D11UploadBounds.RequireMipLevel(4, 4));
         }
 
         /// <summary>

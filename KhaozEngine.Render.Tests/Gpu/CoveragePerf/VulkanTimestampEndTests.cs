@@ -64,9 +64,9 @@ public sealed class VulkanTimestampEndTests
         foreign.Start();
         rig.List.Begin();
         rig.List.BeginTimestamps(rig.Pool, 3);
-        var foreignError = Assert.Throws<GpuTimestampArgumentException>(() => rig.Arm(foreign.Pool, 2));
-        Assert.Equal(GpuTimestampRefusal.ForeignPool, foreignError.Reason);
-        Assert.Equal(GpuBackendKind.VulkanNative, foreignError.Backend);
+        var foreignError = Assert.Throws<GpuResourceOwnershipArgumentException>(() => rig.Arm(foreign.Pool, 2));
+        Assert.Equal(GpuResourceOwnershipRefusal.DifferentDevice, foreignError.Reason);
+        Assert.Equal(GpuBackendKind.VulkanNative, foreignError.ExpectedBackend);
         Assert.Equal(foreign.Pool.GetType(), foreignError.ActualType);
         Assert.Equal("pool", foreignError.ParamName);
         var indexError = Assert.Throws<GpuTimestampRangeException>(() => rig.Arm(rig.Pool, 0));

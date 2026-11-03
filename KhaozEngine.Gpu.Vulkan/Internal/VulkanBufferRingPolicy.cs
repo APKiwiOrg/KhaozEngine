@@ -65,7 +65,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             GpuBufferUsage others = usage & BindingBits & ~GpuBufferUsage.UniformBuffer;
             if (others == GpuBufferUsage.None) return true;
 
-            throw new VulkanBufferRingException(VulkanBufferRingRefusal.UniformUsageCombination,
+            throw new GpuBufferUsageArgumentException(GpuBufferUsageRefusal.UniformBindingCombination,
                 $"A buffer was created as GpuBufferUsage.UniformBuffer | {others} on the native Vulkan backend, "
                 + "which refuses that combination at creation. A uniform buffer here is RING-BACKED: it holds one "
                 + "segment per frame in flight and the frame's base offset is supplied at the bind, as the dynamic "

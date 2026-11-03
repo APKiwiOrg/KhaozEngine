@@ -57,11 +57,11 @@ public sealed class GpuTimestampRefusalTests
         rig.List.End();
         using var metal = new MetalRingHarness();
         using var foreign = metal.Timeline.CreateFence();
-        var ex = Assert.Throws<GpuTimestampArgumentException>(() => rig.Pool.TryResolve(foreign, new ulong[2], out _));
+        var ex = Assert.Throws<GpuResourceOwnershipArgumentException>(() => rig.Pool.TryResolve(foreign, new ulong[2], out _));
         Assert.IsAssignableFrom<ArgumentException>(ex);
-        Assert.Equal(GpuTimestampRefusal.ForeignCompletionFence, ex.Reason);
+        Assert.Equal(GpuResourceOwnershipRefusal.ForeignBackend, ex.Reason);
         Assert.Equal("completion", ex.ParamName);
-        Assert.Equal(GpuBackendKind.Direct3D11Native, ex.Backend);
+        Assert.Equal(GpuBackendKind.Direct3D11Native, ex.ExpectedBackend);
         Assert.Equal(typeof(MetalGpuFence), ex.ActualType);
         using var own = rig.Fences.CreateFence();
         var output = Assert.Throws<GpuTimestampArgumentException>(() => rig.Pool.TryResolve(own, new ulong[1], out _));

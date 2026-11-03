@@ -253,10 +253,15 @@ void main() { }");
             var native = new D3D11TimestampTestQueries { Failure = unchecked((int)0x887A0005) };
             var loss = new D3D11DeviceLossLatch(liveness, new RemovedReason());
             var api = new D3D11TimestampApi(native, liveness, loss);
-            if (duringRead)
-                Assert.Throws<ObjectDisposedException>(() => api.TryReadDisjoint(3, out _, out _));
-            else
-                Assert.Throws<ObjectDisposedException>(() => D3D11TimestampApi.Probe(api));
+            var refusal = Assert.Throws<GpuTimestampDisposedException>(() =>
+            {
+                if (duringRead) api.TryReadDisjoint(3, out _, out _);
+                else D3D11TimestampApi.Probe(api);
+            });
+            Assert.Equal(GpuTimestampRefusal.TimestampDeviceUnavailable, refusal.Reason);
+            Assert.Equal(nameof(IGpuDevice), refusal.ObjectName);
+            Assert.Equal(GpuBackendKind.Direct3D11Native, refusal.Backend);
+            Assert.IsAssignableFrom<ObjectDisposedException>(refusal);
             Assert.True(loss.IsLost);
             Assert.True(liveness.IsDead);
             Assert.Equal(duringRead ? "timestamp GetData" : "timestamp query creation", loss.Site);
@@ -277,7 +282,9 @@ void main() { }");
             Record(commands, pool);
             using var fence = (D3D11GpuFence)fences.CreateFence();
             fence.Arm(1);
-            Assert.Throws<ObjectDisposedException>(() => pool.TryResolve(fence, new ulong[2], out _));
+            var refusal = Assert.Throws<GpuTimestampDisposedException>(() => pool.TryResolve(fence, new ulong[2], out _));
+            Assert.Equal(GpuTimestampRefusal.TimestampDeviceUnavailable, refusal.Reason);
+            Assert.Equal(nameof(IGpuDevice), refusal.ObjectName);
             Assert.Empty(api.Calls);
         }
 

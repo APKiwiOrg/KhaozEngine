@@ -15,7 +15,7 @@ public sealed class GpuTimestampArgumentException : ArgumentException
     /// <summary>The backend refusing the operation, when known.</summary>
     public GpuBackendKind? Backend { get; init; }
 
-    /// <summary>The actual type of the supplied pool, timeline or fence.</summary>
+    /// <summary>The actual object type, when supplied by the validator.</summary>
     public Type? ActualType { get; init; }
 
     /// <summary>The supplied output span length.</summary>

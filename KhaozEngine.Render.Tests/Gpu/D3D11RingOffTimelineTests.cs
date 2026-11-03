@@ -1,3 +1,4 @@
+using KhaozEngine.Gpu;
 using System;
 using System.Diagnostics;
 using System.Globalization;
@@ -191,7 +192,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: Segments);
 
-            Assert.Throws<ArgumentOutOfRangeException>(
+            Assert.Throws<GpuBufferTransferRangeException>(
                 () => harness.Allocator.UpdateBuffer(harness.Ring, 250, new byte[8]));
 
             Assert.Equal(0, harness.Memory.MapCount);

@@ -461,27 +461,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 MetalIndexSpace.Sampler, sampler, RangeOffset: 0, Range: 0, AppliesCallerOffset: false);
         }
 
-        // THE WRONG-THING REFUSAL IS THIS TYPE'S AND THE WRONG-DEVICE ONE IS SHARED. The kind mismatch is what a
-        // caller actually hits (a resource array one step out of line with its layout), so it names the element,
-        // the kind it declares and what arrived. The identity half is MetalResourceOwnership's, unchanged, and
-        // asking it a second time after the cast has already passed costs one type test and keeps that message in
-        // exactly one place.
+        // Classify a failed adapter cast by the shared logical kind first. A correctly shaped resource from
+        // another backend is an ownership refusal. A resource in the wrong layout slot is a kind mismatch.
+        // After a successful cast, MetalResourceOwnership still checks the creating device.
         T Require<T>(object? resource, in GpuResourceLayoutElement element, string where, int binding, string what)
             where T : class, IMetalOwnedResource
         {
             if (resource is not T typed)
             {
-                throw new GpuResourceSetException(GpuResourceSetRefusal.ResourceKindMismatch,
+                throw GpuResourceSetMismatch.Refusal(resource, element, binding, GpuBackendKind.MetalNative, typeof(T),
                     $"{where} declares {element.Kind}, which needs {what} created by the native Metal backend. It "
                     + $"was given a {resource?.GetType().Name ?? "null"}.",
-                    nameof(resource))
-                {
-                    ElementName = element.Name,
-                    Binding = binding,
-                    ResourceKind = element.Kind,
-                    ActualType = resource?.GetType(),
-                    ExpectedType = typeof(T),
-                };
+                    nameof(resource));
             }
 
             return MetalResourceOwnership.Require<T>(typed, _liveness, nameof(resource));

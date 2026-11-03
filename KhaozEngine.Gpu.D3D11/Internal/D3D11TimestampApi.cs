@@ -106,7 +106,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         void RequireLive()
         {
-            if (_liveness.IsDead) throw new ObjectDisposedException(nameof(IGpuDevice), "The Direct3D 11 timestamp device is disposed or lost.");
+            if (_liveness.IsDead) throw new GpuTimestampDisposedException(GpuTimestampRefusal.TimestampDeviceUnavailable, nameof(IGpuDevice), "The Direct3D 11 timestamp device is disposed or lost.") { Backend = GpuBackendKind.Direct3D11Native };
         }
     }
 }

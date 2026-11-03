@@ -213,7 +213,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ABulkWritePastTheEndIsRefusedBeforeAnythingIsStaged()
         {
-            Assert.Throws<MetalBufferPolicyRangeException>(
+            Assert.Throws<GpuBufferTransferRangeException>(
                 () => Record(ring: null, DestinationSize - 8, Payload(16, seed: 8)));
 
             Assert.Equal(0, _arena.BlocksCreated);
@@ -279,7 +279,7 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void ANilHandleStillRefusesAWritePastTheEnd()
         {
-            Assert.Throws<MetalBufferPolicyRangeException>(() => MetalBufferUpload.Record(
+            Assert.Throws<GpuBufferTransferRangeException>(() => MetalBufferUpload.Record(
                 ring: null, Segment, IntPtr.Zero, DestinationSize, DestinationSize - 8, Payload(16, seed: 11),
                 _encoders, _arena, _harness.Blit));
         }

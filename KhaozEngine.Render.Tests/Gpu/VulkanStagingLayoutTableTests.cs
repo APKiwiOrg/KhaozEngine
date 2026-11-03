@@ -289,8 +289,16 @@ namespace KhaozEngine.Tests.Gpu
         {
             var shape = new VulkanStagingShape(8, 8, 3, 2, GpuPixelFormat.R8G8B8A8UNorm);
 
-            var level = Assert.Throws<ArgumentOutOfRangeException>(() => VulkanStagingLayout.For(shape, 3, 0));
-            var layer = Assert.Throws<ArgumentOutOfRangeException>(() => VulkanStagingLayout.For(shape, 0, 2));
+            var level = Assert.Throws<GpuTextureTransferRangeException>(() => VulkanStagingLayout.For(shape, 3, 0));
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, level.Reason);
+            Assert.Equal(3u, level.MipLevel);
+            Assert.Equal(3u, level.MipLevels);
+            var layer = Assert.Throws<GpuTextureTransferRangeException>(() => VulkanStagingLayout.For(shape, 0, 2));
+            Assert.Equal(GpuTextureTransferRefusal.SubresourceOutOfRange, layer.Reason);
+            Assert.Equal(2u, layer.ArrayLayer);
+            Assert.Equal(2u, layer.ArrayLayers);
+            Assert.IsAssignableFrom<ArgumentOutOfRangeException>(layer);
+            VulkanStagingLayout.For(shape, 2, 1);
 
             // Each refusal names the parameter that was actually out of range (#697). One message covered both
             // and reported mipLevel either way, which points a caller at the argument that was fine.

@@ -81,7 +81,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// row 10 resolved at creation and left in binding order.</param>
         /// <param name="callerDynamicOffset">The per-draw offset the caller recorded against this slot, added to
         /// the ONE element declared dynamic and to no other.</param>
-        /// <param name="slot">The set number, for the refusal message only.</param>
+        /// <param name="slot">The set number carried by an alignment refusal.</param>
         /// <exception cref="ArgumentOutOfRangeException">A composed entry would put the descriptor's range outside
         /// its own ring segment, which at the last frame slot is outside the buffer (V-M6), or would not fit the
         /// 32-bit field <c>pDynamicOffsets</c> is, or is not a multiple of the dynamic-offset alignment
@@ -176,6 +176,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + "larger, so an offset cannot pass on a lax dev device and fail validation on one reporting the "
                 + "spec's required maximum.")
             {
+                Set = slot,
+                Binding = dynamicUniform.Binding,
                 ComposedOffset = composed,
                 AlignmentBytes = alignment,
                 RingBase = dynamicUniform.Ring.CurrentFrameBaseBytes,

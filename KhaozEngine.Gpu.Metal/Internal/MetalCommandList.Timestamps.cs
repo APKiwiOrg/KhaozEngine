@@ -66,7 +66,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             ArgumentNullException.ThrowIfNull(pool);
             if (_timestampTimeline is null) throw new GpuTimestampUnsupportedException(GpuTimestampRefusal.TimestampUnsupported, "This Metal command list has no timestamp device.") { Backend = GpuBackendKind.MetalNative, Command = member };
             if (pool is not MetalTimestampPool timestamps)
-                throw new GpuTimestampArgumentException(GpuTimestampRefusal.ForeignPool, "Use this Metal device's timestamp pool.", nameof(pool)) { Backend = GpuBackendKind.MetalNative, ActualType = pool.GetType() };
+                throw new GpuResourceOwnershipArgumentException(GpuResourceOwnershipRefusal.ForeignBackend, "Use this Metal device's timestamp pool.", nameof(pool)) { ExpectedBackend = GpuBackendKind.MetalNative, ActualType = pool.GetType(), ExpectedType = typeof(MetalTimestampPool), ResourceKind = "timestamp pool", Context = "timestamp pool" };
             timestamps.RequireOwner(_timestampTimeline, _liveness);
             return timestamps;
         }

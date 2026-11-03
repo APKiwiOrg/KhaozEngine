@@ -27,6 +27,12 @@ public sealed class GpuResourceOwnershipArgumentException : ArgumentException
     /// <summary>The expected type reported by the refusing validator, when relevant to the reason.</summary>
     public Type? ExpectedType { get; init; }
 
+    /// <summary>The declared resource-set element name, when the guard has it.</summary>
+    public string? ElementName { get; init; }
+
+    /// <summary>The native register letter whose view is absent, when the guard has it.</summary>
+    public char? RegisterLetter { get; init; }
+
     /// <summary>The resource index reported by the refusing validator, when relevant to the reason.</summary>
     public int? ResourceIndex { get; init; }
 

@@ -69,7 +69,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// records it, which is the point of the decision: it should be found in the documentation rather than
         /// discovered by a consumer.</para>
         /// </summary>
-        /// <exception cref="MetalBufferPolicyArgumentException">The usage is ring-backed and declares a structured binding.</exception>
+        /// <exception cref="GpuBufferUsageArgumentException">The usage is ring-backed and declares a structured binding.</exception>
         internal static void RequireCreatable(GpuBufferUsage usage)
         {
             const GpuBufferUsage Structured =
@@ -77,7 +77,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (!IsRingBacked(usage) || (usage & Structured) == 0) return;
 
-            throw new MetalBufferPolicyArgumentException(MetalBufferPolicyRefusal.UniformStructuredCombination,
+            throw new GpuBufferUsageArgumentException(GpuBufferUsageRefusal.UniformBindingCombination,
                 "The native Metal backend cannot create a buffer that is both a uniform buffer and a structured "
                 + "buffer (asked for "
                 + usage.ToString()
@@ -89,12 +89,13 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 nameof(usage))
             {
                 Usage = usage,
+                ConflictingUsage = usage & Structured,
             };
         }
 
         /// <summary>
         /// Refuse a write that runs off the end of a buffer, carrying its offset, write size and capacity
-        /// on <see cref="MetalBufferPolicyRangeException"/>. The write itself is
+        /// on <see cref="GpuBufferTransferRangeException"/>. The write itself is
         /// an unguarded copy into <c>contents()</c>, so without this refusal the same mistake is a silent write
         /// into whatever the allocator put next.
         /// </summary>
@@ -102,7 +103,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if ((ulong)offsetBytes + writeBytes <= sizeInBytes) return;
 
-            throw new MetalBufferPolicyRangeException(MetalBufferPolicyRefusal.WriteOutsideBuffer, nameof(writeBytes), writeBytes,
+            throw new GpuBufferTransferRangeException(GpuBufferTransferRefusal.WindowOutsideBuffer, nameof(writeBytes), writeBytes,
                 "A native Metal buffer write of "
                 + writeBytes.ToString(CultureInfo.InvariantCulture)
                 + " bytes at offset "
@@ -113,7 +114,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + "this refusal the same call overwrites whatever the driver placed after this allocation.")
             {
                 OffsetBytes = offsetBytes,
-                WriteBytes = writeBytes,
+                SizeBytes = writeBytes,
                 BufferBytes = sizeInBytes,
             };
         }

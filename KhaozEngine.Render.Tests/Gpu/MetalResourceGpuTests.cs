@@ -97,11 +97,11 @@ namespace KhaozEngine.Tests.Gpu
 
             using IGpuDevice device = CreateHeadless();
 
-            MetalBufferPolicyArgumentException thrown = Assert.Throws<MetalBufferPolicyArgumentException>(() => device.Factory.CreateBuffer(
+            GpuBufferUsageArgumentException thrown = Assert.Throws<GpuBufferUsageArgumentException>(() => device.Factory.CreateBuffer(
                 new GpuBufferDescription(256,
                     GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly)));
 
-            Assert.Equal(MetalBufferPolicyRefusal.UniformStructuredCombination, thrown.Reason);
+            Assert.Equal(GpuBufferUsageRefusal.UniformBindingCombination, thrown.Reason);
             Assert.Equal("usage", thrown.ParamName);
             Assert.Equal(GpuBufferUsage.UniformBuffer | GpuBufferUsage.StructuredBufferReadOnly, thrown.Usage);
         }
@@ -151,14 +151,14 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuBuffer buffer = device.Factory.CreateBuffer(
                 new GpuBufferDescription(16, GpuBufferUsage.VertexBuffer));
 
-            MetalBufferPolicyRangeException thrown = Assert.Throws<MetalBufferPolicyRangeException>(
+            GpuBufferTransferRangeException thrown = Assert.Throws<GpuBufferTransferRangeException>(
                 () => device.UpdateBuffer(buffer, 8, new byte[16]));
 
-            Assert.Equal(MetalBufferPolicyRefusal.WriteOutsideBuffer, thrown.Reason);
+            Assert.Equal(GpuBufferTransferRefusal.WindowOutsideBuffer, thrown.Reason);
             Assert.Equal("writeBytes", thrown.ParamName);
             Assert.Equal(16u, thrown.ActualValue);
             Assert.Equal(8u, thrown.OffsetBytes);
-            Assert.Equal(16u, thrown.WriteBytes);
+            Assert.Equal(16u, thrown.SizeBytes);
             Assert.Equal(16u, thrown.BufferBytes);
         }
 

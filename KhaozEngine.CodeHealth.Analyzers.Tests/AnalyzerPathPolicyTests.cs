@@ -1,10 +1,21 @@
 using System.Threading.Tasks;
+using KhaozEngine.CodeHealth.Analyzers;
 using Xunit;
 
 namespace KhaozEngine.Tests.CodeHealth;
 
 public class AnalyzerPathPolicyTests
 {
+    [Theory]
+    [InlineData("/repo/A/..", "/repo/A/../X.cs", "X.cs")]
+    [InlineData("/repo/", "/repo//X.cs", "X.cs")]
+    [InlineData("/repo", "/repo/X.cs", "X.cs")]
+    public void RelativePathNormalizesRootAndSource(string root, string path, string expectedRelative)
+    {
+        Assert.True(AnalyzerPathPolicy.TryGetCheckedRelativePath(path, root, out var relative));
+        Assert.Equal(expectedRelative, relative);
+    }
+
     [Theory]
     [InlineData("/repo/A/../test-shared/X.cs", "test-shared/X.cs", true)]
     [InlineData("/repo/A/./B.cs", "A/B.cs", true)]

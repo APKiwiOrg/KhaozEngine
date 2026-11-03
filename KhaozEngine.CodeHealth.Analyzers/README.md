@@ -88,8 +88,9 @@ tables and test-owned case helpers look possibly empty to a syntactic check. Rev
 instead of treating them as enforced debt.
 
 Both ratchets use `AnalyzerPathPolicy` for baseline-relative paths and the generated and vendored
-file exclusions listed above. Linked files resolve to their real repository path, so a baseline or
-`exempt` line names the file where it lives. The baseline grammar is `<count> <rule> <path>` or
+file exclusions listed above. Baseline roots and source paths use the same separator and dot-segment
+normalization, including repeated and trailing separators. Linked files resolve to their real repository
+path, so a baseline or `exempt` line names the file where it lives. The baseline grammar is `<count> <rule> <path>` or
 `exempt <rule> <path>`, with paths relative to its directory and a `#` reason line above each exemption:
 
 ```text

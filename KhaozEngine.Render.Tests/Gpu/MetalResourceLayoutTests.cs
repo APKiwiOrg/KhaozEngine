@@ -98,11 +98,15 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(GpuResourceKind.Sampler)]
         public void ADynamicOffsetOutsideTheBufferSpace_IsRefusedAtCreation(GpuResourceKind kind)
         {
-            ArgumentException failed = Assert.Throws<ArgumentException>(() => new MetalResourceLayout(
+            GpuResourceLayoutException failed = Assert.Throws<GpuResourceLayoutException>(() => new MetalResourceLayout(
                 new FakeMetalDeviceLiveness(),
                 new GpuResourceLayoutDescription(Element("Bad", kind, dynamic: true))));
 
-            Assert.Contains("'Bad' at binding 0", failed.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind, failed.Reason);
+            Assert.Equal("Bad", failed.ElementName);
+            Assert.Equal(0, failed.Binding);
+            Assert.Equal(kind, failed.ResourceKind);
+            Assert.Equal(GpuBackendKind.MetalNative, failed.Backend);
             Assert.Equal("element", failed.ParamName);
         }
 
@@ -144,13 +148,15 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(1, layout.ElementCount);
 
-            ArgumentException failed = Assert.Throws<ArgumentException>(() => new MetalResourceLayout(
+            GpuResourceLayoutException failed = Assert.Throws<GpuResourceLayoutException>(() => new MetalResourceLayout(
                 new FakeMetalDeviceLiveness(),
                 new GpuResourceLayoutDescription(
                     new GpuResourceLayoutElement("", GpuResourceKind.Sampler, GpuShaderStages.Vertex,
                         dynamic: true))));
 
-            Assert.Contains("<unnamed>", failed.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind, failed.Reason);
+            Assert.Equal("", failed.ElementName);
+            Assert.Equal(0, failed.Binding);
         }
 
         /// <summary>

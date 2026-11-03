@@ -620,6 +620,12 @@ exception type. Message text is developer prose. Branch on the reason and read t
 
 | Exception and reason member | What it refuses | Identifiers |
 |---|---|---|
+| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentNotRenderable` | Refuses an attachment without the native texture or view needed for rendering. | `Attachment`, `ActualUsage`, `RequiredUsage`, `IsStaging`, `NativeHandleKind` |
+| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentShapeMismatch` | Refuses attachments that do not share one size and sample count. | `Attachment`, `Width`, `Height`, `SampleCount`, `ExpectedWidth`, `ExpectedHeight`, `ExpectedSampleCount` |
+| `GpuFramebufferException`, `GpuFramebufferRefusal.AttachmentViewMissing` | Refuses an attachment with no required native render view. | `ParamName`, `Attachment`, `RequiredUsage` |
+| `GpuFramebufferException`, `GpuFramebufferRefusal.NoAttachments` | Refuses a framebuffer with no colour or depth attachment. | `ParamName`, `ColourAttachmentCount`, `HasDepth` |
+| `GpuPipelineOutputsException`, `GpuPipelineOutputsRefusal.BlendCountMismatch` | Refuses a graphics pipeline whose blend state count differs from its colour outputs. | `ParamName`, `DeclaredBlendCount`, `ColourOutputCount`, `PipelineKind` |
+| `GpuResourceLayoutException`, `GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind` | Refuses a dynamic offset on a resource kind the backend cannot rebase. | `ParamName`, `Backend`, `ElementName`, `Binding`, `ResourceKind` |
 | `GpuResourceSetException`, `GpuResourceSetRefusal.BufferWindowOutsideResource` | Refuses a binding window that does not fit within the buffer. | `ParamName`, `ElementName`, `Binding`, `RangeOffset`, `RangeBytes`, `BufferBytes` |
 | `GpuResourceSetException`, `GpuResourceSetRefusal.NativeHandleMissing` | Refuses a set resource whose native handle was already released. | `ParamName`, `ElementName`, `Binding`, `ResourceKind`, `NativeHandleKind` |
 | `GpuResourceSetException`, `GpuResourceSetRefusal.ResourceCountMismatch` | Refuses a set whose resource count differs from its layout. | `ParamName`, `DeclaredCount`, `SuppliedCount` |

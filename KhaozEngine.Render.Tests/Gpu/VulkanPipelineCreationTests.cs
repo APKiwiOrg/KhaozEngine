@@ -194,21 +194,22 @@ namespace KhaozEngine.Tests.Gpu
         {
             // Fewer declared than there are outputs. Padding would write every channel of an attachment nobody
             // described.
-            ArgumentException tooFew = Assert.Throws<ArgumentException>(
+            GpuPipelineOutputsException tooFew = Assert.Throws<GpuPipelineOutputsException>(
                 () => VulkanGraphicsPipelineSpec.ResolveBlends([GpuBlendAttachment.AlphaBlend], colourCount: 3));
 
-            Assert.Contains("1 blend attachment state", tooFew.Message, StringComparison.Ordinal);
-            Assert.Contains("3 colour output", tooFew.Message, StringComparison.Ordinal);
-            Assert.Contains("one per colour output", tooFew.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuPipelineOutputsRefusal.BlendCountMismatch, tooFew.Reason);
+            Assert.Equal(1, tooFew.DeclaredBlendCount);
+            Assert.Equal(3, tooFew.ColourOutputCount);
+            Assert.Equal("graphics", tooFew.PipelineKind);
 
             // More declared than there are outputs: the extras name attachments that do not exist, and dropping
             // them throws away a state the caller wrote and meant.
-            Assert.Throws<ArgumentException>(() => VulkanGraphicsPipelineSpec.ResolveBlends(
+            Assert.Throws<GpuPipelineOutputsException>(() => VulkanGraphicsPipelineSpec.ResolveBlends(
                 [GpuBlendAttachment.AlphaBlend, GpuBlendAttachment.Additive], colourCount: 1));
 
             // Declaring none is a mismatch too, whenever there IS a colour output to describe.
-            Assert.Throws<ArgumentException>(() => VulkanGraphicsPipelineSpec.ResolveBlends(null, 1));
-            Assert.Throws<ArgumentException>(
+            Assert.Throws<GpuPipelineOutputsException>(() => VulkanGraphicsPipelineSpec.ResolveBlends(null, 1));
+            Assert.Throws<GpuPipelineOutputsException>(
                 () => VulkanGraphicsPipelineSpec.ResolveBlends([GpuBlendAttachment.OverrideBlend], 0));
         }
 
@@ -227,13 +228,13 @@ namespace KhaozEngine.Tests.Gpu
                 var shaders = (VulkanShaderSet)fixture.Factory.CreateShadersFromSpirv(VertGlsl, FragGlsl);
                 owned.Add(shaders);
 
-                ArgumentException ex = Assert.Throws<ArgumentException>(
+                GpuPipelineOutputsException ex = Assert.Throws<GpuPipelineOutputsException>(
                     () => fixture.Factory.CreateGraphicsPipeline(Description(shaders, [],
                         outputs: new GpuOutputDescription(
                             null, GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R16G16B16A16Float),
                         blends: [GpuBlendAttachment.AlphaBlend])));
 
-                Assert.Contains("one per colour output", ex.Message, StringComparison.Ordinal);
+                Assert.Equal(GpuPipelineOutputsRefusal.BlendCountMismatch, ex.Reason);
                 Assert.Empty(fixture.PipelineApi.Graphics);
             }
             finally

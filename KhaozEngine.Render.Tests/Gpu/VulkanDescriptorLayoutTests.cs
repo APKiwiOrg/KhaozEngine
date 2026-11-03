@@ -165,10 +165,13 @@ namespace KhaozEngine.Tests.Gpu
         {
             (VulkanDescriptorSetLayoutCache cache, FakeVulkanDescriptorApi api) = NewCache();
 
-            ArgumentException ex = Assert.Throws<ArgumentException>(() => new VulkanResourceLayout(
+            GpuResourceLayoutException ex = Assert.Throws<GpuResourceLayoutException>(() => new VulkanResourceLayout(
                 cache, new GpuResourceLayoutDescription(E("Windowed", kind, dynamic: true))));
 
-            // TypeFor's refusal. Its unknown-kind fallthrough is ArgumentOutOfRangeException, excluded above.
+            Assert.Equal(GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind, ex.Reason);
+            Assert.Equal("Windowed", ex.ElementName);
+            Assert.Equal(kind, ex.ResourceKind);
+            Assert.Equal(GpuBackendKind.VulkanNative, ex.Backend);
             Assert.Equal("element", ex.ParamName);
             Assert.Empty(api.Events);
         }

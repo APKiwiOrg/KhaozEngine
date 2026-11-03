@@ -199,10 +199,15 @@ namespace KhaozEngine.Tests.Gpu
                 null, GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R16G16B16A16Float);
             description.BlendAttachments = [GpuBlendAttachment.OverrideBlend];
 
-            ArgumentException error = Assert.Throws<ArgumentException>(
+            GpuPipelineOutputsException error = Assert.Throws<GpuPipelineOutputsException>(
                 () => MetalGraphicsPipelinePlan.Build(_liveness, description));
 
-            Assert.Contains("2 colour attachments and 1 blend states", error.Message, StringComparison.Ordinal);
+            Assert.IsAssignableFrom<ArgumentException>(error);
+            Assert.Equal(GpuPipelineOutputsRefusal.BlendCountMismatch, error.Reason);
+            Assert.Equal("description", error.ParamName);
+            Assert.Equal(2, error.ColourOutputCount);
+            Assert.Equal(1, error.DeclaredBlendCount);
+            Assert.NotNull(error.PipelineKind);
         }
 
         /// <summary>

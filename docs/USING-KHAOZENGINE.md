@@ -19840,6 +19840,8 @@ Ownership refusals use `GpuResourceOwnershipArgumentException` for `DifferentDev
 
 Resource set declarations use `GpuResourceSetException`. Its required `GpuResourceSetRefusal` and diagnostic members distinguish count, kind, missing resources, buffer windows, texture usage, staging textures and native handle liveness. Vulkan ring bindings use `VulkanResourceSetRingException` with `UniformBufferNotRingBacked` or `RingBufferUsedAsStorage`.
 
+Resource layout declarations use `GpuResourceLayoutException` with `DynamicOffsetUnsupportedForKind`, the backend, element name, binding and resource kind. Framebuffers use `GpuFramebufferException` with attachment identity, actual and expected shape or usage, and a required `GpuFramebufferRefusal`. Graphics blend count checks use `GpuPipelineOutputsException` with `BlendCountMismatch`, both counts and `PipelineKind`.
+
 See the [portable refusal catalog](../KhaozEngine.Gpu/README.md#refusals) and [Vulkan refusal catalog](../KhaozEngine.Gpu.Vulkan/README.md#refusals) for the full diagnostic members. Existing BCL catches still match.
 
 ---

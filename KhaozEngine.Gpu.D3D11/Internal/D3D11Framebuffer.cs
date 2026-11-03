@@ -37,9 +37,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             ArgumentNullException.ThrowIfNull(colour);
             if (depth is null && colour.Length == 0)
             {
-                throw new ArgumentException(
+                throw new GpuFramebufferException(GpuFramebufferRefusal.NoAttachments,
                     "A framebuffer needs at least one attachment. A pass with no target renders nowhere.",
-                    nameof(colour));
+                    nameof(colour))
+                {
+                    ColourAttachmentCount = colour.Length,
+                    HasDepth = depth is not null,
+                };
             }
 
             DepthTexture = depth;
@@ -56,7 +60,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 RequireMatching(first, colour[i], "colour attachment " + i.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 _renderTargetViews[i] = colour[i].RenderTargetView ?? throw MissingView(
                     "colour attachment " + i.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    nameof(GpuTextureUsage.RenderTarget));
+                    GpuTextureUsage.RenderTarget);
                 formats[i] = colour[i].Format;
             }
 
@@ -64,7 +68,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             {
                 RequireMatching(first, depth, "depth attachment");
                 DepthStencilView = depth.DepthStencilView ?? throw MissingView(
-                    "depth attachment", nameof(GpuTextureUsage.DepthStencil));
+                    "depth attachment", GpuTextureUsage.DepthStencil);
             }
 
             Outputs = new GpuOutputDescription(depth?.Format, formats).WithSampleCount((int)first.SampleCount);
@@ -112,15 +116,28 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 return;
             }
 
-            throw new ArgumentException(
+            throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentShapeMismatch,
                 $"Every framebuffer attachment must share one size and one sample count. The {what} is "
                 + $"{attachment.Width}x{attachment.Height} at {attachment.SampleCount} samples against "
-                + $"{first.Width}x{first.Height} at {first.SampleCount}.");
+                + $"{first.Width}x{first.Height} at {first.SampleCount}.", null)
+            {
+                Attachment = what,
+                Width = attachment.Width,
+                Height = attachment.Height,
+                SampleCount = attachment.SampleCount,
+                ExpectedWidth = first.Width,
+                ExpectedHeight = first.Height,
+                ExpectedSampleCount = first.SampleCount,
+            };
         }
 
-        static ArgumentException MissingView(string what, string usage)
-            => new($"The {what} has no view to bind, because its texture was not created with "
+        static GpuFramebufferException MissingView(string what, GpuTextureUsage usage)
+            => new GpuFramebufferException(GpuFramebufferRefusal.AttachmentViewMissing, $"The {what} has no view to bind, because its texture was not created with "
                 + $"GpuTextureUsage.{usage}. Views follow from the declared usage at creation, so a texture that "
-                + "did not ask to be a target never got one.");
+                + "did not ask to be a target never got one.", null)
+            {
+                Attachment = what,
+                RequiredUsage = usage,
+            };
     }
 }

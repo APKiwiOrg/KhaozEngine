@@ -165,13 +165,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (!element.Dynamic || space == MetalIndexSpace.Buffer) return;
 
-            throw new ArgumentException(
+            throw new GpuResourceLayoutException(GpuResourceLayoutRefusal.DynamicOffsetUnsupportedForKind,
                 $"{where} declares a {element.Kind} with a per-draw dynamic offset. On Metal the per-draw offset "
                 + "is applied with -setVertexBufferOffset:atIndex: or its stage sibling, which exists only in the "
                 + "[[buffer(n)]] space, so a dynamic offset on a texture or a sampler element has nowhere to go "
                 + "and would be silently dropped at every bind. Declare it on the buffer element the offset is "
                 + "meant for.",
-                nameof(element));
+                nameof(element))
+            {
+                Backend = GpuBackendKind.MetalNative,
+                ElementName = element.Name,
+                Binding = binding,
+                ResourceKind = element.Kind,
+            };
         }
 
         // THIS BACKEND IS WIDER THAN THE CONTRACT, AND THAT IS A DOCUMENTED SUPERSET RATHER THAN THE SEAM.

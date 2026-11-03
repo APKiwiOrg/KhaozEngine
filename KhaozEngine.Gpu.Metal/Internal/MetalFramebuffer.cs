@@ -51,11 +51,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             if (depth is null && colour.Length == 0)
             {
-                throw new ArgumentException(
+                throw new GpuFramebufferException(GpuFramebufferRefusal.NoAttachments,
                     "A native Metal framebuffer needs at least one attachment. A pass with no target renders "
                     + "nowhere, and a render pass descriptor with no colour attachment and no depth attachment "
                     + "has no render area to derive.",
-                    nameof(colour));
+                    nameof(colour))
+                {
+                    ColourAttachmentCount = colour.Length,
+                    HasDepth = depth is not null,
+                };
             }
 
             MetalTexture first = colour.Length > 0 ? colour[0] : depth!;
@@ -71,7 +75,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 RequireMatching(first, colour[i], what);
 
                 attachments[i] = new MetalAttachment(
-                    RequireAttachable(colour[i], what, nameof(GpuTextureUsage.RenderTarget)), colour[i].Format);
+                    RequireAttachable(colour[i], what, GpuTextureUsage.RenderTarget), colour[i].Format);
 
                 formats[i] = colour[i].Format;
             }
@@ -82,7 +86,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             {
                 RequireMatching(first, depth, "depth attachment");
                 depthAttachment = new MetalAttachment(
-                    RequireAttachable(depth, "depth attachment", nameof(GpuTextureUsage.DepthStencil)),
+                    RequireAttachable(depth, "depth attachment", GpuTextureUsage.DepthStencil),
                     depth.Format);
 
                 depthHasStencil = MetalFormats.IsStencilFormat(depth.Format);
@@ -159,7 +163,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 return;
             }
 
-            throw new ArgumentException(
+            throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentShapeMismatch,
                 "Every native Metal framebuffer attachment must share one size and one sample count, because the "
                 + "render area and the pipeline's sample count are both single values. The " + what + " is "
                 + attachment.Width.ToString(CultureInfo.InvariantCulture) + "x"
@@ -167,31 +171,54 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 + attachment.SampleCount.ToString(CultureInfo.InvariantCulture) + " samples against "
                 + first.Width.ToString(CultureInfo.InvariantCulture) + "x"
                 + first.Height.ToString(CultureInfo.InvariantCulture) + " at "
-                + first.SampleCount.ToString(CultureInfo.InvariantCulture) + ".");
+                + first.SampleCount.ToString(CultureInfo.InvariantCulture) + ".", null)
+            {
+                Attachment = what,
+                Width = attachment.Width,
+                Height = attachment.Height,
+                SampleCount = attachment.SampleCount,
+                ExpectedWidth = first.Width,
+                ExpectedHeight = first.Height,
+                ExpectedSampleCount = first.SampleCount,
+            };
         }
 
         // The two ways an attachment can have no MTLTexture behind it, and both are USAGE mistakes rather than
         // backend ones. A staging texture is an MTLBuffer here and never a texture at all (M-C5), and a disposed
         // texture answers a nil handle by design. Either would reach the descriptor as nil, which Metal reports
         // as a pass with no attachments rather than as the wrong argument.
-        static IntPtr RequireAttachable(MetalTexture texture, string what, string usage)
+        static IntPtr RequireAttachable(MetalTexture texture, string what, GpuTextureUsage usage)
         {
             if (texture.IsStaging)
             {
-                throw new ArgumentException(
+                throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentNotRenderable,
                     "The " + what + " is a GpuTextureUsage.Staging texture, which on the native Metal backend is "
                     + "a Shared MTLBuffer carrying a software subresource layout and not an MTLTexture at all "
                     + "(M-C5). Nothing can render into one. Create the attachment with GpuTextureUsage." + usage
-                    + " and copy into the staging texture afterwards.");
+                    + " and copy into the staging texture afterwards.", null)
+                {
+                    Attachment = what,
+                    ActualUsage = texture.Usage,
+                    RequiredUsage = usage,
+                    IsStaging = texture.IsStaging,
+                    NativeHandleKind = "MTLTexture",
+                };
             }
 
             IntPtr handle = texture.Handle.Handle;
             if (handle != IntPtr.Zero) return handle;
 
-            throw new ArgumentException(
+            throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentNotRenderable,
                 "The " + what + " has no MTLTexture to bind, which on this backend means the texture has already "
                 + "been disposed: every non-staging texture is created with its native texture and holds it for "
-                + "life, and there is no view factory anywhere in this package to make a second one with (M-M10).");
+                + "life, and there is no view factory anywhere in this package to make a second one with (M-M10).", null)
+            {
+                Attachment = what,
+                ActualUsage = texture.Usage,
+                RequiredUsage = usage,
+                IsStaging = texture.IsStaging,
+                NativeHandleKind = "MTLTexture",
+            };
         }
     }
 }

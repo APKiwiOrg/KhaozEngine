@@ -675,22 +675,28 @@ namespace KhaozEngine.Tests.Gpu
             // The four members whose refusals are worth NAMING, because each one reads nothing like an unbuilt
             // path: an empty GLSL source fails in the front end, a pipeline with no program says so, and a
             // framebuffer with no attachment at all has no render area to derive.
+            var missingGraphics = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => factory.CreateGraphicsPipeline(default));
+            var missingCompute = Assert.Throws<GpuResourceOwnershipArgumentException>(
+                () => factory.CreateComputePipeline(default));
+            var noAttachments = Assert.Throws<GpuFramebufferException>(() => factory.CreateFramebuffer(null));
+            Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, missingGraphics.Reason);
+            Assert.Equal(GpuResourceOwnershipRefusal.MissingResource, missingCompute.Reason);
+            Assert.Equal(GpuFramebufferRefusal.NoAttachments, noAttachments.Reason);
             string[] refusals =
             [
                 Refusal(() => factory.CreateShadersFromSpirv("", "")),
                 Refusal(() => factory.CreateComputeShaderFromSpirv("")),
-                Refusal(() => factory.CreateGraphicsPipeline(default)),
-                Refusal(() => factory.CreateComputePipeline(default)),
-                Refusal(() => factory.CreateFramebuffer(null)),
+                missingGraphics.Message,
+                missingCompute.Message,
+                noAttachments.Message,
             ];
 
             foreach (string refusal in refusals) _output.WriteLine(refusal);
 
             Assert.Contains("GLSL to SPIR-V failed", refusals[0], StringComparison.Ordinal);
             Assert.Contains("GLSL to SPIR-V failed", refusals[1], StringComparison.Ordinal);
-            Assert.Contains("was given no shader set", refusals[2], StringComparison.Ordinal);
-            Assert.Contains("was given no compute shader", refusals[3], StringComparison.Ordinal);
-            Assert.Contains("at least one attachment", refusals[4], StringComparison.Ordinal);
+
 
             // AND THE DISCRIMINATING HALF. Every one of those is a LIVE refusal, so none of them may carry the
             // not-yet wording, and neither may a member that regressed into one.

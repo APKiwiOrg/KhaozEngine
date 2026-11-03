@@ -249,17 +249,17 @@ namespace KhaozEngine.Tests.Gpu
                 GpuTextureDescription.Texture2D(Size * 2, Size * 2, GpuPixelFormat.B8G8R8A8UNorm,
                     GpuTextureUsage.RenderTarget));
 
-            ArgumentException stagingRefusal = Assert.Throws<ArgumentException>(
+            GpuFramebufferException stagingRefusal = Assert.Throws<GpuFramebufferException>(
                 () => device.Factory.CreateFramebuffer(null, staging));
-            Assert.Contains("Staging texture", stagingRefusal.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuFramebufferRefusal.AttachmentNotRenderable, stagingRefusal.Reason);
 
-            ArgumentException sizeRefusal = Assert.Throws<ArgumentException>(
+            GpuFramebufferException sizeRefusal = Assert.Throws<GpuFramebufferException>(
                 () => device.Factory.CreateFramebuffer(null, colour, larger));
-            Assert.Contains("one size and one sample count", sizeRefusal.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuFramebufferRefusal.AttachmentShapeMismatch, sizeRefusal.Reason);
 
-            ArgumentException emptyRefusal = Assert.Throws<ArgumentException>(
+            GpuFramebufferException emptyRefusal = Assert.Throws<GpuFramebufferException>(
                 () => device.Factory.CreateFramebuffer(null));
-            Assert.Contains("at least one attachment", emptyRefusal.Message, StringComparison.Ordinal);
+            Assert.Equal(GpuFramebufferRefusal.NoAttachments, emptyRefusal.Reason);
 
             // A NULL ELEMENT INSIDE THE ARRAY, which the array's own null check does not see. It is refused by
             // the attachment's parameter name rather than reaching the ownership cast, whose wrong-backend

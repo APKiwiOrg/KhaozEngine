@@ -47,11 +47,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (depth is null && colour.Length == 0)
             {
-                throw new ArgumentException(
+                throw new GpuFramebufferException(GpuFramebufferRefusal.NoAttachments,
                     "A native Vulkan framebuffer needs at least one attachment. A pass with no target renders "
                     + "nowhere, and vkCmdBeginRendering with no colour attachment and no depth attachment has no "
                     + "render area to derive.",
-                    nameof(colour));
+                    nameof(colour))
+                {
+                    ColourAttachmentCount = colour.Length,
+                    HasDepth = depth is not null,
+                };
             }
 
             VulkanTexture first = colour.Length > 0 ? colour[0] : depth!;
@@ -68,7 +72,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
                 attachments[i] = new VulkanAttachment(
                     RequireView(colour[i], "colour attachment " + i.ToString(CultureInfo.InvariantCulture),
-                        nameof(GpuTextureUsage.RenderTarget)),
+                        GpuTextureUsage.RenderTarget),
                     colour[i].Image, colour[i].Format, DepthStencil: false, colour[i].Resting);
 
                 formats[i] = colour[i].Format;
@@ -79,7 +83,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             {
                 RequireMatching(first, depth, "depth attachment");
                 depthAttachment = new VulkanAttachment(
-                    RequireView(depth, "depth attachment", nameof(GpuTextureUsage.DepthStencil)),
+                    RequireView(depth, "depth attachment", GpuTextureUsage.DepthStencil),
                     depth.Image, depth.Format, DepthStencil: true, depth.Resting);
             }
 
@@ -155,7 +159,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 return;
             }
 
-            throw new ArgumentException(
+            throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentShapeMismatch,
                 "Every native Vulkan framebuffer attachment must share one size and one sample count, because "
                 + "the render area and the pipeline's sample count are both single values. The "
                 + what + " is "
@@ -164,22 +168,35 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 + attachment.SampleCount.ToString(CultureInfo.InvariantCulture) + " samples against "
                 + first.Width.ToString(CultureInfo.InvariantCulture) + "x"
                 + first.Height.ToString(CultureInfo.InvariantCulture) + " at "
-                + first.SampleCount.ToString(CultureInfo.InvariantCulture) + ".");
+                + first.SampleCount.ToString(CultureInfo.InvariantCulture) + ".", null)
+            {
+                Attachment = what,
+                Width = attachment.Width,
+                Height = attachment.Height,
+                SampleCount = attachment.SampleCount,
+                ExpectedWidth = first.Width,
+                ExpectedHeight = first.Height,
+                ExpectedSampleCount = first.SampleCount,
+            };
         }
 
         // The one thing an attachment can be missing, and it is a USAGE mistake rather than a backend one: views
         // follow from the declared usage at creation (V-M11), so a texture that did not ask to be a target never
         // got one and no framebuffer can conjure it here.
-        static ulong RequireView(VulkanTexture texture, string what, string usage)
+        static ulong RequireView(VulkanTexture texture, string what, GpuTextureUsage usage)
         {
             if (texture.AttachmentView != 0) return texture.AttachmentView;
 
-            throw new ArgumentException(
+            throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentViewMissing,
                 "The " + what + " has no VkImageView to bind, because its texture was not created with "
                 + "GpuTextureUsage." + usage + ". Every view a texture will ever need is created at TEXTURE "
                 + "creation from its declared usage bits and none at a bind or a draw (V-M11), so there is no "
                 + "view factory reachable from here to make one with. The texture is a "
-                + texture.Describe() + ".");
+                + texture.Describe() + ".", null)
+            {
+                Attachment = what,
+                RequiredUsage = usage,
+            };
         }
     }
 }

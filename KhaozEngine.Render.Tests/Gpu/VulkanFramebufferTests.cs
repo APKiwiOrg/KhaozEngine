@@ -153,7 +153,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             var fixture = new VulkanResourceFixture();
 
-            Assert.Throws<ArgumentException>(() => fixture.Factory.CreateFramebuffer(null));
+            var refusal = Assert.Throws<GpuFramebufferException>(() => fixture.Factory.CreateFramebuffer(null));
+            Assert.IsAssignableFrom<ArgumentException>(refusal);
+            Assert.Equal(GpuFramebufferRefusal.NoAttachments, refusal.Reason);
+            Assert.Equal("colour", refusal.ParamName);
+            Assert.Equal(0, refusal.ColourAttachmentCount);
+            Assert.Equal(false, refusal.HasDepth);
         }
 
         /// <summary>Attachments of different sizes are refused, because the render area and the pipeline's sample
@@ -169,7 +174,15 @@ namespace KhaozEngine.Tests.Gpu
                 IGpuTexture colour = Colour(fixture, owned);
                 IGpuTexture depth = Depth(fixture, owned, size: 128);
 
-                Assert.Throws<ArgumentException>(() => fixture.Factory.CreateFramebuffer(depth, colour));
+                var refusal = Assert.Throws<GpuFramebufferException>(() => fixture.Factory.CreateFramebuffer(depth, colour));
+                Assert.Equal(GpuFramebufferRefusal.AttachmentShapeMismatch, refusal.Reason);
+                Assert.Equal("depth attachment", refusal.Attachment);
+                Assert.Equal(depth.Width, refusal.Width);
+                Assert.Equal(depth.Height, refusal.Height);
+                Assert.Equal(colour.Width, refusal.ExpectedWidth);
+                Assert.Equal(colour.Height, refusal.ExpectedHeight);
+                Assert.Equal(depth.SampleCount, refusal.SampleCount);
+                Assert.Equal(colour.SampleCount, refusal.ExpectedSampleCount);
             }
             finally
             {
@@ -194,7 +207,10 @@ namespace KhaozEngine.Tests.Gpu
                     VulkanResourceFixture.Texture(64, 64, GpuTextureUsage.Sampled));
                 owned.Add(sampled);
 
-                Assert.Throws<ArgumentException>(() => fixture.Factory.CreateFramebuffer(null, sampled));
+                var refusal = Assert.Throws<GpuFramebufferException>(() => fixture.Factory.CreateFramebuffer(null, sampled));
+                Assert.Equal(GpuFramebufferRefusal.AttachmentViewMissing, refusal.Reason);
+                Assert.Equal("colour attachment 0", refusal.Attachment);
+                Assert.Equal(GpuTextureUsage.RenderTarget, refusal.RequiredUsage);
             }
             finally
             {

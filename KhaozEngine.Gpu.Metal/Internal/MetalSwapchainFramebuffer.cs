@@ -123,13 +123,20 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (attachment.Texture == IntPtr.Zero)
             {
-                throw new ArgumentException(
+                throw new GpuFramebufferException(GpuFramebufferRefusal.AttachmentNotRenderable,
                     "The native Metal swapchain framebuffer was handed an attachment with no MTLTexture. A "
                     + "swapchain framebuffer always has a colour target: a nil drawable binds the device-owned "
                     + "orphan target (M-W5) rather than nothing, so a zero handle here means the orphan was "
                     + "published before it had been created, and binding it would rasterise into a pass Metal "
                     + "reports as having no attachments.",
-                    nameof(attachment));
+                    nameof(attachment))
+                {
+                    Attachment = "colour attachment 0",
+                    ActualUsage = GpuTextureUsage.RenderTarget,
+                    RequiredUsage = GpuTextureUsage.RenderTarget,
+                    IsStaging = false,
+                    NativeHandleKind = "MTLTexture",
+                };
             }
 
             _colour[0] = attachment;

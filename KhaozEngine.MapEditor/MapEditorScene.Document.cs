@@ -1,4 +1,7 @@
+using System;
+using System.Numerics;
 using KhaozEngine.MapDoc;
+using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEditor;
 
@@ -12,6 +15,11 @@ public partial class MapEditorScene
     /// so <see cref="StatusLine"/> can show the window extent and a headless test can assert the dispatch.</summary>
     internal MapTileRect? Window => _window;
     MapTileRect? _window;
+
+    /// <summary>HeadlessPickViewport binds the scene's real document and field with real streamer residency,
+    /// so picking tests follow the loaded-world path without the GPU work in BuildCore.</summary>
+    internal IDisposable BindPickingViewportForTests(TerrainStreamer streamer, Vector3 focus)
+        => _viewport.BindPickingForTests(_document.Doc, _controller.Field, streamer, focus);
 
     /// <summary>Loads the document at <see cref="MapEditorOptions.DocumentPath"/> or starts a blank one. A path
     /// with no form at all (nothing on disk) starts blank, same as an empty path. A monolithic file or a tiled

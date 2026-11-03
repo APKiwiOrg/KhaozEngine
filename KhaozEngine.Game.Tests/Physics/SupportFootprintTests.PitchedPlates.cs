@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -236,22 +235,26 @@ public partial class SupportFootprintTests
         FootSupportQuery query = PlateQuery();
         SupportFootprintRequest request = FootSupport.DescribeFootprint(query);
         using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
-        Capability(scene.World).QuerySupportFootprint(lease, request, new SupportFootprintMember[256], new ulong[1024]);
+        Assert.Equal(CapsuleFeatureStatus.Complete, Capability(scene.World).QuerySupportFootprint(lease, request,
+            new SupportFootprintMember[256], new ulong[1024]).Status);
+        Assert.Equal(SupportStatus.Walkable, FootSupport.Find(null, scene.World, lease, query).Status);
         SupportFootprintCollector scratch = FootprintScratch(scene.World);
-        var polygons = (List<SupportPolygon>)typeof(SupportFootprintCollector)
-            .GetField("_polygons", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scratch)!;
         int topId = scene.Faces.Single(f => f.Static == scene.Crate && f.Normal.Y > 0.5).ElementId;
+        var fault = PlateUncertainFixture(membership);
         int injected = 0;
         ContactAllocationDiagnostics.SetObserver((phase, entering) =>
         {
             if (!entering || phase != ContactAllocationPhase.SupportExtrema) return;
-            foreach (SupportPolygon polygon in polygons)
-                if (polygon.Static == scene.Crate && polygon.ElementId == topId)
-                {
-                    PlateUncertainFixture(polygon, membership);
-                    Assert.False(polygon.HasSource);
-                    injected++;
-                }
+            var observations = scratch.InjectPolygonUncertaintyForTests(scene.Crate, topId, fault.Vertices, fault.Normal);
+            injected += observations.Length;
+            foreach (var observation in observations)
+            {
+                Assert.False(observation.HasSource);
+                Assert.Equal(scene.Crate, observation.Static);
+                Assert.Equal(topId, observation.ElementId);
+                Assert.Equal(fault.Vertices, observation.Vertices);
+                Assert.Equal(fault.Normal, observation.Normal);
+            }
         });
         try
         {
@@ -295,7 +298,7 @@ public partial class SupportFootprintTests
         Assert.Equal(GeometrySign.Unresolved, SupportProjectedPolygonSeparation.Certify(uncertain, zero, zero, radius));
     }
 
-    static void PlateUncertainFixture(SupportPolygon polygon, bool membership)
+    static (FeaturePoint[] Vertices, FeaturePoint Normal) PlateUncertainFixture(bool membership)
     {
         FeatureNumber uncertain = FeatureNumber.Enclosed(GeometryInterval.Enclose(-0.01, 0.01));
         FeatureNumber zero = FeatureNumber.Exact(0), one = FeatureNumber.Exact(1);
@@ -305,10 +308,7 @@ public partial class SupportFootprintTests
                 new(one, FeatureNumber.Exact(0.1), one), new(one, FeatureNumber.Exact(0.1), one.Negate())]
             : [FeaturePoint.Exact(new(0, 0, -1)), FeaturePoint.Exact(new(0, 0.2f, -1)),
                 FeaturePoint.Exact(new(0, 0.2f, 1)), FeaturePoint.Exact(new(0, 0, 1))];
-        polygon.Begin(polygon.Static, polygon.ElementId, vertices.Length);
-        for (int i = 0; i < vertices.Length; i++)
-            polygon.Set(i, vertices[i], FeaturePoint.Subtract(vertices[(i + 1) % vertices.Length], vertices[i]));
-        polygon.Finish(membership ? new(zero, one, zero) : new(one, uncertain, zero));
+        return (vertices, membership ? new(zero, one, zero) : new(one, uncertain, zero));
     }
 
     static SupportPolygon PlateProjection(Vector3[] vertices)

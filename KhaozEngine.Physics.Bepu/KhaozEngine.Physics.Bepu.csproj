@@ -13,6 +13,9 @@
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Game.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.MapDoc.Physics.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Movement.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Physics.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

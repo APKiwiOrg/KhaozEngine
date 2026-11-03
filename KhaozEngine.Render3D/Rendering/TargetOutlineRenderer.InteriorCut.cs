@@ -7,6 +7,17 @@ namespace KhaozEngine.Render3D.Rendering;
 
 internal sealed partial class TargetOutlineRenderer
 {
+    /// <summary>InteriorCutHighlightTests verifies packed GPU payload offsets without mutating the staging image.</summary>
+    internal byte[] DrawImageForTests => (byte[])_drawImage.Clone();
+
+    /// <summary>InteriorCutHighlightTests verifies payload, slot and actual uniform-struct sizes agree with the GPU layout.</summary>
+    internal static (int PayloadBytes, int SlotBytes, int UboBytes) DrawLayoutForTests =>
+        (DrawPayloadBytes, DrawSlotBytes, Marshal.SizeOf<DrawUbo>());
+
+    /// <summary>InteriorCutHighlightGpuTests reads full and visible mask coverage for its geometric oracle.
+    /// Borrowed for observation and GPU readback. Never dispose or mutate it.</summary>
+    internal IGpuTexture? CoverageForTests(bool visible) => visible ? _visibleCoverage : _fullCoverage;
+
     readonly IGpuResourceLayout _interiorCutLayout;
     readonly InteriorCutBinding _interiorCutBinding;
     InteriorCutUniforms _interiorUniforms;

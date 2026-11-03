@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Reflection;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu.RendererPerf;
@@ -32,8 +31,7 @@ public sealed class RendererPerfSidecarAccountingTests
                 }
                 return tick;
             }, 1000);
-            var type = typeof(RendererPerfEntrypoint).GetNestedType("EvidencePublication", BindingFlags.NonPublic)!;
-            var publication = (IRendererPerfPublication)Activator.CreateInstance(type, directory)!;
+            var publication = new RendererPerfEntrypoint.EvidencePublication(directory);
             var report = publication.Publish(input, clock, 600000);
             Assert.True(prepared);
             Assert.Equal(completed, report.Publication.FinalUnitPublished);

@@ -60,6 +60,20 @@ internal sealed class InstalledSweepGeometry
         _registrationId = registrationId; _installationGeneration = generation;
     }
 
+    /// <summary>Lets CertifiedCompoundSweepLifetimeTests change only the captured installation generation.</summary>
+    internal long InstallationGenerationForTests
+    {
+        get => _installationGeneration;
+        set => _installationGeneration = value;
+    }
+
+    /// <summary>Lets CertifiedCompoundSweepLifetimeTests change only the captured registration identity.</summary>
+    internal int RegistrationIdForTests
+    {
+        get => _registrationId;
+        set => _registrationId = value;
+    }
+
     internal bool MatchesInstallation(int registrationId, long generation) =>
         _registrationId == registrationId && _installationGeneration == generation && generation > 0;
 

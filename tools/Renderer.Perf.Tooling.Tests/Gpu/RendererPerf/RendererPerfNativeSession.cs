@@ -20,8 +20,9 @@ internal sealed class RendererPerfNativeSession : IRendererPerfSession
     readonly GpuPerfTimestampRing _ring;
     readonly GpuPerfTimestampResult?[] _results;
     readonly IRendererPerfNativeWork _work;
-    readonly Frame _frame;
-    readonly Action<Frame> _prepare, _record;
+    internal readonly Frame _frame;
+    internal Action<Frame> _prepare;
+    readonly Action<Frame> _record;
     readonly Func<ImmutableDictionary<string, RendererPerfMetric>>? _telemetry;
     readonly RendererPerfStartupReport _startup;
     readonly long _completionDeadline;

@@ -155,7 +155,7 @@ public sealed class InstalledSupportPoseTests
             using var world = new BepuPhysicsWorld(Vector3.Zero);
             world.AddStatic(new CompoundShape(children), root);
             using var lease = world.AcquireQueryReadLease();
-            var sim = (BepuPhysics.Simulation)typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
+            var sim = world.SimulationForTests;
             ref var installed = ref sim.Statics[0];
             ref var compound = ref sim.Shapes.GetShape<BepuCompound>(installed.Shape.Index);
             var scratch = new CapsuleFeatureCaptureScratch();
@@ -201,7 +201,7 @@ public sealed class InstalledSupportPoseTests
         {
             using var world = new BepuPhysicsWorld(Vector3.Zero);
             world.AddStatic(shape, new(new(0, -1, 0), yaw));
-            var sim = (BepuPhysics.Simulation)typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
+            var sim = world.SimulationForTests;
             // Every scene installs as a Bepu compound, so the shared compound root gate runs.
             Assert.Equal(default(BepuCompound).TypeId, sim.Statics[0].Shape.Type);
             using var lease = world.AcquireQueryReadLease();

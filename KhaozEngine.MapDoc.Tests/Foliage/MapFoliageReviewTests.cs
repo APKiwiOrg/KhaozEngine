@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Identity;
@@ -112,12 +111,11 @@ public sealed class MapFoliageReviewTests
         var fixture = FoliageFixtures.Create();
         MapDocumentFile.SaveTiled(fixture.Document, dir.Root);
         var source = MapStoredSurfaceSource.Open(dir.Root);
-        var globals = (MapDocument)typeof(MapStoredSurfaceSource).GetField("_globals", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(source)!;
-        Assert.Empty(globals.Foliage!.Layers[0].Chunks);
+        Assert.Equal(0, source.ResidentFoliageChunkCountForTests(layerIndex: 0));
         string first = MapAuthoredIdentityV2.Compute(source, fixture.Assets, FoliageFixtures.Options());
-        Assert.Empty(globals.Foliage!.Layers[0].Chunks);
+        Assert.Equal(0, source.ResidentFoliageChunkCountForTests(layerIndex: 0));
         Assert.Equal(first, MapAuthoredIdentityV2.Compute(source, fixture.Assets, FoliageFixtures.Options()));
-        Assert.Empty(globals.Foliage!.Layers[0].Chunks);
+        Assert.Equal(0, source.ResidentFoliageChunkCountForTests(layerIndex: 0));
     }
 
     [Fact]

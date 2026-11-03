@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render2D;
@@ -99,11 +98,8 @@ public sealed class DpiFontBindingTests
         var texture = new FakeTexture(64, 64, 1, 1, GpuPixelFormat.R8G8B8A8UNorm);
         textures.Add(texture);
         // A small literal glyph table isolates the binding contract from rasterizer output and GPU setup.
-        ConstructorInfo constructor = typeof(SpriteFont).GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic,
-            binder: null, [typeof(Texture2D), typeof(int), typeof(int), typeof(float), typeof(float), typeof(float)],
-            modifiers: null)!;
-        var font = (SpriteFont)constructor.Invoke([Texture2D.Wrap(texture, 64, 64), 64, 64,
-            density == 1f ? 9f : 10f, density == 1f ? 16f : 18f, 1f / density]);
+        var font = SpriteFont.CreateForTests(Texture2D.Wrap(texture, 64, 64), 64, 64,
+            density == 1f ? 9f : 10f, density == 1f ? 16f : 18f, 1f / density);
         font.Glyphs['A'] = new GlyphInfo
         {
             W = density == 1f ? 5 : 12,

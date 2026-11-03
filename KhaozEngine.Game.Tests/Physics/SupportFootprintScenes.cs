@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using BepuPhysics;
 using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
@@ -41,10 +40,8 @@ internal sealed class SupportFootprintScene : IDisposable
         Faces.RemoveAll(f => f.Static == owner);
         Curves.RemoveAll(f => f.Static == owner);
         Meshes.Remove(owner);
-        BepuSim sim = (BepuSim)typeof(BepuPhysicsWorld)
-            .GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(World)!;
-        var handles = (Dictionary<int, (BepuStaticHandle Handle, TypedIndex Shape)>)typeof(BepuPhysicsWorld)
-            .GetField("_handles", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(World)!;
+        BepuSim sim = World.SimulationForTests;
+        var handles = World.StaticHandlesForTests;
         sim.Statics.GetDescription(handles[owner.Value].Handle, out StaticDescription description);
         TypedIndex shape = description.Shape;
         if (shape.Type == default(Mesh).TypeId)

@@ -41,6 +41,17 @@ namespace KhaozEngine.Render3D
         // Per-render scratch, reused rather than reallocated: the caster spans one light draws.
         readonly List<ShadowCasterSpan> _pointCasterSpans = new();
 
+        /// <summary>RendererPerfPointTraceTests requires a nonempty packed layout before corrupting profiling metadata.</summary>
+        internal int PackedPointSlotCountForTests => _packedPointSlots.Count;
+
+        /// <summary>RendererPerfPointTraceTests faults only profiling request lookup, leaving rigid recording usable.</summary>
+        internal void CorruptPointProfilingRequestsForTests(int requestIndex)
+        {
+            for (int i = 0; i < _packedPointSlots.Count; i++)
+                _packedPointSlots[i] = _packedPointSlots[i] with
+                { RequestIndex = requestIndex, Casters = PointShadowCasterSet.StaticRigid };
+        }
+
         // The lights packed into this frame's slot ring, in the order they were packed. Cleared by
         // BeginPointShadowFrame and walked by RenderPointShadowSlots.
         readonly List<PackedPointShadowSlot> _packedPointSlots = new();

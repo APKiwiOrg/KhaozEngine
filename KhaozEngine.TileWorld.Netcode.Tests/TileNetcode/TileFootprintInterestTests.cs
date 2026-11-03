@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using KhaozEngine.Netcode;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
@@ -26,20 +25,8 @@ public class TileFootprintInterestTests
     [InlineData(-1, 1)]
     public void A_degenerate_footprint_is_measured_from_its_anchor(int width, int height)
     {
-        using var h = new Harness(radius: 5f);
-        const long NetId = 99;
-        Type serverType = typeof(TileWorldServer);
-        var footprints = Assert.IsType<Dictionary<long, TileRect>>(
-            serverType.GetField("footprintByNetId", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(h.Server));
-        footprints[NetId] = new TileRect(10, 0, width, height);
-        serverType.GetField("viewerTileX", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(h.Server, 0f);
-        serverType.GetField("viewerTileZ", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(h.Server, 0f);
-        MethodInfo predicate = serverType.GetMethod(
-            "IsOutsideFootprintInterest",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-
-        bool outside = (bool)predicate.Invoke(h.Server, [NetId])!;
+        bool outside = TileWorldServer.IsOutsideFootprintInterestForTests(
+            viewerTileX: 0f, viewerTileZ: 0f, radius: 5f, new TileRect(10, 0, width, height));
 
         Assert.True(outside);
     }

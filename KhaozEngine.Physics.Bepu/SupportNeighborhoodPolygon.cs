@@ -23,6 +23,9 @@ internal sealed class SupportPolygon
     InstalledSupportWorldFace? _face;
     bool _hasNormalArea, _hasOrientation, _hasContactDomain, _hasVerticalDomain;
 
+    /// <summary>Lets AdmissionCertificate verify reference evaluation leaves the vertical-domain cache untouched.</summary>
+    internal bool HasVerticalDomainForTests => _hasVerticalDomain;
+
     internal StaticHandle Static { get; private set; }
     internal int ElementId { get; private set; }
     internal ReadOnlySpan<FeaturePoint> Vertices => _vertices.AsSpan(0, _count);
@@ -272,6 +275,9 @@ internal sealed partial class SupportSegmentPolygon
 {
     static readonly FeatureNumber One = FeatureNumber.Exact(1);
     static readonly FeatureNumber UnitRange = FeatureNumber.Enclosed(GeometryInterval.Enclose(0, 1));
+
+    /// <summary>Lets JoinCost verify discharged incidence leaves distance scratch empty.</summary>
+    internal int CandidateCountForTests => _candidates.Count;
 
     readonly List<SupportCandidate> _candidates = [];
     FeaturePoint _start, _end, _direction;

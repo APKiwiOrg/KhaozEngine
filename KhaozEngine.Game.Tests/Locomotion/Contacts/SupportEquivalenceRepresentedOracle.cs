@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using BepuPhysics;
 using BepuPhysics.Collidables;
 using KhaozEngine.Locomotion.Contacts;
@@ -21,7 +20,7 @@ internal static class SupportEquivalenceRepresentedOracle
 {
     internal static void AssertAnswer(SupportEquivalenceQueryAnchor q, BepuPhysicsWorld world, IPhysicsQueryLease lease)
     {
-        var sim = (BepuPhysics.Simulation)typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
+        var sim = world.SimulationForTests;
         Assert.Equal(1, sim.Statics.Count);
         ref var installed = ref sim.Statics[0];
         StaticHandle owner = new(0);

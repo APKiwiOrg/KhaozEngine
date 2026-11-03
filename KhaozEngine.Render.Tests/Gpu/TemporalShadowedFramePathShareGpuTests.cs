@@ -38,7 +38,8 @@ namespace KhaozEngine.Tests.Gpu
             var yard = new TemporalShadowedFrameCostPerfGpuTests.Yard(w, h);
             using var exporting = new TemporalFixture(w, h, s => yard.Setup(s, preset));
             using var production = new TemporalFixture(w, h, s => yard.Setup(s, preset));
-            TemporalResolveRenderer exporter = TemporalVisibilityPathShareReadback.UseExportingResolve(exporting);
+            TemporalVisibilityPathShareReadback.UseExportingResolve(exporting);
+            TemporalResolveRenderer exporter = exporting.Scene.TemporalResolveRendererForTests!;
             output.WriteLine($"{exporting.Device.Backend} on {exporting.Device.Capabilities.DeviceName}, {entry} {preset}, "
                 + $"{w}x{h} display");
 

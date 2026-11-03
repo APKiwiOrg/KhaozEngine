@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -98,19 +97,17 @@ public sealed class ShadowCascadeOriginTests(ITestOutputHelper output)
         Scene3D.ComputeCascadeMasks([new Vector4(center, 0.01f)],
             [ShadowCascadeCull.FromLightViewProj(rig.Scene.CascadeFitRelativeForTests[0], 2048)], 1, masks, origin);
         Assert.Equal((byte)expectedCount, masks[0]);
-        var frustums = (FrustumPlanes[])typeof(Scene3D)
-            .GetField("_shadowFrustums", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(rig.Scene)!;
+        var frustums = rig.Scene.ShadowFrustumsForTests;
         var visibility = Scene3D.ClassifySkinnedVisibility(MeshBounds.FromVertices(geometry.Vertices),
             Matrix4x4.CreateTranslation(center), true, FrustumPlanes.Extract(Matrix4x4.Identity),
-            true, frustums.AsSpan(0, 1), origin);
+            true, frustums.Slice(0, 1), origin);
         Assert.Equal(expectedCount == 1, visibility.VisibleShadow);
         Assert.Equal(expectedCount == 1,
             FoliageShadowSelection.IntersectsCascade(new MeshBounds(center, center), frustums[0], origin));
         output.WriteLine($"origin={origin}, relative centre={center - origin}, cascade 0 casters={rig.Scene.ShadowCascadeCasterCount(0)}");
     }
 
-    static Vector3 Held(Scene3D scene) => (Vector3)typeof(Scene3D)
-        .GetField("_heldLightDir", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scene)!;
+    static Vector3 Held(Scene3D scene) => scene.HeldLightDirectionForTests;
 
     static HeadlessSceneRig Create(bool orthographic, Vector3 origin)
     {

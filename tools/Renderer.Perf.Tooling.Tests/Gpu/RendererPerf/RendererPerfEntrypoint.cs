@@ -172,7 +172,7 @@ internal static class RendererPerfEntrypoint
         }
     }
 
-    sealed class EvidencePublication(string directory) : IRendererPerfPublication
+    internal sealed class EvidencePublication(string directory) : IRendererPerfPublication
     {
         public RendererPerfReport Publish(RendererPerfReport report, RendererPerfClock clock, long deadline)
         {

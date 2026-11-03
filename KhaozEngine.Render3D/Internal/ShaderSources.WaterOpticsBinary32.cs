@@ -2,6 +2,9 @@ namespace KhaozEngine.Render3D.Internal;
 
 internal static partial class ShaderSources
 {
+    /// <summary>WaterOpticsNarrowPredicateTests compiles the production helper for independent oracle comparison.</summary>
+    internal static string WaterOpticsBinary32GlslForTests => WaterOpticsBinary32Glsl;
+
     // Triangle-only IEEE binary32, nearest-even. All arithmetic on significands is uint32.
     // Native shader division has a weaker accuracy contract, and Metal fast math is global.
     // Keeping these operations in integers also preserves subnormal inputs and intermediate roundings.

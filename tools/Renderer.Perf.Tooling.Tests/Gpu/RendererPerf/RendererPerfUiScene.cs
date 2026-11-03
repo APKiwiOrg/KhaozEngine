@@ -24,7 +24,7 @@ internal sealed class RendererPerfUiScene : IDisposable
     readonly TextDraw[][] _text;
     readonly Vector2[] _offsets = Enumerable.Range(0, RendererPerfRecipe.Period)
         .Select(i => new Vector2(RendererPerfRecipe.Phase(i) * 2f, 0f)).ToArray();
-    Texture2D[] _textures = [];
+    internal Texture2D[] _textures = [];
     SpriteFont? _font;
     internal RendererPerfUiScene()
     {

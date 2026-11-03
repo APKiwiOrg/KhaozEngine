@@ -3,7 +3,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using KhaozEngine.Locomotion;
@@ -596,13 +595,11 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         lease.Dispose();
         Assert.Throws<ObjectDisposedException>(() => SupportContinuity.IsContinuous(start, from, target, to, CosMaxSlope));
         Assert.Throws<ObjectDisposedException>(() => GroundSeat.DiscreteStep(start, from, target, to, CosMaxSlope));
+        Assert.True(memo.RetainedContinuityCountForTests > 0);
         memo.Close();
         Assert.Throws<InvalidOperationException>(() => SupportContinuity.IsContinuous(start, from, target, to, CosMaxSlope));
         Assert.Throws<InvalidOperationException>(() => start.Source);
-        var entries = (Array)typeof(SupportRequestMemo).GetField("_entries",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(memo)!;
-        foreach (object entry in entries)
-            Assert.True(((SupportSample)entry.GetType().GetProperty("Sample")!.GetValue(entry)!).Continuity.IsEmpty);
+        Assert.Equal(0, memo.RetainedContinuityCountForTests);
         Assert.Equal(0, memo.Arena.Count);
 
         // A same-generation replacement reopens the same arena and reuses its slots. The closed interval's handles name
@@ -710,12 +707,7 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         using IPhysicsQueryLease lease = installed.World.AcquireQueryReadLease();
         var collector = new SupportFootprintCollector();
         Assert.True(collector.Begin(request));
-        const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
-        Type memberType = typeof(SupportFootprintCollector).GetNestedType("Member", BindingFlags.NonPublic)!;
-        var stored = (Array)typeof(SupportFootprintCollector).GetField("_members", Private)!.GetValue(collector)!;
-        stored.SetValue(Activator.CreateInstance(memberType, west, default(SupportCurvedLeaf), 0, westValue), 0);
-        stored.SetValue(Activator.CreateInstance(memberType, unresolved, default(SupportCurvedLeaf), 0, eastValue), 1);
-        typeof(SupportFootprintCollector).GetField("_count", Private)!.SetValue(collector, 2);
+        collector.SeedMembersForTests([(west, westValue), (unresolved, eastValue)]);
         var raw = new RawFootprint();
         raw.Result = collector.Publish(installed.World, lease, raw.Members, raw.Joins, true);
         Assert.Equal(CapsuleFeatureStatus.Unsupported, raw.Result.Status);

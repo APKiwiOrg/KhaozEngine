@@ -102,7 +102,17 @@ public sealed partial class TileWorldServer
     // entity the pass could not measure is KEPT, the same way the plane filter keeps one it could not place.
     bool IsOutsideFootprintInterest(long netId)
     {
-        if (!footprintByNetId.TryGetValue(netId, out TileRect rect)) return false;
+        return footprintByNetId.TryGetValue(netId, out TileRect rect)
+            && IsOutsideFootprintInterest(viewerTileX, viewerTileZ, config.InterestRadius, rect);
+    }
+
+    /// <summary>TileFootprintInterestTests exercises degenerate rectangles without mutating a live serve.
+    /// The public serving tests exercise the same distance predicate through the real interest path.</summary>
+    internal static bool IsOutsideFootprintInterestForTests(float viewerTileX, float viewerTileZ, float radius, TileRect rect)
+        => IsOutsideFootprintInterest(viewerTileX, viewerTileZ, radius, rect);
+
+    private static bool IsOutsideFootprintInterest(float viewerTileX, float viewerTileZ, float radius, TileRect rect)
+    {
         float nearestX = rect.X, nearestZ = rect.Z;
         if (!rect.IsEmpty)
         {
@@ -110,7 +120,6 @@ public sealed partial class TileWorldServer
             nearestZ = Math.Clamp(viewerTileZ, rect.Z, rect.Z1 - 1);
         }
         float dx = nearestX - viewerTileX, dz = nearestZ - viewerTileZ;
-        float radius = config.InterestRadius;
         return dx * dx + dz * dz > radius * radius;
     }
 }

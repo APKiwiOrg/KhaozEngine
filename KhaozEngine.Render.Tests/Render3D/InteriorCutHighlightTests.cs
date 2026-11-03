@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -71,7 +70,7 @@ public sealed class InteriorCutHighlightTests
             new[] { Matrix4x4.Identity }, 1, world, .25f, .4f, true, new Vector3(10, 20, 30));
         outline.EnqueueSkinnedCpu(Array.Empty<SkinnedVertex>(), indices, 3, GpuIndexFormat.UInt16, null,
             new[] { Matrix4x4.Identity }, 2, world, .25f, .4f, true, new Vector3(10, 20, 30));
-        byte[] image = HighlightTestAccess.Field<byte[]>(outline, "_drawImage");
+        byte[] image = outline.DrawImageForTests;
         Assert.Equal(vp, Read<Matrix4x4>(image, 0));
         Assert.Equal(world, Read<Matrix4x4>(image, 64));
         Assert.Equal(new Vector4(.25f, .4f, 1, 1), Read<Vector4>(image, 128));
@@ -87,20 +86,15 @@ public sealed class InteriorCutHighlightTests
         silhouette.EnsureCapacity(1);
         silhouette.BeginFrame(vp);
         silhouette.Enqueue(vertices, vertices, indices, 3, GpuIndexFormat.UInt16, 0, world, Color.White, .05f, true);
-        byte[] hull = HighlightTestAccess.Field<byte[]>(silhouette, "_image");
+        byte[] hull = silhouette.DrawImageForTests;
         Assert.Equal(vp, Read<Matrix4x4>(hull, 0));
         Assert.Equal(world, Read<Matrix4x4>(hull, 64));
         Assert.Equal(Color.White.ToVector4(), Read<Vector4>(hull, 128));
         Assert.Equal(new Vector4(.05f, 1, 0, 0), Read<Vector4>(hull, 144));
         Assert.Equal(uniforms.Window, Read<Vector4>(hull, 160));
         Assert.Equal(uniforms.Heights, Read<Vector4>(hull, 176));
-        foreach (var (renderer, size, stride) in new (object, string, string)[]
-        { (outline, "DrawPayloadBytes", "DrawSlotBytes"), (silhouette, "PayloadBytes", "SlotBytes") })
-        {
-            Assert.Equal(192, Constant(renderer, size));
-            Assert.Equal(256, Constant(renderer, stride));
-            Assert.Equal(192, Marshal.SizeOf(renderer.GetType().GetNestedType("DrawUbo", BindingFlags.NonPublic)!));
-        }
+        Assert.Equal((192, 256, 192), TargetOutlineRenderer.DrawLayoutForTests);
+        Assert.Equal((192, 256, 192), SilhouetteRenderer.DrawLayoutForTests);
     }
 
     [Fact]
@@ -132,10 +126,4 @@ public sealed class InteriorCutHighlightTests
     }
 
     static T Read<T>(byte[] image, int offset) where T : unmanaged => MemoryMarshal.Read<T>(image.AsSpan(offset));
-    static int Constant(object owner, string name) => (int)owner.GetType().GetField(name, BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
-}
-
-internal static class HighlightTestAccess
-{
-    internal static T Field<T>(object owner, string name) => (T)owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
 }

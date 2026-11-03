@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -55,20 +54,17 @@ public sealed class WaterColumnRiverScene : IDisposable
             device.Present();
         }
         _previous = settings;
-        RenderResources resources = Borrow<RenderResources>("_res");
+        var resources = scene.ColorTargetsForTests;
         Assert.Equal(settings.Aa.Mode == AntiAliasingMode.Msaa ? 4 : 1, resources.SampleCount);
         Assert.Equal(settings.Size, resources.Width);
         float[] linear = ReadRgb(resources.ColorTex);
-        WaterColumnColorSource source = Borrow<WaterColumnColorSource>("_waterColumnColor");
-        float[] copied = scene.WaterColumnLightDiagnostics.CopyRan ? ReadRgb(source.Texture!) : [];
+        IGpuTexture source = scene.WaterColumnColorTextureForTests!;
+        float[] copied = scene.WaterColumnLightDiagnostics.CopyRan ? ReadRgb(source) : [];
         float[] resolved = settings.Aa.Mode == AntiAliasingMode.Temporal
             ? ReadRgb(scene.TemporalHistory.Color(scene.TemporalHistory.WriteIndex)) : linear;
         return new WaterColumnImage(GpuReadback.ToRgba(device, _color!, _size, _size), linear,
             camera.ViewProjection, scene.WaterColumnLightDiagnostics, settings, copied, resolved);
     }
-
-    T Borrow<T>(string field) => (T)typeof(Scene3D).GetField(field,
-        BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_scene)!;
 
     float[] ReadRgb(IGpuTexture texture)
     {

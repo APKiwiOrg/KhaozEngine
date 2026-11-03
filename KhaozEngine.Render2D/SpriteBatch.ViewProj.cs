@@ -21,6 +21,9 @@ namespace KhaozEngine.Render2D
         // _vpUbo grows on demand.
         const uint VpPayloadBytes = 64;   // one Matrix4x4
         const int VpSlotBytes = 256;      // Metal/D3D11/Vulkan-safe dynamic-offset alignment (one matrix per slot)
+        /// <summary>RendererPerfColdLifecycleTests identifies its factory-owned fake buffer for disposal fault injection.</summary>
+        internal bool IsViewProjectionBufferForTests(IGpuBuffer candidate) => ReferenceEquals(_vpUbo, candidate);
+
         IGpuBuffer _vpUbo;
         IGpuResourceSet _vpSet;           // binds the VpPayloadBytes window of _vpUbo at offset 0, per-Begin offset supplied at draw time
         int _vpCapacity;                  // slots in _vpUbo

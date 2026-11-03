@@ -38,6 +38,12 @@ internal static class CapsuleConvexSweep
         return error <= maximumErrorMetres ? new(CapsuleSweepStatus.Hit, lower, upper, error) : default;
     }
 
+    /// <summary>Lets CertifiedCurvedSweepLifetimeTests exhaust refinement after a primitive was already admitted.</summary>
+    internal static CapsuleSweepResult ProveForTests(in InstalledSweepLeaf leaf, Vector3 centre, float radius,
+        float halfCylinderLength, Vector3 displacement, float maximumError, double length, double width,
+        ref CapsuleSweepWork work, CapsuleSweepScratch scratch, double? witness = null) =>
+        Prove(leaf, centre, radius, halfCylinderLength, displacement, maximumError, length, width, ref work, scratch, witness);
+
     static CapsuleSweepResult Prove(in InstalledSweepLeaf leaf, Vector3 centre, float radius, float halfCylinderLength,
         Vector3 displacement, float maximumError, double length, double width,
         ref CapsuleSweepWork work, CapsuleSweepScratch scratch, double? witness = null)

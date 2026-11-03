@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Tests.Locomotion.Contacts;
 using Xunit;
@@ -57,9 +56,8 @@ public partial class SupportFootprintTests
         Assert.Equal(CapsuleFeatureStatus.Unsupported, result.Status);
         Assert.Equal(before, members);
         Assert.All(joins, word => Assert.Equal(73UL, word));
-        var (_, roots, admission) = TiltedScratch(scene.World);
-        Assert.True(((KhaozEngine.Physics.Bepu.SupportCurvedRootRegions)roots).CapacityRefused
-            || ((KhaozEngine.Physics.Bepu.SupportCurvedSurfaceAdmission)admission).CapacityRefused);
+        var observation = TiltedObservation(scene.World);
+        Assert.True(observation.RootCapacityRefused || observation.AdmissionCapacityRefused);
         SupportFootprintResult warm = default;
         long allocation = AllocationMeasurement.Measure(nameof(CurvedTiltedUncertifiedSourceFamilyRefusesAtomicallyAtCellBound), () =>
             warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins));
@@ -67,6 +65,11 @@ public partial class SupportFootprintTests
         Assert.Equal(0, allocation);
         Assert.Equal(before, members);
         Assert.All(joins, word => Assert.Equal(73UL, word));
+
+        var refused = TiltedObservation(scene.World);
+        var clear = Capability(scene.World).QuerySupportFootprint(lease, Request(x: 10), members, joins);
+        Assert.Equal(CapsuleFeatureStatus.Complete, clear.Status);
+        Assert.True(refused.RootCapacityRefused || refused.AdmissionCapacityRefused);
     }
 
     [Theory]
@@ -210,21 +213,11 @@ public partial class SupportFootprintTests
 
     static string TiltedStatistics(object world)
     {
-        var (tilted, _, admissionObject) = TiltedScratch(world);
-        var geometry = (KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry)ObjectField(tilted, "_geometry");
-        var admission = (KhaozEngine.Physics.Bepu.SupportCurvedSurfaceAdmission)admissionObject;
-        return $"root cells={geometry.RootCellCount} frontier={geometry.RootLiveHighWater} terminal={geometry.RootTerminalHighWater} " +
-            $"admission cells={admission.TotalCells} frontier={admission.FrontierHighWater}";
+        var observation = TiltedObservation(world);
+        return $"root cells={observation.RootCellCount} frontier={observation.RootLiveHighWater} terminal={observation.RootTerminalHighWater} " +
+            $"admission cells={observation.AdmissionTotalCells} frontier={observation.AdmissionFrontierHighWater}";
     }
 
-    static object ObjectField(object target, string name) => target.GetType()
-        .GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(target)!;
-    static object CurvedScratch(object world) => ObjectField(FootprintScratch((KhaozEngine.Physics.Bepu.BepuPhysicsWorld)world), "_curvedKernel");
-
-    static (object Tilted, object Roots, object Admission) TiltedScratch(object world)
-    {
-        object curved = CurvedScratch(world), tilted = ObjectField(curved, "_tilted");
-        object geometry = ObjectField(tilted, "_geometry"), roots = ObjectField(geometry, "_roots"), admission = ObjectField(tilted, "_admission");
-        return (tilted, roots, admission);
-    }
+    static KhaozEngine.Physics.Bepu.SupportTiltedCurvedObservation TiltedObservation(object world) =>
+        FootprintScratch((KhaozEngine.Physics.Bepu.BepuPhysicsWorld)world).TiltedObservationForTests;
 }

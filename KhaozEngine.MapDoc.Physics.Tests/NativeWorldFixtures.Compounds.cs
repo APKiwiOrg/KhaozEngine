@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
@@ -98,8 +97,7 @@ internal static partial class NativeWorldFixtures
     {
         using var lease = ((IPhysicsQueryLeaseSource)physics).AcquireQueryReadLease();
         // Owned-test registry inspection, matching InstalledPoseFixture. All geometry reads use public Bepu APIs.
-        var field = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-        var simulation = Assert.IsType<BepuPhysics.Simulation>(field!.GetValue(physics));
+        var simulation = physics.SimulationForTests;
         Assert.Equal(1, simulation.Statics.Count);
         ref var body = ref simulation.Statics[0];
         ref var compound = ref simulation.Shapes.GetShape<BepuPhysics.Collidables.Compound>(body.Shape.Index);

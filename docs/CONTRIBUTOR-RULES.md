@@ -31,6 +31,13 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   catches keep working. A new refusal in a family adds a reason member. The message stays developer prose
   and is never a contract. A plain parameter check whose `ParamName` and `ActualValue` already name the
   problem stays a BCL exception.
+- A test that needs private state uses an internal `<Thing>ForTests` seam beside the type, never reflection.
+  A seam returns the narrowest thing the test reads: a value, a count, an identity predicate or token, a
+  snapshot copy or a genuine read-only view. It never returns a live mutable collection behind an
+  `IReadOnly*` type, because a cast would let a test change engine state, and it returns a whole owner only
+  when the test needs that exact object, documented as borrowed (never dispose, never mutate). A test that
+  injects a fault calls a narrow internal method named for that fault and taking values. Seams never change
+  behaviour.
 - New behavior gets a headless test in the matching `KhaozEngine.<Area>.Tests` project. Use the rump
   `KhaozEngine.Tests` project only for genuinely cross-cutting contracts. Declared namespaces remain
   `KhaozEngine.Tests.*` and new test projects set `<IsPackable>false</IsPackable>`.

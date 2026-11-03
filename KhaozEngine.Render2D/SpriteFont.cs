@@ -66,6 +66,11 @@ namespace KhaozEngine.Render2D
             _lineHeight = lineHeight; _renderScale = renderScale;
         }
 
+        /// <summary>DpiFontBindingTests supplies literal atlas metrics to isolate binding from rasterizer output.</summary>
+        internal static SpriteFont CreateForTests(Texture2D atlas, int width, int height,
+            float ascent, float lineHeight, float renderScale) =>
+            new(atlas, width, height, ascent, lineHeight, renderScale);
+
         SpriteFont(Func<SpriteFont> source) => _source = source;
 
         internal static SpriteFont CreateBound(Func<SpriteFont> source) => new(source);

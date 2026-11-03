@@ -1,12 +1,10 @@
 using System;
 using System.Data;
 using System.IO;
-using System.Reflection;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.Sqlite;
-using KhaozEngine.Sqlite;
 using KhaozEngine.Tests.Catalog.Publish;
 using KhaozEngine.Tests.Catalog.Sqlite;
 using Xunit;
@@ -29,19 +27,16 @@ public sealed class UpgradeLifetimeCatalogTests
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
         using var actual = new SqliteContentAuthoringStore(files.ConnectionString, registry, packs);
         // File unlink on Unix does not prove closure. Observe the actual held provider and native handle.
-        var held = Assert.IsType<SqliteStoreConnection>(typeof(SqliteContentAuthoringStore)
-            .GetField("_connection", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(actual));
-        var native = held.Connection.Handle;
-        Assert.NotNull(native);
-        Assert.Equal(ConnectionState.Open, held.Connection.State);
-        Assert.False(native.IsClosed);
+        var lifetime = actual.CaptureConnectionLifetimeForTests();
+        Assert.Equal(ConnectionState.Open, lifetime().State);
+        Assert.False(lifetime().NativeHandleClosed);
         var cleanupFailure = new InvalidOperationException("intentional setup cleanup fault after native closure");
         IContentAuthoringStore store = cleanupFails ? new FailsAfterDisposeStore(actual, cleanupFailure) : actual;
 
         Exception escaped = await Assert.ThrowsAnyAsync<Exception>(() => UpgradeLifetimeCatalog.CreateAsync(store));
 
-        Assert.True(native.IsClosed, "failed catalog setup left its native SQLite connection open");
-        Assert.Equal(ConnectionState.Closed, held.Connection.State);
+        Assert.True(lifetime().NativeHandleClosed, "failed catalog setup left its native SQLite connection open");
+        Assert.Equal(ConnectionState.Closed, lifetime().State);
         await Assert.ThrowsAsync<ObjectDisposedException>(() => actual.GetActiveVersionAsync());
         Exception primary;
         if (cleanupFails)

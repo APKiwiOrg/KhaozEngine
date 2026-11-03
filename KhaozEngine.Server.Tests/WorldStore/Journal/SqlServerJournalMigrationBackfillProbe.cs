@@ -1,9 +1,6 @@
 using System;
-using System.Collections.Generic;
-using System.Reflection;
 using KhaozEngine.WorldStore.SqlServer;
 using Microsoft.Data.SqlClient;
-using Xunit;
 
 namespace KhaozEngine.Tests.WorldStore.Journal;
 
@@ -13,17 +10,11 @@ namespace KhaozEngine.Tests.WorldStore.Journal;
 /// </summary>
 internal sealed class SqlServerJournalMigrationBackfillProbe : IDisposable
 {
-    private readonly HashSet<string> expectedTriggers;
-    private readonly HashSet<string> originalTriggers;
+    private readonly IDisposable? triggerRegistration;
     private readonly SqlServerMigrationBackfillProbe probe;
 
     internal SqlServerJournalMigrationBackfillProbe(string connectionString)
     {
-        const BindingFlags PrivateStatic = BindingFlags.NonPublic | BindingFlags.Static;
-        FieldInfo field = typeof(SqlServerJournalSchema).GetField("ExpectedTriggers", PrivateStatic)
-            ?? throw new InvalidOperationException("The journal trigger expectation set is missing.");
-        expectedTriggers = (HashSet<string>)field.GetValue(null)!;
-        originalTriggers = new HashSet<string>(expectedTriggers, StringComparer.Ordinal);
         probe = new SqlServerMigrationBackfillProbe(connectionString, "journal_stream", "stream_key = N'legacy/a'");
         try
         {
@@ -33,10 +24,8 @@ internal sealed class SqlServerJournalMigrationBackfillProbe : IDisposable
             command.CommandText = "SELECT OBJECT_DEFINITION(OBJECT_ID(@trigger));";
             command.Parameters.AddWithValue("@trigger", "dbo." + probe.TriggerName);
             string definition = (string)command.ExecuteScalar()!;
-            MethodInfo normalize = typeof(SqlServerJournalSchema).GetMethod("Trigger", PrivateStatic)
-                ?? throw new InvalidOperationException("The journal trigger normalization is missing.");
-            string signature = (string)normalize.Invoke(null, [probe.TriggerName, "journal_stream", definition, false])!;
-            Assert.True(expectedTriggers.Add(signature), "The probe must add only its own trigger expectation.");
+            triggerRegistration = SqlServerJournalSchema.RegisterTriggerForTests(
+                probe.TriggerName, "journal_stream", definition);
         }
         catch
         {
@@ -55,8 +44,7 @@ internal sealed class SqlServerJournalMigrationBackfillProbe : IDisposable
         }
         finally
         {
-            expectedTriggers.Clear();
-            expectedTriggers.UnionWith(originalTriggers);
+            triggerRegistration?.Dispose();
         }
     }
 }

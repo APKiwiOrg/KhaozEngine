@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -13,27 +12,23 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class WaterColumnResourceLifecycleTests
 {
-    static T Field<T>(Scene3D scene, string name) => (T)typeof(Scene3D)
-        .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scene)!;
-
     [Fact]
     public void FreshSceneBorrowsShadowsWithoutWaterAllocationsOrRetirements()
     {
         using var device = new FakeGpuDevice();
         using var scene = new Scene3D(device, new(null, GpuPixelFormat.R8G8B8A8UNorm));
         var factory = (FakeGpuResourceFactory)device.Factory;
-        GpuRetireQueue retired = Field<GpuRetireQueue>(scene, "_retired");
-        Assert.Equal(0, retired.PendingCount);
+        Assert.Equal(0, scene.RetiredResourceCount);
         // The construction inventory before M5 (0af218d5b), without standalone column fallbacks.
         Assert.Equal((19, 32, 4), (factory.Textures.Count, factory.Buffers.Count, factory.SamplerCreateCount));
-        WaterRenderer water = Field<WaterRenderer>(scene, "_water");
-        ModelRenderer model = Field<ModelRenderer>(scene, "_model");
-        Assert.Same(model.ShadowMap.ShadowTexture, water.ColumnShadows.ShadowAtlas);
-        Assert.Same(model.ShadowMap.ShadowSampler, water.ColumnShadows.ShadowSampler);
-        Assert.Same(model.SharedFrameUniforms, water.ColumnShadows.FrameUniforms);
-        water.Dispose();
-        Assert.False(Assert.IsType<FakeTexture>(model.ShadowMap.ShadowTexture).Disposed);
-        Assert.False(Assert.IsType<FakeBuffer>(model.SharedFrameUniforms).Disposed);
+        var water = scene.WaterShadowBindingsForTests;
+        var model = scene.ModelShadowBindingsForTests;
+        Assert.Same(model.Atlas, water.Atlas);
+        Assert.Same(model.Sampler, water.Sampler);
+        Assert.Same(model.FrameUniforms, water.FrameUniforms);
+        scene.DisposeWaterForTests();
+        Assert.False(Assert.IsType<FakeTexture>(model.Atlas).Disposed);
+        Assert.False(Assert.IsType<FakeBuffer>(model.FrameUniforms).Disposed);
     }
 
     [Theory]
@@ -50,12 +45,12 @@ public sealed class WaterColumnResourceLifecycleTests
         scene.Begin();
         if (viewportPrepared) scene.PrepareFrame(96, 64);
         else scene.PrepareFrame();
-        Assert.Null(Field<WaterColumnColorSource?>(scene, "_waterColumnColor"));
+        Assert.Null(scene.WaterColumnColorTextureForTests);
         using var commands = new RecordingGpuCommandList(new NullGpuCommandList());
         var factory = (FakeGpuResourceFactory)device.Factory;
         using var target = factory.CreateFramebuffer(null, scene.ResolvedDepthTarget);
         scene.RenderInternal(commands, 96, 64, target);
-        Assert.Null(Field<WaterColumnColorSource?>(scene, "_waterColumnColor"));
+        Assert.Null(scene.WaterColumnColorTextureForTests);
         Assert.Empty(uploads);
         Assert.Empty(commands.TextureCopies);
         Assert.Equal(default, scene.WaterColumnLightDiagnostics);

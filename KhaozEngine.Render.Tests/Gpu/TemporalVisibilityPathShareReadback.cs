@@ -20,7 +20,7 @@ internal static class TemporalVisibilityPathShareReadback
     }
 
     // Install before the first resolve. The scene owns and disposes the renderer.
-    internal static TemporalResolveRenderer UseExportingResolve(TemporalFixture fx, Func<string, string>? rewrite = null)
+    internal static void UseExportingResolve(TemporalFixture fx, Func<string, string>? rewrite = null)
         => TemporalTestResolve.Install(fx, rewrite ?? TemporalVisibilityProductionPaths.Rewrite);
 
     internal static string Share(long part, long whole) => whole == 0 ? "n/a"

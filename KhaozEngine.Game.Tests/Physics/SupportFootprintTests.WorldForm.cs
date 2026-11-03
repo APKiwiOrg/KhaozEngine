@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using KhaozEngine.Locomotion;
@@ -702,8 +701,7 @@ public partial class SupportFootprintTests
         /// <summary>The owner's published world form, read through the installed geometry cache's own lookup.</summary>
         internal InstalledSupportWorldForm? Form(StaticHandle owner)
         {
-            var cache = (InstalledSupportGeometryCache)typeof(BepuPhysicsWorld)
-                .GetField("_installedSupportGeometry", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(World)!;
+            var cache = World.InstalledSupportGeometryForTests;
             long version = World.StaticGeometryGeneration;
             Assert.Equal(CapsuleFeatureStatus.Complete, cache.GetOrCapture(SimulationOf(World), owner,
                 HandlesOf(World)[owner.Value].Shape, version, out InstalledSupportGeometry? geometry));

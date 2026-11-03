@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -207,14 +206,12 @@ public partial class SupportFootprintTests
         // fresh polygon as it found it. The optimized Measure then certifies it as before.
         SupportFootprintRequest request = Request();
         SupportPolygon riser = Riser(0.1, -0.1, 0.1, 0.1, -0.05, 0.05);
-        FieldInfo certified = typeof(SupportPolygon).GetField("_hasVerticalDomain",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
         GeometrySign reference = Admit(riser, request, reference: true, out SupportFootprintMember expected, out _);
-        Assert.False((bool)certified.GetValue(riser)!);
+        Assert.False(riser.HasVerticalDomainForTests);
         Assert.Equal(reference, Admit(riser, request, reference: false, out SupportFootprintMember member,
             out SupportQueryCounts counts));
         Assert.Equal(expected, member);
-        Assert.True((bool)certified.GetValue(riser)!);
+        Assert.True(riser.HasVerticalDomainForTests);
         Assert.Equal(1, counts.AdmissionCertificates);
     }
 

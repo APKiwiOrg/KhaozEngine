@@ -600,6 +600,17 @@ public sealed partial class ViewportWorld : IDisposable
         (_doc, _field) = (doc, field);
     }
 
+    /// <summary>HeadlessPickViewport temporarily installs only the state consumed by picking. The streamer is
+    /// borrowed, never disposed here, and all previous state is restored before the fixture disposes its streamer.</summary>
+    internal IDisposable BindPickingForTests(MapDocument doc, TerrainField? field, TerrainStreamer streamer, Vector3 focus)
+    {
+        if (_built) throw new InvalidOperationException("A built viewport owns its picking state.");
+        var previous = (_doc, _field, _streamer, _lastDrawFocus, _built);
+        (_doc, _field, _streamer, _lastDrawFocus, _built) = (doc, field, streamer, focus, true);
+        return new PickingScopeForTests(() =>
+            (_doc, _field, _streamer, _lastDrawFocus, _built) = previous);
+    }
+
     // ---- headless surface -------------------------------------------------------------------------------
 
     internal static float? LegacyWaterLevel(MapDocument doc) => doc.Water is null ? doc.Terrain.WaterLevel : null;

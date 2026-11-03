@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -43,9 +42,7 @@ public partial class SupportFootprintTests
         Assert.Equal(4560, pairs);
         Assert.Equal(96, polygons.Length);
         // A discharged meeting leaves the distance scratch untouched, rather than hiding fewer raw pairs.
-        var candidates = (ICollection)typeof(SupportSegmentPolygon).GetField("_candidates",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(optimized)!;
-        Assert.Empty(candidates);
+        Assert.Equal(0, optimized.CandidateCountForTests);
 
         using var scene = SupportFootprintScenes.Fan(count);
         using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();

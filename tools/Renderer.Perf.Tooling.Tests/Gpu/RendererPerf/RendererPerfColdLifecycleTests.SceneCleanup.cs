@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
@@ -39,17 +38,17 @@ public sealed partial class RendererPerfColdLifecycleTests
         rig.WorkFactory = (device, _, observer) =>
         {
             work = new RendererPerfSceneWorkload(device, observer, identity);
-            var ui = Field<SpriteBatch>(work, "_ui");
-            uniform = Field<SubmissionTestBuffer>(ui, "_vpUbo");
+            var ui = work._ui!;
+            uniform = rig.Production.CreatedBuffers.Single(ui.IsViewProjectionBufferForTests);
             uniform.OnDispose = () => { observed.Add("ui.uniform"); throw uiError; };
-            work.Scene.LoadTexture(new byte[4], 1, 1);
-            sceneTexture = Field<List<IGpuTexture>>(work.Scene, "_textures").Last() as FakeTexture;
+            var loadedTexture = work.Scene.LoadTexture(new byte[4], 1, 1);
+            sceneTexture = rig.Production.CreatedTextures.Single(t => work.Scene.IsTextureForTests(loadedTexture, t));
             sceneTexture!.OnDispose = () => { observed.Add("scene.texture"); throw sceneError; };
             target = (FakeFramebuffer)work.Target;
             target.OnDispose = () => { observed.Add("target"); throw targetError; };
-            Field<FakeTexture>(work, "_texture").OnDispose = () => { observed.Add("attachment"); throw attachmentError; };
-            var actualRecipe = Field<RendererPerfRecipe>(work, "_recipe");
-            foreach (var texture in Field<Texture2D[]>(actualRecipe.UiScene!, "_textures"))
+            ((FakeTexture)work._texture).OnDispose = () => { observed.Add("attachment"); throw attachmentError; };
+            var actualRecipe = work._recipe;
+            foreach (var texture in actualRecipe.UiScene!._textures)
                 ((FakeTexture)texture.Handle).OnDispose = () => { observed.Add("recipe.texture"); recipeReleases++; };
             return work;
         };
@@ -114,11 +113,9 @@ public sealed partial class RendererPerfColdLifecycleTests
             av = (SubmissionTestBuffer)a.Buffer!; bv = (SubmissionTestBuffer)b.Buffer!;
             av.OnDispose = () => { observed.Add("foliage.0"); throw first; };
             bv.OnDispose = () => { observed.Add("foliage.1"); throw second; };
-            var res = Field<RenderResources>(scene, "_res");
             scene.TemporalHistory.EnsureTargets(device, 8, 8, 8, 8);
-            var post = new TemporalPostTargets(device);
-            post.Ensure(res, scene.TemporalHistory, 8, 8, false);
-            typeof(Scene3D).GetField("_temporalPost", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(scene, post);
+            scene.PrepareTemporalPostForTests(8, 8);
+            var post = scene.TemporalPostTargetsForTests!;
             postTail = (FakeTexture)post.PingB;
             ((FakeTexture)post.PingA).OnDispose = () => { observed.Add("temporal.post"); throw temporal; };
             depthTail = (FakeTexture)scene.TemporalHistory.PreviousDepth(1);
@@ -151,7 +148,7 @@ public sealed partial class RendererPerfColdLifecycleTests
     {
         using var device = new RendererPerfConstructionFixture();
         var ui = new SpriteBatch(device, new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm));
-        var buffer = Field<SubmissionTestBuffer>(ui, "_vpUbo");
+        var buffer = device.CreatedBuffers.Single(ui.IsViewProjectionBufferForTests);
         var drain = new InvalidOperationException("prerequisite"); var child = new InvalidOperationException("UI child");
         buffer.OnDispose = () => throw child;
         device.Trace = stage => { if (failDrain && stage == "drain") throw drain; };
@@ -179,6 +176,5 @@ public sealed partial class RendererPerfColdLifecycleTests
     }
     // Fault the actual frame callback before recipe work, keeping owned resources in their constructed state.
     static void OverridePrepare(RendererPerfNativeSession session, Action prepare) =>
-        typeof(RendererPerfNativeSession).GetField("_prepare", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, (Action<Frame>)(_ => prepare()));
-    static T Field<T>(object owner, string name) => (T)owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
+        session._prepare = _ => prepare();
 }

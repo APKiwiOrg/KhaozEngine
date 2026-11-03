@@ -207,6 +207,9 @@ internal sealed class SupportCurvedSourceArithmetic
         return default;
     }
 
+    /// <summary>Lets SupportCurvedWorkTests reach compiled sign evaluation after exhausting its shared work account.</summary>
+    internal GeometrySign PolynomialSignForTests(Number number) => PolynomialSign(number);
+
     GeometrySign PolynomialSign(Number number)
     {
         if (_curvedWork.Failed) return GeometrySign.Unresolved;

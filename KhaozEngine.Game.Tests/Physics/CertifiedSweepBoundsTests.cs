@@ -75,7 +75,7 @@ public sealed class CertifiedSweepBoundsTests
         using var world = new BepuPhysicsWorld(Vector3.Zero);
         var pose = new Pose(new(0.28660256f, 0.2f, 0), new(0, 0, 0.5f, 0.8660254f));
         StaticHandle handle = world.AddStatic(new BoxShape(new(0.125f)), pose);
-        var captured = (System.Collections.Generic.Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics");
+        var captured = world.InstalledSweepStaticsForTests;
         var native = Static(world, handle);
         Sim(world).Statics.GetDescription(native.Handle, out var installed);
         Assert.True(CapsuleSweepGeometry.TryReadLeaf(Sim(world).Shapes, native.Shape, installed.Pose, captured[handle.Value]!, 0, out var leaf));

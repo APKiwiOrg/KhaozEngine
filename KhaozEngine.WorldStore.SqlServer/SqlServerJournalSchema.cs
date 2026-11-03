@@ -471,6 +471,11 @@ internal static partial class SqlServerJournalSchema
             false),
     };
 
+    /// <summary>SqlServerJournalMigrationBackfillProbe registers its one real trigger while the serialized
+    /// migration race runs. Disposing the scope restores the original expected inventory.</summary>
+    internal static IDisposable RegisterTriggerForTests(string name, string table, string definition, bool disabled = false)
+        => new TriggerRegistrationForTests(Trigger(name, table, definition, disabled));
+
     private static readonly HashSet<string> ExpectedTriggersV1 = new(StringComparer.Ordinal);
 
     private static string Column(string table, string column, string type, int length, bool nullable, string collation)

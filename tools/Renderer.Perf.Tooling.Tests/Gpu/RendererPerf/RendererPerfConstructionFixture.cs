@@ -17,6 +17,9 @@ internal sealed partial class RendererPerfConstructionFixture : IGpuDevice, IGpu
 {
     readonly GpuPerfTimestampTestDevice _inner = new();
     readonly FakeGpuResourceFactory _resources = new();
+    internal readonly System.Collections.Generic.List<SubmissionTestBuffer> CreatedBuffers = [];
+    internal System.Collections.Generic.IReadOnlyList<FakeTexture> CreatedTextures => _resources.Textures;
+    internal System.Collections.Generic.IReadOnlyList<FakeResourceSet> CreatedResourceSets => _resources.ResourceSets;
     internal int FactoryAttempts, ShaderAttempts, LayoutAttempts, GraphicsAttempts, ComputeAttempts, CompilerReads;
     internal int TextureAttempts;
     internal Exception? FactoryFailure;
@@ -47,7 +50,12 @@ internal sealed partial class RendererPerfConstructionFixture : IGpuDevice, IGpu
     public IGpuTimestampPool CreateTimestampPool(uint capacity) => _inner.CreateTimestampPool(capacity);
     public IGpuFence CreateFence() => _inner.CreateFence();
     public IGpuCommandList CreateCommandList() => new Commands(this);
-    public IGpuBuffer CreateBuffer(in GpuBufferDescription d) => new SubmissionTestBuffer(d.SizeInBytes, d.Usage);
+    public IGpuBuffer CreateBuffer(in GpuBufferDescription d)
+    {
+        var buffer = new SubmissionTestBuffer(d.SizeInBytes, d.Usage);
+        CreatedBuffers.Add(buffer);
+        return buffer;
+    }
     public IGpuTexture CreateTexture(in GpuTextureDescription d)
     {
         TextureAttempts++;

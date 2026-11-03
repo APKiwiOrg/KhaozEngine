@@ -1,5 +1,4 @@
 using System.Numerics;
-using System.Reflection;
 using BepuMesh = BepuPhysics.Collidables.Mesh;
 using BepuSim = BepuPhysics.Simulation;
 using KhaozEngine.Physics;
@@ -49,10 +48,8 @@ public class LowLipFeatureSourceCapacityTests
         Assert.Equal(Vector3.Zero, lease.Origin);
         Assert.Equal(Vector3.Zero, view.Origin);
 
-        // Owned test reflection inspects the real installed allocation and real tree, without modifying either.
-        FieldInfo? simulationField = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(simulationField);
-        BepuSim simulation = Assert.IsType<BepuSim>(simulationField.GetValue(world));
+        // The internal simulation seam exposes the real installed allocation and real tree, without modifying either.
+        BepuSim simulation = world.SimulationForTests;
         Assert.Equal(1, simulation.Statics.Count);
         ref var body = ref simulation.Statics[0];
         Assert.Equal(default(BepuMesh).TypeId, body.Shape.Type);

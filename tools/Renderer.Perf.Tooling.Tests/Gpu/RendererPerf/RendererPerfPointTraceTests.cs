@@ -1,7 +1,5 @@
 using System;
-using System.Collections;
 using System.Linq;
-using System.Reflection;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
@@ -68,18 +66,9 @@ public sealed class RendererPerfPointTraceTests
     {
         using var rig = new GeometryRig(gpu);
         rig.Frame(); rig.Frame(); rig.Frame();
-        var field = typeof(Scene3D).GetField("_packedPointSlots", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var slots = Assert.IsAssignableFrom<IList>(field.GetValue(rig.Scene));
-        Assert.NotEmpty(slots);
-        for (int i = 0; i < slots.Count; i++)
-        {
-            object packed = slots[i]!;
-            // Rigid recording needs no request lookup. Only profiling would inspect this invalid index.
-            packed.GetType().GetProperty("RequestIndex")!.SetValue(packed, int.MaxValue);
-            var casters = packed.GetType().GetProperty("Casters")!;
-            casters.SetValue(packed, Enum.ToObject(casters.PropertyType, 1));
-            slots[i] = packed;
-        }
+        Assert.True(rig.Scene.PackedPointSlotCountForTests > 0);
+        // Rigid recording needs no request lookup. Only profiling inspects the invalid request index.
+        rig.Scene.CorruptPointProfilingRequestsForTests(int.MaxValue);
         rig.Commands.Events.Clear();
         Assert.Null(rig.Scene.PassObserver);
         Assert.Null(Record.Exception(() => rig.Scene.RenderPointShadowSlots(rig.Commands)));

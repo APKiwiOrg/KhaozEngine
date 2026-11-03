@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -53,7 +52,7 @@ public sealed class CertifiedHullSweepLifetimeTests
         StaticHandle replacement = world.AddStatic(CertifiedHullSweepTests.Tetrahedron(), Pose.At(-world.Origin));
         HitContains(Read(world, start - world.Origin, delta), 1.75, 1.75);
         DynamicBodyHandle body = world.AddDynamic(CertifiedHullSweepTests.Tetrahedron(), Pose.At(new(40, 0, 0)), new DynamicBodyDescription(1));
-        var dynamics = (Dictionary<int, (BepuPhysics.BodyHandle Handle, BepuPhysics.Collidables.TypedIndex Shape)>)Field(world, "_dynamics");
+        var dynamics = world.DynamicHandlesForTests;
         Mutate(world, sim =>
         {
             var reference = sim.Bodies[dynamics[body.Value].Handle];
@@ -98,13 +97,11 @@ public sealed class CertifiedHullSweepLifetimeTests
             Assert.Same(scratch, retained.GeneralSweeps.Idle);
             Assert.Equal(capacity, retained.SweepCandidates.Idle!.Capacity);
         }
-        var captures = (Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics");
+        var captures = world.InstalledSweepStaticsForTests;
         InstalledSweepGeometry geometry = captures[replacement.Value]!;
         Assert.True(geometry.TryPose(geometry.ParentPose, out var saved));
-        object uncertain = saved;
-        typeof(InstalledPoseOperator).GetField("<X>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(uncertain, new FeaturePoint(FeatureNumber.Enclosed(GeometryInterval.Enclose(-1, 1)), FeatureNumber.Exact(0), FeatureNumber.Exact(0)));
-        geometry.PublishPose(geometry.ParentPose, geometry.LeafPose, (InstalledPoseOperator)uncertain);
+        var uncertain = saved.WithXForTests(new FeaturePoint(FeatureNumber.Enclosed(GeometryInterval.Enclose(-1, 1)), FeatureNumber.Exact(0), FeatureNumber.Exact(0)));
+        geometry.PublishPose(geometry.ParentPose, geometry.LeafPose, uncertain);
         var refusedDimensions = new CapsuleQueryDimensions(0.25f, 0);
         Pose refusedPose = Pose.At(start - world.Origin);
         Refused(world.SweepCapsuleCertified(refusedDimensions, refusedPose, delta));

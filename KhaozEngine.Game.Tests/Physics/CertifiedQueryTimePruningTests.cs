@@ -126,8 +126,8 @@ public sealed class CertifiedQueryTimePruningTests(ITestOutputHelper output)
         using var world = new BepuPhysicsWorld(Vector3.Zero);
         var largest = world.AddStatic(new SphereShape(1), Pose.At(new(1024, 0, 0)));
         var selected = world.AddStatic(new SphereShape(1), Pose.At(new(32, 0, 0)));
-        var selection = (CapsuleSweepSelection)Field(world, "_sweepSelection");
-        var reverse = (Dictionary<int, int>)Field(world, "_reverseHandles");
+        var selection = world.SweepSelectionForTests;
+        var reverse = world.ReverseStaticHandlesForTests;
         var exclusions = selection.CreateExclusions([largest], reverse);
         Assert.Equal(1024, selection.Bounds(QueryMobility.Statics, null).Root);
         Assert.Equal(32, selection.Bounds(QueryMobility.Statics, exclusions).Root);

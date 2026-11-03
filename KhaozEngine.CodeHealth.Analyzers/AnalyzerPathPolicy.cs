@@ -14,7 +14,8 @@ namespace KhaozEngine.CodeHealth.Analyzers
 
         /// <summary>
         /// Gives the path of <paramref name="path"/> relative to <paramref name="root"/>, and true, when the
-        /// file lies under that root and is not excluded. <paramref name="root"/> is already normalised.
+        /// file lies under that root and is not excluded after collapsing relative dot segments.
+        /// <paramref name="root"/> already has normalised separators and is otherwise matched as supplied.
         /// </summary>
         public static bool TryGetCheckedRelativePath(string path, string root, out string relative)
         {
@@ -25,6 +26,23 @@ namespace KhaozEngine.CodeHealth.Analyzers
             if (!full.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase)) return false;
 
             relative = full.Substring(root.Length + 1);
+            var segments = relative.Split('/');
+            var segmentCount = 0;
+            foreach (var segment in segments)
+            {
+                if (segment == ".") continue;
+                if (segment == "..")
+                {
+                    if (segmentCount == 0) return false;
+                    segmentCount--;
+                }
+                else
+                {
+                    // Empty segments are part of existing baseline keys and remain on the stack.
+                    segments[segmentCount++] = segment;
+                }
+            }
+            relative = string.Join("/", segments, 0, segmentCount);
             return !IsExcluded(relative);
         }
 

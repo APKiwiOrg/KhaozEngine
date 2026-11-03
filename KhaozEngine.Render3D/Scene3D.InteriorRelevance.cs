@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -13,6 +14,14 @@ public sealed partial class Scene3D
     bool _interiorRelevanceDirty;
     InteriorCutFrame _interiorRelevanceFrame;
     InteriorCutFrame _interiorSubmissionFrame;
+    /// <summary>InteriorCutPlacementSlotTests observes cache work without gaining access to the scene-owned cache.</summary>
+    internal (int ContextChecks, int Evaluations, int Lookups) InteriorRelevanceForTests =>
+        (_interiorRelevance.ContextChecks, _interiorRelevance.Evaluations, _interiorRelevance.Lookups);
+
+    /// <summary>InteriorCutRelevanceTests and InteriorCutCounterTests observe the uploaded cut flags as immutable values.</summary>
+    internal IReadOnlyList<ModelRenderer.InstanceData> InstanceDataForTests =>
+        _instanceData.AsReadOnly();
+
     internal int InteriorMeshReads { get; private set; }
     internal int InteriorMarginEvaluations => _silhouetteRelevance.Evaluations;
     internal int InteriorMarginLookups => _silhouetteRelevance.Lookups;

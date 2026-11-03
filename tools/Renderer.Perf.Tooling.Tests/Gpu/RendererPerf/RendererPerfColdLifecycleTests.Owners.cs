@@ -1,8 +1,6 @@
 using System;
 using System.Linq;
-using System.Reflection;
 using System.Text.Json;
-using System.Threading;
 using KhaozEngine.Gpu;
 using Xunit;
 
@@ -14,11 +12,10 @@ public sealed partial class RendererPerfColdLifecycleTests
     public void Both_contexts_are_gated_and_disposed_before_publication()
     {
         using var rig = new RendererPerfColdLifecycleFixture();
-        object gate = typeof(GpuDeviceContext).GetField("_lifecycleGate", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
         rig.Boundary = stage =>
         {
             if (stage.StartsWith("create.", StringComparison.Ordinal) || stage.EndsWith("context.dispose", StringComparison.Ordinal)
-                || stage.EndsWith("context.mark", StringComparison.Ordinal)) Assert.True(Monitor.IsEntered(gate));
+                || stage.EndsWith("context.mark", StringComparison.Ordinal)) Assert.True(GpuDeviceContext.LifecycleGateHeldForTests);
         };
         var outcome = rig.Run();
         Assert.Empty(outcome.Failures);

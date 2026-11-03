@@ -23,7 +23,7 @@ public sealed class CertifiedRotatedBoxSweepTests
     public void RotatedBoxFaceEntryHasAContainingMetreBracket()
     {
         using var world = BoxWorld();
-        var geometries = (System.Collections.Generic.Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics");
+        var geometries = world.InstalledSweepStaticsForTests;
         InstalledSweepGeometry geometry = geometries[0]!;
         var native = Static(world, new StaticHandle(0));
         Sim(world).Statics.GetDescription(native.Handle, out var installed);

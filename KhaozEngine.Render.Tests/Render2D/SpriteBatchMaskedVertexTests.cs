@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using Xunit;
@@ -54,10 +53,7 @@ public class SpriteBatchMaskedVertexTests
 
     static object PendingKey(SpriteBatch batch)
     {
-        var runs = typeof(SpriteBatch).GetField("_runs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(batch)!;
-        var pending = Assert.IsAssignableFrom<IReadOnlyList<(object Key, int Start, int Count)>>(
-            runs.GetType().GetProperty("Runs")!.GetValue(runs));
-        return Assert.Single(pending).Key;
+        return Assert.Single(batch.RunsForTests).Key;
     }
 
     [Fact]

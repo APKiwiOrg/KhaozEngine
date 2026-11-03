@@ -20,7 +20,7 @@ public sealed class CertifiedCurvedSweepTests
         Sim(world).Statics.GetDescription(entry.Handle, out var installed);
         Assert.True(InstalledPoseOperator.TryCreate(installed.Pose, out var map));
         Assert.False(map.IsExactlyRigid);
-        var geometry = ((Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[handle.Value]!;
+        var geometry = world.InstalledSweepStaticsForTests[handle.Value]!;
         Assert.True(CapsuleSweepGeometry.TryReadLeaf(Sim(world).Shapes, entry.Shape, installed.Pose, geometry, 0, out var leaf));
         Assert.True(CapsuleCurvedCorrespondence.TryForwardError(leaf, out double departure));
         Assert.True(departure > 0);

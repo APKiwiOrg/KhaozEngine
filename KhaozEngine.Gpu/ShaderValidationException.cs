@@ -6,6 +6,8 @@ namespace KhaozEngine.Gpu;
 /// <summary>A structured ShaderValidation refusal.</summary>
 public sealed class ShaderValidationException : Exception
 {
+    readonly IReadOnlyList<string>? _repairSourcePaths;
+
     /// <summary>Creates a consumer exception with the given message.</summary>
     public ShaderValidationException(string message) : base(message) { }
 
@@ -53,7 +55,11 @@ public sealed class ShaderValidationException : Exception
     public int? FirstMissingIndex { get; init; }
 
     /// <summary>A read-only snapshot of source paths illustrating shader repairs.</summary>
-    public IReadOnlyList<string>? RepairSourcePaths { get; init; }
+    public IReadOnlyList<string>? RepairSourcePaths
+    {
+        get => _repairSourcePaths;
+        init => _repairSourcePaths = value is null ? null : Array.AsReadOnly<string>([.. value]);
+    }
 
     /// <summary>The set identifying this refusal, when applicable.</summary>
     public int? Set { get; init; }

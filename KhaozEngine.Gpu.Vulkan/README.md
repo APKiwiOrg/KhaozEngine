@@ -1928,6 +1928,10 @@ on every rebuild. Its sampled R32F atlas remains stored. See
 
 ## Refusals
 
+`CandidateNames` and `CandidateRejections` copy supplied lists into exception-owned read-only snapshots,
+including when consumer code initializes them. Neither source mutation nor a cast of the exposed list can
+change the captured diagnostics.
+
 | Exception and reason | What it refuses | Identifiers |
 |---|---|---|
 | `VulkanBackendCreationStateException`, `VulkanBackendCreationRefusal.PinnedAdapterUnavailable` | Refuses a pinned Vulkan adapter that is absent or ineligible. | `AdapterKey` |

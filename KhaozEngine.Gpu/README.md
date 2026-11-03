@@ -620,7 +620,8 @@ every constructor and expose a non-nullable `Reason`. Each derives from the refu
 exception type. Message text is developer prose. Branch on the reason and read the diagnostic properties.
 
 `ShaderValidationException` keeps its `Exception` base and message-only constructors. Engine callers fill
-`ShaderValidationRefusal` and the applicable identifiers. `CrossCompileFailed` retains its inner refusal,
+`ShaderValidationRefusal` and the applicable identifiers. `RepairSourcePaths` copies supplied paths into an
+exception-owned read-only snapshot, including when consumer code initializes it. `CrossCompileFailed` retains its inner refusal,
 and `FrontEndCompileFailed` retains the actual compiler failure. `ShaderValidationArgumentException`,
 `ShaderValidationRangeException` and `ShaderValidationStateException` derive from the original
 `ArgumentException`, `ArgumentOutOfRangeException` and `InvalidOperationException` bases and require a reason.

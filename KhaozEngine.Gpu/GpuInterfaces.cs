@@ -244,6 +244,10 @@ namespace KhaozEngine.Gpu
         void End();
         /// <summary>Bind a framebuffer as the render target.</summary>
         void SetFramebuffer(IGpuFramebuffer fb);
+        /// <summary>Bind a framebuffer with per-attachment store intent. This intent applies to each native
+        /// rendering pass opened for the binding. A transfer or dispatch can end one, so callers must not
+        /// reopen a pass and load discarded data. Default implementations conservatively retain contents.</summary>
+        void SetFramebufferWithStoreActions(IGpuFramebuffer fb, in GpuAttachmentStoreActions stores) => SetFramebuffer(fb);
         /// <summary>Clear colour attachment <paramref name="index"/> to <paramref name="rgba"/>.</summary>
         void ClearColorTarget(uint index, Color rgba);
         /// <summary>Clear the depth attachment.</summary>

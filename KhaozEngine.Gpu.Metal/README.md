@@ -989,10 +989,12 @@ answer is worth carrying, because it says what the goldens can and cannot see. T
 positions, so no committed golden distinguishes the two, and the instrument that does is a `[GpuFact]` that
 clears two attachments and reads the second one back as a texel.
 
-**Store actions are set explicitly.** The descriptor's own default DISCARDS the attachment, so every colour and
-depth attachment is given `MTLStoreActionStore` rather than left alone. Depth `DontCare` is a real win on a
-tile-based GPU and is deliberately not taken here: it leaves contents undefined, and undefined is not stable
-across runs.
+**Store actions are set explicitly.** The default is `Store` for every colour, depth and stencil attachment.
+`SetFramebufferWithStoreActions` lets the pass owner declare individual attachments dead. Metal then uses
+`DontCare` for only those attachments. The directional cascade pass retains its sampled R32F atlas and discards
+its working depth and stencil. Neither plane is sampled or captured, and the next rebuild clears both before
+reading them, so their undefined post-pass bytes cannot affect a deterministic output. See
+[attachment intent](../docs/METAL-FRAME-SUBMISSION.md#attachment-store-intent).
 
 **The viewport and the scissor are emitted on a framebuffer CHANGE only.** There is no `SetViewport` on the GPU
 seam at all: the engine gets one because Veldrid's own `SetFramebuffer` auto-applied a full viewport and a full

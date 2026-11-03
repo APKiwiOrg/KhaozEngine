@@ -1795,4 +1795,6 @@ upload counts. `CandidateInstances` includes instances the shader rejects, rathe
 
 The clustered point-light receiver skips its shadow filter when banded NdotL is exactly zero. Both diffuse
 and specular are already zero there, with specular gated by `step(0.0001, ndl)`. `AddLight` ignores non-finite
-intensities, keeping attenuation finite.
+intensities, keeping attenuation finite. The directional cascade keeps its sampled R32F colour atlas and
+declares only its separate working depth and stencil dead. Those planes are cleared before every rebuild
+and never sampled, captured or read back. See [attachment lifetime](../docs/METAL-FRAME-SUBMISSION.md#attachment-store-intent).

@@ -409,7 +409,9 @@ namespace KhaozEngine.Render3D.Rendering
             // whole-buffer write escapes the partial-uniform-write staging route the incumbent had, which Mapped the
             // immediate context and stalled on the GPU (see the _frameImage note in ModelRenderer.FrameUbo.cs).
             cl.UpdateBuffer(_lightUbo, 0, (ReadOnlySpan<byte>)_lightImage);
-            cl.SetFramebuffer(_graph.Framebuffer);
+            // The R32F colour atlas is sampled and captured. Depth and stencil are working storage, cleared
+            // before every rebuild and never read outside this uninterrupted pass (#595).
+            cl.SetFramebufferWithStoreActions(_graph.Framebuffer, new GpuAttachmentStoreActions(DiscardDepth: true, DiscardStencil: true));
             cl.ClearColorTarget(0, new Color(1f, 1f, 1f, 1f));  // 1.0 = far plane = no caster (whole atlas)
             cl.ClearDepthStencil(1f);
             cl.SetPipeline(_graph.Pipeline);

@@ -133,6 +133,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _boundSwapchain |= fb is D3D11SwapchainFramebuffer;
         }
 
+        public void SetFramebufferWithStoreActions(IGpuFramebuffer fb, in GpuAttachmentStoreActions stores)
+        {
+            // No per-plane end-of-pass store control on D3D11. Keep the ordinary bind and its own caller id.
+            RequireRecording();
+            SetFramebuffer(fb);
+        }
+
         /// <inheritdoc/>
         public bool BoundSwapchainFramebuffer => _boundSwapchain;
 

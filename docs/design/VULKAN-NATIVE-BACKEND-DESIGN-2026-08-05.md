@@ -60,7 +60,7 @@ what was rejected from both.
 | V-A3 | Rendering | The clear-only case is REPRODUCED deliberately: `SetFramebuffer` plus clear plus `End` with no draw must still clear, because the incumbent forces it and a golden depends on it. Here it is a begin/end pair with no draws, flushed at `End` and at the next `SetFramebuffer` | B |
 | V-A4 | Rendering | Any command illegal inside a render pass instance (dispatch, resolve, copy, mip generation) ENDS the pending rendering first. One invariant, one helper, one device-free test | B |
 | V-A5 | Viewport | `SetFramebuffer` emits `vkCmdSetViewport` plus `vkCmdSetScissor` ON A FRAMEBUFFER CHANGE ONLY, replicating W6's identity guard exactly, and the viewport carries NEGATIVE HEIGHT so `ClipSpaceYInverted` stays false and `GpuClip.Correct` stays the identity. Core in 1.1, no extension, no conditional at the 1.3 floor | Both, converged |
-| V-A6 | Rendering | `storeOp = STORE` unconditionally, matching the incumbent, and deliberately not optimised to `DONT_CARE` for depth. Undefined contents are not stable across runs and the goldens require stability | B |
+| V-A6 | Rendering | `storeOp = STORE` by default. Explicit per-attachment owner intent may select `DONT_CARE` only for contents with no later reader, preserving determinism (#595) | B |
 | V-D1 | Descriptors | One `VkDescriptorSet` per `IGpuResourceSet`, allocated and written ONCE at `CreateResourceSet`, immutable for its life. This is what the incumbent already does, so it is a port rather than an invention, and it is stated as a decision because the naive Vulkan renderer does the opposite | Both, converged |
 | V-D2 | Descriptors | "Zero `vkAllocateDescriptorSets` and zero `vkUpdateDescriptorSets` during recording" is enforced STRUCTURALLY, not by the budget test: the descriptor pool is unreachable from the recording type, asserted by an architecture test over the type graph, plus a zero-count assertion against a fake pool in the device-free harness. Both drafts claimed a counting seam gates this and neither seam can see those calls | Judge, against both |
 | V-D3 | Descriptors | Pools are sized from ACTUAL demand per allocation, not the incumbent's fixed `maxSets = 1000` with 100 descriptors of each of seven types, and freeing restores EVERY counted type including `UniformBufferDynamicCount` and `StorageBufferDynamicCount`, which the incumbent forgets (verified, present in `v4.9.0` and unchanged upstream) | Both, converged |
@@ -1013,7 +1013,7 @@ begun.
   pending, which becomes `loadOp = CLEAR` with that clear value. If rendering HAS begun, emit
   `vkCmdClearAttachments` immediately, which is what the incumbent does in the same situation.
 - First draw. Begin rendering: per attachment, `loadOp = CLEAR` with the pending value if there is one, else
-  `loadOp = LOAD`, and `storeOp = STORE` always (V-A6). Transition every attachment to its attachment layout
+  `loadOp = LOAD`, and `storeOp` from explicit attachment intent, defaulting to `STORE` (V-A6). Transition every attachment to its attachment layout
   first (section 10.3). Emit viewport and scissor if marked. Then the draw.
 - `End()`, or any command illegal inside a render pass instance (V-A4): end rendering, flushing pending clears
   through a begin and end pair if there were any and no draw came.

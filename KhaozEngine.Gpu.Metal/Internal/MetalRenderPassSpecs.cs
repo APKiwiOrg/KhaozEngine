@@ -47,12 +47,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// </summary>
     internal enum MetalStoreAction
     {
-        /// <summary>The contents are written out. The only value this backend selects, for colour and for depth
-        /// alike.</summary>
+        /// <summary>The contents are written out. The default for every attachment.</summary>
         Store,
 
-        /// <summary>The contents are discarded. NEVER selected, and declared so 2.5's depth follow-up has a name
-        /// to arrive under rather than needing this enum widened first.</summary>
+        /// <summary>The contents are discarded only when the pass owner declares them dead.</summary>
         DontCare,
     }
 
@@ -85,11 +83,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// flag to disagree with it.</param>
     /// <param name="LoadAction">Load, or clear to <paramref name="ClearDepth"/>.</param>
     /// <param name="ClearDepth">The depth value, meaningful only under <see cref="MetalLoadAction.Clear"/>.</param>
-    /// <param name="StoreAction">What the end of the pass does with the result. <see cref="MetalStoreAction.Store"/>
-    /// today, and the seat 2.5's tiler follow-up arrives at.</param>
+    /// <param name="StoreAction">The pass owner's explicit depth store intent, defaulting to Store.</param>
     /// <param name="Stencil">Whether the depth format carries a stencil plane.</param>
+    /// <param name="StencilStoreAction">Independent store intent for the stencil plane.</param>
     internal readonly record struct MetalDepthAttachment(
-        IntPtr Texture, MetalLoadAction LoadAction, float ClearDepth, MetalStoreAction StoreAction, bool Stencil)
+        IntPtr Texture, MetalLoadAction LoadAction, float ClearDepth, MetalStoreAction StoreAction, bool Stencil,
+        MetalStoreAction StencilStoreAction = MetalStoreAction.Store)
     {
         /// <summary>Whether a begin names a depth attachment at all.</summary>
         internal bool Present => Texture != IntPtr.Zero;

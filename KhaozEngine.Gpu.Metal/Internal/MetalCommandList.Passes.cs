@@ -38,6 +38,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// ordinary framebuffer answers the same record every time and pays nothing for the indirection.
         /// </remarks>
         public void SetFramebuffer(IGpuFramebuffer fb)
+            => SetFramebufferWithStoreActions(fb, default);
+
+        public void SetFramebufferWithStoreActions(IGpuFramebuffer fb, in GpuAttachmentStoreActions stores)
         {
             // M-N5's one pool for this member. See the type remarks.
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
@@ -50,7 +53,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _boundSwapchain |= source.IsSwapchain;
 
             MetalBoundFramebuffer bound = source.AsBound;
-            _passes.SetFramebuffer(in bound);
+            _passes.SetFramebuffer(in bound, stores);
         }
 
         /// <inheritdoc/>

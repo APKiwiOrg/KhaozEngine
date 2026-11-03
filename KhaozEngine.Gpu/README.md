@@ -751,3 +751,10 @@ is presented.
 
 `SwapchainCopyCheck` holds the destination rule and the bound-this-recording refusal for all three backends. `SwapchainCopyCheckTests` drives it, and
 `D3D11SwapchainCaptureTests` drives the Direct3D 11 half over a fake swapchain surface.
+
+## Attachment store intent
+
+`SetFramebufferWithStoreActions` takes per-colour, depth and stencil intent through
+`GpuAttachmentStoreActions`. Store is the default. Discard is valid only when the pass owner proves no later
+read, including a reopened pass, capture or readback. Metal and Vulkan map it directly. Other implementations
+may retain the data.

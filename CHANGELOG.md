@@ -8,6 +8,9 @@ Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-11-03
 
+- Declare per-attachment store intent in the GPU seam. Metal and Vulkan discard only the directional
+  cascade pass's dead working depth and stencil, retaining the sampled colour atlas. Other backends may
+  retain discarded data. The default remains Store for every attachment.
 - Skip clustered point-shadow filters when banded NdotL is exactly zero. Diffuse and specular are already
   zero there. Ignore non-finite light intensities so attenuation remains finite. Shader source and backend
   emission pins are rebaked without relaxing equality checks.

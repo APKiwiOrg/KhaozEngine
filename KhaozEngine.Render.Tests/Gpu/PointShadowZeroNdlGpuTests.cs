@@ -38,7 +38,7 @@ public sealed class PointShadowZeroNdlGpuTests
         Assert.False(expected[0].SequenceEqual(control[0]), "Removing the casters must change HDR bytes.");
     }
 
-    internal static byte[][] Render(IGpuDevice device, bool casters, out int zero, out int contributing)
+    internal static byte[][] Render(IGpuDevice device, bool casters, out int zero, out int contributing, bool preserveStores = false)
     {
         using var display = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(W, H,
             GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
@@ -67,7 +67,7 @@ public sealed class PointShadowZeroNdlGpuTests
         scene.Camera.OrthoSize = 12f;
         MeshHandle plane = scene.LoadMesh(MeshPrimitives.Plane());
         MeshHandle box = scene.LoadMesh(MeshPrimitives.Box());
-        using var commands = device.Factory.CreateCommandList();
+        using var commands = new RecordingGpuCommandList(device.Factory.CreateCommandList()) { ForceAttachmentStores = preserveStores };
         for (int frame = 0; frame < 3; frame++)
         {
             scene.Begin();
@@ -77,7 +77,7 @@ public sealed class PointShadowZeroNdlGpuTests
             scene.AddLight(Lamp, new Color(1f, 0.8f, 0.6f, 1f), 9f, 3f, LightShadow.Static(1));
             scene.PrepareFrame(W, H);
             using (GpuRecording.Open(device, commands, nameof(PointShadowZeroNdlGpuTests))) scene.RenderInternal(commands, W, H, target);
-            device.Submit(commands);
+            device.Submit(commands.Inner);
             device.WaitForIdle();
         }
         Assert.True(scene.LastShadowPassDiagnostics.PointShadowedLights > 0);

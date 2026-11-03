@@ -33,7 +33,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// left alone, which is that same helper's semantics and not <c>EnsureNoEncoder</c>'s.</description></item>
     /// <item><description><b><see cref="PrepareDraw"/>, which the first draw of a pass calls.</b> Open the
     /// encoder with <c>loadAction = Clear</c> and the pending value per attachment that has one, <c>Load</c> for
-    /// the rest and <c>storeAction = Store</c> always (M-A4), then emit whatever dynamic state is
+    /// the rest and an explicit per-attachment store action, defaulting to Store (M-A4), then emit whatever dynamic state is
     /// owed.</description></item>
     /// <item><description><b><see cref="EndPass"/>, which <c>End</c>, <see cref="SetFramebuffer"/> and every
     /// texture copy call.</b> Close the pass, flushing pending clears through a begin and end pair first if there
@@ -112,6 +112,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         MetalColourAttachment[] _beginColour = new MetalColourAttachment[4];
 
         MetalBoundFramebuffer _framebuffer;
+        GpuAttachmentStoreActions _stores;
         MetalViewportRect _viewport;
         MetalScissorRect _scissor;
 
@@ -203,9 +204,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// guard covers everything rather than the viewport alone.
         /// </summary>
         /// <param name="framebuffer">The incoming framebuffer as plain data.</param>
-        internal void SetFramebuffer(in MetalBoundFramebuffer framebuffer)
+        /// <param name="stores">The pass owner's explicit dead-attachment intent.</param>
+        internal void SetFramebuffer(in MetalBoundFramebuffer framebuffer, GpuAttachmentStoreActions stores = default)
         {
-            if (framebuffer.Id == _framebuffer.Id) return;
+            if (framebuffer.Id == _framebuffer.Id && stores == _stores) return;
 
             // THE OUTGOING FRAMEBUFFER'S PASS CLOSES FIRST, clear-only flush included, which is the same helper
             // End uses and one of the incumbent's two forcing sites (M-A3). Opening a pass against the incoming
@@ -213,6 +215,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             EndPass();
 
             _framebuffer = framebuffer;
+            _stores = stores;
 
             EnsureColourCapacity(framebuffer.ColourCount);
             Array.Clear(_colourClears, 0, _colourClears.Length);
@@ -434,7 +437,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <summary>
-        /// OPEN THE PASS IF IT IS NOT OPEN: one load action per attachment, <c>storeAction = Store</c> always
+        /// OPEN THE PASS IF IT IS NOT OPEN: one load action per attachment, explicit per-attachment store actions, defaulting to Store
         /// (M-A4), and the pending array consumed. Reached from the first draw of a pass and from the clear-only
         /// flush, and from nowhere else.
         /// <para>
@@ -463,15 +466,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
                     colour[i].Texture,
                     pending.Pending ? MetalLoadAction.Clear : MetalLoadAction.Load,
                     pending.Value,
-                    MetalStoreAction.Store);
+                    _stores.DiscardsColour(i) ? MetalStoreAction.DontCare : MetalStoreAction.Store);
             }
 
             var depth = new MetalDepthAttachment(
                 _framebuffer.Depth.Texture,
                 _depthClearPending ? MetalLoadAction.Clear : MetalLoadAction.Load,
                 _depthClear,
-                MetalStoreAction.Store,
-                _framebuffer.DepthHasStencil);
+                _stores.DiscardDepth ? MetalStoreAction.DontCare : MetalStoreAction.Store,
+                _framebuffer.DepthHasStencil,
+                _stores.DiscardStencil ? MetalStoreAction.DontCare : MetalStoreAction.Store);
 
             IntPtr descriptor = _api.CreateRenderPassDescriptor(_beginColour.AsSpan(0, colour.Length), in depth);
 
